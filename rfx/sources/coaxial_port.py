@@ -40,6 +40,13 @@ from rfx.geometry.csg import Cylinder
 SMA_PIN_RADIUS   = 0.635e-3   # m — center pin radius (1.27 mm OD)
 SMA_OUTER_RADIUS = 2.055e-3   # m — outer conductor radius (4.11 mm OD)
 PTFE_EPS_R       = 2.1        # PTFE relative permittivity
+# Outer-conductor wall thickness, in METRES. Fixed in metres and not in cells
+# on purpose: a thickness of one cell makes the line's own cross-section move
+# with the mesh, so a dx ladder refines the GEOMETRY as well as the mesh and the
+# rungs do not realize one guide. 1 mm rasterizes to at least one cell at every
+# cell size this lane supports and leaves clearance to the absorber on the 8 mm
+# lateral domain every coax fixture here uses.
+SHELL_THICKNESS_M = 1.0e-3
 PEC_SIGMA        = 1e10       # S/m — effective PEC conductivity
 
 
@@ -93,6 +100,7 @@ class CoaxialPort(NamedTuple):
     outer_radius: float   # outer conductor radius (m), default 2.055 mm (SMA)
     impedance: float      # port impedance, default 50 ohm
     excitation: object    # waveform (GaussianPulse etc.)
+    terminates: tuple = ()
 
 
 class CoaxialTEMReferencePlaneVI(NamedTuple):
@@ -659,11 +667,10 @@ def setup_coaxial_port(grid: Grid, port: CoaxialPort, materials):
     materials = materials._replace(eps_r=eps_r, sigma=sigma)
 
     # ---- 4. Fold port impedance into gap cell conductivity ----
-    from rfx.sources.sources import port_sigma as _port_sigma
-    i, j, k = gap_idx
+    from rfx.sources.sources import (
+        port_sigma as _port_sigma, stamp_lumped_sigma as _stamp_sigma)
     sp = _port_sigma(grid, gap_idx, component, port.impedance)
-    new_sigma = materials.sigma.at[i, j, k].add(sp)
-    materials = materials._replace(sigma=new_sigma)
+    materials = _stamp_sigma(materials, gap_idx, sp)
 
     return materials
 
@@ -1047,10 +1054,9 @@ def make_coaxial_port_source(grid: Grid, port: CoaxialPort, materials, n_steps: 
     d_par = _port_d_parallel(grid, gap_idx, component)
     dt = grid.dt
 
-    eps   = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma_val = float(materials.sigma[i, j, k])
-    loss  = sigma_val * dt / (2.0 * eps)
-    cb    = (dt / eps) / (1.0 + loss)
+    # #1210: the drive coefficient is the E update's own per-component Cb.
+    from rfx.core.yee import cell_component_e_coeffs as _cell_cb
+    cb = float(_cell_cb(materials, gap_idx, component, dt)[1])
 
     def apply_fn(state, t: float):
         """Inject coaxial port source at time t. Call AFTER update_e()."""
@@ -1109,8 +1115,14 @@ def build_coaxial_tem_plane_source_specs(
     magnetic_ratio: float = 1.0,
     reference_plane_axial_index_offset: int = 0,
     eps_r: float = PTFE_EPS_R,
+    shell_inner_radius: float | None = None,
 ) -> CoaxialPlaneSourceSpec:
     """Return TFSF-style transverse E/M source specs for a coaxial port.
+
+    ``shell_inner_radius`` is the inner face of the outer conductor, i.e. the
+    outer edge of the PTFE annulus the source injects on. Pass the value
+    :func:`stamp_coaxial_line` returned for this line; omitted, it defaults to
+    the declared ``port.outer_radius``, which is where that function puts it.
 
     Bakes a Yee-half-step-correct one-side TFSF correction pair into per-
     cell ``SourceSpec`` / ``MagneticSourceSpec`` lists. The additive
@@ -1256,23 +1268,22 @@ def build_coaxial_tem_plane_source_specs(
     coeff_h = jnp.float32(dt_step / (MU_0 * dz))
     coeff_e = jnp.float32(dt_step / (float(eps_r) * EPS_0 * dz))
 
-    # Inner edge of the outer-conductor shell stamped by
-    # ``setup_coaxial_port``. The shell is a SIGMA STAMP
-    # (``sigma = PEC_SIGMA`` on those cells), not a PEC mask entry: it is
-    # a lossy-volume conductor model and is explicitly out of the #931
-    # lattice ownership contract (design note §1.8, "sigma-fill
-    # conductors"). Nothing zeroes its E; the field decays inside the
-    # conductive cells instead. Source cells must still stay strictly
-    # inside the PTFE annulus [pin_radius, shell_inner] — injecting at
-    # radii in [shell_inner, outer_radius] lands in those lossy cells and
-    # breaks the TFSF cancellation symmetry.  (Earlier revisions of this
-    # comment claimed ``apply_pec_mask`` zeroed the shell every step;
-    # that was never true of a sigma stamp.)
-    shell_thickness = min(
-        float(dz),
-        0.5 * (float(port.outer_radius) - float(port.pin_radius)),
-    )
-    shell_inner_radius = float(port.outer_radius) - shell_thickness
+    # Inner edge of the outer conductor. Source cells stay inside the PTFE
+    # annulus ``[pin_radius, shell_inner]``: injecting at a radius that lands
+    # in a conductor cell breaks the TFSF cancellation symmetry.
+    #
+    # ``stamp_coaxial_line`` puts that inner face at the DECLARED outer radius
+    # and grows the wall outward from there, so the annulus is [a, b] and this
+    # bound is ``port.outer_radius``. It used to recompute
+    # ``b - min(dz, (b-a)/2)`` here, a second copy of a formula that has since
+    # moved; with the wall now at b that copy would have excluded the
+    # outermost ring of dielectric from the injection while ``log_ratio``
+    # above still normalised over the full ``ln(b/a)`` — the two disagreed.
+    # Callers that hold the stamper's own return value pass it as
+    # ``shell_inner_radius`` so the two cannot drift again.
+    if shell_inner_radius is None:
+        shell_inner_radius = float(port.outer_radius)
+    shell_inner_radius = float(shell_inner_radius)
 
     # Time-series amplitude scales (cell-independent factors lifted out).
     h_factor = jnp.float32(h_sign) * coeff_h * jnp.float32(field_scale) * e_inc_table
@@ -1974,18 +1985,43 @@ def stamp_coaxial_line(
     pin_radius: float = SMA_PIN_RADIUS,
     outer_radius: float = SMA_OUTER_RADIUS,
     eps_r: float = PTFE_EPS_R,
+    shell_thickness_m: float = SHELL_THICKNESS_M,
 ):
-    """Stamp a coextensive PEC-pin / dielectric / PEC-shell coax line (z-axis).
+    """Stamp a coextensive coax line (z-axis) and return its conductor cells.
 
-    Fills the axial index range ``[z_lo_index, z_hi_index]`` with a one-cell PEC
-    outer shell, a dielectric annulus (``eps_r``) and a solid PEC centre pin.
+    Fills the axial index range ``[z_lo_index, z_hi_index]`` with the dielectric
+    annulus (``eps_r``) between the pin and the DECLARED outer radius, and
+    reports the pin and the outer wall as a PEC CELL MASK for the caller to
+    realize through :func:`rfx.boundaries.pec.realized_pec_edge_masks`.
 
-    IMPORTANT: the conductors must NOT extend into a CPML region. Running PEC
-    into the PML is numerically unstable (verified: max|E| diverges to NaN). Stop
-    the line at least ~2 cells short of the absorbing boundary and terminate the
-    feed with :func:`stamp_coaxial_annular_resistor`.
+    Returns ``(materials, shell_inner_radius, pec_cell_mask)``.
 
-    Returns ``(materials, shell_inner_radius)``.
+    Two things changed here, and both were measured before they were changed
+    (``docs/design_notes/coax_conductor_realization.md``):
+
+    * **The conductors are no longer a per-node conductivity.** ``sigma`` is
+      applied in ``rfx/core/yee.py`` to the three E components co-indexed with a
+      node, so a conductor cell damped only its three plus-side edges and the
+      edges entering it from the minus side stayed live on the neighbouring
+      dielectric node. That ragged, one-sided wall carried extra inductance: the
+      line's fitted phase constant sat 8-18 % above ``omega sqrt(eps)/c``, and
+      the open corner contacts of the rasterized ring let the mode couple to the
+      region outside it, costing up to 15 % of the column power. Realizing the
+      same cells through the lattice ownership contract instead — walls on BOTH
+      faces, every normal edge between them shorted — puts the phase constant
+      within 1 % and the column power within 0.007 of unity at every cell size
+      measured.
+    * **The wall's inner radius is the declared outer radius**, and its
+      thickness is fixed in metres. It used to be ``outer_radius - min(dz, ...)``,
+      so the dielectric annulus and hence the line's own characteristic impedance
+      moved with the mesh (40.7 -> 45.3 ohm over a 4-to-9-cell ladder against a
+      declared 48.59). The annulus is now ``pin_radius .. outer_radius`` as
+      drawn, at every cell size.
+
+    The conductors must NOT extend into a CPML region: running PEC into the PML
+    is numerically unstable (verified: max|E| diverges to NaN). Stop the line at
+    least ~2 cells short of the absorbing boundary and terminate the feed with
+    :func:`stamp_coaxial_annular_resistor`.
     """
 
     dz = float(grid.dx)
@@ -1995,24 +2031,84 @@ def stamp_coaxial_line(
     height = (z_hi - z_lo) + 2.0 * dz
     center = (float(center_xy[0]), float(center_xy[1]), zc)
 
-    shell_thickness = min(dz, 0.5 * (float(outer_radius) - float(pin_radius)))
-    shell_inner_radius = float(outer_radius) - shell_thickness
-    outer_mask = Cylinder(center=center, radius=outer_radius, height=height, axis="z").mask(grid)
-    shell_inner_mask = Cylinder(center=center, radius=shell_inner_radius, height=height, axis="z").mask(grid)
-    pin_mask = Cylinder(center=center, radius=pin_radius, height=height, axis="z").mask(grid)
+    a = float(pin_radius)
+    b = float(outer_radius)
+    thickness = float(shell_thickness_m)
+    if not np.isfinite(thickness) or thickness <= 0.0:
+        raise ValueError(
+            f"shell_thickness_m must be positive and finite, got {shell_thickness_m}"
+        )
+
+    # The wall is realized as shorted E edges, so it needs no depth to be a
+    # conductor -- one cell is as perfect as a hundred. What its thickness must
+    # not do is reach an absorber: PEC inside a CPML pad is unstable and the
+    # field diverges to NaN. Neither preflight check can catch that here,
+    # because both iterate the REGISTERED geometry and this wall is stamped,
+    # never registered. So the thickness is clamped against the room the board
+    # actually has, and refused outright when there is not a cell of it.
+    #
+    # Only faces that HAVE a pad constrain the wall; a PEC or periodic face has
+    # no absorber to run into. Physical coordinates put node i of an axis at
+    # ``(i - pad_lo) * dx``, so the pad's inner edge is 0 on the low side and
+    # ``(n - 1 - pad_lo - pad_hi) * dx`` on the high side.
+    cx, cy = float(center_xy[0]), float(center_xy[1])
+    nx, ny = int(grid.shape[0]), int(grid.shape[1])
+    pad_x_lo, pad_x_hi = int(grid.pad_x_lo), int(grid.pad_x_hi)
+    pad_y_lo, pad_y_hi = int(grid.pad_y_lo), int(grid.pad_y_hi)
+    span_x = (nx - 1 - pad_x_lo - pad_x_hi) * dz
+    span_y = (ny - 1 - pad_y_lo - pad_y_hi) * dz
+    room = []
+    if pad_x_lo:
+        room.append(("x-lo", pad_x_lo, cx))
+    if pad_x_hi:
+        room.append(("x-hi", pad_x_hi, span_x - cx))
+    if pad_y_lo:
+        room.append(("y-lo", pad_y_lo, cy))
+    if pad_y_hi:
+        room.append(("y-hi", pad_y_hi, span_y - cy))
+    if room:
+        pad_name, pad_cells, clearance = min(room, key=lambda t: t[2])
+        allowed = clearance - b - dz          # keep one cell clear of the pad
+        if allowed < dz:
+            raise ValueError(
+                f"the coaxial line at ({cx * 1e3:.4g}, {cy * 1e3:.4g}) mm with "
+                f"outer radius {b * 1e3:.4g} mm has no room for a wall before "
+                f"the {pad_name} absorber: its centre is {clearance * 1e3:.4g} mm "
+                f"from that pad's inner edge ({pad_cells} cells deep), which "
+                f"leaves {allowed / dz:.2f} cells outside the declared radius "
+                f"once one cell of clearance is kept. A conductor inside a CPML "
+                f"pad diverges. Move the line further from that face, shrink "
+                f"outer_radius, or enlarge the board."
+            )
+        thickness = min(thickness, allowed)
+
+    shell_inner_radius = b
+    shell_outer_radius = b + thickness
+
+    outer_mask = Cylinder(center=center, radius=shell_outer_radius, height=height,
+                          axis="z").mask(grid)
+    shell_inner_mask = Cylinder(center=center, radius=shell_inner_radius, height=height,
+                                axis="z").mask(grid)
+    pin_mask = Cylinder(center=center, radius=a, height=height, axis="z").mask(grid)
+
+    shell = outer_mask & ~shell_inner_mask
+    if not shell.any():
+        raise ValueError(
+            f"stamp_coaxial_line: a {thickness * 1e3:.4f} mm wall outside "
+            f"r = {b * 1e3:.4f} mm rasterizes to no cell at dx = {dz * 1e6:.2f} um. "
+            "The mesh is too coarse for this line; refine it or widen the wall."
+        )
 
     eps = np.array(materials.eps_r)
     sig = np.array(materials.sigma)
-    shell = outer_mask & ~shell_inner_mask
-    eps = np.where(shell, 1.0, eps)
-    sig = np.where(shell, PEC_SIGMA, sig)
-    ptfe = shell_inner_mask & ~pin_mask
-    eps = np.where(ptfe, float(eps_r), eps)
-    sig = np.where(ptfe, 0.0, sig)
-    eps = np.where(pin_mask, 1.0, eps)
-    sig = np.where(pin_mask, PEC_SIGMA, sig)
+    # Only the dielectric is written into the material arrays. The conductors
+    # are returned as a mask and realized as PEC edges by the caller, so nothing
+    # here sets a conductivity.
+    dielectric = shell_inner_mask & ~pin_mask
+    eps = np.where(dielectric, float(eps_r), eps)
+    sig = np.where(dielectric, 0.0, sig)
     materials = materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
-    return materials, shell_inner_radius
+    return materials, shell_inner_radius, np.asarray(shell | pin_mask)
 
 
 def stamp_coaxial_short_plane(
@@ -2023,23 +2119,30 @@ def stamp_coaxial_short_plane(
     z_index: int,
     outer_radius: float = SMA_OUTER_RADIUS,
 ):
-    """Short the centre pin to the outer shell with a PEC disk at one z-plane.
+    """The calibration short (``Gamma = -1``): a PEC disk at one z-plane.
 
-    This is the calibration short (``Γ = -1``). Returns updated materials.
+    Returns ``(materials, pec_cell_mask)``. Like :func:`stamp_coaxial_line` the
+    disk is reported as cells rather than written as a conductivity, so the
+    caller realizes it through the same lattice ownership contract as the rest
+    of the conductor; ``materials`` comes back with the disk's permittivity set
+    to vacuum and is otherwise unchanged.
     """
 
     eps = np.array(materials.eps_r)
-    sig = np.array(materials.sigma)
     cx, cy = float(center_xy[0]), float(center_xy[1])
     z = int(z_index)
+    mask = np.zeros(tuple(int(n) for n in (grid.nx, grid.ny, grid.nz)), dtype=bool)
     for i in range(grid.nx):
         x = (i - grid.pad_x_lo) * grid.dx
         for j in range(grid.ny):
             y = (j - grid.pad_y_lo) * grid.dx
             if np.hypot(x - cx, y - cy) <= float(outer_radius):
-                sig[i, j, z] = PEC_SIGMA
+                mask[i, j, z] = True
                 eps[i, j, z] = 1.0
-    return materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
+    if not mask.any():
+        raise ValueError(
+            "stamp_coaxial_short_plane stamped 0 cells; check geometry/resolution")
+    return materials._replace(eps_r=jnp.asarray(eps)), mask
 
 
 def stamp_coaxial_annular_resistor(
@@ -2052,22 +2155,30 @@ def stamp_coaxial_annular_resistor(
     outer_radius: float = SMA_OUTER_RADIUS,
     target_impedance: float,
     shell_inner_radius: float | None = None,
+    pec_cell_mask=None,
 ):
     """Stamp a radial annular resistor (``Γ → 0`` match) at one z-plane.
 
     The PTFE annulus between the pin and the shell is filled with conductivity
     ``σ = log(b'/a) / (2π·dz·Z)`` so the radial pin-to-shell resistance matches
     ``target_impedance``. Used both for the matched feed termination and for a
-    matched DUT. PEC cells already stamped by :func:`stamp_coaxial_line` are
-    skipped. Returns updated materials.
+    matched DUT.
+
+    ``pec_cell_mask`` is the conductor mask :func:`stamp_coaxial_line` returns;
+    cells in it are skipped. It replaces the old test ``sigma >= PEC_SIGMA/2``,
+    which stopped finding the conductor when the conductor stopped being a
+    conductivity. Passing nothing falls back to that test, which is correct only
+    for a caller that still stamps its conductors into ``sigma``.
+
+    Returns updated materials.
     """
 
     if not np.isfinite(target_impedance) or target_impedance <= 0.0:
         raise ValueError(f"target_impedance must be positive finite, got {target_impedance}")
     dz = float(grid.dx)
     if shell_inner_radius is None:
-        shell_thickness = min(dz, 0.5 * (float(outer_radius) - float(pin_radius)))
-        shell_inner_radius = float(outer_radius) - shell_thickness
+        shell_inner_radius = float(outer_radius)
+    pec = None if pec_cell_mask is None else np.asarray(pec_cell_mask)
     sigma_load = float(np.log(shell_inner_radius / float(pin_radius))) / (
         2.0 * np.pi * dz * float(target_impedance)
     )
@@ -2081,7 +2192,9 @@ def stamp_coaxial_annular_resistor(
         for j in range(grid.ny):
             y = (j - grid.pad_y_lo) * grid.dx
             r = float(np.hypot(x - cx, y - cy))
-            if float(pin_radius) <= r <= shell_inner_radius and sig[i, j, z] < 0.5 * PEC_SIGMA:
+            occupied = (bool(pec[i, j, z]) if pec is not None
+                        else sig[i, j, z] >= 0.5 * PEC_SIGMA)
+            if float(pin_radius) <= r <= shell_inner_radius and not occupied:
                 sig[i, j, z] = sigma_load
                 eps[i, j, z] = 1.0
                 stamped += 1

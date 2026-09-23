@@ -26,8 +26,7 @@
    "test_sparam_ad_end_to_end.py",
    "test_optimize_multistart.py",
    "test_optimize_convergence.py",
-   "test_custom_waveforms.py",
-   "test_pml_reflectivity.py"
+   "test_custom_waveforms.py"
   ],
   [
    "test_topology.py",

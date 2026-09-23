@@ -367,7 +367,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
 
     # --- pec_box_one_cell: WARNING, aggregated ------------------------
     one_cell = []
-    for e in entries:
+    for e in ctx.interior_pec_entries():
         if e.kind != "volume":
             continue
         thin_axes = []
@@ -522,7 +522,7 @@ def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
     realized = ctx.realized()
     if realized is None:
         return
-    sheets = [e for e in ctx.entry_realizations() if e.kind == "sheet"]
+    sheets = [e for e in ctx.interior_pec_entries() if e.kind == "sheet"]
     if not sheets:
         return
     eps = np.asarray(realized.materials.eps_r, dtype=np.float64)
@@ -612,7 +612,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
     face_layers = self._preflight_face_layers()
     shape = tuple(ctx.grid.shape)
     rows = []
-    for e in ctx.pec_entries():
+    for e in ctx.interior_pec_entries():
         if e.kind != "volume":
             continue    # a sheet has no face to draw to a wall
         edges = e.edges(ctx.periodic, shape)
@@ -894,7 +894,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
     sheet has no thickness, so a foil declared with faces reads its
     thickness as cavity — the sheet model's honest, quantified cost.
     """
-    entries = [e for e in ctx.pec_entries()
+    entries = [e for e in ctx.interior_pec_entries()
                if e.kind in ("volume", "sheet") and e.lo is not None]
     if len(entries) < 2:
         return
@@ -1127,12 +1127,13 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     domain wall is a wall, not an edge, and adds nothing. This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
     domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
     rows = []
     sheets = [e for e in boxes if e.kind == "sheet"]
     union = None
     for e in sheets:
-        fp = np.asarray(e.sheet.footprint, dtype=bool)
+        fp = interior_lattice_mask(e.sheet.footprint, ctx.grid)
         union = fp.copy() if union is None else (union | fp)
 
     def _continues(fp, a, i_end, i_next):
@@ -1143,7 +1144,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         return bool(end.any()) and bool(np.take(union, i_next, axis=a)[end].all())
 
     for e in sheets:
-        fp = np.asarray(e.sheet.footprint, dtype=bool)
+        fp = interior_lattice_mask(e.sheet.footprint, ctx.grid)
         for a in range(3):
             if a == int(e.sheet.normal_axis):
                 continue
@@ -1220,9 +1221,9 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
     aggregated advisory above ``_OFF_LATTICE_EDGE_TOL``, worst
     offenders first.
     """
-    boxes = [e for e in ctx.pec_entries()
+    boxes = [e for e in ctx.interior_pec_entries()
              if e.kind in ("volume", "sheet") and isinstance(e.shape, Box)]
-    others = [e for e in ctx.pec_entries()
+    others = [e for e in ctx.interior_pec_entries()
               if not (e.kind in ("volume", "sheet")
                       and isinstance(e.shape, Box))]
     if not boxes:

@@ -347,6 +347,10 @@ class _Mat:
         import jax.numpy as jnp
         self.sigma = jnp.zeros(shape)
         self.eps_r = jnp.ones(shape)
+        # #1210: the edge-owned record of a lumped stamp. This stand-in only
+        # reads sigma back, but the stamping helper writes both.
+        self.sigma_lumped = None
+        self.eps_r_lumped = None
 
     def _replace(self, **kw):
         for k, v in kw.items():

@@ -99,9 +99,35 @@ define an S-parameter port.
 
 **RF evidence (E2/E3/E4-partial):**
 
-- Closed-form open, short, matched, resistive, capacitor, inductor, series-RLC,
-  and parallel-RLC extractor checks have `max_abs_diff 7.91e-8` against a
-  `2.20e-6` tolerance.
+- A driven one-cell port on a solved known load: a 4-cell parallel-plate TEM
+  line (`Zc = eta0`, PEC plates, magnetic side walls) terminated in `R`, whose
+  `|S11| = |(R - Zc)/(R + Zc)|` at every frequency. At `R = Zc/2`, `Zc`, and
+  `2 Zc` the port lands within `0.00043` of that closed form at 1 GHz, rising
+  to `0.042` at 10 GHz. The low-frequency bins are what this evidence carries,
+  together with the removal of `|S11| > 1` (the previous extractor read 0.714,
+  1.248 and 4.757 on the same three loads).
+
+  The residual at the top of the band is **not characterized**. What is
+  measured about it: it is antisymmetric in `R` (`+0.0339` at `R = Zc/2`,
+  `-0.0339` at `R = 2 Zc`, at 10 GHz) and fits a single effective reference
+  impedance — solving `|Γ| = |(R - Zc_eff)/(R + Zc_eff)|` gives
+  `Zc_eff/eta0 = 1.0805` from one load and `1.0782` from the other, the same
+  number to 0.2 % from two independent loads. No cause is claimed for it.
+  The fixture admits no mesh refinement: its cross-section is one cell tall
+  and one cell wide by construction, which is how `Zc = eta0·h/w` is arranged,
+  and refining `dx` on the fixed physical structure leaves the one-cell port
+  no longer bridging the gap — `|S11|` then reads about 1.0 at every load,
+  a different structure rather than a finer one. So this fixture's convergence
+  is **not shown**, and by the v2 accuracy bar the residual says nothing either
+  way. That the wire port reads the same residual bin for bin separates lane
+  from lane; it is one witness on a shared fixture, not a second one.
+  `tests/unit/ports/test_lumped_port_known_load_line.py`;
+  `scripts/diagnostics/lumped_port_known_load_line.py` prints the run.
+- The open, short, matched, resistive, capacitor, inductor, series-RLC, and
+  parallel-RLC checks with `max_abs_diff 7.91e-8` against a `2.20e-6` tolerance
+  are **synthetic algebra**: they feed the extractor constructed V/I phasors and
+  confirm it reproduces the circuit formula. They exercise no solved field, so
+  they did not detect the extraction defect the known-load line above found.
 - A real two-port V/I replay covers 9 frequencies and 2 ports with
   `max_abs_diff 1.13e-7` against `9.84e-7`.
 - A three-case uniform-grid replay/passivity/reciprocity check has maximum replay
@@ -119,8 +145,40 @@ define an S-parameter port.
   calculation.
 - Analytic extractor and V/I replay checks validate algebra and reproducibility;
   they do not establish a generally calibrated lumped-port result.
+- The subgridded runner's diagnostic lumped S-matrix
+  (`diagnostic_lumped_sparam_freqs`) is still on the pre-2026-09-21 convention
+  and warns when it returns; it is diagnostic output, not physics.
+- **Every lumped-port S-parameter moved on 2026-09-21**, not only the driven
+  `|S11|`. A driven port now reads its terminal V/I pair; it used to read the
+  passive port-branch algebra on a pre-injection sample, which returns the
+  reciprocal of the physical reflection. Three quantities changed:
+  - the **driven diagonal**, by the whole correction. On a two-port line
+    matched at both ends (closed form `S11 = 0`) it went from `max |S11| =
+    1.24831` to `0.04206`, which is the wire lane's number on the identical
+    cells to every digit.
+  - **every other port's current**, driven or not, by the Yee half-step phase.
+    So a **passive** port keeps the port-branch formula and still changes
+    value: measured `max |dS| = 0.026`, `max |d|S|| = 0.0022` on a two-port
+    PEC fixture, with its voltage bit-identical either side of the slot.
+  - the **off-diagonal**, by the whole decomposition. The lumped N-port
+    S-matrix is now the wire family's decomposition evaluated at one live
+    cell, not a separately calibrated per-cell convention: a one-cell lumped
+    port and a one-cell wire port are the same port, so they have one
+    S-matrix. On the matched line the lumped `|S21|` went `2.24752 ->
+    1.00005` against a closed form of `1`, with the wire lane unchanged, and
+    the two lanes now agree to exactly `0.0` on complex S, every entry.
+  Gated by `tests/unit/ports/test_lumped_two_port_matched_line.py` against
+  the closed form on both entries and both lanes, plus lumped == wire on the
+  full matrix.
+- A V/I dump records which frame its production S used, in its
+  `diagonal_frame` metadata; the whole-port frame needs no channel beyond the
+  stored V and I. Dumps written before this change replay unchanged — pinned
+  by `tests/fixtures/lumped_two_port_vi_dump_pre_driven_diagonal.npz`, which
+  carries no `diagonal_frame` key and so selects the legacy per-cell frame.
 
-Relevant implementations and tests include `tests/unit/sparams/test_sparam.py`,
+Relevant implementations and tests include
+`tests/unit/ports/test_lumped_port_known_load_line.py`,
+`tests/unit/sparams/test_sparam.py`,
 `tests/unit/sparams/test_port_dump_replay.py`,
 `scripts/diagnostics/report_lumped_analytic_oracles.py`, and
 `scripts/diagnostics/build_lumped_openems_sweep_comparison.py`.

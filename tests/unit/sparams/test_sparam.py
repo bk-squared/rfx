@@ -20,7 +20,8 @@ from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, apply_lumped_port
 from rfx.probes.probes import (
-    init_sparam_probe, update_sparam_probe, extract_s11,
+    init_sparam_probe, update_lumped_drive_ref_probe,
+    update_sparam_probe, extract_s11,
 )
 
 
@@ -59,8 +60,16 @@ def test_lumped_port_pec_cavity_s11():
         state = update_h(state, materials, dt, dx)
         state = update_e(state, materials, dt, dx)
         state = apply_pec(state)
-        sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
+        # Both slots, the way the JIT scan uses them: the PRE-injection drive
+        # sample into v_ref, the physical V/I AFTER injection
+        # (scripts/diagnostics/lumped_port_known_load_line.py).  This loop
+        # sampled only before injection while extract_s11 became the DRIVEN
+        # terminal reflection, and the mismatched pair read |S11| up to 1.4468
+        # on this lossless cavity — above unity, which a passive structure
+        # cannot do.  On the two slots it reads 0.9774 … 0.9994.
+        sprobe = update_lumped_drive_ref_probe(sprobe, state, grid, port, dt)
         state = apply_lumped_port(state, grid, port, t, materials)
+        sprobe = update_sparam_probe(sprobe, state, grid, port, dt)
 
     s11 = extract_s11(sprobe, z0=50.0)
     s11_db = 20 * np.log10(np.maximum(np.abs(np.array(s11)), 1e-10))
@@ -76,9 +85,19 @@ def test_lumped_port_pec_cavity_s11():
     print(f"  Min:  {np.min(s11_mid):.1f} dB")
     print(f"  Max:  {np.max(s11_mid):.1f} dB")
 
-    # S11 should be > -3 dB (reflecting most power)
+    # Two-sided.  The lower bound is the original one: a PEC cavity reflects
+    # most of what it is given.  The upper bound is the physics the module
+    # docstring already claims and the old one-sided gate could not see — a
+    # passive structure cannot return more than it receives, and a gate that
+    # only looks down let |S11| = 1.4468 through.  The margin is the measured
+    # rounding on this fixture: max |S11| reads 0.9994, so 1 + 1e-3 is the
+    # float32 headroom and nothing more.
     assert np.mean(s11_mid) > -3.0, \
         f"Mean S11 {np.mean(s11_mid):.1f} dB too low for PEC cavity"
+    s11_mag = np.abs(np.array(s11))
+    assert np.max(s11_mag) <= 1.0 + 1e-3, (
+        f"|S11| = {np.max(s11_mag):.5f} exceeds unity on a lossless PEC "
+        "cavity, which a passive structure cannot do")
 
 
 def test_lumped_port_injects_energy():

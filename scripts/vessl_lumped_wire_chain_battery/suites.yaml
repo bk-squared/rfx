@@ -1,0 +1,79 @@
+name: rfx-lw-battery-suites
+description: "Lumped/wire chain battery: the replay test and the contract suite, run on the compute lane rather than on the pod. CPU only."
+tags: [rfx, chain-closure, lumped-wire-battery]
+resources:
+  cluster: remilab-c0
+  preset: cpu-32-mem-64
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  OMP_NUM_THREADS: "4"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  JAX_PLATFORMS: "cpu"
+  MPLBACKEND: "Agg"
+  RFX_SHA: "cc146dd42e4059e056ca4cafec1e2f40fd6a87c6"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-lumped-battery
+  git config --global --add safe.directory "$SRC"
+  git config --global --add safe.directory "$(git -C "$SRC" rev-parse --absolute-git-dir)"
+  SHA=$(git -C "$SRC" rev-parse HEAD)
+  test "$SHA" = "$RFX_SHA" || { echo "FATAL: worktree moved: $SHA"; exit 3; }
+  test -z "$(git -C "$SRC" status --porcelain)" || { echo "FATAL: dirty worktree"; exit 3; }
+  RUNS=/root/workspace/claude-workspace/rfx/runs
+  OUT=$RUNS/lw-suites-$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT/stages"
+  echo "$SHA" > "$OUT/commit.txt"
+  echo "$OUT" > "$RUNS/lw-suites.latest"
+  LOG="$OUT/run.log"
+  trap 'rc=$?; echo "$rc" > "$OUT/job.rc"; cp -f /root/work/lw-suites/out.log "$LOG" 2>/dev/null || true; chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
+  WORK=/root/work/lw-suites
+  rm -rf "$WORK"; mkdir -p "$WORK"
+  # tar rather than `cp -a`, excluding the caches: a pytest run in the
+  # source worktree rewrites .pyc files while the copy is in flight, and
+  # cp then exits non-zero ("replaced while being copied"), which under
+  # `set -e` kills the job before a single solve. Measured on run
+  # 369367262712, which died three seconds in for exactly that reason.
+  ( cd "$SRC" && tar -cf - --exclude=__pycache__ --exclude=.pytest_cache . ) \
+    | ( cd "$WORK" && tar -xf - )
+  cd "$WORK"
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy>=2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split optax ruff
+  export PYTHONPATH="$WORK"
+  git config --global --add safe.directory "*"
+  "$PY" -c "import rfx, os; print('rfx from', os.path.dirname(rfx.__file__))"
+  # `set +e` on purpose: the outer block runs with `set -e`, and a red suite is
+  # a RESULT here, not a reason to stop before the others have run. Each suite
+  # writes its own log next to the record and echoes its own exit code, so a
+  # red one is named rather than hidden behind whatever ran last. The first
+  # attempt wrapped these in `sh -c` and every one came back 127, because $PY
+  # was not exported into that shell — run 369367262737.
+  # `git init -b main` is used by 44 of the contract tests and arrived in git
+  # 2.28. The image's git rejected it with exit 129 on run 369367262739, so
+  # those tests errored on the lane while passing on the pod. Record the
+  # version, try once for a newer one, and record that too: a suite that could
+  # not run is not a suite that passed.
+  git --version
+  apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq git >/dev/null 2>&1
+  echo "git after upgrade attempt: $(git --version)"
+  set +e
+  timeout 4000 "$PY" -m pytest tests/oracle/test_lumped_wire_chain_battery.py -q -p no:cacheprovider > "$OUT/replay.log" 2>&1
+  echo "replay_rc=$?"; tail -25 "$OUT/replay.log"
+  timeout 6000 "$PY" -m pytest tests/contracts -q -p no:cacheprovider > "$OUT/contracts.log" 2>&1
+  echo "contracts_rc=$?"; tail -8 "$OUT/contracts.log"
+  timeout 4000 "$PY" -m pytest tests/unit/sparams/test_wire_port_sparams_forward.py tests/unit/sparams/test_lumped_port_sparams_jit.py tests/unit/autodiff/test_lumped_rlc_ad.py -q -p no:cacheprovider > "$OUT/portunit.log" 2>&1
+  echo "portunit_rc=$?"; tail -6 "$OUT/portunit.log"
+  "$PY" -m ruff check scripts/diagnostics/lumped_wire_chain_battery_measure.py scripts/diagnostics/lumped_port_known_load_line.py tests/oracle/test_lumped_wire_chain_battery.py --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402 > "$OUT/ruff.log" 2>&1
+  echo "ruff_rc=$?"; cat "$OUT/ruff.log"
+  bash scripts/ci/docs_hygiene.sh > "$OUT/hygiene.log" 2>&1
+  echo "hygiene_rc=$?"; cat "$OUT/hygiene.log"
+  set -e
+  cp -f "$OUT/replay.log" /root/work/lw-suites/out.log 2>/dev/null || true
+  echo BATTERY_STAGE_DONE

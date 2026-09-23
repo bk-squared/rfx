@@ -1187,12 +1187,17 @@ def test_inset_sphere_stays_quiet():
     assert _seam_findings(sim) == []
 
 
-def test_pec_sphere_at_the_seam_stays_quiet():
-    """PEC is continued by NEITHER lane, so there is no gap to report."""
+def test_pec_sphere_at_the_seam_reports_unsupported_conductor():
+    """A reached PEC sphere reports its unsupported conducting face."""
     sim = _dp_sim()
     sim.add_material("metal", sigma=1e10)
     sim.add(_seam_sphere(), material="metal")
-    assert _seam_findings(sim) == []
+    found = _seam_findings(sim)
+    assert len(found) == 1, found
+    msg = str(found[0])
+    assert "Conductor 'metal'" in msg and "Sphere" in msg and "x-lo" in msg
+    assert "No continuation is applied" in msg
+    assert "eps_r" not in msg
 
 
 def test_non_absorbing_boundary_stays_quiet():

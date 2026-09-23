@@ -47,8 +47,16 @@ def run_zsweep(n_steps, z_indices):
     materials = setup_coaxial_port(grid, port, materials)
     for cap_idx, off in sim._coaxial_pec_end_caps:
         materials = add_coaxial_pec_end_cap(grid, sim._coaxial_ports[cap_idx], materials, axial_offset_cells=off)
+    # setup_coaxial_port stamps the shell the old way -- inner face one cell
+    # inside the declared outer radius -- so the source is told that radius.
+    # The builder's default is the declared radius, which on this stamp is
+    # inside the metal.
+    _shell_inner = float(port.outer_radius) - min(
+        float(grid.dx),
+        0.5 * (float(port.outer_radius) - float(port.pin_radius)))
     spec = build_coaxial_tem_plane_source_specs(grid=grid, port=port, n_steps=n_steps,
-                                                field_scale=1.0e4, magnetic_ratio=1.0)
+                                                field_scale=1.0e4, magnetic_ratio=1.0,
+                                                shell_inner_radius=_shell_inner)
     planes = []
     for z in z_indices:
         for comp in ("ex", "ey", "hx", "hy"):

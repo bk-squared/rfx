@@ -37,7 +37,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import MaterialArrays, init_state, update_e, update_h, EPS_0
+from rfx.core.yee import (MaterialArrays, cell_component_e_coeffs,
+                          component_e_materials, init_state,
+                          update_e, update_h, EPS_0)
 from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
 from rfx.materials.thin_conductor import apply_thin_conductor
 from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
@@ -230,8 +232,8 @@ def _apply_batched_thin_conductors(
     ``Simulation._assemble_materials`` runs it.
 
     This is the second half of the #642 fix. ``_assemble_materials``
-    extends the CPML pad and only THEN applies conductors, so ``run()``'s
-    padding never contains one. The batched path re-extends the pad per
+    extends the material arrays and only THEN applies thin conductors from
+    their continued geometry. The batched path re-extends the pad per
     swept value; to reproduce ``run()`` it must therefore re-extend the
     *pre-conductor* arrays and re-apply the conductors afterwards, which
     is exactly this call plus the ``include_thin_conductors=False``
@@ -253,7 +255,10 @@ def _apply_batched_thin_conductors(
     -------
     (eps_r, sigma, mu_r) — same shapes as the inputs.
     """
-    conductors = tuple(sim._thin_conductors)
+    from dataclasses import replace
+    from rfx.geometry.smoothing import continued_conductor_shape
+    conductors = tuple(replace(tc, shape=continued_conductor_shape(sim, grid, tc.shape, entry=tc))
+                       for tc in sim._thin_conductors)
     if not conductors:
         return eps_r, sigma, mu_r
 
@@ -580,11 +585,9 @@ def _build_vmap_scan_fn(
         if j_source_raw_info:
             j_cb_scales = []
             for si, sj, sk, sc in j_src_meta:
-                eps = materials.eps_r[si, sj, sk] * EPS_0
-                sigma_val = materials.sigma[si, sj, sk]
-                loss = sigma_val * dt / (2.0 * eps)
-                cb = (dt / eps) / (1.0 + loss)
-                j_cb_scales.append(cb)
+                # #1210: the E update's own per-component Cb at that node.
+                j_cb_scales.append(cell_component_e_coeffs(
+                    materials, (si, sj, sk), sc, dt)[1])
             j_cb_arr = jnp.stack(j_cb_scales)  # (n_j_sources,)
             # Scale raw waveforms: (n_steps, n_j_sources) * (n_j_sources,)
             j_src_waveforms = j_src_raw_waveforms * j_cb_arr[None, :]
@@ -616,9 +619,17 @@ def _build_vmap_scan_fn(
             # E update
             st = update_e(st, materials, dt, dx, periodic=periodic)
             if use_cpml:
+                # #1043 + #1210: the absorber's psi coefficient must take its
+                # permittivity from the array the Yee half used, and since
+                # #1210 that is the per-component edge average, not
+                # ``materials.eps_r``. Without this the two halves of one
+                # timestep integrate different media wherever an interface
+                # crosses the pad, and this lane stops reproducing ``run()``.
+                _eps_c, _ = component_e_materials(materials, periodic)
                 st, cpml_st = apply_cpml_e(
                     st, cpml_params, cpml_st, grid, cpml_axes,
-                    materials=materials)
+                    materials=materials,
+                    inv_eps_r_update=tuple(1.0 / e for e in _eps_c))
 
             # PEC boundaries
             if pec_axes:
@@ -867,10 +878,19 @@ def _build_full_scan_fn(
         for axis_name, is_periodic in zip(axis_names, periodic):
             if is_periodic:
                 cpml_axes = cpml_axes.replace(axis_name, "")
+        # The walls by the one per-face rule (#1164). These scan bodies have
+        # no H-side hook for a magnetic face, so a PMC declaration is refused
+        # here rather than shorted by an axis wall.
+        from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
+        pec_faces_vm, pmc_faces_vm = _resolve_walls(grid, periodic, None)
+        if pmc_faces_vm:
+            raise NotImplementedError(
+                "vmap_sweep: a magnetic (pmc) boundary face is not supported on "
+                f"the vmapped lane (faces {sorted(pmc_faces_vm)}); use run() or "
+                "forward() per design, or declare the face pec/cpml.")
         pec_axes = "".join(
-            axis_name for axis_name, is_periodic in zip(axis_names, periodic)
-            if not is_periodic
-        )
+            a for a in "xyz"
+            if f"{a}_lo" in pec_faces_vm and f"{a}_hi" in pec_faces_vm)
 
         if boundary == "cpml":
             # CPML requires its own state management.  For the vmapped path,

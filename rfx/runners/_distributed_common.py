@@ -35,9 +35,12 @@ from rfx.core.yee import (
     MU_0,
     FDTDState,
     MaterialArrays,
+    ade_state_dtype,
     _shift_fwd,
     _shift_bwd,
 )
+from rfx.materials.debye import DebyeState, init_debye
+from rfx.materials.lorentz import LorentzState, init_lorentz
 
 __all__ = [
     "cpml_coeff_e_vacuum",
@@ -128,6 +131,116 @@ def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
 
         slabs.append(slab_data)
     return jnp.stack(slabs)
+
+
+def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
+    """Place padded x slabs directly, constructing only addressable shards.
+
+    ``arr`` already includes any high-x alignment padding. Physical-boundary
+    ghosts use ``pad_value``; interior ghosts copy the adjacent slab's cells,
+    exactly as in ``shard_stacked(split_array_x(...))``. No device-axis stack
+    or whole-domain reshape is staged on the default device.
+    """
+    if arr.ndim != 3:
+        raise ValueError(f"shard_x_slabs stages 3-D (x, y, z) arrays, got shape {arr.shape}")
+    nx_local = nx_per + 2 * ghost
+    shape = (n_devices * nx_local,) + arr.shape[1:]
+
+    def slab(index):
+        rank = (index[0].start or 0) // nx_local
+        want_lo = rank * nx_per - ghost
+        want_hi = (rank + 1) * nx_per + ghost
+        lo, hi = max(0, want_lo), min(arr.shape[0], want_hi)
+        data = arr[lo:hi]
+        if lo != want_lo or hi != want_hi:
+            data = jnp.pad(
+                data, ((lo - want_lo, want_hi - hi), (0, 0), (0, 0)),
+                constant_values=pad_value,
+            )
+        return data
+
+    # No ``dtype=`` argument: jax.make_array_from_callback gained it only after
+    # 0.5.0 (the VESSL image runs 0.4.33). Slicing and jnp.pad keep arr's dtype.
+    return jax.make_array_from_callback(shape, sharding, slab)
+
+
+def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
+                           n_devices, nx_per, ghost, sharding):
+    """Initialize ADE data one addressable x slab at a time.
+
+    Interior ghosts use neighbouring cells, just like ``shard_x_slabs``.
+    Physical ghosts are padded *after* initialization: their coefficients
+    must match the legacy splitters, not coefficients of vacuum materials.
+    No whole-domain dispersion array or device-axis stack is constructed.
+    """
+    nx, ny, nz = materials.eps_r.shape
+    nx_local = nx_per + 2 * ghost
+    shape = (n_devices * nx_local, ny, nz)
+    specs = (debye_spec, lorentz_spec)
+    coefficient_slabs = ([], [])
+
+    def stage_slab(device, index):
+        rank = (index[0].start or 0) // nx_local
+        want_lo = rank * nx_per - ghost
+        want_hi = (rank + 1) * nx_per + ghost
+        lo, hi = max(0, want_lo), min(nx, want_hi)
+        padding = ((lo - want_lo, want_hi - hi), (0, 0), (0, 0))
+        # Move only the clipped inputs. Coefficients and temporary ADE zeros
+        # are then built on their destination, including on remote-process
+        # meshes where only this process's addressable devices are visited.
+        # The lumped-stamp records (#1210) default to None: carry them as None.
+        local_materials = MaterialArrays(*(
+            None if arr is None else jax.device_put(arr[lo:hi], device)
+            for arr in materials))
+        for spec, init, slabs in zip(
+                specs, (init_debye, init_lorentz), coefficient_slabs):
+            if spec is None:
+                continue
+            poles, masks = spec
+            local_masks = jax.tree.map(
+                lambda mask: jax.device_put(mask[lo:hi], device), masks)
+            # Slice before changing the default device, so an uncommitted
+            # whole-domain input cannot migrate just to execute its slice.
+            with jax.default_device(device):
+                # Keep the runner's existing field_dtype=None policy.
+                coeffs, state = init(poles, local_materials, dt, mask=local_masks)
+                del state  # the global carry is allocated directly sharded below
+
+                def place(name, arr):
+                    pad_value = float(1.0 / EPS_0) if init is init_lorentz and name == "cc" else 0.0
+                    if lo != want_lo or hi != want_hi:
+                        widths = padding if arr.ndim == 3 else ((0, 0),) + padding
+                        arr = jnp.pad(arr, widths, constant_values=pad_value)
+                    return jax.device_put(arr, device)
+
+                placed = type(coeffs)(*(place(name, arr) for name, arr in
+                                       zip(coeffs._fields, coeffs)))
+                # Finish the handoff before dropping slab temporaries and
+                # starting another slab; asynchronous dispatch must not pile
+                # up setup buffers on the source device.
+                jax.block_until_ready(placed)
+                slabs.append(placed)
+                del coeffs, placed, local_masks
+
+    if any(spec is not None for spec in specs):
+        for device, index in sharding.addressable_devices_indices_map(shape).items():
+            stage_slab(device, index)
+
+    def assemble(spec, slabs, state_type):
+        if spec is None:
+            return None
+        coeffs = type(slabs[0])(*(
+            jax.make_array_from_single_device_arrays(
+                (n_devices * parts[0].shape[0],) + parts[0].shape[1:],
+                sharding, list(parts))
+            for parts in zip(*slabs)))
+        state_shape = (n_devices * len(spec[0]), nx_local, ny, nz)
+        state = state_type(*(jnp.zeros(state_shape, dtype=ade_state_dtype(), device=sharding)
+                             for _ in state_type._fields))
+        return coeffs, state
+
+    return (assemble(debye_spec, coefficient_slabs[0], DebyeState),
+            assemble(lorentz_spec, coefficient_slabs[1], LorentzState))
 
 
 def gather_array_x(slabs, ghost=1):

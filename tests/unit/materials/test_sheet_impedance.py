@@ -793,7 +793,7 @@ def _mixed_probe_fed_msl():
                 (lx, y_c + w_trace / 2, h_sub)), material="pec")
     _sheet(sim, Box((3e-3, 1e-3, 5e-4), (5e-3, 2e-3, 5e-4)))
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez", impedance=50.0,
-                 extent=h_sub)
+                 extent=h_sub, terminates=1)
     sim.add_msl_port(position=(5.5e-3, y_c, 0.0), width=w_trace, height=h_sub,
                      direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5),

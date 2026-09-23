@@ -1,0 +1,6209 @@
+{
+  "records": [
+    {
+      "lane": "run-cpu",
+      "dx_m": 0.001,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "run-cpu",
+        "1"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9932091973.71346,
+      "run_id": "369367263573",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          25,
+          21,
+          5
+        ],
+        "dx": 0.001,
+        "dt": 1.9065748695310057e-12,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02,
+            0.021,
+            0.022,
+            0.023,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        7,
+        6,
+        2
+      ],
+      "probe_index": [
+        17,
+        13,
+        2
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 4096,
+      "dt_s": 1.9065748695310057e-12,
+      "source_end_step": 165,
+      "probe_samples": 4096,
+      "probe_peak_V_per_m": 0.03340401127934456,
+      "probe_final_V_per_m": -0.003677045227959752,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 4096,
+          "post_source_peak_J": 3.2965382978934677e-21,
+          "final_J": 3.0899761931992748e-21,
+          "end_over_post_source_peak_dB": -0.2810299216780846,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7489619558.132765,
+          "decay": 983.6956762316071,
+          "Q": 23919322.15474376,
+          "amplitude": 0.011174495755520627,
+          "phase": -1.0831821012991278,
+          "error": 1.8754894415273782e-08
+        },
+        {
+          "freq": 9928806111.468306,
+          "decay": -8537.968091991475,
+          "Q": 3653359.2070886614,
+          "amplitude": 0.004711383612430228,
+          "phase": -1.5742011027598894,
+          "error": 1.6278274073133758e-07
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7489619558.132765,
+          "decay": 983.6956762316071,
+          "Q": 23919322.15474376,
+          "amplitude": 0.011174495755520627,
+          "phase": -1.0831821012991278,
+          "error": 1.8754894415273782e-08
+        },
+        "11": {
+          "freq": 9928806111.468306,
+          "decay": -8537.968091991475,
+          "Q": 3653359.2070886614,
+          "amplitude": 0.004711383612430228,
+          "phase": -1.5742011027598894,
+          "error": 1.6278274073133758e-07
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.02301768972755797,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 1024,
+      "ringdown_samples": 3072,
+      "harminv_retained_duration_s": 5.4718698755539864e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1767
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1864
+          },
+          "axes": "xyz",
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "apply_pec_faces",
+          "file": "rfx/boundaries/pec.py",
+          "line": 58,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1866
+          },
+          "faces": [
+            "y_hi",
+            "y_lo",
+            "z_hi",
+            "z_lo"
+          ],
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 0.6445634769916069,
+      "evidence": "witness/run-cpu__1.json",
+      "log": "witness/run-cpu__1.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)",
+        "F(y_hi,y_lo,z_hi,z_lo)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/run-cpu__1.preflight.stdout.txt"
+    },
+    {
+      "lane": "run-cpu",
+      "dx_m": 0.0005,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "run-cpu",
+        "0.5"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9841659606.069267,
+      "run_id": "369367263573",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          49,
+          41,
+          9
+        ],
+        "dx": 0.0005,
+        "dt": 9.532874347655029e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02,
+            0.0205,
+            0.021,
+            0.021500000000000002,
+            0.022,
+            0.0225,
+            0.023,
+            0.0235,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        14,
+        12,
+        4
+      ],
+      "probe_index": [
+        34,
+        26,
+        4
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 8192,
+      "dt_s": 9.532874347655029e-13,
+      "source_end_step": 329,
+      "probe_samples": 8192,
+      "probe_peak_V_per_m": 0.007933436892926693,
+      "probe_final_V_per_m": -0.000884119130205363,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 8192,
+          "post_source_peak_J": 1.9723812220416609e-22,
+          "final_J": 1.9052004389578463e-22,
+          "end_over_post_source_peak_dB": -0.1505018629860737,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7493514189.787629,
+          "decay": -50.624526090993726,
+          "Q": 465023002.6033925,
+          "amplitude": 0.002730082059061752,
+          "phase": -1.0612679019198656,
+          "error": 1.0134542094419885e-09
+        },
+        {
+          "freq": 9840846749.122807,
+          "decay": -490.04665424562836,
+          "Q": 63087731.71758269,
+          "amplitude": 0.0011426378292119475,
+          "phase": -2.605536263244674,
+          "error": 9.810261603071524e-09
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7493514189.787629,
+          "decay": -50.624526090993726,
+          "Q": 465023002.6033925,
+          "amplitude": 0.002730082059061752,
+          "phase": -1.0612679019198656,
+          "error": 1.0134542094419885e-09
+        },
+        "11": {
+          "freq": 9840846749.122807,
+          "decay": -490.04665424562836,
+          "Q": 63087731.71758269,
+          "amplitude": 0.0011426378292119475,
+          "phase": -2.605536263244674,
+          "error": 9.810261603071524e-09
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.023504621838919548,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 2048,
+      "ringdown_samples": 6144,
+      "harminv_retained_duration_s": 5.305044574470023e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1767
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1864
+          },
+          "axes": "xyz",
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "apply_pec_faces",
+          "file": "rfx/boundaries/pec.py",
+          "line": 58,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1866
+          },
+          "faces": [
+            "y_hi",
+            "y_lo",
+            "z_hi",
+            "z_lo"
+          ],
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 1.7551297949976288,
+      "evidence": "witness/run-cpu__0p5.json",
+      "log": "witness/run-cpu__0p5.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)",
+        "F(y_hi,y_lo,z_hi,z_lo)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/run-cpu__0p5.preflight.stdout.txt"
+    },
+    {
+      "lane": "run-cpu",
+      "dx_m": 0.00025,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "run-cpu",
+        "0.25"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9798276543.015265,
+      "run_id": "369367263573",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          97,
+          81,
+          17
+        ],
+        "dx": 0.00025,
+        "dt": 4.766437173827514e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02,
+            0.02025,
+            0.0205,
+            0.02075,
+            0.021,
+            0.02125,
+            0.021500000000000002,
+            0.021750000000000002,
+            0.022,
+            0.02225,
+            0.0225,
+            0.02275,
+            0.023,
+            0.02325,
+            0.0235,
+            0.02375,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        28,
+        24,
+        8
+      ],
+      "probe_index": [
+        68,
+        52,
+        8
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 16384,
+      "dt_s": 4.766437173827514e-13,
+      "source_end_step": 658,
+      "probe_samples": 16384,
+      "probe_peak_V_per_m": 0.0019396394491195679,
+      "probe_final_V_per_m": 0.00020016383496113122,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 16384,
+          "post_source_peak_J": 1.2072214533913971e-23,
+          "final_J": 1.1925255269297633e-23,
+          "end_over_post_source_peak_dB": -0.053192604122099675,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7494487008.155079,
+          "decay": 231.64227577439232,
+          "Q": 101642177.57114163,
+          "amplitude": 0.0006750830464072163,
+          "phase": -1.0614038949749334,
+          "error": 4.637255024420028e-09
+        },
+        {
+          "freq": 9798072887.2468,
+          "decay": -33.46442170880397,
+          "Q": 919829246.4086934,
+          "amplitude": 0.00028139155105704914,
+          "phase": -3.1072793408322266,
+          "error": 6.699254484487938e-10
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7494487008.155079,
+          "decay": 231.64227577439232,
+          "Q": 101642177.57114163,
+          "amplitude": 0.0006750830464072163,
+          "phase": -1.0614038949749334,
+          "error": 4.637255024420028e-09
+        },
+        "11": {
+          "freq": 9798072887.2468,
+          "decay": -33.46442170880397,
+          "Q": 919829246.4086934,
+          "amplitude": 0.00028139155105704914,
+          "phase": -3.1072793408322266,
+          "error": 6.699254484487938e-10
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.02375118982737677,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 4096,
+      "ringdown_samples": 12288,
+      "harminv_retained_duration_s": 5.385120718990325e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1767
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1864
+          },
+          "axes": "xyz",
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "apply_pec_faces",
+          "file": "rfx/boundaries/pec.py",
+          "line": 58,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1866
+          },
+          "faces": [
+            "y_hi",
+            "y_lo",
+            "z_hi",
+            "z_lo"
+          ],
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 13.227752067992697,
+      "evidence": "witness/run-cpu__0p25.json",
+      "log": "witness/run-cpu__0p25.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)",
+        "F(y_hi,y_lo,z_hi,z_lo)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/run-cpu__0p25.preflight.stdout.txt"
+    },
+    {
+      "lane": "forward-cpu",
+      "dx_m": 0.001,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "forward-cpu",
+        "1"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9932091973.71346,
+      "run_id": "369367263574",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          25,
+          21,
+          5
+        ],
+        "dx": 0.001,
+        "dt": 1.9065748695310057e-12,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02,
+            0.021,
+            0.022,
+            0.023,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        7,
+        6,
+        2
+      ],
+      "probe_index": [
+        17,
+        13,
+        2
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 4096,
+      "dt_s": 1.9065748695310057e-12,
+      "source_end_step": 165,
+      "probe_samples": 4096,
+      "probe_peak_V_per_m": 0.03340401127934456,
+      "probe_final_V_per_m": -0.0036769690923392773,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 4096,
+          "post_source_peak_J": 3.2965376920482925e-21,
+          "final_J": 3.0899761931992748e-21,
+          "end_over_post_source_peak_dB": -0.28102912352190695,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7489619556.96692,
+          "decay": 981.8357539878397,
+          "Q": 23964633.272706356,
+          "amplitude": 0.011174495480260494,
+          "phase": -1.0831821744906833,
+          "error": 1.8719433558800347e-08
+        },
+        {
+          "freq": 9928806111.868668,
+          "decay": -8549.331135446468,
+          "Q": 3648503.473053872,
+          "amplitude": 0.004711383110173459,
+          "phase": -1.574201192325499,
+          "error": 1.6299938565556005e-07
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7489619556.96692,
+          "decay": 981.8357539878397,
+          "Q": 23964633.272706356,
+          "amplitude": 0.011174495480260494,
+          "phase": -1.0831821744906833,
+          "error": 1.8719433558800347e-08
+        },
+        "11": {
+          "freq": 9928806111.868668,
+          "decay": -8549.331135446468,
+          "Q": 3648503.473053872,
+          "amplitude": 0.004711383110173459,
+          "phase": -1.574201192325499,
+          "error": 1.6299938565556005e-07
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.023017689725400456,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 1024,
+      "ringdown_samples": 3072,
+      "harminv_retained_duration_s": 5.4718698755539864e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1767
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1864
+          },
+          "axes": "xyz",
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "apply_pec_faces",
+          "file": "rfx/boundaries/pec.py",
+          "line": 58,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1866
+          },
+          "faces": [
+            "y_hi",
+            "y_lo",
+            "z_hi",
+            "z_lo"
+          ],
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 0.7499885358847678,
+      "evidence": "witness/forward-cpu__1.json",
+      "log": "witness/forward-cpu__1.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)",
+        "F(y_hi,y_lo,z_hi,z_lo)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/forward-cpu__1.preflight.stdout.txt"
+    },
+    {
+      "lane": "forward-cpu",
+      "dx_m": 0.0005,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "forward-cpu",
+        "0.5"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9841659606.069267,
+      "run_id": "369367263574",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          49,
+          41,
+          9
+        ],
+        "dx": 0.0005,
+        "dt": 9.532874347655029e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02,
+            0.0205,
+            0.021,
+            0.021500000000000002,
+            0.022,
+            0.0225,
+            0.023,
+            0.0235,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        14,
+        12,
+        4
+      ],
+      "probe_index": [
+        34,
+        26,
+        4
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 8192,
+      "dt_s": 9.532874347655029e-13,
+      "source_end_step": 329,
+      "probe_samples": 8192,
+      "probe_peak_V_per_m": 0.007933312095701694,
+      "probe_final_V_per_m": -0.0008840513182803988,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 8192,
+          "post_source_peak_J": 1.9723814744771505e-22,
+          "final_J": 1.9052019535707843e-22,
+          "end_over_post_source_peak_dB": -0.1504989662274927,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7493514188.992195,
+          "decay": -48.27017792946769,
+          "Q": 487704212.73581505,
+          "amplitude": 0.002730082336032689,
+          "phase": -1.0612677274741467,
+          "error": 9.663223554667866e-10
+        },
+        {
+          "freq": 9840846752.22543,
+          "decay": -503.0733471424506,
+          "Q": 61454124.01094708,
+          "amplitude": 0.0011426378209145169,
+          "phase": -2.6055359557254216,
+          "error": 1.0071043443637961e-08
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7493514188.992195,
+          "decay": -48.27017792946769,
+          "Q": 487704212.73581505,
+          "amplitude": 0.002730082336032689,
+          "phase": -1.0612677274741467,
+          "error": 9.663223554667866e-10
+        },
+        "11": {
+          "freq": 9840846752.22543,
+          "decay": -503.0733471424506,
+          "Q": 61454124.01094708,
+          "amplitude": 0.0011426378209145169,
+          "phase": -2.6055359557254216,
+          "error": 1.0071043443637961e-08
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.023504621821273813,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 2048,
+      "ringdown_samples": 6144,
+      "harminv_retained_duration_s": 5.305044574470023e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1767
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1864
+          },
+          "axes": "xyz",
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "apply_pec_faces",
+          "file": "rfx/boundaries/pec.py",
+          "line": 58,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1866
+          },
+          "faces": [
+            "y_hi",
+            "y_lo",
+            "z_hi",
+            "z_lo"
+          ],
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 1.927059800364077,
+      "evidence": "witness/forward-cpu__0p5.json",
+      "log": "witness/forward-cpu__0p5.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)",
+        "F(y_hi,y_lo,z_hi,z_lo)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/forward-cpu__0p5.preflight.stdout.txt"
+    },
+    {
+      "lane": "forward-cpu",
+      "dx_m": 0.00025,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "forward-cpu",
+        "0.25"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9798276543.015265,
+      "run_id": "369367263574",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          97,
+          81,
+          17
+        ],
+        "dx": 0.00025,
+        "dt": 4.766437173827514e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02,
+            0.02025,
+            0.0205,
+            0.02075,
+            0.021,
+            0.02125,
+            0.021500000000000002,
+            0.021750000000000002,
+            0.022,
+            0.02225,
+            0.0225,
+            0.02275,
+            0.023,
+            0.02325,
+            0.0235,
+            0.02375,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        28,
+        24,
+        8
+      ],
+      "probe_index": [
+        68,
+        52,
+        8
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 16384,
+      "dt_s": 4.766437173827514e-13,
+      "source_end_step": 658,
+      "probe_samples": 16384,
+      "probe_peak_V_per_m": 0.0019394441042095423,
+      "probe_final_V_per_m": 0.00020013362518511713,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 16384,
+          "post_source_peak_J": 1.2072209011887634e-23,
+          "final_J": 1.1925250536132202e-23,
+          "end_over_post_source_peak_dB": -0.05319234131504147,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7494487008.127387,
+          "decay": 218.0015974273322,
+          "Q": 108002077.07196008,
+          "amplitude": 0.0006750831116136849,
+          "phase": -1.0614039516566902,
+          "error": 4.364181793725663e-09
+        },
+        {
+          "freq": 9798072883.488363,
+          "decay": -40.79947117353934,
+          "Q": 754459626.6744728,
+          "amplitude": 0.0002813916003766012,
+          "phase": -3.1072792436630774,
+          "error": 8.167659881763711e-10
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7494487008.127387,
+          "decay": 218.0015974273322,
+          "Q": 108002077.07196008,
+          "amplitude": 0.0006750831116136849,
+          "phase": -1.0614039516566902,
+          "error": 4.364181793725663e-09
+        },
+        "11": {
+          "freq": 9798072883.488363,
+          "decay": -40.79947117353934,
+          "Q": 754459626.6744728,
+          "amplitude": 0.0002813916003766012,
+          "phase": -3.1072792436630774,
+          "error": 8.167659881763711e-10
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.023751189849336267,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 4096,
+      "ringdown_samples": 12288,
+      "harminv_retained_duration_s": 5.385120718990325e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1767
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1864
+          },
+          "axes": "xyz",
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "apply_pec_faces",
+          "file": "rfx/boundaries/pec.py",
+          "line": 58,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1866
+          },
+          "faces": [
+            "y_hi",
+            "y_lo",
+            "z_hi",
+            "z_lo"
+          ],
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 10.44355532573536,
+      "evidence": "witness/forward-cpu__0p25.json",
+      "log": "witness/forward-cpu__0p25.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)",
+        "F(y_hi,y_lo,z_hi,z_lo)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/forward-cpu__0p25.preflight.stdout.txt"
+    },
+    {
+      "lane": "sweep-cpu",
+      "dx_m": 0.001,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "sweep-cpu",
+        "1"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9932091973.71346,
+      "run_id": "369367263576",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          25,
+          21,
+          5
+        ],
+        "dx": 0.001,
+        "dt": 1.9065748695310057e-12,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02,
+            0.021,
+            0.022,
+            0.023,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        7,
+        6,
+        2
+      ],
+      "probe_index": [
+        17,
+        13,
+        2
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 4096,
+      "dt_s": 1.9065748695310057e-12,
+      "source_end_step": 165,
+      "probe_samples": 4096,
+      "probe_peak_V_per_m": 0.01843658648431301,
+      "probe_final_V_per_m": 0.014146348461508751,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 4096,
+          "post_source_peak_J": 1.052710517992687e-21,
+          "final_J": 9.748947539467897e-22,
+          "end_over_post_source_peak_dB": -0.33351228748587114,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 9752832408.923525,
+          "decay": 1137.9209696936416,
+          "Q": 26925794.904557854,
+          "amplitude": 0.007553945456867049,
+          "phase": -0.4370071947684391,
+          "error": 2.1695314988967596e-08
+        }
+      ],
+      "selected_modes": {
+        "01": null,
+        "11": {
+          "freq": 9752832408.923525,
+          "decay": 1137.9209696936416,
+          "Q": 26925794.904557854,
+          "amplitude": 0.007553945456867049,
+          "phase": -0.4370071947684391,
+          "error": 2.1695314988967596e-08
+        }
+      },
+      "f01_appears": false,
+      "derived_a_m": 0.024019382318265767,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 1024,
+      "ringdown_samples": 3072,
+      "harminv_retained_duration_s": 5.4718698755539864e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "vmap_sweep.py",
+            "function": "step_fn",
+            "line": 628
+          },
+          "axes": "xyz",
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 0.9511610569898039,
+      "evidence": "witness/sweep-cpu__1.json",
+      "log": "witness/sweep-cpu__1.log",
+      "operators": [
+        "P(xyz)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/sweep-cpu__1.preflight.stdout.txt"
+    },
+    {
+      "lane": "sweep-cpu",
+      "dx_m": 0.0005,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "sweep-cpu",
+        "0.5"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9841659606.069267,
+      "run_id": "369367263576",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          49,
+          41,
+          9
+        ],
+        "dx": 0.0005,
+        "dt": 9.532874347655029e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02,
+            0.0205,
+            0.021,
+            0.021500000000000002,
+            0.022,
+            0.0225,
+            0.023,
+            0.0235,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        14,
+        12,
+        4
+      ],
+      "probe_index": [
+        34,
+        26,
+        4
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 8192,
+      "dt_s": 9.532874347655029e-13,
+      "source_end_step": 329,
+      "probe_samples": 8192,
+      "probe_peak_V_per_m": 0.004600674379616976,
+      "probe_final_V_per_m": 0.002992794616147876,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 8192,
+          "post_source_peak_J": 6.368008344370786e-23,
+          "final_J": 6.076919932521681e-23,
+          "end_over_post_source_peak_dB": -0.20320109546052986,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 9755252173.73895,
+          "decay": -2701.626846687395,
+          "Q": 11343916.203865113,
+          "amplitude": 0.0018845752962936965,
+          "phase": -0.43866570564885177,
+          "error": 5.408396397399429e-08
+        }
+      ],
+      "selected_modes": {
+        "01": null,
+        "11": {
+          "freq": 9755252173.73895,
+          "decay": -2701.626846687395,
+          "Q": 11343916.203865113,
+          "amplitude": 0.0018845752962936965,
+          "phase": -0.43866570564885177,
+          "error": 5.408396397399429e-08
+        }
+      },
+      "f01_appears": false,
+      "derived_a_m": 0.024004838872940183,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 2048,
+      "ringdown_samples": 6144,
+      "harminv_retained_duration_s": 5.305044574470023e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "vmap_sweep.py",
+            "function": "step_fn",
+            "line": 628
+          },
+          "axes": "xyz",
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 1.9059908160124905,
+      "evidence": "witness/sweep-cpu__0p5.json",
+      "log": "witness/sweep-cpu__0p5.log",
+      "operators": [
+        "P(xyz)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/sweep-cpu__0p5.preflight.stdout.txt"
+    },
+    {
+      "lane": "sweep-cpu",
+      "dx_m": 0.00025,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "sweep-cpu",
+        "0.25"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9798276543.015265,
+      "run_id": "369367263576",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          97,
+          81,
+          17
+        ],
+        "dx": 0.00025,
+        "dt": 4.766437173827514e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02,
+            0.02025,
+            0.0205,
+            0.02075,
+            0.021,
+            0.02125,
+            0.021500000000000002,
+            0.021750000000000002,
+            0.022,
+            0.02225,
+            0.0225,
+            0.02275,
+            0.023,
+            0.02325,
+            0.0235,
+            0.02375,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        28,
+        24,
+        8
+      ],
+      "probe_index": [
+        68,
+        52,
+        8
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 16384,
+      "dt_s": 4.766437173827514e-13,
+      "source_end_step": 658,
+      "probe_samples": 16384,
+      "probe_peak_V_per_m": 0.001149634481407702,
+      "probe_final_V_per_m": 0.000704780628439039,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 16384,
+          "post_source_peak_J": 3.921332107684118e-24,
+          "final_J": 3.826006944758116e-24,
+          "end_over_post_source_peak_dB": -0.10687871373033436,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 9755856391.863476,
+          "decay": -4326.0229757112975,
+          "Q": 7084781.32044963,
+          "amplitude": 0.00047089867587624953,
+          "phase": -0.44639680496808004,
+          "error": 8.660280648165042e-08
+        }
+      ],
+      "selected_modes": {
+        "01": null,
+        "11": {
+          "freq": 9755856391.863476,
+          "decay": -4326.0229757112975,
+          "Q": 7084781.32044963,
+          "amplitude": 0.00047089867587624953,
+          "phase": -0.44639680496808004,
+          "error": 8.660280648165042e-08
+        }
+      },
+      "f01_appears": false,
+      "derived_a_m": 0.02400121091531793,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 4096,
+      "ringdown_samples": 12288,
+      "harminv_retained_duration_s": 5.385120718990325e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "update_h",
+          "file": "rfx/core/yee.py",
+          "line": 225,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "update_e",
+          "file": "rfx/core/yee.py",
+          "line": 436,
+          "caller": {
+            "file": "/opt/jax/jax/_src/linear_util.py",
+            "function": "call_wrapped",
+            "line": 193
+          },
+          "periodic": [
+            false,
+            false,
+            false
+          ],
+          "bloch": null,
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "vmap_sweep.py",
+            "function": "step_fn",
+            "line": 628
+          },
+          "axes": "xyz",
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 21.870832774991868,
+      "evidence": "witness/sweep-cpu__0p25.json",
+      "log": "witness/sweep-cpu__0p25.log",
+      "operators": [
+        "P(xyz)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/sweep-cpu__0p25.preflight.stdout.txt"
+    },
+    {
+      "lane": "nonuniform-cpu",
+      "dx_m": 0.001,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "nonuniform-cpu",
+        "1"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9932091973.71346,
+      "run_id": "369367263577",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "dz_profile_m": [
+        0.001,
+        0.001,
+        0.001,
+        0.001
+      ],
+      "grid": {
+        "shape": [
+          25,
+          21,
+          5
+        ],
+        "dx": 0.001,
+        "dy": 0.001,
+        "dt": 1.9065748695309645e-12,
+        "cpml_layers": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "dz": [
+          0.0010000000474974513,
+          0.0010000000474974513,
+          0.0010000000474974513,
+          0.0010000000474974513,
+          0.0010000000474974513
+        ],
+        "class": "NonUniformGrid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02,
+            0.021,
+            0.022,
+            0.023,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        7,
+        6,
+        2
+      ],
+      "probe_index": [
+        17,
+        13,
+        2
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 4096,
+      "dt_s": 1.9065748695309645e-12,
+      "source_end_step": 165,
+      "probe_samples": 4096,
+      "probe_peak_V_per_m": 0.033403947949409485,
+      "probe_final_V_per_m": -0.0036768449936062098,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 4096,
+          "post_source_peak_J": 3.2965399134806016e-21,
+          "final_J": 3.08997679904445e-21,
+          "end_over_post_source_peak_dB": -0.2810311985818086,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7489619557.45029,
+          "decay": 975.558898842701,
+          "Q": 24118824.40699476,
+          "amplitude": 0.011174496493505883,
+          "phase": -1.083182040600214,
+          "error": 1.8599760620574557e-08
+        },
+        {
+          "freq": 9928806113.001139,
+          "decay": -8550.046423010454,
+          "Q": 3648198.2436463865,
+          "amplitude": 0.004711384478155073,
+          "phase": -1.5742010091702126,
+          "error": 1.6301302319110533e-07
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7489619557.45029,
+          "decay": 975.558898842701,
+          "Q": 24118824.40699476,
+          "amplitude": 0.011174496493505883,
+          "phase": -1.083182040600214,
+          "error": 1.8599760620574557e-08
+        },
+        "11": {
+          "freq": 9928806113.001139,
+          "decay": -8550.046423010454,
+          "Q": 3648198.2436463865,
+          "amplitude": 0.004711384478155073,
+          "phase": -1.5742010091702126,
+          "error": 1.6301302319110533e-07
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.023017689719297674,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 1024,
+      "ringdown_samples": 3072,
+      "harminv_retained_duration_s": 5.471869875553867e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "nonuniform.py",
+            "function": "step_fn",
+            "line": 2544
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "nonuniform.py",
+            "function": "step_fn",
+            "line": 2602
+          },
+          "axes": "xyz",
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 1.075058225018438,
+      "evidence": "witness/nonuniform-cpu__1.json",
+      "log": "witness/nonuniform-cpu__1.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/nonuniform-cpu__1.preflight.stdout.txt"
+    },
+    {
+      "lane": "nonuniform-cpu",
+      "dx_m": 0.0005,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "nonuniform-cpu",
+        "0.5"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9841659606.069267,
+      "run_id": "369367263577",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "dz_profile_m": [
+        0.0005,
+        0.0005,
+        0.0005,
+        0.0005,
+        0.0005,
+        0.0005,
+        0.0005,
+        0.0005
+      ],
+      "grid": {
+        "shape": [
+          49,
+          41,
+          9
+        ],
+        "dx": 0.0005,
+        "dy": 0.0005,
+        "dt": 9.532874347654823e-13,
+        "cpml_layers": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "dz": [
+          0.0005000000237487257,
+          0.0005000000237487257,
+          0.0005000000237487257,
+          0.0005000000237487257,
+          0.0005000000237487257,
+          0.0005000000237487257,
+          0.0005000000237487257,
+          0.0005000000237487257,
+          0.0005000000237487257
+        ],
+        "class": "NonUniformGrid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02,
+            0.0205,
+            0.021,
+            0.021500000000000002,
+            0.022,
+            0.0225,
+            0.023,
+            0.0235,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        14,
+        12,
+        4
+      ],
+      "probe_index": [
+        34,
+        26,
+        4
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 8192,
+      "dt_s": 9.532874347654823e-13,
+      "source_end_step": 329,
+      "probe_samples": 8192,
+      "probe_peak_V_per_m": 0.007933407090604305,
+      "probe_final_V_per_m": -0.0008840967784635723,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 8192,
+          "post_source_peak_J": 1.972381095823916e-22,
+          "final_J": 1.9052004389578463e-22,
+          "end_over_post_source_peak_dB": -0.15050158506986125,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7493514190.459647,
+          "decay": -55.3967893812594,
+          "Q": 424962698.98058295,
+          "amplitude": 0.002730082001453598,
+          "phase": -1.0612678466373704,
+          "error": 1.1089902329786128e-09
+        },
+        {
+          "freq": 9840846750.37021,
+          "decay": -481.0237331201848,
+          "Q": 64271115.388690464,
+          "amplitude": 0.0011426376936543863,
+          "phase": -2.605536305579748,
+          "error": 9.62963142558948e-09
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7493514190.459647,
+          "decay": -55.3967893812594,
+          "Q": 424962698.98058295,
+          "amplitude": 0.002730082001453598,
+          "phase": -1.0612678466373704,
+          "error": 1.1089902329786128e-09
+        },
+        "11": {
+          "freq": 9840846750.37021,
+          "decay": -481.0237331201848,
+          "Q": 64271115.388690464,
+          "amplitude": 0.0011426376936543863,
+          "phase": -2.605536305579748,
+          "error": 9.62963142558948e-09
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.023504621831825116,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 2048,
+      "ringdown_samples": 6144,
+      "harminv_retained_duration_s": 5.3050445744699095e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "nonuniform.py",
+            "function": "step_fn",
+            "line": 2544
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "nonuniform.py",
+            "function": "step_fn",
+            "line": 2602
+          },
+          "axes": "xyz",
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 2.056635084009031,
+      "evidence": "witness/nonuniform-cpu__0p5.json",
+      "log": "witness/nonuniform-cpu__0p5.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/nonuniform-cpu__0p5.preflight.stdout.txt"
+    },
+    {
+      "lane": "nonuniform-cpu",
+      "dx_m": 0.00025,
+      "status": "MEASURED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "nonuniform-cpu",
+        "0.25"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9798276543.015265,
+      "run_id": "369367263577",
+      "backend": "cpu",
+      "devices": [
+        "TFRT_CPU_0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "dz_profile_m": [
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025,
+        0.00025
+      ],
+      "grid": {
+        "shape": [
+          97,
+          81,
+          17
+        ],
+        "dx": 0.00025,
+        "dy": 0.00025,
+        "dt": 4.766437173827411e-13,
+        "cpml_layers": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "dz": {
+          "shape": [
+            17
+          ],
+          "min": 0.0002500000118743628,
+          "max": 0.0002500000118743628,
+          "nonzero": 17
+        },
+        "class": "NonUniformGrid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02,
+            0.02025,
+            0.0205,
+            0.02075,
+            0.021,
+            0.02125,
+            0.021500000000000002,
+            0.021750000000000002,
+            0.022,
+            0.02225,
+            0.0225,
+            0.02275,
+            0.023,
+            0.02325,
+            0.0235,
+            0.02375,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        28,
+        24,
+        8
+      ],
+      "probe_index": [
+        68,
+        52,
+        8
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 16384,
+      "dt_s": 4.766437173827411e-13,
+      "source_end_step": 658,
+      "probe_samples": 16384,
+      "probe_peak_V_per_m": 0.001939525012858212,
+      "probe_final_V_per_m": 0.0002001016982831061,
+      "probe_finite": true,
+      "energy": [
+        {
+          "samples": 16384,
+          "post_source_peak_J": 1.2072202701000393e-23,
+          "final_J": 1.1925250536132202e-23,
+          "end_over_post_source_peak_dB": -0.05319007098968636,
+          "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3, stored staggered levels; constant dz=dx"
+        }
+      ],
+      "harminv": [
+        {
+          "freq": 7494487007.556188,
+          "decay": 227.07437143431974,
+          "Q": 103686845.75296886,
+          "amplitude": 0.0006750831195893568,
+          "phase": -1.0614041333498867,
+          "error": 4.545810061706845e-09
+        },
+        {
+          "freq": 9798072885.168127,
+          "decay": -34.475231088396654,
+          "Q": 892859970.0015267,
+          "amplitude": 0.0002813915903273702,
+          "phase": -3.1072795830595465,
+          "error": 6.901608173848217e-10
+        }
+      ],
+      "selected_modes": {
+        "01": {
+          "freq": 7494487007.556188,
+          "decay": 227.07437143431974,
+          "Q": 103686845.75296886,
+          "amplitude": 0.0006750831195893568,
+          "phase": -1.0614041333498867,
+          "error": 4.545810061706845e-09
+        },
+        "11": {
+          "freq": 9798072885.168127,
+          "decay": -34.475231088396654,
+          "Q": 892859970.0015267,
+          "amplitude": 0.0002813915903273702,
+          "phase": -3.1072795830595465,
+          "error": 6.901608173848217e-10
+        }
+      },
+      "f01_appears": true,
+      "derived_a_m": 0.023751189839521875,
+      "derived_a_formula": "a'=1/sqrt((2*f11/c)^2-(1/b)^2), b=20 mm; derived",
+      "mode_selection_Hz": {
+        "01": [
+          6800000000.0,
+          8200000000.0
+        ],
+        "11": [
+          9000000000.0,
+          10700000000.0
+        ]
+      },
+      "harminv_parameters": {
+        "f_min": 5000000000.0,
+        "f_max": 12000000000.0,
+        "min_Q": 1.0,
+        "max_modes": 24,
+        "sv_threshold": 0.001,
+        "decimate": "auto"
+      },
+      "ringdown_start_step": 4096,
+      "ringdown_samples": 12288,
+      "harminv_retained_duration_s": 5.385120718990209e-09,
+      "fast_path_taken": false,
+      "events": [
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pmc_faces",
+          "file": "rfx/boundaries/pmc.py",
+          "line": 20,
+          "caller": {
+            "file": "nonuniform.py",
+            "function": "step_fn",
+            "line": 2544
+          },
+          "faces": [
+            "x_hi",
+            "x_lo"
+          ],
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "apply_pec",
+          "file": "rfx/boundaries/pec.py",
+          "line": 21,
+          "caller": {
+            "file": "nonuniform.py",
+            "function": "step_fn",
+            "line": 2602
+          },
+          "axes": "xyz",
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 22.818956338014686,
+      "evidence": "witness/nonuniform-cpu__0p25.json",
+      "log": "witness/nonuniform-cpu__0p25.log",
+      "operators": [
+        "M(x_hi,x_lo)",
+        "P(xyz)"
+      ],
+      "fast_path_trace_observed": false,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/nonuniform-cpu__0p25.preflight.stdout.txt"
+    },
+    {
+      "lane": "run-gpu",
+      "dx_m": 0.001,
+      "status": "FAILED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "run-gpu",
+        "1"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9932091973.71346,
+      "run_id": "369367263578",
+      "backend": "gpu",
+      "devices": [
+        "cuda:0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          25,
+          21,
+          5
+        ],
+        "dx": 0.001,
+        "dt": 1.9065748695310057e-12,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02,
+            0.021,
+            0.022,
+            0.023,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004,
+            0.005,
+            0.006,
+            0.007,
+            0.008,
+            0.009000000000000001,
+            0.01,
+            0.011,
+            0.012,
+            0.013000000000000001,
+            0.014,
+            0.015,
+            0.016,
+            0.017,
+            0.018000000000000002,
+            0.019,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.001,
+            0.002,
+            0.003,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        7,
+        6,
+        2
+      ],
+      "probe_index": [
+        17,
+        13,
+        2
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 4096,
+      "exception": "RuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.",
+      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
+      "events": [
+        {
+          "event": "call",
+          "function": "precompute_coeffs",
+          "file": "rfx/core/yee.py",
+          "line": 604,
+          "caller": {
+            "file": "simulation.py",
+            "function": "run",
+            "line": 2554
+          },
+          "pec_axes": "xyz",
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_he_fast",
+          "file": "rfx/core/yee.py",
+          "line": 718,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1714
+          },
+          "shape": [
+            25,
+            21,
+            5
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 1.80469951001578,
+      "evidence": "witness/run-gpu__1.json",
+      "log": "witness/run-gpu__1.log",
+      "operators": [
+        "B(xyz)",
+        "update_he_fast"
+      ],
+      "fast_path_trace_observed": true,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/run-gpu__1.preflight.stdout.txt"
+    },
+    {
+      "lane": "run-gpu",
+      "dx_m": 0.0005,
+      "status": "FAILED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "run-gpu",
+        "0.5"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9841659606.069267,
+      "run_id": "369367263578",
+      "backend": "gpu",
+      "devices": [
+        "cuda:0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          49,
+          41,
+          9
+        ],
+        "dx": 0.0005,
+        "dt": 9.532874347655029e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02,
+            0.0205,
+            0.021,
+            0.021500000000000002,
+            0.022,
+            0.0225,
+            0.023,
+            0.0235,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004,
+            0.0045000000000000005,
+            0.005,
+            0.0055,
+            0.006,
+            0.006500000000000001,
+            0.007,
+            0.0075,
+            0.008,
+            0.0085,
+            0.009000000000000001,
+            0.0095,
+            0.01,
+            0.0105,
+            0.011,
+            0.0115,
+            0.012,
+            0.0125,
+            0.013000000000000001,
+            0.0135,
+            0.014,
+            0.0145,
+            0.015,
+            0.0155,
+            0.016,
+            0.0165,
+            0.017,
+            0.0175,
+            0.018000000000000002,
+            0.0185,
+            0.019,
+            0.0195,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.0005,
+            0.001,
+            0.0015,
+            0.002,
+            0.0025,
+            0.003,
+            0.0035,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        14,
+        12,
+        4
+      ],
+      "probe_index": [
+        34,
+        26,
+        4
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 8192,
+      "exception": "RuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.",
+      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
+      "events": [
+        {
+          "event": "call",
+          "function": "precompute_coeffs",
+          "file": "rfx/core/yee.py",
+          "line": 604,
+          "caller": {
+            "file": "simulation.py",
+            "function": "run",
+            "line": 2554
+          },
+          "pec_axes": "xyz",
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_he_fast",
+          "file": "rfx/core/yee.py",
+          "line": 718,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1714
+          },
+          "shape": [
+            49,
+            41,
+            9
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 1.97924183998839,
+      "evidence": "witness/run-gpu__0p5.json",
+      "log": "witness/run-gpu__0p5.log",
+      "operators": [
+        "B(xyz)",
+        "update_he_fast"
+      ],
+      "fast_path_trace_observed": true,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/run-gpu__0p5.preflight.stdout.txt"
+    },
+    {
+      "lane": "run-gpu",
+      "dx_m": 0.00025,
+      "status": "FAILED",
+      "smoke": false,
+      "commit": "a4aaa86276598410d9eb66eb373cef65918a83cd",
+      "command": [
+        "/usr/bin/python",
+        "/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py",
+        "run-gpu",
+        "0.25"
+      ],
+      "domain_m": [
+        0.024,
+        0.02,
+        0.004
+      ],
+      "source_m": [
+        0.007,
+        0.006,
+        0.002
+      ],
+      "probe_m": [
+        0.017,
+        0.013,
+        0.002
+      ],
+      "source": {
+        "component": "ez",
+        "f0_Hz": 8500000000.0,
+        "bandwidth": 0.8,
+        "amplitude_kind": "field"
+      },
+      "declared_faces": {
+        "x_lo": "pmc",
+        "x_hi": "pmc",
+        "y_lo": "pec",
+        "y_hi": "pec",
+        "z_lo": "pec",
+        "z_hi": "pec"
+      },
+      "analytic_f01_Hz": 7494811450.0,
+      "analytic_f11_24mm_Hz": 9756058116.390665,
+      "analytic_f11_23mm_Hz": 9932091973.71346,
+      "analytic_f11_a_minus_dx_Hz": 9798276543.015265,
+      "run_id": "369367263578",
+      "backend": "gpu",
+      "devices": [
+        "cuda:0"
+      ],
+      "jax_version": "0.4.33.dev20241023+e3c6d6430",
+      "numpy_version": "1.26.4",
+      "grid": {
+        "shape": [
+          97,
+          81,
+          17
+        ],
+        "dx": 0.00025,
+        "dt": 4.766437173827514e-13,
+        "cpml_layers": 0,
+        "cpml_axes": "xyz",
+        "pec_faces": [
+          "y_hi",
+          "y_lo",
+          "z_hi",
+          "z_lo"
+        ],
+        "pmc_faces": [
+          "x_hi",
+          "x_lo"
+        ],
+        "face_layers": {
+          "x_lo": 0,
+          "x_hi": 0,
+          "y_lo": 0,
+          "y_hi": 0,
+          "z_lo": 0,
+          "z_hi": 0
+        },
+        "pad_x": 0,
+        "pad_x_lo": 0,
+        "pad_x_hi": 0,
+        "pad_y": 0,
+        "pad_y_lo": 0,
+        "pad_y_hi": 0,
+        "pad_z": 0,
+        "pad_z_lo": 0,
+        "pad_z_hi": 0,
+        "class": "Grid",
+        "node_span_m": [
+          0.024,
+          0.02,
+          0.004
+        ],
+        "nodes_m": {
+          "x": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02,
+            0.02025,
+            0.0205,
+            0.02075,
+            0.021,
+            0.02125,
+            0.021500000000000002,
+            0.021750000000000002,
+            0.022,
+            0.02225,
+            0.0225,
+            0.02275,
+            0.023,
+            0.02325,
+            0.0235,
+            0.02375,
+            0.024
+          ],
+          "y": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004,
+            0.00425,
+            0.0045000000000000005,
+            0.00475,
+            0.005,
+            0.00525,
+            0.0055,
+            0.00575,
+            0.006,
+            0.00625,
+            0.006500000000000001,
+            0.00675,
+            0.007,
+            0.00725,
+            0.0075,
+            0.00775,
+            0.008,
+            0.00825,
+            0.0085,
+            0.00875,
+            0.009000000000000001,
+            0.00925,
+            0.0095,
+            0.00975,
+            0.01,
+            0.01025,
+            0.0105,
+            0.010750000000000001,
+            0.011,
+            0.01125,
+            0.0115,
+            0.01175,
+            0.012,
+            0.01225,
+            0.0125,
+            0.012750000000000001,
+            0.013000000000000001,
+            0.01325,
+            0.0135,
+            0.01375,
+            0.014,
+            0.01425,
+            0.0145,
+            0.014750000000000001,
+            0.015,
+            0.01525,
+            0.0155,
+            0.01575,
+            0.016,
+            0.01625,
+            0.0165,
+            0.01675,
+            0.017,
+            0.01725,
+            0.0175,
+            0.017750000000000002,
+            0.018000000000000002,
+            0.01825,
+            0.0185,
+            0.01875,
+            0.019,
+            0.01925,
+            0.0195,
+            0.01975,
+            0.02
+          ],
+          "z": [
+            0.0,
+            0.00025,
+            0.0005,
+            0.00075,
+            0.001,
+            0.00125,
+            0.0015,
+            0.00175,
+            0.002,
+            0.0022500000000000003,
+            0.0025,
+            0.00275,
+            0.003,
+            0.0032500000000000003,
+            0.0035,
+            0.00375,
+            0.004
+          ]
+        }
+      },
+      "source_index": [
+        28,
+        24,
+        8
+      ],
+      "probe_index": [
+        68,
+        52,
+        8
+      ],
+      "preflight": "[]",
+      "preflight_policy": "Captured verbatim before execution; run/forward skip_preflight=True; sweep retains public defaults.",
+      "n_steps": 16384,
+      "exception": "RuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.",
+      "traceback": "Traceback (most recent call last):\n  File \"/opt/jax/jax/_src/debugging.py\", line 82, in debug_callback_impl\n    cpu_device, *_ = jax.local_devices(backend=\"cpu\")\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1141, in local_devices\n    process_index = get_backend(backend).process_index()\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1017, in get_backend\n    return _get_backend_uncached(platform)\n  File \"/opt/jax/jax/_src/xla_bridge.py\", line 1005, in _get_backend_uncached\n    raise RuntimeError(\nRuntimeError: Unknown backend cpu. Available backends are ['cuda']\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/cavity.py\", line 130, in main\n    result=sim.run(n_steps=nsteps,compute_s_params=False,skip_preflight=True)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/api/_execute.py\", line 4356, in run\n    _res = run_uniform(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/src/rfx/simulation.py\", line 2627, in run\n    final_carry, outputs = jax.lax.scan(body, carry_init, xs)\n  File \"/root/workspace/bk-workspace/.boundary-model/B0c/observe.py\", line 98, in scan\n    jax.debug.callback(save,en)\n  File \"/opt/jax/jax/_src/debugging.py\", line 264, in debug_callback\n    debug_callback_p.bind(*flat_args, callback=_flat_callback, effect=effect)\n  File \"/opt/jax/jax/_src/core.py\", line 439, in bind\n    return self.bind_with_trace(find_top_trace(args), args, params)\n  File \"/opt/jax/jax/_src/core.py\", line 443, in bind_with_trace\n    out = trace.process_primitive(self, map(trace.full_raise, args), params)\n  File \"/opt/jax/jax/_src/core.py\", line 949, in process_primitive\n    return primitive.impl(*tracers, **params)\n  File \"/opt/jax/jax/_src/debugging.py\", line 84, in debug_callback_impl\n    raise RuntimeError(\nRuntimeError: jax.debug.callback failed to find a local CPU device to place the inputs on. Make sure \"cpu\" is listed in --jax_platforms or the JAX_PLATFORMS environment variable.\n",
+      "events": [
+        {
+          "event": "call",
+          "function": "precompute_coeffs",
+          "file": "rfx/core/yee.py",
+          "line": 604,
+          "caller": {
+            "file": "simulation.py",
+            "function": "run",
+            "line": 2554
+          },
+          "pec_axes": "xyz",
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "update_he_fast",
+          "file": "rfx/core/yee.py",
+          "line": 718,
+          "caller": {
+            "file": "simulation.py",
+            "function": "core_step",
+            "line": 1714
+          },
+          "shape": [
+            97,
+            81,
+            17
+          ]
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_fwd",
+          "file": "rfx/core/yee.py",
+          "line": 121,
+          "axis": 0
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 1
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 2
+        },
+        {
+          "event": "call",
+          "function": "_shift_bwd",
+          "file": "rfx/core/yee.py",
+          "line": 131,
+          "axis": 0
+        }
+      ],
+      "instrument_errors": [],
+      "wall_s": 2.096745748014655,
+      "evidence": "witness/run-gpu__0p25.json",
+      "log": "witness/run-gpu__0p25.log",
+      "operators": [
+        "B(xyz)",
+        "update_he_fast"
+      ],
+      "fast_path_trace_observed": true,
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_stdout_file": "witness/run-gpu__0p25.preflight.stdout.txt"
+    }
+  ],
+  "conclusion": "leader fills."
+}

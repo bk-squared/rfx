@@ -393,6 +393,7 @@ def build_scene_artifact(sim: Any, *, include_private: bool = False) -> dict[str
     if include_private:
         scene["private_summary"] = {
             "thin_conductors": _sequence_summary(getattr(sim, "_thin_conductors", None)),
+            "pinned_sheets": _sequence_summary(getattr(sim, "_pinned_sheets", None)),
             "lumped_rlc": _sequence_summary(getattr(sim, "_lumped_rlc", None)),
             "coaxial_terminations": _sequence_summary(getattr(sim, "_coaxial_terminations", None)),
         }

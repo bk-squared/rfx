@@ -1,0 +1,54 @@
+[
+  {
+    "f0_GHz": 0.5,
+    "n_steps": 1600,
+    "window_ns": 9.139512496298696,
+    "reference_side_m": 2.76408646276,
+    "reference_shape": [
+      923,
+      923,
+      923
+    ],
+    "fields_only_GiB": 17.575855560600758,
+    "fields_plus_materials_and_one_E_update_output_GiB": 32.22240186110139
+  },
+  {
+    "f0_GHz": 1,
+    "n_steps": 800,
+    "window_ns": 4.566898364316859,
+    "reference_side_m": 1.39703285428,
+    "reference_shape": [
+      467,
+      467,
+      467
+    ],
+    "fields_only_GiB": 2.2764704301953316,
+    "fields_plus_materials_and_one_E_update_output_GiB": 4.1735291220247746
+  },
+  {
+    "f0_GHz": 2,
+    "n_steps": 400,
+    "window_ns": 2.2805912983259407,
+    "reference_side_m": 0.7135060500399999,
+    "reference_shape": [
+      239,
+      239,
+      239
+    ],
+    "fields_only_GiB": 0.30514416843652725,
+    "fields_plus_materials_and_one_E_update_output_GiB": 0.5594309754669666
+  },
+  {
+    "f0_GHz": 4,
+    "n_steps": 200,
+    "window_ns": 1.1374377653304817,
+    "reference_side_m": 0.36574679876,
+    "reference_shape": [
+      123,
+      123,
+      123
+    ],
+    "fields_only_GiB": 0.04159361869096756,
+    "fields_plus_materials_and_one_E_update_output_GiB": 0.07625496760010719
+  }
+]

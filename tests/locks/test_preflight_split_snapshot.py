@@ -898,6 +898,8 @@ _REBOUND_ON_MIXIN = {
         # family module, bound on the mixin the same way, so it wants the
         # same qualname pin as the eleven that moved.
         "_validate_cfg_dielectric_at_absorber_seam",
+        # #801: the explicit-termination diagnostic joins the absorber family.
+        "_validate_cfg_port_conductor_continues",
         "_validate_cfg_dispersive_pole_at_absorber_face",
         "_validate_cfg_geometry_in_cpml",
         "_validate_cfg_lossless_resonator_in_absorber",

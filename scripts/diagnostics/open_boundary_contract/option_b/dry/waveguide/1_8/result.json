@@ -1,0 +1,18 @@
+{
+  "rig": "waveguide",
+  "scale": 1.0,
+  "layers": 8,
+  "commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "run_id": null,
+  "dtype": "float32",
+  "devices": [
+    "cpu:0"
+  ],
+  "driver_sha256": "96e0dfc794fff3f89e477dcec74f3752ba1a7ed6379c76f500678af88b667da0",
+  "alpha_max_S_per_m": 0.05,
+  "f_alpha_formula_Hz": 898755179.2261173,
+  "status": "STOP",
+  "exception": "ValueError('too many values to unpack (expected 2)')",
+  "traceback": "Traceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.801-measure/B/sweep_driver.py\", line 338, in main\n    row['measurements'] = measure(args, out)\n                          ^^^^^^^^^^^^^^^^^^\n  File \"/root/workspace/bk-workspace/.801-measure/B/extra_rigs.py\", line 200, in measure\n    return {'patch': measure_patch, 'waveguide': measure_waveguide, 'plane': measure_plane}[args.rig](args, out)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/workspace/bk-workspace/.801-measure/B/extra_rigs.py\", line 53, in measure_waveguide\n    sim.run(num_periods=40, compute_s_params=False, skip_preflight=True)\n  File \"/root/workspace/bk-workspace/rfx-wt-B-sweep/rfx/api/_execute.py\", line 4343, in run\n    _res = run_uniform(\n           ^^^^^^^^^^^^\n  File \"/root/workspace/bk-workspace/rfx-wt-B-sweep/rfx/runners/uniform.py\", line 782, in run_uniform\n    sim_result = _simulation.run(\n                 ^^^^^^^^^^^^^^^^\n  File \"/root/workspace/bk-workspace/.801-measure/B/sweep_driver.py\", line 229, in run\n    result = ORIGINAL_RUN(grid, materials, n_steps, *args, **kwargs)\n             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/workspace/bk-workspace/rfx-wt-B-sweep/rfx/simulation.py\", line 2606, in run\n    _core_step = make_core_step(_step_ctx)\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/workspace/bk-workspace/.801-measure/B/sweep_driver.py\", line 194, in core\n    record['realized_waveguide_apertures'] = [serial({k: v for k, v in cfg._asdict().items()\n                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/root/workspace/bk-workspace/.801-measure/B/sweep_driver.py\", line 195, in <listcomp>\n    if k in ('normal_axis', 'direction', 'u_lo', 'u_hi', 'v_lo', 'v_hi', 'x_index', 'ref_x', 'probe_x', 'a', 'b', 'f_cutoff', 'source_x_m', 'reference_x_m', 'probe_x_m')}) for cfg, acc in ctx.waveguide_meta]\n                                                                                                                                                                                ^^^^^^^^\nValueError: too many values to unpack (expected 2)\n",
+  "wall_s": 8.108300713007338
+}

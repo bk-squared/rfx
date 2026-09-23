@@ -1196,6 +1196,15 @@ def _compute_waveguide_s_matrix_nu(
         pec_faces=pec_set or None,
         pmc_faces=pmc_set or None,
         cpml_axes=cpml_axes,
+        # This lane builds its own grid (it drops fully-closed axes from
+        # cpml_axes, which _build_nonuniform_grid does not), so the pinned
+        # step has to be handed over explicitly. Without it a board declared
+        # with Simulation(dt=..., dx_profile=...) ran its waveguide
+        # S-parameters at the derived Courant step while every other lane ran
+        # at the pin — two different steps for one declared model.
+        dt=getattr(self, "_dt_pin", None),
+        dt_min_cell=getattr(self, "_dt_min_cell", None),
+        dt_caller="Simulation",
     )
     if n_steps is None:
         # ``NonUniformGrid`` does not expose ``num_timesteps`` (known

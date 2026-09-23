@@ -1,0 +1,35 @@
+{
+  "family": "W1",
+  "entry": "nonuniform",
+  "args": [
+    "W1",
+    "nonuniform",
+    "1"
+  ],
+  "commit": "798ec64e5cda057318664bc431e528819f9e371a",
+  "analytic_declared_Hz": 8832720000.015968,
+  "analytic_half_cell_inside_Hz": 8832720000.015968,
+  "mode": "TM110",
+  "domain_m": [
+    0.024,
+    0.024,
+    0.024
+  ],
+  "dx_m": 0.001,
+  "source_m": [
+    0.011,
+    0.012,
+    0.01
+  ],
+  "probe_m": [
+    0.014,
+    0.009,
+    0.013
+  ],
+  "component": "ez",
+  "status": "REFUSED",
+  "exception": "NotImplementedError: uniform grid construction does not support the resolved non-uniform mesh. Use a non-uniform-capable entry point or supply an explicit uniform dx= and resolve all geometry thicknesses.",
+  "traceback": "Traceback (most recent call last):\n  File \"/root/workspace/bk-workspace/.boundary-model/B0/witness.py\", line 114, in main\n    grid=sim._build_grid();record['grid']=grid_info(grid);record['n_steps']=nsteps;record['preflight']=str(sim.preflight())\n  File \"/root/workspace/bk-workspace/.boundary-model/B0/src/rfx/api/_compile.py\", line 92, in _build_grid\n    self._require_uniform_mesh(\"uniform grid construction\")\n  File \"/root/workspace/bk-workspace/.boundary-model/B0/src/rfx/api/_mesh.py\", line 204, in _require_uniform_mesh\n    raise NotImplementedError(\nNotImplementedError: uniform grid construction does not support the resolved non-uniform mesh. Use a non-uniform-capable entry point or supply an explicit uniform dx= and resolve all geometry thicknesses.\n",
+  "wall_s": 0.004025336995255202,
+  "backend": "gpu"
+}

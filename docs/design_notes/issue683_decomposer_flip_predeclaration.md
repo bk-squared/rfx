@@ -126,6 +126,15 @@ PRE contract pending its own decision run (the #683 measurement was made
 on wire ports; a ride-along flip is the align-first-decide-later mistake
 the ledger's #673/#672 entry warns about).  MSL/waveguide untouched.
 
+> Settled 2026-09-21. That lumped decision run is
+> `scripts/diagnostics/lumped_port_known_load_line.py` — a parallel-plate
+> line terminated in a known resistor, `|S11| = |(R - Zc)/(R + Zc)|` in
+> closed form. It reached the same verdict for the lumped family, and the
+> lumped lane moved to the POST slot with the driven diagonal and the
+> half-step current phase. This document is the wire-family record and is
+> not edited further; the lumped decision is recorded in
+> `rfx/probes/probes.py::update_sparam_probe` and in the support matrix.
+
 ## 5. Pre-declared falsifiers (binding; committed before implementation;
 ##    never widened; any failure outside them = STOP and report)
 

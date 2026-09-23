@@ -383,6 +383,7 @@ def init_sparam_probe(
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
+        v_ref_dft=zeros,
     )
 
 
@@ -395,20 +396,28 @@ def update_sparam_probe(
 ) -> SParamProbe:
     """Accumulate one timestep of V, I, and V_inc into the DFT.
 
-    Call this every timestep *after* update_e() / apply_pec() but
-    **before** apply_lumped_port() so that the sampled port voltage
-    reflects only the cavity/load response, not the source injection.
-    Sampling after source injection contaminates V with the driving
-    waveform, making the wave-decomposition S11 meaningless.
+    Call this every timestep after update_e() / apply_pec() AND **after**
+    apply_lumped_port() — the same post-injection slot the wire family
+    moved to in #683.  The post-injection E is the true field level
+    ``E^{n+1}`` of the discrete update, and only the post-injection V/I
+    pair satisfies the known-load circuit law at an excited port.  The
+    PRE-injection drive sample (the historical #72 slot) is accumulated
+    separately by :func:`update_lumped_drive_ref_probe` — call it BEFORE
+    apply_lumped_port — because the #308 receive-wave sign and the
+    incident-wave denominator of ``decompose_lumped_s_matrix`` are pinned
+    against that sample.
 
-    CAVEAT (issue #683): the paragraph above is the #72 contract, and for
-    WIRE ports it was REFUTED by measurement (2026-08-29) — the wire-port
-    probes now sample the physical V/I/V_port AFTER injection (see
-    ``update_wire_sparam_probe``) and keep the pre-injection sample only
-    as the ``v_ref_dft`` calibration reference.  The lumped ordering here
-    is deliberately unchanged pending its own decision run on a
-    lumped-port known-load fixture; do not flip it just to match the wire
-    family.
+    DECIDED BY (scripts/diagnostics/lumped_port_known_load_line.py): the
+    lumped known-load decision run the 2026-09-05 scope note said was
+    missing.  The same single cell declared as a lumped port and as a
+    one-cell wire port, on a parallel-plate TEM line terminated in a known
+    R, with a closed-form |S11| = |(R - Zc)/(R + Zc)|.  Under the #72
+    pre-injection slot the lumped lane read |S11| 0.714 / 1.248 / 4.757
+    against a closed form of 0.333 / 0 / 0.333, and its terminal V/(Zc·I)
+    was -0.167 / +0.110 / +0.659 where the load is 0.5 / 1.0 / 2.0.  The
+    wire lane on the identical cell read 0.334 / 0.0004 / 0.333 and
+    0.500 / 0.999 / 1.988.  The pre-injection sample at a DRIVEN cell is
+    not the terminal voltage of the circuit.
 
     X(f) += x(t) * exp(-j*2π*f*t) * dt
 
@@ -433,44 +442,96 @@ def update_sparam_probe(
     v_inc = port.excitation(t)
 
     phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
-    # SCOPE NOTE (item B2, 2026-09-05): the Yee half-step current phase
-    # `rfx.core.dft_utils.half_step_current_phase` is applied on the WIRE
-    # lane only (``update_wire_sparam_probe`` and the wire blocks in
-    # simulation.py / nonuniform.py), NOT here. Its derivation requires
-    # E = E^{n+1} at the sample so that the E/H offset is exactly dt/2. On
-    # the wire lane that holds because #683 moved the physical channels
-    # post-injection. Here V is sampled PRE-injection at a DRIVEN cell (the
-    # #72 contract kept above), and #683 measured that sample is "not any
-    # field time level of the discrete update" — so the V/I time offset is
-    # NOT established to be dt/2 and no correction is derivable without a
-    # lumped known-load decision run. Applying the wire-lane factor here
-    # would be exactly the align-first-decide-later move the #673/#672
-    # ledger entry warns against; it also shifted every lumped |S11| bin
-    # (max 2.3% on tests/fixtures/golden_forward_no_rlc_s11.npy) with no
-    # lumped-side oracle behind it.
+    # Yee half-step: I is H-derived (H^{n+1/2}) while V is E-derived
+    # (E^{n+1}); advance the current sample by dt/2 so both DFT channels
+    # share one reference time (rfx/core/dft_utils). The 2026-09-05 scope
+    # note withheld this correction on the lumped lane because its premise
+    # — E = E^{n+1} at the sample — did not hold at the pre-injection slot.
+    # The slot above is now post-injection, so the premise holds here for
+    # the same reason it holds on the wire lane.
+    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
-    new_i = probe.i_dft + i * phase * dt * weight
+    new_i = probe.i_dft + i * i_phase * dt * weight
     new_vinc = probe.v_inc_dft + v_inc * phase * dt * weight
 
     return probe._replace(v_dft=new_v, i_dft=new_i, v_inc_dft=new_vinc)
 
 
+def update_lumped_drive_ref_probe(
+    probe: SParamProbe,
+    state,
+    grid: Grid,
+    port: LumpedPort,
+    dt: float,
+) -> SParamProbe:
+    """Accumulate one timestep of the PRE-injection drive-sample reference.
+
+    Call this after update_e() / apply_pec() but **before**
+    apply_lumped_port() — the historical (#72) sampling slot.  The channel
+    is bit-identical to the pre-fix ``v_dft`` and exists because the #308
+    receive-wave sign and the incident-wave denominator of
+    :func:`decompose_lumped_s_matrix` were calibrated against this sample.
+    It feeds ONLY the off-diagonal incident wave and the legacy diagonal;
+    the physical V/I channels are accumulated post-injection by
+    :func:`update_sparam_probe`.  Mirrors
+    :func:`update_wire_drive_ref_probe` on the wire family.
+    """
+    t = state.step * dt
+    v_ref = port_voltage(state, grid, port)
+    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    weight = _dft_window_weight(state.step, probe.total_steps, probe.window,
+                                probe.window_alpha)
+    old_ref = probe.v_ref_dft if probe.v_ref_dft is not None else 0.0
+    return probe._replace(v_ref_dft=old_ref + v_ref * phase * dt * weight)
+
+
+class PreDecisionLumpedDiagonalWarning(UserWarning):
+    """A lane still reporting a lumped diagonal on the pre-decision convention.
+
+    Raised where a runner returns a lumped-port S-matrix built the way the
+    uniform lane did before the known-load decision run
+    (scripts/diagnostics/lumped_port_known_load_line.py): a pre-injection
+    voltage, the passive port-branch algebra on a driven port, and no Yee
+    half-step current phase. On a known load that reading is the reciprocal
+    of the physical reflection. Its own category so a test can pin that the
+    lane says so rather than returning the number silently.
+    """
+
+
+def driven_port_reflection(v, i, z0):
+    """Reflection at a GENUINELY DRIVEN one-port from its terminal V/I pair.
+
+        Z_in = V / I,   S = (Z_in - Z0)/(Z_in + Z0) = (V - Z0·I)/(V + Z0·I)
+
+    ``v`` is the port's gap voltage in the sense the driven circuit law
+    uses — for a wire port the whole-gap line integral (issue #764), for a
+    one-cell lumped port the single cell, which IS its whole gap.  The
+    safe denominator returns 0 rather than NaN where the wave vanishes.
+
+    This is the one spelling of the driven diagonal; the lumped and wire
+    lanes were two verbatim copies of it.
+    """
+    denom = v + z0 * i
+    safe_denom = jnp.where(jnp.abs(denom) > 0, denom, jnp.ones_like(denom))
+    return (v - z0 * i) / safe_denom
+
+
 def extract_s11(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
-    """Compute S11 from accumulated DFT data.
+    """S11 at a DRIVEN one-cell lumped port, from its terminal V/I pair.
 
-    Uses the input-impedance definition:
+        Z_in = V / I,   S11 = (Z_in - Z0)/(Z_in + Z0) = (V - Z0·I)/(V + Z0·I)
 
-        Z_in = -V / I        (V = -E·dx follows FDTD sign convention)
-        S11  = (Z_in - Z0) / (Z_in + Z0)
+    The probe must be accumulated **after** source injection (see
+    :func:`update_sparam_probe`), which is where the V/I pair is the
+    terminal pair of the driven circuit.
 
-    which, after substitution, becomes:
-
-        S11 = (V + Z0 · I) / (V - Z0 · I)
-
-    The probe must be accumulated **before** source injection
-    (see :func:`update_sparam_probe`) so that V reflects only the
-    cavity/load response.
+    Before the known-load decision run
+    (scripts/diagnostics/lumped_port_known_load_line.py) this returned the
+    PASSIVE port-branch algebra ``(V + Z0·I)/(V - Z0·I)`` — the reciprocal
+    class — on a pre-injection sample, and measured |S11| 0.714 / 1.248 /
+    4.757 where the closed form is 0.333 / 0 / 0.333.  The passive reading
+    survives as :func:`extract_lumped_s11` for undriven ports.
 
     Parameters
     ----------
@@ -483,11 +544,7 @@ def extract_s11(probe: SParamProbe, z0: float = 50.0) -> jnp.ndarray:
     -------
     s11 : (n_freqs,) complex array
     """
-    denom = probe.v_dft - z0 * probe.i_dft
-    # Guard against division by zero at DC or unexcited frequencies
-    safe_denom = jnp.where(jnp.abs(denom) > 0.0, denom, jnp.ones_like(denom))
-    s11 = (probe.v_dft + z0 * probe.i_dft) / safe_denom
-    return s11
+    return driven_port_reflection(probe.v_dft, probe.i_dft, z0)
 
 
 # ---------------------------------------------------------------------------
@@ -1132,10 +1189,12 @@ def update_wire_sparam_probe(
     apply_wire_port() (issue #683, decided by measurement 2026-08-29):
     the post-injection E is the true field level ``E^{n+1}`` of the
     discrete update, and only the post-injection V/I pair satisfies the
-    known-load circuit law at an excited port (the previous contract —
-    sample before injection, issue #72 — survives for LUMPED ports in
-    ``update_sparam_probe`` pending their own decision run; the #683
-    measurement was made on wire ports).  The PRE-injection drive-sample
+    known-load circuit law at an excited port.  The LUMPED family kept the
+    earlier contract — sample before injection, issue #72 — until its own
+    known-load decision run
+    (scripts/diagnostics/lumped_port_known_load_line.py, 2026-09-21)
+    measured the same verdict there; ``update_sparam_probe`` samples in
+    this slot now too.  The PRE-injection drive-sample
     reference channel is accumulated separately by
     ``update_wire_drive_ref_probe`` (call it BEFORE apply_wire_port) —
     the #308/#313 off-diagonal calibration is pinned against that sample
@@ -1216,58 +1275,54 @@ def update_wire_drive_ref_probe(
 # with ONE implementation.  The eager extractors call these so the eager path
 # stays bit-identical (item-5 Stage 1, 2026-06-22).
 
-def decompose_lumped_s_matrix(v, i, z0):
+def decompose_lumped_s_matrix(v, i, z0, v_ref=None):
     """Lumped-port N-port S-matrix from accumulated V/I DFTs.
 
-    Wave decomposition with the FDTD sign convention (``V = -E·dx``),
-    role-selected per port (issue #308):
+    A one-cell lumped port and a one-cell wire port are the same port: they
+    fold the same sigma into the same cell (``setup_wire_port`` at
+    ``n_live = 1`` is ``setup_lumped_port``) and inject the same voltage into
+    it (likewise ``apply_wire_port``). So the S MATRIX is the wire family's
+    validated decomposition evaluated at one live cell, not a second
+    convention that happens to agree on the diagonal — and this function
+    delegates to :func:`decompose_wire_s_matrix` to make that true by
+    construction rather than by two copies agreeing today.
 
-        a_j = (-V[j,j] + Z0[j]·I[j,j]) / (2·√Z0[j])    # incident at driven port j
-        b_j = (-V[j,j] - Z0[j]·I[j,j]) / (2·√Z0[j])    # reflected at the DRIVE port
-        b_i = (V[j,i] - Z0[i]·I[j,i]) / (2·√Z0[i])     # arriving at PASSIVE port i≠j
-        S[i,j] = b_i / a_j
+    For a one-cell port the whole-gap line integral IS the single cell, so
+    ``v_port = v`` and ``port_cell_counts = 1``. The whole-port frame (issue
+    #770) then gives
 
-    Drive-port waves (``a_j`` and the diagonal ``b_j``) keep the
-    ``extract_lumped_s11`` algebra unchanged.  At a passive receive port the
-    historical ``(-V - Z0·I)`` channel structurally cancelled the arriving
-    wave: the port-cell resistor law makes ``-V == +Z0_cell·I`` identically
-    at a matched port, so a matched thru read |S21| near-null (verified,
-    issue #308).  The receive channel is therefore the orthogonal
-    combination ``±(V - Z0·I)``, and the overall sign is pinned
-    EMPIRICALLY by the low-frequency falsifier on the canonical 2-port
-    thru (2026-07-10): under ``(V - Z0·I)`` the measured S21(DC) -> +1
-    (the DC thru limit); the first-cut opposite sign ``(-V + Z0·I)``
-    measured S21(DC) -> -1 (the pi sat in the raw cross-port phasors,
-    arg(V2/V1) ≈ pi - beta·L, from the source-driven cell field sense in
-    ``V = -E·dx``).
+        S[j,j] = (V[j,j] - Z0[j]·I[j,j]) / (V[j,j] + Z0[j]·I[j,j])
+        S[i,j] = (V[j,i] - Z0[i]·I[j,i]) / (V[j,j] + Z0[j]·I[j,j])   (i != j)
 
-    Sign convention: multiports whose ports share the same field component
-    carry a single global receive-wave sign, pinned by that DC witness on
-    the canonical thru.  A multiport mixing components (e.g. one ``ez``
-    and one ``ey`` port) has no orientation input to relate the per-port
-    voltage polarities, so its off-diagonal S entries remain defined only
-    up to a ±1 (pi-phase) factor (fence unchanged).
+    — one incident wave for the whole column, the physical one at the driven
+    port.
 
-    OPEN item: the port-based |S21| MAGNITUDE is deflated relative to the
-    extractor-independent flux referee (flux-true |S21| 0.97-1.0 vs
-    0.52-0.67 here on the canonical thru); the Phase-0 closed-box referee
-    traced it to the port-cell wave definitions themselves (near-field
-    dominated, do not conserve power) — see issue #313.  The opt-in
-    ``add_port(reference_plane_cells=N)`` reference-plane path
-    (``rfx.probes.refplane``) replaces the opted off-diagonals with line
-    plane waves; THIS default port-cell path keeps the deflation and its
-    committed regression locks unchanged.
+    WHY THIS REPLACED THE PER-CELL #308 FRAME. That frame built the
+    off-diagonal incident wave as ``(-V_ref[j,j] + Z0[j]·I[j,j])``: negated,
+    and on the pre-injection sample. On a two-port parallel-plate line matched
+    at both ends, where the closed form is ``S11 = 0`` and ``|S21| = 1`` at
+    every bin, it read ``|S21| = 2.247 … 2.077`` while the wire lane on the
+    IDENTICAL cells read ``1.00005 … 1.00459``
+    (tests/unit/ports/test_lumped_two_port_matched_line.py). One port, two
+    answers, and only one of them is the closed form.
 
-    The safe-denominator guard replaces a zero incident wave by 1 (so
-    S → 0 / 1 = 0 rather than NaN).  Mirrors ``extract_s_matrix`` exactly.
+    ``v_ref`` marks post-decision data. Its VALUES are not consumed by the
+    whole-port frame — the incident wave is built on ``v`` — but its presence
+    is what distinguishes a caller on the current sampling contract from a
+    stored pre-2026-09-21 dump. ``v_ref=None`` keeps the legacy per-cell
+    algebra byte-for-byte so such a dump replays to its recorded S-matrix.
 
     Parameters
     ----------
     v, i : (n_ports, n_ports, n_freqs) complex
         ``v[j, i]`` / ``i[j, i]`` are the V/I DFT phasors at receive port *i*
-        when driving port *j* (FDTD sign convention).
+        when driving port *j* (FDTD sign convention, ``V = -E·dx``).
     z0 : (n_ports,) real
         Per-port reference impedance.
+    v_ref : (n_ports, n_ports, n_freqs) complex or None
+        PRE-injection drive-sample phasors. Presence selects the whole-port
+        frame; ``None`` selects the legacy per-cell frame, where ``v`` IS the
+        pre-injection sample.
 
     Returns
     -------
@@ -1278,25 +1333,17 @@ def decompose_lumped_s_matrix(v, i, z0):
     i = jnp.asarray(i)
     z0 = jnp.asarray(z0)
     n_ports = v.shape[0]
-    n_freqs = v.shape[-1]
-    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
-    for j in range(n_ports):
-        z0_j = z0[j]
-        a_j = (-v[j, j] + z0_j * i[j, j]) / (2.0 * jnp.sqrt(z0_j))
-        safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-        for ri in range(n_ports):
-            z0_i = z0[ri]
-            if ri == j:
-                # Drive-port reflected wave — byte-frozen extract_lumped_s11
-                # algebra (issue #308 changes receive ports only).
-                b_i = (-v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
-            else:
-                # Passive receive port: orthogonal wave channel; sign pinned
-                # by the DC falsifier (S21(DC) -> +1 on the canonical thru,
-                # issue #308).
-                b_i = (v[j, ri] - z0_i * i[j, ri]) / (2.0 * jnp.sqrt(z0_i))
-            S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
-    return S
+    ones = [1] * n_ports
+
+    if v_ref is not None:
+        # The wire decomposition at one live cell. v_port = v because a
+        # one-cell gap's line integral is that one cell.
+        return decompose_wire_s_matrix(v, i, z0, ones, v_port=v, v_ref=v_ref)
+
+    # Pre-decision data: the legacy per-cell frame, byte-frozen so a stored
+    # dump replays to the S-matrix recorded with it.  Same call, without the
+    # whole-port channel, which is exactly what selects that frame there.
+    return decompose_wire_s_matrix(v, i, z0, ones, v_port=None, v_ref=None)
 
 
 def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
@@ -1584,6 +1631,9 @@ def extract_s_matrix(
     # FDTD-sign V/I phasors per (drive j, receive i) for the shared decomposer.
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
+    # PRE-injection drive-sample reference phasors; only the drive
+    # diagonal is consumed (off-diagonal incident wave).
+    vref_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     raw_v = (
         np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
         if return_vi_dump else None
@@ -1639,15 +1689,23 @@ def extract_s_matrix(
                 # re-run entirely.
                 state = apply_pec_edges(state, pec_edge_masks)
 
-            # Record V / I at all ports BEFORE source injection so that
-            # the sampled voltage reflects only the load/cavity response
-            # and is not contaminated by the driving waveform.
+            # PRE-injection drive-sample reference at all ports (the
+            # historical #72 slot): the #308 receive-wave sign and the
+            # incident-wave denominator are calibrated against it.
             for i in range(n_ports):
-                sprobes[i] = update_sparam_probe(
+                sprobes[i] = update_lumped_drive_ref_probe(
                     sprobes[i], state, grid, ports[i], dt)
 
             # Excite only port j
             state = apply_lumped_port(state, grid, ports[j], t, mats)
+
+            # Physical V / I AFTER injection — the terminal pair of the
+            # driven circuit (known-load decision run; see
+            # update_sparam_probe).  At a passive port this reads the same
+            # field as the slot above.
+            for i in range(n_ports):
+                sprobes[i] = update_sparam_probe(
+                    sprobes[i], state, grid, ports[i], dt)
 
         # Collect per-(drive j, receive i) V/I DFT phasors for the shared
         # wave decomposer (``decompose_lumped_s_matrix``) — single source of
@@ -1657,6 +1715,8 @@ def extract_s_matrix(
         for i in range(n_ports):
             v_all[j, i, :] = np.asarray(sprobes[i].v_dft, dtype=np.complex128)
             i_all[j, i, :] = np.asarray(sprobes[i].i_dft, dtype=np.complex128)
+            vref_all[j, i, :] = np.asarray(sprobes[i].v_ref_dft,
+                                           dtype=np.complex128)
             if return_vi_dump:
                 # ``port_voltage`` returns the FDTD-sign voltage used by the
                 # legacy extractor (V = -E·dx).  The portable dump schema uses
@@ -1673,7 +1733,8 @@ def extract_s_matrix(
 
     z0_arr = np.asarray([p.impedance for p in ports], dtype=np.float64)
     S = np.asarray(
-        decompose_lumped_s_matrix(v_all, i_all, z0_arr), dtype=np.complex64)
+        decompose_lumped_s_matrix(v_all, i_all, z0_arr, v_ref=vref_all),
+        dtype=np.complex64)
 
     if return_vi_dump:
         return PortVIReplayBundle(
@@ -1694,7 +1755,7 @@ def extract_lumped_s11(
     i_dft: jnp.ndarray,
     z0: float = 50.0,
 ) -> jnp.ndarray:
-    """S11 from accumulated V/I DFTs at a single-cell lumped port (issue #72).
+    """S11 at a PASSIVE (undriven) single-cell lumped port (issue #72).
 
     Wave decomposition with FDTD sign convention (V = -E·dx):
 
@@ -1702,11 +1763,18 @@ def extract_lumped_s11(
         b = (-V - Z0·I) / (2·√Z0)        # reflected (out of DUT)
         S11 = b / a = (V + Z0·I) / (V - Z0·I)
 
-    Equivalent to ``extract_s11`` but operates on raw DFT arrays produced
-    by the JIT-integrated lumped-port path
-    (``SimResult.lumped_port_sparams``), enabling AD-friendly objectives
-    on ``Simulation.forward()`` without the time-gating heuristic of
-    ``minimize_s11_at_freq``.
+    This is the port-branch reading: load-independent, and it is the
+    diagonal of a port that is not driven in the pass.  A DRIVEN port uses
+    :func:`driven_port_reflection` on its terminal V/I pair instead — the
+    known-load decision run
+    (scripts/diagnostics/lumped_port_known_load_line.py) measured this
+    algebra on a driven port as the reciprocal class, |S11| 0.714 / 1.248
+    / 4.757 against a closed form of 0.333 / 0 / 0.333.  The same
+    correction was made on the wire family in #764; the lumped lane kept
+    the passive convention on a driven port until the decision run.
+
+    Operates on raw DFT arrays produced by the JIT-integrated lumped-port
+    path (``SimResult.lumped_port_sparams``).
 
     Parameters
     ----------

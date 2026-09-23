@@ -27,7 +27,7 @@ import numpy as np
 
 from rfx.core.yee import EPS_0, init_materials
 from rfx.grid import Grid
-from rfx.probes.probes import extract_lumped_s11, init_dft_plane_probe
+from rfx.probes.probes import driven_port_reflection, init_dft_plane_probe
 from rfx.simulation import LumpedPortSParamSpec, SourceSpec, run
 from rfx.sources.coaxial_port import (
     PTFE_EPS_R,
@@ -242,9 +242,13 @@ def generate_coaxial_reference_plane_dft_dump(
         dtype=np.complex128,
     )
     _raw_spec, gap_accs = result.lumped_port_sparams[0]
-    gap_v_dft, gap_i_dft = gap_accs
+    gap_v_dft, gap_i_dft = gap_accs[0], gap_accs[1]
+    # A DRIVEN port's S11 is the terminal reflection.  This used to be
+    # extract_lumped_s11, the passive port-branch reading, which on a driven
+    # port is the reciprocal of the physical reflection
+    # (scripts/diagnostics/lumped_port_known_load_line.py).
     gap_s11 = np.asarray(
-        extract_lumped_s11(gap_v_dft, gap_i_dft, z0=port.impedance),
+        driven_port_reflection(gap_v_dft, gap_i_dft, port.impedance),
         dtype=np.complex128,
     )
     max_abs_voltage = float(np.max(np.abs(extracted.vi.voltage)))

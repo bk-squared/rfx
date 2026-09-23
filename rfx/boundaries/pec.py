@@ -55,6 +55,45 @@ def apply_pec(state, axes: str = "xyz") -> object:
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
+_FACES = ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+
+
+def resolve_wall_faces(grid, periodic, pec_axes=None):
+    """The electric and magnetic wall faces of a run, from the grid's own
+    boundary declaration (#1164, #1193, #1194).
+
+    One rule for every entry point, decided per FACE, not per axis:
+
+    * a face on a periodic axis is no wall;
+    * a face in ``grid.pmc_faces`` is a magnetic wall and never an
+      electric one -- zeroing E_tan on its node plane turns an open-ended
+      line into a short (a port on that plane read ``|S11| = 1``, #1164);
+    * a face in ``grid.pec_faces`` is an electric wall;
+    * any other face (an absorber face, or a raw ``Grid`` with no
+      declaration) is PEC-backed -- E_tan = 0 on the outermost node plane,
+      the standard termination of a PML and the bare-box default -- unless
+      the legacy ``pec_axes`` string leaves that AXIS out. ``pec_axes`` can
+      only withhold that default; it can neither remove a declared PEC face
+      nor put an electric wall over a magnetic one.
+
+    Returns ``(pec_faces, pmc_faces)`` as frozensets of face labels.
+    """
+    declared_pec = set(getattr(grid, "pec_faces", None) or ())
+    declared_pmc = set(getattr(grid, "pmc_faces", None) or ())
+    pec, pmc = set(), set()
+    for axis, is_periodic in zip("xyz", periodic):
+        if is_periodic:
+            continue
+        axis_default = pec_axes is None or axis in pec_axes
+        for side in ("lo", "hi"):
+            face = f"{axis}_{side}"
+            if face in declared_pmc:
+                pmc.add(face)
+            elif face in declared_pec or axis_default:
+                pec.add(face)
+    return frozenset(pec), frozenset(pmc)
+
+
 def apply_pec_faces(state, faces: set[str]) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
 
@@ -148,6 +187,83 @@ class SheetSpec:
     plane: int
     footprint: object
     name: str | None = None
+
+    @classmethod
+    def from_node_ranges(cls, grid_shape, *, normal_axis: int, plane: int,
+                         in_plane_ranges, name=None) -> "SheetSpec":
+        """A sheet named by NODE INDICES instead of by metres.
+
+        ``plane`` and ``in_plane_ranges`` are PADDED array indices — the
+        indices of ``footprint`` itself. ``in_plane_ranges`` gives the two
+        axes other than ``normal_axis``, in increasing axis order, as
+        INCLUSIVE ``(lo, hi)`` node index pairs: ``(4, 9)`` is six node
+        lines, ``4`` through ``9``.
+
+        A conductor declared this way is mesh-independent by construction.
+        A metric declaration has to be re-read on whatever node line the
+        grid happens to have, so the same corner names different nodes once
+        the mesh moves; these indices name the same nodes on every mesh, and
+        the metal's LENGTH is then whatever the cells between those nodes
+        add up to. That is what makes a moving mesh a design variable: the
+        conductor is fixed on the lattice, the lattice carries the length.
+
+        Refuses a range that spans fewer than two node lines on either
+        in-plane axis: one node line carries no E edge between two adjacent
+        nodes, so the metal would carry no current and vanish silently (the
+        #369 class, the same rule :func:`refuse_vaporized_sheets` applies to
+        metric sheets).
+        """
+        a = int(normal_axis)
+        if a not in (0, 1, 2):
+            raise ValueError(
+                f"SheetSpec.from_node_ranges: normal_axis must be 0/1/2, got "
+                f"{normal_axis!r}")
+        shape3 = tuple(int(v) for v in grid_shape)
+        if len(shape3) != 3:
+            raise ValueError(
+                f"SheetSpec.from_node_ranges: grid_shape must be (nx, ny, nz), "
+                f"got {grid_shape!r}")
+        others = tuple(b for b in range(3) if b != a)
+        ranges = tuple(in_plane_ranges)
+        if len(ranges) != 2:
+            raise ValueError(
+                f"SheetSpec.from_node_ranges: in_plane_ranges must give the "
+                f"two axes other than {'xyz'[a]} ({'xyz'[others[0]]}, "
+                f"{'xyz'[others[1]]}), got {len(ranges)} range(s)")
+        plane = int(plane)
+        if not (0 <= plane < shape3[a]):
+            raise ValueError(
+                f"sheet {name!r}: plane index {plane} is outside the grid "
+                f"along {'xyz'[a]} (0..{shape3[a] - 1})")
+        axes = []
+        for t in range(3):
+            if t == a:
+                m = np.zeros((shape3[t],), dtype=bool)
+                m[plane] = True
+                axes.append(m)
+                continue
+            lo, hi = (int(v) for v in ranges[others.index(t)])
+            if hi < lo:
+                lo, hi = hi, lo
+            if hi - lo < 1:
+                raise ValueError(
+                    f"sheet {name!r}: the node range on {'xyz'[t]} is "
+                    f"({lo}, {hi}) — a single node line, which has no E edge "
+                    "between two adjacent nodes, so the metal would carry no "
+                    "current and vanish silently (#369 class). A sheet needs "
+                    "at least two adjacent node lines on BOTH in-plane axes; "
+                    "widen the range or refine the mesh.")
+            if lo < 0 or hi >= shape3[t]:
+                raise ValueError(
+                    f"sheet {name!r}: the node range ({lo}, {hi}) on "
+                    f"{'xyz'[t]} is outside the grid (0..{shape3[t] - 1}). "
+                    "Indices are node indices on this grid, not metres.")
+            m = np.zeros((shape3[t],), dtype=bool)
+            m[lo:hi + 1] = True
+            axes.append(m)
+        fp = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+        return cls(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
+                   name=name)
 
     def __post_init__(self):
         a = int(self.normal_axis)

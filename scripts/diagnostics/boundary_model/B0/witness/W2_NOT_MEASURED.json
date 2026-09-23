@@ -1,0 +1,8 @@
+{
+  "family": "W2",
+  "status": "NOT MEASURED",
+  "reason": "Issue #1164 body and comments do not specify the cavity dimensions, full face assignment, source, or probe. An asynchronous request for that configuration was made; no supplied configuration is present. The stated 7.495 / 16.759 GHz numbers do not uniquely specify a cavity.",
+  "evidence": "issue1164.json",
+  "operator_measurement": "operator_measurement.json",
+  "conclusion": "leader fills."
+}

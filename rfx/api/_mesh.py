@@ -194,10 +194,9 @@ class _MeshMixin:
             + (" and return zero TEz fields" if mode == "2d_tez" else "")
             + ". Build the 2-D problem as a thin 3-D box: mode='3d' and, "
             "for TMz, a z extent of ONE cell with PEC z walls; for TEz, a z "
-            "extent of TWO cells with magnetic z walls, "
+            "extent of ONE cell with magnetic z walls, "
             "boundary=BoundarySpec(x=..., y=..., z=Boundary(lo='pmc', "
-            "hi='pmc')) (one cell between magnetic walls holds no TEz field "
-            "either). Or pass an explicit uniform dx= so the 2-D lane runs.")
+            "hi='pmc')). Or pass an explicit uniform dx= so the 2-D lane runs.")
 
     def _require_uniform_mesh(self, consumer):
         if self._uses_nonuniform_mesh:

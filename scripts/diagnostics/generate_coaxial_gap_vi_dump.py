@@ -29,7 +29,7 @@ from rfx import (
 )
 from rfx.core.yee import EPS_0, init_materials
 from rfx.grid import Grid
-from rfx.probes.probes import extract_lumped_s11
+from rfx.probes.probes import driven_port_reflection
 from rfx.simulation import LumpedPortSParamSpec, SourceSpec, run
 from rfx.sources.coaxial_port import (
     SMA_OUTER_RADIUS,
@@ -124,8 +124,16 @@ def generate_coaxial_gap_vi_dump(
     if not result.lumped_port_sparams:
         raise RuntimeError("coaxial diagnostic produced no V/I DFT accumulators")
     raw_spec, accs = result.lumped_port_sparams[0]
-    v_dft, i_dft = accs
-    diagnostic_s11 = np.asarray(extract_lumped_s11(v_dft, i_dft, z0=port.impedance), dtype=np.complex128)
+    v_dft, i_dft = accs[0], accs[1]
+    # This gap is a DRIVEN port, so its S11 is the terminal reflection.  It
+    # used to be extract_lumped_s11 — the passive port-branch reading, which
+    # on a driven port is the reciprocal of the physical reflection
+    # (scripts/diagnostics/lumped_port_known_load_line.py).  The dump's
+    # diagonal_frame below declares this frame, and a writer may only declare
+    # the frame its recorded production S actually used.
+    diagnostic_s11 = np.asarray(
+        driven_port_reflection(v_dft, i_dft, port.impedance),
+        dtype=np.complex128)
 
     # Convert from the runner's FDTD sign convention to the public dump replay
     # convention used by rfx.validation: voltage/current positive into the DUT.
@@ -135,6 +143,9 @@ def generate_coaxial_gap_vi_dump(
 
     metadata = PortDumpMetadata(
         commit_hash=_git_commit(),
+        # The coaxial gap probe is a lumped port, whose production
+        # diagonal is the driven terminal reflection.
+        diagonal_frame="driven_terminal",
         geometry={
             "kind": "single_coaxial_gap_diagnostic_pec_cavity",
             "domain_m": list(domain),

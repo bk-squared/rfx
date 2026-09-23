@@ -391,6 +391,25 @@ def quick_convergence(
     -------
     ConvergenceResult
     """
+    # A node-pinned conductor is declared by node INDEX, so its physical
+    # size is whatever the cells between those nodes add up to. Halving dx
+    # therefore halves the patch instead of resolving it: every rung of the
+    # sweep is a different antenna, and the "convergence" measured is the
+    # structure shrinking. Refused rather than run, for the same reason the
+    # PMC note inside sim_factory records — this factory clones what `sim`
+    # declared, and a declaration whose metres depend on dx cannot be cloned
+    # across a dx sweep without the caller re-declaring it.
+    if getattr(sim, "_pinned_sheets", None):
+        raise ValueError(
+            f"quick_convergence: this simulation carries "
+            f"{len(sim._pinned_sheets)} node-pinned sheet(s) "
+            "(add_pinned_sheet). Their size is set by NODE INDEX, so it "
+            "scales with dx: at dx/2 the conductor is half as long, and the "
+            "sweep would compare different structures rather than one "
+            "structure at several resolutions. Declare the conductor in "
+            "metres with add_thin_conductor for a convergence study, or "
+            "build one Simulation per dx with the node ranges recomputed "
+            "for that mesh.")
     if dx_factors is None:
         dx_factors = [2.0, 1.5, 1.0, 0.75]
 

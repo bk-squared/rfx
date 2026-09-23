@@ -572,6 +572,7 @@ def test_every_builder_method_is_covered_by_the_document():
         "add_material",
         "add_msl_port",
         "add_ntff_box",
+        "add_pinned_sheet",
         "add_port",
         "add_probe",
         "add_refinement",
@@ -1955,3 +1956,72 @@ def test_a_stray_two_plane_key_is_refused_rather_than_ignored():
     doc["geometry"][0]["two_plane"] = False
     with pytest.raises(UnsupportedDesignFeature, match="two_plane"):
         simulation_from_design(doc)
+
+
+@pytest.mark.parametrize("thin", (False, True))
+def test_terminated_conductor_references_survive_the_design_round_trip(thin):
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2)
+    ground = Box((0., 0., 1.), (8., 8., 1.))
+    strip = Box((0., 3., 4.), (8., 5., 4.))
+    sim.add(ground, material="pec")
+    if thin:
+        sim.add_thin_conductor(strip, sigma_bulk=5.8e7, thickness=.01)
+    else:
+        sim.add(strip, material="pec")
+    sim.add_port((4., 4., 1.), extent=3., terminates=strip)
+    sim.add_coaxial_port((4., 4., 1.), face="bottom", terminates=strip)
+    sim.add_msl_port((4., 4., 1.), width=2., height=3., terminates=[])
+    document = design_to_dict(sim)
+    expected = (("_thin_conductors", 0),) if thin else (("_geometry", 1),)
+    for kind in ("lumped_ports", "coaxial_ports"):
+        assert document["excitations"][kind][0]["terminates"] == [list(ref) for ref in expected]
+    rebuilt = simulation_from_design(document)
+    entry = rebuilt._thin_conductors[0] if thin else rebuilt._geometry[1]
+    for port in (rebuilt._ports[0], rebuilt._coaxial_ports[0]):
+        assert len(port.terminates) == 1 and port.terminates[0].entry is entry
+    assert rebuilt._msl_ports[0].terminates == ()
+    sheets = []
+    rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
+    assert np.asarray(sheets[0].footprint)[:, :, 3].all()
+    assert not np.asarray(sheets[1].footprint)[:2].any()
+    assert not np.asarray(sheets[1].footprint)[-2:].any()
+
+
+@pytest.mark.parametrize("explicit_empty", (False, True))
+def test_msl_default_remains_lazy_through_design_round_trip(explicit_empty):
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2)
+    sim.add_msl_port((4., 4., 1.), width=2., height=3.,
+                     terminates=() if explicit_empty else None)
+    document = design_to_dict(sim)
+    assert document["excitations"]["msl_ports"][0]["terminates"] == (
+        [] if explicit_empty else None)
+    rebuilt = simulation_from_design(document)
+    rebuilt.add(Box((0., 3., 4.), (8., 5., 4.)), material="pec")
+    sheets = []
+    rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
+    assert int(np.asarray(sheets[0].footprint).sum()) == (39 if explicit_empty else 27)
+
+
+def test_design_export_uses_current_entry_positions_for_terminations():
+    sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
+                     boundary="cpml", cpml_layers=2)
+    sim.add(Box((.1, .1, 7.), (.2, .2, 7.)), material="pec")
+    ground = Box((0., 0., 1.), (8., 8., 1.))
+    strip = Box((0., 3., 4.), (8., 5., 4.))
+    sim.add(ground, material="pec")
+    sim.add(strip, material="pec")
+    sim.add_port((4., 4., 1.), extent=3., terminates=strip)
+    # The report's shallow audit copy removes refused geometry this way.
+    import copy
+    audit = copy.copy(sim)
+    audit._geometry = sim._geometry[1:]
+    document = design_to_dict(audit)
+    assert document["excitations"]["lumped_ports"][0]["terminates"] == [["_geometry", 1]]
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._ports[0].terminates[0].entry is rebuilt._geometry[1]
+    sheets = []
+    rebuilt._assemble_materials(rebuilt._build_grid(), pec_sheets=sheets, pec_wires=[])
+    assert int(np.asarray(sheets[0].footprint).sum()) == 169
+    assert int(np.asarray(sheets[1].footprint).sum()) == 27

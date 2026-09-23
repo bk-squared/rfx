@@ -205,10 +205,11 @@ class _EntryRealization:
 
     def __init__(self, *, label, name, shape, kind, cells=None, sheet=None,
                  wire=None, error=None, lo=None, hi=None, declared_mid=None,
-                 tie_planes=None):
+                 tie_planes=None, solved_shape=None):
         self.label = label
         self.name = name
         self.shape = shape
+        self.solved_shape = shape if solved_shape is None else solved_shape
         self.kind = kind
         self.cells = None if cells is None else np.asarray(cells, dtype=bool)
         self.sheet = sheet
@@ -258,8 +259,9 @@ class _EntryRealization:
         that leaves the node range, an emptied volume)."""
         from rfx.geometry.rasterize_grid import (
             GridCoords, cell_centres_from_nodes, pec_volume_cell_mask,
-            sheet_spec_from_shape,
+            sheet_spec_from_shape, interior_lattice_mask,
         )
+        from dataclasses import replace
         nodes = [np.asarray(ctx.coords.x), np.asarray(ctx.coords.y),
                  np.asarray(ctx.coords.z)]
         nodes[axis] = nodes[axis] + np.float64(shift_m)
@@ -269,15 +271,17 @@ class _EntryRealization:
         try:
             if self.kind == "volume":
                 centres = cell_centres_from_nodes(coords, ctx.cell_sizes)
-                cells = np.asarray(pec_volume_cell_mask(self.shape, centres),
-                                   dtype=bool)
+                cells = interior_lattice_mask(
+                    pec_volume_cell_mask(self.solved_shape, centres), ctx.grid,
+                    cell_axes=(True, True, True))
                 if not cells.any():
                     return None
                 edges = _realized_edges_np(cells, (), (), ctx.periodic, shape)
             elif self.kind == "sheet":
                 sp = sheet_spec_from_shape(
-                    self.shape, coords, ctx.cell_sizes,
+                    self.solved_shape, coords, ctx.cell_sizes,
                     normal_axis=int(self.sheet.normal_axis), name=self.name)
+                sp = replace(sp, footprint=interior_lattice_mask(sp.footprint, ctx.grid))
                 edges = _realized_edges_np(None, [sp], (), ctx.periodic, shape)
             else:
                 return None
@@ -429,6 +433,7 @@ class _CampaignStaticsContext:
             _local_cell as _rasterize_local_cell,
         )
         from rfx.materials.thin_conductor import sheet_bounds
+        from rfx.geometry.smoothing import continued_conductor_shape
         sim = self.sim
         out = []
 
@@ -474,8 +479,10 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
+                solved = continued_conductor_shape(sim, self.grid, entry.shape, entry=entry)
                 cells, sheet, wire = classify_pec_entry(
-                    entry.shape, self.coords, self.centres, self.cell_sizes,
+                    solved,
+                    self.coords, self.centres, self.cell_sizes,
                     name=entry.material_name)
             except self._NARROW_EXCS as exc:
                 # A shape that cannot be rasterized is a FINDING, not a
@@ -494,12 +501,12 @@ class _CampaignStaticsContext:
             if cells is not None:
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=entry.shape,
-                    kind="volume", cells=cells, lo=lo, hi=hi))
+                    kind="volume", cells=cells, lo=lo, hi=hi, solved_shape=solved))
             elif sheet is not None:
                 mid, tie = _tie(sheet, lo, hi)
                 out.append(_EntryRealization(
                     label=label, name=entry.material_name, shape=entry.shape,
-                    kind="sheet", sheet=sheet, lo=lo, hi=hi,
+                    kind="sheet", sheet=sheet, lo=lo, hi=hi, solved_shape=solved,
                     declared_mid=mid, tie_planes=tie))
             else:
                 out.append(_EntryRealization(
@@ -514,8 +521,10 @@ class _CampaignStaticsContext:
                     lo=lo, hi=hi))
                 continue
             try:
+                solved = continued_conductor_shape(sim, self.grid, tc.shape, entry=tc)
                 sheet = sheet_spec_from_shape(
-                    tc.shape, self.coords, self.cell_sizes, name=label,
+                    solved,
+                    self.coords, self.cell_sizes, name=label,
                     lane=self.lane or "", refuse_thick=True)
             except ValueError as exc:
                 out.append(_EntryRealization(
@@ -525,13 +534,45 @@ class _CampaignStaticsContext:
             mid, tie = _tie(sheet, lo, hi)
             out.append(_EntryRealization(
                 label=label, name=label, shape=tc.shape, kind="sheet",
-                sheet=sheet, lo=lo, hi=hi, declared_mid=mid, tie_planes=tie))
+                sheet=sheet, lo=lo, hi=hi, declared_mid=mid, tie_planes=tie,
+                solved_shape=solved))
         self._entries = out
         return out
 
     def pec_entries(self) -> list:
         """Realized (not refused, not lossy) conductor entries."""
         return [e for e in self.entry_realizations() if e.is_pec]
+
+    def interior_pec_entries(self) -> list:
+        """Per-entry conductors for comparisons with the user's drawing.
+
+        Absorber continuation is excluded from cell, footprint and edge
+        counts; physical overlap checks retain the full ``pec_entries``.
+        """
+        import copy
+        from dataclasses import replace
+        from rfx.geometry.rasterize_grid import interior_lattice_mask
+
+        if hasattr(self, "_interior_entries"):
+            return self._interior_entries
+        out = []
+        for entry in self.pec_entries():
+            e = copy.copy(entry)
+            e._edges = None
+            if e.cells is not None:
+                e.cells = interior_lattice_mask(
+                    e.cells, self.grid, cell_axes=(True, True, True))
+            if e.sheet is not None:
+                e.sheet = replace(e.sheet, footprint=interior_lattice_mask(
+                    e.sheet.footprint, self.grid))
+            if e.wire is not None:
+                e.wire = replace(e.wire, edges=tuple(
+                    interior_lattice_mask(mask, self.grid,
+                                          cell_axes=tuple(a == c for a in range(3)))
+                    for c, mask in enumerate(e.wire.edges)))
+            out.append(e)
+        self._interior_entries = out
+        return out
 
     def rasterize(self, shape) -> np.ndarray:
         """This shape's PRODUCTION node mask on this lane's grid (dielectric
@@ -555,7 +596,7 @@ class _CampaignStaticsContext:
         carries whether the bounds ARE the shape (``exact``).
         """
         keyed, unkeyed = [], []
-        for e in self.pec_entries():
+        for e in self.interior_pec_entries():
             bounds = _shape_bounds(e.shape)
             if bounds is None:
                 unkeyed.append(e)
@@ -629,7 +670,9 @@ def _port_realized_edges(self, grid):
     all has no interior walls by construction, so the assembly is
     skipped there rather than run to produce an all-False set.
     """
-    if not self._geometry and not getattr(self, "_thin_conductors", None):
+    if (not self._geometry
+            and not getattr(self, "_thin_conductors", None)
+            and not getattr(self, "_pinned_sheets", None)):
         return None
     try:
         realized = self._assemble_realized(grid, nonuniform=False)
@@ -668,15 +711,20 @@ def _campaign_ctx(self):
     the context runs the production assembly, which on a large model
     is the most expensive thing preflight does, and five checks each
     building their own would run it five times. The cache key is the
-    identity of every geometry / thin-conductor entry plus the mesh
-    parameters, so an ``add()`` after a preflight (a new entry object)
-    or a mesh change misses the cache and rebuilds — the staleness a
-    plain instance cache would have had.
+    identity of every geometry / thin-conductor / pinned-sheet entry
+    plus the mesh parameters, so an ``add()`` or ``add_pinned_sheet()``
+    after a preflight (a new entry object) or a mesh change misses the
+    cache and rebuilds — the staleness a plain instance cache would
+    have had.  EVERY declaration surface that reaches the assembly must
+    have a term here: a conductor the solve realizes and preflight's
+    cached context does not is a preflight reporting a different model
+    from the one that runs.
     """
     sim = self
     key = (
         tuple(id(e) for e in sim._geometry),
         tuple(id(tc) for tc in getattr(sim, "_thin_conductors", ())),
+        tuple(id(ps) for ps in getattr(sim, "_pinned_sheets", ())),
         id(sim._dx), id(sim._dx_profile), id(sim._dy_profile),
         id(sim._dz_profile), tuple(sim._domain),
         getattr(sim, "_periodic_axes", None), sim._cpml_layers,

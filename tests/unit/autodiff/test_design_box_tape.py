@@ -569,8 +569,11 @@ def test_fence_anisotropic_and_bloch_paths():
                   use_lorentz=False, use_kerr=False, aniso_eps=None,
                   aniso_inv_eps=None, stencil_order=2, bloch=None,
                   sheet_impedance=None, cell_metas=())
-    # The same arguments without a flag resolve cleanly.
-    assert _resolve_design_box(spec, **common).bounds == spec.bounds
+    # The same arguments without a flag resolve cleanly. The resolved bounds
+    # are the WRITE window, one cell past the declared box on the plus side of
+    # each axis since #1210 -- the design material reaches the E components on
+    # those edges, so the redo has to write them.
+    assert _resolve_design_box(spec, **common).bounds == (10, 14, 9, 13, 8, 12)
     ones = jnp.ones(grid.shape, jnp.float32)
     for flag, value in (("aniso_eps", (ones, ones, ones)),
                         ("aniso_inv_eps", (ones, ones, ones)),
@@ -605,3 +608,43 @@ def test_fence_on_an_axis_the_grid_does_not_absorb_but_the_run_does():
         _resolve_design_box(spec, cpml_axes="xyz", **kw)
     # The grid's own axes: x carries no absorber, the box is accepted.
     _resolve_design_box(spec, cpml_axes="z", **kw)
+
+
+def test_fence_design_box_flush_against_a_periodic_face():
+    """#1210: the window clips where the grid-wide update wraps.
+
+    A design cell on a periodic face reaches E components across the seam —
+    the grid-wide average wraps to the far side, while the box's one-cell
+    window stops at the face. Refused rather than silently different. An
+    INTERIOR box on the same periodic domain is unaffected.
+    """
+    from rfx.grid import Grid
+    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+    from rfx.core.yee import init_materials
+
+    # No absorber: this fence is about the periodic seam, and a CPML grid
+    # would hit the absorber fence first.
+    grid = Grid(freq_max=16e9, domain=(24e-3, 20e-3, 16e-3), dx=2e-3,
+                cpml_layers=0, cpml_axes="")
+    mats = init_materials(tuple(grid.shape))
+    common = dict(grid=grid, materials=mats, dt=grid.dt, use_cpml=False,
+                  use_upml=False, cpml_axes="", use_debye=False,
+                  use_lorentz=False, use_kerr=False, aniso_eps=None,
+                  aniso_inv_eps=None, stencil_order=2, bloch=None,
+                  sheet_impedance=None, cell_metas=())
+    ny = int(grid.shape[1])
+
+    flush = DesignBoxSpec(bounds=(4, 7, 0, 3, 4, 7),
+                          eps_r=jnp.ones((3, 3, 3), jnp.float32))
+    with pytest.raises(NotImplementedError, match="PERIODIC y face"):
+        _resolve_design_box(flush, periodic=(False, True, False), **common)
+    # the hi face too
+    flush_hi = DesignBoxSpec(bounds=(4, 7, ny - 3, ny, 4, 7),
+                             eps_r=jnp.ones((3, 3, 3), jnp.float32))
+    with pytest.raises(NotImplementedError, match="PERIODIC y face"):
+        _resolve_design_box(flush_hi, periodic=(False, True, False), **common)
+    # interior on the same periodic axis resolves
+    inner = DesignBoxSpec(bounds=(4, 7, 4, 7, 4, 7),
+                          eps_r=jnp.ones((3, 3, 3), jnp.float32))
+    assert _resolve_design_box(
+        inner, periodic=(False, True, False), **common).bounds == (4, 8, 4, 8, 4, 8)

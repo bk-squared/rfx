@@ -1,0 +1,21 @@
+[
+  {
+    "rig": "msl",
+    "port_count": "two_port",
+    "S_bit_identical": true,
+    "max_abs_difference": 0.0
+  },
+  {
+    "rig": "msl",
+    "port_count": "one_port",
+    "S_bit_identical": true,
+    "max_abs_difference": 0.0
+  },
+  {
+    "rig": "waveguide",
+    "complex_values_equal_to_retained_JSON": false,
+    "max_abs_difference": 0.0004220480272933733,
+    "max_abs_amplitude_difference_db": 0.00012875691176336473,
+    "max_abs_phase_difference_deg": 0.0012085462142178234
+  }
+]

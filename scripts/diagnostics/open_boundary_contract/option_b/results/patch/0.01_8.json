@@ -1,0 +1,491 @@
+{
+  "rig": "patch",
+  "scale": 0.01,
+  "layers": 8,
+  "commit": "e7f7e02704fd46ea7e21f127b19fc81cb66d6148",
+  "run_id": "369367263411",
+  "dtype": "float32",
+  "devices": [
+    "cuda:0"
+  ],
+  "driver_sha256": "471ccdf16e51e9b76bbcbffbab2a0117e7df433c6f64e77869afce55b5192cb1",
+  "alpha_max_S_per_m": 0.0005,
+  "f_alpha_formula_Hz": 8987551.792261172,
+  "measurements": {
+    "num_periods": 150,
+    "n_cells_per_h": 3,
+    "pad_h": 10,
+    "grid": {
+      "shape": [
+        191,
+        146,
+        65
+      ],
+      "dx_m": 0.00026233333333333333,
+      "dt_s": 5.001581407736339e-13,
+      "pads": {
+        "x_lo": 8,
+        "x_hi": 8,
+        "y_lo": 8,
+        "y_hi": 8,
+        "z_lo": 8,
+        "z_hi": 8
+      },
+      "axes": {
+        "x": {
+          "nodes": 191,
+          "interior_cells": 174,
+          "face_lo_m": 0.0,
+          "face_hi_m": 0.045646,
+          "allocated_lo_m": -0.0020986666666666666,
+          "allocated_hi_m": 0.047744666666666664
+        },
+        "y": {
+          "nodes": 146,
+          "interior_cells": 129,
+          "face_lo_m": 0.0,
+          "face_hi_m": 0.033841,
+          "allocated_lo_m": -0.0020986666666666666,
+          "allocated_hi_m": 0.03593966666666667
+        },
+        "z": {
+          "nodes": 65,
+          "interior_cells": 48,
+          "face_lo_m": 0.0,
+          "face_hi_m": 0.012591999999999999,
+          "allocated_lo_m": -0.0020986666666666666,
+          "allocated_hi_m": 0.014690666666666666
+        }
+      }
+    },
+    "preflight_text": "  [PREFLIGHT] 'pec' z-extent 262.3\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.\n  [PREFLIGHT] 'pec' z-extent 262.3\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.\n  [PREFLIGHT] Material 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -26.23\u00b5m is 26.23\u00b5m past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 26.23\u00b5m to 26.23\u00b5m); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).\n  [PREFLIGHT] all dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n  [PREFLIGHT] 2 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along z [z: walls at 3.935mm and 4.197mm (drawn 3.909mm -> 4.171mm)]; geometry[2] 'pec' (Box) is one cell thick along z [z: walls at 4.984mm and 5.247mm (drawn 4.958mm -> 5.22mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 2 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.\n  [PREFLIGHT] 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (volume) z: extent 262.3\u00b5m, worst face residual 26.23\u00b5m (10.00% of the extent); geometry[2] 'pec' (volume) z: extent 262.3\u00b5m, worst face residual 26.23\u00b5m (10.00% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 6 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.\n'pec' z-extent 262.3\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.\n'pec' z-extent 262.3\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.\nMaterial 'pec' (geometry entry #0, Box) extends into CPML region along x-axis: bbox lo face at -26.23\u00b5m is 26.23\u00b5m past the x-lo absorber boundary at 0mm. 2 geometry entries cross the x-axis absorber (worst shown; overshoot 26.23\u00b5m to 26.23\u00b5m); per-entry index, face and overshoot in this finding's loc. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).\nall dielectric(s) ['ro4003c'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n2 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along z [z: walls at 3.935mm and 4.197mm (drawn 3.909mm -> 4.171mm)]; geometry[2] 'pec' (Box) is one cell thick along z [z: walls at 4.984mm and 5.247mm (drawn 4.958mm -> 5.22mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 2 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.\n2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (volume) z: extent 262.3\u00b5m, worst face residual 26.23\u00b5m (10.00% of the extent); geometry[2] 'pec' (volume) z: extent 262.3\u00b5m, worst face residual 26.23\u00b5m (10.00% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 6 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 0 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.\n",
+    "port_apertures": [],
+    "source": "committed interior Ez dipole",
+    "settling_db": -45.60456218311069,
+    "worst_rate_per_step": -0.0002705983905062058,
+    "rates_per_step": [
+      -0.0002705983905062058,
+      -0.00027318172963054207,
+      -0.00027832696361231355,
+      -0.0002713014917471374
+    ],
+    "status": "complete",
+    "solves": [
+      {
+        "n_steps": 19994,
+        "source_end_step": 328,
+        "received_grid": {
+          "shape": [
+            191,
+            146,
+            65
+          ],
+          "dx_m": 0.00026233333333333333,
+          "dt_s": 5.001581407736339e-13,
+          "pads": {
+            "x_lo": 8,
+            "x_hi": 8,
+            "y_lo": 8,
+            "y_hi": 8,
+            "z_lo": 8,
+            "z_hi": 8
+          },
+          "axes": {
+            "x": {
+              "nodes": 191,
+              "interior_cells": 174,
+              "face_lo_m": 0.0,
+              "face_hi_m": 0.045646,
+              "allocated_lo_m": -0.0020986666666666666,
+              "allocated_hi_m": 0.047744666666666664
+            },
+            "y": {
+              "nodes": 146,
+              "interior_cells": 129,
+              "face_lo_m": 0.0,
+              "face_hi_m": 0.033841,
+              "allocated_lo_m": -0.0020986666666666666,
+              "allocated_hi_m": 0.03593966666666667
+            },
+            "z": {
+              "nodes": 65,
+              "interior_cells": 48,
+              "face_lo_m": 0.0,
+              "face_hi_m": 0.012591999999999999,
+              "allocated_lo_m": -0.0020986666666666666,
+              "allocated_hi_m": 0.014690666666666666
+            }
+          }
+        },
+        "field_dtype": "float32",
+        "cpml": {
+          "x_lo_sigma": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 87.3701171875,
+            "finite": true,
+            "sha256": "edba8b100fe65c60602dc1944d0c434cdf5b0c6e0be759308d935343d57b5c7f"
+          },
+          "x_lo_kappa": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "4f05df05f8da9356bd66425351f166a5f7305b7c805e6900d9ec0f50790c9886"
+          },
+          "x_lo_alpha": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0005000000237487257,
+            "finite": true,
+            "sha256": "e30ff41bfaf839e546a92b5fd1b2e2739edcdc0dd086136b2e619dd3d5601d1a"
+          },
+          "x_lo_b": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.007187653332948685,
+            "max": 0.9999717473983765,
+            "finite": true,
+            "sha256": "7ac47dee996a080fac6ad8a76df559db9f9195d30a0873b47010148dc659e4b1"
+          },
+          "x_lo_c": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": -0.9928123354911804,
+            "max": -0.0,
+            "finite": true,
+            "sha256": "ac9c7b32491eb0a019fdbbac7e4b12ec03065626923e222bd3ef5c6c9dca5823"
+          },
+          "x_hi_sigma": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 87.3701171875,
+            "finite": true,
+            "sha256": "0f83fcbe718cb2e00f60e9d18dfb10f369f4502de0813e1ff4b1f8938bff4cb8"
+          },
+          "x_hi_kappa": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "4f05df05f8da9356bd66425351f166a5f7305b7c805e6900d9ec0f50790c9886"
+          },
+          "x_hi_alpha": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0005000000237487257,
+            "finite": true,
+            "sha256": "9b33794a3a38c3ae69f9cd4ee46d96a8a99e8f4bc76e15fa7b7199d745658fc6"
+          },
+          "x_hi_b": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.007187653332948685,
+            "max": 0.9999717473983765,
+            "finite": true,
+            "sha256": "dda37f6cbd3371a5afa2807af9d9e76e14daab7a198263a52c5dcb48c978a28d"
+          },
+          "x_hi_c": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": -0.9928123354911804,
+            "max": -0.0,
+            "finite": true,
+            "sha256": "04ae827ae90e17f54ac0a54ceed9f8a8418d1ba98a949786a31582dee6d183fa"
+          },
+          "y_lo_sigma": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 87.3701171875,
+            "finite": true,
+            "sha256": "edba8b100fe65c60602dc1944d0c434cdf5b0c6e0be759308d935343d57b5c7f"
+          },
+          "y_lo_kappa": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "4f05df05f8da9356bd66425351f166a5f7305b7c805e6900d9ec0f50790c9886"
+          },
+          "y_lo_alpha": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0005000000237487257,
+            "finite": true,
+            "sha256": "e30ff41bfaf839e546a92b5fd1b2e2739edcdc0dd086136b2e619dd3d5601d1a"
+          },
+          "y_lo_b": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.007187653332948685,
+            "max": 0.9999717473983765,
+            "finite": true,
+            "sha256": "7ac47dee996a080fac6ad8a76df559db9f9195d30a0873b47010148dc659e4b1"
+          },
+          "y_lo_c": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": -0.9928123354911804,
+            "max": -0.0,
+            "finite": true,
+            "sha256": "ac9c7b32491eb0a019fdbbac7e4b12ec03065626923e222bd3ef5c6c9dca5823"
+          },
+          "y_hi_sigma": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 87.3701171875,
+            "finite": true,
+            "sha256": "0f83fcbe718cb2e00f60e9d18dfb10f369f4502de0813e1ff4b1f8938bff4cb8"
+          },
+          "y_hi_kappa": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "4f05df05f8da9356bd66425351f166a5f7305b7c805e6900d9ec0f50790c9886"
+          },
+          "y_hi_alpha": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0005000000237487257,
+            "finite": true,
+            "sha256": "9b33794a3a38c3ae69f9cd4ee46d96a8a99e8f4bc76e15fa7b7199d745658fc6"
+          },
+          "y_hi_b": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.007187653332948685,
+            "max": 0.9999717473983765,
+            "finite": true,
+            "sha256": "dda37f6cbd3371a5afa2807af9d9e76e14daab7a198263a52c5dcb48c978a28d"
+          },
+          "y_hi_c": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": -0.9928123354911804,
+            "max": -0.0,
+            "finite": true,
+            "sha256": "04ae827ae90e17f54ac0a54ceed9f8a8418d1ba98a949786a31582dee6d183fa"
+          },
+          "z_lo_sigma": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 87.3701171875,
+            "finite": true,
+            "sha256": "edba8b100fe65c60602dc1944d0c434cdf5b0c6e0be759308d935343d57b5c7f"
+          },
+          "z_lo_kappa": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "4f05df05f8da9356bd66425351f166a5f7305b7c805e6900d9ec0f50790c9886"
+          },
+          "z_lo_alpha": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0005000000237487257,
+            "finite": true,
+            "sha256": "e30ff41bfaf839e546a92b5fd1b2e2739edcdc0dd086136b2e619dd3d5601d1a"
+          },
+          "z_lo_b": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.007187653332948685,
+            "max": 0.9999717473983765,
+            "finite": true,
+            "sha256": "7ac47dee996a080fac6ad8a76df559db9f9195d30a0873b47010148dc659e4b1"
+          },
+          "z_lo_c": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": -0.9928123354911804,
+            "max": -0.0,
+            "finite": true,
+            "sha256": "ac9c7b32491eb0a019fdbbac7e4b12ec03065626923e222bd3ef5c6c9dca5823"
+          },
+          "z_hi_sigma": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 87.3701171875,
+            "finite": true,
+            "sha256": "0f83fcbe718cb2e00f60e9d18dfb10f369f4502de0813e1ff4b1f8938bff4cb8"
+          },
+          "z_hi_kappa": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 1.0,
+            "max": 1.0,
+            "finite": true,
+            "sha256": "4f05df05f8da9356bd66425351f166a5f7305b7c805e6900d9ec0f50790c9886"
+          },
+          "z_hi_alpha": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.0,
+            "max": 0.0005000000237487257,
+            "finite": true,
+            "sha256": "9b33794a3a38c3ae69f9cd4ee46d96a8a99e8f4bc76e15fa7b7199d745658fc6"
+          },
+          "z_hi_b": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": 0.007187653332948685,
+            "max": 0.9999717473983765,
+            "finite": true,
+            "sha256": "dda37f6cbd3371a5afa2807af9d9e76e14daab7a198263a52c5dcb48c978a28d"
+          },
+          "z_hi_c": {
+            "shape": [
+              8
+            ],
+            "dtype": "float32",
+            "min": -0.9928123354911804,
+            "max": -0.0,
+            "finite": true,
+            "sha256": "04ae827ae90e17f54ac0a54ceed9f8a8418d1ba98a949786a31582dee6d183fa"
+          }
+        },
+        "pec_edges": {
+          "x": {
+            "total": 58412,
+            "x_lo": 2336,
+            "x_hi": 2336
+          },
+          "y": {
+            "total": 58424,
+            "x_lo": 2336,
+            "x_hi": 2336
+          },
+          "z": {
+            "total": 29246,
+            "x_lo": 1168,
+            "x_hi": 1168
+          }
+        },
+        "realized_source_apertures": [
+          [
+            96,
+            62,
+            25,
+            "ez"
+          ]
+        ],
+        "realized_waveguide_apertures": [],
+        "energy_witness": {
+          "definition": "0.5*dx^3*sum_interior(eps0*eps_r*sum(E_i^2)+mu0*mu_r*sum(H_i^2)); same-step Yee samples",
+          "source_end_definition": "last source-table sample > 1e-6 of that source peak, then one step",
+          "post_source_start_step": 328,
+          "post_source_start_s": 1.6405187017375192e-10,
+          "end_energy_J": 1.1807827955603544e-26,
+          "post_source_peak_energy_J": 6.387234841006067e-22,
+          "end_vs_post_peak_db": -47.33142867566925,
+          "last_5pct_max_energy_J": 1.8293038820357905e-26,
+          "last_5pct_vs_post_peak_db": -45.430270282499805,
+          "status": "below -40 dB"
+        },
+        "wall_s": 10.75158979499247
+      }
+    ]
+  },
+  "status": "complete",
+  "wall_s": 11.904314568004338,
+  "postprocessed_witnesses": [
+    {
+      "rig": "patch",
+      "scale": 0.01,
+      "N": 8,
+      "drive": "solve/0",
+      "steps": 19994,
+      "dt_s": 5.001581407736339e-13,
+      "end_energy_J": 1.1807827955603544e-26,
+      "probe_settling_db": -45.60456218311069,
+      "settling_signal_kind": "field probes",
+      "witness_file": "raw/patch/0.01_8/witness_00.npz",
+      "definition": "0.5*dx^3*sum_interior(eps0*eps_r*sum(E_i^2)+mu0*mu_r*sum(H_i^2)); same-step Yee samples",
+      "source_end_definition": "last source-table sample > 1e-6 of that source peak, then one step",
+      "post_source_start_step": 328,
+      "post_source_start_s": 1.6405187017375192e-10,
+      "post_source_peak_energy_J": 6.387234841006067e-22,
+      "end_vs_post_peak_db": -47.33142867566925,
+      "last_5pct_max_energy_J": 1.8293038820357905e-26,
+      "last_5pct_vs_post_peak_db": -45.430270282499805,
+      "status": "below -40 dB"
+    }
+  ],
+  "postprocessed_probe_settling_definition": "20 log10(last-5%-maximum / full-record maximum), worst probe; pinned patch oracle lines 278\u2013285"
+}

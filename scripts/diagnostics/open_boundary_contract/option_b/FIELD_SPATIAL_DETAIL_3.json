@@ -1,0 +1,202 @@
+[
+  {
+    "field_dump": "raw_3/diagnostic_msl/one_port/fields_end_00.npz",
+    "component_energy_J": {
+      "ex": 7.270201587260961e-29,
+      "ey": 1.2116917907144276e-26,
+      "ez": 4.398388906721558e-25,
+      "hx": 2.7858421621454072e-24,
+      "hy": 2.9860037967946497e-24,
+      "hz": 7.820480989515971e-26
+    },
+    "interior_component_energy_J": {
+      "ex": 5.425056398176053e-29,
+      "ey": 9.540237903044524e-27,
+      "ez": 3.9628763385457645e-25,
+      "hx": 2.4330530089644835e-24,
+      "hy": 2.4712892123476326e-24,
+      "hz": 5.690063794719474e-26
+    },
+    "interior_longitudinal_energy_quantiles_m": {
+      "2.5%": 0.00015000000000000001,
+      "50%": 0.00855,
+      "97.5%": 0.013900000000000001
+    },
+    "interior_energy_near_port_x_planes": {
+      "0": {
+        "half_width_m": 0.0,
+        "interior_fraction": 0.0037857847704728643
+      },
+      "1": {
+        "half_width_m": 5.000000000000002e-05,
+        "interior_fraction": 0.011347509716676342
+      },
+      "2": {
+        "half_width_m": 0.00010000000000000005,
+        "interior_fraction": 0.018906326411135703
+      },
+      "4": {
+        "half_width_m": 0.0002000000000000001,
+        "interior_fraction": 0.03403836747313272
+      },
+      "8": {
+        "half_width_m": 0.0004000000000000002,
+        "interior_fraction": 0.06447335835871391
+      },
+      "16": {
+        "half_width_m": 0.0008000000000000004,
+        "interior_fraction": 0.12679608476965812
+      }
+    }
+  },
+  {
+    "field_dump": "raw_3/diagnostic_msl/two_port/fields_end_00.npz",
+    "component_energy_J": {
+      "ex": 8.537762228270797e-29,
+      "ey": 6.850511375386163e-27,
+      "ez": 2.5620986906280644e-25,
+      "hx": 5.26248445247435e-24,
+      "hy": 4.171802255241384e-24,
+      "hz": 6.923936389136715e-26
+    },
+    "interior_component_energy_J": {
+      "ex": 6.202975387303468e-29,
+      "ey": 5.3205927736781174e-27,
+      "ez": 2.3052882054484285e-25,
+      "hx": 4.59292412745855e-24,
+      "hy": 3.461396494296731e-24,
+      "hz": 4.828545160134416e-26
+    },
+    "interior_longitudinal_energy_quantiles_m": {
+      "2.5%": 0.0001,
+      "50%": 0.00795,
+      "97.5%": 0.013900000000000001
+    },
+    "interior_energy_near_port_x_planes": {
+      "0": {
+        "half_width_m": 0.0,
+        "interior_fraction": 0.008970028001388252
+      },
+      "1": {
+        "half_width_m": 5.000000000000002e-05,
+        "interior_fraction": 0.02695470759322793
+      },
+      "2": {
+        "half_width_m": 0.00010000000000000005,
+        "interior_fraction": 0.04494958159563579
+      },
+      "4": {
+        "half_width_m": 0.0002000000000000001,
+        "interior_fraction": 0.08101586806295369
+      },
+      "8": {
+        "half_width_m": 0.0004000000000000002,
+        "interior_fraction": 0.15373708552943158
+      },
+      "16": {
+        "half_width_m": 0.0008000000000000004,
+        "interior_fraction": 0.3035401805234777
+      }
+    }
+  },
+  {
+    "field_dump": "raw_3/diagnostic_msl/two_port/fields_end_01.npz",
+    "component_energy_J": {
+      "ex": 9.450040818450018e-29,
+      "ey": 6.636729235517804e-27,
+      "ez": 2.694228131720175e-25,
+      "hx": 6.641795608148081e-24,
+      "hy": 2.2433544556285884e-24,
+      "hz": 1.1678974531185029e-25
+    },
+    "interior_component_energy_J": {
+      "ex": 7.010260037696833e-29,
+      "ey": 5.131012956041456e-27,
+      "ez": 2.430651252467209e-25,
+      "hx": 5.679490858010737e-24,
+      "hy": 1.7695928632880755e-24,
+      "hz": 8.451403127343026e-26
+    },
+    "interior_longitudinal_energy_quantiles_m": {
+      "2.5%": 5e-05,
+      "50%": 0.00675,
+      "97.5%": 0.01345
+    },
+    "interior_energy_near_port_x_planes": {
+      "0": {
+        "half_width_m": 0.0,
+        "interior_fraction": 0.007282464233645765
+      },
+      "1": {
+        "half_width_m": 5.000000000000002e-05,
+        "interior_fraction": 0.021853370615685958
+      },
+      "2": {
+        "half_width_m": 0.00010000000000000005,
+        "interior_fraction": 0.03643977039317283
+      },
+      "4": {
+        "half_width_m": 0.0002000000000000001,
+        "interior_fraction": 0.06572380034796509
+      },
+      "8": {
+        "half_width_m": 0.0004000000000000002,
+        "interior_fraction": 0.1251249819581457
+      },
+      "16": {
+        "half_width_m": 0.0008000000000000004,
+        "interior_fraction": 0.2500281008086009
+      }
+    }
+  },
+  {
+    "field_dump": "raw_3/diagnostic_waveguide/fields_end_00.npz",
+    "component_energy_J": {
+      "ex": 3.035151219939211e-26,
+      "ey": 2.879010504258589e-26,
+      "ez": 8.01034404250287e-17,
+      "hx": 1.5631929941532982e-16,
+      "hy": 1.5093804452659722e-16,
+      "hz": 1.8535272814328147e-26
+    },
+    "interior_component_energy_J": {
+      "ex": 3.0227984391991116e-26,
+      "ey": 2.8552863161134405e-26,
+      "ez": 7.90653339710529e-17,
+      "hx": 1.5354901070406376e-16,
+      "hy": 1.5073047459812662e-16,
+      "hz": 1.825165130858987e-26
+    },
+    "interior_longitudinal_energy_quantiles_m": {
+      "2.5%": 0.000762,
+      "50%": 0.024384,
+      "97.5%": 0.091948
+    },
+    "interior_energy_near_port_x_planes": {
+      "0": {
+        "half_width_m": 0.0,
+        "interior_fraction": 0.005258683712434877
+      },
+      "1": {
+        "half_width_m": 0.000254,
+        "interior_fraction": 0.015775230385286824
+      },
+      "2": {
+        "half_width_m": 0.000508,
+        "interior_fraction": 0.026295617821652895
+      },
+      "4": {
+        "half_width_m": 0.001016,
+        "interior_fraction": 0.04735934796965782
+      },
+      "8": {
+        "half_width_m": 0.002032,
+        "interior_fraction": 0.0896462606299847
+      },
+      "16": {
+        "half_width_m": 0.004064,
+        "interior_fraction": 0.1752406564087178
+      }
+    }
+  }
+]

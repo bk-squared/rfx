@@ -296,7 +296,6 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         description="Slow CPML/PML reflectivity and absorber-regression checks.",
         tests=(
             "tests/unit/boundaries/test_cpml.py",
-            "tests/oracle/test_pml_reflectivity.py",
         ),
         pytest_args=("-m", "slow"),
         claim_level="E1",

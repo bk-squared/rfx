@@ -11,7 +11,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import GaussianPulse, Simulation
+from rfx import Box, DebyePole, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.runners import distributed, distributed_v2
 
@@ -32,7 +32,7 @@ def _devices():
 
 
 def _build(*, entry="api", periodic="", boundary="pec", port=None,
-           flux=False, ntff=False):
+           flux=False, ntff=False, kerr=False, debye=False):
     """A PEC box has a source at x=6 mm and Ez probes at x=12 and 22 mm."""
     # v1 requires nx divisible by two; v2 pads the 25-cell x grid.
     domain_x = 23e-3 if entry == "v1" else 24e-3
@@ -55,6 +55,13 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
         if ntff:
             sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 8e-3, 8e-3),
                              n_freqs=3)
+        if kerr:
+            sim.add_material("kerr", eps_r=2.0, chi3=1e-2)
+            sim.add(Box((8e-3, 3e-3, 3e-3), (16e-3, 9e-3, 9e-3)), material="kerr")
+        if debye:
+            sim.add_material("debye", eps_r=2.0,
+                             debye_poles=[DebyePole(delta_eps=1.5, tau=1e-11)])
+            sim.add(Box((8e-3, 3e-3, 3e-3), (16e-3, 9e-3, 9e-3)), material="debye")
     return sim
 
 
@@ -138,6 +145,30 @@ def test_explicit_bloch_phase_is_refused():
         _assert_refused(_build(entry=entry), entry, "Bloch", bloch=phase)
     sim._bloch = phase
     _assert_refused(sim, "api", "Bloch")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+def test_kerr_material_is_refused(entry):
+    """A chi3 block between source and probe: this lane drops chi3 (linear physics)."""
+    sim = _build(entry=entry, kerr=True)
+    _assert_refused(sim, entry, "Kerr chi3", "'kerr'", "as linear")
+
+
+@pytest.mark.parametrize("entry", ("api", "v2"))
+def test_lumped_port_with_debye_block_matches_native(entry):
+    """A 50 ohm port drives a box with a Debye block between port and probes.
+
+    The staged dispersion coefficients must come from the materials the run
+    actually uses (x-padded, with the port's resistive sigma folded in); a
+    staging fed the unpadded or port-less materials moves this trace by more
+    than the probe's own peak.
+    """
+    sim = _build(entry=entry, port={"impedance": 50.0}, debye=True)
+    native = np.asarray(sim.run(n_steps=N_STEPS).time_series)
+    multi = np.asarray(_run(sim, entry).time_series)
+    assert np.max(np.abs(native)) > 0
+    relative = np.max(np.abs(native - multi)) / np.max(np.abs(native))
+    assert relative < 1e-4, f"{entry}: relative Ez difference {relative:.9e}"
 
 
 @pytest.mark.parametrize("source", ("point", "lumped_port"))

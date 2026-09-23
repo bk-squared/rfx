@@ -1,0 +1,21 @@
+{
+  "source": "retained time traces only; no variant re-run",
+  "readings": {
+    "400": {
+      "window_end_ns": 1.9018084323571784,
+      "peak_time_ratio_db": -15.213595589602631,
+      "DFT_at_2GHz_db": -19.976231527571,
+      "peak_reference": 0.7549434900283813,
+      "peak_difference": 0.13098895124858245,
+      "difference_peak_ns": 0.6530018928143696
+    },
+    "4096": {
+      "window_end_ns": 19.518560226823674,
+      "peak_time_ratio_db": -15.213595589602631,
+      "DFT_at_2GHz_db": -19.98851492901119,
+      "peak_reference": 0.7549434900283813,
+      "peak_difference": 0.13098895124858245,
+      "difference_peak_ns": 0.6530018928143696
+    }
+  }
+}

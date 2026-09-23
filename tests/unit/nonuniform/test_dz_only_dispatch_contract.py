@@ -244,7 +244,7 @@ def test_mixed_dz_only_raises():
                      height=_H_SUB, direction="-x", impedance=50.0,
                      waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5))
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez",
-                 impedance=50.0, extent=_H_SUB)
+                 impedance=50.0, extent=_H_SUB, terminates=1)
     with pytest.raises(NotImplementedError, match="uniform mesh"):
         sim.compute_mixed_s_matrix(skip_preflight=True)
 

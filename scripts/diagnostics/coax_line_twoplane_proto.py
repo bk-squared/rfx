@@ -123,8 +123,12 @@ def run_dut(dut, n_steps=2000, field_scale=1e4, waveform=None, cpml_axes="z", do
         materials = stamp_matched(grid, materials, z_dut, Z0_an, shell_inner)
     elif dut == "open":
         pass  # pin already ends; leave annulus open (handled by not stamping)
+    # This prototype stamps its own shell the old way, with the inner face one
+    # cell inside B_OUT, so the source is told THAT radius. Left to its default
+    # the builder would inject out to the declared B_OUT, which here is metal.
     spec = build_coaxial_tem_plane_source_specs(grid=grid, port=port, n_steps=n_steps,
-                                                field_scale=field_scale, magnetic_ratio=1.0)
+                                                field_scale=field_scale, magnetic_ratio=1.0,
+                                                shell_inner_radius=shell_inner)
     probes_z = [z_dut + 8 + 4 * k for k in range(12)]   # dense, equally spaced (Δ=4)
     probes_z = [z for z in probes_z if z < z_src - 4]    # keep clear of source near-field
     planes = []

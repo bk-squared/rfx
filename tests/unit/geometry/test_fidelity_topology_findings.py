@@ -285,9 +285,15 @@ def test_fixture_copies_differ_only_by_the_junction_hole():
     # within its own radius; the ground adds nothing there on the open copy
     assert int((m_open & (r <= PIN_R + 1e-9)).sum()) == 13
     assert int((m_short & (r <= PIN_R + 1e-9)).sum()) == 13
-    # and the whole difference between the copies is the hole, minus the
-    # 21 nodes the pin holds inside it
+    # In the declared-domain interior the difference is the hole, minus
+    # the 21 nodes the pin holds inside it. Absorber continuation is outside
+    # this drawn-geometry comparison.
     diff = m_short ^ m_open
+    grid = _junction_sim(open_annulus=False)._build_grid()
+    interior = np.zeros_like(diff)
+    interior[grid.pad_x_lo:grid.shape[0] - grid.pad_x_hi,
+             grid.pad_y_lo:grid.shape[1] - grid.pad_y_hi] = True
+    diff &= interior
     assert int(diff.sum()) == 28
     assert not bool((diff & (r > CLEAR_R + 1e-9)).any())
 

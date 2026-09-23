@@ -230,7 +230,49 @@ def _add_feed(sim, y_c, x=2e-3, extent=None):
     # sheet plane, which is galvanic contact (#929: a feed that reaches a
     # conductor is not "inside PEC").
     sim.add_port(position=(x, y_c, 0.0), component="ez",
-                 impedance=50.0, extent=_H_SUB if extent is None else extent)
+                 impedance=50.0, extent=_H_SUB if extent is None else extent, terminates=sim._geometry[-1].shape)
+
+
+def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
+    """The mixed lane's LUMPED branch, which nothing else in this file reaches.
+
+    Every other feed here carries ``extent=``, so the lane runs in wire mode
+    and `rfx/sparams/mixed.py`'s lumped branch — the one that reads the
+    pre-injection drive reference out of the three-channel accumulator — is
+    never entered. This is the only test that enters it.
+
+    The lane keeps the pre-decision lumped driven diagonal on purpose:
+    correcting it is cross-family work the PI deferred on 2026-09-15. So this
+    does not gate the VALUE against physics, which would freeze that decision
+    as if it were one. It gates two things that must not drift silently:
+
+    * the branch runs at all (``port_families == ("lumped", "msl")``), and
+    * the lane announces the convention it is on.
+
+    Measured before/after the 2026-09-21 driven-diagonal change, on this
+    fixture: ``max |dS| = 1.8e-05``, ``max |d|S|| = 1.7e-07``. The committed
+    wire-feed fixtures are bit-identical (``max |dS| = 0.0``) because the
+    lumped branch never fires on them.
+    """
+    from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
+
+    sim, y_c = _base_sim()
+    # No ``extent`` — a one-cell lumped port, which is what selects the branch.
+    sim.add_port(position=(2e-3, y_c, 0.0), component="ez", impedance=50.0)
+    _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
+
+    with pytest.warns(PreDecisionLumpedDiagonalWarning):
+        res = sim.compute_mixed_s_matrix(
+            freqs=np.linspace(1e9, 2e9, 3), num_periods=2.0,
+            skip_preflight=True, magnitude_channel="wave",
+        )
+
+    assert res.port_families == ("lumped", "msl"), (
+        "this fixture no longer reaches the lumped branch, so it no longer "
+        "covers what it was written for")
+    S = np.asarray(res.S)
+    assert S.shape == (2, 2, 3)
+    assert np.all(np.isfinite(S))
 
 
 def test_guard_requires_msl_port():

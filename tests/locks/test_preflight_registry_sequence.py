@@ -217,6 +217,8 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     # rather than guessing.
     ("_validate_cfg_conductor_in_thin_absorber",
      ("warn", "dx", "absorber_label")),
+    # #801: one absorber diagnostic for unnamed exact conductor contacts.
+    ("_validate_cfg_port_conductor_continues", ("warn",)),
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.

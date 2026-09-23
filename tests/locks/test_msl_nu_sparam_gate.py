@@ -192,11 +192,26 @@ def test_the_nu_board_realizes_the_same_foils_and_cavity_as_the_uniform_twin():
 
 
 def _footprint_extent_m(grid, sheet):
-    """The realized footprint's (x0, x1, y0, y1) in metres, from the node line."""
+    """The realized footprint's (x0, x1, y0, y1) in metres, from the node line.
+
+    Read inside the DECLARED domain, 0 .. DOM_X by 0 .. DOM_Y. The ground foil
+    is drawn to all four side faces, so it follows each lane's realized face
+    and continues through the absorber to the end of the array (#801). The
+    uniform lane realizes DOM_Y = 18.130 mm (92.03 cells) as 93 cells and the
+    NU lane as 92 (the sizing difference the caller already names), so beyond
+    the declared face the two arrays are not the same board and are not
+    compared.
+    """
     from tests._realized_geometry import _node_line
 
-    occ = np.argwhere(np.asarray(sheet.footprint, dtype=bool))
+    fp = np.asarray(sheet.footprint, dtype=bool)
     xs, ys = _node_line(grid, 0), _node_line(grid, 1)
+    tol = 1e-9
+    inside = (((np.asarray(xs) >= -tol) & (np.asarray(xs) <= DOM_X + tol))[:, None]
+              & ((np.asarray(ys) >= -tol) & (np.asarray(ys) <= DOM_Y + tol))[None, :])
+    if fp.ndim == 3:
+        inside = inside[:, :, None]
+    occ = np.argwhere(fp & inside)
     return (float(xs[occ[:, 0].min()]), float(xs[occ[:, 0].max()]),
             float(ys[occ[:, 1].min()]), float(ys[occ[:, 1].max()]))
 

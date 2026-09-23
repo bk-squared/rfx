@@ -317,6 +317,28 @@ class Simulation(
     mode : str
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
+    dt : float or None
+        Concrete time step (s) for the NON-UNIFORM lane, used instead of
+        the Courant step derived from the smallest cell. ``None`` (the
+        default) keeps the derived step and is byte-identical to before;
+        passing it without any of ``dz_profile`` / ``dx_profile`` /
+        ``dy_profile`` is refused, because the uniform lane derives its own
+        step in ``Grid.courant_dt``.
+
+        Why it exists: the derived step is a function of ``min(cell)``, so a
+        mesh that is a design variable moves ``dt`` as it deforms and every
+        observable read off the run carries the step change alongside the
+        geometry change. One pinned step makes a deformation sweep one board
+        at one step. A step above the Courant limit of the REALIZED cells is
+        refused, never clipped.
+    dt_min_cell : float or None
+        Smallest cell size (m) the caller's TRACED axes reach anywhere in
+        the family they will run. Required with ``dt`` when a profile is a
+        JAX tracer, because a tracer carries no host cell size for the
+        limit to be measured against at build time. Concrete axes are always
+        measured from their realized profile; a traced axis is measured
+        against this declared floor when the run builds its mesh, and the
+        run is refused if the realized cells fall below it.
     precision : str
         ``"float32"`` (default), ``"mixed"``, or ``"float64"``.  When
         ``"mixed"``, field arrays (E, H) use float16 for ~2x memory
@@ -412,6 +434,8 @@ class Simulation(
         dz_profile: np.ndarray | None = None,
         dx_profile: np.ndarray | None = None,
         dy_profile: np.ndarray | None = None,
+        dt: float | None = None,
+        dt_min_cell: float | None = None,
         precision: str = "float32",
         solver: str = "yee",
         adi_cfl_factor: float = 5.0,
@@ -610,6 +634,23 @@ class Simulation(
         self._dz_profile = dz_profile
         self._dx_profile = dx_profile
         self._dy_profile = dy_profile
+        # Pinned time step (non-uniform lane only). The Courant step is a
+        # function of the smallest cell, so a mesh that is a design variable
+        # moves the step with the deformation and every observable then
+        # carries the step change as well as the geometry change. Pinning one
+        # concrete step makes a deformation sweep one antenna at one step.
+        # None keeps the derived step, byte-identical.
+        if dt is not None and dz_profile is None and dx_profile is None \
+                and dy_profile is None:
+            raise ValueError(
+                "dt= pins the non-uniform lane's time step and needs at least "
+                "one of dz_profile / dx_profile / dy_profile; the uniform "
+                "lane derives its step in Grid.courant_dt."
+            )
+        if dt is None and dt_min_cell is not None:
+            raise ValueError("dt_min_cell= has no effect without dt=")
+        self._dt_pin = dt
+        self._dt_min_cell = dt_min_cell
         self._precision = precision
         self._solver = solver
         self._adi_cfl_factor = adi_cfl_factor
@@ -637,6 +678,10 @@ class Simulation(
         self._ports: list[_PortEntry] = []
         self._probes: list[_ProbeEntry] = []
         self._thin_conductors: list[ThinConductor] = []
+        # Node-pinned PEC sheets (add_pinned_sheet): declared by node index,
+        # so they are the same conductor on every mesh — including one that
+        # is a JAX tracer, where a metric sheet cannot be resolved at all.
+        self._pinned_sheets: list = []
         self._coaxial_ports: list[CoaxialPort] = []
         # Terminations applied after setup_coaxial_port: each entry is
         # (port_index, target_impedance, axial_offset_cells). Stamped during
@@ -1219,6 +1264,7 @@ class Simulation(
         outer_radius: float = 2.055e-3,
         impedance: float = 50.0,
         waveform=None,
+        terminates=None,
     ) -> "Simulation":
         """Add an SMA-style coaxial probe port.
 
@@ -1234,6 +1280,10 @@ class Simulation(
         """
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
+        from rfx.geometry.port_termination import resolve_terminates
+        terminated = resolve_terminates(
+            self, terminates, port=f"add_coaxial_port at {position}")
+
         self._coaxial_ports.append(CoaxialPort(
             position=position,
             face=face,
@@ -1242,6 +1292,7 @@ class Simulation(
             outer_radius=outer_radius,
             impedance=impedance,
             excitation=waveform,
+            terminates=terminated,
         ))
         return self
 
@@ -1618,6 +1669,61 @@ class Simulation(
         self._thin_conductors.append(tc)
         return self
 
+    def add_pinned_sheet(
+        self,
+        *,
+        plane_index: int,
+        i_range: tuple[int, int],
+        j_range: tuple[int, int],
+        normal_axis: int = 2,
+        sigma_bulk: float = 5.8e7,
+        thickness: float = 35e-6,
+        eps_r: float = 1.0,
+        surface_impedance_f0: float | None = None,
+        name: str | None = None,
+    ) -> "Simulation":
+        """Declare a thin PEC conductor by NODE INDICES instead of metres.
+
+        ``add_thin_conductor`` draws metal in metres, and the grid then
+        decides which node lines that reaches. This draws it on the node
+        lines directly: the conductor occupies node ``plane_index`` along
+        ``normal_axis`` and the inclusive node ranges ``i_range`` /
+        ``j_range`` on the other two axes, in increasing axis order — for
+        the default ``normal_axis=2`` that is ``i_range`` on x and
+        ``j_range`` on y.
+
+        Indices are INTERIOR (unpadded) node indices: interior node ``i``
+        sits at ``i * dx`` from the domain origin on a uniform mesh, and is
+        the ``i``-th interior node on a graded one. Absorber padding is
+        added when the sheet is realized.
+
+        Why it exists: the conductor's PHYSICAL size is then whatever the
+        cells between those nodes add up to, so stretching the cells makes
+        the metal longer without moving it off the lattice and without any
+        sub-cell metal. That is what lets ``jax.grad`` reach a patch edge
+        through ``dx_profile`` / ``dy_profile`` / ``dz_profile`` — a metric
+        sheet on a mesh that is a JAX tracer is still refused, because its
+        corners cannot be read off a traced node line.
+
+        The declaration is mesh-independent by construction, so the same
+        call gives the same footprint on the uniform and non-uniform lanes,
+        traced or not. A range spanning a single node line is refused: one
+        node line carries no E edge, so the metal would carry no current.
+
+        Only the lossless PEC sheet is supported (``sigma_bulk >= 1e6``,
+        ``surface_impedance_f0`` unset); ``thickness`` and ``eps_r`` are
+        accepted for signature compatibility with
+        :meth:`add_thin_conductor` and are not read, exactly as they are
+        not read there for a metal.
+        """
+        from rfx.materials.thin_conductor import PinnedSheet
+        self._pinned_sheets.append(PinnedSheet(
+            normal_axis=normal_axis, plane_index=plane_index,
+            i_range=tuple(i_range), j_range=tuple(j_range),
+            sigma_bulk=sigma_bulk, thickness=thickness, eps_r=eps_r,
+            surface_impedance_f0=surface_impedance_f0, name=name))
+        return self
+
     # ---- ports ----
 
     def add_port(
@@ -1631,6 +1737,7 @@ class Simulation(
         excite: bool = True,
         direction: str | None = None,
         reference_plane_cells: int | None = None,
+        terminates=None,
     ) -> "Simulation":
         """Add a lumped port (single-cell) or wire port (multi-cell).
 
@@ -1758,11 +1865,16 @@ class Simulation(
                 stacklevel=2,
             )
 
+        from rfx.geometry.port_termination import resolve_terminates
+        terminated = resolve_terminates(
+            self, terminates, port=f"add_port at {position}")
+
         self._ports.append(_PortEntry(
             position=position, component=component,
             impedance=impedance, waveform=waveform,
             extent=extent, excite=excite, direction=direction,
             reference_plane_cells=reference_plane_cells,
+            terminates=terminated,
         ))
         return self
 
@@ -1782,6 +1894,7 @@ class Simulation(
         name: str | None = None,
         mode: str = "laplace",
         eps_r_sub: float | None = None,
+        terminates=None,
     ) -> "Simulation":
         """Add a microstrip-line (MSL) port spanning the full trace cross-section.
 
@@ -2044,6 +2157,10 @@ class Simulation(
             _, _eps_eff_hj = _hj(width, height, eps_r_sub_estimate)
             self._msl_auto_probe_spacing[name] = float(_eps_eff_hj)
 
+        from rfx.geometry.port_termination import resolve_terminates
+        terminated = (None if terminates is None else resolve_terminates(
+            self, terminates, port=f"add_msl_port at {position}"))
+
         self._msl_ports.append(_MSLPortEntry(
             name=name,
             position=position,
@@ -2058,6 +2175,7 @@ class Simulation(
             n_probes=n_probes,
             mode=mode,
             eps_r_sub=eps_r_sub,
+            terminates=terminated,
         ))
         return self
 

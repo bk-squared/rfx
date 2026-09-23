@@ -626,6 +626,7 @@ def compute_msl_s_matrix(
                     n_probes=pe.n_probes,
                     mode=pe.mode,
                     eps_r_sub=pe.eps_r_sub,
+                    terminates=pe.terminates,
                 ))
             self._msl_ports = run_entries
 

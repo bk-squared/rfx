@@ -763,7 +763,7 @@ def test_issue510_feed_crossing_names_lumped_port_cleanly():
     sim.add_msl_port(position=(2.40e-3, y_c, 0), width=W_TRACE, height=H_SUB,
                      direction="+x", impedance=50.0, n_probe_offset=31,
                      n_probe_spacing=12, n_probes=5, name="msl_0")
-    sim.add_port(position=(6.40e-3, y_c, H_SUB), component="ez", excite=False)
+    sim.add_port(position=(6.40e-3, y_c, H_SUB), component="ez", excite=False, terminates=1)
 
     msgs = _crossing_msgs(_msl_warnings(sim))
     assert msgs, f"expected a feed-crossing advisory naming the lumped port; got: {_msl_warnings(sim)}"

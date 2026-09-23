@@ -296,15 +296,11 @@ def _get_normal_fn(shape: Shape):
 #: continuing it would move the structure to the boundary and throw away the
 #: resolution the lane exists to provide.
 #:
-#: The consequence, stated rather than left to be found: on the hi face the two
-#: lanes disagree over a one-cell window. The staircase lane's rule is a
-#: cell-centre test, so ``extend_cpml_pad_materials``' #627a fallback continues
-#: any box with ``corner_hi > interior_hi - dx`` (the half-open convention drops
-#: the last node, and the fallback promotes from one column inward); this lane
-#: continues only ``corner_hi >= interior_hi``. No tolerance makes them agree
-#: everywhere, because one rule is a cell-centre test and the other is sub-cell.
-#: A structure meant to reach the boundary should be drawn to it, and then both
-#: lanes continue it.
+#: The declared face is also a reach target, using cells_spanning's
+#: relative tolerance. A declaration spanning 535.43 cells therefore reaches
+#: the rounded 536-cell domain's absorber. Bounds short of both targets keep
+#: their declared end, even when a neighbouring occupied cell is copied by
+#: the separate material-array extension.
 _PAD_REACH_TOL_CELLS = 1e-6
 
 #: How far past the array the continued face is pushed, in local cells. The
@@ -317,7 +313,8 @@ _PAD_CONTINUE_CELLS = 2.0
 class UnextendableShape(NamedTuple):
     """One (shape, axis, side) a pad continuation could not express.
 
-    ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"``. It carries the
+    ``axis`` is 0/1/2 and ``side`` is ``"lo"`` / ``"hi"`` (``"all"``
+    when a traced mesh axis disables conductor continuation). It carries the
     shape's declared ``eps_r`` so a caller can say what the pad will hold
     instead of what was drawn, without re-resolving the material.
 
@@ -346,6 +343,8 @@ class UnextendableShape(NamedTuple):
     eps_r: float = 1.0
     entry_index: int = -1
     material_name: str = "?"
+    conductor: bool = False
+    collection: str = "geometry"
 
 
 def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
@@ -361,6 +360,23 @@ def warn_unextendable_shapes(unextendable, *, stacklevel: int = 3) -> None:
     if not unextendable:
         return
     import warnings as _w
+    conductors = [u for u in unextendable if u.conductor]
+    traced = [u for u in conductors if u.side == "all"]
+    if traced:
+        _w.warn("Conducting geometry is kept as declared: "
+                + "; ".join(dict.fromkeys(u.reason for u in traced))
+                + ". No continuation is applied.", stacklevel=stacklevel)
+        conductors = [u for u in conductors if u.side != "all"]
+    if conductors:
+        faces = ", ".join(
+            f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} ({u.reason})"
+            for u in conductors)
+        _w.warn("Conducting geometry reaches an absorbing face but has no "
+                f"geometry continuation: {faces}. No continuation is applied "
+                "across those faces.", stacklevel=stacklevel)
+    unextendable = [u for u in unextendable if not u.conductor]
+    if not unextendable:
+        return
     faces = ", ".join(
         f"{type(u.shape).__name__} at {'xyz'[u.axis]}-{u.side} "
         f"(eps_r {u.eps_r:g}; {u.reason})"
@@ -413,10 +429,31 @@ def _continue_cylinder(shape, axis: int, side: str, target: float):
     return Cylinder(tuple(centre), shape.radius, hi - lo, shape.axis)
 
 
+def _reaches_pad_face(bounds, axis, side, edge, cell, declared_domain,
+                      occupied_faces=None):
+    lo, hi = bounds
+    reaches = ((float(lo[axis]) <= edge + _PAD_REACH_TOL_CELLS*cell
+                if side == "lo" else
+                float(hi[axis]) >= edge - _PAD_REACH_TOL_CELLS*cell)
+               if occupied_faces is None else (axis, side) in occupied_faces)
+    if declared_domain is not None and axis < len(declared_domain):
+        from rfx.grid import CELL_COUNT_ULP_BUDGET
+        face = 0.0 if side == "lo" else float(declared_domain[axis])
+        slack = CELL_COUNT_ULP_BUDGET * np.finfo(float).eps * max(cell, abs(face))
+        reaches = reaches or (float(lo[axis]) <= face+slack if side == "lo"
+                              else float(hi[axis]) >= face-slack)
+    return reaches
+
+
 def extend_shapes_into_cpml_pad(
     shapes: list[tuple[Shape, float]],
     node_coords,
     pads,
+    *,
+    declared_domain=None,
+    occupied_faces=None,
+    skip_faces=(),
+    conductor=False,
 ) -> tuple[list[tuple[Shape, float]], list["UnextendableShape"]]:
     """Continue boundary-touching shapes out through the absorber pads.
 
@@ -441,6 +478,11 @@ def extend_shapes_into_cpml_pad(
         (reflector / periodic / no absorber) and is never continued, which is
         how per-face ``BoundarySpec`` allocation reaches this function without
         being re-derived here.
+    skip_faces : collection of (axis, side)
+        Faces held at their declared bounds by the conductor port-pair rule.
+    conductor : bool
+        Keep a conducting Box's zero-extent normal axis unchanged. Dielectric
+        Boxes retain their existing continuation along all reached axes.
 
     Returns
     -------
@@ -472,6 +514,9 @@ def extend_shapes_into_cpml_pad(
         bbox_lo, bbox_hi = bounds
         current = shape
         for axis in range(3):
+            # A sheet continues in its plane; its normal remains a plane.
+            if conductor and isinstance(shape, Box) and bbox_lo[axis] == bbox_hi[axis]:
+                continue
             nodes = node_coords[axis]
             # PER AXIS, not per run. A mesh-as-design-variable profile makes
             # ONE axis' node positions tracers (a traced dz leaves x and y
@@ -486,18 +531,18 @@ def extend_shapes_into_cpml_pad(
             cell_lo, cell_hi = _axis_cells(nodes)
             for side, pad, cell in (("lo", int(pads[axis][0]), cell_lo),
                                     ("hi", int(pads[axis][1]), cell_hi)):
+                if (axis, side) in skip_faces:
+                    continue
                 if pad <= 0 or cell <= 0.0 or n < 2:
                     continue
                 if side == "lo":
                     edge = float(nodes[pad])
-                    reaches = (float(bbox_lo[axis])
-                               <= edge + _PAD_REACH_TOL_CELLS * cell)
                     target = float(nodes[0]) - _PAD_CONTINUE_CELLS * cell
                 else:
                     edge = float(nodes[n - 1 - pad])
-                    reaches = (float(bbox_hi[axis])
-                               >= edge - _PAD_REACH_TOL_CELLS * cell)
                     target = float(nodes[n - 1]) + _PAD_CONTINUE_CELLS * cell
+                reaches = _reaches_pad_face(bounds, axis, side, edge, cell,
+                                           declared_domain, occupied_faces)
                 if not reaches:
                     continue
                 if isinstance(current, Box):
@@ -518,6 +563,131 @@ def extend_shapes_into_cpml_pad(
                         float(eps_r)))
         out.append((current, eps_r))
     return out, unextendable
+
+
+def _declared_conductor_lattice(sim, grid, shape, coords):
+    """Classify once on the same lattice the assembler uses, before growth."""
+    from rfx.geometry.rasterize_grid import (
+        cell_centres_from_nodes, cell_sizes_from_nonuniform_grid,
+        cell_sizes_from_uniform_grid, classify_pec_entry, sheet_spec_from_shape)
+
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+             else cell_sizes_from_uniform_grid(grid))
+    thin = next((tc for tc in getattr(sim, "_thin_conductors", ())
+                 if tc.shape is shape), None)
+    # Concrete geometry must remain concrete inside an outer jit too.
+    with jax.ensure_compile_time_eval():
+        if thin is not None:
+            if thin.is_pec or thin.surface_impedance_f0 is not None:
+                name = f"thin_conductor[{sim._thin_conductors.index(thin)}]"
+                sheet = sheet_spec_from_shape(
+                    shape, coords, sizes, name=name, refuse_thick=True)
+                return [(np.asarray(sheet.footprint), (False, False, False))]
+            return [(np.asarray(shape.mask_on_coords(coords.x, coords.y, coords.z)),
+                     (False, False, False))]
+        centres = cell_centres_from_nodes(coords, sizes)
+        name = next((e.material_name for e in getattr(sim, "_geometry", ())
+                     if e.shape is shape), None)
+        cells, sheet, wire = classify_pec_entry(
+            shape, coords, centres, sizes, name=name)
+        if cells is not None:
+            return [(np.asarray(cells), (True, True, True))]
+        if sheet is not None:
+            return [(np.asarray(sheet.footprint), (False, False, False))]
+        return [(np.asarray(mask), tuple(a == component for a in range(3)))
+                for component, mask in enumerate(wire.edges)]
+
+
+def _occupied_conductor_faces(lattice, grid):
+    faces = set()
+    for axis, letter in enumerate("xyz"):
+        for side in ("lo", "hi"):
+            pad = int(getattr(grid, f"pad_{letter}_{side}"))
+            if not pad:
+                continue
+            for mask, cell_axes in lattice:
+                index = (pad if side == "lo" else
+                         grid.shape[axis] - 1 - pad - int(cell_axes[axis]))
+                if np.take(mask, index, axis=axis).any():
+                    faces.add((axis, side))
+    return faces
+
+
+def _conductor_reached_faces(sim, grid, shape, lattice, nodes):
+    from rfx.geometry.csg import declared_bounds
+    occupied = _occupied_conductor_faces(lattice, grid)
+    bounds = declared_bounds(shape)
+    if bounds is None:
+        return occupied
+    reached = set()
+    for axis, line in enumerate(nodes):
+        if bounds[0][axis] == bounds[1][axis]:
+            continue
+        cells = _axis_cells(line)
+        for side, cell in zip(("lo", "hi"), cells):
+            pad = int(getattr(grid, f"pad_{'xyz'[axis]}_{side}"))
+            if pad and _reaches_pad_face(
+                    bounds, axis, side, float(line[pad if side == "lo" else -1-pad]),
+                    cell, sim._unresolved_domain, occupied):
+                reached.add((axis, side))
+    return reached
+
+
+def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None):
+    """Return the conducting geometry solved through absorbing faces (C2/C5).
+
+    Reached declared faces and occupied outermost interior lattice layers
+    continue. Entries named by a port's ``terminates`` stay declared on
+    every reached face.
+    Port-generated structures do not call this function.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+
+    if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
+            or int(getattr(sim, "_cpml_layers", 0)) <= 0):
+        return shape
+    coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+              else coords_from_uniform_grid(grid))
+    nodes = (coords.x, coords.y, coords.z)
+    traced_axes = tuple(a for a, n in enumerate(nodes) if is_tracer(n))
+    if traced_axes:
+        reason = ("mesh axis " + ", ".join("xyz"[a] for a in traced_axes)
+                  + " is traced; conductor continuation is disabled on every face")
+        findings = [UnextendableShape(
+            shape, traced_axes[0], "all", reason, conductor=True)]
+        if unextendable is not None:
+            unextendable.extend(findings)
+        else:
+            warn_unextendable_shapes(findings)
+        return shape
+    pads = [[getattr(grid, f"pad_{a}_lo"), getattr(grid, f"pad_{a}_hi")]
+            for a in "xyz"]
+    # A shape without a bounding box has nothing to continue (no face to
+    # move), and rasterizing it here would raise before the assembler's own
+    # refusal of such a shape; the assembler keeps that message.
+    from rfx.geometry.csg import declared_bounds
+    if declared_bounds(shape) is None:
+        return shape
+    lattice = _declared_conductor_lattice(sim, grid, shape, coords)
+    occupied = _occupied_conductor_faces(lattice, grid)
+    from rfx.geometry.port_termination import conductor_entries, held_conductor_entries
+    if entry is None:
+        entry = next((candidate for _, candidate in conductor_entries(sim)
+                      if candidate.shape is shape), None)
+    held = (_conductor_reached_faces(sim, grid, shape, lattice, nodes)
+            if any(other is entry for other in held_conductor_entries(sim, grid)) else set())
+    pairs, findings = extend_shapes_into_cpml_pad(
+        [(shape, 1.0)], nodes, pads,
+        declared_domain=sim._unresolved_domain, occupied_faces=occupied,
+        skip_faces=held, conductor=True)
+    findings = [u._replace(shape=shape, conductor=True) for u in findings]
+    if unextendable is None:
+        warn_unextendable_shapes(findings)
+    else:
+        unextendable.extend(findings)
+    return pairs[0][0]
 
 
 def smoothed_shape_pairs(sim, grid):
@@ -548,8 +718,6 @@ def smoothed_shape_pairs(sim, grid):
     """
     pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
              for entry in sim._geometry]
-    if not pairs:
-        return pairs, []
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
         return pairs, []
@@ -581,24 +749,26 @@ def smoothed_shape_pairs(sim, grid):
     # 1e6, the value every other reader of this threshold defaults to
     # (rfx/surrogate.py, rfx/fidelity.py, rfx/pcb.py). An ``inf``
     # default fails OPEN: a sim without the attribute would classify a
-    # PEC material as a dielectric and continue metal into the pad,
-    # which is the one thing both lanes agree never to do.
+    # PEC material as a dielectric and miss its port-entry exception.
     pec_sigma = float(getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6))
     for idx, (entry, (shape, eps_r)) in enumerate(zip(sim._geometry, pairs)):
         mat = sim._resolve_material(entry.material_name)
-        # PEC volumes are not continued on EITHER lane: ``pec_mask`` is not in
-        # ``extend_cpml_pad_materials``' signature, so the staircase lane ends
-        # a PEC structure at the seam too, and the two lanes have to agree
-        # about what stands in a pad.
-        if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
-            out.append((shape, eps_r))
-            continue
         if (getattr(mat, "debye_poles", None)
                 or getattr(mat, "lorentz_poles", None)):
             out.append((shape, eps_r))
             continue
+        # Both lanes realize conductors through the same geometry helper.
+        if float(getattr(mat, "sigma", 0.0)) >= pec_sigma:
+            unext = []
+            solved = continued_conductor_shape(sim, grid, shape, entry=entry, unextendable=unext)
+            out.append((solved, eps_r))
+            unextendable.extend(u._replace(entry_index=idx,
+                                          material_name=entry.material_name)
+                                for u in unext)
+            continue
         one, unext = extend_shapes_into_cpml_pad(
-            [(shape, eps_r)], node_coords, pads)
+            [(shape, eps_r)], node_coords, pads,
+            declared_domain=sim._unresolved_domain)
         out.extend(one)
         # Stamp the entry's identity HERE, in the loop that knows it, and put
         # the DECLARED shape back. The builder reports whatever object it held
@@ -609,6 +779,14 @@ def smoothed_shape_pairs(sim, grid):
             u._replace(shape=shape, entry_index=idx,
                        material_name=entry.material_name)
             for u in unext)
+    # Thin entries are rasterized separately, but share the unsupported-face
+    # report even when the simulation contains no ordinary geometry entries.
+    for idx, tc in enumerate(getattr(sim, "_thin_conductors", ())):
+        unext = []
+        continued_conductor_shape(sim, grid, tc.shape, entry=tc, unextendable=unext)
+        unextendable.extend(u._replace(entry_index=idx,
+                                      material_name=f"thin_conductor[{idx}]",
+                                      collection="thin_conductor") for u in unext)
     return out, unextendable
 
 
@@ -1242,26 +1420,21 @@ def kottke_inv_eps_from_occupancy(
     *,
     aniso_inv_eps_baseline: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
     background_eps: float = 1.0,
-    grad_eps: float = 1e-12,
+    periodic: tuple[bool, bool, bool] = (False, False, False),
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Stage 2 Kottke inv-eps tensor from a continuous-fill PEC occupancy.
+    """Inverse-permittivity tensor from a continuous-fill PEC occupancy (#1197).
 
     The AD-traceable analogue of the ``pec_shapes`` branch in
-    :func:`compute_inv_eps_tensor_diag`.  ``pec_occupancy`` is a per-cell
-    fill fraction in ``[0, 1]``; ``f = occ`` plays the role of Kottke's
-    fill, and the interface normal is derived from ``∇occ / |∇occ|``.
-
-    For a sigmoid mask, ``∇occ`` is large only at the boundary cells
-    (occ ≈ 0.5 transition zone); interior PEC cells (occ ≈ 1) and
-    exterior vacuum cells (occ ≈ 0) have small ``|∇occ|`` but
-    Kottke's diagonal output is independent of the normal there
-    (``inv_perp = inv_par = (1−f)/ε`` reduces to a scalar at f → 0
-    or f → 1 in the PEC limit), so the small-norm regime is benign.
-
-    Yee staggering is approximated by applying the cell-centred Kottke
-    output to all three E-component positions of the cell.  The error
-    is O(dx) at the sigmoid edge — second-order to the staircase
-    error that the override path replaces.
+    :func:`compute_inv_eps_tensor_diag`, built from the lattice ownership
+    contract's own rule rather than from a cell-centred Kottke fill: each E
+    edge is conductor to the degree that the four cells sharing it are
+    occupied (``_volume_occupancy_masks``, #931 §1.2 hard / §1.6 relaxed),
+    ``inv_c = (1 - M_c) * baseline_c``. At binary occupancy the zeros are
+    ``realized_pec_edge_masks`` bit for bit; a fractional cell is a lossless
+    interpolation (a static high-permittivity cell), exact at 0 and 1 and a
+    continuation in between -- it still shifts a resonance (measured -3.6 %
+    on a cavity's TM110 with a slab edge at a cell centre). Feed the result
+    to ``update_e_aniso_inv``.
 
     Parameters
     ----------
@@ -1270,18 +1443,18 @@ def kottke_inv_eps_from_occupancy(
         Continuous-fill PEC field; values clipped to ``[0, 1]``.
     aniso_inv_eps_baseline : (inv_xx, inv_yy, inv_zz) tuple, optional
         Pre-computed inv-eps tensor with dielectric subpixel smoothing
-        already applied.  When supplied, the Kottke PEC limit is taken
-        as the elementwise minimum against this baseline (union of
-        PEC effects on top of dielectrics).  When ``None``, the
+        already applied.  When supplied, ``1 - M_c`` scales it -- the
+        same keep factor ``apply_pec_occupancy`` applies to E, so the two
+        lanes are one function of the occupancy.  When ``None``, the
         background uses ``background_eps``.
     background_eps : float
         Background permittivity used when ``aniso_inv_eps_baseline``
         is ``None``.  Default 1.0 (vacuum).
-    grad_eps : float
-        Numerical guard for ``|∇occ|`` normalisation.  Cells with
-        ``|∇occ| < grad_eps`` get a default normal direction (x̂);
-        the Kottke output is independent of the normal in those cells
-        (see docstring above).
+    periodic : (bool, bool, bool)
+        The run's periodic flags (``Simulation._periodic_flags()``): the
+        incident-cell shifts wrap on a periodic axis, exactly as the hard
+        rule's do. ``Grid`` carries no such attribute, so the caller passes
+        them.
 
     Returns
     -------
@@ -1291,98 +1464,41 @@ def kottke_inv_eps_from_occupancy(
         ``simulation.run(aniso_inv_eps=...)`` or
         ``update_e_aniso_inv``.
     """
+    # #1197. The tensor is the E-update form of the lattice ownership
+    # contract, so it is built from the contract's own rule: an E edge is
+    # conductor to the degree that the FOUR cells sharing it are occupied
+    # (#931 §1.2 hard, §1.6 relaxed: ``M_c = 1 - prod(1 - o)`` over the two
+    # backward shifts transverse to the component), and ``inv_c = 1 - M_c``
+    # scales the baseline. At binary occupancy this IS
+    # ``realized_pec_edge_masks`` bit for bit -- the conductor ends where the
+    # occupancy ends. In between it is a lossless interpolation (a static
+    # high-permittivity cell), not the per-step decay that the
+    # ``apply_pec_occupancy`` scaling amounts to.
+    #
+    # What it replaces, and why: a cell-centred fill with a normal from
+    # ``grad(occ)`` applied to all three components, then a six-neighbour
+    # ``max`` dilation with a Heaviside at 0.5. The dilation wrote inv = 0
+    # one full cell past the occupancy in every direction, including the
+    # NORMAL component in the first air cell above a conductor -- exactly
+    # where a cavity mode's normal E is largest. Measured on a 24 mm PEC cube
+    # with a binary PEC slab (TM110 is independent of the slab height):
+    # analytic 8.833 GHz, ``apply_pec_occupancy`` 8.8305, this builder with
+    # the dilation 8.5266 (-3.5 %), at a half-cell edge 8.3228 (-5.8 %). The
+    # dilation had been kept (2026-05-31 review) on the |S21| witness of one
+    # open-stub run (run #962) in 60939e0's commit message; that run's
+    # fixture is not recorded anywhere, and the cavity oracle supersedes it.
+    from rfx.boundaries.pec import _volume_occupancy_masks
     f = jnp.clip(pec_occupancy.astype(jnp.float32), 0.0, 1.0)
-    # Clamp the sigmoid tail to exactly zero so the strict-Kottke
-    # `f > 0` selector does not trip on `1e-30` etc.  AD cells in the
-    # tail (occ < 1e-3) contribute nothing to the cost — their
-    # gradient is genuinely zero at this scale — so the hard clamp
-    # is functionally smooth.  Cells above the threshold flow
-    # gradients normally.
+    # Sigmoid-floor values (1e-30 ...) are vacuum, and their gradient is
+    # pinned zero (2026-05-17 decision, kept).
     f = jnp.where(f < 1e-3, jnp.zeros_like(f), f)
-
-    # Central-difference gradient of the occupancy.  ``jnp.roll`` gives
-    # periodic boundary semantics; on rfx's CPML/PEC domain boundaries
-    # the occupancy is vacuum (0) by construction (PEC stub geometry
-    # never extends to the absorbing boundary).  Periodic boundary
-    # therefore evaluates to "0 next to 0" at the domain edge, giving
-    # a vanishing gradient — physically correct: no interface there.
-    dx = float(grid.dx)
-    dy = float(getattr(grid, "dy", grid.dx))
-    dz = float(getattr(grid, "dz", grid.dx))
-    grad_x = (jnp.roll(f, -1, axis=0) - jnp.roll(f, 1, axis=0)) / (2.0 * dx)
-    grad_y = (jnp.roll(f, -1, axis=1) - jnp.roll(f, 1, axis=1)) / (2.0 * dy)
-    grad_z = (jnp.roll(f, -1, axis=2) - jnp.roll(f, 1, axis=2)) / (2.0 * dz)
-    norm = jnp.sqrt(grad_x ** 2 + grad_y ** 2 + grad_z ** 2 + grad_eps ** 2)
-    n_x = grad_x / norm
-    n_y = grad_y / norm
-    n_z = grad_z / norm
-
-    # Kottke PEC limit at every cell.  ``eps_outside`` is the dielectric
-    # background — for the sigmoid stub on ro4350b, this is the substrate
-    # ε at substrate cells and vacuum elsewhere.  When the caller passes
-    # an ``aniso_inv_eps_baseline``, we use the baseline's reciprocal
-    # as the local background ε (one per axis); otherwise the scalar
-    # ``background_eps`` applies everywhere.
+    m_x, m_y, m_z = _volume_occupancy_masks(f, tuple(bool(p) for p in periodic))
     if aniso_inv_eps_baseline is not None:
         inv_xx_b, inv_yy_b, inv_zz_b = aniso_inv_eps_baseline
-        # The PEC Kottke needs a scalar eps_outside per cell — the
-        # baseline already encodes the dielectric subpixel smoothing
-        # per axis.  We invert each component locally.
-        eps_outside_x = 1.0 / (inv_xx_b + 1e-30)
-        eps_outside_y = 1.0 / (inv_yy_b + 1e-30)
-        eps_outside_z = 1.0 / (inv_zz_b + 1e-30)
     else:
-        bg = jnp.asarray(background_eps, dtype=jnp.float32)
-        eps_outside_x = bg
-        eps_outside_y = bg
-        eps_outside_z = bg
-
-    # Strict-Kottke PEC limit (`is_pec=True`): `inv_par = 0` for any
-    # f > 0 (frozen parallel-to-interface E), `inv_perp = (1-f)/eps`.
-    # The f-tail clamp above ensures only "real" PEC cells (occ ≥
-    # 1e-3) trip the `f > 0` selector — sigmoid-floor values like
-    # 1e-30 are clamped to 0 and correctly behave as vacuum.
-    inv_xx_c, _, _ = _kottke_inv_eps_diag(
-        f, jnp.inf, eps_outside_x, n_x, n_y, n_z, is_pec=True,
-    )
-    _, inv_yy_c, _ = _kottke_inv_eps_diag(
-        f, jnp.inf, eps_outside_y, n_x, n_y, n_z, is_pec=True,
-    )
-    _, _, inv_zz_c = _kottke_inv_eps_diag(
-        f, jnp.inf, eps_outside_z, n_x, n_y, n_z, is_pec=True,
-    )
-
-    # Force-zero interior cells AND dilate the PEC by 1 cell so the
-    # boundary cell acts as a hard mirror.  The reference imperative
-    # path (``compute_inv_eps_tensor_diag``, line ~779) sets
-    # `inv = where(e_inside, 0, inv)` — interior cells are exactly 0;
-    # only the *single* boundary cell at the SDF crossing keeps the
-    # Kottke output.  For the occupancy path we don't have an SDF;
-    # we replicate this by applying a sigmoid Heaviside projection to
-    # the *neighbor-max* occupancy.  Cells whose own occ OR any 6-neighbor
-    # occ exceeds 0.5 get full PEC (interior + 1-cell dilation); cells
-    # with all neighbors at ≤ 0.5 keep their Kottke output.  This
-    # dilation is the AD-smooth analogue of the binary `apply_pec_mask`
-    # `pec_mask & (roll | roll)` rule (which is what the legacy
-    # imperative cross-solver uses for hard `Box(material="pec")`).
-    occ_dilated = f
-    for _axis in range(3):
-        occ_dilated = jnp.maximum(occ_dilated, jnp.roll(f, 1, axis=_axis))
-        occ_dilated = jnp.maximum(occ_dilated, jnp.roll(f, -1, axis=_axis))
-    smooth_width = 0.05
-    interior_mask = jax.nn.sigmoid((occ_dilated - 0.5) / smooth_width)
-    inv_xx_c = (1.0 - interior_mask) * inv_xx_c
-    inv_yy_c = (1.0 - interior_mask) * inv_yy_c
-    inv_zz_c = (1.0 - interior_mask) * inv_zz_c
-
-    if aniso_inv_eps_baseline is not None:
-        inv_xx_b, inv_yy_b, inv_zz_b = aniso_inv_eps_baseline
-        inv_xx = jnp.minimum(inv_xx_b, inv_xx_c).astype(jnp.float32)
-        inv_yy = jnp.minimum(inv_yy_b, inv_yy_c).astype(jnp.float32)
-        inv_zz = jnp.minimum(inv_zz_b, inv_zz_c).astype(jnp.float32)
-    else:
-        inv_xx = inv_xx_c.astype(jnp.float32)
-        inv_yy = inv_yy_c.astype(jnp.float32)
-        inv_zz = inv_zz_c.astype(jnp.float32)
-
+        bg = 1.0 / jnp.asarray(background_eps, dtype=jnp.float32)
+        inv_xx_b = inv_yy_b = inv_zz_b = bg
+    inv_xx = ((1.0 - m_x) * inv_xx_b).astype(jnp.float32)
+    inv_yy = ((1.0 - m_y) * inv_yy_b).astype(jnp.float32)
+    inv_zz = ((1.0 - m_z) * inv_zz_b).astype(jnp.float32)
     return inv_xx, inv_yy, inv_zz

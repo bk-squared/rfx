@@ -199,11 +199,21 @@ or reproducible restart sampling.
 
 A lumped R/L/C element registered with `add_lumped_rlc(...)` is a circuit element
 inside the FDTD update — it produces no S-parameters by itself. To measure the
-load, pair it with a co-located `add_port(..., impedance=Z0)`: the port supplies
-both the excitation and the S11 accumulator that `forward(port_s11_freqs=...)`
-reads. On the uniform single-device `forward(...)` lane the registered R/L/C
-values affect the differentiable run, and scalar component values can enter the
-AD tape through `rlc_values_override`:
+load, pair it with an `add_port(..., impedance=Z0)`: the port supplies both the
+excitation and the S11 accumulator that `forward(port_s11_freqs=...)` reads. On
+the uniform single-device `forward(...)` lane the registered R/L/C values affect
+the differentiable run, and scalar component values can enter the AD tape
+through `rlc_values_override`.
+
+**Put the element a cell away from the port, not on it.** A driven port reads
+S11 from the V/I pair at its own cell, and the current there is what leaves that
+cell into the surrounding field — so an element sitting *inside* the port cell
+is in parallel with the source rather than in the network the port measures. It
+still changes the fields; S11 just cannot see it. Measured on the fixture below:
+co-located, `R = 50` and `R = 500` both move `max |S11|` by about `2e-07` and
+`dS11²/dR` collapses to `-1.15e-10`, so the gradient you would differentiate is
+numerical noise. One cell along `x` the same quantities are `8.68e-03` and
+`-8.16e-05`, and AD agrees with finite differences to 0.005 %.
 
 ```python
 import jax
@@ -212,12 +222,14 @@ from rfx import Simulation
 
 sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                  boundary="cpml", cpml_layers=6)
-load_pos = (0.0093, 0.0093, 0.0093)
-sim.add_port(position=load_pos, component="ez", impedance=50.0)
+dx = 0.02 / 15
+port_pos = (0.0093, 0.0093, 0.0093)
+load_pos = (port_pos[0] + dx, port_pos[1], port_pos[2])   # one cell away
+sim.add_port(position=port_pos, component="ez", impedance=50.0)
 sim.add_lumped_rlc(
     position=load_pos,
     component="ez",
-    R=50.0,
+    R=500.0,          # see the note below on R
     C=0.2e-12,
     topology="series",
 )
@@ -237,10 +249,14 @@ dloss_dR = jax.grad(load_loss)(50.0)
 The mapping key is the 0-based registration order of `add_lumped_rlc(...)`
 calls; missing keys fall back to the registered float value. This surface is
 uniform single-device only. Note the division of labour in the example: the S11
-in the loss comes from the co-located `add_port` (the reference-impedance
-measurement), while `add_lumped_rlc` contributes the circuit element being
-designed — the RLC element is **not** a port type and produces no `s_params` on
-its own.
+in the loss comes from `add_port` (the reference-impedance measurement), while
+`add_lumped_rlc` contributes the circuit element being designed — the RLC
+element is **not** a port type and produces no `s_params` on its own.
+
+`R = 500` rather than `50` in the example is not arbitrary: a series `R + C`
+element on a cell that carries no port conductance is unstable below roughly
+`180 Ω` and drives the fields to non-finite values with no warning. See
+`scripts/diagnostics/lumped_rlc_adjacent_to_port_nan.py` for the measurement.
 
 ## Far-field objectives with NTFF data
 
