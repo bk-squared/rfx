@@ -1,0 +1,74 @@
+{
+  "family": "W1",
+  "entry": "nonuniform",
+  "args": [
+    "W1",
+    "nonuniform",
+    "1"
+  ],
+  "commit": "798ec64e5cda057318664bc431e528819f9e371a",
+  "analytic_declared_Hz": 8832720000.015968,
+  "analytic_half_cell_inside_Hz": 8832720000.015968,
+  "mode": "TM110",
+  "domain_m": [
+    0.024,
+    0.024,
+    0.024
+  ],
+  "dx_m": 0.001,
+  "source_m": [
+    0.011,
+    0.012,
+    0.01
+  ],
+  "probe_m": [
+    0.014,
+    0.009,
+    0.013
+  ],
+  "component": "ez",
+  "grid": {
+    "shape": [
+      25,
+      25,
+      25
+    ],
+    "dx": 0.001,
+    "dy": 0.001,
+    "dt": 1.9065748695309645e-12,
+    "cpml_layers": 0,
+    "pad_x_lo": 0,
+    "pad_x_hi": 0,
+    "pad_y_lo": 0,
+    "pad_y_hi": 0,
+    "pad_z_lo": 0,
+    "pad_z_hi": 0,
+    "dz": {
+      "shape": [
+        25
+      ],
+      "min": 0.0010000000474974513,
+      "max": 0.0010000000474974513,
+      "nonzero": 25
+    }
+  },
+  "n_steps": 4,
+  "preflight": "[]",
+  "preflight_policy": "Captured verbatim; skip_preflight=True for physical witness execution.",
+  "dt_s": 1.9065748695309645e-12,
+  "source_end_step": 4,
+  "probe_final": 0.0,
+  "probe_peak": 0.0,
+  "energy": [
+    {
+      "samples": 4,
+      "post_source_peak_J": 3.407148181622277e-26,
+      "final_J": 3.407148181622277e-26,
+      "end_over_post_source_peak_dB": 0.0,
+      "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3; absorber pads excluded; staggered E/H levels as stored"
+    }
+  ],
+  "status": "MEASURED",
+  "wall_s": 1.4181795309996232,
+  "backend": "cpu"
+}

@@ -168,9 +168,25 @@
         "solver",
         "adi_cfl_factor",
         "stencil_order",
-        "interface_eps"
+        "interface_eps",
+        "dt_pin",
+        "dt_min_cell"
       ],
       "properties": {
+        "dt_pin": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "A pinned time step in seconds (Simulation(dt=...)) - a design input, not the derived Grid.dt; null when the step is derived from the mesh."
+        },
+        "dt_min_cell": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "The caller-declared smallest cell in metres that a pinned dt was checked against on a traced mesh; null when not declared."
+        },
         "precision": {
           "type": "string",
           "minLength": 1

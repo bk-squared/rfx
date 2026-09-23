@@ -1,0 +1,37 @@
+[
+  {
+    "refine": 1,
+    "theta_deg": 15,
+    "six_final_field_sha256_equal": true,
+    "observations_exact_equal": true,
+    "probe_series_exact_equal": true
+  },
+  {
+    "refine": 1,
+    "theta_deg": 30,
+    "six_final_field_sha256_equal": true,
+    "observations_exact_equal": true,
+    "probe_series_exact_equal": true
+  },
+  {
+    "refine": 1,
+    "theta_deg": 45,
+    "six_final_field_sha256_equal": true,
+    "observations_exact_equal": true,
+    "probe_series_exact_equal": true
+  },
+  {
+    "refine": 2,
+    "theta_deg": 30,
+    "six_final_field_sha256_equal": true,
+    "observations_exact_equal": true,
+    "probe_series_exact_equal": true
+  },
+  {
+    "refine": 4,
+    "theta_deg": 30,
+    "six_final_field_sha256_equal": true,
+    "observations_exact_equal": true,
+    "probe_series_exact_equal": true
+  }
+]

@@ -481,3 +481,57 @@ def test_excited_port_lane_ordering_disagreement_is_open_683(load):
     assert resid <= LANE_PARITY_ATOL, (
         f"excited-port lane parity broken: max|S_NU - S_uni| = {resid:.3e} "
         f"(NU {s_nu}, uniform {s_uni})")
+
+
+# --------------------------------------------------------------------------
+# The raw-accumulator channel has ONE shape across the two lanes.
+# --------------------------------------------------------------------------
+
+def test_both_lanes_hand_back_the_raw_accumulators_as_meta_acc_pairs():
+    """``for meta, accs in result.wire_port_sparams`` runs on either lane.
+
+    The graded-mesh runner built the per-port DFT accumulators and then
+    dropped them, so a caller needing the port's INCIDENT wave — absorbed
+    power as a fraction of what the port delivered, which an S-parameter
+    ratio cannot give — had nothing to read there. Surfacing them as a bare
+    accumulator tuple would have made the field mean two different things on
+    the two lanes; it is a ``(meta, accs)`` pair on both.
+
+    ``meta`` differs in TYPE (the spec object on the uniform lane, the
+    runner's metadata tuple on the graded one) and ``accs`` carries a fifth
+    slot, the pre-injection drive reference, on the uniform lane only. The
+    first four channels ``(v, i, v_inc, v_port)`` are the same on both, and
+    the pair shape is what this pins.
+    """
+    uni = _build(False).forward(n_steps=N_STEPS, port_s11_freqs=FREQS,
+                                skip_preflight=True)
+    nu = _build(True).forward(n_steps=N_STEPS, skip_preflight=True)
+
+    for name, fr in (("uniform", uni), ("non-uniform", nu)):
+        wps = fr.wire_port_sparams
+        assert wps is not None, f"{name} lane left wire_port_sparams None"
+        assert len(wps) == 1, f"{name} lane: {len(wps)} entries for 1 port"
+        for entry in wps:
+            assert len(entry) == 2, (
+                f"{name} lane entry is not a (meta, accs) pair: {entry!r}")
+        meta, accs = wps[0]
+        assert meta is not None, f"{name} lane pair carries no metadata"
+        assert len(accs) >= 4, (
+            f"{name} lane accumulators are {len(accs)} long, want at least "
+            f"the four channels (v, i, v_inc, v_port)")
+        nf = np.asarray(accs[0]).shape
+        assert len(nf) == 1 and nf[0] > 0, (
+            f"{name} lane v is not a per-frequency spectrum: shape {nf}")
+        for slot, chan in enumerate(("v", "i", "v_inc", "v_port")):
+            a = np.asarray(accs[slot])
+            assert a.shape == nf, (
+                f"{name} lane {chan} has shape {a.shape}, want {nf} — the "
+                f"four channels are one spectrum each, on the same bins")
+            assert np.all(np.isfinite(a)), f"{name} lane {chan} is not finite"
+
+    # The port impedance is readable from each lane's metadata, by the
+    # spelling that lane documents (rfx/api/_spec.py, Result).
+    uni_meta = uni.wire_port_sparams[0][0]
+    nu_meta = nu.wire_port_sparams[0][0]
+    assert float(uni_meta.impedance) == 50.0
+    assert float(nu_meta[4]) == 50.0

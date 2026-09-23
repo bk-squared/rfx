@@ -444,6 +444,30 @@
    "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:230-262",
    "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "The 0.5 mm cell is the fixture, not a choice this script is free to make: the number it measures is the published central-difference slope of the SAME board at the SAME mesh, and refining the cell would compare a different antenna against it. The coarse-mesh staircase offset is what the published ladder already quantified; this script measures the DERIVATIVE at that mesh, and its own convergence witnesses are the h ladder and the 2x record, not a finer cell.",
+   "ref": "validation/research/metal_edge/m6_wire_port_ad.py:10-28,63-68",
+   "rows": 3,
+   "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "nu_grading_reaches_absorber",
+   "disposition": "intended",
+   "reason": "The deformation IS the experiment: eight cells inside the patch's +x node line stretch and the eight just outside shrink, and those eight end four cells short of the x_hi absorber runway, so the grading reaches it by construction. The window is the published one, kept so the slope is comparable; the end-of-run energy witness the script records (-116 dB of peak at the record used, -122 dB at twice it) is what says the absorber is not returning the transition's reflection into the band.",
+   "ref": "validation/research/metal_edge/m6_wire_port_ad.py:5-8,97-98",
+   "rows": 1,
+   "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "wire_port_dead_cell_classification_unavailable",
+   "disposition": "intended",
+   "reason": "The non-uniform mesh is the design variable here, so dx_profile is set by construction and the shared dead-cell primitive (uniform-grid only, issue #544) cannot run. The advisory names an rfx limitation rather than a property of this feed: the port spans the three substrate cells between the ground and patch node planes, both conductors are declared by node index, and the script asserts the realized feed node and the realized patch length on every mesh before any resonance is read off it.",
+   "ref": "validation/research/metal_edge/m6_wire_port_ad.py:139-174,203-205",
+   "rows": 1,
+   "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   }
  ]
 }

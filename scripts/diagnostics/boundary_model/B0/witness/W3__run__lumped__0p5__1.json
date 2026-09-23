@@ -1,0 +1,112 @@
+{
+  "family": "W3",
+  "entry": "run",
+  "args": [
+    "W3",
+    "run",
+    "lumped",
+    "0.5",
+    "1"
+  ],
+  "commit": "798ec64e5cda057318664bc431e528819f9e371a",
+  "port_kind": "lumped",
+  "R_ohm": 188.365156834,
+  "Zc_ohm": 376.730313668,
+  "port_x_m": 0.001,
+  "load_x_m": 0.003,
+  "closed_form_abs_s11": 0.3333333333333333,
+  "reference_fixture_commit": "89326838939bf9573b11352ad832688f5548d4f6",
+  "grid": {
+    "shape": [
+      5,
+      2,
+      2
+    ],
+    "dx": 0.001,
+    "dt": 1.9065748695310057e-12,
+    "cpml_layers": 0,
+    "cpml_axes": "xyz",
+    "pec_faces": [
+      "z_hi",
+      "z_lo"
+    ],
+    "pmc_faces": [
+      "x_hi",
+      "x_lo",
+      "y_hi",
+      "y_lo"
+    ],
+    "face_layers": {
+      "x_lo": 0,
+      "x_hi": 0,
+      "y_lo": 0,
+      "y_hi": 0,
+      "z_lo": 0,
+      "z_hi": 0
+    },
+    "pad_x": 0,
+    "pad_x_lo": 0,
+    "pad_x_hi": 0,
+    "pad_y": 0,
+    "pad_y_lo": 0,
+    "pad_y_hi": 0,
+    "pad_z": 0,
+    "pad_z_lo": 0,
+    "pad_z_hi": 0
+  },
+  "n_steps": 2100,
+  "preflight": "['Source/port at (0.001, 0, 0) (component=ez) sits on the PMC y_lo plane. The outgoing tangential H is zeroed every step by apply_pmc_faces, so no wave radiates \u2014 the probe records silent zero field. Offset by one cell (1 mm) off the plane to let the Yee curl run normally.']",
+  "preflight_policy": "Captured verbatim; skip_preflight=True for physical witness execution.",
+  "freqs_Hz": [
+    1000000000.0,
+    2500000000.0,
+    5000000000.0,
+    7500000000.0,
+    10000000000.0
+  ],
+  "s11_real": [
+    -0.9999999403953552,
+    -1.0,
+    -1.0,
+    -0.9999999403953552,
+    -0.9999999403953552
+  ],
+  "s11_imag": [
+    -0.0,
+    0.0,
+    0.0,
+    -0.0,
+    0.0
+  ],
+  "s11_abs": [
+    0.9999999403953552,
+    1.0,
+    1.0,
+    0.9999999403953552,
+    0.9999999403953552
+  ],
+  "dt_s": 1.9065748695310057e-12,
+  "source_end_step": 140,
+  "probe_final": 0.0,
+  "probe_peak": 0.0,
+  "energy": [
+    {
+      "samples": 2100,
+      "post_source_peak_J": 1.9953231904316604e-22,
+      "final_J": 1.9953231904316604e-22,
+      "end_over_post_source_peak_dB": 0.0,
+      "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3; absorber pads excluded; staggered E/H levels as stored"
+    },
+    {
+      "samples": 2100,
+      "post_source_peak_J": 1.9953231904316604e-22,
+      "final_J": 1.9953231904316604e-22,
+      "end_over_post_source_peak_dB": 0.0,
+      "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3; absorber pads excluded; staggered E/H levels as stored"
+    }
+  ],
+  "status": "MEASURED",
+  "wall_s": 2.4493818400078453,
+  "backend": "gpu",
+  "run_id": "369367263563"
+}

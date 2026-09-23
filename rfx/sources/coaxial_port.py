@@ -667,11 +667,10 @@ def setup_coaxial_port(grid: Grid, port: CoaxialPort, materials):
     materials = materials._replace(eps_r=eps_r, sigma=sigma)
 
     # ---- 4. Fold port impedance into gap cell conductivity ----
-    from rfx.sources.sources import port_sigma as _port_sigma
-    i, j, k = gap_idx
+    from rfx.sources.sources import (
+        port_sigma as _port_sigma, stamp_lumped_sigma as _stamp_sigma)
     sp = _port_sigma(grid, gap_idx, component, port.impedance)
-    new_sigma = materials.sigma.at[i, j, k].add(sp)
-    materials = materials._replace(sigma=new_sigma)
+    materials = _stamp_sigma(materials, gap_idx, sp)
 
     return materials
 
@@ -1055,10 +1054,9 @@ def make_coaxial_port_source(grid: Grid, port: CoaxialPort, materials, n_steps: 
     d_par = _port_d_parallel(grid, gap_idx, component)
     dt = grid.dt
 
-    eps   = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma_val = float(materials.sigma[i, j, k])
-    loss  = sigma_val * dt / (2.0 * eps)
-    cb    = (dt / eps) / (1.0 + loss)
+    # #1210: the drive coefficient is the E update's own per-component Cb.
+    from rfx.core.yee import cell_component_e_coeffs as _cell_cb
+    cb = float(_cell_cb(materials, gap_idx, component, dt)[1])
 
     def apply_fn(state, t: float):
         """Inject coaxial port source at time t. Call AFTER update_e()."""

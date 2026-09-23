@@ -5941,6 +5941,258 @@
         }
       ]
     },
+    "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 18000.0,
+              "declared_um": [
+                0.0,
+                18000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 18000.0,
+              "n_cells": 36,
+              "realized_extent_um": 18000.0,
+              "realized_um": [
+                0.0,
+                18000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 18000.0,
+              "declared_um": [
+                0.0,
+                18000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 18000.0,
+              "n_cells": 36,
+              "realized_extent_um": 18000.0,
+              "realized_um": [
+                0.0,
+                18000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 9500.0,
+              "declared_um": [
+                0.0,
+                9500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 9500.0,
+              "n_cells": 19,
+              "realized_extent_um": 9500.0,
+              "realized_um": [
+                0.0,
+                9500.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|sub|4000.000,4000.000,4000.000um->14000.000,14000.000,5500.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 506.25,
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                4000.0,
+                14000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                125.0
+              ],
+              "realized_extent_um": 10125.0,
+              "realized_um": [
+                4000.0,
+                14125.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 500.0,
+              "declared_extent_um": 10000.0,
+              "declared_um": [
+                4000.0,
+                14000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 10000.0,
+              "realized_um": [
+                4000.0,
+                14000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 500.0,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                4000.0,
+                5500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 1500.0,
+              "realized_um": [
+                4000.0,
+                5500.0
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 125.0 um (1.25% of the declared 10000.0 um extent); SIZE 10125.0 um (+125.0 um, +1.25%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
+          "material": {
+            "eps_r": 3.38,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "sub",
+            "sigma": 0.00225645431245
+          },
+          "n_cells": 1200,
+          "realization": null
+        },
+        "pinned_sheet[0] 'ground'": {
+          "axes": {
+            "x": {
+              "node_indices": [
+                14,
+                34
+              ],
+              "realized_extent_um": 10125.0,
+              "realized_hi_um": 14125.0,
+              "realized_lo_um": 4000.0
+            },
+            "y": {
+              "node_indices": [
+                14,
+                34
+              ],
+              "realized_extent_um": 10000.0,
+              "realized_hi_um": 14000.0,
+              "realized_lo_um": 4000.0
+            }
+          },
+          "findings": [],
+          "material": {
+            "eps_r": 1.0,
+            "name": "pec",
+            "sigma": Infinity
+          },
+          "n_cells": 0,
+          "realization": "PEC sheet on node plane z = 4000.00 um (441 nodes, declared by node index, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+        },
+        "pinned_sheet[1] 'patch'": {
+          "axes": {
+            "x": {
+              "node_indices": [
+                18,
+                30
+              ],
+              "realized_extent_um": 6250.0,
+              "realized_hi_um": 12250.0,
+              "realized_lo_um": 6000.0
+            },
+            "y": {
+              "node_indices": [
+                19,
+                29
+              ],
+              "realized_extent_um": 5000.0,
+              "realized_hi_um": 11500.0,
+              "realized_lo_um": 6500.0
+            }
+          },
+          "findings": [],
+          "material": {
+            "eps_r": 1.0,
+            "name": "pec",
+            "sigma": Infinity
+          },
+          "n_cells": 0,
+          "realization": "PEC sheet on node plane z = 5500.00 um (143 nodes, declared by node index, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'sub' on x: 10.2 cells per \u03bb_eff (eps_r=3.38, freq_max=30GHz, dx=531.2\u00b5m). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'sub' on y: 10.9 cells per \u03bb_eff (eps_r=3.38, freq_max=30GHz, dx=500\u00b5m). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'sub' on z: 10.9 cells per \u03bb_eff (eps_r=3.38, freq_max=30GHz, dx=500\u00b5m). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "nu_grading_reaches_absorber",
+          "loc": null,
+          "message": "dx_profile is not uniform within the 6 interior cells adjacent to the x_hi absorber face (max adjacent cell-ratio deviation 0.0667). WHY: the absorber pad replicates the outermost interior cell, so a transition in that runway changes the discrete medium in the boundary-NORMAL direction exactly where the absorber starts \u2014 the documented PML breakdown class \u2014 and gives the transition's own reflection no runway to separate from the absorber's. COST: the validated multi-band envelope does not cover it at all; no witness in it MEASURES an accuracy observable with an absorber present (every accuracy witness is PEC-closed at cpml_layers = 0; the one absorber-bearing witness checks the AD path only) (docs/guides/support_matrix.md, 'Multi-band graded mesh'). REMEDY: keep at least 6 uniform interior cells against that face, or close it with PEC/PMC. STALE-IF: a witness that SCORES an accuracy observable with an absorber present is added to that row.",
+          "severity": "warning",
+          "source": "_validate_cfg_multiband_grading"
+        },
+        {
+          "code": "wire_port_dead_cell_classification_unavailable",
+          "loc": null,
+          "message": "Wire port at (0.008, 0.009, 0.004) (extent 0.0014999999999999996): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
+        }
+      ]
+    },
     "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off": {
       "fidelity": {
         "NOT AUDITED by this report": {

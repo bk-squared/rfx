@@ -1340,7 +1340,10 @@
         "dy_profile",
         "pec_faces",
         "pmc_faces",
-        "cpml_axes"
+        "cpml_axes",
+        "dt",
+        "dt_min_cell",
+        "dt_caller"
       ]
     },
     "make_ntff_box": {
@@ -1777,6 +1780,7 @@
         "port_names",
         "driven_port_indices",
         "current_convention",
+        "diagonal_frame",
         "reference_plane_offsets_m",
         "propagation_constants",
         "source"

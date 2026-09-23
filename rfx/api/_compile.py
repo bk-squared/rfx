@@ -113,7 +113,7 @@ class _CompileMixin:
                 cpml_axes=cpml_axes,
                 mode=self._mode,
                 kappa_max=self._cpml_kappa_max,
-                pec_faces=self._pec_faces,
+                pec_faces=self._boundary_spec.pec_faces(),
                 pmc_faces=self._boundary_spec.pmc_faces(),
                 face_layers=face_layers,
                 conformal_faces=self._boundary_spec.conformal_faces(),
@@ -126,7 +126,7 @@ class _CompileMixin:
             cpml_axes=_filter_periodic("xyz"),
             mode=self._mode,
             kappa_max=self._cpml_kappa_max,
-            pec_faces=self._pec_faces,
+            pec_faces=self._boundary_spec.pec_faces(),
             pmc_faces=self._boundary_spec.pmc_faces(),
             face_layers=face_layers,
             conformal_faces=self._boundary_spec.conformal_faces(),
@@ -868,6 +868,9 @@ class _CompileMixin:
                 ax for ax in "xyz"
                 if ax not in (self._periodic_axes or "")
             ),
+            dt=getattr(self, "_dt_pin", None),
+            dt_min_cell=getattr(self, "_dt_min_cell", None),
+            dt_caller="Simulation",
         )
 
     def _assemble_materials_nu(

@@ -300,7 +300,7 @@ def test_threading_an_equal_permittivity_is_bit_identical():
 
 
 @pytest.mark.parametrize("subpixel,dispersive,expect_threaded", [
-    (False, False, False),   # no anisotropic array -> materials.eps_r, as before
+    (False, False, True),    # #1210: the plain E update is per-component too
     (True, False, True),     # Stage 1 -> 1/aniso_eps
     (True, True, False),     # dispersion wins the E update, so it wins here too
 ])
@@ -308,13 +308,24 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
         monkeypatch, subpixel, dispersive, expect_threaded):
     """Pin WHICH runs get the new coefficient, not just what it computes.
 
-    The three stable configurations of #1043's table are stable because their
-    two permittivities agree wherever ``apply_cpml_e`` writes — the
-    subpixel-OFF run by taking the ``materials`` branch outright, the
-    dispersive run the same way. A future edit that threads the array
-    unconditionally would break the dispersive run silently, because
-    ``_update_e_with_optional_dispersion`` ignores ``aniso_eps`` and the two
-    halves would disagree again with the sign reversed.
+    The invariant is #1043's: ``apply_cpml_e``'s psi coefficient takes its
+    permittivity from the array the Yee half of the same timestep used, or the
+    two halves integrate different media and the combined update can amplify.
+    A future edit that threads the array on a DISPERSIVE run would break it
+    silently, because ``_update_e_with_optional_dispersion`` ignores the
+    anisotropic arrays there and the two halves would disagree again with the
+    sign reversed.
+
+    RE-PINNED 2026-09-23, root cause #1210: the subpixel-OFF row used to expect
+    NO threading, because the plain E update read ``materials.eps_r`` itself.
+    It no longer does — ``update_e`` builds its coefficients from the mean of
+    eps_r over each edge's four incident cells, which is ``materials.eps_r``
+    only where the pad is homogeneous. Leaving that row unthreaded would put
+    the staircase permittivity in the absorber half against the averaged one in
+    the Yee half: the same inequality #1043 measured, on every run with a
+    material interface crossing a CPML pad. The byte-identity claim survives
+    through ``test_threading_an_equal_permittivity_is_bit_identical`` above — a
+    homogeneous pad averages to itself exactly.
 
     (The committed-geometry CPML control is NOT pinned as unchanged: its pad
     holds ``materials.eps_r = 12`` against ``aniso_eps = 1``, so its numbers

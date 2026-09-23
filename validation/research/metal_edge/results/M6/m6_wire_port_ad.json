@@ -1,0 +1,272 @@
+{
+  "kind": "metal_edge_M6_wire_port_ad",
+  "fixture": {
+    "dx": 0.0005,
+    "t_sub": 0.0015,
+    "patch_x": 0.006,
+    "patch_y": 0.005,
+    "gp": 0.01,
+    "domain_xy": 0.018,
+    "air": 0.004,
+    "eps_r": 3.38,
+    "tan_delta": 0.001,
+    "f0": 12000000000.0,
+    "feed_offset_x": -0.001,
+    "band": [
+      10000000000.0,
+      13000000000.0,
+      20000000.0
+    ],
+    "cpml": 6
+  },
+  "band_hz": [
+    10000000000.0,
+    13000000000.0,
+    20000000.0
+  ],
+  "window": {
+    "n_in": 8,
+    "out_cells": [
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31
+    ]
+  },
+  "patch_node_indices": [
+    12,
+    24
+  ],
+  "patch_y_node_indices": [
+    13,
+    23
+  ],
+  "ground_node_indices": [
+    8,
+    28
+  ],
+  "port_node_index": 16,
+  "dt_pinned_s": 7.722779001411267e-13,
+  "dt_min_cell_m": 0.000375,
+  "n_steps": 7406,
+  "smoke": false,
+  "delta_0_m": 0.00025,
+  "reference_slope_hz_per_m": -1208800000000.0,
+  "profiles": [
+    {
+      "delta_m": 0.0,
+      "declared_L_m": 0.006,
+      "realized_L_m": 0.006000000000000005,
+      "patch_node_indices": [
+        12,
+        24
+      ],
+      "patch_y_node_indices": [
+        13,
+        23
+      ],
+      "ground_node_indices": [
+        8,
+        28
+      ],
+      "port_node_index": 16,
+      "port_node_x_m": 0.008000000000000004,
+      "nominal_port_x_m": 0.008,
+      "max_ratio": 1.0,
+      "min_cell_m": 0.0005,
+      "max_cell_m": 0.0005,
+      "total_m": 0.018000000000000002,
+      "declared_total_m": 0.018
+    },
+    {
+      "delta_m": 0.00025,
+      "declared_L_m": 0.00625,
+      "realized_L_m": 0.0062500000000000056,
+      "patch_node_indices": [
+        12,
+        24
+      ],
+      "patch_y_node_indices": [
+        13,
+        23
+      ],
+      "ground_node_indices": [
+        8,
+        28
+      ],
+      "port_node_index": 16,
+      "port_node_x_m": 0.008000000000000004,
+      "nominal_port_x_m": 0.008,
+      "max_ratio": 1.1333333333333335,
+      "min_cell_m": 0.00046875,
+      "max_cell_m": 0.00053125,
+      "total_m": 0.018000000000000002,
+      "declared_total_m": 0.018
+    },
+    {
+      "delta_m": 0.0005,
+      "declared_L_m": 0.006500000000000001,
+      "realized_L_m": 0.006500000000000006,
+      "patch_node_indices": [
+        12,
+        24
+      ],
+      "patch_y_node_indices": [
+        13,
+        23
+      ],
+      "ground_node_indices": [
+        8,
+        28
+      ],
+      "port_node_index": 16,
+      "port_node_x_m": 0.008000000000000004,
+      "nominal_port_x_m": 0.008,
+      "max_ratio": 1.2857142857142858,
+      "min_cell_m": 0.0004375,
+      "max_cell_m": 0.0005625000000000001,
+      "total_m": 0.018000000000000002,
+      "declared_total_m": 0.018
+    }
+  ],
+  "base": {
+    "delta_m": 0.00025,
+    "f_r_hz": 11634768593.907356,
+    "f_r_bin": 82,
+    "parabolic": true,
+    "dt_s": 7.722779001411267e-13,
+    "s11_min_db": -9.804651260375977,
+    "s11_max_abs": 0.9006750583648682,
+    "settling_db": -116.36830139160156,
+    "all_finite": true,
+    "wall_s": 16.040419816970825
+  },
+  "ad": {
+    "traced_f_r_hz": 11634768896.0,
+    "concrete_f_r_hz": 11634768896.0,
+    "primal_rel": 0.0,
+    "slope_hz_per_m": -1210950090752.0,
+    "rel_to_reference": -0.001778698504301787,
+    "bin_held": 82,
+    "wall_s": 26.565524101257324
+  },
+  "fd": [
+    {
+      "h_over_dx": 0.125,
+      "h_m": 6.25e-05,
+      "f_up_hz": 11537464320.0,
+      "f_dn_hz": 11721703424.0,
+      "slope_hz_per_m": -1473912832000.0,
+      "rel_to_ad": -0.17841132497040368,
+      "moving_bin_f_up_hz": 11559608136.080206,
+      "moving_bin_f_dn_hz": 11711102163.791656,
+      "moving_bin_bins": [
+        78,
+        86
+      ],
+      "moving_bin_slope_hz_per_m": -1211952221691.6045,
+      "moving_bin_rel_to_reference": -0.00260772807048684,
+      "wall_s": 17.655863046646118
+    },
+    {
+      "h_over_dx": 0.0625,
+      "h_m": 3.125e-05,
+      "f_up_hz": 11594290176.0,
+      "f_dn_hz": 11673667584.0,
+      "slope_hz_per_m": -1270038528000.0,
+      "rel_to_ad": -0.046524917114955426,
+      "moving_bin_f_up_hz": 11597034542.262554,
+      "moving_bin_f_dn_hz": 11672784258.127213,
+      "moving_bin_bins": [
+        80,
+        84
+      ],
+      "moving_bin_slope_hz_per_m": -1211995453834.5337,
+      "moving_bin_rel_to_reference": -0.0026434925831681764,
+      "wall_s": 13.132611989974976
+    },
+    {
+      "h_over_dx": 0.03125,
+      "h_m": 1.5625e-05,
+      "f_up_hz": 11615420416.0,
+      "f_dn_hz": 11653753856.0,
+      "slope_hz_per_m": -1226670080000.0,
+      "rel_to_ad": -0.012815172966475224,
+      "moving_bin_f_up_hz": 11615862598.41919,
+      "moving_bin_f_dn_hz": 11653734604.120255,
+      "moving_bin_bins": [
+        81,
+        83
+      ],
+      "moving_bin_slope_hz_per_m": -1211904182434.082,
+      "moving_bin_rel_to_reference": -0.0025679867919275574,
+      "wall_s": 9.602194786071777
+    },
+    {
+      "h_over_dx": 0.015625,
+      "h_m": 7.8125e-06,
+      "f_up_hz": 11625223168.0,
+      "f_dn_hz": 11644222464.0,
+      "slope_hz_per_m": -1215954944000.0,
+      "rel_to_ad": -0.0041159857712622615,
+      "moving_bin_f_up_hz": 11625274088.38272,
+      "moving_bin_f_dn_hz": 11644221554.398537,
+      "moving_bin_bins": [
+        81,
+        82
+      ],
+      "moving_bin_slope_hz_per_m": -1212637825012.207,
+      "moving_bin_rel_to_reference": -0.00317490487442673,
+      "wall_s": 9.427920818328857
+    },
+    {
+      "h_over_dx": 0.0078125,
+      "h_m": 3.90625e-06,
+      "f_up_hz": 11630035968.0,
+      "f_dn_hz": 11639494656.0,
+      "slope_hz_per_m": -1210712064000.0,
+      "rel_to_ad": 0.00019660062790949443,
+      "moving_bin_f_up_hz": 11630034772.753716,
+      "moving_bin_f_dn_hz": 11639493943.713606,
+      "moving_bin_bins": [
+        82,
+        82
+      ],
+      "moving_bin_slope_hz_per_m": -1210773882865.9668,
+      "moving_bin_rel_to_reference": -0.00163292758600827,
+      "wall_s": 9.473779916763306
+    },
+    {
+      "h_over_dx": 0.00390625,
+      "h_m": 1.953125e-06,
+      "f_up_hz": 11632380928.0,
+      "f_dn_hz": 11637136384.0,
+      "slope_hz_per_m": -1217396736000.0,
+      "rel_to_ad": -0.005295434969853574,
+      "moving_bin_f_up_hz": 11632380039.095879,
+      "moving_bin_f_dn_hz": 11637135227.918625,
+      "moving_bin_bins": [
+        82,
+        82
+      ],
+      "moving_bin_slope_hz_per_m": -1217328338623.0469,
+      "moving_bin_rel_to_reference": -0.007055210641170479,
+      "wall_s": 9.831553936004639
+    }
+  ],
+  "record_witness": {
+    "n_steps": 14812,
+    "f_r_hz": 11634768593.907356,
+    "f_r_bin": 82,
+    "settling_db": -121.84254455566406,
+    "slope_hz_per_m": -1210939867136.0,
+    "rel_to_1x": 8.442640269056122e-06,
+    "wall_s": 22.271570920944214
+  },
+  "status": "ok",
+  "wall_s": 135.28140592575073
+}

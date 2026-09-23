@@ -1,0 +1,121 @@
+{
+  "family": "W1",
+  "entry": "run",
+  "args": [
+    "W1",
+    "run",
+    "1"
+  ],
+  "commit": "798ec64e5cda057318664bc431e528819f9e371a",
+  "analytic_declared_Hz": 8832720000.015968,
+  "analytic_half_cell_inside_Hz": 8832720000.015968,
+  "mode": "TM110",
+  "domain_m": [
+    0.024,
+    0.024,
+    0.024
+  ],
+  "dx_m": 0.001,
+  "source_m": [
+    0.011,
+    0.012,
+    0.01
+  ],
+  "probe_m": [
+    0.014,
+    0.009,
+    0.013
+  ],
+  "component": "ez",
+  "grid": {
+    "shape": [
+      25,
+      25,
+      25
+    ],
+    "dx": 0.001,
+    "dt": 1.9065748695310057e-12,
+    "cpml_layers": 0,
+    "cpml_axes": "xyz",
+    "pec_faces": [
+      "x_hi",
+      "x_lo",
+      "y_hi",
+      "y_lo",
+      "z_hi",
+      "z_lo"
+    ],
+    "pmc_faces": [],
+    "face_layers": {
+      "x_lo": 0,
+      "x_hi": 0,
+      "y_lo": 0,
+      "y_hi": 0,
+      "z_lo": 0,
+      "z_hi": 0
+    },
+    "pad_x": 0,
+    "pad_x_lo": 0,
+    "pad_x_hi": 0,
+    "pad_y": 0,
+    "pad_y_lo": 0,
+    "pad_y_hi": 0,
+    "pad_z": 0,
+    "pad_z_lo": 0,
+    "pad_z_hi": 0
+  },
+  "n_steps": 4096,
+  "preflight": "[]",
+  "preflight_policy": "Captured verbatim; skip_preflight=True for physical witness execution.",
+  "dt_s": 1.9065748695310057e-12,
+  "source_end_step": 159,
+  "probe_final": 0.005403760354965925,
+  "probe_peak": 0.0061345635913312435,
+  "energy": [
+    {
+      "samples": 4096,
+      "post_source_peak_J": 6.544245171742443e-22,
+      "final_J": 6.19498249642774e-22,
+      "end_over_post_source_peak_dB": -0.2381947761382165,
+      "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3; absorber pads excluded; staggered E/H levels as stored"
+    }
+  ],
+  "harminv": [
+    {
+      "freq_Hz": 8830531860.89004,
+      "Q": 309066905.1083409,
+      "amplitude": 0.002814209485423494
+    },
+    {
+      "freq_Hz": 15287341327.853775,
+      "Q": 7163028.00101462,
+      "amplitude": 0.00012495196081388054
+    },
+    {
+      "freq_Hz": 10817691183.511845,
+      "Q": 281510.8550242226,
+      "amplitude": 8.014148172718946e-05
+    },
+    {
+      "freq_Hz": 13948095176.204712,
+      "Q": 150446.7023923252,
+      "amplitude": 5.8350136000346634e-05
+    },
+    {
+      "freq_Hz": 19681362153.927147,
+      "Q": 19946.459542247958,
+      "amplitude": 1.4457619025190173e-05
+    },
+    {
+      "freq_Hz": 18733951339.761055,
+      "Q": 3375.6991534769495,
+      "amplitude": 3.429006051932601e-06
+    }
+  ],
+  "nearest_declared_Hz": 8830531860.89004,
+  "ringdown_start_step": 1024,
+  "status": "MEASURED",
+  "wall_s": 1.2130791390081868,
+  "backend": "gpu",
+  "run_id": "369367263562"
+}

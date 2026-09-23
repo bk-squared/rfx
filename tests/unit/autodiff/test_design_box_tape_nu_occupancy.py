@@ -71,6 +71,7 @@ from rfx.core.yee import (
     update_e_box, update_e_nu, update_h_nu,
 )
 from rfx.nonuniform import make_nonuniform_grid, position_to_index
+from rfx.simulation import _design_box_edge_coeffs
 from tests._x64_compat import enable_x64
 
 F0 = 8e9
@@ -178,8 +179,17 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
                 eps_r=ones.astype(jnp.result_type(eps_design))
                 .at[sl].set(eps_design))
             if split:
-                ca, cb = e_update_coeffs(
-                    eps_design, jnp.zeros_like(eps_design), dt)
+                # #1210: the box's coefficients come from the product's own
+                # builder, not a hand-written e_update_coeffs on the box
+                # alone. A Yee E component on the box's minus face is shared
+                # with a background cell, so its coefficient is the mean of
+                # the two -- and the design material reaches one cell past
+                # the box on the plus side, which is why the redo writes a
+                # window instead of the declared box. Building it here by
+                # hand was a second spelling of the material-to-edge rule,
+                # and it is the spelling #1210 corrected.
+                box_w, ca, cb = _design_box_edge_coeffs(
+                    box, eps_design, jnp.zeros_like(eps_design), m, dt, shape)
 
             def step(carry, n):
                 st, cpml, acc = carry
@@ -192,7 +202,7 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
                                  grid.inv_dz)
                 if split:
                     st = update_e_box(
-                        st, prev, box, ca, cb, grid.dx,
+                        st, prev, box_w, ca, cb, grid.dx,
                         inv_d=(grid.inv_dx, grid.inv_dy, grid.inv_dz))
                 st, cpml = apply_cpml_e(st, cpml_params, cpml, grid, "xyz",
                                         materials=m)

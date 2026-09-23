@@ -1,0 +1,204 @@
+{
+  "shape": [
+    9,
+    11,
+    13
+  ],
+  "dx_m": 0.001,
+  "measurements": [
+    {
+      "face": "x_lo",
+      "kind": "pec",
+      "zero_planes": {
+        "ex": [],
+        "ey": [
+          0
+        ],
+        "ez": [
+          0
+        ]
+      },
+      "node_plane_m": 0,
+      "zero_sample_m": 0.0,
+      "zero_minus_node_mm": 0.0
+    },
+    {
+      "face": "x_lo",
+      "kind": "pmc",
+      "zero_planes": {
+        "hx": [],
+        "hy": [
+          0
+        ],
+        "hz": [
+          0
+        ]
+      },
+      "node_plane_m": 0,
+      "zero_sample_m": 0.0005,
+      "zero_minus_node_mm": 0.5
+    },
+    {
+      "face": "x_hi",
+      "kind": "pec",
+      "zero_planes": {
+        "ex": [],
+        "ey": [
+          8
+        ],
+        "ez": [
+          8
+        ]
+      },
+      "node_plane_m": 0.008,
+      "zero_sample_m": 0.008,
+      "zero_minus_node_mm": 0.0
+    },
+    {
+      "face": "x_hi",
+      "kind": "pmc",
+      "zero_planes": {
+        "hx": [],
+        "hy": [
+          7
+        ],
+        "hz": [
+          7
+        ]
+      },
+      "node_plane_m": 0.008,
+      "zero_sample_m": 0.0075,
+      "zero_minus_node_mm": -0.5000000000000004
+    },
+    {
+      "face": "y_lo",
+      "kind": "pec",
+      "zero_planes": {
+        "ex": [
+          0
+        ],
+        "ey": [],
+        "ez": [
+          0
+        ]
+      },
+      "node_plane_m": 0,
+      "zero_sample_m": 0.0,
+      "zero_minus_node_mm": 0.0
+    },
+    {
+      "face": "y_lo",
+      "kind": "pmc",
+      "zero_planes": {
+        "hx": [
+          0
+        ],
+        "hy": [],
+        "hz": [
+          0
+        ]
+      },
+      "node_plane_m": 0,
+      "zero_sample_m": 0.0005,
+      "zero_minus_node_mm": 0.5
+    },
+    {
+      "face": "y_hi",
+      "kind": "pec",
+      "zero_planes": {
+        "ex": [
+          10
+        ],
+        "ey": [],
+        "ez": [
+          10
+        ]
+      },
+      "node_plane_m": 0.01,
+      "zero_sample_m": 0.01,
+      "zero_minus_node_mm": 0.0
+    },
+    {
+      "face": "y_hi",
+      "kind": "pmc",
+      "zero_planes": {
+        "hx": [
+          9
+        ],
+        "hy": [],
+        "hz": [
+          9
+        ]
+      },
+      "node_plane_m": 0.01,
+      "zero_sample_m": 0.0095,
+      "zero_minus_node_mm": -0.5000000000000004
+    },
+    {
+      "face": "z_lo",
+      "kind": "pec",
+      "zero_planes": {
+        "ex": [
+          0
+        ],
+        "ey": [
+          0
+        ],
+        "ez": []
+      },
+      "node_plane_m": 0,
+      "zero_sample_m": 0.0,
+      "zero_minus_node_mm": 0.0
+    },
+    {
+      "face": "z_lo",
+      "kind": "pmc",
+      "zero_planes": {
+        "hx": [
+          0
+        ],
+        "hy": [
+          0
+        ],
+        "hz": []
+      },
+      "node_plane_m": 0,
+      "zero_sample_m": 0.0005,
+      "zero_minus_node_mm": 0.5
+    },
+    {
+      "face": "z_hi",
+      "kind": "pec",
+      "zero_planes": {
+        "ex": [
+          12
+        ],
+        "ey": [
+          12
+        ],
+        "ez": [
+          12
+        ]
+      },
+      "node_plane_m": 0.012,
+      "zero_sample_m": 0.012,
+      "zero_minus_node_mm": 0.0
+    },
+    {
+      "face": "z_hi",
+      "kind": "pmc",
+      "zero_planes": {
+        "hx": [
+          11
+        ],
+        "hy": [
+          11
+        ],
+        "hz": []
+      },
+      "node_plane_m": 0.012,
+      "zero_sample_m": 0.0115,
+      "zero_minus_node_mm": -0.5000000000000004
+    }
+  ]
+}

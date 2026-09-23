@@ -1,4 +1,4 @@
-"""Topology selection preserves one-process bits and permits global JAX arrays."""
+"""Topology-independent scan arguments, local bit pins and global JAX arrays."""
 
 from functools import partial
 import hashlib
@@ -28,22 +28,22 @@ pytestmark = pytest.mark.distributed
 _FIELDS = ("ex", "ey", "ez", "hx", "hy", "hz")
 _BASELINE = {
     "pec": {
-        "trace": "cf0259c5ca4f93a0cc9c1ab3399c8b53ccc96fc885d445e6f19fb84cbdf93306",
-        "ex": "9d638c756bbbfb57503ec0aea5b80d29db888b5b738bf9000561df097cac3f36",
-        "ey": "0616b19095a22a26979e5ed17c289d398dcda4e710944f47fb6c2b6cd33737d2",
-        "ez": "647bb085bede68881b625cb77e94a7f8618c7e07f41f34ec2b8b0776b876bc03",
-        "hx": "e972a6efa32b43b3a84f41a65c4c9397b004e4930a545f0b84d79cdc5a50388d",
-        "hy": "9a8e6e56b763bb07d7235e80a15687d05f670c68160c9fa0d73ab473b8ec26d2",
-        "hz": "3b91cd16b2687b94d3bafec9bb2a644a445c4d0b7bce58f545dcbf202aa271d3",
+        "trace": "0ee5a57d7263d66d374b9911b2d735b40b17f4aca406465607d83ea07b33943d",
+        "ex": "e56cc2a200d8856de5fe7b727314d2c6d63a0c6dd64c1a6c85f78a505b1ea396",
+        "ey": "f3c49f0aeb1eeb7c232ddfa19f3e2d74feb585ca94ae39a4d9703e0716944f87",
+        "ez": "f5c4b5e1c7a06799da43663e320270bd7ba4346bc9659dae166d367491dd745f",
+        "hx": "f4899f531f073c935462d2e97459484e359b985f994d9b1e2bfe6125fe769e43",
+        "hy": "316d373d2880b5ab9a1580fb23ab70489b292b408657a738333db19e8a27a09b",
+        "hz": "5e6f7547699614e24e21233865eb46bc71efa2a5bb0554008137f40b4d2b020d",
     },
     "cpml": {
-        "trace": "1e356ea20d2ada2c5396d4d0e6d3817e729f6da89148ee9ff94bcd111da3cf50",
-        "ex": "a29f88f21487d8a372477021925b25d9fc035e87ef08b00c444c7400f7a6e758",
-        "ey": "c667e8ac30db1e99a05c8b916e4ec2398699e5acdc0518776f7c45d0f6c5fe91",
-        "ez": "c2b468b89d12b5fa9550043d65c941d3d814d4a365169f21c42da5c0869580ef",
-        "hx": "d2a994357bccccf2d42e084498982307df4fbabaa60fc49278c7fa4d8b076a11",
-        "hy": "5894b9874ed2f87c3a023489d67451d722cbfb2dbe650fa961236e22cde69654",
-        "hz": "262f697fce6f33d1bb87c232328fd267106a0bcaaf2baf330b050078b8a20839",
+        "trace": "e8a9024ff2b5917bc90e7738b584dbf03aa952d14c992dc6eb27c66a90c5f46e",
+        "ex": "4f01aa7ae12de326523bfedced694f2dd2f5f7a8740bda08f8652dd3cbc0c3e9",
+        "ey": "f1d80073b0cafe60232da9e43ed76ab2ff65a299e25235b6259e555d710d2d20",
+        "ez": "a0ea84740b70365f27f429372c0fe3940f79b22c6221002a60ea69f1a4d85b94",
+        "hx": "32967a5083226d72ad4bca2dc9bc6f724b2bd55a24c72c009fa474df1d5a3909",
+        "hy": "66026b56e7582d08ec7768e06d089dc418e2ace6d823fe026acc6dd0fd197a1c",
+        "hz": "5ca0ad0dccdfe1912f4cdc144b82ebc823d1a3d3988bc63f15e8d6442125b3ae",
     },
 }
 
@@ -138,7 +138,7 @@ def _scan_body_captures(monkeypatch, run):
 
 
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_single_process_scan_body_captures_materials_by_closure(boundary, monkeypatch):
+def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch):
     devices = _cpu_devices()
     entries = []
 
@@ -154,14 +154,12 @@ def test_single_process_scan_body_captures_materials_by_closure(boundary, monkey
     captured = _scan_body_captures(
         monkeypatch, lambda: _build_box(boundary).run(n_steps=3, devices=devices),
     )
-    assert captured, "single-process scan must keep its captured material arrays"
-    # Match the spec portion, not the mesh axis name (also present for P()).
-    assert any("'x'" in sharding.partition("spec=")[2].partition(")")[0]
-               for _, _, sharding in captured), captured
+    assert not captured, f"single-process scan captured concrete arrays: {captured}"
     gather.assert_not_called()
     assert len(entries) == 1
     entries[0].assert_called_once()
-    assert len(entries[0].call_args.args) == 2
+    # carry, xs, materials, Debye, Lorentz, [CPML parameters], PEC mask.
+    assert len(entries[0].call_args.args) == (7 if boundary == "cpml" else 6)
     assert entries[0].call_args.kwargs == {}
 
 
@@ -197,10 +195,7 @@ def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypa
     assert not distributed_v2._spans_other_processes(devices)
     gather = Mock(wraps=multihost_utils.process_allgather)
     monkeypatch.setattr(multihost_utils, "process_allgather", gather)
-    captured = _scan_body_captures(
-        monkeypatch, lambda: _build_box("pec").run(n_steps=3, devices=devices),
-    )
-    assert captured, "a mesh of local devices must keep the single-process scan"
+    _build_box("pec").run(n_steps=3, devices=devices)
     gather.assert_not_called()
 
 
@@ -223,23 +218,35 @@ def test_non_uniform_grid_is_refused_across_processes(monkeypatch):
 @pytest.mark.skipif(
     (sys.platform, platform.machine(), jax.__version__, jaxlib.__version__)
     != ("darwin", "arm64", "0.10.2", "0.10.2"),
-    reason="origin/main SHA256 pins require the capture toolchain: Darwin arm64 JAX/jaxlib 0.10.2",
+    reason="SHA256 pins require the measurement toolchain: Darwin arm64 JAX/jaxlib 0.10.2",
 )
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
 def test_single_process_path_is_bit_identical(boundary):
-    """The multi-process path changes constant folding; the single-process path must not move.
+    """Pin the explicit-argument scan after PI decision A (2026-09-23).
 
-    BEFORE: origin/main e7f7e02704fd46ea7e21f127b19fc81cb66d6148, scratch
-    worktree /tmp/rfx-mh/origin-main, macOS arm64, Python 3.11.2, JAX/jaxlib
-    0.10.2, two CPU devices. Command (cwd = that scratch worktree)::
+    BEFORE: origin/main c2dbf922bc9230cd6fa4054a7b6d84d118768bde used the
+    capturing-lambda path on one process. Decision A passes material, PEC-mask,
+    dispersion and CPML arrays as explicit jit arguments on every topology.
+    Root cause of the shift (reviewer, measured): XLA's algebraic simplifier
+    rewrote arithmetic on the captured, uniform eps_r array of these vacuum
+    boxes; with arguments it no longer knows the array is uniform. Disabling
+    the algsimp pass makes old and new bit-identical; boxes whose eps_r varies
+    anywhere are bit-identical without it. Which models move depends on the
+    XLA version.
 
-        PYTHONPATH=$PWD XLA_FLAGS=--xla_force_host_platform_device_count=2 /Users/byungkwankim/Documents/rfx/.venv/bin/python /tmp/rfx-mh/measure.py /tmp/rfx-mh/before
+    Measured on Darwin arm64, JAX/jaxlib 0.10.2, two CPU devices, 20 steps:
+    max per-value float32 ULP shift (trace / all six fields) was
+    PEC 6 / 1,469,981,254 and CPML 3 / 1,459,299,516. These field distances use
+    monotonic float32 bit ordering across signs, collapsing signed zero;
+    near-zero cancellation values change sign. Restricting to same-sign
+    values gives field maxima of 70,132,873 and 461,373,440 ULP, respectively.
+    Max absolute field shifts divided by spacing(field peak) are only 0.5
+    and 1.0 ULP; a few-ULP bound per field value would be incorrect.
 
-    measure.py ran _build_box's exact fixture for 20 steps on jax.devices()[:2]
-    and printed hashlib.sha256(np.asarray(array).tobytes()).hexdigest() for
-    time_series and state.ex/ey/ez/hx/hy/hz. The pins are host/toolchain scoped,
-    as in tests/locks/test_runner_split_bit_identity.py; parity below runs on
-    other CPU toolchains too. CPML adds two cells per face: shape 20x12x12.
+    The pins are what this test computes: _build_box's fixture, 20 steps on two
+    CPU devices, SHA256 over np.asarray(array).tobytes() of time_series and
+    state.ex/ey/ez/hx/hy/hz. They remain toolchain scoped. CPML adds two cells
+    per face: shape 20x12x12.
     """
     result = _build_box(boundary).run(n_steps=20, devices=_cpu_devices())
     arrays = _snapshot(result)
@@ -250,31 +257,26 @@ def test_single_process_path_is_bit_identical(boundary):
 
 
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_multi_process_variant_matches_single_within_parity(
-    boundary, monkeypatch, record_property,
-):
+def test_single_and_multi_process_topologies_are_bit_identical(boundary, monkeypatch):
     devices = _cpu_devices()
     expected = _snapshot(_build_box(boundary).run(n_steps=20, devices=devices))
     # Override only the runner's view of its own process index, so every local
     # device looks like another process's and the runner selects the
     # multi-process path. JAX itself and process_allgather still see one real
-    # process, so this exercises both explicit-argument scan bodies and jit
-    # entries without starting a distributed runtime or mocking their numerical
-    # operations. The real multi-host collective is tested below.
+    # process, so this exercises the same explicit-argument scan under both
+    # topology predicates without starting a distributed runtime or mocking
+    # numerical operations. The real multi-host collective is tested below.
     runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
     monkeypatch.setattr(distributed_v2, "jax", runner_jax)
     assert distributed_v2._spans_other_processes(devices)
     actual = _snapshot(_build_box(boundary).run(n_steps=20, devices=devices))
-    # Normalize the six-component field state by its common peak. In this ez
-    # fixture hz is cancellation noise (~1e-12), so its own peak is not a useful
-    # denominator for a float32 lane-parity check.
-    for name, keys in (("trace", ("trace",)), ("fields", _FIELDS)):
-        got = np.concatenate([actual[key].ravel() for key in keys])
-        want = np.concatenate([expected[key].ravel() for key in keys])
-        relative, max_diff = _relative_error(got, want)
-        record_property(f"{boundary}_{name}_relative_error", relative)
-        record_property(f"{boundary}_{name}_max_abs_diff", max_diff)
-        assert relative <= 1e-4, f"{boundary} {name}: {relative=:.9e}, {max_diff=:.9e}"
+    # Byte equality (np.array_equal would treat +0 and -0 as equal). This pins
+    # that both topology predicates compile the same scan and that the
+    # cross-process gather is a no-op at one real process; agreement across
+    # real hosts is the Linux two-process test below.
+    for name in ("trace", *_FIELDS):
+        assert actual[name].dtype == expected[name].dtype
+        assert actual[name].tobytes() == expected[name].tobytes(), f"{boundary} {name}"
 
 
 @pytest.mark.skipif(
@@ -350,7 +352,7 @@ def test_two_processes_return_identical_global_results(tmp_path, record_property
         record_property(f"{name}_relative_error", relative)
         record_property(f"{name}_max_abs_diff", max_diff)
         if not exact:
-            # Explicit jit arguments change float32 constant folding. Retain
+            # Real multi-host compilation may differ from a local mesh. Retain
             # the repo's distributed parity tolerance (test_distributed.py).
             print(f"{name}: max abs diff={max_diff:.9e}, relative={relative:.9e}")
             assert relative <= 1e-4, f"{name}: {max_diff=:.9e}, {relative=:.9e}"

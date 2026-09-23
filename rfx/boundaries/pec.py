@@ -55,6 +55,45 @@ def apply_pec(state, axes: str = "xyz") -> object:
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
+_FACES = ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+
+
+def resolve_wall_faces(grid, periodic, pec_axes=None):
+    """The electric and magnetic wall faces of a run, from the grid's own
+    boundary declaration (#1164, #1193, #1194).
+
+    One rule for every entry point, decided per FACE, not per axis:
+
+    * a face on a periodic axis is no wall;
+    * a face in ``grid.pmc_faces`` is a magnetic wall and never an
+      electric one -- zeroing E_tan on its node plane turns an open-ended
+      line into a short (a port on that plane read ``|S11| = 1``, #1164);
+    * a face in ``grid.pec_faces`` is an electric wall;
+    * any other face (an absorber face, or a raw ``Grid`` with no
+      declaration) is PEC-backed -- E_tan = 0 on the outermost node plane,
+      the standard termination of a PML and the bare-box default -- unless
+      the legacy ``pec_axes`` string leaves that AXIS out. ``pec_axes`` can
+      only withhold that default; it can neither remove a declared PEC face
+      nor put an electric wall over a magnetic one.
+
+    Returns ``(pec_faces, pmc_faces)`` as frozensets of face labels.
+    """
+    declared_pec = set(getattr(grid, "pec_faces", None) or ())
+    declared_pmc = set(getattr(grid, "pmc_faces", None) or ())
+    pec, pmc = set(), set()
+    for axis, is_periodic in zip("xyz", periodic):
+        if is_periodic:
+            continue
+        axis_default = pec_axes is None or axis in pec_axes
+        for side in ("lo", "hi"):
+            face = f"{axis}_{side}"
+            if face in declared_pmc:
+                pmc.add(face)
+            elif face in declared_pec or axis_default:
+                pec.add(face)
+    return frozenset(pec), frozenset(pmc)
+
+
 def apply_pec_faces(state, faces: set[str]) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
 

@@ -29,7 +29,26 @@ class FDTDState(NamedTuple):
 
 
 class MaterialArrays(NamedTuple):
-    """Material property arrays on the grid."""
+    """Material property arrays on the grid.
+
+    ``eps_r`` and ``sigma`` are VOLUME properties of the cell, and since #1210
+    an E component takes the mean of them over the four cells its edge touches.
+    A lumped element is not a volume: a port's 50 ohm load, an RLC resistor or
+    capacitor is a device across ONE edge, folded into the cell's sigma / eps_r
+    as an equivalent so that the old cell-owned update produced the right edge
+    conductance. Averaging it would divide it among four cells and spread it
+    over twelve edges (measured: a 50 ohm wire port then read |S11| = 0.20
+    instead of 1/3, and a lumped port in a CPML dielectric read |S11| = 1.86,
+    non-physical).
+
+    So the stamp is recorded twice: inside ``eps_r`` / ``sigma``, where every
+    reader that wants the total still finds it, and again in the two
+    ``*_lumped`` arrays. :func:`component_e_materials` averages
+    ``eps_r - eps_r_lumped`` and adds the stamp back at its own cell, for all
+    three components — exactly where the cell-owned rule put it. ``None`` means
+    no lumped stamp anywhere, and is bit-identical to averaging ``eps_r`` and
+    ``sigma`` outright.
+    """
 
     # Relative permittivity (Nx, Ny, Nz) — used in E update
     eps_r: jnp.ndarray
@@ -37,6 +56,9 @@ class MaterialArrays(NamedTuple):
     sigma: jnp.ndarray
     # Relative permeability (Nx, Ny, Nz) — used in H update
     mu_r: jnp.ndarray
+    # The edge-owned part of ``sigma`` / ``eps_r`` (lumped stamps), or None
+    sigma_lumped: object = None
+    eps_r_lumped: object = None
 
 
 def init_state(shape: tuple[int, int, int], *, field_dtype=jnp.float32) -> FDTDState:
@@ -343,6 +365,200 @@ def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz):
     return curl_x, curl_y, curl_z
 
 
+def _material_bwd_neighbour(arr, ax, periodic):
+    """The cell one step back along ``ax``, with the MATERIAL's outside rule.
+
+    ``jnp.roll(arr, 1, axis=ax)`` on a periodic axis and on a length-1 axis
+    (the 2-D lane's self-adjacency) — value for value what
+    ``rfx.boundaries.pec._shift(arr, ax, periodic, +1)`` returns there, so the
+    edge-average below and the PEC incidence rule wrap the same way (#689/#931,
+    pinned by ``test_edge_averaged_materials``'s periodic test).
+
+    Off a periodic axis the two rules differ, and must: ``_shift`` pads with
+    ZERO because "no conductor outside the lattice" is the right reading of an
+    occupancy, while a permittivity of zero outside the lattice is a division
+    by zero and a conductivity of zero is a declaration about a region the
+    lattice does not have. The material is edge-replicated instead: the cells
+    outside take the boundary cell's own value, so a boundary edge averages
+    over the cells that exist.
+    """
+    if arr.shape[ax] == 1 or periodic[ax]:
+        return jnp.roll(arr, 1, axis=ax)
+    first = [slice(None)] * arr.ndim
+    first[ax] = slice(0, 1)
+    body = [slice(None)] * arr.ndim
+    body[ax] = slice(0, arr.shape[ax] - 1)
+    return jnp.concatenate([arr[tuple(first)], arr[tuple(body)]], axis=ax)
+
+
+def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
+    """Per-E-component ``(eps_r, sigma)``: the mean over the edge's four cells.
+
+    THE one spelling of the material-to-edge rule (#1210). Every lane that
+    turns a cell-centred permittivity or conductivity into an E update
+    coefficient goes through here; a hand-copied second rule is this repo's
+    recurring defect.
+
+    **The physics.** A Yee E component does not live inside a cell — it lies on
+    an edge of the primal lattice, shared by the four cells around it:
+    ``Ex(i+½, j, k)`` by cells ``(i, j−1..j, k−1..k)``, ``Ey(i, j+½, k)`` by
+    ``(i−1..i, j, k−1..k)``, ``Ez(i, j, k+½)`` by ``(i−1..i, j−1..j, k)``. The
+    field on that edge is TANGENTIAL to every interface between those cells, so
+    its constitutive parameters are the tangential averages: the four
+    conduction paths lie in parallel along the edge, which adds their
+    conductances (σ arithmetic), and the tangential component of E is
+    continuous across the interface, which makes the effective permittivity the
+    arithmetic mean too (the tangential entry of the Kottke/Taflove §10 subcell
+    average; the harmonic mean is the NORMAL entry and belongs to a different
+    component). Taking the owning cell's value instead puts a conductor's plus
+    faces one cell inside the drawn body and makes a dielectric interface
+    first-order.
+
+    ``eps_r``, ``sigma`` : cell-centred ``(nx, ny, nz)`` arrays. A conductivity
+    that is already per E edge (#1216's design-box tuple) is NOT a cell
+    quantity and does not come through here.
+    ``periodic`` : per-axis flags; a periodic axis wraps, a non-periodic one
+    edge-replicates (see :func:`_material_bwd_neighbour`).
+
+    Returns ``((eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z))``, grid-shaped.
+
+    **Homogeneous regions are bit-identical** to the cell-owned rule: the four
+    summands are the same float, and ``((a + a) + (a + a)) * 0.25 == a``
+    exactly in binary floating point. That is what keeps every vacuum fixture
+    and every uniform-dielectric lock byte-for-byte where it was.
+    """
+    def mean4(arr, t1, t2):
+        a1 = _material_bwd_neighbour(arr, t1, periodic)
+        a2 = _material_bwd_neighbour(arr, t2, periodic)
+        a12 = _material_bwd_neighbour(a1, t2, periodic)
+        # Pairwise, so the homogeneous sum is exact (F4/#1210).
+        return ((arr + a1) + (a2 + a12)) * 0.25
+
+    eps = tuple(mean4(eps_r, *[t for t in range(3) if t != c]) for c in range(3))
+    sig = tuple(mean4(sigma, *[t for t in range(3) if t != c]) for c in range(3))
+    return eps, sig
+
+
+def component_e_materials(materials, periodic=(False, False, False)):
+    """Per-component ``(eps_r, sigma)`` of a :class:`MaterialArrays` (#1210).
+
+    The volume part is edge-averaged; the lumped stamps
+    (``sigma_lumped`` / ``eps_r_lumped``, see :class:`MaterialArrays`) are
+    removed before the average and added back at their own cell, because a
+    lumped device lives on an edge and not in a cell volume.
+
+    With no stamps this is :func:`edge_averaged_materials` on
+    ``materials.eps_r`` and ``materials.sigma`` and nothing else.
+    """
+    eps_v = materials.eps_r
+    sig_v = materials.sigma
+    eps_l = getattr(materials, "eps_r_lumped", None)
+    sig_l = getattr(materials, "sigma_lumped", None)
+    if eps_l is not None:
+        eps_v = eps_v - eps_l
+    if sig_l is not None:
+        sig_v = sig_v - sig_l
+    eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
+    if eps_l is not None:
+        eps_c = tuple(e + eps_l for e in eps_c)
+    if sig_l is not None:
+        sig_c = tuple(s + sig_l for s in sig_c)
+    return eps_c, sig_c
+
+
+_E_COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
+
+
+def cell_component_e_materials(materials, cell, component,
+                               periodic=(False, False, False)):
+    """``(eps_r, sigma)`` the E update uses for ONE component at ONE cell.
+
+    :func:`component_e_materials` restricted to a single node, by indexing the
+    four incident cells instead of building grid-sized arrays — what a source
+    or port DRIVE coefficient needs, since it is built once per run and may be
+    built from traced materials.
+
+    The rule is the same rule: the mean of the VOLUME material over the four
+    cells incident to that component's edge, plus the lumped stamp at this
+    cell. The out-of-domain convention is
+    :func:`_material_bwd_neighbour`'s — wrap on a periodic or length-1 axis,
+    edge-replicate otherwise. ``test_the_cell_helper_agrees_with_the_grid_wide_one``
+    pins the two against each other, so this is not a second spelling.
+
+    Why a drive coefficient needs it: ``make_j_source`` turns a current into a
+    field increment through the SAME Cb the update multiplies the curl by, and
+    a cell-centred Cb on a material step transverse to the injected component
+    is off by the ratio of the two permittivities (measured: 0.556x the
+    declared current on an eps 1|9 step).
+    """
+    axis = _E_COMPONENT_AXIS[str(component).lower()]
+    t1, t2 = [a for a in range(3) if a != axis]
+    cell = tuple(int(c) for c in cell)
+    shape = tuple(materials.eps_r.shape)
+
+    def back(idx, ax):
+        if idx > 0:
+            return idx - 1
+        # index 0: wrap on a periodic or length-1 axis, replicate otherwise.
+        return shape[ax] - 1 if (periodic[ax] or shape[ax] == 1) else 0
+
+    idxs = []
+    for d1 in (0, 1):
+        for d2 in (0, 1):
+            c = list(cell)
+            if d1:
+                c[t1] = back(cell[t1], t1)
+            if d2:
+                c[t2] = back(cell[t2], t2)
+            idxs.append(tuple(c))
+
+    eps_l = getattr(materials, "eps_r_lumped", None)
+    sig_l = getattr(materials, "sigma_lumped", None)
+
+    def mean4(arr, lumped):
+        v = [arr[i] for i in idxs]
+        if lumped is not None:
+            v = [a - lumped[i] for a, i in zip(v, idxs)]
+        m = ((v[0] + v[1]) + (v[2] + v[3])) * 0.25
+        return m if lumped is None else m + lumped[cell]
+
+    return (mean4(materials.eps_r, eps_l),
+            mean4(materials.sigma, sig_l))
+
+
+def cell_component_e_coeffs(materials, cell, component, dt,
+                            periodic=(False, False, False)):
+    """``(Ca, Cb)`` of the E update for one component at one cell (#1210)."""
+    eps_r, sigma = cell_component_e_materials(materials, cell, component,
+                                              periodic)
+    return e_update_coeffs(eps_r, sigma, dt)
+
+
+def e_component_coeffs(materials, dt, periodic=(False, False, False)):
+    """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` for a MaterialArrays.
+
+    :func:`component_e_materials` then :func:`e_update_coeffs`. This is the
+    entry every grid-wide E update uses.
+    """
+    eps, sig = component_e_materials(materials, periodic)
+    pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
+    return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
+
+
+def edge_averaged_e_update_coeffs(eps_r, sigma, dt,
+                                  periodic=(False, False, False)):
+    """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` for the edge-averaged rule.
+
+    :func:`edge_averaged_materials` followed by :func:`e_update_coeffs`, which
+    stays the single spelling of the coefficient formula itself (the bit-
+    identity lock ``tests/locks/test_sheet_refactor_bit_identity.py`` watches
+    that function).
+    """
+    eps, sig = edge_averaged_materials(eps_r, sigma, periodic)
+    pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
+    return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
+
+
 def e_update_coeffs(eps_r, sigma, dt):
     """``(Ca, Cb)`` of the lossy E update for a permittivity and conductivity.
 
@@ -385,7 +601,20 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     six grid-sized arrays per step on the tape.
 
     ``ca`` and ``cb`` are box-shaped (or scalar) and built once, outside the
-    time loop, by :func:`e_update_coeffs`.
+    time loop, by :func:`e_update_coeffs`. Each may instead be a 3-TUPLE
+    (or list) of box-shaped arrays, one per E component in x, y, z order:
+    component ``c`` is then updated with ``ca[c]``/``cb[c]``. Two things
+    produce that form. The #1210 edge average makes every coefficient
+    per-component — an E component takes the mean of eps and sigma over the
+    four cells its edge touches — which is what
+    :func:`rfx.simulation._design_box_edge_coeffs` builds. And a conducting
+    SHEET (#1216) gives each component its own conductivity: its current runs
+    along the two in-plane edges only, so the third component must keep the
+    background coefficient while the other two carry the design conductivity.
+    ``(v, v, v)`` is the scalar/array form cell for cell. Both sequence types
+    are accepted here because :func:`rfx.simulation._resolve_design_box`
+    accepts either for ``DesignBoxSpec.sigma``; it normalises what it builds
+    to a tuple, so a list reaches this kernel only from a direct call.
 
     ``inv_d`` selects the GRADED-MESH curl (#1183). ``None`` (default) is the
     uniform :func:`curl_h` at spacing ``dx``; a tuple
@@ -422,9 +651,16 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
             prev.hz.astype(_cdtype), *inv_d)
 
-    ex = (ca * prev.ex[sl].astype(_cdtype) + cb * curl_x[sl]).astype(_fdtype)
-    ey = (ca * prev.ey[sl].astype(_cdtype) + cb * curl_y[sl]).astype(_fdtype)
-    ez = (ca * prev.ez[sl].astype(_cdtype) + cb * curl_z[sl]).astype(_fdtype)
+    def _comp(v, c):
+        """``v`` for every component, or the c-th entry of a 3-sequence."""
+        return v[c] if isinstance(v, (tuple, list)) else v
+
+    ex = (_comp(ca, 0) * prev.ex[sl].astype(_cdtype)
+          + _comp(cb, 0) * curl_x[sl]).astype(_fdtype)
+    ey = (_comp(ca, 1) * prev.ey[sl].astype(_cdtype)
+          + _comp(cb, 1) * curl_y[sl]).astype(_fdtype)
+    ez = (_comp(ca, 2) * prev.ez[sl].astype(_cdtype)
+          + _comp(cb, 2) * curl_z[sl]).astype(_fdtype)
 
     return state._replace(
         ex=state.ex.at[sl].set(ex),
@@ -445,6 +681,12 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
 
     Ca = (1 - σ*dt/(2ε)) / (1 + σ*dt/(2ε))
     Cb = (dt/ε) / (1 + σ*dt/(2ε))
+
+    ε and σ are per COMPONENT (#1210): a Yee E component sits on an edge
+    shared by four cells, and takes the mean of their ε and σ — see
+    :func:`edge_averaged_materials` for the physics and the boundary
+    convention. Homogeneous regions are bit-identical to the cell-owned rule
+    this replaces.
 
     periodic: tuple of 3 bools selecting periodic boundary per axis (x, y, z).
     stencil_order: 2 (default, byte-identical) or 4 (Fang (2,4) wide stencil,
@@ -474,13 +716,16 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    ca, cb = e_update_coeffs(materials.eps_r, materials.sigma, dt)
+    # #1210: the coefficients are per COMPONENT, from the mean of eps_r and
+    # sigma over the four cells incident to that component's edge.
+    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
+        materials, dt, periodic)
 
     curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch)
 
-    ex = (ca * state.ex.astype(_cdtype) + cb * curl_x).astype(_fdtype)
-    ey = (ca * state.ey.astype(_cdtype) + cb * curl_y).astype(_fdtype)
-    ez = (ca * state.ez.astype(_cdtype) + cb * curl_z).astype(_fdtype)
+    ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
+    ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)
+    ez = (ca_z * state.ez.astype(_cdtype) + cb_z * curl_z).astype(_fdtype)
 
     return state._replace(
         ex=ex, ey=ey, ez=ez,
@@ -562,16 +807,19 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
 
     # One spelling with the uniform lane and with update_e_box, so a design
     # box on a graded mesh builds the SAME Ca/Cb from its own permittivity
-    # (#1183). Byte-identical to the inline lines it replaces -- the same
-    # expression in the same order (tests/locks).
-    ca, cb = e_update_coeffs(materials.eps_r, materials.sigma, dt)
+    # (#1183). #1210: per component, from the mean over the four cells
+    # incident to the edge. Non-periodic: the graded-mesh lane installs no
+    # periodic BC (``curl_h_nu`` has no wrap), the same assumption
+    # ``update_e_box``'s ``inv_d`` branch documents.
+    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
+        materials, dt, (False, False, False))
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
     curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz)
 
-    ex = (ca * state.ex.astype(_cdtype) + cb * curl_x).astype(_fdtype)
-    ey = (ca * state.ey.astype(_cdtype) + cb * curl_y).astype(_fdtype)
-    ez = (ca * state.ez.astype(_cdtype) + cb * curl_z).astype(_fdtype)
+    ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
+    ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)
+    ez = (ca_z * state.ez.astype(_cdtype) + cb_z * curl_z).astype(_fdtype)
 
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
@@ -607,6 +855,8 @@ def precompute_coeffs(
     dx: float,
     *,
     pec_axes: str = "",
+    pec_faces=(),
+    periodic: tuple = (False, False, False),
 ) -> UpdateCoeffs:
     """Pre-compute all FDTD update coefficients.
 
@@ -615,9 +865,17 @@ def precompute_coeffs(
     materials : MaterialArrays
     dt, dx : float
     pec_axes : str
-        Axes on which to bake PEC (zero tangential E) into the
-        coefficients.  For example ``"xyz"`` zeros Ca/Cb at all 6
-        boundary faces so that ``apply_pec()`` is no longer needed.
+        Legacy spelling: axes on which to bake PEC (zero tangential E)
+        into the coefficients on BOTH faces.
+    pec_faces : iterable of str
+        Face labels (``"x_lo"`` ...) to bake, the per-face spelling that
+        ``resolve_wall_faces`` produces (#1164); a magnetic face is not in
+        it. Union with ``pec_axes``. With these baked, ``apply_pec_faces``
+        is no longer needed for those faces.
+    periodic : tuple of 3 bools
+        Passed to :func:`edge_averaged_materials` for the wrap convention of
+        the edge average (#1210). The GPU fast lane this bakes for is gated
+        on all-False today; the parameter exists so the rule has one spelling.
 
     Returns
     -------
@@ -625,43 +883,48 @@ def precompute_coeffs(
     """
     ch = jnp.float32(dt / (MU_0 * dx)) / materials.mu_r
 
-    eps = materials.eps_r * jnp.float32(EPS_0)
-    sigma = materials.sigma
-    loss = sigma * jnp.float32(dt) / (jnp.float32(2.0) * eps)
-    denom = jnp.float32(1.0) + loss
-    ca = (jnp.float32(1.0) - loss) / denom
-    cb_over_dx = (jnp.float32(dt) / eps) / (denom * jnp.float32(dx))
+    # #1210: per-component eps/sigma, the mean over the four cells incident
+    # to each component's edge. The arithmetic below is unchanged, so a
+    # homogeneous grid bakes the same bits it baked before.
+    _eps_c, _sig_c = component_e_materials(materials, periodic)
 
-    # Start with isotropic coefficients.
-    ca_ex = ca
-    ca_ey = ca
-    ca_ez = ca
-    cb_ex = cb_over_dx
-    cb_ey = cb_over_dx
-    cb_ez = cb_over_dx
+    def _bake(eps_r_c, sigma_c):
+        eps = eps_r_c * jnp.float32(EPS_0)
+        loss = sigma_c * jnp.float32(dt) / (jnp.float32(2.0) * eps)
+        denom = jnp.float32(1.0) + loss
+        return ((jnp.float32(1.0) - loss) / denom,
+                (jnp.float32(dt) / eps) / (denom * jnp.float32(dx)))
 
-    # Bake PEC boundary enforcement into the coefficients by zeroing
-    # Ca and Cb at boundary faces for tangential E components.
-    if pec_axes:
-        nx, ny, nz = materials.eps_r.shape
-        if "x" in pec_axes:
-            # Ey, Ez tangential on x-faces
-            ca_ey = ca_ey.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-            ca_ez = ca_ez.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-            cb_ey = cb_ey.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-            cb_ez = cb_ez.at[0, :, :].set(0.0).at[-1, :, :].set(0.0)
-        if "y" in pec_axes:
-            # Ex, Ez tangential on y-faces
-            ca_ex = ca_ex.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-            ca_ez = ca_ez.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-            cb_ex = cb_ex.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-            cb_ez = cb_ez.at[:, 0, :].set(0.0).at[:, -1, :].set(0.0)
-        if "z" in pec_axes:
-            # Ex, Ey tangential on z-faces
-            ca_ex = ca_ex.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
-            ca_ey = ca_ey.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
-            cb_ex = cb_ex.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
-            cb_ey = cb_ey.at[:, :, 0].set(0.0).at[:, :, -1].set(0.0)
+    (ca_ex, cb_ex) = _bake(_eps_c[0], _sig_c[0])
+    (ca_ey, cb_ey) = _bake(_eps_c[1], _sig_c[1])
+    (ca_ez, cb_ez) = _bake(_eps_c[2], _sig_c[2])
+
+    # Bake the electric walls into the coefficients by zeroing Ca and Cb
+    # of the tangential E components on each wall face -- the same planes
+    # ``apply_pec_faces`` zeroes.
+    faces = set(pec_faces)
+    for a in pec_axes:
+        faces.update({f"{a}_lo", f"{a}_hi"})
+    if faces:
+        lo, hi = 0, -1
+        if "x_lo" in faces:
+            ca_ey = ca_ey.at[lo, :, :].set(0.0); ca_ez = ca_ez.at[lo, :, :].set(0.0)
+            cb_ey = cb_ey.at[lo, :, :].set(0.0); cb_ez = cb_ez.at[lo, :, :].set(0.0)
+        if "x_hi" in faces:
+            ca_ey = ca_ey.at[hi, :, :].set(0.0); ca_ez = ca_ez.at[hi, :, :].set(0.0)
+            cb_ey = cb_ey.at[hi, :, :].set(0.0); cb_ez = cb_ez.at[hi, :, :].set(0.0)
+        if "y_lo" in faces:
+            ca_ex = ca_ex.at[:, lo, :].set(0.0); ca_ez = ca_ez.at[:, lo, :].set(0.0)
+            cb_ex = cb_ex.at[:, lo, :].set(0.0); cb_ez = cb_ez.at[:, lo, :].set(0.0)
+        if "y_hi" in faces:
+            ca_ex = ca_ex.at[:, hi, :].set(0.0); ca_ez = ca_ez.at[:, hi, :].set(0.0)
+            cb_ex = cb_ex.at[:, hi, :].set(0.0); cb_ez = cb_ez.at[:, hi, :].set(0.0)
+        if "z_lo" in faces:
+            ca_ex = ca_ex.at[:, :, lo].set(0.0); ca_ey = ca_ey.at[:, :, lo].set(0.0)
+            cb_ex = cb_ex.at[:, :, lo].set(0.0); cb_ey = cb_ey.at[:, :, lo].set(0.0)
+        if "z_hi" in faces:
+            ca_ex = ca_ex.at[:, :, hi].set(0.0); ca_ey = ca_ey.at[:, :, hi].set(0.0)
+            cb_ex = cb_ex.at[:, :, hi].set(0.0); cb_ey = cb_ey.at[:, :, hi].set(0.0)
 
     return UpdateCoeffs(
         ch=ch,
@@ -769,21 +1032,29 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    sigma = materials.sigma
+    # #1210: sigma is a VOLUME conductivity, so it takes the same
+    # per-component edge average the subpixel lane already gives eps -- the
+    # conduction paths of the four cells lie in parallel along the edge. The
+    # permittivity here stays the Kottke/subpixel tensor, which is already
+    # per-component by construction. Where sigma is uniform (every lossless
+    # subpixel fixture) the mean of four equal floats is that float, so those
+    # runs keep their bytes. The graded-mesh lane installs no periodic BC.
+    sigma_ex, sigma_ey, sigma_ez = component_e_materials(
+        materials, (False, False, False))[1]
 
     abs_eps_ex = eps_ex * EPS_0
     abs_eps_ey = eps_ey * EPS_0
     abs_eps_ez = eps_ez * EPS_0
 
-    loss_ex = sigma * dt / (2.0 * abs_eps_ex)
+    loss_ex = sigma_ex * dt / (2.0 * abs_eps_ex)
     ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
     cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
 
-    loss_ey = sigma * dt / (2.0 * abs_eps_ey)
+    loss_ey = sigma_ey * dt / (2.0 * abs_eps_ey)
     ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
     cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
 
-    loss_ez = sigma * dt / (2.0 * abs_eps_ez)
+    loss_ez = sigma_ez * dt / (2.0 * abs_eps_ez)
     ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
     cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
 
@@ -866,15 +1137,22 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    sigma = materials.sigma
+    # #1210: sigma is a VOLUME conductivity, so it takes the same
+    # per-component edge average the subpixel lane already gives eps -- the
+    # conduction paths of the four cells lie in parallel along the edge. The
+    # permittivity here stays the Kottke/subpixel tensor, which is already
+    # per-component by construction. Where sigma is uniform (every lossless
+    # subpixel fixture) the mean of four equal floats is that float, so those
+    # runs keep their bytes.
+    sigma_ex, sigma_ey, sigma_ez = component_e_materials(materials, periodic)[1]
 
     # Per-component lossy update coefficients in inv-eps form.
     # `loss = σ · dt · μ / (2 · ε₀)` is finite for any (σ, μ) ≥ 0; the
     # `1 + loss` denominator is ≥ 1 so no division hazard.
     inv_eps0 = 1.0 / EPS_0
-    loss_ex = 0.5 * sigma * dt * inv_xx * inv_eps0
-    loss_ey = 0.5 * sigma * dt * inv_yy * inv_eps0
-    loss_ez = 0.5 * sigma * dt * inv_zz * inv_eps0
+    loss_ex = 0.5 * sigma_ex * dt * inv_xx * inv_eps0
+    loss_ey = 0.5 * sigma_ey * dt * inv_yy * inv_eps0
+    loss_ez = 0.5 * sigma_ez * dt * inv_zz * inv_eps0
 
     ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
     ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
@@ -941,7 +1219,14 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    sigma = materials.sigma
+    # #1210: sigma is a VOLUME conductivity, so it takes the same
+    # per-component edge average the subpixel lane already gives eps -- the
+    # conduction paths of the four cells lie in parallel along the edge. The
+    # permittivity here stays the Kottke/subpixel tensor, which is already
+    # per-component by construction. Where sigma is uniform (every lossless
+    # subpixel fixture) the mean of four equal floats is that float, so those
+    # runs keep their bytes.
+    sigma_ex, sigma_ey, sigma_ez = component_e_materials(materials, periodic)[1]
 
     # Per-component absolute permittivity
     abs_eps_ex = eps_ex * EPS_0
@@ -949,15 +1234,15 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     abs_eps_ez = eps_ez * EPS_0
 
     # Per-component lossy update coefficients
-    loss_ex = sigma * dt / (2.0 * abs_eps_ex)
+    loss_ex = sigma_ex * dt / (2.0 * abs_eps_ex)
     ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
     cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
 
-    loss_ey = sigma * dt / (2.0 * abs_eps_ey)
+    loss_ey = sigma_ey * dt / (2.0 * abs_eps_ey)
     ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
     cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
 
-    loss_ez = sigma * dt / (2.0 * abs_eps_ez)
+    loss_ez = sigma_ez * dt / (2.0 * abs_eps_ez)
     ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
     cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
 

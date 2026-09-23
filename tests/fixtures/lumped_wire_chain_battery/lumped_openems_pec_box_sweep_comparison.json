@@ -1,0 +1,357 @@
+{
+ "_committed_as": {
+  "committed_path": "tests/fixtures/lumped_wire_chain_battery/lumped_openems_pec_box_sweep_comparison.json",
+  "edits_on_commit": [
+   "the absolute checkout prefix was stripped from every path, leaving repo-relative paths",
+   "the interpreter's absolute path became 'python'"
+  ],
+  "found_at": "the untracked .omx/physics-gate/ runtime directory of a working checkout; the producers write there, so a clean clone has no copy and this is the first committed one",
+  "no_numbers_changed": true,
+  "produced_by": "scripts/diagnostics/build_lumped_openems_sweep_comparison.py",
+  "source_sha256": "ed565df8aa69195e7a6186ceb6311e0bd3399821ed9a99897b0896777382b063",
+  "what_it_does_not_carry": [
+   "the rfx commit it was produced at",
+   "the openEMS version",
+   "the S arrays themselves: candidate_artifact and reference_artifact name .npz files that were never committed, so only the metrics survive"
+  ],
+  "why_it_is_here": "the pre-declaration lists the repository's recorded openEMS lumped PEC-box magnitude comparison as CONTEXT for stage 3d. It is on a different fixture (a two-port 50 ohm PEC box at 0.8-1.8 GHz, dx = 5 mm) from this battery's parallel-plate line, and this battery compares nothing against it. Its own completion_decision says what it may not be used for."
+ },
+ "case_count": 3,
+ "case_payloads": [
+  {
+   "candidate_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/coarse_two_port_pec_box/lumped_rfx_candidate_sparams.npz",
+   "candidate_format": "npz",
+   "case": {
+    "domain_m": [
+     0.03,
+     0.02,
+     0.015
+    ],
+    "dx_m": 0.005,
+    "freq_max_hz": 2000000000.0,
+    "freqs_hz": [
+     800000000.0,
+     1000000000.0,
+     1200000000.0,
+     1500000000.0,
+     1800000000.0
+    ],
+    "name": "coarse_two_port_pec_box",
+    "num_periods": 60.0,
+    "port1_pos_m": [
+     0.01,
+     0.01,
+     0.005
+    ],
+    "port2_pos_m": [
+     0.02,
+     0.01,
+     0.005
+    ],
+    "port_impedance_ohm": 50.0,
+    "pulse_bandwidth": 0.8,
+    "pulse_f0_hz": 1000000000.0
+   },
+   "case_name": "coarse_two_port_pec_box",
+   "claim": "single-cell lumped-port S11/S21 magnitude comparison against openEMS",
+   "claim_scope": "narrow two-port PEC-cavity single-cell lumped-port comparison using rfx LumpedPort and openEMS AddLumpedPort; not broad calibrated lumped-port E5",
+   "comparison_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/coarse_two_port_pec_box/lumped_openems_generic_sparameter_comparison.json",
+   "comparison_mode": "magnitude",
+   "evidence_level": "E4-enabling",
+   "frequency_window_hz": [
+    800000000.0,
+    1800000000.0
+   ],
+   "generated_at": "2026-05-09T16:07:01.109980+00:00",
+   "metrics_by_term": [
+    {
+     "max_abs_diff": 0.31320984066376534,
+     "max_mag_abs_diff": 0.11223818169777866,
+     "max_phase_abs_diff_rad": 0.3116059694853806,
+     "mean_abs_diff": 0.22516722472912867,
+     "mean_mag_abs_diff": 0.06099642432375159,
+     "n_points": 5,
+     "status": "passed",
+     "term": "S11"
+    },
+    {
+     "max_abs_diff": 0.004121125950564876,
+     "max_mag_abs_diff": 0.0037264234604697365,
+     "max_phase_abs_diff_rad": 2.02933525214083,
+     "mean_abs_diff": 0.0029255888231428198,
+     "mean_mag_abs_diff": 0.002718031036912133,
+     "n_points": 5,
+     "status": "passed",
+     "term": "S21"
+    }
+   ],
+   "n_ports": 2,
+   "reference_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/coarse_two_port_pec_box/lumped_openems_reference_sparams.npz",
+   "reference_format": "npz",
+   "status": "passed",
+   "subprocess": {
+    "command": [
+     "python",
+     "scripts/diagnostics/build_lumped_openems_sparameter_comparison.py",
+     "--output-dir",
+     ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/coarse_two_port_pec_box",
+     "--case-name",
+     "coarse_two_port_pec_box",
+     "--port1-pos-m",
+     "0.010,0.010,0.005",
+     "--port2-pos-m",
+     "0.020,0.010,0.005"
+    ],
+    "returncode": 0,
+    "stderr_tail": "/usr/local/lib/python3.10/dist-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.\n  warnings.warn(\"Unable to import Axes3D. This may be due to multiple versions of \"\nRunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -infdB was reached... \n\tYou may want to choose a higher number of max. timesteps... \n",
+    "stdout_tail": " ---------------------------------------------------------------------- \n | openEMS 64bit -- version v0.0.35\n | (C) 2010-2018 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license\n ---------------------------------------------------------------------- \n\tUsed external libraries:\n\t\tCSXCAD -- Version: v0.6.2\n\t\thdf5   -- Version: 1.10.7\n\t\t          compiled against: HDF5 library version: 1.10.7\n\t\ttinyxml -- compiled against: 2.6.2\n\t\tfparser\n\t\tboost  -- compiled against: 1_74\n\t\tvtk -- Version: 7.1.1\n\t\t       compiled against: 7.1.1\n\nCreate FDTD operator (compressed SSE + multi-threading)\nFDTD simulation size: 7x5x4 --> 140 FDTD cells \nFDTD timestep is: 9.62917e-12 s; Nyquist rate: 28 timesteps @1.85448e+09 Hz\nExcitation signal length is: 372 timesteps (3.58205e-09s)\nMax. number of timesteps: 3148 ( --> 8.46237 * Excitation signal length)\nCreate FDTD engine (compressed SSE + multi-threading)\nRunning FDTD engine... this may take a while... grab a cup of coffee?!?\nTime for 3148 iterations with 140 cells : 0.869755 sec\nSpeed: 0.506717 MCells/s \nstatus=passed max_mag_abs_diff=0.112238\n"
+   },
+   "summary": {
+    "max_abs_diff": 0.31320984066376534,
+    "max_mag_abs_diff": 0.11223818169777866,
+    "mean_abs_diff_max_over_terms": 0.22516722472912867,
+    "mean_mag_abs_diff_max_over_terms": 0.06099642432375159
+   },
+   "target_frequency_count": 5,
+   "terms": [
+    "S11",
+    "S21"
+   ],
+   "tolerances": {
+    "max_abs_tol": 1.0,
+    "max_mag_abs_tol": 0.13,
+    "mean_abs_tol": 1.0,
+    "mean_mag_abs_tol": 0.07,
+    "min_phase_mag": 1e-06
+   }
+  },
+  {
+   "candidate_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/yshift_two_port_pec_box/lumped_rfx_candidate_sparams.npz",
+   "candidate_format": "npz",
+   "case": {
+    "domain_m": [
+     0.03,
+     0.02,
+     0.015
+    ],
+    "dx_m": 0.005,
+    "freq_max_hz": 2000000000.0,
+    "freqs_hz": [
+     800000000.0,
+     1000000000.0,
+     1200000000.0,
+     1500000000.0,
+     1800000000.0
+    ],
+    "name": "yshift_two_port_pec_box",
+    "num_periods": 60.0,
+    "port1_pos_m": [
+     0.01,
+     0.005,
+     0.005
+    ],
+    "port2_pos_m": [
+     0.02,
+     0.015,
+     0.005
+    ],
+    "port_impedance_ohm": 50.0,
+    "pulse_bandwidth": 0.8,
+    "pulse_f0_hz": 1000000000.0
+   },
+   "case_name": "yshift_two_port_pec_box",
+   "claim": "single-cell lumped-port S11/S21 magnitude comparison against openEMS",
+   "claim_scope": "narrow two-port PEC-cavity single-cell lumped-port comparison using rfx LumpedPort and openEMS AddLumpedPort; not broad calibrated lumped-port E5",
+   "comparison_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/yshift_two_port_pec_box/lumped_openems_generic_sparameter_comparison.json",
+   "comparison_mode": "magnitude",
+   "evidence_level": "E4-enabling",
+   "frequency_window_hz": [
+    800000000.0,
+    1800000000.0
+   ],
+   "generated_at": "2026-05-09T16:07:38.314626+00:00",
+   "metrics_by_term": [
+    {
+     "max_abs_diff": 0.3187026877880388,
+     "max_mag_abs_diff": 0.11729643745349816,
+     "max_phase_abs_diff_rad": 0.31672620438155924,
+     "mean_abs_diff": 0.22985859448695511,
+     "mean_mag_abs_diff": 0.06403938556058904,
+     "n_points": 5,
+     "status": "passed",
+     "term": "S11"
+    },
+    {
+     "max_abs_diff": 0.00038529836670789914,
+     "max_mag_abs_diff": 0.00038227212705234327,
+     "max_phase_abs_diff_rad": 0.8264751927029195,
+     "mean_abs_diff": 0.0003104444658376537,
+     "mean_mag_abs_diff": 0.00030860902996402854,
+     "n_points": 5,
+     "status": "passed",
+     "term": "S21"
+    }
+   ],
+   "n_ports": 2,
+   "reference_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/yshift_two_port_pec_box/lumped_openems_reference_sparams.npz",
+   "reference_format": "npz",
+   "status": "passed",
+   "subprocess": {
+    "command": [
+     "python",
+     "scripts/diagnostics/build_lumped_openems_sparameter_comparison.py",
+     "--output-dir",
+     ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/yshift_two_port_pec_box",
+     "--case-name",
+     "yshift_two_port_pec_box",
+     "--port1-pos-m",
+     "0.010,0.005,0.005",
+     "--port2-pos-m",
+     "0.020,0.015,0.005"
+    ],
+    "returncode": 0,
+    "stderr_tail": "/usr/local/lib/python3.10/dist-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.\n  warnings.warn(\"Unable to import Axes3D. This may be due to multiple versions of \"\nRunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -infdB was reached... \n\tYou may want to choose a higher number of max. timesteps... \n",
+    "stdout_tail": " ---------------------------------------------------------------------- \n | openEMS 64bit -- version v0.0.35\n | (C) 2010-2018 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license\n ---------------------------------------------------------------------- \n\tUsed external libraries:\n\t\tCSXCAD -- Version: v0.6.2\n\t\thdf5   -- Version: 1.10.7\n\t\t          compiled against: HDF5 library version: 1.10.7\n\t\ttinyxml -- compiled against: 2.6.2\n\t\tfparser\n\t\tboost  -- compiled against: 1_74\n\t\tvtk -- Version: 7.1.1\n\t\t       compiled against: 7.1.1\n\nCreate FDTD operator (compressed SSE + multi-threading)\nFDTD simulation size: 7x5x4 --> 140 FDTD cells \nFDTD timestep is: 9.62917e-12 s; Nyquist rate: 28 timesteps @1.85448e+09 Hz\nExcitation signal length is: 372 timesteps (3.58205e-09s)\nMax. number of timesteps: 3148 ( --> 8.46237 * Excitation signal length)\nCreate FDTD engine (compressed SSE + multi-threading)\nRunning FDTD engine... this may take a while... grab a cup of coffee?!?\nTime for 3148 iterations with 140 cells : 0.871731 sec\nSpeed: 0.505569 MCells/s \nstatus=passed max_mag_abs_diff=0.117296\n"
+   },
+   "summary": {
+    "max_abs_diff": 0.3187026877880388,
+    "max_mag_abs_diff": 0.11729643745349816,
+    "mean_abs_diff_max_over_terms": 0.22985859448695511,
+    "mean_mag_abs_diff_max_over_terms": 0.06403938556058904
+   },
+   "target_frequency_count": 5,
+   "terms": [
+    "S11",
+    "S21"
+   ],
+   "tolerances": {
+    "max_abs_tol": 1.0,
+    "max_mag_abs_tol": 0.13,
+    "mean_abs_tol": 1.0,
+    "mean_mag_abs_tol": 0.07,
+    "min_phase_mag": 1e-06
+   }
+  },
+  {
+   "candidate_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/wide_two_port_pec_box/lumped_rfx_candidate_sparams.npz",
+   "candidate_format": "npz",
+   "case": {
+    "domain_m": [
+     0.03,
+     0.02,
+     0.015
+    ],
+    "dx_m": 0.005,
+    "freq_max_hz": 2000000000.0,
+    "freqs_hz": [
+     800000000.0,
+     1000000000.0,
+     1200000000.0,
+     1500000000.0,
+     1800000000.0
+    ],
+    "name": "wide_two_port_pec_box",
+    "num_periods": 60.0,
+    "port1_pos_m": [
+     0.005,
+     0.01,
+     0.005
+    ],
+    "port2_pos_m": [
+     0.025,
+     0.01,
+     0.005
+    ],
+    "port_impedance_ohm": 50.0,
+    "pulse_bandwidth": 0.8,
+    "pulse_f0_hz": 1000000000.0
+   },
+   "case_name": "wide_two_port_pec_box",
+   "claim": "single-cell lumped-port S11/S21 magnitude comparison against openEMS",
+   "claim_scope": "narrow two-port PEC-cavity single-cell lumped-port comparison using rfx LumpedPort and openEMS AddLumpedPort; not broad calibrated lumped-port E5",
+   "comparison_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/wide_two_port_pec_box/lumped_openems_generic_sparameter_comparison.json",
+   "comparison_mode": "magnitude",
+   "evidence_level": "E4-enabling",
+   "frequency_window_hz": [
+    800000000.0,
+    1800000000.0
+   ],
+   "generated_at": "2026-05-09T16:08:15.852959+00:00",
+   "metrics_by_term": [
+    {
+     "max_abs_diff": 0.32018172537212414,
+     "max_mag_abs_diff": 0.11834924046514339,
+     "max_phase_abs_diff_rad": 0.31818457060806266,
+     "mean_abs_diff": 0.23103942862129165,
+     "mean_mag_abs_diff": 0.06466198538701658,
+     "n_points": 5,
+     "status": "passed",
+     "term": "S11"
+    },
+    {
+     "max_abs_diff": 6.724547742620344e-05,
+     "max_mag_abs_diff": 6.600864664851897e-05,
+     "max_phase_abs_diff_rad": 0.9213995097956915,
+     "mean_abs_diff": 6.007511641269764e-05,
+     "mean_mag_abs_diff": 5.891959131231093e-05,
+     "n_points": 5,
+     "status": "passed",
+     "term": "S21"
+    }
+   ],
+   "n_ports": 2,
+   "reference_artifact": ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/wide_two_port_pec_box/lumped_openems_reference_sparams.npz",
+   "reference_format": "npz",
+   "status": "passed",
+   "subprocess": {
+    "command": [
+     "python",
+     "scripts/diagnostics/build_lumped_openems_sparameter_comparison.py",
+     "--output-dir",
+     ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/wide_two_port_pec_box",
+     "--case-name",
+     "wide_two_port_pec_box",
+     "--port1-pos-m",
+     "0.005,0.010,0.005",
+     "--port2-pos-m",
+     "0.025,0.010,0.005"
+    ],
+    "returncode": 0,
+    "stderr_tail": "/usr/local/lib/python3.10/dist-packages/matplotlib/projections/__init__.py:63: UserWarning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.\n  warnings.warn(\"Unable to import Axes3D. This may be due to multiple versions of \"\nRunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -infdB was reached... \n\tYou may want to choose a higher number of max. timesteps... \n",
+    "stdout_tail": " ---------------------------------------------------------------------- \n | openEMS 64bit -- version v0.0.35\n | (C) 2010-2018 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license\n ---------------------------------------------------------------------- \n\tUsed external libraries:\n\t\tCSXCAD -- Version: v0.6.2\n\t\thdf5   -- Version: 1.10.7\n\t\t          compiled against: HDF5 library version: 1.10.7\n\t\ttinyxml -- compiled against: 2.6.2\n\t\tfparser\n\t\tboost  -- compiled against: 1_74\n\t\tvtk -- Version: 7.1.1\n\t\t       compiled against: 7.1.1\n\nCreate FDTD operator (compressed SSE + multi-threading)\nFDTD simulation size: 7x5x4 --> 140 FDTD cells \nFDTD timestep is: 9.62917e-12 s; Nyquist rate: 28 timesteps @1.85448e+09 Hz\nExcitation signal length is: 372 timesteps (3.58205e-09s)\nMax. number of timesteps: 3148 ( --> 8.46237 * Excitation signal length)\nCreate FDTD engine (compressed SSE + multi-threading)\nRunning FDTD engine... this may take a while... grab a cup of coffee?!?\nTime for 3148 iterations with 140 cells : 0.824917 sec\nSpeed: 0.53426 MCells/s \nstatus=passed max_mag_abs_diff=0.118349\n"
+   },
+   "summary": {
+    "max_abs_diff": 0.32018172537212414,
+    "max_mag_abs_diff": 0.11834924046514339,
+    "mean_abs_diff_max_over_terms": 0.23103942862129165,
+    "mean_mag_abs_diff_max_over_terms": 0.06466198538701658
+   },
+   "target_frequency_count": 5,
+   "terms": [
+    "S11",
+    "S21"
+   ],
+   "tolerances": {
+    "max_abs_tol": 1.0,
+    "max_mag_abs_tol": 0.13,
+    "mean_abs_tol": 1.0,
+    "mean_mag_abs_tol": 0.07,
+    "min_phase_mag": 1e-06
+   }
+  }
+ ],
+ "child_comparison_artifacts": [
+  ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/coarse_two_port_pec_box/lumped_openems_generic_sparameter_comparison.json",
+  ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/yshift_two_port_pec_box/lumped_openems_generic_sparameter_comparison.json",
+  ".omx/physics-gate/2026-05-10-m47-lumped-openems-sweep-comparison/wide_two_port_pec_box/lumped_openems_generic_sparameter_comparison.json"
+ ],
+ "claim": "multi-case lumped-port S11/S21 magnitude comparison against openEMS",
+ "claim_scope": "narrow three-case PEC-box sweep using rfx LumpedPort and openEMS AddLumpedPort at matched 50-ohm ports; broader than the single M33 fixture but still not broad calibrated lumped-port E5 over matched/open/short/load cases",
+ "completion_decision": "Do not claim broad lumped-port E5 from this artifact. It is a multi-fixture E4-enabling PEC-box sweep only.",
+ "evidence_level": "E4-enabling",
+ "generated_at": "2026-05-09T16:08:16.104725+00:00",
+ "max_case_max_mag_abs_diff": 0.11834924046514339,
+ "max_case_mean_mag_abs_diff": 0.06466198538701658,
+ "passed_case_count": 3,
+ "status": "passed"
+}

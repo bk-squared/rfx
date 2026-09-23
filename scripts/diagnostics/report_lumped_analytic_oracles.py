@@ -5,6 +5,17 @@ This diagnostic validates the lumped-port V/I-to-S11 extractor against
 analytic load impedances: matched, short, open, resistive mismatch, capacitor,
 inductor, and series/parallel RLC.  It is an E2 extractor-oracle artifact, not
 a broad FDTD calibrated-port E5 proof by itself.
+
+WHICH CONVENTION IT REPORTS. It reads `extract_lumped_s11`, the PASSIVE
+port-branch algebra, on V/I phasors this script CONSTRUCTS from each load
+impedance. That is the right reading here: the phasors are a consistent
+(V across the load, I into it) pair by construction, and no port is being
+driven. It is NOT the reading a driven port gets since 2026-09-21 — a driven
+one-cell port uses `driven_port_reflection`, and applying the algebra below to
+a driven port's V/I gives the reciprocal of the physical reflection
+(scripts/diagnostics/lumped_port_known_load_line.py). Nothing here solves a
+field, so nothing here can catch that; the payload says so in
+`extractor_convention` for a reader who finds this report on its own.
 """
 
 from __future__ import annotations
@@ -124,6 +135,12 @@ def evaluate_lumped_analytic_oracles(
     return {
         "status": "passed" if all(case["status"] == "passed" for case in cases) else "failed",
         "claim_scope": "lumped-port V/I-to-S11 analytic extractor oracle, not broad FDTD E5",
+        "extractor_convention": (
+            "extract_lumped_s11, the passive port-branch algebra, on synthetic "
+            "V/I phasors constructed from each load impedance. A DRIVEN "
+            "one-cell port uses driven_port_reflection instead; this report "
+            "solves no field and does not exercise that path."
+        ),
         "z0_ohm": Z0_OHM,
         "freqs_hz": freqs.tolist(),
         "atol": float(atol),

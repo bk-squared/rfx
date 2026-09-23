@@ -272,9 +272,6 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     idx = _resolve_position_to_index(grid, spec.position)
     i, j, k = idx
 
-    sigma = materials.sigma
-    eps_r = materials.eps_r
-
     # Series topology with multiple components: ADE handles R and C
     if spec.topology == "series" and _series_needs_ade(spec):
         return materials
@@ -286,17 +283,24 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
         port_d_parallel as _d_par,
         port_dual_transverse as _dual_perp,
     )
+    # #1210: an R or a C across one edge is a LUMPED stamp, not a cell
+    # volume property -- it is excluded from the edge average and added back
+    # at its own cell (see rfx.core.yee.MaterialArrays).
+    from rfx.sources.sources import (
+        stamp_lumped_sigma as _stamp_sigma, stamp_lumped_eps as _stamp_eps)
     if spec.R > 0:
-        sigma = sigma.at[i, j, k].add(
+        materials = _stamp_sigma(
+            materials, (i, j, k),
             _port_sigma(grid, (i, j, k), spec.component, spec.R))
 
     if spec.C > 0:
         d_par = _d_par(grid, (i, j, k), spec.component)
         dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
-        eps_r = eps_r.at[i, j, k].add(
+        materials = _stamp_eps(
+            materials, (i, j, k),
             spec.C * d_par / (EPS_0 * dual_b * dual_c))
 
-    return materials._replace(sigma=sigma, eps_r=eps_r)
+    return materials
 
 
 def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
@@ -396,9 +400,6 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
     idx = _resolve_position_to_index(grid, spec.position)
     i, j, k = idx
 
-    sigma = materials.sigma
-    eps_r = materials.eps_r
-
     # Series topology with multiple components: ADE handles R and C (static).
     if spec.topology == "series" and _series_needs_ade(spec):
         return materials
@@ -408,9 +409,13 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
         port_d_parallel as _d_par,
         port_dual_transverse as _dual_perp,
     )
+    # #1210: same lumped-stamp treatment as the concrete path above.
+    from rfx.sources.sources import (
+        stamp_lumped_sigma as _stamp_sigma, stamp_lumped_eps as _stamp_eps)
     if spec.R > 0:  # static presence check on the plain-float spec
         R = _resolve_value(spec.R, r_val)
-        sigma = sigma.at[i, j, k].add(
+        materials = _stamp_sigma(
+            materials, (i, j, k),
             _port_sigma(grid, (i, j, k), spec.component, R))
 
     if spec.C > 0:
@@ -419,9 +424,10 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
         dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
         # Same dual-face fold as the concrete path (#691). d_par / dual_b /
         # dual_c are plain floats from the grid, so a traced C stays traced.
-        eps_r = eps_r.at[i, j, k].add(C * d_par / (EPS_0 * dual_b * dual_c))
+        materials = _stamp_eps(
+            materials, (i, j, k), C * d_par / (EPS_0 * dual_b * dual_c))
 
-    return materials._replace(sigma=sigma, eps_r=eps_r)
+    return materials
 
 
 def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
