@@ -2088,6 +2088,7 @@ def run_nonuniform_distributed_pec(
     if use_dispersion:
         def _update_e_dispersive_shmap(
             st, mat, db_st_in, lr_st_in, e_old_ex, e_old_ey, e_old_ez,
+            debye_coeffs, lorentz_coeffs,
         ):
             # Static booleans captured by closure: which poles are active.
             _has_db = use_debye
@@ -2328,7 +2329,18 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     n_cpml_local = int(sharded_grid.cpml_layers) if use_cpml else 0
 
-    def _apply_cpml_h_shmap(st, cs):
+    # The face profiles are dynamic jit inputs; only the Python cell sizes
+    # remain static, as required by the local kernels' float conversions.
+    from rfx.boundaries.cpml import CPMLAxisParams
+
+    cpml_spacings = {}
+    if isinstance(cpml_params, CPMLAxisParams):
+        cpml_spacings = {name: getattr(cpml_params, name) for name in (
+            "dx_x_lo", "dx_x_hi", "dx_y_lo", "dx_y_hi", "dz_lo", "dz_hi",
+        )}
+        cpml_params = cpml_params._replace(**dict.fromkeys(cpml_spacings))
+
+    def _apply_cpml_h_shmap(st, cs, cpml_params, mu_r):
         @partial(
             shard_map,
             mesh=mesh,
@@ -2386,7 +2398,7 @@ def run_nonuniform_distributed_pec(
             cs.psi_hy_xlo, cs.psi_hy_xhi, cs.psi_hz_xlo, cs.psi_hz_xhi,
             cs.psi_hx_ylo, cs.psi_hx_yhi, cs.psi_hz_ylo, cs.psi_hz_yhi,
             cs.psi_hx_zlo, cs.psi_hx_zhi, cs.psi_hy_zlo, cs.psi_hy_zhi,
-            sharded_materials.mu_r,
+            mu_r,
         )
         new_st = st._replace(hx=hx, hy=hy, hz=hz)
         new_cs = cs._replace(
@@ -2399,7 +2411,7 @@ def run_nonuniform_distributed_pec(
         )
         return new_st, new_cs
 
-    def _apply_cpml_e_shmap(st, cs):
+    def _apply_cpml_e_shmap(st, cs, cpml_params, eps_r):
         @partial(
             shard_map,
             mesh=mesh,
@@ -2454,7 +2466,7 @@ def run_nonuniform_distributed_pec(
             cs.psi_ey_xlo, cs.psi_ey_xhi, cs.psi_ez_xlo, cs.psi_ez_xhi,
             cs.psi_ex_ylo, cs.psi_ex_yhi, cs.psi_ez_ylo, cs.psi_ez_yhi,
             cs.psi_ex_zlo, cs.psi_ex_zhi, cs.psi_ey_zlo, cs.psi_ey_zhi,
-            sharded_materials.eps_r,
+            eps_r,
         )
         new_st = st._replace(ex=ex, ey=ey, ez=ez)
         new_cs = cs._replace(
@@ -2470,7 +2482,11 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     # Per-step scan body (Phase 2B/2C/2D ordering — see docstring)
     # ------------------------------------------------------------------
-    def step_fn(carry, xs):
+    def step_fn(carry, xs, invariants):
+        (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
+         debye_coeffs, lorentz_coeffs, cpml_params) = invariants
+        if cpml_spacings:
+            cpml_params = cpml_params._replace(**cpml_spacings)
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         cs = carry.get("cpml")
@@ -2491,7 +2507,7 @@ def run_nonuniform_distributed_pec(
 
         # 2. Phase 2C: CPML H correction (after H, before E exchange).
         if use_cpml:
-            st, cs = _apply_cpml_h_shmap(st, cs)
+            st, cs = _apply_cpml_h_shmap(st, cs, cpml_params, sharded_materials.mu_r)
 
         # 2b. PMC face (H-tangential = 0) before H ghost exchange so the
         #     zero propagates to neighbours via the exchange. H-half hook
@@ -2515,13 +2531,14 @@ def run_nonuniform_distributed_pec(
             st, db_st, lr_st = _update_e_dispersive_shmap(
                 st, sharded_materials, db_st, lr_st,
                 ex_old_snapshot, ey_old_snapshot, ez_old_snapshot,
+                debye_coeffs, lorentz_coeffs,
             )
         else:
             st = _update_e_shmap(st, sharded_materials)
 
         # 5. Phase 2C: CPML E correction (after E, before sources/PEC).
         if use_cpml:
-            st, cs = _apply_cpml_e_shmap(st, cs)
+            st, cs = _apply_cpml_e_shmap(st, cs, cpml_params, sharded_materials.eps_r)
 
         # 6. Source injection (rank-conditional via shard_map)
         st = _inject_sources_shmap(st, src_vals)
@@ -2628,14 +2645,18 @@ def run_nonuniform_distributed_pec(
         and 0 < int(checkpoint_every) < n_opt
     )
 
+    # Per-cell arrays must enter the jit as arguments: captured concrete
+    # arrays become whole-domain compiled constants on every device. Keep
+    # their tracer-valued counterparts shared by all scans, including remat.
     @jax.jit
-    def run_fn(c0):
+    def run_fn(c0, invariants):
+        scan_step = partial(step_fn, invariants=invariants)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the
         # warmup phase are also stop_gradient'd (they're just metadata
         # at this point — gradient through them would be a tape leak).
         if warmup_xs is not None:
-            warmup_final, warmup_ys = lax.scan(step_fn, c0, warmup_xs)
+            warmup_final, warmup_ys = lax.scan(scan_step, c0, warmup_xs)
             c0_opt = jax.tree_util.tree_map(lax.stop_gradient, warmup_final)
             warmup_ys = lax.stop_gradient(warmup_ys)
         else:
@@ -2671,7 +2692,7 @@ def run_nonuniform_distributed_pec(
 
             def segment_body(carry, segment_xs):
                 # Inner scan over a single segment of ``chunk`` steps.
-                return lax.scan(step_fn, carry, segment_xs)
+                return lax.scan(scan_step, carry, segment_xs)
 
             seg_body = jax.checkpoint(segment_body)
             final_, seg_ys = lax.scan(
@@ -2683,7 +2704,7 @@ def run_nonuniform_distributed_pec(
             )
             opt_ys = opt_ys_flat[:n_opt]
         else:
-            final_, opt_ys = lax.scan(step_fn, c0_opt, opt_xs)
+            final_, opt_ys = lax.scan(scan_step, c0_opt, opt_xs)
 
         if warmup_ys is not None:
             full_ys = jnp.concatenate([warmup_ys, opt_ys], axis=0)
@@ -2691,7 +2712,11 @@ def run_nonuniform_distributed_pec(
             full_ys = opt_ys
         return final_, full_ys
 
-    final_carry, probe_ts = run_fn(carry_init)
+    final_carry, probe_ts = run_fn(
+        carry_init,
+        (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
+         debye_coeffs, lorentz_coeffs, cpml_params),
+    )
     final_state_sharded = final_carry["fdtd"]
     final_cpml_sharded = final_carry.get("cpml") if use_cpml else None
     final_debye_sharded = final_carry.get("debye") if use_debye else None
