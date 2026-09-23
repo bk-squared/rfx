@@ -13,7 +13,7 @@ env:
   LANG: "C.UTF-8"
   JAX_PLATFORMS: "cpu"
   MPLBACKEND: "Agg"
-  RFX_SHA: "0e71c0f062df0d3e3d3698a1a9ffd2f76eed4adc"
+  RFX_SHA: "cc146dd42e4059e056ca4cafec1e2f40fd6a87c6"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
