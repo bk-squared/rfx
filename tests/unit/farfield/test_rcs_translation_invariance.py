@@ -38,6 +38,7 @@ def test_monostatic_rcs_is_translation_invariant():
         cpml_layers=CPML_LAYERS,
     )
     occupied = []
+    masks = []
     monostatic_dbsm = []
     for shift in SHIFTS:
         center = (
@@ -48,7 +49,8 @@ def test_monostatic_rcs_is_translation_invariant():
         eps_r, sigma = rasterize(
             grid, [(Sphere(center=center, radius=RADIUS), 1.0, 1e7)]
         )
-        occupied.append(int(np.count_nonzero(np.asarray(sigma) > 1.0)))
+        masks.append(np.asarray(sigma) > 1.0)
+        occupied.append(int(np.count_nonzero(masks[-1])))
         materials = MaterialArrays(
             eps_r=eps_r,
             sigma=sigma,
@@ -65,6 +67,12 @@ def test_monostatic_rcs_is_translation_invariant():
     assert occupied[0] > 0 and len(set(occupied)) == 1, (
         f"translated sphere rasterization changed: shifts={SHIFTS}, cells={occupied}"
     )
+    # The same cells, moved: each mask is the first one rolled along x by the
+    # shift difference, so the geometry is identical and only its position moves.
+    for shift, mask in zip(SHIFTS[1:], masks[1:]):
+        assert np.array_equal(mask, np.roll(masks[0], shift - SHIFTS[0], axis=0)), (
+            f"the sphere at shift {shift} is not the shift-{SHIFTS[0]} sphere moved"
+        )
     assert np.all(np.isfinite(monostatic_dbsm)), monostatic_dbsm
     spread_db = float(np.ptp(monostatic_dbsm))
     print(

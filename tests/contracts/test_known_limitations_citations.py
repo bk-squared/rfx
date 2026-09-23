@@ -90,12 +90,11 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
-# issue or PR recording a fix, measurement or settled decision. #1043 (the
-# runners' pad continuation, closed) is named inside the #1066 entry to mark the
-# boundary of what remains. These are allowed to appear without a citation line;
+# issue or PR recording a fix, measurement or settled decision. These are
+# allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 838, 1043, 1100, 1122, 1181, 1186})
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186})
 # #1100 and #1122 join it together: the taper entry names both to record which
 # half was fixed and what was decided about the other, and both are closed.
 
