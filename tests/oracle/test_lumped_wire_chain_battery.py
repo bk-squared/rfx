@@ -398,6 +398,9 @@ def _solve(fixture, key):
 ALL_SOLVES = sorted(SOLVE_KEYS)
 CLAIMS_SOLVES = [f"{k}_{d}_{CLAIMS_RUNG_UM}um" for k in KINDS for d in DUTS]
 REFLECTING = [f"{k}_{d}_{CLAIMS_RUNG_UM}um" for k in KINDS for d in REFLECTING_DUTS]
+ALL_SOLVES = sorted(SOLVE_KEYS)
+ALL_REFLECTING = [f"{k}_{d}_{um}um" for k in KINDS for d in REFLECTING_DUTS
+                  for um in RUNGS_UM]
 
 
 def test_the_bars_are_the_contracts_and_no_record_carries_another(fixture):
@@ -680,6 +683,41 @@ def test_the_magnitude_at_the_claims_rung_matches_the_closed_form(fixture, key):
         f"{key}: |S11| is {worst:.4f} dB from the closed form's "
         f"{abs(gamma_of(z_load, zc)):.6f} at worst — the bar is "
         f"{BAR['magnitude_db']} dB")
+
+
+@pytest.mark.parametrize("key", ALL_SOLVES)
+def test_the_one_port_is_passive_at_every_rung(fixture, key):
+    """Passivity cannot false-alarm on a coarse mesh: a passive load reflects at
+    most what it receives at every cell size, on the solve and on its doubled
+    record. The ladder judges the coarse rungs only through the recommendation,
+    so this is what holds them to the physics directly (review of PR 1215,
+    round 2, mutation n02: a coarse short at |S11| = 1.5 passed without it)."""
+    entry = _solve(fixture, key)
+    for label, block in (("solve", entry["s11"]),
+                         ("doubled record", entry["record_doubling"]["s11"])):
+        measured = float(np.abs(_complex(block)).max())
+        assert measured <= BAR["passivity_max"], (
+            f"{key} ({label}): max|S11| = {measured:.6f} exceeds "
+            f"{BAR['passivity_max']} on a passive termination")
+
+
+@pytest.mark.parametrize("key", ALL_REFLECTING)
+def test_the_magnitude_stays_inside_the_bar_at_every_rung(fixture, key):
+    """The v2 bar against the exact referee at every cell size, not only at the
+    claims rung: |S11| within 2 dB of the closed form on the realized length
+    (round-2 mutation n02b: a coarse resistor 6 dB off passed without it). The
+    matched line is a deep null and is held to its floor elsewhere."""
+    entry = _solve(fixture, key)
+    s11 = _complex(entry["s11"])
+    freqs = np.asarray(entry["freqs_hz"], dtype=float)
+    zc = ETA0 * N_H_CELLS[entry["kind"]]
+    z_load = z_load_of(entry["dut"], zc)
+    an = s11_of(zin_line(zc, beta_of(freqs),
+                         realized_length_m(entry["dut"], entry["rung_um"]), z_load), zc)
+    worst = float(np.abs(_db(s11) - _db(an)).max())
+    assert worst <= BAR["magnitude_db"], (
+        f"{key}: |S11| is {worst:.4f} dB from the closed form at worst — the "
+        f"bar is {BAR['magnitude_db']} dB")
 
 
 @pytest.mark.parametrize("key", REFLECTING)
