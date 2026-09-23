@@ -485,16 +485,30 @@ def test_the_fast_suite_caches_the_short_compilations(name: str) -> None:
     assert str(env.get(name)) == CACHE_ENV[name], (name, env.get(name))
 
 
-def test_the_compilation_cache_is_bounded() -> None:
-    """jax grows the directory without limit unless it is given a size."""
-    env = _sharded_pytest_step().get("env") or {}
-    size = int(str(env.get("JAX_COMPILATION_CACHE_MAX_SIZE", "-1")))
-    assert size > 0, "JAX_COMPILATION_CACHE_MAX_SIZE is unset or unbounded"
-    installs = " ".join(
-        str(s.get("run", "")) for s in _fast_suite_steps() if "pip install" in str(s.get("run", ""))
-    )
-    # jax raises at the first compilation when the bound is set without it.
-    assert "filelock" in installs, "the size bound needs the filelock package"
+def test_jax_is_not_asked_to_bound_the_cache_itself() -> None:
+    """jax 0.6.2's own bound (JAX_COMPILATION_CACHE_MAX_SIZE) lists and reads
+    the whole directory on every write, so a cold shard's writes cost time
+    quadratic in its entry count: 4000 writes took 229 s on a Mac against 0.4 s
+    without it. The lane stays green and gets slower, so it is pinned here."""
+    fast = load(PR_TESTS)["jobs"]["fast-suite"]
+    envs = [fast.get("env") or {}] + [s.get("env") or {} for s in _fast_suite_steps()]
+    assert not any("JAX_COMPILATION_CACHE_MAX_SIZE" in env for env in envs)
+
+
+def test_the_saved_cache_is_bounded_after_the_tests() -> None:
+    """The directory the post step saves is trimmed first, or it grows by every
+    program the code stops producing."""
+    steps = _fast_suite_steps()
+    cache_dir = str((_sharded_pytest_step().get("env") or {})["JAX_COMPILATION_CACHE_DIR"])
+    trims = [
+        s for s in steps[steps.index(_sharded_pytest_step()) + 1:]
+        if str((s.get("env") or {}).get("CACHE_DIR", "")).strip() == cache_dir.strip()
+    ]
+    assert len(trims) == 1, "no step after the tests bounds the cache directory"
+    env = trims[0]["env"]
+    limit, keep = int(str(env["LIMIT_BYTES"])), int(str(env["KEEP_BYTES"]))
+    assert 0 < keep < limit, (keep, limit)
+    assert "unlink" in str(trims[0].get("run", "")), "the bounding step deletes nothing"
 
 
 def test_every_run_saves_its_own_cache_and_restores_the_newest() -> None:

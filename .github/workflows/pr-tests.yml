@@ -241,12 +241,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # filelock: jax needs it to bound the compilation cache below
-      # (JAX_COMPILATION_CACHE_MAX_SIZE raises without it). Nothing else here
-      # imports it.
       - name: Install package with dev dependencies
         if: needs.changes.outputs.code_changed != 'false'
-        run: pip install -e ".[dev,cad]" filelock   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
+        run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
 
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
         id: versions
@@ -280,18 +277,18 @@ jobs:
       # A pull request sees its own entries and main's, never another PR's; main
       # pushes run this job, so main's entries are what a new PR starts from.
       # The save is the action's post step, which runs only when the job passed.
-      # Bounded twice: jax evicts least-recently-used entries past
-      # JAX_COMPILATION_CACHE_MAX_SIZE in the pytest step, and GitHub evicts
-      # whole entries past the repository's 10 GB and after 7 days unused.
-      # Pinned by commit: a tag can be moved.
+      # Raise the `jaxcc-v<N>` number to discard every saved cache.
+      # Bounded twice: the step after the tests trims the directory past
+      # 256 MB, and GitHub evicts whole entries past the repository's 10 GB and
+      # after 7 days unused. Pinned by commit: a tag can be moved.
       - name: Restore the XLA compilation cache (saved again when the job passes)
         if: needs.changes.outputs.code_changed != 'false'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: /home/runner/.cache/jax-compilation-cache
-          key: jaxcc-v1-${{ runner.os }}-py${{ matrix.python-version }}-jax${{ steps.versions.outputs.jax }}-cpu${{ steps.versions.outputs.cpu }}-g${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: jaxcc-v2-${{ runner.os }}-py${{ matrix.python-version }}-jax${{ steps.versions.outputs.jax }}-cpu${{ steps.versions.outputs.cpu }}-g${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
-            jaxcc-v1-${{ runner.os }}-py${{ matrix.python-version }}-jax${{ steps.versions.outputs.jax }}-cpu${{ steps.versions.outputs.cpu }}-g${{ matrix.group }}-
+            jaxcc-v2-${{ runner.os }}-py${{ matrix.python-version }}-jax${{ steps.versions.outputs.jax }}-cpu${{ steps.versions.outputs.cpu }}-g${{ matrix.group }}-
 
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
         if: needs.changes.outputs.code_changed != 'false'
@@ -309,12 +306,13 @@ jobs:
           # compile time 0: of the 4461 compilations shard 6 made on the Mac,
           # 4442 took under a second and held 177 of the 199 s, and jax's
           # default (1 s) would write none of them. Entry-size floor off (-1).
-          # 256 MB is the least-recently-used bound jax enforces on every
-          # write (it needs filelock), about 4x the largest shard measured.
+          # NOT JAX_COMPILATION_CACHE_MAX_SIZE: in jax 0.6.2 every write under
+          # that bound lists and reads the whole directory, so a cold shard's
+          # writes cost time quadratic in its entry count: 4000 writes took
+          # 229 s on the Mac against 0.4 s without it. The next step bounds it.
           JAX_COMPILATION_CACHE_DIR: /home/runner/.cache/jax-compilation-cache
           JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
           JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
-          JAX_COMPILATION_CACHE_MAX_SIZE: "268435456"
           # Empty turns off the GPU autotune cache jax 0.6.2 enables beside the
           # compilation cache by default. It writes the cache DIRECTORY's path
           # into every compile option, so every key depended on the path: a
@@ -328,3 +326,34 @@ jobs:
           --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
           --ignore=tests/crossval/test_openems_crossval.py
           --ignore=tests/crossval/test_crossval_comprehensive.py
+
+      # Keeps the directory the post step saves under 256 MB (a shard's cache
+      # measured 30-69 MB on disk): past that, the oldest-written entries go
+      # until 192 MB remain. An entry still in use is written again by the next
+      # run that needs it. Runs only when the tests passed, as the save does.
+      # 10k entries took 0.3 s on the Mac. Prints the size either way.
+      - name: Bound the XLA compilation cache before it is saved
+        if: needs.changes.outputs.code_changed != 'false'
+        env:
+          CACHE_DIR: /home/runner/.cache/jax-compilation-cache
+          LIMIT_BYTES: "268435456"
+          KEEP_BYTES: "201326592"
+        run: |
+          python - <<'EOF'
+          import os, pathlib
+          d = pathlib.Path(os.environ["CACHE_DIR"])
+          limit, keep = int(os.environ["LIMIT_BYTES"]), int(os.environ["KEEP_BYTES"])
+          if not d.is_dir():
+              print(f"no cache directory at {d}: jax wrote nothing, nothing to save")
+              raise SystemExit(0)
+          files = sorted((st.st_mtime, st.st_size, p) for p in d.iterdir() if p.is_file() for st in [p.stat()])
+          total = sum(size for _, size, _ in files)
+          print(f"compilation cache: {len(files)} files, {total} bytes")
+          if total > limit:
+              for _, size, p in files:
+                  if total <= keep:
+                      break
+                  p.unlink()
+                  total -= size
+              print(f"over {limit} bytes: removed the oldest-written entries, now {total} bytes")
+          EOF
