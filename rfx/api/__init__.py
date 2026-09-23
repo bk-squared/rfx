@@ -56,6 +56,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,  # noqa: F401
 )
 from rfx.boundaries.spec import BoundarySpec
+from rfx.boundaries.model import DEFAULT_BOUNDARY
 
 # ---------------------------------------------------------------------------
 # Leaf data structures — moved to rfx/api/_spec.py (Part B Stage 0).
@@ -425,7 +426,7 @@ class Simulation(
         freq_max: float,
         domain: tuple[float, float, float],
         *,
-        boundary: str | BoundarySpec | dict = "cpml",
+        boundary: str | BoundarySpec | dict = DEFAULT_BOUNDARY,
         cpml_layers: int = 16,
         cpml_kappa_max: float = 1.0,
         pec_faces: set[str] | list[str] | None = None,
@@ -453,6 +454,9 @@ class Simulation(
         # boundary=<str>. A BoundarySpec provided here is authoritative;
         # concurrent legacy kwargs (pec_faces) conflict with it.
         _explicit_spec = isinstance(boundary, (BoundarySpec, dict))
+        _boundary_origin = "default" if boundary is DEFAULT_BOUNDARY else "declared"
+        if boundary is DEFAULT_BOUNDARY:
+            boundary = "cpml"
         if _explicit_spec:
             if pec_faces is not None:
                 raise ValueError(
@@ -743,6 +747,16 @@ class Simulation(
             self._periodic_axes = spec.periodic_axes()
         else:
             self._boundary_spec = self._build_spec_from_legacy()
+
+        from rfx.boundaries.model import Features, resolve_kinds
+        self._boundary_model = resolve_kinds(
+            self._boundary_spec, mode=mode,
+            features=Features(layers=cpml_layers,
+                              absorber_parameters=(("kappa_max", cpml_kappa_max),),
+                              explicit_faces=_explicit_spec, origin=_boundary_origin,
+                              face_origins=tuple((face, "declared") for face in (pec_faces or ())),
+                              domain=domain),
+        )
 
         # solver='adi' has no per-face absorber. Its absorbing layer is a
         # graded sigma stamped on ALL SIX faces at the scalar cpml_layers
@@ -2675,7 +2689,24 @@ class Simulation(
         # Rebuild the canonical BoundarySpec so downstream code that
         # consults it (T7-C/D/E) sees the updated periodic axes.
         self._boundary_spec = self._build_spec_from_legacy()
+        from dataclasses import replace
+        from rfx.boundaries.model import resolve_kinds
+        self._boundary_model = resolve_kinds(
+            self._boundary_spec, mode=self._mode,
+            features=replace(self._boundary_model.declaration, origin="declared"),
+        )
         return self
+
+    def boundary_model(self, *, rcs: bool = False):
+        """Return the B1 face declaration with the current feature requirements.
+
+        No runner consumes this descriptor in B1. ``rcs=True`` collects the
+        RCS requirement for a caller preparing that operation.
+        """
+        from rfx.boundaries.model import collect_requirements, with_requirements
+        self._boundary_model = with_requirements(
+            self._boundary_model, collect_requirements(self, rcs=rcs))
+        return self._boundary_model
 
     # ---- Floquet ports ----
 

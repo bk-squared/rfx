@@ -819,6 +819,8 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_adi_cfl_factor",
     "_boundary",
     "_boundary_spec",
+    # B1 descriptor derived from the exported boundary and feature entries.
+    "_boundary_model",
     "_coaxial_open_terminations",
     "_coaxial_pec_end_caps",
     "_coaxial_ports",
