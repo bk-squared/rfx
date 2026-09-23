@@ -26,6 +26,7 @@ DIAGNOSTIC_COMMAND_MARKERS = (
     "build_lumped_openems_sparameter_comparison.py",
     "build_lumped_openems_sweep_comparison.py",
     "build_patch_openems_wire_sparameter_comparison.py",
+    "build_coaxial_line_openems_broad_comparison.py",
     "build_floquet_empty_space_analytic_comparison.py",
     "build_floquet_slab_analytic_comparison.py",
     "report_floquet_periodic_slab_oracles.py",
