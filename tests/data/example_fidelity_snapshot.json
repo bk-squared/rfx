@@ -2037,57 +2037,57 @@
         "domain": {
           "axes": {
             "x": {
-              "declared_extent_um": 20000.0,
+              "declared_extent_um": 8000.0,
               "declared_um": [
                 0.0,
-                20000.0
+                8000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 20000.0,
-              "n_cells": 50,
-              "realized_extent_um": 20000.0,
+              "mesh_extent_um": 8000.0,
+              "n_cells": 20,
+              "realized_extent_um": 8000.0,
               "realized_um": [
                 0.0,
-                20000.0
+                8000.0
               ]
             },
             "y": {
-              "declared_extent_um": 20000.0,
+              "declared_extent_um": 8000.0,
               "declared_um": [
                 0.0,
-                20000.0
+                8000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 20000.0,
-              "n_cells": 50,
-              "realized_extent_um": 20000.0,
+              "mesh_extent_um": 8000.0,
+              "n_cells": 20,
+              "realized_extent_um": 8000.0,
               "realized_um": [
                 0.0,
-                20000.0
+                8000.0
               ]
             },
             "z": {
-              "declared_extent_um": 20000.0,
+              "declared_extent_um": 60000.0,
               "declared_um": [
                 0.0,
-                20000.0
+                60000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 20000.0,
-              "n_cells": 50,
-              "realized_extent_um": 20000.0,
+              "mesh_extent_um": 60000.0,
+              "n_cells": 150,
+              "realized_extent_um": 60000.0,
               "realized_um": [
                 0.0,
-                20000.0
+                60000.0
               ]
             }
           },

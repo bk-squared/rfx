@@ -269,18 +269,17 @@ def test_unknown_lane_name_is_rejected_with_the_valid_set():
     assert "compute_waveguide_s_matrix" in str(exc.value)
 
 
-def test_deprecated_coaxial_lane_is_not_selectable():
-    """``compute_coaxial_s_matrix`` is the DEPRECATED single-plane path.
+def test_removed_coaxial_lane_is_not_selectable():
+    """``compute_coaxial_s_matrix`` was removed in #1212.
 
-    Its own docstring records measured, non-physical ``|S11|>1`` for a
-    lossless short. The dispatcher never routes to it, and ``lane=`` cannot
-    ask for it either -- a caller who really wants it calls it directly and
-    sees its deprecation warning.
+    The dispatcher never routed to it; ``lane=`` naming it is refused with
+    the valid set and the removal named.
     """
-    assert hasattr(Simulation, "compute_coaxial_s_matrix")
+    assert not hasattr(Simulation, "compute_coaxial_s_matrix")
     with pytest.raises(ValueError) as exc:
         _coax_sim().s_matrix_lane(lane="compute_coaxial_s_matrix")
-    assert "deprecated" in str(exc.value).lower()
+    assert "#1212" in str(exc.value)
+    assert "compute_coaxial_line_reflection" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
@@ -333,7 +332,7 @@ def test_no_ports_from_compute_raises_the_same_valueerror():
     (_floquet_sim, ["add_floquet_port", "no S-matrix calculator"]),
     (_tfsf_sim, ["add_tfsf_source", "not a port"]),
     (_three_coax_sim, ["add_coaxial_port x3", "EXACTLY ONE",
-                       "compute_coaxial_s_matrix"]),
+                       "compute_coaxial_line_reflection", "#1212"]),
     (_waveguide_plus_msl_sim, ["add_waveguide_port x2", "add_msl_port x1",
                                "compute_waveguide_s_matrix",
                                "compute_msl_s_matrix"]),
@@ -348,15 +347,16 @@ def test_unsupported_combinations_name_the_families_and_the_way_out(
         assert token in msg, f"{token!r} missing from:\n{msg}"
 
 
-def test_three_coax_does_not_route_to_the_deprecated_lane():
-    """The only method that accepts several coaxial ports is deprecated.
+def test_three_coax_is_refused_because_no_lane_accepts_several():
+    """No coaxial lane takes more than one ``add_coaxial_port()``.
 
-    Routing there would be the worst outcome of the whole dispatcher: a
-    measured non-physical result reached by a convenience helper.
+    The one method that did was removed in #1212; ``compute_s_matrix()``
+    raises and says so rather than picking a lane.
     """
     with pytest.raises(NotImplementedError) as exc:
         _three_coax_sim().compute_s_matrix()
-    assert "DEPRECATED" in str(exc.value)
+    assert "EXACTLY ONE" in str(exc.value)
+    assert "#1212" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------

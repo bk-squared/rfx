@@ -396,26 +396,6 @@ def test_registered_monitor_is_rejected_before_coaxial_line_run(monitor):
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 
 
-@pytest.mark.parametrize("helper", ("matched", "open", "pec_end_cap"))
-def test_registered_coax_termination_helper_is_rejected_before_line_run(helper):
-    sim = Simulation(
-        domain=(0.008, 0.008, 0.040),
-        freq_max=40.0e9,
-        boundary="cpml",
-        dx=1.0e-3,
-    )
-    sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
-    if helper == "matched":
-        sim.add_coaxial_matched_load(target_impedance=50.0)
-    elif helper == "open":
-        sim.add_coaxial_open_termination()
-    else:
-        sim.add_coaxial_pec_end_cap()
-
-    with pytest.raises(ValueError, match=r"add_coaxial_\* termination helpers"):
-        sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
-
-
 @pytest.mark.parametrize("termination", ("short", "open"))
 def test_dut_impedance_is_rejected_when_termination_does_not_use_it(termination):
     sim = Simulation(

@@ -391,9 +391,11 @@ class _PreflightMixin:
         if self._coaxial_ports:
             messages.append(
                 "add_coaxial_port(...) is not wired into run(compute_s_params=True); "
-                "use Simulation.compute_coaxial_s_matrix(...) (experimental TEM "
-                "plane-source API) or add_port(extent=...) for the current "
-                "probe-feed S-parameter path"
+                "use Simulation.compute_coaxial_line_reflection(...) for a "
+                "one-port reflection or Simulation.compute_coaxial_two_port(...) "
+                "for a through line (for a single add_coaxial_port(), "
+                "compute_s_matrix(lane=...) dispatches to either), or "
+                "add_port(extent=...) for the probe-feed S-parameter path"
             )
 
         if not port_entries:
@@ -519,8 +521,9 @@ class _PreflightMixin:
         if self._coaxial_ports:
             messages.append(
                 "coaxial ports are not wired into forward(port_s11_freqs=...); "
-                "use Simulation.compute_coaxial_s_matrix(...) for the "
-                "experimental coaxial S-matrix path"
+                "use Simulation.compute_coaxial_line_reflection(...) for a "
+                "one-port reflection or Simulation.compute_coaxial_two_port(...) "
+                "for a through line"
             )
         if not port_entries:
             source_only = any(pe.impedance == 0.0 for pe in self._ports)
@@ -968,8 +971,14 @@ class _PreflightMixin:
             "waveguide": "waveguide",
             "compute_waveguide_s_matrix": "waveguide",
             "coaxial": "coaxial",
-            "compute_coaxial_s_matrix": "coaxial",
         }
+        if calculator.lower() == "compute_coaxial_s_matrix":  # removed, #1212
+            raise ValueError(
+                "calculator='compute_coaxial_s_matrix' names a method removed in #1212. "
+                "Use calculator='coaxial' to check the coaxial lanes, "
+                "compute_coaxial_line_reflection() (one-port reflection) and "
+                "compute_coaxial_two_port() (through line)."
+            )
         key = aliases.get(calculator.lower())
         if key is None:
             allowed = ", ".join(sorted(set(aliases.values())))
@@ -1220,43 +1229,93 @@ class _PreflightMixin:
                 )
 
     def _validate_coaxial_sparameter_request_for_preflight(self) -> None:
-        """Mirror ``compute_coaxial_s_matrix`` family-routing checks."""
+        """The registration checks both coaxial lanes make before any solve.
+
+        ``compute_coaxial_line_reflection`` and ``compute_coaxial_two_port``
+        refuse the same registrations, in the same words, before they build
+        a grid (``rfx/sparams/coax.py``). Each condition below is one of
+        those refusals, read off the lanes' own guard blocks; every failing
+        one is listed, so a setup is fixed in one pass. What the lanes check
+        on their METHOD arguments (``termination``, ``probe_count``, whether
+        the probe ladder fits the domain) cannot be seen here.
+        ``tests/unit/preflight/test_removed_coaxial_s_matrix_lane.py`` runs
+        this check and both lanes on the same setups and requires the three
+        to agree.
+        """
 
         if not self._coaxial_ports:
             raise ValueError(
                 "No coaxial ports registered. Call add_coaxial_port() first."
             )
-        if (
-            self._ports
-            or self._waveguide_ports
-            or self._floquet_ports
-            or self._msl_ports
-        ):
-            raise NotImplementedError(
-                "compute_coaxial_s_matrix() is defined only for "
-                "add_coaxial_port(...) families in the current simulation."
-            )
+
+        failed: list[str] = []
+        n_coax = len(self._coaxial_ports)
+        if n_coax != 1:
+            failed.append(
+                f"exactly one add_coaxial_port() ({n_coax} registered)")
+        others = [
+            name for name, entries in (
+                ("add_port", self._ports),
+                ("add_waveguide_port", self._waveguide_ports),
+                ("add_floquet_port", self._floquet_ports),
+                ("add_msl_port", self._msl_ports),
+            ) if entries
+        ]
+        if others:
+            failed.append(
+                "no port family besides add_coaxial_port() (registered: "
+                + ", ".join(others) + ")")
+        faces = sorted({str(port.face) for port in self._coaxial_ports})
+        if faces != ["top"]:
+            failed.append(f"face='top' (registered: {', '.join(faces)})")
+        if self._boundary != "cpml" or self._cpml_layers <= 0:
+            failed.append(
+                "boundary='cpml' with cpml_layers > 0 (got "
+                f"boundary={self._boundary!r}, cpml_layers={self._cpml_layers})")
+        else:
+            z_boundary = self._boundary_spec.z
+            if (
+                z_boundary.lo != "cpml"
+                or z_boundary.hi != "cpml"
+                or z_boundary.resolved_lo_thickness(self._cpml_layers) <= 0
+                or z_boundary.resolved_hi_thickness(self._cpml_layers) <= 0
+            ):
+                failed.append("positive CPML thickness on both z faces")
+            if any(token != "cpml"
+                   for _, _, token in self._boundary_spec.faces()):
+                failed.append("CPML on all six boundary faces")
+        if self._periodic_axes:
+            failed.append("no periodic boundary axes")
+        if self._mode != "3d":
+            failed.append(f"mode='3d' (got {self._mode!r})")
+        if self._solver != "yee":
+            failed.append(f"solver='yee' (got {self._solver!r})")
+        if self._precision != "float32":
+            failed.append(f"precision='float32' (got {self._precision!r})")
+        if self._stencil_order != 2:
+            failed.append(f"stencil_order=2 (got {self._stencil_order})")
         if self._tfsf is not None:
-            raise NotImplementedError(
-                "compute_coaxial_s_matrix() is not supported together with "
-                "TFSF; TFSF is a plane-wave source, not a coaxial port."
-            )
-        if (
-            self._dz_profile is not None
-            or self._dx_profile is not None
-            or self._dy_profile is not None
-        ):
-            raise NotImplementedError(
-                "compute_coaxial_s_matrix() supports the uniform Yee lane only."
-            )
+            failed.append("no TFSF source (each lane builds its own)")
+        declared_mesh = self._declared_mesh
+        if any(declared_mesh[name] is not None
+               for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
+            failed.append("a uniform grid (no dx/dy/dz profile)")
         if self._refinement is not None:
-            raise NotImplementedError(
-                "compute_coaxial_s_matrix() is not supported with SBP-SAT subgridding."
-            )
-        if self._solver == "adi":
-            raise NotImplementedError(
-                "compute_coaxial_s_matrix() is not supported with solver='adi'."
-            )
+            failed.append("no SBP-SAT refinement")
+        if self._geometry or self._thin_conductors:
+            failed.append(
+                "no registered geometry or thin conductors (each lane "
+                "builds the complete line)")
+        if self._lumped_rlc:
+            failed.append("no lumped RLC elements")
+        if self._probes or self._dft_planes or self._flux_monitors or self._ntff:
+            failed.append(
+                "no registered probes, DFT planes, flux monitors or NTFF boxes")
+        if failed:
+            raise ValueError(
+                "compute_coaxial_line_reflection() and compute_coaxial_two_port() "
+                "both refuse this setup. They require: " + "; ".join(failed)
+                + ".")
 
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 6: the NTFF inverse-design umbrella (PEC overlap as

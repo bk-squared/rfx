@@ -559,9 +559,6 @@ EMISSION_CLASSIFICATION = {
         "'functional entry points run no sim.preflight()' comment sits in "
         "compute_waveguide_s_matrix's own docstring (line 1784), not "
         "this method's -- it does not describe compute_msl_s_matrix."),
-    "Simulation.compute_coaxial_s_matrix": (
-        DIAGNOSTIC_ONLY,
-        "measured: no preflight()/_auto_preflight() call in this method"),
     "Simulation.compute_coaxial_line_reflection": (
         DIAGNOSTIC_ONLY,
         "measured: no preflight()/_auto_preflight() call in this method"),

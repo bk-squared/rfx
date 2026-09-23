@@ -85,6 +85,15 @@ used to contradict each other about this, and the measurement decided it.
 
 ## Absorbing boundaries
 
+**On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**
+A face declared `pmc` is solved as a magnetic wall only on a single-device Yee run. On `run(devices=...)` and
+`forward(distributed=True)` with no absorbing face the plane is shorted (tangential E held at zero); with absorbing
+faces the cells next to it absorb, and a source one cell off the plane reaches the volume 65–75 dB below the
+single-device run. `solver='adi'` solves the face as an electric wall. A half-model on these lanes is a different
+structure from the one declared. Use a single-device Yee run for a symmetry plane; there the wall sits half a cell
+inside the declared face, which #1221 also fixes.
+→ [#1221](https://github.com/bk-squared/rfx/issues/1221)
+
 **With the mesh as a design variable, a ground plane still ends at the absorber.**
 A conductor drawn to an absorbing boundary is continued through the absorber, so
 a grounded board stays grounded inside it. When any mesh axis is traced

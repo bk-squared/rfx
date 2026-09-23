@@ -93,6 +93,31 @@ def _s11(kind, r_over_zc):
     return np.asarray(res.s_params).reshape(-1)
 
 
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
+    """The advisory must allow a TEM wave along the line on the y_lo plane."""
+    report = _build(kind, 0.5).preflight()
+    messages = [str(issue) for issue in report.issues
+                if issue.code == "source_decoupled"]
+    assert len(messages) == 1
+    msg = messages[0]
+    assert "sits on the magnetic-wall plane y_lo" in msg
+    assert "On a single-device Yee run the wall is solved half a cell inside this face" in msg
+    assert "a sheet coupled only to itself" in msg
+    assert "a line drawn entirely in the plane (a one-cell-wide model) carries its wave" in msg
+    assert "nothing launched here reaches the volume off the plane" in msg
+    assert "including the half of a line that the plane cuts along its centre" in msg
+    assert (
+        "The distributed lanes do not realise a magnetic wall: with no absorbing "
+        "face the plane is shorted, and with absorbing faces the cells next to "
+        "it absorb, so a source one cell off reaches the volume 65–75 dB low; "
+        "use a single-device run."
+    ) in msg
+    assert "To radiate into the volume, place the source one cell (1mm) off the plane" in msg
+    assert "no wave radiates" not in msg
+    assert "silent zero field" not in msg
+
+
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
 def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc):
     """|S11| of a driven one-cell lumped port is |(R - Zc)/(R + Zc)|."""

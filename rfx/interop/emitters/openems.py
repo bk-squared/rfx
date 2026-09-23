@@ -707,6 +707,14 @@ def _plan_ports(
     excitations = _require_mapping(
         _get(document, "excitations", "document"), "excitations"
     )
+    removed_in_1212 = (
+        "the builder was removed from rfx in #1212 with the single-plane "
+        "coaxial S-matrix lane it fed, and rfx itself refuses this entry on "
+        "import; its offset was also in *cells*, which means nothing on "
+        "another solver's mesh. For a coaxial one-port with a short, open or "
+        "matched load use compute_coaxial_line_reflection(termination=..., "
+        "dut_impedance=...)"
+    )
 
     for key, construct, reason in (
         (
@@ -721,21 +729,17 @@ def _plan_ports(
         (
             "coaxial_matched_loads",
             "add_coaxial_matched_load(...)",
-            "the axial offset is recorded in *cells*, not metres, so it has no "
-            "meaning on another solver's mesh — it would move physically if dx "
-            "changed. It is listed in the document's own non_portable annotation",
+            removed_in_1212,
         ),
         (
             "coaxial_open_terminations",
             "add_coaxial_open_termination(...)",
-            "pin_retract_cells is a cell-relative offset (non_portable), so the "
-            "termination plane cannot be placed from this document",
+            removed_in_1212,
         ),
         (
             "coaxial_pec_end_caps",
             "add_coaxial_pec_end_cap(...)",
-            "axial_offset_cells is a cell-relative offset (non_portable), so the "
-            "cap plane cannot be placed from this document",
+            removed_in_1212,
         ),
         (
             "floquet_ports",
