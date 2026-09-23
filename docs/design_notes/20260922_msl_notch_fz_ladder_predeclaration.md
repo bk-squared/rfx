@@ -696,18 +696,24 @@ the way W3 reads it: the order from all three rungs, the limit from the finest t
 
 ### Conclusions (leader; rewritten 2026-09-23 after the verification review showed that the notch estimator bent the ladder; read against F.0–F.6 and the two records)
 
-**The substrate-normal cell at the sheet carries the notch's remaining discretization error.
-With the in-plane cell held at 24.29 µm, refining it alone converges the notch to 0.06–0.26 %
-below openEMS.** Cutting only the substrate cell 42.3 → 31.75 → 21.2 → 15.9 µm lowers the
+**The substrate-normal cell carries the notch's remaining discretization error. With the
+in-plane cell held at 24.29 µm, refining the substrate cell alone converges the notch to
+0.06–0.26 % below openEMS.** (The ladder refines FZ across the whole 0–2h band, so it does not
+isolate the cells at the sheet from the rest of the substrate; "at the sheet" is §0's
+hypothesis, not this record's finding.) Cutting only the substrate cell 42.3 → 31.75 → 21.2 → 15.9 µm lowers the
 notch monotonically (W5 held). Read with the |S21|² vertex (F.6), the four rungs follow one
 power law in the substrate cell. The five readings of the order all give 0.71 to 0.80, and a
 three-parameter fit to the four notches leaves 0.051 MHz rms. The limits the five readings
 give are 3.6645 to 3.6718 GHz. openEMS `stage_b_fine`, read the same way, is 3.67387 GHz, so
 the limits sit 0.06 to 0.26 % below it. The step the first note could not attribute,
 A_off → C_off, splits into a substrate leg of 34.1 MHz and an in-plane leg of −5.0 MHz, out
-of a 29.0 MHz total. Read with the case's log vertex, the split is 33.3 / −2.5 / 30.8 MHz.
-W6 classifies FZ as dominant under both estimators. The reused rung was re-solved at the
-ladder's commit and reproduced bit for bit (A.2), so the ladder stands on one solver build.
+of a 29.0 MHz total. Read with the case's log vertex, the split is 33.3 / −2.5 / 30.8 MHz,
+and W6 classifies FZ as dominant (F.4). The same 2/3 rule applied to the |S21|² numbers also
+gives FZ dominant (derived: |dZ| 34.06 MHz ≥ 2/3 × 29.04 = 19.36 MHz). The in-plane leg reads
+A_off, which the first record solved at another build; A.2 shows that build change moved the
+C_off board by nothing. The reused rung was re-solved at a commit whose `rfx/` tree is the
+other three rungs' and reproduced bit for bit (A.2), so the ladder stands on one solver
+build.
 
 **What changed from the previous version: the instrument, not the solver.** The case reads a
 notch as the vertex of a parabola through three bins of log|S21|. Near a transmission zero
@@ -715,8 +721,8 @@ that loss has moved off the real axis, |S21|² is ((f − f0)/B)² + floor, a pa
 logarithm is not a parabola, so the log vertex misses the zero, by an amount that depends on
 where the zero falls inside its 15.8 MHz bin. F.6(b) puts a synthetic zero with each ladder
 arm's own B (1.17–1.19 GHz), floor (−54.7 to −54.9 dB) and frequency grid at tenths of a bin. The log
-vertex errs from −2.51 to +2.51 MHz. The |S21|² vertex errs by at most 140 Hz, and only
-because the recorded grid's spacing alternates by 1024 Hz while the estimator assumes it
+vertex errs from −2.51 to +2.51 MHz. The |S21|² vertex errs by at most 143 Hz, and only
+because the recorded grid's spacing varies by up to 1024 Hz while the estimator assumes it
 even; on an even grid the error is zero. The record shows the same thing (F.6(a)): the
 |S21|² vertex moves at most 4 kHz between 3-, 5- and 7-sample fits, and the log vertex moves
 0.4 to 1.0 MHz. The rung-to-rung steps are 6 to 18 MHz, so an error of up to ±2.5 MHz that
@@ -724,15 +730,18 @@ differs from rung to rung was enough to bend the ladder. The previous version of
 conclusions read the bent ladder, and four of its readings are withdrawn: "not one power
 law", an order rising from 0.83 to 1.89, a residual "between gone and 0.75 %", and in-plane
 steps that accelerate. The frozen windows are judged on the estimator §4 declared, as frozen
-windows must be. Under both estimators the verdicts come out the same: W5, W6 and W8 held,
-and on W7 the on-node arm reads lower.
+windows must be, and their verdicts are F.4's: W5 and W8 held, W6 FZ dominant, and on W7 the
+on-node arm reads lower. Applying the same rules to the |S21|² numbers gives the same
+outcomes (derived, printed by no table): the order 0.7518 lies in [0.5, 2.5] on a monotone
+ladder, the limit is 0.13 % from the reference, W6 is as above, and ON13 still reads below
+A_off.
 
 **The first note's ladder was read with the same bias.** In that ladder A_off → B_off → C_off
 cut both cells together. Read with the |S21|² vertex, its order is 0.69 and its limit 3.67076
 GHz, 0.08 % below the reference. The log reading merged with #1191 gave 0.92 and 0.22 % above
-(F.6, last table). "First order" was the estimator's number. Other notch or resonance
-readings that use the log parabola on bins this coarse relative to the feature's depth carry
-the same kind of error.
+(F.6, last table). "First order" was the estimator's number. Other notch readings that take
+the log-parabola vertex of a deep lossy transmission zero on bins this coarse carry the same
+kind of error; this record tests nothing beyond such zeros.
 
 **What this gives the mesher: the substrate rule is stricter than the log reading said.** An
 order below one means that halving the cell removes less than half of the error. W8's
@@ -744,14 +753,14 @@ cells, 1082 s on one RTX 4090) is already within 1 % of the external reference, 
 because the ladder converges to slightly below it. In the plane, at FZ = 42.3 µm, cutting F
 from 47.2 to 35.9 to 24.3 µm raises the notch by +2.7 then +2.3 MHz: 5.0 MHz in all, 0.13 %
 of 3.75 GHz, with the steps shrinking. That was measured at one substrate cell only. There is
-no in-plane ladder at a fine substrate cell, so this record gives no in-plane rule. The
-pairing the two ladders suggest, n = 12 across the strip with n_z = 16, has been costed by
-the instrument but not solved: 2,656,500 cells, dt 47.35 fs, 60,342 steps (F.4b).
+no in-plane ladder at a fine substrate cell, so this record gives no in-plane rule. One
+cheaper pairing, n = 12 across the strip with n_z = 16, has been costed by the instrument but
+not solved: 2,656,500 cells, dt 47.35 fs, 60,342 steps (F.4b).
 
 **Where the limit sits, and what this record cannot place.** The limit is the substrate
 cell → 0 limit at F = 24.29 µm with the 0.35-cell edge rule, not the continuum answer. Two
-in-plane terms remain in it, and this record has measured each only at F ≈ 47 µm and
-FZ = 42.3 µm. First, the in-plane cell: refining it from 47.2 to 24.3 µm raised the notch
+in-plane terms remain in it, and this record has measured each only at FZ = 42.3 µm: the
+in-plane cell over F = 47 → 24 µm, the offset at F ≈ 47 µm. First, the in-plane cell: refining it from 47.2 to 24.3 µm raised the notch
 there by 5.0 MHz. Its size and sign at a fine substrate cell are unmeasured. Second, the edge
 offset: at nearly the same in-plane cell (47.2 vs 46.2 µm) the on-node arm reads
 11.7 MHz below the offset arm. Taking out the 2.4 % in-plane-cell difference with the
@@ -759,13 +768,14 @@ on-node arms' own slope makes it 12.2 MHz, 0.33 % of 3.74 GHz (F.6, W7 row; the 
 gave 14.3 MHz). That is the 0.35-cell rule's own effect where 0.35 cell is 16.5 µm. At the
 ladder's F = 24.29 µm the rule moves the edge 8.5 µm, and no arm measures its effect there.
 The line on the graded board also sits 609 µm further from the y_lo absorber than on the
-case's own board, which is unmeasured. Any of these could account for the 0.06–0.26 %.
+case's own board (derived: the records' mesh block, lateral_clearance_m 2.159 mm minus
+case_lateral_clearance_m 1.550 mm), and what that does to the notch is unmeasured. Any of these could account for the 0.06–0.26 %.
 This record does not say which.
 
 **The record's honesty items.** The five arms reused from the first record rebuild from it
 with every declared quantity bit-identical. In the ramp cells, at most four per profile and
 at most seven per arm differ in the last bit between the GPU container's numpy and the
-project venv's. The difference is at most 6 ulp, 8e-16 of a cell, and none of those cells
+project venv's. The difference is at most 6 ulp, about 1e-15 of a cell (F.0), and none of those cells
 touches the metal or the substrate (F.0). The 13-cell on-node arm has no node on the strip's
 centre line, so its feed sits on the metal's own centre, between two rows one cell apart
 (F.0). Besides the substrate cell, two other quantities change down the ladder: the solved z
