@@ -4,7 +4,7 @@ The 24 × 20 × 16 mm boxes have the twelve B0 face declarations and source/port
 Each entry point advances twelve seeded E/H and auxiliary-state patterns for two steps at dx = 1 mm.
 The JSON records E/H zero planes in metres, auxiliary decay, constant-field attenuation, end coupling and periods; the comparisons use the declared boundary descriptor.
 
-Kernel base: `3247dc0efdf91c571cdfecb043a9a47479c2dcd1`. B0: `798ec64e`.
+Kernel base: `cca8ee5bae9f43b93423962e1888c0829b21c8a3`. B0: `798ec64e`.
 E = tangential E zero; H = tangential H zero; A = absorber response; W = coupled ends. B0 letters refer to calls; B1 letters refer to fields.
 Codes: a magnetic→electric; b1 dead face node; b2 shorted face node; c electric face absorbing; d periodic→wall/absorber; e period; f backing; g absorber on reflector; h magnetic plane. Supplemental codes: PEC (electric zero absent), feature (absorber requirement), absorber_type (constant-field loss without CPML auxiliary decay).
 
@@ -38,7 +38,7 @@ Codes: a magnetic→electric; b1 dead face node; b2 shorted face node; c electri
 - pmc-cpml / sweep: MEASURED -> REFUSED.
 - pmc-cpml / nonuniform: x_lo EH -> H; x_hi EH -> H.
 - pmc-cpml / gpu-query: x_lo EH -> H; x_hi EH -> H.
-- tfsf / distributed: x_lo EA -> A; x_hi EA -> A.
+- tfsf / distributed: HARNESS CORRECTION (Addendum 4): use the recorded full grid without slab stripping; B1 x_lo/x_hi E backings absent -> present; (x_lo,f)/(x_hi,f) removed; not a change on main.
 - waveguide-pmc / run: y_lo EH -> H; y_hi EH -> H; z_lo EH -> H; z_hi EH -> H.
 - waveguide-pmc / forward: y_lo EH -> H; y_hi EH -> H; z_lo EH -> H; z_hi EH -> H.
 - waveguide-pmc / sweep: y_lo EH -> H; y_hi EH -> H; z_lo EH -> H; z_hi EH -> H.

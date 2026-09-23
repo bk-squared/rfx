@@ -21,6 +21,14 @@ def classify(fields, grid, psi=(), lossless=None):
     for axis, a in enumerate("xyz"):
         tangent_e = [i for i in range(3) if i != axis]
         tangent_h = [i + 3 for i in range(3) if i != axis]
+        zero_planes = {}
+        for letter, components in (("e", tangent_e), ("h", tangent_h)):
+            zero_planes[letter] = [
+                (i, float(grid.node_of(axis, i) +
+                          (.5 * grid.cells(axis)[i] if letter == "h" else 0)))
+                for i in range(grid.shape[axis])
+                if all(np.max(np.abs(section(fields[v, components], axis, i))) == 0
+                       for v in (0, 1))]
         for side_i, side in enumerate(("lo", "hi")):
             name = f"{a}_{side}"
             e_index, h_index = (0, 0) if side == "lo" else (-1, -2)
@@ -53,6 +61,9 @@ def classify(fields, grid, psi=(), lossless=None):
             h_plane = float(grid.node_of(axis, hi) + .5 * grid.cells(axis)[hi])
             faces[name] = dict(e_zero=e_zero, h_zero=h_zero, e_plane_m=e_plane,
                                h_plane_m=h_plane, coupled=coupled,
+                               **{f"{letter}_zero_planes_m": [plane for i, plane in zero_planes[letter]
+                                  if (i < grid.shape[axis] / 2) == (side == "lo")]
+                                  for letter in ("e", "h")},
                                period_m=float(np.sum(grid.cells(axis))) if coupled else None,
                                absorbs=bool(absorbing), constant_e_max=float(np.max(np.abs(constant))),
                                constant_e_reference_max=reference_e,
@@ -121,3 +132,39 @@ def compare(model, grid, measured, entry):
     found = departures(model, grid, measured, entry)
     if found:
         raise BoundaryDeparture(str(found))
+
+
+def compare_values(model, grid, measured, baseline):
+    """Lock recorded zero planes and coupled periods independently of xfails."""
+    expected = realize(model, grid)
+    periods = dict(expected.periods)
+    for face in expected.faces:
+        old, new = baseline[face.name], measured[face.name]
+        target = face.terminal_m if face.kind == Kind.ABSORBER else face.plane_m
+        quantities = []
+        for letter in ("e", "h"):
+            if old[f"{letter}_zero"]:
+                quantities.append((f"{letter}_plane_m", [old[f"{letter}_plane_m"]],
+                                   [new[f"{letter}_plane_m"]] if new[f"{letter}_zero"] else [], target))
+            name = f"{letter}_zero_planes_m"
+            quantities.append((name, old[name], new[name], target))
+        if old["period_m"] is not None:
+            quantities.append(("period_m", [old["period_m"]],
+                               [] if new["period_m"] is None else [new["period_m"]],
+                               periods.get(face.name[0], model.declaration.domain["xyz".index(face.name[0])])))
+        for quantity, before, after, declared in quantities:
+            # Metre tolerance covers coordinate rounding, not a fraction of a Yee cell.
+            if len(before) == len(after) and np.allclose(before, after, rtol=0, atol=1e-10):
+                continue
+            if declared is None or not before or not after:
+                direction = "zero-plane/coupling presence changed; direction unavailable"
+            else:
+                old_distance = max(abs(v - declared) for v in before)
+                new_distance = max(abs(v - declared) for v in after)
+                direction = ("toward the declared plane/period" if new_distance < old_distance
+                             else "away from the declared plane/period" if new_distance > old_distance
+                             else "same distance from the declared plane/period")
+            raise AssertionError(
+                f"{face.name} {quantity}: committed {before} m; measured {after} m; "
+                f"declared {declared} m; {direction}. The step that fixes this must update "
+                "the baseline with python -m tests.contracts.boundary_baseline --update.")

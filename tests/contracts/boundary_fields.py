@@ -112,8 +112,14 @@ def observe_scans(records, physical_shape=None):
             for before, state in zip(leaves, result_leaves):
                 if not is_fields(before):
                     continue
-                def save(rank, arrays, aux):
+                layout = "full-grid"
+                if physical_shape is not None and component(before, 0).shape != physical_shape:
+                    slab_shape = (2 * ((physical_shape[0] + 1) // 2 + 2), *physical_shape[1:])
+                    assert component(before, 0).shape == slab_shape, "Unrecognized distributed scan layout"
+                    layout = "two-ghosted-slabs"
+                def save(rank, arrays, aux, layout=layout):
                     records.append(dict(rank=int(rank), fields=np.stack([np.asarray(a) for a in arrays], axis=1),
+                                        layout=layout,
                                         psi=[{k: np.asarray(v) for k, v in a._asdict().items()} for a in aux]))
                 jax.debug.callback(save, rank, tuple(component(state, i) for i in range(6)), auxiliary)
             return jax.tree_util.tree_map(lambda a: a[0], (result, observations))
@@ -178,14 +184,28 @@ def measure(case, entry):
 
 
 def measured_fields(records, grid, entry):
-    """Remove the two shards' one-row exchange ghosts and high alignment pad."""
+    """Select the recorded full grid or gather its two ghosted slabs."""
     if entry == "distributed":
         assert len(records) == 1 and records[0]["rank"] == -1
-        arrays = records[0]["fields"]
-        stride = arrays.shape[2] // 2
-        gathered = np.concatenate([arrays[:, :, r * stride + 1:(r + 1) * stride - 1]
-                                   for r in range(2)], axis=2)
-        return gathered[:, :, :grid.shape[0]], records[0]["psi"], None
-    matching = [r for r in records if r["fields"].shape[-3:] == grid.shape]
-    assert matching, "No scan with the declared grid shape"
-    return matching[0]["fields"], matching[0]["psi"], matching[1]["fields"] if entry == "adi" else None
+        record = records[0]
+        fields = record["fields"]
+        if record["layout"] == "two-ghosted-slabs":
+            slab_shape = (2 * ((grid.shape[0] + 1) // 2 + 2), *grid.shape[1:])
+            assert fields.shape[-3:] == slab_shape, "Recorded slabs do not match the grid"
+            stride = fields.shape[2] // 2
+            fields = np.concatenate([fields[:, :, r * stride + 1:(r + 1) * stride - 1]
+                                     for r in range(2)], axis=2)[:, :, :grid.shape[0]]
+        else:
+            assert record["layout"] == "full-grid", "Unrecognized distributed record layout"
+        reference = None
+    else:
+        matching = [r for r in records if r["fields"].shape[-3:] == grid.shape]
+        assert matching, "No scan with the declared grid shape"
+        record = matching[0]
+        fields = record["fields"]
+        reference = matching[1]["fields"] if entry == "adi" else None
+    assert fields.shape[-3:] == grid.shape, (
+        f"Selected fields {fields.shape[-3:]} != grid {grid.shape}")
+    if reference is not None:
+        assert reference.shape[-3:] == grid.shape, "Reference fields do not match the grid"
+    return fields, record["psi"], reference

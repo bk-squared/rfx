@@ -8,13 +8,14 @@ from unittest.mock import patch
 import jax
 import pytest
 
-from tests.contracts.boundary_compare import BoundaryDeparture, classify, departures
+from tests.contracts.boundary_compare import BoundaryDeparture, classify, compare_values, departures
 from tests.contracts.boundary_fields import measure, measured_fields
 
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = json.loads((ROOT / "scripts/diagnostics/boundary_model/B1/MATRIX.json").read_text())
 CELLS = BASELINE["cells"]
+BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
 @lru_cache(maxsize=None)
@@ -22,7 +23,9 @@ def measured(case, entry):
     sim, grid, _, records = measure(case, entry)
     assert records, "entry point produced no observed field scan"
     fields, psi, reference = measured_fields(records, grid, entry)
-    return departures(sim.boundary_model(), grid, classify(fields, grid, psi, reference), entry)
+    faces = classify(fields, grid, psi, reference)
+    compare_values(sim.boundary_model(), grid, faces, BY_CELL[case, entry]["faces"])
+    return departures(sim.boundary_model(), grid, faces, entry)
 
 
 def key(departure):
@@ -78,6 +81,41 @@ def test_wrapped_wall_keeps_field_classification():
     assert calls, "the wrapped wall did not run"
     assert departures(sim.boundary_model(), grid, classify(fields, grid, psi, reference), "run") == baseline
     jax.clear_caches()
+
+
+def test_worse_magnetic_wall_value_is_rejected():
+    import rfx.boundaries.pmc as pmc
+    original = pmc.apply_pmc_faces
+    calls = []
+
+    def worse(state, faces):
+        calls.append(1)
+        state = original(state, faces)
+        values = {name: getattr(state, name) for name in ("hx", "hy", "hz")}
+        for face in faces:
+            axis = "xyz".index(face[0])
+            selection = [slice(None)] * 3
+            selection[axis] = 1 if face.endswith("lo") else -3
+            for component, name in enumerate(values):
+                if component != axis:
+                    values[name] = values[name].at[tuple(selection)].set(0.0)
+        return state._replace(**values)
+
+    jax.clear_caches()
+    try:
+        with patch.object(pmc, "apply_pmc_faces", worse):
+            sim, grid, _, records = measure("pmc-pec", "run")
+        fields, psi, reference = measured_fields(records, grid, "run")
+        assert calls, "the original magnetic wall helper must still run"
+        faces = classify(fields, grid, psi, reference)
+        baseline = BY_CELL["pmc-pec", "run"]
+        assert {key(d) for d in departures(sim.boundary_model(), grid, faces, "run")} == {
+            key(d) for d in baseline["departures"]}
+        with pytest.raises(AssertionError, match="away from the declared plane") as exc:
+            compare_values(sim.boundary_model(), grid, faces, baseline["faces"])
+        assert type(exc.value) is AssertionError
+    finally:
+        jax.clear_caches()
 
 
 @pytest.mark.parametrize("case,expected", [("pec", True), ("pmc-pec", False)])
