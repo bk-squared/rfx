@@ -696,9 +696,11 @@ the way W3 reads it: the order from all three rungs, the limit from the finest t
 
 ### Conclusions (leader; rewritten 2026-09-23 after the verification review showed that the notch estimator bent the ladder; read against F.0–F.6 and the two records)
 
-**The substrate-normal cell carries the notch's remaining discretization error. With the
-in-plane cell held at 24.29 µm, refining the substrate cell alone converges the notch to
-0.06–0.26 % below openEMS.** (The ladder refines FZ across the whole 0–2h band, so it does not
+**On the solver this record names, the substrate-normal cell carries the notch's remaining
+discretization error. With the in-plane cell held at 24.29 µm, refining the substrate cell
+alone converges the notch to 0.06–0.26 % below openEMS.** Every rung was solved before main's
+#1213, which changed the interface this ladder refines; the paragraph "Which solver this
+describes" below says what that leaves open. (The ladder refines FZ across the whole 0–2h band, so it does not
 isolate the cells at the sheet from the rest of the substrate; "at the sheet" is §0's
 hypothesis, not this record's finding.) Cutting only the substrate cell 42.3 → 31.75 → 21.2 → 15.9 µm lowers the
 notch monotonically (W5 held). Read with the |S21|² vertex (F.6), the four rungs follow one
@@ -743,7 +745,19 @@ GHz, 0.08 % below the reference. The log reading merged with #1191 gave 0.92 and
 the log-parabola vertex of a deep lossy transmission zero on bins this coarse carry the same
 kind of error; this record tests nothing beyond such zeros.
 
-**What this gives the mesher: the substrate rule is stricter than the log reading said.** An
+**Which solver this describes.** The rungs were solved at d558382f and c4d6aee8, one `rfx/`
+tree (A.2). Main's #1213 (merged 2026-09-23, after these runs) changed what an E component
+tangential to a material interface multiplies by: before it, the ε of the one cell owning its
+edge; after it, the mean over the four cells that share the edge. The substrate–air plane
+under the sheet is such an interface, and it is the plane whose neighbouring cells this ladder
+refines. #1213's own record says the old rule makes a dielectric interface first order
+(a half-filled cavity's error halved with the mesh) and solved a three-cell substrate half a
+cell thin. Whether the order, the limit and the substrate rule below survive that change is
+not measured here. They describe the solver before #1213. The mesher should not take them
+until the ladder is re-solved on a tree that contains it.
+
+**What this record gives the mesher, for the solver it names: the substrate rule is stricter
+than the log reading said.** An
 order below one means that halving the cell removes less than half of the error. W8's
 derivation applied to each |S21|² reading puts the substrate term inside 1 % of that
 reading's own limit at n_z = 18 by the declared rule, and 17 to 21 across the five readings
