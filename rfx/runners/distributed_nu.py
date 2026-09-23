@@ -703,7 +703,7 @@ def _apply_pec_occupancy_nu_shmap(state: FDTDState, sharded_pec_occupancy,
 
 def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
                              *, kappa_max=None, pec_faces=None,
-                             pmc_faces=None):
+                             pmc_faces=None, mesh=None):
     """Build CPMLAxisParams + a stacked per-rank CPMLState for the sharded
     NU runner.
 
@@ -724,6 +724,9 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         Output of :func:`build_sharded_nu_grid`.
     n_devices : int
     kappa_max, pec_faces : forwarded to :func:`init_cpml`.
+    mesh : optional Mesh
+        If supplied, create zero psi arrays directly in the merged x-sharded
+        layout instead of constructing a process-local device-axis stack.
 
     Returns
     -------
@@ -804,7 +807,10 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
     from rfx.boundaries.cpml import CPMLState
 
     def _zeros(d1, d2):
-        # (n_devices, n_cpml, d1, d2) — same dtype as single-device init
+        if mesh is not None:
+            from jax.sharding import NamedSharding
+            return jnp.zeros((n_devices * n, d1, d2), dtype=jnp.float32,
+                             device=NamedSharding(mesh, P("x")))
         return zeros_psi_stacked(n_devices, n, d1, d2)
 
     cpml_state_stacked = CPMLState(
@@ -919,11 +925,112 @@ def shard_cpml_state_x_slab(cpml_state_stacked, sharded_grid: ShardedNUGrid,
 # the polarisation update is a no-op there, which matches single-device
 # behaviour for cells that have no Debye/Lorentz pole.
 
+def _concrete_on_mesh(arr, sharding):
+    """Place concrete data on addressable devices only (also for replication)."""
+    if isinstance(arr, jax.core.Tracer):
+        return jax.device_put(arr, sharding)
+    if isinstance(arr, jax.Array) and arr.sharding == sharding:
+        return arr
+    host = np.asarray(arr)
+    return jax.make_array_from_callback(host.shape, sharding, lambda index: host[index])
+
+
+def _forward_sharding(arr):
+    """Find the primal placement through AD/batching on supported JAX versions.
+
+    JAX 0.4.x tracers do not carry sharding in their abstract values. Inspect
+    only placement metadata of the primal, never its values or host contents.
+    """
+    from jax.sharding import NamedSharding
+
+    if isinstance(arr, jax.core.Tracer):
+        if hasattr(arr, "primal"):
+            return _forward_sharding(arr.primal)
+        if hasattr(arr, "val") and hasattr(arr, "batch_dim"):
+            sharding = _forward_sharding(arr.val)
+            if sharding is not None and arr.batch_dim is not None:
+                spec = list(sharding.spec) + [None] * (arr.val.ndim - len(sharding.spec))
+                del spec[arr.batch_dim]
+                return NamedSharding(sharding.mesh, P(*spec))
+            return sharding
+    sharding = getattr(arr, "sharding", None)
+    return sharding if isinstance(sharding, NamedSharding) else None
+
+
+def is_forward_sharded_override(arr, sharded_grid, mesh):
+    """Validate an override's global layout without fetching any device data."""
+    sharding = _forward_sharding(arr)
+    if sharding is None or all(part is None for part in sharding.spec):
+        return False
+    expected = (sharded_grid.nx_padded, sharded_grid.ny, sharded_grid.nz)
+    spec = tuple(sharding.spec) + (None,) * (3 - len(sharding.spec))
+    if (arr.shape != expected or spec != ("x", None, None)
+            or sharding.mesh.devices.shape != mesh.devices.shape
+            or not np.array_equal(sharding.mesh.devices, mesh.devices)):
+        raise ValueError(
+            f"sharded forward override must have shape {expected}, P('x'), "
+            "and the same ordered devices as forward(devices=...).")
+    return True
+
+
+def stage_sharded_forward_override(arr, sharded_grid, mesh, pad_value=0.0):
+    """Differentiable input halo; the time-step ghost exchange is unchanged.
+
+    Only each device's owned rows and two neighbouring rows are live locally.
+    The transpose sends ghost cotangents back to their owners. Alignment pad
+    and physical ghosts are constants, hence have zero design gradient.
+    """
+    sg = sharded_grid
+    dtype = arr.dtype
+    if sg.ghost_width != 1:
+        raise NotImplementedError("sharded forward overrides require exchange_interval=1")
+    right = [(i, i + 1) for i in range(sg.n_devices - 1)]
+    left = [(i + 1, i) for i in range(sg.n_devices - 1)]
+
+    def halo(local):
+        rank = lax.axis_index("x")
+        lo = lax.ppermute(local[-1:], "x", right)
+        hi = lax.ppermute(local[:1], "x", left)
+        slab = jnp.concatenate((lo, local, hi), axis=0)
+        indices = rank * sg.nx_per_rank + jnp.arange(sg.nx_local) - 1
+        real = (indices >= 0) & (indices < sg.nx)
+        return jnp.where(real[:, None, None], slab, jnp.asarray(pad_value, dtype))
+
+    return jax.jit(shard_map(halo, mesh=mesh, in_specs=P("x"),
+                            out_specs=P("x"), check_rep=False))(arr)
+
+
+def stage_concrete_forward_array(arr, sharded_grid, mesh, pad_value=0.0,
+                                 ghost_value=None):
+    """Place geometry slab by slab, including legacy physical/alignment pads."""
+    from jax.sharding import NamedSharding
+
+    sg = sharded_grid
+    host = np.asarray(arr)
+    shape = (sg.n_devices * sg.nx_local, sg.ny, sg.nz)
+    ghost_value = pad_value if ghost_value is None else ghost_value
+
+    def slab(index):
+        rank = (index[0].start or 0) // sg.nx_local
+        indices = np.arange(rank * sg.nx_per_rank - sg.ghost_width,
+                            (rank + 1) * sg.nx_per_rank + sg.ghost_width)
+        data = np.full((sg.nx_local, sg.ny, sg.nz), ghost_value, dtype=host.dtype)
+        padded = (indices >= sg.nx) & (indices < sg.nx_padded)
+        real = (indices >= 0) & (indices < sg.nx)
+        data[padded] = pad_value
+        data[real] = host[indices[real]]
+        return data
+
+    return jax.make_array_from_callback(shape, NamedSharding(mesh, P("x")), slab)
+
+
 def stage_forward_array_x_slab(arr, sharded_grid, mesh, pad_value=0.0):
-    """Traceable, one-array-at-a-time placement for differentiable forward."""
+    """Traceable placement for a local whole-domain or global x-sharded input."""
     from jax.sharding import NamedSharding
     from rfx.runners._distributed_common import split_array_x
 
+    if is_forward_sharded_override(arr, sharded_grid, mesh):
+        return stage_sharded_forward_override(arr, sharded_grid, mesh, pad_value)
     if sharded_grid.pad_x:
         arr = jnp.pad(arr, ((0, sharded_grid.pad_x), (0, 0), (0, 0)),
                       constant_values=pad_value)
@@ -947,7 +1054,7 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
 
     poles, masks = spec
     masks = jax.tree.map(
-        lambda mask: stage_forward_array_x_slab(mask, sharded_grid, mesh, False),
+        lambda mask: stage_concrete_forward_array(mask, sharded_grid, mesh, False),
         masks,
     )
     # Only an O(nx) predicate is needed. A neighbour's alignment-pad row is
@@ -957,7 +1064,7 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
                   (rank + 1) * sharded_grid.nx_per_rank + sharded_grid.ghost_width)
         for rank in range(sharded_grid.n_devices)
     ])
-    valid = jax.device_put(
+    valid = _concrete_on_mesh(
         ((indices >= 0) & (indices < sharded_grid.nx))[:, None, None],
         NamedSharding(mesh, P("x")),
     )
@@ -1758,6 +1865,7 @@ def run_nonuniform_distributed_pec(
     n_warmup: int = 0,
     emit_time_series: bool = True,
     pmc_faces: frozenset = frozenset(),
+    gather_final_state: bool = True,
 ) -> dict:
     """Phase 2B/2C/2D sharded NU scan body — hard PEC, ghost exchange,
     optional CPML, and optional Debye/Lorentz dispersion on x-slabs.
@@ -1962,6 +2070,9 @@ def run_nonuniform_distributed_pec(
                                   sharded on x),
            "debye_state_sharded": DebyeState or None,
            "lorentz_state_sharded": LorentzState or None}``
+    ``gather_final_state=False`` skips the full-domain field gather and
+    returns ``None`` for ``final_state``. Forward uses this mode; the
+    ``final_state_sharded`` entry is always available in the slab layout.
     """
     if n_devices != sharded_grid.n_devices:
         raise ValueError(
@@ -2048,14 +2159,14 @@ def run_nonuniform_distributed_pec(
         sharded_grid.inv_dx_h_global, n_devices, nx_per, nx_local, ghost,
         pad_value=0.0,
     )
-    inv_dx_sharded = jax.device_put(
+    inv_dx_sharded = _concrete_on_mesh(
         inv_dx_slabs.reshape(n_devices * nx_local), shd)
-    inv_dx_h_sharded = jax.device_put(
+    inv_dx_h_sharded = _concrete_on_mesh(
         inv_dx_h_slabs.reshape(n_devices * nx_local), shd)
-    inv_dy_rep = jax.device_put(sharded_grid.inv_dy, rep)
-    inv_dy_h_rep = jax.device_put(sharded_grid.inv_dy_h, rep)
-    inv_dz_rep = jax.device_put(sharded_grid.inv_dz, rep)
-    inv_dz_h_rep = jax.device_put(sharded_grid.inv_dz_h, rep)
+    inv_dy_rep = _concrete_on_mesh(sharded_grid.inv_dy, rep)
+    inv_dy_h_rep = _concrete_on_mesh(sharded_grid.inv_dy_h, rep)
+    inv_dz_rep = _concrete_on_mesh(sharded_grid.inv_dz, rep)
+    inv_dz_h_rep = _concrete_on_mesh(sharded_grid.inv_dz_h, rep)
 
     # ------------------------------------------------------------------
     # Initial state — zeros created directly on the slab sharding
@@ -2070,7 +2181,7 @@ def run_nonuniform_distributed_pec(
     sharded_state = FDTDState(
         ex=_zeros(), ey=_zeros(), ez=_zeros(),
         hx=_zeros(), hy=_zeros(), hz=_zeros(),
-        step=jax.device_put(jnp.int32(0), rep),
+        step=_concrete_on_mesh(jnp.int32(0), rep),
     )
 
     # ------------------------------------------------------------------
@@ -2099,12 +2210,14 @@ def run_nonuniform_distributed_pec(
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
-    src_waveforms_rep = jax.device_put(src_waveforms, rep)
+    src_waveforms_rep = _concrete_on_mesh(src_waveforms, rep)
 
     # ------------------------------------------------------------------
     # Per-step shmap-wrapped helpers
     # ------------------------------------------------------------------
-    def _update_h_shmap(st, mat):
+    def _update_h_shmap(st, mat, spacings):
+        (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
+         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings
         # #1038 leg 4: body moved VERBATIM to
         # _distributed_common.update_h_nu_shmap, which distributed_v2.py's
         # `if is_nu:` branch also calls now. The eight locals this closure read
@@ -2115,7 +2228,8 @@ def run_nonuniform_distributed_pec(
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
         )
 
-    def _update_e_shmap(st, mat):
+    def _update_e_shmap(st, mat, spacings):
+        inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
         # #1038 leg 4: body moved VERBATIM to
         # _distributed_common.update_e_nu_shmap, shared with the `is_nu`
         # branch of distributed_v2.run_distributed.
@@ -2141,8 +2255,9 @@ def run_nonuniform_distributed_pec(
     if use_dispersion:
         def _update_e_dispersive_shmap(
             st, mat, db_st_in, lr_st_in, e_old_ex, e_old_ey, e_old_ez,
-            debye_coeffs, lorentz_coeffs,
+            debye_coeffs, lorentz_coeffs, spacings,
         ):
+            inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
             # Static booleans captured by closure: which poles are active.
             _has_db = use_debye
             _has_lr = use_lorentz
@@ -2392,6 +2507,8 @@ def run_nonuniform_distributed_pec(
             "dx_x_lo", "dx_x_hi", "dx_y_lo", "dx_y_hi", "dz_lo", "dz_hi",
         )}
         cpml_params = cpml_params._replace(**dict.fromkeys(cpml_spacings))
+        cpml_params = jax.tree_util.tree_map(
+            lambda arr: _concrete_on_mesh(arr, rep), cpml_params)
 
     def _apply_cpml_h_shmap(st, cs, cpml_params, mu_r):
         @partial(
@@ -2537,7 +2654,7 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     def step_fn(carry, xs, invariants):
         (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
-         debye_coeffs, lorentz_coeffs, cpml_params) = invariants
+         debye_coeffs, lorentz_coeffs, cpml_params, spacings) = invariants
         if cpml_spacings:
             cpml_params = cpml_params._replace(**cpml_spacings)
         _step_idx, src_vals = xs
@@ -2556,7 +2673,7 @@ def run_nonuniform_distributed_pec(
         ez_old_snapshot = st.ez
 
         # 1. H update (NU)
-        st = _update_h_shmap(st, sharded_materials)
+        st = _update_h_shmap(st, sharded_materials, spacings)
 
         # 2. Phase 2C: CPML H correction (after H, before E exchange).
         if use_cpml:
@@ -2584,10 +2701,10 @@ def run_nonuniform_distributed_pec(
             st, db_st, lr_st = _update_e_dispersive_shmap(
                 st, sharded_materials, db_st, lr_st,
                 ex_old_snapshot, ey_old_snapshot, ez_old_snapshot,
-                debye_coeffs, lorentz_coeffs,
+                debye_coeffs, lorentz_coeffs, spacings,
             )
         else:
-            st = _update_e_shmap(st, sharded_materials)
+            st = _update_e_shmap(st, sharded_materials, spacings)
 
         # 5. Phase 2C: CPML E correction (after E, before sources/PEC).
         if use_cpml:
@@ -2661,7 +2778,7 @@ def run_nonuniform_distributed_pec(
     # Pattern D (jit-around-checkpoint) because the outer ``jax.jit``
     # boundary is already required for the scan dispatch and adding it
     # avoids re-jitting the shard_map step body once per call.
-    step_indices = jnp.arange(n_steps, dtype=jnp.int32)
+    step_indices = _concrete_on_mesh(np.arange(n_steps, dtype=np.int32), rep)
     xs_full = (step_indices, src_waveforms_rep)
 
     carry_init = {"fdtd": sharded_state}
@@ -2702,7 +2819,7 @@ def run_nonuniform_distributed_pec(
     # arrays become whole-domain compiled constants on every device. Keep
     # their tracer-valued counterparts shared by all scans, including remat.
     @jax.jit
-    def run_fn(c0, invariants):
+    def run_fn(c0, invariants, warmup_xs, opt_xs):
         scan_step = partial(step_fn, invariants=invariants)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the
@@ -2727,7 +2844,9 @@ def run_nonuniform_distributed_pec(
             opt_steps = opt_xs[0]
             opt_src = opt_xs[1]
             if pad > 0:
-                start_step = jnp.int32(opt_steps[0])
+                # Step indices now enter as dynamic jit arguments; their
+                # starting value is the static warmup length by construction.
+                start_step = n_warmup
                 steps_padded = jnp.arange(
                     start_step, start_step + n_seg * chunk,
                     dtype=jnp.int32,
@@ -2768,7 +2887,10 @@ def run_nonuniform_distributed_pec(
     final_carry, probe_ts = run_fn(
         carry_init,
         (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
-         debye_coeffs, lorentz_coeffs, cpml_params),
+         debye_coeffs, lorentz_coeffs, cpml_params,
+         (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
+          inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep)),
+        warmup_xs, opt_xs,
     )
     final_state_sharded = final_carry["fdtd"]
     final_cpml_sharded = final_carry.get("cpml") if use_cpml else None
@@ -2789,17 +2911,19 @@ def run_nonuniform_distributed_pec(
             sharded_arr, n_devices, nx_local, ghost, pad_x, sharded_grid.nx,
         )
 
-    final_state = FDTDState(
-        ex=_unstack_and_gather(final_state_sharded.ex),
-        ey=_unstack_and_gather(final_state_sharded.ey),
-        ez=_unstack_and_gather(final_state_sharded.ez),
-        hx=_unstack_and_gather(final_state_sharded.hx),
-        hy=_unstack_and_gather(final_state_sharded.hy),
-        hz=_unstack_and_gather(final_state_sharded.hz),
-        # Step counter is a replicated scalar; keep as a JAX array so
-        # the gather works under ``jax.grad`` (no Python ``int()`` cast).
-        step=jnp.asarray(final_state_sharded.step, dtype=jnp.int32),
-    )
+    final_state = None
+    if gather_final_state:
+        final_state = FDTDState(
+            ex=_unstack_and_gather(final_state_sharded.ex),
+            ey=_unstack_and_gather(final_state_sharded.ey),
+            ez=_unstack_and_gather(final_state_sharded.ez),
+            hx=_unstack_and_gather(final_state_sharded.hx),
+            hy=_unstack_and_gather(final_state_sharded.hy),
+            hz=_unstack_and_gather(final_state_sharded.hz),
+            # Step counter is a replicated scalar; keep as a JAX array so
+            # the gather works under ``jax.grad`` (no Python ``int()`` cast).
+            step=jnp.asarray(final_state_sharded.step, dtype=jnp.int32),
+        )
 
     if not emit_time_series:
         # Phase 2F: probe samples were skipped per-step (probe_out is

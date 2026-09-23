@@ -2476,6 +2476,53 @@ class _ExecuteMixin:
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
         )
 
+    def distributed_override_layout(self, devices=None):
+        """Return ``(shape, NamedSharding)`` for distributed forward designs.
+
+        The global shape is ``(nx_padded, ny, nz)`` with no ghosts, where
+        ``nx_padded`` rounds the NU grid's x extent up to a multiple of the
+        device count. Sharding is ``P("x")`` on the ordered ``devices``
+        (default: all global JAX devices). Every process must use the same
+        list. Construct large designs with ``jax.make_array_from_callback``
+        or ``jax.make_array_from_single_device_arrays`` using this layout;
+        no whole-domain device allocation is necessary. Forward ignores
+        alignment-pad values, and their returned gradients are zero.
+        """
+        from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+        from rfx.runners.distributed_nu import build_sharded_nu_grid
+
+        devices = list(jax.devices() if devices is None else devices)
+        if not devices or len(set(devices)) != len(devices) or any(
+                device not in jax.devices() for device in devices):
+            raise ValueError("devices must be a nonempty ordered list of distinct JAX devices")
+        grid = build_sharded_nu_grid(self._build_nonuniform_grid(), len(devices))
+        return ((grid.nx_padded, grid.ny, grid.nz),
+                NamedSharding(Mesh(np.array(devices), ("x",)), P("x")))
+
+    def shard_distributed_override(self, array, devices=None, *, pad_value=0.0):
+        """Place a concrete local whole-domain design in the forward layout.
+
+        This convenience initializer copies addressable x slabs from a host
+        array; it is not an autodiff operation. Differentiate forward with
+        respect to the returned global array. For designs too large for one
+        host, construct shards directly using ``distributed_override_layout``.
+        On multiple processes each caller supplies the same concrete array.
+        """
+        shape, sharding = self.distributed_override_layout(devices)
+        host = np.asarray(array)
+        expected = self._build_nonuniform_grid().shape
+        if host.shape != expected:
+            raise ValueError(f"local override must have grid shape {expected}; got {host.shape}")
+
+        def slab(index):
+            lo, hi, _ = index[0].indices(shape[0])
+            data = np.full((hi - lo, *shape[1:]), pad_value, dtype=host.dtype)
+            count = max(0, min(hi, host.shape[0]) - lo)
+            data[:count] = host[lo:lo + count]
+            return data
+
+        return jax.make_array_from_callback(shape, sharding, slab)
+
     def _forward_distributed_nonuniform_from_materials(
         self,
         *,
@@ -2535,11 +2582,10 @@ class _ExecuteMixin:
             build_sharded_nu_grid,
             init_cpml_for_sharded_nu,
             run_nonuniform_distributed_pec,
-            shard_cpml_state_x_slab,
             stage_forward_array_x_slab,
+            stage_concrete_forward_array,
+            is_forward_sharded_override,
             stage_forward_dispersion_x_slab,
-            shard_pec_mask_x_slab,
-            shard_pec_occupancy_x_slab,
         )
         from rfx.core.yee import MaterialArrays
         from rfx.nonuniform import (
@@ -2664,6 +2710,24 @@ class _ExecuteMixin:
                     stacklevel=3,
                 )
 
+        sharded_grid = build_sharded_nu_grid(
+            grid, n_devices, exchange_interval=exchange_interval,
+        )
+        from jax.sharding import Mesh
+        mesh = Mesh(np.array(devices), axis_names=("x",))
+        multiprocess = any(d.process_index != jax.process_index() for d in devices)
+        for name, override in (("eps_override", eps_override),
+                               ("sigma_override", sigma_override),
+                               ("pec_occupancy_override", pec_occupancy_override)):
+            if override is not None:
+                sharded = is_forward_sharded_override(override, sharded_grid, mesh)
+                if multiprocess and not sharded:
+                    raise ValueError(
+                        f"{name} across processes requires an x-sharded global array "
+                        "with NamedSharding(mesh, P('x')) and the shape returned by "
+                        "Simulation.distributed_override_layout(devices). "
+                        "Local whole-domain overrides are supported only in one process.")
+
         # ---- Assemble full-domain materials ----
         _dnu_pec_sheets: list = []
         _dnu_pec_wires: list = []
@@ -2738,30 +2802,27 @@ class _ExecuteMixin:
         # Stage one input at a time. In particular, the source normalization
         # above has consumed concrete cell scalars; no second MaterialArrays
         # may keep the original whole-domain eps/sigma alive during the scan.
-        sharded_grid = build_sharded_nu_grid(
-            grid, n_devices, exchange_interval=exchange_interval,
-        )
-        from jax.sharding import Mesh, NamedSharding, PartitionSpec as _P
-        mesh = Mesh(np.array(devices), axis_names=("x",))
-        shd = NamedSharding(mesh, _P("x"))
         staged = []
         for name, pad_value in (("eps_r", 1.0), ("sigma", 0.0), ("mu_r", 1.0)):
-            staged.append(stage_forward_array_x_slab(
+            override = eps_override if name == "eps_r" else sigma_override if name == "sigma" else None
+            stage = (stage_concrete_forward_array if override is None
+                     else stage_forward_array_x_slab)
+            staged.append(stage(
                 getattr(materials, name), sharded_grid, mesh, pad_value,
             ))
             materials = materials._replace(**{name: None})
         sharded_materials = MaterialArrays(*staged)
         del materials, staged
 
-        sharded_pec_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
-        if sharded_pec_mask is not None:
-            sharded_pec_mask = jax.device_put(sharded_pec_mask, shd)
-        del pec_mask
-        sharded_pec_occupancy = shard_pec_occupancy_x_slab(
-            pec_occupancy_override, sharded_grid,
+        sharded_pec_mask = None if pec_mask is None else stage_concrete_forward_array(
+            pec_mask, sharded_grid, mesh, True, ghost_value=False,
         )
-        if sharded_pec_occupancy is not None:
-            sharded_pec_occupancy = jax.device_put(sharded_pec_occupancy, shd)
+        del pec_mask
+        sharded_pec_occupancy = None
+        if pec_occupancy_override is not None:
+            sharded_pec_occupancy = stage_forward_array_x_slab(
+                pec_occupancy_override, sharded_grid, mesh, 0.0,
+            )
 
         sharded_debye = stage_forward_dispersion_x_slab(
             sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",
@@ -2777,14 +2838,10 @@ class _ExecuteMixin:
         cpml_state_sharded = None
         cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
         if self._boundary == "cpml" and cpml_layers > 0:
-            cpml_params, cpml_state_stacked = init_cpml_for_sharded_nu(
-                sharded_grid, n_devices,
+            cpml_params, cpml_state_sharded = init_cpml_for_sharded_nu(
+                sharded_grid, n_devices, mesh=mesh,
                 pec_faces=getattr(self, "_pec_faces", None),
             )
-            cpml_state_sharded = shard_cpml_state_x_slab(
-                cpml_state_stacked, sharded_grid, mesh,
-            )
-            del cpml_state_stacked
 
         probes: list[ProbeSpec] = []
         for pe in self._probes:
@@ -2813,6 +2870,7 @@ class _ExecuteMixin:
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
             emit_time_series=emit_time_series,
+            gather_final_state=False,
             pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
         )
 
@@ -3356,6 +3414,10 @@ class _ExecuteMixin:
         ----------
         eps_override : jnp.ndarray or None
             Replacement permittivity array with shape ``grid.shape``.
+            With ``distributed=True``, eps/sigma/occupancy overrides also accept
+            x-sharded global arrays from :meth:`distributed_override_layout`.
+            That form is required across processes; gradients keep its sharding.
+            Use :meth:`shard_distributed_override` for a concrete local initializer.
         sigma_override : jnp.ndarray or None
             Replacement conductivity array with shape ``grid.shape``.
         mu_r_override : jnp.ndarray or None
