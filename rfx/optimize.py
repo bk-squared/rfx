@@ -359,7 +359,9 @@ def optimize(
 
         With ``jit=True`` the objective is traced, not run, so it must not
         read a traced value on the host (``float(...)``, ``np.asarray(...)``,
-        a Python ``if`` on an array). Known case: a model with an MSL port —
+        a Python ``if`` on an array). Wire ports on either mesh and lumped
+        ports on a graded mesh trace since #1225. Known exception: a model
+        with an MSL port —
         its port set-up reads the realized PEC mask on the host
         (``rfx/sources/msl_port.py``) and the MSL wave-decomposition
         extractor converts a grid spacing with ``float()``
@@ -372,9 +374,12 @@ def optimize(
         program. Measured on CPU in float32 ULP at the peak of each array
         (``max|eager - jitted|`` over the spacing at ``max|eager|``): 0 to 9
         in the loss and up to ~20 in a design-region gradient on the models
-        tested, and ~150 in the loss of a waveguide-port model. The
-        optimisation path can therefore drift from an eager run's at that
-        level.
+        tested, and ~150 in the loss of a waveguide-port model. These are
+        measurements, not a bound: on a wire-port model where two parts of
+        the objective's gradient partly cancel at the port cell, the
+        whole-grid permittivity gradient differed by 12 to 56 ULP at the
+        peak. The optimisation path can therefore drift from an eager run's
+        at that level.
 
     Returns
     -------
