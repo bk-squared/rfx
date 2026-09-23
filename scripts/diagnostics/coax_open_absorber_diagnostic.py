@@ -68,9 +68,9 @@ SCHEMA_VERSION = 1
 DRIVER = "scripts/diagnostics/coax_open_absorber_diagnostic.py"
 ARTIFACT = "tests/fixtures/coax_chain_battery/open_absorber_diagnostic.json"
 BATTERY_ARTIFACT = battery.ARTIFACT
-PREDECLARATION = ("docs/research_notes/coax_open_absorber_predeclaration.md "
-                  "(local research note, not committed; the arms and thresholds it "
-                  "declares are restated in this artifact's 'predeclared' block)")
+PREDECLARATION = ("the leader's pre-declaration, a local note that is not committed; the "
+                  "arms and thresholds it declares are restated in this artifact's "
+                  "'predeclared' block")
 
 DUT = "open"
 BOARD_Z_M = battery.DOMAIN_ONEPORT[2]           # 40 mm in every arm
