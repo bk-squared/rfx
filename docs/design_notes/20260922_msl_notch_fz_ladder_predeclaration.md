@@ -546,55 +546,74 @@ these rows.
 
 The GPU model is not recorded for A_on, A_off, C_off: those arms ran before the instrument read `device_kind`, and their blocks are left as they were measured rather than back-filled.
 
-### Conclusions (leader, after reading F.0–F.5, the five figures and the two records)
+### Conclusions (leader, rewritten after the review and the A.2 re-measurement; read against F.0–F.5, A.2, F.4b and the two records)
 
-**The remaining first-order term is the substrate-normal cell at the sheet.** With the
-in-plane cell held at 24.29 µm, cutting only the substrate cell 42.3 → 31.75 → 21.2 →
-15.9 µm moves the notch 3.7499 → 3.7338 → 3.7166 → 3.7104 GHz, monotone, at a fitted
-order of 1.37 (W5 held). With the substrate cell held at 42.3 µm, cutting the in-plane
-cell 47.2 → 35.9 → 24.3 µm moves it 2.5 MHz, and upward. At the step the first note
-could not attribute (A_off → C_off, 30.8 MHz), the substrate leg carries 33.3 MHz and the
-in-plane leg −2.5 MHz (W6: FZ dominant, by a factor of thirteen). The in-plane cell is
-converged at 24 µm to 0.07 %; the T-junction and the open end are not where the
-first-order error lives. The order of 1.37, between one and two, is what a first-order
-edge-singularity term mixed with the second-order bulk dispersion of the substrate looks
-like on a four-rung ladder; the third step (6.2 MHz over 5.3 µm) falls faster than the
-first two (16–17 MHz over 10.6 µm each), so the first-order share shrinks as FZ shrinks.
+**The remaining first-order term is the substrate-normal cell at the sheet, and that is the
+finding this record carries with room to spare.** With the in-plane cell held at 24.29 µm,
+cutting only the substrate cell 42.3 → 31.75 → 21.2 → 15.9 µm walks the notch 3.7499 →
+3.7338 → 3.7166 → 3.7104 GHz, monotone (W5 held). With the substrate cell held at 42.3 µm,
+cutting the in-plane cell 47.2 → 35.9 → 24.3 µm moves it 2.5 MHz, and upward. At the step
+the first note could not attribute (A_off → C_off, 30.8 MHz), the substrate leg carries
+33.3 MHz and the in-plane leg −2.5 MHz (W6: FZ dominant by a factor of thirteen; the cross
+term is zero by construction, since the two legs telescope, and a real cross term would
+need the fourth corner, which is not an arm here). The reused rung was re-solved at the
+ladder's own commit and reproduced bit for bit — |S21|, |S11| and the frequency grid as
+arrays, 400 bins — so the eleven-file `rfx/` change between the two commits moved this
+board by nothing, and the ladder stands on one solver build (A.2).
 
-**Refining z alone reaches the case's 1 % bar, and stops 0.6 % above the reference.** The
-finest rung (FZ = 15.9 µm, 3.94 M cells, 1082 s on one RTX 4090) reads +0.98 %; the
-ladder's limit reads +0.63 % (W8 held by its rule). The FZ term therefore accounts for the
-notch coming down from +2.06 % to +0.63 %, and what it leaves is not in FZ and not in F.
-Three candidates remain, and this record bounds one of them: the edge-offset rule itself
-— the on-node arm reads 0.375 % lower than the offset arm at nearly the same in-plane
-cell (W7; the 2.4 % cell difference accounts for 0.3 MHz of the 14 MHz), so if the true
-electrical offset of this strip is smaller than 0.35 cell (the rule's own measurement
-spans 0.31–0.37 for a strip over ground), up to that 0.37 % of the residual is the
-rule's; the graded board's line sits 609 µm further from the y_lo absorber than the
-case's, unmeasured; and the reference's own convergence (its last two rungs 0.008 %
-apart) is far smaller than the residual. Which of the first two it is takes an arm at
-fixed F and FZ with the offset at 0.30 and 0.25 cell, and one on the case's own board
-with a fine y_lo runway once the CPML slots read per face (step 0b). Neither is run here.
+**What the record does NOT settle: a single order, a single limit, a single substrate
+rule.** The four notches are not one power law. The order read from the two coarse steps is
+0.83, from the two fine steps 1.89, from the declared rule 1.37, from a three-parameter
+fit to all four 1.19 (rms 0.5 MHz); the limits those readings give span 3.6735 to
+3.7017 GHz, that is −0.02 % to +0.75 % from the reference, the declared rule's +0.63 %
+among them. The pre-declared verdicts survive every reading (W5, W8 held), but no sentence
+below quotes one of these numbers without its spread. The apparent order RISES down the
+ladder (0.83 → 1.89), which a first-order term mixed with a second-order one would not do
+(that mixture's apparent order falls toward 1 as the cell shrinks); the earlier version of
+these conclusions said the opposite and is withdrawn. What a rising apparent order says is
+only that the two coarse rungs are not in the asymptotic regime of whatever law the fine
+rungs follow; four points cannot say more.
 
-**What this gives the mesher.** The substrate rule: the notch's substrate term drops
-inside 1 % of its own limit at FZ ≤ 34 µm, i.e. n_z = 8 substrate cells (F.4, derived from
-the fit), and inside 1 % of the external reference only at n_z = 16 with the 0.6 %
-residual on top. The in-plane rule: the fine cell across a 600 µm strip need not go below
-about 47 µm (n = 12) for the notch — the F ladder is flat to 0.07 % from 47 to 24 µm — so
-the cheap path to the bar is a coarse in-plane band with a fine z band (n = 12, n_z = 16:
-about 2.6 M cells at dt 38 fs; not measured here, the next arm if the bar is wanted at
-lower cost). And the edge rule stays 0.35 cell by default with a per-sheet override, as
-the design review asked; its own effect on this structure is a 0.37 % notch shift per
-0.35 cell at F = 47 µm, which is what a mesher's override would be tuning.
+**Refining z alone reaches the case's 1 % bar; whether it reaches the reference depends on
+which of the four readings one trusts.** The finest rung (FZ = 15.9 µm, 3.94 M cells,
+1082 s on one RTX 4090) reads +0.98 %. The declared rule's limit is +0.63 % and the
+coarse-pair reading's is −0.02 %; the residual above the reference at F = 24.29 µm is
+therefore somewhere between "gone" and "0.75 %", and this record cannot narrow it. Two
+candidates for a residual, if there is one, and what this record says about each: the
+edge-offset rule — the on-node arm reads 0.383 % lower than the offset arm once the 2.4 %
+in-plane-cell difference is removed (W7; the correction has the sign that ENLARGES the
+offset's own effect, 14.3 MHz, not the 14 − 0.3 first written here), measured at
+F = 47 µm where 0.35 cell is 16.5 µm; at the ladder's F = 24.29 µm the same rule moves
+8.5 µm, so the offset's own effect there is of order half that, ~0.2 %; and the graded
+board's line sits 609 µm further from the y_lo absorber than the case's, unmeasured. The
+reference's own convergence (its last two rungs 0.008 % apart) is not a candidate. The two
+arms that would place a residual — an offset at 0.30 and 0.25 cell at fixed F and FZ, and
+the case's own board with a fine y_lo runway once the CPML slots read per face (step 0b)
+— are new declarations, not run here.
 
-**The record's honesty items.** The five arms reused from the first record rebuild from
-it with every declared quantity bit-identical; the last bit of at most six solved
-ramp cells per profile differs between the GPU container's numpy and the project venv's
-(≤ 6 ulp, 8e-16 of a cell, none touching the metal or the substrate) — the gate admits
-8 ulp and would refuse a one-cell change by 1e13 ulp (F.0). The 13-cell on-node arm has
-no node on the strip's centre line, so its feed is placed on the metal's own centre with
-the two straddling rows one cell apart (F.0); no arm was re-run for it.
+**What this gives the mesher, stated with the spread.** The substrate rule: the notch's
+substrate term drops inside 1 % of the ladder's own limit at n_z = 8 by the declared rule
+(FZ ≤ 34.2 µm; F.4), and 8 to 10 across the four readings; inside 1 % of the external
+reference at n_z = 16 (the finest rung, +0.98 %). The in-plane rule: at FZ = 42.3 µm the
+three in-plane points 47.2 / 35.9 / 24.3 µm span 2.5 MHz (0.07 % of the notch) and
+accelerate (0.08 then 0.14 MHz/µm), so the fine cell across a 600 µm strip need not go
+below about 47 µm (n = 12) for the notch at that substrate cell — measured at one FZ only,
+not a convergence statement. The cheap path the two rules suggest, n = 12 with n_z = 16, is
+costed by the instrument and not solved: 2,656,500 grid cells, dt 47.35 fs, 60,342 steps
+(F.4b) — about two thirds of Z16's cells at 1.2× its time step. The edge rule stays 0.35
+cell by default with a per-sheet override, as the design review asked; its own effect on
+this structure is 0.38 % of the notch per 0.35 cell at F = 47 µm, which is what a mesher's
+override would be tuning.
 
-**Not re-run.** The ladder's finest rung missed the reference by 0.98 %; the two arms
-that would place the remaining 0.6 % are new declarations with their own purpose, not a
-re-run of this one.
+**The record's honesty items.** The five arms reused from the first record rebuild from it
+with every declared quantity bit-identical; the last bit of four ramp cells per profile,
+seven per arm, differs between the GPU container's numpy and the project venv's (≤ 6 ulp,
+8e-16 of a cell, none touching the metal or the substrate; F.0 prints the table from the
+record). The 13-cell on-node arm has no node on the strip's centre line, so its feed is
+placed on the metal's own centre with the two straddling rows one cell apart (F.0); the
+check that enforces it can no longer be switched off by dropping a key (review P3). Two
+things move down the ladder besides the substrate cell — the solved z tail cell and the
+time step — and both follow from it (W5 block).
+
+**Not re-run.** The finest rung missed the reference by 0.98 %. The arms that would place
+the residual are new declarations with their own purpose, not a re-run of this one.
