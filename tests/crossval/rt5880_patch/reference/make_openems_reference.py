@@ -85,11 +85,12 @@ differences, and ten years of solver changes, do to the dip has not been
 measured.
 
 The gate: the Stage A |S11| minimum, located with the repository's sub-bin
-estimator over the tutorial's whole 1-3 GHz grid, lies within +-2 % of 2.430 GHz
+estimator over the tutorial's whole 1-3 GHz grid, lies within +-1 % of 2.430 GHz
 AND is at least 10 dB deep. The -10 dB is the tutorial's own criterion for
-calling the minimum a resonance. The 2 % is a proposal, not a derived number:
-the reading uncertainty is 0.2 %, and the rest of the window is there for the
-unmeasured differences just named. The transmission-line estimate for the
+calling the minimum a resonance. The window is the v2 frequency bar, 1 % (crossval
+leader, 2026-09-24; the implementer proposed 2 %): the figure reads to 0.2 %, and
+the one recorded run of this tutorial file (the audit trail below) sits +0.10 %
+from it, so 1 % leaves room for the unmeasured differences just named. The transmission-line estimate for the
 tutorial's board is recorded beside the gate and is not part of it.
 
 THE RECORDED REPRODUCTION IS AN AUDIT TRAIL, NEVER THIS RUN'S GATE
@@ -476,9 +477,9 @@ STAGE_A_DOCUMENTED = {
     "re_zin_peak_ohm": 50.3,
     "re_zin_peak_f_hz": 2.424e9,
 }
-# +-2 % around the documented dip. A proposal: the figure reads to 0.2 %; the
-# rest is for the unmeasured differences listed above. See the module docstring.
-STAGE_A_WINDOW_REL = 0.02
+# +-1 % around the documented dip, the v2 frequency bar. The figure reads to
+# 0.2 %; the recorded run of this tutorial sits +0.10 % from it. See the docstring.
+STAGE_A_WINDOW_REL = 0.01
 # The tutorial's own criterion for a resonance (its line 137: s11_dB < -10).
 STAGE_A_MAX_DEPTH_DB = -10.0
 
