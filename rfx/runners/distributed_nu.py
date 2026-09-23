@@ -733,7 +733,9 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
     cpml_params : CPMLAxisParams
         Per-axis CPML profile + boundary cell sizes (Python floats).
     cpml_state_stacked : CPMLState
-        Per-rank CPML state with arrays of shape ``(n_devices, n_cpml, d1, d2)``.
+        Per-rank CPML state with arrays of shape ``(n_devices, n_cpml, d1, d2)``;
+        with ``mesh`` given, the same zeros already merged and placed as
+        ``(n_devices * n_cpml, d1, d2)`` arrays sharded ``P("x")``.
         x-face psi arrays use ``(n_devices, n_cpml, ny, nz)`` (or transposed)
         and start at zero on every rank; only rank 0 / rank N-1 actually
         update them inside the scan body.  y-/z-face psi arrays use
@@ -960,11 +962,15 @@ def _forward_sharding(arr):
 def is_forward_sharded_override(arr, sharded_grid, mesh):
     """Validate an override's global layout without fetching any device data."""
     sharding = _forward_sharding(arr)
-    if sharding is None or all(part is None for part in sharding.spec):
+    if sharding is None:
+        return False
+    spec = tuple(sharding.spec) + (None,) * (3 - len(sharding.spec))
+    if spec != ("x", None, None):
+        # Any other placement (replicated, or split along y/z or another
+        # mesh axis) is a local whole-domain array, as it was before.
         return False
     expected = (sharded_grid.nx_padded, sharded_grid.ny, sharded_grid.nz)
-    spec = tuple(sharding.spec) + (None,) * (3 - len(sharding.spec))
-    if (arr.shape != expected or spec != ("x", None, None)
+    if (arr.shape != expected
             or sharding.mesh.devices.shape != mesh.devices.shape
             or not np.array_equal(sharding.mesh.devices, mesh.devices)):
         raise ValueError(

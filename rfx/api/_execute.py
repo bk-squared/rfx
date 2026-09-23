@@ -2585,6 +2585,7 @@ class _ExecuteMixin:
             stage_forward_array_x_slab,
             stage_concrete_forward_array,
             is_forward_sharded_override,
+            shard_pec_mask_x_slab,
             stage_forward_dispersion_x_slab,
         )
         from rfx.core.yee import MaterialArrays
@@ -2713,7 +2714,7 @@ class _ExecuteMixin:
         sharded_grid = build_sharded_nu_grid(
             grid, n_devices, exchange_interval=exchange_interval,
         )
-        from jax.sharding import Mesh
+        from jax.sharding import Mesh, NamedSharding, PartitionSpec as _P
         mesh = Mesh(np.array(devices), axis_names=("x",))
         multiprocess = any(d.process_index != jax.process_index() for d in devices)
         for name, override in (("eps_override", eps_override),
@@ -2814,9 +2815,22 @@ class _ExecuteMixin:
         sharded_materials = MaterialArrays(*staged)
         del materials, staged
 
-        sharded_pec_mask = None if pec_mask is None else stage_concrete_forward_array(
-            pec_mask, sharded_grid, mesh, True, ghost_value=False,
-        )
+        if pec_mask is None:
+            sharded_pec_mask = None
+        elif isinstance(pec_mask, jax.core.Tracer):
+            # A traced pec_mask_override (e.g. under jax.vmap) cannot be read
+            # on the host; stage it through the traceable split, one process.
+            if multiprocess:
+                raise ValueError(
+                    "a traced pec_mask_override is supported in one process only; "
+                    "pass a concrete mask when the devices span processes.")
+            sharded_pec_mask = jax.device_put(
+                shard_pec_mask_x_slab(pec_mask, sharded_grid),
+                NamedSharding(mesh, _P("x")))
+        else:
+            sharded_pec_mask = stage_concrete_forward_array(
+                pec_mask, sharded_grid, mesh, True, ghost_value=False,
+            )
         del pec_mask
         sharded_pec_occupancy = None
         if pec_occupancy_override is not None:

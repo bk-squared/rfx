@@ -46,7 +46,7 @@ def _per_cell_captures(body):
         if isinstance(value, jax.core.Tracer) or id(value) in seen:
             return
         seen.add(id(value))
-        if isinstance(value, jax.Array):
+        if isinstance(value, (jax.Array, np.ndarray)):
             captured.append((path, value.shape))
             return
         if isinstance(value, FunctionType):
