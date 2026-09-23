@@ -1,7 +1,9 @@
 """AST locations of spatial neighbours, differences and boundary primitives."""
 
+import argparse
 import ast
-import hashlib
+from collections import Counter
+import json
 from pathlib import Path
 
 
@@ -30,7 +32,7 @@ def spatial_operand(node, assigned, neighbours, aliases, visited=frozenset()):
 
 
 def scan_source(source, path):
-    """Return stable function/expression identities, with lines for inspection."""
+    """Return file, qualified function and kind, with sites for inspection."""
     tree = ast.parse(source)
     aliases = {}
     for node in ast.walk(tree):
@@ -79,9 +81,8 @@ def scan_source(source, path):
 
         def record(self, node, kind):
             expression = ast.unparse(node)
-            digest = hashlib.sha256(ast.dump(node, include_attributes=False).encode()).hexdigest()[:16]
             rows.append(dict(file=path, function=".".join(self.scope) or "<module>",
-                             kind=kind, line=node.lineno, expression=expression, digest=digest))
+                             kind=kind, line=node.lineno, expression=expression))
 
         def visit_Call(self, node):
             name = aliases.get(call_name(node.func), call_name(node.func))
@@ -109,14 +110,55 @@ def scan_tree(root):
 
 
 def identities(rows):
-    """Counts distinguish identical expressions occurring twice in one function."""
-    from collections import Counter
-    return Counter((r["file"], r["function"], r["kind"], r["digest"]) for r in rows)
+    """Count sites by file, qualified function and kind, independent of content."""
+    counts = Counter()
+    for row in rows:
+        counts[row["file"], row["function"], row["kind"]] += row.get("count", 1)
+    return counts
+
+
+def registry_rows(rows):
+    return [dict(file=file, function=function, kind=kind, count=count)
+            for (file, function, kind), count in sorted(identities(rows).items())]
 
 
 def compare_registry(expected, actual):
     want, got = identities(expected), identities(actual)
-    assert got == want, f"unlisted sites: {got - want}; removed sites: {want - got}"
+    if got == want:
+        return
+    messages = []
+    for label, changes in (("unlisted sites", got - want), ("removed sites", want - got)):
+        if not changes:
+            continue
+        messages.append(f"{label}:")
+        for file, function, kind in sorted(changes):
+            key = file, function, kind
+            messages.append(f"  {file} :: {function} [{kind}]: registered {want[key]}, found {got[key]}")
+            for row in actual:
+                if (row["file"], row["function"], row["kind"]) == key:
+                    messages.append(f"    {file}:{row['line']}: {row['expression']}")
+    messages.append("Run python -m tests.contracts.boundary_registry --update to rewrite "
+                    "tests/contracts/boundary_registry.json; review the JSON diff.")
+    raise AssertionError("\n".join(messages))
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--update", action="store_true", help="rewrite boundary_registry.json from the current tree")
+    args = parser.parse_args(argv)
+    path = ROOT / "tests/contracts/boundary_registry.json"
+    actual = scan_tree(ROOT)
+    if args.update:
+        rows = registry_rows(actual)
+        path.write_text(json.dumps(rows, indent=2) + "\n")
+        print(f"Registered {len(actual)} sites in {len(rows)} keys: {path.relative_to(ROOT)}")
+    else:
+        compare_registry(json.loads(path.read_text()), actual)
+        print(f"All {len(actual)} sites registered.")
+
+
+if __name__ == "__main__":
+    main()
