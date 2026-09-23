@@ -9,6 +9,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import EPS_0, MU_0
+from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
 from rfx.grid import Grid
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 from rfx.core.yee import cell_component_e_coeffs as _cell_component_e_coeffs
@@ -627,6 +628,30 @@ def _run_subgridded_once(
     s_params = None
     freqs = None
     if result.lumped_sparam_v_dft_f is not None and result.lumped_sparam_i_dft_f is not None:
+        # This experimental subgrid lane is the one lumped lane the
+        # known-load decision run did NOT move
+        # (scripts/diagnostics/lumped_port_known_load_line.py).  Its
+        # sampling slot is not fixed — whether the accumulation block runs
+        # before or after injection depends on the runtime
+        # ``inject_sources_before_e_coupling`` flag — so neither the
+        # post-injection slot nor the dt/2 current phase the correction
+        # rests on is derivable here.  Say so rather than return a number
+        # on a convention the uniform lane no longer uses.
+        import warnings as _w
+        _w.warn(
+            "run_subgridded: the diagnostic lumped-port S-matrix is on the "
+            "PRE-decision convention (pre-injection V, passive port-branch "
+            "diagonal, no Yee half-step current phase). On a known 50-ohm-"
+            "class load the uniform lane read that convention's driven "
+            "diagonal as the reciprocal of the physical reflection "
+            "(|S11| 4.757 where the closed form is 0.333) — see "
+            "scripts/diagnostics/lumped_port_known_load_line.py. This lane's "
+            "sampling slot depends on inject_sources_before_e_coupling, so "
+            "the correction is not derivable here. Diagnostic only; do not "
+            "report these S-parameters as physics.",
+            PreDecisionLumpedDiagonalWarning,
+            stacklevel=2,
+        )
         v_dft = result.lumped_sparam_v_dft_f
         i_dft = result.lumped_sparam_i_dft_f
         impedances = result.lumped_sparam_impedances_f

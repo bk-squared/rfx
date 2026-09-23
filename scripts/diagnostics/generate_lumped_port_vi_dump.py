@@ -105,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
 
     metadata = PortDumpMetadata(
         commit_hash=_git_commit(),
+        # rfx's lumped production diagonal is the driven terminal
+        # reflection, so the replay must read the dump in that frame.
+        diagonal_frame="driven_terminal",
         geometry={
             "kind": "two_port_lumped_pec_cavity",
             "domain_m": list(domain),

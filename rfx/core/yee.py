@@ -414,7 +414,9 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
     faces one cell inside the drawn body and makes a dielectric interface
     first-order.
 
-    ``eps_r``, ``sigma`` : cell-centred ``(nx, ny, nz)`` arrays.
+    ``eps_r``, ``sigma`` : cell-centred ``(nx, ny, nz)`` arrays. ``sigma`` may
+    also be a 3-tuple of them, one per E component (#1216): component ``c``
+    then averages ``sigma[c]``.
     ``periodic`` : per-axis flags; a periodic axis wraps, a non-periodic one
     edge-replicates (see :func:`_material_bwd_neighbour`).
 
@@ -432,8 +434,22 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
         # Pairwise, so the homogeneous sum is exact (F4/#1210).
         return ((arr + a1) + (a2 + a12)) * 0.25
 
+    # ``sigma`` may be a 3-tuple (sigma_x, sigma_y, sigma_z): a conductivity
+    # that is itself per E component (#1216, a design sheet whose current runs
+    # along its in-plane edges only). Component c then averages its OWN array
+    # over its own four incident cells -- the same stencil, so (s, s, s) is
+    # bit-identical to s.
+    if isinstance(sigma, (tuple, list)):
+        if len(sigma) != 3:
+            raise ValueError(
+                f"a per-component conductivity is a 3-tuple "
+                f"(sigma_x, sigma_y, sigma_z); got {len(sigma)} entries.")
+        sig_by_c = tuple(sigma)
+    else:
+        sig_by_c = (sigma, sigma, sigma)
     eps = tuple(mean4(eps_r, *[t for t in range(3) if t != c]) for c in range(3))
-    sig = tuple(mean4(sigma, *[t for t in range(3) if t != c]) for c in range(3))
+    sig = tuple(mean4(sig_by_c[c], *[t for t in range(3) if t != c])
+                for c in range(3))
     return eps, sig
 
 
@@ -455,7 +471,10 @@ def component_e_materials(materials, periodic=(False, False, False)):
     if eps_l is not None:
         eps_v = eps_v - eps_l
     if sig_l is not None:
-        sig_v = sig_v - sig_l
+        # ``sigma`` may be per-component (#1216 design box); the lumped
+        # record is one array whatever the component.
+        sig_v = (tuple(v - sig_l for v in sig_v)
+                 if isinstance(sig_v, (tuple, list)) else sig_v - sig_l)
     eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
     if eps_l is not None:
         eps_c = tuple(e + eps_l for e in eps_c)
@@ -599,11 +618,20 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     six grid-sized arrays per step on the tape.
 
     ``ca`` and ``cb`` are box-shaped (or scalar) and built once, outside the
-    time loop, by :func:`e_update_coeffs`. Each may instead be a 3-tuple
-    ``(x, y, z)`` of box-shaped arrays — the per-component form the #1210
-    edge average produces, built by
-    :func:`rfx.simulation._design_box_edge_coeffs`. A single array is applied
-    to all three components, as before.
+    time loop, by :func:`e_update_coeffs`. Each may instead be a 3-TUPLE
+    (or list) of box-shaped arrays, one per E component in x, y, z order:
+    component ``c`` is then updated with ``ca[c]``/``cb[c]``. Two things
+    produce that form. The #1210 edge average makes every coefficient
+    per-component — an E component takes the mean of eps and sigma over the
+    four cells its edge touches — which is what
+    :func:`rfx.simulation._design_box_edge_coeffs` builds. And a conducting
+    SHEET (#1216) gives each component its own conductivity: its current runs
+    along the two in-plane edges only, so the third component must keep the
+    background coefficient while the other two carry the design conductivity.
+    ``(v, v, v)`` is the scalar/array form cell for cell. Both sequence types
+    are accepted here because :func:`rfx.simulation._resolve_design_box`
+    accepts either for ``DesignBoxSpec.sigma``; it normalises what it builds
+    to a tuple, so a list reaches this kernel only from a direct call.
 
     ``inv_d`` selects the GRADED-MESH curl (#1183). ``None`` (default) is the
     uniform :func:`curl_h` at spacing ``dx``; a tuple
@@ -640,12 +668,16 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
             prev.hz.astype(_cdtype), *inv_d)
 
-    ca_x, ca_y, ca_z = ca if isinstance(ca, tuple) else (ca, ca, ca)
-    cb_x, cb_y, cb_z = cb if isinstance(cb, tuple) else (cb, cb, cb)
+    def _comp(v, c):
+        """``v`` for every component, or the c-th entry of a 3-sequence."""
+        return v[c] if isinstance(v, (tuple, list)) else v
 
-    ex = (ca_x * prev.ex[sl].astype(_cdtype) + cb_x * curl_x[sl]).astype(_fdtype)
-    ey = (ca_y * prev.ey[sl].astype(_cdtype) + cb_y * curl_y[sl]).astype(_fdtype)
-    ez = (ca_z * prev.ez[sl].astype(_cdtype) + cb_z * curl_z[sl]).astype(_fdtype)
+    ex = (_comp(ca, 0) * prev.ex[sl].astype(_cdtype)
+          + _comp(cb, 0) * curl_x[sl]).astype(_fdtype)
+    ey = (_comp(ca, 1) * prev.ey[sl].astype(_cdtype)
+          + _comp(cb, 1) * curl_y[sl]).astype(_fdtype)
+    ez = (_comp(ca, 2) * prev.ez[sl].astype(_cdtype)
+          + _comp(cb, 2) * curl_z[sl]).astype(_fdtype)
 
     return state._replace(
         ex=state.ex.at[sl].set(ex),

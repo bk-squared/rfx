@@ -151,9 +151,16 @@ def test_wire_s11_pec_cavity():
         state = update_h(state, materials, grid.dt, grid.dx)
         state = update_e(state, materials, grid.dt, grid.dx)
         state = apply_pec(state)
+        # update_wire_sparam_probe samples the PHYSICAL V/I after injection
+        # (issue #683); this loop used to call it before, which is the slot
+        # the drive-reference channel uses. With the passive port-branch
+        # algebra the mismatch was invisible; extract_s11 is the DRIVEN
+        # terminal reflection since 2026-09-21
+        # (scripts/diagnostics/lumped_port_known_load_line.py), and a driven
+        # reading on a pre-injection sample is not the port's terminal pair.
+        state = apply_wire_port(state, grid, port, t, materials)
         probe = update_wire_sparam_probe(probe, state, grid, port, grid.dt)
         v_t[n] = float(wire_port_voltage(state, grid, port))
-        state = apply_wire_port(state, grid, port, t, materials)
 
     s11 = extract_s11(probe, z0=50.0)
     s11_mag = np.abs(np.array(s11))

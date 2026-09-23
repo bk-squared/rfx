@@ -140,13 +140,20 @@ class LumpedPortSParamSpec(NamedTuple):
         Frequencies (Hz) at which to accumulate V and I DFTs.
     impedance : float
         Port reference impedance Z0 (ohms).
+    excite : bool
+        Whether this port is genuinely driven in THIS pass.  A driven port
+        reads its diagonal from the terminal V/I pair
+        (:func:`rfx.probes.probes.driven_port_reflection`); a passive one
+        keeps the load-independent port-branch reading
+        (:func:`rfx.probes.probes.extract_lumped_s11`).  Mirrors
+        :class:`WireSParamSpec.excite`.
 
     Notes
     -----
     V is sampled as ``-E·dx`` and I as the curl-H loop integral times
-    ``dx`` at the port cell.  S11 is computed post-hoc via the wave
-    decomposition ``a = (-V + Z0·I)/(2√Z0)``, ``b = (-V - Z0·I)/(2√Z0)``,
-    ``S11 = b/a`` — exact, no time-gating heuristic.  Issue #72.
+    ``dx`` at the port cell, both AFTER source injection, with the Yee
+    half-step phase on I.  Issue #72; sampling slot and diagonal formula
+    decided by scripts/diagnostics/lumped_port_known_load_line.py.
     """
     i: int
     j: int
@@ -154,6 +161,7 @@ class LumpedPortSParamSpec(NamedTuple):
     component: str
     freqs: jnp.ndarray
     impedance: float
+    excite: bool = True
 
 
 class DesignBoxSpec(NamedTuple):
@@ -171,10 +179,19 @@ class DesignBoxSpec(NamedTuple):
         corners against the grid the solve builds.
     eps_r : box-shaped array (usually a tracer)
         Relative permittivity at the box cells.
-    sigma : box-shaped array or None
+    sigma : box-shaped array, a 3-tuple of them, or None
         Conductivity at the box cells. ``None`` (default) takes the run's own
         ``materials.sigma`` slice, so a lossy background inside the box is
         carried exactly rather than silently dropped.
+
+        A single array is the one conductivity every E component in the box
+        sees, exactly as ``materials.sigma`` is read by ``update_e``. A
+        3-tuple ``(sigma_x, sigma_y, sigma_z)`` of box-shaped arrays gives
+        each component its OWN conductivity, and therefore its own Ca/Cb.
+        What needs it: a conducting SHEET has current only along its two
+        in-plane edges, so a design variable per in-plane edge must not
+        also load the edge through the sheet. ``(s, s, s)`` reproduces the
+        single-array result bit for bit.
     """
     bounds: tuple
     eps_r: Any
@@ -187,7 +204,9 @@ class _DesignBoxCoeffs(NamedTuple):
     ``bounds`` is the WRITE window, not the declared box: since #1210 the
     design material reaches one cell past the box on the plus side of each
     transverse axis (:func:`_design_box_edge_coeffs`). ``ca`` and ``cb`` are
-    3-tuples of window-shaped arrays, one per E component.
+    3-tuples of window-shaped arrays, one per E component in x, y, z order —
+    per-component because of the edge average, and because a design
+    conductivity may itself be per-component (#1216).
     """
     bounds: tuple
     ca: Any
@@ -237,7 +256,9 @@ class SimResult(NamedTuple):
         Final V/I/V_inc DFT accumulators for wire port S-params.
     lumped_port_sparams : tuple | None
         Final V/I DFT accumulators for lumped port S-params (issue #72).
-        Each entry is ``(LumpedPortSParamSpec, (v_dft, i_dft))``.
+        Each entry is ``(LumpedPortSParamSpec, (v_dft, i_dft, v_ref_dft))``;
+        v/i are POST-injection (i with the Yee half-step phase) and
+        v_ref is the PRE-injection drive sample.
     wire_refplane_sparams : tuple | None
         Final reference-plane V/I DFT accumulators for the opt-in wire
         S-matrix plane path (issue #313).  Each entry is
@@ -821,19 +842,37 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
     window is sliced out. The box-edge cells therefore average with the
     constant background, which is what the grid-wide update would have done
     with the design values in ``materials``.
+
+    ``sigma_box`` may be a 3-tuple, one conductivity per E component (#1216).
+    Each is laid into its own copy of the background, and component ``c``'s
+    coefficient is the four-cell mean of array ``c`` — the same helper and the
+    same stencil, so ``(s, s, s)`` reproduces ``s`` bit for bit.
     """
     write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
     eps_box = jnp.asarray(eps_r_box)
-    sig_box = jnp.asarray(sigma_box)
     eps = jnp.asarray(materials.eps_r)[win]
-    sig = jnp.asarray(materials.sigma)[win]
+    sig_bg = jnp.asarray(materials.sigma)[win]
     # Promote the BACKGROUND to the design dtype, never the other way: a
     # traced float64 design permittivity cast down to the float32 background
     # would silently lose the precision the x64 AD lanes run for (#646).
     eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
-    sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
     eps = eps.at[box_local].set(eps_box)
-    sig = sig.at[box_local].set(sig_box)
+
+    def _lay(sig_box):
+        sig_box = jnp.asarray(sig_box)
+        sig = sig_bg.astype(jnp.promote_types(sig_bg.dtype, sig_box.dtype))
+        return sig.at[box_local].set(sig_box)
+
+    # A per-component design conductivity (#1216) lays each component's array
+    # into its own copy of the background; component c is then averaged from
+    # its own copy by the one helper (edge_averaged_materials), so (s, s, s)
+    # is the single-array lane bit for bit.
+    if isinstance(sigma_box, (tuple, list)):
+        sig = tuple(_lay(s) for s in sigma_box)
+        sig_dtype = sig[0].dtype
+    else:
+        sig = _lay(sigma_box)
+        sig_dtype = sig.dtype
     # A lumped stamp in the window's context layer is edge-owned, not a cell
     # volume, so it is removed before the average and added back at its cell —
     # the same rule ``component_e_materials`` applies grid-wide (#1210). The
@@ -845,7 +884,7 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
         eps_r_lumped=(None if eps_l is None
                       else jnp.asarray(eps_l)[win].astype(eps.dtype)),
         sigma_lumped=(None if sig_l is None
-                      else jnp.asarray(sig_l)[win].astype(sig.dtype)))
+                      else jnp.asarray(sig_l)[win].astype(sig_dtype)))
     ca, cb = e_component_coeffs(win_mats, dt, (False, False, False))
     return (write_bounds,
             tuple(c[inner] for c in ca),
@@ -1037,7 +1076,31 @@ def _resolve_design_box(
         raise ValueError(
             f"design permittivity has shape {tuple(eps_r.shape)} but the "
             f"design box {bounds} realizes {box_shape} cells.")
-    sigma = materials.sigma[sl] if spec.sigma is None else jnp.asarray(spec.sigma)
+    sigma = materials.sigma[sl] if spec.sigma is None else spec.sigma
+    if isinstance(sigma, (tuple, list)):
+        # Per-component conductivity: one (Ca, Cb) pair per E component, in
+        # x, y, z order. The permittivity stays shared — a design SHEET is
+        # one material whose current is anisotropic, not three materials.
+        if len(sigma) != 3:
+            raise ValueError(
+                f"a per-component design conductivity is a 3-tuple "
+                f"(sigma_x, sigma_y, sigma_z); got {len(sigma)} entries.")
+        for name, s in zip("xyz", sigma):
+            s = jnp.asarray(s)
+            if tuple(jnp.shape(s)) != box_shape:
+                raise ValueError(
+                    f"design conductivity sigma_{name} has shape "
+                    f"{tuple(jnp.shape(s))} but the design box {bounds} "
+                    f"realizes {box_shape} cells.")
+        # #1210: each component's conductivity is averaged over its own four
+        # incident cells, over the same plus-side write window as a single
+        # array -- one helper, one stencil -- so (s, s, s) is the
+        # single-array lane bit for bit.
+        write_bounds, ca, cb = _design_box_edge_coeffs(
+            bounds, eps_r, tuple(jnp.asarray(s) for s in sigma), materials,
+            dt, tuple(grid.shape))
+        return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
+    sigma = jnp.asarray(sigma)
     if tuple(jnp.shape(sigma)) != box_shape:
         raise ValueError(
             f"design conductivity has shape {tuple(jnp.shape(sigma))} but "
@@ -1417,10 +1480,15 @@ def _build_step_setup(
         # Initialize V, I DFT accumulators per lumped port (issue #72).
         # No V_inc accumulator needed: the wave decomposition
         # ``a = (-V + Z0·I)/(2√Z0)`` is exact regardless of source pulse shape.
+        # The third channel is the PRE-injection drive sample (the
+        # historical #72 v_dft, bit-for-bit), kept because the #308
+        # off-diagonal incident wave is calibrated against it; the
+        # physical V/I are accumulated post-injection.
         carry_init["lumped_sparam_accs"] = tuple(
             (
                 jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # v_dft
                 jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # i_dft
+                jnp.zeros(len(lp.freqs), dtype=_sparam_acc_dtype),  # v_ref_dft
             )
             for lp in lumped_port_sparams
         )
@@ -2083,9 +2151,10 @@ def make_core_step(ctx: _StepContext):
         # channels (v, i, v_port) are accumulated POST-injection below.
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
             from rfx.probes.probes import _ampere_loop
-        if ctx.use_wire_sparams:
-            # WIRE lane only — see the scope note at the lumped block below.
+            # Both families advance their H-derived current by dt/2 to the
+            # E time level; one import for both blocks.
             from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
+        if ctx.use_wire_sparams:
             new_wire_refs = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
                 v_ref_dft = accs[4]
@@ -2095,33 +2164,22 @@ def make_core_step(ctx: _StepContext):
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
 
-        # Lumped port S-param DFT accumulation BEFORE source injection
-        # (issue #72).  Same wave-decomposition pattern as the wire-port
-        # path but for single-cell lumped ports.
+        # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
+        # PRE-injection slot (issue #72): the #308 off-diagonal incident
+        # wave is calibrated against this sample, so it is kept as its own
+        # channel — bit-identical to the pre-decision `v_dft` — and feeds
+        # ONLY the off-diagonal denominator in decompose_lumped_s_matrix.
+        # The physical V/I are accumulated POST-injection below.  Mirrors
+        # the wire-port block above (issue #683).
         if ctx.use_lumped_sparams:
-            new_lumped_accs = []
+            new_lumped_refs = []
             for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
-                v_dft_l, i_dft_l = accs
+                v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                # #692: shared loop — see the wire-port block above.
-                i_val_l = _ampere_loop(
-                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                v_ref_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                # NOTE (item B2, 2026-09-05): NO half-step current phase
-                # correction on this LUMPED lane — same reason the #683
-                # sampling flip above stopped at the wire family. The
-                # correction's premise is E = E^{n+1} at the sample; here V
-                # is the PRE-injection sample at a DRIVEN cell, which #683
-                # measured is not a field time level of the discrete update,
-                # so the V/I stagger is not established to be dt/2. Deciding
-                # it needs a lumped known-load run, not a wire-port one
-                # (see rfx/probes/probes.py::update_sparam_probe).
-                new_lumped_accs.append((
-                    v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * phase_l,
-                ))
+                new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
         # rect-DFT kernel as the port-cell channels.  This slot is before
@@ -2222,6 +2280,43 @@ def make_core_step(ctx: _StepContext):
                     vinc_dft,
                     v_port_dft + v_port * phase,
                     v_ref_new,
+                ))
+
+        # Lumped-port PHYSICAL V/I DFT accumulation AFTER source injection.
+        # Decided by the lumped known-load decision run
+        # (scripts/diagnostics/lumped_port_known_load_line.py), which the
+        # 2026-09-05 scope note said was the missing input: on a
+        # parallel-plate line terminated in a known R, the pre-injection
+        # slot read |S11| 0.714 / 1.248 / 4.757 against a closed form of
+        # 0.333 / 0 / 0.333, and its terminal V/(Zc·I) was -0.167 / +0.110
+        # / +0.659 where the load is 0.5 / 1.0 / 2.0.  The one-cell WIRE
+        # port on the SAME cell — same sigma (setup_wire_port with
+        # n_live=1), same injection (apply_wire_port with n_live=1) — read
+        # 0.334 / 0.0004 / 0.333 and 0.500 / 0.999 / 1.988.  The physics
+        # was never the difference; the extraction lane was.  `t` stamping
+        # is unchanged (phase computed at the pre slot and reused), so a
+        # PASSIVE port reads bit-identically to the old slot in V.
+        if ctx.use_lumped_sparams:
+            new_lumped_accs = []
+            for accs, lp_meta, (v_ref_new_l, phase_l) in zip(
+                    carry["lumped_sparam_accs"], ctx.lumped_sparam_meta,
+                    new_lumped_refs):
+                v_dft_l, i_dft_l = accs[0], accs[1]
+                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
+                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
+                # #692: shared loop — see the wire-port block above.
+                i_val_l = _ampere_loop(
+                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                # Yee half-step: I is H-derived (H^{n+1/2}), V is E-derived
+                # (E^{n+1}).  Withheld on this lane until the slot above
+                # was post-injection, because that is the correction's
+                # premise (2026-09-05 scope note).
+                i_phase_l = phase_l * _half_i_phase(
+                    lp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                new_lumped_accs.append((
+                    v_dft_l + v_l * phase_l,
+                    i_dft_l + i_val_l * i_phase_l,
+                    v_ref_new_l,
                 ))
 
         if ctx.use_tfsf:

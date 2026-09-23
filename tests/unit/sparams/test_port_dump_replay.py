@@ -12,6 +12,8 @@ import numpy as np
 from pathlib import Path
 import sys
 
+_FIXTURE_DIR = Path(__file__).resolve().parents[2] / "fixtures"
+
 from rfx import (
     PortDumpMetadata,
     compare_replayed_smatrix,
@@ -217,6 +219,10 @@ def test_lumped_extract_s_matrix_can_emit_replayable_real_vi_dump(tmp_path):
         metadata=PortDumpMetadata(
             commit_hash="test",
             geometry={"kind": "small_two_port_lumped_smoke"},
+            # rfx's lumped production diagonal is the driven terminal
+            # reflection; the dump says so, as the wire dump says which
+            # off-diagonal frame it used.
+            diagonal_frame="driven_terminal",
         ),
         port_names=extraction.port_names,
         driven_port_indices=extraction.driven_port_indices,
@@ -250,6 +256,37 @@ def test_lumped_analytic_oracle_report_covers_open_short_matched_rlc():
         "parallel_rlc_200ohm_10nh_1pf",
     ):
         assert cases[name]["status"] == "passed"
+
+
+def test_a_dump_written_before_the_driven_diagonal_still_replays():
+    """A lumped dump from the old extractor replays to its own recorded S.
+
+    tests/fixtures/lumped_two_port_vi_dump_pre_driven_diagonal.npz was written
+    by the pre-2026-09-21 code on commit b4cf8f29: its production S is the
+    per-cell frame — the passive port-branch diagonal and an incident wave
+    built on the same (pre-injection) voltage the dump stores — so it carries
+    no ``diagonal_frame`` key.
+
+    That absence selects the legacy per-cell frame. Nothing else in the repo
+    exercises it with a real stored dump: every other lumped dump test
+    generates its dump at run time with today's writer, so a future change
+    could break old-dump replay with every test still green.
+    """
+    path = _FIXTURE_DIR / "lumped_two_port_vi_dump_pre_driven_diagonal.npz"
+    dump = load_port_vi_dump_npz(path)
+
+    assert "diagonal_frame" not in dump.metadata, (
+        "this fixture is only a legacy-branch witness while it declares no "
+        "diagonal frame")
+    assert dump.production_smatrix is not None
+
+    replayed = replay_smatrix_from_port_vi_dump(dump)
+    comparison = compare_replayed_smatrix(
+        replayed,
+        type("Production", (), {"s_params": dump.production_smatrix,
+                                "freqs": dump.freqs})(),
+    )
+    assert comparison.ok, comparison.summary()
 
 
 def test_lumped_replay_sweep_smoke(tmp_path):

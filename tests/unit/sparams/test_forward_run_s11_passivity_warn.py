@@ -47,16 +47,18 @@ def _warned_nonpassive(recorded):
 def test_forward_lumped_s11_passivity_warns_on_gross_violation():
     """forward() must warn when the eager extractor returns |S11| >> 1.
 
-    The overshoot on this fixture is the extractor's band-edge artifact
-    (#1196: a lumped port in a lossless closed cavity, the curl-of-H current
-    ill-conditioned where the incident wave is weak), not physics. It read
-    1.089 with the walls of #1194 and sat below this test's 1.10 line, so
-    the test was xfail(strict) for #1196; with the edge-averaged material
-    coefficients of #1210 the dielectric block's resonances moved and the
-    8.7 GHz bin reads 1.218, above the line again (vacuum control unchanged
-    to the digit). What is pinned here is that the WARNING fires on a gross
-    overshoot through forward(); the helper's own firing/silence is pinned
-    by test_passivity_helper_fires_on_gross_silent_otherwise."""
+    The overshoot sits where the pulse carries no energy: f0 = 4 GHz,
+    bandwidth 0.7 puts 9.8 and 12 GHz 88 and 140 dB below the spectrum's
+    peak, so the incident wave the port divides by is numerical noise there.
+    Measured (VESSL 369367263684, lumped S = wire decomposition, PR 1162):
+    1.560 at 9.8 GHz and 1.552 at 12 GHz with the default record; every bin
+    within 20 dB of the peak reads 0.89 ... 0.996.
+
+    With the edge-averaged material coefficients of #1210 on top of #1162
+    (CPU, default record): 1.571 at 9.8 GHz and 1.374 at 12 GHz, the bins up
+    to 7.6 GHz 0.996 ... 0.821 and 8.7 GHz 0.326 -- still the band-edge bins,
+    still above this test's 1.10 line. The vacuum control reads 1.000 at most.
+    """
     sim = _cavity(eps_r=10.0)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
@@ -98,12 +100,6 @@ def test_passivity_helper_fires_on_gross_silent_otherwise():
         assert _warned_nonpassive(rec) is expect, f"helper {label}: wrong warn state"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#1196: the |S11| > 1.10 overshoot this test pinned was produced by the "
-    "open box of #1193 (forward() applied no PEC walls on boundary='pec'); "
-    "with the walls it is 1.089 / 0.994. The warning itself is pinned by "
-    "test_passivity_helper_fires_on_gross_silent_otherwise; this needs a "
-    "fixture that is non-passive for a physical reason."))
 def test_run_passivity_warns_on_band_edge_after_consolidation():
     """run(compute_s_params=True) warns on the eps-cavity band-edge.
 

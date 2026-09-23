@@ -144,6 +144,10 @@ def test_driver_lumped_dump_matches_eager_and_replays():
             metadata=PortDumpMetadata(
                 commit_hash="stage2-driver",
                 geometry={"kind": "two_port_lumped_cpml_driver"},
+                # rfx's lumped production diagonal is the driven
+                # terminal reflection; the dump records which frame
+                # its production S used, as the wire dump does.
+                diagonal_frame="driven_terminal",
             ),
             port_names=drv.port_names,
             driven_port_indices=drv.driven_port_indices,
