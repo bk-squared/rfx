@@ -180,8 +180,6 @@ SEGMENTS = ("research_notes", "agent-memory", "agent_memory")
 # reason.
 REVIEWED = {
     # Reject-lists: these name the path so that a log_path may NOT start with it.
-    "tests/crossval/test_msl_phase_referee_header.py":
-        (1, "forbidden-prefix guard, not a read"),
     "tests/crossval/test_sheen_lpf_header.py":
         (1, "forbidden-prefix guard, not a read"),
 
