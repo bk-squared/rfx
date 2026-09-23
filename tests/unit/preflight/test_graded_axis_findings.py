@@ -11,6 +11,7 @@ disagree, and asserts which advisory comes out.
 """
 from __future__ import annotations
 
+import re
 import warnings
 
 import numpy as np
@@ -750,3 +751,306 @@ def test_that_backward_span_is_not_read_as_leaving_its_zone():
     """
     report = _two_zone_board("-x", 7)
     assert _RAMP_REFUSAL not in _finding(report, "OWN feed plane")
+
+
+# ---------------------------------------------------------------------------
+# The reflector interval on a uniform mesh, with the feed off its node
+# ---------------------------------------------------------------------------
+
+def _uniform_stub_finding(feed, direction, n_probe_offset):
+    """Uniform 254 um cells, a 254 um substrate, and an open stub branched off
+    the line 3 mm past where an offset of 20 puts the deepest probe. Returns
+    the reflector finding, or None when check 4 is silent."""
+    from rfx.geometry.csg import Box
+    dx, h, w = 254e-6, 254e-6, 508e-6
+    lx, stub = 40e-3, 8e-3
+    ly = w + 4 * (2 * h + 8 * dx) + max(14e-3, stub + 2e-3)
+    sim = Simulation(
+        freq_max=9e9, domain=(lx, ly, h + 1.5e-3), dx=dx, cpml_layers=8,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")))
+    sim.add_material("ro", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="ro")
+    y_tr = (2 * h + 8 * dx) + w / 2
+    sim.add(Box((0, y_tr - w / 2, h), (lx, y_tr + w / 2, h)), material="pec")
+    sign = -1 if direction == "-x" else 1
+    x_stub = feed + sign * (32 * dx + 3.0e-3)
+    sim.add(Box((x_stub - w / 2, y_tr + w / 2, h),
+                (x_stub + w / 2, y_tr + w / 2 + stub, h)), material="pec")
+    sim.add_msl_port(position=(feed, y_tr, 0), width=w, height=h,
+                     direction=direction, impedance=50.0,
+                     n_probe_offset=n_probe_offset, n_probe_spacing=3,
+                     n_probes=5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
+    hits = [str(i) for i in report.issues
+            if "strong reflector candidate" in str(i)]
+    return hits[0] if hits else None
+
+
+@pytest.mark.parametrize("feed, direction", [(36.9e-3, "-x"), (3.0e-3, "+x")])
+def test_the_printed_reflector_interval_is_the_one_check_4_accepts(
+        feed, direction):
+    """The upper edge of the advertised interval is the largest offset whose
+    deepest probe still clears the stub, and check 4 itself must agree.
+
+    The grid stamps the source on the node nearest the declared feed and
+    counts the probe ladder from there. On the -x board the feed is declared
+    70 um above the node at 36.83 mm, so the node lies toward the probes;
+    on the +x board it is declared 48 um below the node at 3.048 mm, the
+    same way round. Measuring the ladder from the declared feed added that
+    snap to the node-to-stub distance and advertised offset 16, which puts
+    the deepest probe 3692 um from the stub where 3724 um is needed, and
+    check 4 fired on the offset its own interval recommended.
+    """
+    text = _uniform_stub_finding(feed, direction, 20)
+    assert text is not None
+    upper = int(re.search(r"interval \u2248 \[\d+, (\d+)\] cells",
+                          text).group(1))
+    assert _uniform_stub_finding(feed, direction, upper) is None, upper
+    assert _uniform_stub_finding(feed, direction, upper + 1) is not None, upper
+
+
+# ---------------------------------------------------------------------------
+# Ports declared with literal coordinates on the library's own meshes
+# ---------------------------------------------------------------------------
+
+def _ports_on(prof, dx, ports, n_probe_offset, stub_x=None, freq_max=5e9):
+    """A through line on the x profile ``prof`` with one MSL port per
+    ``(name, x, direction)``, each placed at the LITERAL coordinate given.
+    ``stub_x`` adds an open stub centred there."""
+    from rfx.geometry.csg import Box
+    h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
+    lx, ly = float(np.sum(prof)), 24 * _NOTCH_H_SUB
+    sim = Simulation(
+        freq_max=freq_max, domain=(lx, ly, h + 1.5e-3), dx=dx, cpml_layers=8,
+        dx_profile=prof,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")))
+    sim.add_material("sub", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0, y_c - w / 2, h), (lx, y_c + w / 2, h)), material="pec")
+    if stub_x is not None:
+        sim.add(Box((stub_x - w / 2, y_c + w / 2, h),
+                    (stub_x + w / 2, y_c + w / 2 + 4e-3, h)), material="pec")
+    for name, x, direction in ports:
+        sim.add_msl_port(position=(x, y_c, 0), width=w, height=h,
+                         direction=direction, impedance=50.0,
+                         n_probe_offset=n_probe_offset, n_probe_spacing=3,
+                         n_probes=5, name=name)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim, sim.preflight()
+
+
+def _band_runway(a, b):
+    """254 um lead-in and lead-out, a protected ~127 um runway from a to b."""
+    from rfx.nonuniform import make_band_profile
+    c = 2 * _NOTCH_RUNWAY
+    return make_band_profile([0.0, a, b, b + 5e-3], [c, _NOTCH_RUNWAY, c],
+                             max_ratio=1.3, protected=[False, True, False],
+                             boundary_cell=c)
+
+
+def _port_finding(report, name, mark):
+    hits = [str(i) for i in report.issues
+            if f"MSL port '{name}'" in str(i) and mark in str(i)]
+    assert hits, f"{name}: {mark!r} not reported; codes={_codes(report)}"
+    return hits[0]
+
+
+def _assert_floor_on_the_runway(report, names):
+    """Each port gets the standoff floor counted on the runway, 10 cells of
+    ~127 um for the 1.270 mm the fringing needs, and nothing is refused."""
+    for name in names:
+        text = _port_finding(report, name, "OWN feed plane")
+        assert "standoff of 10 cells" in text, text
+    assert not [str(i) for i in report.issues if _RAMP_REFUSAL in str(i)]
+
+
+def test_ports_declared_on_band_interfaces_read_the_runway():
+    """``make_band_profile`` puts a node on each declared interface, to
+    1e-12 m. A port declared there with the same literal lands a few 1e-18 m
+    to one side of that node, and the grid stamps it ON the node.
+
+    Here the +x port at x = 5 mm sits 8.7e-19 m below the node where the
+    157 um ramp gives way to the 126 um runway. Read as "the cell containing
+    the coordinate", it took the ramp cell under the node, called the feed a
+    ramp feed, and refused a port whose source and probes are all on the
+    runway. The -x port at 17 mm is the mirror, and it has to read the cells
+    BELOW its node, the ones its probes occupy.
+    """
+    _, report = _ports_on(_band_runway(5e-3, 17e-3), 2 * _NOTCH_RUNWAY,
+                          [("p1", 5e-3, "+x"), ("p2", 17e-3, "-x")], 7)
+    _assert_floor_on_the_runway(report, ("p1", "p2"))
+
+
+@pytest.mark.parametrize("p1, p2", [(3.1e-3, 15.2e-3), (5.0e-3, 17.0e-3)])
+def test_ports_on_edge_aware_faces_read_the_runway(p1, p2):
+    """The mesher the sheet advisory recommends, with the port planes passed
+    as faces so each feed sits on a node.
+
+    Each launch side is one cell size, to 2e-16 relative at worst, and each
+    feed is within 1e-17 m of its node. Before, a feed a hair above its node
+    on a -x port took the cell on the wrong side, and cells equal to the
+    16th digit read as two sizes; either one refused a port that is on one
+    uniform runway.
+    """
+    from rfx.geometry.csg import Box
+    from rfx.mesh_edges import edge_aware_profiles
+    h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
+    ly = 24 * _NOTCH_H_SUB
+    trace = Box((0, ly / 2 - w / 2, h), (22e-3, ly / 2 + w / 2, h))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        profs = edge_aware_profiles((22e-3, ly, h + 1.5e-3), _NOTCH_RUNWAY,
+                                    sheets=[trace], faces={"x": [p1, p2]},
+                                    axes="x")
+    prof = np.asarray(getattr(profs["dx_profile"], "cells",
+                              profs["dx_profile"]), float)
+    _, report = _ports_on(prof, _NOTCH_RUNWAY,
+                          [("p1", p1, "+x"), ("p2", p2, "-x")], 7)
+    _assert_floor_on_the_runway(report, ("p1", "p2"))
+
+
+def test_a_runway_built_from_node_coordinates_is_one_zone():
+    """A profile written as ``np.diff`` of ``np.linspace`` node coordinates:
+    its 90 runway cells are 127 um to 1.4e-14 relative, four distinct floats.
+    The port sits ten cells into the runway, so its standoff never leaves
+    it, and exact float equality called that span two sizes."""
+    c = 2 * _NOTCH_RUNWAY
+    nodes = np.concatenate([
+        np.linspace(0, 12 * c, 13),
+        np.linspace(12 * c, 12 * c + 90 * _NOTCH_RUNWAY, 91)[1:],
+        np.linspace(12 * c + 90 * _NOTCH_RUNWAY,
+                    24 * c + 90 * _NOTCH_RUNWAY, 13)[1:]])
+    prof = np.diff(nodes)
+    assert len(set(prof[12:102].tolist())) > 1
+    feed = float(nodes[22]) + 0.3 * _NOTCH_RUNWAY
+    _, report = _ports_on(prof, c, [("p1", feed, "+x")], 7)
+    _assert_floor_on_the_runway(report, ("p1",))
+
+
+def test_a_ladder_ending_on_the_runways_last_node_stays_on_the_runway():
+    """The deepest probe realized exactly on the node where the runway ends.
+
+    On this band mesh the grid's own coordinate for that node lies 1.4e-17 m
+    past the profile's cumulative sum. Without the node-touch slack the
+    ladder span reached into the ramp cell beyond it, and the reflector
+    advisory refused to print an interval for a ladder that never leaves the
+    runway. One offset more does put the deepest probe on the ramp, and that
+    is still refused.
+    """
+    prof = _band_runway(4.3e-3, 16.9e-3)
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    i_a = int(np.argmin(np.abs(edges - 4.3e-3)))
+    i_b = int(np.argmin(np.abs(edges - 16.9e-3)))
+    on_runway = i_b - i_a - 12
+    stub = 16.9e-3 + 1.5e-3
+
+    _, report = _ports_on(prof, 2 * _NOTCH_RUNWAY,
+                          [("p1", 4.3e-3, "+x")], on_runway, stub_x=stub,
+                          freq_max=9e9)
+    text = _port_finding(report, "p1", "strong reflector candidate")
+    assert "probe ladder crosses cells" not in text, text
+
+    _, report = _ports_on(prof, 2 * _NOTCH_RUNWAY,
+                          [("p1", 4.3e-3, "+x")], on_runway + 1, stub_x=stub,
+                          freq_max=9e9)
+    text = _port_finding(report, "p1", "strong reflector candidate")
+    assert "probe ladder crosses cells" in text, text
+
+
+def _snap_board(offset_in_cell):
+    """The notch-like runway with the feed declared part way into the last
+    cell of the ramp, the last one that is not 127 um: ``offset_in_cell`` of
+    it below the node where the runway starts (negative), or above the node
+    where that cell starts (positive)."""
+    prof, _, _ = _graded_runway_board()
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    j = max(i for i in range(prof.size // 2)
+            if not np.isclose(prof[i], _NOTCH_RUNWAY))
+    feed = (float(edges[j + 1]) + offset_in_cell * float(prof[j])
+            if offset_in_cell < 0
+            else float(edges[j]) + offset_in_cell * float(prof[j]))
+    return _ports_on(prof, 2 * _NOTCH_RUNWAY, [("p1", feed, "+x")], 7)[1]
+
+
+def test_a_feed_declared_off_a_node_is_judged_on_the_node_it_is_stamped_on():
+    """The grid stamps the source on the node NEAREST the declared feed.
+
+    Declared 0.3 of a ramp cell below the runway's first node, the feed is
+    stamped on that node and its source and probes are all on the runway.
+    Declared 0.3 of the same cell above the node before it, it is stamped on
+    that earlier node, the first cell it launches into is the ramp's, and
+    the refusal stands.
+    """
+    _assert_floor_on_the_runway(_snap_board(-0.3), ("p1",))
+    assert _RAMP_REFUSAL in _port_finding(_snap_board(0.3), "p1",
+                                          "fringing decays")
+
+
+# ---------------------------------------------------------------------------
+# An automatic offset on a runway finer than the boundary cell
+# ---------------------------------------------------------------------------
+
+def _auto_offset_board():
+    """The notch runway (127 um under a 254 um boundary cell), 254 um
+    substrate, f_max 20 GHz, and n_probe_offset left to add_msl_port. The
+    feed is declared 0.3 of a cell past a runway node."""
+    from rfx.geometry.csg import Box
+    prof, x_run, _ = _graded_runway_board()
+    h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
+    lx, ly = float(prof.sum()), 10 * _NOTCH_H_SUB
+    sim = Simulation(
+        freq_max=20e9, domain=(lx, ly, h + 1.5e-3), dx=2 * _NOTCH_RUNWAY,
+        cpml_layers=8, dx_profile=prof,
+        boundary=BoundarySpec(x="cpml", y="cpml",
+                              z=Boundary(lo="pec", hi="cpml")))
+    sim.add_material("sub", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (lx, ly, h)), material="sub")
+    y_c = ly / 2.0
+    sim.add(Box((0, y_c - w / 2, h), (lx, y_c + w / 2, h)), material="pec")
+    feed = x_run + 20.3 * _NOTCH_RUNWAY
+    sim.add_msl_port(position=(feed, y_c, 0), width=w, height=h,
+                     direction="+x", impedance=50.0)
+    return sim
+
+
+def test_an_automatic_offset_is_not_told_to_stay_automatic():
+    """add_msl_port counts the 5·h_sub standoff in the boundary cell, 254 um,
+    and stores 5. On this 127 um runway that is 635 um from the source,
+    half the 1.270 mm the fringing needs. The advisory used to end with "or
+    leave it None for the safe default", which is the setting that chose 5.
+    It now names the explicit offset, and the S-parameter routing check
+    says the same.
+
+    The distance is read off the grid from the node the source is stamped
+    on: 635 um. The declared feed is 38.1 um past that node, and the message
+    says so rather than measuring from it.
+    """
+    sim = _auto_offset_board()
+    assert sim._msl_ports[0].n_probe_offset == 5
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
+    text = _finding(report, "OWN feed plane")
+    assert "the automatic n_probe_offset=5 puts probe 0 635\u00b5m" in text, text
+    assert "38.1\u00b5m from the declared feed" in text, text
+    assert "Set n_probe_offset >= 10 explicitly on this port" in text, text
+    assert "leave it None" not in text, text
+    msg = _forward_message(sim)
+    assert "set n_probe_offset >= 10 explicitly" in msg, msg
+    assert "leave it None" not in msg, msg
+
+
+def test_an_explicit_offset_on_a_fine_runway_is_not_told_to_go_automatic():
+    """The same arithmetic for an explicit offset of 7 on the runway: the
+    automatic choice would be 5, fewer cells than the 7 already set, so
+    "leave it None" is not a remedy there either."""
+    report, _ = _notch_like_board(14 + 20, 7)
+    text = _finding(report, "OWN feed plane")
+    assert "Set n_probe_offset >= 10;" in text, text
+    assert "leave it None for the safe default" not in text, text

@@ -44,6 +44,9 @@ import json
 
 import numpy as np
 
+from rfx._grid_metric import (
+    NODE_TOUCH_REL, cells_crossed, distinct_cell_sizes,
+)
 from rfx.core.jax_utils import is_tracer
 
 
@@ -634,17 +637,36 @@ def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
     return float(a[0] if side == "lo" else a[-1])
 
 
+def profile_node_at(scalar_dx: float, profile, coord_m: float) -> float:
+    """The node the grid puts ``coord_m`` on: the nearest one, the rule
+    ``index_of`` and ``position_to_index`` both apply.
+
+    A port, a source or a probe declared at ``coord_m`` is stamped on this
+    node, so a check about the cells that object uses starts here, not at
+    the declared coordinate. Without a profile the node is
+    ``round(coord / dx) * dx``, the uniform grid's own lookup.
+    """
+    a = (None if profile is None or is_tracer(profile)
+         else np.asarray(profile, dtype=float))
+    if a is None or a.size == 0:
+        if not scalar_dx:
+            return float(coord_m)
+        return float(round(float(coord_m) / float(scalar_dx)) * float(scalar_dx))
+    edges = np.concatenate([[0.0], np.cumsum(a)])
+    return float(edges[int(np.argmin(np.abs(edges - float(coord_m))))])
+
+
 def profile_cell_at(scalar_dx: float, profile, coord_m: float,
                     *, toward: str = "hi") -> float:
-    """The cell that CONTAINS ``coord_m``, measured from the first interior
-    node: the grid's ``cells(axis)[index_of(axis, coord)]``.
+    """The cell beside the node the grid puts ``coord_m`` on: the grid's
+    ``cells(axis)[index_of(axis, coord)]`` for ``toward="hi"``, the cell
+    below that node for ``toward="lo"``.
 
-    A coordinate that lands exactly ON a node belongs to two cells, and which
-    one a caller means depends on which way it is looking. ``toward="hi"``
-    takes the cell above the node, ``toward="lo"`` the cell below. A port
-    launching backwards along the axis measures the cells its probes occupy,
-    which are the ones below its feed plane, so it asks for ``"lo"``. Away
-    from a node the two agree.
+    A port launching forwards occupies the cells above its feed node and one
+    launching backwards the cells below, so the caller names the side its
+    probes are on. The node is the NEAREST one (:func:`profile_node_at`),
+    which is where the grid stamps the port: a feed declared a few 1e-18 m
+    below an interface node is on that node, not in the cell under it.
 
     Coordinates outside the profile clamp to the end cell, because a caller
     asking about a position beyond the declared span is asking about the
@@ -658,8 +680,8 @@ def profile_cell_at(scalar_dx: float, profile, coord_m: float,
     if a.size == 0:
         return float(scalar_dx)
     edges = np.concatenate([[0.0], np.cumsum(a)])
-    side = "left" if toward == "lo" else "right"
-    idx = int(np.searchsorted(edges, float(coord_m), side=side)) - 1
+    node = int(np.argmin(np.abs(edges - float(coord_m))))
+    idx = node if toward == "hi" else node - 1
     return float(a[max(0, min(idx, a.size - 1))])
 
 
@@ -672,10 +694,16 @@ def profile_span_is_uniform(scalar_dx: float, profile,
     count depends on where you start. Callers refuse rather than answer there.
 
     ``length_m`` is signed: a negative length inspects the cells BELOW
-    ``start_m``, which is where a backward-launching port's probes sit. A span
-    that ends exactly on a node stops at the cell below that node -- including
-    the one above it made a span lying wholly inside one zone look mixed the
-    moment it touched the zone's far edge.
+    ``start_m``, which is where a backward-launching port's probes sit.
+
+    The span crosses the cells it overlaps by more than the node-touch
+    tolerance, and cells are one size when they agree to the same relative
+    tolerance, both the S-parameter reference-span check's
+    (``rfx._grid_metric.cells_crossed`` / ``distinct_cell_sizes``). A span
+    that starts or ends on a node therefore stops there -- counting the cell
+    beyond it made a span lying wholly inside one zone look mixed the moment
+    it touched the zone's edge -- and a runway built as ``np.diff`` of node
+    coordinates, whose equal cells differ in the 14th digit, is one zone.
 
     A span lying entirely beyond the declared profile gets ``False``. Those
     cells are the absorber pad's, which this function was not given, and a
@@ -689,13 +717,8 @@ def profile_span_is_uniform(scalar_dx: float, profile,
         return True
     lo = min(float(start_m), float(start_m) + float(length_m))
     hi = max(float(start_m), float(start_m) + float(length_m))
-    edges = np.concatenate([[0.0], np.cumsum(a)])
-    if hi <= 0.0 or lo >= float(edges[-1]):
+    crossed = cells_crossed(a, lo, hi)
+    tol = NODE_TOUCH_REL * float(np.min(a))
+    if crossed.size == 0 and (hi <= tol or lo >= float(np.sum(a)) - tol):
         return False
-    i0 = max(0, int(np.searchsorted(edges, lo, side="right")) - 1)
-    # the last cell the span touches: a span ending ON a node ends at the
-    # cell below it, so the upper endpoint takes the left-hand side
-    i1 = int(np.searchsorted(edges, hi, side="left")) - 1
-    i1 = min(max(i1, i0), a.size - 1)
-    seg = a[i0:i1 + 1]
-    return bool(seg.size == 0 or np.all(seg == seg[0]))
+    return len(distinct_cell_sizes(crossed)) <= 1

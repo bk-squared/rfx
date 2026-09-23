@@ -505,6 +505,7 @@ class _PreflightMixin:
                 # the physical standoff (G17).
                 from rfx.preflight._common import (
                     profile_cell_at as _profile_cell_at,
+                    profile_node_at as _profile_node_at,
                     profile_span_is_uniform as _profile_span_is_uniform,
                 )
                 from rfx.sources.msl_port import (
@@ -518,10 +519,12 @@ class _PreflightMixin:
                 # propagation axis: ``position[0]`` for a +x/-x port,
                 # ``position[1]`` for +y/-y.
                 _feed_coord = float(pe.position[_ax_i])
-                # A feed plane exactly on a node belongs to the cell on the
-                # side the probes are, which is the launch side.
+                # The port is stamped on the node nearest that coordinate,
+                # and its probes occupy the cells on the launch side of it.
+                _feed_node = _profile_node_at(
+                    self._dx or 0.0, _runway_profile, _feed_coord)
                 _runway_dx = _profile_cell_at(
-                    self._dx or 0.0, _runway_profile, _feed_coord,
+                    self._dx or 0.0, _runway_profile, _feed_node,
                     toward="hi" if _prop_sign > 0 else "lo")
                 _nf_cells = msl_source_near_field_standoff_cells(
                     float(pe.height), _runway_dx)
@@ -534,7 +537,7 @@ class _PreflightMixin:
                 _standoff_len = _nf_cells * _runway_dx * int(_prop_sign)
                 if not _profile_span_is_uniform(
                         self._dx or 0.0, _runway_profile,
-                        _feed_coord, _standoff_len):
+                        _feed_node, _standoff_len):
                     messages.append(
                         f"MSL port {pe.name!r}: the source-fringing standoff "
                         f"({abs(_standoff_len)*1e3:.3g} mm from the feed plane) "
@@ -545,13 +548,31 @@ class _PreflightMixin:
                     )
                 elif (self._dx and pe.n_probe_offset is not None
                         and int(pe.n_probe_offset) < _nf_cells):
+                    # the automatic offset counts 5·h_sub in the boundary
+                    # cell; where that falls short of this runway's count,
+                    # None is the advice that produced the short offset
+                    _auto = pe.name in getattr(self, "_msl_auto_offset_min", {})
+                    _none_clears = msl_source_near_field_standoff_cells(
+                        float(pe.height), float(self._dx)) >= _nf_cells
+                    _remedy = (
+                        f"set n_probe_offset >= {_nf_cells} explicitly; the "
+                        f"automatic choice counted 5·h_sub in the boundary "
+                        f"cell, and leaving it None chooses "
+                        f"{pe.n_probe_offset} again."
+                        if _auto else
+                        "increase n_probe_offset or leave it None for the "
+                        "safe default."
+                        if _none_clears else
+                        f"set n_probe_offset >= {_nf_cells}; leaving it None "
+                        f"counts 5·h_sub in the boundary cell and falls short "
+                        f"on this runway."
+                    )
                     messages.append(
                         f"MSL port {pe.name!r}: n_probe_offset="
                         f"{pe.n_probe_offset} sits within the source fringing "
                         f"transient ({_nf_cells} cells = max(3, round("
                         f"5·h_sub/dx))); probe 0 may corrupt the V·I-split S11 "
-                        f"of a high-Q resonant load (issue #80) — increase "
-                        f"n_probe_offset or leave it None for the safe default."
+                        f"of a high-Q resonant load (issue #80) — " + _remedy
                     )
         if self._waveguide_ports:
             messages.append("waveguide ports use compute_waveguide_s_matrix()")

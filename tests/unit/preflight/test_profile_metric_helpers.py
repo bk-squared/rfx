@@ -21,6 +21,7 @@ from rfx.nonuniform import make_nonuniform_grid
 from rfx.preflight._common import (
     profile_boundary_cell,
     profile_cell_at,
+    profile_node_at,
     profile_span_is_uniform,
 )
 
@@ -83,19 +84,28 @@ def test_the_two_faces_differ_where_the_profile_says_so():
 
 
 def test_the_cell_at_a_coordinate_matches_the_grids_cells():
-    """The cell CONTAINING a coordinate, which is not the cell at the nearest
-    node: halfway between two nodes those are two different cells. The
-    coordinate probed is each interior cell's own midpoint, and the grid-side
-    answer is that cell's entry in the padded array."""
+    """The cell beside the node the grid puts a coordinate on:
+    ``cells[index_of(coord)]``, and the one below it for ``toward="lo"``.
+
+    Probed at 0.3 and 0.7 of every interior cell, so the nearest node is
+    sometimes the cell's lower node and sometimes its upper one. The
+    grid-side answer comes from the grid's own ``index_of``."""
     profile = _band_profile()
     grid = make_nonuniform_grid(
         (_A, _B), np.full(10, 1.016e-3), float(profile[0]),
         cpml_layers=8, dx_profile=profile, pec_faces=_PEC)
     edges = np.concatenate([[0.0], np.cumsum(profile)])
-    for k in range(profile.size):
-        midpoint = float(0.5 * (edges[k] + edges[k + 1]))
-        assert profile_cell_at(grid.dx, profile, midpoint) == \
-            float(grid.cells("x")[grid.pad_x_lo + k]), k
+    cells = grid.cells("x")
+    for k in range(1, profile.size - 1):
+        for frac in (0.3, 0.7):
+            x = float(edges[k] + frac * profile[k])
+            i = grid.index_of("x", x)
+            assert profile_node_at(grid.dx, profile, x) == \
+                pytest.approx(grid.node_of("x", i), abs=1e-15), (k, frac)
+            assert profile_cell_at(grid.dx, profile, x) == \
+                float(cells[i]), (k, frac)
+            assert profile_cell_at(grid.dx, profile, x, toward="lo") == \
+                float(cells[i - 1]), (k, frac)
 
 
 def test_a_span_inside_one_zone_is_uniform_and_one_crossing_a_ramp_is_not():
@@ -158,15 +168,44 @@ def test_a_span_that_left_the_profile_is_not_called_uniform():
 
 
 def test_the_cell_at_a_node_depends_on_which_way_you_look():
-    """A coordinate on a node belongs to two cells; ``toward`` picks one."""
+    """A node has a cell on each side; ``toward`` picks one. Every coordinate
+    whose nearest node is this one gets the same two answers, including a
+    coordinate a few 1e-18 m off it, which is where a literal lands."""
     prof = _two_zone()
     edges = np.concatenate([[0.0], np.cumsum(prof)])
     node = float(edges[20])
-    assert profile_cell_at(_DX_COARSE, prof, node, toward="lo") == pytest.approx(_DX_FINE)
-    assert profile_cell_at(_DX_COARSE, prof, node, toward="hi") == pytest.approx(_DX_COARSE)
-    # away from a node the two agree
-    mid = node - 0.5 * _DX_FINE
-    assert profile_cell_at(_DX_COARSE, prof, mid, toward="lo") == \
-        profile_cell_at(_DX_COARSE, prof, mid, toward="hi")
+    for x in (node, node - 1e-18, node + 1e-18,
+              node - 0.3 * _DX_FINE, node + 0.3 * _DX_COARSE):
+        assert profile_cell_at(_DX_COARSE, prof, x, toward="lo") == \
+            pytest.approx(_DX_FINE)
+        assert profile_cell_at(_DX_COARSE, prof, x, toward="hi") == \
+            pytest.approx(_DX_COARSE)
     with pytest.raises(ValueError):
         profile_cell_at(_DX_COARSE, prof, node, toward="up")
+
+
+def test_a_span_that_touches_a_node_by_float_noise_does_not_cross_it():
+    """A span closing 1e-17 m past a zone's last node, which is how far the
+    grid's coordinate spine and a mesher's cumulative sum disagree, stays in
+    the zone; one reaching a real fraction of a cell past it does not."""
+    prof = _two_zone()
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    start, end = float(edges[10]), float(edges[20])
+    assert profile_span_is_uniform(_DX_COARSE, prof, start,
+                                   end - start + 1e-17) is True
+    assert profile_span_is_uniform(_DX_COARSE, prof, end,
+                                   -(end - start) - 1e-17) is True
+    assert profile_span_is_uniform(_DX_COARSE, prof, start,
+                                   end - start + 0.01 * _DX_COARSE) is False
+
+
+def test_cells_equal_to_the_fourteenth_digit_are_one_size():
+    """``np.diff`` of evenly spaced node coordinates gives cells that differ
+    in the last digits; they are one zone. A real step is not."""
+    nodes = np.linspace(0.0, 90 * _DX_FINE, 91)
+    prof = np.diff(nodes)
+    assert len(set(prof.tolist())) > 1
+    assert profile_span_is_uniform(_DX_COARSE, prof, 0.0, 80 * _DX_FINE)
+    stepped = np.concatenate([prof, [_DX_FINE * (1 + 1e-6)]])
+    assert not profile_span_is_uniform(_DX_COARSE, stepped, 0.0,
+                                       float(np.sum(stepped)))
