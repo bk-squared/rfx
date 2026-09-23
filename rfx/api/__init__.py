@@ -2685,6 +2685,7 @@ class Simulation(
             raise ValueError("Manual periodic-axis overrides are not supported together with TFSF")
         if self._waveguide_ports:
             raise ValueError("Manual periodic-axis overrides are not supported together with waveguide ports")
+        previous_periodic_axes = self._periodic_axes
         self._periodic_axes = normalized
         # Rebuild the canonical BoundarySpec so downstream code that
         # consults it (T7-C/D/E) sees the updated periodic axes.
@@ -2693,7 +2694,13 @@ class Simulation(
         from rfx.boundaries.model import resolve_kinds
         self._boundary_model = resolve_kinds(
             self._boundary_spec, mode=self._mode,
-            features=replace(self._boundary_model.declaration, origin="declared"),
+            features=replace(
+                self._boundary_model.declaration,
+                face_origins=tuple(
+                    (face.name, "declared" if (face.name[0] in normalized) !=
+                     (face.name[0] in previous_periodic_axes) else face.origin)
+                    for face in self._boundary_model.faces),
+            ),
         )
         return self
 

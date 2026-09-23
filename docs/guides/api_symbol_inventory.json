@@ -2583,6 +2583,9 @@
       "result",
       "kwargs"
     ],
+    "boundary_model": [
+      "rcs"
+    ],
     "compute_coax_msl_transition": [
       "junction_x",
       "eps_r_sub",

@@ -58,6 +58,10 @@ class Features:
     bloch_axes: tuple[str, ...] = ()
     domain: tuple[float, float, float] | None = None
 
+    def __post_init__(self):
+        if self.domain is not None:
+            object.__setattr__(self, "domain", tuple(self.domain))
+
 
 @dataclass(frozen=True)
 class Face:
@@ -111,20 +115,35 @@ class Realization:
     periods: tuple[tuple[str, float], ...]
 
 
+def _read_absorber_parameters():
+    cpml_defaults = signature(cpml._cpml_profile).parameters
+    cpml_parameters = {name: cpml_defaults[name].default
+                       for name in ("order", "R_asymptotic", "kappa_max")}
+    # Alpha is set in the profile body, not in its signature.
+    with jax.ensure_compile_time_eval():
+        cpml_parameters["alpha_max"] = float(cpml._cpml_profile(2, 0.0, 1.0).alpha.max())
+    upml_defaults = signature(upml._sigma_profile_1d).parameters
+    return {
+        "cpml": tuple(sorted(cpml_parameters.items())),
+        "upml": tuple((name, upml_defaults[name].default) for name in ("order", "R_asymptotic")),
+    }
+
+
+_ABSORBER_PARAMETERS = _read_absorber_parameters()
+
+
 def resolve_kinds(spec, *, mode: str, features: Features) -> BoundaryModel:
     """Read the declaration and collect requirements without rewriting faces.
 
     The z axis of a 2-D mode is INVARIANT. Its stored face kind is the
     equivalent PEC (TMz) or PMC (TEz); conflicting explicit faces are recorded.
     """
-    if mode not in ("3d", "2d_tmz", "2d_tez"):
-        raise ValueError(f"unknown mode {mode!r}")
     if features.origin not in ("declared", "default", "feature"):
         raise ValueError(f"unknown origin {features.origin!r}")
     boundary = normalize_boundary(spec)
     faces, axes, departures = [], [], []
     for axis in "xyz":
-        invariant = axis == "z" and mode != "3d"
+        invariant = axis == "z" and mode in ("2d_tmz", "2d_tez")
         declaration = getattr(boundary, axis)
         paired = declaration.lo == "periodic" and not invariant
         axes.append(Axis(axis, invariant,
@@ -148,17 +167,7 @@ def resolve_kinds(spec, *, mode: str, features: Features) -> BoundaryModel:
     absorber = boundary.absorber_type if any(f.kind == Kind.ABSORBER for f in faces) else None
     metadata = replace(features, layers=features.layers if absorber else 0, face_origins=(),
                        explicit_faces=features.explicit_faces if mode != "3d" else True)
-    parameters = {}
-    if absorber == "cpml":
-        defaults = signature(cpml._cpml_profile).parameters
-        parameters = {name: defaults[name].default
-                      for name in ("order", "R_asymptotic", "kappa_max")}
-        # Alpha is set in the profile body, not in its signature.
-        with jax.ensure_compile_time_eval():
-            parameters["alpha_max"] = float(cpml._cpml_profile(2, 0.0, 1.0).alpha.max())
-    elif absorber == "upml":
-        defaults = signature(upml._sigma_profile_1d).parameters
-        parameters = {name: defaults[name].default for name in ("order", "R_asymptotic")}
+    parameters = dict(_ABSORBER_PARAMETERS.get(absorber, ()))
     if absorber:
         parameters.update(features.absorber_parameters)
     return BoundaryModel(tuple(faces), tuple(axes), absorber,

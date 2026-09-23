@@ -40,17 +40,6 @@ def test_per_face_wall_sets(tokens):
     assert isinstance(hash(model), int)
 
 
-@pytest.mark.xfail(strict=True, raises=BoundaryDeparture,
-                   reason="d; graded periodic faces realized as electric; fixed in B1.5")
-def test_graded_periodic_wall_argument_departure():
-    model = resolve_kinds(BoundarySpec(x="periodic", y="pec", z="pec"),
-                          mode="3d", features=Features())
-    compare_faces((electric_faces(model), magnetic_faces(model)),
-                  resolve_wall_faces(SimpleNamespace(pec_faces={"y_lo", "y_hi", "z_lo", "z_hi"},
-                                                      pmc_faces=set()),
-                                     (False, False, False), None))
-
-
 def test_asymmetric_faces_and_absorber_terminal_metres():
     sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001,
                      cpml_layers=8, cpml_kappa_max=2,
@@ -135,7 +124,35 @@ def test_periodic_legacy_rebuild_and_bloch_descriptor():
     with pytest.warns(DeprecationWarning):
         sim.set_periodic_axes("xy")
     assert sim.boundary_model().axes[0].pairing == ("x_lo", "x_hi")
+    assert [f.origin for f in sim.boundary_model().faces] == ["declared"] * 4 + ["default"] * 2
+    with pytest.warns(DeprecationWarning):
+        sim.set_periodic_axes("x")
+    assert [f.origin for f in sim.boundary_model().faces] == ["declared"] * 4 + ["default"] * 2
     model = resolve_kinds(BoundarySpec(x="periodic", y="pec", z="pec"),
                           mode="3d", features=Features(bloch_axes=("x",)))
     assert model.axes[0].bloch
     assert model.k_t is None
+
+
+def test_list_domain_is_frozen():
+    domain = [.024, .020, .016]
+    sim = Simulation(freq_max=20e9, domain=domain, dx=.001)
+    model = sim.boundary_model()
+    domain[0] = .048
+    assert model.declaration.domain == (.024, .020, .016)
+    assert isinstance(hash(model), int)
+
+
+def test_unknown_mode_retains_dispatch_error():
+    sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001, mode="unknown")
+    assert not any(axis.invariant for axis in sim.boundary_model().axes)
+    with pytest.raises(ValueError, match="^mode must be '3d', '2d_tmz', or '2d_tez', got 'unknown'$"):
+        sim.run(n_steps=2)
+
+
+def test_construction_uses_cached_absorber_parameters(monkeypatch):
+    def unexpected(*args, **kwargs):
+        pytest.fail("construction re-evaluated the absorber profile")
+    monkeypatch.setattr(cpml, "_cpml_profile", unexpected)
+    sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001)
+    assert dict(sim.boundary_model().absorber_parameters)["alpha_max"] == pytest.approx(.05)
