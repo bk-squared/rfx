@@ -188,8 +188,10 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
         # Move only the clipped inputs. Coefficients and temporary ADE zeros
         # are then built on their destination, including on remote-process
         # meshes where only this process's addressable devices are visited.
+        # The lumped-stamp records (#1210) default to None: carry them as None.
         local_materials = MaterialArrays(*(
-            jax.device_put(arr[lo:hi], device) for arr in materials))
+            None if arr is None else jax.device_put(arr[lo:hi], device)
+            for arr in materials))
         for spec, init, slabs in zip(
                 specs, (init_debye, init_lorentz), coefficient_slabs):
             if spec is None:
