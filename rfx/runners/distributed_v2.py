@@ -504,6 +504,18 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             f"{single_device_hint}."
         )
 
+    kerr = sorted(name for name, material in (getattr(sim, "_materials", None) or {}).items()
+                  if getattr(material, "chi3", 0.0) != 0.0)
+    if kerr:
+        raise NotImplementedError(
+            f"Kerr chi3 (nonlinear) material(s) {', '.join(repr(k) for k in kerr)}: "
+            f"not supported on the {lane} path; the lane drops chi3 and would run "
+            "the material as linear, with no warning "
+            "(rfx.runners.distributed_v2.run_distributed / "
+            "rfx.runners.distributed.run_distributed material assembly). "
+            f"Remove chi3, or {single_device_hint}."
+        )
+
     monitors = []
     if getattr(sim, "_flux_monitors", None):
         monitors.append("add_flux_monitor() (flux monitors)")
@@ -671,10 +683,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         pec_shapes = None
     else:
         grid = sim._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_ = (
+        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
             sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
                                     pec_wires=_d_pec_wires)
         )
+        # The rest (Kerr chi3 among it, refused above) is unused on this lane;
+        # drop it now so no whole-domain array stays alive through the loop.
+        del _assembly_rest
     if _d_pec_sheets or _d_pec_wires:
         _d_declared = []
         if _d_pec_sheets:

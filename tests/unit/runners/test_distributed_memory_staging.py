@@ -93,20 +93,21 @@ def _measure(case, multi_process):
     init_extents = {kind: [] for kind in _dispersion_kinds(case)}
     ghost_checks = []
 
-    def record_init(kind, init):
-        def wrapped(poles, materials, *args, **kwargs):
-            init_extents.setdefault(kind, []).append(materials.eps_r.shape[0])
-            return init(poles, materials, *args, **kwargs)
-        return wrapped
+    # Record every call of the real init functions by their code objects, so
+    # any call path (module attribute, direct import, a helper elsewhere) is
+    # seen. Active during setup only: traced_scan switches it off.
+    from rfx.materials.debye import init_debye as _init_debye
+    from rfx.materials.lorentz import init_lorentz as _init_lorentz
+    init_codes = {_init_debye.__code__: "debye", _init_lorentz.__code__: "lorentz"}
 
-    # Cover the helper's imports and the old whole-domain _init_dispersion
-    # references, so reinstating that path cannot bypass the setup gate.
-    import rfx.api._compile as compile_api
-    for kind in ("debye", "lorentz"):
-        name = "init_" + kind
-        wrapped = record_init(kind, getattr(common, name))
-        setattr(common, name, wrapped)
-        setattr(compile_api, name, wrapped)
+    def profile_init(frame, event, arg):
+        if event == "call" and frame.f_code in init_codes:
+            materials = frame.f_locals.get("materials")
+            if materials is not None:
+                init_extents.setdefault(init_codes[frame.f_code], []).append(
+                    int(materials.eps_r.shape[0]))
+
+    sys.setprofile(profile_init)
 
     def traced_jit(f, *args, **kwargs):
         entry = jax.jit(f, *args, **kwargs)
@@ -152,6 +153,7 @@ def _measure(case, multi_process):
         return run
 
     def traced_scan(body, carry, *args, **kwargs):
+        sys.setprofile(None)  # setup is over; keep the scan trace fast
         captured = []
         seen = set()
 
