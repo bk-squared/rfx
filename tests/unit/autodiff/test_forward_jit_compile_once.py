@@ -271,3 +271,22 @@ def test_jitted_step_equals_the_plain_call_within_single_digit_ulp(lane):
     assert du_v <= MAX_ULP_AT_PEAK and du_g <= MAX_ULP_AT_PEAK, (
         f"{lane} board: jitted value {du_v:.1f} and gradient {du_g:.1f} ULP "
         f"at peak from the plain call (allowed {MAX_ULP_AT_PEAK})")
+
+
+def test_a_trace_time_context_that_cannot_make_constants_does_not_recurse(
+        monkeypatch):
+    """If the trace-time context leaves the set-up staged, fall through.
+
+    Inside an eager ``jax.shard_map`` the staging probe still reads True
+    within ``jax.ensure_compile_time_eval()``. ``forward()`` must then run its
+    ordinary body — returning, or raising the error it raised before #1225 —
+    never re-call itself until RecursionError. The probe is forced True here,
+    which reproduces that state on a plain call.
+    """
+    import rfx.api._execute as ex
+
+    monkeypatch.setattr(ex, "_staged_by_an_outer_trace", lambda: True)
+    sim = _board()
+    r = sim.forward(design_box=BOX, design_eps_override=_box_eps(sim),
+                    n_steps=5, checkpoint=False, skip_preflight=True)
+    assert np.all(np.isfinite(np.asarray(r.s_params)))

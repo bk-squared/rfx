@@ -3643,16 +3643,23 @@ class _ExecuteMixin:
             # #1225: evaluate the set-up now instead of recording it. Only
             # the operations that read a traced argument are recorded;
             # everything built from the model alone is computed at trace
-            # time, so the wire port's host reads of the realized PEC edge
-            # mask and of the cell sizes see concrete arrays. Inside the context the staging
-            # probe reads False, so the call below takes the plain path.
-            # Forwarding ``locals()`` — the parameters, and nothing else
-            # yet — keeps a parameter added later from being dropped here.
+            # time, so the port's host reads (the realized PEC edge mask,
+            # the cell sizes) see concrete arrays. Forwarding ``locals()``
+            # — the parameters, and nothing else yet — keeps a parameter
+            # added later from being dropped here.
+            #
+            # The re-call happens only if the context really made constants
+            # concrete: inside an eager ``jax.shard_map`` the probe still
+            # reads True, and re-calling would recurse without end. Then
+            # the call falls through to the plain body below, outside the
+            # context, exactly as before #1225.
             _call = dict(locals())
             del _call["self"]
             _unknown = _call.pop("_removed_kwargs")
             with jax.ensure_compile_time_eval():
-                return self.forward(**_call, **_unknown)
+                if not _staged_by_an_outer_trace():
+                    return self.forward(**_call, **_unknown)
+            del _call, _unknown
 
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
