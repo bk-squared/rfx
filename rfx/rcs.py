@@ -31,7 +31,7 @@ from rfx.core.yee import MaterialArrays
 from rfx.farfield import (
     FarFieldResult, NTFFBox, compute_far_field, compute_far_field_jax,
 )
-from rfx.sources.tfsf import init_tfsf
+from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
 from rfx.simulation import run
 
 
@@ -84,8 +84,11 @@ def _incident_spectrum_amplitude(
         s(t) = -2*arg * exp(-arg^2),  arg = (t - t0) / tau
     where tau = 1/(f0 * bandwidth * pi), t0 = 3*tau.
 
-    We compute the DFT of this waveform at the requested frequencies
-    to get the incident field spectral amplitude for RCS normalization.
+    We compute the DFT of this waveform at the requested frequencies.
+    This is the WAVEFORM, not the incident field: the auxiliary line adds it
+    as a soft source and launches 1/(2 S cos(k~dx/2)) of it (issue #820), so
+    it is not an RCS normalization -- use
+    ``rfx.sources.tfsf.measure_normal_incident_spectrum``.
     """
     tau = 1.0 / (f0 * bandwidth * np.pi)
     t0 = 3.0 * tau
@@ -136,8 +139,12 @@ def compute_rcs_jax(
         Observation directions. Backscatter for +x incidence is ``(π/2, π)``.
     e_inc_amplitude : (n_freqs,) complex array
         Incident plane-wave spectral amplitude for normalization — source-only, hence a
-        CONSTANT for the gradient. Use :func:`_incident_spectrum_amplitude`
-        (``f0, bandwidth, freqs, dt, n_steps``) with the same TFSF waveform.
+        CONSTANT for the gradient. At normal incidence use
+        :func:`rfx.sources.tfsf.measure_normal_incident_spectrum`
+        (``cfg, state, n_steps, freqs, dt``) on the same ``init_tfsf`` config the run
+        uses — the incident the grid carries, as ``compute_rcs`` does. The source
+        waveform's own DFT (``_incident_spectrum_amplitude``) is about 1.1 dB larger
+        than that incident and makes σ low by the same 1.1 dB (issue #820).
 
     Returns
     -------
@@ -563,8 +570,16 @@ def compute_rcs(
             tfsf_cfg, tfsf_st, n_steps, freqs_arr, dx,
         )
     else:
-        E_inc_spectrum = _incident_spectrum_amplitude(
-            f0, bandwidth, freqs_arr, dt, n_steps,
+        # Normal incidence: the 1-D auxiliary line ADDS the waveform at one
+        # node (a soft source), and the wave it launches across the TF/SF
+        # plane is 1/(2 S cos(k~dx/2)) of it -- -1.14 dB at 40 cells per
+        # wavelength and the uniform-grid Courant number. sigma goes as
+        # |E_scat/E_inc|^2 with E_scat following the launched wave, so
+        # dividing by the waveform's own DFT made every normal-incidence
+        # sigma low by that same 1.14 dB (issue #820). Replay
+        # the same auxiliary line and normalize by what it carries.
+        E_inc_spectrum = measure_normal_incident_spectrum(
+            tfsf_cfg, tfsf_st, n_steps, freqs_arr, dt,
         )
 
     # --- 6. Compute RCS ---
