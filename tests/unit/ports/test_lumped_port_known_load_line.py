@@ -102,9 +102,14 @@ def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
     assert len(messages) == 1
     msg = messages[0]
     assert "sits on the magnetic-wall plane y_lo" in msg
-    assert "coupled only within the plane" in msg
-    assert "a line lying in the plane carries its wave" in msg
-    assert "nothing launched there reaches the volume off the plane" in msg
+    assert "a sheet coupled only to itself" in msg
+    assert "a line drawn entirely in the plane (a one-cell-wide model) carries its wave" in msg
+    assert "nothing launched here reaches the volume off the plane" in msg
+    assert "including the half of a line that the plane cuts along its centre" in msg
+    assert (
+        "On the distributed lanes in a box with no absorbing face the plane is "
+        "shorted instead, and a source or line on it reads zero."
+    ) in msg
     assert "To radiate into the volume, place the source one cell (1mm) off the plane" in msg
     assert "no wave radiates" not in msg
     assert "silent zero field" not in msg

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import warnings
 
+import numpy as np
 import pytest
 
 from rfx import Simulation
@@ -203,14 +204,71 @@ def test_tangential_e_on_magnetic_plane_reports_coupling(face, position, compone
     msg = _issue(sim, "source_decoupled")
     assert f"at {position} m (component={component})" in msg
     assert f"sits on the magnetic-wall plane {face}" in msg
-    assert "present half-cell wall" in msg
-    assert "coupled only within the plane" in msg
-    assert "a line lying in the plane carries its wave" in msg
-    assert "nothing launched there reaches the volume off the plane" in msg
+    assert "The wall is solved half a cell inside this face" in msg
+    assert "E nodes on the plane form a sheet coupled only to itself" in msg
+    assert "a line drawn entirely in the plane (a one-cell-wide model) carries its wave" in msg
+    assert "nothing launched here reaches the volume off the plane" in msg
+    assert "including the half of a line that the plane cuts along its centre" in msg
+    assert (
+        "On the distributed lanes in a box with no absorbing face the plane is "
+        "shorted instead, and a source or line on it reads zero."
+    ) in msg
     assert "To radiate into the volume, place the source one cell (1mm) off the plane" in msg
     assert "no wave radiates" not in msg
     assert "silent zero field" not in msg
     assert "#1221" not in msg
+
+
+def test_adi_tangential_e_on_magnetic_plane_reports_electric_wall():
+    """ADI shorts a tangential E source on a face declared magnetic."""
+    position = (0.0, CY, CZ)
+    sim = _sim(BoundarySpec.uniform("pmc"), position, "ez", solver="adi")
+    assert _issue(sim, "source_decoupled") == (
+        f"Source/port at {position} m (component=ez) sits on the "
+        "magnetic-wall plane x_lo. solver='adi' solves this face as an electric "
+        "wall, not a magnetic one, so a tangential E source on it is shorted. "
+        "Place the source one cell (1mm) off the plane."
+    )
+
+
+def _graded_magnetic_face_sim(axis, side, on_plane):
+    profile = np.array([1e-3] * 6 + [0.25e-3] * 8)
+    if side == "lo":
+        profile = profile[::-1]
+    ax_i = "xyz".index(axis)
+    domain = [0.012, 0.012, 0.012]
+    domain[ax_i] = float(profile.sum())
+    boundaries = dict.fromkeys("xyz", "pec")
+    boundaries[axis] = Boundary(**{side: "pmc", "hi" if side == "lo" else "lo": "pec"})
+    position = [0.006, 0.006, 0.006]
+    position[ax_i] = 0.0 if side == "lo" else domain[ax_i]
+    if not on_plane:
+        position[ax_i] += 0.25e-3 if side == "lo" else -0.25e-3
+    sim = Simulation(
+        freq_max=20e9, domain=tuple(domain), dx=DX,
+        boundary=BoundarySpec(**boundaries), **{f"d{axis}_profile": profile},
+    )
+    sim.add_source(tuple(position), "ey" if axis == "x" else "ex",
+                   amplitude_kind="field")
+    return sim
+
+
+@pytest.mark.parametrize("axis", ["x", "y", "z"])
+@pytest.mark.parametrize("side", ["lo", "hi"])
+def test_source_one_fine_cell_inside_graded_magnetic_face_is_silent(axis, side):
+    """A source 0.25 mm inside a fine face is in the volume, not on the face."""
+    sim = _graded_magnetic_face_sim(axis, side, on_plane=False)
+    assert "source_decoupled" not in _codes(sim)
+
+
+@pytest.mark.parametrize("axis", ["x", "y", "z"])
+@pytest.mark.parametrize("side", ["lo", "hi"])
+def test_source_on_graded_magnetic_face_quotes_adjacent_cell(axis, side):
+    """The fine-face source remedy is 0.25 mm on every graded axis and side."""
+    sim = _graded_magnetic_face_sim(axis, side, on_plane=True)
+    msg = _issue(sim, "source_decoupled")
+    assert f"sits on the magnetic-wall plane {axis}_{side}" in msg
+    assert "one cell (250µm) off the plane" in msg
 
 
 def test_source_one_cell_inside_magnetic_plane_is_silent():
@@ -223,6 +281,10 @@ def test_normal_e_on_magnetic_plane_keeps_its_symmetry_advice():
     """Normal E retains its existing mirror-symmetry advisory."""
     sim = _sim(BoundarySpec.uniform("pmc"), (0.0, CY, CZ), "ex")
     msg = _issue(sim, "source_decoupled")
-    assert "sits on the PMC x_lo plane and drives the NORMAL E component" in msg
-    assert "PMC imposes odd symmetry on normal E" in msg
-    assert "tangential E source offset by one cell (1 mm) off the plane" in msg
+    assert f"at {(0.0, CY, CZ)} m (component=ex)" in msg
+    assert "sits on the magnetic-wall plane x_lo and drives the NORMAL E component" in msg
+    assert (
+        "PMC imposes odd symmetry on normal E (it must be zero at the plane), "
+        "so the source fights the mirror image."
+    ) in msg
+    assert "tangential E source offset by one cell (1mm) off the plane" in msg

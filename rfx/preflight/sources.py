@@ -178,18 +178,19 @@ def _validate_cfg_source_on_reflector_plane(
         set(self._pec_faces) | _spec_pec_faces | set(_pmc_faces_set)
     )
     if _all_reflector_faces:
-        _dx_axis = [float(dx), float(dx), float(dx)]
-        if (self._dz_profile is not None
-                and not is_tracer(self._dz_profile)):
-            _dx_axis[2] = float(self._dz_profile[0])
+        _profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
         for face in _all_reflector_faces:
             ax_name = face[0]
             side = face[2:]
             ax_i = "xyz".index(ax_name)
+            _profile = _profiles[ax_i]
+            _dx_face = float(dx)
+            if _profile is not None and not is_tracer(_profile):
+                _dx_face = float(_profile[0 if side == "lo" else -1])
             face_kind = "PMC" if face in _pmc_faces_set else "PEC"
             d_ext = self._domain[ax_i] if ax_i < len(self._domain) else self._domain[-1]
             plane_coord = 0.0 if side == "lo" else float(d_ext)
-            tol = 0.5 * _dx_axis[ax_i]
+            tol = 0.5 * _dx_face
             for pe in self._ports:
                 pos = pe.position
                 coord = pos[ax_i]
@@ -205,25 +206,41 @@ def _validate_cfg_source_on_reflector_plane(
                         # The present half-cell wall isolates this E-node sheet
                         # from the volume, not from propagation within the sheet.
                         # Revisit when #1221 puts the magnetic wall on its face.
-                        msg = (
-                            f"Source/port at {pos} m (component={pe.component}) "
-                            f"sits on the magnetic-wall plane {face}. With the "
-                            f"present half-cell wall, fields on that plane are "
-                            f"coupled only within the plane: a line lying in "
-                            f"the plane carries its wave, but nothing launched "
-                            f"there reaches the volume off the plane. To radiate "
-                            f"into the volume, place the source one cell "
-                            f"({_fmt_len(_dx_axis[ax_i])}) off the plane."
-                        )
+                        if self._solver == "adi":
+                            msg = (
+                                f"Source/port at {pos} m (component={pe.component}) "
+                                f"sits on the magnetic-wall plane {face}. "
+                                f"solver='adi' solves this face as an electric "
+                                f"wall, not a magnetic one, so a tangential E "
+                                f"source on it is shorted. Place the source "
+                                f"one cell ({_fmt_len(_dx_face)}) off the plane."
+                            )
+                        else:
+                            msg = (
+                                f"Source/port at {pos} m (component={pe.component}) "
+                                f"sits on the magnetic-wall plane {face}. The wall "
+                                f"is solved half a cell inside this face, so the "
+                                f"E nodes on the plane form a sheet coupled only "
+                                f"to itself: a line drawn entirely in the plane "
+                                f"(a one-cell-wide model) carries its wave, but "
+                                f"nothing launched here reaches the volume off "
+                                f"the plane, including the half of a line that "
+                                f"the plane cuts along its centre. On the "
+                                f"distributed lanes in a box with no absorbing "
+                                f"face the plane is shorted instead, and a source "
+                                f"or line on it reads zero. To radiate into the "
+                                f"volume, place the source one cell "
+                                f"({_fmt_len(_dx_face)}) off the plane."
+                            )
                     elif comp_field == "e" and not is_tangential:
                         msg = (
-                            f"Source/port at {pos} (component={pe.component}) "
-                            f"sits on the PMC {face} plane and drives the "
+                            f"Source/port at {pos} m (component={pe.component}) "
+                            f"sits on the magnetic-wall plane {face} and drives the "
                             f"NORMAL E component. PMC imposes odd symmetry "
                             f"on normal E (it must be zero at the plane), "
                             f"so the source fights the mirror image. Use a "
                             f"tangential E source offset by one cell "
-                            f"({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
+                            f"({_fmt_len(_dx_face)}) off the plane."
                         )
                     elif comp_field == "h" and is_tangential:
                         msg = (
@@ -252,7 +269,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"force to zero, which makes the result "
                             f"numerically inconsistent rather than silent. "
                             f"Use a normal E source at this face, or offset "
-                            f"by one cell ({_dx_axis[ax_i]*1e3:.3g} mm) off "
+                            f"by one cell ({_dx_face*1e3:.3g} mm) off "
                             f"the plane."
                         )
                     elif comp_field == "h" and not is_tangential:
@@ -262,7 +279,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"NORMAL H component. PEC imposes odd symmetry "
                             f"on normal H (it must be zero at the plane). "
                             f"Use a tangential H source or offset by one "
-                            f"cell ({_dx_axis[ax_i]*1e3:.3g} mm) off the plane."
+                            f"cell ({_dx_face*1e3:.3g} mm) off the plane."
                         )
                     else:
                         msg = None      # tangential H or normal E on PEC is legit
