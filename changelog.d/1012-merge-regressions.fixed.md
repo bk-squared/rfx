@@ -1,1 +1,0 @@
-Fix traced magnetic CPML cell spacings in nonuniform distributed forward calls after merging the per-cell argument path. Reuse the uniform distributed boundary cell spacing when constructing the electric and magnetic profiles.
