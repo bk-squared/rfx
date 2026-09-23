@@ -81,6 +81,7 @@ def _adam_multistart(
     eps_adam: float = 1e-8,
     verbose: bool = False,
     it_count: list | None = None,
+    jit: bool = False,
 ):
     """Best-of multi-start Adam with optional best-iterate + step-clamp.
 
@@ -122,6 +123,9 @@ def _adam_multistart(
     it_count : list([int]) or None
         Optional mutable one-element counter threaded from ``optimize()``
         so the ``forward()`` first-call banner fires exactly once.
+    jit : bool
+        Wrap ``jax.value_and_grad(cost_fn)`` in ``jax.jit`` once per call
+        (#1225); see :func:`optimize`.  Default False = the legacy eager loop.
 
     Returns
     -------
@@ -142,6 +146,11 @@ def _adam_multistart(
         raise ValueError(f"optimize: step_clamp must be > 0, got {step_clamp}")
 
     grad_fn = jax.value_and_grad(cost_fn)
+    if jit:
+        # #1225: compiled once per call, reused by every iteration and every
+        # start. Un-jitted, each call of ``grad_fn`` compiles the whole FDTD
+        # solve again. ``cost_fn`` is then traced, not run.
+        grad_fn = jax.jit(grad_fn)
 
     def _run_one(init_lat):
         m = jnp.zeros_like(init_lat)
@@ -261,6 +270,7 @@ def optimize(
     best_iterate: bool = False,
     step_clamp: float | None = None,
     seed: int = 0,
+    jit: bool = False,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -340,6 +350,29 @@ def optimize(
     seed : int
         PRNG seed for the extra ``n_starts`` restart inits (deterministic /
         reproducible).  Unused when ``n_starts=1``.
+    jit : bool
+        Compile the loss and its gradient once per ``optimize()`` call and
+        reuse the program in every iteration and every start (#1225).
+        Default False runs ``jax.value_and_grad`` eagerly, which compiles
+        the whole FDTD solve again on every iteration — on a board-sized
+        model most of the iteration's wall time.
+
+        With ``jit=True`` the objective is traced, not run, so it must not
+        read a traced value on the host (``float(...)``, ``np.asarray(...)``,
+        a Python ``if`` on an array). Known case: a model with an MSL port —
+        its port set-up reads the realized PEC mask on the host
+        (``rfx/sources/msl_port.py``) and the MSL wave-decomposition
+        extractor converts a grid spacing with ``float()``
+        (``rfx/sparams/_common.py:143``); under ``jit=True`` the call stops
+        with ``TracerArrayConversionError`` or ``ConcretizationTypeError``.
+        Use the default there.
+
+        The jitted loss and gradient can differ from the eager ones in the
+        last float32 bits, because XLA compiles the whole step as one
+        program. Measured on CPU: a few ULP in the value (up to ~150 on a
+        waveguide-port model) and 1e-7 to 5e-5 of the peak gradient. The
+        optimisation path can therefore drift from an eager run's at that
+        level.
 
     Returns
     -------
@@ -481,6 +514,7 @@ def optimize(
         step_clamp=step_clamp,
         verbose=verbose,
         it_count=it_count,
+        jit=jit,
     )
 
     eps_design = _latent_to_eps(best_latent, eps_min, eps_max)
