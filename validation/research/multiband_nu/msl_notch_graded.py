@@ -139,6 +139,7 @@ __all__ = [
     "reference_notch_hz", "fit_order_on_successive_differences",
     "limit_at_order", "w5_fz_ladder", "w6_attribution", "w7_offset_sign",
     "w8_is_z_enough", "fz_verdicts", "fz_markdown_tables", "load_fz_arms",
+    "commits_absent",
 ]
 
 # --------------------------------------------------------------- mesh constants
@@ -1570,6 +1571,21 @@ def solver_tree_equal(shas) -> bool | None:
     return True
 
 
+def commits_absent(shas) -> list[str]:
+    """The named commits git cannot find in this checkout.
+
+    A shallow clone carries only its tip, and a squash merge leaves a branch's
+    commits off main altogether, so the commits the arms were solved at need
+    not be in the checkout that reads the record.  :func:`solver_tree_equal`
+    then answers ``None``; this names the commits it could not see.
+    """
+    out: list[str] = []
+    for sha in dict.fromkeys(str(v) for v in shas):
+        if _git(["cat-file", "-e", f"{sha}^{{commit}}"]) is None:
+            out.append(sha)
+    return out
+
+
 def w5_fz_ladder(arms: dict, ladder: tuple[str, ...] = FZ_LADDER) -> dict:
     """W5: the four notches at one in-plane cell, against their substrate cell.
 
@@ -2650,10 +2666,15 @@ def fz_markdown_tables(arms: dict, build_only: list | None = None) -> str:
         r = v[key]
         w(f"**W8 -- is z enough? ({title})**  Where the notch goes as the "
           "substrate cell goes to")
+        # When git cannot answer (a shallow clone, or history squashed away)
+        # the ladder is not ONE build as far as this checkout can tell, and it
+        # is not two different ones either.
+        sims = ("One simulator" if r["one_solver_build"]
+                else "Simulators that could not be compared here"
+                if r["solver_tree_equal"] is None
+                else "Two different simulators")
         w(f"zero at F = {r['fine_cell_m'] * 1e6:.4f} um, against the "
-          f"reference.  "
-          f"{'One simulator' if r['one_solver_build'] else 'Two different simulators'}"
-          f" under the four rungs.")
+          f"reference.  {sims} under the four rungs.")
         w("")
         w("| arm | substrate cells | FZ (um) | notch (GHz) | from the "
           "reference (%) |")

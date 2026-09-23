@@ -584,6 +584,29 @@ def fz_file():
         return json.load(fh)
 
 
+def _solver_trees_or_skip(shas) -> bool:
+    """``solver_tree_equal``, or a skip that names the commit git lacks.
+
+    Whether two commits carry the same ``rfx/`` is git's to answer, and git
+    can only answer where both commits are present.  A depth-1 clone (the
+    weekly validation job checks out at the default depth) carries its tip
+    and nothing else, and a squash merge leaves this branch's commits off
+    main altogether.  There the answer is "not checkable here", which is not
+    "the trees differ", so the test skips and says which commit it could not
+    see.  What survives a squash merge -- C_off and C_off_re bit-identical in
+    the record itself -- is asserted by tests that never come here.
+    """
+    got = ins.solver_tree_equal(shas)
+    if got is None:
+        missing = ins.commits_absent(shas) or list(shas)
+        pytest.skip(
+            "git cannot compare rfx/ here: commit "
+            + ", ".join(sha[:12] for sha in missing)
+            + " is not in this checkout (a shallow clone, or history "
+            "squashed away on merge)")
+    return got
+
+
 def test_the_fz_record_holds_the_arms_it_is_pinned_to_hold(fz_file, arms):
     """Exactly the arms below, and every one of them declared by the module.
 
@@ -653,14 +676,21 @@ def test_every_new_arm_names_the_run_and_the_commit_that_made_it(fz_file):
         assert p["run_id"] not in runs, f"{key} reuses run {p['run_id']}"
         runs.add(p["run_id"])
         shas.add(p["git_sha"])
-    # One SIMULATOR, not one commit label.  The five arms of section 2 ran at
-    # one commit; C_off_re was declared after the review and ran at a later
-    # one that changes a note, this instrument and its tests and leaves rfx/
-    # alone.  What would make two arms incomparable is a different solver, so
-    # that is what is asserted.
-    assert ins.solver_tree_equal(sorted(shas)) is True, (
-        f"the arms span {len(shas)} commits whose rfx/ trees differ")
     assert len(shas) <= 2, f"the arms span {len(shas)} commits"
+
+
+def test_the_new_arms_ran_on_one_simulator(fz_file):
+    """One SIMULATOR, not one commit label, and git is what says so.
+
+    The five arms of section 2 ran at one commit; C_off_re was declared after
+    the review and ran at a later one that changes a note, this instrument
+    and its tests and leaves rfx/ alone.  What would make two arms
+    incomparable is a different solver, so that is what is asserted.
+    """
+    shas = sorted({rec["provenance"]["git_sha"]
+                   for rec in fz_file["arms"].values()})
+    assert _solver_trees_or_skip(shas) is True, (
+        f"the arms span {len(shas)} commits whose rfx/ trees differ")
 
 
 def test_the_witnesses_and_the_refusals_are_recorded_for_every_new_arm(fz_file):
@@ -978,15 +1008,43 @@ def test_the_one_commit_ladder_was_solved_by_one_build(arms):
     # simulators.  The label is not the thing that matters and the window
     # says so separately.
     assert mixed["n_commits"] == 2 and one["n_commits"] == 2
-    assert mixed["solver_tree_equal"] is False
-    assert mixed["one_solver_build"] is False
-    assert one["solver_tree_equal"] is True
-    assert one["one_solver_build"] is True
-    # The commit C_off_re adds leaves rfx/ alone; C_off's does not.
-    assert ins.solver_tree_equal(one["commits"]) is True
-    assert ins.solver_tree_equal(mixed["commits"]) is False
     assert arms["C_off"]["provenance"]["git_sha"] not in one["commits"]
     assert arms["C_off_re"]["provenance"]["git_sha"] not in mixed["commits"]
+    # Two labels never read as one build unless git says so: where git says
+    # the trees differ, and where it cannot say at all.
+    assert mixed["one_solver_build"] is False
+
+
+def test_git_says_which_ladder_is_one_simulator(arms):
+    """The commit C_off_re adds leaves rfx/ alone; C_off's does not."""
+    mixed = ins.w5_fz_ladder(arms, ins.FZ_LADDER)
+    one = ins.w5_fz_ladder(arms, ins.FZ_LADDER_ONE_COMMIT)
+    assert _solver_trees_or_skip(mixed["commits"]) is False
+    assert _solver_trees_or_skip(one["commits"]) is True
+    assert mixed["solver_tree_equal"] is False
+    assert one["solver_tree_equal"] is True
+    assert one["one_solver_build"] is True
+
+
+@pytest.mark.parametrize("rung", ins.FZ_LADDER_ONE_COMMIT)
+def test_a_rung_moved_to_the_first_records_commit_is_another_build(arms, rung):
+    """The one-build reading is earned per rung, not granted to the ladder.
+
+    Any one of the four rungs relabelled with the commit the first record's
+    arms were solved at -- read from C_off's provenance, not typed -- puts a
+    different ``rfx/`` under that rung, and the ladder stops being one build.
+    ``one_solver_build`` is False whether git says the trees differ or
+    cannot say.
+    """
+    old = arms["C_off"]["provenance"]["git_sha"]
+    rec = arms[rung]
+    moved = dict(arms)
+    moved[rung] = dict(rec, provenance=dict(rec["provenance"], git_sha=old))
+    r = ins.w5_fz_ladder(moved, ins.FZ_LADDER_ONE_COMMIT)
+    assert old in r["commits"]
+    assert r["one_solver_build"] is False
+    assert _solver_trees_or_skip(r["commits"]) is False
+    assert r["solver_tree_equal"] is False
 
 
 def test_the_re_measured_rung_solved_the_same_mesh(arms):
@@ -1046,16 +1104,24 @@ def test_w6_and_w8_on_the_one_commit_rung(arms):
                                               abs=1e-3)
     assert w6["total_mhz"] == pytest.approx(RECORDED_W6_ONE_COMMIT_TOTAL_MHZ,
                                             abs=1e-3)
-    # Its substrate leg is now one simulator; its in-plane leg still is not,
-    # because A_off comes from the first record either way.
+    w8 = v["W8_one_commit"]
+    assert w8["verdict"] == RECORDED_W8_ONE_COMMIT_VERDICT
+    assert w8["n_substrate_cells_for_the_bar"] == RECORDED_W8_ONE_COMMIT_N_Z
+    assert w8["bar_pct"] == case.FREQ_BAR * 100.0
+
+
+def test_w6_and_w8_say_which_legs_are_one_simulator(arms):
+    """Its substrate leg is now one simulator; its in-plane leg still is not,
+    because A_off comes from the first record either way.  Git's answer."""
+    v = ins.fz_verdicts(arms)
+    w6 = v["W6_one_commit"]
+    assert _solver_trees_or_skip(w6["substrate_leg_commits"]) is True
+    assert _solver_trees_or_skip(w6["inplane_leg_commits"]) is False
+    assert _solver_trees_or_skip(v["W6"]["substrate_leg_commits"]) is False
     assert w6["substrate_leg_solver_equal"] is True
     assert w6["inplane_leg_solver_equal"] is False
     assert v["W6"]["substrate_leg_solver_equal"] is False
-    w8 = v["W8_one_commit"]
-    assert w8["verdict"] == RECORDED_W8_ONE_COMMIT_VERDICT
-    assert w8["one_solver_build"] is True
-    assert w8["n_substrate_cells_for_the_bar"] == RECORDED_W8_ONE_COMMIT_N_Z
-    assert w8["bar_pct"] == case.FREQ_BAR * 100.0
+    assert v["W8_one_commit"]["one_solver_build"] is True
 
 
 @pytest.mark.parametrize("ladder,pins", [
@@ -1113,20 +1179,36 @@ def test_the_re_measurement_found_no_difference_at_all(arms):
     notch only, the whole S matrix on the whole frequency grid. That is a
     stronger statement than "close enough", so it is pinned as bit equality
     and not as a tolerance.
+
+    Everything here is read from the two records and nothing from git, so it
+    holds in a depth-1 clone and after a squash merge, where the commits the
+    two arms name are not there to ask.
     """
     r = ins.fz_verdicts(arms)["remeasurement"]
-    assert r["solver_tree_equal"] is False, (
-        "the two commits must differ in rfx/ or this measures nothing")
+    assert r["commits"][0] != r["commits"][1]
     assert r["notch_bit_identical"] is RECORDED_REMEASURE_NOTCH_BIT_IDENTICAL
     assert r["curves_bit_identical"] is RECORDED_REMEASURE_CURVES_BIT_IDENTICAL
     assert r["delta_mhz"] == 0.0
-    for field in ("s21_re", "s21_im", "s11_re", "s11_im", "freqs_hz"):
+    for field in ("s21_re", "s21_im", "s11_re", "s11_im", "s12_re", "s12_im",
+                  "s22_re", "s22_im", "freqs_hz"):
         assert arms["C_off_re"][field] == arms["C_off"][field], field
+    for axis in ("x", "y", "z"):
+        assert (arms["C_off_re"]["profiles"][axis]
+                == arms["C_off"]["profiles"][axis]), axis
     # So every window reads the same on both ladders, and that is a result
     # rather than a coincidence of rounding.
     for key in ("order", "limit_ghz", "limit_distance_pct"):
         assert ins.w5_fz_ladder(arms, ins.FZ_LADDER)[key] == pytest.approx(
             ins.w5_fz_ladder(arms, ins.FZ_LADDER_ONE_COMMIT)[key], rel=1e-12)
+
+
+def test_the_re_measurement_spans_two_simulators(arms):
+    """The two commits must differ in rfx/, or the re-measurement measures
+    nothing.  Git's answer, so it is asked only where git can give it."""
+    r = ins.fz_verdicts(arms)["remeasurement"]
+    assert _solver_trees_or_skip(r["commits"]) is False, (
+        "the two commits carry the same rfx/, so this measures nothing")
+    assert r["solver_tree_equal"] is False
 
 
 def test_the_solver_tree_check_tells_a_label_from_a_simulator():
@@ -1138,5 +1220,9 @@ def test_the_solver_tree_check_tells_a_label_from_a_simulator():
     """
     assert ins.solver_tree_equal([]) is True
     assert ins.solver_tree_equal(["a" * 40]) is True
-    # A sha git cannot resolve is "not checkable", not "equal".
+    # A sha git cannot resolve is "not checkable", not "equal", and the
+    # commits git could not see are named.
     assert ins.solver_tree_equal(["0" * 40, "1" * 40]) is None
+    assert ins.commits_absent(["0" * 40, "1" * 40, "0" * 40]) == [
+        "0" * 40, "1" * 40]
+
