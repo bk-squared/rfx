@@ -1,2984 +1,1031 @@
-[
-  {
-    "file": "rfx/adi.py",
-    "function": "adi_step_2d",
-    "kind": "boundary",
-    "count": 2
-  },
-  {
-    "file": "rfx/adi.py",
-    "function": "adi_step_2d",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/adi.py",
-    "function": "adi_step_3d",
-    "kind": "boundary",
-    "count": 4
-  },
-  {
-    "file": "rfx/adi.py",
-    "function": "apply_adi_cpml_2d",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/adi.py",
-    "function": "thomas_solve",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/adi.py",
-    "function": "thomas_solve.bwd_body",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/adi.py",
-    "function": "thomas_solve.fwd_body",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/amr.py",
-    "function": "auto_refine._box_volume",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/amr.py",
-    "function": "suggest_refinement_regions",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/antenna.py",
-    "function": "half_power_beamwidth",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/antenna.py",
-    "function": "plot_antenna_summary",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/api/__init__.py",
-    "function": "Simulation.add_waveguide_port",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/api/_compile.py",
-    "function": "_CompileMixin._build_waveguide_port_config",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/api/_compiled_memory.py",
-    "function": "_normalize_compiled_memory_analysis",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/api/_execute.py",
-    "function": "_ExecuteMixin._forward_distributed_nonuniform_from_materials",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/api/_execute.py",
-    "function": "_ExecuteMixin._forward_from_materials",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/api/_execute.py",
-    "function": "_refplane_reject_planes_off_the_uniform_line",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/api/_gradient_witness.py",
-    "function": "gradient_record_length_witness",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/api/_spec.py",
-    "function": "Result.find_resonances",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/auto_config.py",
-    "function": "_band_smooth_post_thirds",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/auto_config.py",
-    "function": "_make_dz_profile",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/auto_config.py",
-    "function": "_sheet_z_plane",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/auto_config.py",
-    "function": "_uniform_run",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/auto_config.py",
-    "function": "analyze_features",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/auto_config.py",
-    "function": "auto_configure",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/boundaries/cpml.py",
-    "function": "_kappa_correction",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/cpml.py",
-    "function": "apply_cpml_e",
-    "kind": "difference",
-    "count": 24
-  },
-  {
-    "file": "rfx/boundaries/cpml.py",
-    "function": "apply_cpml_e",
-    "kind": "neighbour",
-    "count": 12
-  },
-  {
-    "file": "rfx/boundaries/cpml.py",
-    "function": "apply_cpml_h",
-    "kind": "difference",
-    "count": 24
-  },
-  {
-    "file": "rfx/boundaries/cpml.py",
-    "function": "apply_cpml_h",
-    "kind": "neighbour",
-    "count": 12
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "SheetSpec.from_node_ranges",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "_sheet_edge_masks",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "_shift",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "_shift",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "_volume_edge_masks",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "_volume_occupancy_masks",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "_volume_occupancy_masks",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "apply_pec_mask",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "apply_pec_mask",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "apply_pec_occupancy",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "kottke_fenced_edge_masks",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "pec_occupancy_box_keep",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "pec_occupancy_box_keep",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "realized_pec_edge_masks",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "realized_wall_planes",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/boundaries/pec.py",
-    "function": "wire_node_footprint",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_e",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_e",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_e.bwd",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_e.bwd",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_h",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_h",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_h.fwd",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/boundaries/upml.py",
-    "function": "apply_upml_h.fwd",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/config/_waveforms.py",
-    "function": "waveform_from_config",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_diff_bwd_o",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_diff_bwd_o",
-    "kind": "neighbour",
-    "count": 5
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_diff_bwd_o",
-    "kind": "roll/diff",
-    "count": 4
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_diff_fwd_o",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_diff_fwd_o",
-    "kind": "neighbour",
-    "count": 5
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_diff_fwd_o",
-    "kind": "roll/diff",
-    "count": 4
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_material_bwd_neighbour",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "_material_bwd_neighbour",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "cell_component_e_coeffs",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "cell_component_e_materials",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "cell_component_e_materials.back",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "cell_component_e_materials.mean4",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "component_e_materials",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "curl_h",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "curl_h",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "curl_h_nu",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "curl_h_nu",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "e_component_coeffs",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "edge_averaged_e_update_coeffs",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "edge_averaged_materials",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "edge_averaged_materials.mean4",
-    "kind": "neighbour",
-    "count": 3
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "precompute_coeffs",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso",
-    "kind": "neighbour",
-    "count": 7
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso.bwd",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso.bwd",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso_inv",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso_inv",
-    "kind": "neighbour",
-    "count": 7
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso_inv.bwd",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_aniso_inv.bwd",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_box",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_fast",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_fast",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_nu",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_nu_aniso",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_e_nu_aniso",
-    "kind": "neighbour",
-    "count": 7
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_h",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_h",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_h_fast",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_h_fast",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_h_nu",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_h_nu",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_he_fast",
-    "kind": "difference",
-    "count": 21
-  },
-  {
-    "file": "rfx/core/yee.py",
-    "function": "update_he_fast",
-    "kind": "neighbour",
-    "count": 12
-  },
-  {
-    "file": "rfx/deembed.py",
-    "function": "deembed_line_segment",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/differentiable_material_fit.py",
-    "function": "differentiable_material_fit",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/eigenmode.py",
-    "function": "_scalar_eigenmodes_to_vector",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/farfield.py",
-    "function": "_axis_node_positions",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/farfield.py",
-    "function": "_raise_face_inside_injected_region",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/farfield.py",
-    "function": "compute_far_field",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/farfield.py",
-    "function": "compute_far_field._edges",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/farfield.py",
-    "function": "compute_far_field_jax",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/farfield.py",
-    "function": "compute_far_field_jax._edges_j",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/fidelity.py",
-    "function": "_max_run_length",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/fidelity.py",
-    "function": "_max_run_length",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/fidelity.py",
-    "function": "_pec_sheet_spec",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/fidelity.py",
-    "function": "fidelity_report",
-    "kind": "difference",
-    "count": 19
-  },
-  {
-    "file": "rfx/fidelity.py",
-    "function": "fidelity_report",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/conformal.py",
-    "function": "_signed_distance_cylinder",
-    "kind": "difference",
-    "count": 15
-  },
-  {
-    "file": "rfx/geometry/conformal.py",
-    "function": "_signed_distance_sphere",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/geometry/conformal.py",
-    "function": "compute_conformal_weights",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/geometry/conformal.py",
-    "function": "compute_conformal_weights._point_inside_pec",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/geometry/csg.py",
-    "function": "Box.mask_on_coords._axis_mask",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/geometry/csg.py",
-    "function": "Cylinder.mask_on_coords",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/geometry/csg.py",
-    "function": "PolylineWire.mask_on_coords",
-    "kind": "difference",
-    "count": 7
-  },
-  {
-    "file": "rfx/geometry/csg.py",
-    "function": "PolylineWire.mask_on_coords._scan_step",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/geometry/csg.py",
-    "function": "Sphere.mask_on_coords",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/geometry/curved.py",
-    "function": "CurvedPatch.mask_on_coords",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/mesh_import.py",
-    "function": "MeshShape.min_feature_size",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/mesh_import.py",
-    "function": "_crossing_parity",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/port_termination.py",
-    "function": "default_msl_terminates",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/port_termination.py",
-    "function": "held_conductor_entries",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/port_termination.py",
-    "function": "lattice_intersects_aperture",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/geometry/port_termination.py",
-    "function": "lattice_intersects_aperture",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/port_termination.py",
-    "function": "port_terminal_points",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/port_termination.py",
-    "function": "port_termination_references",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "_axis_node_positions",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "_box_zero_axes",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "_nearest_plane",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "_subcell_axes",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "assert_declared_span_is_filled",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "axis_cell_sizes",
-    "kind": "roll/diff",
-    "count": 2
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "cell_centres_from_nodes",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "centres_from_nonuniform_grid",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "classify_pec_entry",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "classify_pec_entry",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "coords_from_nonuniform_grid._axis_nodes",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "extend_cpml_pad_materials",
-    "kind": "difference",
-    "count": 24
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "interior_lattice_mask",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "rasterize_geometry",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "sheet_footprint_traced",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "sheet_spec_from_shape",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/rasterize_grid.py",
-    "function": "sheet_spec_from_shape",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "_axis_cells",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "_conductor_reached_faces",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "_continue_cylinder",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "_normal_box",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "_occupied_conductor_faces",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "_reaches_pad_face",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "_sdf_box",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "compute_inv_eps_tensor_diag",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/geometry/smoothing.py",
-    "function": "extend_shapes_into_cpml_pad",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/harminv.py",
-    "function": "_fit_mode_amplitudes",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/harminv.py",
-    "function": "harminv",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/harminv.py",
-    "function": "harminv_from_probe",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/interop/_shapes.py",
-    "function": "shape_from_dict",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/interop/emitters/openems.py",
-    "function": "_pin",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/interop/emitters/openems.py",
-    "function": "_plan_geometry",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/interop/emitters/openems.py",
-    "function": "_plan_ports",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/io.py",
-    "function": "network_quality_metrics",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/lumped.py",
-    "function": "_update_parallel",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/lumped.py",
-    "function": "_update_series",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/material_fit.py",
-    "function": "fit_debye",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/material_fit.py",
-    "function": "load_material_csv",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/materials/debye.py",
-    "function": "init_debye",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/materials/debye.py",
-    "function": "update_e_debye",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/materials/debye.py",
-    "function": "update_e_debye",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/materials/debye.py",
-    "function": "update_e_debye.bwd",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/materials/debye.py",
-    "function": "update_e_debye.bwd",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/materials/lorentz.py",
-    "function": "update_e_lorentz",
-    "kind": "difference",
-    "count": 15
-  },
-  {
-    "file": "rfx/materials/lorentz.py",
-    "function": "update_e_lorentz",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/materials/lorentz.py",
-    "function": "update_e_lorentz.bwd",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/materials/lorentz.py",
-    "function": "update_e_lorentz.bwd",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/materials/thin_conductor.py",
-    "function": "sheet_normal_axis",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/mesh_edges.py",
-    "function": "_build",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/mesh_edges.py",
-    "function": "edge_aware_profile",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/mesh_edges.py",
-    "function": "edge_aware_profiles",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "NonUniformGrid.node_of",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_assemble_nu_result",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_assemble_nu_result._ab",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_assert_traced_index_matches_realized",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_band_realize_free",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_build_band_profile",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_build_nu_scan",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_build_nu_scan.step_fn",
-    "kind": "boundary",
-    "count": 6
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_build_nu_scan.step_fn",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_bwd_neighbor",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_curl_h_nu",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_curl_h_nu",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_nominal_edges_or_actual",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_update_e_nu_dispersive",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "_waveguide_port_axis_metrics",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "make_band_profile",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "make_nonuniform_grid",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "make_z_profile",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "run_nonuniform",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "run_nonuniform_until_decay",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "run_nonuniform_until_decay",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "run_nonuniform_until_decay._radiated_power",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "wire_port_current",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/nonuniform.py",
-    "function": "wire_port_current",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/optimize.py",
-    "function": "gradient_check",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/optimize.py",
-    "function": "optimize",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/optimize.py",
-    "function": "progressive_optimize",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/optimize_objectives.py",
-    "function": "_find_freq_indices",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/optimize_objectives.py",
-    "function": "maximize_bandwidth.objective",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/optimize_objectives.py",
-    "function": "maximize_directivity.objective",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/optimize_objectives.py",
-    "function": "minimize_s11.objective",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/optimize_objectives.py",
-    "function": "minimize_s11_at_freq.objective",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/optimize_objectives.py",
-    "function": "target_impedance.objective",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/pareto.py",
-    "function": "pareto_mask",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/_common.py",
-    "function": "_axis_pad_thickness_m",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/absorber.py",
-    "function": "_validate_cfg_conductor_in_thin_absorber",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/absorber.py",
-    "function": "_validate_cfg_dispersive_pole_at_absorber_face",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/absorber.py",
-    "function": "_validate_cfg_geometry_in_cpml",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/preflight/mesh.py",
-    "function": "_graded_node_report",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/preflight/mesh.py",
-    "function": "_validate_cfg_graded_box_rasterization",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/mesh.py",
-    "function": "_validate_cfg_graded_box_rasterization",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/mesh.py",
-    "function": "_validate_cfg_multiband_grading",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/mesh.py",
-    "function": "_validate_cfg_thin_conductor_graded_node",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/preflight/mesh.py",
-    "function": "_validate_mesh_quality",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/msl.py",
-    "function": "_check_msl_port_geometry",
-    "kind": "difference",
-    "count": 13
-  },
-  {
-    "file": "rfx/preflight/msl.py",
-    "function": "_msl_conductor_gap",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/msl.py",
-    "function": "_msl_declared_face_geometry",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/preflight/msl.py",
-    "function": "_msl_realized_substrate",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/msl.py",
-    "function": "msl_probe_clearance_for_port",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/preflight/ntff.py",
-    "function": "_validate_ntff_inverse_design",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/ntff.py",
-    "function": "_validate_ntff_small_ground_plane",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_congruence_origin_shift",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_congruence_origin_shift",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_congruence_origin_shift._wrap_spread",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_congruence_origin_shift._wrap_spread",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_validate_cfg_campaign_statics",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_validate_cfg_congruent_rasterization_parity",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_validate_cfg_off_lattice_design_edges",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_validate_cfg_pec_face_short_of_domain_wall",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_validate_cfg_pec_realization",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_validate_cfg_sheet_cavity_thickness",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/pec_geometry.py",
-    "function": "_warn_sheet_effective_size",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/preflight/ports.py",
-    "function": "_check_coaxial_port_junction_aperture",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/preflight/ports.py",
-    "function": "_validate_cfg_floating_single_cell_port",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/ports.py",
-    "function": "_validate_cfg_port_inside_pec",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/preflight/realization.py",
-    "function": "_CampaignStaticsContext.entry_realizations._tie",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/realization.py",
-    "function": "_CampaignStaticsContext.local_spacing",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/preflight/realization.py",
-    "function": "_CampaignStaticsContext.sub_lattice_offsets",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/preflight/realization.py",
-    "function": "_EntryRealization.footprint_on_plane",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/realization.py",
-    "function": "_RealizedPEC.wall_nodes_on_plane",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/realization.py",
-    "function": "_shift_back_np",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/realization.py",
-    "function": "_wall_nodes_on_plane",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/sources.py",
-    "function": "_validate_cfg_source_on_reflector_plane",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/waveguide.py",
-    "function": "_check_waveguide_port_aperture_snap",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/waveguide.py",
-    "function": "_check_waveguide_port_evanescent_declared_geometry",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/preflight/waveguide.py",
-    "function": "_port_transverse_spans",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/preflight/waveguide.py",
-    "function": "_validate_cfg_port_index_mirror_covariance",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/preflight/waveguide.py",
-    "function": "_waveguide_far_geometry",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/preflight/waveguide.py",
-    "function": "_waveguide_port_cutoff_reading",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/probes/flux_region.py",
-    "function": "resolve_flux_axis",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/probes/flux_region.py",
-    "function": "resolve_flux_axis",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/flux_region.py",
-    "function": "resolve_flux_region",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/probes/flux_region.py",
-    "function": "resolve_flux_region",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/fresnel.py",
-    "function": "fresnel_reflection_coefficient",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/fresnel.py",
-    "function": "oblique_reflection_coefficient",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/probes/fresnel.py",
-    "function": "oblique_reflection_magnitude",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/msl_wave_decomp.py",
-    "function": "_estimate_beta",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/probes/msl_wave_decomp.py",
-    "function": "_windowed_dft",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/probes/msl_wave_decomp.py",
-    "function": "extract_msl_nprobe",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/probes/msl_wave_decomp.py",
-    "function": "register_msl_plane_probes",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "_ampere_loop",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "_ampere_loop",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "_bwd_h",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "decompose_wire_s_matrix",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "extract_s_matrix",
-    "kind": "boundary",
-    "count": 5
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "extract_s_matrix",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "extract_s_matrix_wire",
-    "kind": "boundary",
-    "count": 5
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "extract_s_matrix_wire",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "port_current",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "update_sparam_probe",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "update_wire_sparam_probe",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "wire_port_current",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/probes.py",
-    "function": "wire_port_gap_voltage",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/probes/refplane.py",
-    "function": "_trace_bbox_at_plane",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/probes/refplane.py",
-    "function": "build_wire_refplane_specs",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/probes/refplane.py",
-    "function": "wire_refplane_step_vi._loop",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/rcs.py",
-    "function": "compute_rcs",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/ris.py",
-    "function": "RISUnitCell._build_sim",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "_update_e_local_nu",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "_update_e_local_nu",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "_update_h_local_nu",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "_update_h_local_nu",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "apply_pec_mask_shmap._pec_mask",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "shard_x_slabs.slab",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "split_array_x",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "stage_dispersion_slabs.stage_slab",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "update_e_nu_shmap",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "update_e_nu_shmap._e",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "update_h_nu_shmap",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/_distributed_common.py",
-    "function": "update_h_nu_shmap._h",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_apply_cpml_e_distributed",
-    "kind": "difference",
-    "count": 26
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_apply_cpml_e_distributed",
-    "kind": "neighbour",
-    "count": 12
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_apply_cpml_h_distributed",
-    "kind": "difference",
-    "count": 26
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_apply_cpml_h_distributed",
-    "kind": "neighbour",
-    "count": 12
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_debye_local",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_debye_local",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_local",
-    "kind": "difference",
-    "count": 9
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_local",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_local_with_dispersion",
-    "kind": "difference",
-    "count": 15
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_local_with_dispersion",
-    "kind": "neighbour",
-    "count": 9
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_lorentz_local",
-    "kind": "difference",
-    "count": 15
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_e_lorentz_local",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_h_local",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "_update_h_local",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "run_distributed",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "run_distributed",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "run_distributed.distributed_scan.step_fn",
-    "kind": "boundary",
-    "count": 5
-  },
-  {
-    "file": "rfx/runners/distributed.py",
-    "function": "run_distributed.distributed_scan.step_fn",
-    "kind": "neighbour",
-    "count": 4
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "_apply_cpml_e_local_nu",
-    "kind": "difference",
-    "count": 26
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "_apply_cpml_e_local_nu",
-    "kind": "neighbour",
-    "count": 12
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "_apply_cpml_h_local_nu",
-    "kind": "difference",
-    "count": 26
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "_apply_cpml_h_local_nu",
-    "kind": "neighbour",
-    "count": 12
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "_apply_pec_occupancy_nu_shmap._pec_occ",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "init_cpml_for_sharded_nu",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "run_nonuniform_distributed_pec._apply_cpml_e_shmap",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "run_nonuniform_distributed_pec._apply_cpml_e_shmap._e",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "run_nonuniform_distributed_pec._apply_cpml_h_shmap",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "run_nonuniform_distributed_pec._apply_cpml_h_shmap._h",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_nu.py",
-    "function": "run_nonuniform_distributed_pec.step_fn",
-    "kind": "boundary",
-    "count": 6
-  },
-  {
-    "file": "rfx/runners/distributed_v2.py",
-    "function": "_apply_cpml_e_shmap._cpml_e",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_v2.py",
-    "function": "_apply_cpml_h_shmap._cpml_h",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_v2.py",
-    "function": "_init_cpml_sharded",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_v2.py",
-    "function": "run_distributed",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/distributed_v2.py",
-    "function": "run_distributed.step_fn_cpml",
-    "kind": "boundary",
-    "count": 4
-  },
-  {
-    "file": "rfx/runners/distributed_v2.py",
-    "function": "run_distributed.step_fn_pec",
-    "kind": "boundary",
-    "count": 3
-  },
-  {
-    "file": "rfx/runners/nonuniform.py",
-    "function": "_build_waveguide_port_config_nu",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/nonuniform.py",
-    "function": "_build_waveguide_port_config_nu._range_to_slice_nu",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/nonuniform.py",
-    "function": "assemble_interface_eps_nu",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/nonuniform.py",
-    "function": "assemble_materials_nu",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/runners/nonuniform.py",
-    "function": "run_nonuniform_path",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/runners/nonuniform.py",
-    "function": "run_nonuniform_path._auto_direction",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/runners/subgridded.py",
-    "function": "_run_subgridded_once",
-    "kind": "difference",
-    "count": 10
-  },
-  {
-    "file": "rfx/runners/subgridded.py",
-    "function": "_run_subgridded_once._pos_to_fine_idx",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/runners/uniform.py",
-    "function": "run_uniform",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "_build_step_setup",
-    "kind": "boundary",
-    "count": 2
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "_resolve_design_box",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "_update_e_with_optional_dispersion",
-    "kind": "difference",
-    "count": 15
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "_update_e_with_optional_dispersion",
-    "kind": "neighbour",
-    "count": 6
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "_update_e_with_optional_dispersion.bwd",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "_update_e_with_optional_dispersion.bwd",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "_warn_static_remnant_cap_hit",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "make_core_step.core_step",
-    "kind": "boundary",
-    "count": 11
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "make_core_step.core_step",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "run",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "run",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "run_until_decay",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "run_until_decay",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/simulation.py",
-    "function": "run_until_decay._radiated_power",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/sources/_waveguide_modes.py",
-    "function": "_cell_centred_gradient",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/sources/_waveguide_modes.py",
-    "function": "_pick_eigenmode_by_target_then_overlap",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/_waveguide_modes.py",
-    "function": "_shift_profile_to_dual",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "_interp_bilinear_plane",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "_validate_monotone_axis",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "add_coaxial_matched_termination",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "add_coaxial_open_termination",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "add_coaxial_pec_end_cap",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "build_coaxial_tem_plane_source_specs",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "coaxial_line_plane_voltage",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "coaxial_line_plane_voltage_jnp",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "coaxial_line_reflection_from_plane_voltages",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "coaxial_line_reflection_from_plane_voltages",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "coaxial_tem_reference_plane_vi",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "coaxial_tem_reference_plane_vi_from_cartesian_plane",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "coaxial_tem_reference_plane_vi_from_cartesian_plane",
-    "kind": "neighbour",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/coaxial_port.py",
-    "function": "extract_coaxial_plane_vi_from_dft",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/msl_eigenmode.py",
-    "function": "_axis_cell_size",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "_axis_cell_size",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "_axis_dual_size",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "_msl_coord_for_index",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "_solve_laplace_2d",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "compute_msl_mode_profile",
-    "kind": "difference",
-    "count": 14
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "compute_msl_mode_profile._cap_per_metre",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "make_msl_port_sources",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "msl_h_plane_stencil",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "msl_loop_current",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "msl_port_from_entry",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "setup_msl_port",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "validate_msl_port_geometry",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/msl_port.py",
-    "function": "validate_msl_port_geometry.along_trace",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/sources.py",
-    "function": "_axis_node_position",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf.py",
-    "function": "update_tfsf_1d_e",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf.py",
-    "function": "update_tfsf_1d_h",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_apply_cpml_e",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_apply_cpml_h",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_e_tez",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_e_tez",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_e_tez",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_e_tmz",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_e_tmz",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_e_tmz",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_h_tez",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_h_tez",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_h_tez",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_h_tmz",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_h_tmz",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "_update_h_tmz",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "update_tfsf_2d",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "update_tfsf_2d_e",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/tfsf_2d.py",
-    "function": "update_tfsf_2d_h",
-    "kind": "neighbour",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "_plane_h_field_at_dual",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "_te_mode_profiles",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "_tm_mode_profiles",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "apply_waveguide_port_e",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "apply_waveguide_port_h",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "extract_multimode_s_matrix_flux",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "extract_waveguide_s_matrix_flux",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "extract_waveguide_s_params_normalized",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "init_waveguide_port",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sources/waveguide_port.py",
-    "function": "update_waveguide_port_probe",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_assemble_mixed_power_wave_s",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_assemble_mixed_power_wave_s._b_lw_passive",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_assemble_mixed_power_wave_s._b_msl",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_mixed_flux_magnitude_override",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_project_passive",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_resolve_msl_auto_offsets",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_sigma_max_excess",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_warn_junction_probe_clearance",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sparams/_common.py",
-    "function": "_waveguide_s21_phase_residual",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sparams/coax.py",
-    "function": "compute_coax_msl_transition",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/sparams/coax.py",
-    "function": "compute_coaxial_line_reflection",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/sparams/coax.py",
-    "function": "compute_coaxial_s_matrix",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/sparams/coax.py",
-    "function": "compute_coaxial_two_port",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/sparams/mixed.py",
-    "function": "compute_mixed_s_matrix",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/sparams/msl.py",
-    "function": "compute_msl_s_matrix",
-    "kind": "difference",
-    "count": 12
-  },
-  {
-    "file": "rfx/sparams/waveguide.py",
-    "function": "_compute_waveguide_s_matrix_nu",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/sparams/waveguide.py",
-    "function": "compute_waveguide_s_matrix",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/disjoint_3d.py",
-    "function": "_apply_faces_maxwell_sat_from_snapshot",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/subgridding/disjoint_3d.py",
-    "function": "_apply_fine_pec_axes",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/disjoint_3d.py",
-    "function": "_yee_e_step",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/disjoint_3d.py",
-    "function": "_yee_step",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/disjoint_3d.py",
-    "function": "prolong_face_linear.interp_axis",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/subgridding/disjoint_3d.py",
-    "function": "step_disjoint_z_slab_sat_3d",
-    "kind": "boundary",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_box_node_aligned_coupling_e_3d.couple",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_box_node_aligned_coupling_h_3d.couple",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_make_step_fn.step_fn",
-    "kind": "boundary",
-    "count": 8
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_prolong_axis_linear",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_restrict_axis_linear_adjoint",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_z_slab_coupling_e_3d.couple",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_z_slab_coupling_h_3d.couple",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_z_slab_material_coupling_e_3d.apply_zhi",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_z_slab_material_coupling_e_3d.apply_zlo",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_z_slab_material_coupling_e_3d.couple_normal_ez",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_z_slab_material_coupling_h_3d.apply_zhi",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "_z_slab_material_coupling_h_3d.apply_zlo",
-    "kind": "difference",
-    "count": 8
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "run_subgridded_jit",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "run_subgridded_jit",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/jit_runner.py",
-    "function": "run_subgridded_jit._face_nonvacuum",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/runner.py",
-    "function": "run_subgridded",
-    "kind": "boundary",
-    "count": 6
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_1d.py",
-    "function": "_update_e_1d",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_1d.py",
-    "function": "_update_h_1d",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_1d.py",
-    "function": "step_subgrid_1d",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_2d.py",
-    "function": "_shared_node_update_2d",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_2d.py",
-    "function": "_update_ez_interior_2d",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_2d.py",
-    "function": "_update_hx_2d",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_2d.py",
-    "function": "_update_hy_2d",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_2d.py",
-    "function": "step_subgrid_2d",
-    "kind": "boundary",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_3d.py",
-    "function": "_shared_node_coupling_3d._sat_couple",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_3d.py",
-    "function": "_shared_node_coupling_h_3d._sat_couple_h",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/sbp_sat_3d.py",
-    "function": "_update_e_only",
-    "kind": "boundary",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "_artificial_interface_margin_fraction",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "_material_plane_delta",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "_one_sided_physical_z_boundary",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "_position_inside_fine",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "_xy_window_axis_fractions",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "_xy_window_margin_fraction",
-    "kind": "difference",
-    "count": 6
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "build_stage2_disjoint_region",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/subgridding/validation.py",
-    "function": "build_subgrid_region",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/surrogate.py",
-    "function": "export_geometry_sdf",
-    "kind": "difference",
-    "count": 5
-  },
-  {
-    "file": "rfx/topology.py",
-    "function": "topology_optimize",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/validation.py",
-    "function": "_replay_msl_port_vi_dump",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/validation.py",
-    "function": "assert_port_smatrix_valid",
-    "kind": "neighbour",
-    "count": 1
-  },
-  {
-    "file": "rfx/validation.py",
-    "function": "validate_port_smatrix",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "_absorber_rects",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "plot_geometry_2d_slice",
-    "kind": "difference",
-    "count": 4
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "plot_rasterized_slice",
-    "kind": "difference",
-    "count": 13
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "plot_rasterized_slice",
-    "kind": "roll/diff",
-    "count": 1
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "plot_rcs",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "plot_stack_profile",
-    "kind": "difference",
-    "count": 13
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "plot_stack_profile",
-    "kind": "roll/diff",
-    "count": 2
-  },
-  {
-    "file": "rfx/visualize.py",
-    "function": "visualize_structure",
-    "kind": "difference",
-    "count": 1
-  },
-  {
-    "file": "rfx/visualize3d.py",
-    "function": "_plot_field_mpl",
-    "kind": "difference",
-    "count": 2
-  },
-  {
-    "file": "rfx/visualize3d.py",
-    "function": "_plot_geometry_mpl",
-    "kind": "difference",
-    "count": 3
-  },
-  {
-    "file": "rfx/vmap_sweep.py",
-    "function": "_build_vmap_scan_fn",
-    "kind": "boundary",
-    "count": 1
-  },
-  {
-    "file": "rfx/vmap_sweep.py",
-    "function": "_build_vmap_scan_fn.run_one.step_fn",
-    "kind": "boundary",
-    "count": 4
-  }
-]
+{
+  "counted_functions": [
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_e"
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_h"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "curl_h"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "curl_h_nu"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso_inv"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_fast"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_nu_aniso"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h_fast"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h_nu"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_he_fast"
+    },
+    {
+      "file": "rfx/materials/debye.py",
+      "function": "update_e_debye"
+    },
+    {
+      "file": "rfx/materials/lorentz.py",
+      "function": "update_e_lorentz"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "_curl_h_nu"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "_update_e_nu_dispersive"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "wire_port_current"
+    },
+    {
+      "file": "rfx/probes/probes.py",
+      "function": "_ampere_loop"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_local_nu"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_h_local_nu"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_debye_local"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_local"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_local_with_dispersion"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_lorentz_local"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_h_local"
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "_update_e_with_optional_dispersion"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_1d.py",
+      "function": "_update_e_1d"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_1d.py",
+      "function": "_update_h_1d"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_shared_node_update_2d"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_update_ez_interior_2d"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_update_hx_2d"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_update_hy_2d"
+    }
+  ],
+  "sites": [
+    {
+      "file": "rfx/adi.py",
+      "function": "_apply_pec_2d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/adi.py",
+      "function": "_apply_pec_3d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/adi.py",
+      "function": "adi_step_2d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/adi.py",
+      "function": "adi_step_2d",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/adi.py",
+      "function": "adi_step_3d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/adi.py",
+      "function": "apply_adi_cpml_2d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/adi.py",
+      "function": "apply_adi_cpml_2d",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/adi.py",
+      "function": "run_adi_2d.step_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/api/_execute.py",
+      "function": "_ExecuteMixin._forward_distributed_nonuniform_from_materials",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/auto_config.py",
+      "function": "_make_dz_profile",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/auto_config.py",
+      "function": "_uniform_run",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/boundaries/cpml.py",
+      "function": "apply_cpml_e",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/cpml.py",
+      "function": "apply_cpml_h",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "_sheet_edge_masks",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "_shift",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "_shift",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "_volume_edge_masks",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "_volume_occupancy_masks",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "apply_pec",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "apply_pec_faces",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "apply_pec_mask",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "wire_node_footprint",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "wire_path_edge_masks",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/boundaries/pmc.py",
+      "function": "apply_pmc_faces",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_e",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_e",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_e.bwd",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_e.bwd",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_h",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_h",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_h.fwd",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/upml.py",
+      "function": "apply_upml_h.fwd",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_diff_bwd_o",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_diff_bwd_o",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_diff_bwd_o",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_diff_fwd_o",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_diff_fwd_o",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_diff_fwd_o",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_material_bwd_neighbour",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "curl_h",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "curl_h_nu",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "curl_h_nu",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "edge_averaged_materials.mean4",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso.bwd",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso.bwd",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso_inv",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso_inv",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso_inv.bwd",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_aniso_inv.bwd",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_fast",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_fast",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_nu_aniso",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_e_nu_aniso",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h_fast",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h_fast",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h_nu",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_h_nu",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_he_fast",
+      "kind": "difference",
+      "count": 12
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "update_he_fast",
+      "kind": "neighbour",
+      "count": 12
+    },
+    {
+      "file": "rfx/fidelity.py",
+      "function": "_max_run_length",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/floquet.py",
+      "function": "apply_bloch_periodic_x._wrap",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/geometry/csg.py",
+      "function": "PolylineWire.mask_on_coords",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/geometry/port_termination.py",
+      "function": "lattice_intersects_aperture",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/rasterize_grid.py",
+      "function": "axis_cell_sizes",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/rasterize_grid.py",
+      "function": "extend_cpml_pad_materials",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/materials/debye.py",
+      "function": "update_e_debye",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/materials/debye.py",
+      "function": "update_e_debye",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/materials/debye.py",
+      "function": "update_e_debye.bwd",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/materials/debye.py",
+      "function": "update_e_debye.bwd",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/materials/lorentz.py",
+      "function": "update_e_lorentz",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/materials/lorentz.py",
+      "function": "update_e_lorentz",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/materials/lorentz.py",
+      "function": "update_e_lorentz.bwd",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/materials/lorentz.py",
+      "function": "update_e_lorentz.bwd",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/mesh_edges.py",
+      "function": "_build",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "_band_realize_free",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "_build_nu_scan",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "_build_nu_scan.step_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "_curl_h_nu",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "_curl_h_nu",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "make_band_profile",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/nonuniform.py",
+      "function": "wire_port_current",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/preflight/mesh.py",
+      "function": "_validate_cfg_graded_box_rasterization",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/preflight/pec_geometry.py",
+      "function": "_congruence_origin_shift._wrap_spread",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/preflight/pec_geometry.py",
+      "function": "_validate_cfg_sheet_cavity_thickness",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/preflight/realization.py",
+      "function": "_shift_back_np",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/preflight/realization.py",
+      "function": "_wall_nodes_on_plane",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/probes/flux_region.py",
+      "function": "resolve_flux_axis",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/probes/probes.py",
+      "function": "_ampere_loop",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/probes/probes.py",
+      "function": "extract_s_matrix",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/probes/probes.py",
+      "function": "extract_s_matrix_wire",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_local_nu",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_local_nu",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_h_local_nu",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_h_local_nu",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "apply_pec_face_shmap._pec",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "apply_pmc_face_shmap._pmc",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_apply_cpml_e_distributed",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_apply_cpml_h_distributed",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_apply_pec_local",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_apply_pmc_local",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_debye_local",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_debye_local",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_local",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_local",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_local_with_dispersion",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_local_with_dispersion",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_lorentz_local",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_e_lorentz_local",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_h_local",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "_update_h_local",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "run_distributed",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed.py",
+      "function": "run_distributed.distributed_scan.step_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_nu.py",
+      "function": "_apply_cpml_e_local_nu",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/distributed_nu.py",
+      "function": "_apply_cpml_h_local_nu",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/distributed_nu.py",
+      "function": "init_cpml_for_sharded_nu",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_nu.py",
+      "function": "run_nonuniform_distributed_pec._apply_cpml_e_shmap._e",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_nu.py",
+      "function": "run_nonuniform_distributed_pec._apply_cpml_h_shmap._h",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_nu.py",
+      "function": "run_nonuniform_distributed_pec.step_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "_apply_cpml_e_shmap._cpml_e",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "_apply_cpml_h_shmap._cpml_h",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "_init_cpml_sharded",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "run_distributed",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "run_distributed.step_fn_cpml",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/distributed_v2.py",
+      "function": "run_distributed.step_fn_pec",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "_build_step_setup",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "_update_e_with_optional_dispersion",
+      "kind": "difference",
+      "count": 6
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "_update_e_with_optional_dispersion",
+      "kind": "neighbour",
+      "count": 6
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "_update_e_with_optional_dispersion.bwd",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "_update_e_with_optional_dispersion.bwd",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "make_core_step.core_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/simulation.py",
+      "function": "run",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/_waveguide_modes.py",
+      "function": "_cell_centred_gradient",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "_validate_monotone_axis",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "coaxial_line_reflection_from_plane_voltages",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "coaxial_tem_reference_plane_vi",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_e_tez",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_e_tez",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_e_tmz",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_e_tmz",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_h_tez",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_h_tez",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_h_tmz",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_h_tmz",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/subgridding/disjoint_3d.py",
+      "function": "_apply_fine_pec_axes",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/disjoint_3d.py",
+      "function": "_yee_e_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/disjoint_3d.py",
+      "function": "_yee_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/disjoint_3d.py",
+      "function": "step_disjoint_z_slab_sat_3d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/jit_runner.py",
+      "function": "_make_step_fn.step_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/jit_runner.py",
+      "function": "_trapezoid_weights",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/jit_runner.py",
+      "function": "run_subgridded_jit",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/runner.py",
+      "function": "run_subgridded",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_1d.py",
+      "function": "_update_e_1d",
+      "kind": "difference",
+      "count": 1
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_1d.py",
+      "function": "_update_h_1d",
+      "kind": "difference",
+      "count": 1
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_1d.py",
+      "function": "step_subgrid_1d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_apply_pec_2d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_shared_node_update_2d",
+      "kind": "boundary",
+      "count": 4
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_update_ez_interior_2d",
+      "kind": "difference",
+      "count": 2
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_update_hx_2d",
+      "kind": "difference",
+      "count": 1
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "_update_hy_2d",
+      "kind": "difference",
+      "count": 1
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_2d.py",
+      "function": "step_subgrid_2d",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/subgridding/sbp_sat_3d.py",
+      "function": "_update_e_only",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/validation.py",
+      "function": "validate_port_smatrix",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/visualize.py",
+      "function": "plot_rasterized_slice",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/visualize.py",
+      "function": "plot_stack_profile",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/vmap_sweep.py",
+      "function": "_build_vmap_scan_fn",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/vmap_sweep.py",
+      "function": "_build_vmap_scan_fn.run_one.step_fn",
+      "kind": "boundary"
+    }
+  ]
+}
