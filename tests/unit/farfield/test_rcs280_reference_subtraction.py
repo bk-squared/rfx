@@ -26,7 +26,6 @@ import pytest
 
 _REPO = Path(__file__).resolve().parents[3]
 _FIXTURE = _REPO / "tests/fixtures/rcs280_reference_subtraction/fixture.json"
-_RFX_SPHERE = _REPO / "tests/fixtures/rcs_sphere_mie/fixture.json"
 sys.path.insert(0, str(_REPO / "tests/fixtures/rcs_sphere_mie"))
 from mie_oracle import bistatic_over_pi_a2  # noqa: E402
 
@@ -161,13 +160,3 @@ def test_subtract_reference_branch_runs_live():
     on = np.asarray(compute_rcs(grid, mats, 300, subtract_incident_reference=True, **kw).rcs_linear[0, 0])
     fo = (np.degrees(ph) >= 15) & (np.degrees(ph) <= 90)
     assert np.max(np.abs(off[fo] - on[fo])) > 0, "flag had no effect on the bistatic pattern"
-
-
-def test_uncorrected_backscatter_is_sourced_default_path(fx):
-    """The default (subtract=False) path is unchanged: the uncorrected sphere
-    backscatter here matches the committed monostatic value in the sibling
-    rcs_sphere_mie fixture (same geometry), i.e. default-off is the validated
-    byte-identical path."""
-    committed = json.loads(_RFX_SPHERE.read_text())["monostatic"]["rfx_sigma_over_pi_a2"]
-    uncorr_back = np.array(fx["rfx_uncorrected_over_pi_a2"])[-1]
-    assert np.isclose(uncorr_back, committed, rtol=0.02), (uncorr_back, committed)

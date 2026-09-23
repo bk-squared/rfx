@@ -274,5 +274,5 @@
     "generator": "tests/fixtures/rcs_sphere_mie/generate_fixture.py",
     "wall_seconds_cpu": 5.8
   },
-  "lock_moved_2026_09_23": "#1210: the sphere is a volume sigma through rasterize (never the PEC mask), and E coefficients now average the four cells incident to each edge, so its plus-side faces sit on the drawn staircase instead of one cell in. Monostatic -25.494 -> -25.795 dBsm (0.30 dB), exact Mie -25.393; |delta| 0.10 -> 0.40 dB, inside the 1.0 dB gate. A staircase this coarse (~6.4 cells per radius) had a compensating error under the old asymmetric realization; this number is the lock, not an accuracy claim."
+  "record_2026_09_23": "#1210: the sphere is a volume sigma through rasterize (never the PEC mask); with E coefficients averaged over each edge's four incident cells its plus-side faces sit on the drawn staircase instead of one cell in. Monostatic -25.494 -> -25.795 dBsm, exact Mie -25.393; |delta| 0.10 -> 0.40 dB, inside the 1.0 dB Mie gate. The rfx numbers in this file are a RECORD of the last generation, not compared by any test (PI 2026-09-23: a stored rfx number says whether a change moved the result, not whether it is right). Same generator at lambda/60, /80: |rfx - Mie| 0.60 / 0.73 dB (main 0.40 / 0.57) -- the rig does not converge toward Mie with the mesh; investigated separately."
 }
