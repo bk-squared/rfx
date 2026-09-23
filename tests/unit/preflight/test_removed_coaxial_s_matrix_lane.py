@@ -193,6 +193,17 @@ REFUSED_BY_BOTH_LANES = {
     "lumped-port-family": (lambda: _with(_coax_sim(), lambda s: s.add_port(
         (0.002, 0.002, 0.010), "ez", impedance=50.0)),
                            ["add_port"]),
+    "tfsf-source": (lambda: _with(_coax_sim(), lambda s: s.add_tfsf_source(
+        f0=8e9, bandwidth=0.6, polarization="ez", direction="+x")),
+                    ["no TFSF source"]),
+    "lumped-rlc": (lambda: _with(_coax_sim(), lambda s: s.add_lumped_rlc(
+        (0.002, 0.002, 0.010), "ez", R=50.0)),
+                   ["no lumped RLC elements"]),
+    "sbp-sat-refinement": (lambda: _with(_coax_sim(), lambda s: s.add_refinement(
+        (0.010, 0.014), ratio=2)),
+                           ["no SBP-SAT refinement"]),
+    "float64": (lambda: _coax_sim(precision="float64"),
+                ["precision='float32'"]),
 }
 
 
