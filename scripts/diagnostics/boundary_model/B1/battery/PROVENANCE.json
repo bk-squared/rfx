@@ -123,5 +123,6 @@
       "sha256": "7db875eb8c44f7fa1af350cc806fb2730b2e0df7ad567da92173d1b32aa38608",
       "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
     }
-  }
+  },
+  "battery_source_sha256_note": "battery_source_sha256 is the source as it ran when these records were made. The file was edited after recording in its module docstring only (commit cdd10ce2, which discloses the CPML cutoff change); its current sha256 is 1a285fb1ebcdc9a4fdf48b988b430496321f8f93f088d74c5f82051baf1590d0. No measured value depends on that docstring."
 }

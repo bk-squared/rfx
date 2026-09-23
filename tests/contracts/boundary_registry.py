@@ -8,7 +8,8 @@ Known blind spots: a face write at index -2 (how ``apply_pmc_faces`` zeroes a
 hi face through its ghost layout) or at 1 is not a site, only 0 and -1 are;
 offset-2 and wider differences (``a[2:] - a[:-2]``) are not sites, though a
 fourth-order stencil's offset-1 term still registers its function; shifts built
-with pad / concatenate or ``lax.slice_in_dim`` are not recognized.
+with pad / concatenate or ``lax.slice_in_dim`` are not recognized; nor are face
+indices held in named variables (``lo``, ``hi``) or ``.at[...].mul`` writes.
 """
 
 import argparse
