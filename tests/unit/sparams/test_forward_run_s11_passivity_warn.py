@@ -44,14 +44,19 @@ def _warned_nonpassive(recorded):
     return any("non-passive" in str(w.message) for w in recorded)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#1196: the |S11| > 1.10 overshoot this test pinned was produced by the "
-    "open box of #1193 (forward() applied no PEC walls on boundary='pec'); "
-    "with the walls it is 1.089 / 0.994. The warning itself is pinned by "
-    "test_passivity_helper_fires_on_gross_silent_otherwise; this needs a "
-    "fixture that is non-passive for a physical reason."))
 def test_forward_lumped_s11_passivity_warns_on_gross_violation():
-    """forward() must warn when the eager extractor returns |S11| >> 1."""
+    """forward() must warn when the eager extractor returns |S11| >> 1.
+
+    The overshoot on this fixture is the extractor's band-edge artifact
+    (#1196: a lumped port in a lossless closed cavity, the curl-of-H current
+    ill-conditioned where the incident wave is weak), not physics. It read
+    1.089 with the walls of #1194 and sat below this test's 1.10 line, so
+    the test was xfail(strict) for #1196; with the edge-averaged material
+    coefficients of #1210 the dielectric block's resonances moved and the
+    8.7 GHz bin reads 1.218, above the line again (vacuum control unchanged
+    to the digit). What is pinned here is that the WARNING fires on a gross
+    overshoot through forward(); the helper's own firing/silence is pinned
+    by test_passivity_helper_fires_on_gross_silent_otherwise."""
     sim = _cavity(eps_r=10.0)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
