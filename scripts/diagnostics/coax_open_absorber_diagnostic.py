@@ -86,7 +86,10 @@ ARMS = {
     "A1": {"offset": "two_b", "lateral_m": LATERAL_BATTERY_M,
            "what": "open end 2b above the -z absorber, 8 x 8 mm"},
     "A2": {"offset": "battery", "lateral_m": LATERAL_WIDE_M,
-           "what": "open end 4 cells above the -z absorber, 16 x 16 mm"},
+           "what": ("control: open end 4 cells above the -z absorber, 16 x 16 mm. This "
+                    "lane absorbs on z only, so the wider board moves the PEC walls of "
+                    "the closed region around the shell from about 3.5 mm to about "
+                    "7.4 mm from the shell's outer surface and moves no absorber")},
     "A3": {"offset": "two_b", "lateral_m": LATERAL_WIDE_M,
            "what": "open end 2b above the -z absorber, 16 x 16 mm"},
 }
@@ -408,6 +411,76 @@ def line_witness(rec: dict) -> dict:
     }
 
 
+def z_ends(rec: dict) -> dict:
+    """Both realized conductor ends against both z absorbers, from the stored
+    ``boundary_geometry`` (nothing re-solved).
+
+    Node ``k`` sits at ``z = (k - pad_z_lo) dx``. The -z CPML slab covers nodes
+    ``0 .. pad_z_lo - 1`` and the +z slab the last ``pad_z_hi`` nodes. A pad
+    face is the stamper's "pad inner edge": the last node outside each slab,
+    ``pad_z_lo`` below and ``nz - 1 - pad_z_hi`` above. A negative distance
+    means the conductor end lies inside that slab.
+    """
+    bg = rec["boundary_geometry"]
+    dx = float(bg["dx_m"])
+    nz = int(bg["grid_shape"][2])
+    lo_pad, hi_pad = int(bg["pads_cells"]["z_lo"]), int(bg["pads_cells"]["z_hi"])
+    lo = int(bg["open_end"]["lowest_conductor_node"])
+    hi = int(bg["open_end"]["highest_conductor_node"])
+    lo_face, hi_face = lo_pad, nz - 1 - hi_pad
+    return {
+        "lower_end_node": lo, "lower_end_z_m": (lo - lo_pad) * dx,
+        "upper_end_node": hi, "upper_end_z_m": (hi - lo_pad) * dx,
+        "minus_z_pad_face_node": lo_face, "minus_z_pad_face_z_m": 0.0,
+        "plus_z_pad_face_node": hi_face, "plus_z_pad_face_z_m": (hi_face - lo_pad) * dx,
+        "minus_z_slab_nodes": [0, lo_pad - 1],
+        "plus_z_slab_nodes": [nz - hi_pad, nz - 1],
+        "lower_end_to_minus_z_pad_face_cells": lo - lo_face,
+        "lower_end_to_minus_z_pad_face_m": (lo - lo_face) * dx,
+        "upper_end_to_plus_z_pad_face_cells": hi_face - hi,
+        "upper_end_to_plus_z_pad_face_m": (hi_face - hi) * dx,
+        "upper_end_is_first_plus_z_slab_node": bool(hi == nz - hi_pad),
+        "reference_plane_node": int(bg["open_end"]["reference_plane_node"]),
+        "reference_plane_minus_lower_end_cells": int(bg["open_end"]["reference_plane_node"]) - lo,
+    }
+
+
+# Where the lane's own text says the conductors stop, quoted for the facts
+# block. Line numbers are those of the commit the records were measured at.
+LANE_UPPER_END_COMMENTS = (
+    ("rfx/sparams/coax.py:453-454",
+     "The conductors deliberately stop ~2 cells short of the +z PML — running "
+     "PEC into CPML is numerically unstable."),
+    ("rfx/sparams/coax.py:645-646",
+     "# Axial layout: DUT just above the -z PML; coax runs up to ~2 cells short "
+     "# of the +z PML; matched feed one cell below the coax top; source below it."),
+    ("rfx/sources/coaxial_port.py:2023-2026",
+     "The conductors must NOT extend into a CPML region: running PEC into the PML "
+     "is numerically unstable (verified: max|E| diverges to NaN). Stop the line at "
+     "least ~2 cells short of the absorbing boundary and terminate the feed with "
+     ":func:`stamp_coaxial_annular_resistor`."),
+)
+
+# The leader's revision of the hypothesis and of A2's role. It arrived after
+# every job of the campaign had finished, so the arms below ran under the
+# original declaration; this is kept verbatim beside the arms as run.
+REVISION_AFTER_THE_RUN = {
+    "received": ("2026-09-23, after all 14 jobs had finished at 4e008494 and the "
+                 "results had been reported; the campaign ran under the original "
+                 "declaration"),
+    "hypothesis": ("the open end's fringing field reaches the -z absorber, which sits 3 "
+                   "cells below the REALIZED open end at every rung (about 1.07 / 0.71 / "
+                   "0.47 mm at 4 / 6 / 9 annulus cells); an absorber inside a near field "
+                   "returns more than it receives and keeps ringing. Predictions and the "
+                   "falsifier stay as declared, now judged on A1 (offset 2b from the "
+                   "realized end, i.e. set the offset so the realized end is 2b = 4.11 mm "
+                   "above the pad face) and A3."),
+    "a2_role": ("A2 is now a control, not a test of H: widening the lateral domain to "
+                "16 mm moves the PEC walls of the closed region around the shell from "
+                "~3.5 mm to ~7.5 mm from the shell's outer surface; it moves no absorber."),
+}
+
+
 def stage_assemble(args, out: Path, artifact_out: Path) -> None:
     commits = battery._refuse_a_set_spanning_commits(out)
     index = json.loads(Path(args.run_index).read_text()) if args.run_index else None
@@ -486,6 +559,7 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
             "peak_memory": rec["peak_memory"], "provenance": prov,
             "result": rec["result"], "summary": rec["summary"],
             "line_witness": line_witness(rec),
+            "z_ends": z_ends(rec),
         }
 
     def rec_of(arm, rung, units):
@@ -518,6 +592,7 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
             continue
         s, bg = rec["summary"], rec["boundary_geometry"]
         lw = art["records"][f"{arm}_rung{rung}_u{units:g}"]["line_witness"]
+        ze = art["records"][f"{arm}_rung{rung}_u{units:g}"]["z_ends"]
         half = rec_of(arm, rung, units / 2.0)
         art["table"].append({
             "arm": arm, "rung_annulus_cells": rung, "record_units": units,
@@ -529,6 +604,11 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
             "open_end_above_z_pad_m": bg["open_end"]["open_end_above_z_pad_m"],
             "shell_to_pad_face_m": bg["lateral"]["min_shell_to_pad_face_m"],
             "shell_to_pec_wall_m": bg["lateral"]["min_shell_to_pec_wall_m"],
+            "lower_end_node": ze["lower_end_node"],
+            "lower_end_to_minus_z_pad_face_m": ze["lower_end_to_minus_z_pad_face_m"],
+            "upper_end_node": ze["upper_end_node"],
+            "upper_end_to_plus_z_pad_face_cells": ze["upper_end_to_plus_z_pad_face_cells"],
+            "upper_end_is_first_plus_z_slab_node": ze["upper_end_is_first_plus_z_slab_node"],
             "max_abs_s11": s["max_abs_s11"], "argmax_bin": s["argmax_bin"],
             "argmax_hz": s["argmax_hz"], "max_abs_s11_sq": s["max_abs_s11_sq"],
             "min_abs_s11": s["min_abs_s11"], "argmin_hz": s["argmin_hz"],
@@ -601,6 +681,72 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
          "max_abs_s11_sq_12u": power_12("A3", 9), "shift_12_24": shift_12_24("A3", 9),
          "fired": (None if a3[9]["holds"] is None else (not a3[9]["holds"]))},
     ]
+
+    # --- facts about the realized geometry, one entry per board and rung ----
+    geometry = {}
+    for arm, rung, units in CAMPAIGN:
+        r = art["records"].get(f"{arm}_rung{rung}_u{units:g}")
+        if r is None or f"{arm}_rung{rung}" in geometry:
+            continue
+        ze, bg = r["z_ends"], r["boundary_geometry"]
+        geometry[f"{arm}_rung{rung}"] = {
+            "absorbing_axes": bg["absorbing_axes"],
+            "dut_offset_cells_as_run": bg["open_end"]["reference_plane_above_z_pad_cells"],
+            "reference_plane_node": ze["reference_plane_node"],
+            "lower_end_node": ze["lower_end_node"],
+            "lower_end_to_minus_z_pad_face_cells": ze["lower_end_to_minus_z_pad_face_cells"],
+            "lower_end_to_minus_z_pad_face_m": ze["lower_end_to_minus_z_pad_face_m"],
+            "upper_end_node": ze["upper_end_node"],
+            "first_plus_z_slab_node": ze["plus_z_slab_nodes"][0],
+            "upper_end_to_plus_z_pad_face_cells": ze["upper_end_to_plus_z_pad_face_cells"],
+            "upper_end_to_plus_z_pad_face_m": ze["upper_end_to_plus_z_pad_face_m"],
+            "upper_end_is_first_plus_z_slab_node": ze["upper_end_is_first_plus_z_slab_node"],
+            "min_shell_to_pad_face_m": bg["lateral"]["min_shell_to_pad_face_m"],
+            "min_shell_to_pec_wall_m": bg["lateral"]["min_shell_to_pec_wall_m"],
+        }
+    art["facts"] = {
+        "what": "realized geometry read from the stored records, no interpretation",
+        "absorbing_axes": sorted({g["absorbing_axes"] for g in geometry.values()}),
+        "lateral_pads": ("vacuum with the PEC grid faces behind them: the lane's run "
+                         "applies no CPML correction on x or y"),
+        "upper_end_lane_text": [{"where": w, "text": t} for w, t in LANE_UPPER_END_COMMENTS],
+        "per_geometry": geometry,
+    }
+
+    # --- the leader's revision, beside the arms as they actually ran --------
+    two_b = 2.0 * battery.port_radii()[1]
+    as_run = {}
+    for key, g in geometry.items():
+        arm, rung = key.split("_rung")[0], int(key.split("_rung")[1])
+        if ARMS[arm]["offset"] != "two_b":
+            continue
+        dx = battery.dx_of(rung)
+        target = int(round(two_b / dx))
+        as_run[key] = {
+            "realized_end_cells_as_run": g["lower_end_to_minus_z_pad_face_cells"],
+            "realized_end_m_as_run": g["lower_end_to_minus_z_pad_face_m"],
+            "dut_offset_cells_as_run": g["dut_offset_cells_as_run"],
+            "realized_end_cells_revision": target,
+            "realized_end_m_revision": target * dx,
+            "dut_offset_cells_revision": target + (g["reference_plane_node"]
+                                                   - g["lower_end_node"]),
+        }
+    art["revision_after_the_run"] = dict(REVISION_AFTER_THE_RUN)
+    art["revision_after_the_run"].update({
+        "arms_as_run_against_the_revision": as_run,
+        "predictions_on_the_arms_as_run": [
+            {"id": "A3_all_rungs", "per_rung": a3,
+             "holds": all_of(v["holds"] for v in a3.values())},
+            {"id": "A1_rung9", "max_abs_s11_sq_12u": power_12("A1", 9),
+             "shift_12_24": shift_12_24("A1", 9), "holds": holds("A1", 9)},
+            {"id": "falsifier_A3_rung9", "max_abs_s11_sq_12u": power_12("A3", 9),
+             "shift_12_24": shift_12_24("A3", 9),
+             "fired": (None if a3[9]["holds"] is None else (not a3[9]["holds"]))},
+        ],
+        "read_with": ("these judge A1 and A3 as run, whose realized open ends sit the "
+                      "number of cells given in arms_as_run_against_the_revision short "
+                      "of the revision's 2b; A2 is the control"),
+    })
 
     artifact_out.parent.mkdir(parents=True, exist_ok=True)
     tmp = artifact_out.with_suffix(artifact_out.suffix + ".tmp")
