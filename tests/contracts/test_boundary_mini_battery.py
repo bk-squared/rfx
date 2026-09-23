@@ -1,6 +1,9 @@
 """Electric/magnetic cavities, periodic ring, absorber decay and face nodes.
 
-Tolerances below precede the B1 measurements. Conclusion: leader fills.
+Tolerances below were set before the B1 measurements were read. On main the
+electric cube passes on run() and forward(); the magnetic cavity's (1,1) wall
+separation, the periodic ring and the face-node traces against the mirrored
+model are strict expected failures, removed by B3, B2 and B3.
 """
 
 from contextlib import contextmanager

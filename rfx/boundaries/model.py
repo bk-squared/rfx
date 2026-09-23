@@ -1,6 +1,8 @@
 """Declared face kinds and planes for the boundary-model B1 record.
 
-Kernels do not consume this descriptor in B1. Conclusion: leader fills.
+Kernels do not consume this descriptor in B1. It states what each face should be
+and where; ``tests/contracts/test_realized_boundary.py`` compares every entry
+point's fields with it.
 """
 
 from __future__ import annotations
