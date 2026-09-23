@@ -69,6 +69,7 @@ from tests.oracle.test_waveguide_chain_battery import (
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_v18_close.json"
 LIVE_FIXTURE = FIXTURE.with_name("fixture_931_realized_pec_forward2_run369367259427.json")
+LIVE_CELLS_FIXTURE = FIXTURE.with_name("fixture_1012_cpml_half_cell_run369367264028.json")
 RUN2 = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_guide_cell_aperture.json"
 FROZEN = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
@@ -306,6 +307,12 @@ def fx() -> dict:
 def live_fx() -> dict:
     # A missing live reference is an ingest defect, not a reason to skip.
     return E.load_enforced_fixture()
+
+
+@pytest.fixture(scope="module")
+def live_cells_fx() -> dict:
+    # #1012 remeasured only thru/short cells; historical replay stays on #931.
+    return json.loads(LIVE_CELLS_FIXTURE.read_text())
 
 
 @pytest.fixture(scope="module")
@@ -799,16 +806,16 @@ def _live_compare(fx_, rung: str):
 
 @pytest.mark.slow
 @pytest.mark.parametrize("rung", ["coarse", "mid"])
-def test_live_cells_reproduce_the_fixture_cpu(live_fx, rung):
+def test_live_cells_reproduce_the_fixture_cpu(live_cells_fx, rung):
     """§5.11 row 1 against the realized-PEC contract-build measurement."""
-    _live_compare(live_fx, rung)
+    _live_compare(live_cells_fx, rung)
 
 
 @pytest.mark.slow
 @pytest.mark.gpu
-def test_live_cells_reproduce_the_fixture_fine_rung(live_fx):
+def test_live_cells_reproduce_the_fixture_fine_rung(live_cells_fx):
     """§5.11 row 2, on the GPU lane (the fine rung is 4x the steps)."""
-    _live_compare(live_fx, "fine")
+    _live_compare(live_cells_fx, "fine")
 
 
 @pytest.mark.slow
