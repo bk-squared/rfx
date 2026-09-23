@@ -112,10 +112,34 @@ The builder is ``run_openems``'s build block, lines 1087-1125 of
 ``RETIRED_FROZEN_AT_COMMIT`` (the last commit to touch that file), frozen below
 verbatim in ``_FROZEN_BUILDER_SLICE`` so the proof survives the script's
 removal. ``_build_patch_board_at_rung``'s block IS that slice with the
-substitutions in ``B_COPY_SUBSTITUTIONS`` and ``B_RUNG_SUBSTITUTIONS`` applied,
-and nothing else; while the script is still on disk ``--self-check`` also proves
-the frozen slice IS the script's, character for character. The deltas, in the
-record's meta and in the dry run: ``DELTA_LIST`` below.
+substitutions in ``B_COPY_SUBSTITUTIONS``, ``B_RUNG_SUBSTITUTIONS`` and
+``B_EDGE_SUBSTITUTIONS`` applied, and nothing else; while the script is still on
+disk ``--self-check`` also proves the frozen slice IS the script's, character for
+character. The deltas, in the record's meta and in the dry run: ``DELTA_LIST``
+below.
+
+WHERE THE LINES FALL, CHECKED BEFORE ANY SOLVE
+----------------------------------------------
+openEMS drives a lumped port only on the mesh edges that lie exactly on its
+declared line, and puts a thin sheet's edge where the lines around it say. So
+before a stage is solved the realized lines are read back and checked (the
+``*_line_spec`` functions and ``_line_check``): the port's x and y, both
+thirds-rule lines at every patch edge, the ground edges, the substrate faces and
+the absorber's inner faces must each be a realized line, bit for bit; on Stage B
+no other line may sit closer than half a patch cell to a port or thirds-rule
+line. A stage that fails is not solved. The retired builder failed it on its own
+finest mesh: its evenly spaced patch lines put one at y = 6.4e-14 mm, and
+CSXCAD's smoothing, which drops the LOWER of two lines closer than 1e-7 of the
+mean spacing, then dropped the port's y = 0 line (delta 8).
+
+The dry run and ``--self-check`` get their lines by running the SAME builders
+against a recording stand-in for openEMS and CSXCAD (``_PlanFDTD``,
+``_PlanCSX``), so the plan is not a second copy of the builder. The stand-in
+smooths with CSXCAD's own ``SmoothMeshLines`` when it can import it (the job's
+image) or load it from ``RFX_CSXCAD_SMOOTHMESHLINES`` (a path to that file); on
+a machine with neither it uses an estimate that keeps every explicit line,
+drops near-duplicates the way CSXCAD does, and subdivides the gaps evenly, and
+says so.
 
 SANITY GATES ON EVERY REAL PASS
 -------------------------------
@@ -126,6 +150,13 @@ excitation; the scale-free excitation and port-trace guard; openEMS's own
 <= 2; and the passivity witness, fed zeros for S21, so that it bounds
 |S11|^2 <= 1.05 over the stage's whole grid. A radiating antenna's |S11|^2 is
 below one by the accepted power; that deficit is recorded, not judged.
+
+THE RECORD IS WRITTEN AS IT GOES
+--------------------------------
+After every stage the record so far goes to ``<output stem>_PARTIAL.json``, so a
+job that times out keeps the stages that finished. A completed run writes the
+record and removes the partial one; a failed gate writes
+``<output stem>_FAILED.json`` and removes it too.
 
 WHAT IS REPORTED AND NOTHING ELSE
 ---------------------------------
@@ -139,9 +170,10 @@ when the dip is below -6 dB. None of the Stage B numbers is gated here.
 
 EXIT CODES
 ----------
-0 every requested stage ran and every gate passed; 1 a gate failed; 2 openEMS is
-not importable; 3 a layout/config bug in this script, or an image whose tutorial
-differs from the frozen one.
+0 every requested stage ran and every gate passed; 1 a gate failed (a realized
+line check included); 2 openEMS is not importable; 3 a layout/config bug in this
+script, or an image whose tutorial differs from the frozen one or does not carry
+it.
 
 USAGE
 -----
@@ -701,6 +733,74 @@ B_RUNG_SUBSTITUTIONS = [
     ("    mesh.AddLine('z', np.linspace(0, h, N_SUB + 1))",
      "    mesh.AddLine('z', np.linspace(0, h, substrate_z_cells(resolution_factor) + 1))"),
 ]
+# Three more make every rung the same board (delta 8 and delta 1): the evenly
+# spaced patch lines lose any line closer than half a patch cell to a port line,
+# a thirds-rule line, a patch edge or a ground edge, and eight absorber cells
+# are laid OUTSIDE the retired box after smoothing, so the absorber's inner
+# faces are the retired box faces on every rung.
+B_EDGE_SUBSTITUTIONS = [
+    ("    mesh.AddLine('x', np.arange(-Lp / 2 - 2, Lp / 2 + 2 + patch_res, patch_res))",
+     "    mesh.AddLine('x', _clear_comb(np.arange(-Lp / 2 - 2, Lp / 2 + 2 + patch_res, patch_res), 'x', patch_res))"),
+    ("    mesh.AddLine('y', np.arange(-Wp / 2 - 2, Wp / 2 + 2 + patch_res, patch_res))",
+     "    mesh.AddLine('y', _clear_comb(np.arange(-Wp / 2 - 2, Wp / 2 + 2 + patch_res, patch_res), 'y', patch_res))"),
+    ("    mesh.SmoothMeshLines('all', mesh_res, 1.4)",
+     "    mesh.SmoothMeshLines('all', mesh_res, 1.4)\n    _absorber_cells_outside(mesh, B_PML_CELLS)"),
+]
+# Half a patch cell: the thirds-rule pair at a patch edge is itself half a patch
+# cell wide (metal_edge_res = patch_res / 2), so no cell near a port or an edge
+# is narrower than that pair on any rung.
+COMB_CLEARANCE_CELLS = 0.5
+B_PML_CELLS = 8
+# The retired box faces, in mm: the absorber's inner faces on every rung.
+B_BOX_FACES_MM = {"x": (-GP_X * 5e2 - 60.0, GP_X * 5e2 + 60.0),
+                  "y": (-GP_Y * 5e2 - 60.0, GP_Y * 5e2 + 60.0),
+                  "z": (-40.0, 90.0)}
+
+
+def _thirds(lo: float, hi: float, res: float) -> list:
+    """openEMS's metal-edge pair at both edges of [lo, hi].
+
+    The rule in openEMS's ``automesh.mesh_hint_from_box`` (pinned build): with
+    mer = [-1, 2] / 3 * res, the lines lo - mer[0], lo - mer[1], hi + mer[0],
+    hi + mer[1] -- a third of ``res`` inside the metal, two thirds outside, and
+    no line on the edge. Written the same way so the values are bit-identical.
+    """
+    mer = np.array([-1.0, 2.0]) / 3.0 * res
+    if hi - lo <= res:
+        return [lo, hi]
+    return [lo - mer[0], lo - mer[1], hi + mer[0], hi + mer[1]]
+
+
+def _protected_lines(axis: str, patch_res: float) -> list:
+    """The lines no evenly spaced patch line may crowd (mm): on ``axis``, the
+    port's line, both thirds-rule lines at each patch edge, the patch edges and
+    the ground edges."""
+    if axis == "x":
+        half, ground, port = L_PATCH * 5e2, GP_X * 5e2, FEED_OFFSET_X * 1e3
+    else:
+        half, ground, port = W_PATCH * 5e2, GP_Y * 5e2, 0.0
+    return _thirds(-half, half, patch_res / 2) + [-half, half, -ground, ground, port]
+
+
+def _clear_comb(comb, axis: str, patch_res: float) -> np.ndarray:
+    """``comb`` without the lines closer than COMB_CLEARANCE_CELLS * patch_res
+    to a protected line (delta 8)."""
+    comb = np.asarray(comb, dtype=float)
+    prot = np.asarray(_protected_lines(axis, patch_res), dtype=float)
+    tol = COMB_CLEARANCE_CELLS * patch_res * (1.0 - 1e-9)
+    keep = np.min(np.abs(comb[:, None] - prot[None, :]), axis=1) >= tol
+    return comb[keep]
+
+
+def _absorber_cells_outside(mesh, n: int) -> None:
+    """Lay ``n`` cells outside each face of the smoothed mesh, each as wide as
+    the face's own outermost cell, so PML_n fills them and its inner face is the
+    face the builder drew (delta 1)."""
+    for ax in ("x", "y", "z"):
+        lines = np.asarray(mesh.GetLines(ax), dtype=float)
+        d_lo, d_hi = lines[1] - lines[0], lines[-1] - lines[-2]
+        mesh.SetLines(ax, np.concatenate([lines[0] - d_lo * np.arange(n, 0, -1), lines,
+                                          lines[-1] + d_hi * np.arange(1, n + 1)]))
 
 
 def substrate_z_cells(resolution_factor: float) -> int:
@@ -739,8 +839,8 @@ def _build_patch_board_at_rung(ContinuousStructure, openEMS, *,
     mesh.AddLine('z', [-40.0, 90.0])
     # explicit fine lines across the patch (+2 mm skirt) so openEMS is at least
     # as converged laterally as rfx's uniform 0.79 mm -> a fair reference.
-    mesh.AddLine('x', np.arange(-Lp / 2 - 2, Lp / 2 + 2 + patch_res, patch_res))
-    mesh.AddLine('y', np.arange(-Wp / 2 - 2, Wp / 2 + 2 + patch_res, patch_res))
+    mesh.AddLine('x', _clear_comb(np.arange(-Lp / 2 - 2, Lp / 2 + 2 + patch_res, patch_res), 'x', patch_res))
+    mesh.AddLine('y', _clear_comb(np.arange(-Wp / 2 - 2, Wp / 2 + 2 + patch_res, patch_res), 'y', patch_res))
 
     patch = CSX.AddMetal('patch')
     patch.AddBox(priority=10, start=[-Lp / 2, -Wp / 2, h], stop=[Lp / 2, Wp / 2, h])
@@ -755,6 +855,7 @@ def _build_patch_board_at_rung(ContinuousStructure, openEMS, *,
     port = FDTD.AddLumpedPort(1, 50.0, [feed, 0, 0], [feed, 0, h], 'z', 1.0,
                               priority=5, edges2grid='xy')
     mesh.SmoothMeshLines('all', mesh_res, 1.4)
+    _absorber_cells_outside(mesh, B_PML_CELLS)
     nf2ff = FDTD.CreateNF2FFBox() if do_gain else None
     return FDTD, port, nf2ff
 
@@ -766,9 +867,21 @@ B_UNIT_M = 1e-3
 B_F0_HZ, B_FC_HZ = 2.4e9, 1.2e9       # the builder's own SetGaussExcite(f0, fc)
 B_N_FREQS = 901                        # 2.0 MHz bins over F_LO..F_HI
 B_BOUNDARY = ["PML_8"] * 6
-B_PML_CELLS = 8
-B_REAL_NRTS = None                     # openEMS's own ~1e9 (delta 2)
-B_REAL_END_CRITERIA = None             # openEMS's own 1e-5 = -50 dB (delta 2)
+# The real pass PASSES both stop criteria (delta 2), and the record carries what
+# was passed. Passing nothing would not give 1e-5: the pinned build's python
+# binding sets NrTS to 1e9 when it is not given but never calls SetEndCriteria
+# (openEMS.pyx:74-85), so the C++ constructor's endCrit = 1e-6 stays
+# (openems.cpp:117); the binding's docstring "default=1e-5" (openEMS.pyx:57) is
+# not what runs.
+B_REAL_NRTS = 1_000_000_000            # what the binding itself sets when none is given
+B_REAL_END_CRITERIA = 1e-5             # -50 dB of the box energy's peak
+OPENEMS_UNSET_END_CRITERIA = 1e-6      # what runs when EndCriteria is not passed
+OPENEMS_UNSET_END_CRITERIA_SOURCE = (
+    "openEMS 2000574e: openems.cpp:117 (endCrit = 1e-6 in the constructor); "
+    "python/openEMS/openEMS.pyx:74-85 sets NrTS = 1e9 when absent and calls "
+    "SetEndCriteria only when EndCriteria is given; the docstring at pyx:57 says "
+    "default=1e-5")
+SMOKE_NRTS, SMOKE_END_CRITERIA = 200, 0.0
 RETIRED_NRTS_CAP = 30000
 RETIRED_END_CRITERIA_CAP = 1e-4
 B_COARSE_RESOLUTION_FACTOR = 1.0
@@ -797,24 +910,28 @@ def stage_b_freqs_hz() -> np.ndarray:
 
 
 DELTA_LIST = [
-    "DELTA 1 (boundaries): ['MUR'] * 6 becomes ['PML_8'] * 6 -- an absorbing "
-    "layer on every face of the same box (+-60 mm of air beyond the ground in x "
-    "and y, z from -40 to +90 mm). PML_8 is the outermost eight cells of each "
-    "face, inside that box; the run records where each PML face realized. Why: "
-    "the known-issues ledger's Sheen entry -- MUR side walls 3 mm from a "
-    "substrate held the Sheen board's box energy flat at about -31 dB for 6 h, "
-    "and PML on the same faces ended the run by its energy criterion in 1.4 ns. "
-    "Here the substrate stops at the ground's 56 x 66 mm edge, 60 mm inside the "
-    "box, so no face touches dielectric.",
+    "DELTA 1 (boundaries): ['MUR'] * 6 becomes ['PML_8'] * 6, and after smoothing "
+    "eight more cells are laid OUTSIDE each face of the retired box (x +-88, y +-93, "
+    "z -40 / +90 mm), each as wide as that face's outermost cell, so the absorber's "
+    "inner faces are the retired box faces on every rung. Carving PML_8 out of the "
+    "retired box instead would have put the bottom absorber's inner face 18.2 / "
+    "24.5 / 29.2 mm below the ground on the three rungs and moved the sides the "
+    "same way. The absorber is then 21.8 / 15.5 / 10.9 mm deep. Why PML at all: "
+    "the known-issues ledger's Sheen entry -- MUR side walls 3 mm from a substrate "
+    "held that board's box energy flat at about -31 dB for 6 h, and PML on those "
+    "faces ended the run by its energy criterion in 1.4 ns. Here the substrate "
+    "stops at the ground's 56 x 66 mm edge, 60 mm inside the absorber.",
     "DELTA 2 (stop criteria): openEMS(NrTS=30000, EndCriteria=1e-4) becomes "
-    "openEMS(**kw) with nothing passed on the real pass, so openEMS's own "
-    "NrTS ~1e9 and EndCriteria 1e-5 (-50 dB of the box energy's peak) apply and "
-    "every real pass ends on its energy criterion; a pass that reaches its step "
-    "cap instead is a failed gate. Why: the retired cap was one mesh's cost "
-    "choice. At the explicit-line CFL estimate of each rung's timestep "
-    "(0.464 / 0.047 / 0.308 ps) 30000 steps are 13.9 / 1.4 / 9.2 ns of "
-    "simulated time, against a planned 10 ns of pulse and ring-down. The "
-    "smoke pass keeps 200 steps at EndCriteria 0.",
+    "openEMS(**kw), and the real pass PASSES NrTS = 1e9 and EndCriteria = 1e-5 "
+    "(-50 dB of the box energy's peak); the record carries both. Every real pass "
+    "must end on that criterion; a pass that reaches its step cap is a failed "
+    "gate. Passing nothing would not give 1e-5: the pinned build's binding sets "
+    "NrTS = 1e9 when none is given but never sets EndCriteria, so the C++ "
+    "default 1e-6 would run (openems.cpp:117, openEMS.pyx:74-85; the binding's "
+    "docstring 'default=1e-5' at pyx:57 is not what runs). Why not the retired "
+    "cap: it was one mesh's cost choice, and a step count is not a record length "
+    "once dt changes with the rung. The smoke pass passes 200 steps and "
+    "EndCriteria 0.",
     "DELTA 3 (mesh rungs): three rungs, resolution factors 1.0 (stage_b_coarse), "
     "1/sqrt(2) = 0.70711 (stage_b_mid) and 0.5 (stage_b_fine). The factor "
     "multiplies mesh_res (lambda/30 in air at 3.6 GHz, 2.776 mm at rung 1), "
@@ -823,8 +940,10 @@ DELTA_LIST = [
     "patch_res / 2) and the substrate's own z cells: linspace(0, h, N_SUB + 1) "
     "becomes linspace(0, h, round(4/factor) + 1), so the 3.175 mm board carries "
     "4, 6 and 8 cells (793.75, 529.17, 396.88 um). The air box does not scale. "
-    "Rung 1.0 is the retired mesh exactly: the three substituted expressions "
-    "evaluate to the retired values at factor 1.",
+    "At factor 1 the three substituted expressions evaluate to the retired "
+    "values; the realized rung-1 mesh still differs from the retired one by "
+    "deltas 1 and 8 (the retired builder realizes 93 x 102 x 54 lines through "
+    "CSXCAD's own smoothing at the pinned build, this rung 105 x 114 x 70).",
     "DELTA 4 (frequency grid): the retired CalcPort grid linspace(F_LO, F_HI, "
     "n_freqs) with its default 181 points becomes 901 points over the same "
     "1.6-3.4 GHz, 2.0 MHz per bin. The band sits inside the excitation's 20 dB "
@@ -845,13 +964,27 @@ DELTA_LIST = [
     "DELTA 7 (how the solver runs): the retired FDTD.Run(sim_path, cleanup=True, "
     "numThreads=8) becomes the shared module's capture, Run(sim_path, "
     "cleanup=True, verbose=1, numThreads=8) with stdout and stderr in a file, "
-    "after a 200-step smoke pass, with the shared sanity gates around it.",
+    "after a 200-step smoke pass, with the shared sanity gates around it, and "
+    "the realized-line check before each pass.",
+    "DELTA 8 (the patch lines keep clear of the port and the edges): an evenly "
+    "spaced patch line (the retired np.arange from -L/2 - 2 in steps of patch_res) "
+    "is dropped when it lies closer than half a patch cell -- the width of the "
+    "thirds-rule pair, metal_edge_res -- to the probe's line, to either "
+    "thirds-rule line at a patch edge, to a patch edge or to a ground edge. The "
+    "rule is the same on every rung. Without it the three meshes were not the "
+    "same board: at rung 1 a patch line sat on the +x radiating edge "
+    "(19.999999999999975 mm, inside the thirds-rule pair); at rung 1/sqrt(2) a "
+    "20.1 um cell sat just outside the -x and -y edges (neighbour ratios 21 and "
+    "42) and set the timestep to 0.047 ps; at rung 1/2 a line landed at "
+    "20.0000000000001 mm and another at y = 6.4e-14 mm, and CSXCAD's smoothing, "
+    "which deletes the LOWER of two lines closer than 1e-7 of the mean spacing, "
+    "deleted the probe's y = 0 line, so openEMS would have driven no edge.",
     "NOTHING ELSE: the patch, the substrate (eps_r 2.2 with tan delta 1e-3 as a "
     "conductivity at 2.4 GHz), the 56 x 66 mm ground, the 50 ohm lumped port "
     "from z = 0 to z = h at x = -9 mm, SetGaussExcite(2.4e9, 1.2e9), the air box, "
-    "the 1.2 mm patch lines, the thirds rule, SmoothMeshLines('all', mesh_res, "
-    "1.4) and the mm length unit are the retired builder's, proved so character "
-    "for character by --self-check.",
+    "the thirds rule, SmoothMeshLines('all', mesh_res, 1.4) and the mm length "
+    "unit are the retired builder's, proved so character for character by "
+    "--self-check.",
 ]
 
 
@@ -898,7 +1031,7 @@ def _copy_proof_b() -> dict:
                   B_SLICE_LAST_LINE, "_build_patch_board_at_rung")
     derived = _FROZEN_BUILDER_SLICE
     counts = {}
-    for old, new in B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS:
+    for old, new in B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS + B_EDGE_SUBSTITUTIONS:
         counts[old] = derived.count(old)
         derived = derived.replace(old, new)
     text = _retired_text()
@@ -985,9 +1118,14 @@ def _tutorial_source_in_image(path: str | None = None) -> dict:
 
 
 def _tutorial_source_refusal(info: dict):
-    """Why a real run must not start with this container's tutorial, or None."""
+    """Why a real run must not start with this container's tutorial, or None.
+
+    A container that does not carry the tutorial is refused too: the frozen copy
+    is then checked against nothing but a sha256 fetched on another machine.
+    """
     if not info.get("present"):
-        return None
+        return (f"the image carries no tutorial at {info.get('path')}, so the frozen "
+                f"block cannot be checked against the build that runs it")
     why = []
     if not info.get("sha256_matches_pinned"):
         why.append(f"its sha256 is {info.get('sha256')}, not the pinned {A_TUTORIAL_SHA256}")
@@ -999,86 +1137,370 @@ def _tutorial_source_refusal(info: dict):
 
 
 # ---------------------------------------------------------------------------
-# Pure-numpy mesh plan. No openEMS, no CSXCAD.
+# THE PLAN: the builders themselves, run against a recording stand-in for
+# openEMS and CSXCAD. No second copy of any builder exists here -- what the dry
+# run prints is what the builder hands the solver, up to the smoothing.
 #
-# Every line the builders add EXPLICITLY is reproduced exactly: the box edges,
-# the arange across the patch, the thirds-rule pair at each patch edge (1/3 of
-# metal_edge_res inside the metal, 2/3 outside, the rule in openEMS's
-# automesh.mesh_hint_from_box), the ground edges, the port's x and y (its
-# edges2grid='xy') and the substrate's z lines. Near-coincident lines are merged
-# the way CSXCAD merges them (closer than 1e-7 of the mean spacing). What
-# CSXCAD's SmoothMeshLines does between them is NOT reproduced: the shared
-# ``_smooth_estimate`` subdivides each gap evenly. Checked outside this file
-# with CSXCAD's own SmoothMeshLines.py from the pinned image: the same explicit
-# lines give the tutorial's 49 x 47 x 45 lines exactly (run 369367247478 printed
-# "49x47x45"), where the even estimate gives 46 x 45 x 36; for the three Stage B
-# rungs the estimate is within 5 % of CSXCAD's cell count. The timestep estimate
-# is the vacuum CFL of the smallest explicit gaps; smoothing can add a smaller
-# cell (2.10 mm next to the tutorial's 2.50 mm explicit minimum), and openEMS's
-# own dt on the tutorial was 0.87 x that estimate (the calibration line of the
-# dry run).
+# The stand-in's line rules are the pinned build's, read in its source:
+# CSXCAD's CSRectGrid sorts and drops EXACT duplicates (CSRectGrid.cpp Sort);
+# openEMS's AddEdges2Grid places lines by automesh.mesh_hint_from_box (the
+# thirds rule when metal_edge_res is given, the box faces otherwise);
+# AddLumpedPort with edges2grid adds the port's start (and stop, if different)
+# on each named axis (openEMS.pyx); CreateNF2FFBox puts the box one line inside
+# each boundary layer (openEMS.pyx, BC size PML_n -> n + 1, MUR -> 2). The
+# smoothing is CSXCAD's own SmoothMeshLines when it can be had (see
+# ``_smoothing``); otherwise an estimate that applies CSXCAD's near-duplicate
+# rule and subdivides the gaps evenly.
 # ---------------------------------------------------------------------------
-def _merge_close(lines, rel_tol: float = 1e-7) -> np.ndarray:
-    lines = np.unique(np.asarray(lines, dtype=float))
-    if lines.size < 3:
-        return lines
-    tol = float(np.mean(np.diff(lines))) * rel_tol
-    keep = [lines[0]]
-    for v in lines[1:]:
-        if v - keep[-1] >= tol:
-            keep.append(v)
-    return np.asarray(keep)
+_AXES = {"x": 0, "y": 1, "z": 2}
+_AXIS_NAMES = ("x", "y", "z")
 
 
-def _thirds(lo: float, hi: float, res: float) -> list:
-    """openEMS's metal-edge pair at both edges of [lo, hi] (automesh.mesh_hint_from_box)."""
-    mer = np.array([-1.0, 2.0]) / 3.0 * res
-    if hi - lo <= res:
-        return [lo, hi]
-    return [lo - mer[0], lo - mer[1], hi + mer[0], hi + mer[1]]
+def _axis(d) -> int:
+    return _AXES[d] if isinstance(d, str) else int(d)
 
 
-def _explicit_lines_b(resolution_factor: float) -> dict:
-    """The rung builder's explicit lines in mm, before SmoothMeshLines."""
+def _multi_dirs(dirs) -> list:
+    if dirs == "all":
+        return [0, 1, 2]
+    return [_AXES[c] for c in dirs]
+
+
+def _csxcad_unique(lines, tol: float = 1e-7) -> np.ndarray:
+    """CSXCAD's near-duplicate rule (``Unique`` in SmoothMeshLines.py, CSXCAD
+    e5581710), re-implemented: after an exact unique, a line whose gap to the
+    NEXT line is below ``tol`` x the mean gap is deleted -- the LOWER line of the
+    pair. That is the rule that deletes the port's y = 0 line when a comb line
+    sits at 6.4e-14 mm above it."""
+    l = np.unique(np.asarray(lines, dtype=float))
+    if l.size < 2:
+        return l
+    d = np.diff(l)
+    idx = np.where(d < np.mean(d) * tol)[0]
+    return np.delete(l, idx) if idx.size else l
+
+
+def _estimate_smooth(lines, max_res, ratio=1.5):
+    """The fallback: CSXCAD's near-duplicate rule, even subdivision, the rule again."""
+    return _csxcad_unique(_smooth_estimate(_csxcad_unique(lines), max_res))
+
+
+def _smoothing():
+    """(SmoothMeshLines, where it came from).
+
+    CSXCAD's own function when the package imports (the job's image), else the
+    file named by RFX_CSXCAD_SMOOTHMESHLINES (for example SmoothMeshLines.py
+    taken from the pinned image), else the estimate.
+    """
+    try:
+        from CSXCAD.SmoothMeshLines import SmoothMeshLines as fn
+        return fn, "CSXCAD.SmoothMeshLines, imported from the installed CSXCAD"
+    except Exception:
+        pass
+    path = os.environ.get("RFX_CSXCAD_SMOOTHMESHLINES")
+    if path:
+        spec = importlib.util.spec_from_file_location("_rfx_csxcad_smoothmeshlines", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        sha = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+        return mod.SmoothMeshLines, f"CSXCAD SmoothMeshLines.py loaded from {path} (sha256 {sha[:16]}...)"
+    return _estimate_smooth, ("ESTIMATE: CSXCAD is not importable here and "
+                              "RFX_CSXCAD_SMOOTHMESHLINES is not set; explicit lines "
+                              "and CSXCAD's near-duplicate rule are exact, the lines "
+                              "added in the gaps are not")
+
+
+class _PlanGrid:
+    """CSXCAD's CSRectGrid, as far as the builders use it."""
+
+    def __init__(self, smooth):
+        self._lines = {0: [], 1: [], 2: []}
+        self._smooth = smooth
+        self.unit = None
+
+    def SetDeltaUnit(self, unit):
+        self.unit = unit
+
+    def GetDeltaUnit(self):
+        return self.unit
+
+    def AddLine(self, d, v):
+        self._lines[_axis(d)].extend(np.atleast_1d(np.asarray(v, dtype=float)).tolist())
+
+    def SetLines(self, d, v):
+        self._lines[_axis(d)] = np.atleast_1d(np.asarray(v, dtype=float)).tolist()
+
+    def GetLines(self, d, do_sort=True):
+        return np.unique(np.asarray(self._lines[_axis(d)], dtype=float))
+
+    def SmoothMeshLines(self, d, max_res, ratio=1.5):
+        for n in ((0, 1, 2) if d == "all" else (_axis(d),)):
+            self._lines[n] = np.asarray(self._smooth(self.GetLines(n), max_res, ratio),
+                                        dtype=float).tolist()
+
+
+class _PlanProperty:
+    def __init__(self, name, **kw):
+        self.name, self.kw, self.boxes = name, dict(kw), []
+
+    def AddBox(self, *args, **kw):
+        start = kw.get("start", args[0] if len(args) > 0 else None)
+        stop = kw.get("stop", args[1] if len(args) > 1 else None)
+        self.boxes.append((np.asarray(start, dtype=float), np.asarray(stop, dtype=float)))
+
+
+class _PlanCSX:
+    def __init__(self, smooth):
+        self.grid = _PlanGrid(smooth)
+        self.properties = []
+
+    def GetGrid(self):
+        return self.grid
+
+    def AddMetal(self, name):
+        prop = _PlanProperty(name, metal=True)
+        self.properties.append(prop)
+        return prop
+
+    def AddMaterial(self, name, **kw):
+        prop = _PlanProperty(name, **kw)
+        self.properties.append(prop)
+        return prop
+
+
+class _PlanBox:
+    def __init__(self, start, stop):
+        self.start, self.stop = np.asarray(start, dtype=float), np.asarray(stop, dtype=float)
+
+
+class _PlanFDTD:
+    """openEMS's python class, as far as the builders use it."""
+
+    def __init__(self, **kw):
+        self.kw = dict(kw)
+        self.csx = None
+        self.boundary = None
+        self.excite = None
+        self.ports = []
+
+    def SetGaussExcite(self, f0, fc):
+        self.excite = (f0, fc)
+
+    def SetBoundaryCond(self, bc):
+        self.boundary = list(bc)
+
+    def SetCSX(self, csx):
+        self.csx = csx
+
+    def AddEdges2Grid(self, dirs, primitives=None, properties=None, **kw):
+        res = kw.get("metal_edge_res")
+        for start, stop in properties.boxes:
+            lo, hi = np.fmin(start, stop), np.fmax(start, stop)
+            for n in _multi_dirs(dirs):
+                if res is not None and hi[n] - lo[n] > res:
+                    self.csx.grid.AddLine(n, _thirds(lo[n], hi[n], res))
+                elif hi[n] - lo[n]:
+                    self.csx.grid.AddLine(n, [lo[n], hi[n]])
+                else:
+                    self.csx.grid.AddLine(n, [lo[n]])
+
+    def AddLumpedPort(self, port_nr, R, start, stop, p_dir, excite=0, **kw):
+        edges2grid = kw.get("edges2grid")
+        if edges2grid is not None:
+            for n in _multi_dirs(edges2grid):
+                self.csx.grid.AddLine(n, start[n])
+                if start[n] != stop[n]:
+                    self.csx.grid.AddLine(n, stop[n])
+        port = {"number": port_nr, "R": R, "start": [float(v) for v in start],
+                "stop": [float(v) for v in stop], "direction": p_dir, "excite": excite}
+        self.ports.append(port)
+        return port
+
+    def CreateNF2FFBox(self, name="nf2ff"):
+        size = []
+        for bc in self.boundary:
+            if isinstance(bc, str) and bc.startswith("PML_"):
+                size.append(int(bc[4:]) + 1)
+            elif bc == "MUR":
+                size.append(2)
+            else:
+                size.append(0)
+        start, stop = [], []
+        for n in range(3):
+            lines = self.csx.grid.GetLines(n)
+            start.append(float(lines[size[2 * n]]))
+            stop.append(float(lines[-size[2 * n + 1] - 1]))
+        return _PlanBox(start, stop)
+
+
+def _realize(build) -> dict:
+    """Run ``build(ContinuousStructure, openEMS)`` against the stand-in."""
+    import functools
+    import types
+
+    smooth, source = _smoothing()
+    injected = []
+    try:
+        import openEMS.physical_constants  # noqa: F401  (the real one, in the image)
+    except Exception:
+        pkg = types.ModuleType("openEMS")
+        pc = types.ModuleType("openEMS.physical_constants")
+        pc.C0 = 299792458                      # openEMS python/openEMS/physical_constants.py
+        pc.MUE0 = 4e-7 * np.pi
+        pc.EPS0 = 1 / (pc.MUE0 * pc.C0 ** 2)
+        pkg.physical_constants = pc
+        for key, mod in (("openEMS", pkg), ("openEMS.physical_constants", pc)):
+            if key not in sys.modules:
+                sys.modules[key] = mod
+                injected.append(key)
+    try:
+        fdtd, port, nf2ff = build(functools.partial(_PlanCSX, smooth), _PlanFDTD)
+    finally:
+        for key in injected:
+            sys.modules.pop(key, None)
+    lines = {ax: fdtd.csx.grid.GetLines(ax) for ax in _AXIS_NAMES}
+    return {
+        "lines": lines,
+        "kw": dict(fdtd.kw),
+        "boundary": fdtd.boundary,
+        "excite": fdtd.excite,
+        "ports": fdtd.ports,
+        "materials": {p.name: dict(p.kw) for p in fdtd.csx.properties},
+        "nf2ff_box": None if nf2ff is None else {"start": list(nf2ff.start),
+                                                 "stop": list(nf2ff.stop)},
+        "unit": fdtd.csx.grid.unit,
+        "smoothing": source,
+    }
+
+
+# ---------------------------------------------------------------------------
+# The realized-line check: what must be a line, bit for bit, and what must not
+# crowd it. Values are computed with the builders' own expressions so that they
+# are the same floats the builders hand CSXCAD.
+# ---------------------------------------------------------------------------
+def _line_spec_b(resolution_factor: float) -> dict:
     Lp, Wp = L_PATCH * 1e3, W_PATCH * 1e3
     h = H_SUB * 1e3
     gpx, gpy = GP_X * 1e3, GP_Y * 1e3
     feed = FEED_OFFSET_X * 1e3
     patch_res = 1.2 * resolution_factor
+    required = [("x", "probe port x", feed), ("y", "probe port y", 0.0)]
+    protected = [("x", "probe port x", feed), ("y", "probe port y", 0.0)]
+    for ax, lo, hi in (("x", -Lp / 2, Lp / 2), ("y", -Wp / 2, Wp / 2)):
+        lo_in, lo_out, hi_in, hi_out = _thirds(lo, hi, patch_res / 2)
+        for name, v in ((f"patch {ax}- edge, thirds-rule line inside the metal", lo_in),
+                        (f"patch {ax}- edge, thirds-rule line outside", lo_out),
+                        (f"patch {ax}+ edge, thirds-rule line inside the metal", hi_in),
+                        (f"patch {ax}+ edge, thirds-rule line outside", hi_out)):
+            required.append((ax, name, v))
+            protected.append((ax, name, v))
+    required += [("x", "ground x- edge", -gpx / 2), ("x", "ground x+ edge", gpx / 2),
+                 ("y", "ground y- edge", -gpy / 2), ("y", "ground y+ edge", gpy / 2),
+                 ("z", "ground plane, z = 0", 0.0), ("z", "patch plane, z = h", h)]
     air = 60.0
-    x = [-gpx / 2 - air, gpx / 2 + air]
-    y = [-gpy / 2 - air, gpy / 2 + air]
-    z = [-40.0, 90.0]
-    x += list(np.arange(-Lp / 2 - 2, Lp / 2 + 2 + patch_res, patch_res))
-    y += list(np.arange(-Wp / 2 - 2, Wp / 2 + 2 + patch_res, patch_res))
-    x += _thirds(-Lp / 2, Lp / 2, patch_res / 2)
-    y += _thirds(-Wp / 2, Wp / 2, patch_res / 2)
-    z += list(np.linspace(0, h, substrate_z_cells(resolution_factor) + 1))
-    x += [-gpx / 2, gpx / 2]
-    y += [-gpy / 2, gpy / 2]
-    x += [feed]
-    y += [0.0]
-    return {"x": _merge_close(x), "y": _merge_close(y), "z": _merge_close(z)}
+    faces = {"x": (-gpx / 2 - air, gpx / 2 + air), "y": (-gpy / 2 - air, gpy / 2 + air),
+             "z": (-40.0, 90.0)}
+    return {
+        "required": required,
+        "absorber_faces": [(ax, lo, hi, B_PML_CELLS) for ax, (lo, hi) in faces.items()],
+        "protected": protected,
+        "clearance_mm": float(COMB_CLEARANCE_CELLS * patch_res),
+        "substrate": (h, substrate_z_cells(resolution_factor)),
+        "edges": {"x": (-Lp / 2, Lp / 2), "y": (-Wp / 2, Wp / 2)},
+        "port_xy": (feed, 0.0),
+        "window_mm": float(1.5 * patch_res),
+    }
 
 
-def _explicit_lines_a() -> dict:
-    """The tutorial's explicit lines in mm, before SmoothMeshLines."""
-    mesh_res = C0 / (A_F0_HZ + A_FC_HZ) / 1e-3 / 20
-    x = [-100.0, 100.0] + _thirds(-16.0, 16.0, mesh_res / 2) + [-30.0, 30.0] + [-6.0]
-    y = [-100.0, 100.0] + _thirds(-20.0, 20.0, mesh_res / 2) + [-30.0, 30.0] + [0.0]
-    z = [-50.0, 100.0] + list(np.linspace(0, 1.524, 5))
-    return {"x": _merge_close(x), "y": _merge_close(y), "z": _merge_close(z)}
+def _line_spec_a() -> dict:
+    """The tutorial's own port, thirds-rule, ground and substrate lines."""
+    C0_oems = 299792458
+    mesh_res = C0_oems / (A_F0_HZ + A_FC_HZ) / 1e-3 / 20
+    required = [("x", "probe port x", -6), ("y", "probe port y", 0)]
+    for ax, half in (("x", 32 / 2), ("y", 40 / 2)):
+        lo_in, lo_out, hi_in, hi_out = _thirds(-half, half, mesh_res / 2)
+        required += [(ax, f"patch {ax}- edge, thirds-rule line inside the metal", lo_in),
+                     (ax, f"patch {ax}- edge, thirds-rule line outside", lo_out),
+                     (ax, f"patch {ax}+ edge, thirds-rule line inside the metal", hi_in),
+                     (ax, f"patch {ax}+ edge, thirds-rule line outside", hi_out)]
+    required += [("x", "ground x- edge", -60 / 2), ("x", "ground x+ edge", 60 / 2),
+                 ("y", "ground y- edge", -60 / 2), ("y", "ground y+ edge", 60 / 2),
+                 ("z", "ground plane, z = 0", 0.0), ("z", "patch plane, z = h", 1.524)]
+    return {"required": required, "absorber_faces": [], "protected": [],
+            "clearance_mm": None, "substrate": (1.524, 4),
+            "edges": {"x": (-16.0, 16.0), "y": (-20.0, 20.0)}, "port_xy": (-6.0, 0.0),
+            "window_mm": mesh_res}
 
 
-def _smallest_spacing(lines: np.ndarray) -> dict:
-    d = np.diff(lines)
+def _line_check(lines, spec: dict) -> dict:
+    """Every required value a realized line, bit for bit; nothing crowding a
+    protected line; the absorber's inner faces where declared; the substrate
+    cell count. ``lines`` in mm, per axis."""
+    failures, rows = [], []
+    for ax, name, value in spec["required"]:
+        l = np.asarray(lines[ax], dtype=float)
+        k = int(np.argmin(np.abs(l - value)))
+        hit = bool(np.any(l == value))
+        rows.append({"axis": ax, "what": name, "declared_mm": float(value),
+                     "nearest_line_mm": float(l[k]), "exact": hit})
+        if not hit:
+            failures.append(f"{name}: no realized {ax} line at {float(value)!r} mm (nearest "
+                            f"{float(l[k])!r}, {abs(float(l[k]) - float(value)):.3e} mm away)")
+    for ax, lo, hi, n in spec["absorber_faces"]:
+        l = np.asarray(lines[ax], dtype=float)
+        ok = bool(l.size > 2 * n + 1 and l[n] == lo and l[-1 - n] == hi)
+        rows.append({"axis": ax, "what": f"absorber inner faces (line {n} from each end)",
+                     "declared_mm": [lo, hi],
+                     "realized_mm": [float(l[n]), float(l[-1 - n])] if l.size > 2 * n + 1 else None,
+                     "exact": ok})
+        if not ok:
+            failures.append(f"absorber inner faces on {ax}: lines {n} and -{n + 1} are not "
+                            f"{lo!r} / {hi!r} mm")
+    if spec["clearance_mm"] is not None:
+        tol = spec["clearance_mm"] * (1.0 - 1e-9)
+        for ax, name, value in spec["protected"]:
+            l = np.asarray(lines[ax], dtype=float)
+            others = l[l != value]
+            gap = float(np.min(np.abs(others - value)))
+            ok = bool(gap >= tol)
+            rows.append({"axis": ax, "what": f"nearest other line to: {name}",
+                         "gap_mm": gap, "clearance_mm": float(spec["clearance_mm"]), "ok": ok})
+            if not ok:
+                failures.append(f"{name}: another {ax} line sits {gap:.4f} mm away, closer than "
+                                f"{spec['clearance_mm']:.4f} mm")
+    h, n_sub = spec["substrate"]
+    z = np.asarray(lines["z"], dtype=float)
+    got = int(np.sum((z >= 0.0) & (z <= h))) - 1
+    rows.append({"axis": "z", "what": "substrate cells", "declared": n_sub, "realized": got,
+                 "exact": got == n_sub})
+    if got != n_sub:
+        failures.append(f"the substrate carries {got} z cells, not {n_sub}")
+    return {"passed": not failures, "failures": failures, "rows": rows}
+
+
+def _lines_near(lines, value: float, window: float) -> list:
+    l = np.asarray(lines, dtype=float)
+    return [float(v) for v in l[np.abs(l - value) <= window]]
+
+
+def _adjacent_ratio(lines) -> dict:
+    """The worst ratio of two neighbouring cells, larger over smaller, and where."""
+    d = np.diff(np.asarray(lines, dtype=float))
+    r = np.maximum(d[1:] / d[:-1], d[:-1] / d[1:])
+    k = int(np.argmax(r))
+    return {"ratio": float(r[k]), "at_line_mm": float(np.asarray(lines)[k + 1]),
+            "cells_mm": [float(d[k]), float(d[k + 1])]}
+
+
+def _smallest_cell(lines) -> dict:
+    d = np.diff(np.asarray(lines, dtype=float))
     k = int(np.argmin(d))
     return {"mm": float(d[k]), "between_mm": [float(lines[k]), float(lines[k + 1])]}
 
 
-def _cfl_dt_s(explicit: dict, unit_m: float) -> float:
-    """Vacuum CFL limit of the smallest spacing per axis (openEMS automesh's estimate)."""
-    inv = sum(float(np.min(np.diff(explicit[ax]))) ** -2 for ax in ("x", "y", "z"))
+def _cfl_dt_s(lines: dict, unit_m: float) -> float:
+    """Vacuum CFL limit of the smallest cell per axis (openEMS automesh's estimate)."""
+    inv = sum(float(np.min(np.diff(lines[ax]))) ** -2 for ax in _AXIS_NAMES)
     return unit_m / (C0 * math.sqrt(inv))
 
 
@@ -1092,7 +1514,6 @@ PLAN_Q = 10.06
 PLAN_Q_SOURCE = ("rfx's ring-down Q of this same board, "
                  "validation/crossval/_15_patch_results/rfx.json::q_harminv = 10.0605 "
                  "at b25df603")
-PLAN_END_CRITERIA = 1e-5          # openEMS's library default, delta 2
 PLAN_MARGIN = 2.0
 PLAN_JOB_BUDGET_S = 21600.0
 
@@ -1104,84 +1525,123 @@ def _pulse_length_s(fc_hz: float) -> float:
 
 def _planned_record_s() -> dict:
     t_pulse = _pulse_length_s(B_FC_HZ)
-    t_ring = math.log(1.0 / PLAN_END_CRITERIA) * PLAN_Q / (2.0 * math.pi * F_TM010_BOARD_HZ)
+    end = B_REAL_END_CRITERIA if B_REAL_END_CRITERIA is not None else OPENEMS_UNSET_END_CRITERIA
+    t_ring = math.log(1.0 / end) * PLAN_Q / (2.0 * math.pi * F_TM010_BOARD_HZ)
     return {"pulse_s": t_pulse, "ring_down_s": t_ring, "sum_s": t_pulse + t_ring,
             "planned_s": PLAN_MARGIN * (t_pulse + t_ring)}
 
 
-def _nf2ff_dump_estimate_bytes(lines: dict, record_s: float, f_max_hz: float,
-                               boundary_cells: int) -> float:
-    """E and H, three components each, on the six faces of the box openEMS's
-    CreateNF2FFBox puts one line inside each boundary layer, sampled every
-    Nyquist/4 steps (openems.cpp, m_OverSampling = 4), 4 bytes a value
-    (float32 -- assumed, not read)."""
-    n = {ax: max(len(lines[ax]) - 2 * (boundary_cells + 1), 2) - 1 for ax in ("x", "y", "z")}
+def _nf2ff_dump_estimate_bytes(lines: dict, box, record_s: float, f_max_hz: float) -> float:
+    """E and H, three components each, on the six faces of the recording box,
+    sampled every Nyquist/4 steps (openems.cpp, m_OverSampling = 4), 4 bytes a
+    value (float32 -- assumed, not read)."""
+    n = {}
+    for i, ax in enumerate(_AXIS_NAMES):
+        l = np.asarray(lines[ax])
+        n[ax] = int(np.sum((l >= box["start"][i]) & (l <= box["stop"][i]))) - 1
     faces = 2 * (n["x"] * n["y"] + n["x"] * n["z"] + n["y"] * n["z"])
-    samples = record_s * 8.0 * f_max_hz
-    return float(faces * 6 * 4 * samples)
+    return float(faces * 6 * 4 * record_s * 8.0 * f_max_hz)
+
+
+def _mesh_summary(lines: dict, unit_m: float) -> dict:
+    n = {ax: int(np.asarray(lines[ax]).size) for ax in _AXIS_NAMES}
+    return {
+        "lines": n,
+        "cells": int(np.prod([n[ax] - 1 for ax in _AXIS_NAMES])),
+        "line_product": int(np.prod([n[ax] for ax in _AXIS_NAMES])),
+        "smallest_cell": {ax: _smallest_cell(lines[ax]) for ax in _AXIS_NAMES},
+        "worst_adjacent_ratio": {ax: _adjacent_ratio(lines[ax]) for ax in _AXIS_NAMES},
+        "cfl_dt_s": _cfl_dt_s(lines, unit_m),
+    }
+
+
+def _edge_table(lines: dict, spec: dict) -> dict:
+    """The realized lines within ``window`` of each patch edge and of the port."""
+    w = spec["window_mm"]
+    out = {}
+    for ax in ("x", "y"):
+        lo, hi = spec["edges"][ax]
+        out[f"patch {ax}-"] = _lines_near(lines[ax], lo, w)
+        out[f"patch {ax}+"] = _lines_near(lines[ax], hi, w)
+    out["port x"] = _lines_near(lines["x"], spec["port_xy"][0], w)
+    out["port y"] = _lines_near(lines["y"], spec["port_xy"][1], w)
+    return out
 
 
 def _plan_b(label: str, resolution_factor: float) -> dict:
-    ex = _explicit_lines_b(resolution_factor)
-    mesh_res = C0 / (B_F0_HZ + B_FC_HZ) / B_UNIT_M / 30 * resolution_factor
-    patch_res = 1.2 * resolution_factor
-    est = {ax: _smooth_estimate(ex[ax], mesh_res) for ax in ("x", "y", "z")}
-    cells = int(np.prod([est[ax].size - 1 for ax in ("x", "y", "z")]))
-    dt = _cfl_dt_s(ex, B_UNIT_M)
+    real = _realize(lambda CSX, O: _build_patch_board_at_rung(
+        CSX, O, nrts=B_REAL_NRTS, end_criteria=B_REAL_END_CRITERIA,
+        resolution_factor=resolution_factor, do_gain=True))
+    spec = _line_spec_b(resolution_factor)
+    summary = _mesh_summary(real["lines"], B_UNIT_M)
     rec = _planned_record_s()
-    steps = int(math.ceil(rec["planned_s"] / dt))
-    cost_s = cells * steps / (PLAN_SPEED_MC_PER_S * 1e6)
-    n_sub = substrate_z_cells(resolution_factor)
-    pml = {}
-    for ax in ("x", "y", "z"):
-        ln = est[ax]
-        pml[ax] = [float(ln[B_PML_CELLS]), float(ln[-1 - B_PML_CELLS])]
+    steps = int(math.ceil(rec["planned_s"] / summary["cfl_dt_s"]))
+    patch_res = 1.2 * resolution_factor
+    x = np.asarray(real["lines"]["x"])
+    comb_span = x[(x > -L_PATCH * 5e2 - 2.0) & (x < L_PATCH * 5e2 + 2.0)]
     return {
         "label": label,
         "resolution_factor": float(resolution_factor),
-        "mesh_res_mm": float(mesh_res),
+        "mesh_res_mm": float(C0 / (B_F0_HZ + B_FC_HZ) / B_UNIT_M / 30 * resolution_factor),
         "patch_res_mm": float(patch_res),
         "metal_edge_res_mm": float(patch_res / 2),
-        "thirds_rule_offsets_mm": [float(v) for v in np.array([-1.0, 2.0]) / 3.0 * patch_res / 2],
-        "substrate_z_cells": n_sub,
-        "substrate_z_cells_in_planned_lines": int(np.sum(
-            (est["z"] >= -1e-9) & (est["z"] <= H_SUB * 1e3 + 1e-9)) - 1),
-        "substrate_z_step_um": float(H_SUB * 1e6 / n_sub),
-        "explicit_lines": {ax: int(ex[ax].size) for ax in ("x", "y", "z")},
-        "mesh_lines_estimate": {ax: int(est[ax].size) for ax in ("x", "y", "z")},
-        "cells_estimate": cells,
-        "smallest_explicit_spacing": {ax: _smallest_spacing(ex[ax]) for ax in ("x", "y", "z")},
-        "cfl_dt_s": dt,
-        "retired_cap_covers_s": RETIRED_NRTS_CAP * dt,
+        "substrate_z_cells": substrate_z_cells(resolution_factor),
+        "substrate_z_step_um": float(H_SUB * 1e6 / substrate_z_cells(resolution_factor)),
+        "stand_in": {k: real[k] for k in ("kw", "boundary", "excite", "ports", "materials",
+                                          "nf2ff_box", "unit")},
+        "smoothing": real["smoothing"],
+        "mesh": summary,
+        "largest_cell_across_patch_mm": float(np.max(np.diff(comb_span))),
+        "line_check": _line_check(real["lines"], spec),
+        "edge_table": _edge_table(real["lines"], spec),
+        "absorber_inner_faces_mm": {ax: [float(real["lines"][ax][B_PML_CELLS]),
+                                         float(real["lines"][ax][-1 - B_PML_CELLS])]
+                                    for ax in _AXIS_NAMES},
+        "absorber_depth_mm": {ax: [float(real["lines"][ax][B_PML_CELLS] - real["lines"][ax][0]),
+                                   float(real["lines"][ax][-1] - real["lines"][ax][-1 - B_PML_CELLS])]
+                              for ax in _AXIS_NAMES},
+        "retired_cap_covers_s": RETIRED_NRTS_CAP * summary["cfl_dt_s"],
         "planned_record_s": rec["planned_s"],
         "planned_steps": steps,
-        "planned_cost_s": cost_s,
-        "pml_inner_faces_mm_estimate": pml,
+        "planned_cost_s": summary["cells"] * steps / (PLAN_SPEED_MC_PER_S * 1e6),
         "nf2ff_dump_bytes_estimate": _nf2ff_dump_estimate_bytes(
-            est, rec["planned_s"], B_F0_HZ + B_FC_HZ, B_PML_CELLS),
+            real["lines"], real["nf2ff_box"], rec["planned_s"], B_F0_HZ + B_FC_HZ),
+        "_lines": real["lines"],
     }
 
 
 def _plan_a() -> dict:
-    ex = _explicit_lines_a()
-    mesh_res = C0 / (A_F0_HZ + A_FC_HZ) / A_UNIT_M / 20
-    est = {ax: _smooth_estimate(ex[ax], mesh_res) for ax in ("x", "y", "z")}
-    cells = int(np.prod([est[ax].size - 1 for ax in ("x", "y", "z")]))
-    dt = _cfl_dt_s(ex, A_UNIT_M)
-    steps = A_REAL_NRTS                   # the tutorial's own cap, an upper bound
+    real = _realize(lambda CSX, O: _build_stage_a_tutorial(
+        CSX, O, nrts=A_REAL_NRTS, end_criteria=A_REAL_END_CRITERIA))
+    spec = _line_spec_a()
+    summary = _mesh_summary(real["lines"], A_UNIT_M)
     return {
         "label": "stage_a",
-        "mesh_res_mm": float(mesh_res),
-        "explicit_lines": {ax: int(ex[ax].size) for ax in ("x", "y", "z")},
-        "mesh_lines_estimate": {ax: int(est[ax].size) for ax in ("x", "y", "z")},
-        "cells_estimate": cells,
-        "smallest_explicit_spacing": {ax: _smallest_spacing(ex[ax]) for ax in ("x", "y", "z")},
-        "cfl_dt_s": dt,
-        "cap_covers_s": A_REAL_NRTS * dt,
+        "mesh_res_mm": float(C0 / (A_F0_HZ + A_FC_HZ) / A_UNIT_M / 20),
+        "stand_in": {k: real[k] for k in ("kw", "boundary", "excite", "ports", "materials",
+                                          "nf2ff_box", "unit")},
+        "smoothing": real["smoothing"],
+        "mesh": summary,
+        "line_check": _line_check(real["lines"], spec),
+        "edge_table": _edge_table(real["lines"], spec),
+        "cap_covers_s": A_REAL_NRTS * summary["cfl_dt_s"],
         "pulse_s": _pulse_length_s(A_FC_HZ),
-        "planned_steps": steps,
-        "planned_cost_s": cells * steps / (PLAN_SPEED_MC_PER_S * 1e6),
+        "planned_steps": A_REAL_NRTS,
+        "planned_cost_s": summary["cells"] * A_REAL_NRTS / (PLAN_SPEED_MC_PER_S * 1e6),
+        "_lines": real["lines"],
     }
+
+
+def _plan_for_record(plan: dict) -> dict:
+    """The plan without its raw line arrays, JSON-ready."""
+    import json
+
+    return json.loads(json.dumps({k: v for k, v in plan.items() if not k.startswith("_")},
+                                 default=float))
+
+
+def partial_output_path(out: Path) -> Path:
+    return out.with_name(out.stem + "_PARTIAL" + out.suffix)
 
 
 def _stage_plans(stages) -> dict:
@@ -1336,7 +1796,7 @@ def _realized_geometry(lines_mm, *, patch_x_mm, patch_y_mm, feed_xy_mm, ground_x
     if lines_mm is None:
         return {"error": "CSXCAD did not return its grid lines"}
     x, y, z = (np.asarray(lines_mm[a], dtype=float) for a in ("x", "y", "z"))
-    out: dict = {"smallest_cell": {a: _smallest_spacing(v) for a, v in (("x", x), ("y", y), ("z", z))}}
+    out: dict = {"smallest_cell": {a: _smallest_cell(v) for a, v in (("x", x), ("y", y), ("z", z))}}
     edges = {}
     for name, lines, v in (("patch_x_lo", x, patch_x_mm[0]), ("patch_x_hi", x, patch_x_mm[1]),
                            ("patch_y_lo", y, patch_y_mm[0]), ("patch_y_hi", y, patch_y_mm[1])):
@@ -1412,25 +1872,55 @@ def _farfield(nf2ff, sim_dir: str, f_hz, theta_spec, phi, center, *, drop_dumps:
 # the shared ``run_stage``'s; that function reads two ports and S21, this board
 # has one port.
 # ---------------------------------------------------------------------------
+def _realized_lines_mm(fdtd):
+    """The lines CSXCAD built, per axis, in the CSX unit (mm for both stages)."""
+    lines = _gate._mesh_lines(fdtd)
+    if lines is None:
+        raise RuntimeError("CSXCAD did not return its grid lines; the realized-line check "
+                           "cannot run, so the stage is not solved")
+    return {ax: np.asarray(lines[ax], dtype=float) for ax in _AXIS_NAMES}
+
+
+def _require_lines(label: str, lines_mm: dict, line_spec: dict) -> dict:
+    check = _line_check(lines_mm, line_spec)
+    if not check["passed"]:
+        raise RuntimeError(
+            f"[{label}] REALIZED-LINE CHECK FAILED before the solve: "
+            + "; ".join(check["failures"]))
+    return check
+
+
 def _run_one_port_stage(*, label: str, sim_root: str, threads: int, build, freqs_hz,
                         witness_band_hz, real_nrts, real_end_criteria, realized_fn,
-                        meta_extra: dict, features_fn, farfield_fn=None,
-                        smoke_nrts: int = 200, smoke_end_criteria: float = 0.0):
+                        line_spec: dict, meta_extra: dict, features_fn, farfield_fn=None,
+                        smoke_nrts: int = SMOKE_NRTS,
+                        smoke_end_criteria: float = SMOKE_END_CRITERIA):
     ContinuousStructure, openEMS, _unused_msl = _gate._import_openems()
     sim_dir = os.path.join(sim_root, label)
     smoke_dir = os.path.join(sim_root, label + "_smoke")
     record: dict = {}
     meta: dict = {"stage": label}
     meta.update(meta_extra)
+    meta["stop_criteria_passed"] = {
+        "real": {"NrTS": real_nrts, "EndCriteria": real_end_criteria},
+        "smoke": {"NrTS": smoke_nrts, "EndCriteria": smoke_end_criteria},
+        "note": "the values handed to openEMS(...) on each pass; none is left to a default",
+    }
 
     try:
         smoke, _p, _n = build(ContinuousStructure, openEMS, nrts=smoke_nrts,
                               end_criteria=smoke_end_criteria)
+        meta["line_check_smoke"] = _require_lines(label + "_smoke",
+                                                  _realized_lines_mm(smoke), line_spec)
         smoke_log = _gate._run_openems_capturing_stdout(smoke, smoke_dir, threads=threads)
         _gate._scan_stdout_for_bad_patterns(smoke_log, label + "_smoke")
 
         fdtd, port, nf2ff = build(ContinuousStructure, openEMS, nrts=real_nrts,
                                   end_criteria=real_end_criteria)
+        realized_mm = _realized_lines_mm(fdtd)
+        meta["line_check"] = _require_lines(label, realized_mm, line_spec)
+        meta["edge_table_realized"] = _edge_table(realized_mm, line_spec)
+        meta["mesh_summary_realized"] = _mesh_summary(realized_mm, 1e-3)
         lines = _gate._mesh_lines(fdtd)
         lines_um = _gate.lines_in_um(lines, 1e-3)
         meta["mesh_realized"] = _gate._mesh_realized(
@@ -1518,7 +2008,7 @@ def _run_stage_a(*, sim_root: str, threads: int, sf) -> tuple:
         label="stage_a", sim_root=sim_root, threads=threads, build=build,
         freqs_hz=stage_a_freqs_hz(), witness_band_hz=STAGE_A_BAND_HZ,
         real_nrts=A_REAL_NRTS, real_end_criteria=A_REAL_END_CRITERIA,
-        realized_fn=realized,
+        realized_fn=realized, line_spec=_line_spec_a(),
         meta_extra={
             "model": "openEMS python/Tutorials/Simple_Patch_Antenna.py, verbatim -- the "
                      "reproduce gate, NOT this case's board",
@@ -1527,7 +2017,7 @@ def _run_stage_a(*, sim_root: str, threads: int, sf) -> tuple:
             "end_criteria_declared": A_REAL_END_CRITERIA,
             "boundary": ["MUR"] * 6,
             "calcport_grid": f"linspace({STAGE_A_BAND_HZ[0]:g}, {STAGE_A_BAND_HZ[1]:g}, {A_N_FREQS})",
-            "plan_estimate": _plan_a(),
+            "plan_estimate": _plan_for_record(_plan_a()),
         },
         features_fn=_one_port_features(sf, STAGE_A_BAND_HZ, with_tutorial_pick=True),
         farfield_fn=farfield)
@@ -1563,20 +2053,21 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int, resolution_factor: 
         label=label, sim_root=sim_root, threads=threads, build=build,
         freqs_hz=stage_b_freqs_hz(), witness_band_hz=B_WITNESS_BAND_HZ,
         real_nrts=B_REAL_NRTS, real_end_criteria=B_REAL_END_CRITERIA,
-        realized_fn=realized,
+        realized_fn=realized, line_spec=_line_spec_b(resolution_factor),
         meta_extra={
             "model": "the RT/Duroid 5880 probe-fed patch",
             "resolution_factor": float(resolution_factor),
             "substrate_thickness_um": H_SUB * 1e6,
             "substrate_z_cells_declared": substrate_z_cells(resolution_factor),
-            "nrts_declared": "openEMS library default (~1e9) -- the retired cap of "
-                             f"{RETIRED_NRTS_CAP} is not carried",
-            "end_criteria_declared": "openEMS library default (1e-5) -- the retired "
-                                     f"{RETIRED_END_CRITERIA_CAP} is not carried",
+            "nrts_declared": B_REAL_NRTS,
+            "end_criteria_declared": B_REAL_END_CRITERIA,
+            "stop_criteria_note": (f"both passed explicitly (delta 2); the retired "
+                                   f"{RETIRED_NRTS_CAP} / {RETIRED_END_CRITERIA_CAP} cap is "
+                                   f"not carried"),
             "boundary": B_BOUNDARY,
             "nf2ff_box_created": bool(do_gain),
             "calcport_grid": f"linspace({F_LO:g}, {F_HI:g}, {B_N_FREQS})",
-            "plan_estimate": _plan_b(label, resolution_factor),
+            "plan_estimate": _plan_for_record(_plan_b(label, resolution_factor)),
         },
         features_fn=_one_port_features(sf, B_RESONANCE_BAND_HZ),
         farfield_fn=farfield if do_gain else None)
@@ -1584,7 +2075,7 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int, resolution_factor: 
 
 def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict, stages: list, *,
                     image_tutorial: dict | None = None, do_gain: bool = True,
-                    failed_gate: str | None = None) -> dict:
+                    failed_gate: str | None = None, complete: bool = True) -> dict:
     first = next((m for m in stage_meta.values() if m.get("openems")), None)
     meta = {
         "tool": "openEMS",
@@ -1628,9 +2119,20 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict, stages:
         },
         "boundary": B_BOUNDARY,
         "excitation": "SetGaussExcite(2.4e9, 1.2e9) -- the retired builder's f0, fc",
-        "stop_criteria": ("Stage B real passes: openEMS defaults (NrTS ~1e9, EndCriteria "
-                          "1e-5). Stage A: the tutorial's NrTS 30000, EndCriteria 1e-4. "
-                          "Smoke passes: 200 steps, EndCriteria 0."),
+        "stop_criteria": {
+            "stage_b_real": {"NrTS": B_REAL_NRTS, "EndCriteria": B_REAL_END_CRITERIA},
+            "stage_a_real": {"NrTS": A_REAL_NRTS, "EndCriteria": A_REAL_END_CRITERIA},
+            "smoke": {"NrTS": SMOKE_NRTS, "EndCriteria": SMOKE_END_CRITERIA},
+            "note": ("every value is passed to openEMS(...) explicitly. Left unset, "
+                     f"EndCriteria would be {OPENEMS_UNSET_END_CRITERIA:g}, not the 1e-5 the "
+                     "binding's docstring states: " + OPENEMS_UNSET_END_CRITERIA_SOURCE),
+        },
+        "line_check": ("before each stage is solved, its realized lines are checked: the "
+                       "probe port's x and y, both thirds-rule lines at every patch edge, the "
+                       "ground edges, the substrate faces and (Stage B) the absorber's inner "
+                       "faces are lines bit for bit, and (Stage B) no other line sits closer "
+                       f"than {COMB_CLEARANCE_CELLS:g} patch cell to a port or thirds-rule "
+                       "line; per stage in stages.<stage>.line_check"),
         "calcport_grid": f"Stage B linspace({F_LO:g}, {F_HI:g}, {B_N_FREQS}); Stage A the "
                          f"tutorial's linspace({STAGE_A_BAND_HZ[0]:g}, "
                          f"{STAGE_A_BAND_HZ[1]:g}, {A_N_FREQS})",
@@ -1654,8 +2156,12 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict, stages:
     artifact["run_id_note"] = (
         "null by design. VESSL does not export VESSL_RUN_ID into the pod, so the job "
         "cannot write its own id; the submitter fills this field.")
+    artifact["meta"]["stages_completed"] = [n for n in STAGE_NAMES if records.get(n)]
+    artifact["meta"]["record_complete"] = bool(complete and failed_gate is None)
     if failed_gate is not None:
         artifact["failed_gate"] = failed_gate
+        artifact["meta"]["record_is_partial"] = True
+    elif not complete:
         artifact["meta"]["record_is_partial"] = True
     return artifact
 
@@ -1667,41 +2173,107 @@ def _fmt_s(seconds: float) -> str:
     return f"{seconds:,.0f} s ({seconds / 60:.1f} min)"
 
 
+def _exec_builder(body: str):
+    """A builder function made from a build block's TEXT, in this module's globals.
+
+    Used for two things only: realizing the retired builder (the frozen slice as
+    it stands) and the rung builder with delta 8 removed, as negative controls
+    for the realized-line check.
+    """
+    src = ("def _text_builder(ContinuousStructure, openEMS, *, nrts=None, end_criteria=None,"
+           " resolution_factor=1.0, do_gain=False):\n"
+           "    kw = {}\n"
+           "    if nrts is not None:\n"
+           "        kw['NrTS'] = nrts\n"
+           "    if end_criteria is not None:\n"
+           "        kw['EndCriteria'] = end_criteria\n"
+           + body + "\n    return FDTD, port, nf2ff\n")
+    ns = dict(globals())
+    exec(compile(src, "<frozen builder text>", "exec"), ns)
+    return ns["_text_builder"]
+
+
+def _derived_text(subs) -> str:
+    text = _FROZEN_BUILDER_SLICE
+    for old, new in subs:
+        text = text.replace(old, new)
+    return text
+
+
+def _retired_realized() -> dict:
+    """The retired builder, as frozen, through the stand-in (MUR, 30000 / 1e-4)."""
+    build = _exec_builder(_FROZEN_BUILDER_SLICE)
+    return _realize(lambda CSX, O: build(CSX, O))
+
+
+def _without_delta_8_realized(resolution_factor: float) -> dict:
+    """The rung builder with every delta except the comb clearance (delta 8)."""
+    subs = (B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS
+            + [sub for sub in B_EDGE_SUBSTITUTIONS if "SmoothMeshLines" in sub[0]])
+    build = _exec_builder(_derived_text(subs))
+    return _realize(lambda CSX, O: build(CSX, O, nrts=B_REAL_NRTS,
+                                         end_criteria=B_REAL_END_CRITERIA,
+                                         resolution_factor=resolution_factor))
+
+
+def _print_mesh(p: dict) -> None:
+    m = p["mesh"]
+    n = m["lines"]
+    print(f"    lines                   x {n['x']}  y {n['y']}  z {n['z']}  -> cells "
+          f"{m['cells']:,} (line product {m['line_product']:,})")
+    for ax in _AXIS_NAMES:
+        sc, ar = m["smallest_cell"][ax], m["worst_adjacent_ratio"][ax]
+        print(f"    {ax}: smallest cell {sc['mm']*1e3:8.2f} um at {sc['between_mm'][0]:+.4f}.."
+              f"{sc['between_mm'][1]:+.4f} mm; worst neighbour ratio {ar['ratio']:.2f} at "
+              f"{ar['at_line_mm']:+.4f} mm ({ar['cells_mm'][0]:.4f} / {ar['cells_mm'][1]:.4f} mm)")
+    print(f"    CFL dt                  {m['cfl_dt_s']*1e12:.4f} ps")
+
+
+def _print_edges(p: dict) -> None:
+    for name, vals in p["edge_table"].items():
+        print(f"    lines near {name:8s}   " + ", ".join(f"{v:+.4f}" for v in vals))
+
+
+def _print_check(p: dict) -> None:
+    c = p["line_check"]
+    exact = [r for r in c["rows"] if "exact" in r]
+    clear = [r for r in c["rows"] if "gap_mm" in r]
+    print(f"    realized-line check     {'PASSED' if c['passed'] else 'FAILED'}: "
+          f"{sum(r['exact'] for r in exact)}/{len(exact)} required lines exact"
+          + (f"; nearest other line to a port / thirds line >= "
+             f"{min(r['gap_mm'] for r in clear):.4f} mm (clearance "
+             f"{clear[0]['clearance_mm']:.4f})" if clear else ""))
+    for f in c["failures"]:
+        print(f"      FAIL {f}")
+
+
 def _print_plan_a(p: dict) -> None:
-    m, s = p["mesh_lines_estimate"], p["smallest_explicit_spacing"]
     print(f"  stage_a  (the tutorial's own mesh, lambda/20 at 3 GHz = {p['mesh_res_mm']:.3f} mm)")
-    print(f"    mesh lines (estimate)   x {m['x']}  y {m['y']}  z {m['z']}  -> cells ~ "
-          f"{p['cells_estimate']:,}")
-    print(f"    smallest explicit gap   x {s['x']['mm']:.4f}  y {s['y']['mm']:.4f}  "
-          f"z {s['z']['mm']:.4f} mm  -> CFL dt ~ {p['cfl_dt_s']*1e12:.3f} ps")
+    _print_mesh(p)
+    _print_edges(p)
+    _print_check(p)
     print(f"    the tutorial's cap      {A_REAL_NRTS} steps = {p['cap_covers_s']*1e9:.1f} ns "
           f"(pulse {p['pulse_s']*1e9:.2f} ns)")
     print(f"    cost, at the cap        {_fmt_s(p['planned_cost_s'])}")
 
 
 def _print_plan_b(p: dict) -> None:
-    m, s = p["mesh_lines_estimate"], p["smallest_explicit_spacing"]
-    print(f"  {p['label']}  (resolution factor {p['resolution_factor']:.5g})")
-    print(f"    mesh_res / patch_res    {p['mesh_res_mm']:.4f} / {p['patch_res_mm']:.4f} mm; "
-          f"thirds-rule offsets {p['thirds_rule_offsets_mm'][0]:+.4f} / "
-          f"{p['thirds_rule_offsets_mm'][1]:+.4f} mm")
-    print(f"    substrate z cells       {p['substrate_z_cells']} of "
-          f"{p['substrate_z_step_um']:.2f} um across the 3.175 mm board; the planned "
-          f"lines hold {p['substrate_z_cells_in_planned_lines']}")
-    print(f"    mesh lines (estimate)   x {m['x']}  y {m['y']}  z {m['z']}  -> cells ~ "
-          f"{p['cells_estimate']:,}")
-    for ax in ("x", "y", "z"):
-        a, b = s[ax]["between_mm"]
-        print(f"    smallest {ax} gap         {s[ax]['mm']*1e3:8.2f} um between the explicit "
-              f"lines {a:+.4f} and {b:+.4f} mm")
-    print(f"    CFL dt (estimate)       {p['cfl_dt_s']*1e12:.4f} ps; the retired 30000-step cap "
-          f"would cover {p['retired_cap_covers_s']*1e9:.2f} ns")
-    f = p["pml_inner_faces_mm_estimate"]
-    print(f"    PML_8 inner faces (est) x {f['x'][0]:+.2f}/{f['x'][1]:+.2f}  "
-          f"y {f['y'][0]:+.2f}/{f['y'][1]:+.2f}  z {f['z'][0]:+.2f}/{f['z'][1]:+.2f} mm "
-          f"(ground edges x +-{GP_X*5e2:.0f}, y +-{GP_Y*5e2:.0f}; patch at z {H_SUB*1e3:.3f})")
+    print(f"  {p['label']}  (resolution factor {p['resolution_factor']:.5g}; mesh_res "
+          f"{p['mesh_res_mm']:.4f} mm, patch_res {p['patch_res_mm']:.4f} mm, thirds-rule pair "
+          f"{p['metal_edge_res_mm']:.4f} mm)")
+    print(f"    substrate               {p['substrate_z_cells']} cells of "
+          f"{p['substrate_z_step_um']:.2f} um; largest cell across the patch "
+          f"{p['largest_cell_across_patch_mm']:.4f} mm")
+    _print_mesh(p)
+    _print_edges(p)
+    f, d = p["absorber_inner_faces_mm"], p["absorber_depth_mm"]
+    print(f"    absorber inner faces    x {f['x'][0]:+.2f}/{f['x'][1]:+.2f}  "
+          f"y {f['y'][0]:+.2f}/{f['y'][1]:+.2f}  z {f['z'][0]:+.2f}/{f['z'][1]:+.2f} mm; "
+          f"depth x {d['x'][0]:.2f}  y {d['y'][0]:.2f}  z {d['z'][0]:.2f}/{d['z'][1]:.2f} mm")
+    _print_check(p)
     print(f"    planned record          {p['planned_record_s']*1e9:.1f} ns -> "
-          f"{p['planned_steps']:,} steps -> {_fmt_s(p['planned_cost_s'])}")
+          f"{p['planned_steps']:,} steps -> {_fmt_s(p['planned_cost_s'])} (the retired "
+          f"30000-step cap would cover {p['retired_cap_covers_s']*1e9:.2f} ns)")
     print(f"    NF2FF dumps (estimate)  {p['nf2ff_dump_bytes_estimate']/1e9:.2f} GB")
 
 
@@ -1743,9 +2315,9 @@ def _dry_run(stage: str, do_gain: bool) -> int:
           f"(the retired 0.80-1.20 x)")
     print(f"  grid            linspace({F_LO/1e9:g}, {F_HI/1e9:g} GHz, {B_N_FREQS}) = "
           f"{(F_HI-F_LO)/(B_N_FREQS-1)/1e6:.2f} MHz bins")
-    print(f"  boundary        {B_BOUNDARY}")
-    print("  stop            openEMS defaults (NrTS ~1e9, EndCriteria 1e-5) on the real "
-          "pass; 200 / 0 on the smoke pass")
+    print(f"  boundary        {B_BOUNDARY}, {B_PML_CELLS} cells laid outside the retired box")
+    print(f"  stop            real pass NrTS {B_REAL_NRTS}, EndCriteria {B_REAL_END_CRITERIA:g} "
+          f"(both passed); smoke pass {SMOKE_NRTS} / {SMOKE_END_CRITERIA:g}")
     print(f"  far field       {'CalcNF2FF at the refined resonance, reported only' if do_gain else 'OFF (--no-nf2ff)'}")
     print("  witness         max |S11|^2 <= 1.05 over the whole grid; the deficit is recorded")
     print()
@@ -1755,43 +2327,55 @@ def _dry_run(stage: str, do_gain: bool) -> int:
     print()
     order = _gate.stages_for(stage)
     plans = _stage_plans(order)
-    print("STAGE PLAN AND COST -- estimates, see the notes at the end:")
+    source = next(iter(plans.values()))["smoothing"]
+    print("STAGE PLAN AND COST -- the builders themselves, run against a recording stand-in")
+    print(f"  smoothing: {source}")
     total = 0.0
+    failed = []
     for name in order:
         p = plans[name]
         (_print_plan_a if name == "stage_a" else _print_plan_b)(p)
         total += p["planned_cost_s"]
+        if not p["line_check"]["passed"]:
+            failed.append(name)
         print()
     rec = _planned_record_s()
     print(f"  planned record, Stage B: pulse {rec['pulse_s']*1e9:.2f} ns + ring-down to "
-          f"{10*math.log10(PLAN_END_CRITERIA):.0f} dB {rec['ring_down_s']*1e9:.2f} ns = "
+          f"{10*math.log10(B_REAL_END_CRITERIA):.0f} dB {rec['ring_down_s']*1e9:.2f} ns = "
           f"{rec['sum_s']*1e9:.2f} ns, x{PLAN_MARGIN:g} = {rec['planned_s']*1e9:.1f} ns")
     print(f"    Q = {PLAN_Q} from {PLAN_Q_SOURCE}")
     print(f"  speed: {PLAN_SPEED_SOURCE}")
     print(f"  TOTAL (the requested stages, smoke passes excluded): {_fmt_s(total)} against the "
           f"job's {PLAN_JOB_BUDGET_S:,.0f} s -- {total/PLAN_JOB_BUDGET_S*100:.0f} % of it")
     rr = STAGE_A_RECORDED_REPRODUCTION
-    dt_ratio = rr["dt_s"] / _plan_a()["cfl_dt_s"]
-    worst = sum(plans[n]["planned_cost_s"] for n in order if n != "stage_a") / dt_ratio \
-        * (PLAN_SPEED_MC_PER_S / rr["speed_mcells_per_s"])
-    print(f"  calibration: on the tutorial (run {rr['vessl_run']}) openEMS printed dt "
-          f"{rr['dt_s']*1e12:.5f} ps, {dt_ratio:.3f} x this plan's CFL estimate, and ran "
-          f"{rr['speed_mcells_per_s']:.1f} MC/s on {rr['solver_cells']:,} cells. Stage B at that "
-          f"dt ratio and that speed: {_fmt_s(worst)} -- {worst/PLAN_JOB_BUDGET_S*100:.0f} % of "
-          f"the job")
-    if "stage_b_coarse" in plans:
-        c = plans["stage_b_coarse"]["cells_estimate"]
-        print(f"  calibration: rung 1.0's estimate {c:,} cells; the retired record realized "
-              f"{RETIRED_RECORD['n_cells']:,} cells on this mesh in {RETIRED_RECORD['runtime_s']:.1f} s "
-              f"(MUR, 30000-step cap, far field on; no openEMS version or step count recorded)")
+    tut = plans["stage_a"] if "stage_a" in plans else _plan_a()
+    dt_ratio = rr["dt_s"] / tut["mesh"]["cfl_dt_s"]
+    b_total = sum(plans[n]["planned_cost_s"] for n in order if n != "stage_a")
+    worst = b_total / dt_ratio * (PLAN_SPEED_MC_PER_S / rr["speed_mcells_per_s"])
+    print(f"  calibration: on the tutorial (run {rr['vessl_run']}) openEMS printed "
+          f"{'x'.join(str(v) for v in rr['mesh_lines'])} lines (this plan: "
+          f"{'x'.join(str(tut['mesh']['lines'][a]) for a in _AXIS_NAMES)}), dt "
+          f"{rr['dt_s']*1e12:.5f} ps ({dt_ratio:.3f} x this plan's CFL value) and "
+          f"{rr['speed_mcells_per_s']:.1f} MC/s. Stage B at that dt ratio and that speed: "
+          f"{_fmt_s(worst)} -- {worst/PLAN_JOB_BUDGET_S*100:.0f} % of the job")
+    retired = _mesh_summary(_retired_realized()["lines"], B_UNIT_M)
+    print(f"  calibration: the retired builder through the same stand-in gives "
+          f"{'x'.join(str(retired['lines'][a]) for a in _AXIS_NAMES)} lines, line product "
+          f"{retired['line_product']:,}; the retired record's n_cells, which its own code "
+          f"computed as that product (nx*ny*nz of the line counts), is "
+          f"{RETIRED_RECORD['n_cells']:,} from an openEMS build it does not name")
     print()
-    print("WHAT THIS DRY RUN CANNOT TELL YOU: the explicit lines are exact for the builder "
-          "as written; every line CSXCAD's SmoothMeshLines adds between them is an "
-          "estimate, and the timestep is the vacuum CFL of the smallest explicit gaps, not "
-          "a bound -- openEMS computes its own (0.87 x this estimate on the tutorial). The "
-          "speed, the ring-down Q and the NF2FF dump size are borrowed or assumed as stated "
-          "above. The realized mesh, dt, step count, final energy and speed are written into "
-          "the record by the run itself.")
+    print("WHAT THIS DRY RUN CANNOT TELL YOU: with CSXCAD's own SmoothMeshLines (see the "
+          "smoothing line above) the lines are the ones CSXCAD will build from these "
+          "builders; with the estimate, only the explicit lines and CSXCAD's near-duplicate "
+          "rule are exact. The timestep is the vacuum CFL of the smallest cells, not "
+          "openEMS's own. The speed, the ring-down Q and the NF2FF dump size are borrowed or "
+          "assumed as stated above. The run reads the realized lines back from CSXCAD and "
+          "repeats the line check before every solve.")
+    if failed:
+        print(f"\nDRY RUN FAILED: the realized-line check fails on {', '.join(failed)}; no "
+              f"stage should be solved on this plan.")
+        return 1
     return 0
 
 
@@ -1849,8 +2433,10 @@ def _self_check() -> int:
     check(f[0] <= 1.8e9 and f[-1] >= 3.2e9, "the grid covers 1.8-3.2 GHz")
     check(B_F0_HZ - B_FC_HZ <= F_LO and F_HI <= B_F0_HZ + B_FC_HZ,
           "the grid sits inside the excitation's 20 dB corners, 1.2-3.6 GHz")
-    check(B_REAL_NRTS is None and B_REAL_END_CRITERIA is None,
-          "the real pass passes no NrTS/EndCriteria, so openEMS's own defaults apply")
+    check(B_REAL_NRTS == 1_000_000_000 and B_REAL_END_CRITERIA == 1e-5
+          and OPENEMS_UNSET_END_CRITERIA == 1e-6,
+          "the real pass PASSES NrTS 1e9 and EndCriteria 1e-5; left unset, EndCriteria "
+          "would be 1e-6 in the pinned build")
     check(B_BOUNDARY == ["PML_8"] * 6, "PML_8 on all six faces")
     check(B_COARSE_RESOLUTION_FACTOR == 1.0 and abs(B_MID_RESOLUTION_FACTOR - 2 ** -0.5) < 1e-15
           and B_FINE_RESOLUTION_FACTOR == 0.5, "the rungs are 1, 1/sqrt(2), 1/2")
@@ -1864,12 +2450,12 @@ def _self_check() -> int:
     print("the Stage B builder IS the retired run_openems build block:")
     try:
         proof = _copy_proof_b()
-        for old, _ in B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS:
+        for old, _ in B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS + B_EDGE_SUBSTITUTIONS:
             check(proof["counts"][old] == 1, f"the substitution target appears once: "
                   f"{old.strip()[:60]!r}", f"{proof['counts'][old]}")
         check(proof["matches"],
               "_build_patch_board_at_rung's block IS the frozen slice with exactly the "
-              "declared copy and rung substitutions applied")
+              "declared copy, rung and edge substitutions applied")
         if not proof["matches"]:
             import difflib
             notes.append("\n".join(difflib.unified_diff(
@@ -1965,8 +2551,8 @@ def _self_check() -> int:
               and "not in it verbatim" in (_tutorial_source_refusal(info_b) or ""),
               "a file whose build block moved is refused on the block")
         info_c = _tutorial_source_in_image(str(Path(tmp) / "absent.py"))
-        check(not info_c["present"] and _tutorial_source_refusal(info_c) is None,
-              "an image without the file is recorded, not refused")
+        check(not info_c["present"] and "carries no tutorial" in (_tutorial_source_refusal(info_c) or ""),
+              "an image without the file is refused too")
 
     print("the documented result and the gate:")
     doc = STAGE_A_DOCUMENTED
@@ -2061,22 +2647,71 @@ def _self_check() -> int:
     check(_gate.failed_output_path(Path("/tmp/openems_patch.json")).name
           == "openems_patch_FAILED.json", "a failed gate's evidence file is named from the output")
 
-    print("the plan, reported (not gated):")
-    for name, p in _stage_plans(list(STAGE_NAMES)).items():
-        if name == "stage_a":
-            print(f"  [--] stage_a: ~{p['cells_estimate']:,} cells, dt ~{p['cfl_dt_s']*1e12:.3f} ps, "
-                  f"<= {_fmt_s(p['planned_cost_s'])} at the tutorial's cap")
-        else:
-            print(f"  [--] {name}: ~{p['cells_estimate']:,} cells, {p['substrate_z_cells']} "
-                  f"substrate cells, smallest x gap {p['smallest_explicit_spacing']['x']['mm']*1e3:.1f} "
-                  f"um, dt ~{p['cfl_dt_s']*1e12:.3f} ps, ~{_fmt_s(p['planned_cost_s'])}")
+    print("the realized lines, through the stand-in -- the builders themselves:")
+    try:
+        plans = _stage_plans(list(STAGE_NAMES))
+        print(f"  [--] smoothing: {plans['stage_a']['smoothing']}")
+        for name, p in plans.items():
+            c = p["line_check"]
+            check(c["passed"], f"{name}: every port, thirds-rule, ground, substrate"
+                  + (" and absorber-face" if name != "stage_a" else "")
+                  + " line is realized bit for bit"
+                  + (", and nothing crowds a port or thirds-rule line" if name != "stage_a" else ""),
+                  "; ".join(c["failures"]) or f"{len(c['rows'])} rows")
+        a = plans["stage_a"]["stand_in"]
+        check(a["kw"] == {"NrTS": A_REAL_NRTS, "EndCriteria": A_REAL_END_CRITERIA}
+              and a["boundary"] == ["MUR"] * 6 and a["excite"] == (A_F0_HZ, A_FC_HZ)
+              and a["materials"]["substrate"]["epsilon"] == A_SUB_EPS_R,
+              "stage_a hands openEMS the tutorial's NrTS 30000 / EndCriteria 1e-4, MUR x6, "
+              "SetGaussExcite(2e9, 1e9) and eps_r 3.38", f"{a['kw']}, {a['materials']['substrate']}")
+        for name, f in STAGE_B_FACTORS.items():
+            b = plans[name]["stand_in"]
+            port = b["ports"][0]
+            check(b["kw"] == {"NrTS": B_REAL_NRTS, "EndCriteria": B_REAL_END_CRITERIA}
+                  and b["boundary"] == B_BOUNDARY and b["excite"] == (B_F0_HZ, B_FC_HZ)
+                  and b["materials"]["sub"]["epsilon"] == EPS_R
+                  and port["start"] == [FEED_OFFSET_X * 1e3, 0.0, 0.0]
+                  and port["stop"] == [FEED_OFFSET_X * 1e3, 0.0, H_SUB * 1e3],
+                  f"{name} hands openEMS NrTS {B_REAL_NRTS} / EndCriteria {B_REAL_END_CRITERIA:g} "
+                  f"explicitly, PML_8 x6, SetGaussExcite(2.4e9, 1.2e9), eps_r 2.2 and the probe "
+                  f"from (-9, 0, 0) to (-9, 0, h)", f"{b['kw']}")
+            x = np.asarray(plans[name]["_lines"]["x"])
+            span = np.diff(x[(x > -18.0) & (x < -10.0)])
+            check(bool(np.allclose(np.median(span), 1.2 * f, rtol=1e-9)),
+                  f"{name}: the lines across the patch are 1.2 x {f:.5g} = {1.2 * f:.4f} mm apart",
+                  f"median {np.median(span):.6f} mm")
+            faces = plans[name]["absorber_inner_faces_mm"]
+            check(faces == {"x": [-88.0, 88.0], "y": [-93.0, 93.0], "z": [-40.0, 90.0]},
+                  f"{name}: the absorber's inner faces are the retired box faces", f"{faces}")
+    except Exception as exc:
+        check(False, "the stand-in realizes both builders", repr(exc))
+
+    print("negative controls: the check catches what the reviewer found in the retired mesh:")
+    try:
+        bare = _without_delta_8_realized(0.5)
+        c8 = _line_check(bare["lines"], _line_spec_b(0.5))
+        check(not c8["passed"] and any(f.startswith("probe port y:") for f in c8["failures"]),
+              "without delta 8 the finest rung loses the probe's y = 0 line (a comb line at "
+              "6.4e-14 mm and CSXCAD's drop-the-lower rule) and the check FAILS on it",
+              next((f for f in c8["failures"] if f.startswith("probe port y:")), "not caught"))
+        old = _retired_realized()
+        cr = _line_check(old["lines"], _line_spec_b(1.0))
+        crowded = [f for f in cr["failures"] if "patch x+ edge" in f]
+        check(not cr["passed"] and bool(crowded),
+              "the retired builder puts an evenly spaced line ON the +x patch edge "
+              "(20.0 mm, inside the thirds-rule pair) and the check FAILS on it",
+              crowded[0] if crowded else "not caught")
+    except Exception as exc:
+        check(False, "the negative controls run", repr(exc))
 
     print()
     print("WHAT THIS SELF-CHECK CANNOT DO: it proves the builders' SOURCE is the retired "
-          "script's and the tutorial's, character for character, and checks the arithmetic "
-          "around them. It does not run openEMS, so it cannot say where CSXCAD puts the "
-          "smoothed lines, what timestep openEMS picks, or that the port and the patch land "
-          "where declared; the run records all of that from the realized grid.")
+          "script's and the tutorial's, character for character, and runs the builders "
+          "against a stand-in for openEMS and CSXCAD. Without CSXCAD's own SmoothMeshLines "
+          "(the smoothing line above says which ran) the lines between the explicit ones "
+          "are an estimate. It does not run openEMS, so it cannot say what timestep openEMS "
+          "picks; the run reads the realized lines back and repeats the line check before "
+          "every solve.")
     for note in notes:
         print(note)
     print()
@@ -2149,6 +2784,15 @@ def main(argv=None) -> int:
     stage_meta: dict = {}
     stage_a_gate: dict = {}
     out = Path(args.output)
+    partial_path = partial_output_path(out)
+
+    def write_partial() -> None:
+        """The record so far, after every stage: a timeout keeps what finished."""
+        part = _build_artifact(records, stage_meta, stage_a_gate, stages,
+                               image_tutorial=image_tutorial, do_gain=args.nf2ff,
+                               complete=False)
+        _gate.write_record(part, partial_path)
+        print(f"  record so far written to {partial_path}", flush=True)
 
     def write_failed(msg: str) -> int:
         failed = _build_artifact(records, stage_meta, stage_a_gate, stages,
@@ -2156,6 +2800,7 @@ def main(argv=None) -> int:
                                  failed_gate=msg)
         path = _gate.failed_output_path(out)
         _gate.write_record(failed, path)
+        partial_path.unlink(missing_ok=True)
         print(f"evidence written to {path}", file=sys.stderr)
         return 1
 
@@ -2201,10 +2846,12 @@ def main(argv=None) -> int:
                 print("REPRODUCE GATE FAILED: no Stage B record is written.", file=sys.stderr)
                 return write_failed("[stage_a] reproduce gate FAILED: "
                                     f"{res['refined_f_ghz']:.5f} GHz, {res['depth_db']:.2f} dB")
+        write_partial()
 
     artifact = _build_artifact(records, stage_meta, stage_a_gate, stages,
                                image_tutorial=image_tutorial, do_gain=args.nf2ff)
     _gate.write_record(artifact, out)
+    partial_path.unlink(missing_ok=True)
     print(f"\n=== written to {out} ===")
     print("run_id is null by design: VESSL does not export the run id into the pod, so the "
           "submitter records it.")
