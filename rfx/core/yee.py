@@ -464,6 +464,74 @@ def component_e_materials(materials, periodic=(False, False, False)):
     return eps_c, sig_c
 
 
+_E_COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
+
+
+def cell_component_e_materials(materials, cell, component,
+                               periodic=(False, False, False)):
+    """``(eps_r, sigma)`` the E update uses for ONE component at ONE cell.
+
+    :func:`component_e_materials` restricted to a single node, by indexing the
+    four incident cells instead of building grid-sized arrays — what a source
+    or port DRIVE coefficient needs, since it is built once per run and may be
+    built from traced materials.
+
+    The rule is the same rule: the mean of the VOLUME material over the four
+    cells incident to that component's edge, plus the lumped stamp at this
+    cell. The out-of-domain convention is
+    :func:`_material_bwd_neighbour`'s — wrap on a periodic or length-1 axis,
+    edge-replicate otherwise. ``test_the_cell_helper_agrees_with_the_grid_wide_one``
+    pins the two against each other, so this is not a second spelling.
+
+    Why a drive coefficient needs it: ``make_j_source`` turns a current into a
+    field increment through the SAME Cb the update multiplies the curl by, and
+    a cell-centred Cb on a material step transverse to the injected component
+    is off by the ratio of the two permittivities (measured: 0.556x the
+    declared current on an eps 1|9 step).
+    """
+    axis = _E_COMPONENT_AXIS[str(component).lower()]
+    t1, t2 = [a for a in range(3) if a != axis]
+    cell = tuple(int(c) for c in cell)
+    shape = tuple(materials.eps_r.shape)
+
+    def back(idx, ax):
+        if idx > 0:
+            return idx - 1
+        # index 0: wrap on a periodic or length-1 axis, replicate otherwise.
+        return shape[ax] - 1 if (periodic[ax] or shape[ax] == 1) else 0
+
+    idxs = []
+    for d1 in (0, 1):
+        for d2 in (0, 1):
+            c = list(cell)
+            if d1:
+                c[t1] = back(cell[t1], t1)
+            if d2:
+                c[t2] = back(cell[t2], t2)
+            idxs.append(tuple(c))
+
+    eps_l = getattr(materials, "eps_r_lumped", None)
+    sig_l = getattr(materials, "sigma_lumped", None)
+
+    def mean4(arr, lumped):
+        v = [arr[i] for i in idxs]
+        if lumped is not None:
+            v = [a - lumped[i] for a, i in zip(v, idxs)]
+        m = ((v[0] + v[1]) + (v[2] + v[3])) * 0.25
+        return m if lumped is None else m + lumped[cell]
+
+    return (mean4(materials.eps_r, eps_l),
+            mean4(materials.sigma, sig_l))
+
+
+def cell_component_e_coeffs(materials, cell, component, dt,
+                            periodic=(False, False, False)):
+    """``(Ca, Cb)`` of the E update for one component at one cell (#1210)."""
+    eps_r, sigma = cell_component_e_materials(materials, cell, component,
+                                              periodic)
+    return e_update_coeffs(eps_r, sigma, dt)
+
+
 def e_component_coeffs(materials, dt, periodic=(False, False, False)):
     """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` for a MaterialArrays.
 

@@ -293,3 +293,92 @@ def test_no_lumped_record_is_bit_identical_to_the_plain_average():
     eps_ref, sig_ref = edge_averaged_materials(eps, sigma)
     for a, b in zip(eps_c + sig_c, eps_ref + sig_ref):
         assert np.array_equal(np.asarray(a), np.asarray(b))
+
+
+# ---------------------------------------------------------------------------
+# the DRIVE coefficient is the update's own coefficient (#1210)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("component", ["ex", "ey", "ez"])
+def test_the_cell_helper_agrees_with_the_grid_wide_one(component):
+    """One rule, two evaluations: whole grid, and one node of it.
+
+    The drive coefficients cannot afford a grid-sized array, so they index the
+    four incident cells instead. If the two ever disagree there are two rules.
+    """
+    from rfx.core.yee import (cell_component_e_materials,
+                              component_e_materials)
+
+    rng = np.random.default_rng(1210)
+    eps = jnp.asarray(1.0 + 9.0 * rng.random(SHAPE).astype(np.float32))
+    sigma = jnp.asarray(1e3 * rng.random(SHAPE).astype(np.float32))
+    lump = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(77.0)
+    mats = MaterialArrays(eps, sigma + lump, jnp.ones(SHAPE),
+                          sigma_lumped=lump)
+    axis = {"ex": 0, "ey": 1, "ez": 2}[component]
+
+    for periodic in [(False, False, False), (True, True, True)]:
+        eps_g, sig_g = component_e_materials(mats, periodic)
+        for cell in [(0, 0, 0), (2, 3, 4), (5, 6, 7), (0, 6, 0)]:
+            e_c, s_c = cell_component_e_materials(mats, cell, component,
+                                                  periodic)
+            assert float(e_c) == pytest.approx(
+                float(np.asarray(eps_g[axis])[cell]), rel=1e-6), (
+                f"eps disagrees at {cell}, {component}, periodic={periodic}")
+            assert float(s_c) == pytest.approx(
+                float(np.asarray(sig_g[axis])[cell]), rel=1e-6)
+
+
+@pytest.mark.parametrize("mutate", [False, True],
+                         ids=["per-component", "mutation-owning-cell"])
+def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
+                                                               mutate):
+    """A current source on a material step drives with the update's Cb.
+
+    ``make_j_source`` turns a current into the field increment the E update
+    itself would have produced, so its Cb must be the update's Cb for the
+    component it injects. On an eps = 1 / eps = 9 step along y, an Ex source at
+    the interface plane sees the mean 5, not the owning cell's 9 — the
+    cell-owned coefficient is 0.556x of it, which injects 0.556x the declared
+    current. |S11| divides the drive out; an absolute field, a radiated power
+    and a gain do not.
+
+    Mutation (b): the drive reads the owning cell (the same call, the same
+    arguments) and the assertion fires.
+    """
+    from rfx.core.yee import e_component_coeffs
+    from rfx.grid import Grid
+    import rfx.simulation as _sim
+
+    if mutate:
+        monkeypatch.setattr(
+            _sim, "cell_component_e_coeffs",
+            lambda m, cell, comp, dt, periodic=(False, False, False):
+                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt))
+
+    grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
+                cpml_layers=0, cpml_axes="")
+    shape = tuple(grid.shape)
+    idx = np.indices(shape)[1]
+    eps = jnp.asarray(np.where(idx < 4, 1.0, 9.0).astype(np.float32))
+    sigma = jnp.zeros(shape, jnp.float32)
+    mats = MaterialArrays(eps, sigma, jnp.ones(shape, jnp.float32))
+    cell = (4, 4, 4)
+    pos = tuple((c + 0.5) * 1e-3 for c in cell)
+
+    spec = _sim.make_j_source(grid, pos, "ex", lambda t: 1.0, 3, mats,
+                              amplitude_kind="current")
+    assert (spec.i, spec.j, spec.k) == cell, "fixture moved off the interface"
+    # make_j_source scales Cb by the cell volume; divide it back out.
+    drive = float(np.asarray(spec.waveform)[0]) * (1e-3 ** 3)
+    update_cb = float(np.asarray(e_component_coeffs(mats, grid.dt)[1][0])[cell])
+    owning_cb = float(e_update_coeffs(eps, sigma, grid.dt)[1][cell])
+
+    if mutate:
+        assert drive == pytest.approx(owning_cb, rel=1e-5), (
+            "the mutation did not take -- the test cannot claim to detect it")
+        return
+    assert drive == pytest.approx(update_cb, rel=1e-5), (
+        f"the Ex drive coefficient is {drive:.6e} but the E update multiplies "
+        f"this node by {update_cb:.6e} ({owning_cb / update_cb:.4f}x is the "
+        f"owning cell's value)")

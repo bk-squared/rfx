@@ -20,7 +20,7 @@ from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
-    e_component_coeffs, EPS_0, MU_0, _shift_bwd,
+    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, _shift_bwd,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -268,20 +268,22 @@ class SimResult(NamedTuple):
 # Helpers to build source / probe specs
 # ---------------------------------------------------------------------------
 
-def _source_cell_cb(grid: Grid, idx, materials):
-    """Cb = (dt/eps)/(1 + sigma*dt/(2*eps)) at the source cell.
+def _source_cell_cb(grid: Grid, idx, materials, component,
+                    periodic=(False, False, False)):
+    """Cb of the E update for ``component`` at the source cell.
 
     Single spelling of the coefficient shared by ``make_source`` and
-    ``make_j_source`` (same expression, same operation order, so the
-    ``make_j_source`` output stays bit-identical to its historical value).
+    ``make_j_source``. Since #1210 it is the PER-COMPONENT coefficient:
+    ``make_j_source`` exists to turn a current into the field increment the
+    update itself would have produced, and the update multiplies each
+    component by the mean of eps and sigma over the four cells its edge
+    touches. Reading the owning cell here instead put 0.556x the declared
+    current into an Ey source standing on an eps 1|9 step along y.
     ``materials.eps_r``/``sigma`` may be JAX tracers (forward/AD path) —
-    no ``float()`` here.
+    ``cell_component_e_coeffs`` indexes four cells and never calls ``float()``.
     """
-    i, j, k = idx
-    eps = materials.eps_r[i, j, k] * EPS_0
-    sigma = materials.sigma[i, j, k]
-    loss = sigma * grid.dt / (2.0 * eps)
-    return (grid.dt / eps) / (1.0 + loss)
+    return cell_component_e_coeffs(
+        materials, idx, component, grid.dt, periodic)[1]
 
 
 def _uniform_cell_volume(grid: Grid) -> float:
@@ -319,7 +321,7 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps,
                 "for the Cb normalization at the source cell")
         scale = source_amplitude_scale(
             amplitude_kind, "raw",
-            cb=_source_cell_cb(grid, idx, materials),
+            cb=_source_cell_cb(grid, idx, materials, component),
             dV=_uniform_cell_volume(grid))
         waveform = scale * waveform
     return SourceSpec(i=idx[0], j=idx[1], k=idx[2],
@@ -362,7 +364,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     from rfx.api._source_semantics import needs_scale, source_amplitude_scale
     idx = grid.position_to_index(position)
     i, j, k = idx
-    cb = _source_cell_cb(grid, idx, materials)
+    cb = _source_cell_cb(grid, idx, materials, component)
 
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     # Cb normalization: the source enters the update equation through
@@ -393,10 +395,9 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     idx = grid.position_to_index(port.position)
     i, j, k = idx
 
-    eps = materials.eps_r[i, j, k] * EPS_0
-    sigma = materials.sigma[i, j, k]
-    loss = sigma * grid.dt / (2.0 * eps)
-    cb = (grid.dt / eps) / (1.0 + loss)
+    # #1210: the drive coefficient is the update's own per-component Cb.
+    cb = cell_component_e_coeffs(
+        materials, idx, port.component, grid.dt)[1]
 
     d_par = port_d_parallel(grid, idx, port.component)
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
@@ -432,10 +433,8 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
             continue
         i, j, k = cell
         d_par = port_d_parallel(grid, (i, j, k), port.component)
-        eps = materials.eps_r[i, j, k] * EPS_0
-        sigma = materials.sigma[i, j, k]
-        loss = sigma * grid.dt / (2.0 * eps)
-        cb = (grid.dt / eps) / (1.0 + loss)
+        cb = cell_component_e_coeffs(      # #1210
+            materials, (i, j, k), port.component, grid.dt)[1]
         waveform = (cb / d_par) * jax.vmap(port.excitation)(times) / n_live
         specs.append(SourceSpec(i=i, j=j, k=k,
                                 component=port.component, waveform=waveform))

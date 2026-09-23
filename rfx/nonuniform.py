@@ -1974,15 +1974,22 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # TracerArrayConversionError. Stay in jnp when traced so the gradient
     # propagates into the waveform normalisation; keep the exact ``float()``
     # path otherwise so non-traced output stays bit-identical.
+    # #1210: the drive coefficient is the update's own PER-COMPONENT Cb --
+    # ``update_e_nu`` multiplies each component by the mean of eps and sigma
+    # over the four cells its edge touches, and this coefficient exists to
+    # equal it. ``cell_component_e_materials`` indexes four cells, so the
+    # tracer branch below is the same branch it always was.
+    from rfx.core.yee import cell_component_e_materials as _cell_comp_mats
     materials_traced = (
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
+    _eps_r_c, _sigma_c = _cell_comp_mats(materials, (i, j, k), component)
     if materials_traced:
-        eps = jnp.asarray(materials.eps_r[i, j, k]) * EPS_0
-        sigma = jnp.asarray(materials.sigma[i, j, k])
+        eps = jnp.asarray(_eps_r_c) * EPS_0
+        sigma = jnp.asarray(_sigma_c)
     else:
-        eps = float(materials.eps_r[i, j, k]) * EPS_0
-        sigma = float(materials.sigma[i, j, k])
+        eps = float(_eps_r_c) * EPS_0
+        sigma = float(_sigma_c)
     loss = sigma * grid.dt / (2.0 * eps)
 
     # Cb = dt / (eps * (1 + loss))

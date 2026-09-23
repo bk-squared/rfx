@@ -31,7 +31,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import (EPS_0, MU_0,
+                          cell_component_e_coeffs as _cell_component_e_coeffs)
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
 
@@ -1160,10 +1161,9 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         specs = []
         for cell in cells:
             i, j, k = cell
-            eps = materials.eps_r[i, j, k] * EPS_0
-            sigma = materials.sigma[i, j, k]
-            loss = sigma * grid.dt / (2.0 * eps)
-            cb = (grid.dt / eps) / (1.0 + loss)
+            # #1210: the update's own per-component Cb at this cell.
+            cb = _cell_component_e_coeffs(
+                materials, (i, j, k), "ez", grid.dt)[1]
             # d_par is the cell size along the SUBSTRATE NORMAL (always z,
             # the axis "ez" points along) -- not the propagation axis.
             d_par = _axis_cell_size(grid, ax_n, cell[inr])
@@ -1193,10 +1193,8 @@ def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
         ez_w = float(ez_profile[j_loc, k_loc])
         if ez_w == 0.0:
             continue
-        eps = materials.eps_r[i, j, k] * EPS_0
-        sigma = materials.sigma[i, j, k]
-        loss = sigma * grid.dt / (2.0 * eps)
-        cb = (grid.dt / eps) / (1.0 + loss)
+        cb = _cell_component_e_coeffs(      # #1210
+            materials, (i, j, k), "ez", grid.dt)[1]
         # Add Cb * ez_w * u after the electric update. There is no extra
         # sigma_port factor or negative sign in this force. This equals
         # the uniform branch when ez_w = 1/H_sub and dz is uniform.
