@@ -3223,33 +3223,33 @@ class _ExecuteMixin:
         # declarations, where every port is visible whatever it does later.
         #
         # A port's cells are its EDGES, not its end NODES. An extent from
-        # node n0 to node n1 drives the edges n0 .. n1 - 1 (the ONE spelling
-        # in ``rfx.sources.sources.wire_port_edge_span``), so node n1 is only
-        # the far terminal and the plane it sits on carries no port cell.
-        # Comparing against n1 refused a design box on the port's end plane —
-        # exactly where a patch fed by a via lives. The step-level fence
-        # (``rfx.simulation._resolve_design_box``, reading ``p.live_cells``)
-        # has always been edge-exact; this is the declaration-level one
-        # catching up.
+        # node n0 to node n1 drives the edges n0 .. n1 - 1, so node n1 is
+        # only the far terminal and the plane it sits on carries no port
+        # cell. Comparing against n1 refused a design box on the port's end
+        # plane — exactly where a patch fed by a via lives. The edge span is
+        # read from ``rfx.sources.sources.wire_port_edge_span`` (the ONE
+        # spelling both runners rasterize with) rather than re-derived here:
+        # a sub-cell extent whose two ends snap to one node drives the edge
+        # on the side the extent occupies, which ``hi - 1`` cannot know. The
+        # step-level fence (``rfx.simulation._resolve_design_box``) reads the
+        # port's ``live_cells`` on the uniform lane and, on the graded lane,
+        # the mid cell plus the excited edges through its ``sources`` entry.
+        from rfx.sources.sources import wire_port_edge_span
         _axis_of = {"ex": 0, "ey": 1, "ez": 2}
         for _pe in self._ports:
             if _pe.impedance == 0.0:
                 continue  # a plain soft source; caught as a source cell
             _lo = list(self._design_box_index_of(grid, _pe.position))
-            _hi = list(_lo)
+            _cell_lo = list(_lo)
+            _cell_hi = list(_lo)
             if getattr(_pe, "extent", None) is not None:
                 _axis = _axis_of[_pe.component]
                 _end = list(_pe.position)
                 _end[_axis] += _pe.extent
-                _hi[_axis] = self._design_box_index_of(grid, _end)[_axis]
-            _cell_lo = [min(_lo[d], _hi[d]) for d in range(3)]
-            _cell_hi = [max(_lo[d], _hi[d]) for d in range(3)]
-            for d in range(3):
-                # Last EDGE index on the extent axis; a port with no extent
-                # (or a sub-cell one, both nodes on the same index) keeps its
-                # single cell.
-                if _cell_hi[d] > _cell_lo[d]:
-                    _cell_hi[d] -= 1
+                _n_end = self._design_box_index_of(grid, _end)[_axis]
+                _n0, _n1 = sorted((_lo[_axis], _n_end))
+                _cell_lo[_axis], _cell_hi[_axis] = wire_port_edge_span(
+                    grid, _axis, _n0, _n1, _pe.position[_axis], _end[_axis])
             if all(bounds[2 * d] <= _cell_hi[d]
                    and _cell_lo[d] < bounds[2 * d + 1]
                    for d in range(3)):

@@ -1077,7 +1077,9 @@ class ForwardResult(NamedTuple):
     ``settling_probe_info`` preserves the selected columns, component
     labels and the #1090 source-dominated flag as integers, without
     inserting strings into a JAX result tree. These lazy properties are
-    not stored fields in ``_asdict()``.
+    not stored fields in ``_asdict()``. ``wire_port_sparams`` is a tuple of
+    ``(meta, accs)`` pairs on both lanes; the lane-specific type of ``meta``
+    and the accumulator channels are documented on :class:`Result`.
 
     ``lumped_port_sparams`` exposes the raw per-port
     ``(V_dft, I_dft, V_ref_dft)`` tuples accumulated inside the JIT scan body
