@@ -139,6 +139,13 @@ PROBE_COUNT = 12
 PROBE_START_CELLS = 8
 PROBE_SPACING_CELLS = 4
 
+# The one-port lane's DUT sits this many cells above the -z absorber's inner
+# face: ``compute_coaxial_line_reflection``'s own ``dut_offset_cells`` default,
+# which is what every battery stage runs at. The open-end absorber diagnostic
+# (``coax_open_absorber_diagnostic.py``) passes other values through the same
+# keyword, to the lane and to ``axial_layout`` alike.
+DUT_OFFSET_CELLS = 4
+
 # The bead: eps_r multiplied by 4 over an axial length of 6 mm centred between
 # the two probe arrays. sqrt(4) = 2, so the section's impedance is Z_TEM / 2
 # and its phase constant 2 beta_line, whatever the fill is.
@@ -506,11 +513,13 @@ def declared(rung: int, dut: str,
 # fixture that quietly describes a different line.
 # ---------------------------------------------------------------------------
 
-def axial_layout(grid, lane: str, probes: tuple[int, int, int] | None = None) -> dict:
+def axial_layout(grid, lane: str, probes: tuple[int, int, int] | None = None, *,
+                 dut_offset_cells: int = DUT_OFFSET_CELLS) -> dict:
     """The feed / source / probe indices the extractor derives internally.
 
     ``probes`` is ``(count, start_cells, spacing_cells)``; the AD stages pass
     their own reduced ladder, everything else takes the lane's defaults.
+    ``dut_offset_cells`` is the one-port lane's keyword of the same name.
     """
     count, start, spacing = probes or (PROBE_COUNT, PROBE_START_CELLS,
                                        PROBE_SPACING_CELLS)
@@ -533,7 +542,7 @@ def axial_layout(grid, lane: str, probes: tuple[int, int, int] | None = None) ->
             "probes_bot": probes_bot, "probes_top": probes_top,
             "probe_gap_cells": probes_top[0] - probes_bot[-1],
         }
-    z_dut = pad_lo + 4                      # dut_offset_cells default
+    z_dut = pad_lo + int(dut_offset_cells)
     z_hi_coax = nz - pad_hi - 2
     z_feed = z_hi_coax - 1
     z_src = z_hi_coax - 3
@@ -647,11 +656,12 @@ def bead_eps_scale(grid, center_xy, a: float, b: float, layout: dict, dx: float,
 def realized_geometry(sim: Simulation, rung: int, dut: str, *,
                       shift_cells: int = 0,
                       bead_mask: str = BEAD_MASK,
-                      probes: tuple[int, int, int] | None = None) -> dict:
+                      probes: tuple[int, int, int] | None = None,
+                      dut_offset_cells: int = DUT_OFFSET_CELLS) -> dict:
     """What the grid and the stamps actually build, measured not assumed."""
     grid = sim._build_grid()
     lane = "two_port" if dut in TWO_PORT_DUTS else "one_port"
-    layout = axial_layout(grid, lane, probes)
+    layout = axial_layout(grid, lane, probes, dut_offset_cells=dut_offset_cells)
     port = sim._coaxial_ports[0]
     a, b = float(port.pin_radius), float(port.outer_radius)
     center_xy = (float(port.position[0]), float(port.position[1]))
@@ -978,8 +988,9 @@ def solve_two_port(sim, *, n_steps: int, freqs=None, eps_scale=None,
 
 
 def solve_one_port(sim, dut: str, *, n_steps: int, freqs=None, eps_scale=None,
-                   probe_count: int = PROBE_COUNT):
-    kw = {}
+                   probe_count: int = PROBE_COUNT,
+                   dut_offset_cells: int = DUT_OFFSET_CELLS):
+    kw = {"dut_offset_cells": int(dut_offset_cells)}
     if dut == "short":
         kw["termination"] = "short"
     elif dut == "open":
