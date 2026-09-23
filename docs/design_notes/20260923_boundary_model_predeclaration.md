@@ -38,7 +38,8 @@ before PR #1205:
   faces as electric walls; a plane-wave (TFSF) run wrapped the transverse faces on the uniform lanes
   whatever was declared and absorbed them on the graded lane; a waveguide-port run turned declared
   absorbing transverse faces into electric walls on the uniform lanes and kept them on the graded lane.
-- `run()` backed every absorber with an electric wall and `forward()` did not.
+- In the all-absorber point-source box `run()` backed every absorber with an electric wall and
+  `forward()` did not; a waveguide-port run backed its transverse faces but not its own absorber faces.
 - Preflight printed "All checks passed" on every one of these runs.
 
 PR #1205 (f8da752a, another session, 2026-09-22) then fixed one class on the uniform scan and the
@@ -55,18 +56,24 @@ faces. What it left, and what this note is about:
 - **A periodic axis is one cell longer than declared.** Every axis gets L/dx + 1 nodes and the periodic
   roll wraps all of them, so the realized period is L + dx (`rfx/grid.py:212-227`, `rfx/core/yee.py:171-218`);
   where a requirement turns an absorber into a periodic face the pads are wrapped too (2·pad + 1 cells).
-  A declared 24 mm periodic parallel-plate ring resonates at c/25 mm, −4.2 % at dx = 1 mm; a
-  `RISUnitCell` 10 mm cell at dx = 0.5 mm is a 10.5 mm cell (design review, reproduced on CPU).
+  A declared 24 mm periodic parallel-plate ring resonates at 11.970 GHz at dx = 1 mm, −4.2 % against
+  c/24 mm (the continuum shift to c/25 mm is −4.0 %, the rest is dispersion); a `RISUnitCell` 10 mm cell
+  at dx = 0.5 mm is a 10.5 mm cell (first design review, CPU, off-repo; B0b's records show the same
+  extra node for its own 7.4948 mm cell).
 - **A Floquet port's scan angle never reaches the fields**: at 0 / 15 / 30 / 45° the recorded fields
   are bit-identical, the port's own injection and S-parameter functions have no callers, and
   `rfx.RISUnitCell.sweep_angle` returns a peak-normalized probe spectrum labelled as reflection
-  (`B0b/REPORT.md`; the normalization makes the output independent of the field amplitude to 2.5e-16,
-  Codex review). No calibrated reflection comes out of that path at any angle.
+  (`B0b/REPORT.md`; the normalization makes the output independent of the field amplitude to 2.5e-16 —
+  a synthetic check in the Codex review, off-repo). No calibrated reflection comes out of that path at any angle.
 - **An oblique Bloch plane wave with subpixel smoothing drops the Bloch phase in its E update** and is
   accepted; with a Debye slab the same run crashes on a scan-carry dtype (second Opus review,
-  reproduced). The Bloch rule lives in one difference operator and the smoothing branch has its own curl.
-- The subgridded, ADI and distributed lanes still apply an axis-wide wall and read no magnetic faces;
-  the feature rewrites above are unchanged; `run()` still backs absorbers and `forward()` does not.
+  reproduced off-repo; the size of the error was not measured). The Bloch rule lives in one difference
+  operator and the smoothing branch has its own curl.
+- The subgridded and ADI lanes still apply an axis-wide wall and no magnetic operation; the distributed
+  lanes consume the magnetic faces but compose them with an electric wall on the face plane, or with an
+  absorber when the other faces absorb (`B0/MATRIX.json`, `rfx/runners/_distributed_common.py:510-552`);
+  the feature rewrites above are unchanged; in an all-absorber box `run()` still backs the absorbers and
+  `forward()` does not.
 - What is consistent: the all-electric cube's TM110 is 8.8305 / 8.8322 GHz at dx = 1 / 0.5 mm through
   `run()`, `forward()`, the sweep and the graded lane alike (analytic 8.8327; `B0/WITNESS.md`).
 
@@ -95,9 +102,9 @@ depend on the wall separation. Declared and realized were not compared.
 | PEC cube W1, PMC line W3, backing W4 | Codex, `B0/WITNESS.md`, `B0/witness/*.json`, VESSL 369367263562–564 |
 | Floquet scan angle has no effect; RIS output is a normalized spectrum | Codex, `B0b/REPORT.md`, `B0b/angle_equalities.json`; Codex review (normalization) |
 | what #1205 changed | leader read PR #1205 and `rfx/boundaries/pec.py` `resolve_wall_faces` at c2dbf922 |
-| the image wall on rfx's kernels: second order on uniform and graded axes, with a dielectric face node, with the (2,4) ribbon; a post-step correction with vacuum coefficients is first order | both Opus reviews and the Codex review, 1-D and 3-D prototypes (off-repo); Codex: a mirrored-domain comparison gives 0 V/m for vacuum, εr = 4 and εr = 4 with σ, and −0.055 V/m on the Debye / Lorentz / mixed E updates unless each migrates |
+| the image wall on rfx's kernels: second order on uniform and graded axes, with a dielectric face node, with the (2,4) ribbon; a post-step correction with vacuum coefficients is first order | prototypes in the three reviews, OFF-REPO (1-D eigenvalue maps; a two-spacing 3-D cavity); Codex: a mirrored-domain comparison gives 0 V/m for vacuum, εr = 4 and εr = 4 with σ, and −0.0550 / −0.0563 / −0.0550 V/m on the Debye / Lorentz / mixed E updates unless each migrates — prototypes, not production-kernel validation |
 | the curl is spelled in at least ten places (smoothing/anisotropic, Debye, Lorentz, mixed ADE, UPML, fast path, graded kernels, port current loops, distributed, subgrid) | second Opus review, read with file:line |
-| periodic L + dx; RIS 10 → 10.5 mm; index map has no node in [L − dx/2, L] once the fence post goes | design review R6/R7, second Opus review R7 |
+| periodic L + dx; RIS 10 → 10.5 mm; index map has no node in [L − dx/2, L] once the fence post goes | reviews, OFF-REPO (first review R6/R7, second Opus review R7); mechanism read by the leader at `rfx/grid.py:212-227`, `rfx/core/yee.py:171-218` |
 | `add_tfsf_source` requires `boundary='cpml'` and refuses periodic overrides | second Opus review, `rfx/api/__init__.py:2301-2310` (leader read) |
 
 ## 2. Decisions
@@ -122,8 +129,11 @@ depend on the wall separation. Declared and realized were not compared.
    canonicalized), periodic, Bloch (the existing per-neighbour envelope phase exp(−j·k·d), not a
    seam-only phase). (ii) The absorber's auxiliary update (CPML ψ; UPML coefficients; ADI's conductivity
    layer inside its implicit operator), parameters from the object, the kernel choosing the structure.
-   (iii) Electric zeroing after the E update on PEC faces and absorber backings — `resolve_wall_faces`
-   (#1205) is its seed and is subsumed. No axis-level wall, no `pec_axes`, no `cpml_axes`. What each
+   (iii) Electric zeroing after the E update on PEC faces and absorber backings. `resolve_wall_faces`
+   (#1205) is the seed of its OUTPUT only: it becomes `electric_faces(object)`, computed from each face's
+   kind, with no periodic argument (the graded lane passes "no periodic axis" today,
+   `rfx/nonuniform.py:2546-2548`, and so solves periodic faces as electric walls), no `pec_axes` argument
+   and no default branch. No axis-level wall, no `pec_axes`, no `cpml_axes`. What each
    stored ghost cell holds under each kind is written down, and ghosts are masked from energy, flux,
    DFT and far-field sums.
 3. **The step order is pinned and tested.** H: update → TFSF/waveguide H → absorber H → Kottke H mask →
@@ -140,13 +150,19 @@ depend on the wall separation. Declared and realized were not compared.
    a waveguide port: ABSORBER on its axis and, when its REALIZED aperture equals the realized cross
    section, PEC on the transverse faces; TMz: z PEC; TEz: z PMC). The resolver intersects all features'
    sets; a declared face inside the intersection is kept; an empty intersection or a declared PEC/PMC
-   outside it is refused, naming every feature involved. A declared ABSORBER outside it is turned into
-   PERIODIC only when the realized materials and conductors are invariant along that axis (checkable at
-   dispatch: the structure is a laterally infinite slab and periodic is what the user meant), with a
-   preflight finding naming the face; otherwise refused. The add-time guards of `add_tfsf_source` are
-   lifted so that the admissible declarations can be written. (Codex disagreed with any rewrite; the
-   second Opus review agreed only under the invariance condition; the leader takes the invariance-gated
-   rule because it is exact where it applies and refuses everywhere else.)
+   outside it is refused, naming every feature involved. A declared ABSORBER pair outside it is turned into
+   the PERIODIC (or Bloch) pair only when (1) that replacement, with its phase, belongs to EVERY active
+   feature's admissible set — a postcondition asserted, not assumed — and (2) the realized operator and
+   the excitation have the translational (Bloch) symmetry along that axis: materials, conductors, loads,
+   localized field updates and the source profile all invariant (the laterally infinite slab under a
+   plane wave is the case this admits); a preflight finding names the face. Otherwise refused. A
+   full-aperture waveguide declared with absorbing transverse faces is refused and asked to declare PEC:
+   its admissible set is {PEC}, and its TE10 profile is not transversely constant even when the
+   material is. The add-time guards of `add_tfsf_source` are
+   lifted so that the admissible declarations can be written. (Codex disagreed with any rewrite and, on
+   recheck, accepted the bounded rule with conditions (1) and (2); the second Opus review agreed under
+   the invariance condition; the leader takes the bounded rule because it is exact where it applies and
+   refuses everywhere else.)
 5. **Each kernel declares its capability, and tests hold it.** Refusals raise at dispatch — also with
    preflight bypassed — naming the face, the feature and the kernel. Enforced by: B0's matrix harness as
    an always-on contract on CPU (two steps; the realized physics class of every cell computed from
@@ -194,7 +210,7 @@ depend on the wall separation. Declared and realized were not compared.
 
 - **B1 — the object and the resolver; no kernel moves; a live baseline.** The matrix is re-measured on
   current main (after #1205). Judges: every cell's realized physics class — (a) magnetic realized as
-  electric, (b) face node plane dead or shorted, (c) electric face absorbing, (d) periodic realized as
+  electric, (b1) face node plane dead, (b2) face node plane shorted, (c) electric face absorbing, (d) periodic realized as
   electric or absorber, (e) period ≠ declared, (f) backing convention, (g) absorber on a reflecting face,
   (h) magnetic wall off its declared plane — is computed from realized planes and seeded field
   operations and compared with the object; each departure is a STRICT expected failure pinned to its
@@ -204,8 +220,8 @@ depend on the wall separation. Declared and realized were not compared.
   mixed electric/absorber layout; a Floquet port at a scan angle ≠ 0; any RIS or Floquet reflection output
   without native, reference-normalized S data (at every angle, including capacitance sweeps); an oblique
   Bloch plane wave with subpixel smoothing or a dispersive material; a waveguide port with magnetic
-  transverse faces; a declared 'cpml' on ADI (until B4 names the conductivity layer). Each raises with
-  preflight bypassed. The PR lists every committed test that flips from "accepts" to "raises" and
+  transverse faces; a declared 'cpml' on ADI (until B4 names the conductivity layer). Each raises its OWN refusal (face, feature and kernel named) with
+  preflight enabled and bypassed; an unrelated exception (a scan-carry dtype error) does not count. The PR lists every committed test that flips from "accepts" to "raises" and
   converts it. `known_limitations.md` entries for the periodic period and the half-cell magnetic wall
   until they land. Does not touch `boundaries/cpml.py`.
 - **B2 — the periodic period.** Judges: the periodic ring at c/L (a commensurate fixture), first order
@@ -224,16 +240,22 @@ depend on the wall separation. Declared and realized were not compared.
   the face, half of it outside the domain, which a closed form happens to fit), the six tests pinning
   H_t = 0 at Yee index 0, and the TEz thin-box test (kept, re-judged under "full"). The fast-path arm
   records whether the fused kernel ran.
-- **B4 — the other kernels, one per PR,** each with the mini-battery arms relevant to it (graded, sweep,
+- **B4 — the other kernels, one per PR,** each with B1's seeded backing-plane assertion and the mini-battery arms relevant to it; an
+  unsupported configuration refuses rather than being skipped as supported (graded, sweep,
   subgrid, distributed ×3 with `restrict`, ADI with its named conductivity layer, the probe reference
   runs, the TFSF auxiliary grids), serialized per module with the NU lane's 0b: its PR for a module lands
   first.
 - **B5 — requirements as admissible sets.** Lift the TFSF add-time guards; the invariance-gated rewrite;
   the waveguide realized-aperture predicate (behaviour changes listed: an aperture port inside a larger
   absorbing domain stops being solved in an electric box; the graded lane's waveguide runs with
-  CPML-declared transverse faces move); Floquet with k_t; RCS; the INVARIANT 2-D axis. Judges per
-  feature, including an independently referenced oblique Bloch slab (magnitude and phase).
-- **B6 — the legacy views go**; the tracker at zero.
+  CPML-declared transverse faces move); Floquet with k_t; RCS; the INVARIANT 2-D axis. Judges: an
+  admissible invariant slab accepted and a noninvariant finite scatterer refused; an invariant-material
+  full-aperture guide whose set excludes PERIODIC refused; a compatible explicitly declared guide keeps
+  its faces; each refusal with preflight enabled and bypassed; an independently referenced oblique Bloch
+  slab (magnitude and phase). Mutations, helpers kept: the invariance predicate made unconditional, and
+  a replacement outside the admissible set allowed — each must turn a judge red.
+- **B6 — the legacy views go**; the legacy-use allow-list actually empty, and every earlier physical
+  judge still green (the tracker's count is accounting, not the physics).
 
 ## 4. Out of scope
 New boundary kinds other than the named conductivity layer (Mur, higher-order ABCs, impedance walls);
