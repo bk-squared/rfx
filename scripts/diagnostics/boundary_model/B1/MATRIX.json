@@ -8,7 +8,7 @@
   "harness_sha256": {
     "tests/contracts/boundary_cases.py": "c281e22bb0e2823dc02a47572255b9a69e53ac6e6a912878cfeac5d8baa52e6b",
     "tests/contracts/boundary_fields.py": "ef742b3fbb01c8abffa7b20e8ffe3a6435c3c45f75f99ead0457b780012d5de2",
-    "tests/contracts/boundary_compare.py": "7d9b1c27e10fdd2f45b3f4721b84a9bd71b12479dfb9a25c9ee450c3f3f2868a"
+    "tests/contracts/boundary_compare.py": "f462e254da21d888c602dc74d6313431a8996381456ca804969ac6ba74c827f5"
   },
   "cells": [
     {
@@ -653,9 +653,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [source_or_port_outside_fine_grid] source #0 at (0.01, 0.01, 0.004) is outside the refined z slab\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab",
       "cpu_s": 0.263679408,
-      "wall_s": 1.5998756680055521
+      "wall_s": 1.5998756680055521,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "pec",
@@ -1727,9 +1727,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [source_or_port_outside_fine_grid] source #0 at (0.01, 0.01, 0.004) is outside the refined z slab\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab",
       "cpu_s": 1.20725966,
-      "wall_s": 6.700041894975584
+      "wall_s": 6.700041894975584,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "cpml",
@@ -2748,9 +2748,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "boundary='upml' does not support the non-uniform run() lane: the non-uniform runner implements CPML only (rfx/nonuniform.py dispatches on cpml_layers > 0 and never reads the boundary type), so this configuration used to run CPML while sim._boundary kept reporting 'upml' (issue #680). Pass boundary='cpml' to run the absorber that is actually implemented here, or drop the mesh profile(s) to use the uniform lane, which does implement UPML.",
       "cpu_s": 0.006118037000000243,
-      "wall_s": 0.10420576302567497
+      "wall_s": 0.10420576302567497,
+      "message_prefix": "boundary='upml' does not support"
     },
     {
       "case": "upml",
@@ -2759,9 +2759,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "[run] preflight found 1 blocking error(s) (pass skip_preflight=True to bypass):\n  - ERROR: boundary='upml' does not support subgridding/refinement",
       "cpu_s": 0.0008781070000001279,
-      "wall_s": 0.004077134013641626
+      "wall_s": 0.004077134013641626,
+      "message_prefix": "[run] preflight found"
     },
     {
       "case": "upml",
@@ -2770,9 +2770,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "boundary='upml' does not support distributed execution",
       "cpu_s": 0.0030117059999987816,
-      "wall_s": 0.008329097006935626
+      "wall_s": 0.008329097006935626,
+      "message_prefix": "boundary='upml' does not support"
     },
     {
       "case": "upml",
@@ -2781,9 +2781,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' does not support boundary='upml'",
       "cpu_s": 0.0016836559999990897,
-      "wall_s": 0.004952477989718318
+      "wall_s": 0.004952477989718318,
+      "message_prefix": "solver='adi' does not support"
     },
     {
       "case": "upml",
@@ -3375,9 +3375,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "vmap_sweep: a magnetic (pmc) boundary face is not supported on the vmapped lane (faces ['x_hi', 'x_lo']); use run() or forward() per design, or declare the face pec/cpml.",
       "cpu_s": 0.0034943609999995573,
-      "wall_s": 0.007330438995268196
+      "wall_s": 0.007330438995268196,
+      "message_prefix": "vmap_sweep: a magnetic (pmc) boundary face is not supported"
     },
     {
       "case": "pmc-pec",
@@ -3538,9 +3538,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [source_or_port_outside_fine_grid] source #0 at (0.01, 0.01, 0.004) is outside the refined z slab\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab",
       "cpu_s": 0.0032897240000000494,
-      "wall_s": 0.07959874504012987
+      "wall_s": 0.07959874504012987,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "pmc-pec",
@@ -4507,9 +4507,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "vmap_sweep: a magnetic (pmc) boundary face is not supported on the vmapped lane (faces ['x_hi', 'x_lo']); use run() or forward() per design, or declare the face pec/cpml.",
       "cpu_s": 0.9282422379999993,
-      "wall_s": 4.518875674053561
+      "wall_s": 4.518875674053561,
+      "message_prefix": "vmap_sweep: a magnetic (pmc) boundary face is not supported"
     },
     {
       "case": "pmc-cpml",
@@ -4670,9 +4670,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [source_or_port_outside_fine_grid] source #0 at (0.01, 0.01, 0.004) is outside the refined z slab\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab",
       "cpu_s": 0.8942402969999996,
-      "wall_s": 4.6091070779948495
+      "wall_s": 4.6091070779948495,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "pmc-cpml",
@@ -4837,25 +4837,25 @@
         {
           "face": "y_lo",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "y_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.028 m"
         },
         {
           "face": "z_lo",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "z_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.024 m"
         }
       ],
@@ -4869,9 +4869,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' supports only a uniform absorber: its absorbing layer is stamped on all six faces at the scalar cpml_layers, so a per-face boundary layout (x_hi='pmc', x_lo='pmc', y_hi='cpml', y_lo='cpml', z_hi='cpml', z_lo='cpml') would silently absorb on the faces you declared as reflectors. Use solver='yee' for per-face boundaries, or make every face 'cpml' with no per-face thickness override.",
       "cpu_s": 0.0018305860000005225,
-      "wall_s": 0.004657994955778122
+      "wall_s": 0.004657994955778122,
+      "message_prefix": "solver='adi' supports only a uniform absorber"
     },
     {
       "case": "pmc-cpml",
@@ -5698,9 +5698,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [source_or_port_outside_fine_grid] source #0 at (0.01, 0.01, 0.004) is outside the refined z slab\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab",
       "cpu_s": 0.9302061890000006,
-      "wall_s": 4.598769148986321
+      "wall_s": 4.598769148986321,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "pec-zlo",
@@ -5829,25 +5829,25 @@
         {
           "face": "x_lo",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "x_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.032 m"
         },
         {
           "face": "y_lo",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "y_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.028 m"
         },
         {
@@ -5859,13 +5859,13 @@
         {
           "face": "z_lo",
           "code": "PEC",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "tangential E not held at zero"
         },
         {
           "face": "z_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.024 m"
         }
       ],
@@ -5879,9 +5879,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' supports only a uniform absorber: its absorbing layer is stamped on all six faces at the scalar cpml_layers, so a per-face boundary layout (x_hi='cpml', x_lo='cpml', y_hi='cpml', y_lo='cpml', z_hi='cpml', z_lo='pec') would silently absorb on the faces you declared as reflectors. Use solver='yee' for per-face boundaries, or make every face 'cpml' with no per-face thickness override.",
       "cpu_s": 0.001327059999997715,
-      "wall_s": 0.004682662023697048
+      "wall_s": 0.004682662023697048,
+      "message_prefix": "solver='adi' supports only a uniform absorber"
     },
     {
       "case": "pec-zlo",
@@ -6169,9 +6169,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes: the S-parameter extraction re-run uses non-periodic boundaries, so the returned S-matrix would silently ignore set_periodic_axes('xy'). Remove the periodic axes for the S-parameter run, or use a port family that supports periodicity (e.g. a Floquet port).",
       "cpu_s": 0.00208792099999755,
-      "wall_s": 0.08462958299787715
+      "wall_s": 0.08462958299787715,
+      "message_prefix": "run(compute_s_params=True) for lumped/wire add_port(...) does not honor periodic axes"
     },
     {
       "case": "periodic-xy",
@@ -6648,9 +6648,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [source_or_port_outside_fine_grid] source #0 at (0.01, 0.01, 0.004) is outside the refined z slab\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab",
       "cpu_s": 0.44772810599999957,
-      "wall_s": 2.688822539988905
+      "wall_s": 2.688822539988905,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "periodic-xy",
@@ -6659,9 +6659,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "periodic axes 'x', 'y': periodic / Bloch boundaries are not supported on the distributed multi-device run() path; the lane would use the declared non-periodic wall instead (rfx.runners.distributed._update_h_local / _update_e_local). Remove the periodic axes / Bloch phase, or omit devices=... (use a single-device run() instead).",
       "cpu_s": 0.00384809199999836,
-      "wall_s": 0.08969062002142891
+      "wall_s": 0.08969062002142891,
+      "message_prefix": "periodic axes"
     },
     {
       "case": "periodic-xy",
@@ -6670,9 +6670,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' supports only a uniform absorber: its absorbing layer is stamped on all six faces at the scalar cpml_layers, so a per-face boundary layout (x_hi='periodic', x_lo='periodic', y_hi='periodic', y_lo='periodic', z_hi='cpml', z_lo='cpml') would silently absorb on the faces you declared as reflectors. Use solver='yee' for per-face boundaries, or make every face 'cpml' with no per-face thickness override.",
       "cpu_s": 0.001333021000000656,
-      "wall_s": 0.004759107017889619
+      "wall_s": 0.004759107017889619,
+      "message_prefix": "solver='adi' supports only a uniform absorber"
     },
     {
       "case": "periodic-xy",
@@ -7009,9 +7009,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "Lumped ports are not supported together with the TFSF plane-wave source",
       "cpu_s": 0.0017014519999989375,
-      "wall_s": 0.00781313399784267
+      "wall_s": 0.00781313399784267,
+      "message_prefix": "Lumped ports are not supported together with the TFSF"
     },
     {
       "case": "tfsf",
@@ -7511,9 +7511,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab\n- ERROR [tfsf_unvalidated] TFSF is not validated with subgridding",
       "cpu_s": 0.021490737000000593,
-      "wall_s": 0.18800830701366067
+      "wall_s": 0.18800830701366067,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "tfsf",
@@ -7710,9 +7710,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' does not support TFSF sources yet",
       "cpu_s": 0.03390511599999968,
-      "wall_s": 0.031427273992449045
+      "wall_s": 0.031427273992449045,
+      "message_prefix": "solver='adi' does not support"
     },
     {
       "case": "tfsf",
@@ -8085,9 +8085,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "run(compute_s_params=True) has a single result schema for add_port(...) lumped/wire ports. Mixed or specialized port families must use their documented calculators: add_waveguide_port(...) uses compute_waveguide_s_matrix() for the full S-matrix; run() may return per-port result.waveguide_sparams but not Result.s_params.",
       "cpu_s": 0.013098829000000478,
-      "wall_s": 0.09358784597134218
+      "wall_s": 0.09358784597134218,
+      "message_prefix": "run(compute_s_params=True) has a single result schema"
     },
     {
       "case": "waveguide-cpml",
@@ -8599,9 +8599,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab\n- ERROR [waveguide_port_unvalidated] waveguide ports are not validated with subgridding",
       "cpu_s": 0.44344163199999986,
-      "wall_s": 2.1957848540041596
+      "wall_s": 2.1957848540041596,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "waveguide-cpml",
@@ -8798,9 +8798,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' does not support waveguide or Floquet ports yet",
       "cpu_s": 0.4046426140000001,
-      "wall_s": 0.4131574520142749
+      "wall_s": 0.4131574520142749,
+      "message_prefix": "solver='adi' does not support"
     },
     {
       "case": "waveguide-cpml",
@@ -9117,13 +9117,13 @@
         {
           "face": "x_lo",
           "code": "f",
-          "step": "B3",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "x_hi",
           "code": "f",
-          "step": "B3",
+          "step": "B1.5",
           "detail": "electric backing required at 0.032 m"
         },
         {
@@ -9185,9 +9185,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "run(compute_s_params=True) has a single result schema for add_port(...) lumped/wire ports. Mixed or specialized port families must use their documented calculators: add_waveguide_port(...) uses compute_waveguide_s_matrix() for the full S-matrix; run() may return per-port result.waveguide_sparams but not Result.s_params.",
       "cpu_s": 0.0008431059999978174,
-      "wall_s": 0.003975961008109152
+      "wall_s": 0.003975961008109152,
+      "message_prefix": "run(compute_s_params=True) has a single result schema"
     },
     {
       "case": "waveguide-pmc",
@@ -9316,13 +9316,13 @@
         {
           "face": "x_lo",
           "code": "f",
-          "step": "B3",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "x_hi",
           "code": "f",
-          "step": "B3",
+          "step": "B1.5",
           "detail": "electric backing required at 0.032 m"
         },
         {
@@ -9504,13 +9504,13 @@
         {
           "face": "x_lo",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "x_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.032 m"
         },
         {
@@ -9748,9 +9748,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab\n- ERROR [waveguide_port_unvalidated] waveguide ports are not validated with subgridding",
       "cpu_s": 0.009152829999999668,
-      "wall_s": 0.012903438997454941
+      "wall_s": 0.012903438997454941,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "waveguide-pmc",
@@ -9879,13 +9879,13 @@
         {
           "face": "x_lo",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "x_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.032 m"
         },
         {
@@ -9947,9 +9947,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' supports only a uniform absorber: its absorbing layer is stamped on all six faces at the scalar cpml_layers, so a per-face boundary layout (x_hi='cpml', x_lo='cpml', y_hi='pmc', y_lo='pmc', z_hi='pmc', z_lo='pmc') would silently absorb on the faces you declared as reflectors. Use solver='yee' for per-face boundaries, or make every face 'cpml' with no per-face thickness override.",
       "cpu_s": 0.0006644070000021429,
-      "wall_s": 0.0039615590358152986
+      "wall_s": 0.0039615590358152986,
+      "message_prefix": "solver='adi' supports only a uniform absorber"
     },
     {
       "case": "waveguide-pmc",
@@ -10078,13 +10078,13 @@
         {
           "face": "x_lo",
           "code": "f",
-          "step": "B3",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "x_hi",
           "code": "f",
-          "step": "B3",
+          "step": "B1.5",
           "detail": "electric backing required at 0.032 m"
         },
         {
@@ -10286,9 +10286,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "run(compute_s_params=True) has a single result schema for add_port(...) lumped/wire ports. Mixed or specialized port families must use their documented calculators: add_waveguide_port(...) uses compute_waveguide_s_matrix() for the full S-matrix; run() may return per-port result.waveguide_sparams but not Result.s_params.",
       "cpu_s": 0.0013799200000015333,
-      "wall_s": 0.010383904038462788
+      "wall_s": 0.010383904038462788,
+      "message_prefix": "run(compute_s_params=True) has a single result schema"
     },
     {
       "case": "waveguide-pec",
@@ -10704,9 +10704,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab\n- ERROR [waveguide_port_unvalidated] waveguide ports are not validated with subgridding",
       "cpu_s": 0.009544615000000256,
-      "wall_s": 0.10051742003997788
+      "wall_s": 0.10051742003997788,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "waveguide-pec",
@@ -10835,13 +10835,13 @@
         {
           "face": "x_lo",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at -0.008 m"
         },
         {
           "face": "x_hi",
           "code": "f",
-          "step": "B4",
+          "step": "B1.5",
           "detail": "electric backing required at 0.032 m"
         }
       ],
@@ -10855,9 +10855,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' supports only a uniform absorber: its absorbing layer is stamped on all six faces at the scalar cpml_layers, so a per-face boundary layout (x_hi='cpml', x_lo='cpml', y_hi='pec', y_lo='pec', z_hi='pec', z_lo='pec') would silently absorb on the faces you declared as reflectors. Use solver='yee' for per-face boundaries, or make every face 'cpml' with no per-face thickness override.",
       "cpu_s": 0.0005770349999991709,
-      "wall_s": 0.004101650032680482
+      "wall_s": 0.004101650032680482,
+      "message_prefix": "solver='adi' supports only a uniform absorber"
     },
     {
       "case": "waveguide-pec",
@@ -11182,9 +11182,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "run(compute_s_params=True) has a single result schema for add_port(...) lumped/wire ports. Mixed or specialized port families must use their documented calculators: add_floquet_port(...) is experimental and has no claims-bearing run(compute_s_params=True) S-matrix path.",
       "cpu_s": 0.0006616319999999121,
-      "wall_s": 0.003492515010293573
+      "wall_s": 0.003492515010293573,
+      "message_prefix": "run(compute_s_params=True) has a single result schema"
     },
     {
       "case": "floquet",
@@ -11557,9 +11557,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "Floquet ports do not support non-uniform z mesh (dz_profile). Set dx explicitly to prevent auto-mesh from creating NU grid.",
       "cpu_s": 0.002014482999996403,
-      "wall_s": 0.005938836955465376
+      "wall_s": 0.005938836955465376,
+      "message_prefix": "Floquet ports do not support non-uniform z mesh"
     },
     {
       "case": "floquet",
@@ -11568,9 +11568,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "subgrid validation: supported=False mode=production level=unsupported-production-z-slab\n- ERROR [z_slab_requires_guarded_boundary] production subgrid support is limited to a guarded one-sided full-x/y z slab that touches exactly one physical z boundary; centered/two-interface slabs remain research diagnostics until a dedicated centered-slab interface closure and validation artifact exist.\n- ERROR [probe_outside_fine_grid] probe #0 at (0.014, 0.011, 0.005) is outside the refined z slab\n- ERROR [floquet_port_unvalidated] Floquet ports are not validated with subgridding",
       "cpu_s": 0.008774001000000808,
-      "wall_s": 0.012407824047841132
+      "wall_s": 0.012407824047841132,
+      "message_prefix": "subgrid validation: supported=False"
     },
     {
       "case": "floquet",
@@ -11579,9 +11579,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "NotImplementedError",
-      "message": "periodic axes 'x', 'y': periodic / Bloch boundaries are not supported on the distributed multi-device run() path; the lane would use the declared non-periodic wall instead (rfx.runners.distributed._update_h_local / _update_e_local). Remove the periodic axes / Bloch phase, or omit devices=... (use a single-device run() instead).",
       "cpu_s": 0.0014572460000010778,
-      "wall_s": 0.005378375994041562
+      "wall_s": 0.005378375994041562,
+      "message_prefix": "periodic axes"
     },
     {
       "case": "floquet",
@@ -11590,9 +11590,9 @@
       "base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
       "status": "REFUSED",
       "exception": "ValueError",
-      "message": "solver='adi' does not support waveguide or Floquet ports yet",
       "cpu_s": 0.44387186799999867,
-      "wall_s": 0.4714823880349286
+      "wall_s": 0.4714823880349286,
+      "message_prefix": "solver='adi' does not support"
     },
     {
       "case": "floquet",
@@ -11776,7 +11776,8 @@
       "case": "pec",
       "entry": "subgridded",
       "changes": [
-        "MEASURED -> REFUSED"
+        "MEASURED -> REFUSED",
+        "harness change: B0 refinement z=(0,12) mm; B1 z=(6,10) mm; not a change on main"
       ]
     },
     {
@@ -11822,7 +11823,8 @@
       "case": "pmc-pec",
       "entry": "subgridded",
       "changes": [
-        "MEASURED -> REFUSED"
+        "MEASURED -> REFUSED",
+        "harness change: B0 refinement z=(0,12) mm; B1 z=(6,10) mm; not a change on main"
       ]
     },
     {

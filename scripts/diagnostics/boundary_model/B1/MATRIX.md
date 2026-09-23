@@ -25,13 +25,13 @@ Codes: a magnetic→electric; b1 dead face node; b2 shorted face node; c electri
 
 ## B0 class → B1 field class
 
-- pec / subgridded: MEASURED -> REFUSED.
+- pec / subgridded: MEASURED -> REFUSED; harness change: B0 refinement z=(0,12) mm; B1 z=(6,10) mm; not a change on main.
 - pmc-pec / run: x_lo EH -> H; x_hi EH -> H.
 - pmc-pec / wire-fast: x_lo EH -> H; x_hi EH -> H.
 - pmc-pec / forward: x_lo EH -> H; x_hi EH -> H.
 - pmc-pec / sweep: MEASURED -> REFUSED.
 - pmc-pec / nonuniform: x_lo EH -> H; x_hi EH -> H.
-- pmc-pec / subgridded: MEASURED -> REFUSED.
+- pmc-pec / subgridded: MEASURED -> REFUSED; harness change: B0 refinement z=(0,12) mm; B1 z=(6,10) mm; not a change on main.
 - pmc-pec / gpu-query: x_lo E -> H; x_hi E -> H.
 - pmc-cpml / run: x_lo EH -> H; x_hi EH -> H.
 - pmc-cpml / wire-fast: x_lo EH -> H; x_hi EH -> H.

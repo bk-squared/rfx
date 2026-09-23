@@ -71,6 +71,11 @@ def departures(model, grid, measured, entry):
         if face.plane_m is None:
             continue
         def add(code, step, detail):
+            if (entry == "distributed" and any(f.kind == Kind.PMC for f in model.faces)) or (
+                    entry == "distributed" and {Kind.PEC, Kind.ABSORBER} <= {f.kind for f in model.faces}) or (
+                    any(r.feature.startswith("waveguide:") for r in model.requirements)
+                    and any(f.kind == Kind.PMC for f in model.faces)):
+                step = "B1.5"
             problems.append(dict(face=face.name, code=code, step=step, detail=detail))
         if face.kind == Kind.PMC:
             refused_lane = entry in ("subgridded", "adi", "distributed") or any(

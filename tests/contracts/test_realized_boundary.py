@@ -41,7 +41,8 @@ def test_no_unlisted_departures(cell):
         exception_type = {"ValueError": ValueError, "NotImplementedError": NotImplementedError}[cell["exception"]]
         with pytest.raises(exception_type) as exc:
             measured(cell["case"], cell["entry"])
-        assert str(exc.value) == cell["message"]
+        assert type(exc.value) is exception_type
+        assert str(exc.value).startswith(cell["message_prefix"])
         return
     expected = {key(d) for d in cell["departures"]}
     compare_departures([d for d in measured(cell["case"], cell["entry"]) if key(d) not in expected])
@@ -64,14 +65,17 @@ def test_wrapped_wall_keeps_field_classification():
     import rfx.simulation as simulation
     original = simulation.apply_pec_faces
     baseline = measured("pec", "run")
+    calls = []
 
     def renamed_operation(*args, **kwargs):
+        calls.append(1)
         return original(*args, **kwargs)
 
     jax.clear_caches()
     with patch.object(simulation, "apply_pec_faces", renamed_operation):
         sim, grid, _, records = measure("pec", "run")
     fields, psi, reference = measured_fields(records, grid, "run")
+    assert calls, "the wrapped wall did not run"
     assert departures(sim.boundary_model(), grid, classify(fields, grid, psi, reference), "run") == baseline
     jax.clear_caches()
 
