@@ -10,8 +10,10 @@ coefficient, or the "sheet" is a conducting slab one cell thick.
 
 What is pinned here:
 
-* the LOCK — ``sigma=(s, s, s)`` runs bit for bit as ``sigma=s`` does, fields
-  and S-parameters, so the existing single-array lane is untouched;
+* the LOCK — since the #1210 merge the box works in EDGE values: a single
+  array ``s`` is a cell quantity, edge-averaged, and runs bit for bit as the
+  tuple of its own averages ``(avg_x(s), avg_y(s), avg_z(s))``; a tuple is
+  per edge and is taken as-is;
 * the routing — ``sigma_x`` alone suppresses ex inside the box and leaves ey
   alone. Both halves are asserted, so swapping the component index in
   ``update_e_box`` reds the test rather than moving the suppression to the
@@ -74,16 +76,55 @@ def _run(sim, eps, sigma, n_steps=N_STEPS):
 # the lock
 # ---------------------------------------------------------------------------
 
-def test_three_equal_conductivities_reproduce_the_single_array_lane():
-    """``(s, s, s)`` is the single-array run, bit for bit."""
+def _edge_average_of(sim, s_box):
+    """#1210's per-component edge average of the cell array ``s_box``.
+
+    Laid into the run's own background conductivity, so the edges on the
+    box's faces average with the neighbour cells outside the box, then
+    sliced back to the box: ``(avg_x(s), avg_y(s), avg_z(s))``.
+    """
+    from rfx.core.yee import edge_averaged_materials
+    grid = sim._build_grid()
+    shape = _box_shape(sim)
+    lo = grid.position_to_index(BOX_LO)
+    sl = tuple(slice(lo[d], lo[d] + shape[d]) for d in range(3))
+    mats = sim._assemble_materials(grid)[0]
+    full = jnp.asarray(mats.sigma).at[sl].set(s_box)
+    _, per_comp = edge_averaged_materials(jnp.asarray(mats.eps_r), full)
+    return tuple(c[sl] for c in per_comp)
+
+
+def test_a_single_array_is_its_own_edge_average_handed_as_a_tuple():
+    """A cell array ``s`` runs bit for bit as the tuple of its own edge averages.
+
+    RE-PINNED on the #1210 merge, by the #1216 owner's rule: the box works in
+    EDGE values. A single conductivity array is a CELL quantity and is turned
+    into edge values by #1210's four-cell average (neighbour cells outside the
+    box included); a 3-tuple is already per edge and is taken as-is. So the
+    identity that holds is ``s == (avg_x(s), avg_y(s), avg_z(s))``, no longer
+    ``s == (s, s, s)``.
+
+    It holds exactly where both describe the same edges. A cell's conductivity
+    also reaches the edges on its PLUS faces, one layer outside the box, and a
+    box-shaped edge tuple has no entry there. Measured on this fixture with
+    ``s`` random in every box cell: time series 6.7e-4 apart on a 0.227 peak,
+    S 2.0e-6 apart. With ``s`` zero on the box's three plus-face cell layers
+    there is nothing to reach that layer, and the two runs are bit-identical.
+    That is the fixture here; the next test pins the box-edge coefficients
+    for a general ``s``.
+    """
     sim = _sim(with_probes=True)
     shape = _box_shape(sim)
     rng = np.random.default_rng(3)
     eps = jnp.asarray(2.0 + 2.0 * rng.random(shape), jnp.float32)
-    s = jnp.asarray(0.01 + 0.05 * rng.random(shape), jnp.float32)
+    s = np.asarray(0.01 + 0.05 * rng.random(shape), np.float32)
+    s[-1, :, :] = 0.0
+    s[:, -1, :] = 0.0
+    s[:, :, -1] = 0.0
+    s = jnp.asarray(s)
 
     one = _run(sim, eps, s)
-    three = _run(sim, eps, (s, s, s))
+    three = _run(sim, eps, _edge_average_of(sim, s))
 
     a = np.asarray(one.time_series)
     b = np.asarray(three.time_series)
@@ -96,6 +137,91 @@ def test_three_equal_conductivities_reproduce_the_single_array_lane():
     assert np.abs(sa).max() > 0.0
     assert np.array_equal(sa, sb), (
         f"S-parameters differ by {np.abs(sa - sb).max():.3e}")
+
+
+def test_the_box_edge_coefficients_of_a_cell_array_equal_its_averages_as_a_tuple():
+    """For a general ``s``: identical on the box's edges, and only there.
+
+    Coefficient level, through ``_resolve_design_box``. Inside the box the two
+    are the same numbers bit for bit; on the plus-face edge layer outside the
+    box the single array differs, because only a cell array reaches it.
+    """
+    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+
+    sim = _sim()
+    grid = sim._build_grid()
+    shape = _box_shape(sim)
+    lo = grid.position_to_index(BOX_LO)
+    bounds = tuple(v for d in range(3) for v in (lo[d], lo[d] + shape[d]))
+    mats = sim._assemble_materials(grid)[0]
+    rng = np.random.default_rng(5)
+    eps = jnp.asarray(2.0 + 2.0 * rng.random(shape), jnp.float32)
+    s = jnp.asarray(0.01 + 0.05 * rng.random(shape), jnp.float32)
+
+    kw = dict(grid=grid, materials=mats, dt=grid.dt, use_cpml=True,
+              use_upml=False, cpml_axes="xyz", use_debye=False,
+              use_lorentz=False, use_kerr=False, aniso_eps=None,
+              aniso_inv_eps=None, stencil_order=2, bloch=None,
+              sheet_impedance=None, cell_metas=())
+    one = _resolve_design_box(DesignBoxSpec(bounds, eps, s), **kw)
+    tup = _resolve_design_box(
+        DesignBoxSpec(bounds, eps, _edge_average_of(sim, s)), **kw)
+    assert one.bounds == tup.bounds
+    box = tuple(slice(0, n) for n in shape)       # box inside the write window
+    for c in range(3):
+        for got, want in ((tup.ca[c], one.ca[c]), (tup.cb[c], one.cb[c])):
+            assert np.array_equal(np.asarray(got)[box], np.asarray(want)[box]), (
+                f"component {'xyz'[c]}: box-edge coefficients differ")
+    # and the plus-face layer is where they part: Ex's plus y face
+    plus_y = (slice(0, shape[0]), shape[1], slice(0, shape[2]))
+    assert not np.array_equal(np.asarray(tup.ca[0])[plus_y],
+                              np.asarray(one.ca[0])[plus_y]), (
+        "the plus-face edge layer did not see the cell array -- the single "
+        "array is no longer being edge-averaged")
+
+
+def test_a_conductivity_tuple_is_taken_per_edge_not_averaged_again():
+    """sigma_x on ONE box index loads that one Ex edge and no neighbour.
+
+    The tuple is already per Yee edge (#1216: one conductivity per edge, the
+    sheet lane's design variable). Averaged again it would spread over the
+    four Ex edges around that cell, at a quarter each.
+    """
+    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+
+    sim = _sim()
+    grid = sim._build_grid()
+    shape = _box_shape(sim)
+    lo = grid.position_to_index(BOX_LO)
+    bounds = tuple(v for d in range(3) for v in (lo[d], lo[d] + shape[d]))
+    mats = sim._assemble_materials(grid)[0]
+    eps = jnp.ones(shape, jnp.float32)
+    zero = jnp.zeros(shape, jnp.float32)
+    idx = (1, 1, 1)
+    sx = zero.at[idx].set(1.0e3)
+
+    kw = dict(grid=grid, materials=mats, dt=grid.dt, use_cpml=True,
+              use_upml=False, cpml_axes="xyz", use_debye=False,
+              use_lorentz=False, use_kerr=False, aniso_eps=None,
+              aniso_inv_eps=None, stencil_order=2, bloch=None,
+              sheet_impedance=None, cell_metas=())
+    base = _resolve_design_box(DesignBoxSpec(bounds, eps, (zero, zero, zero)),
+                               **kw)
+    one = _resolve_design_box(DesignBoxSpec(bounds, eps, (sx, zero, zero)),
+                              **kw)
+
+    ca_x = np.asarray(one.ca[0])
+    ca_bg = np.asarray(base.ca[0])
+    moved = np.argwhere(ca_x != ca_bg)
+    assert [tuple(int(v) for v in m) for m in moved] == [idx], (
+        f"sigma_x on box index {idx} moved Ex's Ca at "
+        f"{[tuple(int(v) for v in m) for m in moved]}; a per-edge value moves "
+        f"its own edge only (four edges at a quarter each is the average)")
+    want = float(e_update_coeffs(jnp.float32(1.0), jnp.float32(1.0e3),
+                                 grid.dt)[0])
+    assert float(ca_x[idx]) == pytest.approx(want, rel=1e-6)
+    for c in (1, 2):
+        assert np.array_equal(np.asarray(one.ca[c]), np.asarray(base.ca[c]))
 
 
 def test_a_conductivity_tuple_of_the_wrong_length_is_refused():

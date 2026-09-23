@@ -414,9 +414,9 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
     faces one cell inside the drawn body and makes a dielectric interface
     first-order.
 
-    ``eps_r``, ``sigma`` : cell-centred ``(nx, ny, nz)`` arrays. ``sigma`` may
-    also be a 3-tuple of them, one per E component (#1216): component ``c``
-    then averages ``sigma[c]``.
+    ``eps_r``, ``sigma`` : cell-centred ``(nx, ny, nz)`` arrays. A conductivity
+    that is already per E edge (#1216's design-box tuple) is NOT a cell
+    quantity and does not come through here.
     ``periodic`` : per-axis flags; a periodic axis wraps, a non-periodic one
     edge-replicates (see :func:`_material_bwd_neighbour`).
 
@@ -434,22 +434,8 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
         # Pairwise, so the homogeneous sum is exact (F4/#1210).
         return ((arr + a1) + (a2 + a12)) * 0.25
 
-    # ``sigma`` may be a 3-tuple (sigma_x, sigma_y, sigma_z): a conductivity
-    # that is itself per E component (#1216, a design sheet whose current runs
-    # along its in-plane edges only). Component c then averages its OWN array
-    # over its own four incident cells -- the same stencil, so (s, s, s) is
-    # bit-identical to s.
-    if isinstance(sigma, (tuple, list)):
-        if len(sigma) != 3:
-            raise ValueError(
-                f"a per-component conductivity is a 3-tuple "
-                f"(sigma_x, sigma_y, sigma_z); got {len(sigma)} entries.")
-        sig_by_c = tuple(sigma)
-    else:
-        sig_by_c = (sigma, sigma, sigma)
     eps = tuple(mean4(eps_r, *[t for t in range(3) if t != c]) for c in range(3))
-    sig = tuple(mean4(sig_by_c[c], *[t for t in range(3) if t != c])
-                for c in range(3))
+    sig = tuple(mean4(sigma, *[t for t in range(3) if t != c]) for c in range(3))
     return eps, sig
 
 
@@ -471,10 +457,7 @@ def component_e_materials(materials, periodic=(False, False, False)):
     if eps_l is not None:
         eps_v = eps_v - eps_l
     if sig_l is not None:
-        # ``sigma`` may be per-component (#1216 design box); the lumped
-        # record is one array whatever the component.
-        sig_v = (tuple(v - sig_l for v in sig_v)
-                 if isinstance(sig_v, (tuple, list)) else sig_v - sig_l)
+        sig_v = sig_v - sig_l
     eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
     if eps_l is not None:
         eps_c = tuple(e + eps_l for e in eps_c)

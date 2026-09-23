@@ -837,42 +837,42 @@ def _design_box_window(bounds, shape):
 def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
     """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
 
-    The design permittivity is written into a COPY of the background material
-    over the computation window, the edge average is taken there, and the write
-    window is sliced out. The box-edge cells therefore average with the
-    constant background, which is what the grid-wide update would have done
-    with the design values in ``materials``.
+    The box works in EDGE (per-E-component) values, and what it is handed
+    decides how each value is made:
 
-    ``sigma_box`` may be a 3-tuple, one conductivity per E component (#1216).
-    Each is laid into its own copy of the background, and component ``c``'s
-    coefficient is the four-cell mean of array ``c`` — the same helper and the
-    same stencil, so ``(s, s, s)`` reproduces ``s`` bit for bit.
+    * a CELL quantity -- the design permittivity always, and a single design
+      conductivity array -- is written into a COPY of the background over the
+      computation window and turned into edge values by the same four-cell
+      average as the rest of the grid (``component_e_materials``). The
+      window's minus-side context supplies the neighbour cells outside the box
+      on its faces, and its plus-side layer is written because a cell's value
+      reaches the edges on its plus faces. The box lane then equals what
+      ``update_e`` would do with the design values in ``materials``.
+    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (#1216,
+      the sheet lane: one conductivity per Yee edge, component ``c`` at the
+      same box index). It is taken as-is and NOT averaged again: it replaces
+      the edge conductivity at the box indices, and every other edge in the
+      window -- the plus-side layer included -- keeps the background edge
+      value. A box-shaped edge array cannot address the plus-face edge layer
+      a cell array reaches, which is why a single array ``s`` and the tuple of
+      its own averages agree on the box's edges and not on that layer.
     """
     write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
     eps_box = jnp.asarray(eps_r_box)
     eps = jnp.asarray(materials.eps_r)[win]
-    sig_bg = jnp.asarray(materials.sigma)[win]
     # Promote the BACKGROUND to the design dtype, never the other way: a
     # traced float64 design permittivity cast down to the float32 background
     # would silently lose the precision the x64 AD lanes run for (#646).
     eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
     eps = eps.at[box_local].set(eps_box)
 
-    def _lay(sig_box):
-        sig_box = jnp.asarray(sig_box)
-        sig = sig_bg.astype(jnp.promote_types(sig_bg.dtype, sig_box.dtype))
-        return sig.at[box_local].set(sig_box)
+    per_edge = isinstance(sigma_box, (tuple, list))
+    sig = jnp.asarray(materials.sigma)[win]
+    if not per_edge:
+        sig_box = jnp.asarray(sigma_box)
+        sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
+        sig = sig.at[box_local].set(sig_box)
 
-    # A per-component design conductivity (#1216) lays each component's array
-    # into its own copy of the background; component c is then averaged from
-    # its own copy by the one helper (edge_averaged_materials), so (s, s, s)
-    # is the single-array lane bit for bit.
-    if isinstance(sigma_box, (tuple, list)):
-        sig = tuple(_lay(s) for s in sigma_box)
-        sig_dtype = sig[0].dtype
-    else:
-        sig = _lay(sigma_box)
-        sig_dtype = sig.dtype
     # A lumped stamp in the window's context layer is edge-owned, not a cell
     # volume, so it is removed before the average and added back at its cell —
     # the same rule ``component_e_materials`` applies grid-wide (#1210). The
@@ -884,11 +884,21 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
         eps_r_lumped=(None if eps_l is None
                       else jnp.asarray(eps_l)[win].astype(eps.dtype)),
         sigma_lumped=(None if sig_l is None
-                      else jnp.asarray(sig_l)[win].astype(sig_dtype)))
-    ca, cb = e_component_coeffs(win_mats, dt, (False, False, False))
+                      else jnp.asarray(sig_l)[win].astype(sig.dtype)))
+    eps_c, sig_c = component_e_materials(win_mats, (False, False, False))
+
+    if per_edge:
+        def _put(edge_bg, edge_box):
+            edge_box = jnp.asarray(edge_box)
+            edge_bg = edge_bg.astype(
+                jnp.promote_types(edge_bg.dtype, edge_box.dtype))
+            return edge_bg.at[box_local].set(edge_box)
+        sig_c = tuple(_put(bg, v) for bg, v in zip(sig_c, sigma_box))
+
+    pairs = [e_update_coeffs(e, s_, dt) for e, s_ in zip(eps_c, sig_c)]
     return (write_bounds,
-            tuple(c[inner] for c in ca),
-            tuple(c[inner] for c in cb))
+            tuple(p[0][inner] for p in pairs),
+            tuple(p[1][inner] for p in pairs))
 
 
 def _resolve_design_box(
@@ -1092,10 +1102,9 @@ def _resolve_design_box(
                     f"design conductivity sigma_{name} has shape "
                     f"{tuple(jnp.shape(s))} but the design box {bounds} "
                     f"realizes {box_shape} cells.")
-        # #1210: each component's conductivity is averaged over its own four
-        # incident cells, over the same plus-side write window as a single
-        # array -- one helper, one stencil -- so (s, s, s) is the
-        # single-array lane bit for bit.
+        # The tuple is already per E edge (#1216) and is taken as-is; the
+        # shared permittivity is still a cell quantity and is edge-averaged
+        # over the window (#1210). See _design_box_edge_coeffs.
         write_bounds, ca, cb = _design_box_edge_coeffs(
             bounds, eps_r, tuple(jnp.asarray(s) for s in sigma), materials,
             dt, tuple(grid.shape))
