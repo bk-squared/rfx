@@ -84,6 +84,8 @@ from rfx.runners._distributed_common import (
     apply_pec_mask_shmap,
     apply_pmc_face_shmap,
     exchange_component_shmap,
+    exchange_h_yee_shmap,
+    exchange_e_yee_shmap,
     inject_sources_shmap,
     sample_probes_shmap,
     shard_stacked,
@@ -153,29 +155,12 @@ def _shard_materials(materials: MaterialArrays, mesh: Mesh) -> MaterialArrays:
 # Ghost cell exchange via shard_map + ppermute
 # ---------------------------------------------------------------------------
 
-# Exchange ghost cells for one field component using shard_map.
-#
-# The body lived here verbatim and is now the shared
-# ``exchange_component_shmap`` in ``_distributed_common.py`` (the NU
-# runner carried a byte-identical copy). Kept as a module-local alias so
-# the existing call sites are unchanged.
+# Keep the shared full-exchange alias for existing callers and the NU lane.
 _exchange_component_shmap = exchange_component_shmap
 
-
-def _exchange_h_ghosts_shmap(state: FDTDState, mesh: Mesh, n_devices: int) -> FDTDState:
-    return state._replace(
-        hx=_exchange_component_shmap(state.hx, mesh, n_devices),
-        hy=_exchange_component_shmap(state.hy, mesh, n_devices),
-        hz=_exchange_component_shmap(state.hz, mesh, n_devices),
-    )
-
-
-def _exchange_e_ghosts_shmap(state: FDTDState, mesh: Mesh, n_devices: int) -> FDTDState:
-    return state._replace(
-        ex=_exchange_component_shmap(state.ex, mesh, n_devices),
-        ey=_exchange_component_shmap(state.ey, mesh, n_devices),
-        ez=_exchange_component_shmap(state.ez, mesh, n_devices),
-    )
+# Only the tangential, one-sided Yee neighbours are live on this lane.
+_exchange_h_ghosts_shmap = exchange_h_yee_shmap
+_exchange_e_ghosts_shmap = exchange_e_yee_shmap
 
 
 # ---------------------------------------------------------------------------
@@ -1056,6 +1041,25 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     n_prb = len(probes)
     _exchange_interval = int(exchange_interval)
 
+    def _exchange(exchange, components, st, step_idx):
+        # The entry refuses any interval but 1, so production steps always
+        # run the minimal exchange. The skipping branch is reachable only when
+        # a test bypasses validate_exchange_interval (the K=2 negative control,
+        # test_distributed.py test_pec_window_peak_invariant); it keeps the
+        # legacy all-component exchange whose stale-seam growth that test
+        # measures.
+        if _exchange_interval == 1:
+            return exchange(st, mesh, n_devices)
+
+        def _legacy(s):
+            return s._replace(**{
+                name: _exchange_component_shmap(getattr(s, name), mesh, n_devices)
+                for name in components
+            })
+
+        return lax.cond(
+            step_idx % _exchange_interval == 0, _legacy, lambda s: s, st)
+
     # ------------------------------------------------------------------
     # Per-device source/probe injection via shard_map
     # ------------------------------------------------------------------
@@ -1068,9 +1072,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         )
 
     def _sample_probes_shmap(st):
-        """Sample probes on their owning devices, then sum across devices."""
+        """Keep masked samples local until the scan has finished."""
         return sample_probes_shmap(
             st, mesh, n_prb, prb_local_specs, prb_device_ids,
+            reduce_devices=False,
         )
 
     # ------------------------------------------------------------------
@@ -1247,14 +1252,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
             pad_x=pad_x)
 
-        # 3. Exchange H ghost cells (conditionally skip)
-        do_exchange = (_step_idx % _exchange_interval == 0)
-        st = lax.cond(
-            do_exchange,
-            lambda s: _exchange_h_ghosts_shmap(s, mesh, n_devices),
-            lambda s: s,
-            st,
-        )
+        # 3. Exchange the live H ghosts (entry validates interval == 1)
+        st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx)
 
         # 3b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
         #     OQ9: after H ghost exchange, before E update. PMC must
@@ -1323,12 +1322,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    that is exactly where every distributed_v2_* fixture of the
         #    #1038 bit-identity lock puts its source, which is why that lock
         #    stays 13/13 green through this change.
-        st = lax.cond(
-            do_exchange,
-            lambda s: _exchange_e_ghosts_shmap(s, mesh, n_devices),
-            lambda s: s,
-            st,
-        )
+        st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx)
 
         # 8. Probe sampling
         probe_out = _sample_probes_shmap(st)
@@ -1365,13 +1359,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         st = _update_h_shmap(st, materials_arg)
 
         # 2. Exchange H ghost cells
-        do_exchange = (_step_idx % _exchange_interval == 0)
-        st = lax.cond(
-            do_exchange,
-            lambda s: _exchange_h_ghosts_shmap(s, mesh, n_devices),
-            lambda s: s,
-            st,
-        )
+        st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx)
 
         # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
         #     OQ9: after H ghost exchange, before E update.
@@ -1427,12 +1415,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    zeroes the y/z faces on every x row INCLUDING the ghosts, and
         #    its x_lo / x_hi faces act on rank 0's first and rank N-1's last
         #    real cell, whose exchanged copies the receiving rank discards.
-        st = lax.cond(
-            do_exchange,
-            lambda s: _exchange_e_ghosts_shmap(s, mesh, n_devices),
-            lambda s: s,
-            st,
-        )
+        st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx)
 
         # 7. Probe sampling
         probe_out = _sample_probes_shmap(st)
@@ -1464,7 +1447,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             cpml_params_arg, pec_mask_arg,
         ):
-            return lax.scan(
+            final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_cpml(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1473,6 +1456,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 carry,
                 scan_xs,
             )
+
+            # Each probe has exactly one owner; all other contributions are
+            # +0. Sum once outside the time loop and replicate on the mesh,
+            # including when the mesh spans multiple processes.
+            probe_ts = lax.with_sharding_constraint(
+                jnp.sum(local_probe_ts, axis=1), rep)
+            return final_carry, probe_ts
 
         run_fn = jax.jit(_run_cpml)
         final_carry, probe_ts = run_fn(
@@ -1491,7 +1481,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             pec_mask_arg,
         ):
-            return lax.scan(
+            final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_pec(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1500,6 +1490,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 carry,
                 scan_xs,
             )
+
+            # Each probe has exactly one owner; all other contributions are
+            # +0. Sum once outside the time loop and replicate on the mesh,
+            # including when the mesh spans multiple processes.
+            probe_ts = lax.with_sharding_constraint(
+                jnp.sum(local_probe_ts, axis=1), rep)
+            return final_carry, probe_ts
 
         run_fn = jax.jit(_run_pec)
         final_carry, probe_ts = run_fn(
@@ -1550,7 +1547,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     )
 
     # ------------------------------------------------------------------
-    # Probe time series: already summed across devices inside shard_map
+    # Probe time series: summed across devices after the scan inside jit
     # probe_ts shape: (n_steps, n_probes) or (n_steps, 0)
     # ------------------------------------------------------------------
     if n_prb > 0:
