@@ -40,18 +40,17 @@ def _build_cavity_sim():
     return sim
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#1196: this gate was measured on a box WITHOUT walls (#1193: forward() "
-    "never applied PEC on boundary='pec'), where |S11| ran 0.98 -> 0.86 over "
-    "the band and cleared 0.85. With the walls the cavity's TM110 at 4.24 GHz "
-    "appears and the port's 50 ohm resistor absorbs at resonance (correct): "
-    "the 4.125 GHz point drops 0.88 -> 0.84 at the test's 60 periods (0.86 at "
-    "960, so a longer record would pass this gate again). The 0.93 at 3 GHz, "
-    "off resonance, is the same with and without walls and record-length "
-    "independent -- a lumped-port extraction question tracked in #1196. "
-    "Turns green when that is settled and the gate rewritten around the mode."))
 def test_pec_cavity_s11_magnitude_near_one():
-    """Closed PEC cavity → all power reflected → |S11| ≈ 1 in band."""
+    """Closed PEC cavity → all power reflected → |S11| ≈ 1 in band.
+
+    A lossless box seen through a port has a purely reactive input impedance,
+    so |S11| = 1 at every frequency. Before the lumped S-matrix became the
+    wire decomposition at one live cell (PR 1162) this port read 0.93 at
+    3 GHz, off resonance, independent of record length (#1196). Measured on
+    the fixed extraction (VESSL 369367263684): 0.979 ... 0.9996 over the band
+    at the test's 60 periods, 0.9931 ... 0.9994 at 960 (the 4.125 GHz point
+    sits next to the TM110 at 4.24 GHz and needs the longer record).
+    """
     sim = _build_cavity_sim()
     freqs = jnp.linspace(1.5e9, 4.5e9, 9, dtype=jnp.float32)
 

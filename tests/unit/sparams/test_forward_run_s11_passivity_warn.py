@@ -44,14 +44,16 @@ def _warned_nonpassive(recorded):
     return any("non-passive" in str(w.message) for w in recorded)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#1196: the |S11| > 1.10 overshoot this test pinned was produced by the "
-    "open box of #1193 (forward() applied no PEC walls on boundary='pec'); "
-    "with the walls it is 1.089 / 0.994. The warning itself is pinned by "
-    "test_passivity_helper_fires_on_gross_silent_otherwise; this needs a "
-    "fixture that is non-passive for a physical reason."))
 def test_forward_lumped_s11_passivity_warns_on_gross_violation():
-    """forward() must warn when the eager extractor returns |S11| >> 1."""
+    """forward() must warn when the eager extractor returns |S11| >> 1.
+
+    The overshoot sits where the pulse carries no energy: f0 = 4 GHz,
+    bandwidth 0.7 puts 9.8 and 12 GHz 88 and 140 dB below the spectrum's
+    peak, so the incident wave the port divides by is numerical noise there.
+    Measured (VESSL 369367263684, lumped S = wire decomposition, PR 1162):
+    1.560 at 9.8 GHz and 1.552 at 12 GHz with the default record; every bin
+    within 20 dB of the peak reads 0.89 ... 0.996.
+    """
     sim = _cavity(eps_r=10.0)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
@@ -93,12 +95,6 @@ def test_passivity_helper_fires_on_gross_silent_otherwise():
         assert _warned_nonpassive(rec) is expect, f"helper {label}: wrong warn state"
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#1196: the |S11| > 1.10 overshoot this test pinned was produced by the "
-    "open box of #1193 (forward() applied no PEC walls on boundary='pec'); "
-    "with the walls it is 1.089 / 0.994. The warning itself is pinned by "
-    "test_passivity_helper_fires_on_gross_silent_otherwise; this needs a "
-    "fixture that is non-passive for a physical reason."))
 def test_run_passivity_warns_on_band_edge_after_consolidation():
     """run(compute_s_params=True) warns on the eps-cavity band-edge.
 
