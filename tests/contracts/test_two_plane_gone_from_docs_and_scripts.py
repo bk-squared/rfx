@@ -102,21 +102,13 @@ ALLOWED = {
         "arms are sheet/vol1/vol2; the pre-2.0 verdict is kept as history",
     "scripts/diagnostics/patch_tutorial_rfx.py":
         "PT_TWO_PLANE deleted; the comment records what replaced it",
-    "scripts/diagnostics/build_patch_mode_pair_ratio_band_census.py":
-        "resolves fixture legs by name; the old leg spelling is the fallback",
     "scripts/diagnostics/patch_edgefed_s11_band_repin.py":
         "its `retired` arm refuses to run and names the deleted "
         "resample_sheet_node_materials in the refusal",
-    # -- crossval-C migration landed 2026-09-07 (#931 phase 2a merge)
-    "validation/crossval/15_patch_antenna_rt5880.py":
-        "cv15: ground/patch are sheets, the parameter is deleted; the "
-        "docstrings name two_plane only to record what #740 did and #931 undid",
-    "validation/crossval/manifest.json":
-        "cv15's claim_scope names the deleted `two_plane=True` ground as the "
-        "#740 repair the #931 sheet declaration replaced (dated history)",
-    # -- crossval groups A/C/D landed 2026-09-07; dated history only
-    "scripts/diagnostics/cv15_before_after_931.py":
-        "the BEFORE row of the cv15 decomposition names the #768 two_plane leg",
+    # 2026-09-24: the RT/Duroid 5880 patch case's script, its manifest entry,
+    # its before/after diagnostic and its mode-census producer left with the
+    # case (rebuilt as tests/crossval/rt5880_patch/), and their four rows here
+    # with them.
 }
 
 PENDING = {

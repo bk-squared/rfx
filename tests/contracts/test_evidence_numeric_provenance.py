@@ -453,11 +453,9 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # rows here have no site to measure.
     # 2026-09-22: the WR-90 inductive iris case left the manifest and the
     # validation README, so its two rows here have no site to measure.
-    (MANIFEST, "15_patch_antenna_rt5880"): 3,
-    # 2026-09-03: the floor for the cv15 README row re-based to the row that
-    # #847 rewrote after this gate was drafted (see the note, "Re-basing
-    # two floors"); that row cites in the value-checked form and carries 2.
-    ("validation/README.md", "crossval/15_patch_antenna_rt5880.py"): 2,
+    # 2026-09-24: the RT/Duroid 5880 patch case left the manifest and the
+    # validation README (rebuilt as tests/crossval/rt5880_patch/), so its two
+    # rows here have no site to measure.
     (CV11_NOTE, "7. Numeric provenance (appended 2026-09-01, #812 round 2 \u2014 no finding changed)"): 6,
     # 2026-09-21: the lattice-witness standard's four case sections (5.1 cv23,
     # 5.2 cv22, 5.3 cv04, 8.1 cv22 Debye) left this table with the slab family.
@@ -485,7 +483,9 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # lowered to the measured remainder, 4.
     # 2026-09-23: the MSL thru-line phase case's row left the table with the
     # case and took 2 of the 4. Floor lowered to the measured remainder, 2.
-    (BENCHMARKS, "Reference cases"): 2,
+    # 2026-09-24: the RT/Duroid 5880 patch case's row left the table with the
+    # case and took the last 2; the one row left carries none, so the floor
+    # has nothing to hold and is removed.
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -616,9 +616,19 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # REMOVED_ARTIFACT_PREFIXES, skipped per citation). Two artifacts leave the
 # distinct count with them. Measured after both removals: 297 references, 280
 # value-checked, 30 artifacts. The floors are lowered to the measured values.
-MIN_REFERENCES = 297
-MIN_VALUE_CHECKED = 280
-MIN_DISTINCT_ARTIFACTS = 30
+# 2026-09-24 (the RT/Duroid 5880 patch case rebuilt as
+# tests/crossval/rt5880_patch/): its manifest entry, validation README row and
+# public benchmarks row left the gated surface, taking 10 citations; 10 more in
+# two dated notes (the patch mode-identification pre-declaration, 9, and this
+# gate's own design note, 1) reach the case's committed legs and fixtures
+# (REMOVED_ARTIFACT_PREFIXES, skipped per citation). 16 of the 20 were
+# value-checked, and 5 artifacts leave the distinct count. Measured after the
+# removal: 299 references, 284 value-checked, 27 artifacts. The floors are
+# lowered to the measured values. Measured after this and the Sheen low-pass
+# filter's removal together: 277 references, 264 value-checked, 25 artifacts.
+MIN_REFERENCES = 277
+MIN_VALUE_CHECKED = 264
+MIN_DISTINCT_ARTIFACTS = 25
 
 
 # --------------------------------------------------------------------------
@@ -1099,6 +1109,14 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     "validation/crossval/_07_sheen_results/",
     "tests/fixtures/cv07_estimator_regate/",
     "tests/fixtures/sheen_lpf_e4/",
+    # 2026-09-24, the RT/Duroid 5880 patch: the case was rebuilt as
+    # tests/crossval/rt5880_patch/ and its script, committed rfx and openEMS
+    # legs and the mode-identification fixtures went with it. Two gated notes
+    # cite them -- the numeric-provenance gate's own design note and the
+    # patch mode-identification pre-declaration; those citations are skipped
+    # now. Those artifacts are at commit c0aea4ae.
+    "validation/crossval/_15_patch_results/",
+    "tests/fixtures/patch_mode_identification/",
 )
 
 
@@ -1222,12 +1240,24 @@ def test_each_classification_holds_mechanically(doc: str) -> None:
 # power without touching a committed artifact.
 # --------------------------------------------------------------------------
 
-# The measured round-1 cv15 finding: the lane regenerated the committed rfx leg
-# and `s11_dip_db` moved from the value the documents quote to this one, with no
-# prose moving with it.
-CV15_ARTIFACT = "validation/crossval/_15_patch_results/rfx.json"
-CV15_KEY = "s11_dip_db"
-CV15_REGENERATED_VALUE = -0.3448069095611572
+# The anchor: a cited value and a MEASURED value the same key took on a tree
+# with the defect. Until 2026-09-24 it was the round-1 cv15 finding (the lane
+# regenerated the RT/Duroid 5880 patch case's committed rfx leg and
+# `s11_dip_db` moved from the -19.0480 dB the documents quoted to -0.3448 dB,
+# with no prose moving with it); that leg left with the case, rebuilt as
+# tests/crossval/rt5880_patch/. The same shape, measured and committed: the
+# open-boundary contract's patch ring-down with the ground plane continued
+# through the absorber decays, and its note quotes that arm's worst late-time
+# log rate per step; the SAME arm (n = 2, pad 10, CPML 4) on main without the
+# continuation GROWS, at the rate result_main.json records for it
+# (`arms[1]`). A record regenerated on the tree with the defect carries that
+# value under the same key while the note keeps quoting the decay.
+# ``test_the_anchor_is_the_measured_value`` reads it from that record.
+B_ANCHOR_ARTIFACT = (
+    "scripts/diagnostics/open_boundary_contract/cont/n2_pad10_cpml4_a/result.json")
+B_ANCHOR_KEY = "worst_rate_per_step"
+B_ANCHOR_REGENERATED_VALUE = 0.0025469707764233167
+B_ANCHOR_DEFECT_RECORD = "scripts/diagnostics/open_boundary_contract/result_main.json"
 
 
 def _scratch(tmp_path: Path, artifact: str, key: str, value) -> Path:
@@ -1241,19 +1271,31 @@ def _scratch(tmp_path: Path, artifact: str, key: str, value) -> Path:
     return tmp_path
 
 
-def _cv15_dip_references() -> list[Reference]:
+def _anchor_references() -> list[Reference]:
     return [r for r in _REFS
-            if r.path == CV15_ARTIFACT and r.keypath == CV15_KEY and r.literal is not None]
+            if r.path == B_ANCHOR_ARTIFACT and r.keypath == B_ANCHOR_KEY
+            and r.literal is not None]
 
 
-def test_the_gate_fires_on_the_measured_cv15_regression(tmp_path: Path) -> None:
-    """Round 1's cv15 defect, reproduced: artifact moves, prose does not."""
-    refs = _cv15_dip_references()
+def test_the_anchor_is_the_measured_value() -> None:
+    """The regenerated value the (B) arms plant is the one the defect tree
+    measured for the same arm, read from its committed record -- not a number
+    chosen to make the gate fire."""
+    arms = json.loads((_REPO / B_ANCHOR_DEFECT_RECORD).read_text(encoding="utf-8"))["arms"]
+    anchor = json.loads((_REPO / B_ANCHOR_ARTIFACT).read_text(encoding="utf-8"))
+    same = [a for a in arms if a["arm"] == anchor["arm"]]
+    assert len(same) == 1, (anchor["arm"], [a["arm"] for a in arms])
+    assert same[0][B_ANCHOR_KEY] == B_ANCHOR_REGENERATED_VALUE
+
+
+def test_the_gate_fires_on_a_measured_regression(tmp_path: Path) -> None:
+    """A measured defect, reproduced: the artifact moves, the prose does not."""
+    refs = _anchor_references()
     assert refs, (
-        f"no committed document cites {CV15_ARTIFACT}::{CV15_KEY}; the (B) arm "
-        f"of this gate's falsifier has nothing to fire on."
+        f"no committed document cites {B_ANCHOR_ARTIFACT}::{B_ANCHOR_KEY}; the (B) "
+        f"arm of this gate's falsifier has nothing to fire on."
     )
-    root = _scratch(tmp_path, CV15_ARTIFACT, CV15_KEY, CV15_REGENERATED_VALUE)
+    root = _scratch(tmp_path, B_ANCHOR_ARTIFACT, B_ANCHOR_KEY, B_ANCHOR_REGENERATED_VALUE)
     for ref in refs:
         try:
             check(root, ref)  # (B): must go red on the regenerated leg
@@ -1262,25 +1304,25 @@ def test_the_gate_fires_on_the_measured_cv15_regression(tmp_path: Path) -> None:
         else:
             raise AssertionError(
                 f"the gate did NOT fire: {ref.doc} [{ref.site}] now cites the "
-                f"regenerated value {CV15_REGENERATED_VALUE!r} itself, so this "
-                f"falsifier no longer falsifies. If cv15's leg was legitimately "
-                f"regenerated, re-anchor criterion (B) on another measured "
-                f"defect in the same commit that explains the move -- do not "
-                f"delete the arm."
+                f"regenerated value {B_ANCHOR_REGENERATED_VALUE!r} itself, so "
+                f"this falsifier no longer falsifies. If the anchor record was "
+                f"legitimately regenerated, re-anchor criterion (B) on another "
+                f"measured defect in the same commit that explains the move -- "
+                f"do not delete the arm."
             )
         assert ref.doc in message
         assert ref.raw in message
         assert ref.literal in message                       # what the document says
-        assert repr(CV15_REGENERATED_VALUE) in message      # what the artifact holds
+        assert repr(B_ANCHOR_REGENERATED_VALUE) in message  # what the artifact holds
 
 
 def test_the_gate_fires_on_a_sign_inversion(tmp_path: Path) -> None:
     """Round 1's cv17/cv18 shape: the magnitude survives, the sign is inverted."""
-    refs = _cv15_dip_references()
+    refs = _anchor_references()
     assert refs
     ref = refs[0]
     expected, _tol = tolerance(ref.literal, ref.unit)
-    root = _scratch(tmp_path, CV15_ARTIFACT, CV15_KEY, -expected)
+    root = _scratch(tmp_path, B_ANCHOR_ARTIFACT, B_ANCHOR_KEY, -expected)
     with pytest.raises(AssertionError) as caught:
         check(root, ref)
     assert repr(-expected) in str(caught.value)
@@ -1292,21 +1334,23 @@ def test_the_gate_fires_on_a_drift_below_the_last_digit_written(tmp_path: Path) 
 
     Anchored on the literal the document carries, not on the tree, so it
     measures the rule and not today's artifact."""
-    ref = _cv15_dip_references()[0]
+    ref = _anchor_references()[0]
     expected, tol = tolerance(ref.literal, ref.unit)
-    inside = _scratch(tmp_path / "in", CV15_ARTIFACT, CV15_KEY, expected + 0.4 * tol)
+    inside = _scratch(tmp_path / "in", B_ANCHOR_ARTIFACT, B_ANCHOR_KEY,
+                      expected + 0.4 * tol)
     check(inside, ref)
-    outside = _scratch(tmp_path / "out", CV15_ARTIFACT, CV15_KEY, expected + 2.0 * tol)
+    outside = _scratch(tmp_path / "out", B_ANCHOR_ARTIFACT, B_ANCHOR_KEY,
+                       expected + 2.0 * tol)
     with pytest.raises(AssertionError):
         check(outside, ref)
 
 
 def test_an_unresolvable_key_is_an_error_not_a_skip(tmp_path: Path) -> None:
     """A renamed key must fail loudly; a silent skip is how coverage rots."""
-    ref = _cv15_dip_references()[0]
-    data = json.loads((_REPO / CV15_ARTIFACT).read_text(encoding="utf-8"))
-    data.pop(CV15_KEY)
-    dst = tmp_path / CV15_ARTIFACT
+    ref = _anchor_references()[0]
+    data = json.loads((_REPO / B_ANCHOR_ARTIFACT).read_text(encoding="utf-8"))
+    data.pop(B_ANCHOR_KEY)
+    dst = tmp_path / B_ANCHOR_ARTIFACT
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_text(json.dumps(data), encoding="utf-8")
     with pytest.raises(AssertionError, match="does not exist"):

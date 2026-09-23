@@ -125,23 +125,6 @@
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },
   {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). dx = H_SUB/4 = 793.75 um is mandated by the case's own #325 avoidance rule ('UNIFORM grid only ... The rfx build ASSERTS the substrate rasterizes to exactly N_SUB=4 z-cells ... BEFORE any f0 is quoted'), which fixes the z axis exactly and leaves the in-plane patch (40 mm) and ground (56 mm) faces off-lattice by 0.89 % and 0.52 %. The script MEASURES the consequence rather than assuming it: assert_realized_stack prints the realized footprint in cells and mm next to the declared L_PATCH/W_PATCH on every run.",
-   "ref": "validation/crossval/15_patch_antenna_rt5880.py:40-48,256,533-541",
-   "rows": 1,
-   "variant": "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default"
-  },
-  {
-   "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.45mm (-1.38%); geometry[0] 'pec' x: drawn 56mm, nodes cover 54.77mm, solved as 55.32mm (-1.21%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[2] 'pec' x: drawn 40mm, nodes cover 38.89mm, solved as 39.45mm (-1.38%) -- is what build_rfx_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
-   "ref": "validation/crossval/15_patch_antenna_rt5880.py:627 | https://github.com/bk-squared/rfx/issues/1138",
-   "rows": 1,
-   "variant": "validation/crossval/15_patch_antenna_rt5880.py::build_rfx_sim::default"
-  },
-  {
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "The 2 mm gap the advisory measures is the fixture's defining dimension: two PEC bars at z = 5 mm and z = 7 mm with the driven wire port in between, and the build-time check asserts exactly those wall planes ([3, 4, 5, 7, 8, 9] mm). The decision quantity is rho(f) = v/i at the driven cell against a known external load, which is a circuit-law measurement on that gap, not a propagation measurement that needs cells per wavelength.",
