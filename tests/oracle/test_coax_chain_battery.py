@@ -20,7 +20,20 @@ left exactly as they ship.
 The PI's 2026-09-21 deep-null ruling is encoded rather than described: a
 quantity near zero by construction is not compared in dB. The bead's |S11| is
 compared to the referee only where the ANALYTIC |S11| is above the null level;
-inside a zero's core the verdict is the zero's FREQUENCY.
+inside a zero's core the verdict is the zero's FREQUENCY. On the dx ladder a
+quantity that is deep on the finest rung or in the closed form at every bin
+(the thru's S11 and S22) is read on the -20 dB bound, never in dB, and a
+quantity deep only in a zero's core is compared in dB outside it (the leader's
+L2, 2026-09-23).
+
+Two PI rulings of 2026-09-23 are encoded as well. P1: the battery closes
+without the open termination; the open's records stay in the fixture as
+measured, marked ``judged: false`` with the ruling's reason, and the passivity
+and settling checks skip them with that reason — only the open, which
+``test_only_the_open_is_left_unjudged`` holds. P2: criterion 1(2) is the
+identity within the traced path (the bead in two containers, rtol 1e-5 / atol
+1e-7); the untraced-against-traced thru arm compares two functions by design and
+is held to its measured envelope.
 """
 import json
 import math
@@ -133,6 +146,20 @@ def _radii(fixture):
     return line["pin_radius_m"], line["outer_radius_m"], line["fill_eps_r"]
 
 
+# P1 (PI 2026-09-23), restated rather than read from the fixture, so a fixture
+# that marks something else unjudged, or rewords why, reds instead of skipping.
+OPEN_NOT_JUDGED_REASON = (
+    "open end inside the lane's closed PEC can (absorbers on z only); its reflection "
+    "does not settle at 9 annulus cells — energy near the outer region's first cutoff "
+    "grows with record length (open_absorber_diagnostic.json); PI 2026-09-23")
+NOT_JUDGED = {"open": OPEN_NOT_JUDGED_REASON}
+
+
+def _skip_if_not_judged(entry, what):
+    if entry.get("judged", True) is False:
+        pytest.skip(f"{what} is not judged: {entry['judged_reason']}")
+
+
 # ---------------------------------------------------------------------------
 # provenance and geometry
 # ---------------------------------------------------------------------------
@@ -190,6 +217,14 @@ def test_the_realized_line_is_the_declared_line(fixture, key):
     if entry["dut"] == "bead":
         assert real["bead_inside_probe_gap"] is True, key
         assert abs(real["bead_length_realized_m"] - dec["bead_length_m"]) <= real["dx_m"], key
+        # L1 (leader, 2026-09-23): the bead is a whole number of annulus widths,
+        # so it is a whole number of cells at every rung and every rung builds
+        # the same bead. The 6 mm of the first run rasterized to three lengths.
+        widths = dec["bead_length_annulus_widths"]
+        assert dec["bead_length_m"] == pytest.approx(widths * dec["annulus_m"], rel=1e-12), key
+        assert real["bead_n_cells"] == widths * rung, key
+        assert real["bead_length_realized_m"] == pytest.approx(dec["bead_length_m"],
+                                                               rel=1e-9), key
 
 
 @pytest.mark.parametrize("key", ALL_SOLVES)
@@ -263,6 +298,7 @@ def test_the_one_port_reflection_is_passive(fixture, key):
     to the square and not to the magnitude. An excess is non-physical and is an
     extraction or normalization finding, never physics."""
     entry = _solve(fixture, key)
+    _skip_if_not_judged(entry, key)
     g = np.abs(_complex(entry["S11"]))
     measured = float((g ** 2).max())
     k = int(np.argmax(g))
@@ -272,7 +308,8 @@ def test_the_one_port_reflection_is_passive(fixture, key):
         f"{fixture['bar']['column_power_max']} on a passive termination")
 
 
-def test_the_record_is_settled_or_record_length_invariant(fixture):
+@pytest.mark.parametrize("dut", DUTS)
+def test_the_record_is_settled_or_record_length_invariant(fixture, dut):
     """Criterion 2's settling witness, or the one substitute the contract admits.
 
     ``compute_coaxial_two_port`` skips its ring-down witness whenever
@@ -282,29 +319,48 @@ def test_the_record_is_settled_or_record_length_invariant(fixture):
     the window doubles was truncated, and its S is not interpretable.
     """
     bound = (10 ** (fixture["bar"]["magnitude_db"] / 20.0) - 1.0) / 10.0
-    for dut in DUTS:
-        key = f"{dut}_rung{CLAIMS_RUNG}"
-        entry = fixture["solves"].get(key)
-        if entry is None:
-            continue
-        witness = entry.get("settling")
-        if witness and witness["has_energy_witness"]:
-            worst = max(witness["settling_db"])
-            assert worst <= fixture["bar"]["settling_db"], (
-                f"{key}: settling {witness['settling_db']} dB is above the "
-                f"{fixture['bar']['settling_db']} dB rule — the record was truncated "
-                "before the line rang down")
-            continue
-        inv = fixture["record_length_invariance"].get(dut)
-        assert inv is not None, (
-            f"{key} carries no energy witness ({witness['why']}) and no doubled-record "
-            "arm either, so nothing says its record was long enough")
-        assert inv["record_ratio"] >= 1.9, inv["record_ratio"]
-        assert inv["max_abs_shift"] == pytest.approx(inv["max_abs_shift"]), dut
-        assert inv["max_abs_shift"] <= bound, (
-            f"{dut}: doubling the record moved max|S| by {inv['max_abs_shift']:.5g}, "
-            f"above a tenth of the magnitude bar ({bound:.5g}) — the record is "
-            "truncated, not settled")
+    key = f"{dut}_rung{CLAIMS_RUNG}"
+    entry = _solve(fixture, key)
+    _skip_if_not_judged(entry, key)
+    witness = entry.get("settling")
+    if witness and witness["has_energy_witness"]:
+        worst = max(witness["settling_db"])
+        assert worst <= fixture["bar"]["settling_db"], (
+            f"{key}: settling {witness['settling_db']} dB is above the "
+            f"{fixture['bar']['settling_db']} dB rule — the record was truncated "
+            "before the line rang down")
+        return
+    inv = fixture["record_length_invariance"].get(dut)
+    assert inv is not None, (
+        f"{key} carries no energy witness ({witness['why']}) and no doubled-record "
+        "arm either, so nothing says its record was long enough")
+    assert inv["record_ratio"] >= 1.9, inv["record_ratio"]
+    assert inv["max_abs_shift"] == pytest.approx(inv["max_abs_shift"]), dut
+    assert inv["max_abs_shift"] <= bound, (
+        f"{dut}: doubling the record moved max|S| by {inv['max_abs_shift']:.5g}, "
+        f"above a tenth of the magnitude bar ({bound:.5g}) — the record is "
+        "truncated, not settled")
+
+
+def test_only_the_open_is_left_unjudged(fixture):
+    """P1 (PI 2026-09-23) takes the open out of the battery's verdict and
+    nothing else. Every record, the doubled arm and the ladder of the open carry
+    ``judged: false`` with the ruling's reason word for word; every other DUT is
+    judged. A fixture that marks another DUT unjudged, or rewords the reason,
+    reds here instead of skipping its checks."""
+    places = [(f"solves[{k}]", e["dut"], e) for k, e in fixture["solves"].items()]
+    places += [(f"record_length_invariance[{d}]", d, e)
+               for d, e in fixture["record_length_invariance"].items()]
+    places += [(f"ladder[{d}]", d, e) for d, e in fixture["ladder"].items()]
+    assert places
+    for where, dut, entry in places:
+        if dut in NOT_JUDGED:
+            assert entry.get("judged") is False, f"{where} is judged; P1 says it is not"
+            assert entry.get("judged_reason") == NOT_JUDGED[dut], where
+        else:
+            assert entry.get("judged") is True, f"{where} is not marked judged"
+            assert "judged_reason" not in entry, where
+    assert any(dut == "open" for _, dut, _ in places), "the fixture carries no open record"
 
 
 def test_the_doubled_record_arm_is_derived_from_its_own_stored_s(fixture):
@@ -436,18 +492,88 @@ def test_the_ladder_converges_and_sets_a_recommended_cell_size(fixture):
         "recommends no cell size")
 
 
+def _ladder_curve(entry, name):
+    if entry["lane"] == "two_port":
+        i, j = {"s11": (0, 0), "s21": (1, 0), "s22": (1, 1)}[name]
+        return _complex(entry["S"])[i, j, :]
+    return _complex(entry["S11"])
+
+
+def _deep_bins(fixture, dut, name, fine_entry):
+    """Written from the closed forms, not read from the assembler: the thru's S11
+    and S22 are zero, the bead's S11 and S22 are the TEM section's |S11| (the
+    section is symmetric) at the finest rung's realized length, nothing else has
+    a deep bin in its closed form; the finest rung's own curve adds its deep bins."""
+    level = fixture["bar"]["deep_null_db"]
+    deep = _db(_ladder_curve(fine_entry, name)) <= level
+    if dut == "thru" and name in ("s11", "s22"):
+        deep = np.ones_like(deep, dtype=bool)
+    elif dut == "bead" and name in ("s11", "s22"):
+        a, b, eps_fill = _radii(fixture)
+        _, an11, _ = _tem_section(
+            np.asarray(fine_entry["freqs_hz"], dtype=float), a=a, b=b,
+            eps_fill=eps_fill, eps_scale=fixture["line"]["bead_eps_scale"],
+            length=fine_entry["realized"]["bead_length_realized_m"])
+        deep = deep | (_db(an11) <= level)
+    return deep
+
+
 def test_every_ladder_row_follows_from_the_stored_curves(fixture):
+    """Every ladder row, and every rung's verdict, from the stored curves. A
+    quantity deep at every bin (on the finest rung or in the closed form) is read
+    on the -20 dB bound; one deep only in a zero's core is compared in dB outside
+    it (PI 2026-09-21; the leader's L2, 2026-09-23)."""
+    level = fixture["bar"]["deep_null_db"]
     for dut, lad in fixture["ladder"].items():
-        if lad["lane"] != "two_port":
-            continue
+        names = ("s11", "s21", "s22") if lad["lane"] == "two_port" else ("s11",)
         have = [row["rung"] for row in lad["s11_vs_finest"]]
-        fine = _complex(fixture["solves"][have[-1]]["S"])
-        for name, (i, j) in (("s11", (0, 0)), ("s21", (1, 0)), ("s22", (1, 1))):
+        fine_entry = fixture["solves"][have[-1]]
+        verdict = {row["rung"]: {} for row in lad["rung_within_bar_vs_finest"]}
+        for name in names:
+            fine = _ladder_curve(fine_entry, name)
+            deep = _deep_bins(fixture, dut, name, fine_entry)
+            assert lad["deep_bins"][name] == deep.tolist(), (dut, name)
+            mode = "bound" if deep.all() else "db_outside_deep"
             for row in lad[f"{name}_vs_finest"]:
-                cur = _complex(fixture["solves"][row["rung"]]["S"])
-                d = np.abs(_db(cur[i, j, :]) - _db(fine[i, j, :]))
+                cur = _ladder_curve(fixture["solves"][row["rung"]], name)
+                d = np.abs(_db(cur) - _db(fine))
+                where = (dut, name, row["rung"])
                 assert row["max_db_diff_vs_finest"] == pytest.approx(
-                    float(d.max()), rel=1e-9), (dut, name, row["rung"])
+                    float(d.max()), rel=1e-9), where
+                assert row["judged_by"] == mode, where
+                assert row["n_bins_deep"] == int(deep.sum()), where
+                if (~deep).any():
+                    assert row["max_db_diff_vs_finest_outside_deep"] == pytest.approx(
+                        float(d[~deep].max()), rel=1e-9), where
+                else:
+                    assert row["max_db_diff_vs_finest_outside_deep"] is None, where
+                assert row["max_db_on_rung"] == pytest.approx(
+                    float(_db(cur).max()), rel=1e-9), where
+                if mode == "bound":
+                    ok = bool(_db(cur).max() <= level)
+                    assert row["within_deep_null_bound"] is ok, where
+                    verdict[row["rung"]][f"{name}_within_{level:g}dB_bound"] = ok
+                else:
+                    assert row["within_deep_null_bound"] is None, where
+                    worst = row["max_db_diff_vs_finest_outside_deep"]
+                    verdict[row["rung"]][
+                        f"{name}_within_{fixture['bar']['magnitude_db']:g}dB"] = (
+                        None if worst is None
+                        else bool(worst <= fixture["bar"]["magnitude_db"]))
+        for row in lad["rung_within_bar_vs_finest"]:
+            for key, want in verdict[row["rung"]].items():
+                assert row[key] == want, (dut, row["rung"], key)
+            # a deep quantity never carries a dB verdict, and the reverse
+            for name in names:
+                keys = {k for k in row if k.startswith(f"{name}_within_")}
+                assert keys == {k for k in verdict[row["rung"]]
+                                if k.startswith(f"{name}_within_")}, (dut, row["rung"], keys)
+            flags = [v for k, v in row.items()
+                     if isinstance(v, bool) and k != "all_inside_bar"]
+            assert row["all_inside_bar"] == all(flags), (dut, row)
+        qualifying = [r["rung"] for r in lad["rung_within_bar_vs_finest"]
+                      if r["all_inside_bar"]]
+        assert lad["coarsest_rung_within_bar"] == (qualifying[0] if qualifying else None), dut
 
 
 @pytest.mark.parametrize("key", ALL_SOLVES)
@@ -519,16 +645,44 @@ def test_the_bead_referee_on_the_fitted_permittivity_uses_that_permittivity(fixt
 # criterion 1(2) — the forward identity
 # ---------------------------------------------------------------------------
 
+# P2 (PI 2026-09-23). The thru arm compares the untraced call (the float64 NumPy
+# assembly, eps_scale=None) with the traced one (the float32 jnp path,
+# _prefer_jnp). Those are two functions by design, and the contract's identity
+# clause applies "where the traced and untraced call are the same function", so
+# their difference is not held to rtol 1e-5 / atol 1e-7. It is pinned as a
+# measured envelope: max |dS| = 6.938e-4 on the thru (identity stage, run
+# 369367263527, commit ca6da2b1), times 1.5.
+THRU_TRACED_VS_UNTRACED_ENVELOPE = 1.041e-3
+
+
 def test_the_forward_identity_holds_on_the_eps_scale_channel(fixture):
     ident = fixture.get("identity")
     if ident is None:
         pytest.skip("the forward-identity stage is not assembled")
     assert ident["arms"], "the identity stage recorded no arm"
+    assert {arm["dut"] for arm in ident["arms"]} == {"thru", "bead"}, (
+        "criterion 1(2) needs both arms: the identity within the traced path and "
+        "the envelope between the two paths")
     for arm in ident["arms"]:
         a = _complex(arm["left_S"])
         b = _complex(arm["right_S"])
         assert arm["max_abs"] == pytest.approx(float(np.abs(a - b).max()), rel=1e-12), (
             arm["tag"])
+        if arm["left"] == "eps_scale=None":
+            # Untraced against traced: two functions by design (P2, PI
+            # 2026-09-23), held to the envelope measured on them, not to the
+            # contract's identity, which covers the same function called twice.
+            assert arm["judged_as"] == "measured_envelope", arm["tag"]
+            assert arm["envelope_max_abs"] == THRU_TRACED_VS_UNTRACED_ENVELOPE, arm["tag"]
+            worst = float(np.abs(a - b).max())
+            assert worst <= THRU_TRACED_VS_UNTRACED_ENVELOPE, (
+                f"{arm['tag']}: the untraced and the traced call now differ by "
+                f"{worst:.4g} in complex S, outside the {THRU_TRACED_VS_UNTRACED_ENVELOPE:g} "
+                "envelope pinned on their measured 6.938e-4 — one of the two paths moved")
+            continue
+        # The same function twice (the bead in a numpy and in a jnp container,
+        # both on the traced path): the contract's identity, unchanged.
+        assert arm["judged_as"] == "identity", arm["tag"]
         np.testing.assert_allclose(
             b, a, rtol=ident["rtol"], atol=ident["atol"],
             err_msg=(f"{arm['tag']}: {arm['what']} — the no-op override does not "

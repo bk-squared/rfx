@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as _dt
+import functools
 import json
 import math
 import os
@@ -146,11 +147,18 @@ PROBE_SPACING_CELLS = 4
 # keyword, to the lane and to ``axial_layout`` alike.
 DUT_OFFSET_CELLS = 4
 
-# The bead: eps_r multiplied by 4 over an axial length of 6 mm centred between
-# the two probe arrays. sqrt(4) = 2, so the section's impedance is Z_TEM / 2
-# and its phase constant 2 beta_line, whatever the fill is.
+# The bead: eps_r multiplied by 4 over an axial length of FOUR ANNULUS WIDTHS,
+# 4 (b - a) = 5.68 mm, centred between the two probe arrays. sqrt(4) = 2, so the
+# section's impedance is Z_TEM / 2 and its phase constant 2 beta_line, whatever
+# the fill is. The rungs set dx = (b - a) / rung, so this bead is a whole number
+# of cells at every rung (4 x rung = 16 / 24 / 36) and the ladder compares ONE
+# bead. The pre-declaration's 6 mm rasterized to 17 / 25 / 38 cells = 6.035 /
+# 5.917 / 5.996 mm: the reflection zero follows the length, so the 6-cell rung's
+# zero sat 1.37 % from the 9-cell one while each was within 0.06-0.16 % of the
+# closed form on its own length, and that ladder compared three beads (the
+# pre-declaration's second addendum, 2026-09-23).
 BEAD_EPS_SCALE = 4.0
-BEAD_LENGTH_M = 6.0e-3
+BEAD_ANNULUS_WIDTHS = 4
 BEAD_MASK_VARIANTS = ("full_cross_section", "annulus_only")
 BEAD_MASK = "full_cross_section"          # the pre-declaration's wording
 
@@ -434,12 +442,21 @@ def dx_of(rung: int) -> float:
     return (b - a) / float(rung)
 
 
+@functools.lru_cache(maxsize=None)
 def port_radii() -> tuple[float, float]:
     """The registered port's radii, read from the API's own defaults."""
     sim = Simulation(freq_max=FREQ_MAX, domain=DOMAIN_TWOPORT, boundary="cpml")
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5.0e-3)
     p = sim._coaxial_ports[0]
     return float(p.pin_radius), float(p.outer_radius)
+
+
+def bead_length_m() -> float:
+    """The bead's declared length: ``BEAD_ANNULUS_WIDTHS`` annulus widths, read
+    from the port's own radii, so it is ``BEAD_ANNULUS_WIDTHS * rung`` cells at
+    every rung by construction."""
+    a, b = port_radii()
+    return BEAD_ANNULUS_WIDTHS * (b - a)
 
 
 def build_sim(rung: int, dut: str, *, drive: str = DEFAULT_DRIVE,
@@ -492,8 +509,9 @@ def declared(rung: int, dut: str,
     if dut == "bead":
         rec.update({
             "bead_eps_scale": BEAD_EPS_SCALE,
-            "bead_length_m": BEAD_LENGTH_M,
-            "bead_cells": BEAD_LENGTH_M / dx,
+            "bead_length_m": bead_length_m(),
+            "bead_length_annulus_widths": BEAD_ANNULUS_WIDTHS,
+            "bead_cells": bead_length_m() / dx,
             "bead_mask": BEAD_MASK,
             "bead_fill_eps_r": float(PTFE_EPS_R) * BEAD_EPS_SCALE,
             "bead_z_tem_ohm": coaxial_tem_characteristic_impedance(
@@ -557,7 +575,7 @@ def axial_layout(grid, lane: str, probes: tuple[int, int, int] | None = None, *,
 def bead_indices(layout: dict, dx: float, *, shift_cells: int = 0) -> tuple[int, int]:
     """The bead's [start, stop) axial cell indices: ``round(6 mm / dx)`` cells
     centred between the two probe arrays, translated by ``shift_cells``."""
-    n_bead = int(round(BEAD_LENGTH_M / dx))
+    n_bead = int(round(bead_length_m() / dx))
     if n_bead < 1:
         raise RuntimeError(f"the bead rounds to {n_bead} cells at dx = {dx:.6g} m")
     mid = 0.5 * (layout["probes_bot"][-1] + layout["probes_top"][0])
@@ -845,10 +863,19 @@ def assert_realized(sim: Simulation, rung: int, dut: str, **kw) -> dict:  # noqa
                     f"the bead at cells {m['bead_z_cells']} is not strictly between the "
                     f"probe arrays (bottom ends {lay['probes_bot'][-1]}, top starts "
                     f"{lay['probes_top'][0]})")
-            if abs(m["bead_length_realized_m"] - BEAD_LENGTH_M) > m["dx_m"]:
+            # The bead is declared as a whole number of cells at every rung, so
+            # the raster must reproduce it exactly: BEAD_ANNULUS_WIDTHS * rung
+            # cells, and a length equal to the declared one to rounding. A bead
+            # one cell off would put the ladder back to comparing different beads.
+            want_cells = BEAD_ANNULUS_WIDTHS * int(rung)
+            if m["bead_n_cells"] != want_cells:
                 problems.append(
-                    f"the bead realizes {m['bead_length_realized_m']*1e3:.4f} mm, more "
-                    f"than one cell from the declared {BEAD_LENGTH_M*1e3:.4f} mm")
+                    f"the bead rasterizes to {m['bead_n_cells']} cells, not the "
+                    f"{want_cells} = {BEAD_ANNULUS_WIDTHS} x {rung} it is declared as")
+            if abs(m["bead_length_realized_m"] - bead_length_m()) > 1e-9 * bead_length_m():
+                problems.append(
+                    f"the bead realizes {m['bead_length_realized_m']*1e3:.6f} mm, not the "
+                    f"declared {bead_length_m()*1e3:.6f} mm")
     if problems:
         raise RuntimeError(
             "assert_realized: the realized line is not the declared line — refusing to "
@@ -1245,11 +1272,15 @@ def stage_identity(args, out: Path) -> None:
     array. That is what the pre-declaration asks for literally. Both arms take
     the jnp path (the dispatch keys off ``is not None``, not off the container),
     so this pair measures the container, not the code path.
+
+    ``--identity-arms`` runs one arm alone. The bead arm was re-run by itself
+    when the bead became a whole number of cells (the thru arm has no bead and
+    was not re-run); the assembler takes each arm from its own record.
     """
     rung = args.rung
     rec = _base(args, "identity", None, rung)
     rec.update({"drive": args.drive, "record_units": float(args.record_units),
-                "arms": []})
+                "identity_arms": args.identity_arms, "arms": []})
     _write(out, rec)
 
     for tag, dut, left, right, what in (
@@ -1258,6 +1289,8 @@ def stage_identity(args, out: Path) -> None:
         ("bead_numpy_vs_jnp", "bead", "eps_scale=numpy bead", "eps_scale=jnp bead",
          "the same bead in two containers; both take the jnp path"),
     ):
+        if args.identity_arms not in ("all", dut):
+            continue
         sim = build_sim(rung, dut, drive=args.drive)
         geo = assert_realized(sim, rung, dut)
         pf = preflight_record(sim)
@@ -1825,18 +1858,150 @@ def _refuse_a_set_spanning_commits(out: Path) -> dict:
     return seen
 
 
+def _tree_of(commit: str, path: str) -> str:
+    """The git tree id of ``path`` at ``commit``. Two equal ids are byte-identical
+    content, so this is ``git diff <a> <b> -- <path>`` being empty, as a hash."""
+    try:
+        out = subprocess.check_output(["git", "rev-parse", f"{commit}:{path}"],
+                                      cwd=str(REPO), text=True,
+                                      stderr=subprocess.PIPE).strip()
+    except Exception as exc:  # noqa: BLE001 — re-raised immediately
+        raise RuntimeError(f"cannot read the {path}/ tree at {commit}: {exc}") from exc
+    if not out:
+        raise RuntimeError(f"`git rev-parse {commit}:{path}` returned nothing")
+    return out
+
+
+def _records_share_one_solver_tree(out: Path) -> dict:
+    """Stage records may come from more than one commit only when the solver
+    under every one of them is the same tree.
+
+    A fixture whose stages were measured on two trees describes no single line
+    when the solver differs between them: half its rows can carry a defect the
+    other half has fixed, and the ladder between them then reads as a mesh
+    effect. So the rule is not "one commit" but "one ``rfx/``": wherever the
+    records name more than one commit, the ``rfx/`` tree at each of them and at
+    the assembler's own commit must be the same git object. The stage records
+    stamp their commit with no fallback, so this is decidable; a set that fails
+    it is refused rather than assembled and explained later.
+    """
+    seen: dict[str, list[str]] = {}
+    for f in sorted(out.glob("*.json")):
+        try:
+            rec = json.loads(f.read_text())
+        except (ValueError, OSError):
+            continue
+        sha = (rec.get("provenance") or {}).get("commit")
+        if sha:
+            seen.setdefault(sha, []).append(f.name)
+    if not seen:
+        raise RuntimeError(
+            f"no stage record in {out} names a commit; this driver stamps every "
+            "record it writes and refuses to assemble records that are not its own.")
+    head = git_sha()
+    trees = {sha: _tree_of(sha, "rfx") for sha in seen}
+    trees[head] = _tree_of(head, "rfx")
+    if len(set(trees.values())) > 1:
+        lines = "; ".join(f"{sha[:12]} rfx/ = {tree[:12]} ({len(seen.get(sha, []))} "
+                          f"records)" for sha, tree in sorted(trees.items()))
+        raise RuntimeError(
+            f"the stage records in {out} were measured on different solver trees and "
+            f"cannot be one fixture: {lines}. Re-run the stages that are behind, or "
+            "assemble them into a separate artifact.")
+    return {
+        "record_commits": {sha: sorted(names) for sha, names in sorted(seen.items())},
+        "rfx_tree": trees[head],
+        "rfx_tree_identical_across_record_commits_and_assembler": True,
+        "what": ("every stage record names its commit; the rfx/ tree at each of those "
+                 "commits and at the assembler's is the same git object, i.e. "
+                 "`git diff <a> <b> -- rfx/` is empty between any two of them"),
+    }
+
+
+# The rulings this fixture is judged under, cited where each one applies.
+RULINGS = {
+    "deep_null_pi_2026_09_21": (
+        "PI 2026-09-21: a quantity near zero by construction is not compared in dB "
+        "from rung to rung; the thru's |S11| is held to the -20 dB bound at every bin, "
+        "and inside a reflection zero's core the verdict is the zero's frequency"),
+    "open_not_judged_pi_2026_09_23": (
+        "PI 2026-09-23 (P1): the coax battery closes WITHOUT the open termination; every "
+        "open record stays in the fixture as measured and is marked judged: false"),
+    "identity_within_the_traced_path_pi_2026_09_23": (
+        "PI 2026-09-23 (P2): criterion 1(2) for coax is the identity WITHIN the traced "
+        "path (the bead in a numpy vs a jnp container, rtol 1e-5 / atol 1e-7). The "
+        "untraced call (float64 NumPy assembly) and the traced call (float32 jnp, "
+        "_prefer_jnp) are two functions by design; the contract's identity clause "
+        "applies where the traced and untraced call are the same function, and their "
+        "difference on the thru is pinned as a measured envelope"),
+    "bead_whole_cells_leader_2026_09_23": (
+        "leader 2026-09-23 (L1): the bead is 4 annulus widths = 5.68 mm, a whole number "
+        "of cells at every rung (16 / 24 / 36); every bead stage was re-run with it"),
+    "deep_quantity_by_the_bound_leader_2026_09_23": (
+        "leader 2026-09-23 (L2): a ladder quantity below -20 dB on the finest rung or in "
+        "the closed form is judged by the bound, never by a dB comparison"),
+}
+
+# P1 (PI 2026-09-23), the reason every open record carries, verbatim.
+OPEN_NOT_JUDGED_REASON = (
+    "open end inside the lane's closed PEC can (absorbers on z only); its reflection "
+    "does not settle at 9 annulus cells — energy near the outer region's first cutoff "
+    "grows with record length (open_absorber_diagnostic.json); PI 2026-09-23")
+NOT_JUDGED_DUTS = {"open": OPEN_NOT_JUDGED_REASON}
+
+# P2 (PI 2026-09-23). The thru arm of the identity stage compares the untraced
+# call (float64 NumPy assembly) with the traced one (float32 jnp): two functions
+# by design, so their difference is a measured envelope, not the contract's
+# identity. Measured max |dS| = 6.938e-4 (run 369367263527, commit ca6da2b1),
+# pinned at 1.5 x that.
+THRU_TRACED_VS_UNTRACED_ENVELOPE = 1.041e-3
+THRU_TRACED_VS_UNTRACED_MEASURED = 6.938e-4
+
+
+def _judged(dut: str) -> dict:
+    reason = NOT_JUDGED_DUTS.get(dut)
+    return ({"judged": True} if reason is None
+            else {"judged": False, "judged_reason": reason})
+
+
+def _deep_bins(dut: str, name: str, fine_entry: dict, fine_db) -> np.ndarray:
+    """Bins where a ladder quantity is deep: at or below the deep-null level on
+    the finest rung, or in the closed form. A dB difference between two such
+    values is the difference of two near-zeros and says nothing about the mesh.
+
+    Closed forms: the thru's S11 and S22 are 0 at every bin; the bead's S11 and
+    S22 are the TEM section's |S11| at the finest rung's realized length (the
+    section is symmetric, so one curve serves both); S21 and the one-port loads
+    have no deep bin in their closed form.
+    """
+    level = BAR["deep_null_db"]
+    deep = np.asarray(fine_db, dtype=float) <= level
+    if dut == "thru" and name in ("s11", "s22"):
+        deep = np.ones_like(deep, dtype=bool)
+    elif dut == "bead" and name in ("s11", "s22"):
+        ref = fine_entry.get("referee_realized_length")
+        if ref is None:
+            raise RuntimeError("the bead's finest rung carries no realized-length referee, "
+                               "so its reflection-zero cores cannot be located")
+        an = np.asarray(ref["abs_S11"], dtype=float)
+        deep = deep | (20.0 * np.log10(np.maximum(an, 1e-300)) <= level)
+    return deep
+
+
 def stage_assemble(args, out: Path, fixture_out: Path) -> None:
-    commits = _refuse_a_set_spanning_commits(out)
-    _log(f"assembling {sum(len(v) for v in commits.values())} stage records, all at "
-         f"{next(iter(commits))}")
+    provenance_set = _records_share_one_solver_tree(out)
+    commits = provenance_set["record_commits"]
+    _log(f"assembling {sum(len(v) for v in commits.values())} stage records at "
+         f"{len(commits)} commit(s) sharing rfx/ tree {provenance_set['rfx_tree'][:12]}")
     index = json.loads(Path(args.run_index).read_text()) if args.run_index else None
     a, b = port_radii()
     fix = {
         "schema": SCHEMA, "schema_version": SCHEMA_VERSION,
         "predeclaration": PREDECLARATION, "contract": CONTRACT, "driver": DRIVER,
-        "artifact": ARTIFACT, "bar": BAR,
+        "artifact": ARTIFACT, "bar": BAR, "rulings": RULINGS,
         "assembled_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "assembler_commit": git_sha(),
+        "record_provenance": provenance_set,
         "line": {
             "pin_radius_m": a, "outer_radius_m": b, "annulus_m": b - a,
             "fill_eps_r": float(PTFE_EPS_R),
@@ -1844,7 +2009,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "domain_two_port_m": list(DOMAIN_TWOPORT),
             "domain_one_port_m": list(DOMAIN_ONEPORT),
             "freq_max_hz": FREQ_MAX, "cpml_layers": CPML_LAYERS,
-            "bead_eps_scale": BEAD_EPS_SCALE, "bead_length_m": BEAD_LENGTH_M,
+            "bead_eps_scale": BEAD_EPS_SCALE, "bead_length_m": bead_length_m(),
+            "bead_length_annulus_widths": BEAD_ANNULUS_WIDTHS,
             "rungs_annulus_cells": list(RUNGS), "claims_rung": CLAIMS_RUNG,
         },
         "freqs_hz": FREQS.astype(float).tolist(),
@@ -1871,6 +2037,12 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "max_cond_a": (float(np.max(c["result"]["cond_a"]))
                                if c["result"].get("cond_a") is not None else None),
                 "wall_s": c["wall_s"],
+                # The bead this case actually ran. The pilot chose the record
+                # length and the drive and was not re-run for L1, so its bead
+                # cases carry the pre-declaration's 6 mm bead, stated here.
+                "bead_length_realized_m": (c.get("realized") or {}).get(
+                    "bead_length_realized_m"),
+                "bead_n_cells": (c.get("realized") or {}).get("bead_n_cells"),
             } for c in pilot["cases"]],
         }
         # The two bead masks side by side, on the S they each produced.
@@ -1953,7 +2125,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     real = rec["realized"]
                     ref_dec = bead_referee(
                         freqs, a=a, b=b, eps_fill=float(PTFE_EPS_R),
-                        eps_scale=BEAD_EPS_SCALE, length_m=BEAD_LENGTH_M,
+                        eps_scale=BEAD_EPS_SCALE, length_m=bead_length_m(),
                         d_port1_m=real["d_port1_to_bead_m"],
                         d_port2_m=real["d_port2_to_bead_m"])
                     ref_real = bead_referee(
@@ -2046,6 +2218,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                         20.0 * np.log10(np.maximum(np.abs(g), 1e-300))
                         - 20.0 * np.log10(max(refr["abs_gamma"], 1e-300))))),
                 }
+            entry.update(_judged(dut))
             fix["solves"][f"{dut}_rung{rung}"] = entry
 
     # --- record-length invariance, the settling substitute -----------------
@@ -2090,6 +2263,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "max_column_power": [col_b, col_d],
             "energy_witness": [rb["settling"], rd["settling"]],
             "S_doubled": (rd["S"] if lane == "two_port" else rd["S11"]),
+            **_judged(dut),
             "freqs_hz": rd["freqs_hz"],
         }
 
@@ -2108,23 +2282,30 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         if lane == "two_port":
             entries = {"s11": (0, 0), "s21": (1, 0), "s22": (1, 1)}
             fine_S = _S(fine["S"])
-            core = np.zeros(len(fine["freqs_hz"]), dtype=bool)
-            if dut == "bead" and "vs_referee_realized" in fine:
-                core = np.asarray(fine["vs_referee_realized"]["null_core"], dtype=bool)
             for name, (i, j) in entries.items():
                 fine_db = 20.0 * np.log10(np.maximum(np.abs(fine_S[i, j, :]), 1e-300))
+                deep = _deep_bins(dut, name, fine, fine_db)
+                judged_by = "bound" if deep.all() else "db_outside_deep"
                 rows = []
                 for k in have:
                     cur_S = _S(fix["solves"][k]["S"])
                     cur_db = 20.0 * np.log10(np.maximum(np.abs(cur_S[i, j, :]), 1e-300))
                     d = np.abs(cur_db - fine_db)
                     d_abs = np.abs(np.abs(cur_S[i, j, :]) - np.abs(fine_S[i, j, :]))
-                    outside = ~core if name == "s11" else np.ones(len(d), bool)
+                    outside = ~deep
                     rows.append({
                         "rung": k,
+                        # every bin, reported; never the verdict on a deep bin
                         "max_db_diff_vs_finest": float(d.max()),
-                        "max_db_diff_vs_finest_outside_null_core": (
+                        "judged_by": judged_by,
+                        "n_bins_deep": int(deep.sum()),
+                        "max_db_diff_vs_finest_outside_deep": (
                             float(d[outside].max()) if outside.any() else None),
+                        # the bound, read on this rung's own curve
+                        "max_db_on_rung": float(cur_db.max()),
+                        "within_deep_null_bound": (
+                            bool(cur_db.max() <= BAR["deep_null_db"])
+                            if judged_by == "bound" else None),
                         # The same difference in amplitude. A 2 dB bar on a
                         # quantity sitting 30 dB down is not the test it is on a
                         # quantity near 0 dB, and only the pair shows which case
@@ -2132,9 +2313,9 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                         "max_abs_diff_vs_finest": float(d_abs.max()),
                         "finest_min_abs": float(np.abs(fine_S[i, j, :]).min()),
                         "finest_max_abs": float(np.abs(fine_S[i, j, :]).max()),
-                        "n_bins_in_null_core": int(core.sum()),
                     })
                 lad[f"{name}_vs_finest"] = rows
+                lad.setdefault("deep_bins", {})[name] = deep.astype(bool).tolist()
             lad["max_column_power"] = [fix["solves"][k]["power"]["max_column_power"]
                                        for k in have]
             lad["settled"] = [fix["solves"][k]["settled"] for k in have]
@@ -2161,41 +2342,58 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                     }
         else:
             fine_abs = np.asarray(fine["abs_s11"], dtype=float)
+            fine_db = 20.0 * np.log10(np.maximum(fine_abs, 1e-300))
+            deep = _deep_bins(dut, "s11", fine, fine_db)
+            judged_by = "bound" if deep.all() else "db_outside_deep"
             rows = []
             for k in have:
                 cur = np.asarray(fix["solves"][k]["abs_s11"], dtype=float)
-                d_db = np.abs(20.0 * np.log10(np.maximum(cur, 1e-300))
-                              - 20.0 * np.log10(np.maximum(fine_abs, 1e-300)))
+                cur_db = 20.0 * np.log10(np.maximum(cur, 1e-300))
+                d_db = np.abs(cur_db - fine_db)
                 rows.append({
                     "rung": k,
                     "max_db_diff_vs_finest": float(d_db.max()),
+                    "judged_by": judged_by,
+                    "n_bins_deep": int(deep.sum()),
+                    "max_db_diff_vs_finest_outside_deep": (
+                        float(d_db[~deep].max()) if (~deep).any() else None),
+                    "max_db_on_rung": float(cur_db.max()),
+                    "within_deep_null_bound": (
+                        bool(cur_db.max() <= BAR["deep_null_db"])
+                        if judged_by == "bound" else None),
                     "max_abs_diff_vs_finest": float(np.abs(cur - fine_abs).max()),
                     "finest_min_abs": float(fine_abs.min()),
                     "finest_max_abs": float(fine_abs.max()),
                 })
             lad["s11_vs_finest"] = rows
+            lad.setdefault("deep_bins", {})["s11"] = deep.astype(bool).tolist()
             lad["max_abs_s11"] = [fix["solves"][k]["max_abs_s11"] for k in have]
 
         # The support matrix asks for one cell size: the coarsest rung whose
         # every compared quantity sits inside the bar against the finest. Pure
         # arithmetic over the thresholds already in `bar` — a boolean per rung,
-        # not a recommendation sentence.
+        # not a recommendation sentence. A quantity that is deep (below the
+        # deep-null level on the finest rung or in the closed form) at EVERY bin
+        # is read on the bound alone; one that is deep only at some bins (a
+        # reflection zero's core) is compared in dB outside them, and inside a
+        # zero's core the verdict is the zero's frequency (PI 2026-09-21, and
+        # the leader's L2 of 2026-09-23).
         inside = []
+        names = ("s11", "s21", "s22") if lane == "two_port" else ("s11",)
         for i, k in enumerate(have):
             row = {"rung": k}
-            if lane == "two_port":
-                for name in ("s11", "s21", "s22"):
-                    worst = lad[f"{name}_vs_finest"][i][
-                        "max_db_diff_vs_finest_outside_null_core"]
+            for name in names:
+                r = lad[f"{name}_vs_finest"][i]
+                if r["judged_by"] == "bound":
+                    row[f"{name}_within_{BAR['deep_null_db']:g}dB_bound"] = (
+                        r["within_deep_null_bound"])
+                else:
+                    worst = r["max_db_diff_vs_finest_outside_deep"]
                     row[f"{name}_within_{BAR['magnitude_db']:g}dB"] = (
                         None if worst is None else bool(worst <= BAR["magnitude_db"]))
-                if dut == "bead":
-                    row["zero_within_1pct"] = bool(
-                        lad["zero_frac_vs_finest"][i] <= BAR["frequency_frac"])
-            else:
-                row[f"s11_within_{BAR['magnitude_db']:g}dB"] = bool(
-                    lad["s11_vs_finest"][i]["max_db_diff_vs_finest"]
-                    <= BAR["magnitude_db"])
+            if dut == "bead":
+                row["zero_within_1pct"] = bool(
+                    lad["zero_frac_vs_finest"][i] <= BAR["frequency_frac"])
             row["all_inside_bar"] = all(v for v in row.values() if isinstance(v, bool))
             row["resolution"] = fix["solves"][k]["resolution"]
             inside.append(row)
@@ -2240,6 +2438,7 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         lad["rung_within_bar_vs_finest"] = inside
         qualifying = [r for r in inside if r["all_inside_bar"]]
         lad["coarsest_rung_within_bar"] = qualifying[0]["rung"] if qualifying else None
+        lad.update(_judged(dut))
         fix["ladder"][dut] = lad
 
     # --- the line's own two witnesses, per rung ----------------------------
@@ -2283,16 +2482,29 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         fix["line_witnesses"]["rungs"].append(row)
 
     # --- forward identity ---------------------------------------------------
-    ident = _load_stage(out, f"identity_rung{AD_RUNG}.json")
-    if ident is not None:
-        fix["identity"] = {
-            "provenance": fixture_provenance(ident["provenance"], index,
-                                             f"identity_rung{AD_RUNG}.json"),
-            "rtol": BAR["identity_rtol"], "atol": BAR["identity_atol"],
-            "arms": [{
+    # Each arm is taken from the newest record that ran it: the bead arm was
+    # re-run alone for L1 (identity_rung4_bead.json), the thru arm has no bead
+    # and stays in the record that measured both (identity_rung4.json).
+    ident_arms = {}
+    for name in (f"identity_rung{AD_RUNG}.json", f"identity_rung{AD_RUNG}_thru.json",
+                 f"identity_rung{AD_RUNG}_bead.json"):
+        rec = _load_stage(out, name)
+        if rec is None:
+            continue
+        for arm in rec["arms"]:
+            ident_arms[arm["dut"]] = (name, rec, arm)
+    if ident_arms:
+        arms = []
+        for dut in ("thru", "bead"):
+            if dut not in ident_arms:
+                continue
+            name, rec, arm = ident_arms[dut]
+            entry = {
                 "tag": arm["tag"], "dut": arm["dut"], "left": arm["left"],
                 "right": arm["right"], "what": arm["what"], "n_steps": arm["n_steps"],
-                "rung_annulus_cells": ident["rung_annulus_cells"],
+                "rung_annulus_cells": rec["rung_annulus_cells"],
+                "provenance": fixture_provenance(rec["provenance"], index, name),
+                "stage_record": name,
                 "freqs_hz": arm["left_result"]["freqs_hz"],
                 "left_S": arm["left_result"]["S"], "right_S": arm["right_result"]["S"],
                 "left_settling": arm["left_result"]["settling"],
@@ -2301,7 +2513,37 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                 "right_status": arm["right_result"]["status"],
                 **arm["difference"],
                 "warnings": {"left": arm["left_warnings"], "right": arm["right_warnings"]},
-            } for arm in ident["arms"]],
+            }
+            if dut == "bead":
+                entry["realized_bead"] = {
+                    k: arm["realized"].get(k) for k in (
+                        "bead_z_cells", "bead_n_cells", "bead_length_realized_m")}
+            # P2 (PI 2026-09-23): the contract's identity clause holds where the
+            # traced and untraced call are the same function. The bead arm is
+            # that (both containers take the traced path); the thru arm is the
+            # float64 NumPy assembly against the float32 jnp one, two functions
+            # by design, judged against its measured envelope.
+            if arm["left"] == "eps_scale=None":
+                entry.update({
+                    "judged_as": "measured_envelope",
+                    "envelope_max_abs": THRU_TRACED_VS_UNTRACED_ENVELOPE,
+                    "envelope_basis": (
+                        f"1.5 x the measured max |dS| {THRU_TRACED_VS_UNTRACED_MEASURED:g} "
+                        "(run 369367263527, commit ca6da2b1)"),
+                    "within": bool(arm["difference"]["max_abs"]
+                                   <= THRU_TRACED_VS_UNTRACED_ENVELOPE),
+                    "ruling": "identity_within_the_traced_path_pi_2026_09_23",
+                })
+            else:
+                entry.update({
+                    "judged_as": "identity",
+                    "within": bool(arm["difference"]["allclose_at_bar"]),
+                    "ruling": "identity_within_the_traced_path_pi_2026_09_23",
+                })
+            arms.append(entry)
+        fix["identity"] = {
+            "rtol": BAR["identity_rtol"], "atol": BAR["identity_atol"],
+            "arms": arms,
         }
 
     # --- AD vs FD -----------------------------------------------------------
@@ -2322,6 +2564,12 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "cases": ad["cases"], "bar": BAR["ad_fd_rel"],
             "peak_memory": ad.get("peak_memory"),
         }
+        if lane == "two_port":
+            # The bead the gradient was taken on, on the AD board's own grid.
+            fix["adfd"][lane]["realized_bead"] = {
+                k: ad["realized"].get(k) for k in (
+                    "bead_z_cells", "bead_n_cells", "bead_length_realized_m",
+                    "bead_inside_probe_gap")}
 
     # --- reference-plane invariance ----------------------------------------
     pl = _load_stage(out, "plane_rung6.json")
@@ -2351,6 +2599,10 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "shift_cells": pl["shift_cells"], "shift_m": delta,
             "what_moves": pl["what_moves"], "predicted": pl["predicted"],
             "realized_displacement_m": pl["realized_displacement_m"],
+            "realized_bead": {
+                r["tag"]: {k: r["realized"].get(k) for k in (
+                    "bead_z_cells", "bead_n_cells", "bead_length_realized_m")}
+                for r in (a_rec, b_rec)},
             "freqs_hz": a_rec["result"]["freqs_hz"],
             "base_S": a_rec["result"]["S"], "shifted_S": b_rec["result"]["S"],
             "base_settling": a_rec["result"]["settling"],
@@ -2491,6 +2743,9 @@ def main() -> int:
     ap.add_argument("--record-units", type=float, default=DEFAULT_RECORD_UNITS)
     ap.add_argument("--out", help="directory for the stage JSONs")
     ap.add_argument("--fixture-out", default=str(REPO / ARTIFACT))
+    ap.add_argument("--identity-arms", choices=("all", "thru", "bead"), default="all",
+                    help="identity only: run one arm alone; its record is "
+                         "identity_rung<r>_<arm>.json")
     ap.add_argument("--tag", default=None,
                     help="suffix for this stage's output file; 'double' marks the "
                          "doubled-record arm of the record-length-invariance check")
@@ -2523,7 +2778,8 @@ def main() -> int:
     elif args.stage == "pilot":
         stage_pilot(args, out / f"pilot_rung{args.rung}.json")
     elif args.stage == "identity":
-        stage_identity(args, out / f"identity_rung{args.rung}.json")
+        arm = "" if args.identity_arms == "all" else f"_{args.identity_arms}"
+        stage_identity(args, out / f"identity_rung{args.rung}{arm}.json")
     elif args.stage == "adfd-twoport":
         stage_adfd(args, out / f"adfd-twoport_rung{AD_RUNG}.json", "two_port")
     elif args.stage == "adfd-oneport":

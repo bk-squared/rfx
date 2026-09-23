@@ -122,6 +122,16 @@ def jobs() -> list[dict]:
         description=("Coax chain battery: forward identity, the untraced numpy path "
                      "against the no-op jnp path and the bead in two containers."),
     ))
+    # The bead arm alone: re-run when the bead became a whole number of cells
+    # (the pre-declaration's second addendum, item 8); the thru arm has no bead.
+    # Keyed "bead-identity", not "identity-bead": vessl_submit.sh matches run
+    # directories by prefix, and "identity" would match the longer key's.
+    out.append(dict(
+        key="bead-identity", preset="gpu-rtx4090",
+        cli=f"--stage identity --rung 4 --record-units {RECORD_UNITS} --identity-arms bead",
+        description=("Coax chain battery: forward identity, the bead arm alone (the same "
+                     "bead in a numpy and a jnp container)."),
+    ))
     out.append(dict(
         key="adfd-twoport", preset="gpu-a6000-1",
         cli="--stage adfd-twoport",
@@ -164,6 +174,16 @@ def jobs() -> list[dict]:
                      "provenance contract. Arithmetic only, no FDTD."),
     ))
     out.append(dict(
+        key="ruff", preset="cpu-32-mem-64", pytest=True, extra_pip="ruff",
+        cli=("-m ruff check rfx/ tests/ validation/ scripts/ci/ scripts/dev/ "
+             "scripts/changelog/ scripts/diagnostics/coax_chain_battery_measure.py "
+             "scripts/diagnostics/coax_open_absorber_diagnostic.py "
+             "scripts/vessl_coax_chain_battery/ "
+             "--select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402"),
+        description=("ruff on the CI lint scope (scripts/ci/lint.sh) plus this "
+                     "battery's driver, diagnostic and job generators."),
+    ))
+    out.append(dict(
         key="plane", preset="gpu-rtx4090",
         cli=f"--stage plane --rung 6 --record-units {RECORD_UNITS}",
         description=("Coax chain battery: reference-plane invariance — the bead "
@@ -178,12 +198,20 @@ def main() -> int:
     ap.add_argument("--sha", required=True, help="the pushed commit every job must see")
     ap.add_argument("--src", required=True, help="the worktree the jobs read")
     ap.add_argument("--out", required=True, help="directory to write the YAMLs into")
+    ap.add_argument("--only", default=None,
+                    help="comma-separated job keys to write; every job when omitted")
     args = ap.parse_args()
+    only = None if args.only is None else set(args.only.split(","))
+    known = {job["key"] for job in jobs()}
+    if only is not None and not only <= known:
+        ap.error(f"unknown job key(s): {sorted(only - known)}")
 
     dest = Path(args.out)
     dest.mkdir(parents=True, exist_ok=True)
     written = []
     for job in jobs():
+        if only is not None and job["key"] not in only:
+            continue
         prefix = f"coax-battery-{job['key']}"
         text = TEMPLATE.format(
             name=f"rfx-{prefix}", description=job["description"], tag=job["key"],
@@ -192,6 +220,13 @@ def main() -> int:
             command=(job["cli"] if job.get("pytest") else
                      f'{DRIVER} {job["cli"]} --out "$WORK/out" --run-id "{prefix}"'))
         path = dest / f"{job['key']}.yaml"
+        if job.get("extra_pip"):
+            # One more package on this job's install line only (ruff for the
+            # lint job); the anchor is the template's last package.
+            anchor = " pytest pytest-split optax\n"
+            if text.count(anchor) != 1:
+                raise RuntimeError("the job template's install line moved")
+            text = text.replace(anchor, f" pytest pytest-split optax {job['extra_pip']}\n")
         path.write_text(text)
         written.append((path, prefix))
     for path, prefix in written:
