@@ -16,6 +16,7 @@ from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
 from rfx.sources.waveguide_port import _node_span_to_cell_span
+from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 from rfx.nonuniform import (
     NonUniformGrid,
     e_node_dual_spacing_at,
@@ -1100,9 +1101,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         d_cell = dxi
                         dp1, dp2 = dual_yj, dual_zk
                     sigma_port = n_live * d_cell / (pe.impedance * dp1 * dp2)
-                    materials = materials._replace(
-                        sigma=materials.sigma.at[ci, cj, ck].add(
-                            sigma_port))
+                    # #1210: a port's load is a device across ONE edge, so
+                    # it is recorded as an edge-owned stamp and kept out of
+                    # the edge average. Stamped bare it was quartered, and a
+                    # 50 ohm termination presented 200 ohm.
+                    materials = _stamp_lumped_sigma(
+                        materials, (ci, cj, ck), sigma_port)
                     # No PEC clearing here (#931 §1.9, corrected): a cell
                     # is LIVE exactly when the port component's own edge is
                     # not PEC, so releasing that component is a no-op, and
@@ -1196,8 +1200,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 d_parallel = dxi
                 d_perp1, d_perp2 = dual_yj, dual_zk
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
-            materials = materials._replace(
-                sigma=materials.sigma.at[i, j, k].add(sigma_port))
+            materials = _stamp_lumped_sigma(      # #1210
+                materials, (i, j, k), sigma_port)
             if pec_edge_masks is not None:
                 # The lumped port drives ONE edge: its own component at
                 # its own cell (#931 §1.9, corrected).

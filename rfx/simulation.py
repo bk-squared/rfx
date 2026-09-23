@@ -788,7 +788,7 @@ def _resolve_design_occupancy(
 
 
 def _design_box_window(bounds, shape):
-    """``(write bounds, computation slice, box slice inside it)`` for #1210.
+    """``(write bounds, computation window, write slice in it, box slice)``.
 
     The same window arithmetic :func:`rfx.boundaries.pec.pec_occupancy_box_keep`
     does for a traced occupancy, for the same reason. A cell's permittivity
@@ -870,6 +870,7 @@ def _resolve_design_box(
     bloch,
     sheet_impedance,
     cell_metas,
+    periodic=(False, False, False),
 ) -> "_DesignBoxCoeffs":
     """Check a design box against this run, then build its Ca/Cb (#1179).
 
@@ -923,6 +924,26 @@ def _resolve_design_box(
     # collision the declared box was already fenced against.
     _write_bounds, _, _, _ = _design_box_window(bounds, tuple(grid.shape))
     w_i0, w_i1, w_j0, w_j1, w_k0, w_k1 = _write_bounds
+    # #1210: the window is built with the non-periodic convention -- it clips
+    # at the grid face where the grid-wide update would WRAP. That is only a
+    # difference for a box that touches a periodic face, and there it is a
+    # silent one, so it is refused rather than approximated. The occupancy
+    # box's sibling (``pec_occupancy_box_keep``) refuses periodic axes for the
+    # same reason.
+    for _axis, _name in enumerate("xyz"):
+        if not periodic[_axis]:
+            continue
+        _lo, _hi = bounds[2 * _axis], bounds[2 * _axis + 1]
+        _n = grid.shape[_axis]
+        if _lo == 0 or _hi == _n:
+            raise NotImplementedError(
+                f"a design box (#1179) flush against a PERIODIC {_name} face "
+                f"is not supported: cells [{_lo}, {_hi}) on a {_n}-cell "
+                f"periodic axis. An E component takes the mean of its four "
+                f"incident cells (#1210), and across a periodic seam those "
+                f"neighbours wrap -- the box's one-cell window does not. Move "
+                f"the box off the {_name} faces, or use eps_override (the "
+                f"whole-grid traced permittivity), which wraps correctly.")
 
     # The absorber. apply_cpml_e's psi correction is written at the [:n] /
     # [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
@@ -1460,6 +1481,7 @@ def _build_step_setup(
             grid=grid,
             materials=materials,
             dt=dt,
+            periodic=periodic,
             use_cpml=use_cpml,
             use_upml=use_upml,
             cpml_axes=cpml_axes,

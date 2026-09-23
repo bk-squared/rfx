@@ -10,6 +10,7 @@ import jax.numpy as jnp
 
 from rfx.core.yee import EPS_0, MU_0
 from rfx.grid import Grid
+from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
 
 def _run_subgridded_once(
@@ -430,8 +431,8 @@ def _run_subgridded_once(
             sigma_port_per_cell = n_cells / (pe.impedance * dx_f)
             for cell in cells:
                 i, j, k = cell
-                mats_f = mats_f._replace(
-                    sigma=mats_f.sigma.at[i, j, k].add(sigma_port_per_cell))
+                mats_f = _stamp_lumped_sigma(      # #1210
+                    mats_f, (i, j, k), sigma_port_per_cell)
                 if pec_mask_f is not None:
                     pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 
@@ -450,8 +451,7 @@ def _run_subgridded_once(
             idx = _pos_to_fine_idx(pe.position)
             i, j, k = idx
             sigma_port = 1.0 / (pe.impedance * dx_f)
-            mats_f = mats_f._replace(
-                sigma=mats_f.sigma.at[i, j, k].add(sigma_port))
+            mats_f = _stamp_lumped_sigma(mats_f, (i, j, k), sigma_port)  # #1210
             if pec_mask_f is not None:
                 pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 

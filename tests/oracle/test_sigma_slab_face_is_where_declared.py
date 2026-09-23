@@ -1,7 +1,8 @@
 """A volume conductor's plus face sits on the boundary it was drawn on (#1210).
 
 A 6 mm slab of sigma = 1e5 S/m lies on the floor of a 24 mm PEC cube. Its skin
-depth at 10 GHz is 50 um, a twentieth of a cell, so the slab is a short: the
+depth at 10 GHz is 16 um (sqrt(2/(w*mu0*sigma))), a sixtieth of a cell, so the
+slab is a short: the
 cavity above it is 18 mm tall and its lowest mode with one half-wave along z
 and one along x sits at c/2 * sqrt(1/L^2 + 1/(L-h)^2) = 10.4095 GHz.
 

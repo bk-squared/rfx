@@ -382,3 +382,39 @@ def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
         f"the Ex drive coefficient is {drive:.6e} but the E update multiplies "
         f"this node by {update_cb:.6e} ({owning_cb / update_cb:.4f}x is the "
         f"owning cell's value)")
+
+
+def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
+    """The stamp is not averaged, so a periodic seam cannot smear it.
+
+    A stamp on the lo face of a periodic axis: the volume average there wraps
+    to the far side, and the stamp must still land whole on its own cell and
+    nowhere else — including on the cell it wraps to.
+    """
+    from rfx.core.yee import component_e_materials
+
+    g = 1.0 / (50.0 * DX)
+    cell = (0, 3, 4)
+    wrapped = (SHAPE[0] - 1, 3, 4)
+    sigma = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
+    lumped = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
+    # A non-uniform VOLUME sigma as well, so the wrap is exercised.
+    vol = jnp.asarray((np.indices(SHAPE)[0] * 1.0).astype(np.float32))
+    mats = MaterialArrays(jnp.ones(SHAPE, jnp.float32), sigma + vol,
+                          jnp.ones(SHAPE), sigma_lumped=lumped)
+
+    for periodic in [(True, True, True), (True, False, False)]:
+        _, sig_c = component_e_materials(mats, periodic)
+        for name, arr in zip(("ex", "ey", "ez"), sig_c):
+            a = np.asarray(arr)
+            # the volume part at this cell, computed without the stamp
+            plain = MaterialArrays(jnp.ones(SHAPE, jnp.float32), vol,
+                                   jnp.ones(SHAPE))
+            base = np.asarray(component_e_materials(plain, periodic)[1][
+                {"ex": 0, "ey": 1, "ez": 2}[name]])
+            assert a[cell] - base[cell] == pytest.approx(g, rel=1e-5), (
+                f"{name}: the stamp did not arrive whole at its own cell "
+                f"(periodic={periodic})")
+            assert a[wrapped] - base[wrapped] == pytest.approx(0.0, abs=1e-3), (
+                f"{name}: the stamp wrapped onto the far face "
+                f"(periodic={periodic})")

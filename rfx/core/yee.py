@@ -1017,21 +1017,29 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    sigma = materials.sigma
+    # #1210: sigma is a VOLUME conductivity, so it takes the same
+    # per-component edge average the subpixel lane already gives eps -- the
+    # conduction paths of the four cells lie in parallel along the edge. The
+    # permittivity here stays the Kottke/subpixel tensor, which is already
+    # per-component by construction. Where sigma is uniform (every lossless
+    # subpixel fixture) the mean of four equal floats is that float, so those
+    # runs keep their bytes. The graded-mesh lane installs no periodic BC.
+    sigma_ex, sigma_ey, sigma_ez = component_e_materials(
+        materials, (False, False, False))[1]
 
     abs_eps_ex = eps_ex * EPS_0
     abs_eps_ey = eps_ey * EPS_0
     abs_eps_ez = eps_ez * EPS_0
 
-    loss_ex = sigma * dt / (2.0 * abs_eps_ex)
+    loss_ex = sigma_ex * dt / (2.0 * abs_eps_ex)
     ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
     cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
 
-    loss_ey = sigma * dt / (2.0 * abs_eps_ey)
+    loss_ey = sigma_ey * dt / (2.0 * abs_eps_ey)
     ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
     cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
 
-    loss_ez = sigma * dt / (2.0 * abs_eps_ez)
+    loss_ez = sigma_ez * dt / (2.0 * abs_eps_ez)
     ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
     cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
 
@@ -1114,15 +1122,22 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    sigma = materials.sigma
+    # #1210: sigma is a VOLUME conductivity, so it takes the same
+    # per-component edge average the subpixel lane already gives eps -- the
+    # conduction paths of the four cells lie in parallel along the edge. The
+    # permittivity here stays the Kottke/subpixel tensor, which is already
+    # per-component by construction. Where sigma is uniform (every lossless
+    # subpixel fixture) the mean of four equal floats is that float, so those
+    # runs keep their bytes.
+    sigma_ex, sigma_ey, sigma_ez = component_e_materials(materials, periodic)[1]
 
     # Per-component lossy update coefficients in inv-eps form.
     # `loss = σ · dt · μ / (2 · ε₀)` is finite for any (σ, μ) ≥ 0; the
     # `1 + loss` denominator is ≥ 1 so no division hazard.
     inv_eps0 = 1.0 / EPS_0
-    loss_ex = 0.5 * sigma * dt * inv_xx * inv_eps0
-    loss_ey = 0.5 * sigma * dt * inv_yy * inv_eps0
-    loss_ez = 0.5 * sigma * dt * inv_zz * inv_eps0
+    loss_ex = 0.5 * sigma_ex * dt * inv_xx * inv_eps0
+    loss_ey = 0.5 * sigma_ey * dt * inv_yy * inv_eps0
+    loss_ez = 0.5 * sigma_ez * dt * inv_zz * inv_eps0
 
     ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
     ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
@@ -1189,7 +1204,14 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    sigma = materials.sigma
+    # #1210: sigma is a VOLUME conductivity, so it takes the same
+    # per-component edge average the subpixel lane already gives eps -- the
+    # conduction paths of the four cells lie in parallel along the edge. The
+    # permittivity here stays the Kottke/subpixel tensor, which is already
+    # per-component by construction. Where sigma is uniform (every lossless
+    # subpixel fixture) the mean of four equal floats is that float, so those
+    # runs keep their bytes.
+    sigma_ex, sigma_ey, sigma_ez = component_e_materials(materials, periodic)[1]
 
     # Per-component absolute permittivity
     abs_eps_ex = eps_ex * EPS_0
@@ -1197,15 +1219,15 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     abs_eps_ez = eps_ez * EPS_0
 
     # Per-component lossy update coefficients
-    loss_ex = sigma * dt / (2.0 * abs_eps_ex)
+    loss_ex = sigma_ex * dt / (2.0 * abs_eps_ex)
     ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
     cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
 
-    loss_ey = sigma * dt / (2.0 * abs_eps_ey)
+    loss_ey = sigma_ey * dt / (2.0 * abs_eps_ey)
     ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
     cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
 
-    loss_ez = sigma * dt / (2.0 * abs_eps_ez)
+    loss_ez = sigma_ez * dt / (2.0 * abs_eps_ez)
     ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
     cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
 
