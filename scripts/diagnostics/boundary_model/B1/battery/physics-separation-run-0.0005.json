@@ -1,0 +1,5 @@
+{
+  "frequency_Hz": 9840874627.879604,
+  "derived_separation_m": 0.023504463283722025,
+  "formula": "1/sqrt((2*f/c)^2-(1/0.020)^2)"
+}

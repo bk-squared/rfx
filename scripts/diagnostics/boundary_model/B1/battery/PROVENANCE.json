@@ -1,0 +1,127 @@
+{
+  "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6",
+  "battery_source": "tests/unit/boundaries/test_boundary_mini_battery.py",
+  "battery_source_sha256": "00b6b7db6d3ee383def69d0b6701f4963f9416148cdd9fdf3ebd97af7b069935",
+  "records": {
+    "physics-cpml-cutoff3-run-0.001.json": {
+      "sha256": "8c2c69f9f6b14548ee8be1a957825931b7139c6cf02603a09e9509b51996a0b5",
+      "kernel_base_commit": "3247dc0efdf91c571cdfecb043a9a47479c2dcd1",
+      "retained_original_record": "physics-cpml-run-0.001.json",
+      "pulse_cutoff": 3,
+      "required_end_over_post_source_peak_dB": -40,
+      "observed_test_status": "FAILED"
+    },
+    "physics-cpml-cutoff4p5-forward-0.0005.json": {
+      "sha256": "a2f022b5efabe30f67eb7e735ee746461f3d5bc7a1e4af43392c8e503a0d2035",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6",
+      "pulse_cutoff": 4.5,
+      "required_end_over_post_source_peak_dB": -40
+    },
+    "physics-cpml-cutoff4p5-forward-0.001.json": {
+      "sha256": "ebfa1387cc840e30ea4f687a57cd26e7b9b1462bb2a6df5efc631a549cfac025",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6",
+      "pulse_cutoff": 4.5,
+      "required_end_over_post_source_peak_dB": -40
+    },
+    "physics-cpml-cutoff4p5-run-0.0005.json": {
+      "sha256": "d33b791fb4a29e67b2f75fe3227fde700fe46aebb3fbe95765c527d7d3400790",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6",
+      "pulse_cutoff": 4.5,
+      "required_end_over_post_source_peak_dB": -40
+    },
+    "physics-cpml-cutoff4p5-run-0.001.json": {
+      "sha256": "eaaed9c93d788a49fcb755eddb7f658c5b4d0eab20e52702cd8fa02bb9764a71",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6",
+      "pulse_cutoff": 4.5,
+      "required_end_over_post_source_peak_dB": -40
+    },
+    "physics-debye-face-forward-0.0005.json": {
+      "sha256": "63b9c3ea9b5afa875b100576ae8d12d84654775a139d08478ca525cf2ba77b7d",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-debye-face-forward-0.001.json": {
+      "sha256": "9518beb8fdc0efdd28264967d8714b30f322e6d5d9bc5b302e8cf2e638dee218",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-debye-face-run-0.0005.json": {
+      "sha256": "c9c55414e8648e7fe0e6b46adcecf0e4afdb976deaa67fc214084667aba2b192",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-debye-face-run-0.001.json": {
+      "sha256": "cefe79716029be3e4d9da37615c045e416ce0483c73ee1bfd34f343976eed929",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-dielectric-face-run-0.0005.json": {
+      "sha256": "7807dc62c3cddb2dee92520ab7ef3e96f94f841e0d51bfe9d8caa3944604aa0a",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-dielectric-face-run-0.001.json": {
+      "sha256": "499df901d2dc6d214c73818d5779a3b2f379c0be39a2da9bb45c0cc7ac0c221e",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-electric-forward-0.0005.json": {
+      "sha256": "ddca979d9560cec0dc15362d3b293302b6afb322b7e50f1ac7df4b83d939eea4",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-electric-forward-0.001.json": {
+      "sha256": "345f089fff024ffc8900aebf7bd7780b3557a30080cd434c09d4aa56a39cac8c",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-electric-run-0.0005.json": {
+      "sha256": "02d471aa73f61691a30173d24366e6d30e6c3f7b7494c1c2ad5157eab0dd8540",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-electric-run-0.001.json": {
+      "sha256": "9e4c38ed691406332e6721e8838b937affba0af649716f62c5d21a878c0fc841",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-magnetic-forward-0.0005.json": {
+      "sha256": "8461b86a7782106c34a918638799b856e0914a2631af9de904159031ff4b751c",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-magnetic-forward-0.001.json": {
+      "sha256": "4a5f9dfe7e5cdca319c07431216edd3e5e24d109c50a55a57502ecf794cd64ad",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-magnetic-run-0.0005.json": {
+      "sha256": "182c500aa2362ead2f7c912b9a6cf5e141370f0cb169b7f7574d3703f7c54bd1",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-magnetic-run-0.001.json": {
+      "sha256": "b4fe4f5ebd9d1e00e6fa4d4b23d5675f1887c8559dae1f7acf9967719b6056c2",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-ring-forward-0.0005.json": {
+      "sha256": "dcc0cdcf2a661c003fe1bbbda2ccccf2e36080b002a1ca1e8c690dc56c733189",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-ring-forward-0.001.json": {
+      "sha256": "61402726e73326f29119b0411655d638082db80a28f60ce18bc42f8c021a704b",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-ring-run-0.0005.json": {
+      "sha256": "21c9062e915343825b08ddb276a9bd277d0016b6459cdcca60390814b4b82017",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-ring-run-0.001.json": {
+      "sha256": "2f5c2aae3a01a419919d7732449b0a6aad1a4f2c8fe895750d704b75528aaffa",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-separation-forward-0.0005.json": {
+      "sha256": "264f0cd6989532ef1aa38f95c8546d5a5fe0d886097aaf42de244833d9e8d1a6",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-separation-forward-0.001.json": {
+      "sha256": "44f07f208fd79a3696e44c04e677ea61eeda715a073ecd636c1c24e3b57bcad3",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-separation-run-0.0005.json": {
+      "sha256": "051895cde6784d701541448512e3f21b33bcd25e66f6c613826c8ece07f9e14d",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    },
+    "physics-separation-run-0.001.json": {
+      "sha256": "7db875eb8c44f7fa1af350cc806fb2730b2e0df7ad567da92173d1b32aa38608",
+      "kernel_base_commit": "76f68f9f90c4592b0dc24849c1e42e9959e543c6"
+    }
+  }
+}
