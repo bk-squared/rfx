@@ -74,12 +74,17 @@ def _per_cell_captures(body):
     return captured
 
 
-@pytest.fixture(scope="module", params=[(None, 0), (2, 0), (2, 2)],
-                ids=["plain", "segmented", "warmup_segmented"])
+# "nondispersive" traces the E update without Debye/Lorentz poles, a branch the
+# dispersive model never reaches (review, 2026-09-23: a capture there passed).
+@pytest.fixture(scope="module",
+                params=[("mixed", None, 0), ("mixed", 2, 0), ("mixed", 2, 2),
+                        ("cpml", None, 0)],
+                ids=["plain", "segmented", "warmup_segmented", "nondispersive"])
 def loop_program(request):
     if len(jax.devices("cpu")) < 2:
         pytest.skip("needs two CPU devices")
-    sim = _model("mixed")
+    case, checkpoint, warmup = request.param
+    sim = _model(case)
     grid = sim._build_nonuniform_grid()
     occupancy = jnp.zeros(grid.shape, dtype=jnp.float32).at[8:10, 4:6, 4:6].set(0.2)
     slab_cells = int(np.prod(grid.shape)) // 2
@@ -109,7 +114,6 @@ def loop_program(request):
         patch.setattr(distributed_nu, "jax", SimpleNamespace(**{**vars(jax), "jit": traced_jit}))
         patch.setattr(distributed_nu, "lax", SimpleNamespace(**{**vars(distributed_nu.lax),
                                                             "scan": traced_scan}))
-        checkpoint, warmup = request.param
         result = sim.forward(
             distributed=True, devices=jax.devices("cpu")[:2], n_steps=8,
             checkpoint_every=checkpoint, n_warmup=warmup,

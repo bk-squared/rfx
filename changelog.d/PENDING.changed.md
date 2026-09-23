@@ -2,14 +2,17 @@
 
 - The non-uniform-mesh distributed forward closed its time loop over the material,
   PEC-mask and occupancy, Debye/Lorentz and CPML arrays, and the compiler kept every
-  non-uniform one as a whole-domain constant on every device (ten copies for a model with
-  a lossy block, a PEC block, soft PEC occupancy, Debye and Lorentz poles and CPML). They
-  are now jit arguments, as `sim.run(devices=...)` has done since #1211.
-- Models whose permittivity varies anywhere give bit-identical values (JAX 0.10.2, 0.6.2
-  and 0.4.33). A uniform vacuum box can move by float32 rounding, at most 4 ULP (1 ULP at
-  the probe-trace peak), because the compiler no longer simplifies arithmetic on the
-  uniform array. Reverse-mode permittivity gradients are bit-identical on JAX 0.10.2 and
-  0.4.33; on 0.6.2 they move by float32 rounding (at most 2.2e-7 of the gradient peak).
+  non-uniform one as a whole-domain constant on every device (10 to 14 copies, by JAX
+  version, for a model with a lossy block, a PEC block, soft PEC occupancy, Debye and
+  Lorentz poles and CPML). They are now jit arguments, as `sim.run(devices=...)` has done
+  since #1211.
+- A plain call on a model whose permittivity varies anywhere gives bit-identical values
+  (JAX 0.10.2, 0.6.2 and 0.4.33). A uniform vacuum box can move by float32 rounding, at
+  most 4 ULP (1 at the probe-trace peak; 6 and 3 with warmup and checkpointing), because
+  the compiler no longer simplifies arithmetic on the uniform array. Under `jax.jvp` or
+  `vmap` on JAX 0.6.2 and 0.4.33 the values of non-uniform models also move, by 1-4 ULP.
+  Reverse-mode permittivity gradients are bit-identical on JAX 0.10.2 and 0.4.33; on 0.6.2
+  they move by float32 rounding (at most 2.2e-7 of the gradient peak).
 - No value that agreed bit for bit between a plain call and the same call under
   `jax.jvp`, `jax.value_and_grad`, `vmap` or checkpointing stops agreeing. On JAX 0.10.2
   the plain call and the `jax.jvp` primal now agree for uniform and lossy models; several
