@@ -187,3 +187,42 @@ def test_message_states_the_lane_split():
     assert "silently discarded" not in msg
     # The remedy survives the rewrite.
     assert "offset" in msg and "one cell" in msg
+
+
+@pytest.mark.parametrize("face,position,component", [
+    ("x_lo", (0.0, CY, CZ), "ez"),
+    ("x_hi", (DOMAIN[0], CY, CZ), "ey"),
+    ("y_lo", (0.01, 0.0, CZ), "ez"),
+    ("y_hi", (0.01, DOMAIN[1], CZ), "ex"),
+    ("z_lo", (0.01, CY, 0.0), "ex"),
+    ("z_hi", (0.01, CY, DOMAIN[2]), "ey"),
+])
+def test_tangential_e_on_magnetic_plane_reports_coupling(face, position, component):
+    """The advisory distinguishes propagation on the plane from into the volume."""
+    sim = _sim(BoundarySpec.uniform("pmc"), position, component)
+    msg = _issue(sim, "source_decoupled")
+    assert f"at {position} m (component={component})" in msg
+    assert f"sits on the magnetic-wall plane {face}" in msg
+    assert "present half-cell wall" in msg
+    assert "coupled only within the plane" in msg
+    assert "a line lying in the plane carries its wave" in msg
+    assert "nothing launched there reaches the volume off the plane" in msg
+    assert "To radiate into the volume, place the source one cell (1mm) off the plane" in msg
+    assert "no wave radiates" not in msg
+    assert "silent zero field" not in msg
+    assert "#1221" not in msg
+
+
+def test_source_one_cell_inside_magnetic_plane_is_silent():
+    """The volume-launch remedy clears the source-placement advisory."""
+    sim = _sim(BoundarySpec.uniform("pmc"), (DX, CY, CZ), "ez")
+    assert "source_decoupled" not in _codes(sim)
+
+
+def test_normal_e_on_magnetic_plane_keeps_its_symmetry_advice():
+    """Normal E retains its existing mirror-symmetry advisory."""
+    sim = _sim(BoundarySpec.uniform("pmc"), (0.0, CY, CZ), "ex")
+    msg = _issue(sim, "source_decoupled")
+    assert "sits on the PMC x_lo plane and drives the NORMAL E component" in msg
+    assert "PMC imposes odd symmetry on normal E" in msg
+    assert "tangential E source offset by one cell (1 mm) off the plane" in msg

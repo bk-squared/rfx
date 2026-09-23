@@ -58,7 +58,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0
 
-from rfx.preflight._common import PreflightWarning
+from rfx.preflight._common import PreflightWarning, _fmt_len
 
 
 def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
@@ -202,14 +202,18 @@ def _validate_cfg_source_on_reflector_plane(
                 is_tangential = (comp_axis != ax_name)
                 if face_kind == "PMC":
                     if comp_field == "e" and is_tangential:
+                        # The present half-cell wall isolates this E-node sheet
+                        # from the volume, not from propagation within the sheet.
+                        # Revisit when #1221 puts the magnetic wall on its face.
                         msg = (
-                            f"Source/port at {pos} (component={pe.component}) "
-                            f"sits on the PMC {face} plane. The outgoing "
-                            f"tangential H is zeroed every step by "
-                            f"apply_pmc_faces, so no wave radiates — the "
-                            f"probe records silent zero field. Offset by "
-                            f"one cell ({_dx_axis[ax_i]*1e3:.3g} mm) off "
-                            f"the plane to let the Yee curl run normally."
+                            f"Source/port at {pos} m (component={pe.component}) "
+                            f"sits on the magnetic-wall plane {face}. With the "
+                            f"present half-cell wall, fields on that plane are "
+                            f"coupled only within the plane: a line lying in "
+                            f"the plane carries its wave, but nothing launched "
+                            f"there reaches the volume off the plane. To radiate "
+                            f"into the volume, place the source one cell "
+                            f"({_fmt_len(_dx_axis[ax_i])}) off the plane."
                         )
                     elif comp_field == "e" and not is_tangential:
                         msg = (
