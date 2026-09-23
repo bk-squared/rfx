@@ -439,7 +439,11 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
 # ---------------------------------------------------------------------------
 
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
-    """Refuse periodic boundaries, extended or passive ports, and surface monitors.
+    """Refuse what the multi-device lanes would silently drop or get wrong.
+
+    Periodic/Bloch boundaries, extended or passive ports, Kerr materials,
+    lumped RLC elements, subgridding, and surface monitors (flux, NTFF, DFT
+    planes).
 
     Call after the TFSF and waveguide single-device fallbacks, before sharding.
     ``bloch`` also accepts an explicit phase from a direct caller.
@@ -512,18 +516,31 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             f"Remove the elements, or {single_device_hint}."
         )
 
+    if getattr(sim, "_refinement", None) is not None:
+        raise NotImplementedError(
+            f"add_refinement() (subgridding): not supported on the {lane} path; "
+            "the lane ignores the refinement and would solve the unrefined grid, "
+            "with no warning (rfx.runners.distributed_v2.run_distributed / "
+            "rfx.runners.distributed.run_distributed have no subgrid coupling). "
+            f"Remove the refinement, or {single_device_hint}."
+        )
+
     monitors = []
     if getattr(sim, "_flux_monitors", None):
         monitors.append("add_flux_monitor() (flux monitors)")
     if getattr(sim, "_ntff", None) is not None:
         monitors.append("add_ntff_box() (NTFF box)")
+    if getattr(sim, "_dft_planes", None):
+        # The run() dispatch refuses these first with its own message; this
+        # covers a direct call to either runner (issue #579).
+        monitors.append("add_dft_plane_probe() (DFT plane probes)")
     if monitors:
         raise NotImplementedError(
             f"{' / '.join(monitors)} is not supported on the {lane} path; "
-            "the corresponding result.flux_monitors / result.ntff_data "
-            "would be None (rfx.runners.distributed_v2.run_distributed / "
+            "the corresponding result.flux_monitors / result.ntff_data / "
+            "result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed result assembly). "
-            f"Remove the flux monitors / NTFF box, or {single_device_hint}."
+            f"Remove the flux monitors / NTFF box / DFT plane probes, or {single_device_hint}."
         )
 
 

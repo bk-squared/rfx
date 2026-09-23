@@ -1,4 +1,7 @@
-"""Refuse four input classes before distributed field updates.
+"""Refuse the input classes the distributed lanes would drop or get wrong.
+
+Periodic/Bloch boundaries, extended and passive ports, surface monitors
+(flux, NTFF, DFT planes), Kerr materials, lumped RLC elements, subgridding.
 
 Exercise the public dispatch and both runner entries with two CPU devices.
 PEC controls use the relative tolerance from
@@ -32,7 +35,8 @@ def _devices():
 
 
 def _build(*, entry="api", periodic="", boundary="pec", port=None,
-           flux=False, ntff=False, kerr=False, debye=False, rlc=False):
+           flux=False, ntff=False, kerr=False, debye=False, rlc=None,
+           refine=False, dft=False):
     """A PEC box has a source at x=6 mm and Ez probes at x=12 and 22 mm."""
     # v1 requires nx divisible by two; v2 pads the 25-cell x grid.
     domain_x = 23e-3 if entry == "v1" else 24e-3
@@ -62,8 +66,12 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
             sim.add_material("debye", eps_r=2.0,
                              debye_poles=[DebyePole(delta_eps=1.5, tau=1e-11)])
             sim.add(Box((8e-3, 3e-3, 3e-3), (16e-3, 9e-3, 9e-3)), material="debye")
-        if rlc:
-            sim.add_lumped_rlc((9e-3, 6e-3, 6e-3), "ez", R=10.0)
+        if rlc is not None:
+            sim.add_lumped_rlc((9e-3, 6e-3, 6e-3), "ez", **rlc)
+        if refine:
+            sim.add_refinement(z_range=(4e-3, 8e-3), ratio=2)
+        if dft:
+            sim.add_dft_plane_probe(axis="x", coordinate=12e-3, n_freqs=3)
     return sim
 
 
@@ -157,14 +165,33 @@ def test_kerr_material_is_refused(entry):
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
-def test_lumped_rlc_element_is_refused(entry):
-    """A 10 ohm element between source and probe: this lane never applies it (#1239).
+@pytest.mark.parametrize("element", ({"R": 10.0}, {"R": 10.0, "L": 1e-9}),
+                         ids=("stamped_R", "series_RL"))
+def test_lumped_rlc_element_is_refused(entry, element):
+    """An element between source and probe: this lane never applies it (#1239).
 
-    Measured before the refusal (#1239's 12 mm box): the multi-device trace was
-    bit-identical to the same box without the element, 43 % from single device.
+    Measured before the refusal (#1239's 12 mm box, 10 ohm): the multi-device
+    probe peak was bit-identical to the box without the element and 76 % above
+    the single-device peak, where the element lowers it by 43 %. A lone R is
+    stamped into the material; R+L has its own time update.
     """
-    sim = _build(entry=entry, rlc=True)
+    sim = _build(entry=entry, rlc=element)
     _assert_refused(sim, entry, "add_lumped_rlc()", "as if the elements were absent")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+def test_subgrid_refinement_is_refused(entry):
+    """The lanes have no subgrid coupling; before the refusal a refined box ran
+    bit-identical to the unrefined one (review of #1239)."""
+    sim = _build(entry=entry, refine=True)
+    _assert_refused(sim, entry, "add_refinement()")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+def test_dft_plane_probe_is_refused(entry):
+    """run() refused these in its dispatch; a direct runner call did not."""
+    sim = _build(entry=entry, dft=True)
+    _assert_refused(sim, entry, "add_dft_plane_probe()")
 
 
 @pytest.mark.parametrize("entry", ("api", "v2"))
