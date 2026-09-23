@@ -32,7 +32,7 @@ def _devices():
 
 
 def _build(*, entry="api", periodic="", boundary="pec", port=None,
-           flux=False, ntff=False, kerr=False, debye=False):
+           flux=False, ntff=False, kerr=False, debye=False, rlc=False):
     """A PEC box has a source at x=6 mm and Ez probes at x=12 and 22 mm."""
     # v1 requires nx divisible by two; v2 pads the 25-cell x grid.
     domain_x = 23e-3 if entry == "v1" else 24e-3
@@ -62,6 +62,8 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
             sim.add_material("debye", eps_r=2.0,
                              debye_poles=[DebyePole(delta_eps=1.5, tau=1e-11)])
             sim.add(Box((8e-3, 3e-3, 3e-3), (16e-3, 9e-3, 9e-3)), material="debye")
+        if rlc:
+            sim.add_lumped_rlc((9e-3, 6e-3, 6e-3), "ez", R=10.0)
     return sim
 
 
@@ -152,6 +154,17 @@ def test_kerr_material_is_refused(entry):
     """A chi3 block between source and probe: this lane drops chi3 (linear physics)."""
     sim = _build(entry=entry, kerr=True)
     _assert_refused(sim, entry, "Kerr chi3", "'kerr'", "as linear")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+def test_lumped_rlc_element_is_refused(entry):
+    """A 10 ohm element between source and probe: this lane never applies it (#1239).
+
+    Measured before the refusal (#1239's 12 mm box): the multi-device trace was
+    bit-identical to the same box without the element, 43 % from single device.
+    """
+    sim = _build(entry=entry, rlc=True)
+    _assert_refused(sim, entry, "add_lumped_rlc()", "as if the elements were absent")
 
 
 @pytest.mark.parametrize("entry", ("api", "v2"))

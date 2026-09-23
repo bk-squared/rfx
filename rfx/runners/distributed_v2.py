@@ -501,6 +501,17 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             f"Remove chi3, or {single_device_hint}."
         )
 
+    rlc = getattr(sim, "_lumped_rlc", None) or ()
+    if rlc:
+        raise NotImplementedError(
+            f"add_lumped_rlc() element(s) ({len(rlc)}): not supported on the {lane} "
+            "path; the lane never applies them and would solve the structure as if "
+            "the elements were absent, with no warning (#1239; "
+            "rfx.runners.distributed_v2.run_distributed / "
+            "rfx.runners.distributed.run_distributed have no lumped-element update). "
+            f"Remove the elements, or {single_device_hint}."
+        )
+
     monitors = []
     if getattr(sim, "_flux_monitors", None):
         monitors.append("add_flux_monitor() (flux monitors)")
