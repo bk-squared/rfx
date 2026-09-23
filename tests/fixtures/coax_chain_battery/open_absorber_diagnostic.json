@@ -6,9 +6,9 @@
  "reuses": "scripts/diagnostics/coax_chain_battery_measure.py",
  "artifact": "tests/fixtures/coax_chain_battery/open_absorber_diagnostic.json",
  "battery_artifact": "tests/fixtures/coax_chain_battery/fixture.json",
- "predeclaration": "docs/research_notes/coax_open_absorber_predeclaration.md (local research note, not committed; the arms and thresholds it declares are restated in this artifact's 'predeclared' block)",
- "assembled_utc": "2026-09-23T04:05:03.611457+00:00",
- "assembler_commit": "1202ada36fc321e3cb5d664d078b2558ded18715",
+ "predeclaration": "the leader's pre-declaration, a local note that is not committed; the arms and thresholds it declares are restated in this artifact's 'predeclared' block",
+ "assembled_utc": "2026-09-23T04:11:23.377365+00:00",
+ "assembler_commit": "3e287a3b993c6cc82a8a0f0bae0c4a043138389a",
  "measured_at_commit": "4e008494b7ae19f8558ad43fb68ad8c3199311e1",
  "missing_records": [],
  "arms": {
