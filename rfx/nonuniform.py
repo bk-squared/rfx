@@ -1980,6 +1980,10 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # equal it. ``cell_component_e_materials`` indexes four cells, so the
     # tracer branch below is the same branch it always was.
     from rfx.core.yee import cell_component_e_materials as _cell_comp_mats
+    if str(component).lower() not in ("ex", "ey", "ez"):
+        raise ValueError(
+            f"unknown component {component!r}: a current source injects an "
+            f"electric field component, one of 'ex', 'ey', 'ez'.")
     materials_traced = (
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
