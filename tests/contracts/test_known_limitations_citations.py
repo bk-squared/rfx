@@ -82,7 +82,10 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # landing with it is a MEASUREMENT a caller opts into, not a fix: a too-short
 # record still hands an optimizer the wrong slope, so the entry stays until the
 # defect itself is pinned.
-CITED_ISSUES = frozenset({838, 820, 737, 715, 1022, 1181, 801})
+# #1221 (magnetic faces on distributed and ADI lanes, and the Yee half-cell wall)
+# joined on 2026-09-23; OPEN checked with
+# `gh issue view 1221 --repo bk-squared/rfx --json number,state,url,title,updatedAt`.
+CITED_ISSUES = frozenset({838, 820, 737, 715, 1022, 1181, 801, 1221})
 
 # Numbers the prose names for provenance rather than as a live defect: a CLOSED
 # issue quoted to say what part of the problem is already fixed. #1043 (the

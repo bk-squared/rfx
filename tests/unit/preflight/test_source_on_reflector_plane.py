@@ -204,14 +204,16 @@ def test_tangential_e_on_magnetic_plane_reports_coupling(face, position, compone
     msg = _issue(sim, "source_decoupled")
     assert f"at {position} m (component={component})" in msg
     assert f"sits on the magnetic-wall plane {face}" in msg
-    assert "The wall is solved half a cell inside this face" in msg
+    assert "On a single-device Yee run the wall is solved half a cell inside this face" in msg
     assert "E nodes on the plane form a sheet coupled only to itself" in msg
     assert "a line drawn entirely in the plane (a one-cell-wide model) carries its wave" in msg
     assert "nothing launched here reaches the volume off the plane" in msg
     assert "including the half of a line that the plane cuts along its centre" in msg
     assert (
-        "On the distributed lanes in a box with no absorbing face the plane is "
-        "shorted instead, and a source or line on it reads zero."
+        "The distributed lanes do not realise a magnetic wall: with no absorbing "
+        "face the plane is shorted, and with absorbing faces the cells next to "
+        "it absorb, so a source one cell off reaches the volume 65–75 dB low; "
+        "use a single-device run."
     ) in msg
     assert "To radiate into the volume, place the source one cell (1mm) off the plane" in msg
     assert "no wave radiates" not in msg
@@ -220,14 +222,14 @@ def test_tangential_e_on_magnetic_plane_reports_coupling(face, position, compone
 
 
 def test_adi_tangential_e_on_magnetic_plane_reports_electric_wall():
-    """ADI shorts a tangential E source on a face declared magnetic."""
+    """ADI solves a face declared magnetic as an electric wall at any source offset."""
     position = (0.0, CY, CZ)
     sim = _sim(BoundarySpec.uniform("pmc"), position, "ez", solver="adi")
     assert _issue(sim, "source_decoupled") == (
         f"Source/port at {position} m (component=ez) sits on the "
-        "magnetic-wall plane x_lo. solver='adi' solves this face as an electric "
-        "wall, not a magnetic one, so a tangential E source on it is shorted. "
-        "Place the source one cell (1mm) off the plane."
+        "magnetic-wall plane x_lo. solver='adi' does not realise a magnetic wall: "
+        "it solves this face as an electric wall wherever the source sits. "
+        "Use solver='yee' for a magnetic wall."
     )
 
 
