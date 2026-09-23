@@ -96,6 +96,48 @@ def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
     )
 
 
+def _staged_by_an_outer_trace() -> bool:
+    """Whether ``forward()`` is being recorded into a compiled program (#1225).
+
+    Under ``jax.jit`` — and ``jax.checkpoint``, ``lax.scan`` or
+    ``jax.eval_shape`` — JAX records every array operation instead of running
+    it, including the ones that read only the model: the grid, the realized
+    materials and PEC edge masks, the port cells. Under ``jax.grad``,
+    ``jax.jvp`` or ``jax.vmap`` alone, an operation that does not touch the
+    traced inputs still runs at once. The probe asks exactly that: is an array
+    built from a constant a tracer here?
+    """
+    from rfx.core.jax_utils import is_tracer
+    return is_tracer(jnp.zeros(()))
+
+
+def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
+    """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
+
+    A wire port (``add_port(..., extent=...)`` with a nonzero impedance)
+    reads the model on the host while it is set up: which of its edges are
+    live, from the realized PEC edge mask (uniform lane,
+    ``rfx.sources.sources._wire_port_live_cells``, whenever the model has a
+    conductor; graded lane, ``rfx.runners.nonuniform.run_nonuniform_path``),
+    and on the graded lane its cell sizes as Python floats
+    (``rfx.nonuniform.port_metric_axes``). Under an outer ``jax.jit`` those
+    arrays are tracers and the reads fail, so for such a model the set-up is
+    evaluated at trace time instead. Every other model keeps exactly the
+    code path it had before — its jitted program is unchanged — and so does
+    the distributed lane, whose ``shard_map`` step cannot run its
+    constant-operand collectives outside the mesh.
+
+    The ports are checked first, so a model without a wire port never runs
+    the staging probe either.
+    """
+    if distributed:
+        return False
+    if not any(pe.impedance != 0.0 and getattr(pe, "extent", None) is not None
+               for pe in sim._ports):
+        return False
+    return _staged_by_an_outer_trace()
+
+
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
     """Full conductor footprint for the reference-plane trace scan (#695).
 
@@ -3583,7 +3625,35 @@ class _ExecuteMixin:
             restrictions, including the host Grid object. Absent
             records yield None rather than a passing value. Use
             ``settling_verdict(result.settling_db)`` for the shared -40 dB bar.
+
+        Notes
+        -----
+        ``forward()`` can be called inside ``jax.jit``, so an optimisation
+        step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
+        compiles on its first call and reuses the program afterwards, while
+        an un-jitted ``jax.value_and_grad(loss)`` compiles the whole solve
+        again on every call (#1225). A model with a wire port
+        (``add_port(..., extent=...)``) could not be traced under ``jax.jit``
+        before #1225 (on the uniform lane only when it also had a
+        conductor); its set-up is now evaluated while tracing. The jitted value and gradient agree with a plain call to
+        float32 rounding, not necessarily bit for bit: XLA compiles the whole
+        step as one program.
         """
+        if _forward_needs_trace_time_setup(self, distributed=distributed):
+            # #1225: evaluate the set-up now instead of recording it. Only
+            # the operations that read a traced argument are recorded;
+            # everything built from the model alone is computed at trace
+            # time, so the wire port's host reads of the realized PEC edge
+            # mask and of the cell sizes see concrete arrays. Inside the context the staging
+            # probe reads False, so the call below takes the plain path.
+            # Forwarding ``locals()`` — the parameters, and nothing else
+            # yet — keeps a parameter added later from being dropped here.
+            _call = dict(locals())
+            del _call["self"]
+            _unknown = _call.pop("_removed_kwargs")
+            with jax.ensure_compile_time_eval():
+                return self.forward(**_call, **_unknown)
+
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)
