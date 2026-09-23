@@ -427,6 +427,103 @@ def test_pushes_to_main_still_trigger_the_lane() -> None:
 
 
 # --------------------------------------------------------------------------
+# fast-suite carries its XLA compilation cache from one run to the next
+# --------------------------------------------------------------------------
+#
+# Every way this breaks is silent: jax without a cache directory compiles from
+# scratch, a cache step restoring a different path restores nothing, and a key
+# without the run id is saved once and never again, so the cache stops tracking
+# the code. Each of those leaves every shard green and slower.
+
+#: Settings the sharded pytest step must hand to jax. The minimum compile time
+#: must be 0: nearly all of this lane's compilations take under a second, and
+#: jax's default of 1 s writes none of them. The empty XLA-caches setting keeps
+#: the cache directory's path out of every key (jax 0.6.2 otherwise writes it
+#: into the compile options through the GPU autotune cache).
+CACHE_ENV = {
+    "JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS": "0",
+    "JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES": "-1",
+    "JAX_PERSISTENT_CACHE_ENABLE_XLA_CACHES": "",
+}
+
+
+def _fast_suite_steps() -> list[dict]:
+    return load(PR_TESTS)["jobs"]["fast-suite"]["steps"]
+
+
+def _sharded_pytest_step() -> dict:
+    steps = [s for s in _fast_suite_steps() if "--splits" in str(s.get("run", ""))]
+    assert len(steps) == 1, [s.get("name") for s in steps]
+    return steps[0]
+
+
+def _cache_step() -> dict:
+    steps = [
+        s for s in _fast_suite_steps() if str(s.get("uses", "")).startswith("actions/cache")
+    ]
+    assert len(steps) == 1, f"fast-suite has {len(steps)} actions/cache steps"
+    return steps[0]
+
+
+def test_the_fast_suite_points_jax_at_the_directory_the_cache_step_restores() -> None:
+    env = _sharded_pytest_step().get("env") or {}
+    cache_dir = str(env.get("JAX_COMPILATION_CACHE_DIR", "")).strip()
+    assert cache_dir, "the sharded pytest step no longer gives jax a cache directory"
+    restored = str(_cache_step()["with"]["path"]).strip()
+    assert restored == cache_dir, (
+        f"the cache step restores {restored!r} but jax writes to {cache_dir!r}"
+    )
+    steps = _fast_suite_steps()
+    assert steps.index(_cache_step()) < steps.index(_sharded_pytest_step()), (
+        "the cache is restored after the tests ran"
+    )
+
+
+@pytest.mark.parametrize("name", sorted(CACHE_ENV))
+def test_the_fast_suite_caches_the_short_compilations(name: str) -> None:
+    env = _sharded_pytest_step().get("env") or {}
+    assert str(env.get(name)) == CACHE_ENV[name], (name, env.get(name))
+
+
+def test_the_compilation_cache_is_bounded() -> None:
+    """jax grows the directory without limit unless it is given a size."""
+    env = _sharded_pytest_step().get("env") or {}
+    size = int(str(env.get("JAX_COMPILATION_CACHE_MAX_SIZE", "-1")))
+    assert size > 0, "JAX_COMPILATION_CACHE_MAX_SIZE is unset or unbounded"
+    installs = " ".join(
+        str(s.get("run", "")) for s in _fast_suite_steps() if "pip install" in str(s.get("run", ""))
+    )
+    # jax raises at the first compilation when the bound is set without it.
+    assert "filelock" in installs, "the size bound needs the filelock package"
+
+
+def test_every_run_saves_its_own_cache_and_restores_the_newest() -> None:
+    """A key without the run id matches exactly on the second run, and
+    actions/cache does not save over an exact match -- the cache would freeze at
+    the first run's code. `restore-keys` must be that key minus the run id, and
+    the key must separate what makes an entry unusable elsewhere."""
+    cache = _cache_step()["with"]
+    key = str(cache["key"]).strip()
+    restore = [line.strip() for line in str(cache["restore-keys"]).strip().splitlines()]
+    assert len(restore) == 1, restore
+    assert "github.run_id" in key, key
+    assert "github.run_id" not in restore[0], restore[0]
+    assert key.startswith(restore[0]), (key, restore[0])
+    for part in (
+        "matrix.python-version",
+        "steps.versions.outputs.jax",
+        "steps.versions.outputs.cpu",
+        "matrix.group",
+    ):
+        assert part in restore[0], f"the cache key no longer separates {part}"
+
+
+def test_the_cache_action_is_pinned_by_commit() -> None:
+    uses = str(_cache_step()["uses"])
+    assert re.fullmatch(r"actions/cache@[0-9a-f]{40}", uses), uses
+
+
+# --------------------------------------------------------------------------
 # The gates are scripts, and the workflows call them
 # --------------------------------------------------------------------------
 

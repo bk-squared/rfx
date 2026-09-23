@@ -241,13 +241,57 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      # filelock: jax needs it to bound the compilation cache below
+      # (JAX_COMPILATION_CACHE_MAX_SIZE raises without it). Nothing else here
+      # imports it.
       - name: Install package with dev dependencies
         if: needs.changes.outputs.code_changed != 'false'
-        run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
+        run: pip install -e ".[dev,cad]" filelock   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
 
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
+        id: versions
         if: needs.changes.outputs.code_changed != 'false'
-        run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
+        # The jax version and a digest of the CPU's instruction-set flags go
+        # into the compilation-cache key below. XLA:CPU may use the host's
+        # instruction-set extensions, and GitHub does not promise every
+        # ubuntu-latest runner the same CPU, so the key keeps an executable
+        # built on one runner from being loaded on a runner with other flags.
+        # The model name is printed so a cache miss can be traced to it.
+        run: |
+          python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
+          grep -m1 '^model name' /proc/cpuinfo || true
+          echo "jax=$(python -c 'import jax; print(jax.__version__)')" >> "$GITHUB_OUTPUT"
+          echo "cpu=$(grep -m1 '^flags' /proc/cpuinfo | sha256sum | cut -c1-12)" >> "$GITHUB_OUTPUT"
+
+      # XLA compilation cache, carried from one run of this shard to the next.
+      # Measured 2026-09-23 on a Mac (M1 Max, jax 0.6.2, Python 3.10) with this
+      # job's exact selection, each shard run twice side by side, once with an
+      # empty cache and once with the cache the empty run had filled. Every
+      # compilation of the second run was read back from disk:
+      #   shard 3: XLA compile 333 s -> 28 s, wall  938 s ->  632 s
+      #   shard 5: XLA compile 266 s -> 26 s, wall 1028 s ->  833 s
+      #   shard 6: XLA compile 153 s -> 13 s, wall 1182 s -> 1068 s
+      # Pass/fail/skip were identical in each pair. Tracing and lowering (about
+      # 40-110 s a shard) still happen on a hit. Cache per shard: 30-69 MB,
+      # 3.8k-10k entries.
+      #
+      # The key ends in the run id, so every passing run saves its own entry and
+      # the next run restores the newest one by the prefix in `restore-keys`.
+      # A pull request sees its own entries and main's, never another PR's; main
+      # pushes run this job, so main's entries are what a new PR starts from.
+      # The save is the action's post step, which runs only when the job passed.
+      # Bounded twice: jax evicts least-recently-used entries past
+      # JAX_COMPILATION_CACHE_MAX_SIZE in the pytest step, and GitHub evicts
+      # whole entries past the repository's 10 GB and after 7 days unused.
+      # Pinned by commit: a tag can be moved.
+      - name: Restore the XLA compilation cache (saved again when the job passes)
+        if: needs.changes.outputs.code_changed != 'false'
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: /home/runner/.cache/jax-compilation-cache
+          key: jaxcc-v1-${{ runner.os }}-py${{ matrix.python-version }}-jax${{ steps.versions.outputs.jax }}-cpu${{ steps.versions.outputs.cpu }}-g${{ matrix.group }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            jaxcc-v1-${{ runner.os }}-py${{ matrix.python-version }}-jax${{ steps.versions.outputs.jax }}-cpu${{ steps.versions.outputs.cpu }}-g${{ matrix.group }}-
 
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
         if: needs.changes.outputs.code_changed != 'false'
@@ -261,6 +305,22 @@ jobs:
           # a no-op beyond this flag when nothing is anomalous. (Variable
           # name kept for continuity with the weekly lane's wiring.)
           RFX_WEEKLY_RSS: "1"
+          # The directory the cache step above restores and saves. Minimum
+          # compile time 0: of the 4461 compilations shard 6 made on the Mac,
+          # 4442 took under a second and held 177 of the 199 s, and jax's
+          # default (1 s) would write none of them. Entry-size floor off (-1).
+          # 256 MB is the least-recently-used bound jax enforces on every
+          # write (it needs filelock), about 4x the largest shard measured.
+          JAX_COMPILATION_CACHE_DIR: /home/runner/.cache/jax-compilation-cache
+          JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
+          JAX_PERSISTENT_CACHE_MIN_ENTRY_SIZE_BYTES: "-1"
+          JAX_COMPILATION_CACHE_MAX_SIZE: "268435456"
+          # Empty turns off the GPU autotune cache jax 0.6.2 enables beside the
+          # compilation cache by default. It writes the cache DIRECTORY's path
+          # into every compile option, so every key depended on the path: a
+          # copy of a filled cache at another path hit 0 of 3 on the Mac, and
+          # 3 of 3 with this set. Nothing here compiles for a GPU.
+          JAX_PERSISTENT_CACHE_ENABLE_XLA_CACHES: ""
         run: >
           pytest -q -ra -p no:cacheprovider
           --splits 6 --group ${{ matrix.group }}
