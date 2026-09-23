@@ -94,9 +94,30 @@ The reference ran with ``--real-nrts 60000 --real-end-criteria 1e-4
 --accept-truncation`` (the record's own ``stage_b_coarse`` meta says so), so
 those are the defaults here.
 
+MESH LADDER (``--resolution-factors``)
+-------------------------------------
+openEMS's own smoothed mesh reads the 8 GHz zero at 7.994 / 8.020 / 8.038 GHz
+on the frozen record's three rungs, still rising; openEMS on rfx's node-snapped
+uniform lattices reads 8.195 / 8.224 / 8.186 / 8.206 GHz at h/3 .. h/12 (VESSL
+369367263706, 369367263704).  ``--resolution-factors`` solves every config at
+every factor given, through the maker's own builder, which already takes the
+factor (``_build_sheen_board_at_rung``: in-plane smoothing target 198.5 um x
+factor, round(4 / factor) substrate cells) -- no geometry changes.  Per
+(config, factor) it prints the realized mesh, the box energy and step count
+the pass ended at, both zeros (the |S21| minimum in 6.5-7.6 GHz and in
+7.6-9.5 GHz, ``refined_extremum`` in log), the -3 dB corner and the passband
+mean; then a ladder table per config with the step-to-step change in percent.
+CONTROL: B2 at factor 1.0 must reproduce its 8.01582 GHz of VESSL 369367263565
+within 0.01 %; a job without factor 1.0 prints that it does not carry the
+control.  The default, factor 1.0 alone, is the probe as it was: same passes,
+same output, byte for byte.  ``--refuse-truncation`` turns the default
+``accept_truncation`` off, so a pass that reaches ``--real-nrts`` fires the
+shared runner's gate instead of being recorded.  ``--dry-run`` with a ladder
+prints the plan and a cost estimate per factor.
+
 CLI: ``--configs``, ``--out DIR``, ``--sim-root``, ``--threads``,
-``--real-nrts``, ``--real-end-criteria``, ``--dry-run``,
-``--mutate-skip-boundary-override``.
+``--real-nrts``, ``--real-end-criteria``, ``--resolution-factors``,
+``--refuse-truncation``, ``--dry-run``, ``--mutate-skip-boundary-override``.
 """
 
 from __future__ import annotations
@@ -138,6 +159,23 @@ DEFAULT_END_CRITERIA = 1.0e-4
 BAND_GHZ = (2.0, 12.0)           # the record's own witness band
 DEEP_NULL_DB = -20.0             # the case's two-sided deep-null exclusion
 STAGE_A_REFERENCE_JOBS = ("369367263406", "369367263407", "369367263408")
+
+# ---- the mesh ladder -------------------------------------------------------
+ZERO_BANDS_GHZ = {"zero_7": (6.5, 7.6), "zero_8": (7.6, 9.5)}
+# The ladder's control: B2 (PML on y at 3 mm) at factor 1.0 in VESSL
+# 369367263565, commit 6635cafa -- the deepest 5-10 GHz minimum it recorded,
+# which is its 8 GHz zero.  It ended on its 1e-4 criterion at step 8251.
+LADDER_CONTROL = {"id": "B2", "factor": 1.0, "zero_8_ghz": 8.015824224944472,
+                  "vessl": "369367263565", "tol": 1.0e-4}
+# The cost model's measured inputs.  B2 at factor 1: 417000 cells, 8251 steps
+# (1.38396e-9 s of record) in 18.6 s on 8 threads (VESSL 369367263565).  The
+# frozen record's rungs (tests/crossval/sheen_lpf/reference/openems_sheen.json
+# meta.stages) give the realized cells and dt at factors 1, 1/sqrt2, 1/2 and a
+# second throughput, 3.62e8 cell-steps/s on the fine rung.
+COST_B2_F1 = {"cells": 417000, "steps": 8251, "record_s": 1.3839572858894961e-09,
+              "wall_s": 18.6}
+COST_FINE_RATE = 3.62e8
+COST_DECAY_MULTIPLES = (1.0, 3.0)
 
 
 # ---------------------------------------------------------------- the module
@@ -374,31 +412,52 @@ def _stub_record(smooth_estimate):
 
 # ---------------------------------------------------------------- the dry run
 def dry_run(maker, configs, *, mutate_skip_for: str | None,
-            real_nrts: int, real_end_criteria: float) -> int:
-    print("=" * 78)
-    print("The Sheen low-pass filter -- openEMS box probe, DRY RUN (no solver)")
-    print("=" * 78)
-    print(f"  rung             resolution_factor {RESOLUTION_FACTOR:g} = "
-          f"{maker.resolution_m(RESOLUTION_FACTOR) * 1e6:.2f} um, the record's "
-          f"coarse rung")
-    print(f"  stop criteria    --real-nrts {real_nrts} --real-end-criteria "
-          f"{real_end_criteria:g} --accept-truncation, the way the frozen record "
-          f"was made")
-    print(f"  STAGE A          NOT RUN here. The reproduce gate (openEMS's own "
-          f"MSL_NotchFilter tutorial, verbatim) passed in the three jobs that "
-          f"made the record: VESSL {', '.join(STAGE_A_REFERENCE_JOBS)}")
-    print(f"  builder literal  {maker.B_BOUNDARY}  "
-          f"(make_openems_reference.py, inside _build_sheen_board_at_rung)")
-    print(f"  x layout         untouched by every config: LX "
-          f"{maker.LX * 1e3:.3f} mm, section x {maker.PATCH_X0 * 1e3:.3f}-"
-          f"{maker.PATCH_X1 * 1e3:.3f} mm")
-    audit = _audit_definition_time_capture(maker)
-    print("\n  definition-time capture audit "
-          "(does anything freeze a patched constant at def time?):")
-    print(f"    defaults carrying a patched value: "
-          f"{audit['defaults_carrying_a_patched_value'] or 'none'}")
-    for fname, reads in audit["reads"].items():
-        print(f"    {fname:28s} reads {reads if reads else '(none directly)'}")
+            real_nrts: int, real_end_criteria: float,
+            resolution_factor: float = RESOLUTION_FACTOR,
+            stop_note: str | None = None, common: bool = True,
+            collect: list | None = None) -> int:
+    """The per-config stub build and its printout.
+
+    With the defaults this is the dry run as it was, byte for byte.  The
+    ladder calls it once per factor: ``common=False`` drops the lines that do
+    not depend on the factor after the first, ``collect`` receives each
+    config's mesh estimate for the cost table.
+    """
+    if common:
+        print("=" * 78)
+        print("The Sheen low-pass filter -- openEMS box probe, DRY RUN (no solver)")
+        print("=" * 78)
+    if resolution_factor == RESOLUTION_FACTOR and stop_note is None:
+        print(f"  rung             resolution_factor {RESOLUTION_FACTOR:g} = "
+              f"{maker.resolution_m(RESOLUTION_FACTOR) * 1e6:.2f} um, the record's "
+              f"coarse rung")
+    else:
+        print(f"  rung             resolution_factor {resolution_factor:.6g} = "
+              f"{maker.resolution_m(resolution_factor) * 1e6:.2f} um in-plane "
+              f"smoothing target, {maker.substrate_z_cells(resolution_factor)} "
+              f"substrate z cells")
+    if stop_note is None:
+        print(f"  stop criteria    --real-nrts {real_nrts} --real-end-criteria "
+              f"{real_end_criteria:g} --accept-truncation, the way the frozen record "
+              f"was made")
+    elif common:
+        print(f"  stop criteria    {stop_note}")
+    if common:
+        print(f"  STAGE A          NOT RUN here. The reproduce gate (openEMS's own "
+              f"MSL_NotchFilter tutorial, verbatim) passed in the three jobs that "
+              f"made the record: VESSL {', '.join(STAGE_A_REFERENCE_JOBS)}")
+        print(f"  builder literal  {maker.B_BOUNDARY}  "
+              f"(make_openems_reference.py, inside _build_sheen_board_at_rung)")
+        print(f"  x layout         untouched by every config: LX "
+              f"{maker.LX * 1e3:.3f} mm, section x {maker.PATCH_X0 * 1e3:.3f}-"
+              f"{maker.PATCH_X1 * 1e3:.3f} mm")
+        audit = _audit_definition_time_capture(maker)
+        print("\n  definition-time capture audit "
+              "(does anything freeze a patched constant at def time?):")
+        print(f"    defaults carrying a patched value: "
+              f"{audit['defaults_carrying_a_patched_value'] or 'none'}")
+        for fname, reads in audit["reads"].items():
+            print(f"    {fname:28s} reads {reads if reads else '(none directly)'}")
     if mutate_skip_for:
         print(f"\n  MUTATION: the boundary wrapper is REMOVED for config "
               f"{mutate_skip_for}. Its SetBoundaryCond call below should then be "
@@ -418,7 +477,7 @@ def dry_run(maker, configs, *, mutate_skip_for: str | None,
             rec, csx_stub, fdtd_stub = _stub_record(maker._smooth_estimate)
             builder(csx_stub, fdtd_stub, None,
                     nrts=real_nrts, end_criteria=real_end_criteria,
-                    resolution_factor=RESOLUTION_FACTOR)
+                    resolution_factor=resolution_factor)
             used = list(getattr(builder, "mechanism_used", []) or []) or ["none"]
             y = rec["lines"]["y"]
             effective = rec["boundary_calls"][-1] if rec["boundary_calls"] else None
@@ -450,6 +509,14 @@ def dry_run(maker, configs, *, mutate_skip_for: str | None,
                       f"y {y.size} lines, z {rec['lines']['z'].size} lines; "
                       f"y step {np.min(np.diff(y)) * 1e6:.2f}-"
                       f"{np.max(np.diff(y)) * 1e6:.2f} um")
+                if collect is not None:
+                    est_cells = ((rec['lines']['x'].size - 1) * (y.size - 1)
+                                 * (rec['lines']['z'].size - 1))
+                    collect.append({"id": cfg["id"], "factor": resolution_factor,
+                                    "cells_lower_bound": int(est_cells),
+                                    "lines": [int(rec['lines']['x'].size), int(y.size),
+                                              int(rec['lines']['z'].size)]})
+                    print(f"      cells estimate {est_cells} (numpy lower bound)")
                 if pml_cells:
                     print(f"      PML_8 on y eats the outer {pml_cells} cells of "
                           f"each y face: its inner faces sit at "
@@ -489,11 +556,157 @@ def dry_run(maker, configs, *, mutate_skip_for: str | None,
         print(f"    {row['cfg']['id']}  Y_CLEAR "
               f"{row['values']['Y_CLEAR'] * 1e3:6.3f} mm  y faces "
               f"{eff[2]} / {eff[3]}  y lines {row['y_lines']}")
-    print("\n  WHAT THIS DRY RUN CANNOT TELL YOU: the mesh line counts are the "
-          "maker's own pure-numpy lower bound; CSXCAD's SmoothMeshLines grades "
-          "fine-to-coarse transitions and adds lines this estimate does not "
-          "model. The realized mesh, the port snaps and the energy trace come "
-          "from the run itself.")
+    if common:
+        print("\n  WHAT THIS DRY RUN CANNOT TELL YOU: the mesh line counts are the "
+              "maker's own pure-numpy lower bound; CSXCAD's SmoothMeshLines grades "
+              "fine-to-coarse transitions and adds lines this estimate does not "
+              "model. The realized mesh, the port snaps and the energy trace come "
+              "from the run itself.")
+    return 0
+
+
+# ------------------------------------------------------------ the mesh ladder
+def _ftag(factor: float) -> str:
+    """A path-safe name for a factor: 1 -> rf1, 0.5 -> rf0p5."""
+    return "rf" + f"{factor:.6g}".replace(".", "p")
+
+
+def _stop_note(real_nrts: int, real_end_criteria: float, refuse: bool) -> str:
+    return (f"--real-nrts {real_nrts} --real-end-criteria {real_end_criteria:g}, "
+            + ("truncation REFUSED: a pass that reaches the step ceiling fires "
+               "the shared runner's gate and leaves no number" if refuse else
+               "--accept-truncation (a pass that reaches the ceiling is recorded "
+               "as truncated)"))
+
+
+def _frozen_rungs() -> dict:
+    """factor -> (realized cells, dt) from the frozen record's own meta."""
+    path = (repo_root() / "tests" / "crossval" / "sheen_lpf" / "reference"
+            / "openems_sheen.json")
+    out = {}
+    if not path.is_file():
+        return out
+    with path.open() as fh:
+        meta = json.load(fh).get("meta", {}).get("stages", {})
+    for name in ("stage_b_coarse", "stage_b_mid", "stage_b_fine"):
+        st = meta.get(name) or {}
+        f = st.get("resolution_factor")
+        cells = (st.get("mesh_realized") or {}).get("n_cells")
+        if f is not None and cells is not None and st.get("dt_s") is not None:
+            out[float(f)] = {"stage": name, "cells": int(cells), "dt_s": float(st["dt_s"])}
+    return out
+
+
+def cost_rows(maker, factors, lower_bounds: dict) -> list:
+    """Per factor: cells, dt, steps to ring down, wall time on 8 threads.
+
+    Cells and dt are the frozen record's REALIZED values where it has that
+    factor.  Otherwise cells are this plan's numpy mesh estimate (a lower
+    bound: CSXCAD's smoothing adds lines) times the realized-over-estimate
+    ratio the frozen record's finest rung shows on the same box, and dt scales
+    as the factor from B2's own dt at factor 1.  Steps: the record time B2
+    took to reach its 1e-4 criterion at factor 1 (1.384 ns), and three times
+    that.  Rates: B2's own 417000 x 8251 / 18.6 s, and the frozen fine rung's
+    3.62e8 cell-steps/s.
+    """
+    frozen = _frozen_rungs()
+    rate_b2 = COST_B2_F1["cells"] * COST_B2_F1["steps"] / COST_B2_F1["wall_s"]
+    dt_f1 = COST_B2_F1["record_s"] / COST_B2_F1["steps"]
+    ratio, ratio_note = None, ""
+    if frozen:
+        finest = min(frozen)
+        lb_finest = int(maker._plan("cost", finest)["cells_estimate"])
+        ratio = frozen[finest]["cells"] / lb_finest
+        ratio_note = (f"x {ratio:.4f} = realized/estimate at factor {finest:.6g} "
+                      f"({frozen[finest]['cells']}/{lb_finest})")
+    rows = []
+    for f in factors:
+        hit = next((v for k, v in frozen.items() if abs(k - f) < 1e-9), None)
+        lb = lower_bounds.get(f)
+        if hit is not None:
+            cells, dt, src = hit["cells"], hit["dt_s"], f"realized, {hit['stage']}"
+        elif lb is not None and ratio is not None:
+            cells = int(round(lb * ratio))
+            dt = dt_f1 * f
+            src = f"estimate {ratio_note}; dt = B2 dt x factor"
+        else:
+            cells = int(round(COST_B2_F1["cells"] / f ** 3))
+            dt = dt_f1 * f
+            src = "B2 cells x factor^-3; dt = B2 dt x factor"
+        for m in COST_DECAY_MULTIPLES:
+            steps = int(np.ceil(m * COST_B2_F1["record_s"] / dt))
+            for rname, rate in (("B2 f=1", rate_b2), ("fine record", COST_FINE_RATE)):
+                rows.append({"factor": f, "cells": cells, "cells_source": src,
+                             "cells_lower_bound": lb, "dt_s": dt,
+                             "decay_multiple": m, "steps": steps, "rate_name": rname,
+                             "rate": rate, "wall_s": cells * steps / rate})
+    return rows
+
+
+def dry_run_ladder(maker, configs, factors, *, mutate_skip_for, real_nrts,
+                   real_end_criteria, refuse_truncation) -> int:
+    note = _stop_note(real_nrts, real_end_criteria, refuse_truncation)
+    collect: list = []
+    print("=" * 78)
+    print("The Sheen low-pass filter -- openEMS box probe, MESH LADDER, DRY RUN "
+          "(no solver)")
+    print("=" * 78)
+    print(f"  plan             configs {[c['id'] for c in configs]} x factors "
+          f"{[float(f) for f in factors]} = {len(configs) * len(factors)} passes, "
+          f"config by config, factors in the order given")
+    for f in factors:
+        print(f"    factor {f:.10g}: in-plane smoothing target "
+              f"{maker.resolution_m(f) * 1e6:.2f} um, "
+              f"{maker.substrate_z_cells(f)} substrate z cells, pass label "
+              f"box_probe_<id>_{_ftag(f)}")
+    ctrl = LADDER_CONTROL
+    carried = (any(c["id"] == ctrl["id"] for c in configs)
+               and any(abs(f - ctrl["factor"]) < 1e-12 for f in factors))
+    print(f"  control          {ctrl['id']} at factor {ctrl['factor']:g} must reproduce "
+          f"{ctrl['zero_8_ghz']:.5f} GHz (VESSL {ctrl['vessl']}) within "
+          f"{100 * ctrl['tol']:.2f} %: "
+          + ("CARRIED by this plan" if carried else "NOT carried by this plan "
+             "(no factor 1.0 for that config); this job's numbers are read "
+             "against a job that carries it"))
+    for i, f in enumerate(factors):
+        print(f"\n--- factor {f:.10g} " + "-" * 50)
+        dry_run(maker, configs, mutate_skip_for=mutate_skip_for,
+                real_nrts=real_nrts, real_end_criteria=real_end_criteria,
+                resolution_factor=f, stop_note=note, common=(i == 0),
+                collect=collect)
+    lower = {}
+    for c in collect:
+        lower[c["factor"]] = max(lower.get(c["factor"], 0), c["cells_lower_bound"])
+    print("\n" + "=" * 78)
+    print("COST ESTIMATE per factor (8 threads; every config in the plan costs this "
+          "per pass)")
+    print("=" * 78)
+    rows = cost_rows(maker, factors, lower)
+    seen = []
+    for r in rows:
+        if r["factor"] not in seen:
+            seen.append(r["factor"])
+            print(f"  factor {r['factor']:.6g}: {r['cells']} cells ({r['cells_source']}); "
+                  f"numpy lower bound for this plan {r['cells_lower_bound']}; "
+                  f"dt {r['dt_s']:.4e} s")
+    print("  factor      cells        decay   steps    rate                     wall")
+    for r in rows:
+        print(f"  {r['factor']:<10.6g}  {r['cells']:>10d}  {r['decay_multiple']:3.0f}x  "
+              f"{r['steps']:7d}  {r['rate_name']:11s} {r['rate']:.2e}  "
+              f"{r['wall_s']:8.0f} s ({r['wall_s'] / 3600:.2f} h)")
+    worst = max(r["wall_s"] for r in rows) if rows else 0.0
+    per_cfg = {}
+    for r in rows:
+        if r["decay_multiple"] == max(COST_DECAY_MULTIPLES) and r["rate_name"] == "B2 f=1":
+            per_cfg[r["factor"]] = r["wall_s"]
+    total = len(configs) * sum(per_cfg.values())
+    print(f"  plan total at {max(COST_DECAY_MULTIPLES):g}x decay and the B2 rate: "
+          f"{total:.0f} s ({total / 3600:.2f} h) for {len(configs)} config(s); "
+          f"worst single pass in the table {worst:.0f} s ({worst / 3600:.2f} h)")
+    print("  WHAT THIS CANNOT TELL YOU: the ring-down time at each factor (the "
+          "rows assume B2's 1.384 ns and three times it), the realized cells "
+          "beyond the frozen record's finest rung (estimated, not realized), "
+          "the throughput at those sizes, and peak memory.")
     return 0
 
 
@@ -525,8 +738,28 @@ def delta_against(record: dict, ref: dict) -> dict:
             "n_in_band": int(_band_mask(f).sum())}
 
 
+def zeros_of(sf, freqs_ghz, s21_mag) -> dict:
+    """Both zeros with the repository's estimator, each in its own window."""
+    f = np.asarray(freqs_ghz, dtype=float)
+    s = np.abs(np.asarray(s21_mag, dtype=float))
+    out = {}
+    for key, (lo, hi) in ZERO_BANDS_GHZ.items():
+        try:
+            e = sf.refined_extremum(f, s, lo, hi, transform="log")
+            band = np.flatnonzero((f >= lo) & (f <= hi))
+            out[key] = {"f_ghz": float(e["refined_f"]), "bin_f_ghz": float(e["bin_f"]),
+                        "depth_db": float(e["depth_db"]),
+                        "at_window_edge": bool(band.size and int(e["index"])
+                                               in (int(band[0]), int(band[-1])))}
+        except Exception as exc:
+            out[key] = {"error": repr(exc)}
+    return out
+
+
 def run_config(maker, cfg: dict, *, sim_root: str, threads: int,
-               real_nrts: int, real_end_criteria: float, sf) -> dict:
+               real_nrts: int, real_end_criteria: float, sf,
+               resolution_factor: float = RESOLUTION_FACTOR,
+               ladder: bool = False, accept_truncation: bool = True) -> dict:
     values = config_globals(maker, cfg)
     apply_globals(maker, values)
     original_builder = maker._build_sheen_board_at_rung
@@ -536,6 +769,11 @@ def run_config(maker, cfg: dict, *, sim_root: str, threads: int,
     print(f"\n{'=' * 78}\n=== config {cfg['id']}: Y_CLEAR "
           f"{cfg['y_clear'] * 1e3:g} mm, y faces {cfg['boundary'][2]} / "
           f"{cfg['boundary'][3]} -- {cfg['why']}\n{'=' * 78}")
+    if ladder:
+        print(f"  resolution factor {resolution_factor:.10g}: in-plane smoothing "
+              f"target {maker.resolution_m(resolution_factor) * 1e6:.2f} um, "
+              f"{maker.substrate_z_cells(resolution_factor)} substrate z cells; "
+              f"truncation {'accepted' if accept_truncation else 'REFUSED'}")
     print(f"  declared box {maker.LX * 1e3:.3f} x {values['LY'] * 1e3:.3f} x "
           f"{maker.LZ * 1e3:.3f} mm; section y {values['PATCH_Y_LO'] * 1e3:.4f}-"
           f"{values['PATCH_Y_HI'] * 1e3:.4f} mm; feeds y "
@@ -546,10 +784,12 @@ def run_config(maker, cfg: dict, *, sim_root: str, threads: int,
     t0 = time.time()
     try:
         record, meta = maker._run_stage_b(
-            label=f"box_probe_{cfg['id']}", sim_root=sim_root, threads=threads,
-            resolution_factor=RESOLUTION_FACTOR, sf=sf,
+            label=(f"box_probe_{cfg['id']}_{_ftag(resolution_factor)}" if ladder
+                   else f"box_probe_{cfg['id']}"),
+            sim_root=sim_root, threads=threads,
+            resolution_factor=resolution_factor, sf=sf,
             real_nrts=real_nrts, real_end_criteria=real_end_criteria,
-            accept_truncation=True)
+            accept_truncation=accept_truncation)
     finally:
         maker._build_sheen_board_at_rung = original_builder
     wall = time.time() - t0
@@ -583,10 +823,23 @@ def run_config(maker, cfg: dict, *, sim_root: str, threads: int,
     print(f"  wall time {wall:.1f} s (solver's own {meta.get('wall_time_s')} s); "
           f"mechanism used: {mechanism_used or 'none'}", flush=True)
 
-    return {"id": cfg["id"], "why": cfg["why"],
-            "y_clear_mm": cfg["y_clear"] * 1e3, "boundary": list(cfg["boundary"]),
-            "override_mechanism": how, "mechanism_used": mechanism_used,
-            "wall_s": wall, "record": record, "meta": meta}
+    out = {"id": cfg["id"], "why": cfg["why"],
+           "y_clear_mm": cfg["y_clear"] * 1e3, "boundary": list(cfg["boundary"]),
+           "override_mechanism": how, "mechanism_used": mechanism_used,
+           "wall_s": wall, "record": record, "meta": meta}
+    if ladder:
+        zeros = zeros_of(sf, record["freqs_ghz"], record["s21_mag"])
+        z7, z8 = zeros.get("zero_7", {}), zeros.get("zero_8", {})
+        print(f"  zero7 {z7.get('f_ghz')} GHz (depth {z7.get('depth_db')} dB"
+              f"{', AT THE WINDOW EDGE' if z7.get('at_window_edge') else ''}); "
+              f"zero8 {z8.get('f_ghz')} GHz (depth {z8.get('depth_db')} dB"
+              f"{', AT THE WINDOW EDGE' if z8.get('at_window_edge') else ''}); "
+              f"end criterion reached: {meta.get('end_criteria_reached')}",
+              flush=True)
+        out.update({"resolution_factor": float(resolution_factor),
+                    "resolution_um": float(maker.resolution_m(resolution_factor) * 1e6),
+                    "zeros": zeros})
+    return out
 
 
 def write_figure(results, frozen, directory: Path) -> Path:
@@ -617,6 +870,220 @@ def write_figure(results, frozen, directory: Path) -> Path:
     return path
 
 
+# ---------------------------------------------------------- the ladder's run
+def _pct(a, b):
+    return None if a is None or b is None else 100.0 * (a - b) / b
+
+
+def _fmt(v, spec):
+    return "n/a" if v is None else format(v, spec)
+
+
+def run_ladder(maker, configs, factors, args, sf, out_dir: Path) -> int:
+    print("=" * 78)
+    print("The Sheen low-pass filter -- openEMS box probe, MESH LADDER")
+    print("=" * 78)
+    print(f"  STAGE A IS NOT RUN. The reproduce gate passed in VESSL "
+          f"{', '.join(STAGE_A_REFERENCE_JOBS)}, which produced the frozen record.")
+    print(f"  openEMS build: {os.environ.get('RFX_OPENEMS_COMMIT', '(unstamped)')}; "
+          f"image {os.environ.get('RFX_OPENEMS_IMAGE', '(unset)')}")
+    print(f"  configs {[c['id'] for c in configs]} x factors "
+          f"{[float(f) for f in factors]}; "
+          f"{_stop_note(args.real_nrts, args.real_end_criteria, args.refuse_truncation)}")
+    audit = _audit_definition_time_capture(maker)
+    print(f"  definition-time capture audit: defaults carrying a patched value = "
+          f"{audit['defaults_carrying_a_patched_value'] or 'none'}")
+    if audit["defaults_carrying_a_patched_value"]:
+        print("ERROR: a patched constant is frozen in a default argument.",
+              file=sys.stderr)
+        return 3
+
+    control = snapshot(maker)
+    results, failures = [], {}
+    rc = 0
+    for cfg in configs:
+        for f in factors:
+            try:
+                results.append(run_config(
+                    maker, cfg, sim_root=args.sim_root, threads=args.threads,
+                    real_nrts=args.real_nrts,
+                    real_end_criteria=args.real_end_criteria, sf=sf,
+                    resolution_factor=f, ladder=True,
+                    accept_truncation=not args.refuse_truncation))
+            except Exception as exc:
+                print(f"CONFIG {cfg['id']} FACTOR {f:.10g} FAILED: {exc}",
+                      file=sys.stderr)
+                failures[f"{cfg['id']}@{f:.10g}"] = str(exc)
+                rc = 1
+            finally:
+                apply_globals(maker, control)
+
+    def z(r, key):
+        return (r.get("zeros") or {}).get(key, {}).get("f_ghz")
+
+    print("\n" + "=" * 78)
+    print("READING 1 -- per (config, factor): the mesh, the end of the record, the cost")
+    print("=" * 78)
+    print("  id  factor      res (um)  x/y/z lines      sub   cells       end (dB)  "
+          "steps    end crit  wall (s)")
+    for r in results:
+        mesh = r["meta"].get("mesh_realized") or {}
+        lines = "/".join(str((mesh.get(a) or {}).get("n_lines")) for a in "xyz")
+        print(f"  {r['id']}  {r['resolution_factor']:<10.6g}  {r['resolution_um']:8.2f}  "
+              f"{lines:15s}  {str(mesh.get('substrate_z_cells_realized')):>3s}  "
+              f"{str(mesh.get('n_cells')):>10s}  "
+              f"{str(r['meta'].get('final_energy_db')):>8s}  "
+              f"{str(r['meta'].get('final_timestep')):>6s}  "
+              f"{str(r['meta'].get('end_criteria_reached')):>8s}  {r['wall_s']:8.1f}")
+
+    print("\n" + "=" * 78)
+    print("READING 2 -- per (config, factor): the features")
+    print("=" * 78)
+    print("  id  factor      zero7 (GHz)  zero8 (GHz)  deepest 5-10  -3 dB (GHz)  "
+          "passband (dB)")
+    for r in results:
+        rec = r["record"]
+        cut, pb = rec.get("cutoff_3db", {}), rec.get("passband", {})
+        print(f"  {r['id']}  {r['resolution_factor']:<10.6g}  {_fmt(z(r, 'zero_7'), '11.5f')}  "
+              f"{_fmt(z(r, 'zero_8'), '11.5f')}  "
+              f"{_fmt((rec.get('null') or {}).get('refined_f_ghz'), '12.5f')}  "
+              f"{_fmt(cut.get('f_ghz'), '11.5f')}  {_fmt(pb.get('mean_db'), '13.3f')}")
+
+    print("\n" + "=" * 78)
+    ctrl = LADDER_CONTROL
+    print(f"CONTROL -- {ctrl['id']} at factor {ctrl['factor']:g} against VESSL "
+          f"{ctrl['vessl']}")
+    print("=" * 78)
+    hit = next((r for r in results if r["id"] == ctrl["id"]
+                and abs(r["resolution_factor"] - ctrl["factor"]) < 1e-12), None)
+    control_out = {"carried": hit is not None}
+    if hit is None:
+        print(f"  NOT CARRIED by this job: {ctrl['id']} at factor {ctrl['factor']:g} "
+              f"was not solved here.")
+    else:
+        got = z(hit, "zero_8")
+        rel = None if got is None else abs(got - ctrl["zero_8_ghz"]) / ctrl["zero_8_ghz"]
+        ok = rel is not None and rel <= ctrl["tol"]
+        control_out.update({"zero_8_ghz": got, "reference_ghz": ctrl["zero_8_ghz"],
+                            "rel": rel, "pass": ok})
+        print(f"  zero8 {_fmt(got, '.6f')} GHz vs {ctrl['zero_8_ghz']:.6f} GHz: "
+              f"{_fmt(None if rel is None else 100 * rel, '.5f')} % -> "
+              f"{'PASS' if ok else 'FAIL'} (tolerance {100 * ctrl['tol']:.2f} %)")
+        if not ok:
+            rc = rc or 1
+
+    print("\n" + "=" * 78)
+    print("LADDER -- per config, coarse to fine, change from the previous factor")
+    print("=" * 78)
+    ladder_table = {}
+    for cfg in configs:
+        rows = sorted((r for r in results if r["id"] == cfg["id"]),
+                      key=lambda r: -r["resolution_factor"])
+        if not rows:
+            continue
+        print(f"  {cfg['id']} ({cfg['why']}):")
+        print("    factor      res (um)  cells       zero7      d (%)     zero8      "
+              "d (%)     corner     d (%)")
+        prev, table = None, []
+        for r in rows:
+            c = (r["record"].get("cutoff_3db") or {}).get("f_ghz")
+            row = {"factor": r["resolution_factor"], "resolution_um": r["resolution_um"],
+                   "cells": (r["meta"].get("mesh_realized") or {}).get("n_cells"),
+                   "zero_7": z(r, "zero_7"), "zero_8": z(r, "zero_8"), "corner": c,
+                   "d_zero_7_pct": None if prev is None else _pct(z(r, "zero_7"), prev["zero_7"]),
+                   "d_zero_8_pct": None if prev is None else _pct(z(r, "zero_8"), prev["zero_8"]),
+                   "d_corner_pct": None if prev is None else _pct(c, prev["corner"])}
+            table.append(row)
+            print(f"    {row['factor']:<10.6g}  {row['resolution_um']:8.2f}  "
+                  f"{str(row['cells']):>10s}  {_fmt(row['zero_7'], '9.5f')}  "
+                  f"{_fmt(row['d_zero_7_pct'], '+8.3f'):>8s}  {_fmt(row['zero_8'], '9.5f')}  "
+                  f"{_fmt(row['d_zero_8_pct'], '+8.3f'):>8s}  {_fmt(row['corner'], '9.5f')}  "
+                  f"{_fmt(row['d_corner_pct'], '+8.3f'):>8s}")
+            prev = row
+        ladder_table[cfg["id"]] = table
+
+    frozen_all = None
+    ref_path = (repo_root() / "tests" / "crossval" / "sheen_lpf" / "reference"
+                / "openems_sheen.json")
+    if ref_path.is_file():
+        with ref_path.open() as fh:
+            frozen_all = json.load(fh)
+    frozen_ladder = []
+    if frozen_all is not None:
+        print("\n  for reference, the frozen record's own ladder (the B0 box: MUR y "
+              "faces, a declared 10 ns record), same estimator:")
+        prev = None
+        for name in ("stage_b_coarse", "stage_b_mid", "stage_b_fine"):
+            st = frozen_all.get(name)
+            if not st:
+                continue
+            zz = zeros_of(sf, st["freqs_ghz"], st["s21_mag"])
+            row = {"stage": name,
+                   "factor": frozen_all["meta"]["stages"][name].get("resolution_factor"),
+                   "zero_7": zz.get("zero_7", {}).get("f_ghz"),
+                   "zero_8": zz.get("zero_8", {}).get("f_ghz"),
+                   "corner": st["cutoff_3db"]["f_ghz"]}
+            d8 = None if prev is None else _pct(row["zero_8"], prev["zero_8"])
+            dc = None if prev is None else _pct(row["corner"], prev["corner"])
+            print(f"    {name:15s} factor {row['factor']:<8.6g} zero7 "
+                  f"{_fmt(row['zero_7'], '.5f')}  zero8 {_fmt(row['zero_8'], '.5f')} "
+                  f"({_fmt(d8, '+.3f')} %)  corner {_fmt(row['corner'], '.5f')} "
+                  f"({_fmt(dc, '+.3f')} %)")
+            frozen_ladder.append(row)
+            prev = row
+
+    fig_path = None
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        out_dir.mkdir(parents=True, exist_ok=True)
+        fig_path = out_dir / "sheen_box_probe_openems_ladder.png"
+        fig, ax = plt.subplots(figsize=(7.4, 4.4))
+        for r in results:
+            ax.plot(r["record"]["freqs_ghz"], _db(r["record"]["s21_mag"]), lw=1.3,
+                    label=f"{r['id']} factor {r['resolution_factor']:.4g} "
+                          f"({r['resolution_um']:.1f} um)")
+        if frozen_all is not None and "stage_b_fine" in frozen_all:
+            st = frozen_all["stage_b_fine"]
+            ax.plot(st["freqs_ghz"], _db(st["s21_mag"]), "k-", lw=1.0,
+                    label="frozen record stage_b_fine (B0, 99.25 um)")
+        ax.set_xlim(*BAND_GHZ)
+        ax.set_ylim(-70, 5)
+        ax.set_xlabel("frequency (GHz)")
+        ax.set_ylabel("|S21| (dB)")
+        ax.grid(True, alpha=0.3)
+        ax.legend(fontsize=7)
+        fig.tight_layout()
+        fig.savefig(fig_path, dpi=130)
+        plt.close(fig)
+        print(f"\n  figure: {fig_path}")
+    except Exception as exc:
+        fig_path = None
+        print(f"\n  figure NOT written: {exc!r}")
+
+    payload = {
+        "what": "openEMS box probe, mesh ladder, for the Sheen low-pass filter -- "
+                "a diagnostic, not a reference record. Stage A is not run; it "
+                "passed in VESSL " + ", ".join(STAGE_A_REFERENCE_JOBS),
+        "resolution_factors": [float(f) for f in factors],
+        "real_nrts": args.real_nrts, "real_end_criteria": args.real_end_criteria,
+        "accept_truncation": not args.refuse_truncation,
+        "definition_time_capture_audit": audit,
+        "openems_commit": os.environ.get("RFX_OPENEMS_COMMIT"),
+        "openems_image": os.environ.get("RFX_OPENEMS_IMAGE"),
+        "control": control_out, "ladder": ladder_table,
+        "frozen_record_ladder": frozen_ladder, "failures": failures,
+        "configs": results,
+        "figure": None if fig_path is None else str(fig_path),
+    }
+    json_path = out_dir / "sheen_box_probe_openems_ladder.json"
+    with json_path.open("w") as fh:
+        json.dump(payload, fh, indent=1, default=str)
+    print(f"  json:   {json_path}")
+    return rc
+
+
 # ------------------------------------------------------------------- the main
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -630,6 +1097,15 @@ def main(argv=None) -> int:
                    help="the record's own declared length, 60000 steps")
     p.add_argument("--real-end-criteria", type=float, default=DEFAULT_END_CRITERIA,
                    help="the record's own 1e-4")
+    p.add_argument("--resolution-factors", default="1.0", metavar="LIST",
+                   help="comma separated mesh factors on the maker's own "
+                        "resolution (1.0 = 198.5 um, the record's coarse rung); "
+                        "every config is solved at every factor. Default 1.0, "
+                        "the probe as it was")
+    p.add_argument("--refuse-truncation", action="store_true",
+                   help="do not accept a pass that reaches --real-nrts: the "
+                        "shared runner's gate fires instead. Default off, as "
+                        "the box probe ran")
     p.add_argument("--dry-run", action="store_true",
                    help="build every config against stub openEMS/CSXCAD classes "
                         "and print the boundary and mesh it would set; runs "
@@ -654,8 +1130,28 @@ def main(argv=None) -> int:
               file=sys.stderr)
         return 3
 
+    try:
+        factors = [float(v) for v in args.resolution_factors.split(",") if v.strip()]
+    except ValueError:
+        print(f"ERROR: --resolution-factors {args.resolution_factors!r} is not a "
+              f"list of numbers", file=sys.stderr)
+        return 3
+    if not factors or any(not (0.0 < f <= 1.0) for f in factors):
+        print(f"ERROR: every resolution factor must be in (0, 1]; got {factors}",
+              file=sys.stderr)
+        return 3
+    # The probe as it was -- factor 1.0 alone, truncation accepted -- keeps its
+    # own code path and its own output byte for byte; anything else is a ladder.
+    ladder = factors != [RESOLUTION_FACTOR] or args.refuse_truncation
+
     maker = load_maker()
 
+    if args.dry_run and ladder:
+        return dry_run_ladder(maker, configs, factors,
+                              mutate_skip_for=args.mutate_skip_boundary_override,
+                              real_nrts=args.real_nrts,
+                              real_end_criteria=args.real_end_criteria,
+                              refuse_truncation=args.refuse_truncation)
     if args.dry_run:
         return dry_run(maker, configs,
                        mutate_skip_for=args.mutate_skip_boundary_override,
@@ -675,6 +1171,9 @@ def main(argv=None) -> int:
     except Exception as exc:
         print(f"openEMS IS NOT IMPORTABLE: {exc!r}", file=sys.stderr)
         return 2
+
+    if ladder:
+        return run_ladder(maker, configs, factors, args, sf, out_dir)
 
     print("=" * 78)
     print("The Sheen low-pass filter -- openEMS box probe")
