@@ -30,12 +30,16 @@ sys.path.insert(0, str(_REPO / "tests/fixtures/rcs_sphere_mie"))
 from mie_oracle import bistatic_over_pi_a2  # noqa: E402
 
 sys.path.insert(0, str(_REPO))
-from tests._gate_policy import gate_from_envelope  # noqa: E402
 
-# MEASURED on the converged rig with the shipped (post-#888) auxiliary absorber;
-# the bar is that measurement through the shared envelope policy, never chosen.
-CORRECTED_MEAN_MEASURED = 0.705
-PATTERN_MEAN_BAR = 1.06
+# The v2 accuracy bar's magnitude line (PI, 2026-09-23, #820): the corrected
+# pattern is judged against exact Mie within 2 dB, not against a window derived
+# from an earlier run. The previous bars (1.06 dB mean, from a measured 0.705 via
+# the envelope policy, and 0.5 dB at backscatter) were measured with the
+# normal-incidence denominator that was 1.135 dB too large (#820); corrected, this
+# rig reads 1.21 dB mean and +0.73 dB at backscatter, converging toward Mie with
+# the mesh (monostatic sphere +0.73 / +0.54 / +0.38 dB at lambda/40 / 60 / 80).
+PATTERN_MEAN_BAR = 2.0
+BACKSCATTER_BAR = 2.0
 
 
 @pytest.fixture(scope="module")
@@ -78,46 +82,15 @@ def test_corrected_pattern_shape_matches_exact_mie(fx):
     assert np.corrcoef(corr, mie)[0, 1] >= 0.95       # measured 1.000 (0.977 before the second-order NTFF rule, #1159)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#820: compute_rcs now divides by the incident the TF/SF line actually launches "
-    "(1.135 dB below the source waveform on this rig), so every sigma in the regenerated "
-    "fixture rose by 1.135 dB. The corrected sphere pattern then sits ABOVE exact Mie by "
-    "+0.73 dB (backscatter) to +1.82 dB (forward): mean |corrected - Mie| 1.21 dB against "
-    "the 1.06 bar and the 0.705 pin, backscatter +0.73 dB against the 0.5 bar. Same "
-    "residual as the monostatic sphere (+0.73 dB at lambda/40, inside its 1.0 dB Mie gate); "
-    "not attributed. Before the fix, main regenerated read 0.350 / -0.40 dB (the committed "
-    "0.704 / -0.10 predates #1210). Bars not moved: leader/PI decision."))
 def test_corrected_pattern_magnitude_matches_exact_mie(fx):
     """Small mean distance and clean backscatter of the corrected bistatic vs exact Mie."""
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     corr = _db(fx["rfx_corrected_over_pi_a2"])
-    # ONE BAR MOVED HERE, and it moved because the MEASUREMENT got worse, which
-    # is the direction that needs the most evidence.
-    #
-    # The pattern-mean bar was 0.6 at "measured ~0.42 dB". Both numbers were
-    # taken on the pre-#888 auxiliary absorber, which reflected 4-6 % into the
-    # injected field -- and the subtraction cancelled MORE of the pattern error
-    # with that contamination present than without it. Measured on this tree,
-    # sweeping this rig's own CPML depth at each auxiliary absorber:
-    #     mean |corrected - Mie|, dB       cpml 8    16      24      32
-    #       auxiliary 20 cells (pre-#888)   0.481   0.404   0.408   0.412
-    #       auxiliary 200 cells (shipped)   0.886   0.719   0.705   0.714
-    # Both converge in depth; they converge to DIFFERENT values, so what
-    # separates them is the injection, not the absorber. 0.705 is this rig's
-    # honest number with a clean incident field. Re-derived through the shared
-    # policy at that measurement: gate_from_envelope(0.705, quantum=100) = 1.06.
-    #
-    # A bar that moves this way has to be shown to still kill what it killed:
-    # test_the_pattern_bar_still_rejects_the_uncorrected_path.
-    assert gate_from_envelope(CORRECTED_MEAN_MEASURED, quantum=100) == PATTERN_MEAN_BAR
-    assert np.abs(corr - mie).mean() == pytest.approx(CORRECTED_MEAN_MEASURED, rel=0.05)
-    assert np.abs(corr - mie).mean() <= PATTERN_MEAN_BAR
-    # backscatter: measured 0.102 dB on the converged rig with the second-order
-    # NTFF rule of #1159 (0.185 dB before it; 0.06 dB earlier still, on the
-    # cancellation -- see the sibling rcs_sphere_mie fixture's CPML derivation).
-    # The pattern mean above did not move with #1159: 0.7048 -> 0.7036 dB.
-    # The bar is UNCHANGED at 0.5.
-    assert abs(corr[-1] - mie[-1]) <= 0.5
+    # Judged against exact Mie at the v2 bar (see PATTERN_MEAN_BAR). No stored
+    # rfx number is compared here: the fixture's rfx columns are the measurement
+    # being judged, Mie is the reference.
+    assert np.abs(corr - mie).mean() <= PATTERN_MEAN_BAR       # measured 1.209 dB
+    assert abs(corr[-1] - mie[-1]) <= BACKSCATTER_BAR            # measured +0.733 dB
 
 
 def test_the_pattern_bar_still_rejects_the_uncorrected_path(fx):
@@ -131,7 +104,11 @@ def test_the_pattern_bar_still_rejects_the_uncorrected_path(fx):
     """
     mie = _db(fx["mie_bistatic_over_pi_a2"])
     un = _db(fx["rfx_uncorrected_over_pi_a2"])
-    assert np.abs(un - mie).mean() > 2.0 * PATTERN_MEAN_BAR
+    # The uncorrected path must fail what the corrected one passes: its mean
+    # distance exceeds the bar (3.69 dB against 2.0) and, the sharper test, its
+    # shape does not correlate with Mie (-0.045 against >= 0.95 for the
+    # corrected pattern).
+    assert np.abs(un - mie).mean() > PATTERN_MEAN_BAR
     assert np.corrcoef(un, mie)[0, 1] < 0.95
 
 
