@@ -16,6 +16,8 @@ from pathlib import Path
 import subprocess
 import time
 
+import numpy as np
+
 from tests.contracts.boundary_cases import CASES, ENTRIES
 from tests.contracts.boundary_compare import classify, departures
 from tests.contracts.boundary_fields import measure, measured_fields
@@ -151,10 +153,24 @@ def validate_class_changes(previous, cells):
         assert before == after or accepted, (
             f"STOP {cell}: classification changed: removed {sorted(before - after)}; added {sorted(after - before)}")
         for face, values in row["faces"].items():
+            prior_face = old["faces"][face]
             for kind in ("e_zero", "h_zero", "absorbs", "coupled"):
-                prior, current = old["faces"][face][kind], values[kind]
+                prior, current = prior_face[kind], values[kind]
                 allowed = accepted and face in ("x_lo", "x_hi") and kind == "e_zero" and not prior and current
                 assert prior == current or allowed, f"STOP {cell}/{face}: {kind} {prior} -> {current}"
+            # A wall plane or a period that moved is a value change, not a class change, and a
+            # regeneration must not absorb it: moving away from the declared plane is a regression.
+            # The step that moves a value toward the declared plane (B2, B3) adds its allowance
+            # here, as the TFSF/distributed correction does for its E backings.
+            for kind in ("e_zero_planes_m", "h_zero_planes_m", "period_m", "e_plane_m", "h_plane_m"):
+                if kind in ("e_plane_m", "h_plane_m") and not (prior_face[kind[0] + "_zero"] and values[kind[0] + "_zero"]):
+                    continue
+                prior, current = prior_face[kind], values[kind]
+                allowed = accepted and face in ("x_lo", "x_hi") and kind.startswith("e_")
+                same = (prior is None) == (current is None) and (
+                    prior is None or np.allclose(np.atleast_1d(prior), np.atleast_1d(current), rtol=0, atol=1e-10)
+                    if np.size(prior) == np.size(current) else False)
+                assert same or allowed, f"STOP {cell}/{face}: {kind} {prior} -> {current}"
 
 
 def main(argv=None):

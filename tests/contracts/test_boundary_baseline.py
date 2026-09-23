@@ -90,3 +90,19 @@ def test_refusal_prefix_ignores_count_and_explanation():
     assert refusal_prefix("[run] preflight found 2 blocking error(s): new explanation") == "[run] preflight found"
     with pytest.raises(AssertionError, match="Unregistered refusal"):
         refusal_prefix("unrelated numerical error")
+
+
+@pytest.mark.parametrize("quantity,after", [
+    ("h_zero_planes_m", [.0005, .0015]),
+    ("h_plane_m", .0015),
+    ("period_m", .026),
+])
+def test_regeneration_rejects_a_moved_value(quantity, after):
+    case = "periodic-xy" if quantity == "period_m" else "pmc-pec"
+    old = next(c for c in BASELINE["cells"] if (c["case"], c["entry"]) == (case, "run"))
+    current = deepcopy(old)
+    current["faces"]["x_lo"][quantity] = after
+    with pytest.raises(AssertionError, match=f"STOP.*{quantity}"):
+        validate_class_changes(dict(cells=[old]), [current])
+    validate_class_changes(dict(cells=[old]), [deepcopy(old)])
+

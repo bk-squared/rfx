@@ -166,5 +166,7 @@ def compare_values(model, grid, measured, baseline):
                              else "same distance from the declared plane/period")
             raise AssertionError(
                 f"{face.name} {quantity}: committed {before} m; measured {after} m; "
-                f"declared {declared} m; {direction}. The step that fixes this must update "
-                "the baseline with python -m tests.contracts.boundary_baseline --update.")
+                f"declared {declared} m; {direction}. A move away from the declared plane/period is a "
+                "regression to fix, not to re-record. The step that moves it toward the declared "
+                "value (B2, B3) adds its allowance in tests/contracts/boundary_baseline.py "
+                "validate_class_changes, then runs python -m tests.contracts.boundary_baseline --update.")

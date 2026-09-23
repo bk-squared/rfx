@@ -3,6 +3,12 @@
 Literal face writes and simple arange equality masks are recognized. Arbitrary
 boolean masks, computed index lists, and multiplication by a mask need manual
 inspection; no array shape or general data-flow inference is attempted.
+
+Known blind spots: a face write at index -2 (how ``apply_pmc_faces`` zeroes a
+hi face through its ghost layout) or at 1 is not a site, only 0 and -1 are;
+offset-2 and wider differences (``a[2:] - a[:-2]``) are not sites, though a
+fourth-order stencil's offset-1 term still registers its function; shifts built
+with pad / concatenate or ``lax.slice_in_dim`` are not recognized.
 """
 
 import argparse
