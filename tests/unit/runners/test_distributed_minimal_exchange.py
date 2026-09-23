@@ -214,8 +214,12 @@ def _poison_case(patch, boundary, n_devices):
 
 
 def _subprocess_case(kind, boundary, n_devices, model="composed"):
+    # Pin the tree under test: an editable install elsewhere would otherwise win in
+    # the child and the 3/4-device cases would test that tree instead (review).
+    repo = str(Path(__file__).resolve().parents[3])
+    path = [repo] + [p for p in os.environ.get("PYTHONPATH", "").split(os.pathsep) if p]
     env = dict(os.environ, XLA_FLAGS=f"--xla_force_host_platform_device_count={n_devices}",
-               JAX_PLATFORMS="cpu")
+               JAX_PLATFORMS="cpu", PYTHONPATH=os.pathsep.join(path))
     # Reuse the parent's font cache instead of rebuilding it in every child
     # when the user's default matplotlib directory is read-only.
     env.setdefault("MPLCONFIGDIR", matplotlib.get_configdir())
