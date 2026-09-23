@@ -73,6 +73,7 @@ def _measure(case, multi_process):
     scan = distributed_v2.lax.scan
     boundary_ghosts_true = None
     hlo_constants = []
+    hlo_constants_parsed = []
     slab_cells = cells // len(devices)
 
     def traced_jit(f, *args, **kwargs):
@@ -90,7 +91,12 @@ def _measure(case, multi_process):
             # scan by any route (closure, dict, host numpy copy, global) is
             # compiled in as a literal of at least one slab's worth of elements.
             hlo = entry.lower(*entry_args, **entry_kwargs).compile().as_text()
-            for match in re.finditer(r"(\w+)\[([\d,]*)\](?:\{[^}]*\})?\s+constant\(", hlo):
+            matches = list(re.finditer(
+                r"(\w+)\[([\d,]*)\](?:\{[^}]*\})?\s+constant\(", hlo))
+            # Every program has scalar constants; none parsed means the HLO
+            # print format changed and this check would pass vacuously.
+            hlo_constants_parsed.append(len(matches))
+            for match in matches:
                 dims = [int(d) for d in match.group(2).split(",") if d]
                 if dims and int(np.prod(dims)) >= slab_cells:
                     hlo_constants.append((match.group(1), dims))
@@ -169,6 +175,7 @@ def _measure(case, multi_process):
                     placeholder_shapes[f"{material}.{slot}.{name}"] = array.shape
         records.append({"whole": whole, "bytes": per_device, "placeholders": placeholder_shapes,
                         "captured": captured, "hlo_constants": hlo_constants,
+                        "hlo_constants_parsed": hlo_constants_parsed,
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
@@ -202,6 +209,8 @@ def test_time_loop_holds_only_local_slabs(case, multi_process):
     assert len(records) == 1, run.stdout
     for record in records[0]:
         assert not record["captured"], f"per-cell scan captures: {record['captured']}"
+        assert record["hlo_constants_parsed"] and min(record["hlo_constants_parsed"]) > 0, (
+            "no HLO constant parsed: the literal check would pass vacuously")
         assert not record["hlo_constants"], (
             f"per-cell literals compiled into the scan: {record['hlo_constants']}")
         assert not record["whole"], f"whole-domain single-device arrays: {record['whole']}"
