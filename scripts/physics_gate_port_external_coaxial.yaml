@@ -1,5 +1,5 @@
 name: rfx-physics-gate-port-external-coaxial
-description: "Broad-E5 external-reference shard: coaxial_port gap/openEMS comparison + readiness"
+description: "Broad-E5 external-reference shard: coaxial_port line/openEMS comparison + readiness"
 tags: [rfx, physics-gate, port-external, coaxial, sparameter-validation]
 resources:
   cluster: remilab-c0
@@ -43,19 +43,6 @@ run: |-
   dependency_audit_rc=$?
   set -e
   echo "external_solver_dependency_audit_rc=$dependency_audit_rc"
-  echo "=== narrow coaxial-gap rfx/openEMS comparison ==="
-  set +e
-  timeout "${RFX_COAXIAL_OPENEMS_TIMEOUT:-900}" \
-    python scripts/diagnostics/build_coaxial_gap_openems_sparameter_comparison.py \
-      --output-dir "$out/coaxial_gap_openems_generic_comparison"
-  comparison_rc=$?
-  set -e
-  echo "coaxial_gap_openems_comparison_rc=$comparison_rc"
-  if [ "$comparison_rc" -eq 0 ]; then
-    cat "$out/coaxial_gap_openems_generic_comparison/coaxial_gap_openems_generic_sparameter_comparison.json"
-  else
-    echo "narrow coaxial-gap/openEMS comparison failed or timed out; broad-E5 shard remains blocked"
-  fi
   echo "=== broad coaxial-LINE rfx/openEMS comparison (E4-broad, promoted line API) ==="
   set +e
   timeout "${RFX_COAXIAL_LINE_OPENEMS_TIMEOUT:-3600}" \

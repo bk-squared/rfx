@@ -65,10 +65,6 @@ AD_CLASSIFICATION = {
         "accumulation per drive run, and the flux magnitude override reads "
         "concrete powers — no eps_override/AD channel is wired",
     ),
-    "Simulation.compute_coaxial_s_matrix": (
-        NOT_TRACEABLE,
-        "deprecated single-plane V/I path; numpy extraction, no differentiable input",
-    ),
     "Simulation.compute_coaxial_line_reflection": (
         GRAD_SAFE,
         "end-to-end differentiable via the eps_scale design channel — grad flows "

@@ -391,9 +391,11 @@ class _PreflightMixin:
         if self._coaxial_ports:
             messages.append(
                 "add_coaxial_port(...) is not wired into run(compute_s_params=True); "
-                "use Simulation.compute_coaxial_s_matrix(...) (experimental TEM "
-                "plane-source API) or add_port(extent=...) for the current "
-                "probe-feed S-parameter path"
+                "use Simulation.compute_coaxial_line_reflection(...) for a "
+                "one-port reflection or Simulation.compute_coaxial_two_port(...) "
+                "for a through line (compute_s_matrix(lane=...) dispatches to "
+                "either), or add_port(extent=...) for the probe-feed "
+                "S-parameter path"
             )
 
         if not port_entries:
@@ -519,8 +521,9 @@ class _PreflightMixin:
         if self._coaxial_ports:
             messages.append(
                 "coaxial ports are not wired into forward(port_s11_freqs=...); "
-                "use Simulation.compute_coaxial_s_matrix(...) for the "
-                "experimental coaxial S-matrix path"
+                "use Simulation.compute_coaxial_line_reflection(...) for a "
+                "one-port reflection or Simulation.compute_coaxial_two_port(...) "
+                "for a through line"
             )
         if not port_entries:
             source_only = any(pe.impedance == 0.0 for pe in self._ports)
@@ -968,8 +971,14 @@ class _PreflightMixin:
             "waveguide": "waveguide",
             "compute_waveguide_s_matrix": "waveguide",
             "coaxial": "coaxial",
-            "compute_coaxial_s_matrix": "coaxial",
         }
+        if calculator.lower() == "compute_coaxial_s_matrix":  # removed, #1212
+            raise ValueError(
+                "calculator='compute_coaxial_s_matrix' names a method removed in #1212. "
+                "Use calculator='coaxial' to check the coaxial lanes, "
+                "compute_coaxial_line_reflection() (one-port reflection) and "
+                "compute_coaxial_two_port() (through line)."
+            )
         key = aliases.get(calculator.lower())
         if key is None:
             allowed = ", ".join(sorted(set(aliases.values())))
@@ -1220,7 +1229,12 @@ class _PreflightMixin:
                 )
 
     def _validate_coaxial_sparameter_request_for_preflight(self) -> None:
-        """Mirror ``compute_coaxial_s_matrix`` family-routing checks."""
+        """Family-routing checks for the coaxial lanes.
+
+        ``compute_coaxial_line_reflection`` and ``compute_coaxial_two_port``
+        refuse each of these; they also refuse more, which this does not
+        mirror.
+        """
 
         if not self._coaxial_ports:
             raise ValueError(
@@ -1233,13 +1247,15 @@ class _PreflightMixin:
             or self._msl_ports
         ):
             raise NotImplementedError(
-                "compute_coaxial_s_matrix() is defined only for "
-                "add_coaxial_port(...) families in the current simulation."
+                "compute_coaxial_line_reflection() and compute_coaxial_two_port() "
+                "are defined only for add_coaxial_port(...) families in the "
+                "current simulation."
             )
         if self._tfsf is not None:
             raise NotImplementedError(
-                "compute_coaxial_s_matrix() is not supported together with "
-                "TFSF; TFSF is a plane-wave source, not a coaxial port."
+                "compute_coaxial_line_reflection() and compute_coaxial_two_port() "
+                "are not supported together with TFSF; TFSF is a plane-wave "
+                "source, not a coaxial port."
             )
         if (
             self._dz_profile is not None
@@ -1247,15 +1263,15 @@ class _PreflightMixin:
             or self._dy_profile is not None
         ):
             raise NotImplementedError(
-                "compute_coaxial_s_matrix() supports the uniform Yee lane only."
+                "the coaxial lanes support the uniform Yee lane only."
             )
         if self._refinement is not None:
             raise NotImplementedError(
-                "compute_coaxial_s_matrix() is not supported with SBP-SAT subgridding."
+                "the coaxial lanes are not supported with SBP-SAT subgridding."
             )
         if self._solver == "adi":
             raise NotImplementedError(
-                "compute_coaxial_s_matrix() is not supported with solver='adi'."
+                "the coaxial lanes are not supported with solver='adi'."
             )
 
     # ------------------------------------------------------------------

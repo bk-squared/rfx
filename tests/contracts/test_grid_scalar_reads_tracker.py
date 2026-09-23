@@ -148,13 +148,13 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/runners/subgridded.py": 1,
     "rfx/runners/uniform.py": 6,
     "rfx/simulation.py": 6,
-    "rfx/sources/coaxial_port.py": 27,
+    "rfx/sources/coaxial_port.py": 15,  # 27 until #1212 removed its lane helpers
     "rfx/sources/msl_eigenmode.py": 2,
     "rfx/sources/msl_port.py": 5,
     "rfx/sources/sources.py": 3,
     "rfx/sources/waveguide_port.py": 1,
     "rfx/sparams/_common.py": 5,
-    "rfx/sparams/coax.py": 4,
+    "rfx/sparams/coax.py": 3,  # 4 until #1212 removed compute_coaxial_s_matrix
     "rfx/sparams/mixed.py": 3,
     "rfx/sparams/msl.py": 1,
     "rfx/sparams/waveguide.py": 4,

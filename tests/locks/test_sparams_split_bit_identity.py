@@ -40,7 +40,8 @@ diffed by hand from a PR body.
 
 ``test_sparams_module_namespace_is_the_declared_re_export_surface`` needs no
 baseline and never skips: it pins the 66 module-level names ``rfx.api._sparams``
-exported at ``060cb916`` (the pre-split main). ``from rfx.api._sparams import
+exported at ``060cb916`` (the pre-split main), less ``CoaxialSMatrixResult``,
+whose lane #1212 removed. ``from rfx.api._sparams import
 <helper>`` appears in 47 files, and two tests monkeypatch
 ``"rfx.api._sparams.<name>"`` by string, so the re-export block the split adds
 has to keep that namespace exactly whole -- no name added, none dropped.
@@ -58,9 +59,8 @@ settled record, it needs a deterministic one that walks the whole path):
   dx = 200 um), ``num_periods=2``.
 * mixed          -- the Layer-1c plumbing smoke of
   ``tests/unit/sparams/test_mixed_port_sparam.py``, ``num_periods=4``.
-* coaxial        -- ``_make_one_port_sim()`` of
-  ``tests/unit/sparams/test_coaxial_s_matrix.py``, ``n_steps=200`` (the
-  DEPRECATED single-plane lane; it is still shipped, so it is still gated).
+* coaxial        -- removed with the single-plane coaxial lane it drove
+  (#1212); no baseline leg is left for it.
 * coax line      -- geometry of ``_run()`` in
   ``tests/unit/sparams/test_coaxial_line_reflection.py``. Every end-to-end
   setup there is ``slow_physics`` at ``n_steps=5000``; this lock reuses the
@@ -126,7 +126,8 @@ _SKIP_REASON = (
 # ---------------------------------------------------------------------------
 _SPARAMS_NAMESPACE_AT_060CB916 = (
     "CoaxMSLTransitionResult", "CoaxialLineReflectionResult", "CoaxialPort",
-    "CoaxialSMatrixResult", "CoaxialTwoPortResult", "GaussianPulse",
+    # "CoaxialSMatrixResult" left with its lane in #1212.
+    "CoaxialTwoPortResult", "GaussianPulse",
     "MSLSMatrixResult", "MixedSMatrixResult", "NonUniformGrid", "TYPE_CHECKING",
     "WAVEGUIDE_PHASE_BETA_CONVENTION", "WAVEGUIDE_PHASE_MAG_FLOOR",
     "WAVEGUIDE_RECIPROCITY_ADVISORY_TOL", "WaveguideSMatrixResult",
@@ -243,14 +244,6 @@ def _mixed_result():
     )
 
 
-# --- coaxial (DEPRECATED lane): tests/unit/sparams/test_coaxial_s_matrix.py --
-def _coaxial_result():
-    sim = Simulation(freq_max=10.0e9, domain=(0.020, 0.020, 0.020),
-                     boundary="pec")
-    sim.add_coaxial_port((0.010, 0.010, 0.015), face="top")
-    return sim.compute_coaxial_s_matrix(n_steps=200, n_freqs=3)
-
-
 # --- coax line: geometry of _run() in test_coaxial_line_reflection.py --------
 _COAX_BAND = jnp.asarray([4.0e9, 6.0e9, 8.0e9, 10.0e9, 12.0e9])
 
@@ -309,9 +302,6 @@ _LEGS = (
     ("mixed", _mixed_result,
      ("S", "freqs", "z0_ref", "settling_db", "s21_power_witness", "reliable",
       "S_raw", "passivity_correction", "S_wave")),
-    ("coaxial", _coaxial_result,
-     ("s_params", "freqs", "reference_planes", "z_tem_ohm", "voltages",
-      "currents")),
     ("coaxial_line_reflection", _coax_line_result,
      ("s11", "freqs", "gamma", "recurrence_residual", "fit_residual",
       "annulus_cells", "z0_numerical_ohm")),
@@ -377,8 +367,8 @@ def test_sparam_leg_is_bit_identical_to_the_pre_split_baseline(leg, build, field
         pytest.skip(_SKIP_REASON)
 
     with warnings.catch_warnings():
-        # These records are deliberately truncated, and the deprecated coax
-        # lane warns by design. The warnings are not what this gate measures;
+        # These records are deliberately truncated, and some legs warn by
+        # design. The warnings are not what this gate measures;
         # the advisory behaviour itself is pinned in tests/unit/sparams.
         warnings.simplefilter("ignore")
         result = build()

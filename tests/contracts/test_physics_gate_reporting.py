@@ -105,26 +105,6 @@ lumped_openems_parallel_plan = _load_module(
     "build_lumped_openems_parallel_plan",
     DIAGNOSTICS_DIR / "build_lumped_openems_parallel_plan.py",
 )
-coaxial_gap_openems_generic_compare = _load_module(
-    "build_coaxial_gap_openems_sparameter_comparison",
-    DIAGNOSTICS_DIR / "build_coaxial_gap_openems_sparameter_comparison.py",
-)
-coaxial_reference_plane_dft_dump = _load_module(
-    "generate_coaxial_reference_plane_dft_dump",
-    DIAGNOSTICS_DIR / "generate_coaxial_reference_plane_dft_dump.py",
-)
-coaxial_reference_plane_sweep = _load_module(
-    "sweep_coaxial_reference_plane_dft",
-    DIAGNOSTICS_DIR / "sweep_coaxial_reference_plane_dft.py",
-)
-coaxial_tem_signal_path_audit = _load_module(
-    "audit_coaxial_tem_signal_path",
-    DIAGNOSTICS_DIR / "audit_coaxial_tem_signal_path.py",
-)
-coaxial_tem_plane_source_prototype = _load_module(
-    "prototype_coaxial_tem_plane_source",
-    DIAGNOSTICS_DIR / "prototype_coaxial_tem_plane_source.py",
-)
 floquet_empty_space_analytic_compare = _load_module(
     "build_floquet_empty_space_analytic_comparison",
     DIAGNOSTICS_DIR / "build_floquet_empty_space_analytic_comparison.py",
@@ -447,126 +427,6 @@ def test_coaxial_tem_oracle_report_covers_geometry_sweep():
     assert {"sma_ptfe_default", "compact_high_eps"} <= case_names
 
 
-def test_coaxial_reference_plane_dft_replay_classifier_blocks_weak_tem_signal():
-    payload = coaxial_reference_plane_dft_dump.classify_coaxial_reference_plane_replay(
-        plane_s11=np.asarray([4.0 + 0.0j]),
-        gap_s11=np.asarray([0.8 + 0.0j]),
-        max_abs_voltage=1e-15,
-        max_abs_current=1e-16,
-    )
-
-    assert payload["status"] == "blocked"
-    assert payload["evidence_level"] == "E3-diagnostic-blocked"
-    assert "not broad E5" in payload["claim_scope"]
-    assert any("voltage below signal floor" in item for item in payload["blockers"])
-    assert any("current below signal floor" in item for item in payload["blockers"])
-
-
-def test_coaxial_reference_plane_dft_replay_classifier_is_not_e5_when_consistent():
-    payload = coaxial_reference_plane_dft_dump.classify_coaxial_reference_plane_replay(
-        plane_s11=np.asarray([0.8 + 0.01j]),
-        gap_s11=np.asarray([0.81 + 0.0j]),
-        max_abs_voltage=1e-4,
-        max_abs_current=1e-5,
-    )
-
-    assert payload["status"] == "passed"
-    assert payload["evidence_level"] == "E3-diagnostic-internal-consistency"
-    assert not payload["evidence_level"].startswith("E4")
-    assert not payload["evidence_level"].startswith("E5")
-    assert "not external full-wave evidence" in payload["claim_scope"]
-
-
-def test_coaxial_reference_plane_sweep_summary_blocks_when_no_plane_passes():
-    rows = [
-        {
-            "plane_index": 20,
-            "signal_score": 1e-16,
-            "classification": {
-                "status": "blocked",
-                "max_abs_voltage": 1e-15,
-                "max_abs_current": 1e-16,
-                "max_plane_gap_s11_abs_diff": 0.6,
-            },
-        },
-        {
-            "plane_index": 21,
-            "signal_score": 2e-16,
-            "classification": {
-                "status": "blocked",
-                "max_abs_voltage": 2e-15,
-                "max_abs_current": 2e-16,
-                "max_plane_gap_s11_abs_diff": 0.7,
-            },
-        },
-    ]
-
-    payload = coaxial_reference_plane_sweep.summarize_reference_plane_sweep(rows)
-
-    assert payload["status"] == "blocked"
-    assert payload["evidence_level"] == "E3-diagnostic-blocked"
-    assert payload["passed_plane_count"] == 0
-    assert payload["best_signal_plane_index"] == 21
-    assert payload["best_s11_plane_index"] == 20
-    assert "not broad E5" in payload["claim_scope"]
-
-
-def test_coaxial_tem_signal_path_audit_identifies_structural_blockers():
-    payload = coaxial_tem_signal_path_audit.audit_default_coaxial_tem_signal_path()
-
-    assert payload["status"] == "blocked"
-    assert payload["evidence_level"] == "structural-diagnostic-blocked"
-    checks = {check["name"]: check for check in payload["checks"]}
-    assert (
-        checks["source_component_is_transverse_to_tem_reference_plane"]["status"]
-        == "failed"
-    )
-    assert (
-        checks["source_component_is_transverse_to_tem_reference_plane"][
-            "source_component"
-        ]
-        == checks["source_component_is_transverse_to_tem_reference_plane"][
-            "normal_component"
-        ]
-    )
-    assert checks["outer_conductor_shell_has_pec_cells"]["status"] == "passed"
-    assert checks["outer_conductor_shell_has_pec_cells"]["shell_pec_cell_count"] > 0
-    assert checks["dielectric_annulus_is_present"]["status"] == "passed"
-    assert "not broad E5" in payload["claim_scope"]
-
-
-def test_coaxial_tem_plane_source_prototype_classifier_is_not_e5():
-    payload = (
-        coaxial_tem_plane_source_prototype.classify_tem_plane_source_prototype(
-            s11=np.asarray([0.1 + 0.0j, -0.2 + 0.05j]),
-            max_abs_voltage=1e-6,
-            max_abs_current=1e-8,
-        )
-    )
-
-    assert payload["status"] == "passed"
-    assert payload["evidence_level"] == "E3-diagnostic-prototype"
-    assert not payload["evidence_level"].startswith("E4")
-    assert not payload["evidence_level"].startswith("E5")
-    assert "not the public add_coaxial_port API" in payload["claim_scope"]
-    assert "not broad E5" in payload["claim_scope"]
-
-
-def test_coaxial_tem_plane_source_prototype_classifier_blocks_weak_signal():
-    payload = (
-        coaxial_tem_plane_source_prototype.classify_tem_plane_source_prototype(
-            s11=np.asarray([0.1 + 0.0j]),
-            max_abs_voltage=1e-15,
-            max_abs_current=1e-16,
-        )
-    )
-
-    assert payload["status"] == "blocked"
-    assert payload["evidence_level"] == "E3-diagnostic-prototype-blocked"
-    assert any("voltage below signal floor" in item for item in payload["blockers"])
-    assert any("current below signal floor" in item for item in payload["blockers"])
-
-
 def test_vessl_shard_checker_can_require_full_coverage(tmp_path: Path):
     yaml_path = tmp_path / "slow_external_crossval.yaml"
     yaml_path.write_text(
@@ -667,8 +527,11 @@ def test_port_external_reference_audit_blocks_until_every_family_has_broad_e5(tm
     # only diagnostic command ran the WR-90 waveguide-port case and fed its
     # stdout to the external generic comparator; that case was removed too and
     # the step left its shard YAML, which still carries the dependency audit and
-    # the family readiness report. Five families carry a diagnostic command now.
-    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 5
+    # the family readiness report. #1212: coaxial_port's only diagnostic
+    # command, the coaxial-gap openEMS comparison, went with the geometry
+    # helper it ran on; its shard keeps the coax-line comparison and readiness
+    # report. Four families carry a diagnostic command now.
+    assert audit["vessl_yaml_contract_diagnostic_command_family_count"] == 4
     assert audit["comparison_artifact_coverage_status"] == "blocked"
     # broad-E5 envelope coverage stays "blocked" on a clean checkout: although
     # rectangular_waveguide_port's envelopes are now committed (see below), the
@@ -1264,9 +1127,13 @@ def test_port_external_shard_execution_manifest_covers_all_required_families():
     # waveguide-port case; both cases were removed with their commands. Their
     # shard YAMLs stay launchable -- each still emits its family readiness
     # report -- so only the diagnostic-command count moves.
-    assert manifest["diagnostic_command_family_count"] == 5
+    # #1212: coaxial_port's only diagnostic command was the coaxial-gap
+    # openEMS comparison, built on the geometry helper removed with the
+    # single-plane coaxial lane; the shard keeps its coax-LINE comparison
+    # and readiness report, so it too loses only the command.
+    assert manifest["diagnostic_command_family_count"] == 4
     assert sorted(manifest["missing_diagnostic_command_families"]) == [
-        "rectangular_waveguide_port", "wire_port"]
+        "coaxial_port", "rectangular_waveguide_port", "wire_port"]
     for row in manifest["shards"]:
         assert row["has_launchable_yaml"] is True
         assert row["expected_result_json"].endswith(
@@ -1573,28 +1440,6 @@ def test_lumped_openems_parallel_plan_writes_case_yamls(tmp_path: Path):
         assert "RFX_REPO_ROOT" in text
         assert "check_external_solver_dependencies.py" in text
         assert "build_lumped_openems_sparameter_comparison.py" in text
-
-
-def test_coaxial_gap_openems_generic_builder_uses_magnitude_mode(tmp_path: Path):
-    freqs = np.asarray([3.0e9, 5.0e9, 7.0e9], dtype=float)
-    # Same magnitudes, deliberately different phase.
-    rfx_s11 = np.asarray([0.0 + 0.94j, 0.0 + 0.95j, 0.0 + 0.96j])
-    openems_s11 = np.asarray([0.94 + 0.0j, 0.95 + 0.0j, 0.96 + 0.0j])
-
-    payload = (
-        coaxial_gap_openems_generic_compare
-        .build_coaxial_gap_openems_comparison_from_s11(
-            freqs_hz=freqs,
-            rfx_s11=rfx_s11,
-            openems_s11=openems_s11,
-            output_dir=tmp_path / "out",
-        )
-    )
-
-    assert payload["status"] == "passed"
-    assert payload["comparison_mode"] == "magnitude"
-    assert payload["claim_scope"].startswith("narrow single-cell coaxial gap")
-    assert payload["summary"]["max_mag_abs_diff"] == 0.0
 
 
 def test_floquet_empty_space_analytic_builder_uses_zero_reference(tmp_path: Path):
