@@ -10,6 +10,7 @@ import pytest
 
 from rfx import CoaxialPort, GaussianPulse, Simulation
 from rfx.core.yee import EPS_0, init_materials, init_state
+from rfx.core.yee import cell_component_e_coeffs
 from rfx.grid import Grid
 from rfx.sources.coaxial_port import (
     PEC_SIGMA,
@@ -329,10 +330,14 @@ def test_make_coaxial_port_source_injects_expected_e_field_component(face, posit
     updated = source(state, 0.0)
     gap_idx = grid.position_to_index(position)
 
-    eps = float(materials.eps_r[gap_idx]) * EPS_0
-    sigma = float(materials.sigma[gap_idx])
-    loss = sigma * grid.dt / (2.0 * eps)
-    cb = (grid.dt / eps) / (1.0 + loss)
+    # #1210: the drive coefficient is the E update's OWN per-component Cb at
+    # the gap node -- the mean of eps and sigma over the four cells that
+    # node's edge touches -- not the owning cell's. The gap sits against the
+    # coax conductors, so the two differ by 4/3 here; a hand-written
+    # cell-centred reference was a second spelling of the material-to-edge
+    # rule and read 1.0000e-6 where the update writes 1.3333e-6.
+    cb = float(cell_component_e_coeffs(
+        materials, gap_idx, component, grid.dt)[1])
     expected_delta = cb * waveform.amplitude / grid.dx
 
     for field_name in ("ex", "ey", "ez"):
