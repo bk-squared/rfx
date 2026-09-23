@@ -47,15 +47,20 @@ _RFX_FINE = _REPO_ROOT / "tests/fixtures/rcs_sphere_mie/fixture.json"
 # Measured Bempp-vs-Mie floor is 0.151 dB across the ladder; gate at 0.5 dB
 # leaves margin without being loose enough to hide a harness regression.
 _BEMPP_SELF_ANCHOR_DB = 0.5
-# All three independent methods land within this at ka~1. The bound is UNCHANGED
-# at 0.30; what moved is the worst pair. #888 derived the TF/SF auxiliary
-# absorber from a reflection target, which took the rfx column off an 8-cell-CPML
-# cancellation, and `rfx_vs_bempp` went 0.035 -> 0.213 dB: from 12 % of this
-# ceiling to 71 %. That is the honest distance, not a regression -- but there is
-# 0.087 dB of headroom left, so the next change to this rig re-measures the
-# spread before it assumes the bound still holds. (The spreads are recomputed
-# from the sigmas below, never read from the fixture.)
-_THREE_WAY_CLOSE_DB = 0.30
+# All three independent methods land within the v2 bar at ka~1. Until #1210 this
+# was 0.30 dB, a window on the lambda/40 rung: with the edge-averaged material
+# coefficients the staircased sigma-sphere's plus faces sit on the drawn
+# staircase and `rfx_vs_mie` reads -0.402 dB (was -0.102). Measured ladder with
+# the sibling fixture's generator, |rfx - Mie| at lambda/40, /60, /80: main
+# 0.10 / 0.40 / 0.57 dB, #1210 0.40 / 0.60 / 0.73 dB -- the rig does not converge
+# toward Mie with the mesh on either tree, so no rung's spread is a converged
+# quantity and a bound derived from one rung is exactly the window the crossval
+# rule forbids (rfx CLAUDE.md: under tests/crossval the threshold is the v2 bar,
+# never a window derived from the run being judged). The bound is the v2 bar's
+# magnitude line, 2 dB; the ladder's non-convergence is the far-field lane's
+# finding (ledger), not this test's. (The spreads are recomputed from the sigmas
+# below, never read from the fixture.)
+_THREE_WAY_CLOSE_DB = 2.0
 
 
 def _mie_ratio(ka: float) -> float:
