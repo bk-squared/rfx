@@ -2105,11 +2105,16 @@ class _ExecuteMixin:
             from rfx.lumped import build_rlc_meta_traced
             _rlc_ov = rlc_values_override or {}
             rlc_metas = []
+            from rfx.simulation import resolve_periodic as _resolve_periodic
+            # The run's own periodic flags: a series element's D0 is its
+            # edge's E-update coefficient (#1163).
+            _rlc_periodic = _resolve_periodic(grid, periodic_bool)
             for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
                 _v = _rlc_ov.get(_rlc_idx, {})
                 rlc_metas.append(build_rlc_meta_traced(
                     grid, _rlc_spec, materials,
                     r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
+                    periodic=_rlc_periodic,
                 ))
 
         result = _run(

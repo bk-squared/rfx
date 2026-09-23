@@ -8,28 +8,39 @@ an Auxiliary Differential Equation (ADE) updated each timestep.
 
 Series topology  (true series RLC current tracking)
 ---------------------------------------------------
-In series RLC, R, L, and C share a single series current I_s.
+In series RLC, R, L, and C share a single series current I.
 Instead of folding R and C into independent material properties,
 we track the series current and capacitor charge via ADE.
 
 For the series path, `setup_rlc_materials` does NOT fold R or C
 into material arrays (only parallel topology does that).  The
-series ADE handles R, L, and C together:
+series ADE handles R, L, and C together, and it is solved TOGETHER
+with the field on the element's edge (issue #1163):
 
-    V_total = E * dx = V_R + V_L + V_C
-    V_R = R * I_s,  V_L = L * dI_s/dt,  V_C = Q / C
+    Ampere at the edge (d = edge length, A = dual face, D0 = 1/Cb the
+    edge's own E-update denominator, e_std = Ca*E^n + Cb*curl H):
+        E^{n+1} = e_std - I_avg / (D0*A)
+    element, trapezoidal in time (I_avg = (I^{n+1} + I^n)/2):
+        d*(E^{n+1} + E^n)/2 = R*I_avg + L*(I^{n+1} - I^n)/dt
+                              + (Q^n + Q^{n+1})/(2C)
+        Q^{n+1} = Q^n + dt*I_avg
 
-Semi-implicit update (with inductor):
-    I_s^{n+1} * (1 + dt*R/(2*L)) = I_s^n * (1 - dt*R/(2*L))
-                                    + (dt/L) * (E^n * dx - Q^n / C)
-    Q^{n+1} = Q^n + I_s^{n+1} * dt
-    E correction from series current density
+Eliminating E^{n+1} leaves one linear equation for I_avg:
 
-Series R+C without inductor:
-    dQ/dt = I,  V_R + V_C = E*dx
-    R*I + Q/C = E*dx  =>  R*dQ/dt + Q/C = E*dx
-    Semi-implicit:  Q^{n+1}*(R/dt + 1/C) = Q^n*R/dt + E*dx
-    Current I = (Q^{n+1} - Q^n) / dt
+    I_avg * (R + 2L/dt + dt/(2C) + kappa/2)
+        = d*(e_std + E^n)/2 + (2L/dt)*I^n - Q^n/C,   kappa = d/(D0*A)
+
+With L = 0 and C -> inf this is exactly the folded resistor's
+semi-implicit sigma update.  The element's power
+d*(E^{n+1}+E^n)/2 * I_avg = R*I_avg^2 + [change of L*I^2/2 + Q^2/(2C)]/dt
+is passive for R >= 0, so the coupled update is stable for any R.
+
+The update it replaces took the element current from e_std (the field
+BEFORE the element's own current acted on it) and subtracted it in full
+afterwards.  Measured on a line whose load reflection is a closed form,
+that subtracts the edge's own impedance kappa (215 ohm in a vacuum
+cubic cell) from R, so below ~215 ohm the element was a negative
+resistance and the run diverged.
 
 Parallel topology (inductor ADE only)
 --------------------------------------
@@ -110,7 +121,9 @@ class LumpedRLCSpec:
 
 class RLCState(NamedTuple):
     """ADE auxiliary state for one lumped RLC element."""
-    inductor_current: jnp.ndarray  # I_L in amperes
+    inductor_current: jnp.ndarray  # amperes: I_L (parallel); the series
+                                   # current I^{n+1} (series with L) or
+                                   # I^{n+1/2} (series without L)
     capacitor_charge: jnp.ndarray  # Q_C in coulombs
 
 
@@ -196,7 +209,10 @@ class RLCCellMeta(NamedTuple):
     has_inductor: bool
     has_capacitor: bool     # True when C > 0
     gamma: float   # dt * d_par / (L * dual_area) — inductor ADE term (0 if L == 0)
-    D0: float      # eps/dt + sigma/2 — Yee denominator at cell
+    D0: float      # eps/dt + sigma/2 — the E-update denominator.  SERIES
+                   # elements: the element EDGE's own 1/Cb, i.e. the
+                   # four-cell edge average plus lumped stamps (#1210,
+                   # #1163); parallel elements: the single cell's value.
     dx: float      # PRIMAL cell size along the component axis (the E edge
                    # the element voltage V = E*d_par is taken over)
     dt_dx_over_L: float  # dt * dx / L — for I_L update (0 if L == 0)
@@ -227,6 +243,29 @@ def _series_needs_ade(spec: LumpedRLCSpec) -> bool:
     # never sees a JAX bool array (whose ``+`` has OR semantics and miscounts).
     n_components = int(spec.R > 0) + int(spec.L > 0) + int(spec.C > 0)
     return n_components >= 2
+
+
+def edge_update_denominator(materials, cell, component, dt,
+                            periodic=(False, False, False)):
+    """``D0 = 1/Cb`` of the E update at one element's edge (#1163).
+
+    The series element's current enters Ampere's law through the SAME
+    coefficient the Yee update multiplies the curl by, so its denominator
+    has to be that coefficient: :func:`rfx.core.yee.cell_component_e_coeffs`
+    at the element's cell and component -- the mean of the four incident
+    cells' volume material plus the lumped stamps at this cell (#1210).
+    Reading ``materials.eps_r[i, j, k]`` / ``sigma[i, j, k]`` instead is the
+    single-cell value, which differs from what the update uses wherever the
+    four cells around the edge are not one material (an element on a
+    dielectric surface).
+
+    ``periodic`` must be the run's own flags (they decide the neighbour of a
+    cell at index 0).  Returns ``1/Cb`` with the dtype of the coefficient, so
+    a traced material keeps its gradient.
+    """
+    from rfx.core.yee import cell_component_e_coeffs
+    _ca, cb = cell_component_e_coeffs(materials, cell, component, dt, periodic)
+    return 1.0 / cb
 
 
 def _resolve_position_to_index(grid, position):
@@ -303,11 +342,15 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     return materials
 
 
-def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
+def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
+                   periodic=(False, False, False)) -> RLCCellMeta:
     """Build per-element metadata from (modified) materials.
 
-    Must be called AFTER ``setup_rlc_materials()`` so that eps_r and
-    sigma at the cell reflect the R and C contributions.
+    Must be called AFTER ``setup_rlc_materials()`` and after every other
+    fold into the material arrays (ports), with the materials the run's E
+    update uses: a series element takes ``D0`` from the edge's own update
+    coefficient (:func:`edge_update_denominator`), and ``periodic`` is the
+    run's periodic flags for that lookup.
     """
     from rfx.sources.sources import port_d_parallel as _d_par
     from rfx.sources.sources import port_dual_transverse as _dual_t
@@ -318,14 +361,18 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials) -> RLCCellMeta:
     dual_area = _b * _c
     dt = grid.dt
 
-    eps = float(materials.eps_r[i, j, k]) * EPS_0
-    sigma = float(materials.sigma[i, j, k])
-
-    D0 = eps / dt + sigma / 2.0
-
     has_inductor = spec.L > 0
     has_capacitor = spec.C > 0
     is_series = spec.topology == "series" and _series_needs_ade(spec)
+
+    if is_series:
+        # #1163: the edge's own E-update denominator, not the cell's.
+        D0 = float(edge_update_denominator(
+            materials, (i, j, k), spec.component, dt, periodic))
+    else:
+        eps = float(materials.eps_r[i, j, k]) * EPS_0
+        sigma = float(materials.sigma[i, j, k])
+        D0 = eps / dt + sigma / 2.0
 
     if has_inductor:
         # gamma is the implicit self-coupling of the inductor into the E
@@ -431,7 +478,8 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
 
 
 def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
-                          r_val=None, l_val=None, c_val=None) -> RLCCellMeta:
+                          r_val=None, l_val=None, c_val=None,
+                          periodic=(False, False, False)) -> RLCCellMeta:
     """jnp-native counterpart of ``build_rlc_meta`` for ``forward()``.
 
     Structural fields (``i/j/k``, ``component``, ``has_inductor``,
@@ -452,16 +500,21 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     dual_area = _b * _c
     dt = grid.dt
 
-    # No float() coercion: eps/sigma at the cell may carry a folded R/C tracer.
-    eps = materials.eps_r[i, j, k] * EPS_0
-    sigma = materials.sigma[i, j, k]
-
-    D0 = eps / dt + sigma / 2.0
-
     # STATIC topology from the plain-float spec.
     has_inductor = spec.L > 0
     has_capacitor = spec.C > 0
     is_series = spec.topology == "series" and _series_needs_ade(spec)
+
+    # No float() coercion: eps/sigma may carry a folded R/C tracer.
+    if is_series:
+        # #1163: the edge's own E-update denominator (same as the concrete
+        # twin), traced so a permittivity design variable reaches it.
+        D0 = edge_update_denominator(
+            materials, (i, j, k), spec.component, dt, periodic)
+    else:
+        eps = materials.eps_r[i, j, k] * EPS_0
+        sigma = materials.sigma[i, j, k]
+        D0 = eps / dt + sigma / 2.0
 
     R = _resolve_value(spec.R, r_val)
     L = _resolve_value(spec.L, l_val)
@@ -543,123 +596,102 @@ def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta):
     return state_new, RLCState(inductor_current=i_L_new, capacitor_charge=Q)
 
 
-def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta):
-    """Series topology: R, L, C share a single series current.
+def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
+    """Series topology: R, L, C share one current, solved WITH the edge field.
 
-    The series current I_s flows through all components.  The E-field
-    at the cell drives the total voltage V = E * dx, which is split
-    across R, L, and C in series.
+    ``state`` holds ``e_std`` at the element edge (the standard Yee update,
+    ``Ca*E^n + Cb*curl H``, before the element's current has acted);
+    ``e_prev`` is ``E^n``, the edge field at the START of this step.
 
-    Case 1: has_inductor (L > 0), possibly with R and C
-        Semi-implicit leapfrog on I_s:
-            V_cell = E_std * dx   (from standard Yee update)
-            (1 + dt*R/(2*L)) * I_s^{n+1} = (1 - dt*R/(2*L)) * I_s^n
-                                            + (dt/L) * (V_cell - Q^n/C)
-            Q^{n+1} = Q^n + dt * I_s^{n+1}
-            J_s = I_s^{n+1} / dual_area  (current density correction)
+    One implicit, trapezoidal step (issue #1163; derivation in the module
+    docstring).  With ``I_avg = (I^{n+1} + I^n)/2``, ``kappa = d/(D0*A)``::
 
-        E-field correction: the standard Yee update did not account for
-        the series current sink.  We correct by subtracting J_s from
-        the update:
-            E^{n+1} = (D0 * E_std - I_s^{n+1} / dual_area) / (D0 + gamma)
+        I_avg * (R + 2L/dt + dt/(2C) + kappa/2)
+            = d*(e_std + E^n)/2 + (2L/dt)*I^n - Q^n/C
+        E^{n+1} = e_std - I_avg/(D0*A)
+        Q^{n+1} = Q^n + dt*I_avg
+        I^{n+1} = 2*I_avg - I^n        (with L; without L the element has
+                                         no state current and I_avg is kept)
 
-        where gamma = dt*d_par/(L*dual_area) couples the inductor and
-        ``dual_area`` is the dual face the element current pierces.
+    ``D0`` is the edge's own ``1/Cb`` (:func:`edge_update_denominator`), so
+    the current enters the field through exactly the coefficient the Yee
+    update used.  With L = 0 and C -> inf the step is the folded resistor's
+    semi-implicit update.
 
-    Case 2: no inductor (L == 0), has R and/or C
-        RC series: R * dQ/dt + Q/C = E*dx
-        Semi-implicit:
-            Q^{n+1} * (R/dt + 1/C) = Q^n * R/dt + E_std * dx
-        Current I = (Q^{n+1} - Q^n) / dt
-        E correction from current density.
+    Carries: ``inductor_current`` holds I^{n+1} with an inductor and I_avg
+    (the current at n+1/2) without one; ``capacitor_charge`` holds Q^{n+1}.
     """
     i, j, k = meta.i, meta.j, meta.k
 
     e_field = getattr(state, meta.component)
     e_std = e_field[i, j, k]
 
-    i_L = rlc_state.inductor_current  # series current
-    Q = rlc_state.capacitor_charge
+    i_old = rlc_state.inductor_current
+    q_old = rlc_state.capacitor_charge
 
-    dx = meta.dx
+    d = meta.dx
     dt = meta.dt
-    D0 = meta.D0
-    R = meta.R
+    # Field change per ampere of element current: Cb / A.
+    per_amp = 1.0 / (meta.D0 * meta.dual_area)
+    kappa = d * per_amp            # the edge's own impedance d/(D0*A)
 
-    # Voltage at cell from standard Yee update
-    V_cell = e_std * dx
+    # has_inductor / has_capacitor are static Python bools (the traced lane
+    # takes topology from the plain-float spec), so these are trace-time
+    # branches and never divide by a zero coefficient.
+    if meta.has_inductor:
+        two_l_over_dt = 2.0 * d / meta.dt_dx_over_L      # dt_dx_over_L = dt*d/L
+    else:
+        two_l_over_dt = 0.0
+    if meta.has_capacitor:
+        half_dt_over_c = 0.5 * d * meta.dt_over_C_dx      # dt_over_C_dx = dt/(C*d)
+        v_cap = q_old * (meta.dt_over_C_dx * d / dt)      # Q^n / C
+    else:
+        half_dt_over_c = 0.0
+        v_cap = 0.0
 
-    # --- Case 1: has inductor ---
-    # Semi-implicit: (1 + dt*R/(2L)) * I_new = (1 - dt*R/(2L)) * I_old
-    #                + (dt/L) * (V_cell - Q/C)
-    # dt/L is recovered below from dt_dx_over_L (= dt*d_par/L), which carries
-    # no area factor -- do NOT route it through gamma, which does.
+    z_step = meta.R + two_l_over_dt + half_dt_over_c + 0.5 * kappa
+    drive = 0.5 * d * (e_std + e_prev) + two_l_over_dt * i_old - v_cap
+    i_avg = drive / z_step
 
-    # Precomputed: dt_dx_over_L = dt*dx/L, gamma = dt/(L*dx)
-    # dt/L = dt_dx_over_L / dx  (when L > 0)
-    # dt*R/(2*L) = (dt/L) * R/2
+    e_new = e_std - per_amp * i_avg
 
-    dt_over_L = jnp.where(meta.has_inductor, meta.dt_dx_over_L / dx, 0.0)
-    half_dtR_over_L = dt_over_L * R / 2.0
+    if meta.has_capacitor:
+        q_new = q_old + dt * i_avg
+    else:
+        q_new = q_old
+    if meta.has_inductor:
+        i_new = 2.0 * i_avg - i_old
+    else:
+        i_new = i_avg
 
-    # Capacitor voltage contribution
-    inv_C = jnp.where(meta.has_capacitor, meta.dt_over_C_dx * dx / dt, 0.0)
-    # inv_C = 1/C when C > 0, else 0
-    V_cap = Q * inv_C  # Q/C
-
-    # Semi-implicit inductor update
-    denom_L = 1.0 + half_dtR_over_L
-    numer_L = (1.0 - half_dtR_over_L) * i_L + dt_over_L * (V_cell - V_cap)
-    i_L_inductor = numer_L / jnp.maximum(denom_L, 1e-30)
-
-    # --- Case 2: no inductor, RC series ---
-    # Q^{n+1} * (R/dt + 1/C) = Q^n * R/dt + E_std * dx
-    R_eff = jnp.where(R > 0, R, 1e-10)  # avoid division by zero for pure C
-    R_over_dt = R_eff / dt
-    denom_RC = R_over_dt + inv_C
-    Q_rc = (Q * R_over_dt + V_cell) / jnp.maximum(denom_RC, 1e-30)
-    i_rc = (Q_rc - Q) / dt  # current from charge change
-
-    # Select path based on has_inductor
-    i_new = jnp.where(meta.has_inductor, i_L_inductor, i_rc)
-    Q_new = jnp.where(
-        meta.has_capacitor,
-        jnp.where(meta.has_inductor, Q + dt * i_L_inductor, Q_rc),
-        Q,
-    )
-
-    # E-field correction: subtract series current density from standard update.
-    # For the inductor path, use the coupled correction:
-    #   E^{n+1} = (D0 * E_std - I_new / dual_area) / (D0 + gamma)
-    # For the RC-only path (no inductor), gamma=0 so:
-    #   E^{n+1} = E_std - I_new / (D0 * dual_area)
-    # Both simplify to the same formula since gamma=0 when L=0.
-    gamma = meta.gamma  # 0 when L == 0
-    A = D0 + gamma
-    e_new = (D0 * e_std - i_new / meta.dual_area) / jnp.maximum(A, 1e-30)
-
-    # For elements with no active ADE (shouldn't happen for series with
-    # at least one nonzero component, but guard anyway)
-    needs_update = meta.has_inductor | meta.has_capacitor | (R > 0)
-    e_final = jnp.where(needs_update, e_new, e_std)
-
-    field_new = e_field.at[i, j, k].set(e_final)
+    field_new = e_field.at[i, j, k].set(e_new.astype(e_field.dtype))
     state_new = state._replace(**{meta.component: field_new})
 
-    return state_new, RLCState(inductor_current=i_new, capacitor_charge=Q_new)
+    return state_new, RLCState(
+        inductor_current=jnp.asarray(i_new).astype(i_old.dtype),
+        capacitor_charge=jnp.asarray(q_new).astype(q_old.dtype))
 
 
-def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta):
+def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta,
+                       e_prev=None):
     """Update ADE and correct the E-field at the element cell.
 
     Dispatches between series and parallel topology at Python trace
     time (``meta.is_series`` is a static bool), so only the needed
     code path is compiled into the XLA graph.
 
-    Called AFTER the standard ``update_e()`` in the scan body.
+    Called AFTER the standard ``update_e()`` in the scan body.  ``e_prev`` is
+    the element edge's field at the START of the step (``E^n``, read before
+    the E update); the series update needs it, the parallel one does not.
 
     Returns (new_fdtd_state, new_rlc_state).
     """
     if meta.is_series:
-        return _update_series(state, rlc_state, meta)
+        if e_prev is None:
+            raise ValueError(
+                "a series RLC element is solved together with its edge field "
+                "(issue #1163) and needs E^n, the edge field at the start of "
+                "the step: pass e_prev=state.<component>[i, j, k] read BEFORE "
+                "the E update")
+        return _update_series(state, rlc_state, meta, e_prev)
     return _update_parallel(state, rlc_state, meta)
