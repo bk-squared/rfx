@@ -62,13 +62,82 @@ def test_a_dx_only_graded_mesh_is_checked_for_tfsf_support():
     assert "nonuniform_tfsf" in _codes(report)
 
 
-def test_the_same_mesh_at_normal_incidence_is_not_flagged():
-    """The gate opened a family of checks; it must not fire on the case the
-    family says IS supported, or it is just noise."""
+def test_the_same_mesh_at_normal_incidence_is_flagged_too():
+    """Normal incidence along a graded x is not the supported case either.
+
+    The runner builds the 1-D line that computes the incident wave on one
+    cell size, the boundary cell, while the 3-D grid carries the wave through
+    the graded x cells. The two waves part company inside the box, and the
+    difference leaks out of it; the witness below measures how much.
+    """
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         report = _dx_graded_tfsf_sim(0.0).preflight()
+    assert "nonuniform_tfsf" in _codes(report)
+
+
+@pytest.mark.parametrize("graded", ["y", "z"])
+def test_a_constant_x_with_a_graded_transverse_axis_is_not_flagged(graded):
+    """The incident line runs along x, so grading y or z leaves it matching
+    the 3-D grid; the witness measures the leakage there at the uniform
+    level. Flagging it would be noise."""
+    prof = np.concatenate([np.full(4, _DX), np.full(8, 0.5 * _DX),
+                           np.full(4, _DX)])
+    kw = {f"d{graded}_profile": prof}
+    ext = {"y": 0.02, "z": 0.02, graded: float(np.sum(prof))}
+    sim = Simulation(freq_max=10e9, domain=(0.06, ext["y"], ext["z"]),
+                     dx=_DX, boundary="cpml", cpml_layers=8, **kw)
+    sim.add_tfsf_source(direction="+x", f0=6e9, bandwidth=0.5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
+    assert sim._uses_nonuniform_mesh
     assert "nonuniform_tfsf" not in _codes(report)
+
+
+def _tfsf_leakage(**profiles):
+    """Peak |Ez| in the scattered-field region beyond the far TFSF plane,
+    over the peak inside the box, for a +x plane wave with NO scatterer:
+    50 x 6 x 6 cells of 1 mm unless a profile says otherwise, 1500 steps.
+    With nothing to scatter, anything outside the box is leakage."""
+    lx = float(np.sum(profiles.get("dx_profile", np.full(50, _DX))))
+    ly = float(np.sum(profiles.get("dy_profile", np.full(6, _DX))))
+    lz = float(np.sum(profiles.get("dz_profile", np.full(6, _DX))))
+    sim = Simulation(freq_max=10e9, domain=(lx, ly, lz), dx=_DX,
+                     boundary="cpml", cpml_layers=8, **profiles)
+    sim.add_tfsf_source(direction="+x", f0=6e9, bandwidth=0.5, amplitude=1.0,
+                        margin=3, polarization="ez")
+    sim.add_probe((lx / 2 + 0.25e-3, ly / 2, lz / 2), "ez")
+    sim.add_probe((lx - 1.0e-3, ly / 2, lz / 2), "ez")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        codes = _codes(sim.preflight())
+        ts = np.asarray(sim.run(n_steps=1500, compute_s_params=False)
+                        .time_series)
+    return (float(np.max(np.abs(ts[:, 1])) / np.max(np.abs(ts[:, 0]))),
+            "nonuniform_tfsf" in codes)
+
+
+def test_the_leakage_the_tfsf_advisory_quotes():
+    """The witness for the numbers the advisory prints.
+
+    A plane wave with nothing in its way must stay inside the TFSF box. On
+    uniform 1 mm x cells the scattered-field region reads about 1e-5 of the
+    total-field peak, and grading only y keeps it there. Grading x
+    1 / 0.5 / 1 mm (20 cells each) puts 0.6 of the peak outside the box: the
+    incident line is built on the 1 mm boundary cell, so the wave it injects
+    at the far plane is not the one the graded grid delivers there. The
+    advisory fires on that board and on no other.
+    """
+    uniform, flagged_u = _tfsf_leakage(dx_profile=np.full(50, _DX))
+    y_graded, flagged_y = _tfsf_leakage(dy_profile=np.concatenate(
+        [np.full(2, _DX), np.full(4, 0.5 * _DX), np.full(2, _DX)]))
+    x_graded, flagged_x = _tfsf_leakage(dx_profile=np.concatenate(
+        [np.full(20, _DX), np.full(20, 0.5 * _DX), np.full(20, _DX)]))
+    assert uniform < 2e-5, uniform
+    assert y_graded < 2e-5, y_graded
+    assert 0.55 < x_graded < 0.65, x_graded
+    assert (flagged_u, flagged_y, flagged_x) == (False, False, True)
 
 
 # ---------------------------------------------------------------------------
