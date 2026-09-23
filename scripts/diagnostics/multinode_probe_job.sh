@@ -90,15 +90,34 @@ run_worker() {
   else
     printf 'unavailable\n' > "$out/node-product-uuid.rank$rank.txt"
   fi
+  [ "$world" -eq 1 ] || getent hosts "${coordinator%:*}"
+  run_probe "$job"
+  [ -n "${RFX_REF_B:-}" ] || return 0
+  # A/B on the same nodes: a second solver ref, same probe arguments, tag "<job>-b".
+  # Node pairs differ by ~2x in cross-node cost, so before and after must share them.
+  resolved_b=$(git -C "$source_repo" rev-parse "$RFX_REF_B^{commit}")
+  [ "$resolved_b" = "${RFX_EXPECTED_SHA_B:?}" ] || { echo "$RFX_REF_B differs from pinned SHA"; return 1; }
+  git clone -q --no-hardlinks "$source_repo" "$work/src_b"
+  git -C "$work/src_b" checkout -q --detach "$RFX_EXPECTED_SHA_B"
+  git -C "$work/src_b" rev-parse HEAD > "$out/commit-b.rank$rank.txt"
+  git -C "$work/src_b" rev-parse HEAD:rfx > "$out/rfx-tree-b.rank$rank.txt"
+  for file in distributed_multinode_probe.py compare_multinode_probe.py; do
+    git -C "$source_repo" show "$resolved_b:scripts/diagnostics/$file" > "$work/src_b/scripts/diagnostics/$file"
+  done
+  cd "$work/src_b"
+  export PYTHONPATH="$work/src_b" RFX_TOOLING_SHA="$resolved_b"
+  # Rank 0 hosts the coordinator: let it leave the first run and start the second
+  # before rank 1 connects, so rank 1 never reaches the first run's coordinator.
+  [ "$rank" -eq 0 ] || sleep 30
+  run_probe "$job-b"
+}
+run_probe() {
   set -- --nx-per-rank "$RFX_NX" --ny "${RFX_NY:-116}" --nz "${RFX_NZ:-116}" \
     --steps "${RFX_STEPS:-200}" --repeats "${RFX_REPEATS:-3}" --model "${RFX_MODEL:-vacuum}" \
-    --process-count "$world" --process-id "$rank" --local-device-id 0 --output "$out" --tag "$job"
+    --process-count "$world" --process-id "$rank" --local-device-id 0 --output "$out" --tag "$1"
   # local: one process drives every GPU the preset gives it (e.g. gpu-a6000-2).
   [ "$RFX_KIND" = local ] && set -- "$@" --local-devices
-  if [ "$world" -gt 1 ]; then
-    getent hosts "${coordinator%:*}"
-    set -- "$@" --coordinator-address "$coordinator"
-  fi
+  [ "$world" -eq 1 ] || set -- "$@" --coordinator-address "$coordinator"
   timeout --signal=TERM --kill-after=30s 1800s python scripts/diagnostics/distributed_multinode_probe.py "$@"
 }
 # Run a separate shell subshell with errexit enabled; do not place it in an

@@ -36,6 +36,8 @@ def main():
     parser.add_argument("--model", choices=("vacuum", "loaded"), default="vacuum")
     parser.add_argument("--ref", default="green",
                         help="mirror ref the jobs pin (distinct refs let queued jobs of different commits coexist)")
+    parser.add_argument("--ref-b", help="second solver ref run after --ref in the same job (A/B on the same nodes)")
+    parser.add_argument("--tooling-sha-b", help="full commit SHA that --ref-b must resolve to")
     parser.add_argument("--two", action="append", type=int, metavar="NX_PER_RANK",
                         help="two-worker job (repeatable); default 100/200/400")
     parser.add_argument("--two-preset", default="gpu-rtx4090")
@@ -61,6 +63,12 @@ def main():
                  "RFX_REPEATS": str(args.repeats), "RFX_MODEL": args.model, "RFX_REF": args.ref}
     if args.mem_fraction:
         shape_env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = args.mem_fraction
+    if bool(args.ref_b) != bool(args.tooling_sha_b):
+        parser.error("--ref-b and --tooling-sha-b go together")
+    if args.ref_b:
+        if not re.fullmatch(r"[0-9a-f]{40}", args.tooling_sha_b):
+            parser.error("tooling-sha-b must be a full 40-character commit SHA")
+        shape_env.update(RFX_REF_B=args.ref_b, RFX_EXPECTED_SHA_B=args.tooling_sha_b)
     if not re.fullmatch(r"[0-9a-f]{40}", args.tooling_sha):
         parser.error("tooling-sha must be a full 40-character commit SHA")
     if not re.fullmatch(r"[A-Za-z0-9_-]+", args.stamp):
@@ -110,6 +118,10 @@ def main():
                             payload / "source.git"]),
                    'test "$(' + command(["git", "-C", payload / "source.git", "rev-parse", f"{args.ref}^{{commit}}"])
                    + ')" = ' + shlex.quote(args.tooling_sha)]
+    if args.ref_b:
+        preparation.append('test "$(' + command(["git", "-C", payload / "source.git", "rev-parse",
+                                                 f"{args.ref_b}^{{commit}}"]) + ')" = '
+                           + shlex.quote(args.tooling_sha_b))
     for name in ("multinode_probe_job.sh", "summarize_multinode_job.py"):
         preparation.append(command(["git", "-C", payload / "source.git", "show",
                                     f"{args.tooling_sha}:scripts/diagnostics/{name}"])
