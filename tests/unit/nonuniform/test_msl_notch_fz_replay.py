@@ -600,9 +600,11 @@ def _solver_trees_or_skip(shas) -> bool:
     if got is None:
         missing = ins.commits_absent(shas) or list(shas)
         pytest.skip(
-            "git cannot compare rfx/ here: commit "
+            "git cannot compare rfx/ here: "
+            + ("commit " if len(missing) == 1 else "commits ")
             + ", ".join(sha[:12] for sha in missing)
-            + " is not in this checkout (a shallow clone, or history "
+            + (" is" if len(missing) == 1 else " are")
+            + " not in this checkout (a shallow clone, or history "
             "squashed away on merge)")
     return got
 
