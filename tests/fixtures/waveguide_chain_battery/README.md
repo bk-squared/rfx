@@ -60,8 +60,7 @@ replay: `tests/_waveguide_chain_battery_gates.py`.
 
 #1012 samples the magnetic CPML profile at the Yee half cell; the empty guide's
 worst reflection at the fine rung falls from −42.8 dB to −55.8 dB, and every
-thru/short cell moves by up to 0.029; the slab cells are unchanged by #1012 and
-remain stale since #1213.
+thru/short cell moves by up to 0.029; #1012 also moves the slab cells (by 0.0271 / 0.0130 / 0.0063 coarse / mid / fine, false normalization); they were already stale since #1213 (0.41 / 0.181 / 0.088 from this record on main) and must be re-frozen on a tree that contains both.
 
 `fixture_1012_cpml_half_cell_run369367264028.json` is the new reference for the
 CPU and GPU live **cell** comparisons. It uses the distinct schema

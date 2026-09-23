@@ -96,6 +96,59 @@ def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
     )
 
 
+def _staged_by_an_outer_trace() -> bool:
+    """Whether ``forward()`` is being recorded into a compiled program (#1225).
+
+    Under ``jax.jit`` — and ``jax.checkpoint``, ``lax.scan`` or
+    ``jax.eval_shape`` — JAX records every array operation instead of running
+    it, including the ones that read only the model: the grid, the realized
+    materials and PEC edge masks, the port cells. Under ``jax.grad``,
+    ``jax.jvp`` or ``jax.vmap`` alone, an operation that does not touch the
+    traced inputs still runs at once. The probe asks exactly that: is an array
+    built from a constant a tracer here?
+    """
+    from rfx.core.jax_utils import is_tracer
+    return is_tracer(jnp.zeros(()))
+
+
+def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
+    """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
+
+    A port with a load (``add_port(..., impedance=...)``, nonzero) reads the
+    model on the host while it is set up, and under an outer ``jax.jit``
+    those arrays are tracers, so the read fails:
+
+    * a wire port (``extent=...``) asks the realized PEC edge mask which of
+      its edges are live — on the uniform lane whenever the model has a
+      conductor (``rfx.sources.sources._wire_port_live_cells``), on the
+      graded lane always (``rfx.runners.nonuniform.run_nonuniform_path``);
+    * on the graded lane every loaded port, wire or lumped, takes its cell
+      sizes as Python floats (``rfx.nonuniform.port_metric_axes``).
+
+    For those models the set-up is evaluated at trace time instead. Every
+    other model — no loaded port, or only lumped ports on the uniform lane —
+    keeps exactly the code path it had before, so its jitted program is
+    unchanged; so does the distributed lane, whose ``shard_map`` step cannot
+    run its constant-operand collectives outside the mesh. The lane test is
+    the one ``forward()`` dispatches on (``_dispatch_plan``: not distributed
+    and ``_uses_nonuniform_mesh``).
+
+    The ports are checked first and the staging probe second, so a model
+    without a loaded port runs neither the probe nor the mesh resolution,
+    and a plain call never reaches the lane test.
+    """
+    if distributed:
+        return False
+    loaded = [pe for pe in sim._ports if pe.impedance != 0.0]
+    if not loaded:
+        return False
+    if not _staged_by_an_outer_trace():
+        return False
+    if any(getattr(pe, "extent", None) is not None for pe in loaded):
+        return True
+    return bool(sim._uses_nonuniform_mesh)
+
+
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
     """Full conductor footprint for the reference-plane trace scan (#695).
 
@@ -2478,10 +2531,8 @@ class _ExecuteMixin:
             init_cpml_for_sharded_nu,
             run_nonuniform_distributed_pec,
             shard_cpml_state_x_slab,
-            shard_debye_coeffs_x_slab,
-            shard_debye_state_x_slab,
-            shard_lorentz_coeffs_x_slab,
-            shard_lorentz_state_x_slab,
+            stage_forward_array_x_slab,
+            stage_forward_dispersion_x_slab,
             shard_pec_mask_x_slab,
             shard_pec_occupancy_x_slab,
         )
@@ -2629,129 +2680,6 @@ class _ExecuteMixin:
                 "Draw the conductor as a volume (a Box at least one cell "
                 "thick) or run the single-device non-uniform lane.")
 
-        # ``eps_override`` / ``sigma_override`` may be JAX tracers (the
-        # caller is differentiating w.r.t. eps/sigma).  Keep the original
-        # concrete materials for ``make_current_source`` so source
-        # normalisation stays Python-float (matches the single-device NU
-        # runner's ``materials_concrete`` pattern in run_nonuniform_path).
-        materials_concrete = materials
-        if eps_override is not None or sigma_override is not None:
-            materials = materials._replace(
-                eps_r=(
-                    eps_override if eps_override is not None
-                    else materials.eps_r
-                ),
-                sigma=(
-                    sigma_override if sigma_override is not None
-                    else materials.sigma
-                ),
-                eps_r_lumped=(None if eps_override is not None
-                              else materials.eps_r_lumped),
-                sigma_lumped=(None if sigma_override is not None
-                              else materials.sigma_lumped),
-            )
-        if pec_mask_override is not None:
-            pec_mask = (
-                pec_mask_override if pec_mask is None
-                else (pec_mask | pec_mask_override)
-            )
-
-        # ---- Initialise Debye / Lorentz state on the full domain BEFORE
-        # sharding (distributed_nu shard helpers expect the full-domain
-        # arrays produced by init_debye / init_lorentz). ----
-        debye = None
-        if debye_spec is not None:
-            debye_poles, debye_masks = debye_spec
-            debye = init_debye(
-                debye_poles, materials, grid.dt, mask=debye_masks,
-            )
-        lorentz = None
-        if lorentz_spec is not None:
-            lorentz_poles, lorentz_masks = lorentz_spec
-            lorentz = init_lorentz(
-                lorentz_poles, materials, grid.dt, mask=lorentz_masks,
-            )
-
-        # ---- Build sharded grid + mesh ----
-        sharded_grid = build_sharded_nu_grid(
-            grid, n_devices, exchange_interval=exchange_interval,
-        )
-        from jax.sharding import Mesh
-        mesh = Mesh(np.array(devices), axis_names=("x",))
-
-        # ---- Shard materials.  ``_split_materials`` lives in
-        # rfx.runners.distributed and pads the high-x end before slabbing. ----
-        from rfx.runners.distributed import _split_materials
-        from jax.sharding import NamedSharding, PartitionSpec as _P
-        shd = NamedSharding(mesh, _P("x"))
-        nx = grid.nx
-        pad_x = sharded_grid.pad_x
-        if pad_x > 0:
-            _pad_widths = ((0, pad_x), (0, 0), (0, 0))
-            materials_padded = MaterialArrays(
-                eps_r=jnp.pad(materials.eps_r, _pad_widths,
-                              constant_values=1.0),
-                sigma=jnp.pad(materials.sigma, _pad_widths,
-                              constant_values=0.0),
-                mu_r=jnp.pad(materials.mu_r, _pad_widths,
-                             constant_values=1.0),
-            )
-        else:
-            materials_padded = materials
-
-        ghost = sharded_grid.ghost_width
-        materials_slabs = _split_materials(
-            materials_padded, n_devices, ghost,
-        )
-
-        def _shard_3d_stacked(arr):
-            n_dev = arr.shape[0]
-            rest = arr.shape[1:]
-            return jax.device_put(
-                arr.reshape(n_dev * rest[0], *rest[1:]), shd,
-            )
-
-        sharded_materials = MaterialArrays(
-            eps_r=_shard_3d_stacked(materials_slabs.eps_r),
-            sigma=_shard_3d_stacked(materials_slabs.sigma),
-            mu_r=_shard_3d_stacked(materials_slabs.mu_r),
-        )
-
-        # ---- Shard PEC mask / occupancy via Phase 2 helpers. ----
-        sharded_pec_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
-        sharded_pec_occupancy = shard_pec_occupancy_x_slab(
-            pec_occupancy_override, sharded_grid,
-        )
-
-        # ---- CPML init + sharding (Phase 2C). ----
-        cpml_params = None
-        cpml_state_sharded = None
-        cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
-        if self._boundary == "cpml" and cpml_layers > 0:
-            cpml_params, cpml_state_stacked = init_cpml_for_sharded_nu(
-                sharded_grid, n_devices,
-                pec_faces=getattr(self, "_pec_faces", None),
-            )
-            cpml_state_sharded = shard_cpml_state_x_slab(
-                cpml_state_stacked, sharded_grid, mesh,
-            )
-
-        # ---- Shard Debye / Lorentz dispersion (Phase 2D). ----
-        sharded_debye = None
-        if debye is not None:
-            db_coeffs, db_state = debye
-            sharded_debye = (
-                shard_debye_coeffs_x_slab(db_coeffs, sharded_grid, mesh),
-                shard_debye_state_x_slab(db_state, sharded_grid, mesh),
-            )
-        sharded_lorentz = None
-        if lorentz is not None:
-            lr_coeffs, lr_state = lorentz
-            sharded_lorentz = (
-                shard_lorentz_coeffs_x_slab(lr_coeffs, sharded_grid, mesh),
-                shard_lorentz_state_x_slab(lr_state, sharded_grid, mesh),
-            )
-
         # ---- Sources / probes (lumped/wire/coax ports unsupported here). ----
         if self._lumped_rlc:
             raise NotImplementedError(
@@ -2774,12 +2702,84 @@ class _ExecuteMixin:
             # both for the source-cell normalisation).
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,
-                materials_concrete, amplitude_kind=pe.amplitude_kind,
+                materials, amplitude_kind=pe.amplitude_kind,
             )
             sources.append(SourceSpec(
                 i=int(si), j=int(sj), k=int(sk),
                 component=sc, waveform=jnp.asarray(wf),
             ))
+
+        if eps_override is not None or sigma_override is not None:
+            materials = materials._replace(
+                eps_r=(
+                    eps_override if eps_override is not None
+                    else materials.eps_r
+                ),
+                sigma=(
+                    sigma_override if sigma_override is not None
+                    else materials.sigma
+                ),
+                eps_r_lumped=(None if eps_override is not None
+                              else materials.eps_r_lumped),
+                sigma_lumped=(None if sigma_override is not None
+                              else materials.sigma_lumped),
+            )
+        if pec_mask_override is not None:
+            pec_mask = (
+                pec_mask_override if pec_mask is None
+                else (pec_mask | pec_mask_override)
+            )
+
+        # Stage one input at a time. In particular, the source normalization
+        # above has consumed concrete cell scalars; no second MaterialArrays
+        # may keep the original whole-domain eps/sigma alive during the scan.
+        sharded_grid = build_sharded_nu_grid(
+            grid, n_devices, exchange_interval=exchange_interval,
+        )
+        from jax.sharding import Mesh, NamedSharding, PartitionSpec as _P
+        mesh = Mesh(np.array(devices), axis_names=("x",))
+        shd = NamedSharding(mesh, _P("x"))
+        staged = []
+        for name, pad_value in (("eps_r", 1.0), ("sigma", 0.0), ("mu_r", 1.0)):
+            staged.append(stage_forward_array_x_slab(
+                getattr(materials, name), sharded_grid, mesh, pad_value,
+            ))
+            materials = materials._replace(**{name: None})
+        sharded_materials = MaterialArrays(*staged)
+        del materials, staged
+
+        sharded_pec_mask = shard_pec_mask_x_slab(pec_mask, sharded_grid)
+        if sharded_pec_mask is not None:
+            sharded_pec_mask = jax.device_put(sharded_pec_mask, shd)
+        del pec_mask
+        sharded_pec_occupancy = shard_pec_occupancy_x_slab(
+            pec_occupancy_override, sharded_grid,
+        )
+        if sharded_pec_occupancy is not None:
+            sharded_pec_occupancy = jax.device_put(sharded_pec_occupancy, shd)
+
+        sharded_debye = stage_forward_dispersion_x_slab(
+            sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",
+        )
+        del debye_spec
+        sharded_lorentz = stage_forward_dispersion_x_slab(
+            sharded_materials, grid.dt, lorentz_spec, sharded_grid, mesh, "lorentz",
+        )
+        del lorentz_spec
+
+        # ---- CPML init + sharding (Phase 2C). ----
+        cpml_params = None
+        cpml_state_sharded = None
+        cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
+        if self._boundary == "cpml" and cpml_layers > 0:
+            cpml_params, cpml_state_stacked = init_cpml_for_sharded_nu(
+                sharded_grid, n_devices,
+                pec_faces=getattr(self, "_pec_faces", None),
+            )
+            cpml_state_sharded = shard_cpml_state_x_slab(
+                cpml_state_stacked, sharded_grid, mesh,
+            )
+            del cpml_state_stacked
 
         probes: list[ProbeSpec] = []
         for pe in self._probes:
@@ -3636,7 +3636,43 @@ class _ExecuteMixin:
             restrictions, including the host Grid object. Absent
             records yield None rather than a passing value. Use
             ``settling_verdict(result.settling_db)`` for the shared -40 dB bar.
+
+        Notes
+        -----
+        ``forward()`` can be called inside ``jax.jit``, so an optimisation
+        step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
+        compiles on its first call and reuses the program afterwards, while
+        an un-jitted ``jax.value_and_grad(loss)`` compiles the whole solve
+        again on every call (#1225). Two kinds of model could not be traced
+        under ``jax.jit`` before #1225: one with a wire port
+        (``add_port(..., extent=...)``; on the uniform lane only when it also
+        had a conductor), and one on a graded mesh with any port that carries
+        an impedance. Their set-up is now evaluated while tracing. The jitted value and gradient agree with a plain call to
+        float32 rounding, not necessarily bit for bit: XLA compiles the whole
+        step as one program.
         """
+        if _forward_needs_trace_time_setup(self, distributed=distributed):
+            # #1225: evaluate the set-up now instead of recording it. Only
+            # the operations that read a traced argument are recorded;
+            # everything built from the model alone is computed at trace
+            # time, so the port's host reads (the realized PEC edge mask,
+            # the cell sizes) see concrete arrays. Forwarding ``locals()``
+            # — the parameters, and nothing else yet — keeps a parameter
+            # added later from being dropped here.
+            #
+            # The re-call happens only if the context really made constants
+            # concrete: inside an eager ``jax.shard_map`` the probe still
+            # reads True, and re-calling would recurse without end. Then
+            # the call falls through to the plain body below, outside the
+            # context, exactly as before #1225.
+            _call = dict(locals())
+            del _call["self"]
+            _unknown = _call.pop("_removed_kwargs")
+            with jax.ensure_compile_time_eval():
+                if not _staged_by_an_outer_trace():
+                    return self.forward(**_call, **_unknown)
+            del _call, _unknown
+
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)

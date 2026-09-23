@@ -3,7 +3,7 @@
  "schema_version": 1,
  "readme": "tests/fixtures/waveguide_chain_battery/README.md",
  "supersedes_cells_from": "tests/fixtures/waveguide_chain_battery/fixture_931_realized_pec_forward2_run369367259427.json",
- "leader_decision": "#1012 samples the magnetic CPML profile at the Yee half cell; the empty guide's worst reflection at the fine rung falls from −42.8 dB to −55.8 dB, and every thru/short cell moves by up to 0.029; the slab cells are unchanged by #1012 and remain stale since #1213.",
+ "leader_decision": "#1012 samples the magnetic CPML profile at the Yee half cell; the empty guide's worst reflection at the fine rung falls from −42.8 dB to −55.8 dB, and every thru/short cell moves by up to 0.029; #1012 also moves the slab cells (by 0.0271 / 0.0130 / 0.0063 coarse / mid / fine, false normalization); they were already stale since #1213 (0.41 / 0.181 / 0.088 from this record on main) and must be re-frozen on a tree that contains both.",
  "scope": "Only the 12 thru/pec_short cells are re-frozen. The six slab cell objects are copied unchanged. Historical AD/FD, plane-shift, ladder, verdict and pin records remain in the schema-4 artifact.",
  "provenance": {
   "run_id": "369367264028",

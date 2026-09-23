@@ -20,11 +20,19 @@ sigma reported in m^2.
 import json
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 import numpy as np
+
+# Pin THIS repo tree ahead of any installed rfx: running the script directly puts
+# only its own directory on sys.path, so an editable rfx from another checkout
+# would win silently (the sibling rcs280 / rcs_sphere_mie generators carry the
+# same guard for the same reason).
+_REPO = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(_REPO))
 
 F0 = 6e9
 C0 = 299792458.0
@@ -46,6 +54,9 @@ KL = 2 * np.pi * L / LAM
 
 
 def run_rfx():
+    import rfx
+    if Path(rfx.__file__).resolve().parents[1] != _REPO:
+        raise RuntimeError(f"import rfx resolved outside this repo tree ({rfx.__file__})")
     import jax.numpy as jnp
     from rfx.grid import Grid
     from rfx.geometry.csg import Box, rasterize
@@ -91,13 +102,26 @@ def run_bempp(h):
     return [float(v) for v in sigma], int(rwg.global_dof_count), bem.__version__
 
 
-def main():
+def main(rfx_only=False):
     t0 = time.time()
     rfx_out = run_rfx()
-    b_main, n_main, ver = run_bempp(min(L / 10, LAM / 12))
-    b_fine, n_fine, _ = run_bempp(min(L / 14, LAM / 16))
+    if rfx_only:
+        # --rfx-only: re-run rfx alone and keep the committed Bempp arrays (the
+        # reference is external and frozen; bempp-cl is not an rfx dependency).
+        old = json.loads((_HERE / "fixture.json").read_text())
+        b_main = old["bempp"]["bistatic_sigma_m2"]
+        b_fine = old["bempp"]["bistatic_sigma_m2_fine"]
+        n_main, n_fine = old["bempp"]["N_main"], old["bempp"]["N_fine"]
+        ver = old["bempp"]["version"]
+        bempp_from = old["provenance"].get("bempp_from_rfx_commit",
+                                           old["provenance"]["rfx_commit"])
+    else:
+        b_main, n_main, ver = run_bempp(min(L / 10, LAM / 12))
+        b_fine, n_fine, _ = run_bempp(min(L / 14, LAM / 16))
+        bempp_from = None
     sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
                          text=True).stdout.strip()
+    bempp_from = bempp_from or sha
 
     rfx_m2 = np.array(rfx_out["bistatic_sigma_m2"])
     bm = np.array(b_main); bf = np.array(b_fine)
@@ -166,6 +190,7 @@ def main():
         },
         "provenance": {"rfx_commit": sha, "bempp_version": ver,
                        "producer": "tests/fixtures/rcs_cube_bem/generate.py",
+                       "bempp_from_rfx_commit": bempp_from,
                        "wall_s": time.time() - t0,
                        "env": "OPENBLAS_NUM_THREADS<=64; import name bempp_cl (not bempp) in 0.4.x"},
     }
@@ -179,4 +204,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(rfx_only="--rfx-only" in sys.argv[1:])

@@ -230,6 +230,12 @@ def main():
 
     out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
                        "fixture.json")
+    # Carry the dated "record_*" notes of earlier generations forward: they say
+    # why the stored numbers moved, and a regeneration must not erase that.
+    if os.path.exists(out):
+        with open(out) as f:
+            fixture.update({k: v for k, v in json.load(f).items()
+                            if k.startswith("record_")})
     with open(out, "w") as f:
         json.dump(fixture, f, indent=2)
         f.write("\n")

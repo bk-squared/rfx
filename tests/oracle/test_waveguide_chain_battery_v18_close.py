@@ -46,6 +46,7 @@ No gate, tolerance, golden or pin is moved here: the gradient-invariance pin is
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import warnings
@@ -70,6 +71,7 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_v18_close.json"
 LIVE_FIXTURE = FIXTURE.with_name("fixture_931_realized_pec_forward2_run369367259427.json")
 LIVE_CELLS_FIXTURE = FIXTURE.with_name("fixture_1012_cpml_half_cell_run369367264028.json")
+LIVE_CELLS_SHA256 = "268b4dceef1bca091e21f18fbeaa2272105827e846002be614d1bb055d55ddc2"
 RUN2 = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_guide_cell_aperture.json"
 FROZEN = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
@@ -312,7 +314,25 @@ def live_fx() -> dict:
 @pytest.fixture(scope="module")
 def live_cells_fx() -> dict:
     # #1012 remeasured only thru/short cells; historical replay stays on #931.
-    return json.loads(LIVE_CELLS_FIXTURE.read_text())
+    raw = LIVE_CELLS_FIXTURE.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == LIVE_CELLS_SHA256, "live cell record SHA-256 mismatch"
+    return json.loads(raw)
+
+
+def test_live_cell_record_integrity(live_cells_fx):
+    assert len(live_cells_fx["cells"]) == 18
+
+
+def test_live_cell_record_rejects_one_changed_byte(tmp_path, monkeypatch):
+    # Change JSON whitespace so decoding still succeeds; only integrity detects it.
+    raw = LIVE_CELLS_FIXTURE.read_bytes()
+    changed = raw.replace(b"\n", b" ", 1)
+    assert sum(a != b for a, b in zip(raw, changed)) == 1
+    path = tmp_path / LIVE_CELLS_FIXTURE.name
+    path.write_bytes(changed)
+    monkeypatch.setitem(globals(), "LIVE_CELLS_FIXTURE", path)
+    with pytest.raises(AssertionError, match="live cell record SHA-256 mismatch"):
+        live_cells_fx.__wrapped__()
 
 
 @pytest.fixture(scope="module")
