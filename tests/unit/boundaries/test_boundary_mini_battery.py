@@ -1,9 +1,12 @@
 """Electric/magnetic cavities, periodic ring, absorber decay and face nodes.
 
-Tolerances below were set before the B1 measurements were read. On main the
-electric cube passes on run() and forward(); the magnetic cavity's (1,1) wall
-separation, the periodic ring and the face-node traces against the mirrored
-model are strict expected failures, removed by B3, B2 and B3.
+Tolerances below were set before the B1 measurements were read. One fixture
+changed after its first measurement: the CPML box's pulse cutoff went from 3 to
+4.5 because the cutoff-3 run ended at -24.98 dB against the -40 dB level; both
+records are committed under scripts/diagnostics/boundary_model/B1/battery/. On
+main the electric cube passes on run() and forward(); the magnetic cavity's
+(1,1) wall separation, the periodic ring and the face-node traces against the
+mirrored model are strict expected failures, removed by B3, B2 and B3.
 """
 
 from contextlib import contextmanager
