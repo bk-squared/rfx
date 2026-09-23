@@ -546,6 +546,154 @@ these rows.
 
 The GPU model is not recorded for A_on, A_off, C_off: those arms ran before the instrument read `device_kind`, and their blocks are left as they were measured rather than back-filled.
 
+### F.6 The same arms read with an estimator that is exact at a transmission zero
+
+Reported, no window.  W5 to W8 above are frozen on the case's estimator and are judged on it;
+nothing below changes a verdict or is one.  Every notch here is read again from the same
+recorded curves by the same shared `refined_extremum` (`validation/crossval/comparators/spectral_features.py`):
+the deepest bin in the reference band and the vertex of the parabola through it and its two
+neighbours.  Only the domain of that parabola differs between the two columns.  `log` fits it
+in the log of the magnitude of S21; that is the case's estimator, the one F.3 and F.4 print.
+`power` fits it in the squared magnitude of S21.  Near a simple zero moved off the real
+frequency axis by loss, the squared magnitude is ((f - f0) / B)^2 + floor, a parabola in f,
+so that vertex is exact there wherever the zero falls inside its bin.  Every distance below
+is from the reference read with the same estimator.
+
+**Every arm's notch, both ways.**  The last two columns are where each vertex falls from the
+deepest bin, in bins.
+
+| arm | log (GHz) | power (GHz) | power minus log (MHz) | log vertex from the deepest bin (bins) | power vertex from the deepest bin (bins) |
+|---|---|---|---|---|---|
+| C_off_re | 3.716635 | 3.718408 | +1.773 | +0.0535 | +0.1658 |
+| F16Z6 | 3.748281 | 3.750134 | +1.852 | +0.0578 | +0.1751 |
+| ON13 | 3.733383 | 3.735796 | +2.414 | +0.1142 | +0.2671 |
+| Z16 | 3.710389 | 3.708800 | -1.589 | -0.3420 | -0.4427 |
+| Z6 | 3.749938 | 3.752466 | +2.528 | +0.1627 | +0.3229 |
+| Z8 | 3.733780 | 3.736288 | +2.508 | +0.1394 | +0.2982 |
+| A_on | 3.732318 | 3.733944 | +1.626 | +0.0468 | +0.1498 |
+| A_off | 3.747389 | 3.747451 | +0.062 | +0.0013 | +0.0052 |
+| C_off | 3.716635 | 3.718408 | +1.773 | +0.0535 | +0.1658 |
+| openEMS `stage_b_fine`, the reference | 3.674356 | 3.673868 | -0.487 | -0.2559 | -0.3673 |
+
+**The FZ ladder, both ways.**  Addendum A.2's one-build ladder at F = 24.2915 um; only the
+substrate cell moves.  Each step is from the rung above.
+
+| arm | FZ (um) | log (GHz) | step (MHz) | power (GHz) | step (MHz) |
+|---|---|---|---|---|---|
+| Z6 | 42.3333 | 3.749938 | n/a | 3.752466 | n/a |
+| Z8 | 31.7500 | 3.733780 | -16.158 | 3.736288 | -16.178 |
+| C_off_re | 21.1667 | 3.716635 | -17.145 | 3.718408 | -17.880 |
+| Z16 | 15.8750 | 3.710389 | -6.246 | 3.708800 | -9.608 |
+
+The declared ladder, with C_off in C_off_re's place, reads the same to the last bit under
+both estimators: True.  Monotone: log True, power True.  The finest rung from the reference: log
++0.9807 %, power +0.9508 %.
+
+**Every reading of the order, both ways,** each with its limit and the substrate rule it
+implies.  The first four readings take the limit the way W5 does, from the finest two rungs
+the reading covers, at its order; F.4 prints no limit for the coarse-endpoint reading, and
+this is the one it would have.  The substrate rule is W8's derivation applied to each reading:
+FZ = (bar x limit / abs(A))^(1/p) and n_z = ceil(h / FZ), the bar 1 % of that reading's OWN limit.
+
+| how the order is read | estimator | order | limit (GHz) | limit from the reference (%) | abs(A) | FZ for the bar (um) | n_z for the bar |
+|---|---|---|---|---|---|---|---|
+| declared: least squares of the log step against the midpoint of each pair's log FZ | log | 1.3713 | 3.69748 | +0.6292 | 4.9246e+13 | 34.1871 | 8 |
+| declared: least squares of the log step against the midpoint of each pair's log FZ | power | 0.7518 | 3.66901 | -0.1323 | 1.6137e+11 | 14.2503 | 18 |
+| the same, each step at the coarser rung of its pair | log | 1.4448 | 3.69827 | +0.6508 | 1.0408e+14 | 34.3609 | 8 |
+| the same, each step at the coarser rung of its pair | power | 0.8030 | 3.67183 | -0.0555 | 2.6402e+11 | 15.7398 | 17 |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | log | 0.8258 | 3.67352 | -0.0227 | 3.1224e+11 | 17.4364 | 15 |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | power | 0.7064 | 3.66450 | -0.2551 | 1.0806e+11 | 12.2543 | 21 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | log | 1.8888 | 3.70174 | +0.7452 | 1.0046e+16 | 34.2703 | 8 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | power | 0.7958 | 3.67146 | -0.0656 | 2.4643e+11 | 15.5400 | 17 |
+| f_inf + A FZ^p fitted to all four notches at once | log | 1.1908 | 3.69189 | +0.4772 | 9.3933e+12 | 28.8747 | 9 |
+| f_inf + A FZ^p fitted to all four notches at once | power | 0.7429 | 3.66799 | -0.1600 | 1.4989e+11 | 13.7675 | 19 |
+
+The three-parameter fit leaves 0.517 MHz rms (log) and 0.051 MHz rms (power) on four points with
+three unknowns.
+
+**W6's three numbers, both ways** (A_off -> Z6 -> C_off_re).
+
+| estimator | T, A_off -> C_off_re (MHz) | dZ, Z6 -> C_off_re (MHz) | dF, A_off -> Z6 (MHz) |
+|---|---|---|---|
+| log | +30.754 | +33.303 | -2.549 |
+| power | +29.043 | +34.058 | -5.015 |
+
+**The three in-plane points, both ways,** at FZ = 42.3333 um.  Each step is from the row above.
+
+| arm | F (um) | log (GHz) | step (MHz) | power (GHz) | step (MHz) |
+|---|---|---|---|---|---|
+| A_off | 47.2441 | 3.747389 | n/a | 3.747451 | n/a |
+| F16Z6 | 35.9281 | 3.748281 | +0.893 | 3.750134 | +2.682 |
+| Z6 | 24.2915 | 3.749938 | +1.657 | 3.752466 | +2.333 |
+
+**W7's row, both ways.**
+
+| estimator | A_off minus ON13 (MHz) | F slope on the two on-node arms (MHz/um) | what that slope makes of the F gap (MHz) | A_off minus ON13 without that part (MHz) |
+|---|---|---|---|---|
+| log | +14.006 | -0.2767 | -0.302 | +14.308 |
+| power | +11.655 | -0.4815 | -0.525 | +12.180 |
+
+**Instrument evidence (a), a diagnostic: the vertex from wider stencils.**  Least-squares
+parabolas over 3, 5 and 7 samples centred on the deepest bin, on the bin-index abscissa the shared
+estimator assumes; at 3 samples this is the shared estimator's own vertex.  No window and no
+reading above uses the wider stencils.
+
+| arm | estimator | 3 samples (GHz) | 5 samples (GHz) | 7 samples (GHz) | largest minus smallest (kHz) |
+|---|---|---|---|---|---|
+| Z6 | log | 3.749938 | 3.750301 | 3.750370 | 432.4 |
+| Z6 | power | 3.752466 | 3.752466 | 3.752466 | 0.2 |
+| Z8 | log | 3.733780 | 3.734214 | 3.734307 | 526.9 |
+| Z8 | power | 3.736288 | 3.736289 | 3.736290 | 2.0 |
+| C_off_re | log | 3.716635 | 3.717035 | 3.717158 | 523.2 |
+| C_off_re | power | 3.718408 | 3.718409 | 3.718410 | 2.0 |
+| Z16 | log | 3.710389 | 3.711219 | 3.711366 | 977.3 |
+| Z16 | power | 3.708800 | 3.708802 | 3.708804 | 4.0 |
+
+**Instrument evidence (b), a diagnostic: a synthetic lossy zero at each ladder arm's own
+bins.**  The squared magnitude is ((f - f0) / B)^2 + floor, B and the floor read off the arm by
+the 3-sample power parabola at its notch, sampled on the arm's own frequency grid.  f0 is put at
+tenths of a bin above the arm's deepest bin, and each error is the estimate minus f0.  The
+power column is a parabola in f by construction.  The recorded grid is not exactly even and
+the shared estimator takes it as even, so the power error is also given on an evenly spaced
+grid of the same bin width, as the control.
+
+| arm | bin width (MHz) | spacing spread over the sweep (Hz) | B (GHz) | floor (dB) | the synthetic's deepest bin across the sweep (dB) | the arm's own deepest bin (dB) |
+|---|---|---|---|---|---|---|
+| Z6 | 15.789312 | 1024 | 1.1888 | -54.88 | -43.25 to -54.88 | -46.65 |
+| Z8 | 15.789568 | 1024 | 1.1839 | -54.77 | -43.21 to -54.77 | -47.18 |
+| C_off_re | 15.789312 | 1024 | 1.1778 | -54.74 | -43.16 to -54.74 | -50.81 |
+| Z16 | 15.789312 | 1024 | 1.1744 | -54.66 | -43.13 to -54.66 | -44.11 |
+
+| f0 above the deepest bin (bins) | Z6 log error (MHz) | Z8 log error (MHz) | C_off_re log error (MHz) | Z16 log error (MHz) | largest abs power error of the four, recorded grid (Hz) | the same, evenly spaced grid (Hz) |
+|---|---|---|---|---|---|---|
+| 0.0 | +0.000 | -0.000 | +0.000 | +0.000 | 1.3e+02 | 0.0e+00 |
+| 0.1 | -1.143 | -1.142 | -1.142 | -1.141 | 1.1e+02 | 0.0e+00 |
+| 0.2 | -2.044 | -2.043 | -2.043 | -2.042 | 9.2e+01 | 0.0e+00 |
+| 0.3 | -2.513 | -2.511 | -2.511 | -2.510 | 6.7e+01 | 0.0e+00 |
+| 0.4 | -2.180 | -2.179 | -2.179 | -2.178 | 3.6e+01 | 0.0e+00 |
+| 0.5 | +0.000 | +0.000 | +0.000 | +0.000 | 0.0e+00 | 0.0e+00 |
+| 0.6 | +2.180 | +2.179 | +2.179 | +2.178 | 1.4e+02 | 0.0e+00 |
+| 0.7 | +2.513 | +2.511 | +2.511 | +2.510 | 1.4e+02 | 0.0e+00 |
+| 0.8 | +2.044 | +2.043 | +2.043 | +2.042 | 1.4e+02 | 0.0e+00 |
+| 0.9 | +1.143 | +1.142 | +1.142 | +1.141 | 1.4e+02 | 0.0e+00 |
+
+Across the sweep and the four arms the log error runs from -2.513 to +2.513 MHz; the largest power error is 1.4e+02 Hz on the recorded grid and
+0.0e+00 Hz on the evenly spaced one.
+
+**The first record's graded ladder, both ways.**  A_off, B_off and C_off cut both cells together.  Read
+the way W3 reads it: the order from all three rungs, the limit from the finest two at that order.
+
+| arm | F (um) | FZ (um) | log (GHz) | power (GHz) |
+|---|---|---|---|---|
+| A_off | 47.2441 | 42.3333 | 3.747389 | 3.747451 |
+| B_off | 35.9281 | 31.7500 | 3.732214 | 3.733704 |
+| C_off | 24.2915 | 21.1667 | 3.716635 | 3.718408 |
+
+| estimator | ratio of the two steps | the ratio an order near zero gives | order | limit (GHz) | limit from the reference (%) |
+|---|---|---|---|---|---|
+| log | 0.9740 | 0.7095 | 0.9225 | 3.68229 | +0.2159 |
+| power | 0.8987 | 0.7095 | 0.6867 | 3.67076 | -0.0846 |
+
 ### Conclusions (leader, rewritten after the review and the A.2 re-measurement; read against F.0–F.5, A.2, F.4b and the two records)
 
 **The remaining first-order term is the substrate-normal cell at the sheet, and that is the

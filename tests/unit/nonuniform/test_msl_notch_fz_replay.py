@@ -1226,3 +1226,311 @@ def test_the_solver_tree_check_tells_a_label_from_a_simulator():
     assert ins.commits_absent(["0" * 40, "1" * 40, "0" * 40]) == [
         "0" * 40, "1" * 40]
 
+
+# --------------------------- F.6: the same arms read with |S21|^2 as well
+#: Every number F.6 prints that a sentence may quote, transcribed from
+#: ``--tables`` on the committed records.  Pairs are (log, power): the case's
+#: own estimator, and the same shared ``refined_extremum`` fitting its
+#: parabola in |S21|^2.  F.6 carries no window; these pin what it reports.
+RECORDED_F6_NOTCH_GHZ = {
+    "A_off": (3.747389, 3.747451),
+    "A_on": (3.732318, 3.733944),
+    "C_off": (3.716635, 3.718408),
+    "C_off_re": (3.716635, 3.718408),
+    "F16Z6": (3.748281, 3.750134),
+    "ON13": (3.733383, 3.735796),
+    "Z16": (3.710389, 3.708800),
+    "Z6": (3.749938, 3.752466),
+    "Z8": (3.733780, 3.736288),
+}
+RECORDED_F6_REFERENCE_GHZ = (3.674356, 3.673868)
+RECORDED_F6_STEPS_MHZ = {"log": [-16.158, -17.1453, -6.2457],
+                         "power": [-16.178, -17.8804, -9.6076]}
+RECORDED_F6_FINEST_PCT = {"log": 0.9807, "power": 0.9508}
+RECORDED_F6_DECLARED_LADDER_READS_THE_SAME = True
+#: order, limit (GHz), limit from the same estimator's reference (%), n_z
+RECORDED_F6_READINGS = {
+    "log": {
+        "declared": (1.3713, 3.69748, 0.6292, 8),
+        "coarse_endpoint": (1.4448, 3.69827, 0.6508, 8),
+        "triple_0": (0.8258, 3.67352, -0.0227, 15),
+        "triple_1": (1.8888, 3.70174, 0.7452, 8),
+        "three_parameter": (1.1908, 3.69189, 0.4772, 9),
+    },
+    "power": {
+        "declared": (0.7518, 3.66901, -0.1323, 18),
+        "coarse_endpoint": (0.8030, 3.67183, -0.0555, 17),
+        "triple_0": (0.7064, 3.66450, -0.2551, 21),
+        "triple_1": (0.7958, 3.67146, -0.0656, 17),
+        "three_parameter": (0.7429, 3.66799, -0.1600, 19),
+    },
+}
+RECORDED_F6_RMS_MHZ = {"log": 0.5173, "power": 0.0514}
+#: T, dZ, dF (MHz) on A_off -> Z6 -> C_off_re
+RECORDED_F6_W6_MHZ = {"log": (30.7541, 33.3032, -2.5492),
+                      "power": (29.0434, 34.0583, -5.0150)}
+#: A_off, F16Z6, Z6 at FZ = h/6
+RECORDED_F6_INPLANE_GHZ = {"log": [3.747389, 3.748281, 3.749938],
+                           "power": [3.747451, 3.750134, 3.752466]}
+#: A_off - ON13 (MHz), on-node F slope (MHz/um), its F part (MHz), and the
+#: difference less that part (MHz)
+RECORDED_F6_W7 = {"log": (14.0061, -0.2767, -0.3016, 14.3078),
+                  "power": (11.6550, -0.4815, -0.5249, 12.1800)}
+#: A_off, B_off, C_off (GHz); order; limit (GHz); limit from the reference (%)
+RECORDED_F6_FIRST_LADDER = {
+    "log": ([3.747389, 3.732214, 3.716635], 0.9225, 3.68229, 0.2159),
+    "power": ([3.747451, 3.733704, 3.718408], 0.6867, 3.67076, -0.0846)}
+#: largest minus smallest vertex over 3, 5 and 7 samples (kHz)
+RECORDED_F6_STENCIL_SPREAD_KHZ = {
+    "log": {"Z6": 432.37, "Z8": 526.91, "C_off_re": 523.20, "Z16": 977.33},
+    "power": {"Z6": 0.15, "Z8": 2.03, "C_off_re": 2.05, "Z16": 3.97}}
+#: the synthetic zero: log error range (MHz), largest power error on the
+#: recorded grid (Hz)
+RECORDED_F6_SYNTHETIC_LOG_ERROR_MHZ = (-2.5128, 2.5127)
+RECORDED_F6_SYNTHETIC_POWER_ERROR_HZ = 143.36
+
+
+@pytest.fixture(scope="module")
+def f6(arms):
+    return ins.estimator_comparison(arms, ins.load_first_ladder(BASE_RECORD))
+
+
+def _mag(record: dict) -> np.ndarray:
+    return np.abs(np.asarray(record["s21_re"], float)
+                  + 1j * np.asarray(record["s21_im"], float))
+
+
+def _power_notch_hz(record: dict) -> float:
+    """The shared estimator called here, not through the instrument."""
+    return case._refined_extremum(
+        np.asarray(record["freqs_hz"], float), _mag(record),
+        *case.REFERENCE_BAND_HZ, transform="power")["refined_f"]
+
+
+def test_f6_reads_every_arm_and_the_reference_both_ways(arms, f6):
+    """Nine arms and the openEMS stage, each by both estimators.
+
+    The |S21|^2 notch is re-derived here by calling the shared
+    ``refined_extremum`` directly, so the instrument's route to it is checked
+    and not only its answer.
+    """
+    assert f6["transforms"] == ["log", "power"]
+    assert sorted(f6["arms"]) == sorted(arms) == sorted(RECORDED_F6_NOTCH_GHZ)
+    for k, (log_ghz, pw_ghz) in sorted(RECORDED_F6_NOTCH_GHZ.items()):
+        n = f6["notches"][k]
+        assert n["log"]["f_hz"] == ins.notch_of(arms[k])["f"], k
+        assert n["power"]["f_hz"] == _power_notch_hz(arms[k]), k
+        assert n["log"]["f_hz"] / 1e9 == pytest.approx(log_ghz, abs=1e-6), k
+        assert n["power"]["f_hz"] / 1e9 == pytest.approx(pw_ghz, abs=1e-6), k
+    stage = case._load(case._OPENEMS_JSON)[case.OPENEMS_JUDGED_STAGE]
+    f = np.asarray(stage["freqs_ghz"], float) * 1e9
+    direct = case._refined_extremum(f, np.asarray(stage["s21_mag"], float),
+                                    *case.REFERENCE_BAND_HZ,
+                                    transform="power")["refined_f"]
+    assert f6["reference_hz"]["power"] == direct
+    assert f6["reference_hz"]["log"] == ins.reference_notch_hz()
+    assert [f6["reference_hz"][t] / 1e9 for t in ("log", "power")] == (
+        pytest.approx(list(RECORDED_F6_REFERENCE_GHZ), abs=1e-6))
+
+
+def test_f6_the_fz_ladder_both_ways(arms, f6):
+    """The one-build ladder's steps and all five readings of its order.
+
+    The log column is the frozen windows' arithmetic, so it has to reproduce
+    F.4 exactly; the power column is the same arithmetic on the other
+    notches, and the distance of every limit is from the reference read the
+    same way.
+    """
+    assert (f6["declared_ladder_reads_the_same"]
+            is RECORDED_F6_DECLARED_LADDER_READS_THE_SAME)
+    w5 = ins.w5_fz_ladder(arms, ins.FZ_LADDER_ONE_COMMIT)
+    w8 = ins.w8_is_z_enough(arms, ins.FZ_LADDER_ONE_COMMIT)
+    for t in ("log", "power"):
+        lad = f6["ladder"][t]
+        assert lad["arms"] == list(ins.FZ_LADDER_ONE_COMMIT)
+        assert lad["monotone"] is True
+        notches = [f6["notches"][k][t]["f_hz"] for k in lad["arms"]]
+        assert lad["notches_hz"] == notches
+        assert [v / 1e6 for v in lad["steps_hz"]] == pytest.approx(
+            RECORDED_F6_STEPS_MHZ[t], abs=1e-3)
+        assert lad["steps_hz"] == pytest.approx(
+            list(np.diff(notches)), abs=1e-6)
+        ref = f6["reference_hz"][t]
+        assert lad["finest_from_reference_pct"] == pytest.approx(
+            RECORDED_F6_FINEST_PCT[t], abs=1e-4)
+        assert lad["finest_from_reference_pct"] == pytest.approx(
+            100.0 * (notches[-1] - ref) / ref, rel=1e-12)
+        got = {r["key"]: r for r in lad["readings"]}
+        assert list(got) == list(RECORDED_F6_READINGS[t])
+        for key, (p, lim, pct, n_z) in RECORDED_F6_READINGS[t].items():
+            r = got[key]
+            assert r["order"] == pytest.approx(p, abs=1e-4), (t, key)
+            assert r["limit_hz"] / 1e9 == pytest.approx(lim, abs=1e-5), (t, key)
+            assert r["limit_from_reference_pct"] == pytest.approx(
+                pct, abs=1e-4), (t, key)
+            assert r["limit_from_reference_pct"] == pytest.approx(
+                100.0 * (r["limit_hz"] - ref) / ref, rel=1e-12)
+            assert r["n_substrate_cells_for_the_bar"] == n_z, (t, key)
+            # W8's derivation, re-derived from the reading's own numbers.
+            fz = (case.FREQ_BAR * abs(r["limit_hz"]) / abs(r["amplitude"])) ** (
+                1.0 / r["order"])
+            assert r["substrate_cell_for_the_bar_m"] == pytest.approx(
+                fz, rel=1e-9)
+            assert n_z == int(np.ceil(case.SUBSTRATE_THICKNESS_M / fz - 1e-12))
+            # The reading passes through its own two finest rungs.
+            if key != "three_parameter":
+                j = {"triple_0": 1}.get(key, 2)
+                h = lad["substrate_cells_m"]
+                for i in (j, j + 1):
+                    assert r["limit_hz"] + r["amplitude"] * h[i] ** r[
+                        "order"] == pytest.approx(notches[i], rel=1e-12)
+        assert got["three_parameter"]["rms_hz"] / 1e6 == pytest.approx(
+            RECORDED_F6_RMS_MHZ[t], abs=1e-4)
+    # The log column is F.4, number for number.
+    log = {r["key"]: r for r in f6["ladder"]["log"]["readings"]}
+    assert log["declared"]["order"] == w5["order"]
+    assert log["declared"]["limit_hz"] / 1e9 == pytest.approx(
+        w5["limit_ghz"], rel=1e-15)
+    assert log["declared"]["n_substrate_cells_for_the_bar"] == (
+        w8["n_substrate_cells_for_the_bar"])
+    assert log["coarse_endpoint"]["order"] == w5["order_at_coarse_endpoint"]
+    for i, t in enumerate(w5["adjacent_triples"]):
+        assert log[f"triple_{i}"]["order"] == t["order"]
+        assert log[f"triple_{i}"]["limit_hz"] / 1e9 == pytest.approx(
+            t["limit_ghz"], rel=1e-12)
+    assert log["three_parameter"]["order"] == w5["order_three_parameter"]
+    assert log["three_parameter"]["rms_hz"] / 1e6 == pytest.approx(
+        w5["rms_three_parameter_mhz"], rel=1e-12)
+
+
+def test_f6_w6_the_in_plane_points_and_w7_both_ways(arms, f6):
+    """The attribution legs, the F ladder at FZ = h/6 and W7's row."""
+    for t in ("log", "power"):
+        n = {k: f6["notches"][k][t]["f_hz"] for k in f6["arms"]}
+        r6 = f6["w6"][t]
+        assert r6["fine_rung"] == "C_off_re"
+        tot, dz, df = RECORDED_F6_W6_MHZ[t]
+        assert r6["total_mhz"] == pytest.approx(tot, abs=1e-3)
+        assert r6["delta_z_mhz"] == pytest.approx(dz, abs=1e-3)
+        assert r6["delta_f_mhz"] == pytest.approx(df, abs=1e-3)
+        assert r6["delta_z_mhz"] * 1e6 == pytest.approx(
+            n["Z6"] - n["C_off_re"], abs=1e-3)
+        assert r6["delta_f_mhz"] * 1e6 == pytest.approx(
+            n["A_off"] - n["Z6"], abs=1e-3)
+        ip = f6["inplane"][t]
+        assert [ip[k]["f_hz"] / 1e9 for k in ins.F6_INPLANE] == pytest.approx(
+            RECORDED_F6_INPLANE_GHZ[t], abs=1e-6)
+        assert [ip[k]["f_hz"] for k in ins.F6_INPLANE] == [
+            n[k] for k in ins.F6_INPLANE]
+        r7 = f6["w7"][t]
+        delta, slope, part, less = RECORDED_F6_W7[t]
+        assert r7["delta_mhz"] == pytest.approx(delta, abs=1e-3)
+        assert r7["f_slope_mhz_per_um"] == pytest.approx(slope, abs=1e-4)
+        assert r7["f_part_of_delta_mhz"] == pytest.approx(part, abs=1e-3)
+        assert r7["delta_less_f_part_mhz"] == pytest.approx(less, abs=1e-3)
+        assert r7["delta_less_f_part_mhz"] == pytest.approx(
+            r7["delta_mhz"] - r7["f_part_of_delta_mhz"], abs=1e-9)
+        assert r7["delta_mhz"] * 1e6 == pytest.approx(
+            n["A_off"] - n["ON13"], abs=1e-3)
+    # The log W6 and W7 are the frozen windows' own.
+    assert f6["w6"]["log"]["delta_z_mhz"] == ins.fz_verdicts(arms)[
+        "W6_one_commit"]["delta_z_mhz"]
+    assert f6["w7"]["log"]["delta_mhz"] == ins.w7_offset_sign(arms)["delta_mhz"]
+
+
+def test_f6_the_first_records_ladder_both_ways(f6):
+    """A_off, B_off, C_off, both cells cut together, read as W3 reads them."""
+    with BASE_RECORD.open() as fh:
+        base = json.load(fh)["arms"]
+    w3 = ins.w3_cross_ladder(base)
+    for t in ("log", "power"):
+        r = f6["first_ladder"][t]
+        notches, p, lim, pct = RECORDED_F6_FIRST_LADDER[t]
+        assert r["arms"] == list(ins.LADDER)
+        assert [v / 1e9 for v in r["notches_hz"]] == pytest.approx(
+            notches, abs=1e-6)
+        assert r["notches_hz"] == [ins.notch_of(base[k], t)["f"]
+                                   for k in ins.LADDER]
+        assert r["order"] == pytest.approx(p, abs=1e-4)
+        assert r["limit_hz"] / 1e9 == pytest.approx(lim, abs=1e-5)
+        assert r["limit_from_reference_pct"] == pytest.approx(pct, abs=1e-4)
+    assert f6["first_ladder"]["power"]["notches_hz"][1] == _power_notch_hz(
+        base["B_off"])
+    # The log reading is the first note's W3, unchanged.
+    assert f6["first_ladder"]["log"]["order"] == w3["fitted_order"]
+    assert f6["first_ladder"]["log"]["limit_hz"] / 1e9 == pytest.approx(
+        w3["limit_ghz"], rel=1e-15)
+
+
+def test_f6_the_stencil_diagnostic(arms, f6):
+    """At three samples the diagnostic IS the shared estimator's vertex.
+
+    That is what licenses reading its five- and seven-sample vertices beside
+    it: the diagnostic re-types the two domains ``refined_extremum`` fits in,
+    and this pins the re-typing to the shared function on every ladder arm.
+    """
+    for k in ins.FZ_LADDER_ONE_COMMIT:
+        f = np.asarray(arms[k]["freqs_hz"], float)
+        for t in ("log", "power"):
+            shared = case._refined_extremum(f, _mag(arms[k]),
+                                            *case.REFERENCE_BAND_HZ,
+                                            transform=t)["refined_f"]
+            v = f6["stencils"][k][t]
+            assert sorted(v) == list(ins.F6_STENCILS)
+            assert v[3] == pytest.approx(shared, abs=1e-3), (k, t)
+            spread = (max(v.values()) - min(v.values())) / 1e3
+            assert spread == pytest.approx(
+                RECORDED_F6_STENCIL_SPREAD_KHZ[t][k], abs=0.01), (k, t)
+    with pytest.raises(ValueError, match="odd stencil"):
+        ins.least_squares_parabola([1.0, 2.0, 3.0, 4.0], [1.0, 0.5, 1.0, 2.0],
+                                   4, "power")
+
+
+def test_f6_the_synthetic_zero(arms, f6):
+    """Both estimators on a lossy zero shaped like each ladder arm's own."""
+    syn = f6["synthetic"]
+    assert list(syn) == list(ins.FZ_LADDER_ONE_COMMIT)
+    rows = [r for z in syn.values() for r in z["rows"]]
+    assert [r["position_bins"] for r in syn["Z6"]["rows"]] == list(
+        ins.F6_SYNTHETIC_POSITIONS)
+    log = [r["error_log_hz"] / 1e6 for r in rows]
+    assert (min(log), max(log)) == pytest.approx(
+        RECORDED_F6_SYNTHETIC_LOG_ERROR_MHZ, abs=1e-3)
+    assert max(abs(r["error_power_hz"]) for r in rows) == pytest.approx(
+        RECORDED_F6_SYNTHETIC_POWER_ERROR_HZ, abs=0.1)
+    assert max(abs(r["error_power_even_grid_hz"]) for r in rows) < 1e-3
+    for k, z in syn.items():
+        f = np.asarray(arms[k]["freqs_hz"], float)
+        assert z["bin_width_hz"] == ins.least_squares_parabola(
+            f, _mag(arms[k]), 3, "power")["bin_width_hz"]
+        assert z["grid_spacing_spread_hz"] == float(np.ptp(np.diff(f)))
+        # A zero on a bin centre and one half-way are read exactly by both.
+        for r in z["rows"]:
+            if r["position_bins"] in (0.0, 0.5):
+                assert abs(r["error_log_hz"]) < 1e3, (k, r)
+
+
+def test_the_notes_f6_is_the_instruments_f6_byte_for_byte(arms, f6):
+    """The note's F.6 is what ``--tables`` prints, to the byte.
+
+    F.6 alone and not the whole Results section, because F.6 is the part that
+    reads the same on every machine and in every checkout: F.0 rebuilds meshes
+    on the reading machine's numpy and F.4 asks git, and either would make a
+    whole-section comparison fail for a reason that is not the record.
+    """
+    note = (Path(__file__).resolve().parents[3]
+            / ins.FZ_NOTE_PATH).read_text()
+    head = "### F.6 "
+    assert note.count(head) == 1
+    in_note = note[note.index(head):note.index("### Conclusions")]
+    md = ins.fz_markdown_tables(arms)
+    assert md.count(head) == 1
+    printed = md[md.index(head):md.index("Conclusions: leader fills.")]
+    assert in_note == printed
+    assert printed == "\n".join(ins.f6_markdown(f6)) + "\n"
+    # After F.5 and before the leader's section, with F.0-F.5 in front of it.
+    order = [note.index(h) for h in ("## Results (facts)", "### F.0",
+                                     "### F.1", "### F.2", "### F.3",
+                                     "### F.4 ", "### F.5", head,
+                                     "### Conclusions")]
+    assert order == sorted(order)
