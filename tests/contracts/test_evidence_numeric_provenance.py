@@ -1074,13 +1074,6 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     # no opted-in citation ever reached them, so they need no prefix. Those
     # artifacts are at commit 2ce4c28d.
     "tests/fixtures/cv06b_estimator_regate/",
-    # 2026-09-23, the MSL thru-line phase case: its run records went with it
-    # (the tutorial reproduction log it also held moved to
-    # tests/crossval/msl_notch_filter/reference/). No citation in the opted-in
-    # surface reached this directory, so nothing is silenced by listing it --
-    # it is here so a citation added later cannot resolve against a tree that
-    # no longer holds the artifact. Those artifacts are at commit b25df603.
-    "validation/crossval/_20_msl_phase_referee_logs/",
 )
 
 
