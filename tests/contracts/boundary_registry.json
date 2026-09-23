@@ -660,6 +660,16 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "exchange_e_yee_shmap._exchange",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "exchange_h_yee_shmap._exchange",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/runners/distributed.py",
       "function": "_apply_cpml_e_distributed",
       "kind": "neighbour"
