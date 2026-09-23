@@ -1,0 +1,75 @@
+{
+  "family": "W4",
+  "entry": "run",
+  "args": [
+    "W4",
+    "run"
+  ],
+  "commit": "798ec64e5cda057318664bc431e528819f9e371a",
+  "domain_m": [
+    0.024,
+    0.024,
+    0.024
+  ],
+  "dx_m": 0.001,
+  "source_m": [
+    0.012,
+    0.012,
+    0.012
+  ],
+  "probe_m": [
+    0.018,
+    0.014,
+    0.013
+  ],
+  "grid": {
+    "shape": [
+      41,
+      41,
+      41
+    ],
+    "dx": 0.001,
+    "dt": 1.9065748695310057e-12,
+    "cpml_layers": 8,
+    "cpml_axes": "xyz",
+    "pec_faces": [],
+    "pmc_faces": [],
+    "face_layers": {
+      "x_lo": 8,
+      "x_hi": 8,
+      "y_lo": 8,
+      "y_hi": 8,
+      "z_lo": 8,
+      "z_hi": 8
+    },
+    "pad_x": 8,
+    "pad_x_lo": 8,
+    "pad_x_hi": 8,
+    "pad_y": 8,
+    "pad_y_lo": 8,
+    "pad_y_hi": 8,
+    "pad_z": 8,
+    "pad_z_lo": 8,
+    "pad_z_hi": 8
+  },
+  "n_steps": 4096,
+  "preflight": "[]",
+  "preflight_policy": "Captured verbatim; skip_preflight=True for physical witness execution.",
+  "dt_s": 1.9065748695310057e-12,
+  "source_end_step": 160,
+  "probe_final": -8.748245363676688e-07,
+  "probe_peak": 0.006889311596751213,
+  "energy": [
+    {
+      "samples": 4096,
+      "post_source_peak_J": 4.439304390331863e-25,
+      "final_J": 9.865694007036212e-27,
+      "end_over_post_source_peak_dB": -16.53187283050589,
+      "convention": "0.5 sum(epsilon0 |E|^2 + mu0 |H|^2) dx^3; absorber pads excluded; staggered E/H levels as stored"
+    }
+  ],
+  "status": "MEASURED",
+  "wall_s": 5.134946463018423,
+  "backend": "gpu",
+  "run_id": "369367263564"
+}

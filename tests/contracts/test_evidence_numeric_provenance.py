@@ -945,6 +945,11 @@ CLASSIFICATION: dict[str, str] = {
     # timings from two scripts kept off-repo, each attributed in its own
     # fact table to who checked it and how.
     "docs/design_notes/20260922_nu_grid_core_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # The boundary-model pre-declaration. No `::` span at all: its numbers are
+    # read from the reports and JSON under scripts/diagnostics/boundary_model/
+    # (named in its fact table with who measured each) and from three reviews
+    # kept off-repo, each attributed where it is quoted.
+    "docs/design_notes/20260923_boundary_model_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
