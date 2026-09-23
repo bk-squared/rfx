@@ -209,10 +209,9 @@ class RLCCellMeta(NamedTuple):
     has_inductor: bool
     has_capacitor: bool     # True when C > 0
     gamma: float   # dt * d_par / (L * dual_area) — inductor ADE term (0 if L == 0)
-    D0: float      # eps/dt + sigma/2 — the E-update denominator.  SERIES
-                   # elements: the element EDGE's own 1/Cb, i.e. the
-                   # four-cell edge average plus lumped stamps (#1210,
-                   # #1163); parallel elements: the single cell's value.
+    D0: float      # eps/dt + sigma/2 of the element EDGE's own E update
+                   # (four-cell edge average plus lumped stamps, #1210;
+                   # #1163) -- 1/Cb there.
     dx: float      # PRIMAL cell size along the component axis (the E edge
                    # the element voltage V = E*d_par is taken over)
     dt_dx_over_L: float  # dt * dx / L — for I_L update (0 if L == 0)
@@ -246,26 +245,37 @@ def _series_needs_ade(spec: LumpedRLCSpec) -> bool:
 
 
 def edge_update_denominator(materials, cell, component, dt,
-                            periodic=(False, False, False)):
-    """``D0 = 1/Cb`` of the E update at one element's edge (#1163).
+                            periodic=(False, False, False), *,
+                            as_float=False):
+    """``D0 = eps/dt + sigma/2`` of the E update at one element's edge.
 
-    The series element's current enters Ampere's law through the SAME
-    coefficient the Yee update multiplies the curl by, so its denominator
-    has to be that coefficient: :func:`rfx.core.yee.cell_component_e_coeffs`
-    at the element's cell and component -- the mean of the four incident
-    cells' volume material plus the lumped stamps at this cell (#1210).
-    Reading ``materials.eps_r[i, j, k]`` / ``sigma[i, j, k]`` instead is the
-    single-cell value, which differs from what the update uses wherever the
-    four cells around the edge are not one material (an element on a
-    dielectric surface).
+    A lumped element's current enters Ampere's law at its edge through the
+    SAME coefficient the Yee update multiplies the curl by, ``Cb = 1/D0``, so
+    the element's ``D0`` has to be built from the edge's own ``eps`` and
+    ``sigma``: :func:`rfx.core.yee.cell_component_e_materials` at the
+    element's cell and component -- the mean of the four incident cells'
+    volume material plus the lumped stamps at this cell (#1210), the values
+    ``update_e`` turns into ``Cb``. Reading ``materials.eps_r[i, j, k]`` /
+    ``sigma[i, j, k]`` instead is the single-cell value, which differs from
+    what the update uses wherever the four cells around the edge are not one
+    material: on an eps 1|4 surface the edge is 2.5 and the cell 4, and a
+    series 100 ohm element then realized 160 ohm, a parallel 2 nH 3.2 nH
+    (#1163 review). Where the four cells are one material the two reads are
+    the same floats, so vacuum and uniform-dielectric fixtures keep their
+    bytes.
 
-    ``periodic`` must be the run's own flags (they decide the neighbour of a
-    cell at index 0).  Returns ``1/Cb`` with the dtype of the coefficient, so
-    a traced material keeps its gradient.
+    Used for series AND parallel elements. ``periodic`` must be the run's own
+    flags (they decide the neighbour of a cell at index 0). ``as_float``
+    reproduces the concrete builder's Python-float arithmetic; without it the
+    arithmetic stays in the arrays' dtype, so a traced material keeps its
+    gradient.
     """
-    from rfx.core.yee import cell_component_e_coeffs
-    _ca, cb = cell_component_e_coeffs(materials, cell, component, dt, periodic)
-    return 1.0 / cb
+    from rfx.core.yee import cell_component_e_materials
+    eps_r, sigma = cell_component_e_materials(materials, cell, component,
+                                              periodic)
+    if as_float:
+        eps_r, sigma = float(eps_r), float(sigma)
+    return eps_r * EPS_0 / dt + sigma / 2.0
 
 
 def _resolve_position_to_index(grid, position):
@@ -348,7 +358,7 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
 
     Must be called AFTER ``setup_rlc_materials()`` and after every other
     fold into the material arrays (ports), with the materials the run's E
-    update uses: a series element takes ``D0`` from the edge's own update
+    update uses: an element takes ``D0`` from the edge's own update
     coefficient (:func:`edge_update_denominator`), and ``periodic`` is the
     run's periodic flags for that lookup.
     """
@@ -365,14 +375,10 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     has_capacitor = spec.C > 0
     is_series = spec.topology == "series" and _series_needs_ade(spec)
 
-    if is_series:
-        # #1163: the edge's own E-update denominator, not the cell's.
-        D0 = float(edge_update_denominator(
-            materials, (i, j, k), spec.component, dt, periodic))
-    else:
-        eps = float(materials.eps_r[i, j, k]) * EPS_0
-        sigma = float(materials.sigma[i, j, k])
-        D0 = eps / dt + sigma / 2.0
+    # #1163: the edge's own E-update denominator, not the cell's (series
+    # and parallel alike).
+    D0 = edge_update_denominator(
+        materials, (i, j, k), spec.component, dt, periodic, as_float=True)
 
     if has_inductor:
         # gamma is the implicit self-coupling of the inductor into the E
@@ -505,16 +511,11 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     has_capacitor = spec.C > 0
     is_series = spec.topology == "series" and _series_needs_ade(spec)
 
-    # No float() coercion: eps/sigma may carry a folded R/C tracer.
-    if is_series:
-        # #1163: the edge's own E-update denominator (same as the concrete
-        # twin), traced so a permittivity design variable reaches it.
-        D0 = edge_update_denominator(
-            materials, (i, j, k), spec.component, dt, periodic)
-    else:
-        eps = materials.eps_r[i, j, k] * EPS_0
-        sigma = materials.sigma[i, j, k]
-        D0 = eps / dt + sigma / 2.0
+    # No float() coercion: eps/sigma may carry a folded R/C tracer. #1163:
+    # the edge's own E-update denominator (same as the concrete twin), for
+    # series and parallel elements.
+    D0 = edge_update_denominator(
+        materials, (i, j, k), spec.component, dt, periodic)
 
     R = _resolve_value(spec.R, r_val)
     L = _resolve_value(spec.L, l_val)

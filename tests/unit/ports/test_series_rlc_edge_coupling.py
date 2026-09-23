@@ -19,7 +19,10 @@ What is checked here (fast, always on)
 --------------------------------------
 1. With C -> infinity and no inductor, a series R + C must BE the folded
    resistor (``topology="parallel"``, R only, which stamps sigma = d/(R*A)) on
-   the same edge, to float32 rounding, through the public API. The two sides
+   the same edge, to float32 rounding, through the public API -- in vacuum,
+   on an eps 1|4 surface edge (where the edge's own permittivity, not the
+   cell's, is the element's D0), and next to a folded load already on the
+   same edge (whose stamp is part of that D0). The two sides
    share no helper: one is the series ADE, the other is the Yee update's own
    conductivity term. The fixture is a one-cell-wide parallel-plate line (PEC
    plates, magnetic side walls) because there the Ex and Ey edges of the
@@ -40,7 +43,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rfx import GaussianPulse, Simulation
+from rfx import Box, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 ETA0 = 376.730313668
@@ -56,15 +59,21 @@ _LOAD_NODE = _LINE_NODES - 3
 
 #: Float32 storage rounding, accumulated over the run. MEASURED on this
 #: fixture (600 steps, all six components at three probes, R = 0.1 ... 1e4
-#: ohm): max |series - folded| / max |folded| = 2.5e-7 ... 3.5e-7, i.e. about
+#: ohm): max |series - folded| / max |folded| = 2.3e-7 ... 3.5e-7, i.e. about
 #: 3 float32 epsilons. The gate is 32 epsilons. The replaced update misses by
 #: the edge impedance (R - 215 ohm), which moves the fields by tens of percent.
 _F32_REL = 32.0 * float(np.finfo(np.float32).eps)
 
 
-def _line(load):
+def _line(load, eps_beyond=None):
     """One-cell-wide parallel-plate line, lumped port on node 1, load on
-    node ``_LOAD_NODE``; probes at the port, mid-line and the load."""
+    node ``_LOAD_NODE``; probes at the port, mid-line and the load.
+
+    ``eps_beyond`` fills every cell from the load node on with that
+    permittivity, so the load's Ez edge has vacuum cells on one side and
+    dielectric on the other: the edge's own permittivity is the four-cell
+    mean (1 + eps)/2, not the cell's eps.
+    """
     sim = Simulation(
         freq_max=10e9, domain=((_LINE_NODES - 1) * _LINE_DX, _LINE_DX, _LINE_DX),
         dx=_LINE_DX,
@@ -73,6 +82,11 @@ def _line(load):
                               z=Boundary(lo="pec", hi="pec")))
     sim.add_port(position=(_LINE_DX, 0.0, 0.0), component="ez", impedance=ETA0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
+    if eps_beyond is not None:
+        sim.add_material("beyond", eps_r=eps_beyond)
+        sim.add(Box((_LOAD_NODE * _LINE_DX, 0.0, 0.0),
+                    ((_LINE_NODES - 1) * _LINE_DX, _LINE_DX, _LINE_DX)),
+                material="beyond")
     load(sim, (_LOAD_NODE * _LINE_DX, 0.0, 0.0))
     for node in (1, 8, _LOAD_NODE):
         sim.add_vector_probe((node * _LINE_DX, 0.0, 0.0))
@@ -107,6 +121,78 @@ def test_series_r_with_infinite_c_is_the_folded_resistor(r_ohm):
         f"resistor on the same edge by {rel:.3e} of the peak field "
         f"(float32 rounding bound {_F32_REL:.1e}); the series element is not "
         "realizing its declared resistance")
+
+
+def _compare(series, folded):
+    a = np.asarray(series.run(n_steps=_LINE_STEPS, skip_preflight=True).time_series)
+    b = np.asarray(folded.run(n_steps=_LINE_STEPS, skip_preflight=True).time_series)
+    assert np.all(np.isfinite(a)) and np.all(np.isfinite(b))
+    scale = float(np.abs(b).max())
+    assert scale > 1.0, "the line carried no wave; the comparison would be empty"
+    return float(np.abs(a - b).max()) / scale
+
+
+def _assert_on_the_surface(sim):
+    """Realized, not declared: the load's cell is the dielectric and the cell
+    behind it (x - 1) is vacuum, so the Ez edge between them has the edge
+    permittivity 2.5 while the element's own cell reads 4."""
+    grid = sim._build_grid()
+    mats = sim._build_materials(grid)[0]
+    eps = np.asarray(mats.eps_r)
+    i = _LOAD_NODE
+    assert tuple(int(v) for v in grid.position_to_index(
+        sim._lumped_rlc[0].position)) == (i, 0, 0)
+    assert float(eps[i, 0, 0]) == _EPS_SURFACE and float(eps[i - 1, 0, 0]) == 1.0
+
+
+#: The load edge sits on an eps 1 | 4 surface: its own permittivity is 2.5,
+#: its cell's is 4. A series element that reads D0 from its cell realizes a
+#: different resistance than the folded resistor on the same edge, whose
+#: conductance the Yee update applies with the edge's own coefficient (the
+#: #1163 review measured a series 100 ohm reading 160 ohm there). MEASURED
+#: with the edge D0: 1.8e-7 (100 ohm), 2.9e-7 (50 ohm), 2.5e-7 (folded 200 +
+#: series 100) of the peak; with the single-cell D0 restored: 1.0e-1, 6.5e-2,
+#: 4.0e-2. The stacked row also goes red (4.1e-2 in vacuum, 1.9e-2 on the
+#: surface) when the edge D0 leaves the lumped stamps out.
+_EPS_SURFACE = 4.0
+
+
+@pytest.mark.parametrize("r_ohm", [50.0, 100.0])
+def test_series_r_with_infinite_c_is_the_folded_resistor_on_a_dielectric_surface(r_ohm):
+    series = _line(lambda s, p: s.add_lumped_rlc(
+        position=p, component="ez", R=r_ohm, C=1.0, topology="series"),
+        eps_beyond=_EPS_SURFACE)
+    folded = _line(lambda s, p: s.add_lumped_rlc(
+        position=p, component="ez", R=r_ohm, topology="parallel"),
+        eps_beyond=_EPS_SURFACE)
+    _assert_on_the_surface(series)
+    rel = _compare(series, folded)
+    assert rel <= _F32_REL, (
+        f"on an eps 1|4 surface edge, series R={r_ohm} ohm + C=1 F differs from "
+        f"the folded {r_ohm} ohm by {rel:.3e} of the peak (bound {_F32_REL:.1e}): "
+        "the element's D0 is not the edge's own E-update denominator")
+
+
+def test_series_element_on_an_edge_that_already_carries_a_folded_load():
+    """Lumped stamps enter the edge's D0: a folded R1 already on the edge plus
+    a series R2 (C = 1 F) must be the folded R1 || R2, on the same surface."""
+    r1, r2 = 200.0, 100.0
+
+    def both(s, p):
+        s.add_lumped_rlc(position=p, component="ez", R=r1, topology="parallel")
+        s.add_lumped_rlc(position=p, component="ez", R=r2, C=1.0, topology="series")
+
+    series = _line(both, eps_beyond=_EPS_SURFACE)
+    folded = _line(lambda s, p: s.add_lumped_rlc(
+        position=p, component="ez", R=r1 * r2 / (r1 + r2), topology="parallel"),
+        eps_beyond=_EPS_SURFACE)
+    _assert_on_the_surface(series)
+    assert [e.topology for e in series._lumped_rlc] == ["parallel", "series"]
+    rel = _compare(series, folded)
+    assert rel <= _F32_REL, (
+        f"folded {r1} ohm + series {r2} ohm (C = 1 F) on one edge differs from a "
+        f"folded {r1 * r2 / (r1 + r2):.2f} ohm by {rel:.3e} of the peak "
+        f"(bound {_F32_REL:.1e})")
 
 
 # ---------------------------------------------------------------------------

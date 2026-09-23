@@ -801,22 +801,24 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
     assert drive("parallel", 50.0, 1e-9, 1e-12, "ez") == (
         66.87545013427734, 0.0006415600073523819)
     # The two SERIES pins moved with #1163 (the element is solved together
-    # with its edge field). This harness is one node with no curl: a node
-    # capacitance D0*A*dt/d fed by a current D0*A*amp_n, loaded by the
-    # element, so it has a closed form (matrix exponential, piecewise-constant
-    # source; float64). At step 200:
-    #   R+L   E: closed form  0.03419, old pin -0.6225, now 0.03003
-    #         I: closed form 6.3437e-07, old 6.8085e-07 (7.3 %), now
-    #            6.3646e-07 (0.33 %)
-    #   R+L+C E: closed form  0.2900, old pin -0.3608, now 0.2854 (1.6 %)
-    #         I: closed form 6.3300e-07, old 6.5973e-07 (4.2 %), now
-    #            6.3503e-07 (0.32 %)
-    # The old pins were the explicit coupling's R - d/(D0*A) = 50 - 215 ohm,
-    # a negative resistance. (Closed-form script and numbers: the #1163 PR.)
+    # with its edge field). This harness is one node with no curl, loaded by
+    # the element: a node capacitance D0*A*dt/d driven by the per-step
+    # increments amp_n. The ELEMENT CURRENT is the witness here: with the
+    # increments read as a current D0*A*amp_n held over each step (matrix
+    # exponential, float64), at step 200 the current is 6.3437e-07 A for R+L
+    # (old pin 6.8085e-07, 7.3 % off; now 6.3646e-07, 0.33 %) and
+    # 6.3300e-07 A for R+L+C (old 6.5973e-07, 4.2 %; now 6.3503e-07, 0.32 %).
+    # The node FIELD at one step is not a witness: it is a small residual
+    # whose value depends on how the source increments are modelled inside a
+    # step, so no closed form is claimed for it. The old pins were the
+    # explicit coupling's R - d/(D0*A) = 50 - 215 ohm, a negative resistance.
+    # Re-pinned again when D0 became eps/dt + sigma/2 of the edge (the old
+    # series pin read 1/Cb in float32, 1e-7 apart): E moved 8e-5 relative,
+    # I 3e-7. (Closed-form script and numbers: the #1163 PR.)
     assert drive("series", 50.0, 1e-9, 0.0, "ex") == (
-        0.030032098293304443, 6.364608680087258e-07)
+        0.030034542083740234, 6.364606974784692e-07)
     assert drive("series", 50.0, 1e-9, 1e-12, "ey") == (
-        0.2854253649711609, 6.350323360493348e-07)
+        0.2854260802268982, 6.350324497361726e-07)
 
 
 # ---------------------------------------------------------------------------
