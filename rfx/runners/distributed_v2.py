@@ -442,8 +442,9 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
     Periodic/Bloch boundaries, extended or passive ports, Kerr materials,
-    lumped RLC elements, subgridding, and surface monitors (flux, NTFF, DFT
-    planes).
+    lumped RLC elements, MSL ports, subgridding, and surface monitors (flux,
+    NTFF, DFT planes). ``tests/unit/runners/test_distributed_admission_refusals.py``
+    holds the disposition of every Simulation attribute on these lanes.
 
     Call after the TFSF and waveguide single-device fallbacks, before sharding.
     ``bloch`` also accepts an explicit phase from a direct caller.
@@ -514,6 +515,17 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
             "rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed have no lumped-element update). "
             f"Remove the elements, or {single_device_hint}."
+        )
+
+    msl = getattr(sim, "_msl_ports", None) or ()
+    if msl:
+        raise NotImplementedError(
+            f"add_msl_port() port(s) ({len(msl)}): not supported on the {lane} path; "
+            "the lane never drives or terminates microstrip ports, so a model fed "
+            "only by them returns a zero field, with no warning "
+            "(rfx.runners.distributed_v2.run_distributed / "
+            "rfx.runners.distributed.run_distributed have no MSL port update). "
+            f"Remove the MSL ports, or {single_device_hint}."
         )
 
     if getattr(sim, "_refinement", None) is not None:
