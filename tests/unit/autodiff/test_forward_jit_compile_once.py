@@ -22,6 +22,13 @@ unchanged (the PI's cross-trace rule, ledger decision of 2026-09-23). The
 predicate test below pins that scope: widening the trace-time evaluation to
 other models turns it red.
 
+The jitted value and gradient are compared with the plain call under the PI's
+cross-trace rule (2026-09-23): bit-identical is the aim, and a difference up
+to single-digit float32 ULP is allowed. The unit is ULP AT THE PEAK of each
+compared array — ``max|plain - jitted|`` over the float32 spacing at
+``max|plain|`` — expressed once, in ``_ulp_at_peak``; per-element ULP near
+zero says nothing about the result.
+
 Compiles are counted with ``jax.monitoring`` backend-compile events, the same
 counter the issue's measurements used. Each count is guarded by a positive
 control (a first call that must compile), so a counter that saw nothing
@@ -33,6 +40,7 @@ from __future__ import annotations
 import jax
 import jax.numpy as jnp
 import numpy as np
+import pytest
 
 from rfx import Box, GaussianPulse, Simulation
 
@@ -45,6 +53,18 @@ Z_GND = 1.0e-3
 SUB_H = 1.5e-3
 BOX = ((10e-3, 7e-3, Z_GND + 0.25e-3), (11e-3, 9e-3, Z_GND + 1.25e-3))
 N_STEPS = 30
+
+# The PI's cross-trace tolerance (2026-09-23): single-digit ULP at the peak.
+MAX_ULP_AT_PEAK = 9
+
+
+def _ulp_at_peak(plain, other):
+    """``max|plain - other|`` in float32 spacings at ``max|plain|``."""
+    plain = np.asarray(plain, dtype=np.float64)
+    other = np.asarray(other, dtype=np.float64)
+    peak = np.float32(np.max(np.abs(plain)))
+    return float(np.max(np.abs(plain - other)) / np.spacing(peak))
+
 
 _BACKEND_COMPILE = "/jax/core/compile/backend_compile_duration"
 _COUNTER = {"on": False, "n": 0}
@@ -84,6 +104,43 @@ def _board():
                  impedance=50.0, direction="-x",
                  waveform=GaussianPulse(f0=F0, bandwidth=0.8))
     return sim
+
+
+def _uniform_board():
+    """The same board on the uniform lane: PEC ground and patch, 3 mm substrate."""
+    sim = Simulation(freq_max=2 * F0, domain=(18e-3, 16e-3, 12e-3), dx=DX,
+                     boundary="cpml", cpml_layers=5)
+    sim.add_material("sub", eps_r=3.0)
+    sim.add(Box((2e-3, 2e-3, 4e-3), (16e-3, 14e-3, 7e-3)), material="sub")
+    sim.add(Box((2e-3, 2e-3, 3e-3), (16e-3, 14e-3, 4e-3)), material="pec")
+    sim.add(Box((6e-3, 5e-3, 7e-3), (12e-3, 11e-3, 8e-3)), material="pec")
+    sim.add_port(position=(7e-3, 8e-3, 4e-3), component="ez", extent=3e-3,
+                 impedance=50.0, direction="-x",
+                 waveform=GaussianPulse(f0=F0, bandwidth=0.8))
+    return sim
+
+
+UNIFORM_BOX = ((10e-3, 7e-3, 5e-3), (11e-3, 9e-3, 6e-3))
+
+
+def _uniform_s11_loss(sim):
+    freqs = jnp.asarray([6e9, 8e9, 10e9], jnp.float32)
+
+    def loss(eps_box):
+        r = sim.forward(design_box=UNIFORM_BOX, design_eps_override=eps_box,
+                        n_steps=N_STEPS, checkpoint=False, skip_preflight=True,
+                        port_s11_freqs=freqs)
+        return jnp.sum(jnp.abs(r.s_params) ** 2)
+    return loss
+
+
+def _uniform_box_eps(sim, seed=2):
+    grid = sim._build_grid()
+    lo = grid.position_to_index(UNIFORM_BOX[0])
+    hi = grid.position_to_index(UNIFORM_BOX[1])
+    shape = tuple(int(hi[d]) - int(lo[d]) + 1 for d in range(3))
+    return jnp.asarray(2.0 + np.random.default_rng(seed).random(shape),
+                       jnp.float32)
 
 
 def _box_eps(sim, seed=4):
@@ -193,3 +250,24 @@ def test_trace_time_setup_is_used_only_for_a_model_with_a_wire_port(monkeypatch)
     # context answers False and runs the plain body.
     assert answers == [True, False], (
         f"the wire-port board: predicate answered {answers}")
+
+
+@pytest.mark.parametrize("lane", ["graded", "uniform"])
+def test_jitted_step_equals_the_plain_call_within_single_digit_ulp(lane):
+    """|S11|^2 and its design-box gradient: jitted vs plain, <= 9 ULP at peak."""
+    if lane == "graded":
+        sim = _board()
+        loss, eps = _s11_loss(sim), _box_eps(sim)
+    else:
+        sim = _uniform_board()
+        loss, eps = _uniform_s11_loss(sim), _uniform_box_eps(sim)
+
+    v, g = jax.value_and_grad(loss)(eps)
+    vj, gj = jax.jit(jax.value_and_grad(loss))(eps)
+    assert float(v) > 0.0 and float(jnp.max(jnp.abs(g))) > 0.0
+    du_v, du_g = _ulp_at_peak(v, vj), _ulp_at_peak(g, gj)
+    print(f"{lane} board, jitted vs plain: value {du_v:.1f}, gradient "
+          f"{du_g:.1f} ULP at peak")
+    assert du_v <= MAX_ULP_AT_PEAK and du_g <= MAX_ULP_AT_PEAK, (
+        f"{lane} board: jitted value {du_v:.1f} and gradient {du_g:.1f} ULP "
+        f"at peak from the plain call (allowed {MAX_ULP_AT_PEAK})")
