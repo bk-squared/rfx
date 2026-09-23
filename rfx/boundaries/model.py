@@ -7,7 +7,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from enum import Enum
+from inspect import signature
 
+import jax
+
+from rfx.boundaries import cpml, upml
 from rfx.boundaries.spec import normalize_boundary
 
 
@@ -45,7 +49,7 @@ class Features:
 
     requirements: tuple[Requirement, ...] = ()
     layers: int = 16
-    absorber_parameters: tuple[tuple[str, float], ...] = (("kappa_max", 1.0),)
+    absorber_parameters: tuple[tuple[str, float], ...] = ()
     explicit_faces: bool = True
     origin: str = "declared"
     face_origins: tuple[tuple[str, str], ...] = ()
@@ -144,9 +148,15 @@ def resolve_kinds(spec, *, mode: str, features: Features) -> BoundaryModel:
                        explicit_faces=features.explicit_faces if mode != "3d" else True)
     parameters = {}
     if absorber == "cpml":
-        parameters = {"order": 3, "R_asymptotic": 1e-15, "alpha_max": .05, "kappa_max": 1.0}
+        defaults = signature(cpml._cpml_profile).parameters
+        parameters = {name: defaults[name].default
+                      for name in ("order", "R_asymptotic", "kappa_max")}
+        # Alpha is set in the profile body, not in its signature.
+        with jax.ensure_compile_time_eval():
+            parameters["alpha_max"] = float(cpml._cpml_profile(2, 0.0, 1.0).alpha.max())
     elif absorber == "upml":
-        parameters = {"order": 2, "R_asymptotic": 1e-15}
+        defaults = signature(upml._sigma_profile_1d).parameters
+        parameters = {name: defaults[name].default for name in ("order", "R_asymptotic")}
     if absorber:
         parameters.update(features.absorber_parameters)
     return BoundaryModel(tuple(faces), tuple(axes), absorber,

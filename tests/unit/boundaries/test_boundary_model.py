@@ -1,11 +1,13 @@
 """Declared electric, magnetic, absorbing and paired faces (B1)."""
 
 from itertools import product
+from inspect import signature
 from types import SimpleNamespace
 
 import pytest
 
 from rfx import Simulation
+from rfx.boundaries import cpml, upml
 from rfx.boundaries.model import (
     FACES, Features, Kind, electric_faces, magnetic_faces, realize, resolve_kinds,
 )
@@ -60,8 +62,11 @@ def test_asymmetric_faces_and_absorber_terminal_metres():
                                                 Kind.PEC, Kind.PERIODIC, Kind.PERIODIC)
     assert tuple(f.layers for f in model.faces) == (0, 5, 0, 0, 0, 0)
     assert tuple(f.conformal for f in model.faces) == (False, False, True, True, False, False)
-    assert dict(model.absorber_parameters) == {"kappa_max": 2, "order": 3,
-                                             "R_asymptotic": 1e-15, "alpha_max": .05}
+    # The alpha profile stores float32; the other scalars come from the signature.
+    assert dict(model.absorber_parameters) == {
+        "kappa_max": 2, "order": 3, "R_asymptotic": 1e-15,
+        "alpha_max": pytest.approx(.05, rel=1e-7, abs=0),
+    }
     assert model.axes[2].pairing == ("z_lo", "z_hi")
     planes = realize(model, sim._build_grid())
     assert planes.periods == (("z", .016),)
@@ -70,6 +75,23 @@ def test_asymmetric_faces_and_absorber_terminal_metres():
     assert planes.faces[1].terminal_m == pytest.approx(.029, abs=1e-14)
     assert planes.faces[1].backing == Kind.PEC
     assert planes.faces[3].plane_m == .020
+
+
+@pytest.mark.parametrize("absorber,profile,names", [
+    ("cpml", cpml._cpml_profile, ("order", "R_asymptotic", "kappa_max")),
+    ("upml", upml._sigma_profile_1d, ("order", "R_asymptotic")),
+])
+def test_absorber_parameters_match_profile_defaults(absorber, profile, names):
+    expected = {name: signature(profile).parameters[name].default for name in names}
+    if absorber == "cpml":
+        expected["alpha_max"] = float(profile(8, 1e-12, .001).alpha.max())
+    model = resolve_kinds(BoundarySpec.uniform(absorber), mode="3d", features=Features())
+    compare_faces(expected, dict(model.absorber_parameters))
+    for name, value in expected.items():
+        changed = dict(model.absorber_parameters)
+        changed[name] = value * 2
+        with pytest.raises(BoundaryDeparture):
+            compare_faces(expected, changed)
 
 
 @pytest.mark.parametrize("mode,equivalent", [("2d_tmz", Kind.PEC), ("2d_tez", Kind.PMC)])
