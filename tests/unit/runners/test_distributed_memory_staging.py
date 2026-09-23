@@ -9,6 +9,7 @@ from functools import partial
 import inspect
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -40,6 +41,11 @@ def _build_box(case):
     )
     if case == "volume":
         sim.add(Box((5e-3, 2e-3, 2e-3), (7e-3, 3e-3, 5e-3)), material="pec")
+    elif case == "lossy":
+        # eps_r and sigma vary in space, so a compiler cannot reduce them to
+        # scalars; a captured copy would show up as a per-cell HLO literal.
+        sim.add_material("lossy", eps_r=4.4, sigma=0.02)
+        sim.add(Box((5e-3, 2e-3, 2e-3), (10e-3, 6e-3, 6e-3)), material="lossy")
     elif case in ("debye", "debye2", "lorentz"):
         poles = (
             {"debye_poles": [DebyePole(delta_eps=1.0, tau=1e-11)]}
@@ -66,6 +72,8 @@ def _measure(case, multi_process):
     records = []
     scan = distributed_v2.lax.scan
     boundary_ghosts_true = None
+    hlo_constants = []
+    slab_cells = cells // len(devices)
 
     def traced_jit(f, *args, **kwargs):
         entry = jax.jit(f, *args, **kwargs)
@@ -78,6 +86,14 @@ def _measure(case, multi_process):
             if mask is not None:
                 slabs = np.asarray(mask).reshape(len(devices), -1, *mask.shape[1:])
                 boundary_ghosts_true = int(slabs[0, 0].sum() + slabs[-1, -1].sum())
+            # The compiled program itself: a per-cell array that reaches the
+            # scan by any route (closure, dict, host numpy copy, global) is
+            # compiled in as a literal of at least one slab's worth of elements.
+            hlo = entry.lower(*entry_args, **entry_kwargs).compile().as_text()
+            for match in re.finditer(r"(\w+)\[([\d,]*)\](?:\{[^}]*\})?\s+constant\(", hlo):
+                dims = [int(d) for d in match.group(2).split(",") if d]
+                if dims and int(np.prod(dims)) >= slab_cells:
+                    hlo_constants.append((match.group(1), dims))
             return entry(*entry_args, **entry_kwargs)
 
         return run
@@ -152,7 +168,7 @@ def _measure(case, multi_process):
                 for name, array in zip(value._fields, value):
                     placeholder_shapes[f"{material}.{slot}.{name}"] = array.shape
         records.append({"whole": whole, "bytes": per_device, "placeholders": placeholder_shapes,
-                        "captured": captured,
+                        "captured": captured, "hlo_constants": hlo_constants,
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
@@ -171,7 +187,7 @@ def _measure(case, multi_process):
 @pytest.mark.parametrize("case,multi_process", [
     ("pec", False), ("cpml", False), ("pad", False), ("volume", False),
     ("nu", False), ("debye", False), ("debye2", False), ("lorentz", False),
-    ("pec", True), ("cpml", True),
+    ("lossy", False), ("pec", True), ("cpml", True), ("volume", True), ("lossy", True),
 ])
 def test_time_loop_holds_only_local_slabs(case, multi_process):
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
@@ -186,6 +202,8 @@ def test_time_loop_holds_only_local_slabs(case, multi_process):
     assert len(records) == 1, run.stdout
     for record in records[0]:
         assert not record["captured"], f"per-cell scan captures: {record['captured']}"
+        assert not record["hlo_constants"], (
+            f"per-cell literals compiled into the scan: {record['hlo_constants']}")
         assert not record["whole"], f"whole-domain single-device arrays: {record['whole']}"
         sizes = list(record["bytes"].values())
         assert len(sizes) == 2 and min(sizes) > 0
@@ -196,7 +214,7 @@ def test_time_loop_holds_only_local_slabs(case, multi_process):
         assert len(shapes) == expected_slots
         for name, shape in shapes.items():
             assert np.prod(shape) <= 2, f"per-cell placeholder {name}: {shape}"
-        if case == "volume" and not multi_process:
+        if case == "volume":
             assert record["pec_mask_boundary_ghosts_true"] == 0, (
                 "PEC mask physical-boundary ghost rows must be False (#931): "
                 f"{record['pec_mask_boundary_ghosts_true']} True cells")

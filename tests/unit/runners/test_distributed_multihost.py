@@ -226,8 +226,13 @@ def test_single_process_path_is_bit_identical(boundary):
 
     BEFORE: origin/main c2dbf922bc9230cd6fa4054a7b6d84d118768bde used the
     capturing-lambda path on one process. Decision A passes material, PEC-mask,
-    dispersion and CPML arrays as explicit jit arguments on every topology;
-    XLA no longer constant-folds the material coefficients.
+    dispersion and CPML arrays as explicit jit arguments on every topology.
+    Root cause of the shift (reviewer, measured): XLA's algebraic simplifier
+    rewrote arithmetic on the captured, uniform eps_r array of these vacuum
+    boxes; with arguments it no longer knows the array is uniform. Disabling
+    the algsimp pass makes old and new bit-identical; boxes whose eps_r varies
+    anywhere are bit-identical without it. Which models move depends on the
+    XLA version.
 
     Measured on Darwin arm64, JAX/jaxlib 0.10.2, two CPU devices, 20 steps:
     max per-value float32 ULP shift (trace / all six fields) was
@@ -238,13 +243,10 @@ def test_single_process_path_is_bit_identical(boundary):
     Max absolute field shifts divided by spacing(field peak) are only 0.5
     and 1.0 ULP; a few-ULP bound per field value would be incorrect.
 
-    The baseline was exported with git archive origin/main. Both trees ran
-    /private/tmp/rfx-capacity/capture.py with JAX_PLATFORMS=cpu and
-    XLA_FLAGS=--xla_force_host_platform_device_count=2. That script builds
-    _build_box's exact fixtures and hashes time_series and state.ex/ey/ez/hx/hy/hz
-    with SHA256 over np.asarray(array).tobytes(). These pins remain toolchain
-    scoped; exact topology equality below runs on other CPU toolchains too.
-    CPML adds two cells per face: shape 20x12x12.
+    The pins are what this test computes: _build_box's fixture, 20 steps on two
+    CPU devices, SHA256 over np.asarray(array).tobytes() of time_series and
+    state.ex/ey/ez/hx/hy/hz. They remain toolchain scoped. CPML adds two cells
+    per face: shape 20x12x12.
     """
     result = _build_box(boundary).run(n_steps=20, devices=_cpu_devices())
     arrays = _snapshot(result)
@@ -268,8 +270,13 @@ def test_single_and_multi_process_topologies_are_bit_identical(boundary, monkeyp
     monkeypatch.setattr(distributed_v2, "jax", runner_jax)
     assert distributed_v2._spans_other_processes(devices)
     actual = _snapshot(_build_box(boundary).run(n_steps=20, devices=devices))
+    # Byte equality (np.array_equal would treat +0 and -0 as equal). This pins
+    # that both topology predicates compile the same scan and that the
+    # cross-process gather is a no-op at one real process; agreement across
+    # real hosts is the Linux two-process test below.
     for name in ("trace", *_FIELDS):
-        assert np.array_equal(actual[name], expected[name]), f"{boundary} {name}"
+        assert actual[name].dtype == expected[name].dtype
+        assert actual[name].tobytes() == expected[name].tobytes(), f"{boundary} {name}"
 
 
 @pytest.mark.skipif(

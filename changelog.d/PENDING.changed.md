@@ -1,11 +1,16 @@
 ### Changed — one-process multi-device runs pass the material arrays to the time loop as arguments, so no GPU keeps whole-domain compiled copies of them (#PENDING)
 
-- When one process drove several devices (e.g. a 2×/3×A6000 node), the time loop closed over
-  the material, PEC-mask, dispersion and CPML arrays, which the compiler kept as whole-domain
-  constants on every device. They are now jit arguments on every topology, as multi-process
-  runs already did, and each device holds only its own slab of them.
-- One-process multi-device results move by float32 rounding: probe traces by at most 7 ULP
-  at their peak (4.4e-7 of the peak), fields by at most 1 ULP of the field peak (values near
-  zero can change sign); Debye and Lorentz models are unchanged. The one-process and
-  multi-process topologies now give bit-identical results.
-- The plain single-device path (`sim.run()` without `devices=`) is unchanged.
+- `sim.run(devices=...)` with one process driving several devices (e.g. a 2×/3×A6000 node)
+  closed the time loop over the material, PEC-mask, dispersion and CPML arrays, and the
+  compiler kept every non-uniform one as a whole-domain constant on every device (ten copies
+  for a model with a lossy substrate, a PEC block and Debye/Lorentz blocks). On three A6000
+  GPUs with JAX 0.4.33 that model crashed before the time loop started. The arrays are now jit
+  arguments on every topology, as multi-process runs already did, and that model runs.
+- Models whose permittivity varies anywhere give bit-identical results. Models with a uniform
+  permittivity (an empty box) move by float32 rounding — at most 7 ULP at the probe-trace
+  peak (4.4e-7 of the peak), at most 2 ULP of the field peak — because the compiler no longer
+  simplifies arithmetic on the uniform permittivity array; such boxes can also use more
+  compiled scratch memory than before. One-process and multi-process runs on one host now give
+  bit-identical results.
+- Unchanged: the plain single-device path (`sim.run()` without `devices=`) and
+  `forward(distributed=True)`.

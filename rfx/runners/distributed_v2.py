@@ -951,13 +951,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         mu_r=shard_x_slabs(materials.mu_r, n_devices, nx_per, ghost, 1.0, shd),
     )
 
-    # #1053 leg 1. ``None`` whenever the model declares no PEC volume, which
-    # is every fixture of the #1038 bit-identity lock -- so the stage leg 2
-    # hooks on this is a no-op branch there and the lock stays 15/15. The single-
-    # process scan captures this as a constant, next to ``sharded_materials``,
-    # not through ``run_distributed``'s ``**kwargs``: that kwargs bag is
-    # forwarded only on the ``n_devices == 1`` fast path and is silently
-    # discarded at exactly the device counts this stage exists for.
+    # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
+    # scan receives it as a jit argument next to ``sharded_materials`` (on
+    # every topology since PI decision A, 2026-09-23), not through
+    # ``run_distributed``'s ``**kwargs``: that kwargs bag is forwarded only on
+    # the ``n_devices == 1`` fast path and is silently discarded at exactly the
+    # device counts this stage exists for.
     sharded_pec_mask = (
         None if pec_mask is None
         else shard_x_slabs(pec_mask, n_devices, nx_per, ghost, False, shd))
