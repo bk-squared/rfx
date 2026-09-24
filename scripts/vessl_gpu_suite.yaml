@@ -37,6 +37,10 @@ run: |-
   rm -rf "$src" && mkdir -p "$src"
   git archive --format=tar "$sha" | tar -xf - -C "$src"
   echo "=== install runtime dependencies (exported tree, no editable install) ==="
+  # JAX 0.6.2, the version CI's Python 3.10 lane resolves (PI 2026-09-24). The image's own
+  # 0.4.33 ships an XLA whose fusion cost model aborts on
+  # CHECK_LE(common_utilization, producer_output_utilization); forward(distributed=True) hit it (#1252).
+  python -m pip install -q "jax[cuda12]==0.6.2"
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
   export RFX_REPO_ROOT="$src"
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
