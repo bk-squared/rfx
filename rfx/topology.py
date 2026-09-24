@@ -39,6 +39,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
+from types import SimpleNamespace
+
 import jax
 import jax.numpy as jnp
 
@@ -529,6 +531,10 @@ def topology_optimize(
             pec_sheets=tuple(_topo_pec_sheets),
             pec_wires=tuple(_topo_pec_wires),
             pec_occupancy=pec_occupancy,
+            # The design arrays are whole-grid and traced; the monitor's
+            # guard checks the region they can change instead.
+            monitor_overrides={"design_region": SimpleNamespace(
+                bounds=(si, ei + 1, sj, ej + 1, sk, ek + 1))},
         )
         import inspect
         sig = inspect.signature(objective)

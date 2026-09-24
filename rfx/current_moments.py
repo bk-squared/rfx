@@ -134,6 +134,10 @@ class CurrentMomentMonitor(NamedTuple):
         Where in the step the current is stamped, in units of ``dt``. The
         derived value is 0.5: ``J^{n+1/2}`` sits between ``E^n`` and
         ``E^{n+1}``. The mutation harness sets 0.0.
+    max_offset : float
+        The largest distance, in metres, from a block's centre to an edge in
+        that block, slab thickness included. The expansion drops terms of
+        order ``(k * max_offset)^3``.
     """
 
     i_lo: int
@@ -158,6 +162,7 @@ class CurrentMomentMonitor(NamedTuple):
     n_edges: int
     curl_signs: tuple = (1.0, -1.0, 1.0, -1.0, 1.0, -1.0)
     half_step: float = 0.5
+    max_offset: float = 0.0
 
     @property
     def n_weights(self) -> int:
@@ -405,6 +410,11 @@ def build_current_moment_monitor(
     w_ey = _weights(py, vy, nk)
     w_ez = _weights(pz, vz, nkz)
 
+    max_offset = 0.0
+    for pos in (px, py, pz):
+        delta = pos - centres[seg].reshape(ni, nj, 1, 3)
+        max_offset = max(max_offset, float(np.sqrt((delta ** 2).sum(-1)).max()))
+
     signs = tuple(float(s) for s in (curl_signs if curl_signs is not None
                                      else (1.0, -1.0, 1.0, -1.0, 1.0, -1.0)))
     if len(signs) != 6:
@@ -429,6 +439,7 @@ def build_current_moment_monitor(
         n_edges=int(ni * nj * (2 * nk + nkz)),
         curl_signs=signs,
         half_step=float(half_step),
+        max_offset=max_offset,
     )
 
 
@@ -539,6 +550,8 @@ def current_moment_monitor_from_grid(
             f"{cy.min():.6g}..{cy.max():.6g} m. The z axis may be graded. "
             "Build the monitor with build_current_moment_monitor() and an "
             "explicit index window if a graded in-plane block rule is wanted.")
+    if not float(block_size) > 0.0:
+        raise ValueError(f"block_size must be positive, got {block_size}")
     d_cells = max(1, int(round(float(block_size) / float(cells[0][i0]))))
 
     return build_current_moment_monitor(
@@ -1009,11 +1022,45 @@ def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None):
         periodic=periodic, dtype=weight_dtype_for(sim), **(extra or {}))
     refuse_current_the_monitor_cannot_see(sim, grid, monitor,
                                           overrides=overrides)
+    refuse_blocks_too_large(monitor, freqs)
     return monitor
+
+
+#: The largest k * |delta| the block expansion is trusted at: k at the highest
+#: monitored frequency, |delta| the largest distance from a block's centre to
+#: an edge in it (slab thickness included). The expansion drops terms of order
+#: (k |delta|)^3 / 6. Measured against the NTFF box on the same run (strip
+#: dipoles and wires along x and z, 1 mm cells, 1-14 mm blocks, 6-10 GHz):
+#: every point at or below 1.0 is within 0.19 dB in pattern shape; the first
+#: points above 0.2 dB are at 1.23 and 1.27, and a 28 mm wire along z reads
+#: 0.9 / 3.9 / 6.7 dB at 2.0 / 2.7 / 3.4 (tests/unit/farfield/
+#: test_current_moment_monitor.py carries the table).
+MAX_K_OFFSET = 1.0
+
+
+def refuse_blocks_too_large(monitor, freqs) -> None:
+    """Refuse blocks too large for the expansion at the highest frequency.
+
+    ``freqs`` is the declared list (host values; the monitor's own copy is a
+    device array, traced inside ``jit``).
+    """
+    f_max = float(np.max(np.asarray(freqs, dtype=np.float64)))
+    k_offset = 2.0 * np.pi * f_max / C0 * float(monitor.max_offset)
+    if k_offset > MAX_K_OFFSET:
+        raise NotImplementedError(
+            f"the current-moment monitor's blocks are too large for "
+            f"{f_max / 1e9:.4g} GHz: an edge sits {monitor.max_offset * 1e3:.3g} "
+            f"mm from its block's centre, k*|delta| = {k_offset:.2f}, above the "
+            f"{MAX_K_OFFSET} the second-order block expansion is trusted at "
+            "(the whole slab thickness is one block). Use a smaller "
+            "block_size, a thinner slab, or the NTFF box (add_ntff_box) for "
+            "this structure.")
 
 
 def _slab_interior(monitor, shape):
     """Per-component E-edge masks of the slab without its outermost layer."""
+    # The outermost layer stays excluded (verification F1): conformal/Kottke
+    # move conductor edges up to one sub-cell outward.
     m = monitor
     inner = []
     for c in range(3):
@@ -1068,7 +1115,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
     the model (evaluated at trace time even under an outer ``jax.jit``) with
     the edge rule the E update uses, the realized PEC edges, the realized
     port and source cells. ``overrides`` (``eps_r``, ``sigma``, ``mu_r``,
-    ``pec_mask``, ``pec_occupancy``, ``design_box``, ``design_occupancy``)
+    ``pec_mask``, ``pec_occupancy``, ``design_box``, ``design_occupancy``,
+    ``design_region``)
     are what ``forward()`` replaces the model's own arrays with: a concrete
     override is measured, a traced whole-grid one cannot be and is refused,
     and a design box is measured by its cell bounds.
@@ -1185,7 +1233,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
             check(_cells_to_edges(np.asarray(kerr) != 0, periodic),
                   "a Kerr material")
         for key, what in (("design_box", "a design region (design_box)"),
-                          ("design_occupancy", "a design occupancy box")):
+                          ("design_occupancy", "a design occupancy box"),
+                          ("design_region", "a topology design region")):
             box = ov.get(key)
             if box is not None:
                 i0, i1, j0, j1, k0, k1 = (int(v) for v in box.bounds)
@@ -1247,6 +1296,25 @@ def require_accumulated_current_moments(sim, result, context: str) -> None:
             "body does not accumulate them; an empty field handed back "
             "silently is worse than a refusal. Supported: "
             + ", ".join(SUPPORTED_LANES) + ".")
+
+
+def refuse_h_side_conductor(sim, where: str) -> None:
+    """Refuse a declared monitor on a path that writes H at conductor cells.
+
+    The Kottke PEC paths zero H inside the cells they treat as PEC every step
+    (``rfx.boundaries.pec.apply_pec_h_mask``). A zeroed H node beside a live
+    E edge is a magnetic surface current on the lattice, and the electric
+    current ``J = curl_h H - eps0 dE/dt`` the monitor reads does not contain
+    it: the pattern would leave it out.
+    """
+    if getattr(sim, "_current_moments", None) is None:
+        return
+    raise NotImplementedError(
+        f"add_current_moment_monitor() is not supported with {where}: that "
+        "path zeroes H inside the cells it treats as PEC, which is a magnetic "
+        "surface current at the conductor that the monitor, reading only the "
+        "electric current, never sees. Use the default staircase conductor "
+        "or conformal_pec=True, which leave H alone.")
 
 
 def refuse_current_moment_monitor(sim, lane: str) -> None:
