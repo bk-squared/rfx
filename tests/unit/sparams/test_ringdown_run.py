@@ -343,10 +343,8 @@ def test_a_graded_port_on_an_absorbing_floor_is_probed_inside_the_grid():
     assert rep.completed, rep.summary()
 
 
-def test_the_passivity_witness_reads_the_plain_record_too():
-    """A graded wire port spanning a 0.8 mm and a 0.6 mm z cell reads |S11| up
-    to 1.025 on its own plain 2.86 ns record (1.002 settled): the port reads
-    non-passive before any completion, and the witness says so."""
+def _graded_wire_port_box():
+    """A graded wire port spanning a 0.8 mm and a 0.6 mm z cell, in the box."""
     sim = Simulation(freq_max=20.0e9, domain=(12 * MM, 11 * MM, 5 * MM), dx=1.0 * MM,
                      boundary="pec", dx_profile=DXP, dy_profile=DYP, dz_profile=DZP)
     sim.add_material("fill", eps_r=2.2,
@@ -354,12 +352,85 @@ def test_the_passivity_witness_reads_the_plain_record_too():
     sim.add(Box((0, 0, 0), (12 * MM, 11 * MM, 5 * MM)), material="fill")
     sim.add_port(position=(3.3 * MM, 3.8 * MM, 0.0), component="ez", impedance=50.0,
                  extent=1.4 * MM, waveform=PULSE)
-    with pytest.warns(UserWarning, match="passivity"):
+    return sim
+
+
+def test_the_passivity_witness_reads_the_plain_record_too():
+    """The plain 2.86 ns record of a graded wire port spanning a 0.8 mm and a
+    0.6 mm z cell reads non-passive; the witness note says so, and the verdict
+    follows the COMPLETED S.
+
+    Measured on this fixture: plain max |S11| 1.02396 on main before #1236 and
+    1.05279 after; completed 1.01428 before (the witness failed) and 0.99796
+    after (passive, no warning). The settled 30000-step records agree with the
+    completions: 1.01428 before, 0.997956 after. The cause is #1236: the
+    port's load used to sit also on the Ex and Ey edges at each of the wire's
+    nodes, so the port read this passive box as non-passive even settled.
+    With the load on the wire's own Ez edges the settled S is passive, and the
+    plain short record, cut further from settled now that the spurious loss
+    no longer damps the box, reads higher. The witness's failing branch is pinned by
+    ``test_the_passivity_witness_fails_a_non_passive_completion`` below,
+    which does not rely on a physical defect.
+    """
+    import warnings
+    sim = _graded_wire_port_box()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         r = _run(sim, N_SHORT["graded"], ringdown=RingdownSpec())
-    w = r.ringdown.report.witness("passivity")
+    rep = r.ringdown.report
+    w = rep.witness("passivity")
     plain = float(np.max(np.abs(np.asarray(r.s_params)[0, 0])))
-    assert not w.ok and plain > 1.0 + 1e-3
+    assert plain > 1.0 + 1e-3, plain
     assert f"{plain:.6g}" in w.note and "non-passive without the completion" in w.note
+    completed = float(np.max(np.abs(r.ringdown.s_params[0, 0])))
+    assert w.ok and w.value == pytest.approx(completed, rel=1e-12), (w, completed)
+    assert completed <= w.bar, (completed, w.bar)
+    assert rep.ok, rep.summary()
+    assert not [c for c in caught if "passivity" in str(c.message)]
+
+
+def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
+    """The witness's failing branch, with no physical defect behind it. The
+    uniform box with a three-cell port, 1500 steps: plain max |S11| 0.99714
+    and completed 0.98016, both passive, every witness ok. The completed S is
+    scaled to max |S11| = 1.010 at the one place the completion turns its
+    spectra into S; the witness must fail it, warn, and keep the plain
+    record's number in its note without the non-passive clause.
+
+    Seam: ``rd._assemble`` also builds the W0 and W1 comparisons, so only the
+    call that follows ``rd.two_window_witness`` -- ``S = to_s(w2.spectra)``,
+    the completed S the passivity witness reads -- is scaled.
+    """
+    orig_assemble, orig_two_window = rd._assemble, rd.two_window_witness
+    armed = {"on": False}
+
+    def two_window(*a, **k):
+        out = orig_two_window(*a, **k)
+        armed["on"] = True
+        return out
+
+    def assemble(*a, **k):
+        s = orig_assemble(*a, **k)
+        if armed["on"]:
+            armed["on"] = False
+            return s * (1.010 / float(np.max(np.abs(s[0, 0]))))
+        return s
+
+    monkeypatch.setattr(rd, "two_window_witness", two_window)
+    monkeypatch.setattr(rd, "_assemble", assemble)
+    with pytest.warns(UserWarning, match="passivity"):
+        r = _run(_box("uniform", cells=3), 1500, ringdown=RingdownSpec())
+    rep = r.ringdown.report
+    w = rep.witness("passivity")
+    plain = float(np.max(np.abs(np.asarray(r.s_params)[0, 0])))
+    assert plain <= 1.0 + 1e-3, plain              # the plain record is passive
+    assert not w.ok and w.value == pytest.approx(1.010, rel=1e-6), (w.value, w.bar)
+    assert w.value == pytest.approx(
+        float(np.max(np.abs(r.ringdown.s_params[0, 0]))), rel=1e-12)
+    assert not rep.ok
+    assert f"{plain:.6g}" in w.note
+    assert "non-passive without the completion" not in w.note
+    assert rep.witness("W0").ok and rep.witness("W1").ok and rep.witness("W2").ok
 
 
 def test_w1_catches_a_completion_fed_the_midpoint_voltage(monkeypatch):
