@@ -9,8 +9,9 @@ WHAT IS SIMULATED
 A rectangular microstrip patch 40.0 mm long (x, the resonant length) and
 50.0 mm wide (y, the two radiating edges) on Rogers RT/Duroid 5880 (eps_r 2.2,
 tan delta 0.001, h 3.175 mm) over a finite 56 x 66 mm ground plane, fed by a
-50 ohm lumped probe that runs from the ground to the patch 9 mm off centre
-along x. The TM010 mode puts half a guided wavelength across the 40 mm, made
+50 ohm lumped probe that runs from the ground to the patch 8.73125 mm off
+centre along x (the retired script's 9 mm, moved to a node of every rfx rung --
+delta 9). The TM010 mode puts half a guided wavelength across the 40 mm, made
 electrically longer at each radiating edge by the fringing field; near that
 frequency the probe sees the patch's radiation resistance and |S11| dips. The
 transmission-line model with Hammerstad's fringing extension puts TM010 at
@@ -246,7 +247,10 @@ L_PATCH = 40.0e-3          # resonant length (x)
 W_PATCH = 50.0e-3          # radiating width (y)
 GP_X = 56.0e-3
 GP_Y = 66.0e-3
-FEED_OFFSET_X = -9.0e-3    # inset feed, 9 mm off centre along L
+# PI 2026-09-24: the probe moves to a node on every rfx rung h/4, h/8, h/12
+# (-11, -22, -33 cells of h/n from the patch centre); a declared departure from
+# the retired script's -9.0 mm, delta 9 and DECLARED_CONSTANT_DEPARTURES.
+FEED_OFFSET_X = -8.73125e-3
 N_SUB = 4
 F_LO, F_HI = 1.6e9, 3.4e9   # S11 search / sweep band
 
@@ -270,6 +274,15 @@ RETIRED_CONSTANT_LINES = {
     "FEED_OFFSET_X": "FEED_OFFSET_X = -9.0e-3    # inset feed, 9 mm off centre along L",
     "N_SUB": "N_SUB = 4",
     "F_LO, F_HI": "F_LO, F_HI = 1.6e9, 3.4e9   # S11 search / sweep band",
+}
+
+# The retired constants this maker does NOT keep: name -> (the retired value,
+# this maker's value, why). --self-check holds the retired line to the first and
+# the constant to the second, so the departure is stated, not silent.
+DECLARED_CONSTANT_DEPARTURES = {
+    "FEED_OFFSET_X": (-9.0e-3, -8.73125e-3,
+                      "PI 2026-09-24: a node on every rfx rung h/4, h/8, h/12 "
+                      "(-11, -22, -33 cells of h/n); delta 9"),
 }
 
 # What the retired, unprovenanced record says about itself, frozen so that the
@@ -979,9 +992,17 @@ DELTA_LIST = [
     "20.0000000000001 mm and another at y = 6.4e-14 mm, and CSXCAD's smoothing, "
     "which deletes the LOWER of two lines closer than 1e-7 of the mean spacing, "
     "deleted the probe's y = 0 line, so openEMS would have driven no edge.",
+    "DELTA 9 (probe position): FEED_OFFSET_X = -9.0e-3 becomes -8.73125e-3, the "
+    "probe 8.73125 mm off the patch centre along x instead of 9 mm (PI "
+    "2026-09-24). -8.73125 mm is -11, -22 and -33 cells of rfx's h/4, h/8 and "
+    "h/12 (h = 3.175 mm) from the patch centre, a lattice node on every rung of "
+    "rfx's uniform ladder, which put the -9 mm probe at 8.731 / 9.128 / 8.996 mm. "
+    "The builder's line is unchanged (feed = FEED_OFFSET_X * 1e3); the port's x "
+    "line, the comb clearance around it (delta 8) and the line check follow the "
+    "constant.",
     "NOTHING ELSE: the patch, the substrate (eps_r 2.2 with tan delta 1e-3 as a "
     "conductivity at 2.4 GHz), the 56 x 66 mm ground, the 50 ohm lumped port "
-    "from z = 0 to z = h at x = -9 mm, SetGaussExcite(2.4e9, 1.2e9), the air box, "
+    "from z = 0 to z = h (at x = -8.73125 mm, delta 9), SetGaussExcite(2.4e9, 1.2e9), the air box, "
     "the thirds rule, SmoothMeshLines('all', mesh_res, 1.4) and the mm length "
     "unit are the retired builder's, proved so character for character by "
     "--self-check.",
@@ -2087,7 +2108,8 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict, stages:
         "structure": (
             "rectangular microstrip patch 40.0 mm (x, resonant) x 50.0 mm (y) on RT/Duroid "
             "5880 (eps_r 2.2, tan delta 1e-3, h 3.175 mm) over a 56 x 66 mm ground, 50 ohm "
-            "lumped probe from ground to patch at x = -9 mm, y = 0; copied from "
+            f"lumped probe from ground to patch at x = {FEED_OFFSET_X*1e3:g} mm, y = 0 "
+            "(the retired -9 mm moved, delta 9); copied from "
             f"{RETIRED_REL_PATH}::{RETIRED_FUNCTION}"),
         "tl_model_tm010_hz": F_TM010_BOARD_HZ,
         "stage_a_is": ("openEMS python/Tutorials/Simple_Patch_Antenna.py, verbatim -- the "
@@ -2309,7 +2331,7 @@ def _dry_run(stage: str, do_gain: bool) -> int:
     print("STAGE B -- the RT5880 board")
     print(f"  board           {L_PATCH*1e3:.1f} x {W_PATCH*1e3:.1f} mm patch, eps_r {EPS_R}, "
           f"tan d {TAN_DELTA:g}, h {H_SUB*1e3:.3f} mm, ground {GP_X*1e3:.0f} x {GP_Y*1e3:.0f} mm, "
-          f"feed x = {FEED_OFFSET_X*1e3:+.1f} mm")
+          f"feed x = {FEED_OFFSET_X*1e3:+.5f} mm (retired -9.0, delta 9)")
     print(f"  TL model TM010  {F_TM010_BOARD_HZ/1e9:.4f} GHz; resonance window "
           f"{B_RESONANCE_BAND_HZ[0]/1e9:.4f}-{B_RESONANCE_BAND_HZ[1]/1e9:.4f} GHz "
           f"(the retired 0.80-1.20 x)")
@@ -2403,8 +2425,15 @@ def _self_check() -> int:
             "FEED_OFFSET_X": FEED_OFFSET_X, "N_SUB": N_SUB, "F_LO, F_HI": (F_LO, F_HI)}
     for name, line in RETIRED_CONSTANT_LINES.items():
         value = ast.literal_eval(ast.parse(line).body[0].value)
-        check(value == mine[name], f"{name} equals the retired line {line.split('#')[0].strip()!r}",
-              f"{mine[name]!r}")
+        if name in DECLARED_CONSTANT_DEPARTURES:
+            was, now, why = DECLARED_CONSTANT_DEPARTURES[name]
+            check(value == was and mine[name] == now and now != was,
+                  f"{name} departs from the retired line {line.split('#')[0].strip()!r} "
+                  f"as declared: {was!r} -> {now!r} ({why})", f"{mine[name]!r}")
+        else:
+            check(value == mine[name],
+                  f"{name} equals the retired line {line.split('#')[0].strip()!r}",
+                  f"{mine[name]!r}")
         if retired is not None:
             check(line in retired_lines, f"that line is a whole line of {RETIRED_REL_PATH}")
     if retired is None:
@@ -2674,7 +2703,8 @@ def _self_check() -> int:
                   and port["stop"] == [FEED_OFFSET_X * 1e3, 0.0, H_SUB * 1e3],
                   f"{name} hands openEMS NrTS {B_REAL_NRTS} / EndCriteria {B_REAL_END_CRITERIA:g} "
                   f"explicitly, PML_8 x6, SetGaussExcite(2.4e9, 1.2e9), eps_r 2.2 and the probe "
-                  f"from (-9, 0, 0) to (-9, 0, h)", f"{b['kw']}")
+                  f"from ({FEED_OFFSET_X*1e3:g}, 0, 0) to ({FEED_OFFSET_X*1e3:g}, 0, h)",
+                  f"{b['kw']}")
             x = np.asarray(plans[name]["_lines"]["x"])
             span = np.diff(x[(x > -18.0) & (x < -10.0)])
             check(bool(np.allclose(np.median(span), 1.2 * f, rtol=1e-9)),

@@ -201,7 +201,9 @@ def _check_stand_in(m) -> None:
         assert b["stand_in"]["excite"] == (2.4e9, 1.2e9)
         assert b["stand_in"]["materials"]["sub"]["epsilon"] == 2.2
         port = b["stand_in"]["ports"][0]
-        assert port["start"] == [-9.0, 0.0, 0.0] and port["stop"] == [-9.0, 0.0, 3.175]
+        # The probe at -8.73125 mm, a node on every rfx rung (PI 2026-09-24,
+        # delta 9), not the retired -9.0 mm.
+        assert port["start"] == [-8.73125, 0.0, 0.0] and port["stop"] == [-8.73125, 0.0, 3.175]
         x = np.asarray(b["_lines"]["x"])
         pitch = float(np.median(np.diff(x[(x > -18.0) & (x < -10.0)])))
         assert pitch == pytest.approx(1.2 * f, rel=1e-9), (
@@ -267,7 +269,8 @@ def test_delta_list_says_what_changes():
         "DELTA 1 (boundaries)", "DELTA 2 (stop criteria)", "DELTA 3 (mesh rungs)",
         "DELTA 4 (frequency grid)", "DELTA 5 (resonance estimator)", "DELTA 6 (far field)",
         "DELTA 7 (how the solver runs)",
-        "DELTA 8 (the patch lines keep clear of the port and the edges)", "NOTHING ELSE"]
+        "DELTA 8 (the patch lines keep clear of the port and the edges)",
+        "DELTA 9 (probe position)", "NOTHING ELSE"]
     assert "['MUR'] * 6 becomes ['PML_8'] * 6" in d[0] and "OUTSIDE" in d[0]
     assert "EndCriteria = 1e-5" in d[1] and "1e-6" in d[1] and "openems.cpp:117" in d[1]
     assert "0.70711" in d[2] and "4, 6 and 8 cells" in d[2]
@@ -275,6 +278,10 @@ def test_delta_list_says_what_changes():
     assert "refined_extremum" in d[4] and "band_at_level" in d[4]
     assert "-6 dB" in d[5] and "Reported only" in d[5]
     assert "half a patch cell" in d[7] and "y = 0" in d[7]
+    assert "-9.0e-3 becomes -8.73125e-3" in d[8] and "-11, -22 and -33 cells" in d[8]
+    was, now, _ = m.DECLARED_CONSTANT_DEPARTURES["FEED_OFFSET_X"]
+    assert (was, now) == (-9.0e-3, -8.73125e-3) and m.FEED_OFFSET_X == now
+    assert m.RETIRED_CONSTANT_LINES["FEED_OFFSET_X"].startswith("FEED_OFFSET_X = -9.0e-3")
     assert m.COMB_CLEARANCE_CELLS == 0.5
     assert m.RETIRED_NRTS_CAP == 30000 and m.RETIRED_END_CRITERIA_CAP == 1e-4
     assert m.OPENEMS_UNSET_END_CRITERIA == 1e-6

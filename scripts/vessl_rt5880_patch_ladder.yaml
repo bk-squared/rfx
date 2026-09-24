@@ -32,6 +32,9 @@ run: |-
   rm -rf "$src" && mkdir -p "$src"
   git archive --format=tar "$sha" | tar -xf - -C "$src"
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  # The JAX the product is tested on (vessl-jobs rule, PI 2026-09-24), before
+  # the first import of jax.
+  python -m pip install -q "jax[cuda12]==0.6.2"
   export RFX_REPO_ROOT="$src"
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
   cd "$src"

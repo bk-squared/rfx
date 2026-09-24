@@ -19,7 +19,9 @@ from tests.crossval._v2_judging import (
     CONVERGED,
     CROSSING_FIT_BINS,
     DEEP_NULL_DB,
+    FLAT_STEP,
     FREQ_BAR,
+    LADDER_AGREEMENT,
     MAG_BAR_DB,
     NOT_SHOWN_TO_CONVERGE,
     RESISTANCE_BAR,
@@ -97,6 +99,53 @@ def test_last_two_rungs_a_percent_apart_are_not_shown_to_converge():
     assert m["last_two_pct"] == pytest.approx(1.3067, abs=1e-3)
     assert m["verdict"] == NOT_SHOWN_TO_CONVERGE
     assert "last two rungs" in m["reason"]
+
+
+# -------------------------------------- the mesh statement for another bar
+OHM = ("Ω", 1.0, 3)
+
+
+def test_the_keyword_defaults_are_the_frequency_bars():
+    """Called without the keywords, the statement is the one it always was:
+    FLAT_STEP 0.1 % and LADDER_AGREEMENT 1 %, the same verdicts and flags as
+    passing them explicitly."""
+    for f_ghz in ((3.68600, 3.68666, 3.67568), (8.19634, 8.23697, 8.20201, 8.23472),
+                  (3.90, 3.8034, 3.7537)):
+        f = [v * GHZ for v in f_ghz]
+        a = mesh_statement(f, _labels(len(f)))
+        b = mesh_statement(f, _labels(len(f)), flat_step=FLAT_STEP, agreement=LADDER_AGREEMENT)
+        assert (a["verdict"], a["flat"], a["reason"]) == (b["verdict"], b["flat"], b["reason"])
+        assert a["flat_step"] == FLAT_STEP == 0.001
+        assert a["agreement"] == LADDER_AGREEMENT == 0.01
+
+
+def test_a_resistance_ladder_takes_its_own_flat_step():
+    """R 75.0 -> 76.0 -> 75.9 ohm: +1.333 %, then -0.132 %.  With R's flat step
+    (RESISTANCE_BAR / 10 = 0.2 %) the second step is flat and the ladder
+    converges; with the frequency's 0.1 % it is a reversal."""
+    r = [75.0, 76.0, 75.9]
+    own = mesh_statement(r, _labels(3), flat_step=RESISTANCE_BAR / 10,
+                         agreement=RESISTANCE_BAR, unit=OHM)
+    freq = mesh_statement(r, _labels(3), unit=OHM)
+    print(f"\n  R's bars: {own['verdict']} -- {own['reason']}\n  frequency's bars: "
+          f"{freq['verdict']} -- {freq['reason']}")
+    assert own["flat"] == [False, True] and own["verdict"] == CONVERGED
+    assert freq["flat"] == [False, False] and freq["verdict"] == NOT_SHOWN_TO_CONVERGE
+    assert "75.900 Ω" in own["reason"] and "0.2 %" in own["reason"]
+
+
+def test_a_resistance_ladder_takes_its_own_last_two_bar():
+    """R 72.0 -> 74.0 -> 75.2 ohm: one direction, the last two 1.622 % apart:
+    inside R's 2 % bar, outside the frequency's 1 %."""
+    r = [72.0, 74.0, 75.2]
+    own = mesh_statement(r, _labels(3), flat_step=RESISTANCE_BAR / 10,
+                         agreement=RESISTANCE_BAR, unit=OHM)
+    freq = mesh_statement(r, _labels(3), unit=OHM)
+    print(f"\n  R's bars: {own['verdict']}; frequency's bars: {freq['verdict']} -- "
+          f"{freq['reason']}")
+    assert own["last_two_pct"] == pytest.approx(1.6216, abs=1e-3)
+    assert own["verdict"] == CONVERGED
+    assert freq["verdict"] == NOT_SHOWN_TO_CONVERGE and "bar 1 %" in freq["reason"]
 
 
 # ---------------------------------------------------------- aligned magnitude

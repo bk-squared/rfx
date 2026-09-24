@@ -2,7 +2,7 @@
 
 A 40 × 50 mm rectangular patch sits on 3.175 mm of RT/Duroid 5880 (εr 2.2,
 tanδ 0.001) over a 56 × 66 mm ground, fed by a 50 Ω probe from the ground to
-the patch 9 mm off centre along the 40 mm resonant length.  The patch and the
+the patch 8.73125 mm off centre along the 40 mm resonant length.  The patch and the
 ground form an open cavity whose TM010 mode resonates near 2.34 GHz: the
 cavity's length plus the fringing field at its two radiating edges sets the
 frequency, and radiation through those edges loads it, so the probe sees a
@@ -163,7 +163,15 @@ L_PATCH = 40.0e-3            # resonant length, along x
 W_PATCH = 50.0e-3            # radiating-edge width, along y
 GP_X = 56.0e-3               # ground plane
 GP_Y = 66.0e-3
-FEED_OFFSET_X = -9.0e-3      # probe, 9 mm off centre along the resonant length
+# The probe, off centre along the resonant length.  PI 2026-09-24: moved from
+# the retired script's −9.0 mm to −8.73125 mm = −11, −22 and −33 cells of h/4,
+# h/8 and h/12 from the patch centre, a lattice node on every rung, so the
+# ladder solves one board; the openEMS maker declares the same move (its
+# delta 9).  ``check_realized`` holds the realized probe to it within 1 nm.
+FEED_OFFSET_X = -8.73125e-3
+# The realized probe (the node its column sits on, relative to the realized
+# patch centre) must be the declared one to this, on every rung.
+PROBE_REALIZED_TOL_M = 1e-9
 PORT_IMPEDANCE_OHM = 50.0
 # The retired builder's excitation and band.
 F_EXCITE_HZ = 2.4e9
@@ -188,7 +196,9 @@ FREQ_MAX_HZ = 4.0e9
 # would put an absorber change into the mesh trend.
 #
 # MEASURED at h/4 on CPU (local, 2026-09-24; this file's board, NUM_PERIODS =
-# 60), the resonance and depth against the air added beyond the smallest box
+# 60; the probe was declared at −9 mm then and h/4 realized it at −8.73125 mm,
+# the node it is declared at now, so the h/4 board is the same), the
+# resonance and depth against the air added beyond the smallest box
 # below on every face (that box: 10.1 / 11.45 mm clear of the ground's x / y
 # edges, 9.525 mm below it, 15.875 mm above the patch) and the CPML depth;
 # the last column is max |ΔdB| of |S11| against the +6h / 24-cell run over the
@@ -323,13 +333,13 @@ def cpml_layers(dx: float) -> int:
 # 21 share a second family, 39.9143 mm; its second rung alone, h/14, would cost
 # more cell-steps in this box than this whole ladder.)
 #
-# THE RUNG CRITERION IS THE RESONANT LENGTH, AND ONLY THAT.  The width, the
-# ground and the probe offset realize within a cell of their declared values on
-# every rung but not identically — measured, patch width node span 49.2125 /
-# 49.2125 / 49.7417 mm, ground node spans 55.5625 × 65.0875 / 55.5625 × 65.8812
-# / 55.5625 × 65.6167 mm, probe 8.73125 / 9.12813 / 8.99583 mm from the patch
-# centre (declared 9 mm) at h/4, h/8, h/12.  They are printed per rung and not
-# judged.
+# THE RUNG CRITERION IS THE RESONANT LENGTH, AND THE PROBE.  The probe is
+# declared on a node of every rung (FEED_OFFSET_X above), and ``check_realized``
+# refuses a rung that realizes it anywhere else.  The width and the ground
+# realize within a cell of their declared values on every rung but not
+# identically — measured, patch width node span 49.2125 / 49.2125 / 49.7417 mm,
+# ground node spans 55.5625 × 65.0875 / 55.5625 × 65.8812 / 55.5625 × 65.6167
+# mm at h/4, h/8, h/12.  They are printed per rung and not judged.
 LADDER_M = (
     H_SUB / 4,    # 793.750 µm,  4 substrate cells
     H_SUB / 8,    # 396.875 µm,  8 substrate cells
@@ -360,7 +370,8 @@ MINUS10_DB = -10.0
 # --- the record length ----------------------------------------------------
 # ``num_periods`` is in periods of ``freq_max`` (0.25 ns here).  MEASURED on
 # this board at h/4 on CPU (local, 2026-09-24; in the smallest box with an
-# 8-cell absorber, the first row of the box table above), ring-down settling of
+# 8-cell absorber, the first row of the box table above; the h/4 probe node
+# then was the one declared now, see that table), ring-down settling of
 # the witness probe, the resonance and its depth:
 #
 #     num_periods = 30    −44.57 dB    2.348553 GHz   −17.381 dB
@@ -442,10 +453,12 @@ def _patch_box(fr: Frame = FRAME, *, x_hi_trim: float = 0.0,
 
 
 def _add_probe_and_witness(sim: Simulation, fr: Frame = FRAME, *,
-                           extent: float = H_SUB) -> None:
+                           extent: float = H_SUB, feed_offset: float | None = None) -> None:
     """The 50 Ω probe from the ground sheet to the patch sheet, and the
-    ring-down witness probe."""
-    sim.add_port(position=(fr.cx + FEED_OFFSET_X, fr.cy, fr.z_ground), component="ez",
+    ring-down witness probe.  ``feed_offset`` (default ``FEED_OFFSET_X``) is
+    only moved by the mutation test."""
+    feed_offset = FEED_OFFSET_X if feed_offset is None else feed_offset
+    sim.add_port(position=(fr.cx + feed_offset, fr.cy, fr.z_ground), component="ez",
                  impedance=PORT_IMPEDANCE_OHM, extent=extent,
                  waveform=GaussianPulse(f0=F_EXCITE_HZ, bandwidth=EXCITE_BANDWIDTH))
     ox, oy, oz = WITNESS_PROBE_OFFSET_M
@@ -527,6 +540,18 @@ def _build_patch_one_cell_short(dx: float) -> Simulation:
     sim.add(_substrate_box(), material="rt5880")
     sim.add(_patch_box(x_hi_trim=dx), material="pec")
     _add_probe_and_witness(sim)
+    return sim
+
+
+def _build_probe_at_the_retired_offset(dx: float) -> Simulation:
+    """The probe drawn at the retired script's −9.0 mm.  Only the mutation test
+    builds it: at h/8 that is another node (−23 cells, −9.12813 mm) than the
+    declared −8.73125 mm (−22); at h/4 both snap to the same node."""
+    sim = _sim(dx)
+    sim.add(_ground_box(), material="pec")
+    sim.add(_substrate_box(), material="rt5880")
+    sim.add(_patch_box(), material="pec")
+    _add_probe_and_witness(sim, feed_offset=-9.0e-3)
     return sim
 
 
@@ -791,11 +816,15 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
             "driven edges is a PEC edge; contact with two wall planes inside one "
             "metal body is not a driven gap.")
     ox, oy = g["probe_offset_from_patch_centre_m"]
-    if abs(ox - FEED_OFFSET_X) > 0.5 * dx + 1e-12 or abs(oy) > 1e-12:
+    if abs(ox - FEED_OFFSET_X) > PROBE_REALIZED_TOL_M or abs(oy) > PROBE_REALIZED_TOL_M:
         raise AssertionError(
-            f"dx={dx*1e6:.2f}µm: the probe realizes ({ox*1e3:.4f}, {oy*1e3:.4f}) mm "
-            f"from the patch centre; declared ({FEED_OFFSET_X*1e3:.1f}, 0) mm, "
-            "and the nearest node is never more than half a cell away.")
+            f"dx={dx*1e6:.2f}µm: the probe realizes ({ox*1e3:.6f}, {oy*1e3:.6f}) mm "
+            f"from the patch centre; declared ({FEED_OFFSET_X*1e3:.6f}, 0) mm "
+            f"(tolerance {PROBE_REALIZED_TOL_M*1e9:.0f} nm). The probe is declared "
+            "on a node of every rung so that the ladder solves one antenna: the "
+            "input resistance at resonance follows the probe's distance from the "
+            "patch centre, and a probe that snaps to a different node per rung "
+            "puts that change into the mesh trend.")
     return g
 
 
@@ -833,7 +862,7 @@ def _print_realized(g: dict, dx: float) -> None:
               f"{g['probe_n_live_edges']}/{g['probe_n_edges']} live edges, wall planes "
               f"on its column {g['probe_column_wall_planes']}; offset from the patch "
               f"centre ({off[0]*1e3:+.4f}, {off[1]*1e3:+.4f}) mm (declared "
-              f"{FEED_OFFSET_X*1e3:+.1f}, 0)")
+              f"{FEED_OFFSET_X*1e3:+.5f}, 0)")
 
 
 # ------------------------------------------------------------------- solve
@@ -1203,7 +1232,7 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
     print(f"  board: {L_PATCH*1e3:.1f} × {W_PATCH*1e3:.1f} mm patch on "
           f"{H_SUB*1e3:.3f} mm εr {EPS_R} tanδ {TAN_DELTA} (σ {SIGMA_SUB:.5e} S/m) over a "
           f"{GP_X*1e3:.0f} × {GP_Y*1e3:.0f} mm ground; 50 Ω probe "
-          f"{FEED_OFFSET_X*1e3:+.1f} mm from the patch centre along x; box "
+          f"{FEED_OFFSET_X*1e3:+.5f} mm from the patch centre along x; box "
           f"{DOMAIN_X_M*1e3:.3f} × {DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm "
           f"(ground edges {X_CLEARANCE_M*1e3:.3f} / {Y_CLEARANCE_M*1e3:.3f} mm clear "
           f"in x / y, {BELOW_GROUND_M*1e3:.3f} mm below the ground, "
@@ -1266,6 +1295,23 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
             for p, fl in zip(mesh_stmt["steps_pct"], mesh_stmt["flat"]))
             + f" (flat when within {FLAT_STEP*100:.1f} %); monotone "
             f"{mesh_stmt['monotone']} -> {mesh_stmt['verdict']}")
+
+    # R(f0) along the same ladder, its own mesh statement: the R-a structure
+    # scaled to R's bar -- a step within RESISTANCE_BAR / 10 is flat, the last
+    # two rungs within RESISTANCE_BAR -- as the frequency's is scaled to
+    # FREQ_BAR.  What the frequency's own parameters would say about R is
+    # printed beside it and not used.
+    r_values = [r["remax"]["r_ohm"] for r in results]
+    rung_labels = [f"{r['dx_m']*1e6:.3f}µm" for r in results]
+    r_stmt = mesh_statement(r_values, rung_labels, flat_step=RESISTANCE_BAR / 10.0,
+                            agreement=RESISTANCE_BAR, unit=("Ω", 1.0, 3))
+    r_stmt_freq_bars = mesh_statement(r_values, rung_labels, unit=("Ω", 1.0, 3))
+    print("\n  mesh statement — R(f0) along the rfx ladder (R's bars: flat within "
+          f"{RESISTANCE_BAR/10*100:.1f} %, last two within {RESISTANCE_BAR*100:.0f} %):")
+    print(f"    {r_stmt['verdict']} — {r_stmt['reason']}")
+    print(f"    with the frequency's bars ({FLAT_STEP*100:.1f} % / "
+          f"{LADDER_AGREEMENT*100:.0f} %), reported only: {r_stmt_freq_bars['verdict']} "
+          f"— {r_stmt_freq_bars['reason']}")
 
     # The reference's own mesh statement, read off its record.  Its edge
     # refinement is not a uniform √2 ladder, so its steps are printed, never
@@ -1331,11 +1377,13 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
             "convergence trend, so the distances above are a diagnostic and this "
             "run states no verdict.")
 
-    # ---- (a) the mesh statement comes first: without it nothing is judged ---
-    # Not shown to converge — a step larger than FLAT_STEP against the trend
+    # ---- (a) the mesh statements come first: without them nothing is judged -
+    # f0 not shown to converge — a step larger than FLAT_STEP against the trend
     # (PI 2026-09-24), or the last two rungs LADDER_AGREEMENT or more apart
     # (PI 2026-09-22) — states the numbers and xfails; it is not a failure.
-    # Every witness above has already hard-failed a bad rung.
+    # f0 converged but R not: f0 is judged, then R's statement xfails. Both
+    # converged: both are judged. Every witness above has already hard-failed
+    # a bad rung.
     if mesh_stmt["verdict"] != CONVERGED:
         # PI decisions 2026-09-22 and 2026-09-24, carried over from the MSL
         # notch filter case: the v2 bar is never loosened, and a case that
@@ -1359,6 +1407,16 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         f"openEMS record's {zr['ref']['f0_hz']/1e9:.6f} GHz (bar "
         f"{FREQ_BAR*100:.0f} %); rfx reads {zr['ours']['f0_hz']/1e9:.6f} GHz on the "
         f"{finest['dx_m']*1e6:.3f} µm mesh.")
+    if r_stmt["verdict"] != CONVERGED:
+        # R's ladder, not f0's, is what is not shown to converge: f0 has just
+        # been judged; R is held back, imperatively, with its numbers.
+        pytest.xfail(
+            "known limitation (PI 2026-09-24): f0 converges and is judged "
+            f"({fine['f0_pct']:+.3f} %, bar {FREQ_BAR*100:.0f} %), but the input "
+            f"resistance R(f0) is not shown to converge along the ladder — "
+            f"{r_stmt['reason']}. The finest rung's R is {zr['r_ours_ohm']:.3f} Ω "
+            f"against the record's {zr['r_ref_ohm']:.3f} Ω ({zr['rel']*100:.3f} %), "
+            "reported, not judged.")
     # The input resistance at f0, each curve read at its own Re(Zin) peak
     # (decision (가), PI 2026-09-24).
     assert zr["passed"], (
@@ -1371,7 +1429,7 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
     print(f"\n  judged: f0 (the Re(Zin) peak) {fine['f0_pct']:+.3f} % from the openEMS "
           f"record (bar {FREQ_BAR*100:.0f} %); R(f0) {zr['r_ours_ohm']:.3f} vs "
           f"{zr['r_ref_ohm']:.3f} Ω, {zr['rel']*100:.3f} % "
-          f"(bar {RESISTANCE_BAR*100:.0f} %)")
+          f"(bar {RESISTANCE_BAR*100:.0f} %); both ladders converged")
     print(f"  reported, not judged — {reason}: X(f0) {zr['x_ours_ohm']:+.2f} vs "
           f"{zr['x_ref_ohm']:+.2f} Ω; |S11| minimum {fine['res_pct']:+.3f} % "
           f"({fine['our_res']['f']/1e9:.5f} vs {fine['ref_res']['f']/1e9:.5f} GHz), "
@@ -1449,7 +1507,7 @@ def test_the_lattice_builds_the_declared_board_on_every_rung():
     print(f"\n  declared board: patch {L_PATCH*1e3:.1f} × {W_PATCH*1e3:.1f} mm centred "
           f"at ({PATCH_CENTRE_X_M*1e3:.3f}, {PATCH_CENTRE_Y_M*1e3:.3f}) mm, ground "
           f"{GP_X*1e3:.0f} × {GP_Y*1e3:.0f} mm on z = {GROUND_Z_M*1e3:.3f} mm, patch on "
-          f"z = {PATCH_Z_M*1e3:.3f} mm, probe {FEED_OFFSET_X*1e3:+.1f} mm along x; box "
+          f"z = {PATCH_Z_M*1e3:.3f} mm, probe {FEED_OFFSET_X*1e3:+.5f} mm along x; box "
           f"{DOMAIN_X_M*1e3:.3f} × {DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm")
     for dx in FAST_LADDER_M:
         g = assert_realized(build(dx), dx)
@@ -1547,6 +1605,24 @@ def _record_board(rec: dict, stage: str) -> dict:
                                   st["geometry_realized"]["pml"]["faces"][a]["inner_face_hi_mm"])
                               for a in "xyz"},
     }
+
+
+def test_a_probe_off_its_declared_node_is_refused():
+    """The declared probe is a node of every rung, and the realized probe is
+    held to it within 1 nm.  Drawn at the retired −9.0 mm on the h/8 rung the
+    probe snaps to −9.12813 mm, and the rung is refused; every ladder rung
+    realizes the declared −8.73125 mm exactly (checked by
+    ``test_the_lattice_builds_the_declared_board_on_every_rung`` on h/4 and h/8
+    and by the ladder itself on h/12)."""
+    dx = LADDER_M[1]
+    for k, d in enumerate(LADDER_M):
+        cells = FEED_OFFSET_X / d
+        assert abs(cells - round(cells)) < 1e-9, (d, cells)
+        assert round(cells) == (-11, -22, -33)[k]
+    with pytest.raises(AssertionError) as caught:
+        assert_realized(_build_probe_at_the_retired_offset(dx), dx)
+    print(f"\n  probe drawn at -9.0 mm at h/8: {caught.value}")
+    assert "the probe realizes (-9.128125" in str(caught.value)
 
 
 def test_the_board_is_the_openems_record_s_board():

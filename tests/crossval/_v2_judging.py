@@ -70,11 +70,20 @@ CONVERGED = "converged"
 NOT_SHOWN_TO_CONVERGE = "not_shown_to_converge"
 
 
-def mesh_statement(freqs_hz, rung_labels) -> dict:
+def mesh_statement(freqs_hz, rung_labels, flat_step=None, agreement=None,
+                   unit=("GHz", 1e9, 5)) -> dict:
     """The mesh statement of one ladder (rule R-a).
 
     ``freqs_hz`` is the judged feature's frequency at each rung, coarse to
     fine; ``rung_labels`` names the rungs (cell sizes) for the reason text.
+
+    ``flat_step`` and ``agreement`` default to ``FLAT_STEP`` and
+    ``LADDER_AGREEMENT``, read when the function is called: a frequency's
+    ladder is judged with a tenth of the 1 % bar as flat and the 1 % bar for
+    the last two rungs.  A quantity with its own bar takes the same structure
+    scaled to it (the RT5880 patch's input resistance: ``RESISTANCE_BAR / 10``
+    and ``RESISTANCE_BAR``).  ``unit`` is ``(name, divisor, decimals)`` for the
+    reason text only; the values are any positive quantity.
 
     Returns ``steps_hz`` and ``steps_pct`` (rung i to rung i+1, relative to
     rung i), ``flat`` (``|step| <= FLAT_STEP`` of rung i's frequency),
@@ -83,6 +92,9 @@ def mesh_statement(freqs_hz, rung_labels) -> dict:
     rung), ``verdict`` (``converged`` or ``not_shown_to_converge``) and
     ``reason``.
     """
+    flat_step = FLAT_STEP if flat_step is None else float(flat_step)
+    agreement = LADDER_AGREEMENT if agreement is None else float(agreement)
+    unit_name, unit_div, unit_dec = unit
     f = [float(v) for v in freqs_hz]
     labels = [str(v) for v in rung_labels]
     if len(labels) != len(f):
@@ -92,12 +104,13 @@ def mesh_statement(freqs_hz, rung_labels) -> dict:
 
     steps_hz = [b - a for a, b in zip(f, f[1:])]
     steps_pct = [100.0 * s / a for s, a in zip(steps_hz, f)]
-    flat = [abs(s) <= FLAT_STEP * a for s, a in zip(steps_hz, f)]
+    flat = [abs(s) <= flat_step * a for s, a in zip(steps_hz, f)]
     signs = {float(np.sign(s)) for s, is_flat in zip(steps_hz, flat) if not is_flat}
     monotone = len(signs) <= 1
     last_two_pct = (100.0 * abs(f[-1] - f[-2]) / f[-2]) if len(f) >= 2 else float("nan")
 
-    ladder = ", ".join(f"{v/1e9:.5f} GHz at {lab}" for v, lab in zip(f, labels))
+    ladder = ", ".join(f"{v/unit_div:.{unit_dec}f} {unit_name} at {lab}"
+                       for v, lab in zip(f, labels))
     step_text = ", ".join(f"{p:+.3f} %" + (" (flat)" if fl else "")
                           for p, fl in zip(steps_pct, flat))
     if len(f) < 2:
@@ -106,18 +119,18 @@ def mesh_statement(freqs_hz, rung_labels) -> dict:
     elif not monotone:
         verdict = NOT_SHOWN_TO_CONVERGE
         reason = (f"the feature reverses direction by more than "
-                  f"{FLAT_STEP*100:.1f} % along the ladder: {ladder}; steps "
+                  f"{flat_step*100:.1f} % along the ladder: {ladder}; steps "
                   f"{step_text}")
-    elif not last_two_pct < LADDER_AGREEMENT * 100.0:
+    elif not last_two_pct < agreement * 100.0:
         verdict = NOT_SHOWN_TO_CONVERGE
         reason = (f"the last two rungs differ by {last_two_pct:.3f} % "
-                  f"(bar {LADDER_AGREEMENT*100:.0f} %): {ladder}; steps "
+                  f"(bar {agreement*100:.0f} %): {ladder}; steps "
                   f"{step_text}")
     else:
         verdict = CONVERGED
-        reason = (f"every step larger than {FLAT_STEP*100:.1f} % has one sign "
+        reason = (f"every step larger than {flat_step*100:.1f} % has one sign "
                   f"and the last two rungs differ by {last_two_pct:.3f} % "
-                  f"(bar {LADDER_AGREEMENT*100:.0f} %): {ladder}; steps "
+                  f"(bar {agreement*100:.0f} %): {ladder}; steps "
                   f"{step_text}")
     return {
         "freqs_hz": f,
@@ -129,6 +142,8 @@ def mesh_statement(freqs_hz, rung_labels) -> dict:
         "last_two_pct": last_two_pct,
         "verdict": verdict,
         "reason": reason,
+        "flat_step": flat_step,
+        "agreement": agreement,
     }
 
 
