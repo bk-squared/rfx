@@ -278,6 +278,12 @@ class SimResult(NamedTuple):
         Per snapshot component: sample coordinates in metres, the slice
         plane, and the step count and time of each frame (#1259). ``None``
         when no snapshot was recorded.
+    dt : float or None
+        The time step the scan actually advanced by, in seconds. It is
+        ``grid.dt`` except under ``stencil_order=4``, whose step is derated
+        by ``_ORDER4_CFL_FACTOR``; the time series and every frame are
+        sampled at this step, so time and frequency must be read with it,
+        not with ``grid.dt``.
     """
     state: FDTDState | None
     time_series: jnp.ndarray
@@ -292,6 +298,7 @@ class SimResult(NamedTuple):
     grid: Grid | None = None
     wire_refplane_sparams: tuple | None = None
     snapshot_axes: dict | None = None
+    dt: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -3110,8 +3117,9 @@ def run(
                 # without dt= would otherwise keep dt=0 and silently zero every
                 # extracted spectrum (S→0). The manual Python-loop path already
                 # stamps dt via update_waveguide_port_probe; this makes the
-                # compiled run() symmetric with it.
-                dt=float(grid.dt),
+                # compiled run() symmetric with it. The scan's own step, not
+                # grid.dt: stencil_order=4 derates it.
+                dt=float(dt),
                 v_probe_t=accs[0],
                 v_ref_t=accs[1],
                 i_probe_t=accs[2],
@@ -3158,6 +3166,7 @@ def run(
         grid=grid,
         wire_refplane_sparams=final_wire_refplanes,
         snapshot_axes=snap_axes,
+        dt=dt,
     )
 
 
@@ -3714,7 +3723,8 @@ def run_until_decay(
                 # probe accumulator can't run update_waveguide_port_probe's
                 # float(dt) stamp, so without this a cfg built without dt= keeps
                 # dt=0 and the post-scan rect-DFT zeroes every spectrum.
-                dt=float(grid.dt),
+                # The scan's own step (stencil_order=4 derates it).
+                dt=float(_setup.dt),
                 v_probe_t=accs[0], v_ref_t=accs[1],
                 i_probe_t=accs[2], i_ref_t=accs[3],
                 v_inc_t=accs[4],
@@ -3772,4 +3782,5 @@ def run_until_decay(
         ntff_box=ntff,
         grid=grid,
         snapshot_axes=snap_axes,
+        dt=_setup.dt,
     )

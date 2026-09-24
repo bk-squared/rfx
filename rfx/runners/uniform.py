@@ -1031,7 +1031,10 @@ def run_uniform(
         snapshots=sim_result.snapshots,
         snapshot_axes=sim_result.snapshot_axes,
         grid=grid,
-        dt=grid.dt,
+        # The step the scan advanced by: stencil_order=4 derates it below
+        # grid.dt, and every time / frequency read from this Result
+        # (find_resonances, an FFT of time_series) needs the real one.
+        dt=sim_result.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
         wire_port_sparams=(sim_result.wire_port_sparams
                            if keep_wire_port_sparams else None),
