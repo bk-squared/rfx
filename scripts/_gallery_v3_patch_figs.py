@@ -468,10 +468,10 @@ def _field_map(inset, f_res):
     iy0, iy1 = g.pad_y_lo, g.ny - g.pad_y_hi
     stride = max(1, ez.shape[0] // 1600)
     plane_t = np.asarray(ez[::stride, ix0:ix1, iy0:iy1], dtype=np.float32)
-    dt_grid = float(g.dt) * stride
-    # modal phasor over the ring-down at f_res
+    # modal phasor over the ring-down at f_res. Frames are `interval` steps
+    # apart since #1258; take their times from the run, not from grid.dt.
     n_frames = plane_t.shape[0]
-    t = np.arange(n_frames) * dt_grid
+    t = np.asarray(res.snapshot_axes["ez"].times_s)[::stride]
     w0 = int(0.40 * n_frames)
     ring, tr = plane_t[w0:], t[w0:]
     phasor = np.tensordot(np.exp(-2j * np.pi * f_res * tr), ring, axes=(0, 0))

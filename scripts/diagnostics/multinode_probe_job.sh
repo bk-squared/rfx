@@ -73,8 +73,9 @@ run_worker() {
   cd "$work/src"
   export PYTHONPATH="$work/src"
   export RFX_TOOLING_SHA="$resolved"
-  # Keep the image's JAX/jaxlib unless RFX_PIP_JAX names another (e.g. jax[cuda12]==0.6.2:
-  # the 0.4.33 image's XLA aborts some compiles on CHECK_LE(common_utilization, ...)).
+  # Install RFX_PIP_JAX over the image's JAX when set; the launcher sets it to JAX 0.6.2
+  # (jax[cuda12]>0.6.1,<0.6.3: the experiment CLI splits values on '='). The image's 0.4.33
+  # XLA aborts some compiles on CHECK_LE(common_utilization, ...) (#1252).
   # Never pip-install the project itself.
   [ -z "${RFX_PIP_JAX:-}" ] || python -m pip install -q "$RFX_PIP_JAX"
   python -m pip install -q 'numpy<2' 'scipy>=1.11,<1.15' 'h5py>=3.8,<4' 'matplotlib>=3.7,<3.10' 'pyyaml>=6,<7'

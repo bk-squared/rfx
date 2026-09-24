@@ -48,7 +48,13 @@ run: |-
   OUT=/root/workspace/claude-workspace/rfx/runs/gpu-suite/{stamp}/shard-{i}
   mkdir -p "$OUT"
   echo "shard {i}/{k}  main@{sha}" | tee "$OUT/meta.txt"
+  # JAX 0.6.2, the version CI's Python 3.10 lane resolves (PI 2026-09-24). The image's own
+  # 0.4.33 ships an XLA whose fusion cost model aborts on
+  # CHECK_LE(common_utilization, producer_output_utilization); forward(distributed=True) hit it (#1252).
+  python -m pip install -q "jax[cuda12]==0.6.2"
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
+  python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
   export PYTHONPATH="$ROOT"
   python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices())" | tee -a "$OUT/meta.txt"
   set +e

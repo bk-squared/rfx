@@ -1291,6 +1291,7 @@ class _ExecuteMixin:
                 time_series=probe_data,
                 ntff_data=None, ntff_box=None,
                 grid=grid_out,
+                dt=dt,
             )
 
         # ---- 2D TMz path ----
@@ -1363,6 +1364,7 @@ class _ExecuteMixin:
             ntff_data=None,
             ntff_box=None,
             grid=grid_out,
+            dt=dt,
         )
 
     def _forward_from_materials(
@@ -2358,6 +2360,8 @@ class _ExecuteMixin:
             lumped_port_sparams=result.lumped_port_sparams,
             wire_port_sparams=result.wire_port_sparams,
             dft_planes=dft_planes_out,
+            # The scan's own step: stencil_order=4 derates it below grid.dt.
+            dt=result.dt,
         )
 
     @staticmethod
@@ -2371,6 +2375,7 @@ class _ExecuteMixin:
         freqs=None,
         dft_planes=None,
         wire_port_sparams=None,
+        dt=None,
     ) -> ForwardResult:
         """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
 
@@ -2398,6 +2403,7 @@ class _ExecuteMixin:
             freqs=freqs,
             dft_planes=dft_planes,
             wire_port_sparams=wire_port_sparams,
+            dt=dt,
         )
 
     def _forward_nonuniform_from_materials(
@@ -2479,6 +2485,7 @@ class _ExecuteMixin:
             freqs=getattr(result, "freqs", None),
             dft_planes=getattr(result, "dft_planes", None),
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
+            dt=getattr(result, "dt", None),
         )
 
     def distributed_override_layout(self, devices=None):
@@ -2920,6 +2927,7 @@ class _ExecuteMixin:
             dft_planes=result.get("dft_planes")
                 if hasattr(result, "get") else None,
             wire_port_sparams=None,
+            dt=getattr(grid, "dt", None),
         )
 
     # ---- unified lane dispatch (W6.3) ----

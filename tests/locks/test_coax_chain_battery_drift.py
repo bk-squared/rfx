@@ -20,6 +20,12 @@ battery is judged by:
   way with frequency as in the record (falling, 14-16 rad across the band). A
   conjugated S (the other time convention) keeps every magnitude and the
   reflection zero and flips only the phase direction;
+* the electrical length of both lines within 1 % of the record's: the
+  least-squares slope of S21's unwrapped phase against frequency, live over
+  stored. The thru has no frequency feature, so this is the only check here
+  that sees it grow longer: with every edge permittivity above vacuum read
+  5 % high its |S21| moves 0.010 dB and its electrical length 2.48 % (run
+  369367264558);
 * the thru's |S11| and |S22| held to -20 dB, a deep null compared with nothing
   (the PI's 2026-09-21 ruling);
 * the bead's reflection zero — the vertex of the parabola through |S11|^2, the
@@ -120,6 +126,8 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver, dut):
     findings += drift.phase_direction_findings(
         "S21", freqs, stored[1, 0, :], live[1, 0, :],
         deep=drift.db(stored[1, 0, :]) <= drift.DEEP_NULL_DB, report=report)
+    findings += drift.electrical_length_findings("S21", freqs, stored[1, 0, :],
+                                                 live[1, 0, :], report=report)
     if dut == "thru":
         findings += drift.bound_findings("the thru's |S11|", freqs, live[0, 0, :],
                                          report=report)
