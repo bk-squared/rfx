@@ -792,5 +792,5 @@ def _same_text_and_numbers(note, printed):
         assert "." in mx and "." in my, (x, y)
         places = len(mx.split(".")[1])
         assert places == len(my.split(".")[1]) and bool(ex) == bool(ey), (x, y)
-        unit = 10.0 ** (max(int(ex or 0), int(ey or 0)) - places)
+        unit = 10.0 ** (min(int(ex or 0), int(ey or 0)) - places)
         assert abs(float(x) - float(y)) <= 1.000001 * unit, (x, y)
