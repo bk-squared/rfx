@@ -58,10 +58,13 @@ Ampere loop before the run, and removes them from everything the run returns.
 After the run it reads the port's REALIZED cells, metrics and DFT
 accumulators from the run itself, rebuilds the port voltage and current step
 by step, and checks that the rebuilt series, accumulated the way the run
-accumulates them, reproduce the run's own accumulators bit for bit (W0). It
-then completes the spectra and assembles the S-matrix with the lane's own
-assembly (the graded lane's ``rfx.nonuniform._assemble_nu_result``, the
-uniform lane's ``rfx.probes.probes.driven_port_reflection``).
+accumulates them, reproduce the run's own accumulators to within
+``W0_ULP_BAR`` ULPs (W0). It then completes the spectra and assembles the
+S-matrix with the lane's own assembly (the graded lane's
+``rfx.nonuniform._assemble_nu_result``, the uniform lane's
+``rfx.probes.probes.driven_port_reflection``). When W0, W1 or the pole
+identification fails, the run is returned as it is, uncompleted, with the
+failed check in ``Result.ringdown.report`` and a warning.
 """
 
 from __future__ import annotations
@@ -168,12 +171,18 @@ class RingdownSpec:
 
 
 class RingdownPole(NamedTuple):
-    """One identified pole: signed frequency, loaded Q, decay rate, ``|lambda|`` per step."""
+    """One identified pole.
+
+    Signed frequency, loaded Q, amplitude decay rate, ``|lambda|`` per step,
+    and its amplitude: the largest ``|residue|`` over the channels at the
+    window's first sample, relative to that channel's RMS over the window.
+    """
 
     f_hz: float
     q: float
     decay_per_s: float
     abs_lambda: float
+    amplitude: float = math.nan
 
 
 class RingdownWitness(NamedTuple):
@@ -184,15 +193,21 @@ class RingdownWitness(NamedTuple):
     bar: float
     ok: bool
     rule: str
+    note: str = ""
 
 
 @dataclass(frozen=True)
 class RingdownModel:
     """Poles and residues identified on a window of a multichannel record.
 
-    ``s`` are the poles at the ORIGINAL step (1/s); ``c (K, C)`` the residues
-    referred to sample ``n_ref`` (the window's first sample, so a fast pole's
-    residue is never extrapolated back over the whole record).
+    ``s`` are the kept poles at the ORIGINAL step (1/s); ``c (K, C)`` their
+    residues referred to sample ``n_ref`` (the window's first sample, so a
+    fast pole's residue is never extrapolated back over the whole record).
+    ``amplitude`` is each kept pole's largest ``|c| / RMS`` over the channels.
+    ``s_growing`` are the poles the pencil discarded as growing, and
+    ``growing_amplitude`` each one's size at the window's last sample,
+    ``|r_k| |lambda_k|**(n_end - n_ref) / RMS`` (largest over the channels),
+    from a residue fit made jointly with the kept poles.
     """
 
     s: np.ndarray
@@ -210,6 +225,10 @@ class RingdownModel:
     n_invalid: int
     n_guard_dropped: int
     singular_values: np.ndarray
+    amplitude: np.ndarray = None
+    s_growing: np.ndarray = None
+    growing_amplitude: np.ndarray = None
+    window_rms: np.ndarray = None
 
     @property
     def lam(self) -> np.ndarray:
@@ -222,22 +241,33 @@ class RingdownModel:
         return np.exp(np.outer((n - self.n_ref) * self.dt, self.s)) @ self.c
 
     def poles(self) -> tuple:
-        """Every kept pole as a :class:`RingdownPole`, sorted by frequency."""
+        """Every kept pole as a :class:`RingdownPole`, largest amplitude first
+        (by frequency when no amplitude is known)."""
         f = self.s.imag / (2.0 * np.pi)
         alpha = -self.s.real
         lam = np.abs(self.lam)
+        amp = (np.full(self.s.size, math.nan) if self.amplitude is None
+               else np.asarray(self.amplitude, dtype=np.float64))
+        order = (np.argsort(f, kind="stable") if np.all(np.isnan(amp))
+                 else np.argsort(-np.nan_to_num(amp, nan=-1.0), kind="stable"))
         rows = []
-        for k in np.argsort(f, kind="stable"):
+        for k in order:
             q = (math.pi * abs(float(f[k])) / float(alpha[k])
                  if alpha[k] != 0 else math.inf)
             rows.append(RingdownPole(float(f[k]), float(q), float(alpha[k]),
-                                     float(lam[k])))
+                                     float(lam[k]), float(amp[k])))
         return tuple(rows)
 
 
 @dataclass(frozen=True)
 class RingdownReport:
-    """What a completed S-matrix rests on: the window, the poles, the witnesses."""
+    """What a completed S-matrix rests on: the window, the poles, the witnesses.
+
+    When a check that decides whether the completion can be trusted at all
+    fails (W0, W1, the identification), nothing is completed: ``failure``
+    names the check and its number, ``completed`` is False, and the fields that
+    need a model stay ``None``.
+    """
 
     n_record: int
     dt: float
@@ -245,22 +275,31 @@ class RingdownReport:
     window_s: tuple
     short_window_steps: tuple
     freq_max_hz: float
-    decimation_factors: tuple
-    rank: int
-    n_kept: int
-    n_growing_discarded: int
-    n_invalid: int
-    n_guard_dropped: int
-    short_rank: int
-    short_n_kept: int
-    poles: tuple
     witnesses: tuple
-    growing_pole_rule: str
+    failure: str | None = None
+    decimation_factors: tuple | None = None
+    rank: int | None = None
+    n_kept: int | None = None
+    n_growing_discarded: int | None = None
+    n_invalid: int | None = None
+    n_guard_dropped: int | None = None
+    short_rank: int | None = None
+    short_n_kept: int | None = None
+    poles: tuple = ()
+    growing_pole_rule: str = ""
+    w0_ulps: dict | None = None
+    tail_share: float | None = None
+    slowest_decay_over_window: float | None = None
+
+    @property
+    def completed(self) -> bool:
+        """True when the completed S-matrix was produced."""
+        return self.failure is None
 
     @property
     def ok(self) -> bool:
-        """True when every witness reads ok."""
-        return all(w.ok for w in self.witnesses)
+        """True when the completion was produced and every witness reads ok."""
+        return self.completed and all(w.ok for w in self.witnesses)
 
     def witness(self, name: str) -> RingdownWitness:
         for w in self.witnesses:
@@ -271,16 +310,23 @@ class RingdownReport:
 
     def summary(self) -> str:
         """A few lines for a log: window, poles kept, every witness."""
-        lines = [
-            f"ring-down completion: record {self.n_record} steps "
-            f"({self.n_record * self.dt * 1e9:.4g} ns), window "
-            f"[{self.window_s[0] * 1e9:.4g}, {self.window_s[1] * 1e9:.4g}] ns, "
-            f"decimation {self.decimation_factors or (1,)}, rank {self.rank}, "
-            f"{self.n_kept} poles kept ({self.n_guard_dropped} dropped by the "
-            f"guard, {self.n_growing_discarded} growing discarded)"]
+        head = (f"ring-down completion: record {self.n_record} steps "
+                f"({self.n_record * self.dt * 1e9:.4g} ns), window "
+                f"[{self.window_s[0] * 1e9:.4g}, {self.window_s[1] * 1e9:.4g}] ns, "
+                f"decimation reference {self.freq_max_hz / 1e9:.4g} GHz")
+        if self.completed:
+            head += (f", decimation {self.decimation_factors or (1,)}, rank "
+                     f"{self.rank}, {self.n_kept} poles kept ({self.n_guard_dropped} "
+                     f"dropped by the guard, {self.n_growing_discarded} growing "
+                     f"discarded); tail share {self.tail_share:.3g}, slowest decay "
+                     f"{self.slowest_decay_over_window:.3g} windows")
+        else:
+            head += f"; NOT COMPLETED: {self.failure}"
+        lines = [head]
         for w in self.witnesses:
             lines.append(f"  {w.name}: {w.value:.3e} (bar {w.bar:.3e}) "
-                         f"{'ok' if w.ok else 'FAILED'}")
+                         f"{'ok' if w.ok else 'FAILED'}"
+                         + (f" -- {w.note}" if w.note else ""))
         return "\n".join(lines)
 
 
@@ -289,10 +335,11 @@ class RingdownResult(NamedTuple):
 
     ``s_params`` has the shape and dtype of ``Result.s_params`` and is
     evaluated at the same bins (``freqs`` is ``Result.freqs``; rfx accumulates
-    at those bins rounded to float32, and so does the completion).
+    at those bins rounded to float32, and so does the completion). It is
+    ``None`` when the report says the completion was not produced.
     """
 
-    s_params: np.ndarray
+    s_params: np.ndarray | None
     freqs: np.ndarray
     report: RingdownReport
 
@@ -420,7 +467,7 @@ def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float):
     n_invalid = int(np.sum(~valid))
     lam = lam[valid]
     growing = np.abs(lam) > 1.0 + unit_tol
-    return lam[~growing], rank, int(np.sum(growing)), n_invalid, sv
+    return lam[~growing], rank, lam[growing], n_invalid, sv
 
 
 def _to_original_rate(lam_dec: np.ndarray, D: int, dt: float, guard):
@@ -458,7 +505,10 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     """Poles and residues of samples ``[n_start, n_stop)`` of ``series (n, C)``.
 
     Method steps 2-5 of the module docstring. ``guard=None`` turns the
-    transition-band guard off (for tests of the guard itself).
+    transition-band guard off (for tests of the guard itself). The poles the
+    pencil discards as growing are kept aside (``s_growing``) and sized by a
+    residue fit made jointly with the kept poles (``growing_amplitude``); the
+    completion itself uses the kept poles' own fit.
     """
     Y, _ = _as_2d(series)
     n_start, n_stop = int(n_start), int(n_stop)
@@ -472,15 +522,27 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     factors, _kept = decimation_plan(win.shape[0], dt, freq_max)
     Yd = _decimate(win, factors) if factors else win
     D = int(np.prod(factors)) if factors else 1
-    lam_dec, rank, n_growing, n_invalid, sv = _pencil(Yd, float(sv_rel), float(unit_tol))
+    lam_dec, rank, lam_grow, n_invalid, sv = _pencil(Yd, float(sv_rel), float(unit_tol))
     s, n_guard = _to_original_rate(lam_dec, D, dt, guard)
     c = _fit_residues(win, s, dt)
+    rms = np.sqrt(np.mean(np.abs(win) ** 2, axis=0))
+    rms_safe = np.where(rms > 0, rms, 1.0)
+    amplitude = (np.max(np.abs(c) / rms_safe[None, :], axis=1) if s.size
+                 else np.zeros(0))
+    s_grow = np.log(np.asarray(lam_grow, dtype=np.complex128)) / (D * dt)
+    g = np.zeros(s_grow.size)
+    if s_grow.size:
+        c_joint = _fit_residues(win, np.concatenate([s, s_grow]), dt)[s.size:]
+        n_end = win.shape[0] - 1
+        at_end = np.abs(c_joint) * np.exp(s_grow.real * dt * n_end)[:, None]
+        g = np.max(at_end / rms_safe[None, :], axis=1)
     return RingdownModel(
         s=s, c=c, n_ref=n_start, dt=dt, freq_max=freq_max,
         guard=None if guard is None else float(guard), factors=factors, D=D,
         rank=int(rank), n_window=int(win.shape[0]), n_decimated=int(Yd.shape[0]),
-        n_growing_discarded=int(n_growing), n_invalid=int(n_invalid),
-        n_guard_dropped=n_guard, singular_values=sv)
+        n_growing_discarded=int(s_grow.size), n_invalid=int(n_invalid),
+        n_guard_dropped=n_guard, singular_values=sv, amplitude=amplitude,
+        s_growing=s_grow, growing_amplitude=g, window_rms=rms)
 
 
 class TwoWindowWitness(NamedTuple):
@@ -495,14 +557,15 @@ class TwoWindowWitness(NamedTuple):
 
 def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
                        split=0.9, guard=0.9, sv_rel=1.0e-6, unit_tol=1.0e-6,
-                       observable=None) -> TwoWindowWitness:
+                       observable=None, plain=None) -> TwoWindowWitness:
     """Complete ``series[:n_record]`` from ``[n_start, n_record)`` and from ``[n_start, split*n_record)``.
 
     Both completions add their tail after the SAME last sample
     (``n_record - 1``), so the difference is the window's influence alone.
     ``observable`` maps a ``(nf, C)`` spectra array to the quantity compared
     (default: the spectra themselves); ``value`` is the largest absolute
-    difference of the two observables.
+    difference of the two observables. ``plain`` may carry the plain DFT of
+    ``series[:n_record]`` at ``freqs`` when the caller already has it.
     """
     n_record, n_start = int(n_record), int(n_start)
     n_split = int(round(float(split) * n_record))
@@ -515,7 +578,8 @@ def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
     kw = dict(freq_max=freq_max, guard=guard, sv_rel=sv_rel, unit_tol=unit_tol)
     model = identify(Y, dt, n_start, n_record, **kw)
     model_short = identify(Y, dt, n_start, n_split, **kw)
-    plain = plain_dft(Y, dt, freqs)
+    if plain is None:
+        plain = plain_dft(Y, dt, freqs)
     spectra = plain + tail_dft(model, n_record - 1, freqs)
     spectra_short = plain + tail_dft(model_short, n_record - 1, freqs)
     obs = (lambda a: a) if observable is None else observable
@@ -847,19 +911,55 @@ def _assemble(lane: str, pms, spectra_vp, spectra_i, freqs32, dt, v_mid=None):
     return np.asarray(r["s_params"])
 
 
-def _worst(a, b):
-    """Largest ``|a - b|``, its flat index, and the two values there."""
-    a, b = np.asarray(a), np.asarray(b)
-    d = np.abs(a.astype(np.complex128) - b.astype(np.complex128))
-    k = int(np.argmax(d))
-    return float(d.flat[k]), k, a.flat[k], b.flat[k]
+def _ulps(rebuilt, rfx_values) -> float:
+    """``max |rebuilt - rfx|`` in units of the spacing of the rfx array's own
+    real dtype at that array's peak (the cross-trace ULP reading)."""
+    a = np.asarray(rebuilt).astype(np.complex128)
+    b_raw = np.asarray(rfx_values)
+    b = b_raw.astype(np.complex128)
+    d = float(np.max(np.abs(a - b))) if b.size else 0.0
+    if d == 0.0:
+        return 0.0
+    real = np.real(b_raw.ravel()[:1]).dtype
+    peak = float(np.max(np.abs(b)))
+    return d / float(np.spacing(np.asarray(peak, dtype=real)))
+
+
+#: W0's bar: the rebuilt accumulators and the lane's S assembly on the run's
+#: own accumulators may differ from the run by at most this many ULPs, read at
+#: the peak of each array in the run's own real dtype (the PI's cross-trace
+#: rule of 2026-09-23: aim bitwise, allow a single-digit ULP count).
+W0_ULP_BAR = 9.0
+#: W1's bar: the completion's own plain part (the float64 DFT of the rebuilt
+#: record, no tail), assembled by the lane's S assembly, against
+#: ``Result.s_params`` -- absolute, on S. Not set yet: on clean runs the value
+#: grows with the record (rfx's own complex64 accumulator round-off), up to
+#: 1.1e-4 at 60,000 steps, so W1 is reported and does not gate.
+W1_BAR = math.inf
+#: The discarded-growth bar: a pole the pencil discarded as growing fails the
+#: growing-pole witness when its size at the record's end, relative to the
+#: channel's RMS over the window, exceeds this. Not set yet: on short clean
+#: records the discarded poles reach 7e-2 while a genuine 6e-6/step growth
+#: ending at 5e-3 reads 6e-3, so the size is reported and does not gate.
+GROWTH_BAR = math.inf
+
+
+class _NotCompleted(Exception):
+    """A check that decides whether the completion can be trusted at all failed."""
+
+    def __init__(self, name, value, bar, message):
+        super().__init__(message)
+        self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
 class RingdownRun:
     """One ``run(..., ringdown=spec)``: probes in, run, probes out, complete.
 
     Built by ``Simulation.run`` once the lane, the step count and the grid are
-    known; :meth:`run` wraps the lane's runner call.
+    known; :meth:`run` wraps the lane's runner call. Everything that can refuse
+    the request does so here, before the run; after the run nothing raises: a
+    failed check returns the plain result unchanged with the reason in
+    ``Result.ringdown.report`` and a warning.
     """
 
     def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid):
@@ -920,9 +1020,10 @@ class RingdownRun:
 
         The E edges of each port's extent span and the H samples of an Ampere
         loop at each of them, with one extra edge below the span (a sub-cell
-        extent drives the edge on either side of its node). Which of these are
-        the port's live edges and midpoint is read from the run itself after
-        it has run; this only has to cover them.
+        extent drives the edge on either side of its node) unless that edge
+        would lie in the absorber pad. Which of these are the port's live
+        edges and midpoint is read from the run itself after it has run; this
+        only has to cover them.
         """
         resolve = _lane_resolver(self.lane, self.grid)
         keys = []
@@ -934,6 +1035,7 @@ class RingdownRun:
                 seen.add(key)
                 keys.append(key)
 
+        pads = tuple(int(getattr(self.grid, f"pad_{ax}_lo", 0)) for ax in "xyz")
         for pe in self.wire_entries:
             comp = str(pe.component)
             axis = _AXIS_OF[comp]
@@ -942,7 +1044,7 @@ class RingdownRun:
             i0 = tuple(int(v) for v in resolve(tuple(pe.position)))
             i1 = tuple(int(v) for v in resolve(tuple(end)))
             lo, hi = min(i0[axis], i1[axis]), max(i0[axis], i1[axis])
-            for k in range(max(lo - 1, 0), hi + 1):
+            for k in range(max(lo - 1, pads[axis]), hi + 1):
                 cell = list(i0)
                 cell[axis] = k
                 add(comp, cell)
@@ -951,6 +1053,14 @@ class RingdownRun:
                     if cell[back_axis] > 0:
                         back = list(cell)
                         back[back_axis] -= 1
+                        if self.lane == "graded" and back[back_axis] < pads[back_axis]:
+                            raise NotImplementedError(
+                                f"run(ringdown=...): the wire port at "
+                                f"{tuple(float(v) for v in pe.position)} sits on "
+                                f"the {'xyz'[back_axis]}-low face, so its Ampere "
+                                f"loop reads {hname} inside the absorber pad, "
+                                "where the graded lane's probes cannot be placed. "
+                                "Move the port at least one cell inside.")
                         add(hname, back)
         for comp, idx in keys:
             pos = _node_position(self.grid, idx)
@@ -985,51 +1095,85 @@ class RingdownRun:
         full = result.time_series
         ts_all = np.asarray(full)
         n_int = len(self.probe_keys)
-        if ts_all.ndim != 2 or ts_all.shape[1] != n_user + n_int:
+        if ts_all.ndim != 2 or ts_all.shape != (self.n_steps, n_user + n_int):
             raise RuntimeError(
                 f"run(ringdown=...): the run returned a time series of shape "
-                f"{ts_all.shape}, expected (n_steps, {n_user} user + {n_int} "
-                "port-channel probes)")
-        if ts_all.shape[0] != self.n_steps:
-            raise RuntimeError(
-                f"run(ringdown=...): the run recorded {ts_all.shape[0]} steps, "
-                f"planned {self.n_steps}")
+                f"{ts_all.shape}, expected ({self.n_steps}, {n_user} user + "
+                f"{n_int} port-channel probes)")
         stripped = result._replace(
             time_series=full[:, :n_user],
             **({"wire_port_sparams": None} if self.lane == "uniform" else {}))
+        dt = float(result.grid.dt)
+        ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
+                                                            dtype=np.float64))))
+        base = dict(n_record=self.n_steps, dt=dt,
+                    window_steps=(self.n_start, self.n_steps),
+                    window_s=(self.n_start * dt, self.n_steps * dt),
+                    short_window_steps=(self.n_start, self.n_split),
+                    freq_max_hz=ref_hz)
+        witnesses, state = [], {}
+        try:
+            S, report_extra = self._complete(result, ts_all, n_user, dt, ref_hz,
+                                             witnesses, state)
+        except _NotCompleted as nc:
+            witnesses.append(RingdownWitness(nc.name, float(nc.value), float(nc.bar),
+                                             False, nc.message))
+            report = RingdownReport(**base, witnesses=tuple(witnesses),
+                                    failure=f"{nc.name}: {nc.message}",
+                                    w0_ulps=state.get("w0_ulps"))
+            warnings.warn(
+                f"ring-down completion not produced -- {nc.name} failed: "
+                f"{nc.message} Result.ringdown.s_params is None; every other "
+                "output of this run is as without ringdown=.", stacklevel=3)
+            return stripped._replace(ringdown=RingdownResult(
+                s_params=None, freqs=result.freqs, report=report))
+        report = RingdownReport(**base, witnesses=tuple(witnesses),
+                                w0_ulps=state.get("w0_ulps"), **report_extra)
+        if not report.ok:
+            failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
+                               + (f" -- {w.note}" if w.note else "")
+                               for w in witnesses if not w.ok)
+            warnings.warn(
+                f"ring-down completion: witness failed -- {failed}; "
+                "Result.ringdown.s_params is not supported by its own check "
+                "(see Result.ringdown.report).", stacklevel=3)
+        return stripped._replace(ringdown=RingdownResult(
+            s_params=S, freqs=result.freqs, report=report))
 
-        # The probes landed where planned, on the run's own grid.
+    def _rebuild_inputs(self, result, ts_all, n_user):
+        """The port metadata the run realized and the probe samples it covers."""
         run_grid = result.grid
         resolve = _lane_resolver(self.lane, run_grid)
         for comp, idx in self.probe_keys:
             got = tuple(int(v) for v in resolve(_node_position(self.grid, idx)))
             if got != idx:
-                raise RuntimeError(
-                    f"run(ringdown=...): port-channel probe {comp}{idx} resolved "
-                    f"to {got} on the run's own grid")
+                raise _NotCompleted(
+                    "W0", math.nan, W0_ULP_BAR,
+                    f"port-channel probe {comp}{idx} resolved to {got} on the "
+                    "run's own grid.")
         col = {key: n_user + j for j, key in enumerate(self.probe_keys)}
-        pms = _read_port_metas(self.lane, result, run_grid)
+        try:
+            pms = _read_port_metas(self.lane, result, run_grid)
+        except RuntimeError as exc:
+            raise _NotCompleted("W0", math.nan, W0_ULP_BAR, str(exc)) from None
         if len(pms) != len(self.wire_entries):
-            raise RuntimeError(
-                f"run(ringdown=...): the run reports {len(pms)} wire ports, the "
-                f"model declares {len(self.wire_entries)}")
-        dt = run_grid.dt
-
+            raise _NotCompleted(
+                "W0", math.nan, W0_ULP_BAR,
+                f"the run reports {len(pms)} wire ports, the model declares "
+                f"{len(self.wire_entries)}.")
         e_cols, h_cols = [], []
         for p, pm in enumerate(pms):
             missing = [c for c in pm.live_cells if (pm.component, c) not in col]
-            if missing:
-                raise RuntimeError(
-                    f"run(ringdown=...): wire port {p} realized live edges "
-                    f"{missing} outside the probed span")
+            if missing or any((hname, pm.mid) not in col
+                              for hname, _ax in _LOOP_LEGS[pm.component]):
+                raise _NotCompleted(
+                    "W0", math.nan, W0_ULP_BAR,
+                    f"wire port {p}: realized live edges {pm.live_cells} / "
+                    f"midpoint {pm.mid} not all inside the probed span.")
             e = ts_all[:, [col[(pm.component, c)] for c in pm.live_cells]]
             h = {name: np.zeros((ts_all.shape[0], 2, 2, 2), dtype=ts_all.dtype)
                  for name in ("hx", "hy", "hz")}
             for hname, back_axis in _LOOP_LEGS[pm.component]:
-                if (hname, pm.mid) not in col:
-                    raise RuntimeError(
-                        f"run(ringdown=...): wire port {p} midpoint {pm.mid} "
-                        "outside the probed span")
                 h[hname][:, 1, 1, 1] = ts_all[:, col[(hname, pm.mid)]]
                 if pm.mid[back_axis] > 0:
                     back = list(pm.mid)
@@ -1040,36 +1184,43 @@ class RingdownRun:
                 # at index 0 the runner reads zero there; the local cell stays 0
             e_cols.append(e)
             h_cols.append(h)
+        return pms, e_cols, h_cols
+
+    def _complete(self, result, ts_all, n_user, dt, ref_hz, witnesses, state):
+        pms, e_cols, h_cols = self._rebuild_inputs(result, ts_all, n_user)
 
         # ---- W0: the rebuilt series, accumulated the run's way, are the run's
-        w0_max = 0.0
+        ulps = {}
+        # the grid's own dt object: under x64 a numpy float64 and a Python
+        # float promote the run's float32 step index differently
+        dt_run = result.grid.dt
         for p, pm in enumerate(pms):
-            emu = _emulate_accumulators(self.lane, pm, e_cols[p], h_cols[p], dt)
+            emu = _emulate_accumulators(self.lane, pm, e_cols[p], h_cols[p], dt_run)
             for name, a, b in zip(("v_mid", "i", "v_port"), emu, pm.accs):
-                d, k, av, bv = _worst(a, b)
-                if not np.array_equal(np.asarray(a), np.asarray(b)):
-                    f_k = float(np.asarray(pm.freqs)[k])
-                    raise RuntimeError(
-                        f"run(ringdown=...) W0 failed: wire port {p} channel "
-                        f"{name}, rebuilt from the port-channel probes and "
-                        f"accumulated the run's way, differs from the run's own "
-                        f"accumulator: max |rebuilt - rfx| = {d:.3e} at "
-                        f"{f_k:.6g} Hz (rebuilt {complex(av)!r}, rfx "
-                        f"{complex(bv)!r}). The completion would not be the "
-                        "S-parameters this run reports; not completing.")
-                w0_max = max(w0_max, d)
+                ulps[f"port{p}/{name}"] = _ulps(a, b)
         freqs32 = pms[0].freqs
+        S_run = np.asarray(result.s_params)
         S_check = _assemble(self.lane, pms, [pm.accs[2] for pm in pms],
                             [pm.accs[1] for pm in pms], freqs32, dt,
                             v_mid=[pm.accs[0] for pm in pms])
-        if not np.array_equal(S_check, np.asarray(result.s_params)):
-            d, _k, av, bv = _worst(S_check, result.s_params)
-            raise RuntimeError(
-                f"run(ringdown=...) W0 failed: the lane's S assembly called on the "
-                f"run's own accumulators gives max |dS| = {d:.3e} against "
-                f"Result.s_params ({complex(av)!r} vs {complex(bv)!r}).")
+        for j in range(S_run.shape[0]):
+            for k in range(S_run.shape[1]):
+                ulps[f"S[{j},{k}]"] = _ulps(S_check[j, k], S_run[j, k])
+        state["w0_ulps"] = ulps
+        worst = max(ulps, key=ulps.get)
+        w0 = ulps[worst]
+        w0_rule = ("the port V/I rebuilt from probes, accumulated the run's way "
+                   "in the run's dtype, and the lane's S assembly on the run's own "
+                   "accumulators, against the run: max ULPs at each array's peak")
+        if not w0 <= W0_ULP_BAR:
+            raise _NotCompleted(
+                "W0", w0, W0_ULP_BAR,
+                f"{worst} differs from the run by {w0:.3g} ULPs (bar "
+                f"{W0_ULP_BAR:g}): the rebuilt port channels are not the ones the "
+                "run accumulated.")
+        witnesses.append(RingdownWitness("W0", w0, W0_ULP_BAR, True, w0_rule))
 
-        # ---- completion ------------------------------------------------------
+        # ---- the rebuilt record, float64 ------------------------------------
         cols = []
         for p, pm in enumerate(pms):
             e64 = e_cols[p].astype(np.float64).T                      # (n_live, n)
@@ -1089,57 +1240,84 @@ class RingdownRun:
             ii = [spectra[:, 2 * p + 1] * half for p in range(len(pms))]
             return _assemble(self.lane, pms, vp, ii, freqs32, dt)
 
+        # ---- W1: the completion's plain part is the run's S ----------------
+        plain = plain_dft(Y, dt, f_bins)
+        w1 = float(np.max(np.abs(to_s(plain).astype(np.complex128)
+                                 - S_run.astype(np.complex128))))
+        w1_rule = ("max |S from the float64 DFT of the rebuilt record (no tail) "
+                   "- Result.s_params|")
+        if not w1 <= W1_BAR:
+            raise _NotCompleted(
+                "W1", w1, W1_BAR,
+                f"the rebuilt record's own plain S differs from Result.s_params "
+                f"by {w1:.3e} (bar {W1_BAR:.0e}): the channels fed to the "
+                "completion are not the port's voltage and current.")
+        witnesses.append(RingdownWitness("W1", w1, W1_BAR, True, w1_rule))
+
+        # ---- identification and completion ----------------------------------
         spec = self.spec
-        w2 = two_window_witness(
-            Y, dt, f_bins, self.n_steps, self.n_start, freq_max=self.freq_max,
-            split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
-            unit_tol=spec.unit_tol, observable=to_s)
+        try:
+            w2 = two_window_witness(
+                Y, dt, f_bins, self.n_steps, self.n_start, freq_max=ref_hz,
+                split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
+                unit_tol=spec.unit_tol, observable=to_s, plain=plain)
+        except (ValueError, np.linalg.LinAlgError) as exc:
+            raise _NotCompleted("identification", math.nan, math.nan,
+                                f"{exc}.") from None
         S = to_s(w2.spectra)
         model = w2.model
 
-        record_s = self.n_steps * float(dt)
+        record_s = self.n_steps * dt
         grow, exempt = growing_poles(model, record_s, spec.unit_tol)
+        g = np.asarray(model.growing_amplitude, dtype=np.float64)
+        g_max = float(np.max(g)) if g.size else 0.0
         driven = [p for p, pm in enumerate(pms) if pm.excite]
         s_diag = max(float(np.max(np.abs(S[p, p, :]))) for p in driven)
+        s_plain = max(float(np.max(np.abs(S_run[p, p, :]))) for p in driven)
+        p_bar = 1.0 + float(spec.passivity_tol)
+        p_note = (f"plain record max |S_kk| = {s_plain:.6g}"
+                  + ("; the board/port reads non-passive without the completion"
+                     if s_plain > p_bar else ""))
         src_ratio = max((r for _l, r in self.source_off), default=0.0)
-        witnesses = (
-            RingdownWitness("W0", w0_max, 0.0, True,
-                            "the port V/I rebuilt from probes, accumulated the "
-                            "run's way, equal the run's accumulators bit for bit"),
+        witnesses += [
             RingdownWitness("W2", w2.value, float(spec.witness_tol),
                             w2.value <= float(spec.witness_tol),
                             f"max |S| difference between the completions from "
                             f"[{spec.window_start:g} T, T] and "
                             f"[{spec.window_start:g} T, {spec.split:g} T]"),
-            RingdownWitness("growing_poles", float(len(grow)), 0.0, len(grow) == 0,
-                            GROWING_POLE_RULE
-                            + f"; {len(exempt)} zero-frequency pole(s) exempt"),
-            RingdownWitness("passivity", s_diag, 1.0 + float(spec.passivity_tol),
-                            s_diag <= 1.0 + float(spec.passivity_tol),
-                            "max |S_kk| over the driven ports"),
+            RingdownWitness("growing_poles", g_max, GROWTH_BAR,
+                            len(grow) == 0 and g_max <= GROWTH_BAR,
+                            GROWING_POLE_RULE + "; and no pole the pencil discarded "
+                            "as growing may be larger at the record's end than "
+                            "the bar, relative to its channel's RMS over the window",
+                            f"{len(grow)} kept growing, {len(exempt)} zero-frequency "
+                            f"exempt, {g.size} discarded"),
+            RingdownWitness("passivity", s_diag, p_bar, s_diag <= p_bar,
+                            "max |S_kk| over the driven ports", p_note),
             RingdownWitness("source_off", src_ratio, float(spec.source_off_tol),
                             src_ratio <= float(spec.source_off_tol),
                             "largest source waveform over the window, as a "
                             "fraction of its peak"),
-        )
-        report = RingdownReport(
-            n_record=self.n_steps, dt=float(dt),
-            window_steps=(self.n_start, self.n_steps),
-            window_s=(self.n_start * float(dt), record_s),
-            short_window_steps=(self.n_start, self.n_split),
-            freq_max_hz=self.freq_max, decimation_factors=model.factors,
-            rank=model.rank, n_kept=int(model.s.size),
+        ]
+        tail = w2.spectra - plain
+        tail_share = float(np.max(np.max(np.abs(tail), axis=0)
+                                  / np.maximum(np.max(np.abs(w2.spectra), axis=0),
+                                               1e-300)))
+        amp = np.asarray(model.amplitude, dtype=np.float64)
+        alpha = -model.s.real
+        strong = amp >= 1.0e-3
+        window_s = (self.n_steps - self.n_start) * dt
+        if np.any(strong):
+            a_min = float(np.min(alpha[strong]))
+            slowest = math.inf if a_min <= 0 else 1.0 / a_min / window_s
+        else:
+            slowest = 0.0
+        extra = dict(
+            decimation_factors=model.factors, rank=model.rank,
+            n_kept=int(model.s.size),
             n_growing_discarded=model.n_growing_discarded,
             n_invalid=model.n_invalid, n_guard_dropped=model.n_guard_dropped,
             short_rank=w2.model_short.rank, short_n_kept=int(w2.model_short.s.size),
-            poles=model.poles(), witnesses=witnesses,
-            growing_pole_rule=GROWING_POLE_RULE)
-        if not report.ok:
-            failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
-                               for w in witnesses if not w.ok)
-            warnings.warn(
-                f"ring-down completion: witness failed -- {failed}; "
-                "Result.ringdown.s_params is not supported by its own check "
-                "(see Result.ringdown.report).", stacklevel=3)
-        return stripped._replace(ringdown=RingdownResult(
-            s_params=S, freqs=result.freqs, report=report))
+            poles=model.poles(), growing_pole_rule=GROWING_POLE_RULE,
+            tail_share=tail_share, slowest_decay_over_window=slowest)
+        return S, extra
