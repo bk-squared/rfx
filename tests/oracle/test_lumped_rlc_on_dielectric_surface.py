@@ -27,8 +27,9 @@ surface is the extraction's own witness (it must read 100 ohm, a value no
 ADE is involved in).
 
 MEASURED over 1-8 GHz with the edge D0: folded 100 ohm within 0.35 %;
-parallel 2 nH reactance within 0.74 % (surface) and 0.84 % (vacuum); series
-100 ohm + 1 nH within 0.43 % of |Z|. With the single-cell D0 restored: the
+parallel 2 nH reactance within 0.74 % (surface) and 0.84 % (vacuum) before
+#1245, 0.16 % on both after it; series 100 ohm + 1 nH within 0.43 % of |Z|.
+With the single-cell D0 restored: the
 parallel 2 nH off by 60 % (21.09 against 13.18 ohm at 1.05 GHz) and the
 series element reading 160 ohm; the vacuum row unchanged.
 """
@@ -50,7 +51,6 @@ GATE = 520
 N_FFT = 6000
 BAND = (1e9, 8e9)
 EPS2 = 4.0
-BAR = 0.03
 #: Sheet and source planes, in cells from the domain's z = 0 (16 CPML cells
 #: sit below it, so the nodes are 236 and 176).
 K_SHEET = 220
@@ -126,19 +126,48 @@ def test_folded_resistor_on_the_surface_reads_its_value(incident):
     assert err.max() < 0.01, f"folded 100 ohm read {z[np.argmax(err)]:.2f} ohm at {f[np.argmax(err)] / 1e9:.2f} GHz"
 
 
-@pytest.mark.parametrize("eps2", [EPS2, 1.0], ids=["eps-1-4-surface", "vacuum"])
-def test_parallel_inductor_reads_its_reactance(incident, eps2):
-    """Parallel 2 nH: Im Z_L = w L within 3 % on every bin of 1-8 GHz."""
-    l_h = 2e-9
+#: A lumped inductor is lossless: |Re Z_L| and |Im Z_L - w L| within 1 % of
+#: w L on every bin (#1245).
+BAR_L = 0.01
+
+
+@pytest.mark.parametrize("eps2, l_h", [(EPS2, 2e-9), (1.0, 2e-9), (1.0, 5e-9)],
+                         ids=["eps-1-4-surface-2nH", "vacuum-2nH", "vacuum-5nH"])
+def test_parallel_inductor_is_lossless_and_reads_its_reactance(incident, eps2, l_h):
+    """A pure parallel inductor: Re Z_L = 0 and Im Z_L = w L, each within 1 %
+    of w L on every bin of 1-8 GHz.
+
+    The inductor update it replaced applied I^{n+1} over the step n -> n+1
+    (backward Euler, half a step late against the centred field update) and
+    so carried a series resistance w^2 L dt: 9.5 ohm at 8 GHz for 2 nH on
+    these 1 mm cells, 9.5 % of w L (Q ~ 10). #1245 solves the inductor with
+    its edge field in one trapezoidal step.
+
+    MEASURED with the trapezoidal inductor (1-8 GHz): |Re Z_L|/wL <= 7.8e-7 in
+    vacuum and 0.56 % on the surface, |Im Z_L - wL|/wL <= 0.16 %; with the old
+    update restored, 9.5 % and 0.84 %. The surface
+    Re is the extraction's own floor, not the element: at the eps 1|4 interface
+    the vacuum and dielectric sides of the discrete jump condition carry
+    different dispersion factors cos(b1) and cos(b2), which the continuous
+    inversion reads as a spurious conductance (cos b2/cos b1 - 1)/eta2
+    (-5.6e-5 S at 8 GHz) and so as Re Z_L = G |Z_L|^2. That closed form
+    reproduces the surface readings of the folded 100 ohm and of both
+    inductor updates to 1e-6 (#1245). It grows with |Z_L|^2, so the 5 nH runs
+    in vacuum only: on the surface it reads 1.4 % of wL at 8 GHz.
+    """
     ts, _ = _sheet_run(lambda s, p: s.add_lumped_rlc(
         position=p, component="ex", L=l_h, topology="parallel"), eps2)
     f, z = _z_load(ts, incident, eps2)
     x_true = 2.0 * math.pi * f * l_h
+    loss = np.abs(z.real) / x_true
     err = np.abs(z.imag - x_true) / x_true
-    k = int(np.argmax(err))
-    assert err.max() <= BAR, (
-        f"parallel {l_h * 1e9:.0f} nH on eps2={eps2}: reactance {z.imag[k]:.2f} ohm "
-        f"against {x_true[k]:.2f} ohm at {f[k] / 1e9:.2f} GHz ({err[k]:.1%}; bar {BAR:.0%})")
+    k, m = int(np.argmax(loss)), int(np.argmax(err))
+    assert loss.max() <= BAR_L, (
+        f"parallel {l_h * 1e9:.0f} nH on eps2={eps2}: Re Z_L {z.real[k]:.3f} ohm at "
+        f"{f[k] / 1e9:.2f} GHz, {loss[k]:.2%} of w L = {x_true[k]:.2f} ohm (bar {BAR_L:.0%})")
+    assert err.max() <= BAR_L, (
+        f"parallel {l_h * 1e9:.0f} nH on eps2={eps2}: reactance {z.imag[m]:.2f} ohm "
+        f"against {x_true[m]:.2f} ohm at {f[m] / 1e9:.2f} GHz ({err[m]:.2%}; bar {BAR_L:.0%})")
 
 
 def test_series_element_on_the_surface_reads_its_impedance(incident):
