@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import sys
 from unittest import mock
 
 import numpy as np
@@ -197,7 +198,7 @@ def test_graded_port_load_reaches_the_dispersive_update(port, disp):
     factor = _block_effect(port, disp)
     print(f"[split] {port}+{disp}: 50/5000 late ratio "
           f"{_split(port, disp):.6f} (no block {_split(port, None):.6f}), "
-          f"factor {factor:.4f}")
+          f"factor {factor:.4f}", file=sys.stderr)
     assert _inside_band(factor), (
         f"{port} port with a {disp} block: the 50/5000 ohm late-time ratio "
         f"is {factor:.3f}x the ratio without the block -- the port's load "
@@ -220,7 +221,7 @@ def _lane_parity(mutation=()):
 def test_graded_lane_on_uniform_cells_matches_the_uniform_lane():
     d_ratio, d_trace, ratio_u, ratio_g = _lane_parity()
     print(f"[lane] 50/5000 ratio uniform {ratio_u:.6e} graded {ratio_g:.6e} "
-          f"(rel {d_ratio:.2e}); 50 ohm trace rel {d_trace:.2e}")
+          f"(rel {d_ratio:.2e}); 50 ohm trace rel {d_trace:.2e}", file=sys.stderr)
     assert abs(d_ratio) <= LANE_RATIO_RTOL, (ratio_u, ratio_g)
     assert d_trace <= LANE_TRACE_RTOL, d_trace
 
@@ -237,7 +238,7 @@ def test_mutation_both_builds_before_the_stamps_sends_everything_red():
     d_ratio, d_trace, _, _ = _lane_parity(mutation=both)
     print("[mutation a] " + ", ".join(f"{p}+{d} {f:.3f}"
                                       for (p, d), f in factors.items())
-          + f"; lane ratio rel {d_ratio:.3e}, trace rel {d_trace:.3e}")
+          + f"; lane ratio rel {d_ratio:.3e}, trace rel {d_trace:.3e}", file=sys.stderr)
     assert not any(_inside_band(f) for f in factors.values()), factors
     assert abs(d_ratio) > LANE_RATIO_RTOL
     assert d_trace > LANE_TRACE_RTOL
@@ -254,5 +255,5 @@ def test_mutation_one_build_before_the_stamps_sends_its_boards_red(kind):
              if c[1] == kind or (c[1] == "both" and kind == "lorentz")]
     factors = {case: _block_effect(*case, mutation=(kind,)) for case in cases}
     print(f"[mutation b {kind}] " + ", ".join(
-        f"{p}+{d} {f:.3f}" for (p, d), f in factors.items()))
+        f"{p}+{d} {f:.3f}" for (p, d), f in factors.items()), file=sys.stderr)
     assert not any(_inside_band(f) for f in factors.values()), factors
