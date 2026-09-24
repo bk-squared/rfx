@@ -109,7 +109,12 @@ def test_every_frozen_data_home_is_on_the_allowlist() -> None:
      ["fixture.json", "fixture", "coax_chain_battery"]),
     ("tests/fixtures/harminv_decimation/cv02/input-00.npz",
      ["input-00.npz", "input-00", "cv02"]),
-    ("tests/data/v1.json", ["v1.json", "v1"]),
+    ("tests/data/v1.json", ["v1.json"]),  # "v1" is too short to name one file
+    ("tests/fixtures/sweep/0.01_16.json", ["0.01_16.json", "sweep"]),  # stem has no letter
+    ("tests/fixtures/a/logs.tar.gz", ["logs.tar.gz", "logs"]),
+    # Only data suffixes come off: `split(".")[0]` would leave "rfx", which
+    # every file under rfx/ names.
+    ("tests/fixtures/rfx.golden_v2.json", ["rfx.golden_v2.json", "rfx.golden_v2"]),
     ("tests/crossval/sheen_lpf/reference/openems_sheen.json",
      ["openems_sheen.json", "openems_sheen"]),
 ])
@@ -333,6 +338,15 @@ def test_a_file_directly_in_a_home_is_not_named_by_the_home(repo: Path) -> None:
     base = _git(repo, "rev-parse", "HEAD")
     _write(repo, "tests/fixtures/orphan.json", _lines(5))
     _write(repo, "tests/unit/test_fix.py", 'FIX = ROOT / "tests" / "fixtures"\n')
+    head = _commit(repo)
+    assert len(_check(repo, base, head)) == 1
+
+
+def test_digits_do_not_vouch_for_a_numeric_name(repo: Path) -> None:
+    """A sweep point named `0.01_16.json` is not named by every `0` in the tree."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/data/0.01_16.json", _lines(5))
+    _write(repo, "tests/unit/test_x.py", "X = [0, 0.01, 16]\n")
     head = _commit(repo)
     assert len(_check(repo, base, head)) == 1
 

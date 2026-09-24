@@ -270,15 +270,32 @@ def reader_text(head: str, repo: Path) -> str:
     return "\n\0\n".join(parts)
 
 
+def _data_stem(name: str) -> str:
+    """*name* without its trailing data suffixes: ``a.json.gz`` -> ``a``.
+
+    Only data suffixes come off, so ``0.01_16.json`` keeps ``0.01_16`` rather
+    than collapsing to ``0``, which every file in the repository names.
+    """
+    stem = name
+    while "." in stem.lstrip(".") and is_data(stem):
+        stem = stem[:stem.rindex(".")]
+    return stem
+
+
+def _distinctive(token: str) -> bool:
+    """A shorter name can vouch for a file only if it could name one thing."""
+    return len(token) >= 3 and any(char.isalpha() for char in token)
+
+
 def reference_tokens(path: str) -> List[str]:
     """The names a reader may use for a frozen-data file (rule 3)."""
     match = FROZEN_HOME_RE.match(path)
     rest = PurePosixPath(match.group("rest") if match else path)
     tokens = [rest.name]
-    stem = rest.name.split(".", 1)[0]
-    if stem and stem != rest.name:
+    stem = _data_stem(rest.name)
+    if stem != rest.name and _distinctive(stem):
         tokens.append(stem)
-    if match and len(rest.parts) > 1:
+    if match and len(rest.parts) > 1 and _distinctive(rest.parent.name):
         tokens.append(rest.parent.name)
     return tokens
 
