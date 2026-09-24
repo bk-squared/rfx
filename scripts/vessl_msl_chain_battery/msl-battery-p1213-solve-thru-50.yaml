@@ -1,4 +1,4 @@
-name: rfx-msl-battery-r2-solve-notch-50
+name: rfx-msl-battery-p1213-solve-thru-50
 description: "MSL chain battery: one S-matrix solve for one device at one cell size."
 tags: [rfx, msl-chain-battery, solve]
 resources:
@@ -13,7 +13,7 @@ env:
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
   XLA_PYTHON_CLIENT_MEM_FRACTION: "0.92"
-  RFX_SHA: "d22b340017668c6940ebbff3bc6ba99c245b3f12"
+  RFX_SHA: "d160dcf18a05190ecb79bbeaf8ee3e1d989d9cc0"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -21,7 +21,7 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
-  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-msl-battery
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-msl-battery-post1213-run
   git config --global --add safe.directory "*"
   git config --global --add safe.directory "$SRC"
   git config --global --add safe.directory "$(git -C "$SRC" rev-parse --absolute-git-dir)"
@@ -29,11 +29,11 @@ run: |-
   test "$SHA" = "$RFX_SHA" || { echo "FATAL: worktree moved: $SHA"; exit 3; }
   test -z "$(git -C "$SRC" status --porcelain)" || { echo "FATAL: dirty worktree"; exit 3; }
   RUNS=/root/workspace/claude-workspace/rfx/runs
-  OUT=$RUNS/msl-battery-r2-solve-notch-50-$(date -u +%Y%m%dT%H%M%SZ)
+  OUT=$RUNS/msl-battery-p1213-solve-thru-50-$(date -u +%Y%m%dT%H%M%SZ)
   mkdir -p "$OUT"
   echo "$SHA" > "$OUT/commit.txt"
-  echo "$OUT" > "$RUNS/msl-battery-r2-solve-notch-50.latest"
-  WORK=/root/work/msl-battery-r2-solve-notch-50
+  echo "$OUT" > "$RUNS/msl-battery-p1213-solve-thru-50.latest"
+  WORK=/root/work/msl-battery-p1213-solve-thru-50
   trap 'rc=$?; echo "$rc" > "$OUT/job.rc"; cp -pr "$WORK/battery_out" "$OUT/" 2>/dev/null || true; chmod -R a+rX "$OUT" 2>/dev/null || true' EXIT
   rm -rf "$WORK"; mkdir -p "$WORK"; cp -a "$SRC/." "$WORK/"; cd "$WORK"
   "$PY" -m pip install -q "jax[cuda12]==0.6.2" "numpy>=2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-split optax
@@ -42,7 +42,7 @@ run: |-
   "$PY" -c "import rfx, os; print('rfx from', os.path.dirname(rfx.__file__))"
   mkdir -p "$WORK/battery_out"
   { timeout 14400 "$PY" scripts/diagnostics/msl_chain_battery_measure.py \
-      --stage solve --dut notch --rung 50 --num-periods 20 \
+      --stage solve --dut thru --rung 50 --num-periods 20 \
       --drive wide --out "$WORK/battery_out" --run-id "$OUT" 2>&1; echo "rc=$?"; } \
     | tee "$OUT/run.log" | tail -60
   echo BATTERY_STAGE_DONE

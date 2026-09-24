@@ -100,3 +100,9 @@ number.
    half full (the log prints a usage bar, not a byte count). Nothing was reduced to make it
    fit; the numbers go in the record and, as a statement of cost, in the support matrix.
 
+## Addendum 2026-09-23 (why the battery was re-run)
+
+4. **The solver's material rule changed after the fixture was measured.** Since #1213 each Yee E
+   component takes the mean eps and sigma of the four cells incident to its edge; before it, Ex, Ey
+   and Ez all took the one cell that owns the edge. The fixture was measured before that change (at
+   `d22b3400` and `2078ba2a`), so the whole battery above was re-run, unchanged, at one commit on main.

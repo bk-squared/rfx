@@ -619,8 +619,18 @@ def test_w12_on_the_record_is_reported_without_a_verdict(v):
     for t in ins.TRANSFORMS:
         rows = r["readings"][t]
         assert [q["key"] for q in rows] == RECORDED_W12_KEYS
+        # The recorded cells are 4-decimal roundings. The three-parameter row
+        # takes its order from a search along an rms minimum so flat that the
+        # ~1e-7 Hz rounding difference between OpenBLAS kernels in the
+        # least-squares solve moves the order by ~3e-7: the recording machine's
+        # SkylakeX kernel reads 196.92115262 um (196.9212), and CI's runners and
+        # the Haswell, Sandybridge, Nehalem and Katmai kernels read
+        # 196.92110674 um (196.9211). OPENBLAS_CORETYPE=Haswell reproduces CI
+        # on a SkylakeX machine. A pin at half the rounding step cannot hold
+        # across kernels; 5e-4 um (2.5e-6 relative) still pins every recorded
+        # digit that means anything for a cell size.
         assert [q["substrate_cell_for_the_bar_m"] * 1e6 for q in rows] == (
-            pytest.approx(RECORDED_W12_FZ_UM[t], abs=5e-5)), t
+            pytest.approx(RECORDED_W12_FZ_UM[t], abs=5e-4)), t
         assert [q["n_substrate_cells_for_the_bar"] for q in rows] == (
             RECORDED_W12_N_Z[t]), t
         assert r["finest_from_reference_pct"][t] == pytest.approx(
@@ -751,4 +761,36 @@ def test_the_notes_results_are_what_tables_prints(capsys):
     start = note.index("## Results (facts)")
     end = min(i for i in (note.find("Conclusions: leader fills.", start),
                           note.find("### Conclusions", start)) if i >= 0)
-    assert note[start:end] == printed
+    _same_text_and_numbers(note[start:end], printed)
+
+
+_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+
+
+def _same_text_and_numbers(note, printed):
+    """The note's text equals ``--tables``' text, and every number agrees to one
+    unit in its last printed place (integers exactly).
+
+    ``--tables`` re-derives the numbers on the machine that runs it, and the
+    fits behind them move in the last printed digit with the OpenBLAS kernel
+    (see the W12 pin), so a byte comparison flips on that digit -- it did on
+    CI's Python 3.10 shard at 9fe747a4. A number in e-notation gets one unit
+    of its mantissa's last place (the W12 table's |A| prints 9.1633e+12, a
+    quarter of a unit from its rounding edge on CI's value). Everything that
+    is not a number, every integer (cell counts, keys) and every number
+    printed without a decimal point is still compared exactly, and a number
+    may not change its printed shape (decimals, e-notation).
+    """
+    assert _NUMBER.split(note) == _NUMBER.split(printed)
+    a, b = _NUMBER.findall(note), _NUMBER.findall(printed)
+    assert len(a) == len(b)
+    for x, y in zip(a, b):
+        if x == y:
+            continue
+        mx, _, ex = x.lower().partition("e")
+        my, _, ey = y.lower().partition("e")
+        assert "." in mx and "." in my, (x, y)
+        places = len(mx.split(".")[1])
+        assert places == len(my.split(".")[1]) and bool(ex) == bool(ey), (x, y)
+        unit = 10.0 ** (min(int(ex or 0), int(ey or 0)) - places)
+        assert abs(float(x) - float(y)) <= 1.000001 * unit, (x, y)
