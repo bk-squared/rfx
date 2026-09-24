@@ -1440,9 +1440,10 @@ class _ExecuteMixin:
             )
 
         # The uniform forward lane has no subgrid (#1240). forward() (and
-        # optimize() through it) and topology_optimize() all enter here; the
-        # other callers never carry a refinement (run() sends one to the
-        # subgridded lane, compute_mixed_s_matrix refuses it first).
+        # optimize() through it), topology_optimize() and
+        # compute_lumped_wire_s_matrix_via_scan() all enter here; its other
+        # callers never carry a refinement (run() sends one to the subgridded
+        # lane, compute_mixed_s_matrix refuses it first).
         self._require_no_refinement_without_a_subgrid(
             "forward()/optimize()/topology_optimize()")
 

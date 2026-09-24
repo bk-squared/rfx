@@ -326,7 +326,8 @@ def test_vmap_sequential_fallback_covers_the_duration_run_covers():
 
 
 def test_lumped_wire_scan_driver_refuses():
-    """It calls the uniform forward lane directly, without forward()."""
+    """It calls the uniform forward lane directly, without forward(); the
+    lane's own refusal covers it."""
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 
     with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
