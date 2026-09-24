@@ -1,0 +1,94 @@
+"""sim.run(devices=...) gives the plain call's bits in every trace context.
+
+A source waveform that closes over a traced amplitude runs the multi-device lane
+under jax.jvp, jax.vjp, jax.value_and_grad, jax.vmap and stop_gradient. The PI's
+cross-trace rule (2026-09-15; scoped 2026-09-23 to the CI build, the required
+lane's JAX on Linux x86) says the same forward physics must give the same bits in
+each of them. The sources and probes sit in the two cells on either side of the
+slab cut, where the ghost exchange is the only way values cross.
+
+Measured on Mac arm64: holds on main and on the minimal exchange (#1222) with JAX
+0.6.2 and 0.10.2; on JAX 0.4.33 the minimal exchange breaks the vmap member by
+1-2 float32 steps through compiler fusion while main keeps it (review, #1222).
+The full-feature model of test_distributed_minimal_exchange.py already differs
+between vmap and plain on main, so it is not pinned here.
+"""
+
+import jax
+import jax.numpy as jnp
+from jax import lax
+import numpy as np
+import pytest
+
+from rfx import Box, Simulation
+
+pytestmark = pytest.mark.distributed
+
+_STEPS = 30
+
+
+def _devices():
+    devices = jax.devices("cpu")
+    if len(devices) < 2:
+        pytest.skip("needs two CPU devices")
+    return devices[:2]
+
+
+def _forward(model):
+    devices = _devices()
+
+    def build(amplitude):
+        boundary = "cpml" if model == "cpml" else "pec"
+        layers = 1 if boundary == "cpml" else 0
+        sim = Simulation(freq_max=15e9, domain=((16 - 2 * layers) * 1e-3, 4e-3, 4e-3),
+                         dx=1e-3, boundary=boundary, cpml_layers=layers)
+        grid = sim._build_grid()
+        width = (grid.shape[0] + len(devices) - 1) // len(devices)
+        for i in (width - 1, width):   # the last real cell of slab 0, the first of slab 1
+            position = ((i - grid.pad_x_lo) * grid.dx, 2e-3, 2e-3)
+            sim.add_source(position, "ez", amplitude_kind="field",
+                           waveform=lambda t: amplitude * jnp.cos(t * 2e10))
+            for component in ("ex", "ey", "ez", "hx", "hy", "hz"):
+                sim.add_probe(position, component)
+        if model == "pec_block":
+            x = (width - grid.pad_x_lo) * grid.dx
+            sim.add(Box((x, 3e-3, 1e-3), (x + 1e-3, 4e-3, 3e-3)), material="pec")
+        return sim
+
+    def forward(amplitude):
+        result = build(amplitude).run(n_steps=_STEPS, devices=devices)
+        return result.time_series, result.state.ez, result.state.hy
+
+    return forward
+
+
+def _contexts(forward):
+    def value_and_grad_aux():
+        def loss(amplitude):
+            outputs = forward(amplitude)
+            return jnp.sum(outputs[0] ** 2), outputs
+        (_, outputs), _ = jax.value_and_grad(loss, has_aux=True)(1.0)
+        return outputs
+
+    return {
+        "jvp": lambda: jax.jvp(forward, (1.0,), (1.0,))[0],
+        "vjp": lambda: jax.vjp(forward, 1.0)[0],
+        "value_and_grad": value_and_grad_aux,
+        "vmap": lambda: tuple(o[0] for o in jax.vmap(forward)(
+            jnp.array([1.0, 1.0], dtype=jnp.float32))),
+        "stop_gradient": lambda: jax.jvp(
+            lambda a: forward(lax.stop_gradient(a)), (1.0,), (1.0,))[0],
+    }
+
+
+@pytest.mark.parametrize("model", ["pec_block", "cpml"])
+def test_every_trace_context_gives_the_plain_bits(model):
+    forward = _forward(model)
+    plain = [np.asarray(o) for o in forward(1.0)]
+    assert np.isfinite(plain[0]).all() and np.max(np.abs(plain[0])) > 0
+    for name, context in _contexts(forward).items():
+        outputs = [np.asarray(o) for o in context()]
+        for label, got, want in zip(("trace", "ez", "hy"), outputs, plain):
+            assert got.shape == want.shape and got.dtype == want.dtype, (name, label)
+            changed = int(np.count_nonzero(got.view(np.uint32) != want.view(np.uint32)))
+            assert changed == 0, (name, label, changed, float(np.max(np.abs(got - want))))

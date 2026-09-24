@@ -246,14 +246,14 @@ def build_coaxial_port() -> Simulation:
     """Build one SMA-sized coaxial probe entering through the top face."""
     sim = Simulation(
         freq_max=10.0e9,
-        domain=(0.020, 0.020, 0.020),
+        domain=(0.008, 0.008, 0.060),
         dx=0.4e-3,
-        boundary="pec",
+        boundary="cpml",
     )
     # The 1.42 mm annulus between the pin and outer conductor spans more than
     # 3.5 cells at this dx.  A coaxial TEM field needs radial resolution.
     sim.add_coaxial_port(
-        (0.010, 0.010, 0.015),
+        (0.004, 0.004, 0.030),
         face="top",
         pin_length=5.0e-3,
         pin_radius=0.635e-3,
@@ -345,7 +345,7 @@ def main() -> None:
     # Simulation.run() does not accept add_coaxial_port().  Because this model
     # deliberately ends after construction, general preflight should report
     # that there is no generic run source.  The coaxial-family check should
-    # still pass and confirms the port was routed to its dedicated calculator.
+    # still pass: both coaxial lanes accept this setup (CPML, one top-face port).
     coaxial_report = coaxial.preflight()
     coaxial_route = coaxial.preflight_sparameters(calculator="coaxial")
     expected_build_only_advisory = bool(coaxial_report.by_code("no_sources"))

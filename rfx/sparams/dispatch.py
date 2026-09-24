@@ -79,10 +79,8 @@ COAXIAL_ONE_PORT_LANES = (
 )
 
 # Every lane name ``s_matrix_lane()`` can return, for validating ``lane=``.
-# ``compute_coaxial_s_matrix`` is deliberately absent: it is the DEPRECATED
-# single-plane lane (its own docstring records measured, non-physical
-# ``|S11|>1`` on a lossless short), so the dispatcher never selects it and
-# ``lane=`` cannot ask for it either. Call it directly if you need it.
+# The single-plane coaxial lane was never selectable here, and it was removed
+# from rfx in #1212.
 _SELECTABLE_LANES = (
     "compute_waveguide_s_matrix",
     "compute_msl_s_matrix",
@@ -241,10 +239,8 @@ def _no_lane_message(c: dict) -> str:
             f"{c['coaxial']} coaxial ports are registered. Every validated "
             "coaxial lane is built from EXACTLY ONE add_coaxial_port() "
             "(compute_coaxial_line_reflection, compute_coaxial_two_port and "
-            "compute_coax_msl_transition each raise otherwise). The only "
-            "method that accepts several is compute_coaxial_s_matrix(), "
-            "which is DEPRECATED and measured non-physical (|S11|>1 on a "
-            "lossless short); this dispatcher never selects it."
+            "compute_coax_msl_transition each raise otherwise). No lane "
+            "accepts several; compute_coaxial_s_matrix() did (removed, #1212)."
         )
 
     singles = []
@@ -325,8 +321,7 @@ def s_matrix_lane(self, *, lane: str | None = None) -> str:
         raise ValueError(
             f"lane={lane!r} is not a lane compute_s_matrix() can select. "
             f"Valid: {', '.join(repr(n) for n in _SELECTABLE_LANES)}. "
-            "(compute_coaxial_s_matrix is deprecated and deliberately not "
-            "selectable; call it directly if you need it.)"
+            "(compute_coaxial_s_matrix was removed in #1212.)"
         )
 
     if lane in COAXIAL_ONE_PORT_LANES:

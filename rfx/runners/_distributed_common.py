@@ -468,6 +468,55 @@ def exchange_component_shmap(field, mesh, n_devices):
     return _exchange(field)
 
 
+def exchange_h_yee_shmap(state, mesh, n_devices):
+    """Send packed Hy/Hz last-real rows right into the live LEFT ghosts.
+
+    The second-order Yee E curl reads only these two x-neighbours. Keep
+    physical-boundary ghosts verbatim; there is no wraparound on this lane.
+    """
+    if n_devices == 1:
+        return state
+
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
+             out_specs=(P("x"), P("x")), check_rep=False)
+    def _exchange(hy, hz):
+        packed = jnp.stack((hy[-2], hz[-2]))
+        received = lax.ppermute(
+            packed, "x", perm=[(i, i + 1) for i in range(n_devices - 1)])
+        interior = lax.axis_index("x") > 0
+        hy = hy.at[0].set(jnp.where(interior, received[0], hy[0]))
+        hz = hz.at[0].set(jnp.where(interior, received[1], hz[0]))
+        return hy, hz
+
+    hy, hz = _exchange(state.hy, state.hz)
+    return state._replace(hy=hy, hz=hz)
+
+
+def exchange_e_yee_shmap(state, mesh, n_devices):
+    """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
+
+    The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
+    and the opposite ghosts are dead: local ghost updates are overwritten
+    by the next live exchange before a real cell can consume them.
+    """
+    if n_devices == 1:
+        return state
+
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
+             out_specs=(P("x"), P("x")), check_rep=False)
+    def _exchange(ey, ez):
+        packed = jnp.stack((ey[1], ez[1]))
+        received = lax.ppermute(
+            packed, "x", perm=[(i, i - 1) for i in range(1, n_devices)])
+        interior = lax.axis_index("x") < n_devices - 1
+        ey = ey.at[-1].set(jnp.where(interior, received[0], ey[-1]))
+        ez = ez.at[-1].set(jnp.where(interior, received[1], ez[-1]))
+        return ey, ez
+
+    ey, ez = _exchange(state.ey, state.ez)
+    return state._replace(ey=ey, ez=ez)
+
+
 # ---------------------------------------------------------------------------
 # Domain-face boundary conditions inside shard_map
 # ---------------------------------------------------------------------------
@@ -939,7 +988,8 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
     return st._replace(ex=ex, ey=ey, ez=ez)
 
 
-def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids):
+def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
+                        *, reduce_devices=True):
     """Sample probes on their owning devices, then sum across devices.
 
     Mirror of :func:`inject_sources_shmap` on the read side: every device
@@ -947,22 +997,25 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids):
     identity, and ``lax.psum`` over ``"x"`` leaves exactly the owner's
     value.  ``out_specs=P()`` because the psum result is replicated.
 
-    Returns an empty ``float32`` vector when there are no probes, which is
-    what keeps the caller's scan carry shape stable.
+    With ``reduce_devices=False``, return masked samples of global shape
+    ``(n_devices, n_prb)`` on ``P("x")`` without a collective. A scan can
+    stack these and sum its device axis once after the time loop. The
+    default retains the per-step replicated result for the NU runner.
 
     Extracted verbatim from
     ``distributed_nu.py::run_nonuniform_distributed_pec._sample_probes_shmap``
     and ``distributed_v2.py::run_distributed._sample_probes_shmap``.
     """
     if n_prb == 0:
-        return jnp.zeros(0, dtype=jnp.float32)
+        shape = (0,) if reduce_devices else (mesh.size, 0)
+        return jnp.zeros(shape, dtype=jnp.float32)
 
     @partial(
         shard_map,
         mesh=mesh,
         in_specs=(P("x"), P("x"), P("x"),
                   P("x"), P("x"), P("x")),
-        out_specs=P(),
+        out_specs=P() if reduce_devices else P("x"),
         check_rep=False,
     )
     def _sample(ex, ey, ez, hx, hy, hz):
@@ -985,7 +1038,8 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids):
                 raw = hz[li, lj, lk]
             val = jnp.where(device_idx == dev_id, raw, 0.0)
             samples.append(val)
-        return lax.psum(jnp.stack(samples), "x")
+        samples = jnp.stack(samples)
+        return lax.psum(samples, "x") if reduce_devices else samples[None, :]
 
     return _sample(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
 

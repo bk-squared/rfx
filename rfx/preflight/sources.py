@@ -58,7 +58,7 @@ from rfx.preflight._common import profile_boundary_cell
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0
 
-from rfx.preflight._common import PreflightWarning
+from rfx.preflight._common import PreflightWarning, _fmt_len
 
 
 def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
@@ -209,24 +209,46 @@ def _validate_cfg_source_on_reflector_plane(
                 is_tangential = (comp_axis != ax_name)
                 if face_kind == "PMC":
                     if comp_field == "e" and is_tangential:
-                        msg = (
-                            f"Source/port at {pos} (component={pe.component}) "
-                            f"sits on the PMC {face} plane. The outgoing "
-                            f"tangential H is zeroed every step by "
-                            f"apply_pmc_faces, so no wave radiates — the "
-                            f"probe records silent zero field. Offset by "
-                            f"one cell ({_face_cell*1e3:.3g} mm) off "
-                            f"the plane to let the Yee curl run normally."
-                        )
+                        # The single-device Yee half-cell wall isolates this E-node
+                        # sheet from the volume, not from propagation within it.
+                        # Revisit when #1221 puts the magnetic wall on its face.
+                        if self._solver == "adi":
+                            msg = (
+                                f"Source/port at {pos} m (component={pe.component}) "
+                                f"sits on the magnetic-wall plane {face}. "
+                                f"solver='adi' does not realise a magnetic wall: "
+                                f"it solves this face as an electric wall wherever "
+                                f"the source sits. Use solver='yee' for a magnetic wall."
+                            )
+                        else:
+                            msg = (
+                                f"Source/port at {pos} m (component={pe.component}) "
+                                f"sits on the magnetic-wall plane {face}. On a "
+                                f"single-device Yee run the wall is solved half a "
+                                f"cell inside this face, so the "
+                                f"E nodes on the plane form a sheet coupled only "
+                                f"to itself: a line drawn entirely in the plane "
+                                f"(a one-cell-wide model) carries its wave, but "
+                                f"nothing launched here reaches the volume off "
+                                f"the plane, including the half of a line that "
+                                f"the plane cuts along its centre. To radiate into "
+                                f"the volume, place the source one cell "
+                                f"({_fmt_len(_face_cell)}) off the plane. The distributed "
+                                f"lanes do not realise a magnetic wall: with no "
+                                f"absorbing face the plane is shorted, and with "
+                                f"absorbing faces the cells next to it absorb, so "
+                                f"a source one cell off reaches the volume 65–75 dB "
+                                f"low; use a single-device run."
+                            )
                     elif comp_field == "e" and not is_tangential:
                         msg = (
-                            f"Source/port at {pos} (component={pe.component}) "
-                            f"sits on the PMC {face} plane and drives the "
+                            f"Source/port at {pos} m (component={pe.component}) "
+                            f"sits on the magnetic-wall plane {face} and drives the "
                             f"NORMAL E component. PMC imposes odd symmetry "
                             f"on normal E (it must be zero at the plane), "
                             f"so the source fights the mirror image. Use a "
                             f"tangential E source offset by one cell "
-                            f"({_face_cell*1e3:.3g} mm) off the plane."
+                            f"({_fmt_len(_face_cell)}) off the plane."
                         )
                     elif comp_field == "h" and is_tangential:
                         msg = (

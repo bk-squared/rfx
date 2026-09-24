@@ -1,8 +1,9 @@
 """Coaxial S-matrix calculators, moved verbatim out of ``rfx.api._sparams``.
 
-Issue #980 Phase 2. ``compute_coaxial_s_matrix``,
-``compute_coaxial_line_reflection``, ``compute_coaxial_two_port`` and
-``compute_coax_msl_transition`` were methods on ``_SparamMixin``; they are
+Issue #980 Phase 2. ``compute_coaxial_line_reflection``,
+``compute_coaxial_two_port`` and ``compute_coax_msl_transition`` (and the
+single-plane coaxial S-matrix lane, since removed in #1212) were methods on
+``_SparamMixin``; they are
 relocated here byte for byte, dedented by exactly four spaces, and nothing
 else -- same order, same text, same docstrings, no rename, no cleanup. Each
 is a MODULE-LEVEL function whose first parameter is still ``self``: that is
@@ -30,10 +31,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.sources.sources import GaussianPulse
-from rfx.sources.coaxial_port import CoaxialPort
 
 from rfx.api._spec import (
-    CoaxialSMatrixResult,
     CoaxialLineReflectionResult,
     CoaxialTwoPortResult,
     CoaxMSLTransitionResult,
@@ -51,344 +50,6 @@ from rfx.sparams._common import (
     _assemble_coax_msl_transition_from_voltages,
 )
 
-
-def compute_coaxial_s_matrix(
-    self,
-    *,
-    n_steps: int = 320,
-    freqs: jnp.ndarray | None = None,
-    n_freqs: int = 21,
-    field_scale: float = 1.0e4,
-    magnetic_ratio: float = 1.0,
-    signal_floor: float = 1.0e-12,
-    reference_plane_axial_index_offset: int = 0,
-    strict_passivity: bool = False,
-) -> "CoaxialSMatrixResult":
-    """Experimental coaxial S-matrix via distributed TEM plane sources.
-
-    .. deprecated::
-        This single-plane V/I path measures inside a closed PEC box around a
-        short coaxial stub, which has no transmission line for a clean
-        reflection — it reports non-physical ``|S11|>1`` for a lossless
-        short (verified). Use :meth:`compute_coaxial_line_reflection`, which
-        builds a real coax line with a matched CPML feed and extracts the
-        reflection from a multi-plane matrix-pencil decomposition (validated
-        short→Γ=-1, open→|Γ|=1, matched→0 across the band). This method is
-        retained only for backward compatibility.
-
-    For each registered ``add_coaxial_port(...)`` port, runs one FDTD
-    simulation with that port driven and all other coaxial ports passive.
-    A distributed transverse E/M plane source is injected on the port's
-    cross-section (the M67 prototype scaffold promoted to the public
-    API); DFT plane probes capture the resulting Ex/Ey/Hx/Hy on every
-    coaxial port's reference plane; the V/I extractor recovers ``V`` and
-    ``I`` via the radial line / azimuthal loop integrals; and the
-    standard power-wave decomposition assembles the full S-matrix.
-
-    Status: **experimental**. The plane source can produce a residual
-    forward wave and the extracted reference-plane V/I has known
-    amplitude bias for coarse grids; ``status="degraded"`` is reported
-    when any V/I sample falls below ``signal_floor``. Use this API for
-    development; do not promote claims beyond E2/E3 without an external
-    cross-solver fixture (see ``port_external_reference_requirements``).
-
-    Parameters
-    ----------
-    n_steps:
-        FDTD timesteps per driven-port run. Default 320.
-    freqs:
-        Frequency grid (Hz). Defaults to a uniform grid covering
-        ``[freq_max / 10, freq_max]``.
-    n_freqs:
-        Number of frequencies if ``freqs`` is None. Default 21.
-    field_scale:
-        Linear scale on the radial E waveform. Increase to lift the
-        plane signal above DFT noise (V/I extraction is amplitude-linear
-        so the S-matrix is invariant under this scale).
-    magnetic_ratio:
-        Multiplier on the ``H`` waveform after the analytic ``1/Z_TEM``
-        factor. ``1.0`` injects the lossless-TEM Poynting-balanced
-        amplitude; smaller values bias toward an E-only injection.
-    signal_floor:
-        Absolute V or I phasor magnitude below which the result is
-        flagged as ``"degraded"``.
-    reference_plane_axial_index_offset:
-        Axial-index offset for the source/probe plane relative to the
-        port pin centre.
-
-    Returns
-    -------
-    CoaxialSMatrixResult
-    """
-
-    import warnings
-    warnings.warn(
-        "compute_coaxial_s_matrix() (single-plane V/I in a closed PEC box) is "
-        "deprecated and reports non-physical |S11|>1 for a lossless short; use "
-        "compute_coaxial_line_reflection() (validated coax-line method). "
-        "It will be removed in rfx v2.0.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    from rfx.probes.probes import init_dft_plane_probe
-    from rfx.simulation import run as _run
-    from rfx.sources.coaxial_port import (
-        build_coaxial_tem_plane_source_specs,
-        extract_coaxial_plane_vi_from_dft,
-    )
-
-    if not self._coaxial_ports:
-        raise ValueError(
-            "No coaxial ports registered. Call add_coaxial_port() first."
-        )
-    if (
-        self._ports
-        or self._waveguide_ports
-        or self._floquet_ports
-        or self._msl_ports
-    ):
-        raise NotImplementedError(
-            "compute_coaxial_s_matrix() is defined only for "
-            "add_coaxial_port(...) families in the current simulation."
-        )
-    if self._tfsf is not None:
-        raise NotImplementedError(
-            "compute_coaxial_s_matrix() is not supported with TFSF; "
-            "TFSF is a plane-wave source, not a coaxial port."
-        )
-    if (
-        self._dz_profile is not None
-        or self._dx_profile is not None
-        or self._dy_profile is not None
-    ):
-        raise NotImplementedError(
-            "compute_coaxial_s_matrix() supports the uniform Yee lane only."
-        )
-
-    # Issue #704 audit: same silent NTFF drop class as the MSL path.
-    _warn_ntff_box_dropped(self, "compute_coaxial_s_matrix()")
-
-    ports: list[CoaxialPort] = list(self._coaxial_ports)
-    n_ports = len(ports)
-
-    # Build the working grid + materials with all coaxial geometries
-    # stamped (PEC center pin, PTFE dielectric fill, PEC outer shell from
-    # M66). ``_build_materials`` only assembles bulk materials and shapes;
-    # ``add_coaxial_port`` only registers the port descriptor, so without
-    # this loop the FDTD would run with the source dropped into pure
-    # vacuum and the wave would radiate bidirectionally with no coax
-    # structure to confine it (this is the real source of the
-    # calibration-blocked status documented in the handover).
-    from rfx.sources.coaxial_port import (
-        setup_coaxial_port,
-        add_coaxial_matched_termination,
-        add_coaxial_open_termination,
-        add_coaxial_pec_end_cap,
-    )
-    grid = self._build_grid()
-    materials, _, _ = self._build_materials(grid)
-    for p in ports:
-        materials = setup_coaxial_port(grid, p, materials)
-    for term_port_idx, term_R, term_offset_cells in self._coaxial_terminations:
-        materials = add_coaxial_matched_termination(
-            grid,
-            ports[term_port_idx],
-            materials,
-            target_impedance=term_R,
-            axial_offset_cells=term_offset_cells,
-        )
-    for term_port_idx, retract_cells in self._coaxial_open_terminations:
-        materials = add_coaxial_open_termination(
-            grid,
-            ports[term_port_idx],
-            materials,
-            pin_retract_cells=retract_cells,
-        )
-    for cap_port_idx, cap_offset_cells in self._coaxial_pec_end_caps:
-        materials = add_coaxial_pec_end_cap(
-            grid,
-            ports[cap_port_idx],
-            materials,
-            axial_offset_cells=cap_offset_cells,
-        )
-
-    # Frequency grid.
-    if freqs is None:
-        freqs = jnp.linspace(
-            self._freq_max / 10.0,
-            self._freq_max,
-            int(n_freqs),
-            dtype=jnp.float32,
-        )
-    else:
-        freqs = jnp.asarray(freqs, dtype=jnp.float32)
-
-    # Reference-plane axial indices per port (cross-section z-plane).
-    from rfx.sources.coaxial_port import _coaxial_port_geometry
-    plane_indices: list[int] = []
-    for p in ports:
-        _, _, _, pin_center, _, _ = _coaxial_port_geometry(grid, p)
-        plane_indices.append(
-            int(grid.position_to_index(pin_center)[2])
-            + int(reference_plane_axial_index_offset)
-        )
-
-    # Output buffers.
-    n_freqs_used = int(freqs.shape[0])
-    s = np.zeros((n_ports, n_ports, n_freqs_used), dtype=np.complex128)
-    z_tem_arr = np.zeros((n_ports, n_freqs_used), dtype=np.complex128)
-    v_dump = np.zeros((n_ports, n_ports, n_freqs_used), dtype=np.complex128)
-    i_dump = np.zeros((n_ports, n_ports, n_freqs_used), dtype=np.complex128)
-
-    status = "passed"
-
-    # One scalar cell size for this lane, read once. It rejects non-uniform
-    # grids upstream, so the boundary cell IS the cell everywhere here; the
-    # reference planes below and the legacy wall radius above are the two
-    # places that want it.
-    _cell_size = float(grid.dx)
-
-    for driven in range(n_ports):
-        spec = build_coaxial_tem_plane_source_specs(
-            grid=grid,
-            port=ports[driven],
-            n_steps=int(n_steps),
-            field_scale=float(field_scale),
-            magnetic_ratio=float(magnetic_ratio),
-            reference_plane_axial_index_offset=int(
-                reference_plane_axial_index_offset
-            ),
-            # DEPRECATED lane: its geometry comes from ``setup_coaxial_port``,
-            # which still stamps the shell as sigma with the inner face one
-            # cell inside b. Passed explicitly so this lane keeps the radius
-            # its own stamp uses rather than picking up the new default.
-            shell_inner_radius=(
-                float(ports[driven].outer_radius)
-                - min(_cell_size,
-                      0.5 * (float(ports[driven].outer_radius)
-                             - float(ports[driven].pin_radius)))
-            ),
-        )
-        z_tem_arr[driven, :] = complex(spec.z_tem_ohm)
-
-        # DFT plane probes on every port's cross-section.
-        dft_planes = []
-        for p_idx, p in enumerate(ports):
-            for component in ("ex", "ey", "hx", "hy"):
-                dft_planes.append(
-                    init_dft_plane_probe(
-                        axis=2,
-                        index=plane_indices[p_idx],
-                        component=component,
-                        freqs=freqs,
-                        grid_shape=grid.shape,
-                        dft_total_steps=int(n_steps),
-                    )
-                )
-
-        result = _run(
-            grid,
-            materials,
-            int(n_steps),
-            # Honour the simulation boundary (was hardcoded "pec", the closed
-            # box that is the documented root cause); self._boundary is always
-            # a str ("pec"/"cpml"/"upml"), even for the BoundarySpec path.
-            boundary=self._boundary,
-            sources=list(spec.electric_sources),
-            mag_sources=list(spec.magnetic_sources),
-            dft_planes=dft_planes,
-            return_state=False,
-        )
-        if result.dft_planes is None:
-            raise RuntimeError(
-                "compute_coaxial_s_matrix(): runner returned no DFT planes"
-            )
-
-        # Slice DFT planes back into per-port (ex, ey, hx, hy) groups.
-        per_port: list[dict[str, np.ndarray]] = []
-        for p_idx in range(n_ports):
-            start = p_idx * 4
-            group = result.dft_planes[start : start + 4]
-            comp_map = {
-                probe.component: np.asarray(probe.accumulator, dtype=np.complex128)
-                for probe in group
-            }
-            per_port.append(comp_map)
-
-        # Extract V/I at each port's reference plane.
-        voltages = []
-        currents = []
-        for p_idx, p in enumerate(ports):
-            vi = extract_coaxial_plane_vi_from_dft(
-                grid=grid,
-                port=p,
-                plane_axial_index=plane_indices[p_idx],
-                ex_dft=per_port[p_idx]["ex"],
-                ey_dft=per_port[p_idx]["ey"],
-                hx_dft=per_port[p_idx]["hx"],
-                hy_dft=per_port[p_idx]["hy"],
-            )
-            v = np.asarray(vi.vi.voltage, dtype=np.complex128)
-            i = np.asarray(vi.vi.current, dtype=np.complex128)
-            voltages.append(v)
-            currents.append(i)
-            v_dump[driven, p_idx, :] = v
-            i_dump[driven, p_idx, :] = i
-            if (
-                float(np.max(np.abs(v))) <= float(signal_floor)
-                or float(np.max(np.abs(i))) <= float(signal_floor)
-            ):
-                status = "degraded"
-
-        # Power-wave decomposition at each receive port (a_j at driven, b_i
-        # at receiver) using the analytic Z_TEM as Z0.
-        z0 = complex(spec.z_tem_ohm)
-        a_j = (voltages[driven] + z0 * currents[driven]) / (2.0 * np.sqrt(z0))
-        for receiver in range(n_ports):
-            b_i = (voltages[receiver] - z0 * currents[receiver]) / (
-                2.0 * np.sqrt(z0)
-            )
-            with np.errstate(divide="ignore", invalid="ignore"):
-                s[receiver, driven, :] = np.where(
-                    np.abs(a_j) > 0.0,
-                    b_i / a_j,
-                    np.nan + 1j * np.nan,
-                )
-
-    # Report the plane actually measured (``plane_indices``, derived from
-    # each port's ``pin_center`` — see ``_coaxial_port_geometry``), not
-    # ``port.position``: the two differ by ``direction*pin_length/2``
-    # whenever ``pin_length != 0``, and ``position_to_index`` already adds
-    # ``pad_z_lo``, so multiplying that padded index by ``dx`` directly
-    # (the previous formula) double-counted the padding offset too.
-    # Neither defect is pinned by a committed test (only the array SHAPE
-    # is asserted in test_coaxial_s_matrix.py) — see #489 stage-2 design
-    # note, incidental defect 1.
-    reference_planes = np.asarray(
-        [
-            (float(plane_indices[p_idx]) - float(grid.pad_z_lo)) * _cell_size
-            for p_idx in range(n_ports)
-        ],
-        dtype=float,
-    )
-
-    _res_coax = CoaxialSMatrixResult(
-        s_params=s,
-        freqs=np.asarray(freqs, dtype=float),
-        port_names=tuple(f"coax_{i}" for i in range(n_ports)),
-        port_faces=tuple(p.face for p in ports),
-        reference_planes=reference_planes,
-        z_tem_ohm=z_tem_arr,
-        voltages=v_dump,
-        currents=i_dump,
-        status=status,
-    )
-    return _finalize_sparam_result(
-        _res_coax,
-        extractor="compute_coaxial_s_matrix",
-        strict=strict_passivity,
-    )
 
 def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
     """The conductor cells of a coax line, as PEC E-edge masks.
@@ -444,7 +105,7 @@ def compute_coaxial_line_reflection(
     ``probe_count`` equally spaced planes and a matrix-pencil estimate of the
     complex propagation constant (β self-measured, Z0-free).
 
-    Unlike ``compute_coaxial_s_matrix`` (single-plane V/I in a hardcoded
+    Unlike the single-plane coaxial lane removed in #1212 (V/I in a hardcoded
     closed PEC box — non-physical |S11|>1), this uses an absorbing CPML feed
     so a real line exists. **Resolution recipe**: keep ≥~4 cells across the
     (outer-inner) annulus (raise ``freq_max`` to shrink ``dx``); the result
@@ -462,9 +123,8 @@ def compute_coaxial_line_reflection(
 
     This method constructs its own coaxial line, TEM source, DFT planes, and
     termination. Do not add separate geometry, thin conductors, lumped RLC
-    elements, probes or field monitors, NTFF boxes, or ``add_coaxial_*``
-    termination helpers; those registrations are rejected rather than
-    ignored. Use the documented :class:`Simulation`, port, and method
+    elements, probes or field monitors, or NTFF boxes; those registrations
+    are rejected rather than ignored. Use the documented :class:`Simulation`, port, and method
     arguments instead.
 
     The registered coaxial port supplies its x/y centre, ``face``, inner
@@ -574,16 +234,6 @@ def compute_coaxial_line_reflection(
         raise ValueError(
             "compute_coaxial_line_reflection() does not consume registered "
             "probes, DFT planes, flux monitors, or NTFF boxes."
-        )
-    if (
-        self._coaxial_terminations
-        or self._coaxial_open_terminations
-        or self._coaxial_pec_end_caps
-    ):
-        raise ValueError(
-            "compute_coaxial_line_reflection() does not consume registered "
-            "add_coaxial_* termination helpers; use termination= and "
-            "dut_impedance= instead."
         )
 
     from rfx.probes.probes import init_dft_plane_probe
@@ -916,9 +566,8 @@ def compute_coaxial_two_port(
 
     This method constructs its own coaxial line, TEM sources, DFT
     planes, and feeds. Do not add separate geometry, thin conductors,
-    lumped RLC elements, probes or field monitors, NTFF boxes, TFSF
-    sources, or ``add_coaxial_*`` termination helpers; those
-    registrations are rejected rather than ignored.
+    lumped RLC elements, probes or field monitors, NTFF boxes, or TFSF
+    sources; those registrations are rejected rather than ignored.
 
     Same solver/precision/boundary contract as
     :meth:`compute_coaxial_line_reflection` (float32, 3D uniform Yee,
@@ -1063,16 +712,6 @@ def compute_coaxial_two_port(
         raise ValueError(
             "compute_coaxial_two_port() does not consume registered "
             "probes, DFT planes, flux monitors, or NTFF boxes."
-        )
-    if (
-        self._coaxial_terminations
-        or self._coaxial_open_terminations
-        or self._coaxial_pec_end_caps
-    ):
-        raise ValueError(
-            "compute_coaxial_two_port() does not consume registered "
-            "add_coaxial_* termination helpers; use feed_impedance= "
-            "instead."
         )
     if isinstance(probe_count, bool) or not isinstance(
         probe_count, (int, np.integer)
@@ -1635,9 +1274,9 @@ def compute_coax_msl_transition(
         :func:`_finalize_sparam_result`) instead of returning the matrix.
         Pass ``strict_passivity=False`` to get the diagnostic matrix back
         with a ``UserWarning`` instead of the raise. The default is
-        ``True`` here and ``False`` on the single-family coax lanes
-        (:meth:`compute_coaxial_s_matrix`, :meth:`compute_coaxial_two_port`),
-        which are unaffected by this (issue #838, PI decision 2026-09-20).
+        ``True`` here and ``False`` on the single-family coax two-port lane
+        (:meth:`compute_coaxial_two_port`), which is unaffected by this
+        (issue #838, PI decision 2026-09-20).
 
     ``extra_flux_monitors`` (issue #589 flux-adjudication instrument):
     an ENERGY-WITNESS channel, not an extractor change. Pass the entry
@@ -1778,16 +1417,6 @@ def compute_coax_msl_transition(
             "compute_coax_msl_transition() does not consume registered "
             "probes, DFT planes, flux monitors, or NTFF boxes (it "
             "builds its own)."
-        )
-    if (
-        self._coaxial_terminations
-        or self._coaxial_open_terminations
-        or self._coaxial_pec_end_caps
-    ):
-        raise ValueError(
-            "compute_coax_msl_transition() does not consume registered "
-            "add_coaxial_* termination helpers; use feed_impedance= "
-            "instead."
         )
     if len(self._coaxial_ports) != 1:
         raise ValueError(
@@ -2374,7 +2003,7 @@ def compute_coax_msl_transition(
 # ---------------------------------------------------------------------------
 # Pre-move ``__qualname__``, restored explicitly.
 #
-# The four functions above were ``def``s in the ``_SparamMixin`` class body,
+# The three functions above were ``def``s in the ``_SparamMixin`` class body,
 # so their ``__qualname__`` read ``_SparamMixin.<name>``; a module-level
 # ``def`` gets the bare ``<name>`` instead. ``rfx/api/__init__.py`` rewrites
 # exactly ``_SparamMixin.<name>`` -> ``Simulation.<name>`` at
@@ -2386,7 +2015,6 @@ def compute_coax_msl_transition(
 # ``tests/unit/autodiff/test_design_mask_removed.py
 # ::test_no_public_simulation_method_leaks_a_mixin_class_name`` pins it.
 # ---------------------------------------------------------------------------
-compute_coaxial_s_matrix.__qualname__ = "_SparamMixin.compute_coaxial_s_matrix"
 compute_coaxial_line_reflection.__qualname__ = (
     "_SparamMixin.compute_coaxial_line_reflection"
 )

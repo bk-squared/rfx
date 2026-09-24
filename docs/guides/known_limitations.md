@@ -45,7 +45,7 @@ scale against the true flux to about 1 % on both committed meshes, and a 3x over
 hide inside 1 %. That lane has its own limits — see the
 [S-parameter support matrix](sparameter_support_matrix.md) — including a raw passivity excess
 above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
-→ [#838](https://github.com/bk-squared/rfx/issues/838)
+#838 was closed as not planned before 2.0 (PI decision, 2026-09-20); this is a standing limitation.
 
 **The microstrip S-matrix can come back non-passive, and says so.**
 `compute_msl_s_matrix(...)` returns the S it extracted; it no longer projects it
@@ -55,9 +55,11 @@ differentiates are one function. When a bin's largest singular value exceeds 1
 and `result.sigma_max_excess` carries the per-bin amount. A passive structure
 cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), not as gain.
-`enforce_passivity=True` returns the projected matrix instead. The raw excess is
-not yet gated on a reflecting fixture; that is part of the v2.0 microstrip
-battery ([chain-closure contract](../design_notes/chain_closure_contract.md)).
+`enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
+the raw S is gated: the microstrip chain battery holds its maximum column power at
+or below 1.02 on the open-stub notch at its 25 µm claims rung (1.0103 measured; the
+thru line 1.0030), in `tests/oracle/test_msl_chain_battery.py`. Coarser meshes are
+reported, not gated.
 
 **The fitted microstrip propagation constant sits 1.0 to 1.3 % above the
 Hammerstad–Jensen closed form on every in-band bin.** On a 600 µm trace over
@@ -85,6 +87,15 @@ used to contradict each other about this, and the measurement decided it.
 
 ## Absorbing boundaries
 
+**On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**
+A face declared `pmc` is solved as a magnetic wall only on a single-device Yee run. On `run(devices=...)` and
+`forward(distributed=True)` with no absorbing face the plane is shorted (tangential E held at zero); with absorbing
+faces the cells next to it absorb, and a source one cell off the plane reaches the volume 65–75 dB below the
+single-device run. `solver='adi'` solves the face as an electric wall. A half-model on these lanes is a different
+structure from the one declared. Use a single-device Yee run for a symmetry plane; there the wall sits half a cell
+inside the declared face, which #1221 also fixes.
+→ [#1221](https://github.com/bk-squared/rfx/issues/1221)
+
 **With the mesh as a design variable, a ground plane still ends at the absorber.**
 A conductor drawn to an absorbing boundary is continued through the absorber, so
 a grounded board stays grounded inside it. When any mesh axis is traced
@@ -93,8 +104,9 @@ a grounded board stays grounded inside it. When any mesh axis is traced
 patch on a grounded substrate gained energy with six absorber layers or fewer
 (0 dB settling, +5.8e-4 per step on the six-layer rig, against −44.8 dB with the
 ground continued). Use eight or more absorber layers for such a run, or draw the
-ground past the domain face by the absorber thickness.
-→ [#801](https://github.com/bk-squared/rfx/issues/801)
+ground past the domain face by the absorber thickness, which fills every absorber
+cell except the outermost row on the +x and +y faces.
+→ [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
 ## Gradients and optimization
 
@@ -110,7 +122,7 @@ within 0.99 % of a converged record, while `d ln|S11|² / d ln εr` was out by
 9.7 % at 5.75 GHz and 23 % at 6.5 GHz, and a local-permittivity parameter by
 8.7 % and 38 %. At 4400 steps (−75 dB) the worst was 2.1 %. The same board
 driven by a soft source instead of a port settles far more slowly (−40.9 dB in
-6000 steps against −101.5 dB for the port); there `d ln U(0) / d ln εr` read
+6000 steps against −101 dB for the port); there `d ln U(0) / d ln εr` read
 5.79 against a converged 6.80 and a pattern-ratio gradient 0.331 against 0.070.
 In every measured case the sign of the slope was right and its size was not — an
 optimizer reading them takes steps of the wrong length, and a gate on a gradient
@@ -140,15 +152,7 @@ because an element carrying a millionth of the dominant sensitivity moves by
 record too short by more than `factor` can still pass it, because both arms then
 carry a similar leftover — and it has no default tolerance, because the right bar
 depends on the structure's Q and on what the gradient is for.
-→ [#1181](https://github.com/bk-squared/rfx/issues/1181)
-
-## Scattering
-
-**Monostatic RCS is not translation-invariant.** Moving the same target inside a
-fixed domain changes the reported RCS by 2.194 dB. Until that is attributed, an
-absolute monostatic RCS from rfx carries at least that much position dependence;
-relative comparisons at a fixed position are unaffected.
-→ [#820](https://github.com/bk-squared/rfx/issues/820)
+Measured in #1181; the witness above landed with #1186.
 
 ## Examples and validation coverage
 

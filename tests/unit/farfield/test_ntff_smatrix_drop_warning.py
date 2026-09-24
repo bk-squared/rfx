@@ -1,9 +1,10 @@
 """Issue #704 — an NTFF box on an S-matrix path must not be dropped silently.
 
 ``add_ntff_box()`` registers a far-field monitor; ``compute_msl_s_matrix()``
-(and the sibling paths the issue names: ``compute_waveguide_s_matrix()``,
-``compute_coaxial_s_matrix()``) run FDTD solves on that simulation but their
-result classes carry no ``ntff_data``/``ntff_box`` fields — the monitor's
+(and the sibling paths the issue names: ``compute_waveguide_s_matrix()``, and
+the single-plane coaxial lane, removed in #1212 with its two tests here; the
+coaxial lanes that remain refuse an NTFF box outright) run FDTD solves on that
+simulation but their result classes carry no ``ntff_data``/``ntff_box`` fields — the monitor's
 recording is discarded. The minimum fix (this file's subject) is ONE
 ``UserWarning`` per S-matrix call — never per port — naming what was
 registered, what is dropped, the ``run()`` workaround, and the STALE-IF
@@ -55,9 +56,9 @@ def _intercept_grid_build(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# fixtures — the committed MSL thru line, a coarse WR-90 two-port, and the
-# one-port coax box (geometry copied from tests/unit/runners/test_run_progress_reporting,
-# tests/unit/materials/test_sheet_impedance, tests/unit/sparams/test_coaxial_s_matrix respectively).
+# fixtures — the committed MSL thru line and a coarse WR-90 two-port (geometry
+# copied from tests/unit/runners/test_run_progress_reporting and
+# tests/unit/materials/test_sheet_impedance respectively).
 # --------------------------------------------------------------------------
 
 
@@ -90,13 +91,6 @@ def _wr90() -> Simulation:
         sim.add_waveguide_port(x, direction=d, mode=(1, 0), mode_type="TE",
                                freqs=freqs, f0=6.5e9, bandwidth=0.4,
                                name=name)
-    return sim
-
-
-def _coax_box() -> Simulation:
-    sim = Simulation(freq_max=10.0e9, domain=(0.020, 0.020, 0.020),
-                     boundary="pec")
-    sim.add_coaxial_port((0.010, 0.010, 0.015), face="top")
     return sim
 
 
@@ -173,7 +167,7 @@ def test_msl_silent_without_ntff_box(monkeypatch):
 
 
 # --------------------------------------------------------------------------
-# waveguide + coaxial — the audit siblings #704 names
+# waveguide — the audit sibling #704 names (the coaxial one left in #1212)
 # --------------------------------------------------------------------------
 
 
@@ -195,25 +189,4 @@ def test_waveguide_silent_without_ntff_box(monkeypatch):
         warnings.simplefilter("always")
         with pytest.raises(_GridBuildIntercept):
             sim.compute_waveguide_s_matrix(normalize=True)
-    _assert_no_ntff_warning(rec)
-
-
-def test_coaxial_warns_with_ntff_box(monkeypatch):
-    sim = _add_box(_coax_box())
-    _intercept_grid_build(monkeypatch)
-    with pytest.warns(UserWarning, match=_NTFF_MATCH) as rec:
-        with pytest.raises(_GridBuildIntercept):
-            sim.compute_coaxial_s_matrix(n_steps=8, n_freqs=3)
-    hits = [w for w in rec if "add_ntff_box" in str(w.message)]
-    assert len(hits) == 1
-    assert "compute_coaxial_s_matrix()" in str(hits[0].message)
-
-
-def test_coaxial_silent_without_ntff_box(monkeypatch):
-    sim = _coax_box()
-    _intercept_grid_build(monkeypatch)
-    with warnings.catch_warnings(record=True) as rec:
-        warnings.simplefilter("always")
-        with pytest.raises(_GridBuildIntercept):
-            sim.compute_coaxial_s_matrix(n_steps=8, n_freqs=3)
     _assert_no_ntff_warning(rec)

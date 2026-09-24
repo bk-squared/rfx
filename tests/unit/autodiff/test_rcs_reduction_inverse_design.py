@@ -44,9 +44,9 @@ import pytest
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.farfield import NTFFBox
-from rfx.sources.tfsf import init_tfsf
+from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
 from rfx.simulation import run
-from rfx.rcs import compute_rcs_jax, _incident_spectrum_amplitude
+from rfx.rcs import compute_rcs_jax
 
 F0, BW = 10e9, 0.5
 CPML, N_STEPS = 8, 220
@@ -58,20 +58,25 @@ TH_B, PH_B = np.array([np.pi / 2]), np.array([np.pi])
 
 def _setup():
     grid = Grid(freq_max=15e9, domain=DOMAIN, dx=DX, cpml_layers=CPML)
-    e_inc = _incident_spectrum_amplitude(F0, BW, FREQS, grid.dt, N_STEPS)
+    # the incident the grid carries, as compute_rcs normalizes (#820)
+    e_inc = measure_normal_incident_spectrum(*_tfsf(grid), N_STEPS, FREQS, grid.dt)
     sx, sy, sz = grid.shape
     blk = np.zeros(grid.shape, np.float32)
     blk[sx // 2 - 3:sx // 2 + 3, sy // 2 - 3:sy // 2 + 3, sz // 2 - 3:sz // 2 + 3] = 1.0
     return grid, e_inc, jnp.asarray(blk)
 
 
+def _tfsf(grid):
+    return init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
+                     f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
+                     direction="+x", angle_deg=0.0)
+
+
 def _band_rcs(grid, e_inc, blk, sigma_scale):
     mb = init_materials(grid.shape)
     mats = mb._replace(eps_r=mb.eps_r + 3.0 * blk,               # εr=4 core
                        sigma=mb.sigma + sigma_scale * blk)        # lossy coating DoF
-    cfg, st = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
-                        f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
-                        direction="+x", angle_deg=0.0)
+    cfg, st = _tfsf(grid)
     fl = {k: CPML for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
     box = NTFFBox.from_grid(
         grid, i_lo=max(cfg.x_lo - 1, 1), i_hi=min(cfg.x_hi + 2, grid.nx - 2),

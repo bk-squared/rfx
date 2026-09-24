@@ -51,9 +51,8 @@ each formerly its own file:
 
 The AD gate for this method stays in
 ``tests/unit/autodiff/test_coax_two_port_ad.py`` (gradient question → autodiff,
-tier-4b rule); the deprecated single-plane ``compute_coaxial_s_matrix`` keeps
-its own plumbing guards in ``test_coaxial_s_matrix.py`` (its docstring forbids
-wiring physics gates onto that path). Every assertion, tolerance, fixture value
+tier-4b rule); the single-plane coaxial S-matrix lane and its plumbing guards
+were removed in #1212. Every assertion, tolerance, fixture value
 and parametrisation of the absorbed files is kept verbatim.
 """
 
@@ -677,19 +676,6 @@ def test_registered_monitor_rejected(monitor):
     else:
         sim.add_ntff_box((0.001, 0.001, 0.010), (0.007, 0.007, 0.030), n_freqs=1)
     with pytest.raises(ValueError, match="does not consume registered"):
-        sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
-
-
-@pytest.mark.parametrize("helper", ("matched", "open", "pec_end_cap"))
-def test_registered_coax_termination_helper_rejected(helper):
-    sim = _sim()
-    if helper == "matched":
-        sim.add_coaxial_matched_load(target_impedance=50.0)
-    elif helper == "open":
-        sim.add_coaxial_open_termination()
-    else:
-        sim.add_coaxial_pec_end_cap()
-    with pytest.raises(ValueError, match=r"add_coaxial_\* termination helpers"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
 

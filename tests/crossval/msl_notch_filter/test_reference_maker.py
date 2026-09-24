@@ -4,8 +4,8 @@
 openEMS record from openEMS's own MSL notch filter tutorial.  It is never run by
 CI -- the solver runs by hand, on the cluster.  What CI can afford to check, and
 what these tests check, is that the script still imports, still agrees with
-itself about what it changes, still prints the plan it would build, and still
-carries the precedent's sanity helpers unmodified -- all without openEMS.
+itself about what it changes, still prints the plan it would build, and keeps
+no second copy of the shared sanity helpers -- all without openEMS.
 
 None of these steps an FDTD, reads a reference record, or asserts anything about
 physics.
@@ -14,7 +14,6 @@ physics.
 from __future__ import annotations
 
 import ast
-import functools
 import importlib.util
 import subprocess
 import sys
@@ -27,18 +26,14 @@ MAKER = HERE / "reference" / "make_openems_reference.py"
 REPO_ROOT = HERE.parents[2]
 
 # The shared tutorial gate.  The sanity helpers and the verbatim Stage A builder
-# live there now, one copy for every case that runs openEMS's own MSL notch
-# filter tutorial as its reproduce gate.  This module owns the byte-identity pin
-# for them; no other case's test repeats it.
+# live there, one copy for every case that runs openEMS's own MSL notch filter
+# tutorial as its reproduce gate.
 SHARED_GATE = REPO_ROOT / "tests" / "crossval" / "_openems_tutorial_gate.py"
 
-# The script those helpers were copied from.  It belongs to another case (the MSL
-# thru-line phase referee), which is why the helpers are COPIED and never
-# imported.  When that case is removed this test goes with it -- the copies stay,
-# the comparison has nothing left to compare against.
-PRECEDENT = REPO_ROOT / "validation" / "crossval" / "20_msl_phase_referee.py"
-
-# Copied byte for byte, checked below.  Order is the order they appear in.
+# The helpers the shared gate holds.  They were copied byte for byte from the MSL
+# thru-line phase case's script, and a test here compared the two until that
+# case was removed (2026-09-23); the copies stay, and the shared gate is now the
+# only one.  Order is the order they appear in.
 COPIED_NAMES = [
     "_ensure_openems_numpy_compat",
     "_import_openems",
@@ -61,30 +56,6 @@ def _load_maker():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-@functools.lru_cache(maxsize=4)
-def _top_level_sources(path: Path) -> dict:
-    """Source text of every top-level function, class and simple assignment.
-
-    Lines are sliced directly rather than via ``ast.get_source_segment``, which
-    re-splits the whole file for every node -- 2.2 s per lookup on the 3400-line
-    precedent.  The result is the same text: a top-level definition starts at
-    column 0, and ``lineno`` points at ``def``/``class``, not at a decorator.
-    """
-    src = path.read_text()
-    lines = src.split("\n")
-
-    def seg(node):
-        return "\n".join(lines[node.lineno - 1:node.end_lineno])
-
-    out = {}
-    for node in ast.parse(src).body:
-        if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
-            out[node.name] = seg(node)
-        elif isinstance(node, ast.Assign) and isinstance(node.targets[0], ast.Name):
-            out[node.targets[0].id] = seg(node)
-    return out
 
 
 def _run(*args: str) -> subprocess.CompletedProcess:
@@ -141,37 +112,12 @@ def test_delta_list_says_what_changes():
     )
 
 
-@pytest.mark.parametrize("name", COPIED_NAMES)
-def test_copied_helper_is_byte_identical_to_the_precedent(name):
-    """The sanity helpers are copies, not edits.
-
-    They cannot be imported (the precedent belongs to another case and will be
-    removed), so the only thing keeping them honest is this comparison.  It goes
-    away with that file; the copies stay.
-
-    They live in ``tests/crossval/_openems_tutorial_gate.py``, shared by every
-    case whose reproduce gate is openEMS's own MSL notch filter tutorial, so a
-    drift here forks a gate several records depend on rather than one.
-    """
-    if not PRECEDENT.is_file():
-        pytest.skip(f"the precedent {PRECEDENT.name} is gone; the copies stand alone now")
-    precedent = _top_level_sources(PRECEDENT)
-    shared = _top_level_sources(SHARED_GATE)
-    assert name in precedent, f"{name} is no longer in {PRECEDENT.name}"
-    assert name in shared, f"{name} is no longer in {SHARED_GATE.name}"
-    assert shared[name] == precedent[name], (
-        f"{name} has drifted from its copy in {PRECEDENT.name}. The helpers are "
-        f"copied byte for byte on purpose: an edit here is a silent fork of a "
-        f"gate whose behaviour another case's record depends on."
-    )
-
-
 def test_the_maker_keeps_no_second_copy_of_a_shared_helper():
     """One copy, in the shared module -- not two that can drift.
 
-    The pin above watches the shared module.  A helper re-defined in this maker
-    would be unwatched, and the pin would go on passing while the maker ran the
-    fork.  A bare alias (``name = _gate.name``) is allowed; a definition is not.
+    A helper re-defined in this maker would be a fork of the gate the other
+    cases run, and nothing would compare the two.  A bare alias
+    (``name = _gate.name``) is allowed; a definition is not.
     """
     tree = ast.parse(MAKER.read_text())
     offenders = []
@@ -186,6 +132,6 @@ def test_the_maker_keeps_no_second_copy_of_a_shared_helper():
             if not is_alias:
                 offenders.append(f"{node.targets[0].id} (own value at line {node.lineno})")
     assert not offenders, (
-        f"{MAKER.name} carries its own copy of {offenders} -- the byte-identity "
-        f"pin watches {SHARED_GATE.name}, so that copy is unwatched."
+        f"{MAKER.name} carries its own copy of {offenders} -- the one copy "
+        f"lives in {SHARED_GATE.name}, and a second one can drift from it."
     )

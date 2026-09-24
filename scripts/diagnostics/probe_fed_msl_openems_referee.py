@@ -19,10 +19,11 @@ STAGE CONTRACT (the repo's external-comparator law, enforced in code)
 ============================================================================
 STAGE 1  reproduce-gate.  TWO legs, because the DUT uses TWO port classes:
          A1  openEMS ``python/Tutorials/MSL_NotchFilter.py`` (the MSL-port
-             leg), delegated to the ALREADY-VERIFIED faithful port in
-             ``validation/crossval/20_msl_phase_referee.py``
-             (``_run_stage_a_reproduce_gate``) so this script cannot drift
-             from the run that produced the recorded number.
+             leg), built by the repository's one faithful port in
+             ``tests/crossval/_openems_tutorial_gate.py`` (byte-identical
+             to the port that produced the recorded number) and run by
+             ``_run_stage_a_reproduce_gate`` below, moved here from the
+             MSL thru-line phase case when it was removed (2026-09-23).
          A2  openEMS ``python/Tutorials/Simple_Patch_Antenna.py`` (the
              lumped-probe leg -- the DUT's feed IS a vertical lumped probe
              from the ground plane to the trace, i.e. the patch tutorial's
@@ -50,10 +51,12 @@ A1  example  : openEMS python/Tutorials/MSL_NotchFilter.py
     documented known-good number: quarter-wave open-stub notch
       F_NOTCH_AN = c0 / (4 * 12 mm * sqrt(eps_eff_HJ)) = 3.6871 GHz
       (RECOMPUTED in code, never copy-pasted -- see
-      ``validation/crossval/20_msl_phase_referee.py::F_NOTCH_AN_HZ``)
+      ``tests/crossval/_openems_tutorial_gate.py::F_NOTCH_AN_HZ``)
     this repo's reproduced value: 3.6711 GHz, deviation 0.4364 %
-    log path: validation/crossval/_20_msl_phase_referee_logs/
-              20260804T070702Z_run.log   (git-tracked, PRESENT)
+    log path: tests/crossval/msl_notch_filter/reference/
+              tutorial_reproduction_20260804T070702Z_run.log
+              (git-tracked, PRESENT; moved there from the removed MSL
+              thru-line phase case's log directory on 2026-09-23)
     VESSL run: 369367251705
     gate: 0.80*F_NOTCH_AN <= f_notch <= 1.05*F_NOTCH_AN AND not
           truncation-suspect
@@ -397,11 +400,14 @@ REPRODUCE_GATE_RECORD: dict = {
             ),
         },
         "implementation": (
-            "DELEGATED to validation/crossval/20_msl_phase_referee.py::"
-            "_run_stage_a_reproduce_gate -- the already-verified faithful "
-            "port that produced the recorded number, loaded by path (the "
-            "module name starts with a digit). Delegation, not a second "
-            "hand-copy, so this leg cannot drift from the run it cites."
+            "The tutorial port in tests/crossval/_openems_tutorial_gate.py "
+            "(_build_stage_a_notch_tutorial and the sanity helpers, "
+            "byte-identical copies of the port in the removed MSL thru-line "
+            "phase case, validation/crossval/20_msl_phase_referee.py, that "
+            "produced the recorded number), loaded by path and run by this "
+            "script's _run_stage_a_reproduce_gate, which is that case's "
+            "function moved here on 2026-09-23. One copy of the port, not a "
+            "second hand-copy."
         ),
         "documented_check": (
             "Quarter-wave open-stub notch F_NOTCH_AN = c0/(4*stub_len*"
@@ -415,8 +421,8 @@ REPRODUCE_GATE_RECORD: dict = {
             "dev_pct": 0.4364433837294213,
             "vessl_run_id": "369367251705",
             "log_path": (
-                "validation/crossval/_20_msl_phase_referee_logs/"
-                "20260804T070702Z_run.log"
+                "tests/crossval/msl_notch_filter/reference/"
+                "tutorial_reproduction_20260804T070702Z_run.log"
             ),
             "log_present_in_tree": True,
             "verified_on": "2026-08-04",
@@ -1487,19 +1493,24 @@ def _non_physical_guard(s_mag: np.ndarray, label: str) -> None:
 # ---------------------------------------------------------------------------
 # STAGE 1
 # ---------------------------------------------------------------------------
-def _load_msl_phase_referee_module(repo_root: Path):
-    """Load validation/crossval/20_msl_phase_referee.py by path (the module
-    name starts with a digit, so it cannot be imported by name)."""
+# The repository's one port of MSL_NotchFilter.py and the sanity helpers every
+# real openEMS pass carries. The MSL notch filter and Sheen low-pass filter
+# reference makers load the same module.
+TUTORIAL_GATE_RELPATH = "tests/crossval/_openems_tutorial_gate.py"
+
+
+def _load_tutorial_gate_module(repo_root: Path):
+    """Load tests/crossval/_openems_tutorial_gate.py by path (this script runs
+    as a bare file, where ``tests`` is not an importable package)."""
     import importlib.util
-    path = repo_root / "validation" / "crossval" / "20_msl_phase_referee.py"
+    path = repo_root / TUTORIAL_GATE_RELPATH
     if not path.exists():
         raise ConfigError(
-            f"Stage A1 delegate missing: {path}. A1 is DELEGATED to the "
-            f"already-verified faithful MSL_NotchFilter.py port rather than "
-            f"hand-copied; without it this script cannot run its own "
-            f"reproduce gate."
+            f"Stage A1 delegate missing: {path}. A1 runs the repository's "
+            f"one MSL_NotchFilter.py port rather than a hand copy; without "
+            f"it this script cannot run its own reproduce gate."
         )
-    spec = importlib.util.spec_from_file_location("_msl_phase_referee_delegate", path)
+    spec = importlib.util.spec_from_file_location("_openems_tutorial_gate_delegate", path)
     if spec is None or spec.loader is None:
         raise ConfigError(f"could not load {path}")
     mod = importlib.util.module_from_spec(spec)
@@ -1507,11 +1518,84 @@ def _load_msl_phase_referee_module(repo_root: Path):
     return mod
 
 
-def run_stage1_a1(*, repo_root: Path, sim_root: str, threads: int) -> dict:
-    mod = _load_msl_phase_referee_module(repo_root)
+def _run_stage_a_reproduce_gate(gate, *, sim_root: str, threads: int) -> dict:
+    """A1's reproduce-gate run, moved from the MSL thru-line phase
+    cross-validation case (``validation/crossval/20_msl_phase_referee.py``,
+    removed 2026-09-23). The statements are that function's; only where the
+    names resolve changed: each helper and constant is read from ``gate``,
+    the loaded tutorial gate module, whose copies are byte-identical to the
+    case's, and the band is ``gate.STAGE_A_GATE`` (the case's
+    ``REPRODUCE_GATE_RECORD["gate"]``, the same 0.80/1.05 x F_NOTCH_AN_HZ)."""
+    ContinuousStructure, openEMS, MSLPort = gate._import_openems()
+
+    sim_dir = os.path.join(sim_root, "stage_a_notch_tutorial")
+    smoke_dir = os.path.join(sim_root, "stage_a_notch_tutorial_smoke")
+
+    smoke_fdtd, _p0, _p1 = gate._build_stage_a_notch_tutorial(
+        ContinuousStructure, openEMS, MSLPort, nrts=200, end_criteria=0.0)
+    smoke_log = gate._run_openems_capturing_stdout(smoke_fdtd, smoke_dir, threads=threads)
+    gate._scan_stdout_for_bad_patterns(smoke_log, "stage_a_smoke")
+
+    # Tutorial's own defaults (NrTS~=1e9, EndCriteria=1e-5) -- verbatim,
+    # not overridden.
+    fdtd, port0, port1 = gate._build_stage_a_notch_tutorial(
+        ContinuousStructure, openEMS, MSLPort, nrts=None, end_criteria=None)
+
     t0 = time.time()
-    res = mod._run_stage_a_reproduce_gate(
-        sim_root=os.path.join(sim_root, "a1_msl_notch"), threads=threads)
+    real_log = gate._run_openems_capturing_stdout(fdtd, sim_dir, threads=threads)
+    gate._scan_stdout_for_bad_patterns(real_log, "stage_a", check_truncation=True)
+    elapsed = time.time() - t0
+
+    freqs = np.linspace(1.0e6, gate.A_F_MAX_HZ, gate.A_N_FREQS)
+    port0.CalcPort(sim_dir, freqs)
+    port1.CalcPort(sim_dir, freqs)
+
+    inc_peak, n_samples = gate._check_excitation_and_trace(port0, sim_dir, "stage_a")
+    # NrTS defaults to ~1e9, so a probe-row-count-vs-NrTS comparison could
+    # never fire: read openEMS's own "reached before the end-criteria of"
+    # text from the real run's log instead.
+    truncated_suspected = gate._log_indicates_truncation(real_log)
+
+    s11 = np.asarray(port0.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
+    s21 = np.asarray(port1.uf_ref, dtype=np.complex128) / np.asarray(port0.uf_inc, dtype=np.complex128)
+    gate._non_physical_guard(np.abs(s11), "stage_a_s11")
+    gate._non_physical_guard(np.abs(s21), "stage_a_s21")
+
+    s21_db = 20.0 * np.log10(np.abs(s21) + 1e-30)
+    # Search only the physically-plausible window around the analytic
+    # estimate (avoids a spurious minimum elsewhere in the 1601-point,
+    # 7 GHz sweep).
+    search_lo, search_hi = 0.5 * gate.F_NOTCH_AN_HZ, 1.5 * gate.F_NOTCH_AN_HZ
+    search_mask = (freqs >= search_lo) & (freqs <= search_hi)
+    if not np.any(search_mask):
+        search_mask = np.ones_like(freqs, dtype=bool)
+    i_local = int(np.argmin(s21_db[search_mask]))
+    f_notch = float(freqs[search_mask][i_local])
+    notch_depth_db = float(s21_db[search_mask][i_local])
+
+    band = gate.STAGE_A_GATE
+    f_notch_ok = bool(band["f_notch_lo_hz"] <= f_notch <= band["f_notch_hi_hz"])
+
+    # A truncated real run (NrTS cap hit before EndCriteria) must not pass.
+    passed = bool(f_notch_ok and not truncated_suspected)
+    return {
+        "freqs_hz": freqs.tolist(),
+        "s11_mag": np.abs(s11).tolist(), "s21_mag": np.abs(s21).tolist(),
+        "f_notch_hz": f_notch, "notch_depth_db": notch_depth_db,
+        "f_notch_expected_hz": float(gate.F_NOTCH_AN_HZ),
+        "f_notch_dev_pct": abs(f_notch - gate.F_NOTCH_AN_HZ) / gate.F_NOTCH_AN_HZ * 100.0,
+        "f_notch_ok": f_notch_ok,
+        "max_uf_inc": inc_peak, "n_trace_samples": n_samples,
+        "truncated_suspected": truncated_suspected, "elapsed_s": round(elapsed, 1),
+        "passed": passed,
+    }
+
+
+def run_stage1_a1(*, repo_root: Path, sim_root: str, threads: int) -> dict:
+    gate = _load_tutorial_gate_module(repo_root)
+    t0 = time.time()
+    res = _run_stage_a_reproduce_gate(
+        gate, sim_root=os.path.join(sim_root, "a1_msl_notch"), threads=threads)
     rec = dict(REPRODUCE_GATE_RECORD["a1"])
     rec.update({
         "status": "RUN",
@@ -1522,10 +1606,9 @@ def run_stage1_a1(*, repo_root: Path, sim_root: str, threads: int) -> dict:
         "notch_depth_db": res["notch_depth_db"],
         "truncated_suspected": res["truncated_suspected"],
         "elapsed_s": round(time.time() - t0, 1),
-        "gate_band_hz": [mod.REPRODUCE_GATE_RECORD["gate"]["f_notch_lo_hz"],
-                         mod.REPRODUCE_GATE_RECORD["gate"]["f_notch_hi_hz"]],
-        "delegated_to": str(
-            (repo_root / "validation/crossval/20_msl_phase_referee.py")),
+        "gate_band_hz": [gate.STAGE_A_GATE["f_notch_lo_hz"],
+                         gate.STAGE_A_GATE["f_notch_hi_hz"]],
+        "delegated_to": str(repo_root / TUTORIAL_GATE_RELPATH),
     })
     return rec
 

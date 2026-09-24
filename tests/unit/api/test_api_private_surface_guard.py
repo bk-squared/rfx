@@ -23,7 +23,6 @@ def test_rfx_api_module_imports():
     # from `rfx.api` across the planned package conversion.
     from rfx.api import (  # noqa: F401
         AD_MemoryEstimate,
-        CoaxialSMatrixResult,
         ForwardResult,
         MATERIAL_LIBRARY,
         MaterialSpec,

@@ -1904,6 +1904,13 @@ def make_core_step(ctx: _StepContext):
     def core_step(carry, step_idx, src_vals, mag_src_vals):
         st = carry["fdtd"]
         tfsf_h_state = None
+        # #1163: a series RLC element is solved together with its edge field
+        # and needs E^n there; nothing before the E update writes E, so the
+        # carry's value IS E^n on every path (fast H+E kernel included).
+        rlc_e_prev = (
+            tuple(getattr(st, m.component)[m.i, m.j, m.k]
+                  for m in ctx.rlc_meta)
+            if ctx.use_lumped_rlc else ())
 
         if ctx.use_fast_he:
             # Fast path: combined H+E update with PEC baked into
@@ -2125,8 +2132,10 @@ def make_core_step(ctx: _StepContext):
         # Lumped RLC ADE update (after E update + boundaries, before sources)
         if ctx.use_lumped_rlc:
             new_rlc_states = []
-            for rlc_st, meta in zip(carry["rlc_states"], ctx.rlc_meta):
-                st, rlc_st_new = ctx.update_rlc_element(st, rlc_st, meta)
+            for rlc_st, meta, e_prev in zip(
+                    carry["rlc_states"], ctx.rlc_meta, rlc_e_prev):
+                st, rlc_st_new = ctx.update_rlc_element(
+                    st, rlc_st, meta, e_prev)
                 new_rlc_states.append(rlc_st_new)
 
         # Compute step time first; the lumped S-param DFT block below

@@ -87,7 +87,7 @@
    "code": "no_sources",
    "disposition": "intended",
    "reason": "The tutorial ASSERTS this row. main(): 'Because this model deliberately ends after construction, general preflight should report that there is no generic run source', then expected_build_only_advisory = bool(coaxial_report.by_code('no_sources')) and prints it. A missing row here would be the defect.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:327-336",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:345-352",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
   },

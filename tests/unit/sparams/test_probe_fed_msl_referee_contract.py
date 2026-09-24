@@ -930,6 +930,110 @@ def test_a2_gate_separates_upstream_from_repo_internal_provenance(ref):
 
 
 # ---------------------------------------------------------------------------
+# Stage 1 leg A1: openEMS's MSL notch tutorial, reproduced before anything else
+# ---------------------------------------------------------------------------
+# ``_run_stage_a_reproduce_gate`` moved into the referee from the MSL thru-line
+# phase case (removed 2026-09-23), whose header test pinned the two source
+# checks below. The run is also pinned by what it returns, on a fake solver
+# that writes a chosen log and returns a chosen notch: a truncated real pass,
+# or a notch outside the band, must fail the leg however the source is spelled.
+def test_a1_reads_truncation_from_the_real_run_log(ref):
+    import inspect
+    src = inspect.getsource(ref._run_stage_a_reproduce_gate)
+    assert "_log_indicates_truncation(real_log)" in src
+
+
+def test_a1_passed_consults_truncation(ref):
+    import inspect
+    src = inspect.getsource(ref._run_stage_a_reproduce_gate)
+    assert "passed = bool(f_notch_ok and not truncated_suspected)" in src, (
+        "A1's passed must consult truncated_suspected: a truncated real run "
+        "must not pass the reproduce gate")
+
+
+_FINISHED_LOG = "openEMS: end criteria reached\n"
+_TRUNCATED_LOG = ("RunFDTD: Warning: Max. number of timesteps was reached before "
+                  "the end-criteria of -50dB was reached... \n")
+
+
+def _fake_solver(real_log: str, f_notch_hz: float, s21_scale: float = 1.0):
+    """(ContinuousStructure, openEMS, MSLPort) stand-ins for the tutorial build.
+
+    The real pass writes ``real_log`` where openEMS writes its console; the
+    ports return a lossless line with a quarter-wave-stub-like null at
+    ``f_notch_hz`` (|S21| of 1 - 0.9995/(1 + 40j(f/f0 - f0/f))).
+    """
+    class _Grid:
+        def SetDeltaUnit(self, unit): pass
+        def AddLine(self, direction, lines): pass
+        def SmoothMeshLines(self, direction, res, ratio=None): pass
+
+    class _Prop:
+        def AddBox(self, start, stop, priority=0): pass
+
+    class _CSX:
+        def GetGrid(self): return _Grid()
+        def AddMaterial(self, name, **kw): return _Prop()
+        def AddMetal(self, name): return _Prop()
+
+    class _FDTD:
+        def __init__(self, **kw):
+            self.smoke = kw.get("NrTS") == 200
+
+        def SetGaussExcite(self, f0, fc): pass
+        def SetBoundaryCond(self, bc): pass
+        def SetCSX(self, csx): pass
+
+        def Run(self, sim_path, cleanup=False, verbose=0, numThreads=0):
+            text = ("RunFDTD: Warning: Max. number of timesteps was reached before "
+                    "the end-criteria of -infdB was reached... \n") if self.smoke else real_log
+            # The descriptor the capture redirected (fd 1 outside pytest).
+            os.write(sys.stdout.fileno(), text.encode())
+
+    class _Port:
+        U_filenames: list = []
+
+        def __init__(self, csx, port_nr, metal_prop, start, stop, prop_dir, exc_dir, **kw):
+            self.port_nr = port_nr
+
+        def CalcPort(self, sim_dir, freqs):
+            f = np.asarray(freqs, dtype=float)
+            self.uf_inc = np.ones_like(f, dtype=complex)
+            if self.port_nr == 1:
+                self.uf_ref = 0.05 * self.uf_inc
+            else:
+                x = 40.0 * (f / f_notch_hz - f_notch_hz / f)
+                self.uf_ref = s21_scale * (1.0 - 0.9995 / (1.0 + 1j * x)) * self.uf_inc
+
+    return _CSX, _FDTD, _Port
+
+
+@pytest.mark.parametrize("real_log, f_notch_hz, passed, truncated", [
+    (_FINISHED_LOG, 3.6711e9, True, False),     # the recorded reproduction
+    (_TRUNCATED_LOG, 3.6711e9, False, True),    # same notch, run stopped early
+    (_FINISHED_LOG, 2.5e9, False, False),       # below the 0.80 x F_NOTCH_AN band
+], ids=["finished_in_band", "truncated_in_band", "finished_off_band"])
+def test_a1_run_fails_a_truncated_or_off_band_tutorial(
+        ref, tmp_path, monkeypatch, real_log, f_notch_hz, passed, truncated):
+    gate = ref._load_tutorial_gate_module(_REPO_ROOT)
+    monkeypatch.setattr(gate, "_import_openems", lambda: _fake_solver(real_log, f_notch_hz))
+    res = ref._run_stage_a_reproduce_gate(gate, sim_root=str(tmp_path), threads=1)
+    assert res["truncated_suspected"] is truncated
+    assert res["passed"] is passed
+    # the notch is read at the planted null, to the 1601-point grid's spacing
+    assert abs(res["f_notch_hz"] - f_notch_hz) <= gate.A_F_MAX_HZ / (gate.A_N_FREQS - 1)
+    assert res["f_notch_expected_hz"] == gate.F_NOTCH_AN_HZ
+
+
+def test_a1_run_refuses_a_non_physical_s21(ref, tmp_path, monkeypatch):
+    gate = ref._load_tutorial_gate_module(_REPO_ROOT)
+    monkeypatch.setattr(gate, "_import_openems",
+                        lambda: _fake_solver(_FINISHED_LOG, 3.6711e9, s21_scale=3.0))
+    with pytest.raises(RuntimeError, match="non-physical"):
+        ref._run_stage_a_reproduce_gate(gate, sim_root=str(tmp_path), threads=1)
+
+
+# ---------------------------------------------------------------------------
 # The VESSL lane must name its own prerequisites instead of dying anonymously
 # ---------------------------------------------------------------------------
 def _yaml_run_block() -> str:

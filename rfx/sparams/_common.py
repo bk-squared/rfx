@@ -1338,13 +1338,13 @@ def _finalize_sparam_result(
     This is the one genuinely-common piece of the per-family two-run S-param
     flow at the orchestration layer (W6.4): both
     :meth:`_SparamMixin.compute_waveguide_s_matrix` (NU, multi-mode, and
-    single-mode return paths) and :meth:`_SparamMixin.compute_coaxial_s_matrix`
-    assemble a family-specific ``*SMatrixResult`` and then invoke
+    single-mode return paths) and the coax lanes in :mod:`rfx.sparams.coax`
+    assemble a family-specific result and then invoke
     :func:`_warn_if_nonpassive_smatrix` immediately before returning. The
     per-port drive loop, vacuum-reference override, and rectangular-DFT
     windowing live behind the family-specific extractors (waveguide:
-    ``rfx.sources.waveguide_port``; coax: the inline single-run plane-source
-    path) and are deliberately *not* unified here — they share no code at this
+    ``rfx.sources.waveguide_port``; coax: the coax-line fixtures in
+    :mod:`rfx.sparams.coax`) and are deliberately *not* unified here — they share no code at this
     layer, so a wider scaffold would be a leaky abstraction.
 
     ``passivity_tol`` defaults to the tight 0.10 bound (matching the coax call
@@ -1679,8 +1679,8 @@ def _warn_ntff_box_dropped(sim, method_name: str) -> None:
     """Issue #704 — one warning per S-matrix call when an NTFF box would be dropped.
 
     ``add_ntff_box()`` registers a far-field monitor, but the S-matrix
-    result classes (``MSLSMatrixResult``, ``WaveguideSMatrixResult``,
-    ``CoaxialSMatrixResult``) carry no ``ntff_data``/``ntff_box`` fields, so
+    result classes (``MSLSMatrixResult``, ``WaveguideSMatrixResult``, and
+    the coaxial results) carry no ``ntff_data``/``ntff_box`` fields, so
     whatever the per-drive solves record is discarded with nothing said —
     the same silent-drop class as #695/#685. Called ONCE at each S-matrix
     entry (after the cheap guards, before any FDTD), never per port, so a

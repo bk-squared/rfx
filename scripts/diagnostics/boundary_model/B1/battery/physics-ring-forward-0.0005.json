@@ -1,0 +1,13 @@
+{
+  "structure": "ring",
+  "entry": "forward",
+  "dx_m": 0.0005,
+  "steps": 4096,
+  "frequencies_Hz": [
+    12230780021.618805
+  ],
+  "amplitudes": [
+    0.012560430692228303
+  ],
+  "trace_peak_V_per_m": 0.07611233741044998
+}

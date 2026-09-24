@@ -54,10 +54,16 @@ def _series_rlc_current_spectrum(R, L, C, *, dx=0.5e-3, n=40000, pad=8):
     SCOPE (review nit #399): this oracle binds the series-RLC ADE *circuit*
     equations (f0, Q of ``_update_series``). It does NOT exercise the
     current->E-field injection coupling that a full ``run()`` applies at the
-    element cell — that end-to-end path stays covered only by the direction-only
-    tests below. A quantitative full-``run()`` f0 gate is a warranted follow-up
-    (it needs a resolved broadband source + harminv on the driven-cell current,
-    heavier than this isolated ADE probe).
+    element cell — that is gated on a line against the closed-form load
+    impedance in ``tests/oracle/test_series_rlc_load_on_line.py`` (#1163).
+
+    #1163: ``_update_series`` now solves the element current TOGETHER with its
+    edge field (``E^{n+1} = e_std - I/(D0*A)``), so on a real node the current
+    also flows through the edge's own impedance d/(D0*A). To keep this an
+    oracle of the element alone, the node is made an ideal voltage source:
+    ``D0`` is set so large that the element's current no longer moves the
+    field (d/(D0*A) ~ 1e-25 ohm), and the imposed field IS the element voltage
+    ``V = E*d``. ``E^n`` (``e_prev``) is the previous imposed sample.
 
     Returns ``(freqs, |I_s(freqs)|, dt)``.
     """
@@ -72,7 +78,7 @@ def _series_rlc_current_spectrum(R, L, C, *, dx=0.5e-3, n=40000, pad=8):
     mats = setup_rlc_materials(grid, spec, vac)
     # Relocate the element to cell (0,0,0) so the driven state is a 1-cell
     # array (cheap lax.scan); coefficients (dt, dx, gamma, ...) are unchanged.
-    meta = build_rlc_meta(grid, spec, mats)._replace(i=0, j=0, k=0)
+    meta = build_rlc_meta(grid, spec, mats)._replace(i=0, j=0, k=0, D0=1e30)
     dt = meta.dt
 
     drive = np.zeros(n, dtype=np.float32)
@@ -80,8 +86,9 @@ def _series_rlc_current_spectrum(R, L, C, *, dx=0.5e-3, n=40000, pad=8):
 
     def step(carry, e_in):
         st, rlc = carry
+        e_prev = st.ez[0, 0, 0]
         st = st._replace(ez=st.ez.at[0, 0, 0].set(e_in))
-        st, rlc = _update_series(st, rlc, meta)
+        st, rlc = _update_series(st, rlc, meta, e_prev)
         return (st, rlc), rlc.inductor_current
 
     st0 = _EzCell(ez=jnp.zeros((1, 1, 1), dtype=jnp.float32))

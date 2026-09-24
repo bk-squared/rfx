@@ -82,7 +82,6 @@ GROUPS = [
      f'{PYTEST} tests/unit/ports/test_coaxial_port.py '
      'tests/unit/ports/test_port_preflight.py '
      'tests/unit/preflight/test_preflight_advisory_emission_contract.py '
-     'tests/unit/sparams/test_coaxial_s_matrix.py '
      'tests/unit/sparams/test_compute_s_matrix_dispatch.py '
      'tests/unit/sparams/test_settling_witness.py '
      'tests/unit/sparams/test_sparam_passivity_guard.py '
