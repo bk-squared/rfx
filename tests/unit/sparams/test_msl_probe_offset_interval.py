@@ -717,12 +717,17 @@ def test_an_explicit_offset_decides_the_zone_with_its_own_count(direction):
 
 @pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
 def test_the_zone_is_measured_from_the_stamped_node(direction):
-    """Source node 62 cells into the 80-cell runway: the 20 GHz ladder
-    (10 + 4 x 2 cells) ends exactly on the runway's last node, so it lies in
-    one zone. The feed is declared 0.3 of a cell past that node; a span
-    measured from the declared feed would run 0.3 cell up the ramp and keep
-    the stored 5 cells (#1278 review F4)."""
-    sim = _runway_board(direction, 20e9, runway_node=62.3)
+    """The 127 um zone is the 80-cell runway plus the last ramp cell on each
+    side, which the 1.25 ramp clamps to 127 um: 82 cells. With the source
+    node 63 cells into the runway, the 20 GHz ladder (10 + 4 x 2 cells) ends
+    exactly on the zone's last node, so it lies in one zone. The feed is
+    declared 0.3 of a cell past that node; a span measured from the declared
+    feed would run 0.3 cell into the 130 um ramp cell and keep the stored
+    5 cells (#1278 review F4)."""
+    prof, first, last = _runway_profile()
+    assert prof[first - 1] == prof[last] == _RW_FINE
+    assert prof[first - 2] > _RW_FINE and prof[last + 1] > _RW_FINE
+    sim = _runway_board(direction, 20e9, runway_node=63.3)
     r, _, skips = _resolve_on_its_grid(sim)
     assert (r.n_probe_offset, r.n_probe_spacing) == (10, 2)
     (msg,) = skips
