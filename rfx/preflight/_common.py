@@ -44,6 +44,9 @@ import json
 
 import numpy as np
 
+from rfx._grid_metric import (
+    NODE_TOUCH_REL, cells_crossed, is_one_cell_size,
+)
 from rfx.core.jax_utils import is_tracer
 
 
@@ -592,3 +595,130 @@ def _component_is_dead(edges, component: str, idx) -> bool:
         if not edges[c][ii, jj, kk]:
             return False
     return True
+
+
+# ---------------------------------------------------------------------------
+# The grid interface's metric rules, spelled on the DECLARED profiles.
+#
+# Preflight runs before a grid is necessarily built, and several checks here
+# would otherwise pay for a full ``_build_nonuniform_grid()`` just to read one
+# cell. These three helpers answer the same questions
+# ``rfx/_grid_metric.py``'s interface answers -- ``boundary_cell(axis, side)``,
+# ``cells(axis)[i]`` and ``is_constant(axis)`` -- from the profile a caller
+# declared plus the boundary scalar.
+#
+# They agree with the grid by construction, because the builder derives the
+# grid from exactly these inputs: ``make_nonuniform_grid`` pins a profile's
+# first and last cells as the boundary cells and pads each face with copies of
+# them, so the padded array's ends ARE the profile's ends.
+# ``tests/unit/preflight/test_profile_metric_helpers.py`` pins that agreement
+# against a real ``NonUniformGrid`` rather than asserting it here.
+# ---------------------------------------------------------------------------
+
+def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
+    """The cell at one FACE of an axis: the grid's ``boundary_cell``.
+
+    ``side`` is ``"lo"`` or ``"hi"``. Without a profile every cell is the
+    scalar. With one, the face cell is that profile's first or last entry --
+    and the absorber cells outside it are copies of the same number, which is
+    why this is also the cell an absorber on that face sits on.
+
+    The two sides are asked for separately on purpose. Reading the leading
+    entry for both faces is the defect this replaces: on a profile whose ends
+    differ it measures the hi face with the lo face's cell.
+    """
+    if side not in ("lo", "hi"):
+        raise ValueError(f"side must be 'lo' or 'hi', got {side!r}")
+    if profile is None or is_tracer(profile):
+        return float(scalar_dx)
+    a = np.asarray(profile, dtype=float)
+    if a.size == 0:
+        return float(scalar_dx)
+    return float(a[0] if side == "lo" else a[-1])
+
+
+def profile_node_at(scalar_dx: float, profile, coord_m: float) -> float:
+    """The node the grid puts ``coord_m`` on: the nearest one, the rule
+    ``index_of`` and ``position_to_index`` both apply.
+
+    A port, a source or a probe declared at ``coord_m`` is stamped on this
+    node, so a check about the cells that object uses starts here, not at
+    the declared coordinate. Without a profile the node is
+    ``round(coord / dx) * dx``, the uniform grid's own lookup.
+    """
+    a = (None if profile is None or is_tracer(profile)
+         else np.asarray(profile, dtype=float))
+    if a is None or a.size == 0:
+        if not scalar_dx:
+            return float(coord_m)
+        return float(round(float(coord_m) / float(scalar_dx)) * float(scalar_dx))
+    edges = np.concatenate([[0.0], np.cumsum(a)])
+    return float(edges[int(np.argmin(np.abs(edges - float(coord_m))))])
+
+
+def profile_cell_at(scalar_dx: float, profile, coord_m: float,
+                    *, toward: str = "hi") -> float:
+    """The cell beside the node the grid puts ``coord_m`` on: the grid's
+    ``cells(axis)[index_of(axis, coord)]`` for ``toward="hi"``, the cell
+    below that node for ``toward="lo"``.
+
+    A port launching forwards occupies the cells above its feed node and one
+    launching backwards the cells below, so the caller names the side its
+    probes are on. The node is the NEAREST one (:func:`profile_node_at`),
+    which is where the grid stamps the port: a feed declared a few 1e-18 m
+    below an interface node is on that node, not in the cell under it.
+
+    Coordinates outside the profile clamp to the end cell, because a caller
+    asking about a position beyond the declared span is asking about the
+    absorber, whose cells are copies of that end.
+    """
+    if toward not in ("lo", "hi"):
+        raise ValueError(f"toward must be 'lo' or 'hi', got {toward!r}")
+    if profile is None or is_tracer(profile):
+        return float(scalar_dx)
+    a = np.asarray(profile, dtype=float)
+    if a.size == 0:
+        return float(scalar_dx)
+    edges = np.concatenate([[0.0], np.cumsum(a)])
+    node = int(np.argmin(np.abs(edges - float(coord_m))))
+    idx = node if toward == "hi" else node - 1
+    return float(a[max(0, min(idx, a.size - 1))])
+
+
+def profile_span_is_uniform(scalar_dx: float, profile,
+                            start_m: float, length_m: float) -> bool:
+    """Whether every cell a span crosses has the same size.
+
+    A check that converts a physical length into a cell count is only
+    meaningful where the cells it counts are equal; across a grading ramp the
+    count depends on where you start. Callers refuse rather than answer there.
+
+    ``length_m`` is signed: a negative length inspects the cells BELOW
+    ``start_m``, which is where a backward-launching port's probes sit.
+
+    The span crosses the cells it overlaps by more than the node-touch
+    tolerance, and cells are one size when they agree to the same relative
+    tolerance, both the S-parameter reference-span check's
+    (``rfx._grid_metric.cells_crossed`` / ``is_one_cell_size``). A span
+    that starts or ends on a node therefore stops there -- counting the cell
+    beyond it made a span lying wholly inside one zone look mixed the moment
+    it touched the zone's edge -- and a runway built as ``np.diff`` of node
+    coordinates, whose equal cells differ in the 14th digit, is one zone.
+
+    A span lying entirely beyond the declared profile gets ``False``. Those
+    cells are the absorber pad's, which this function was not given, and a
+    caller whose guard passes only because the span ran off the board is not
+    being told anything.
+    """
+    if profile is None or is_tracer(profile):
+        return True
+    a = np.asarray(profile, dtype=float)
+    if a.size == 0:
+        return True
+    lo = min(float(start_m), float(start_m) + float(length_m))
+    hi = max(float(start_m), float(start_m) + float(length_m))
+    crossed = cells_crossed(a, lo, hi)
+    tol = NODE_TOUCH_REL * float(np.min(a))
+    if crossed.size == 0 and (hi <= tol or lo >= float(np.sum(a)) - tol):
+        return False
+    return is_one_cell_size(crossed)

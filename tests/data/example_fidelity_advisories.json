@@ -125,64 +125,6 @@
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },
   {
-   "code": "congruent_conductor_rasterization_parity",
-   "disposition": "defect-open",
-   "issue": 928,
-   "reason": "The two 50-ohm feeds are the same declared object (2.413 x 12.47 mm sheets) and this mesh realizes them UNEQUAL: geometry[1] 1437 PEC edges vs geometry[3] 1414, spread 23 against a tolerance of 1. 23 = 12 + 11 is one node column of a 12-row-wide sheet, i.e. the two feeds differ by one cell of length. The docstring argues for dx = 200 um precisely BECAUSE it keeps the feeds symmetric ('the two feeds stay SYMMETRIC', 12 node rows each) and refuses dx = H_SUB/4 for realizing them 12 and 13 rows WIDE -- that argument is about the transverse width and does not cover the propagation length, which this advisory measures. Reported to the crossval leader on #928 (comment linked in ref); not edited here.",
-   "ref": "validation/crossval/07_sheen_lpf.py:118-133,634-648 | https://github.com/bk-squared/rfx/issues/928#issuecomment-5699614129",
-   "rows": 1,
-   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
-  },
-  {
-   "code": "lossless_q",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Named in the docstring's PREFLIGHT WARNINGS section as one of 'the standing pec_faces and lossless-dielectric advisories'. The registered output is the stopband STRUCTURE (argmin null position, passband/stopband shape) against openEMS and a Palace referee, both run on the same lossless Duroid; the case is explicitly 'not an rfx magnitude-accuracy claim at dx=200um'.",
-   "ref": "validation/crossval/07_sheen_lpf.py:265-285",
-   "rows": 1,
-   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
-  },
-  {
-   "code": "msl_port_geometry",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Quoted in the docstring with the number and the reason: 'BOTH ports at 900 um from the x-CPML (geometry-limited, PORT_MARGIN=2.5 mm; recommended 2*h_sub = 1588 um)'. The board's published length is what limits it, and the leg stores its preflight verbatim in _07_sheen_results/rfx.json.",
-   "ref": "validation/crossval/07_sheen_lpf.py:265-272",
-   "rows": 2,
-   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
-  },
-  {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). The declared-vs-realized table is written out in the docstring (GEOMETRY CONVENTION #722): wide section 2540 -> 2600 um, substrate 794 -> 800 um, each feed 2413 -> 2400 um, offset -3303.5 -> -3200 um, with gcd(2540, 794, 2413, 20320) = 1 um given as the reason no cubic cell can realize all four. The on-lattice redraw is refused with a measurement (dx = H_SUB/4 makes the two feeds 12 and 13 rows wide).",
-   "ref": "validation/crossval/07_sheen_lpf.py:40-57,143-152",
-   "rows": 1,
-   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
-  },
-  {
-   "code": "pec_faces_finite_pec",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Same microstrip model as cv06b: z_lo PEC face is the ground, the three sheets are the feed/patch metal. Listed in the docstring among the standing advisories.",
-   "ref": "validation/crossval/07_sheen_lpf.py:265-273,715-743",
-   "rows": 1,
-   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
-  },
-  {
-   "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%); geometry[3] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[1] 'pec' y: drawn 2.413mm, nodes cover 2.2mm, solved as 2.34mm (-3.03%) -- is what build_rfx_sim actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
-   "ref": "validation/crossval/07_sheen_lpf.py:706 | https://github.com/bk-squared/rfx/issues/1138",
-   "rows": 1,
-   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
-  },
-  {
-   "code": "sheet_plane_realized",
-   "disposition": "intended",
-   "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). Severity info, and the number is in the docstring: 'sheet plane k = 4, z = 800.0 um = the realized substrate top (declared foil plane 794.0 um, +6.0 um)'. The docstring then refuses the on-lattice redraw with the feed-asymmetry measurement and states why the pathology does not arise here ('the sheet lands on the realized substrate TOP ... so there is no vacuum slot').",
-   "ref": "validation/crossval/07_sheen_lpf.py:118-127,143-158",
-   "rows": 1,
-   "variant": "validation/crossval/07_sheen_lpf.py::build_rfx_sim::default"
-  },
-  {
    "code": "off_lattice_design_edges",
    "disposition": "intended",
    "reason": "Crossval script: classified here, NOT edited -- validation/crossval/ belongs to the crossval leader session (#928). dx = H_SUB/4 = 793.75 um is mandated by the case's own #325 avoidance rule ('UNIFORM grid only ... The rfx build ASSERTS the substrate rasterizes to exactly N_SUB=4 z-cells ... BEFORE any f0 is quoted'), which fixes the z axis exactly and leaves the in-plane patch (40 mm) and ground (56 mm) faces off-lattice by 0.89 % and 0.52 %. The script MEASURES the consequence rather than assuming it: assert_realized_stack prints the realized footprint in cells and mm next to the declared L_PATCH/W_PATCH on every run.",

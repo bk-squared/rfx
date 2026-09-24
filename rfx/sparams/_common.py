@@ -32,6 +32,7 @@ try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
 except ImportError:
     from jax.experimental import enable_x64 as _enable_x64
 
+from rfx._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import is_tracer
 
 from rfx.nonuniform import NonUniformGrid, interior_cells
@@ -489,12 +490,9 @@ def _nu_shift_span_cells(grid, cfg, desired_plane_m: float):
         pad_lo, pad_hi = int(grid.pad_z_lo), int(grid.pad_z_hi)
     cells = np.asarray(interior_cells(np.asarray(d_full, dtype=np.float64), pad_lo, pad_hi),
                        dtype=np.float64)
-    edges = np.insert(np.cumsum(cells), 0, 0.0)
     planes = (float(cfg.source_x_m), float(cfg.reference_x_m), float(desired_plane_m))
     lo, hi = min(planes), max(planes)
-    tol = 1e-3 * float(np.min(cells)) if cells.size else 0.0
-    crossed = (edges[:-1] < hi - tol) & (edges[1:] > lo + tol)
-    return axis, lo, hi, cells[crossed]
+    return axis, lo, hi, cells_crossed(cells, lo, hi)
 
 
 def _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired_plane_m: float,
@@ -515,10 +513,7 @@ def _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired_plane_m: float,
     axis, lo, hi, sizes = _nu_shift_span_cells(grid, cfg, desired_plane_m)
     if sizes.size == 0:
         return axis, lo, hi, sizes
-    distinct = [float(sizes[0])]
-    for v in sizes[1:]:
-        if not any(np.isclose(v, d, rtol=1e-9, atol=0.0) for d in distinct):
-            distinct.append(float(v))
+    distinct = distinct_cell_sizes(sizes)
     if len(distinct) > 1:
         raise ValueError(
             f"waveguide port {port_name!r}: the span from its port plane to its "

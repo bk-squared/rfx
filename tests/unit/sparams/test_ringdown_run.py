@@ -22,6 +22,12 @@ What is pinned here, on both lanes:
   (SHA-256 of every array and the repr of every other value);
 * the short record's completed S11 matches the long record's within the
   measured envelope while its plain S11 does not, and the witnesses read ok;
+* the error witness WE (completions from [T/2, T] and [T/4, T]) is judged:
+  a 1.72 ns graded record whose completion is 1.6e-3 off reads 1.6e-3 on WE
+  and fails; W2 is reported, not judged; with the pulse still on at T/4, WE
+  is not formed and W2 is judged;
+* every completed S is the completion from [T/2, T] computed by hand from the
+  run's own port channels, bit for bit (``_run``);
 * the driven column of a two-port graded box and a three-cell port likewise;
   W1 catches a completion fed the midpoint cell's voltage of that port;
 * the decimation reference covers the requested band, and a port on a CPML
@@ -32,6 +38,7 @@ What is pinned here, on both lanes:
 from __future__ import annotations
 
 import hashlib
+import math
 
 import jax
 import numpy as np
@@ -59,7 +66,7 @@ DYP = np.array([1.0, 1.4, 0.8, 0.6, 0.8, 0.9, 1.0, 1.1, 1.2, 1.2, 1.0]) * MM
 DZP = np.array([0.8, 0.6, 1.4, 1.4, 0.8]) * MM
 
 
-def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9):
+def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE):
     """The box on one lane; ``cells`` sets the port's length in cells."""
     kw = ({"dx_profile": DXP, "dy_profile": DYP, "dz_profile": DZP}
           if lane == "graded" else {})
@@ -79,7 +86,7 @@ def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9):
         pos, ext = (2 * MM, 2 * MM, 0.0), float(cells) * MM
         pos2, ext2 = (9 * MM, 8 * MM, 0.0), 1.0 * MM
     sim.add_port(position=pos, component="ez", impedance=50.0, extent=ext,
-                 waveform=PULSE)
+                 waveform=pulse)
     if second_port:
         sim.add_port(position=pos2, component="ez", impedance=50.0, extent=ext2,
                      waveform=PULSE, excite=False)
@@ -87,9 +94,47 @@ def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9):
     return sim
 
 
+def _run_captured(sim, n, **kw):
+    """``_run`` that also hands back the port channels the completion saw.
+
+    With ``ringdown=``, ``rd.two_window_witness`` is wrapped for the call to
+    record its inputs (the float64 port V/I series, the bins, the S assembly
+    ``observable``, the plain DFT). When the run completes, its S must be the
+    completion from ``[window_start T, T]`` recomputed here from those
+    channels with ``identify``/``tail_dft`` -- bit for bit: the witnesses
+    beside it may change, the completed number may not.
+    """
+    cap = {}
+    orig = rd.two_window_witness
+
+    def spy(*a, **k):
+        out = orig(*a, **k)
+        cap.update(args=a, kw=k)
+        return out
+
+    rd.two_window_witness = spy
+    try:
+        r = sim.run(n_steps=n, compute_s_params=True, s_param_freqs=FREQS,
+                    skip_preflight=True, **kw)
+    finally:
+        rd.two_window_witness = orig
+    if r.ringdown is not None and r.ringdown.s_params is not None:
+        assert cap, "a completed run did not go through two_window_witness"
+        Y, dt, freqs, n_record, n_start = cap["args"]
+        k = cap["kw"]
+        main = rd.identify(np.asarray(Y)[:n_record], dt, n_start, n_record,
+                           freq_max=k["freq_max"], guard=k["guard"],
+                           sv_rel=k["sv_rel"], unit_tol=k["unit_tol"])
+        S_hand = np.asarray(k["observable"](
+            k["plain"] + rd.tail_dft(main, n_record - 1, freqs)))
+        assert S_hand.dtype == r.ringdown.s_params.dtype
+        assert np.array_equal(S_hand, r.ringdown.s_params), (
+            "the completed S is not the completion from the main window")
+    return r, cap
+
+
 def _run(sim, n, **kw):
-    return sim.run(n_steps=n, compute_s_params=True, s_param_freqs=FREQS,
-                   skip_preflight=True, **kw)
+    return _run_captured(sim, n, **kw)[0]
 
 
 def _db_deg(s, ref):
@@ -239,6 +284,7 @@ def test_a_short_record_completed_is_the_long_record(short_runs):
     for r in (short, long):
         rep = r.ringdown.report
         assert rep.ok, rep.summary()
+        assert rep.witness("WE").judged and not rep.witness("W2").judged
     db_c, deg_c = _db_deg(short.ringdown.s_params[0, 0], ref)
     db_p, deg_p = _db_deg(np.asarray(short.s_params)[0, 0], ref)
     db_l, deg_l = _db_deg(np.asarray(long.s_params)[0, 0], ref)
@@ -246,6 +292,7 @@ def test_a_short_record_completed_is_the_long_record(short_runs):
           f"{N_SHORT[lane]}-step {db_c:.2e} dB / {deg_c:.2e} deg; plain "
           f"{N_SHORT[lane]}-step {db_p:.3f} dB / {deg_p:.2f} deg; plain "
           f"{N_LONG[lane]}-step {db_l:.2e} dB / {deg_l:.2e} deg; "
+          f"WE {short.ringdown.report.witness('WE').value:.2e}, "
           f"W2 {short.ringdown.report.witness('W2').value:.2e}")
     assert db_c < BAR_DB[lane] and deg_c < BAR_DEG[lane], (db_c, deg_c)
     assert db_p > 0.5, (db_p, deg_p)             # the truncation is real
@@ -265,8 +312,9 @@ def test_the_driven_column_of_a_two_port_graded_box():
                  ringdown=RingdownSpec())
     long = _run(_box("graded", second_port=True), N_LONG["graded"],
                 ringdown=RingdownSpec())
-    assert short.ringdown.report.ok, short.ringdown.report.summary()
-    assert long.ringdown.report.ok, long.ringdown.report.summary()
+    for r in (short, long):
+        assert r.ringdown.report.ok, r.ringdown.report.summary()
+        assert r.ringdown.report.witness("WE").judged
     S, S_ref = short.ringdown.s_params, long.ringdown.s_params
     assert S.shape == np.asarray(short.s_params).shape == (2, 2, FREQS.size)
     for j in (0, 1):
@@ -303,6 +351,67 @@ def test_a_three_cell_port_completes_its_whole_gap_voltage(lane):
     for r in (short, long):
         w1 = r.ringdown.report.witness("W1")
         assert w1.ok and w1.value <= rd.W1_BAR, w1
+
+
+def test_the_error_witness_fails_a_graded_record_cut_at_a_third_of_its_decay_time():
+    """The graded box stopped at 1500 steps (1.72 ns, a third of TM110's
+    5 ns amplitude decay time): its completed S is 1.6e-3 off the completed
+    30,000-step answer, above the 1e-3 bar. WE compares the completion from
+    [T/2, T] with the one from the window started twice as early, [T/4, T], and reads
+    1.6e-3: the report is not ok and WE is the witness that fails. W2
+    ([T/2, T] against [T/2, 0.9 T]) is reported, not judged, and only
+    printed here: it read 3.0e-4 under JAX 0.10.2 and 1.7e-3 under JAX
+    0.4.33, on port records that differ by 1e-7 to 3e-7 of their peak (the
+    pencil keeps a different rank on each); WE read 1.615e-3 and 1.622e-3."""
+    with pytest.warns(UserWarning, match="witness failed -- WE"):
+        short, cap = _run_captured(_box("graded"), 1500, ringdown=RingdownSpec())
+    rep = short.ringdown.report
+    we, w2 = rep.witness("WE"), rep.witness("W2")
+    ref = _long("graded").ringdown.s_params.astype(np.complex128)
+    actual = float(np.max(np.abs(short.ringdown.s_params.astype(np.complex128) - ref)))
+    # WE by hand from the run's own channels: [T/2, T] against [T/4, T]
+    Y, dt, freqs, n, n_start = cap["args"]
+    k = cap["kw"]
+    kw = {key: k[key] for key in ("freq_max", "guard", "sv_rel", "unit_tol")}
+    Y = np.asarray(Y)[:n]
+    S_half, S_quarter = (
+        np.asarray(k["observable"](k["plain"] + rd.tail_dft(
+            rd.identify(Y, dt, n0, n, **kw), n - 1, freqs))).astype(np.complex128)
+        for n0 in (750, 375))
+    we_hand = float(np.max(np.abs(S_half - S_quarter)))
+    print(f"\n[graded, 1500 steps] actual {actual:.3e}; WE {we.value:.3e} "
+          f"(by hand {we_hand:.3e}, WE/actual {we.value / actual:.3g}); W2 "
+          f"{w2.value:.3e} (W2/actual {w2.value / actual:.3g})\n{rep.summary()}")
+    assert n_start == 750 and rep.long_window_steps == (375, 1500)
+    assert we.value == we_hand
+    assert we.judged and not we.ok and we.value > we.bar
+    assert not w2.judged
+    assert not rep.ok and rep.completed
+    assert [w.name for w in rep.witnesses if w.judged and not w.ok] == ["WE"]
+    assert "WE" in rep.summary() and "not judged" in rep.summary()
+    assert actual > 1.0e-3                      # the record really is short
+    assert 0.5 < we.value / actual < 2.0, (we.value, actual)
+
+
+def test_w2_is_judged_when_the_pulse_is_still_on_in_the_longer_window():
+    """The uniform box driven by the same pulse delayed to peak at 0.71 ns
+    (cutoff 24 tau): at 1500 steps it is off over the main window [T/2, T]
+    but at its peak at T/4, inside WE's window [T/4, T], so the completion
+    from that window would fit the drive, not the ringing. WE is not formed,
+    W2 is judged in its place and says so, and the report's ok is W2's."""
+    pulse = GaussianPulse(f0=13.0e9, bandwidth=0.8, cutoff=24.0)
+    r = _run(_box("uniform", pulse=pulse), N_SHORT["uniform"],
+             ringdown=RingdownSpec())
+    rep = r.ringdown.report
+    we, w2 = rep.witness("WE"), rep.witness("W2")
+    print(f"\n[uniform, delayed pulse] {rep.summary()}")
+    assert rep.completed and rep.witness("source_off").ok
+    assert not we.judged and math.isnan(we.value) and not we.ok
+    assert we.note.startswith("not formed") and "of its peak in [0.25 T, T]" in we.note
+    assert w2.judged and "could not be formed" in w2.note and "R-i" in w2.note
+    assert rep.long_rank is None and rep.long_n_kept is None
+    assert w2.ok and rep.ok
+    assert rep.ok == all(w.ok for w in rep.witnesses if w.name != "WE")
 
 
 def test_the_decimation_reference_covers_the_requested_band():

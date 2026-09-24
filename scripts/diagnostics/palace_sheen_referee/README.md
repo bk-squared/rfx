@@ -1,12 +1,13 @@
-# Palace FEM referee — cv07 Sheen microstrip LPF
+# Palace FEM referee — the Sheen microstrip low-pass filter
 
 Run tooling that produces the **independent-method referee** for the committed
-cv07 rfx-vs-openEMS first-null split on the classic Sheen 1990 low-pass filter.
+the rfx-vs-openEMS first-null split on the classic Sheen 1990 low-pass filter.
 
 ## What / why
 
-cv07's committed cross-check
-(`validation/crossval/_07_sheen_results/{rfx,openems}.json`) locks a ~2.74% first-S21-null
+the case's committed cross-check
+(`validation/crossval/_07_sheen_results/{rfx,openems}.json`, removed 2026-09-23
+with the script) locks a ~2.74% first-S21-null
 split: **rfx 8.202 GHz, openEMS 7.983 GHz** (raw argmin bins, post-regeneration —
 #931, VESSL 369367259192; the pre-regeneration num_periods=20/default-offset leg read
 rfx 7.218 GHz, a ~9.6% split) (both FDTD, dx~200 um / 4-5 substrate
@@ -18,7 +19,7 @@ two staircased FDTD runs.
 
 **Palace** is a frequency-domain FEM solver on a **conformal tetrahedral mesh**
 (no staircase), so it captures the fringing exactly and can referee. Run on the
-SAME matched geometry (the exact domain frame of `07_sheen_lpf.py`) at two mesh
+SAME matched geometry (the exact domain frame of the retired `07_sheen_lpf.py`) at two mesh
 densities:
 
 | mesh   | LC (mm) | tets    | ~DOF (order 2) | sweep            | VESSL run    |
@@ -64,13 +65,13 @@ rfx-vs-openEMS argmin split is now ~2.74% (8.202 vs 7.983 GHz); the earlier ~9.6
 artifact of a double-null**, not a physical single-null disagreement. `sides_with`
 therefore names the structure-faithful match (**openEMS**); the argmin metric is
 locked separately and labelled fragile. See the `referee` block of
-`tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json` and the one-line
+`tests/crossval/sheen_lpf/reference/palace_fem.json` and the one-line
 summary printed by the producer. **No analytic reference** is used: the Sheen
 stepped-impedance transmission zeros have no clean fringing-free closed form, so
 this referee is a strictly three-SOLVER comparison (rfx / openEMS / Palace).
 
 The verdict is committed as evidence — the raw Palace `port-S.csv` arrays live in
-`tests/fixtures/sheen_lpf_e4/sheen_lpf_palace_referee.json` (dB -> LINEAR),
+`tests/crossval/sheen_lpf/reference/palace_fem.json` (dB -> LINEAR),
 re-derived by `build_sheen_lpf_palace_referee.py`, gated by
 `tests/crossval/test_sheen_lpf_palace_referee_gates.py`. Those survive a clean checkout;
 this directory is the *provenance* that generated them.
@@ -78,7 +79,7 @@ this directory is the *provenance* that generated them.
 ## Geometry lock
 
 `mesh_sheen.py` is hard-locked to the exact domain frame of
-`validation/crossval/07_sheen_lpf.py` (propagation x, transverse y, stack z; the
+the retired `validation/crossval/07_sheen_lpf.py` (propagation x, transverse y, stack z; the
 Sheen board mapped rfx_x = Sheen_y), in mm:
 
     substrate  eps_r = 2.2    h = 0.794 mm    LOSSLESS (LossTan = 0)

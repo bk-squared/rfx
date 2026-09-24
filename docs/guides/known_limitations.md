@@ -44,7 +44,7 @@ oracle (`scripts/diagnostics/msl_vi_flux_oracle/msl_vi_flux_oracle.json`) bounds
 scale against the true flux to about 1 % on both committed meshes, and a 3x over-read cannot
 hide inside 1 %. That lane has its own limits — see the
 [S-parameter support matrix](sparameter_support_matrix.md) — including a raw passivity excess
-above 17 GHz recorded in `validation/crossval/07_sheen_lpf.py`.
+above 17 GHz recorded by the Sheen low-pass filter case.
 #838 was closed as not planned before 2.0 (PI decision, 2026-09-20); this is a standing limitation.
 
 **The microstrip S-matrix can come back non-passive, and says so.**

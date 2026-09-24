@@ -414,7 +414,14 @@ def _enumerate_emission_sites():
 # fixture the series pairings now decay and the parallel one it also warned
 # on was always stable. Measured with the walk above: 120 -> 119 sites,
 # 77 -> 76 literal codes, dynamic sites unchanged.
-_FROZEN_TOTAL_SITES = 119
+# 119 -> 120, 2026-09-23 (#1209): one ``PreflightWarning`` in
+# ``_validate_cfg_nonuniform_limitations`` (``rfx/preflight/mesh.py``), code
+# ``nonuniform_tfsf`` -- an existing code, so the literal-code count holds. A
+# TFSF plane wave at normal incidence along a GRADED propagation axis, which
+# the runner accepts but injects from a 1-D line built on the boundary cell.
+# The family's two existing sites raise, because the runner refuses those
+# cases; this one warns, so it cannot share their construction.
+_FROZEN_TOTAL_SITES = 120
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.

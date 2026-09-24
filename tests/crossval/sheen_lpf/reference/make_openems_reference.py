@@ -124,8 +124,11 @@ it.
              (leader decision, this PR). It is a DEPARTURE from the MSL notch
              filter maker's own tick "ref_impedance is never passed to
              CalcPort", and it is declared here rather than inherited silently.
-    DELTA 9  NrTS / EndCriteria: openEMS's own library defaults (~1e9 / 1e-5) on
-             every real pass, exactly as Stage A and the tutorial run. This is
+    DELTA 9  NrTS / EndCriteria: not passed on a real pass, exactly as Stage A
+             and the tutorial run, so openEMS's own defaults apply: NrTS ~1e9
+             (the python binding's default) and EndCriteria 1e-6 (the pinned
+             build's C++ default, openems.cpp:117; the binding's docstring says
+             1e-5, which is not what runs -- label corrected 2026-09-24). This is
              NOT a delta from the tutorial -- it is the one place where a
              DEPARTURE FROM THE RETIRED SCRIPT is declared instead: that script's
              ``_openems_common_setup`` capped the run at NrTS = 30000 with
@@ -138,7 +141,7 @@ it.
              "reached before the end-criteria of" warning on a real pass as a
              FAILED gate, so that would cost a cluster hour and produce nothing.
              The smoke pass keeps its 200 steps. WHAT THIS COSTS INSTEAD: a real
-             pass now runs until the energy has decayed 50 dB rather than until
+             pass now runs until the energy has decayed 60 dB rather than until
              a step budget runs out, so it can take considerably longer than the
              172 s the retired script recorded at the coarse mesh. The job file's
              21600 s timeout is the only bound on that.
@@ -177,11 +180,15 @@ z = H_SUB are the script's and the tutorial's alike (where the offsets are
 applied, and how often each axis is smoothed, is delta 14).
 
 That the Stage B builder IS the script's builder is not prose. ``--self-check``
-reads ``validation/crossval/07_sheen_lpf.py``'s own ``run_openems`` source,
+takes ``validation/crossval/07_sheen_lpf.py``'s own ``run_openems`` source,
 applies the three declared renames in ``COPY_SUBSTITUTIONS``, and compares the
 result with ``_build_sheen_board``'s corresponding slice character for
 character; then it applies the two declared rung substitutions in
 ``RUNG_SUBSTITUTIONS`` and compares with ``_build_sheen_board_at_rung``'s.
+That script is DELETED with its case (2026-09-23), so the two slices the proof
+has ever read from it are frozen verbatim in this file with the commit and the
+line ranges they came from -- see ``SCRIPT_FROZEN_SOURCES``. The comparison is
+unchanged; only where the compared text comes from is.
 
 THE WITNESS BAND: 2-12 GHz, AND WHY NOT THE WHOLE GRID
 ------------------------------------------------------
@@ -349,6 +356,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import os
 import sys
 from pathlib import Path
@@ -458,8 +466,10 @@ B_PML_CELLS = 8            # "PML_8" -- the x faces only
 B_CALCPORT_REF_IMPEDANCE = 50
 
 # The real pass runs at openEMS's OWN defaults, like Stage A and the tutorial:
-# None here means "do not pass NrTS/EndCriteria at all", so the library's ~1e9
-# and 1e-5 apply. The retired script's cap is recorded below and deliberately
+# None here means "do not pass NrTS/EndCriteria at all", so NrTS ~1e9 and the
+# pinned build's C++ default EndCriteria 1e-6 apply (openems.cpp:117; the python
+# binding's docstring says 1e-5, which is not what runs). The retired script's
+# cap is recorded below and deliberately
 # NOT used -- see delta 9.
 B_REAL_NRTS = None
 B_REAL_END_CRITERIA = None
@@ -534,7 +544,10 @@ DELTA_LIST = [
     "DEPARTURE from the MSL notch filter maker's tick 'ref_impedance is never "
     "passed to CalcPort', declared here rather than inherited silently.",
     "DELTA 9 (NrTS / EndCriteria): the library defaults, as the tutorial -- "
-    "openEMS's own ~1e9 and 1e-5 on every real pass, exactly what Stage A runs; "
+    "not passed on a real pass, so openEMS's own NrTS ~1e9 and EndCriteria 1e-6 "
+    "(the pinned build's C++ default, openems.cpp:117; the python binding's "
+    "docstring says 1e-5, which is not what runs) apply, exactly what Stage A "
+    "runs; "
     "the retired script's 30000 / 1e-4 cap is NOT carried. This entry is a "
     "declared departure from the SCRIPT, not from the tutorial (leader "
     "decision, this PR). Why: the cap was a cost choice on one mesh. Halving "
@@ -542,11 +555,16 @@ DELTA_LIST = [
     "the steps, and a 30000-step cap that just about reached 1e-4 on the coarse "
     "board would stop the fine board mid-ring-down -- which the shared runner "
     "correctly reports as a FAILED gate, for a cluster hour and no record. What "
-    "it costs instead: a real pass now runs until the energy has decayed 50 dB "
+    "it costs instead: a real pass now runs until the energy has decayed 60 dB "
     "rather than until a step budget runs out, so it can take considerably "
     "longer than the 172 s the retired script recorded at the coarse mesh; the "
-    "job file's 21600 s timeout is the only bound on that. The smoke pass keeps "
-    "its 200 steps at EndCriteria 0.0.",
+    "job file's 21600 s timeout is the only bound on that -- measured since: the "
+    "coarse rung alone ran 107 minutes on 8 threads (VESSL 369367263243, "
+    "369367263269), so --real-end-criteria and --real-nrts exist to loosen the "
+    "stop criteria for a run that cannot afford them, Stage A is never "
+    "overridden, and any record made with an override says so in every Stage B "
+    "block and in meta.stop_criteria_note. The smoke pass keeps its 200 steps at "
+    "EndCriteria 0.0.",
     "DELTA 10 (mesh rule): res = min(c0 / (F_MAX sqrt(eps_r)) / 50, h_sub / 4) "
     "= 198.5 um at rung 1.0, so the substrate-thickness term decides it and not "
     "the wavelength term (202.1 um). The tutorial's rule has no h_sub/4 term and "
@@ -631,6 +649,102 @@ RUNG_SUBSTITUTION_COUNTS = {
     "    res = min(res, H_SUB / 4.0)                          # >=4 substrate cells": 1,
     "mesh.AddLine('z', np.linspace(0, H_SUB, 5))": 1,
 }
+
+# ---------------------------------------------------------------------------
+# THE FROZEN SLICES OF THE RETIRED SCRIPT.
+#
+# The copy proof above used to read validation/crossval/07_sheen_lpf.py at run
+# time. That script is DELETED with its case (the Sheen low-pass filter is now
+# one cross-validation test, tests/crossval/sheen_lpf/test_sheen_lpf.py), so
+# the two pieces of it the proof compares against are frozen here verbatim.
+# They are the ONLY two texts the proof ever read from that file, and this is
+# still a character-for-character comparison -- it just compares against a
+# committed copy instead of a file that no longer exists.
+#
+# Taken from validation/crossval/07_sheen_lpf.py at commit
+# SCRIPT_FROZEN_AT_COMMIT (the last commit that touched the file), which is
+# also the commit the record in this directory was produced against:
+#
+#   _FROZEN_BUILDER_SLICE   run_openems (lines 1169-1275), the build block
+#                           between the two anchors, lines 1207-1246
+#   _FROZEN_SETUP_SOURCE    _openems_common_setup, lines 947-960
+#
+# What is lost by freezing: the proof can no longer notice someone editing that
+# script. Nobody can -- it is gone. What is kept: both builders here are still
+# derived from it by the declared substitutions and compared byte for byte, so
+# an edit to THIS file still goes red.
+# ---------------------------------------------------------------------------
+SCRIPT_FROZEN_AT_COMMIT = "58385de5a59163b0bf0e07de5f55b164dc9379fc"
+SCRIPT_FROZEN_LINE_RANGES = {
+    "run_openems build block": (1207, 1246),
+    "_openems_common_setup": (947, 960),
+}
+
+_FROZEN_BUILDER_SLICE = "\n".join([
+    '    unit = 1.0  # work in metres',
+    "    FDTD.SetBoundaryCond(['PML_8', 'PML_8', 'MUR', 'MUR', 'PEC', 'MUR'])",
+    '    mesh = CSX.GetGrid(); mesh.SetDeltaUnit(unit)',
+    '',
+    '    res = C0 / (f_max * np.sqrt(EPS_R)) / 50.0          # ~lambda/50 transverse',
+    '    res = min(res, H_SUB / 4.0)                          # >=4 substrate cells',
+    '    tm = np.array([2 * res / 3, -res / 3]) / 4',
+    '    # x (propagation)',
+    "    mesh.AddLine('x', [0.0, LX, PATCH_X0, PATCH_X1])",
+    "    mesh.SmoothMeshLines('x', res)",
+    '    # y (transverse) - refine both feed edges + patch edges',
+    '    for yc in (IN_FEED_YC, OUT_FEED_YC):',
+    "        mesh.AddLine('y', yc + W_FEED / 2 + tm)",
+    "        mesh.AddLine('y', yc - W_FEED / 2 - tm)",
+    "    mesh.AddLine('y', [0.0, LY, PATCH_Y_LO, PATCH_Y_HI])",
+    "    mesh.SmoothMeshLines('y', res)",
+    '    # z: >=4 substrate cells + air',
+    "    mesh.AddLine('z', np.linspace(0, H_SUB, 5))",
+    "    mesh.AddLine('z', LZ)",
+    "    mesh.SmoothMeshLines('z', res)",
+    '',
+    "    sub = CSX.AddMaterial('duroid', epsilon=EPS_R)",
+    '    sub.AddBox([0.0, 0.0, 0.0], [LX, LY, H_SUB])',
+    "    pec = CSX.AddMetal('PEC')",
+    '',
+    '    port = [None, None]',
+    '    # port 1: excited, propagation +x, feed spans x 0 -> PATCH_X0 at IN_FEED_YC',
+    '    port[0] = FDTD.AddMSLPort(',
+    '        1, pec, [0.0, IN_FEED_YC - W_FEED / 2, H_SUB],',
+    "        [PATCH_X0, IN_FEED_YC + W_FEED / 2, 0.0], 'x', 'z', excite=-1,",
+    '        FeedShift=PORT_MARGIN, MeasPlaneShift=0.45 * PATCH_X0, priority=10)',
+    '    # port 2: passive, propagation -x, feed spans x LX -> PATCH_X1 at OUT_FEED_YC',
+    '    out_len = LX - PATCH_X1',
+    '    port[1] = FDTD.AddMSLPort(',
+    '        2, pec, [LX, OUT_FEED_YC - W_FEED / 2, H_SUB],',
+    "        [PATCH_X1, OUT_FEED_YC + W_FEED / 2, 0.0], 'x', 'z',",
+    '        MeasPlaneShift=0.45 * out_len, priority=10)',
+    '    # wide low-impedance patch (top surface)',
+    '    pec.AddBox([PATCH_X0, PATCH_Y_LO, H_SUB], [PATCH_X1, PATCH_Y_HI, H_SUB],',
+    '               priority=10)',
+])
+
+_FROZEN_SETUP_SOURCE = "\n".join([
+    'def _openems_common_setup(f_max):',
+    '    _require_openems()',
+    '    import numpy as _np',
+    '    _np.int = int      # numpy 2.x shim: openEMS ports.py uses removed aliases',
+    '    _np.float = float',
+    '    from CSXCAD import ContinuousStructure',
+    '    from openEMS import openEMS',
+    '    # bound the run: resonant sections otherwise chase the default energy floor',
+    '    # for a very long time on CPU. 1e-4 (-40 dB) is an adequate settling floor.',
+    '    FDTD = openEMS(NrTS=30000, EndCriteria=1e-4)',
+    '    FDTD.SetGaussExcite(f_max / 2, f_max / 2)',
+    '    CSX = ContinuousStructure()',
+    '    FDTD.SetCSX(CSX)',
+    '    return FDTD, CSX',
+])
+
+SCRIPT_FROZEN_SOURCES = {
+    SCRIPT_FUNCTION: _FROZEN_BUILDER_SLICE,
+    SCRIPT_SETUP_FUNCTION: _FROZEN_SETUP_SOURCE,
+}
+
 
 
 # ---------------------------------------------------------------------------
@@ -767,13 +881,6 @@ def _build_sheen_board_at_rung(ContinuousStructure, openEMS, MSLPort, *,
 # ---------------------------------------------------------------------------
 # The copy proof's own plumbing: slice a builder's body between two anchors.
 # ---------------------------------------------------------------------------
-def _repo_root() -> Path:
-    env = os.environ.get("RFX_REPO_ROOT")
-    if env:
-        return Path(env).resolve()
-    return Path(__file__).resolve().parents[4]
-
-
 def _slice_builder(text: str, what: str) -> str:
     """The build block of ``text``, from the first anchor line to the last."""
     first = text.find(BUILDER_SLICE_FIRST_LINE)
@@ -786,25 +893,25 @@ def _slice_builder(text: str, what: str) -> str:
 
 
 def _script_function_source(name: str) -> str:
-    """A named top-level function of ``07_sheen_lpf.py``, straight off disk."""
-    import ast
+    """A named piece of the retired ``07_sheen_lpf.py``, from the frozen copy.
 
-    path = _repo_root() / SCRIPT_REL_PATH
-    if not path.is_file():
+    The file is deleted with its case, so the text comes from
+    ``SCRIPT_FROZEN_SOURCES`` -- the two slices the copy proof has ever read,
+    taken verbatim at ``SCRIPT_FROZEN_AT_COMMIT``.  For ``run_openems`` the
+    frozen text IS the build block, so slicing it with the anchors is a no-op.
+    """
+    try:
+        return SCRIPT_FROZEN_SOURCES[name]
+    except KeyError:
         raise RuntimeError(
-            f"the script this builder is copied from is not at {path} -- the copy "
-            f"proof cannot run (set RFX_REPO_ROOT, or run from the repository)"
-        )
-    src = path.read_text()
-    lines = src.split("\n")
-    for node in ast.parse(src).body:
-        if isinstance(node, ast.FunctionDef) and node.name == name:
-            return "\n".join(lines[node.lineno - 1:node.end_lineno])
-    raise RuntimeError(f"{SCRIPT_REL_PATH} has no top-level {name}")
+            f"no frozen copy of {SCRIPT_REL_PATH}'s {name} -- the copy proof "
+            f"has {sorted(SCRIPT_FROZEN_SOURCES)} and that file no longer "
+            f"exists to read another one from"
+        ) from None
 
 
 def _script_builder_slice() -> str:
-    """``07_sheen_lpf.py``'s ``run_openems`` build block, straight off disk.
+    """``07_sheen_lpf.py``'s ``run_openems`` build block, from the frozen copy.
 
     The slice starts at that function's ``unit = 1.0`` line, which is AFTER its
     ``FDTD, CSX = _openems_common_setup(f_max)`` call and after its banner
@@ -1033,12 +1140,190 @@ def _plan(label: str, resolution_factor: float) -> dict:
     }
 
 
+# The three rungs, by the short name the CLI and the job file use. One rung per
+# cluster job is the normal way to run this now: with openEMS's own EndCriteria
+# the coarse rung alone ran 107 minutes on 8 threads (VESSL 369367263243,
+# 369367263269), and the VESSL rule prefers parallel jobs over one long serial
+# one. `--merge` puts the parts back together.
+RUNG_KEYS = {"coarse": "stage_b_coarse", "mid": "stage_b_mid", "fine": "stage_b_fine"}
+RUNG_ORDER = ("coarse", "mid", "fine")
+DEFAULT_RUNGS = ",".join(RUNG_ORDER)
+
+
+def parse_rungs(spec: str) -> list:
+    """``"coarse,fine"`` -> ``["stage_b_coarse", "stage_b_fine"]``, in rung order."""
+    names = [s.strip() for s in str(spec).split(",") if s.strip()]
+    if not names:
+        raise ValueError("--rungs is empty; give at least one of "
+                         + ", ".join(RUNG_ORDER))
+    unknown = [n for n in names if n not in RUNG_KEYS]
+    if unknown:
+        raise ValueError(f"--rungs names {unknown!r}; known rungs are "
+                         + ", ".join(RUNG_ORDER))
+    seen = []
+    for n in RUNG_ORDER:
+        if n in names and n not in seen:
+            seen.append(n)
+    return [RUNG_KEYS[n] for n in seen]
+
+
+def rung_short_names(stage_names) -> list:
+    """The short names of the rungs in a list of stage names, in rung order."""
+    back = {v: k for k, v in RUNG_KEYS.items()}
+    return [back[s] for s in RUNG_ORDER_STAGES if s in stage_names]
+
+
+ACCEPT_TRUNCATION_DEFAULT = False
+RECORD_LENGTH_WITNESS_DEFAULT = False
+
+# The witness compares two records of the SAME board on the SAME mesh, one
+# twice as long as the other, and reports how far apart they are. Bins where
+# either curve is below this floor are left out: a -40 dB null moves by several
+# dB for reasons that have nothing to do with record length, and including it
+# would make the witness a measure of the null rather than of the truncation.
+WITNESS_FLOOR_DB = -20.0
+WITNESS_ARRAY_KEYS = ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
+                      "energy_sum")
+
+
+def _db(mag) -> np.ndarray:
+    return 20.0 * np.log10(np.maximum(np.asarray(mag, dtype=float), 1e-30))
+
+
+def record_length_witness(record_n: dict, record_2n: dict, *,
+                          n_steps: int, n2_steps: int) -> dict:
+    """How much the curves move when the record is twice as long.
+
+    REPORTED, NOT GATED. The case's own test decides what the numbers mean; this
+    function measures them and says over which bins. The 2N arrays travel with
+    the numbers so a reader can plot both without a second file.
+    """
+    out = {k: record_2n[k] for k in WITNESS_ARRAY_KEYS if k in record_2n}
+    out["n_steps"] = int(n_steps)
+    out["n2_steps"] = int(n2_steps)
+    out["floor_db"] = WITNESS_FLOOR_DB
+    out["band_ghz"] = list(WITNESS_BAND_GHZ)
+    out["what_it_is"] = (
+        "the same rung solved twice, at n_steps and n2_steps timesteps. The "
+        "rung's own arrays are the n_steps run; these are the n2_steps run. "
+        "max_abs_delta_* is the largest |dB| difference between the two over "
+        f"{WITNESS_BAND_GHZ[0]:g}-{WITNESS_BAND_GHZ[1]:g} GHz, counting only "
+        f"bins where BOTH curves are above {WITNESS_FLOOR_DB:g} dB. Reported, "
+        "not gated."
+    )
+
+    f_n = np.asarray(record_n.get("freqs_ghz", []), dtype=float)
+    f_2n = np.asarray(record_2n.get("freqs_ghz", []), dtype=float)
+    if f_n.size == 0 or f_n.size != f_2n.size or not np.allclose(f_n, f_2n):
+        out["error"] = (
+            f"the two runs do not share a frequency grid ({f_n.size} vs "
+            f"{f_2n.size} bins); no difference is computed")
+        return out
+
+    band = (f_n >= WITNESS_BAND_GHZ[0]) & (f_n <= WITNESS_BAND_GHZ[1])
+    for key, tag in (("s21_mag", "s21"), ("s11_mag", "s11")):
+        a, b = record_n.get(key), record_2n.get(key)
+        if a is None or b is None:
+            out[f"max_abs_delta_{tag}_db"] = None
+            out[f"f_ghz_at_max_abs_delta_{tag}"] = None
+            out[f"{tag}_bins_compared"] = 0
+            continue
+        a_db, b_db = _db(a), _db(b)
+        mask = band & (a_db > WITNESS_FLOOR_DB) & (b_db > WITNESS_FLOOR_DB)
+        n_bins = int(np.count_nonzero(mask))
+        out[f"{tag}_bins_compared"] = n_bins
+        if n_bins == 0:
+            out[f"max_abs_delta_{tag}_db"] = None
+            out[f"f_ghz_at_max_abs_delta_{tag}"] = None
+            continue
+        delta = np.abs(a_db - b_db)
+        i = int(np.argmax(np.where(mask, delta, -np.inf)))
+        out[f"max_abs_delta_{tag}_db"] = float(delta[i])
+        out[f"f_ghz_at_max_abs_delta_{tag}"] = float(f_n[i])
+    return out
+
+
+def stop_criteria_note(real_end_criteria, real_nrts,
+                       accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT,
+                       record_length_witness: bool = RECORD_LENGTH_WITNESS_DEFAULT
+                       ) -> str:
+    """What stopped the real passes in this record, and why, in one string.
+
+    With no override this says the library defaults ran. With one it says which
+    override, and carries the measurement that motivated it -- so a reader of a
+    record made with a looser criterion does not have to go and find out.
+    """
+    accepted = (
+        " --accept-truncation was given, so a real pass that reached its NrTS cap "
+        "was RECORDED (truncated: true, with the box energy it had reached at the "
+        "cap) instead of failing the end-criteria gate. A record made this way is "
+        "as long as the cap, not as long as a decay level: what that costs the "
+        "numbers in it is not decided here." if accept_truncation else "")
+    witnessed = (
+        " --record-length-witness was given, so every rung was solved TWICE, at "
+        "n_steps and 2 x n_steps, and stage_b_<rung>.witness_2n carries the "
+        "longer run's arrays and how far the two curves are apart. Reported, not "
+        "gated." if record_length_witness else "")
+    accepted = accepted + witnessed
+    if real_end_criteria is None and real_nrts is None:
+        return ("openEMS's own library defaults on every real pass, Stage A and "
+                "Stage B alike: nothing passed, so NrTS ~1e9 and EndCriteria 1e-6 "
+                "(the pinned build's C++ default, openems.cpp:117; the python "
+                "binding's docstring says 1e-5, which is not what runs). No "
+                "override was given. This is the "
+                "declared design (delta 9); see B_REAL_NRTS / B_REAL_END_CRITERIA."
+                + accepted)
+    bits = []
+    if real_end_criteria is not None:
+        bits.append(f"--real-end-criteria {real_end_criteria!r}")
+    if real_nrts is not None:
+        bits.append(f"--real-nrts {real_nrts!r}")
+    return ("made with " + " ".join(bits) + ": the tutorial's default -- nothing "
+            "passed, so the pinned build's C++ default EndCriteria 1e-6 "
+            "(openems.cpp:117; the python binding's docstring says 1e-5, which is "
+            "not what runs) -- took over 107 minutes on the coarsest rung on 8 "
+            "threads (runs "
+            "369367263243, 369367263269); 1e-4 is the repository's own ring-down "
+            "level (rfx CLAUDE.md: end-of-run energy below -40 dB of the "
+            "post-source peak)" + accepted)
+
+
+def meta_nrts_label(real_nrts) -> str:
+    """``meta.nrts``: what bounded the real passes' step count, as run."""
+    stage_b = (f"Stage B {real_nrts!r} on every real pass, given on the command "
+               f"line (--real-nrts; see stop_criteria_note)"
+               if real_nrts is not None else
+               "Stage B the same, not passed")
+    return ("Stage A: not passed, so openEMS's library default (~1e9); "
+            f"{stage_b}; 200 on every smoke pass. The retired script's cap of "
+            f"{SCRIPT_NRTS_CAP} is NOT carried as the declared design -- see "
+            "delta 9.")
+
+
+def meta_end_criteria_label(real_end_criteria) -> str:
+    """``meta.end_criteria``: the energy criterion the real passes ran, as run.
+    Nothing passed means the pinned build's C++ default 1e-6 (openems.cpp:117),
+    not the 1e-5 the python binding's docstring states (label corrected
+    2026-09-24)."""
+    stage_b = (f"Stage B {real_end_criteria!r} on every real pass, passed "
+               f"explicitly on the command line (--real-end-criteria; see "
+               f"stop_criteria_note)"
+               if real_end_criteria is not None else
+               "Stage B the same, not passed")
+    return ("Stage A: not passed, so the pinned openEMS build's C++ default 1e-6 "
+            "ran (openems.cpp:117; the python binding's docstring says 1e-5, "
+            f"which is not what runs); {stage_b}; 0.0 on every smoke pass. The "
+            f"retired script's {SCRIPT_END_CRITERIA_CAP} is NOT carried as the "
+            "declared design -- see delta 9.")
+
+
 STAGE_B_FACTORS = {
     "stage_b_coarse": B_COARSE_RESOLUTION_FACTOR,
     "stage_b_mid": B_MID_RESOLUTION_FACTOR,
     "stage_b_fine": B_FINE_RESOLUTION_FACTOR,
 }
 STAGE_NAMES = ("stage_a", "stage_b_coarse", "stage_b_mid", "stage_b_fine")
+RUNG_ORDER_STAGES = tuple(RUNG_KEYS[n] for n in RUNG_ORDER)
 
 
 def _stage_plans(fine_factor: float) -> dict:
@@ -1160,8 +1445,24 @@ def _stage_b_features(sf):
 # The run -- this case's Stage B, on the shared runner
 # ---------------------------------------------------------------------------
 def _run_stage_b(*, label: str, sim_root: str, threads: int,
-                 resolution_factor: float, sf) -> tuple[dict, dict]:
-    """The Sheen board at a rung, with the shared module's gates around it."""
+                 resolution_factor: float, sf,
+                 real_nrts=None, real_end_criteria=None,
+                 accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT
+                 ) -> tuple[dict, dict]:
+    """The Sheen board at a rung, with the shared module's gates around it.
+
+    ``accept_truncation`` defaults to off: a real pass that hits its NrTS cap
+    is a fired gate, no record. Turned on (only by ``--accept-truncation``), such
+    a pass is recorded with ``truncated: true``, the box energy it had reached,
+    and a note. Stage A never sees it.
+
+    ``real_nrts`` / ``real_end_criteria`` default to ``None``, which means the
+    declared design: pass nothing, so openEMS's own NrTS ~1e9 and EndCriteria
+    1e-6 apply (the pinned build's C++ default; delta 9).
+    A caller that overrides them is recorded doing so, per stage block and in
+    ``meta.stop_criteria_note``. STAGE A IS NEVER OVERRIDDEN -- it is the gate,
+    it runs the tutorial's own model, and it takes 44 s.
+    """
     res = resolution_m(resolution_factor)
     out_len = LX - PATCH_X1
 
@@ -1221,11 +1522,21 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
             "substrate_z_cells_declared": substrate_z_cells(resolution_factor),
             "feed_edges_realized": _feed_edges_against_lines(y),
             "pml_realized": pml,
-            "nrts_declared": ("openEMS library default (~1e9) -- the retired "
-                              f"script's cap of {SCRIPT_NRTS_CAP} is not carried"),
-            "end_criteria_declared": ("openEMS library default (1e-5) -- the "
-                                      "retired script's cap of "
-                                      f"{SCRIPT_END_CRITERIA_CAP} is not carried"),
+            "nrts_declared": (
+                f"{real_nrts!r} -- given on the command line, NOT the declared "
+                f"design; see stop_criteria_note" if real_nrts is not None
+                else ("openEMS library default (~1e9) -- the retired script's cap "
+                      f"of {SCRIPT_NRTS_CAP} is not carried")),
+            "end_criteria_declared": (
+                f"{real_end_criteria!r} -- given on the command line, NOT the "
+                f"declared design; see stop_criteria_note"
+                if real_end_criteria is not None
+                else ("not passed: the pinned openEMS build's C++ default 1e-6 "
+                      "(openems.cpp:117; the python binding's docstring says "
+                      "1e-5, which is not what runs) -- the retired script's cap "
+                      f"of {SCRIPT_END_CRITERIA_CAP} is not carried")),
+            "stop_criteria_note": stop_criteria_note(
+                real_end_criteria, real_nrts, accept_truncation),
             "calcport_grid": f"linspace({F_LO}, {F_MAX}, {B_N_FREQS})",
             "calcport_passes": (
                 "two: pass 1 with no ref_impedance (re_z0 = Re(port.Z_ref)), then "
@@ -1239,22 +1550,40 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
         label=label, sim_root=sim_root, threads=threads, build=build,
         freqs_hz=np.linspace(F_LO, F_MAX, B_N_FREQS),
         witness_band_hz=WITNESS_BAND_HZ, passivity_tol=PASSIVITY_TOL,
-        real_nrts=B_REAL_NRTS, real_end_criteria=B_REAL_END_CRITERIA,
+        real_nrts=real_nrts, real_end_criteria=real_end_criteria,
         mesh_realized_fn=mesh_realized_fn, meta_extra_fn=meta_extra_fn,
         features_fn=_stage_b_features(sf),
         calcport_ref_impedance=B_CALCPORT_REF_IMPEDANCE,
-        record_deficit=True)
+        record_deficit=True,
+        accept_truncation=accept_truncation)
 
 
 def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
-                    stages: list, *, failed_gate: str | None = None) -> dict:
-    """This case's meta block, on the shared record writer."""
+                    stages: list, *, failed_gate: str | None = None,
+                    real_nrts=None, real_end_criteria=None,
+                    accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT,
+                    record_length_witness: bool = RECORD_LENGTH_WITNESS_DEFAULT,
+                    stage_names=None) -> dict:
+    """This case's meta block, on the shared record writer.
+
+    ``stage_names`` is which stage blocks the record carries. A job that solved
+    one rung passes that rung (plus Stage A), so the record has no null blocks
+    standing in for rungs nobody ran.
+    """
+    names = tuple(stage_names) if stage_names is not None else STAGE_NAMES
     return _gate.build_artifact(
         records, stage_meta, stage_a_gate, stages,
-        stage_names=STAGE_NAMES,
+        stage_names=names,
         produced_by="tests/crossval/sheen_lpf/reference/make_openems_reference.py",
         failed_gate=failed_gate,
         meta_common={
+            "rfx_commit": os.environ.get("RFX_COMMIT"),
+            "rungs_in_this_record": [n for n in RUNG_ORDER
+                                     if RUNG_KEYS[n] in names],
+            "stop_criteria_note": stop_criteria_note(
+                real_end_criteria, real_nrts, accept_truncation,
+                record_length_witness),
+            "record_length_witness_ran": bool(record_length_witness),
             "structure": (
                 "the Sheen 1990 stepped-impedance microstrip low-pass filter: "
                 "RT/Duroid eps_r 2.2, h 0.794 mm; two 2.413 mm wide 50 ohm feeds "
@@ -1284,14 +1613,8 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
                 f"COPY_SUBSTITUTIONS and compared with it character for character "
                 f"by --self-check. F_MAX evaluates to {F_MAX!r} Hz."
             ),
-            "nrts": ("openEMS's library default (~1e9) on EVERY real pass, Stage A "
-                     "and Stage B alike; 200 on every smoke pass. The retired "
-                     f"script's cap of {SCRIPT_NRTS_CAP} is NOT carried -- see "
-                     "delta 9."),
-            "end_criteria": ("openEMS's library default (1e-5) on EVERY real pass, "
-                             "Stage A and Stage B alike; 0.0 on every smoke pass. The "
-                             f"retired script's {SCRIPT_END_CRITERIA_CAP} is NOT "
-                             "carried -- see delta 9."),
+            "nrts": meta_nrts_label(real_nrts),
+            "end_criteria": meta_end_criteria_label(real_end_criteria),
             "calcport_grid": f"Stage B linspace({F_LO}, {F_MAX}, {B_N_FREQS})",
             "calcport_passes": (
                 "Stage B runs TWO passes: pass 1 with no ref_impedance, whose "
@@ -1336,11 +1659,27 @@ def _print_delta_list() -> None:
         print(f"  [{i}] {line}")
 
 
-def _stages_for(stage: str) -> list:
-    return _gate.stages_for(stage)
+def _stages_for(stage: str, rung_stages=None) -> list:
+    """Which stages this invocation runs.
+
+    ``rung_stages`` defaults to all three. Stage A is in every job that asks for
+    it: it is the reproduce gate, it runs the tutorial's own model, and it costs
+    44 s, so splitting the rungs across jobs does not make it optional.
+    """
+    rungs = list(RUNG_ORDER_STAGES) if rung_stages is None else list(rung_stages)
+    if stage == "A":
+        return ["stage_a"]
+    if stage == "B":
+        return rungs
+    return ["stage_a"] + rungs
 
 
-def _dry_run(stage: str, fine_factor: float) -> int:
+def _dry_run(stage: str, fine_factor: float, rung_stages=None,
+             real_nrts=None, real_end_criteria=None,
+             accept_truncation: bool = ACCEPT_TRUNCATION_DEFAULT,
+             record_length_witness: bool = RECORD_LENGTH_WITNESS_DEFAULT) -> int:
+    order = _stages_for(stage, rung_stages)
+    order_rungs = [s for s in order if s in RUNG_ORDER_STAGES]
     print("=" * 78)
     print("The Sheen low-pass filter -- openEMS reference maker, DRY RUN (no solver)")
     print("=" * 78)
@@ -1373,10 +1712,29 @@ def _dry_run(stage: str, fine_factor: float) -> int:
     print(f"  excitation      {_builder_excitation_line(_build_sheen_board).strip()}"
           f"   (the builder's own source line; F_MAX = {F_MAX:.4g} Hz, so "
           f"{F_MAX/2:.4g} Hz centre and corner)")
-    print(f"  NrTS / EndCrit  openEMS library defaults (~1e9 / 1e-5) on every real "
-          f"pass, as Stage A; 200 / 0.0 on the smoke pass. The retired script's "
+    print(f"  NrTS / EndCrit  openEMS library defaults on every real pass, as "
+          f"Stage A -- nothing passed, so NrTS ~1e9 and EndCriteria 1e-6 (the "
+          f"pinned build's C++ default, openems.cpp:117; the python binding's "
+          f"docstring says 1e-5, which is not what runs) -- unless an override "
+          f"below is given; 200 / 0.0 on the smoke pass. The retired script's "
           f"{SCRIPT_NRTS_CAP} / {SCRIPT_END_CRITERIA_CAP} cap is NOT carried "
           f"(delta 9)")
+    print(f"  stop criteria   "
+          f"{stop_criteria_note(real_end_criteria, real_nrts, accept_truncation, record_length_witness)}")
+    if record_length_witness:
+        print(f"  record-length witness   ON: EVERY requested rung is solved "
+              f"TWICE, at {real_nrts} and {2 * int(real_nrts)} timesteps, so this "
+              f"job costs {2 * len(order_rungs)} Stage B solves for "
+              f"{len(order_rungs)} rung(s) plus Stage A. The 2N arrays and the "
+              f"dB differences go under stage_b_<rung>.witness_2n, over "
+              f"{WITNESS_BAND_GHZ[0]:g}-{WITNESS_BAND_GHZ[1]:g} GHz and only "
+              f"where both curves are above {WITNESS_FLOOR_DB:g} dB. Reported, "
+              f"not gated.")
+    else:
+        print(f"  record-length witness   off: {len(order_rungs)} Stage B solve(s) "
+              f"for {len(order_rungs)} rung(s) plus Stage A")
+    print(f"  rungs requested {', '.join(rung_short_names(order_rungs)) or '(none)'}"
+          f"   -- Stage A runs in every job that asks for it")
     print(f"  CalcPort grid   linspace({F_LO:.4g}, {F_MAX:.4g}, {B_N_FREQS}), TWO "
           f"passes (Z_ref, then ref_impedance={B_CALCPORT_REF_IMPEDANCE})")
     print(f"  witness band    max(|S11|^2+|S21|^2) <= {1.0 + PASSIVITY_TOL:.2f} over "
@@ -1393,7 +1751,6 @@ def _dry_run(stage: str, fine_factor: float) -> int:
     print()
     _print_delta_list()
     print()
-    order = _stages_for(stage)
     plans = _stage_plans(fine_factor)
     print("STAGE PLAN -- the geometry each stage builds:")
     if "stage_a" in order:
@@ -1456,8 +1813,190 @@ def _self_check(fine_factor: float) -> int:
     check(PORT_MARGIN == 2.5e-3, "PORT_MARGIN 2.5 mm")
     check(B_REAL_NRTS is None and B_REAL_END_CRITERIA is None,
           "the real pass passes NO NrTS/EndCriteria, so openEMS's own defaults "
-          "(~1e9 / 1e-5) apply, exactly as Stage A runs",
+          "(~1e9 / 1e-6, the pinned build's C++ EndCriteria) apply, exactly as "
+          "Stage A runs -- the DECLARED design, "
+          "which --real-end-criteria / --real-nrts override without changing",
           f"{B_REAL_NRTS!r} / {B_REAL_END_CRITERIA!r}")
+
+    print("the rung selector and the stop-criteria override:")
+    check(parse_rungs(DEFAULT_RUNGS) == list(RUNG_ORDER_STAGES),
+          "the default --rungs is all three, in rung order",
+          f"{parse_rungs(DEFAULT_RUNGS)}")
+    check(parse_rungs("fine,coarse") == ["stage_b_coarse", "stage_b_fine"],
+          "a subset comes back in rung order, whatever order it was given in")
+    bad = []
+    for spec in ("", "  ", "middle", "coarse,middle"):
+        try:
+            parse_rungs(spec)
+        except ValueError:
+            bad.append(spec)
+    check(len(bad) == 4, "an empty or unknown --rungs is refused, not silently "
+                         "dropped", f"refused {bad!r}")
+    check(_stages_for("both", parse_rungs("mid")) == ["stage_a", "stage_b_mid"],
+          "a one-rung job still runs Stage A -- it is the gate, and it costs 44 s")
+    check(_stages_for("B", parse_rungs("mid")) == ["stage_b_mid"],
+          "--stage B still skips the gate, whatever the rungs are")
+    default_note = stop_criteria_note(None, None)
+    check("No override was given" in default_note
+          and "library defaults" in default_note,
+          "with no override the note says the library defaults ran")
+    over = stop_criteria_note(1e-4, None)
+    check(over.startswith("made with --real-end-criteria "),
+          "an overridden record's note opens with what was given", over[:46])
+    check("107 minutes on the coarsest rung on 8 threads" in over
+          and "369367263243" in over and "369367263269" in over
+          and "-40 dB of the post-source peak" in over,
+          "and carries the measurement that motivated it, with its run ids")
+    both_over = stop_criteria_note(1e-4, 60000)
+    check("--real-end-criteria" in both_over and "--real-nrts 60000" in both_over,
+          "both overrides appear when both are given")
+    check(ACCEPT_TRUNCATION_DEFAULT is False,
+          "--accept-truncation is OFF by default: a real pass that hits its NrTS "
+          "cap is a FIRED GATE and no record, unless someone asks for one",
+          f"{ACCEPT_TRUNCATION_DEFAULT!r}")
+    check("--accept-truncation" not in stop_criteria_note(1e-4, 60000),
+          "a record made without the flag does not mention it")
+    accepted = stop_criteria_note(1e-4, 60000, True)
+    check("--accept-truncation was given" in accepted
+          and "truncated: true" in accepted,
+          "and a record made WITH it says so, and says what it means for the "
+          "record's length")
+    import inspect as _insp
+    check(_insp.signature(_run_stage_b).parameters["accept_truncation"].default
+          is ACCEPT_TRUNCATION_DEFAULT,
+          "the Stage B runner's own default is the same one")
+    check("accept_truncation" not in _insp.signature(_gate.run_stage_a).parameters,
+          "Stage A's runner takes no such parameter at all -- the gate cannot be "
+          "turned off for the reproduce stage even by mistake")
+    del _insp
+
+    print("the record-length witness (reported, never gated):")
+    check(RECORD_LENGTH_WITNESS_DEFAULT is False,
+          "--record-length-witness is OFF by default: a rung is solved once",
+          f"{RECORD_LENGTH_WITNESS_DEFAULT!r}")
+    check(WITNESS_FLOOR_DB == -20.0,
+          "bins where either curve is below -20 dB are left out, so the witness "
+          "measures truncation and not how far a deep null moved")
+    f_w = np.linspace(F_LO / 1e9, F_MAX / 1e9, B_N_FREQS)
+    base = np.full_like(f_w, 0.5)
+    moved = base.copy()
+    i_in = int(np.argmin(np.abs(f_w - 6.0)))
+    moved[i_in] = base[i_in] * 10.0 ** (0.25 / 20.0)      # +0.25 dB, above the floor
+    i_null = int(np.argmin(np.abs(f_w - 8.0)))
+    base[i_null] = 10.0 ** (-60.0 / 20.0)                 # a deep null ...
+    moved[i_null] = 10.0 ** (-30.0 / 20.0)                # ... that moves 30 dB
+    i_out = int(np.argmin(np.abs(f_w - 18.0)))
+    moved[i_out] = base[i_out] * 10.0 ** (9.0 / 20.0)     # 9 dB, outside the band
+    w = record_length_witness(
+        {"freqs_ghz": f_w.tolist(), "s21_mag": base.tolist(),
+         "s11_mag": np.full_like(f_w, 0.3).tolist()},
+        {"freqs_ghz": f_w.tolist(), "s21_mag": moved.tolist(),
+         "s11_mag": np.full_like(f_w, 0.3).tolist()},
+        n_steps=60000, n2_steps=120000)
+    check(abs(w["max_abs_delta_s21_db"] - 0.25) < 1e-6,
+          "a planted 0.25 dB in-band move is what the witness reports -- not the "
+          "30 dB null and not the 9 dB bin above the band",
+          f"{w['max_abs_delta_s21_db']:.6f} dB at "
+          f"{w['f_ghz_at_max_abs_delta_s21']:.3f} GHz over "
+          f"{w['s21_bins_compared']} bins")
+    check(w["n_steps"] == 60000 and w["n2_steps"] == 120000,
+          "the two record lengths travel with the numbers")
+    check(not [k for k in w if k in ("passed", "ok", "gate", "verdict")],
+          "nothing the witness returns is a verdict")
+    check("error" in record_length_witness({"freqs_ghz": [1.0, 2.0]},
+                                           {"freqs_ghz": [1.0, 2.0, 3.0]},
+                                           n_steps=1, n2_steps=2),
+          "two runs on different frequency grids are refused, not differenced")
+    check(MERGE_RECORD_LENGTH_TOL == 0.05,
+          "--merge allows the rungs' record lengths to differ by 5 %, no more")
+
+    print("Stage A across parts is reproducible, not bit-identical:")
+    check(MERGE_STAGE_A_MAG_TOL == 1.0e-3 and MERGE_STAGE_A_NOTCH_TOL_PCT == 0.01,
+          "--merge allows the parts' Stage A magnitudes to differ by 1e-3 linear "
+          "and their notches by 0.01 %",
+          f"{MERGE_STAGE_A_MAG_TOL:g} / {MERGE_STAGE_A_NOTCH_TOL_PCT:g} %")
+    check(tuple(MERGE_STAGE_A_BAND_GHZ) == tuple(STAGE_A_NOTCH_BAND_GHZ),
+          "over the band Stage A is read on, 2-7 GHz -- below it the bins are "
+          "excitation-starved", f"{list(MERGE_STAGE_A_BAND_GHZ)}")
+    # The measured spread, runs 369367263406/407/408: openEMS on 8 threads ended
+    # the tutorial at 14586 / 14688 / 12342 steps.
+    check(1.6e-4 < MERGE_STAGE_A_MAG_TOL and 1.3e-4 < MERGE_STAGE_A_MAG_TOL,
+          "the worst measured run-to-run spread (1.6e-4 in |S21|, 1.3e-4 in "
+          "|S11|) is inside that tolerance, with about an order of magnitude "
+          "to spare")
+    _notch_spread = (3.672277 - 3.672241) / 3.672241 * 100.0
+    check(_notch_spread < MERGE_STAGE_A_NOTCH_TOL_PCT,
+          "and so is the measured notch spread (3.672242 / 3.672241 / 3.672277 "
+          "GHz)", f"{_notch_spread:.5f} % against "
+          f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} %")
+    # Not a tautology: this reads _merge's OWN source, so adding a phase
+    # comparison to it reddens the line.
+    import inspect as _mi
+    _merge_src = _mi.getsource(_merge)
+    check("s11_deg" not in _merge_src and "s21_deg" not in _merge_src,
+          "phase is NOT compared -- _merge's source never names s11_deg or "
+          "s21_deg. At the null the runs sit either side of a 180 degree wrap "
+          "and differ by 358.6 degrees, which is a wrap, not a disagreement")
+    check(_merge_src.count('for key in ("s11_mag", "s21_mag")') == 1,
+          "the magnitudes, and only the magnitudes, are what it differences")
+    del _mi
+
+    print("the solver's own log, as the container actually prints it "
+          "(run 369367263401, lines 32-33, 61-63, 70-71 verbatim):")
+    real_log = "\n".join([
+        "Timestep (s)\t\t: 0.00",
+        "Timestep method name\t: Rennings_2",
+        "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+        "Excitation signal length is: 1708 timesteps (0.00s)",
+        "Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)",
+        "[@        4s] Timestep:         1110 || Speed:  122.2 MC/s "
+        "(3.632e-03 s/TS) || Energy: ~1.21e-14 (- 0.00dB)",
+        "[@        8s] Timestep:         2146 || Speed:  112.4 MC/s "
+        "(3.948e-03 s/TS) || Energy: ~3.11e-15 (- 5.91dB)",
+        "RunFDTD: Warning: Max. number of timesteps was reached before the "
+        "end-criteria of 0.0001 was reached",
+    ])
+    setup = _gate._solver_setup(real_log)
+    check(_gate._timestep_seconds(real_log) is None,
+          "the timestep line is NOT readable: openEMS prints two decimals, and "
+          "this board's dt is ~1.7e-13 s, so the line says '0.00 s'",
+          f"{_gate._timestep_seconds(real_log)!r}")
+    check(setup["nyquist_steps"] == 149
+          and abs(setup["nyquist_f_hz"] - 20006339607.0) < 1.0,
+          "the Nyquist line gives N and f", f"{setup['nyquist_steps']} timesteps @ "
+          f"{setup['nyquist_f_hz']:.6g} Hz")
+    check(abs(setup["dt_s"] - 1.0 / (2.0 * 20006339607.0 * 149)) < 1e-20
+          and abs(setup["dt_s"] - 1.677e-13) < 1e-16,
+          "dt = 1 / (2 f N) recovers the board's own timestep",
+          f"{setup['dt_s']:.6e} s")
+    check(abs(setup["dt_s_uncertainty_rel"] - 1.0 / 149) < 1e-12,
+          "and carries the floor's own bound, one step in N",
+          f"{setup['dt_s_uncertainty_rel']:.4g} relative "
+          f"({setup['dt_s_uncertainty_rel'] * 100:.2f} %)")
+    check(setup["dt_s_uncertainty_rel"] < MERGE_RECORD_LENGTH_TOL,
+          "which is inside the 5 % the merge allows between rungs")
+    check(setup["excitation_length_steps"] == 1708
+          and setup["max_timesteps_declared"] == 3000,
+          "the excitation length and the declared cap are read too",
+          f"{setup['excitation_length_steps']} / {setup['max_timesteps_declared']}")
+    check(_gate._first_int(_gate._MAX_TIMESTEPS_RE,
+                           "RunFDTD: Warning: Max. number of timesteps was "
+                           "reached before the end-criteria of 0.0001 was reached")
+          is None,
+          "openEMS's truncation WARNING is not misread as a cap declaration -- "
+          "the colon is what separates them")
+    prog = _gate._energy_progress(real_log)
+    check(prog["final_timestep"] == 2146 and abs(prog["final_energy_db"] + 5.91) < 1e-9,
+          "the progress lines parse in the container's own form -- a space after "
+          "the minus, none before dB: '(- 5.91dB)'",
+          f"timestep {prog['final_timestep']}, {prog['final_energy_db']} dB")
+    check(prog["energy_db_trace"] == [[1110, -0.0], [2146, -5.91]],
+          "and both lines land in the trace", f"{prog['energy_db_trace']}")
+    check(_gate._timesteps_executed(real_log) == 2146
+          and setup["max_timesteps_declared"] == 3000,
+          "timesteps_executed is the largest PROGRESS count (2146), not the cap "
+          "(3000) -- openEMS prints every few seconds, so a truncated run's "
+          "record length comes from the declared cap instead")
     check(B_BOUNDARY == ["PML_8", "PML_8", "MUR", "MUR", "PEC", "MUR"], "boundary")
     check(C0 == 2.99792458e8,
           "C0 is the Sheen script's own, not the tutorial gate's 2.998e8")
@@ -1767,6 +2306,338 @@ def _self_check(fine_factor: float) -> int:
 
 
 # ---------------------------------------------------------------------------
+# --merge: one record out of per-rung parts
+# ---------------------------------------------------------------------------
+_STAGE_A_ARRAYS = ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
+                   "energy_sum")
+_MERGE_META_MUST_AGREE = ("tutorial_source", "rfx_openems_image",
+                          "rfx_openems_commit")
+
+# HOW CLOSE TWO JOBS' STAGE A HAVE TO BE, AND WHY IT IS NOT BIT-IDENTICAL.
+# openEMS on 8 threads does not end the tutorial run at the same timestep twice:
+# the 1e-6 energy criterion (the pinned build's C++ default; not passed) is
+# crossed at slightly different times, and runs
+# 369367263406/407/408 ended at 14586 / 14688 / 12342 steps. The spectra then
+# differ a little. Measured across those three parts, over the band Stage A is
+# read on:
+#
+#     max |d|S21||  1.4e-5 (coarse vs mid), 1.6e-4 (coarse vs fine)
+#     max |d|S11||  2.6e-6 (coarse vs mid), 1.3e-4 (coarse vs fine)
+#     notch         3.672242 / 3.672241 / 3.672277 GHz -- 1e-5 relative
+#
+# So the check is a tolerance on the MAGNITUDES over 2-7 GHz, not equality.
+# 1e-3 linear is about an order of magnitude above the worst measured spread and
+# still far below anything that would say two jobs ran different tutorials.
+# PHASE IS NOT CHECKED: at the null the two runs sit on opposite sides of a
+# +-180 degree wrap and differ by 358.6 degrees, which is a wrap, not a
+# disagreement. BELOW 2 GHz IS NOT CHECKED either: those bins are
+# excitation-starved, which is the same reason the witness band starts there.
+MERGE_STAGE_A_MAG_TOL = 1.0e-3
+MERGE_STAGE_A_NOTCH_TOL_PCT = 0.01
+MERGE_STAGE_A_BAND_GHZ = STAGE_A_NOTCH_BAND_GHZ  # 2-7 GHz, the tutorial's own
+
+# How far apart two rungs' record LENGTHS may be and still be one measurement.
+# The rungs are capped by step COUNT and dt shrinks with the cell, so the job
+# passes N = 60000 / factor per rung to keep the seconds equal; 5 % is the room
+# that leaves for the solver's own dt rounding, not a tolerance on physics.
+MERGE_RECORD_LENGTH_TOL = 0.05
+
+
+def _merge_refuse(msg: str) -> int:
+    print(f"MERGE REFUSED: {msg}", file=sys.stderr)
+    return 3
+
+
+def _merge(part_paths: list, output: str) -> int:
+    """Combine per-rung records into one, or refuse and say why.
+
+    The parts were solved in separate cluster jobs, so nothing guarantees they
+    are the same measurement -- a different image, a different openEMS build or a
+    different tutorial port would each make the merged record a mixture. Stage A
+    is the check that costs nothing: every job runs it, on the same tutorial, on
+    the same mesh and grid, so if two parts disagree bin for bin on Stage A they
+    did not come from the same solver and the merge refuses. Nothing is averaged
+    or reconciled here; each rung block is carried across whole, from the one
+    part that has it.
+    """
+    import copy
+
+    if not part_paths:
+        return _merge_refuse("no parts given")
+    parts = []
+    for raw in part_paths:
+        path = Path(raw)
+        if not path.is_file():
+            return _merge_refuse(f"{path} is not a file")
+        try:
+            with open(path) as fh:
+                parts.append((path, json.load(fh)))
+        except Exception as exc:
+            return _merge_refuse(f"{path} is not readable JSON: {exc!r}")
+
+    # -- every part must carry a Stage A, and they must be the same one --------
+    for path, a in parts:
+        if not isinstance(a.get("meta"), dict):
+            return _merge_refuse(f"{path} has no meta block")
+        if a.get("failed_gate") is not None:
+            return _merge_refuse(f"{path} is a FAILED-gate evidence file "
+                                 f"({a['failed_gate']!r}), not a record")
+        if not isinstance(a.get("stage_a"), dict):
+            return _merge_refuse(f"{path} carries no stage_a: every part runs the "
+                                 f"reproduce gate, so a part without it cannot be "
+                                 f"shown to be the same measurement")
+        missing = [k for k in _STAGE_A_ARRAYS if k not in a["stage_a"]]
+        if missing:
+            return _merge_refuse(f"{path}'s stage_a is missing {missing}")
+
+    first_path, first = parts[0]
+    f_a = np.asarray(first["stage_a"]["freqs_ghz"], dtype=float)
+    band = ((f_a >= MERGE_STAGE_A_BAND_GHZ[0])
+            & (f_a <= MERGE_STAGE_A_BAND_GHZ[1]))
+    repro = {
+        "band_ghz": list(MERGE_STAGE_A_BAND_GHZ),
+        "magnitude_tol": MERGE_STAGE_A_MAG_TOL,
+        "notch_tol_pct": MERGE_STAGE_A_NOTCH_TOL_PCT,
+        "bins_compared": int(np.count_nonzero(band)),
+        "per_part": [],
+        "what_it_is": (
+            "openEMS with 8 threads does not end the tutorial run at the same "
+            "timestep twice -- the 1e-6 energy criterion is crossed at slightly "
+            "different times -- so each job's Stage A spectrum differs a little "
+            "from the others'. These are the measured maxima of that run-to-run "
+            "spread, over the band Stage A is read on, against the FIRST part "
+            "(whose arrays the merged record carries). Reported. The merge "
+            f"refuses above {MERGE_STAGE_A_MAG_TOL:g} linear in magnitude or "
+            f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} % in the notch. Phase is not "
+            "compared: at the null the runs sit either side of a 180 degree "
+            "wrap. Below the band the bins are excitation-starved."),
+    }
+    for path, a in parts:
+        st = a["stage_a"]
+        repro["per_part"].append({
+            "path": str(path),
+            "rungs": a["meta"].get("rungs_in_this_record"),
+            "run_id": a.get("run_id"),
+            "stage_a_timesteps_executed":
+                ((a["meta"].get("stages") or {}).get("stage_a") or {})
+                .get("timesteps_executed"),
+            "stage_a_notch_ghz": (st.get("notch") or {}).get("refined_f_ghz"),
+        })
+
+    worst = {"s11_mag": 0.0, "s21_mag": 0.0}
+    worst_at = {"s11_mag": None, "s21_mag": None}
+    for path, a in parts[1:]:
+        for key in ("freqs_ghz",):
+            if len(a["stage_a"][key]) != len(first["stage_a"][key]):
+                return _merge_refuse(
+                    f"{path}'s stage_a.{key} has {len(a['stage_a'][key])} bins but "
+                    f"{first_path}'s has {len(first['stage_a'][key])} -- the two "
+                    f"parts did not run the tutorial on the same grid")
+        if not np.allclose(np.asarray(a["stage_a"]["freqs_ghz"], dtype=float), f_a):
+            return _merge_refuse(
+                f"{path}'s stage_a frequency grid is not {first_path}'s -- the two "
+                f"parts did not run the tutorial on the same grid")
+        for key in ("s11_mag", "s21_mag"):
+            d = np.abs(np.asarray(a["stage_a"][key], dtype=float)
+                       - np.asarray(first["stage_a"][key], dtype=float))
+            d_band = np.where(band, d, -np.inf)
+            i = int(np.argmax(d_band))
+            if float(d[i]) > worst[key]:
+                worst[key] = float(d[i])
+                worst_at[key] = {"f_ghz": float(f_a[i]), "part": str(path)}
+    notches = [p["stage_a_notch_ghz"] for p in repro["per_part"]
+               if p["stage_a_notch_ghz"] is not None]
+    notch_spread_pct = (
+        (max(notches) - min(notches)) / min(notches) * 100.0
+        if len(notches) == len(parts) and notches and min(notches) > 0 else None)
+    repro.update({
+        "max_abs_delta_s11_mag": worst["s11_mag"],
+        "max_abs_delta_s11_mag_at": worst_at["s11_mag"],
+        "max_abs_delta_s21_mag": worst["s21_mag"],
+        "max_abs_delta_s21_mag_at": worst_at["s21_mag"],
+        "notch_spread_pct": notch_spread_pct,
+        "phase_compared": False,
+    })
+    for key, label in (("s11_mag", "|S11|"), ("s21_mag", "|S21|")):
+        if worst[key] > MERGE_STAGE_A_MAG_TOL:
+            at = worst_at[key] or {}
+            return _merge_refuse(
+                f"the parts' Stage A {label} differ by {worst[key]:.3g} at "
+                f"{at.get('f_ghz')} GHz ({at.get('part')} vs {first_path}), over "
+                f"the {MERGE_STAGE_A_MAG_TOL:g} these are allowed to differ by "
+                f"across {MERGE_STAGE_A_BAND_GHZ[0]:g}-"
+                f"{MERGE_STAGE_A_BAND_GHZ[1]:g} GHz. openEMS ending the tutorial "
+                f"at a different timestep moves these by ~1e-4; a difference this "
+                f"size is a different tutorial, a different mesh or a different "
+                f"solver.")
+    if notch_spread_pct is None:
+        return _merge_refuse(
+            "at least one part's Stage A carries no notch frequency, so the parts "
+            "cannot be shown to have reproduced the same tutorial")
+    if notch_spread_pct > MERGE_STAGE_A_NOTCH_TOL_PCT:
+        return _merge_refuse(
+            f"the parts' Stage A notches span {notch_spread_pct:.4g} %, over the "
+            f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} % these are allowed to differ by: "
+            + ", ".join(f"{p['stage_a_notch_ghz']} GHz ({Path(p['path']).name})"
+                        for p in repro["per_part"]))
+
+    for path, a in parts[1:]:
+        for key in _MERGE_META_MUST_AGREE:
+            if a["meta"].get(key) != first["meta"].get(key):
+                return _merge_refuse(
+                    f"{path}'s meta.{key} is {a['meta'].get(key)!r} but "
+                    f"{first_path}'s is {first['meta'].get(key)!r}")
+
+    # -- each rung comes from exactly one part --------------------------------
+    owner: dict = {}
+    for path, a in parts:
+        for short in RUNG_ORDER:
+            stage = RUNG_KEYS[short]
+            if isinstance(a.get(stage), dict):
+                if stage in owner:
+                    return _merge_refuse(
+                        f"{stage} is in both {owner[stage][0]} and {path}; a merge "
+                        f"does not choose between two measurements of one rung")
+                owner[stage] = (path, a)
+    absent = [s for s in RUNG_ORDER_STAGES if s not in owner]
+    if absent:
+        return _merge_refuse(f"no part carries {absent}; the merged record would "
+                             f"have fewer than the three rungs the mesh statement "
+                             f"is made of")
+
+    # -- the rungs must be the same LENGTH of record, not the same step count --
+    lengths = {}
+    for stage, (path, a) in owner.items():
+        st = (a["meta"].get("stages") or {}).get(stage) or {}
+        lengths[stage] = (path, st.get("record_length_s"))
+    unknown = [f"{s} ({p.name})" for s, (p, v) in lengths.items() if v is None]
+    if unknown:
+        return _merge_refuse(
+            f"record_length_s is missing for {unknown}. A merged reference whose "
+            f"rungs might be different lengths of recorded time is not one "
+            f"measurement, so this refuses rather than assume. The usual cause is "
+            f"that the solver's timestep was not found in the captured stdout -- "
+            f"each part's meta.stages.<stage>.record_length_source says which, and "
+            f"the job now persists the stdout log beside the record.")
+    values = [v for _, v in lengths.values()]
+    lo, hi = min(values), max(values)
+    spread = (hi - lo) / hi if hi > 0 else 0.0
+    if spread > MERGE_RECORD_LENGTH_TOL:
+        detail = ", ".join(f"{s}={v:.6g} s ({p.name})"
+                           for s, (p, v) in sorted(lengths.items()))
+        return _merge_refuse(
+            f"the rungs recorded different lengths of time: {detail} -- a spread "
+            f"of {spread * 100:.2f} %, over the {MERGE_RECORD_LENGTH_TOL * 100:.0f} "
+            f"% these are allowed to differ by. A step cap is not a record length: "
+            f"dt shrinks with the cell, so each rung needs its own N (60000 / "
+            f"factor: coarse 60000, mid 84853, fine 120000) to record the same "
+            f"seconds.")
+
+    merged = copy.deepcopy(first)
+    stages_meta = dict(merged["meta"].get("stages") or {})
+    for stage, (path, a) in owner.items():
+        merged[stage] = copy.deepcopy(a[stage])
+        src_meta = (a["meta"].get("stages") or {}).get(stage)
+        if src_meta is not None:
+            stages_meta[stage] = copy.deepcopy(src_meta)
+    merged["meta"]["stages"] = stages_meta
+    merged["meta"]["rungs_in_this_record"] = list(RUNG_ORDER)
+    merged["meta"]["stages_requested"] = ["stage_a"] + list(RUNG_ORDER_STAGES)
+    merged["meta"]["stop_criteria_note"] = (
+        "per part -- see meta.merged_from; the parts need not share one, and this "
+        "record does not claim they do")
+    # The step and energy labels as run: the first part's when every part
+    # carries the same one, otherwise per part (each Stage B block states its own).
+    for key, declared in (("nrts", "nrts_declared"),
+                          ("end_criteria", "end_criteria_declared")):
+        if len({str(a["meta"].get(key)) for _, a in parts}) != 1:
+            merged["meta"][key] = (
+                "per part -- Stage A takes openEMS's own default in every part; "
+                f"each Stage B block's value is meta.stages.<stage>.{declared}, "
+                "and each part's command line is in "
+                "meta.merged_from[].stop_criteria_note")
+    maker_commits = [a["meta"].get("rfx_commit") for _, a in parts]
+    merged["meta"]["maker_commits_agree"] = bool(len(set(map(str, maker_commits))) == 1)
+    merged["meta"]["stage_a_reproducibility"] = repro
+    merged["meta"]["record_length_s_per_rung"] = {
+        short: lengths[RUNG_KEYS[short]][1] for short in RUNG_ORDER}
+    merged["meta"]["record_length_s_spread_pct"] = spread * 100.0
+    merged["meta"]["record_length_s_tolerance_pct"] = MERGE_RECORD_LENGTH_TOL * 100.0
+    # Each rung's own record-length witness, side by side, when the rung was
+    # solved twice. Reported; the case's test is what judges them.
+    witnesses = {}
+    for short in RUNG_ORDER:
+        stage = RUNG_KEYS[short]
+        block = merged.get(stage) or {}
+        w = block.get("witness_2n")
+        if not isinstance(w, dict):
+            continue
+        witnesses[short] = {
+            "n_steps": w.get("n_steps"),
+            "n2_steps": w.get("n2_steps"),
+            "record_length_s": lengths[stage][1],
+            "max_abs_delta_s21_db": w.get("max_abs_delta_s21_db"),
+            "f_ghz_at_max_abs_delta_s21": w.get("f_ghz_at_max_abs_delta_s21"),
+            "s21_bins_compared": w.get("s21_bins_compared"),
+            "max_abs_delta_s11_db": w.get("max_abs_delta_s11_db"),
+            "f_ghz_at_max_abs_delta_s11": w.get("f_ghz_at_max_abs_delta_s11"),
+            "s11_bins_compared": w.get("s11_bins_compared"),
+            "floor_db": w.get("floor_db"),
+            "band_ghz": w.get("band_ghz"),
+        }
+    merged["meta"]["record_length_witness"] = witnesses or None
+    merged["meta"]["merged_from"] = [
+        {
+            "path": str(path),
+            "run_id": a.get("run_id"),
+            "maker_commit": a["meta"].get("rfx_commit"),
+            "rungs": [s for s in RUNG_ORDER
+                      if owner.get(RUNG_KEYS[s], (None, None))[0] == path],
+            "stop_criteria_note": a["meta"].get("stop_criteria_note"),
+        }
+        for path, a in parts
+    ]
+    merged["run_id"] = None
+    merged["run_id_note"] = (
+        "null by design on a merged record: there is no single run. Each part's "
+        "own run id is in meta.merged_from."
+    )
+
+    out = Path(output)
+    _gate.write_record(merged, out)
+    print(f"merged {len(parts)} part(s) into {out}")
+    for entry in merged["meta"]["merged_from"]:
+        print(f"  {entry['path']}  rungs={','.join(entry['rungs']) or '-'}  "
+              f"run_id={entry['run_id']}  maker_commit={entry['maker_commit']}")
+    print(f"  stage A across the parts: |S11| <= {repro['max_abs_delta_s11_mag']:.3g}, "
+          f"|S21| <= {repro['max_abs_delta_s21_mag']:.3g} over "
+          f"{MERGE_STAGE_A_BAND_GHZ[0]:g}-{MERGE_STAGE_A_BAND_GHZ[1]:g} GHz "
+          f"(tol {MERGE_STAGE_A_MAG_TOL:g}); notch spread "
+          f"{repro['notch_spread_pct']:.4g} % (tol "
+          f"{MERGE_STAGE_A_NOTCH_TOL_PCT:g} %); Stage A ended at "
+          + ", ".join(str(p["stage_a_timesteps_executed"]) for p in repro["per_part"])
+          + " timesteps. Reported.")
+    print("  record length per rung (s): "
+          + ", ".join(f"{s}={merged['meta']['record_length_s_per_rung'][s]:.6g}"
+                      for s in RUNG_ORDER)
+          + f"  (spread {spread * 100:.2f} %, tolerance "
+            f"{MERGE_RECORD_LENGTH_TOL * 100:.0f} %)")
+    if witnesses:
+        for short, w in witnesses.items():
+            print(f"  record-length witness {short}: {w['n_steps']} vs "
+                  f"{w['n2_steps']} steps -> |S21| <= "
+                  f"{w['max_abs_delta_s21_db']} dB, |S11| <= "
+                  f"{w['max_abs_delta_s11_db']} dB. Reported, not gated.")
+    else:
+        print("  no rung carries a record-length witness (no part was made with "
+              "--record-length-witness)")
+    if not merged["meta"]["maker_commits_agree"]:
+        print("NOTE: the parts do not all name the same maker commit "
+              f"({maker_commits!r}). Recorded in meta, not judged here.")
+    return 0
+
+
+# ---------------------------------------------------------------------------
 # main
 # ---------------------------------------------------------------------------
 def main(argv=None) -> int:
@@ -1778,11 +2649,84 @@ def main(argv=None) -> int:
     p.add_argument("--resolution-factor", type=float, default=B_FINE_RESOLUTION_FACTOR,
                    help="Stage B only: the FINEST rung's factor on this board's own "
                         "resolution. The coarse rung is always 1.0 and the middle "
-                        "rung 1/sqrt(2), so a Stage B run always produces three "
-                        "rungs. Default 0.5.")
+                        "rung 1/sqrt(2). Default 0.5. Which of the three a given "
+                        "invocation solves is --rungs; each rung block records the "
+                        "factor it was built with, so a part made with a "
+                        "non-default one says so.")
+    p.add_argument("--rungs", default=DEFAULT_RUNGS, metavar="LIST",
+                   help="Stage B only: which mesh rungs this invocation solves, "
+                        "comma separated, from coarse,mid,fine. Default all three. "
+                        "One rung per cluster job is the normal way to run this: "
+                        "with openEMS's own EndCriteria the coarse rung alone ran "
+                        "107 minutes on 8 threads. The record then carries only the "
+                        "rungs it solved, and meta.rungs_in_this_record lists them; "
+                        "--merge puts the parts back together. Stage A runs in every "
+                        "job.")
+    p.add_argument("--real-end-criteria", type=float, default=None, metavar="FLOAT",
+                   help="Stage B only: openEMS EndCriteria for the REAL pass. "
+                        "Default: pass nothing, so the pinned build's C++ default "
+                        "1e-6 applies (the python binding's docstring says 1e-5, "
+                        "which is not what runs) -- "
+                        "that is the declared design (delta 9). Giving a value is "
+                        "recorded in every Stage B block and in "
+                        "meta.stop_criteria_note. Stage A is never overridden.")
+    p.add_argument("--real-nrts", type=int, default=None, metavar="INT",
+                   help="Stage B only: openEMS NrTS for the REAL pass. Default: "
+                        "pass nothing, so openEMS's own ~1e9 applies. Recorded the "
+                        "same way as --real-end-criteria. Stage A is never "
+                        "overridden.")
+    p.add_argument("--accept-truncation", action="store_true",
+                   help="Stage B only: record a real pass that reaches its NrTS "
+                        "cap instead of failing the end-criteria gate. OFF by "
+                        "default, and off is the declared design: a truncated "
+                        "spectrum is normally not a reference. With it, the stage "
+                        "records truncated: true and the box energy openEMS "
+                        "reported at the cap, and meta.stop_criteria_note names "
+                        "the flag. It exists so a record of DECLARED length can "
+                        "be made on purpose -- what such a record is good for is "
+                        "the leader's to decide from the data, and this script "
+                        "decides nothing about it. Stage A is never affected.")
+    p.add_argument("--record-length-witness", action="store_true",
+                   help="Stage B only: solve each requested rung TWICE, at "
+                        "--real-nrts N and at 2N, and record the longer run's "
+                        "arrays and how far the two curves are apart under "
+                        "stage_b_<rung>.witness_2n. Requires --real-nrts and "
+                        "--accept-truncation, because a declared record length "
+                        "is what it measures. It DOUBLES the solve cost of every "
+                        "rung. Reported, not gated: what the numbers mean is the "
+                        "case's test to decide.")
+    p.add_argument("--merge", nargs="+", default=None, metavar="PART.json",
+                   help="Combine per-rung records into one, written to --output. "
+                        "Refuses unless every part's Stage A agrees within "
+                        "their tutorial source, image and openEMS build commit "
+                        "match; refuses on a duplicated or a missing rung. Runs no "
+                        "solver.")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--self-check", action="store_true")
     args = p.parse_args(argv)
+
+    try:
+        rung_stages = parse_rungs(args.rungs)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 3
+
+    # The witness measures what a DECLARED record length costs. Without a
+    # declared length there are not two lengths to compare, and without
+    # --accept-truncation the N run would be a fired gate before the 2N run
+    # started -- so both are required rather than assumed.
+    if args.record_length_witness:
+        missing = []
+        if args.real_nrts is None:
+            missing.append("--real-nrts N")
+        if not args.accept_truncation:
+            missing.append("--accept-truncation")
+        if missing:
+            print(f"ERROR: --record-length-witness needs {' and '.join(missing)}: "
+                  f"it compares a record of N steps with one of 2N, which means N "
+                  f"has to be declared and a run that stops at N has to be "
+                  f"recordable.", file=sys.stderr)
+            return 3
 
     # The range check runs on EVERY mode, not only a real run: a dry run or a
     # self-check on an out-of-range factor would print a plan nothing can build.
@@ -1794,7 +2738,19 @@ def main(argv=None) -> int:
     if args.self_check:
         return _self_check(args.resolution_factor)
     if args.dry_run:
-        return _dry_run(args.stage, args.resolution_factor)
+        return _dry_run(args.stage, args.resolution_factor, rung_stages,
+                        real_nrts=args.real_nrts,
+                        real_end_criteria=args.real_end_criteria,
+                        accept_truncation=args.accept_truncation,
+                        record_length_witness=args.record_length_witness)
+
+    # --merge runs no solver and needs no image stamp: it reads records that
+    # already carry their own.
+    if args.merge:
+        if not args.output:
+            print("ERROR: --merge needs --output", file=sys.stderr)
+            return 3
+        return _merge(args.merge, args.output)
 
     if not args.output:
         print("ERROR: --output is required for a real run", file=sys.stderr)
@@ -1816,8 +2772,8 @@ def main(argv=None) -> int:
     try:
         _script_builder_slice()
     except Exception as exc:
-        print(f"CONFIG ERROR: the copy proof cannot read the script this builder is "
-              f"copied from: {exc}", file=sys.stderr)
+        print(f"CONFIG ERROR: the copy proof cannot read the frozen slice of the "
+              f"script this builder is copied from: {exc}", file=sys.stderr)
         return 3
 
     try:
@@ -1832,7 +2788,12 @@ def main(argv=None) -> int:
     _print_delta_list()
     print()
 
-    stages = _stages_for(args.stage)
+    stages = _stages_for(args.stage, rung_stages)
+    stage_names = ["stage_a"] + [s for s in RUNG_ORDER_STAGES if s in stages]
+    print(f"stop criteria: {stop_criteria_note(args.real_end_criteria, args.real_nrts, args.accept_truncation, args.record_length_witness)}")
+    print(f"rungs this job solves: "
+          f"{', '.join(rung_short_names(stages)) or '(none)'}", flush=True)
+    print()
     if "stage_a" not in stages:
         print("WARNING: --stage B does not run the reproduce gate. The record this "
               "invocation writes carries stage_a: null and reproduce_gate_ran: false, "
@@ -1845,12 +2806,20 @@ def main(argv=None) -> int:
     stage_meta: dict = {}
     stage_a_gate: dict = {}
 
+    def artifact(failed_gate=None) -> dict:
+        return _build_artifact(records, stage_meta, stage_a_gate, stages,
+                               failed_gate=failed_gate,
+                               real_nrts=args.real_nrts,
+                               real_end_criteria=args.real_end_criteria,
+                               accept_truncation=args.accept_truncation,
+                               record_length_witness=args.record_length_witness,
+                               stage_names=stage_names)
+
     def bail(name: str, exc) -> int:
         print(f"SANITY GATE FAILED [{name}]: {exc}", file=sys.stderr)
         records[name] = exc.partial or None
         stage_meta[name] = exc.meta
-        failed = _build_artifact(records, stage_meta, stage_a_gate, stages,
-                                 failed_gate=str(exc))
+        failed = artifact(failed_gate=str(exc))
         path = _gate.failed_output_path(Path(args.output))
         _gate.write_record(failed, path)
         print(f"evidence written to {path} -- the arrays measured before the gate "
@@ -1867,7 +2836,35 @@ def main(argv=None) -> int:
             else:
                 record, meta = _run_stage_b(
                     label=name, sim_root=args.sim_root, threads=args.threads,
-                    resolution_factor=factors[name], sf=sf)
+                    resolution_factor=factors[name], sf=sf,
+                    real_nrts=args.real_nrts,
+                    real_end_criteria=args.real_end_criteria,
+                    accept_truncation=args.accept_truncation)
+                if args.record_length_witness:
+                    n2 = 2 * int(args.real_nrts)
+                    print(f"  record-length witness: solving {name} again at "
+                          f"{n2} timesteps", flush=True)
+                    record2, meta2 = _run_stage_b(
+                        label=name + "_2n", sim_root=args.sim_root,
+                        threads=args.threads, resolution_factor=factors[name],
+                        sf=sf, real_nrts=n2,
+                        real_end_criteria=args.real_end_criteria,
+                        accept_truncation=args.accept_truncation)
+                    record["witness_2n"] = record_length_witness(
+                        record, record2, n_steps=int(args.real_nrts), n2_steps=n2)
+                    meta["witness_2n"] = meta2
+                    w = record["witness_2n"]
+                    print(f"  witness {int(args.real_nrts)} vs {n2} steps: "
+                          f"|S21| moves at most "
+                          f"{w.get('max_abs_delta_s21_db')} dB (at "
+                          f"{w.get('f_ghz_at_max_abs_delta_s21')} GHz, "
+                          f"{w.get('s21_bins_compared')} bins), |S11| at most "
+                          f"{w.get('max_abs_delta_s11_db')} dB (at "
+                          f"{w.get('f_ghz_at_max_abs_delta_s11')} GHz, "
+                          f"{w.get('s11_bins_compared')} bins). "
+                          f"Record length {meta.get('record_length_s')} s vs "
+                          f"{meta2.get('record_length_s')} s. Reported, not "
+                          f"gated.", flush=True)
         except _gate.StageFailure as exc:
             return bail(name, exc)
         records[name] = record
@@ -1878,10 +2875,9 @@ def main(argv=None) -> int:
             if "refined_f_ghz" not in notch:
                 print(f"REPRODUCE GATE CANNOT BE READ: the Stage A notch estimate is "
                       f"{notch!r}. No Stage B record is written.", file=sys.stderr)
-                failed = _build_artifact(
-                    records, stage_meta, stage_a_gate, stages,
-                    failed_gate="[stage_a] the notch estimator produced no frequency: "
-                                f"{notch!r}")
+                failed = artifact(
+                    failed_gate="[stage_a] the notch estimator produced no "
+                                f"frequency: {notch!r}")
                 path = _gate.failed_output_path(Path(args.output))
                 _gate.write_record(failed, path)
                 print(f"evidence written to {path}", file=sys.stderr)
@@ -1913,8 +2909,7 @@ def main(argv=None) -> int:
                                f"{STAGE_A_MIN_DEPTH_DB:.0f} dB level")
                 print("REPRODUCE GATE FAILED: no Stage B record is written.",
                       file=sys.stderr)
-                failed = _build_artifact(
-                    records, stage_meta, stage_a_gate, stages,
+                failed = artifact(
                     failed_gate="[stage_a] reproduce gate FAILED: " + "; ".join(why))
                 path = _gate.failed_output_path(Path(args.output))
                 _gate.write_record(failed, path)
@@ -1931,11 +2926,13 @@ def main(argv=None) -> int:
               f"{pb.get('mean_db', float('nan')):+.3f} dB | -3 dB corner "
               f"{'n/a' if fc is None else f'{fc:.4f} GHz'} | "
               f"Re(Z0) median {record.get('re_z0_median_ohm', float('nan')):.2f} ohm "
-              f"| {meta['wall_time_s']} s", flush=True)
+              f"| {meta['wall_time_s']} s"
+              + (f" | TRUNCATED at timestep {record.get('final_timestep')} with the "
+                 f"box energy at {record.get('final_energy_db')} dB"
+                 if record.get("truncated") else ""), flush=True)
 
-    artifact = _build_artifact(records, stage_meta, stage_a_gate, stages)
     out = Path(args.output)
-    _gate.write_record(artifact, out)
+    _gate.write_record(artifact(), out)
     print(f"\n=== written to {out} ===")
     print("run_id is null by design: VESSL does not export the run id into the pod, "
           "so the submitter records it.")

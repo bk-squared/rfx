@@ -44,11 +44,14 @@ The method (every rule fixed here, none tuned per board)
    window, poles fixed, columns normalised (harminv's amplitude fit).
 6. Completion by the closed form above, per channel.
 
-The two-window witness ``W2`` identifies the poles a second time on the
-shorter window ``[n_start, split * N)`` and completes the SAME record with
-them; the largest difference of the two answers bounds how much the answer
-still depends on the window. On the research boards it tracked the actual
-error within a factor 10 (rfx #1254).
+The error witness ``WE`` identifies the poles a second time on a window that
+starts twice as early, ``[n_start / 2, N)``, and completes the SAME record with them; the
+largest difference of the two answers is the witness. On the research boards
+it read the actual error within 0.84-3.2x wherever the record resolves the
+structure (rfx #1254, R-i). It needs the sources off over its window too; when
+they are not, the two-window witness ``W2`` (the shorter window
+``[n_start, split * N)``, which read the actual error 0.003-22x there) is
+judged in its place. Otherwise ``W2`` is reported, not judged.
 
 What this module does inside ``Simulation.run(..., ringdown=RingdownSpec())``
 --------------------------------------------------------------------------
@@ -103,6 +106,7 @@ __all__ = [
     "tail_dft",
     "complete_spectra",
     "two_window_witness",
+    "early_start_witness",
 ]
 
 
@@ -118,14 +122,16 @@ class RingdownSpec:
     ----------
     window_start : float
         Start of the identification window as a fraction of the record; the
-        window is ``[window_start * T, T]``. The source must be off there.
+        window is ``[window_start * T, T]``. The source must be off there
+        (and over ``[window_start / 2 * T, T]`` for ``WE`` to be formed).
     guard : float
         Transition-band guard, as a fraction of the decimated Nyquist
         frequency (method step 4).
     witness_tol : float
-        Bar of the two-window witness ``W2``: the largest ``|S_A - S_B|``
-        over every bin and entry, in units of ``|S|`` (an S-parameter of a
-        passive port is at most 1, so this is an absolute difference).
+        Bar of the error witness ``WE`` (``W2`` when ``WE`` cannot be
+        formed): the largest ``|S_A - S_B|`` over every bin and entry, in
+        units of ``|S|`` (an S-parameter of a passive port is at most 1, so
+        this is an absolute difference).
     freq_max : float or None
         Decimation reference in Hz; ``None`` uses the run's ``freq_max``.
     split : float
@@ -186,7 +192,11 @@ class RingdownPole(NamedTuple):
 
 
 class RingdownWitness(NamedTuple):
-    """One check of a completed number: the measured value, its bar, pass/fail, the rule."""
+    """One check of a completed number: the measured value, its bar, pass/fail, the rule.
+
+    ``judged`` is False for a witness reported as information: its ``ok``
+    is its own reading against its bar and does not enter ``report.ok``.
+    """
 
     name: str
     value: float
@@ -194,6 +204,7 @@ class RingdownWitness(NamedTuple):
     ok: bool
     rule: str
     note: str = ""
+    judged: bool = True
 
 
 @dataclass(frozen=True)
@@ -288,6 +299,9 @@ class RingdownReport:
     n_guard_dropped: int | None = None
     short_rank: int | None = None
     short_n_kept: int | None = None
+    long_window_steps: tuple | None = None
+    long_rank: int | None = None
+    long_n_kept: int | None = None
     poles: tuple = ()
     growing_pole_rule: str = ""
     w0_ulps: dict | None = None
@@ -304,8 +318,8 @@ class RingdownReport:
 
     @property
     def ok(self) -> bool:
-        """True when the completion was produced and every witness reads ok."""
-        return self.completed and all(w.ok for w in self.witnesses)
+        """True when the completion was produced and every judged witness reads ok."""
+        return self.completed and all(w.ok for w in self.witnesses if w.judged)
 
     def witness(self, name: str) -> RingdownWitness:
         for w in self.witnesses:
@@ -333,8 +347,8 @@ class RingdownReport:
                      f"{self.s_accumulator_roundoff:.2e} (information)")
         lines = [head]
         for w in self.witnesses:
-            lines.append(f"  {w.name}: {w.value:.3e} (bar {w.bar:.3e}) "
-                         f"{'ok' if w.ok else 'FAILED'}"
+            status = ("ok" if w.ok else "FAILED") if w.judged else "not judged"
+            lines.append(f"  {w.name}: {w.value:.3e} (bar {w.bar:.3e}) {status}"
                          + (f" -- {w.note}" if w.note else ""))
         return "\n".join(lines)
 
@@ -364,6 +378,17 @@ def _as_2d(series) -> tuple[np.ndarray, bool]:
     if y.ndim != 2:
         raise ValueError(f"series must be (n,) or (n, C), got shape {y.shape}")
     return y, False
+
+
+def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
+    """A caller-supplied ``(nf,)`` or ``(nf, C)`` spectrum as ``(nf, C)``, or raise."""
+    a = np.asarray(arr)
+    if a.ndim == 1:
+        a = a[:, None]
+    if a.shape != (nf, n_ch):
+        raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
+                         f"or ({nf},) for a single channel")
+    return a
 
 
 def plain_dft(series, dt, freqs, *, chunk: int = 4096) -> np.ndarray:
@@ -589,12 +614,69 @@ def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
     model_short = identify(Y, dt, n_start, n_split, **kw)
     if plain is None:
         plain = plain_dft(Y, dt, freqs)
+    else:
+        plain = _given_spectra(plain, np.size(freqs), Y.shape[1], "plain")
     spectra = plain + tail_dft(model, n_record - 1, freqs)
     spectra_short = plain + tail_dft(model_short, n_record - 1, freqs)
     obs = (lambda a: a) if observable is None else observable
     value = float(np.max(np.abs(np.asarray(obs(spectra), dtype=np.complex128)
                                 - np.asarray(obs(spectra_short), dtype=np.complex128))))
     return TwoWindowWitness(value, spectra, spectra_short, model, model_short)
+
+
+def _long_window_start(n_record, window_start) -> int:
+    """First sample of ``WE``'s window ``[window_start / 2 * T, T]``."""
+    return int(round(0.5 * float(window_start) * int(n_record)))
+
+
+class EarlyStartWitness(NamedTuple):
+    """``WE`` and the completion it compares with the main one."""
+
+    value: float
+    spectra_long: np.ndarray
+    model_long: RingdownModel
+    n_start_long: int
+
+
+def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
+                        guard=0.9, sv_rel=1.0e-6, unit_tol=1.0e-6,
+                        observable=None, plain=None, spectra=None) -> EarlyStartWitness:
+    """Complete ``series[:n_record]`` from ``[window_start T, T]`` and from ``[window_start/2 T, T]``.
+
+    The second window starts twice as early (at half the first one's start) and
+    contains it: with the default ``window_start`` 0.5 it spans 0.75 T against
+    0.5 T. Both
+    completions add their tail after the SAME last sample (``n_record - 1``);
+    ``value`` is the largest absolute difference of the two observables
+    (``observable`` as in :func:`two_window_witness`). ``spectra`` may carry
+    the completion from ``[window_start T, T]`` and ``plain`` the plain DFT of
+    ``series[:n_record]`` when the caller already has them.
+    """
+    n_record = int(n_record)
+    n_start = int(round(float(window_start) * n_record))
+    n_long = _long_window_start(n_record, window_start)
+    if not (0 <= n_long < n_start < n_record):
+        raise ValueError(
+            f"a record of {n_record} samples is too short for the windows "
+            f"[{n_long}, {n_record}) and [{n_start}, {n_record})")
+    Y, _ = _as_2d(series)
+    Y = Y[:n_record]
+    kw = dict(freq_max=freq_max, guard=guard, sv_rel=sv_rel, unit_tol=unit_tol)
+    if plain is None:
+        plain = plain_dft(Y, dt, freqs)
+    else:
+        plain = _given_spectra(plain, np.size(freqs), Y.shape[1], "plain")
+    if spectra is not None:
+        spectra = _given_spectra(spectra, np.size(freqs), Y.shape[1], "spectra")
+    if spectra is None:
+        spectra = plain + tail_dft(identify(Y, dt, n_start, n_record, **kw),
+                                   n_record - 1, freqs)
+    model_long = identify(Y, dt, n_long, n_record, **kw)
+    spectra_long = plain + tail_dft(model_long, n_record - 1, freqs)
+    obs = (lambda a: a) if observable is None else observable
+    value = float(np.max(np.abs(np.asarray(obs(spectra), dtype=np.complex128)
+                                - np.asarray(obs(spectra_long), dtype=np.complex128))))
+    return EarlyStartWitness(value, spectra_long, model_long, n_long)
 
 
 def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
@@ -978,6 +1060,7 @@ class RingdownRun:
         self.dt = grid.dt
         self.n_start = int(round(float(spec.window_start) * self.n_steps))
         self.n_split = int(round(float(spec.split) * self.n_steps))
+        self.n_long = _long_window_start(self.n_steps, spec.window_start)
         if not (0 < self.n_start < self.n_split < self.n_steps):
             raise ValueError(
                 f"a record of {self.n_steps} steps is too short for the windows "
@@ -986,7 +1069,7 @@ class RingdownRun:
                               else sim._freq_max)
         self.wire_entries = [pe for pe in sim._ports
                              if float(pe.impedance) > 0.0 and pe.extent is not None]
-        self.source_off = self._check_sources_off()
+        self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes()
 
     # -- before the run ------------------------------------------------------
@@ -995,13 +1078,16 @@ class RingdownRun:
         """Every source's waveform over the window, as a fraction of its peak.
 
         The tables are evaluated the way the runners build them:
-        ``waveform(float32(n) * dt)`` for ``n = 0 .. n_steps - 1``.
+        ``waveform(float32(n) * dt)`` for ``n = 0 .. n_steps - 1``. Returns
+        ``(rows, largest ratio over WE's window [n_long, n_steps))``; only
+        the main window refuses.
         """
         import jax
         import jax.numpy as jnp
 
         times = jnp.arange(self.n_steps, dtype=jnp.float32) * self.dt
         rows = []
+        ratio_long = 0.0
         for pe in self.sim._ports:
             driven = float(pe.impedance) == 0.0 or bool(pe.excite)
             if not driven or pe.waveform is None:
@@ -1020,7 +1106,9 @@ class RingdownRun:
                     f"{self.spec.source_off_tol:.1e}. The window must hold free "
                     "ringing only; use a longer record or a later window_start.")
             rows.append((label, ratio))
-        return tuple(rows)
+            if peak != 0.0:
+                ratio_long = max(ratio_long, float(np.max(w[self.n_long:]) / peak))
+        return tuple(rows), ratio_long
 
     def _plan_probes(self) -> tuple:
         """(component, index) of every port-channel probe, deduplicated, in order.
@@ -1117,6 +1205,7 @@ class RingdownRun:
                     window_steps=(self.n_start, self.n_steps),
                     window_s=(self.n_start * dt, self.n_steps * dt),
                     short_window_steps=(self.n_start, self.n_split),
+                    long_window_steps=(self.n_long, self.n_steps),
                     freq_max_hz=ref_hz)
         witnesses, state = [], {}
         try:
@@ -1143,7 +1232,7 @@ class RingdownRun:
         if not report.ok:
             failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
                                + (f" -- {w.note}" if w.note else "")
-                               for w in witnesses if not w.ok)
+                               for w in witnesses if w.judged and not w.ok)
             warnings.warn(
                 f"ring-down completion: witness failed -- {failed}; "
                 "Result.ringdown.s_params is not supported by its own check "
@@ -1196,6 +1285,53 @@ class RingdownRun:
             e_cols.append(e)
             h_cols.append(h)
         return pms, e_cols, h_cols
+
+    def _error_witnesses(self, Y, dt, f_bins, ref_hz, to_s, plain, w2, state) -> list:
+        """``WE`` judged and ``W2`` reported, or ``W2`` judged when ``WE`` cannot be formed.
+
+        ``WE`` compares the completion from ``[ws T, T]`` with the one from
+        ``[ws/2 T, T]``; it is formed when every source is at or below
+        ``source_off_tol`` of its peak over ``[ws/2 T, T]``. A failed
+        identification on that window is a failed ``WE``.
+        """
+        spec = self.spec
+        tol = float(spec.witness_tol)
+        ws = float(spec.window_start)
+        we_rule = (f"max |S| difference between the completions from [{ws:g} T, T] "
+                   f"and [{0.5 * ws:g} T, T]")
+        w2_rule = (f"max |S| difference between the completions from [{ws:g} T, T] "
+                   f"and [{ws:g} T, {spec.split:g} T]")
+        r_long = float(self.source_ratio_long)
+        if not r_long <= float(spec.source_off_tol):
+            why = (f"a source reaches {r_long:.3e} of its peak in [{0.5 * ws:g} T, T], "
+                   f"above source_off_tol = {spec.source_off_tol:.1e}")
+            return [
+                RingdownWitness("WE", math.nan, tol, False, we_rule,
+                                f"not formed: {why}", judged=False),
+                RingdownWitness("W2", w2.value, tol, w2.value <= tol, w2_rule,
+                                f"judged in place of WE, which could not be formed "
+                                f"({why}); on the research boards W2 read the "
+                                "actual error low by up to several times (rfx "
+                                "#1254, R-i)"),
+            ]
+        try:
+            we = early_start_witness(
+                Y, dt, f_bins, self.n_steps, ws, freq_max=ref_hz, guard=spec.guard,
+                sv_rel=spec.sv_rel, unit_tol=spec.unit_tol, observable=to_s,
+                plain=plain, spectra=w2.spectra)
+            we_value, we_note = we.value, ""
+            state["long_rank"] = we.model_long.rank
+            state["long_n_kept"] = int(we.model_long.s.size)
+        except Exception as exc:  # the completed S already exists: never lose it here
+            we_value = math.nan
+            we_note = (f"the identification on [{0.5 * ws:g} T, T] failed: {exc}; "
+                       "a WE that cannot be read fails")
+        return [
+            RingdownWitness("WE", we_value, tol, we_value <= tol, we_rule, we_note),
+            RingdownWitness("W2", w2.value, tol, w2.value <= tol, w2_rule,
+                            "information (WE is the judged error witness)",
+                            judged=False),
+        ]
 
     def _complete(self, result, ts_all, n_user, dt, ref_hz, witnesses, state):
         pms, e_cols, h_cols = self._rebuild_inputs(result, ts_all, n_user)
@@ -1309,12 +1445,8 @@ class RingdownRun:
                   + ("; the plain record reads non-passive without the completion (the board or port itself, or a record cut while it still rings)"
                      if s_plain > p_bar else ""))
         src_ratio = max((r for _l, r in self.source_off), default=0.0)
+        witnesses += self._error_witnesses(Y, dt, f_bins, ref_hz, to_s, plain, w2, state)
         witnesses += [
-            RingdownWitness("W2", w2.value, float(spec.witness_tol),
-                            w2.value <= float(spec.witness_tol),
-                            f"max |S| difference between the completions from "
-                            f"[{spec.window_start:g} T, T] and "
-                            f"[{spec.window_start:g} T, {spec.split:g} T]"),
             RingdownWitness("growing_poles", float(len(grow)), 0.0, len(grow) == 0,
                             GROWING_POLE_RULE + ". Poles the pencil discarded as "
                             "growing are sized and reported (the largest, with its "
@@ -1352,6 +1484,7 @@ class RingdownRun:
             n_growing_discarded=model.n_growing_discarded,
             n_invalid=model.n_invalid, n_guard_dropped=model.n_guard_dropped,
             short_rank=w2.model_short.rank, short_n_kept=int(w2.model_short.s.size),
+            long_rank=state.get("long_rank"), long_n_kept=state.get("long_n_kept"),
             poles=model.poles(), growing_pole_rule=GROWING_POLE_RULE,
             tail_share=tail_share, slowest_decay_over_window=slowest,
             discarded_growth_max=g_max, discarded_growth_f_hz=g_f)

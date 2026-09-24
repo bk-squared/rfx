@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -329,27 +330,808 @@ def test_the_check_itself_can_fail():
     assert "SELF-CHECK FAILED" in result.stdout
 
 
-def test_the_sheen_script_is_not_edited_by_this_case():
-    """The builder is copied from ``07_sheen_lpf.py``; that file is not ours.
+def test_the_frozen_slice_of_the_retired_script_is_what_the_proof_compares():
+    """The builder is copied from ``07_sheen_lpf.py``, which no longer exists.
 
-    The copy proof reads it at run time, so a session that "fixed" the script to
-    make the proof pass would be editing another case's file.  This test states
-    the direction of the dependency; git states whether the file moved.
+    That script left with its case on 2026-09-23, so the two slices the copy
+    proof has ever read from it are frozen in the maker with the commit and the
+    line ranges they came from.  This test states that the frozen text is still
+    the SCRIPT's text -- the script's own names, not this maker's -- and that it
+    still excludes the stop-criteria call delta 9 declines.  Whether the
+    comparison itself holds is ``--self-check``'s job, pinned above.
     """
-    assert SHEEN_SCRIPT.is_file()
     m = _load_maker()
+    assert not SHEEN_SCRIPT.exists(), (
+        "validation/crossval/07_sheen_lpf.py is back. The maker now compares "
+        "against a frozen copy of it; if the script returns, decide which of "
+        "the two is the source before touching either."
+    )
     assert m.SCRIPT_REL_PATH == "validation/crossval/07_sheen_lpf.py"
     assert m.SCRIPT_FUNCTION == "run_openems"
-    # The proof runs against the file on disk, not a pasted copy: the slice it
-    # compares against is a substring of that file, with the script's own names.
+    assert len(m.SCRIPT_FROZEN_AT_COMMIT) == 40
+    assert set(m.SCRIPT_FROZEN_LINE_RANGES) == {
+        "run_openems build block", "_openems_common_setup"}
+    # The frozen text is the SCRIPT's, in the script's own local names -- not a
+    # copy of this maker's builder, which would make the proof tautological.
     slice_ = m._script_builder_slice()
-    assert slice_ in SHEEN_SCRIPT.read_text()
+    assert slice_ == m._FROZEN_BUILDER_SLICE
     assert "FDTD.AddMSLPort" in slice_ and "fdtd." not in slice_
+    assert "f_max" in slice_ and "F_MAX" not in slice_
     # Delta 9 declines the script's stop criteria, so the call that sets them is
     # outside the compared block -- otherwise the proof would be asserting that
     # this maker adopts the cap.
     assert m.SCRIPT_SETUP_FUNCTION not in slice_
     setup = m._script_function_source(m.SCRIPT_SETUP_FUNCTION)
     assert "NrTS=30000" in setup and "EndCriteria=1e-4" in setup, (
-        "the cap delta 9 declines is no longer where the maker reads it"
+        "the cap delta 9 declines is no longer in the frozen setup slice"
     )
+    with pytest.raises(RuntimeError, match="no frozen copy"):
+        m._script_function_source("run_rfx")
+
+
+# ---------------------------------------------------------------------------
+# One rung per cluster job, and putting the parts back together
+# ---------------------------------------------------------------------------
+def test_rung_selector_parses_and_refuses():
+    m = _load_maker()
+    assert m.parse_rungs(m.DEFAULT_RUNGS) == list(m.RUNG_ORDER_STAGES)
+    assert m.parse_rungs("fine,coarse") == ["stage_b_coarse", "stage_b_fine"], (
+        "a subset must come back in rung order, not in the order it was typed"
+    )
+    for spec in ("", "   ", "middle", "coarse,middle", ",,"):
+        with pytest.raises(ValueError):
+            m.parse_rungs(spec)
+
+
+def test_stage_a_runs_in_every_rung_job():
+    """Splitting the rungs across jobs does not make the gate optional."""
+    m = _load_maker()
+    for spec in ("coarse", "mid", "fine", "coarse,fine"):
+        stages = m._stages_for("both", m.parse_rungs(spec))
+        assert stages[0] == "stage_a", f"--rungs {spec} dropped the reproduce gate"
+    # --stage B still skips it, deliberately, and warns at run time.
+    assert m._stages_for("B", m.parse_rungs("mid")) == ["stage_b_mid"]
+
+
+def test_dry_run_honours_the_rung_selection():
+    result = _run("--dry-run", "--stage", "both", "--rungs", "mid")
+    assert result.returncode == 0, result.stderr
+    assert "rungs requested mid" in result.stdout
+    # The delta list names all three rungs wherever it is printed, so scope the
+    # check to the stage plan -- which is the part that says what gets solved.
+    plan = result.stdout.split("STAGE PLAN", 1)[1]
+    assert "stage_a" in plan, "the gate is still planned"
+    assert "stage_b_mid" in plan
+    assert "stage_b_coarse" not in plan and "stage_b_fine" not in plan, (
+        "the stage plan planned rungs this job will not solve"
+    )
+
+
+def test_the_stop_criteria_note_says_what_ran_and_why():
+    m = _load_maker()
+    default = m.stop_criteria_note(None, None)
+    assert "No override was given" in default
+    assert "library defaults" in default
+
+    over = m.stop_criteria_note(1e-4, None)
+    assert over.startswith("made with --real-end-criteria ")
+    # The measurement that motivated the override travels with the record, so a
+    # reader of a looser run does not have to go and find it.
+    assert "107 minutes on the coarsest rung on 8 threads" in over
+    assert "369367263243" in over and "369367263269" in over
+    assert "-40 dB of the post-source peak" in over
+
+    both = m.stop_criteria_note(1e-4, 60000)
+    assert "--real-end-criteria" in both and "--real-nrts 60000" in both
+
+
+def test_the_declared_design_is_still_the_library_defaults():
+    """An override is a CLI choice; it does not move what the script declares."""
+    m = _load_maker()
+    assert m.B_REAL_NRTS is None and m.B_REAL_END_CRITERIA is None
+    assert "library defaults" in m.DELTA_LIST[8]
+    assert "--real-end-criteria" in m.DELTA_LIST[8], (
+        "delta 9 does not mention that the override exists"
+    )
+
+
+def _part(tmp_path, name, rung, *, run_id, s21_bin17=0.5, build="bld-1",
+          commit="cafe1234", note="made with --real-end-criteria 0.0001: ...",
+          record_length_s=7.4e-8, witness=None, s11_delta=0.0,
+          notch_ghz=3.672242, stage_a_steps=14586):
+    """A minimal record shaped like one rung job's output."""
+    # Four bins, two of them inside Stage A's own 2-7 GHz band. ``s21_bin17``
+    # perturbs an IN-BAND bin, which is what the tolerance is read over.
+    stage_a = {
+        "freqs_ghz": [1.0, 3.0, 5.0, 8.0],
+        "s11_mag": [0.1, 0.2, 0.3 + s11_delta, 0.4],
+        "s11_deg": [0.0, 1.0, 2.0, 3.0],
+        "s21_mag": [0.9, s21_bin17, 0.8, 0.7],
+        "s21_deg": [0.0, 1.0, 2.0, 3.0],
+        "energy_sum": [0.82, 0.29, 0.73, 0.65],
+        "notch": {"refined_f_ghz": notch_ghz, "depth_db": -53.16},
+    }
+    rec = {
+        "meta": {
+            "tutorial_source": "thliebig/openEMS python/Tutorials/MSL_NotchFilter.py",
+            "rfx_openems_image": "ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8",
+            "rfx_openems_commit": build,
+            "rfx_commit": commit,
+            "stop_criteria_note": note,
+            "rungs_in_this_record": [rung],
+            "stages": {"stage_a": {"stage": "stage_a",
+                                   "timesteps_executed": stage_a_steps},
+                       m_rung(rung): {"stage": m_rung(rung),
+                                      "record_length_s": record_length_s}},
+        },
+        "stage_a": stage_a,
+        m_rung(rung): dict({"null": {"refined_f_ghz": 7.9}, "rung": rung},
+                           **({"witness_2n": witness} if witness else {})),
+        "run_id": run_id,
+        "run_id_note": "filled by the submitter",
+    }
+    p = tmp_path / name
+    p.write_text(json.dumps(rec, indent=1))
+    return p
+
+
+def m_rung(short):
+    return {"coarse": "stage_b_coarse", "mid": "stage_b_mid",
+            "fine": "stage_b_fine"}[short]
+
+
+def test_merge_combines_three_rung_parts(tmp_path):
+    parts = [_part(tmp_path, f"{r}.json", r, run_id=f"3693672633{i:02d}")
+             for i, r in enumerate(("coarse", "mid", "fine"))]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    merged = json.loads(out.read_text())
+    for stage in ("stage_a", "stage_b_coarse", "stage_b_mid", "stage_b_fine"):
+        assert isinstance(merged[stage], dict), f"{stage} did not survive the merge"
+    assert merged["meta"]["rungs_in_this_record"] == ["coarse", "mid", "fine"]
+    assert merged["run_id"] is None
+    assert "merged_from" in merged["run_id_note"]
+    entries = merged["meta"]["merged_from"]
+    assert len(entries) == 3
+    assert [e["rungs"] for e in entries] == [["coarse"], ["mid"], ["fine"]]
+    assert [e["run_id"] for e in entries] == ["369367263300", "369367263301",
+                                              "369367263302"]
+    for e in entries:
+        assert e["maker_commit"] == "cafe1234"
+        assert e["stop_criteria_note"].startswith("made with --real-end-criteria")
+        assert Path(e["path"]).name in {"coarse.json", "mid.json", "fine.json"}
+    assert merged["meta"]["maker_commits_agree"] is True
+    # Each rung block came from its own part, not from the first one.
+    assert [merged[m_rung(r)]["rung"] for r in ("coarse", "mid", "fine")] == \
+        ["coarse", "mid", "fine"]
+
+
+@pytest.mark.parametrize("what,build,bin17,drop,dup", [
+    ("a rung missing", "bld-1", 0.5, True, False),
+    ("a rung twice", "bld-1", 0.5, False, True),
+    ("stage_a differs far beyond the run-to-run spread", "bld-1", 0.4242, False, False),
+    ("a different openEMS build", "bld-2", 0.5, False, False),
+])
+def test_merge_refuses_what_it_cannot_reconcile(tmp_path, what, build, bin17,
+                                                drop, dup):
+    """A merge does not average, choose or reconcile; it refuses and says why.
+
+    Stage A is the check that costs nothing: every rung job runs the same
+    tutorial on the same mesh and grid, so two parts that disagree on it bin for
+    bin did not come from the same solver.
+    """
+    parts = [_part(tmp_path, "coarse.json", "coarse", run_id="a"),
+             _part(tmp_path, "mid.json", "mid", run_id="b", s21_bin17=bin17,
+                   build=build)]
+    if not drop:
+        parts.append(_part(tmp_path, "fine.json", "fine", run_id="c"))
+    if dup:
+        parts.append(_part(tmp_path, "coarse2.json", "coarse", run_id="d"))
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3, (
+        f"{what}: expected a refusal, got rc={result.returncode}\n{result.stdout}"
+    )
+    assert "MERGE REFUSED" in result.stderr
+    assert not out.exists(), f"{what}: a refused merge still wrote a record"
+
+
+# ---------------------------------------------------------------------------
+# A run that is stopped by its step cap
+# ---------------------------------------------------------------------------
+def test_accept_truncation_is_off_by_default():
+    """A truncated spectrum is not a reference unless someone asks for one."""
+    m = _load_maker()
+    import inspect
+
+    assert m.ACCEPT_TRUNCATION_DEFAULT is False
+    assert inspect.signature(m._run_stage_b).parameters["accept_truncation"].default \
+        is False
+    # And the flag cannot reach Stage A even by mistake: its runner has no such
+    # parameter, so the reproduce gate's end-criteria check is not overridable.
+    assert "accept_truncation" not in inspect.signature(
+        m._gate.run_stage_a).parameters
+    # And a run that was not given the flag does not mention it.
+    result = _run("--dry-run", "--stage", "both")
+    assert result.returncode == 0
+    assert "--accept-truncation was given" not in result.stdout
+
+
+def test_the_stop_criteria_note_names_the_flag_when_it_is_used():
+    m = _load_maker()
+    off = m.stop_criteria_note(1e-4, 60000)
+    on = m.stop_criteria_note(1e-4, 60000, True)
+    assert "--accept-truncation" not in off
+    assert "--accept-truncation was given" in on
+    assert "truncated: true" in on
+    assert "not decided here" in on, (
+        "the note draws a conclusion about what a truncated record is worth"
+    )
+
+
+def test_openems_progress_lines_are_parsed(tmp_path):
+    """openEMS's own progress print is where the ring-down depth comes from.
+
+    The pattern is written against openEMS's print statement, not against a
+    capture -- no real log was available -- so the shapes it must tolerate are
+    pinned here: the space ``setw`` can leave after the minus sign, a space
+    before ``dB``, and ``inf`` while the peak is still zero.
+    """
+    gate = _load_maker()._gate
+    log = "\n".join([
+        "openEMS v0.0.36",
+        "[@   0s] Timestep:        0 || Speed: 0.0 MC/s || Energy: ~0.0e+00 (-infdB)",
+        "[@   4s] Timestep:     4000 || Speed: 25.5 MC/s (1e-4 s/TS) || Energy: ~1.1e-12 (-12.40dB)",
+        "[@1m40s] Timestep:    50000 || Speed: 25.1 MC/s (1e-4 s/TS) || Energy: ~9.9e-16 (-36.80 dB)",
+        "[@2m00s] Timestep:    60000 || Speed: 25.0 MC/s (1e-4 s/TS) || Energy: ~6.1e-16 (- 8.92dB)",
+        "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of 0.0001 was reached",
+        "Timestep: 200",
+    ])
+    p = gate._energy_progress(log)
+    assert p["final_timestep"] == 60000
+    assert p["final_energy_db"] == pytest.approx(-8.92)
+    assert p["energy_db_trace"] == [[4000, -12.40], [50000, -36.80], [60000, -8.92]]
+    assert p["energy_db_trace_points"] == 3
+    assert "Timestep" in p["energy_db_source"]
+    # A log with no progress lines yields None, not a crash and not a number.
+    empty = gate._energy_progress("openEMS v0.0.36\nnothing to see here")
+    assert empty["final_timestep"] is None and empty["final_energy_db"] is None
+    assert empty["energy_db_trace"] == []
+
+
+def test_a_truncated_pass_still_leaves_its_arrays(tmp_path):
+    """The evidence file from a capped run carries what the solver produced.
+
+    Measured 2026-09-22 (VESSL 369367263382): the gate fired as designed but the
+    stage block in the evidence file was null, because the raise came before the
+    arrays were computed. It now comes after. The gate itself is unchanged --
+    it still raises and the record is still refused.
+    """
+    import numpy as np
+
+    m = _load_maker()
+    gate = m._gate
+    capped = "\n".join([
+        "openEMS v0.0.36",
+        "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+        "Max. number of timesteps: 60000 ( --> 35.1 * Excitation signal length)",
+        "[@4s] Timestep: 4000 || Energy: ~1.1e-12 (-12.40dB)",
+        # The last progress line is NOT the cap: openEMS prints every few seconds.
+        "[@2m] Timestep: 58120 || Energy: ~6.1e-16 (-38.92dB)",
+        "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of 0.0001 was reached",
+    ])
+    dt = 1.0 / (2.0 * 20006339607.0 * 149)
+
+    class _Port:
+        def __init__(s, n, nf):
+            s.n, s.nf = n, nf
+            s.U_filenames = []
+            s.feed_shift = 0.0025
+            s.measplane_shift = 0.0056
+            s.Z_ref = np.full(nf, 50.5 + 0.1j)
+
+        def CalcPort(s, path, f, ref_impedance=None):
+            s.uf_inc = np.ones(s.nf, dtype=complex)
+            g = f / 1e9
+            mag = (np.where(g <= 5, 0.95, 0.95 / (1 + ((g - 5) / 0.8) ** 2))
+                   * (1 - 0.999 * np.exp(-((g - 7.9) / 0.06) ** 2))) \
+                if s.n == 1 else np.full(s.nf, 0.2)
+            s.uf_ref = mag * np.exp(-1j * np.linspace(0, 40, s.nf))
+
+    nf = m.B_N_FREQS
+    lines = {"x": np.linspace(0.0, m.LX, 140), "y": np.linspace(0.0, m.LY, 140),
+             "z": np.concatenate([np.linspace(0.0, m.H_SUB, 5),
+                                  np.linspace(m.H_SUB, m.LZ, 17)[1:]])}
+    ports = [_Port(0, nf), _Port(1, nf)]
+
+    class _Grid:
+        def __init__(s, l): s.l = l
+        def GetLines(s, a): return s.l[a]
+
+    class _CSX:
+        def __init__(s, l): s._g = _Grid(l)
+        def GetGrid(s): return s._g
+
+    class _FDTD:
+        def __init__(s, l): s._c = _CSX(l)
+        def GetCSX(s): return s._c
+
+    gate._import_openems = lambda: (object, object, object)
+    gate._run_openems_capturing_stdout = lambda fd, p, threads=0: capped
+    gate._openems_version = lambda log: {"version": "0.0.36", "source": "banner"}
+    gate._check_excitation_and_trace = lambda *a, **k: (1.2e-13, 4096)
+    m._build_sheen_board_at_rung = lambda *a, **k: (_FDTD(lines), ports[0], ports[1])
+
+    def solve(accept):
+        return m._run_stage_b(
+            label="stage_b_coarse", sim_root=str(tmp_path), threads=1,
+            resolution_factor=1.0, sf=gate.load_spectral_features(),
+            real_nrts=60000, real_end_criteria=1e-4, accept_truncation=accept)
+
+    # Gate ON (the default): it still raises, and the partial record is no
+    # longer empty.
+    with pytest.raises(gate.StageFailure) as excinfo:
+        solve(False)
+    partial = excinfo.value.partial
+    for key in ("freqs_ghz", "s11_mag", "s11_deg", "s21_mag", "s21_deg",
+                "energy_sum"):
+        assert key in partial, f"the evidence file still lost {key}"
+        assert len(partial[key]) == nf
+    assert partial["truncated"] is True
+    assert partial["final_energy_db"] == pytest.approx(-38.92)
+    assert partial["final_timestep"] == 58120
+    assert "null" in partial and "passband" in partial and "cutoff_3db" in partial
+    assert "max_energy_sum_band" in partial
+    assert "end-criteria" in str(excinfo.value)
+
+    # Gate ACCEPTED: no raise, and the record says what it is.
+    rec, meta = solve(True)
+    assert rec["truncated"] is True
+    assert rec["final_energy_db"] == pytest.approx(-38.92)
+    assert rec["truncation_note"] == (
+        "record length declared by --real-nrts 60000; the box energy had decayed "
+        "to -38.92 dB at the cap; see stop_criteria_note")
+    assert meta["end_criteria_reached"] is False
+    assert meta["truncation_accepted"] is True
+    assert meta["final_timestep"] == 58120
+    assert meta["energy_db_trace"] == [[4000, -12.40], [58120, -38.92]]
+    assert "--accept-truncation was given" in meta["stop_criteria_note"]
+    # The record is as long as the CAP, not as long as the last progress line.
+    assert meta["timesteps_executed"] == 58120
+    assert meta["max_timesteps_declared"] == 60000
+    assert meta["record_length_steps"] == 60000, (
+        "a truncated run's record length came from the last progress line"
+    )
+    assert meta["record_length_s"] == pytest.approx(60000 * dt)
+    assert "the CAP" in meta["record_length_steps_basis"]
+    assert "58120" in meta["record_length_steps_basis"], (
+        "the basis does not say what the last progress line read"
+    )
+    assert meta["dt_s"] == pytest.approx(dt)
+    assert meta["dt_s_uncertainty_rel"] == pytest.approx(1.0 / 149)
+
+
+def test_a_clean_run_is_untouched_by_all_of_this(tmp_path):
+    """No truncation warning: no truncated key, and end_criteria_reached True."""
+    import numpy as np
+
+    m = _load_maker()
+    gate = m._gate
+    clean = "\n".join([
+        "openEMS v0.0.36",
+        "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+        "Max. number of timesteps: 60000 ( --> 35.1 * Excitation signal length)",
+        "[@4s] Timestep: 4000 || Energy: ~1.1e-12 (-12.40dB)",
+        "[@1m28s] Timestep: 44120 || Energy: ~1.0e-16 (-50.02dB)",
+    ])
+
+    class _Port:
+        def __init__(s, n, nf):
+            s.n, s.nf = n, nf
+            s.U_filenames = []
+            s.feed_shift = 0.0025
+            s.measplane_shift = 0.0056
+            s.Z_ref = np.full(nf, 50.5 + 0.1j)
+
+        def CalcPort(s, path, f, ref_impedance=None):
+            s.uf_inc = np.ones(s.nf, dtype=complex)
+            s.uf_ref = np.full(s.nf, 0.9 if s.n == 1 else 0.2, dtype=complex)
+
+    class _Grid:
+        def __init__(s, l): s.l = l
+        def GetLines(s, a): return s.l[a]
+
+    class _CSX:
+        def __init__(s, l): s._g = _Grid(l)
+        def GetGrid(s): return s._g
+
+    class _FDTD:
+        def __init__(s, l): s._c = _CSX(l)
+        def GetCSX(s): return s._c
+
+    nf = m.B_N_FREQS
+    lines = {"x": np.linspace(0.0, m.LX, 140), "y": np.linspace(0.0, m.LY, 140),
+             "z": np.concatenate([np.linspace(0.0, m.H_SUB, 5),
+                                  np.linspace(m.H_SUB, m.LZ, 17)[1:]])}
+    ports = [_Port(0, nf), _Port(1, nf)]
+    gate._import_openems = lambda: (object, object, object)
+    gate._run_openems_capturing_stdout = lambda fd, p, threads=0: clean
+    gate._openems_version = lambda log: {"version": "0.0.36", "source": "banner"}
+    gate._check_excitation_and_trace = lambda *a, **k: (1.2e-13, 4096)
+    m._build_sheen_board_at_rung = lambda *a, **k: (_FDTD(lines), ports[0], ports[1])
+
+    rec, meta = m._run_stage_b(
+        label="stage_b_coarse", sim_root=str(tmp_path), threads=1,
+        resolution_factor=1.0, sf=gate.load_spectral_features())
+    assert "truncated" not in rec
+    assert "truncation_note" not in rec
+    assert meta["end_criteria_reached"] is True
+    assert "truncation_accepted" not in meta
+    assert meta["final_energy_db"] == pytest.approx(-50.02)
+    # A run that reached its own end criterion stopped where the last progress
+    # line is, so THAT is the record length -- not the cap it never reached.
+    assert meta["record_length_steps"] == 44120
+    assert meta["max_timesteps_declared"] == 60000
+    assert "reached its end criterion" in meta["record_length_steps_basis"]
+    assert meta["record_length_s"] == pytest.approx(
+        44120 / (2.0 * 20006339607.0 * 149))
+
+
+# ---------------------------------------------------------------------------
+# A declared record length, and the witness that measures what it costs
+# ---------------------------------------------------------------------------
+def test_record_length_witness_needs_a_declared_length():
+    """Two lengths to compare, and a run at the shorter one that is recordable."""
+    m = _load_maker()
+    assert m.RECORD_LENGTH_WITNESS_DEFAULT is False
+    for args in (("--record-length-witness",),
+                 ("--record-length-witness", "--real-nrts", "60000"),
+                 ("--record-length-witness", "--accept-truncation")):
+        result = _run("--dry-run", *args)
+        assert result.returncode == 3, f"{args} was accepted"
+        assert "--record-length-witness needs" in result.stderr
+    ok = _run("--dry-run", "--stage", "both", "--rungs", "coarse",
+              "--real-nrts", "60000", "--accept-truncation",
+              "--record-length-witness")
+    assert ok.returncode == 0, ok.stderr
+
+
+def test_dry_run_says_a_witnessed_rung_costs_two_solves():
+    result = _run("--dry-run", "--stage", "both", "--rungs", "coarse,mid",
+                  "--real-nrts", "60000", "--accept-truncation",
+                  "--record-length-witness")
+    assert result.returncode == 0, result.stderr
+    assert "solved TWICE, at 60000 and 120000 timesteps" in result.stdout
+    assert "costs 4 Stage B solves for 2 rung(s)" in result.stdout
+    off = _run("--dry-run", "--stage", "both", "--rungs", "coarse,mid")
+    assert "record-length witness   off: 2 Stage B solve(s)" in off.stdout
+
+
+def test_the_witness_measures_only_where_both_curves_are_above_the_floor():
+    """A deep null moves for reasons that are not record length.
+
+    The floor is what keeps the witness a measure of truncation rather than of
+    the null, so the arithmetic is planted here rather than assumed.
+    """
+    import numpy as np
+
+    m = _load_maker()
+    f = np.linspace(0.5, 20.0, m.B_N_FREQS)
+    base = np.full_like(f, 0.5)                       # -6.02 dB, well above the floor
+    other = base.copy()
+    # One in-band bin moved by a known amount, above the floor.
+    i_in = int(np.argmin(np.abs(f - 6.0)))
+    other[i_in] = base[i_in] * 10 ** (0.25 / 20.0)    # +0.25 dB
+    # One in-band bin far below the floor, moved by a lot. It must be ignored.
+    i_null = int(np.argmin(np.abs(f - 8.0)))
+    base[i_null] = 10 ** (-60.0 / 20.0)
+    other[i_null] = 10 ** (-30.0 / 20.0)              # 30 dB apart, below the floor
+    # One bin outside the witness band, moved by a lot. Also ignored.
+    i_out = int(np.argmin(np.abs(f - 18.0)))
+    other[i_out] = base[i_out] * 10 ** (9.0 / 20.0)
+
+    rec_n = {"freqs_ghz": f.tolist(), "s21_mag": base.tolist(),
+             "s11_mag": np.full_like(f, 0.3).tolist()}
+    rec_2n = {"freqs_ghz": f.tolist(), "s21_mag": other.tolist(),
+              "s11_mag": np.full_like(f, 0.3).tolist()}
+    w = m.record_length_witness(rec_n, rec_2n, n_steps=60000, n2_steps=120000)
+
+    assert w["n_steps"] == 60000 and w["n2_steps"] == 120000
+    assert w["floor_db"] == -20.0
+    assert w["band_ghz"] == [2.0, 12.0]
+    assert w["max_abs_delta_s21_db"] == pytest.approx(0.25, abs=1e-6), (
+        "the witness picked up the null or the out-of-band bin"
+    )
+    assert w["f_ghz_at_max_abs_delta_s21"] == pytest.approx(6.0, abs=0.05)
+    assert w["max_abs_delta_s11_db"] == pytest.approx(0.0, abs=1e-9)
+    assert w["s21_bins_compared"] < f.size, "the floor and the band excluded nothing"
+    # No verdict anywhere in what it returns.
+    assert not [k for k in w if k in ("passed", "ok", "gate", "verdict")]
+
+
+def test_the_witness_says_so_when_the_grids_do_not_match():
+    m = _load_maker()
+    w = m.record_length_witness({"freqs_ghz": [1.0, 2.0]},
+                                {"freqs_ghz": [1.0, 2.0, 3.0]},
+                                n_steps=1, n2_steps=2)
+    assert "error" in w and "frequency grid" in w["error"]
+    assert "max_abs_delta_s21_db" not in w
+
+
+# The lines the container actually prints, copied from the persisted log of run
+# 369367263401 (stage_b_coarse_real_openems_stdout.log, lines 32-33, 61-63,
+# 70-71) plus openEMS's own truncation warning. Every parser below is pinned
+# against THIS text, not against openEMS's source.
+REAL_LOG = "\n".join([
+    "Timestep (s)\t\t: 0.00",
+    "Timestep method name\t: Rennings_2",
+    "FDTD timestep is: 0.00 s; Nyquist rate: 149 timesteps @20006339607.00 Hz",
+    "Excitation signal length is: 1708 timesteps (0.00s)",
+    "Max. number of timesteps: 3000 ( --> 1.76 * Excitation signal length)",
+    "[@        4s] Timestep:         1110 || Speed:  122.2 MC/s "
+    "(3.632e-03 s/TS) || Energy: ~1.21e-14 (- 0.00dB)",
+    "[@        8s] Timestep:         2146 || Speed:  112.4 MC/s "
+    "(3.948e-03 s/TS) || Energy: ~3.11e-15 (- 5.91dB)",
+    "RunFDTD: Warning: Max. number of timesteps was reached before the "
+    "end-criteria of 0.0001 was reached",
+])
+
+
+def test_the_solver_timestep_is_read_from_its_own_banner():
+    gate = _load_maker()._gate
+    # A build that prints enough digits is used as printed.
+    assert gate._timestep_seconds("FDTD timestep is: 1.2345e-12 s; Nyquist rate: 3e-11 s") \
+        == pytest.approx(1.2345e-12)
+    assert gate._timestep_seconds("Used timestep: 4.567e-13 s") == pytest.approx(4.567e-13)
+    # A progress line is NOT a timestep declaration: no seconds after the count.
+    assert gate._timestep_seconds(
+        "[@ 4s] Timestep: 4000 || Energy: ~1e-12 (-12.4dB)") is None
+    assert gate._timestep_seconds("openEMS v0.0.36\nnothing here") is None
+    # And THIS container prints two decimals, so its own line is unusable.
+    assert gate._timestep_seconds(REAL_LOG) is None
+
+
+def test_dt_is_derived_from_the_nyquist_line_when_the_print_is_too_coarse():
+    """openEMS prints "0.00 s" for a 1.7e-13 s timestep.
+
+    It also prints the Nyquist rate as an integer count of timesteps per half
+    period at f_max, N = floor(1 / (2 f dt)), which inverts to dt = 1 / (2 f N)
+    and is good to one step in N.
+    """
+    gate = _load_maker()._gate
+    s = gate._solver_setup(REAL_LOG)
+    assert s["nyquist_steps"] == 149
+    assert s["nyquist_f_hz"] == pytest.approx(20006339607.0)
+    assert s["dt_s"] == pytest.approx(1.0 / (2.0 * 20006339607.0 * 149))
+    assert s["dt_s"] == pytest.approx(1.677e-13, rel=1e-3)
+    assert s["dt_s_uncertainty_rel"] == pytest.approx(1.0 / 149)
+    assert "DERIVED" in s["dt_s_source"] and "Nyquist" in s["dt_s_source"]
+    assert s["excitation_length_steps"] == 1708
+    assert s["max_timesteps_declared"] == 3000
+    # The floor's bound is well inside what a merge allows between rungs.
+    assert s["dt_s_uncertainty_rel"] < _load_maker().MERGE_RECORD_LENGTH_TOL
+
+    # An exact print wins over the derivation, and says so.
+    exact = gate._solver_setup(
+        "FDTD timestep is: 1.6773e-13 s; Nyquist rate: 149 timesteps @2.0e10 Hz")
+    assert exact["dt_s"] == pytest.approx(1.6773e-13)
+    assert exact["dt_s_uncertainty_rel"] == 0.0
+    assert "read directly" in exact["dt_s_source"]
+    assert exact["nyquist_steps"] == 149, "the Nyquist numbers are recorded either way"
+
+    # Neither line present: None, and the source says what was tried.
+    none = gate._solver_setup("openEMS v0.0.36\nnothing useful")
+    assert none["dt_s"] is None and "UNAVAILABLE" in none["dt_s_source"]
+
+
+def test_the_truncation_warning_is_not_read_as_a_cap_declaration():
+    """"Max. number of timesteps: 3000" declares; "... was reached" warns."""
+    gate = _load_maker()._gate
+    warn = ("RunFDTD: Warning: Max. number of timesteps was reached before the "
+            "end-criteria of 0.0001 was reached")
+    assert gate._first_int(gate._MAX_TIMESTEPS_RE, warn) is None
+    assert gate._first_int(gate._MAX_TIMESTEPS_RE,
+                           "Max. number of timesteps: 3000 ( --> 1.76 * ...)") == 3000
+
+
+def test_the_progress_lines_parse_in_the_containers_own_form():
+    """"(- 5.91dB)": a space after the minus, none before dB."""
+    gate = _load_maker()._gate
+    p = gate._energy_progress(REAL_LOG)
+    assert p["final_timestep"] == 2146
+    assert p["final_energy_db"] == pytest.approx(-5.91)
+    assert p["energy_db_trace"] == [[1110, -0.0], [2146, -5.91]]
+    assert p["energy_db_trace_points"] == 2
+
+
+def test_a_truncated_runs_record_length_is_the_cap_not_the_last_print():
+    """openEMS prints a progress line every few seconds, not at the cap.
+
+    On the real log the last one says 2146 while the run was capped at 3000, so
+    a truncated pass's record is 3000 steps long and the field says which number
+    it used.
+    """
+    gate = _load_maker()._gate
+    assert gate._timesteps_executed(REAL_LOG) == 2146, (
+        "timesteps_executed is the largest PROGRESS count"
+    )
+    assert gate._solver_setup(REAL_LOG)["max_timesteps_declared"] == 3000
+    assert gate._log_indicates_truncation(REAL_LOG) is True
+
+
+def test_merge_refuses_rungs_of_different_record_lengths(tmp_path):
+    """A step cap is not a record length: dt shrinks with the cell."""
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a", record_length_s=7.4e-8),
+        _part(tmp_path, "mid.json", "mid", run_id="b", record_length_s=7.4e-8),
+        # 20 % short: capped at the same N as the coarse rung on a finer mesh.
+        _part(tmp_path, "fine.json", "fine", run_id="c", record_length_s=5.9e-8),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "recorded different lengths of time" in result.stderr
+    assert "60000 / factor" in result.stderr, (
+        "the refusal does not say how to fix it"
+    )
+    assert not out.exists()
+
+
+def test_merge_refuses_when_a_rung_cannot_say_how_long_it_recorded(tmp_path):
+    parts = [_part(tmp_path, "coarse.json", "coarse", run_id="a"),
+             _part(tmp_path, "mid.json", "mid", run_id="b", record_length_s=None),
+             _part(tmp_path, "fine.json", "fine", run_id="c")]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "record_length_s is missing" in result.stderr
+    assert "record_length_source" in result.stderr, (
+        "the refusal does not say where to look"
+    )
+
+
+def test_merge_carries_each_rungs_witness(tmp_path):
+    def w(delta21, delta11):
+        return {"n_steps": 60000, "n2_steps": 120000, "floor_db": -20.0,
+                "band_ghz": [2.0, 12.0],
+                "max_abs_delta_s21_db": delta21,
+                "f_ghz_at_max_abs_delta_s21": 6.1, "s21_bins_compared": 410,
+                "max_abs_delta_s11_db": delta11,
+                "f_ghz_at_max_abs_delta_s11": 3.2, "s11_bins_compared": 400}
+
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a", witness=w(0.03, 0.02)),
+        _part(tmp_path, "mid.json", "mid", run_id="b", witness=w(0.05, 0.04)),
+        _part(tmp_path, "fine.json", "fine", run_id="c", witness=w(0.07, 0.06)),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+    merged = json.loads(out.read_text())
+    rw = merged["meta"]["record_length_witness"]
+    assert set(rw) == {"coarse", "mid", "fine"}
+    assert [rw[r]["max_abs_delta_s21_db"] for r in ("coarse", "mid", "fine")] == \
+        [0.03, 0.05, 0.07]
+    assert all(rw[r]["record_length_s"] == 7.4e-8 for r in rw)
+    assert merged["meta"]["record_length_s_spread_pct"] == pytest.approx(0.0)
+    assert merged["meta"]["record_length_s_tolerance_pct"] == 5.0
+    assert "Reported, not gated" in result.stdout
+
+    # Parts made without the flag leave the field null rather than an empty dict.
+    plain = [_part(tmp_path, f"p_{r}.json", r, run_id=r)
+             for r in ("coarse", "mid", "fine")]
+    out2 = tmp_path / "full2.json"
+    r2 = _run("--merge", *[str(p) for p in plain], "--output", str(out2))
+    assert r2.returncode == 0, r2.stderr
+    assert json.loads(out2.read_text())["meta"]["record_length_witness"] is None
+
+
+# ---------------------------------------------------------------------------
+# Stage A is reproducible, not bit-identical
+# ---------------------------------------------------------------------------
+def test_stage_a_parts_that_differ_by_the_run_to_run_spread_still_merge(tmp_path):
+    """openEMS on 8 threads ends the tutorial at a different step each job.
+
+    Runs 369367263406/407/408 ended at 14586 / 14688 / 12342 steps and their
+    Stage A spectra differ by ~1e-4 in the band. A merge that demanded bit
+    equality refused them; this one measures the spread and reports it.
+    """
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a",
+              stage_a_steps=14586, notch_ghz=3.672242),
+        _part(tmp_path, "mid.json", "mid", run_id="b", s21_bin17=0.5 + 1.0e-4,
+              s11_delta=2.6e-6, stage_a_steps=14688, notch_ghz=3.672241),
+        _part(tmp_path, "fine.json", "fine", run_id="c", s21_bin17=0.5 + 1.6e-4,
+              s11_delta=1.3e-4, stage_a_steps=12342, notch_ghz=3.672277),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    r = json.loads(out.read_text())["meta"]["stage_a_reproducibility"]
+    assert r["band_ghz"] == [2.0, 7.0]
+    assert r["magnitude_tol"] == 1e-3
+    assert r["notch_tol_pct"] == 0.01
+    assert r["phase_compared"] is False, "phase must not enter the check"
+    assert r["max_abs_delta_s21_mag"] == pytest.approx(1.6e-4, rel=1e-6)
+    assert r["max_abs_delta_s11_mag"] == pytest.approx(1.3e-4, rel=1e-6)
+    assert r["notch_spread_pct"] == pytest.approx(
+        (3.672277 - 3.672241) / 3.672241 * 100.0, rel=1e-6)
+    assert [p["stage_a_timesteps_executed"] for p in r["per_part"]] == \
+        [14586, 14688, 12342]
+    assert [p["run_id"] for p in r["per_part"]] == ["a", "b", "c"]
+    assert "8 threads" in r["what_it_is"] and "Reported" in r["what_it_is"]
+    # Stage A's arrays still come from the first part, untouched.
+    merged_a = json.loads(out.read_text())["stage_a"]
+    first_a = json.loads(parts[0].read_text())["stage_a"]
+    assert merged_a == first_a
+
+
+def test_stage_a_parts_that_differ_far_beyond_it_are_refused(tmp_path):
+    """1e-2 is not a thread-scheduling difference."""
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a"),
+        _part(tmp_path, "mid.json", "mid", run_id="b", s21_bin17=0.5 + 1.0e-2),
+        _part(tmp_path, "fine.json", "fine", run_id="c"),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "Stage A |S21| differ by 0.01" in result.stderr
+    assert "2-7 GHz" in result.stderr
+    assert not out.exists()
+
+    # The same size of difference in |S11| is refused too.
+    parts[1] = _part(tmp_path, "mid.json", "mid", run_id="b", s11_delta=1.0e-2)
+    r2 = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert r2.returncode == 3
+    assert "Stage A |S11| differ by 0.01" in r2.stderr
+
+
+def test_a_notch_that_moved_more_than_the_spread_is_refused(tmp_path):
+    """The magnitudes can agree while the tutorial itself has moved."""
+    parts = [
+        _part(tmp_path, "coarse.json", "coarse", run_id="a", notch_ghz=3.672242),
+        _part(tmp_path, "mid.json", "mid", run_id="b", notch_ghz=3.672241),
+        # 0.1 %: ten times the tolerance, a hundred times the measured spread.
+        _part(tmp_path, "fine.json", "fine", run_id="c", notch_ghz=3.675914),
+    ]
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "Stage A notches span" in result.stderr
+    assert not out.exists()
+
+
+def test_phase_is_not_part_of_the_stage_a_check(tmp_path):
+    """At the null the runs sit either side of a wrap: 358.6 degrees apart.
+
+    That is a wrap, not a disagreement, so a part whose Stage A phase is wildly
+    different but whose magnitudes agree still merges.
+    """
+    parts = [_part(tmp_path, f"{r}.json", r, run_id=r)
+             for r in ("coarse", "mid", "fine")]
+    d = json.loads(parts[1].read_text())
+    d["stage_a"]["s21_deg"] = [x + 358.6 for x in d["stage_a"]["s21_deg"]]
+    d["stage_a"]["s11_deg"] = [x - 179.0 for x in d["stage_a"]["s11_deg"]]
+    parts[1].write_text(json.dumps(d, indent=1))
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(out.read_text())["meta"]["stage_a_reproducibility"][
+        "phase_compared"] is False
+
+
+def test_a_different_frequency_grid_is_still_refused(tmp_path):
+    """A tolerance on magnitudes is not a licence to compare different grids."""
+    parts = [_part(tmp_path, f"{r}.json", r, run_id=r)
+             for r in ("coarse", "mid", "fine")]
+    d = json.loads(parts[2].read_text())
+    d["stage_a"]["freqs_ghz"] = [1.0, 3.0, 5.5, 8.0]
+    parts[2].write_text(json.dumps(d, indent=1))
+    out = tmp_path / "full.json"
+    result = _run("--merge", *[str(p) for p in parts], "--output", str(out))
+    assert result.returncode == 3
+    assert "same grid" in result.stderr
