@@ -619,8 +619,15 @@ def test_w12_on_the_record_is_reported_without_a_verdict(v):
     for t in ins.TRANSFORMS:
         rows = r["readings"][t]
         assert [q["key"] for q in rows] == RECORDED_W12_KEYS
+        # The recorded cells are 4-decimal roundings. The fit behind them runs
+        # through LAPACK, whose rounding depends on the CPU: CI's Python 3.10
+        # shard read 196.921107 um where the recording machine's value rounded
+        # to 196.9212, a 9.3e-5 um (4.7e-7 relative) difference with the same
+        # numpy and scipy. A pin at half the rounding step cannot hold across
+        # machines; 5e-4 um (2.5e-6 relative) still pins every recorded digit
+        # that means anything for a cell size.
         assert [q["substrate_cell_for_the_bar_m"] * 1e6 for q in rows] == (
-            pytest.approx(RECORDED_W12_FZ_UM[t], abs=5e-5)), t
+            pytest.approx(RECORDED_W12_FZ_UM[t], abs=5e-4)), t
         assert [q["n_substrate_cells_for_the_bar"] for q in rows] == (
             RECORDED_W12_N_Z[t]), t
         assert r["finest_from_reference_pct"][t] == pytest.approx(
@@ -751,4 +758,28 @@ def test_the_notes_results_are_what_tables_prints(capsys):
     start = note.index("## Results (facts)")
     end = min(i for i in (note.find("Conclusions: leader fills.", start),
                           note.find("### Conclusions", start)) if i >= 0)
-    assert note[start:end] == printed
+    _same_text_and_numbers(note[start:end], printed)
+
+
+_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
+
+
+def _same_text_and_numbers(note, printed):
+    """The note's text equals ``--tables``' text, and every number agrees to one
+    unit in its last printed place (integers exactly).
+
+    ``--tables`` re-derives the numbers on the machine that runs it, and the
+    fits behind them round differently on different CPUs (see the W12 pin), so
+    a byte comparison flips on the last printed digit — it did on CI's
+    Python 3.10 shard at 9fe747a4. Everything that is not a number, and every
+    integer (cell counts, keys), is still compared exactly.
+    """
+    assert _NUMBER.split(note) == _NUMBER.split(printed)
+    a, b = _NUMBER.findall(note), _NUMBER.findall(printed)
+    assert len(a) == len(b)
+    for x, y in zip(a, b):
+        if x == y:
+            continue
+        assert "." in x and "." in y and "e" not in (x + y).lower(), (x, y)
+        places = max(len(x.split(".")[1]), len(y.split(".")[1]))
+        assert abs(float(x) - float(y)) <= 1.000001 * 10.0 ** (-places), (x, y)
