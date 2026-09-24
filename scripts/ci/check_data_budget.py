@@ -383,9 +383,10 @@ def failures(findings: Findings) -> List[str]:
 WHERE_IT_GOES = f"""\
 Where the data goes:
   Measurement records -- sweep and study JSON, harvested VESSL logs, the
-  measurement of an option that was not adopted -- go to {ARCHIVE_REPO}
-  under {ARCHIVE_PATH}. Name that path and the archive commit in the PR
-  body. Frozen reference data a test reads goes under tests/fixtures/,
+  measurement of an option that was not adopted -- go to
+  {ARCHIVE_REPO} under {ARCHIVE_PATH}.
+  Name that path and the archive commit in the PR body.
+  Frozen reference data a test reads goes under tests/fixtures/,
   tests/data/ or tests/crossval/<case>/reference/, named by the test that
   reads it, and no one file over {FILE_CAP:,} bytes.
   If this PR has to carry the data anyway, apply the label
