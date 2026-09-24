@@ -21,9 +21,11 @@ to the stored one with the bar the battery is judged by:
 * every phase crossing — a frequency where S11 is real — within 1 % of its
   partner of the same sign on the other curve.
 * the record's own verdicts at this mesh — passivity at 1.02, |S11| within
-  2 dB of the closed form, the crossings against the closed form, the matched
-  floor — come out the same when the battery's assembler computes them from the
-  live S11.
+  2 dB of the closed form, the crossings against the closed form, the phase
+  turning the same way with frequency as the closed form's, the matched floor —
+  come out the same when the battery's assembler computes them from the live
+  S11. The phase direction is the one a conjugated S11 (the other time
+  convention) changes: its magnitude and its real-axis crossings are the same.
 
 A red here means the stored battery describes a different solver from the one
 under test. The remedy is to measure the battery again, not to move anything in
@@ -64,11 +66,14 @@ DUTS = ("short", "open", "res_half", "res_double", "matched")
 # The verdicts the record carries at this mesh, by DUT. The replay test gates
 # passivity and the closed-form magnitude at every mesh; the crossings against
 # the closed form are recorded at this one (1.7-2.8 % out, which is why the
-# battery recommends 0.5 mm) and must not flip either.
+# battery recommends 0.5 mm) and must not flip either. `same_sign` says the
+# unwrapped angle falls with frequency as the closed form's does; a conjugated
+# S11 keeps every other number here and flips that one.
 VERDICTS = {
     "reflecting": (("passivity", "within_bar"),
                    ("magnitude_vs_analytic", "within_bar"),
-                   ("phase", "within_bar")),
+                   ("phase", "within_bar"),
+                   ("phase", "angle_slope_rad_per_hz", "same_sign")),
     "matched": (("passivity", "within_bar"),
                 ("matched_floor", "within_bar")),
 }
@@ -171,10 +176,10 @@ def test_the_crossing_rule_excuses_only_a_crossing_that_can_have_left_the_sweep(
 
 def test_each_check_fires_just_outside_its_bar_and_not_just_inside():
     """The comparisons all three guards share, on made-up curves straddling
-    each bar: 2 dB in magnitude, -20 dB for a deep null, 1 % in frequency, a
-    flipped verdict, a moved cell. A check that stops reporting, or reports
-    inside its bar, reds here on every pull request, not only in the weekly
-    lane that solves. Arithmetic, no solve."""
+    each bar: 2 dB in magnitude, -20 dB for a deep null, 1 % in frequency, the
+    phase turning the other way, a flipped verdict, a moved cell. A check that
+    stops reporting, or reports inside its bar, reds here on every pull
+    request, not only in the weekly lane that solves. Arithmetic, no solve."""
     freqs = np.linspace(1e9, 10e9, 91)
     line = np.full(freqs.size, 1.0 / 3.0 + 0j)
     assert drift.magnitude_findings("S11", freqs, line, line * 10 ** (2.05 / 20))
@@ -187,6 +192,9 @@ def test_each_check_fires_just_outside_its_bar_and_not_just_inside():
     assert not drift.bound_findings("S11", freqs, np.full(freqs.size, 10 ** (-20.1 / 20)))
     assert drift.frequency_findings("notch", 3.7e9, 3.7e9 * 1.0105)
     assert not drift.frequency_findings("notch", 3.7e9, 3.7e9 * 0.9905)
+    delay = np.exp(-2j * np.pi * freqs * 0.2e-9)     # a 0.2 ns line: -11 rad over the band
+    assert drift.phase_direction_findings("S21", freqs, delay, np.conj(delay))
+    assert not drift.phase_direction_findings("S21", freqs, delay, 0.5 * delay)
     assert drift.verdict_findings({"v": {"ok": True}}, {"v": {"ok": False}}, [("v", "ok")])
     assert drift.verdict_findings({"v": {"ok": False}}, {"v": {"ok": True}}, [("v", "ok")])
     assert not drift.verdict_findings({"v": None}, {"v": {"ok": False}}, [("v", "ok")])

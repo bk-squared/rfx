@@ -23,6 +23,10 @@ S to the stored S with the bar the battery is judged by:
   where the stored |S21| is at or below -20 dB. Inside the core the depth is a
   difference of two near-zeros and is compared with nothing (the PI's
   2026-09-21 ruling);
+* the phase of S21 turning the same way with frequency as it does in the
+  record (falling, about 11 rad across the band), fitted outside the core. A
+  conjugated S (the other time convention) keeps every magnitude and the notch
+  frequency and flips only this;
 * the record's own verdicts at this mesh — the record settles below -40 dB,
   column power at most 1.02, reciprocity at most 0.02 — hold for the live S.
 
@@ -119,6 +123,8 @@ def test_the_notch_on_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, dr
                                          live[1, 0, :], deep=core, report=report)
     findings += drift.magnitude_findings("|S11|", freqs, stored[0, 0, :],
                                          live[0, 0, :], deep=core, report=report)
+    findings += drift.phase_direction_findings("S21", freqs, stored[1, 0, :],
+                                               live[1, 0, :], deep=core, report=report)
 
     power = driver.power_metrics(live)
     settling = (None if result.settling_db is None

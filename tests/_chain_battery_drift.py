@@ -16,7 +16,9 @@ the battery itself is judged by (``docs/design_notes/chain_closure_contract.md``
 "The v2.0 battery for lumped/wire, MSL and coax", and the PI's deep-null
 ruling of 2026-09-21): magnitude within 2 dB outside the core of a deep null,
 a quantity that is near zero by construction held to -20 dB, and a frequency
-feature (a notch, a reflection zero, a phase crossing) within 1 %.
+feature (a notch, a reflection zero, a phase crossing) within 1 %. The phase
+also has to turn the same way with frequency as it did in the record, which is
+what a conjugated S (the other time convention) changes and nothing else sees.
 
 This module holds the arithmetic the three guards share. The rules each family
 applies are in its own lock module.
@@ -161,6 +163,37 @@ def bound_findings(label: str, freqs, live, *,
         return []
     return [f"{label} reaches {d_live[k]:.3f} dB at {at:.4f} GHz, above its "
             f"{DEEP_NULL_DB} dB bound"]
+
+
+def phase_direction_findings(label: str, freqs, stored, live, *, deep=None,
+                             report: list | None = None) -> list[str]:
+    """Which way the phase of ``S`` turns as the frequency rises, on the stored
+    and on the live curve: the sign of the least-squares slope of
+    ``unwrap(angle(S))`` against frequency, fitted outside ``deep``.
+
+    A line delays its wave more at a higher frequency, so the phase of S21
+    falls across the band; with the other time convention (a conjugated S) it
+    rises by the same amount. Neither the magnitude nor the frequencies of the
+    notches and zeros can tell the two apart. The angle is unwrapped over the
+    whole band and only the fit leaves the core out: unwrapping the bins
+    outside the core on their own makes the gap one step folded into
+    (-pi, pi], which turns a transmission zero's half-turn against the line's
+    own phase (on the microstrip record, -1.8 rad across the band instead of
+    -11.1).
+    """
+    f = np.asarray(freqs, dtype=float)
+    keep = (np.ones(f.size, dtype=bool) if deep is None
+            else ~np.asarray(deep, dtype=bool))
+    across = float(f[keep].max() - f[keep].min())
+    turns = [float(np.polyfit(f[keep], np.unwrap(np.angle(np.asarray(s)))[keep], 1)[0])
+             * across for s in (stored, live)]
+    if report is not None:
+        report.append(f"{label} phase {turns[0]:+.2f} -> {turns[1]:+.2f} rad across the band")
+    if np.sign(turns[0]) == np.sign(turns[1]) != 0.0:
+        return []
+    return [f"the phase of {label} turns the other way: {turns[0]:+.2f} rad across the "
+            f"band in the record, {turns[1]:+.2f} rad now — what a conjugated S (the "
+            "other time convention) looks like"]
 
 
 def frequency_findings(label: str, stored_hz: float, live_hz: float, *,

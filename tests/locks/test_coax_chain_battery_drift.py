@@ -16,7 +16,10 @@ cross-section, feeds, probes and bead are the recorded ones and the record is
 as long, solves them, and holds the live S to the stored S with the bar the
 battery is judged by:
 
-* |S21| within 2 dB at every bin, on both lines;
+* |S21| within 2 dB at every bin, on both lines, and its phase turning the same
+  way with frequency as in the record (falling, 14-16 rad across the band). A
+  conjugated S (the other time convention) keeps every magnitude and the
+  reflection zero and flips only the phase direction;
 * the thru's |S11| and |S22| held to -20 dB, a deep null compared with nothing
   (the PI's 2026-09-21 ruling);
 * the bead's reflection zero — the vertex of the parabola through |S11|^2, the
@@ -114,6 +117,9 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver, dut):
     report: list[str] = []
     findings += drift.magnitude_findings("|S21|", freqs, stored[1, 0, :], live[1, 0, :],
                                          report=report)
+    findings += drift.phase_direction_findings(
+        "S21", freqs, stored[1, 0, :], live[1, 0, :],
+        deep=drift.db(stored[1, 0, :]) <= drift.DEEP_NULL_DB, report=report)
     if dut == "thru":
         findings += drift.bound_findings("the thru's |S11|", freqs, live[0, 0, :],
                                          report=report)
