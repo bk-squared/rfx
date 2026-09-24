@@ -77,7 +77,10 @@ run_worker() {
   cd "$work/src"
   export PYTHONPATH="$work/src"
   export RFX_TOOLING_SHA="$resolved"
-  # Preserve the image's JAX/jaxlib; do not pip-install the project or upgrade JAX.
+  # Keep the image's JAX/jaxlib unless RFX_PIP_JAX names another (e.g. jax[cuda12]==0.6.2:
+  # the 0.4.33 image's XLA aborts some compiles on CHECK_LE(common_utilization, ...)).
+  # Never pip-install the project itself.
+  [ -z "${RFX_PIP_JAX:-}" ] || python -m pip install -q "$RFX_PIP_JAX"
   python -m pip install -q 'numpy<2' 'scipy>=1.11,<1.15' 'h5py>=3.8,<4' 'matplotlib>=3.7,<3.10' 'pyyaml>=6,<7'
   python -m pip freeze > "$out/pip-freeze.rank$rank.txt"
   nvidia-smi --query-gpu=name,uuid,pci.bus_id,memory.total --format=csv > "$out/gpu.rank$rank.csv"
