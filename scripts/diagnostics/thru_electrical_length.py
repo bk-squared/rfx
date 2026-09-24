@@ -46,9 +46,11 @@ No verdict lives in the output: numbers, where each came from, and nothing else.
 
 Usage (from a checkout; the output names the commit it read)::
 
-    python scripts/diagnostics/thru_electrical_length.py
+    python scripts/diagnostics/thru_electrical_length.py --out <path outside the repository>
 
-writes ``tests/fixtures/thru_electrical_length/summary.json``.
+Measurement records stay out of this repository (PI, 2026-09-24). The record of
+2026-09-24 is ``rfx/records/20260924-thru-electrical-length/summary.json`` in
+``bk-squared/rfx-archive``.
 """
 from __future__ import annotations
 
@@ -68,7 +70,6 @@ REPO = Path(__file__).resolve().parents[2]
 SCHEMA = "rfx.thru_electrical_length"
 SCHEMA_VERSION = 1
 DRIVER = "scripts/diagnostics/thru_electrical_length.py"
-ARTIFACT = "tests/fixtures/thru_electrical_length/summary.json"
 
 COAX = "tests/fixtures/coax_chain_battery/fixture.json"
 MSL = "tests/fixtures/msl_chain_battery/fixture.json"
@@ -736,7 +737,8 @@ def table(c: dict, m: dict, lw: dict, wg: dict) -> list:
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--out", default=ARTIFACT, help="output path, relative to the repository")
+    ap.add_argument("--out", required=True, type=Path,
+                    help="output path; measurement records stay outside the repository")
     args = ap.parse_args(argv)
 
     commit = _git("rev-parse", "HEAD")      # no fallback: an unstamped record is not written
@@ -754,7 +756,7 @@ def main(argv=None) -> int:
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
         "driver": DRIVER,
-        "artifact": ARTIFACT,
+        "artifact": str(args.out),
         "what": __doc__.split("\n\n")[1].replace("\n", " "),
         "measure": {
             "bins": f"measured 20 log10 |S21| > {LEVEL_DB} dB (S11 on the one-ports)",
@@ -773,12 +775,12 @@ def main(argv=None) -> int:
         "lumped_wire": lw,
         "waveguide": wg,
     }
-    out = REPO / args.out
+    out = args.out.resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=1)
         fh.write("\n")
-    print(f"wrote {out.relative_to(REPO)} ({len(summary['table'])} table rows) at {commit[:8]}")
+    print(f"wrote {out} ({len(summary['table'])} table rows) at {commit[:8]}", file=sys.stderr)
     return 0
 
 
