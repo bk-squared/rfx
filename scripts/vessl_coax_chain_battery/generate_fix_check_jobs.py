@@ -12,7 +12,12 @@ node-local copy, EXIT-trap collection, the CPU JAX 0.6.2 wheel):
   mutation that revives the closed can. The test has to go red;
 * ``coax-fast`` / ``coax-slow`` — every coax test file (and the contracts on
   the fast one), in the default selection and in the slow and slow_physics
-  one.
+  one. The job image's git (2.25) has no ``git init -b``, which the
+  worktree-pruning, changelog-fragment and two CI-workflow contract tests use
+  to build their scratch repositories; those are left to the pull request's
+  own CI;
+* ``drift-lock`` — the coax battery's drift lock on its own, pinned to four
+  cores like the open-end check, so its wall time is the weekly runner's.
 
     python scripts/vessl_coax_chain_battery/generate_fix_check_jobs.py \\
         --sha <commit> --src <run tree> --out <directory>
@@ -103,8 +108,20 @@ COAX_FILES = (
     "tests/oracle/test_coax_conductor_realization.py "
     "tests/oracle/test_coax_chain_battery.py "
     "tests/oracle/test_coax_open_end_settles.py "
+    "tests/locks/test_coax_chain_battery_drift.py "
     "tests/crossval/test_coax_broad_e5_envelope_gates.py "
     "tests/crossval/test_coax_broad_e4_comparison_gates.py"
+)
+
+# Contract tests that build scratch repositories with ``git init -b``, which the
+# job image's git 2.25 does not have; the pull request's CI runs them.
+NEEDS_NEWER_GIT = (
+    "--ignore=tests/contracts/test_prune_worktrees.py "
+    "--ignore=tests/contracts/test_changelog_fragments.py "
+    "--deselect tests/contracts/test_ci_workflows_contract.py::"
+    "test_a_rename_out_of_the_package_is_seen_as_a_code_change "
+    "--deselect tests/contracts/test_ci_workflows_contract.py::"
+    "test_a_path_containing_a_quote_survives_the_pipe"
 )
 
 JOBS = (
@@ -118,11 +135,16 @@ JOBS = (
                       "cpml_axes=z in the runner call, helper calls kept; the open-end "
                       "check has to go red.")),
     dict(key="coax-fast", taskset="", mutation="",
-         pytest_args=f'-n 8 -m "not gpu and not slow and not slow_physics" {COAX_FILES} tests/contracts',
+         pytest_args=(f'-n 8 -m "not gpu and not slow and not slow_physics" {COAX_FILES} '
+                      f'tests/contracts {NEEDS_NEWER_GIT}'),
          description="Issue 1218 fix: every coax test file and the contracts, default selection."),
     dict(key="coax-slow", taskset="", mutation="",
          pytest_args=f'-n 8 -m "(slow or slow_physics) and not gpu and not highmem" {COAX_FILES}',
          description="Issue 1218 fix: every coax test file, slow and slow_physics selection."),
+    dict(key="drift-lock", taskset="taskset -c 0-3 ", mutation="",
+         pytest_args='-m slow_physics -s tests/locks/test_coax_chain_battery_drift.py',
+         description=("Issue 1218 fix: the coax battery's drift lock against the re-measured "
+                      "records, on four pinned cores.")),
 )
 
 
