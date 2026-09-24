@@ -49,12 +49,26 @@ shorter window ``[n_start, split * N)`` and completes the SAME record with
 them; the largest difference of the two answers bounds how much the answer
 still depends on the window. On the research boards it tracked the actual
 error within a factor 10 (rfx #1254).
+
+What this module does inside ``Simulation.run(..., ringdown=RingdownSpec())``
+--------------------------------------------------------------------------
+For every wire port (``add_port(..., extent=...)``, impedance > 0) it places
+read-only probes on the port's Ez (Ex, Ey) edges and on the H samples of its
+Ampere loop before the run, and removes them from everything the run returns.
+After the run it reads the port's REALIZED cells, metrics and DFT
+accumulators from the run itself, rebuilds the port voltage and current step
+by step, and checks that the rebuilt series, accumulated the way the run
+accumulates them, reproduce the run's own accumulators bit for bit (W0). It
+then completes the spectra and assembles the S-matrix with the lane's own
+assembly (the graded lane's ``rfx.nonuniform._assemble_nu_result``, the
+uniform lane's ``rfx.probes.probes.driven_port_reflection``).
 """
 
 from __future__ import annotations
 
 import inspect
 import math
+import warnings
 from dataclasses import dataclass
 from importlib import import_module
 from typing import NamedTuple
@@ -533,3 +547,599 @@ GROWING_POLE_RULE = (
     "a kept pole with |lambda| > 1 per step fails the check unless |f| < "
     "1/record length and |lambda| - 1 < unit_tol (a zero-frequency pole within "
     "rounding of the unit circle)")
+
+
+# ---------------------------------------------------------------------------
+# Simulation.run(..., ringdown=...) integration
+# ---------------------------------------------------------------------------
+
+#: Ampere-loop legs of a port component: (H component, axis it is differenced
+#: along). The same pairs ``rfx.probes.probes._ampere_loop`` (uniform lane)
+#: and ``rfx.nonuniform.wire_port_current`` (graded lane) read.
+_LOOP_LEGS = {
+    "ez": (("hy", 0), ("hx", 1)),
+    "ex": (("hz", 1), ("hy", 2)),
+    "ey": (("hx", 2), ("hz", 0)),
+}
+_AXIS_OF = {"ex": 0, "ey": 1, "ez": 2}
+_LOCAL = (1, 1, 1)
+
+
+def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params) -> None:
+    """Raise, with the reason, for every run ``ringdown=`` does not cover."""
+    if not isinstance(spec, RingdownSpec):
+        raise TypeError(
+            f"ringdown= takes a rfx.ringdown.RingdownSpec, got {type(spec).__name__}")
+    if devices is not None and len(devices) > 1:
+        raise NotImplementedError(
+            "run(ringdown=...) is not supported on the distributed lane "
+            "(devices=): the port-channel probes and their check against the "
+            "port accumulators are single-device only.")
+    if until_decay is not None:
+        raise NotImplementedError(
+            "run(ringdown=...) completes a record of fixed length; until_decay= "
+            "stops the record on field energy instead, and the two are not "
+            "combined. Pass n_steps= or num_periods=.")
+    if compute_s_params is False:
+        raise ValueError(
+            "run(ringdown=...) completes the port S-parameters, but "
+            "compute_s_params=False asks for none.")
+    if getattr(sim, "_mode", "3d") != "3d":
+        raise NotImplementedError(
+            f"run(ringdown=...) needs mode='3d'; this model is mode={sim._mode!r}.")
+    if getattr(sim, "_solver", None) == "adi":
+        raise NotImplementedError("run(ringdown=...) is not supported with solver='adi'.")
+    if getattr(sim, "_refinement", None) is not None:
+        raise NotImplementedError(
+            "run(ringdown=...) is not supported on the subgridded lane.")
+    if getattr(sim, "_periodic_axes", ""):
+        raise NotImplementedError(
+            "run(ringdown=...) is not supported with periodic axes: rfx refuses "
+            "wire-port S-parameters there (#206).")
+    if getattr(sim, "_tfsf", None) is not None:
+        wf = getattr(sim._tfsf, "waveform", "")
+        raise NotImplementedError(
+            "run(ringdown=...) is not supported with a TFSF plane wave"
+            + (" driven by a continuous wave, which never turns off"
+               if wf == "continuous_wave" else
+               ": the total-field boundary keeps injecting while the auxiliary "
+               "line still carries the pulse, so the injection waveform alone "
+               "does not say when the source is off") + ".")
+    if any(float(getattr(m, "chi3", 0.0) or 0.0) != 0.0
+           for m in getattr(sim, "_materials", {}).values()):
+        raise NotImplementedError(
+            "run(ringdown=...) is not supported with a Kerr (chi3) material: "
+            "after the pulse the update is not linear, so the record is not a "
+            "sum of fixed damped oscillations.")
+    for attr, what in (("_msl_ports", "microstrip (add_msl_port)"),
+                       ("_waveguide_ports", "waveguide (add_waveguide_port)"),
+                       ("_coaxial_ports", "coaxial (add_coaxial_port)"),
+                       ("_floquet_ports", "Floquet (add_floquet_port)")):
+        if getattr(sim, attr, None):
+            raise NotImplementedError(
+                f"run(ringdown=...) completes wire-port S-parameters only; this "
+                f"model has a {what} port.")
+    wire = []
+    for pe in sim._ports:
+        if float(pe.impedance) == 0.0:
+            continue            # a soft source: checked for being off, below
+        if pe.extent is None:
+            raise NotImplementedError(
+                f"run(ringdown=...) completes wire-port S-parameters only; the "
+                f"port at {tuple(pe.position)} is a one-cell lumped port "
+                "(add_port without extent=).")
+        if getattr(pe, "reference_plane_cells", None) is not None:
+            raise NotImplementedError(
+                f"run(ringdown=...) does not cover the reference-plane waves of "
+                f"the wire port at {tuple(pe.position)} (reference_plane_cells=).")
+        wire.append(pe)
+    if not wire:
+        raise ValueError(
+            "run(ringdown=...) needs a wire port (add_port(..., extent=...), "
+            "impedance > 0); this model has none.")
+    if not any(bool(pe.excite) for pe in wire):
+        raise ValueError(
+            "run(ringdown=...) needs a driven wire port: with every port passive "
+            "run() reports a per-cell diagnostic, not a scattering parameter.")
+
+
+def refuse_run_lane(lane: str, n_wire_ports: int) -> None:
+    """Lane-dependent refusals, once ``run()`` has chosen its lane."""
+    if lane not in ("run_uniform", "run_nonuniform"):
+        raise NotImplementedError(
+            f"run(ringdown=...) supports the uniform and graded-mesh lanes; this "
+            f"run takes the {lane!r} lane.")
+    if lane == "run_uniform" and n_wire_ports > 1:
+        raise NotImplementedError(
+            "run(ringdown=...) on the uniform lane supports one wire port: with "
+            "several, run() assembles the S-matrix from separate per-port drive "
+            "runs that the port-channel probes do not see. Use a graded mesh "
+            "(any dx/dy/dz profile), where one run fills the driven column.")
+
+
+def _lane_resolver(lane: str, grid):
+    """The position -> index function the lane's runner resolves probes with."""
+    if lane == "uniform":
+        return grid.position_to_index
+    from rfx.runners.nonuniform import pos_to_nu_index
+    return lambda pos: pos_to_nu_index(grid, pos)
+
+
+def _node_position(grid, idx) -> tuple:
+    return tuple(float(grid.node_of(ax, int(idx[ax]))) for ax in range(3))
+
+
+class _PortMeta(NamedTuple):
+    """One wire port as the run realized it (read from the run's own metadata)."""
+
+    mid: tuple
+    component: str
+    z0: object
+    excite: bool
+    live_cells: tuple
+    k_mid: int
+    raw: dict            # the metric objects the run multiplied by
+    f64: dict            # the same metrics as Python floats
+    accs: tuple          # rfx's (v, i, v_port) accumulators
+    freqs: object        # jnp float32 bins the accumulators used
+    meta: object         # the run's own metadata entry
+
+
+def _read_port_metas(lane: str, result, grid) -> list:
+    """Realized cells, metrics and accumulators of every wire port, from the run."""
+    import jax.numpy as jnp
+
+    wps = getattr(result, "wire_port_sparams", None)
+    if not wps:
+        raise RuntimeError(
+            "run(ringdown=...) found no wire-port accumulators on the run's "
+            "result; the port metadata it needs is missing.")
+    out = []
+    for meta, accs in wps:
+        if lane == "uniform":
+            mid = (int(meta.mid_i), int(meta.mid_j), int(meta.mid_k))
+            comp = str(meta.component)
+            live = tuple(tuple(int(v) for v in c) for c in (meta.live_cells or (mid,)))
+            dx = float(grid.cells(0)[mid[0]])
+            raw = {"dx": dx}
+            f64 = {"dx": dx}
+            z0, excite, freqs = meta.impedance, bool(meta.excite), meta.freqs
+            acc3 = (accs[0], accs[1], accs[3])
+        else:
+            mid = (int(meta[0]), int(meta[1]), int(meta[2]))
+            comp = str(meta[3])
+            live = tuple(tuple(int(v) for v in c) for c in meta[13])
+            v_metric = meta[11] if comp == "ez" else meta[5] if comp == "ex" else meta[6]
+            raw = {"v_metric": v_metric, "d_par": tuple(meta[14]),
+                   "dual_x": meta[9], "dual_y": meta[10], "dual_z": meta[12]}
+            f64 = {"v_metric": float(v_metric),
+                   "d_par": tuple(float(d) for d in meta[14]),
+                   "dual_x": float(meta[9]), "dual_y": float(meta[10]),
+                   "dual_z": float(meta[12])}
+            z0, excite = meta[4], bool(meta[7])
+            freqs = jnp.asarray(np.asarray(result.freqs), dtype=jnp.float32)
+            acc3 = (accs[0], accs[1], accs[3])
+        if mid not in live:
+            raise RuntimeError(
+                f"wire port metadata: midpoint {mid} is not among its live cells {live}")
+        out.append(_PortMeta(mid=mid, component=comp, z0=z0, excite=excite,
+                             live_cells=live, k_mid=live.index(mid), raw=raw,
+                             f64=f64, accs=acc3, freqs=freqs, meta=meta))
+    return out
+
+
+class _HLocal(NamedTuple):
+    hx: object
+    hy: object
+    hz: object
+
+
+def _port_vi(lane: str, pm: _PortMeta, metrics: dict, e, hx, hy, hz):
+    """``(v_mid, v_port, i)`` from the port's E edges and local Ampere-loop H.
+
+    ``e`` indexes the live edges on its FIRST axis (``e[c]``); ``hx, hy, hz``
+    are 2x2x2 neighbourhoods (optionally with a trailing time axis) holding
+    the loop's H samples around local index (1, 1, 1). The current goes
+    through the lane's OWN loop function; the voltage is the lane's inline
+    sum, spelled as the scan spells it (W0 checks the two against the run).
+    """
+    n_live = len(pm.live_cells)
+    if lane == "uniform":
+        from rfx.probes.probes import _ampere_loop
+        dx = metrics["dx"]
+        v = -e[pm.k_mid] * dx
+        v_port = -sum(e[c] for c in range(n_live)) * dx
+        i_val = _ampere_loop(_HLocal(hx, hy, hz), _LOCAL, pm.component, dx,
+                             (False, False, False))
+    else:
+        from rfx.nonuniform import wire_port_current
+        v = -e[pm.k_mid] * metrics["v_metric"]
+        v_port = -sum(e[c] * dp for c, dp in zip(range(n_live), metrics["d_par"]))
+        i_val = wire_port_current(hx, hy, hz, pm.component, *_LOCAL,
+                                  metrics["dual_x"], metrics["dual_y"],
+                                  metrics["dual_z"])
+    return v, v_port, i_val
+
+
+def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
+    """rfx's wire-port DFT accumulation re-run on the probe samples (W0).
+
+    The scan body is the lane's wire block with the field reads replaced by
+    the probe samples: ``t = float32(step) * dt``, the kernel
+    ``exp(-j 2 pi f t)`` cast to complex64 and times ``dt``, the current's
+    kernel times ``half_step_current_phase``, a sequential complex64 sum.
+    Returns ``(v, i, v_port)`` accumulators as numpy arrays of the run's dtype.
+    """
+    import jax
+    import jax.numpy as jnp
+    from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
+
+    freqs = pm.freqs
+
+    def body(carry, xs):
+        step_idx, e, hx, hy, hz = xs
+        v_dft, i_dft, vp_dft = carry
+        v, v_port, i_val = _port_vi(lane, pm, pm.raw, e, hx, hy, hz)
+        t = step_idx.astype(jnp.float32) * dt
+        t_f64 = t.astype(jnp.float64)
+        phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs.astype(jnp.float64)
+                        * t_f64).astype(jnp.complex64) * dt
+        i_phase = phase * _half_i_phase(
+            freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+        return (v_dft + v * phase, i_dft + i_val * i_phase,
+                vp_dft + v_port * phase), None
+
+    nf = int(freqs.shape[0])
+    # The run's own carry dtype: complex64, or complex128 on the uniform lane
+    # under x64 (``rfx.simulation``'s ``_sparam_acc_dtype``).
+    init = tuple(jnp.zeros(nf, dtype=np.asarray(a).dtype) for a in pm.accs)
+    n = e32.shape[0]
+    xs = (jnp.arange(n, dtype=jnp.int32), jnp.asarray(e32),
+          jnp.asarray(h32["hx"]), jnp.asarray(h32["hy"]), jnp.asarray(h32["hz"]))
+    with warnings.catch_warnings():
+        # rfx's own kernel requests float64 that x64-off JAX serves as
+        # float32; the emulation repeats the request, and its warning.
+        warnings.simplefilter("ignore")
+        final, _ = jax.jit(lambda c, x: jax.lax.scan(body, c, x))(init, xs)
+    return tuple(np.asarray(a) for a in final)
+
+
+def _assemble(lane: str, pms, spectra_vp, spectra_i, freqs32, dt, v_mid=None):
+    """The lane's own S-matrix assembly on given (V_port, I) spectra per port.
+
+    ``spectra_vp[p]`` and ``spectra_i[p]`` are the accumulator-convention
+    spectra (the current already carries its half-step phase). They enter the
+    assembly in the dtype of the run's own accumulators, as the run's do.
+    Returns a numpy array shaped and typed like ``Result.s_params``.
+    """
+    import jax.numpy as jnp
+
+    nf = int(np.asarray(freqs32).shape[0])
+    acc_dtype = np.asarray(pms[0].accs[2]).dtype
+
+    def as_acc(a):
+        return jnp.asarray(np.asarray(a), dtype=acc_dtype)
+
+    if lane == "uniform":
+        from rfx.probes.probes import driven_port_reflection
+        (pm,) = pms
+        # the runner's container (rfx/runners/uniform.py, single-port wire path)
+        S = np.zeros((1, 1, nf), dtype=np.complex64)
+        S[0, 0, :] = np.array(driven_port_reflection(
+            as_acc(spectra_vp[0]), as_acc(spectra_i[0]), pm.z0))
+        return S
+    from types import SimpleNamespace
+
+    from rfx.nonuniform import _assemble_nu_result
+    zeros = jnp.zeros(nf, dtype=acc_dtype)
+    accs = tuple(
+        (zeros if v_mid is None else as_acc(v_mid[p]), as_acc(spectra_i[p]),
+         zeros, as_acc(spectra_vp[p]))
+        for p in range(len(pms)))
+    metas = [pm.meta for pm in pms]
+    setup = SimpleNamespace(
+        dt=float(dt), dft_planes=None, flux_monitors=None, wire_ports=metas,
+        waveguide_meta=None, wp_meta=metas,
+        sp_freqs=jnp.asarray(np.asarray(freqs32), dtype=jnp.float32),
+        use_wire_ports=True, use_dft_planes=False, use_flux_monitors=False,
+        use_lumped_rlc=False, use_ntff=False, use_waveguide_ports=False)
+    r = _assemble_nu_result(setup, {"fdtd": None, "wire_sparams": accs}, None)
+    return np.asarray(r["s_params"])
+
+
+def _worst(a, b):
+    """Largest ``|a - b|``, its flat index, and the two values there."""
+    a, b = np.asarray(a), np.asarray(b)
+    d = np.abs(a.astype(np.complex128) - b.astype(np.complex128))
+    k = int(np.argmax(d))
+    return float(d.flat[k]), k, a.flat[k], b.flat[k]
+
+
+class RingdownRun:
+    """One ``run(..., ringdown=spec)``: probes in, run, probes out, complete.
+
+    Built by ``Simulation.run`` once the lane, the step count and the grid are
+    known; :meth:`run` wraps the lane's runner call.
+    """
+
+    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid):
+        if lane not in ("uniform", "graded"):
+            raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
+        self.sim, self.spec, self.lane = sim, spec, lane
+        self.n_steps = int(n_steps)
+        self.grid = grid
+        self.dt = grid.dt
+        self.n_start = int(round(float(spec.window_start) * self.n_steps))
+        self.n_split = int(round(float(spec.split) * self.n_steps))
+        if not (0 < self.n_start < self.n_split < self.n_steps):
+            raise ValueError(
+                f"a record of {self.n_steps} steps is too short for the windows "
+                f"[{self.n_start}, {self.n_steps}) and [{self.n_start}, {self.n_split})")
+        self.freq_max = float(spec.freq_max if spec.freq_max is not None
+                              else sim._freq_max)
+        self.wire_entries = [pe for pe in sim._ports
+                             if float(pe.impedance) > 0.0 and pe.extent is not None]
+        self.source_off = self._check_sources_off()
+        self.probe_keys = self._plan_probes()
+
+    # -- before the run ------------------------------------------------------
+
+    def _check_sources_off(self) -> tuple:
+        """Every source's waveform over the window, as a fraction of its peak.
+
+        The tables are evaluated the way the runners build them:
+        ``waveform(float32(n) * dt)`` for ``n = 0 .. n_steps - 1``.
+        """
+        import jax
+        import jax.numpy as jnp
+
+        times = jnp.arange(self.n_steps, dtype=jnp.float32) * self.dt
+        rows = []
+        for pe in self.sim._ports:
+            driven = float(pe.impedance) == 0.0 or bool(pe.excite)
+            if not driven or pe.waveform is None:
+                continue
+            w = np.abs(np.asarray(jax.vmap(pe.waveform)(times), dtype=np.float64))
+            peak = float(np.max(w)) if w.size else 0.0
+            ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
+            kind = "source" if float(pe.impedance) == 0.0 else "wire port"
+            label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
+            if not ratio <= float(self.spec.source_off_tol):
+                raise ValueError(
+                    f"run(ringdown=...): the {label} is still on inside the "
+                    f"identification window [{self.n_start * float(self.dt):.4g}, "
+                    f"{self.n_steps * float(self.dt):.4g}] s: its waveform there "
+                    f"reaches {ratio:.3e} of its peak, above source_off_tol = "
+                    f"{self.spec.source_off_tol:.1e}. The window must hold free "
+                    "ringing only; use a longer record or a later window_start.")
+            rows.append((label, ratio))
+        return tuple(rows)
+
+    def _plan_probes(self) -> tuple:
+        """(component, index) of every port-channel probe, deduplicated, in order.
+
+        The E edges of each port's extent span and the H samples of an Ampere
+        loop at each of them, with one extra edge below the span (a sub-cell
+        extent drives the edge on either side of its node). Which of these are
+        the port's live edges and midpoint is read from the run itself after
+        it has run; this only has to cover them.
+        """
+        resolve = _lane_resolver(self.lane, self.grid)
+        keys = []
+        seen = set()
+
+        def add(comp, idx):
+            key = (comp, tuple(int(v) for v in idx))
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+
+        for pe in self.wire_entries:
+            comp = str(pe.component)
+            axis = _AXIS_OF[comp]
+            end = list(pe.position)
+            end[axis] += float(pe.extent)
+            i0 = tuple(int(v) for v in resolve(tuple(pe.position)))
+            i1 = tuple(int(v) for v in resolve(tuple(end)))
+            lo, hi = min(i0[axis], i1[axis]), max(i0[axis], i1[axis])
+            for k in range(max(lo - 1, 0), hi + 1):
+                cell = list(i0)
+                cell[axis] = k
+                add(comp, cell)
+                for hname, back_axis in _LOOP_LEGS[comp]:
+                    add(hname, cell)
+                    if cell[back_axis] > 0:
+                        back = list(cell)
+                        back[back_axis] -= 1
+                        add(hname, back)
+        for comp, idx in keys:
+            pos = _node_position(self.grid, idx)
+            got = tuple(int(v) for v in resolve(pos))
+            if got != idx:
+                raise RuntimeError(
+                    f"port-channel probe {comp}{idx}: its node position {pos} "
+                    f"resolves to {got}")
+        return tuple(keys)
+
+    # -- the run -------------------------------------------------------------
+
+    def run(self, call):
+        """Attach the probes, call the lane's runner, detach, complete."""
+        from rfx.api._spec import _ProbeEntry
+
+        probes = self.sim._probes
+        n_user = len(probes)
+        probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
+                                  component=comp)
+                      for comp, idx in self.probe_keys)
+        try:
+            kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
+            result = call(**kwargs)
+        finally:
+            del probes[n_user:]
+        return self._finish(result, n_user)
+
+    # -- after the run -------------------------------------------------------
+
+    def _finish(self, result, n_user: int):
+        full = result.time_series
+        ts_all = np.asarray(full)
+        n_int = len(self.probe_keys)
+        if ts_all.ndim != 2 or ts_all.shape[1] != n_user + n_int:
+            raise RuntimeError(
+                f"run(ringdown=...): the run returned a time series of shape "
+                f"{ts_all.shape}, expected (n_steps, {n_user} user + {n_int} "
+                "port-channel probes)")
+        if ts_all.shape[0] != self.n_steps:
+            raise RuntimeError(
+                f"run(ringdown=...): the run recorded {ts_all.shape[0]} steps, "
+                f"planned {self.n_steps}")
+        stripped = result._replace(
+            time_series=full[:, :n_user],
+            **({"wire_port_sparams": None} if self.lane == "uniform" else {}))
+
+        # The probes landed where planned, on the run's own grid.
+        run_grid = result.grid
+        resolve = _lane_resolver(self.lane, run_grid)
+        for comp, idx in self.probe_keys:
+            got = tuple(int(v) for v in resolve(_node_position(self.grid, idx)))
+            if got != idx:
+                raise RuntimeError(
+                    f"run(ringdown=...): port-channel probe {comp}{idx} resolved "
+                    f"to {got} on the run's own grid")
+        col = {key: n_user + j for j, key in enumerate(self.probe_keys)}
+        pms = _read_port_metas(self.lane, result, run_grid)
+        if len(pms) != len(self.wire_entries):
+            raise RuntimeError(
+                f"run(ringdown=...): the run reports {len(pms)} wire ports, the "
+                f"model declares {len(self.wire_entries)}")
+        dt = run_grid.dt
+
+        e_cols, h_cols = [], []
+        for p, pm in enumerate(pms):
+            missing = [c for c in pm.live_cells if (pm.component, c) not in col]
+            if missing:
+                raise RuntimeError(
+                    f"run(ringdown=...): wire port {p} realized live edges "
+                    f"{missing} outside the probed span")
+            e = ts_all[:, [col[(pm.component, c)] for c in pm.live_cells]]
+            h = {name: np.zeros((ts_all.shape[0], 2, 2, 2), dtype=ts_all.dtype)
+                 for name in ("hx", "hy", "hz")}
+            for hname, back_axis in _LOOP_LEGS[pm.component]:
+                if (hname, pm.mid) not in col:
+                    raise RuntimeError(
+                        f"run(ringdown=...): wire port {p} midpoint {pm.mid} "
+                        "outside the probed span")
+                h[hname][:, 1, 1, 1] = ts_all[:, col[(hname, pm.mid)]]
+                if pm.mid[back_axis] > 0:
+                    back = list(pm.mid)
+                    back[back_axis] -= 1
+                    lb = [1, 1, 1]
+                    lb[back_axis] = 0
+                    h[hname][:, lb[0], lb[1], lb[2]] = ts_all[:, col[(hname, tuple(back))]]
+                # at index 0 the runner reads zero there; the local cell stays 0
+            e_cols.append(e)
+            h_cols.append(h)
+
+        # ---- W0: the rebuilt series, accumulated the run's way, are the run's
+        w0_max = 0.0
+        for p, pm in enumerate(pms):
+            emu = _emulate_accumulators(self.lane, pm, e_cols[p], h_cols[p], dt)
+            for name, a, b in zip(("v_mid", "i", "v_port"), emu, pm.accs):
+                d, k, av, bv = _worst(a, b)
+                if not np.array_equal(np.asarray(a), np.asarray(b)):
+                    f_k = float(np.asarray(pm.freqs)[k])
+                    raise RuntimeError(
+                        f"run(ringdown=...) W0 failed: wire port {p} channel "
+                        f"{name}, rebuilt from the port-channel probes and "
+                        f"accumulated the run's way, differs from the run's own "
+                        f"accumulator: max |rebuilt - rfx| = {d:.3e} at "
+                        f"{f_k:.6g} Hz (rebuilt {complex(av)!r}, rfx "
+                        f"{complex(bv)!r}). The completion would not be the "
+                        "S-parameters this run reports; not completing.")
+                w0_max = max(w0_max, d)
+        freqs32 = pms[0].freqs
+        S_check = _assemble(self.lane, pms, [pm.accs[2] for pm in pms],
+                            [pm.accs[1] for pm in pms], freqs32, dt,
+                            v_mid=[pm.accs[0] for pm in pms])
+        if not np.array_equal(S_check, np.asarray(result.s_params)):
+            d, _k, av, bv = _worst(S_check, result.s_params)
+            raise RuntimeError(
+                f"run(ringdown=...) W0 failed: the lane's S assembly called on the "
+                f"run's own accumulators gives max |dS| = {d:.3e} against "
+                f"Result.s_params ({complex(av)!r} vs {complex(bv)!r}).")
+
+        # ---- completion ------------------------------------------------------
+        cols = []
+        for p, pm in enumerate(pms):
+            e64 = e_cols[p].astype(np.float64).T                      # (n_live, n)
+            h64 = {k: np.moveaxis(v.astype(np.float64), 0, -1)       # (2, 2, 2, n)
+                   for k, v in h_cols[p].items()}
+            _v, v_port, i_val = _port_vi(self.lane, pm, pm.f64, e64,
+                                         h64["hx"], h64["hy"], h64["hz"])
+            cols += [np.asarray(v_port, dtype=np.float64),
+                     np.asarray(i_val, dtype=np.float64)]
+        Y = np.stack(cols, axis=1)
+        f_bins = np.asarray(freqs32, dtype=np.float32).astype(np.float64)
+        from rfx.core.dft_utils import half_step_current_phase
+        half = np.asarray(half_step_current_phase(f_bins, dt)).astype(np.complex128)
+
+        def to_s(spectra):
+            vp = [spectra[:, 2 * p] for p in range(len(pms))]
+            ii = [spectra[:, 2 * p + 1] * half for p in range(len(pms))]
+            return _assemble(self.lane, pms, vp, ii, freqs32, dt)
+
+        spec = self.spec
+        w2 = two_window_witness(
+            Y, dt, f_bins, self.n_steps, self.n_start, freq_max=self.freq_max,
+            split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
+            unit_tol=spec.unit_tol, observable=to_s)
+        S = to_s(w2.spectra)
+        model = w2.model
+
+        record_s = self.n_steps * float(dt)
+        grow, exempt = growing_poles(model, record_s, spec.unit_tol)
+        driven = [p for p, pm in enumerate(pms) if pm.excite]
+        s_diag = max(float(np.max(np.abs(S[p, p, :]))) for p in driven)
+        src_ratio = max((r for _l, r in self.source_off), default=0.0)
+        witnesses = (
+            RingdownWitness("W0", w0_max, 0.0, True,
+                            "the port V/I rebuilt from probes, accumulated the "
+                            "run's way, equal the run's accumulators bit for bit"),
+            RingdownWitness("W2", w2.value, float(spec.witness_tol),
+                            w2.value <= float(spec.witness_tol),
+                            f"max |S| difference between the completions from "
+                            f"[{spec.window_start:g} T, T] and "
+                            f"[{spec.window_start:g} T, {spec.split:g} T]"),
+            RingdownWitness("growing_poles", float(len(grow)), 0.0, len(grow) == 0,
+                            GROWING_POLE_RULE
+                            + f"; {len(exempt)} zero-frequency pole(s) exempt"),
+            RingdownWitness("passivity", s_diag, 1.0 + float(spec.passivity_tol),
+                            s_diag <= 1.0 + float(spec.passivity_tol),
+                            "max |S_kk| over the driven ports"),
+            RingdownWitness("source_off", src_ratio, float(spec.source_off_tol),
+                            src_ratio <= float(spec.source_off_tol),
+                            "largest source waveform over the window, as a "
+                            "fraction of its peak"),
+        )
+        report = RingdownReport(
+            n_record=self.n_steps, dt=float(dt),
+            window_steps=(self.n_start, self.n_steps),
+            window_s=(self.n_start * float(dt), record_s),
+            short_window_steps=(self.n_start, self.n_split),
+            freq_max_hz=self.freq_max, decimation_factors=model.factors,
+            rank=model.rank, n_kept=int(model.s.size),
+            n_growing_discarded=model.n_growing_discarded,
+            n_invalid=model.n_invalid, n_guard_dropped=model.n_guard_dropped,
+            short_rank=w2.model_short.rank, short_n_kept=int(w2.model_short.s.size),
+            poles=model.poles(), witnesses=witnesses,
+            growing_pole_rule=GROWING_POLE_RULE)
+        if not report.ok:
+            failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
+                               for w in witnesses if not w.ok)
+            warnings.warn(
+                f"ring-down completion: witness failed -- {failed}; "
+                "Result.ringdown.s_params is not supported by its own check "
+                "(see Result.ringdown.report).", stacklevel=3)
+        return stripped._replace(ringdown=RingdownResult(
+            s_params=S, freqs=result.freqs, report=report))

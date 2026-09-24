@@ -160,6 +160,7 @@ def run_uniform(
     sheet_specs=None,
     pec_sheets=None,
     pec_wires=None,
+    keep_wire_port_sparams: bool = False,
 ):
     """Run the uniform-grid simulation path.
 
@@ -186,6 +187,11 @@ def run_uniform(
         Minimum conformal weight for CFL stability (default 0.1).
     pec_shapes : list or None
         List of PEC Shape objects (needed for conformal weights).
+    keep_wire_port_sparams : bool
+        Hand back the scan's per-wire-port ``(spec, accumulators)`` pairs as
+        ``Result.wire_port_sparams`` (default ``False``: left ``None``, as
+        before). ``run(..., ringdown=...)`` reads the realized port cells and
+        accumulators from them (issue #1254) and removes them again.
     All other parameters mirror Simulation.run().
 
     Returns
@@ -1023,4 +1029,6 @@ def run_uniform(
         grid=grid,
         dt=grid.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
+        wire_port_sparams=(sim_result.wire_port_sparams
+                           if keep_wire_port_sparams else None),
     )
