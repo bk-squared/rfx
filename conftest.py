@@ -32,6 +32,10 @@ import warnings  # noqa: E402
 import jax  # noqa: E402
 import pytest  # noqa: E402
 
+# A test that reads a note, a guide or a README must be marked docs_consistency,
+# which only the non-required docs-consistency workflow runs (PI, 2026-09-24).
+pytest_plugins = ("tests._prose_reads",)
+
 
 def pytest_configure(config):
     """Warn (but do not abort) when fewer than 2 JAX devices are visible.
