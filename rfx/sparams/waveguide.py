@@ -450,6 +450,11 @@ def compute_waveguide_s_matrix(
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 
+    # The uniform waveguide scan has no subgrid and never read
+    # add_refinement (#1240); the graded branch above is refused by its runner.
+    self._require_no_refinement_without_a_subgrid(
+        "compute_waveguide_s_matrix()")
+
     # Uniform-lane honesty guard (v1.8 WP1), the mirror of the
     # non-uniform guard above. The two-run normalized lane
     # (normalize=True) assembles S on the host:

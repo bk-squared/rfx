@@ -235,11 +235,13 @@ class _MeshMixin:
     def _require_no_refinement_without_a_subgrid(self, entry):
         """Refuse a refinement on an entry point with no subgridded lane.
 
-        Only ``run()`` dispatches to the subgridded lane. ``forward()`` on a
-        uniform mesh runs ``_forward_from_materials``, which never reads
-        ``add_refinement``: a refined model came back bit-identical to the
-        unrefined one, with no warning (#1240). ``optimize()`` reaches it
-        through ``forward()``, ``topology_optimize()`` directly.
+        Only ``run()`` dispatches to the subgridded lane. The other entry
+        points that solve a uniform model never read ``add_refinement``, so a
+        refined model came back bit-identical to the unrefined one, with no
+        warning (#1240): ``forward()`` (and ``optimize()`` through it),
+        ``topology_optimize()``, the ``vmap_material_sweep()`` batched kernel,
+        the uniform ``compute_waveguide_s_matrix()`` scan and
+        ``differentiable_material_fit()``.
         """
         ref = getattr(self, "_refinement", None)
         if ref is None:

@@ -1065,6 +1065,9 @@ def vmap_material_sweep(
                       UserWarning, stacklevel=2)
         return _sequential_fallback(sim, param_name, param_values, n_steps=n_steps)
 
+    # The batched kernel has no subgrid and never read add_refinement (#1240).
+    sim._require_no_refinement_without_a_subgrid("vmap_material_sweep()")
+
     # Build grid and base materials once
     grid = sim._build_grid()
     _sweep_pec_sheets: list = []

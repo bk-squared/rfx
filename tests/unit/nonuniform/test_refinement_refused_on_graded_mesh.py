@@ -18,11 +18,13 @@ property ``_dispatch_plan`` picks the lane with) and sits in three places:
 * ``run_nonuniform_path``: the lane itself, which the graded branch of
   ``compute_waveguide_s_matrix`` reaches without ``_dispatch_plan``.
 
-``forward()`` on a UNIFORM mesh dropped it the same way (bit-identical,
-peak 1.079171e6 both): only ``run()`` has a subgridded lane. ``_dispatch_plan``
-refuses it there too, and ``topology_optimize()``, which calls the forward
-lane without ``_dispatch_plan``, refuses it itself; ``optimize()`` goes
-through ``forward()``.
+Only ``run()`` has a subgridded lane, and on a UNIFORM mesh the other
+entry points dropped a refinement the same way: ``forward()`` (bit-identical,
+peak 1.079171e6 both), ``topology_optimize()`` (bit-identical loss history),
+the ``vmap_material_sweep()`` batched kernel and the uniform
+``compute_waveguide_s_matrix()`` scan (both bit-identical). Each refuses it
+now; ``optimize()`` goes through ``forward()``, and
+``differentiable_material_fit()`` runs its own uniform scan.
 
 The ADI lane never dropped a refinement: ``_validate_adi_configuration``
 refuses it. Locked here too.
@@ -220,7 +222,7 @@ def test_graded_waveguide_s_matrix_refuses():
 
 
 # ---------------------------------------------------------------------------
-# The differentiable entry points on a uniform mesh: no subgridded lane
+# Entry points with no subgridded lane, on a uniform mesh
 # ---------------------------------------------------------------------------
 
 _NO_SUBGRID = "no subgridded lane"
@@ -258,6 +260,54 @@ def test_topology_optimize_refuses():
             lambda r: -jnp.sum(r.time_series ** 2), n_iterations=1,
             learning_rate=0.05, beta_schedule=[(0, 1.0)], verbose=False,
             skip_preflight=True))
+
+
+def test_uniform_vmap_material_sweep_refuses():
+    """The batched kernel; the graded fallback goes through run() instead."""
+    from rfx.vmap_sweep import vmap_material_sweep
+
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: vmap_material_sweep(_box(True, graded=False), "eps_r",
+                                           [1.0, 2.0], n_steps=8))
+
+
+def test_uniform_waveguide_s_matrix_refuses():
+    sim = Simulation(
+        freq_max=8e9, domain=(0.06, 0.02286, 0.01016), dx=3e-3,
+        boundary=BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"),
+                              z=Boundary(lo="pec", hi="pec")),
+        cpml_layers=8)
+    for x_position, direction, name in ((0.012, "+x", "wg1"),
+                                        (0.048, "-x", "wg2")):
+        sim.add_waveguide_port(
+            x_position, direction=direction, mode=(1, 0), mode_type="TE",
+            freqs=np.linspace(6.6e9, 7.8e9, 3), f0=7.2e9, bandwidth=0.3,
+            name=name)
+    sim.add_refinement(z_range=(0.003, 0.007), ratio=2)
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: sim.compute_waveguide_s_matrix(n_steps=1))
+
+
+def test_differentiable_material_fit_refuses():
+    from rfx.differentiable_material_fit import differentiable_material_fit
+
+    def factory(eps_inf, debye_poles, lorentz_poles):
+        sim = Simulation(freq_max=5e9, domain=(0.024, 0.009, 0.009),
+                         dx=1e-3, boundary="pec")
+        sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles)
+        sim.add(Box((0.010, 0.0, 0.0), (0.016, 0.009, 0.009)),
+                material="dut")
+        sim.add_port((0.003, 0.0045, 0.0045), "ez",
+                     waveform=GaussianPulse(f0=3e9, bandwidth=0.5))
+        sim.add_probe((0.020, 0.0045, 0.0045), component="ez")
+        sim.add_refinement(z_range=(0.003, 0.006), ratio=2)
+        return sim
+
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: differentiable_material_fit(
+            factory, np.zeros((1, 1, 3), complex),
+            np.linspace(2.0e9, 4.0e9, 3), n_debye_poles=1,
+            n_iterations=1, learning_rate=0.0, verbose=False))
 
 
 # ---------------------------------------------------------------------------
