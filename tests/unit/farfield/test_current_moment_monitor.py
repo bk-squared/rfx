@@ -1119,9 +1119,15 @@ def _ringdown_box(lane):
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_ringdown_completion_returns_the_same_moments(lane):
     """``run(ringdown=RingdownSpec())`` adds probes and completes S after the
-    run; the moments it returns are the plain run's, bit for bit. On the
-    graded lane the completion assembles S through the lane's result
-    assembly with a stand-in set-up that carries no monitor."""
+    run; the moments it returns are the plain run's. On the graded lane the
+    completion assembles S through the lane's result assembly with a
+    stand-in set-up that carries no monitor.
+
+    Bit for bit on CPU. On a GPU (RTX 3090, JAX 0.6.2) the added probes
+    compile to a different program and the float32 sums round differently
+    in the last digits, so the comparison is the repository's cross-trace
+    rule, the one ``run(ringdown=)``'s own W0 witness reads: at most 9 ULP,
+    counted at the array's peak in its own real dtype."""
     from rfx.ringdown import RingdownSpec
     n = 1500 if lane == "uniform" else 2500
     kw = dict(n_steps=n, compute_s_params=True,
@@ -1131,8 +1137,11 @@ def test_ringdown_completion_returns_the_same_moments(lane):
     done = _ringdown_box(lane).run(ringdown=RingdownSpec(), **kw)
     assert done.ringdown is not None
     a = np.asarray(plain.current_moment_data[0])
-    assert np.abs(a).max() > 0.0
-    assert np.array_equal(np.asarray(done.current_moment_data[0]), a)
+    b = np.asarray(done.current_moment_data[0])
+    peak = np.abs(a).max()
+    assert peak > 0.0
+    ulps = float(np.abs(b - a).max() / np.spacing(peak.astype(a.real.dtype)))
+    assert ulps <= 9.0, ulps
 
 
 # ---------------------------------------------------------------------------
