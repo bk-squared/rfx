@@ -236,6 +236,7 @@ DISPOSITION = {
     "_mode": "carried: 2-D modes match one device bit for bit",
     "_msl_auto_offset_min": "MSL port data; MSL ports refused",
     "_msl_auto_probe_spacing": "MSL port data; MSL ports refused",
+    "_msl_auto_probe_lengths": "MSL port data; MSL ports refused",
     "_msl_ports": "refused",
     "_ntff": "refused",
     "_pec_faces": "carried",

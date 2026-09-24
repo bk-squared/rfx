@@ -712,12 +712,19 @@ class Simulation(
         #     the entry keeps the conservative registration default so
         #     resolver-skip paths (graded propagation axis) never
         #     overrun the feed.
+        #   _msl_auto_probe_lengths: port name -> the two LENGTHS the
+        #     automatic probe defaults are counted from at registration,
+        #     (lambda_eff/(4*pi), lambda_eff/8) at f_max, stored for every
+        #     port. On a graded propagation axis _resolve_msl_auto_offsets
+        #     counts them in the runway cell at the port, and preflight asks
+        #     from them what an automatic offset would be (#810).
         #   _internal_probe_indices: indices into self._probes of
         #     library-registered diagnostic probes (MSL settling
         #     witnesses); probe-placement preflight advisories and the
         #     #332 tail advisory skip them (issue #470 self-noise).
         self._msl_auto_offset_min: dict[str, int] = {}
         self._msl_auto_probe_spacing: dict[str, float] = {}
+        self._msl_auto_probe_lengths: dict[str, tuple[float, float]] = {}
         self._internal_probe_indices: set[int] = set()
         self._periodic_axes: str = ""
         self._refinement: dict | None = None
@@ -1963,8 +1970,16 @@ class Simulation(
         #      edge-fed patch read |S11|=8.94/1.11 at the (a)-only offset
         #      (~5 cells) and a passive ~0.99 once cleared to ~5·h_sub.
         #      ``height`` is the port cross-section height = substrate h_sub.
-        _lam_cells = int(round(0.5 * lam_min_eff / (2.0 * math.pi) / _dx))
-        _hsub_cells = int(round(5.0 * height / _dx))
+        # Both are LENGTHS, and so is the ladder span below. They are counted
+        # in the scalar cell here; on a graded propagation axis the driver
+        # counts the same lengths in the runway cell at the port (#810), so
+        # they are stored with the port.
+        from rfx.preflight.msl import (
+            msl_auto_probe_offset_cells as _auto_offset_cells,
+            msl_auto_probe_spacing_cells as _auto_spacing_cells,
+        )
+        _near_field_m = 0.5 * lam_min_eff / (2.0 * math.pi)
+        span_total = lam_min_eff / 8.0
         _offset_is_auto = n_probe_offset is None
         if n_probe_offset is None:
             # This is the UPSTREAM-only lower edge (offset_min). It has no
@@ -1977,7 +1992,7 @@ class Simulation(
             # does (byte-identical to the pre-#469 default), and warn
             # loudly when the interval is empty (feed too short for a
             # clean measurement). Explicit offsets are never touched.
-            n_probe_offset = max(3, _lam_cells, _hsub_cells)
+            n_probe_offset = _auto_offset_cells(_near_field_m, height, _dx)
         _spacing_is_auto = n_probe_spacing is None
         if n_probe_spacing is None:
             # Bind the default so the TOTAL N-probe array span stays
@@ -1996,12 +2011,9 @@ class Simulation(
             # wherever the registered geometry allows — it has the full
             # geometry (downstream reflector, absorber) that this method
             # cannot see. The short value stored here is what
-            # resolver-skip paths (graded propagation axis) fall back
-            # to, so they can never overrun a short feed.
-            span_total = lam_min_eff / 8.0
-            n_probe_spacing = max(
-                2, int(round(span_total / (n_probes - 1) / _dx))
-            )
+            # resolver-skip paths (a ladder crossing a grading ramp) fall
+            # back to, so they can never overrun a short feed.
+            n_probe_spacing = _auto_spacing_cells(span_total, n_probes, _dx)
         if n_probe_offset < 3:
             raise ValueError(
                 f"n_probe_offset must be >= 3 to avoid near-field, got {n_probe_offset}"
@@ -2042,6 +2054,12 @@ class Simulation(
             )
             _, _eps_eff_hj = _hj(width, height, eps_r_sub_estimate)
             self._msl_auto_probe_spacing[name] = float(_eps_eff_hj)
+        # The two lengths the automatic defaults were counted from, for every
+        # port: the resolver recounts an automatic offset or spacing in the
+        # runway cell on a graded axis, and preflight asks what leaving an
+        # explicit offset None would give on this port's runway (#810).
+        self._msl_auto_probe_lengths[name] = (
+            float(_near_field_m), float(span_total))
 
         from rfx.geometry.port_termination import resolve_terminates
         terminated = (None if terminates is None else resolve_terminates(
