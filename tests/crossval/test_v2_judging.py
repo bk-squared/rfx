@@ -164,3 +164,41 @@ def test_bins_below_the_deep_null_level_are_not_compared():
           f"{c['n_compared']} of {c['n_in_band']}; max |ΔdB| {c['max_abs_delta_db']}")
     assert c["n_compared"] == expected == c["n_in_band"] - int(deep.sum()) - 1
     assert c["max_abs_delta_db"] == 0.0
+
+
+def test_the_floor_is_applied_to_the_aligned_rfx_curve_not_the_unaligned_one():
+    """rfx's notch sits 0.9 % below the reference's, and rfx's skirt is 3 dB
+    too deep 33 MHz below the reference notch.  After alignment that skirt bin
+    is at about -6 dB on both curves and must be compared: the bar reads 3 dB.
+    On rfx's UNALIGNED axis the same reference bin falls in rfx's own notch
+    (below -20 dB); a floor taken from the unaligned curve would drop the bin
+    and hide the error (the review mutation of 2026-09-24)."""
+    f0_ref = 3.674 * GHZ
+    f0_our = f0_ref * 0.991
+    scale = f0_ref / f0_our
+    gamma = 30e6
+    floor_lin = 10 ** (-45.0 / 20)
+
+    def notch_db(f, f0):
+        d = f - f0
+        return 20 * np.log10(np.sqrt((d ** 2 + (gamma * floor_lin) ** 2)
+                                     / (d ** 2 + gamma ** 2)))
+
+    ref_f = np.arange(3.40e9, 3.90e9 + 1, 1e6)
+    our_f = np.arange(3.30e9, 4.00e9 + 1, 0.5e6)
+    ref_db = notch_db(ref_f, f0_ref)
+    our_db = notch_db(our_f * scale, f0_ref)          # identical after alignment
+    skirt = np.abs(our_f * scale - (f0_ref - 33e6)) <= 1.5e6
+    our_db[skirt] -= 3.0                               # the shape error
+    c = aligned_magnitude(ref_f, ref_db, our_f, our_db, f0_ref, f0_our,
+                          (ref_f[0], ref_f[-1]))
+    err_bins = np.abs(ref_f - (f0_ref - 33e6)) <= 1.5e6
+    unaligned_at_err = np.interp(ref_f[err_bins], our_f, our_db)
+    worst_unaligned_rfx = float(unaligned_at_err.max())
+    print(f"\n  aligned max |ΔdB| {c['max_abs_delta_db']:.3f} dB at "
+          f"{c['f_at_max_hz']/1e9:.4f} GHz; at the error bins the unaligned rfx curve reads at most "
+          f"{worst_unaligned_rfx:.1f} dB")
+    assert c["max_abs_delta_db"] == pytest.approx(3.0, abs=0.05)
+    assert c["max_abs_delta_db"] > MAG_BAR_DB
+    # the premise: on rfx's unaligned axis every error bin is below the floor
+    assert worst_unaligned_rfx < DEEP_NULL_DB
