@@ -639,8 +639,8 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     committed Sheen interval-test geometry — and the existing
     empty-interval warning still fires when even that does not fit.
     Explicit spacings are never touched. Graded/unevaluable propagation
-    axes keep the stored registration value (short and safe) via the
-    same skip-and-warn path as the offset solve.
+    axes get no widening, via the same skip-and-warn path as the offset
+    solve.
 
     Non-uniform meshes (issue #686). The bail-out is per PORT and keys on
     that port's PROPAGATION axis, not on "is any axis graded". A
@@ -654,6 +654,21 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     is a traced profile the host cannot inspect) the stored value is kept
     as before — but the skip now WARNS once per call instead of being
     silent.
+
+    Graded propagation axis (issue #810). The automatic offset and spacing
+    are LENGTHS (``lambda_eff/(4*pi)`` and ``5*h_sub`` for the offset,
+    ``lambda_eff/8`` for the ladder span) that ``add_msl_port`` counted in
+    the scalar cell. On a runway finer than that cell the count put probe 0
+    at a fraction of the fringing length from the source (5 cells = 635 um
+    of the 1.270 mm a 254 um board needs, on a 127 um runway under a 254 um
+    boundary cell). For an automatic port on a graded axis the lengths are
+    counted in the runway cell beside the node the source is stamped on,
+    when the span from that node through the deepest probe lies in one
+    uniform zone. When it would cross a grading ramp, no cell count names
+    one length along it, and the stored counts are kept. Either way the
+    #469 interval solve and the #681 widening, which count reflector and
+    absorber distances in cells, do not run on a graded axis, and the skip
+    warning says so.
     """
     _auto_spacing = getattr(sim, "_msl_auto_probe_spacing", {}) or {}
     if not sim._msl_auto_offset_min and not _auto_spacing:
@@ -666,12 +681,15 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         msl_min_probe_clearance,
         msl_nearest_downstream_reflector,
     )
+    from rfx.preflight._common import _fmt_len
+    from rfx.preflight.msl import msl_auto_probe_ladder
     from rfx.sources.msl_port import (
         _MSL_AXIS_INDEX as _MSL_AX,
         msl_axis_roles as _msl_axis_roles,
     )
 
     clear = msl_min_probe_clearance(float(sim._freq_max))
+    _auto_lengths = getattr(sim, "_msl_auto_probe_lengths", {}) or {}
     resolved: list = []
     _graded_skips: list[str] = []
     for pe in entries:
@@ -692,15 +710,63 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 f"{pe.name!r} (direction={pe.direction!r}): the "
                 f"{_prop_ax}-axis cell sizes are a traced "
                 f"mesh-as-design-variable profile and cannot be inspected "
-                f"host-side")
+                f"host-side; the stored offset and spacing are kept")
             resolved.append(pe)
             continue
         if _graded:
+            # Issue #810: count the automatic LENGTHS in the runway cell at
+            # the source node, where the whole ladder lies in one zone.
+            _lengths = _auto_lengths.get(pe.name)
+            if _lengths is None:
+                _graded_skips.append(
+                    f"{pe.name!r} (direction={pe.direction!r}): the "
+                    f"propagation axis {_prop_ax} is GRADED and the lengths "
+                    f"its automatic probe ladder was counted from were not "
+                    f"recorded; the stored offset and spacing are kept")
+                resolved.append(pe)
+                continue
+            from rfx.nonuniform import interior_cells as _interior_cells
+            _pads = ((grid.pad_x_lo, grid.pad_x_hi),
+                     (grid.pad_y_lo, grid.pad_y_hi),
+                     (grid.pad_z_lo, grid.pad_z_hi))[_ip]
+            _runway = np.asarray(
+                _interior_cells(grid.cells(_ip), *_pads), dtype=np.float64)
+            _off, _sp, _cell, _one_zone = msl_auto_probe_ladder(
+                _runway, float(_runway[0]), float(pe.position[_ip]),
+                _dir_sign, int(pe.n_probes), _lengths[0], float(pe.height),
+                _lengths[1],
+                n_probe_offset=(None if off_min is not None
+                                else pe.n_probe_offset),
+                n_probe_spacing=(None if sp_eps_eff is not None
+                                 else pe.n_probe_spacing))
+            _ladder_txt = (
+                f"offset {_off} + {int(pe.n_probes) - 1} x spacing {_sp} "
+                f"cells of {_fmt_len(_cell)}")
+            if not _one_zone:
+                _graded_skips.append(
+                    f"{pe.name!r} (direction={pe.direction!r}): the "
+                    f"propagation axis {_prop_ax} is GRADED and this port's "
+                    f"automatic probe ladder counted in its runway cell "
+                    f"({_ladder_txt}) would cross a grading ramp, so no "
+                    f"cell count names one length along it; the offset "
+                    f"{int(pe.n_probe_offset)} and spacing "
+                    f"{int(pe.n_probe_spacing)} counted in the boundary "
+                    f"cell at registration are kept")
+                resolved.append(pe)
+                continue
+            _fields = {}
+            if off_min is not None and _off != int(pe.n_probe_offset):
+                _fields["n_probe_offset"] = _off
+            if sp_eps_eff is not None and _sp != int(pe.n_probe_spacing):
+                _fields["n_probe_spacing"] = _sp
             _graded_skips.append(
                 f"{pe.name!r} (direction={pe.direction!r}): the "
-                f"propagation axis {_prop_ax} is GRADED, so a cell-counted "
-                f"probe interval has no single cell size to count in")
-            resolved.append(pe)
+                f"propagation axis {_prop_ax} is GRADED; the automatic "
+                f"probe ladder is counted in this port's own runway cell "
+                f"({_ladder_txt}, probe 0 {_fmt_len(_off * _cell)} "
+                f"from the source)")
+            resolved.append(
+                dataclasses.replace(pe, **_fields) if _fields else pe)
             continue
         d_refl, _, _unevaluated = msl_nearest_downstream_reflector(
             getattr(sim, "_geometry", []),
@@ -723,7 +789,8 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 f"{pe.name!r} (direction={pe.direction!r}): the downstream "
                 f"reflector scan could not evaluate "
                 f"{len(_unevaluated)} conductor(s) — "
-                + "; ".join(_unevaluated))
+                + "; ".join(_unevaluated)
+                + "; the stored offset and spacing are kept")
             resolved.append(pe)
             continue
         # --- Auto probe-spacing widening (issue #681, docstring above).
@@ -800,11 +867,11 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     if _graded_skips:
         warnings.warn(
             "MSL auto probe-offset interval solve (issue #469) SKIPPED for "
-            + str(len(_graded_skips)) + " port(s); the stored upstream-only "
-            "lower edge is kept (and any auto probe spacing keeps its "
-            "conservative registration default — no #681 span widening), "
-            "so the downstream reflector clearance is "
-            "NOT enforced for them: " + "; ".join(_graded_skips)
+            + str(len(_graded_skips)) + " port(s), so the downstream "
+            "reflector clearance is NOT enforced for them and no auto probe "
+            "spacing is widened (#681; on a graded propagation axis both "
+            "would count reflector and absorber distances in cells of more "
+            "than one size). Per port: " + "; ".join(_graded_skips)
             + ". This used to be silent for every non-uniform mesh (issue "
             "#686). Set n_probe_offset explicitly on these ports, or make "
             "the propagation axis uniform, if the deepest probe's "

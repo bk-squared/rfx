@@ -510,6 +510,11 @@ class _PreflightMixin:
                     profile_node_at as _profile_node_at,
                     profile_span_is_uniform as _profile_span_is_uniform,
                 )
+                from rfx.preflight.msl import (
+                    msl_auto_probe_ladder as _auto_ladder,
+                    msl_auto_probe_offset_cells as _auto_offset_cells,
+                    msl_auto_probe_offset_term as _auto_offset_term,
+                )
                 from rfx.sources.msl_port import (
                     msl_axis_roles as _msl_axis_roles,
                 )
@@ -548,34 +553,68 @@ class _PreflightMixin:
                         "does not name one distance. Put the port and its "
                         "probes inside one uniform zone of the profile."
                     )
-                elif (self._dx and pe.n_probe_offset is not None
-                        and int(pe.n_probe_offset) < _nf_cells):
-                    # the automatic offset counts 5·h_sub in the boundary
-                    # cell; where that falls short of this runway's count,
-                    # None is the advice that produced the short offset
+                elif self._dx and pe.n_probe_offset is not None:
+                    # What leaving the offset None gives on this port, counted
+                    # the way the driver counts it (#810): the automatic
+                    # lengths in this runway's cell where the ladder lies in
+                    # one zone, in the boundary cell where it would cross a
+                    # ramp. An automatic port is judged on that same count,
+                    # the offset the driver will use, not the stored one.
                     _auto = pe.name in getattr(self, "_msl_auto_offset_min", {})
-                    _none_clears = msl_source_near_field_standoff_cells(
-                        float(pe.height), float(self._dx)) >= _nf_cells
-                    _remedy = (
-                        f"set n_probe_offset >= {_nf_cells} explicitly; the "
-                        f"automatic choice counted 5·h_sub in the boundary "
-                        f"cell, and leaving it None chooses "
-                        f"{pe.n_probe_offset} again."
-                        if _auto else
-                        "increase n_probe_offset or leave it None for the "
-                        "safe default."
-                        if _none_clears else
-                        f"set n_probe_offset >= {_nf_cells}; leaving it None "
-                        f"counts 5·h_sub in the boundary cell and falls short "
-                        f"on this runway."
-                    )
-                    messages.append(
-                        f"MSL port {pe.name!r}: n_probe_offset="
-                        f"{pe.n_probe_offset} sits within the source fringing "
-                        f"transient ({_nf_cells} cells = max(3, round("
-                        f"5·h_sub/dx))); probe 0 may corrupt the V·I-split S11 "
-                        f"of a high-Q resonant load (issue #80) — " + _remedy
-                    )
+                    _lengths = getattr(
+                        self, "_msl_auto_probe_lengths", {}).get(pe.name)
+                    _off = int(pe.n_probe_offset)
+                    _none_txt = ""
+                    _none_clears = False
+                    if _lengths is not None:
+                        _sp_auto = pe.name in getattr(
+                            self, "_msl_auto_probe_spacing", {})
+                        _none_off, _, _none_cell, _none_on_runway = (
+                            _auto_ladder(
+                                _runway_profile, float(self._dx), _feed_coord,
+                                _prop_sign, int(pe.n_probes), _lengths[0],
+                                float(pe.height), _lengths[1],
+                                n_probe_spacing=(None if _sp_auto
+                                                 else pe.n_probe_spacing)))
+                        if not _none_on_runway:
+                            _none_cell = float(self._dx)
+                            _none_off = _auto_offset_cells(
+                                _lengths[0], float(pe.height), _none_cell)
+                        if _auto:
+                            _off = _none_off
+                        _none_clears = _none_off >= _nf_cells
+                        _none_term = _auto_offset_term(
+                            _lengths[0], float(pe.height), _none_cell)
+                        _none_txt = (
+                            f"counts {_none_term} "
+                            + (f"in this runway's {_fmt_len(_none_cell)} "
+                               f"cells" if _none_on_runway else
+                               "in the boundary cell because counted in this "
+                               "runway's own cells its probe ladder would "
+                               "cross a grading ramp")
+                            + f", {_none_off} cells")
+                    if _off < _nf_cells:
+                        _remedy = (
+                            f"set n_probe_offset >= {_nf_cells} explicitly; the "
+                            f"automatic choice {_none_txt}, and leaving it None "
+                            f"chooses {_off} again."
+                            if _auto else
+                            f"increase n_probe_offset or leave it None: the "
+                            f"automatic offset {_none_txt}."
+                            if _none_clears else
+                            f"set n_probe_offset >= {_nf_cells}; leaving it "
+                            f"None {_none_txt}, and falls short on this runway."
+                            if _none_txt else
+                            f"set n_probe_offset >= {_nf_cells}."
+                        )
+                        messages.append(
+                            f"MSL port {pe.name!r}: n_probe_offset="
+                            f"{_off} sits within the source fringing "
+                            f"transient ({_nf_cells} cells = max(3, round("
+                            f"5·h_sub/dx))); probe 0 may corrupt the V·I-split "
+                            f"S11 of a high-Q resonant load (issue #80) — "
+                            + _remedy
+                        )
         if self._waveguide_ports:
             messages.append("waveguide ports use compute_waveguide_s_matrix()")
         if self._floquet_ports:
