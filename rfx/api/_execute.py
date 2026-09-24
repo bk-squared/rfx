@@ -13,6 +13,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+import functools
 import math
 import os
 from typing import NamedTuple
@@ -31,6 +32,7 @@ from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in m
 from rfx.adi import ADIState2D, run_adi_2d
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
+from rfx.ringdown import RingdownSpec  # noqa: F401  (run() signature type-hint)
 from rfx.api._spec import (
     ForwardResult,
     Result,
@@ -2169,6 +2171,9 @@ class _ExecuteMixin:
                     r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                     periodic=_rlc_periodic,
                 ))
+            # #1245: at most one element with its own solve per realized edge.
+            from rfx.lumped import refuse_stacked_solved_elements
+            refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
 
         result = _run(
             grid,
@@ -4125,6 +4130,7 @@ class _ExecuteMixin:
         skip_preflight: bool = False,
         report_every: int | None = None,
         report_label: str = "",
+        ringdown: RingdownSpec | None = None,
     ) -> Result:
         """Run the simulation.
 
@@ -4248,6 +4254,20 @@ class _ExecuteMixin:
         report_label : str
             Short tag prefixed to each progress line (e.g. ``"drive p1"``).
             Ignored when ``report_every`` is None.
+        ringdown : rfx.ringdown.RingdownSpec or None
+            Issue #1254 — complete the wire-port S-parameters of a record
+            cut while the structure still rings. The slow poles are
+            identified on ``[window_start * T, T]`` of the port voltage and
+            current (the source must be off there) and the unrecorded tail
+            of each spectrum is added in closed form. The result is
+            ``Result.ringdown`` (``.s_params`` on the bins of
+            ``Result.s_params``, ``.report`` with the window, the poles and
+            the witnesses: the two-window difference ``W2``, no growing
+            pole, passivity, source off). Every other output is the one the
+            same run gives without ``ringdown=``. Wire ports
+            (``add_port(..., extent=...)``) on the uniform (one port) and
+            graded-mesh lanes, fixed record length; other ports, TFSF, Kerr,
+            ``devices=`` and ``until_decay`` are refused with the reason.
 
         Returns
         -------
@@ -4255,6 +4275,11 @@ class _ExecuteMixin:
         """
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
+        if ringdown is not None:
+            from rfx.ringdown import refuse_run_request
+            refuse_run_request(self, ringdown, devices=devices,
+                               until_decay=until_decay,
+                               compute_s_params=compute_s_params)
 
         # Behaviour-neutral decay-parameter sanity advisories (post-#392
         # review): single run()-level site, before dispatch, so both lanes
@@ -4327,6 +4352,11 @@ class _ExecuteMixin:
             exchange_interval=exchange_interval,
         )
         n_steps = plan.n_steps
+        if ringdown is not None:
+            from rfx.ringdown import refuse_run_lane
+            refuse_run_lane(plan.lane, sum(
+                1 for p in self._ports
+                if float(p.impedance) > 0.0 and p.extent is not None))
 
         # ---- Distributed multi-device lane ----
         if plan.lane == "run_distributed" and self._interface_eps == "dual_average":
@@ -4412,7 +4442,8 @@ class _ExecuteMixin:
                     self._warn_until_decay_dc_floor(
                         dt=_nu_dt_for_dc, n_table=decay_max_steps
                     )
-            _res = self._run_nonuniform(
+            _nu_call = functools.partial(
+                self._run_nonuniform,
                 n_steps=n_steps,
                 report_every=report_every,
                 report_label=report_label,
@@ -4428,6 +4459,13 @@ class _ExecuteMixin:
                 radiated_flux_box=radiated_flux_box,
                 flux_env_checks=flux_env_checks,
             )
+            if ringdown is None:
+                _res = _nu_call()
+            else:
+                from rfx.ringdown import RingdownRun
+                _res = RingdownRun(
+                    self, ringdown, lane="graded", n_steps=n_steps,
+                    grid=self._build_nonuniform_grid()).run(_nu_call)
             self._warn_run_sparams_if_nonpassive(_res)
             self._warn_postrun_energy_witness(
                 _res,
@@ -4531,7 +4569,8 @@ class _ExecuteMixin:
 
         from rfx.runners.uniform import run_uniform
         _field_dtype = self._resolve_field_dtype()
-        _res = run_uniform(
+        _uniform_call = functools.partial(
+            run_uniform,
             self,
             n_steps=n_steps,
             until_decay=until_decay,
@@ -4565,6 +4604,12 @@ class _ExecuteMixin:
             **({} if report_every is None else
                {"report_every": report_every, "report_label": report_label}),
         )
+        if ringdown is None:
+            _res = _uniform_call()
+        else:
+            from rfx.ringdown import RingdownRun
+            _res = RingdownRun(self, ringdown, lane="uniform", n_steps=n_steps,
+                               grid=grid).run(_uniform_call)
         self._warn_run_sparams_if_nonpassive(_res)
         self._warn_postrun_energy_witness(
             _res,

@@ -26,9 +26,16 @@ Geometry and extraction follow the #1163 review's sheet script; the band is
 surface is the extraction's own witness (it must read 100 ohm, a value no
 ADE is involved in).
 
-MEASURED over 1-8 GHz with the edge D0: folded 100 ohm within 0.35 %;
-parallel 2 nH reactance within 0.74 % (surface) and 0.84 % (vacuum); series
-100 ohm + 1 nH within 0.43 % of |Z|. With the single-cell D0 restored: the
+The continuous inversion has one discrete term of its own on the surface: a
+real interface conductance G (:func:`interface_conductance`), which reads
+as Re Z = G |Z|^2 on a reactive load (1.4 % of |Z| at 250 ohm, 8 GHz). Every
+row is judged with G removed (PI decision, #1245); in vacuum G = 0.
+
+MEASURED over 1-8 GHz with the edge D0, raw -> with G removed: folded
+100 ohm within 0.33 % -> 0.23 %; series 100 ohm + 1 nH within 0.46 % ->
+0.22 % of |Z|; parallel 2 nH reactance within 0.74 % (surface) and 0.84 %
+(vacuum) before #1245, 0.16 % on both after it.
+With the single-cell D0 restored: the
 parallel 2 nH off by 60 % (21.09 against 13.18 ohm at 1.05 GHz) and the
 series element reading 160 ohm; the vacuum row unchanged.
 """
@@ -43,6 +50,7 @@ from rfx import Box, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 ETA0 = 376.730313668
+C0 = 299792458.0
 DX = 1e-3
 LZ = 0.4
 N_STEPS = 600
@@ -50,7 +58,6 @@ GATE = 520
 N_FFT = 6000
 BAND = (1e9, 8e9)
 EPS2 = 4.0
-BAR = 0.03
 #: Sheet and source planes, in cells from the domain's z = 0 (16 CPML cells
 #: sit below it, so the nodes are 236 and 176).
 K_SHEET = 220
@@ -103,7 +110,39 @@ def incident():
     return _sheet_run(None, None)
 
 
-def _z_load(ts, incident, eps2):
+def interface_conductance(f, dt, eps2):
+    """The conductance the continuous inversion reads at the eps 1|eps2 plane.
+
+    One-dimensional Yee along z (the fields are uniform across the periodic
+    cross-section), sheet on the interface E node, the H nodes either side in
+    vacuum and in eps2. With b_m = beta_m dz/2 from each medium's own discrete
+    dispersion, sin(b_m) = (dz sqrt(eps_m)/(c dt)) sin(w dt/2), the jump
+    condition at the sheet reads (K the sheet current referred to the half
+    step)
+
+        E_T [cos b1/eta1 + cos b2/eta2 + K/E_T] = 2 E_i cos b1/eta1,
+
+    and the continuous formula T = 2/eta1 / (1/eta1 + 1/eta2 + 1/Z) inverts that
+    to 1/Z = (K/E_T)/cos b1 + G with
+
+        G = (cos b2 / cos b1 - 1) / eta2,
+
+    a real conductance of the extraction, not of the element: -5.6e-5 S at
+    8 GHz on 1 mm cells with eps2 = 4, and exactly 0 in vacuum (b2 = b1).
+    It reads as Re Z = G |Z|^2 on a reactive load. MEASURED (#1245) as
+    Re(1/Z_raw) of four lossless loads on this surface -- folded 0.0796 pF and
+    0.32 pF, parallel 2 nH and 5 nH: -5.5976e-5 to -5.5979e-5 S at 7.95 GHz
+    against -5.5978e-5 S from this formula, within 7.6e-8 S on every bin of
+    1-8 GHz.
+    """
+    s = DX / (C0 * dt) * np.sin(np.pi * f * dt)
+    b1 = np.arcsin(s)
+    b2 = np.arcsin(math.sqrt(eps2) * s)
+    return (np.cos(b2) / np.cos(b1) - 1.0) / (ETA0 / math.sqrt(eps2))
+
+
+def _z_load_raw(ts, incident, eps2):
+    """Z_L from the continuous inversion alone (no interface term)."""
     ref, dt = incident
     a, b = ts.copy(), ref.copy()
     a[GATE:] = 0.0
@@ -117,6 +156,15 @@ def _z_load(ts, incident, eps2):
     return f[sel], z_l[sel]
 
 
+def _z_load(ts, incident, eps2):
+    """Z_L with the interface conductance removed (PI decision, #1245): the
+    extraction every row is judged on. In vacuum G = 0 and this is the raw
+    inversion."""
+    f, z_raw = _z_load_raw(ts, incident, eps2)
+    g = interface_conductance(f, incident[1], eps2)
+    return f, 1.0 / (1.0 / z_raw - g)
+
+
 def test_folded_resistor_on_the_surface_reads_its_value(incident):
     """The extraction's own witness: a folded resistor needs no ADE and no D0."""
     ts, _ = _sheet_run(lambda s, p: s.add_lumped_rlc(
@@ -126,19 +174,98 @@ def test_folded_resistor_on_the_surface_reads_its_value(incident):
     assert err.max() < 0.01, f"folded 100 ohm read {z[np.argmax(err)]:.2f} ohm at {f[np.argmax(err)] / 1e9:.2f} GHz"
 
 
-@pytest.mark.parametrize("eps2", [EPS2, 1.0], ids=["eps-1-4-surface", "vacuum"])
-def test_parallel_inductor_reads_its_reactance(incident, eps2):
-    """Parallel 2 nH: Im Z_L = w L within 3 % on every bin of 1-8 GHz."""
-    l_h = 2e-9
+#: A lumped inductor is lossless: |Re Z_L| and |Im Z_L - w L| within 1 % of
+#: w L on every bin (#1245).
+BAR_L = 0.01
+
+
+@pytest.mark.parametrize("eps2, l_h", [(EPS2, 2e-9), (EPS2, 5e-9), (1.0, 2e-9), (1.0, 5e-9)],
+                         ids=["eps-1-4-surface-2nH", "eps-1-4-surface-5nH",
+                              "vacuum-2nH", "vacuum-5nH"])
+def test_parallel_inductor_is_lossless_and_reads_its_reactance(incident, eps2, l_h):
+    """A pure parallel inductor: Re Z_L = 0 and Im Z_L = w L, each within 1 %
+    of w L on every bin of 1-8 GHz.
+
+    The inductor update it replaced applied I^{n+1} over the step n -> n+1
+    (backward Euler, half a step late against the centred field update) and
+    so carried a series resistance w^2 L dt: 9.5 ohm at 8 GHz for 2 nH on
+    these 1 mm cells, 9.5 % of w L (Q ~ 10). #1245 solves the inductor with
+    its edge field in one trapezoidal step.
+
+    Judged on the extraction with the interface conductance removed
+    (:func:`interface_conductance`; the folded-capacitor test below is its
+    witness at the same |Z|).
+
+    MEASURED with the trapezoidal inductor (1-8 GHz): |Re Z_L|/wL <= 1.0e-6
+    (2 nH) and 5.3e-7 (5 nH) on the surface, 7.8e-7 in vacuum; |Im Z_L - wL|/wL
+    <= 0.16 % everywhere. The raw inversion on the surface, before the
+    interface term is removed, reads 0.56 % (2 nH) and 1.39 % (5 nH) of wL:
+    G |Z_L|^2 of the extraction. With the old update restored, Re Z_L is
+    9.5 % of wL in vacuum.
+    """
     ts, _ = _sheet_run(lambda s, p: s.add_lumped_rlc(
         position=p, component="ex", L=l_h, topology="parallel"), eps2)
     f, z = _z_load(ts, incident, eps2)
     x_true = 2.0 * math.pi * f * l_h
+    loss = np.abs(z.real) / x_true
     err = np.abs(z.imag - x_true) / x_true
-    k = int(np.argmax(err))
-    assert err.max() <= BAR, (
-        f"parallel {l_h * 1e9:.0f} nH on eps2={eps2}: reactance {z.imag[k]:.2f} ohm "
-        f"against {x_true[k]:.2f} ohm at {f[k] / 1e9:.2f} GHz ({err[k]:.1%}; bar {BAR:.0%})")
+    k, m = int(np.argmax(loss)), int(np.argmax(err))
+    assert loss.max() <= BAR_L, (
+        f"parallel {l_h * 1e9:.0f} nH on eps2={eps2}: Re Z_L {z.real[k]:.3f} ohm at "
+        f"{f[k] / 1e9:.2f} GHz, {loss[k]:.2%} of w L = {x_true[k]:.2f} ohm (bar {BAR_L:.0%})")
+    assert err.max() <= BAR_L, (
+        f"parallel {l_h * 1e9:.0f} nH on eps2={eps2}: reactance {z.imag[m]:.2f} ohm "
+        f"against {x_true[m]:.2f} ohm at {f[m] / 1e9:.2f} GHz ({err[m]:.2%}; bar {BAR_L:.0%})")
+
+
+#: The folded capacitor with the 5 nH row's |Z| at 8 GHz (249.9 ohm against
+#: 251.3 ohm): no inductor code, no ADE, only the edge permittivity.
+C_WITNESS = 0.0796e-12
+#: Re Z_raw = G |Z|^2 per bin, relative to |Z|. MEASURED residual 4.0e-6; the
+#: term it checks is 1.4e-2 of |Z| at 8 GHz.
+IDENTITY_BAR = 1e-4
+
+
+def test_folded_capacitor_witnesses_the_interface_term(incident):
+    """The interface term belongs to the extraction, not to any element.
+
+    A folded 0.0796 pF on the same surface is lossless and involves no
+    inductor code. Its raw reading must carry exactly the loss the interface
+    term predicts, Re Z_raw = G |Z|^2 on every bin, and with the term removed
+    it must read a lossless capacitor within the inductor rows' 1 % bar.
+    MEASURED (1-8 GHz): raw Re Z = -1.398 % of |Z| at 7.95 GHz (the 5 nH row
+    reads -1.394 % there); identity residual 4.0e-6 of |Z|; corrected
+    |Re Z|/|Z| <= 4.0e-6 and |Im Z - X_C|/|X_C| <= 0.31 %. G read back from
+    this load, Re(1/Z_raw), is -5.5977e-5 S at 7.95 GHz against the closed
+    form's -5.5978e-5 S (2 nH: -5.5978e-5, 5 nH: -5.5979e-5).
+    """
+    ts, _ = _sheet_run(lambda s, p: s.add_lumped_rlc(
+        position=p, component="ex", C=C_WITNESS, topology="parallel"), EPS2)
+    f, z_raw = _z_load_raw(ts, incident, EPS2)
+    _, z = _z_load(ts, incident, EPS2)
+    g = interface_conductance(f, incident[1], EPS2)
+    x_true = -1.0 / (2.0 * math.pi * f * C_WITNESS)
+    mag = np.abs(x_true)
+
+    predicted = g * np.abs(z) ** 2
+    assert np.max(np.abs(predicted[-1])) / mag[-1] > 1e-2, (
+        "the witness no longer exercises the interface term at the band top")
+    resid = np.abs(z_raw.real - predicted) / np.abs(z)
+    k = int(np.argmax(resid))
+    assert resid.max() <= IDENTITY_BAR, (
+        f"folded {C_WITNESS * 1e12:.4f} pF on eps2={EPS2}: raw Re Z {z_raw.real[k]:.4f} ohm "
+        f"at {f[k] / 1e9:.2f} GHz, the interface term predicts {predicted[k]:.4f} ohm "
+        f"(residual {resid[k]:.2e} of |Z|; bar {IDENTITY_BAR:.0e})")
+
+    loss = np.abs(z.real) / mag
+    err = np.abs(z.imag - x_true) / mag
+    k, m = int(np.argmax(loss)), int(np.argmax(err))
+    assert loss.max() <= BAR_L, (
+        f"folded {C_WITNESS * 1e12:.4f} pF on eps2={EPS2}: Re Z {z.real[k]:.3f} ohm at "
+        f"{f[k] / 1e9:.2f} GHz, {loss[k]:.2%} of |X_C| (bar {BAR_L:.0%})")
+    assert err.max() <= BAR_L, (
+        f"folded {C_WITNESS * 1e12:.4f} pF on eps2={EPS2}: reactance {z.imag[m]:.2f} ohm "
+        f"against {x_true[m]:.2f} ohm at {f[m] / 1e9:.2f} GHz ({err[m]:.2%}; bar {BAR_L:.0%})")
 
 
 def test_series_element_on_the_surface_reads_its_impedance(incident):

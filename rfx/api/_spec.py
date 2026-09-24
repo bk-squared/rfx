@@ -761,6 +761,13 @@ class Result(NamedTuple):
     #: reference ``v_ref`` (#683), on the uniform lane only; the first four
     #: are the same channels on both.
     wire_port_sparams: tuple | None = None
+    #: ``run(..., ringdown=RingdownSpec(...))`` only (issue #1254): a
+    #: :class:`rfx.ringdown.RingdownResult` holding the wire-port S-matrix
+    #: with the record's unrecorded ring-down added in closed form
+    #: (``.s_params``, same shape and bins as ``s_params``) and the report its
+    #: witnesses are in (``.report``). ``None`` on every other run; every
+    #: other field is the same as without ``ringdown=``.
+    ringdown: object = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,

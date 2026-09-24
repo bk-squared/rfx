@@ -44,32 +44,30 @@ resistance and the run diverged.
 
 Parallel topology (inductor ADE only)
 --------------------------------------
-At the inductor cell, Ampere's law with current density J_L = I_L/dx^2:
+R and C are folded into the edge's sigma and eps, which the Yee E update
+already treats time-centred (sigma*(E^{n+1}+E^n)/2).  The inductor is
+solved together with the edge field, time-centred the same way (issue
+#1245).  At the edge (d = edge length, A = dual face, D0 = eps/dt + sigma/2
+of the edge = 1/Cb, e_std = Ca*E^n + Cb*curl H):
 
-    eps*(E^{n+1}-E^n)/dt + sigma*(E^{n+1}+E^n)/2
-        = curl_H/dx - I_L^{n+1}/dx^2
+    Ampere:    D0*(E^{n+1} - e_std) = -I_avg/A,  I_avg = (I^{n+1} + I^n)/2
+    inductor:  L*(I^{n+1} - I^n)/dt = d*(E^{n+1} + E^n)/2
 
-Inductor relation (leapfrog):
+Eliminating I^{n+1}, with gamma = dt*d/(L*A):
 
-    I_L^{n+1} = I_L^n + (dt*dx/L) * E^{n+1}
+    E^{n+1} = e_std - (I^n/A + (gamma/4)*(e_std + E^n)) / (D0 + gamma/4)
+    I^{n+1} = I^n + (dt*d/(2L)) * (E^{n+1} + E^n)
 
-Substituting and solving for E^{n+1}:
+The element's power d*(E^{n+1}+E^n)/2 * I_avg is exactly the change of
+L*I^2/2 per step, so the inductor stores and returns energy without loss;
+its discrete impedance is j*w*L*tan(w*dt/2)/(w*dt/2), right to second order.
 
-    E^{n+1} = [D0*E_std - I_L^n/dx^2] / (D0 + gamma)
-
-where:
-    D0    = eps/dt + sigma/2         (standard Yee denominator)
-    gamma = dt/(L*dx)                (inductor contribution)
-    E_std = Ca*E^n + Cb*curl_H       (standard Yee update result)
-
-The key insight: E_std already incorporates D0 in its coefficients,
-so we can write the correction as a post-update rescaling:
-
-    E^{n+1} = (D0 * E_std - I_L^n/dx^2) / (D0 + gamma)
-
-Then update I_L:
-
-    I_L^{n+1} = I_L^n + (dt*dx/L) * E^{n+1}
+The update it replaces applied I^{n+1} over the step n -> n+1 with
+I^{n+1} = I^n + (dt*d/L)*E^{n+1} (backward Euler, half a step late against
+the centred field update).  That inductor has the impedance
+j*w*L*sinc(w*dt/2)*exp(-j*w*dt): a series resistance ~ w^2*L*dt.  Measured
+with a plane wave on a sheet of pure 2 nH elements on 1 mm cells it read
+0.61 ohm at 2 GHz and 9.5 ohm at 8 GHz (Q ~ 10), halving with the cell.
 """
 
 from __future__ import annotations
@@ -383,11 +381,9 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
         materials, (i, j, k), spec.component, dt, periodic, as_float=True)
 
     if has_inductor:
-        # gamma is the implicit self-coupling of the inductor into the E
-        # update.  Eliminating I^{n+1} = I^n + (dt*d_par/L)*E^{n+1} from the
-        # Ampere balance  D0*(E^{n+1} - E_std) = -I^{n+1}/dual_area  gives
-        #     E^{n+1} = (D0*E_std - I^n/dual_area) / (D0 + gamma),
-        #     gamma   = dt * d_par / (L * dual_area).
+        # gamma = dt * d_par / (L * dual_area) is the inductor's implicit
+        # self-coupling into the E update: the parallel inductor
+        # (_update_parallel, trapezoidal since #1245) adds gamma/4 to D0.
         # The old spelling dt/(L*d_par) is that with dual_area = d_par**2,
         # i.e. a CUBIC cell.  It was self-consistent with the equally cubic
         # I/(dx*dx) below, which is why the pair realized an inductance
@@ -554,50 +550,122 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     )
 
 
+def _describe_spec(n, spec: LumpedRLCSpec) -> str:
+    vals = ", ".join(f"{name}={float(v):g}" for name, v in
+                     (("R", spec.R), ("L", spec.L), ("C", spec.C)) if float(v) > 0)
+    pos = ", ".join(f"{float(p):g}" for p in spec.position)
+    return (f"add_lumped_rlc #{n} ({vals}, topology={spec.topology!r}, "
+            f"component={spec.component!r}, position=({pos}))")
+
+
+def refuse_stacked_solved_elements(specs, metas) -> None:
+    """Refuse two lumped elements with their OWN solve on one edge (#1245).
+
+    An element with an inductor (parallel topology) or a series element with
+    two or more components is solved together with its edge field in one
+    implicit step, against ``e_std`` and ``E^n``. Two such elements on the
+    same edge and component each solve against a field the other one changes
+    in the same step: the pair is not the parallel circuit it declares, and
+    the run gains energy (measured in a closed PEC box, float64: a parallel
+    4 nH + 1 pF with another 4 nH on its edge x4.1 in 6400 steps; two series
+    4 nH + 10 pF x4.0, as on main before #1245). Folded elements (parallel R and C, and a pure R
+    or pure C declared "series") have no solve of their own -- they add
+    into the edge's material, which the one solved element reads through
+    ``D0`` -- so any number of them may share the edge with one solved
+    element.
+
+    ``specs`` are the declarations and ``metas`` the elements built from them
+    (same order), i.e. AFTER each position has snapped to its realized edge.
+    """
+    first = {}
+    for n, (spec, meta) in enumerate(zip(specs, metas)):
+        if not (meta.is_series or meta.has_inductor):
+            continue
+        edge = (int(meta.i), int(meta.j), int(meta.k), meta.component)
+        if edge in first:
+            m = first[edge]
+            raise NotImplementedError(
+                f"{_describe_spec(m, specs[m])} and {_describe_spec(n, spec)} "
+                f"both land on the {edge[3]} edge of cell {edge[:3]}. Each is "
+                "solved together with that edge's field in its own implicit "
+                "step, and two such solves on one edge act on a field the other "
+                "has already changed: the pair gains energy instead of being the "
+                "parallel circuit it declares (issue #1245). Model them as ONE "
+                "add_lumped_rlc with the combined value (two parallel inductors "
+                "L1*L2/(L1+L2)), or place them on different edges. Folded "
+                "elements -- a parallel R or C, or a pure R or pure C declared "
+                "series -- may share the edge with one of them; a pure L is "
+                "solved, whichever topology it is declared with.")
+        first[edge] = n
+
+
 # ---------------------------------------------------------------------------
 # Per-timestep ADE update
 # ---------------------------------------------------------------------------
 
-def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta):
-    """Parallel topology: inductor ADE only; R/C are in material arrays.
+def _update_parallel(state, rlc_state: RLCState, meta: RLCCellMeta,
+                     e_prev=None):
+    """Parallel topology: the inductor, solved WITH the edge field; R and C
+    are folded into the material arrays.
 
-    If ``meta.has_inductor`` is False, this is a no-op.
+    ``state`` holds ``e_std`` at the element edge (the standard Yee update,
+    folded R and C included, before the inductor's current has acted);
+    ``e_prev`` is ``E^n``, the edge field at the START of this step.
+
+    One implicit, trapezoidal step (issue #1245; derivation in the module
+    docstring), with ``gamma = dt*d/(L*A)``::
+
+        E^{n+1} = e_std - (I^n/A + (gamma/4)*(e_std + E^n)) / (D0 + gamma/4)
+        I^{n+1} = I^n + (dt*d/(2L)) * (E^{n+1} + E^n)
+
+    so the field is loaded over the step by ``I_avg = (I^{n+1} + I^n)/2``,
+    time-centred like the Yee update, and the inductor is lossless.  The
+    current becomes a current DENSITY through the dual face it pierces,
+    ``A = dual_b * dual_c`` (the E node's Ampere control-volume
+    cross-section), never ``d_par**2``, which is that area only on a cubic
+    cell.  ``D0`` is the edge's own ``1/Cb`` (:func:`edge_update_denominator`).
+
+    Carries: ``inductor_current`` holds I^{n+1}.  Without an inductor this
+    is a no-op (``has_inductor`` is a static Python bool).
     """
+    if not meta.has_inductor:
+        return state, rlc_state
+    if e_prev is None:
+        raise ValueError(
+            "a parallel lumped inductor is solved together with its edge "
+            "field (issue #1245) and needs E^n, the edge field at the start "
+            "of the step: pass e_prev=state.<component>[i, j, k] read BEFORE "
+            "the E update")
+
     i, j, k = meta.i, meta.j, meta.k
 
     e_field = getattr(state, meta.component)
     e_std = e_field[i, j, k]
 
     i_L = rlc_state.inductor_current
-    Q = rlc_state.capacitor_charge
 
     D0 = meta.D0
-    gamma = meta.gamma
+    quarter_gamma = 0.25 * meta.gamma
 
-    # E^{n+1} = (D0 * E_std - I_L^n / dual_area) / (D0 + gamma)
-    #
-    # The element current becomes a current DENSITY through the dual face it
-    # pierces -- ``dual_b * dual_c``, the E node's Ampere control-volume
-    # cross-section -- NOT through ``d_par**2``, which is that area only on a
-    # cubic cell.
-    A = D0 + gamma
-    e_new = jnp.where(
-        meta.has_inductor,
-        (D0 * e_std - i_L / meta.dual_area) / A,
-        e_std,
-    )
+    # Written as e_std minus the element's correction, not as
+    # (D0*e_std - I^n/A - (gamma/4)*E^n)/(D0 + gamma/4): same algebra, but
+    # there the rounded ratio D0/(D0 + gamma/4) multiplies the whole edge
+    # field every step. With a folded C, gamma/4 is ~1e-4 of D0, so in
+    # float32 that ratio is off by an ulp and acts as a constant gain on the
+    # field -- measured on an L||C in a PEC box, +1.1e-3 of the energy per
+    # 100 periods. Here e_std keeps the coefficient 1 (as Ca = 1 in the Yee
+    # update) and rounding only scales the correction current.
+    correction = ((i_L / meta.dual_area + quarter_gamma * (e_std + e_prev))
+                  / (D0 + quarter_gamma))
+    e_new = e_std - correction
+    i_L_new = i_L + 0.5 * meta.dt_dx_over_L * (e_new + e_prev)
 
-    # I_L^{n+1} = I_L^n + (dt * dx / L) * E^{n+1}
-    i_L_new = jnp.where(
-        meta.has_inductor,
-        i_L + meta.dt_dx_over_L * e_new,
-        i_L,
-    )
-
-    field_new = e_field.at[i, j, k].set(e_new)
+    field_new = e_field.at[i, j, k].set(e_new.astype(e_field.dtype))
     state_new = state._replace(**{meta.component: field_new})
 
-    return state_new, RLCState(inductor_current=i_L_new, capacitor_charge=Q)
+    return state_new, RLCState(
+        inductor_current=jnp.asarray(i_L_new).astype(i_L.dtype),
+        capacitor_charge=rlc_state.capacitor_charge)
 
 
 def _update_series(state, rlc_state: RLCState, meta: RLCCellMeta, e_prev):
@@ -686,7 +754,8 @@ def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta,
 
     Called AFTER the standard ``update_e()`` in the scan body.  ``e_prev`` is
     the element edge's field at the START of the step (``E^n``, read before
-    the E update); the series update needs it, the parallel one does not.
+    the E update); the series update (#1163) and the parallel inductor
+    (#1245) need it, a folded-only parallel element does not.
 
     Returns (new_fdtd_state, new_rlc_state).
     """
@@ -698,4 +767,4 @@ def update_rlc_element(state, rlc_state: RLCState, meta: RLCCellMeta,
                 "the step: pass e_prev=state.<component>[i, j, k] read BEFORE "
                 "the E update")
         return _update_series(state, rlc_state, meta, e_prev)
-    return _update_parallel(state, rlc_state, meta)
+    return _update_parallel(state, rlc_state, meta, e_prev)
