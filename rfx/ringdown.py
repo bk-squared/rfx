@@ -326,11 +326,11 @@ class RingdownReport:
                      f"dropped by the guard, {self.n_growing_discarded} growing "
                      f"discarded); tail share {self.tail_share:.3g}, slowest decay "
                      f"{self.slowest_decay_over_window:.3g} windows")
-        if self.s_accumulator_roundoff is not None:
+        if not self.completed:
+            head += f"; NOT COMPLETED: {self.failure}"
+        elif self.s_accumulator_roundoff is not None:
             head += (f"; Result.s_params' own accumulator round-off "
                      f"{self.s_accumulator_roundoff:.2e} (information)")
-        else:
-            head += f"; NOT COMPLETED: {self.failure}"
         lines = [head]
         for w in self.witnesses:
             lines.append(f"  {w.name}: {w.value:.3e} (bar {w.bar:.3e}) "
@@ -1306,7 +1306,7 @@ class RingdownRun:
         s_plain = max(float(np.max(np.abs(S_run[p, p, :]))) for p in driven)
         p_bar = 1.0 + float(spec.passivity_tol)
         p_note = (f"plain record max |S_kk| = {s_plain:.6g}"
-                  + ("; the board/port reads non-passive without the completion"
+                  + ("; the plain record reads non-passive without the completion (the board or port itself, or a record cut while it still rings)"
                      if s_plain > p_bar else ""))
         src_ratio = max((r for _l, r in self.source_off), default=0.0)
         witnesses += [

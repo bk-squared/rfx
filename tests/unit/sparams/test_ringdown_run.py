@@ -381,6 +381,7 @@ def test_w1_catches_a_completion_fed_the_midpoint_voltage(monkeypatch):
         r = _run(_box("uniform", cells=3), 600, ringdown=RingdownSpec())
     rep = r.ringdown.report
     assert r.ringdown.s_params is None and rep.failure.startswith("W1")
+    assert "NOT COMPLETED" in rep.summary() and "round-off" not in rep.summary()
     assert rep.witness("W0").ok and rep.witness("W1").value > 0.1
     for f in ("time_series", "s_params", "freqs"):
         assert np.array_equal(np.asarray(getattr(plain, f)), np.asarray(getattr(r, f)))
@@ -400,6 +401,7 @@ def test_a_failed_identification_returns_the_run_uncompleted(monkeypatch):
         r = _run(_box("uniform"), 600, ringdown=RingdownSpec())
     rep = r.ringdown.report
     assert r.ringdown.s_params is None and rep.failure.startswith("identification")
+    assert "NOT COMPLETED" in rep.summary()
     assert rep.witness("W0").ok and rep.witness("W1").ok
     for f in ("time_series", "s_params", "freqs"):
         assert np.array_equal(np.asarray(getattr(plain, f)), np.asarray(getattr(r, f)))
