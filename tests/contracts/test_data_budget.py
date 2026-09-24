@@ -83,7 +83,7 @@ def test_the_allowlist_covers_the_measured_paths(path: str) -> None:
     "validation/crossval/_26_oblique_results/rfx.json",
     "validation/crossval/sub/manifest.json",
     "docs/guides/sub/support_matrix.json",
-    "docs/research_notes/x/support_matrix.json",
+    "docs/notes/x/support_matrix.json",
     "scripts/diagnostics/_artifacts/x.json",
     "tests/crossval/sheen_lpf/results/run.json",
     "tests/crossval/a/b/reference/x.json",
