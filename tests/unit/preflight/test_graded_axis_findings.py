@@ -1076,16 +1076,17 @@ def test_a_feed_declared_off_a_node_is_judged_on_the_node_it_is_stamped_on():
 # An automatic offset on a runway finer than the boundary cell
 # ---------------------------------------------------------------------------
 
-def _auto_offset_board():
-    """The notch runway (127 um under a 254 um boundary cell), 254 um
-    substrate, f_max 20 GHz, and n_probe_offset left to add_msl_port. The
-    feed is declared 0.3 of a cell past a runway node."""
+def _auto_offset_board(f_max=20e9, runway_node=20.3, **port_kw):
+    """The notch runway (60 cells of 127 um under a 254 um boundary cell),
+    254 um substrate, and n_probe_offset left to add_msl_port unless
+    ``port_kw`` sets it. The feed is declared ``runway_node`` runway cells
+    in, 0.3 of a cell past a runway node."""
     from rfx.geometry.csg import Box
     prof, x_run, _ = _graded_runway_board()
     h, w = _NOTCH_H_SUB, 2 * _NOTCH_H_SUB
     lx, ly = float(prof.sum()), 10 * _NOTCH_H_SUB
     sim = Simulation(
-        freq_max=20e9, domain=(lx, ly, h + 1.5e-3), dx=2 * _NOTCH_RUNWAY,
+        freq_max=f_max, domain=(lx, ly, h + 1.5e-3), dx=2 * _NOTCH_RUNWAY,
         cpml_layers=8, dx_profile=prof,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")))
@@ -1093,32 +1094,46 @@ def _auto_offset_board():
     sim.add(Box((0, 0, 0), (lx, ly, h)), material="sub")
     y_c = ly / 2.0
     sim.add(Box((0, y_c - w / 2, h), (lx, y_c + w / 2, h)), material="pec")
-    feed = x_run + 20.3 * _NOTCH_RUNWAY
+    feed = x_run + runway_node * _NOTCH_RUNWAY
     sim.add_msl_port(position=(feed, y_c, 0), width=w, height=h,
-                     direction="+x", impedance=50.0)
+                     direction="+x", impedance=50.0, **port_kw)
     return sim
 
 
-def test_an_automatic_offset_is_not_told_to_stay_automatic():
-    """add_msl_port counts the 5·h_sub standoff in the boundary cell, 254 um,
-    and stores 5. On this 127 um runway that is 635 um from the source,
-    half the 1.270 mm the fringing needs. The advisory used to end with "or
-    leave it None for the safe default", which is the setting that chose 5.
-    It now names the explicit offset, and the S-parameter routing check
-    says the same.
-
-    The distance is read off the grid from the node the source is stamped
-    on: 635 um. The declared feed is 38.1 um past that node, and the message
-    says so rather than measuring from it.
-    """
-    sim = _auto_offset_board()
-    assert sim._msl_ports[0].n_probe_offset == 5
+def _preflight(sim):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        report = sim.preflight()
+        return sim.preflight()
+
+
+def test_an_automatic_offset_is_counted_on_the_runway():
+    """add_msl_port counts the 5·h_sub standoff in the boundary cell, 254 um,
+    and stores 5: 635 um on this 127 um runway, half the 1.270 mm the
+    fringing needs. The driver now counts the same length in the runway's
+    own cells (10), so neither preflight site has anything to say about the
+    port's own feed, and neither tells the user to set it by hand (#810)."""
+    sim = _auto_offset_board()
+    assert sim._msl_ports[0].n_probe_offset == 5
+    report = _preflight(sim)
+    assert not [str(i) for i in report.issues if "OWN feed plane" in str(i)]
+    msg = _forward_message(sim)
+    assert "source fringing transient" not in msg, msg
+
+
+def test_an_automatic_offset_whose_ladder_crosses_a_ramp_is_still_flagged():
+    """Feed 50 cells into the 60-cell runway: counted in the runway cell the
+    20 GHz ladder (10 + 4 x 2 cells) runs up the trailing ramp, so the
+    driver keeps the stored 5, and the advisory says so. The distance is
+    read off the grid from the node the source is stamped on, 635 um, and
+    the declared feed is 38.1 um past that node."""
+    sim = _auto_offset_board(runway_node=50.3)
+    report = _preflight(sim)
     text = _finding(report, "OWN feed plane")
     assert "the automatic n_probe_offset=5 puts probe 0 635\u00b5m" in text, text
     assert "38.1\u00b5m from the declared feed" in text, text
+    assert ("add_msl_port chose 5 by counting 5·h_sub = 1.27mm in the "
+            "boundary cell (254µm)") in text, text
+    assert "the probe ladder would cross a grading ramp" in text, text
     assert "Set n_probe_offset >= 10 explicitly on this port" in text, text
     assert "leave it None" not in text, text
     msg = _forward_message(sim)
@@ -1126,18 +1141,62 @@ def test_an_automatic_offset_is_not_told_to_stay_automatic():
     assert "leave it None" not in msg, msg
 
 
-def test_an_explicit_offset_on_a_fine_runway_is_not_told_to_go_automatic():
-    """The same arithmetic for an explicit offset of 7 on the runway: the
-    automatic choice would be 5, fewer cells than the 7 already set, so
-    "leave it None" is not a remedy there either. The S-parameter routing
+# #1209 review P3-2: "does leaving it None clear the fringing?" was judged on
+# 5·h_sub alone, while add_msl_port's floor is max(3, lambda_eff/(4 pi),
+# 5·h_sub). Below about 12 GHz on this board the lambda term is the larger
+# one (lambda_eff/(4 pi) = 1.270 mm at 12.3 GHz, eps_r 3.66).
+
+def test_none_is_offered_where_the_wavelength_term_clears_the_fringing():
+    """f_max 2 GHz, explicit offset 7 on the runway. Counted in the runway's
+    cells the automatic ladder (49 + 4 x 19 cells) would run off the
+    60-cell runway, so leaving the offset None keeps add_msl_port's count:
+    lambda_eff/(4 pi) = 6.235 mm in 254 um cells, 25 cells, which clears the
+    10-cell standoff. The old test counted 5·h_sub alone (5 cells) and told
+    the user None falls short."""
+    sim = _auto_offset_board(f_max=2e9, n_probe_offset=7)
+    text = _finding(_preflight(sim), "OWN feed plane")
+    assert ("Set n_probe_offset >= 10, or leave it None: the automatic "
+            "offset counts λ_eff/(4π) at f_max = 6.235mm in the boundary "
+            "cell (254µm), 25 cells") in text, text
+    assert "falls short" not in text, text
+    msg = _forward_message(sim)
+    assert ("increase n_probe_offset or leave it None: the automatic offset "
+            "counts λ_eff/(4π) at f_max = 6.235mm in the boundary cell") \
+        in msg, msg
+    assert "25 cells" in msg, msg
+
+
+def test_an_automatic_offset_names_the_wavelength_term_that_chose_it():
+    """f_max 6 GHz, automatic offset, feed 30 cells into the runway so the
+    runway-counted ladder (16 + 4 x 6 cells) crosses the trailing ramp and
+    the driver keeps the stored count. That count is 8 cells, set by
+    lambda_eff/(4 pi) = 2.078 mm (5·h_sub over 254 um is 5); the advisory
+    used to say it was chosen "by counting 5·h_sub"."""
+    sim = _auto_offset_board(f_max=6e9, runway_node=30.3)
+    assert sim._msl_ports[0].n_probe_offset == 8
+    text = _finding(_preflight(sim), "OWN feed plane")
+    assert ("add_msl_port chose 8 by counting λ_eff/(4π) at f_max = 2.078mm "
+            "in the boundary cell (254µm)") in text, text
+    assert "by counting 5·h_sub" not in text, text
+    msg = _forward_message(sim)
+    assert ("the automatic choice counts λ_eff/(4π) at f_max = 2.078mm in "
+            "the boundary cell") in msg, msg
+    assert "leaving it None chooses 8 again" in msg, msg
+
+
+def test_an_explicit_offset_is_told_what_the_automatic_one_would_be():
+    """5 GHz, explicit offset 7 and spacing 3 on the runway. Leaving the
+    offset None gives the runway count of lambda_eff/(4 pi) = 2.494 mm,
+    20 cells, and the 20 + 4 x 3 ladder stays on the runway, so None clears
+    the 10-cell standoff. This test used to assert the opposite: it counted
+    5·h_sub alone in the boundary cell (5 cells). The S-parameter routing
     check builds its remedy in a separate branch, so it is asserted too."""
     sim, _ = _notch_like_sim(14 + 20, 7)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        report = sim.preflight()
-    text = _finding(report, "OWN feed plane")
-    assert "Set n_probe_offset >= 10;" in text, text
-    assert "leave it None for the safe default" not in text, text
+    text = _finding(_preflight(sim), "OWN feed plane")
+    assert ("Set n_probe_offset >= 10, or leave it None: the automatic "
+            "offset counts λ_eff/(4π) at f_max = 2.494mm in this runway's "
+            "127µm cells, 20 cells") in text, text
     msg = _forward_message(sim)
-    assert "set n_probe_offset >= 10; leaving it None counts" in msg, msg
-    assert "leave it None for the safe default" not in msg, msg
+    assert ("increase n_probe_offset or leave it None: the automatic offset "
+            "counts λ_eff/(4π) at f_max = 2.494mm in this runway's 127µm "
+            "cells, 20 cells") in msg, msg

@@ -864,6 +864,15 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     # widened concrete n_probe_spacing into the recorded entries, so a
     # rebuilt design reproduces the original probe placement exactly.
     "_msl_auto_probe_spacing",
+    # Issue #810: port name -> the two lengths the automatic probe defaults
+    # are counted from, (lambda_eff/(4*pi), lambda_eff/8). Accounted for the
+    # same way: the dump resolves through _resolve_msl_auto_offsets, which
+    # counts them in the runway cell on a graded propagation axis and
+    # freezes the result into the recorded entries as explicit values, so a
+    # rebuilt design never recounts them into a ladder. add_msl_port stores
+    # them again for the rebuilt port, where preflight reads them only to say
+    # what leaving an offset None would give.
+    "_msl_auto_probe_lengths",
     # Issue #470: indices of library-internal witness probes. Populated and
     # restored strictly inside compute_msl_s_matrix — ALWAYS empty at
     # construction and at dump time, so it contributes nothing to the

@@ -983,9 +983,9 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
       ``N = sum(volume * ez_profile**2)`` uses the Ez control volumes.
       For ``Ez = ez_profile * V`` this dissipates ``V**2 / Z0``.
 
-    The scalar conductivity also damps Ex and Ey. The stated resistance
-    describes the supplied Ez profile; other field components add loss.
-    It does not establish a matched termination for an arbitrary field or
+    The conductivity is stamped on the Ez (substrate-normal) edges only
+    (#1236); until then it also damped Ex and Ey at the same nodes, a loss
+    the stated resistance did not describe. It does not establish a matched termination for an arbitrary field or
     certify that the Laplace profile is a propagating Maxwell mode.
 
     Returns the updated ``materials`` NamedTuple.
@@ -1029,7 +1029,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             # #1210: the port's termination is a lumped load across the
             # port edges, not a cell volume property, so it is recorded as
             # an edge-owned stamp and kept out of the edge average.
-            materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_cell)
+            materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_cell,
+                                            msl_normal_component(port))
         return materials
 
     # Laplace-profile termination: uniform σ across the (extended) port
@@ -1098,7 +1099,8 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         # an amplitude threshold or a propagating/evanescent-mode filter.
         if float(ez_profile[j_loc, k_loc]) == 0.0:
             continue
-        materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_uniform)
+        materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_uniform,
+                                        msl_normal_component(port))
     return materials
 
 

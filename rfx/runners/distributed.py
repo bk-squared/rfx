@@ -76,6 +76,9 @@ from rfx.core.yee import (
     MU_0,
     _shift_fwd,
     _shift_bwd,
+    cell_owned_component_materials,
+    lumped_components,
+    map_lumped,
 )
 from rfx.simulation import (
     make_source,
@@ -146,12 +149,20 @@ def _split_materials(materials, n_devices, ghost=1):
 
     Uses pad_value=1.0 for eps_r and mu_r (vacuum) to prevent
     division-by-zero in Yee updates at boundary ghost cells, and
-    pad_value=0.0 for sigma (lossless).
+    pad_value=0.0 for sigma (lossless). The per-component lumped records
+    (#1236) are split like ``sigma`` (a ghost holds no stamp).
     """
+    def _split_lumped(arr):
+        return split_array_x(arr, n_devices, ghost, pad_value=0.0)
+
     return MaterialArrays(
         eps_r=split_array_x(materials.eps_r, n_devices, ghost, pad_value=1.0),
         sigma=split_array_x(materials.sigma, n_devices, ghost, pad_value=0.0),
         mu_r=split_array_x(materials.mu_r, n_devices, ghost, pad_value=1.0),
+        sigma_lumped=map_lumped(
+            getattr(materials, "sigma_lumped", None), _split_lumped),
+        eps_r_lumped=map_lumped(
+            getattr(materials, "eps_r_lumped", None), _split_lumped),
     )
 
 
@@ -358,15 +369,40 @@ def _update_e_local(state, materials, dt, dx):
     """E update on a local slab (including ghost cells).
 
     Identical to yee.update_e but without jit decorator and always
-    non-periodic.
+    non-periodic. The coefficients are CELL-owned (#1210 not converted on
+    this lane, ``test_distributed_e_coefficients_are_still_cell_owned.py``),
+    except for a lumped element: it loads its own E edge only (#1236), so
+    when the slab carries a lumped record each component takes the cell
+    total minus the stamps of the other two components
+    (:func:`rfx.core.yee.cell_owned_component_materials`). With no record
+    this is the single-coefficient update it always was.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
-    eps = materials.eps_r * EPS_0
-    sigma = materials.sigma
+    has_lumped = any(
+        part is not None
+        for rec in (getattr(materials, "sigma_lumped", None),
+                    getattr(materials, "eps_r_lumped", None))
+        for part in lumped_components(rec))
+    if has_lumped:
+        eps_c, sig_c = cell_owned_component_materials(materials)
 
-    sigma_dt_2eps = sigma * dt / (2.0 * eps)
-    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
-    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+        def _coeffs(eps_r, sigma):
+            eps = eps_r * EPS_0
+            sigma_dt_2eps = sigma * dt / (2.0 * eps)
+            return ((1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps),
+                    (dt / eps) / (1.0 + sigma_dt_2eps))
+
+        (ca_x, cb_x), (ca_y, cb_y), (ca_z, cb_z) = (
+            _coeffs(e, s_) for e, s_ in zip(eps_c, sig_c))
+    else:
+        eps = materials.eps_r * EPS_0
+        sigma = materials.sigma
+
+        sigma_dt_2eps = sigma * dt / (2.0 * eps)
+        ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
+        cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+        ca_x = ca_y = ca_z = ca
+        cb_x = cb_y = cb_z = cb
 
     curl_x = (
         (hz - _shift_bwd(hz, 1)) / dx
@@ -381,9 +417,9 @@ def _update_e_local(state, materials, dt, dx):
         - (hx - _shift_bwd(hx, 1)) / dx
     )
 
-    ex = ca * state.ex + cb * curl_x
-    ey = ca * state.ey + cb * curl_y
-    ez = ca * state.ez + cb * curl_z
+    ex = ca_x * state.ex + cb_x * curl_x
+    ey = ca_y * state.ey + cb_y * curl_y
+    ez = ca_z * state.ez + cb_z * curl_z
 
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 

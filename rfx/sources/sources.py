@@ -12,7 +12,8 @@ import math
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import EPS_0, cell_component_e_coeffs
+from rfx.core.yee import (EPS_0, cell_component_e_coeffs, lumped_axis,
+                          lumped_components)
 
 
 _PORT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
@@ -153,39 +154,50 @@ def port_sigma(grid, position_ijk: tuple[int, int, int],
     return d_par / (impedance * d_perp[0] * d_perp[1])
 
 
-def stamp_lumped_sigma(materials, cell, value):
-    """Add a lumped conductance at one cell, recorded as EDGE-owned (#1210).
-
-    The stamp goes into ``materials.sigma`` as before — every reader that
-    wants the total conductivity at the cell still finds it there — and into
-    ``materials.sigma_lumped``, which the E update removes before averaging
-    over the edge's four cells and adds back at this cell. A port's load is a
-    device across one edge, not a property of a cell volume: averaged, a 50
-    ohm wire port read |S11| = 0.20 against the closed-form 1/3, and a lumped
-    port inside a CPML dielectric read a non-physical |S11| = 1.86.
-    """
+def _stamp_lumped(materials, cell, value, component, total_name, record_name):
     i, j, k = (int(c) for c in cell)
-    lumped = getattr(materials, "sigma_lumped", None)
-    if lumped is None:
-        lumped = jnp.zeros_like(materials.sigma)
-    return materials._replace(
-        sigma=materials.sigma.at[i, j, k].add(value),
-        sigma_lumped=lumped.at[i, j, k].add(value))
+    axis = lumped_axis(component)
+    total = getattr(materials, total_name)
+    parts = list(lumped_components(getattr(materials, record_name, None)))
+    own = parts[axis]
+    if own is None:
+        own = jnp.zeros_like(total)
+    parts[axis] = own.at[i, j, k].add(value)
+    return materials._replace(**{
+        total_name: total.at[i, j, k].add(value),
+        record_name: tuple(parts)})
 
 
-def stamp_lumped_eps(materials, cell, value):
-    """Add a lumped permittivity (a capacitor's fold) at one cell (#1210).
+def stamp_lumped_sigma(materials, cell, value, component):
+    """Add a lumped conductance on ONE E edge, recorded as edge-owned.
+
+    ``component`` (``"ex"``, ``"ey"`` or ``"ez"``) is the edge the element
+    sits on: the edge that starts at ``cell``'s node along that axis.
+
+    The stamp goes into ``materials.sigma`` as before -- a reader that wants
+    the total conductivity at the cell still finds it there -- and into
+    component ``component`` of ``materials.sigma_lumped``, which the E update
+    removes before averaging over the edge's four cells and adds back at this
+    cell, to that component only. A port's load is a device across one edge,
+    not a property of a cell volume: averaged, a 50 ohm wire port read
+    |S11| = 0.20 against the closed-form 1/3, and a lumped port inside a CPML
+    dielectric read a non-physical |S11| = 1.86 (#1210). Added back to all
+    three components, as the record did before it carried one (#1236), a
+    50 ohm port on Ez was also a 50 ohm resistor on the Ex and Ey edges
+    leaving its node.
+    """
+    return _stamp_lumped(materials, cell, value, component,
+                         "sigma", "sigma_lumped")
+
+
+def stamp_lumped_eps(materials, cell, value, component):
+    """Add a lumped permittivity (a capacitor's fold) on ONE E edge.
 
     Same argument as :func:`stamp_lumped_sigma`, for the ``C`` fold of an RLC
-    element: a capacitor sits across one edge.
+    element: a capacitor sits across one edge, ``component``'s.
     """
-    i, j, k = (int(c) for c in cell)
-    lumped = getattr(materials, "eps_r_lumped", None)
-    if lumped is None:
-        lumped = jnp.zeros_like(materials.eps_r)
-    return materials._replace(
-        eps_r=materials.eps_r.at[i, j, k].add(value),
-        eps_r_lumped=lumped.at[i, j, k].add(value))
+    return _stamp_lumped(materials, cell, value, component,
+                         "eps_r", "eps_r_lumped")
 
 
 def port_d_parallel(grid, position_ijk: tuple[int, int, int],
@@ -385,7 +397,7 @@ def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
     """
     idx = grid.position_to_index(port.position)
     sp = port_sigma(grid, idx, port.component, port.impedance)
-    return stamp_lumped_sigma(materials, idx, sp)
+    return stamp_lumped_sigma(materials, idx, sp, port.component)
 
 
 def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) -> object:
@@ -600,7 +612,7 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None):
         if not live:
             continue
         sp = port_sigma(grid, cell, port.component, port.impedance) * n_live
-        materials = stamp_lumped_sigma(materials, cell, sp)
+        materials = stamp_lumped_sigma(materials, cell, sp, port.component)
     return materials
 
 

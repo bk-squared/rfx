@@ -353,18 +353,43 @@ def test_a_three_cell_port_completes_its_whole_gap_voltage(lane):
         assert w1.ok and w1.value <= rd.W1_BAR, w1
 
 
-def test_the_error_witness_fails_a_graded_record_cut_at_a_third_of_its_decay_time():
-    """The graded box stopped at 1500 steps (1.72 ns, a third of TM110's
-    5 ns amplitude decay time): its completed S is 1.6e-3 off the completed
-    30,000-step answer, above the 1e-3 bar. WE compares the completion from
-    [T/2, T] with the one from the window started twice as early, [T/4, T], and reads
-    1.6e-3: the report is not ok and WE is the witness that fails. W2
+def test_the_error_witness_fails_a_graded_record_cut_at_a_fifth_of_its_decay_time():
+    """The graded box stopped at 1200 steps (1.37 ns, about a fifth of TM110's
+    amplitude decay time): its completion is genuinely off the completed
+    30,000-step answer, above the 1e-3 bar, and WE -- the completion from
+    [T/2, T] against the one from the window started twice as early,
+    [T/4, T] -- reads it and is the only judged witness that fails. W2
     ([T/2, T] against [T/2, 0.9 T]) is reported, not judged, and only
-    printed here: it read 3.0e-4 under JAX 0.10.2 and 1.7e-3 under JAX
-    0.4.33, on port records that differ by 1e-7 to 3e-7 of their peak (the
-    pencil keeps a different rank on each); WE read 1.615e-3 and 1.622e-3."""
+    printed here.
+
+    TM110 of this box from the 30,000-step completion. #1236 moved it: the
+    port used to put its 50 ohm load also on the Ex and Ey edges at its node,
+    a spurious loss that damped the box.
+
+        tree                     f (GHz)   loaded Q   amplitude decay time
+        main before #1236        12.402    201.7      5.18 ns
+        after #1236              12.406    244.4      6.27 ns
+
+    Completed-S error against the 30,000-step completion, and WE (JAX 0.10.2):
+
+        record              tree     actual     WE         judged failures
+        1500 (1.72 ns)      before   1.649e-3   1.615e-3   WE  (0.33 tau)
+        1500 (1.72 ns)      after    1.420e-4   1.406e-4   none (0.27 tau)
+        1827 (2.09 ns)      after    4.3e-5     4.3e-5     none (tau/3)
+        1200 (1.37 ns)      before   2.17e-3    2.17e-3    WE  (0.27 tau)
+        1200 (1.37 ns)      after    1.98e-3    1.71e-3    WE  (0.22 tau)
+        1000 (1.14 ns)      after    1.39e-3    1.42e-3    WE
+
+    This test was written at 1500 steps, a third of main's decay time. After
+    #1236 a record cut at a third of the box's own decay time completes to
+    4.3e-5, and WE rightly passes it, so the cut moved to 1200 steps, where the
+    completion is off on both trees. The error is not monotonic in the record
+    length (1.39e-3 at 1000 steps, 1.98e-3 at 1200); at 800 and 600 steps WE
+    is not formed (the pulse is still on in [T/4, T]) and W2 is judged.
+    W2 at 1200 steps: 2.99e-3 after #1236, 1.74e-2 before.
+    """
     with pytest.warns(UserWarning, match="witness failed -- WE"):
-        short, cap = _run_captured(_box("graded"), 1500, ringdown=RingdownSpec())
+        short, cap = _run_captured(_box("graded"), 1200, ringdown=RingdownSpec())
     rep = short.ringdown.report
     we, w2 = rep.witness("WE"), rep.witness("W2")
     ref = _long("graded").ringdown.s_params.astype(np.complex128)
@@ -377,12 +402,12 @@ def test_the_error_witness_fails_a_graded_record_cut_at_a_third_of_its_decay_tim
     S_half, S_quarter = (
         np.asarray(k["observable"](k["plain"] + rd.tail_dft(
             rd.identify(Y, dt, n0, n, **kw), n - 1, freqs))).astype(np.complex128)
-        for n0 in (750, 375))
+        for n0 in (600, 300))
     we_hand = float(np.max(np.abs(S_half - S_quarter)))
-    print(f"\n[graded, 1500 steps] actual {actual:.3e}; WE {we.value:.3e} "
+    print(f"\n[graded, 1200 steps] actual {actual:.3e}; WE {we.value:.3e} "
           f"(by hand {we_hand:.3e}, WE/actual {we.value / actual:.3g}); W2 "
           f"{w2.value:.3e} (W2/actual {w2.value / actual:.3g})\n{rep.summary()}")
-    assert n_start == 750 and rep.long_window_steps == (375, 1500)
+    assert n_start == 600 and rep.long_window_steps == (300, 1200)
     assert we.value == we_hand
     assert we.judged and not we.ok and we.value > we.bar
     assert not w2.judged
@@ -452,10 +477,8 @@ def test_a_graded_port_on_an_absorbing_floor_is_probed_inside_the_grid():
     assert rep.completed, rep.summary()
 
 
-def test_the_passivity_witness_reads_the_plain_record_too():
-    """A graded wire port spanning a 0.8 mm and a 0.6 mm z cell reads |S11| up
-    to 1.025 on its own plain 2.86 ns record (1.002 settled): the port reads
-    non-passive before any completion, and the witness says so."""
+def _graded_wire_port_box():
+    """A graded wire port spanning a 0.8 mm and a 0.6 mm z cell, in the box."""
     sim = Simulation(freq_max=20.0e9, domain=(12 * MM, 11 * MM, 5 * MM), dx=1.0 * MM,
                      boundary="pec", dx_profile=DXP, dy_profile=DYP, dz_profile=DZP)
     sim.add_material("fill", eps_r=2.2,
@@ -463,12 +486,89 @@ def test_the_passivity_witness_reads_the_plain_record_too():
     sim.add(Box((0, 0, 0), (12 * MM, 11 * MM, 5 * MM)), material="fill")
     sim.add_port(position=(3.3 * MM, 3.8 * MM, 0.0), component="ez", impedance=50.0,
                  extent=1.4 * MM, waveform=PULSE)
-    with pytest.warns(UserWarning, match="passivity"):
+    return sim
+
+
+def test_the_passivity_witness_reads_the_plain_record_too():
+    """The plain 2.86 ns record of a graded wire port spanning a 0.8 mm and a
+    0.6 mm z cell reads non-passive; the witness note says so, and the verdict
+    follows the COMPLETED S.
+
+    Measured on this fixture: plain max |S11| 1.02396 on main before #1236 and
+    1.05279 after; completed 1.01428 before (the witness failed) and 0.99796
+    after (passive, no warning). The settled 30000-step records agree with the
+    completions: 1.01428 before, 0.997956 after. The cause is #1236: the
+    port's load used to sit also on the Ex and Ey edges at each of the wire's
+    nodes, so the port read this passive box as non-passive even settled.
+    With the load on the wire's own Ez edges the settled S is passive, and the
+    plain short record, cut further from settled now that the spurious loss
+    no longer damps the box, reads higher. The witness's failing branch is pinned by
+    ``test_the_passivity_witness_fails_a_non_passive_completion`` below,
+    which does not rely on a physical defect.
+    """
+    import warnings
+    sim = _graded_wire_port_box()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         r = _run(sim, N_SHORT["graded"], ringdown=RingdownSpec())
-    w = r.ringdown.report.witness("passivity")
+    rep = r.ringdown.report
+    w = rep.witness("passivity")
     plain = float(np.max(np.abs(np.asarray(r.s_params)[0, 0])))
-    assert not w.ok and plain > 1.0 + 1e-3
+    assert plain > 1.0 + 1e-3, plain
     assert f"{plain:.6g}" in w.note and "non-passive without the completion" in w.note
+    completed = float(np.max(np.abs(r.ringdown.s_params[0, 0])))
+    assert w.ok and w.value == pytest.approx(completed, rel=1e-12), (w, completed)
+    assert completed <= w.bar, (completed, w.bar)
+    assert rep.ok, rep.summary()
+    assert not [c for c in caught if "passivity" in str(c.message)]
+
+
+def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
+    """The witness's failing branch, with no physical defect behind it. The
+    uniform box with a three-cell port, 1500 steps: plain max |S11| 0.99714
+    and completed 0.98016, both passive, every witness ok. The completed S is
+    scaled to max |S11| = 1.010 at the one place the completion turns its
+    spectra into S; the witness must fail it, warn, and keep the plain
+    record's number in its note without the non-passive clause.
+
+    Seam: ``rd._assemble`` also builds the W0, W1 and WE comparisons, so only
+    the call that follows ``rd.two_window_witness`` -- ``S = to_s(w2.spectra)``,
+    the completed S the passivity witness reads -- is scaled. The run is made
+    with ``sim.run`` directly: ``_run``'s bit-for-bit recomputation of the
+    completed S would, by design, see the injected scale.
+    """
+    orig_assemble, orig_two_window = rd._assemble, rd.two_window_witness
+    armed = {"on": False}
+
+    def two_window(*a, **k):
+        out = orig_two_window(*a, **k)
+        armed["on"] = True
+        return out
+
+    def assemble(*a, **k):
+        s = orig_assemble(*a, **k)
+        if armed["on"]:
+            armed["on"] = False
+            return s * (1.010 / float(np.max(np.abs(s[0, 0]))))
+        return s
+
+    monkeypatch.setattr(rd, "two_window_witness", two_window)
+    monkeypatch.setattr(rd, "_assemble", assemble)
+    with pytest.warns(UserWarning, match="witness failed -- passivity"):
+        r = _box("uniform", cells=3).run(
+            n_steps=1500, compute_s_params=True, s_param_freqs=FREQS,
+            skip_preflight=True, ringdown=RingdownSpec())
+    rep = r.ringdown.report
+    w = rep.witness("passivity")
+    plain = float(np.max(np.abs(np.asarray(r.s_params)[0, 0])))
+    assert plain <= 1.0 + 1e-3, plain              # the plain record is passive
+    assert not w.ok and w.value == pytest.approx(1.010, rel=1e-6), (w.value, w.bar)
+    assert w.value == pytest.approx(
+        float(np.max(np.abs(r.ringdown.s_params[0, 0]))), rel=1e-12)
+    assert not rep.ok
+    assert f"{plain:.6g}" in w.note
+    assert "non-passive without the completion" not in w.note
+    assert [x.name for x in rep.witnesses if x.judged and not x.ok] == ["passivity"]
 
 
 def test_w1_catches_a_completion_fed_the_midpoint_voltage(monkeypatch):

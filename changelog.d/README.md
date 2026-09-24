@@ -39,6 +39,13 @@ Below the heading the body may use `###` and deeper, never `#` or `##`: a `## `
 line inside a fragment would split the Unreleased block once assembled, which
 is the one thing this design exists to make impossible.
 
+A fragment is at most 12 lines, heading included, and says what changed for a
+user: the new behaviour, the number a user now gets, what to change in their
+script. Measurement, falsifiers and review history belong in the PR body, and
+the records behind them in `bk-squared/rfx-archive` under
+`rfx/records/<YYYYMMDD>-<topic>/`. Blank lines between bullets count; blank
+lines at the start and end do not, since the assembler drops them.
+
 ## Assembling
 
 ```
@@ -64,6 +71,8 @@ released section. Stdlib only; no install.
 - **`CHANGELOG.md` may only be edited by a PR carrying the `release` label.**
   That is the assembling PR. Every other edit is rejected with the fragment
   filename to use instead.
+- **A fragment the PR adds or edits is at most 12 lines.** Fragments already
+  on `main` are not re-checked.
 
 Malformed names, heading lines and bodies fail the same job, using the
 assembler's own validator so the gate and the release step cannot drift apart.
