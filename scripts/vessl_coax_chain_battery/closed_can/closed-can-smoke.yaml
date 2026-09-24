@@ -12,7 +12,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_SHA: "98bfb1949487c13105b0d47d0a14b7dfdd8b15ce"
+  RFX_SHA: "951e45aa5b39ea4ac74b12850aa98fa455e1235d"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
