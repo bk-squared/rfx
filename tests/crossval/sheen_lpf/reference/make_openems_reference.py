@@ -124,8 +124,11 @@ it.
              (leader decision, this PR). It is a DEPARTURE from the MSL notch
              filter maker's own tick "ref_impedance is never passed to
              CalcPort", and it is declared here rather than inherited silently.
-    DELTA 9  NrTS / EndCriteria: openEMS's own library defaults (~1e9 / 1e-5) on
-             every real pass, exactly as Stage A and the tutorial run. This is
+    DELTA 9  NrTS / EndCriteria: not passed on a real pass, exactly as Stage A
+             and the tutorial run, so openEMS's own defaults apply: NrTS ~1e9
+             (the python binding's default) and EndCriteria 1e-6 (the pinned
+             build's C++ default, openems.cpp:117; the binding's docstring says
+             1e-5, which is not what runs -- label corrected 2026-09-24). This is
              NOT a delta from the tutorial -- it is the one place where a
              DEPARTURE FROM THE RETIRED SCRIPT is declared instead: that script's
              ``_openems_common_setup`` capped the run at NrTS = 30000 with
@@ -138,7 +141,7 @@ it.
              "reached before the end-criteria of" warning on a real pass as a
              FAILED gate, so that would cost a cluster hour and produce nothing.
              The smoke pass keeps its 200 steps. WHAT THIS COSTS INSTEAD: a real
-             pass now runs until the energy has decayed 50 dB rather than until
+             pass now runs until the energy has decayed 60 dB rather than until
              a step budget runs out, so it can take considerably longer than the
              172 s the retired script recorded at the coarse mesh. The job file's
              21600 s timeout is the only bound on that.
@@ -463,8 +466,10 @@ B_PML_CELLS = 8            # "PML_8" -- the x faces only
 B_CALCPORT_REF_IMPEDANCE = 50
 
 # The real pass runs at openEMS's OWN defaults, like Stage A and the tutorial:
-# None here means "do not pass NrTS/EndCriteria at all", so the library's ~1e9
-# and 1e-5 apply. The retired script's cap is recorded below and deliberately
+# None here means "do not pass NrTS/EndCriteria at all", so NrTS ~1e9 and the
+# pinned build's C++ default EndCriteria 1e-6 apply (openems.cpp:117; the python
+# binding's docstring says 1e-5, which is not what runs). The retired script's
+# cap is recorded below and deliberately
 # NOT used -- see delta 9.
 B_REAL_NRTS = None
 B_REAL_END_CRITERIA = None
@@ -539,7 +544,10 @@ DELTA_LIST = [
     "DEPARTURE from the MSL notch filter maker's tick 'ref_impedance is never "
     "passed to CalcPort', declared here rather than inherited silently.",
     "DELTA 9 (NrTS / EndCriteria): the library defaults, as the tutorial -- "
-    "openEMS's own ~1e9 and 1e-5 on every real pass, exactly what Stage A runs; "
+    "not passed on a real pass, so openEMS's own NrTS ~1e9 and EndCriteria 1e-6 "
+    "(the pinned build's C++ default, openems.cpp:117; the python binding's "
+    "docstring says 1e-5, which is not what runs) apply, exactly what Stage A "
+    "runs; "
     "the retired script's 30000 / 1e-4 cap is NOT carried. This entry is a "
     "declared departure from the SCRIPT, not from the tutorial (leader "
     "decision, this PR). Why: the cap was a cost choice on one mesh. Halving "
@@ -547,7 +555,7 @@ DELTA_LIST = [
     "the steps, and a 30000-step cap that just about reached 1e-4 on the coarse "
     "board would stop the fine board mid-ring-down -- which the shared runner "
     "correctly reports as a FAILED gate, for a cluster hour and no record. What "
-    "it costs instead: a real pass now runs until the energy has decayed 50 dB "
+    "it costs instead: a real pass now runs until the energy has decayed 60 dB "
     "rather than until a step budget runs out, so it can take considerably "
     "longer than the 172 s the retired script recorded at the coarse mesh; the "
     "job file's 21600 s timeout is the only bound on that -- measured since: the "
@@ -1258,8 +1266,11 @@ def stop_criteria_note(real_end_criteria, real_nrts,
         "gated." if record_length_witness else "")
     accepted = accepted + witnessed
     if real_end_criteria is None and real_nrts is None:
-        return ("openEMS's own library defaults (~1e9 / 1e-5) on every real pass, "
-                "Stage A and Stage B alike. No override was given. This is the "
+        return ("openEMS's own library defaults on every real pass, Stage A and "
+                "Stage B alike: nothing passed, so NrTS ~1e9 and EndCriteria 1e-6 "
+                "(the pinned build's C++ default, openems.cpp:117; the python "
+                "binding's docstring says 1e-5, which is not what runs). No "
+                "override was given. This is the "
                 "declared design (delta 9); see B_REAL_NRTS / B_REAL_END_CRITERIA."
                 + accepted)
     bits = []
@@ -1267,11 +1278,43 @@ def stop_criteria_note(real_end_criteria, real_nrts,
         bits.append(f"--real-end-criteria {real_end_criteria!r}")
     if real_nrts is not None:
         bits.append(f"--real-nrts {real_nrts!r}")
-    return ("made with " + " ".join(bits) + ": the tutorial's default 1e-5 took "
-            "over 107 minutes on the coarsest rung on 8 threads (runs "
+    return ("made with " + " ".join(bits) + ": the tutorial's default -- nothing "
+            "passed, so the pinned build's C++ default EndCriteria 1e-6 "
+            "(openems.cpp:117; the python binding's docstring says 1e-5, which is "
+            "not what runs) -- took over 107 minutes on the coarsest rung on 8 "
+            "threads (runs "
             "369367263243, 369367263269); 1e-4 is the repository's own ring-down "
             "level (rfx CLAUDE.md: end-of-run energy below -40 dB of the "
             "post-source peak)" + accepted)
+
+
+def meta_nrts_label(real_nrts) -> str:
+    """``meta.nrts``: what bounded the real passes' step count, as run."""
+    stage_b = (f"Stage B {real_nrts!r} on every real pass, given on the command "
+               f"line (--real-nrts; see stop_criteria_note)"
+               if real_nrts is not None else
+               "Stage B the same, not passed")
+    return ("Stage A: not passed, so openEMS's library default (~1e9); "
+            f"{stage_b}; 200 on every smoke pass. The retired script's cap of "
+            f"{SCRIPT_NRTS_CAP} is NOT carried as the declared design -- see "
+            "delta 9.")
+
+
+def meta_end_criteria_label(real_end_criteria) -> str:
+    """``meta.end_criteria``: the energy criterion the real passes ran, as run.
+    Nothing passed means the pinned build's C++ default 1e-6 (openems.cpp:117),
+    not the 1e-5 the python binding's docstring states (label corrected
+    2026-09-24)."""
+    stage_b = (f"Stage B {real_end_criteria!r} on every real pass, passed "
+               f"explicitly on the command line (--real-end-criteria; see "
+               f"stop_criteria_note)"
+               if real_end_criteria is not None else
+               "Stage B the same, not passed")
+    return ("Stage A: not passed, so the pinned openEMS build's C++ default 1e-6 "
+            "ran (openems.cpp:117; the python binding's docstring says 1e-5, "
+            f"which is not what runs); {stage_b}; 0.0 on every smoke pass. The "
+            f"retired script's {SCRIPT_END_CRITERIA_CAP} is NOT carried as the "
+            "declared design -- see delta 9.")
 
 
 STAGE_B_FACTORS = {
@@ -1414,7 +1457,8 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
     and a note. Stage A never sees it.
 
     ``real_nrts`` / ``real_end_criteria`` default to ``None``, which means the
-    declared design: pass nothing, so openEMS's own ~1e9 / 1e-5 apply (delta 9).
+    declared design: pass nothing, so openEMS's own NrTS ~1e9 and EndCriteria
+    1e-6 apply (the pinned build's C++ default; delta 9).
     A caller that overrides them is recorded doing so, per stage block and in
     ``meta.stop_criteria_note``. STAGE A IS NEVER OVERRIDDEN -- it is the gate,
     it runs the tutorial's own model, and it takes 44 s.
@@ -1487,7 +1531,9 @@ def _run_stage_b(*, label: str, sim_root: str, threads: int,
                 f"{real_end_criteria!r} -- given on the command line, NOT the "
                 f"declared design; see stop_criteria_note"
                 if real_end_criteria is not None
-                else ("openEMS library default (1e-5) -- the retired script's cap "
+                else ("not passed: the pinned openEMS build's C++ default 1e-6 "
+                      "(openems.cpp:117; the python binding's docstring says "
+                      "1e-5, which is not what runs) -- the retired script's cap "
                       f"of {SCRIPT_END_CRITERIA_CAP} is not carried")),
             "stop_criteria_note": stop_criteria_note(
                 real_end_criteria, real_nrts, accept_truncation),
@@ -1567,14 +1613,8 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
                 f"COPY_SUBSTITUTIONS and compared with it character for character "
                 f"by --self-check. F_MAX evaluates to {F_MAX!r} Hz."
             ),
-            "nrts": ("openEMS's library default (~1e9) on EVERY real pass, Stage A "
-                     "and Stage B alike; 200 on every smoke pass. The retired "
-                     f"script's cap of {SCRIPT_NRTS_CAP} is NOT carried -- see "
-                     "delta 9."),
-            "end_criteria": ("openEMS's library default (1e-5) on EVERY real pass, "
-                             "Stage A and Stage B alike; 0.0 on every smoke pass. The "
-                             f"retired script's {SCRIPT_END_CRITERIA_CAP} is NOT "
-                             "carried -- see delta 9."),
+            "nrts": meta_nrts_label(real_nrts),
+            "end_criteria": meta_end_criteria_label(real_end_criteria),
             "calcport_grid": f"Stage B linspace({F_LO}, {F_MAX}, {B_N_FREQS})",
             "calcport_passes": (
                 "Stage B runs TWO passes: pass 1 with no ref_impedance, whose "
@@ -1672,8 +1712,11 @@ def _dry_run(stage: str, fine_factor: float, rung_stages=None,
     print(f"  excitation      {_builder_excitation_line(_build_sheen_board).strip()}"
           f"   (the builder's own source line; F_MAX = {F_MAX:.4g} Hz, so "
           f"{F_MAX/2:.4g} Hz centre and corner)")
-    print(f"  NrTS / EndCrit  openEMS library defaults (~1e9 / 1e-5) on every real "
-          f"pass, as Stage A; 200 / 0.0 on the smoke pass. The retired script's "
+    print(f"  NrTS / EndCrit  openEMS library defaults on every real pass, as "
+          f"Stage A -- nothing passed, so NrTS ~1e9 and EndCriteria 1e-6 (the "
+          f"pinned build's C++ default, openems.cpp:117; the python binding's "
+          f"docstring says 1e-5, which is not what runs) -- unless an override "
+          f"below is given; 200 / 0.0 on the smoke pass. The retired script's "
           f"{SCRIPT_NRTS_CAP} / {SCRIPT_END_CRITERIA_CAP} cap is NOT carried "
           f"(delta 9)")
     print(f"  stop criteria   "
@@ -1770,7 +1813,8 @@ def _self_check(fine_factor: float) -> int:
     check(PORT_MARGIN == 2.5e-3, "PORT_MARGIN 2.5 mm")
     check(B_REAL_NRTS is None and B_REAL_END_CRITERIA is None,
           "the real pass passes NO NrTS/EndCriteria, so openEMS's own defaults "
-          "(~1e9 / 1e-5) apply, exactly as Stage A runs -- the DECLARED design, "
+          "(~1e9 / 1e-6, the pinned build's C++ EndCriteria) apply, exactly as "
+          "Stage A runs -- the DECLARED design, "
           "which --real-end-criteria / --real-nrts override without changing",
           f"{B_REAL_NRTS!r} / {B_REAL_END_CRITERIA!r}")
 
@@ -2271,7 +2315,8 @@ _MERGE_META_MUST_AGREE = ("tutorial_source", "rfx_openems_image",
 
 # HOW CLOSE TWO JOBS' STAGE A HAVE TO BE, AND WHY IT IS NOT BIT-IDENTICAL.
 # openEMS on 8 threads does not end the tutorial run at the same timestep twice:
-# the 1e-5 energy criterion is crossed at slightly different times, and runs
+# the 1e-6 energy criterion (the pinned build's C++ default; not passed) is
+# crossed at slightly different times, and runs
 # 369367263406/407/408 ended at 14586 / 14688 / 12342 steps. The spectra then
 # differ a little. Measured across those three parts, over the band Stage A is
 # read on:
@@ -2357,7 +2402,7 @@ def _merge(part_paths: list, output: str) -> int:
         "per_part": [],
         "what_it_is": (
             "openEMS with 8 threads does not end the tutorial run at the same "
-            "timestep twice -- the 1e-5 energy criterion is crossed at slightly "
+            "timestep twice -- the 1e-6 energy criterion is crossed at slightly "
             "different times -- so each job's Stage A spectrum differs a little "
             "from the others'. These are the measured maxima of that run-to-run "
             "spread, over the band Stage A is read on, against the FIRST part "
@@ -2501,6 +2546,16 @@ def _merge(part_paths: list, output: str) -> int:
     merged["meta"]["stop_criteria_note"] = (
         "per part -- see meta.merged_from; the parts need not share one, and this "
         "record does not claim they do")
+    # The step and energy labels as run: the first part's when every part
+    # carries the same one, otherwise per part (each Stage B block states its own).
+    for key, declared in (("nrts", "nrts_declared"),
+                          ("end_criteria", "end_criteria_declared")):
+        if len({str(a["meta"].get(key)) for _, a in parts}) != 1:
+            merged["meta"][key] = (
+                "per part -- Stage A takes openEMS's own default in every part; "
+                f"each Stage B block's value is meta.stages.<stage>.{declared}, "
+                "and each part's command line is in "
+                "meta.merged_from[].stop_criteria_note")
     maker_commits = [a["meta"].get("rfx_commit") for _, a in parts]
     merged["meta"]["maker_commits_agree"] = bool(len(set(map(str, maker_commits))) == 1)
     merged["meta"]["stage_a_reproducibility"] = repro
@@ -2609,7 +2664,9 @@ def main(argv=None) -> int:
                         "job.")
     p.add_argument("--real-end-criteria", type=float, default=None, metavar="FLOAT",
                    help="Stage B only: openEMS EndCriteria for the REAL pass. "
-                        "Default: pass nothing, so openEMS's own 1e-5 applies -- "
+                        "Default: pass nothing, so the pinned build's C++ default "
+                        "1e-6 applies (the python binding's docstring says 1e-5, "
+                        "which is not what runs) -- "
                         "that is the declared design (delta 9). Giving a value is "
                         "recorded in every Stage B block and in "
                         "meta.stop_criteria_note. Stage A is never overridden.")

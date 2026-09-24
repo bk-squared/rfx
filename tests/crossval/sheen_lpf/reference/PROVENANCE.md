@@ -41,6 +41,7 @@ solvers are run by hand, when the case is created or its geometry changes.
 | method | FDTD; explicit mesh lines at x = 0, LX and both wide-section faces, thirds-rule pairs at the two feed edges, then one `SmoothMeshLines` per axis |
 | boundary | `['PML_8', 'PML_8', 'MUR', 'MUR', 'PEC', 'MUR']` — PML on the two x faces the feeds run into, MUR on y and z-max, PEC ground at z = 0 |
 | excitation | `SetGaussExcite(F_MAX/2, F_MAX/2)` = 10 GHz centre and corner, F_MAX = 20 GHz |
+| `NrTS` / end criteria | Stage A: not passed, so `NrTS` ~1e9 and end criteria 1e-6 (the pinned build's C++ default, `openems.cpp:117`; the python binding's docstring says 1e-5, which is not what runs). Stage B: end criteria 1e-4 passed explicitly (`--real-end-criteria 0.0001`) and `--real-nrts` 60 000 / 84 853 / 120 000 (twice that for the N/2N witness). Labels corrected 2026-09-24, see below |
 | frequency points | 801, `linspace(0.5 GHz, 20 GHz)`, in every Stage B rung; Stage A uses the tutorial's own 1601-point `linspace(1 MHz, 7 GHz)` |
 | arrays | `freqs_ghz`, `s11_mag`, `s21_mag`, `re_z0` LINEAR; `s11_deg`, `s21_deg` in degrees; `energy_sum` per bin |
 | extraction | TWO `CalcPort` passes: pass 1 with no `ref_impedance`, whose `Re(port.Z_ref)` is recorded as `re_z0`; pass 2 with `ref_impedance = 50`, from which S is taken (`meta.calcport_passes`, the maker's delta 8) |
@@ -71,7 +72,7 @@ A separate earlier reproduction of the same tutorial is recorded in
 lines 10-17, verified 2026-08-04.
 
 **Stage A ran three times, once per part, and the merge accepts the spread**
-(`meta.stage_a_reproducibility`). openEMS on 8 threads does not cross the 1e-5
+(`meta.stage_a_reproducibility`). openEMS on 8 threads does not cross the 1e-6
 energy criterion at the same timestep twice, so the three jobs ended Stage A at
 14 586 / 14 688 / 12 342 steps. Measured spread against the first part, over
 2-7 GHz: |Δ|S11|| ≤ 1.31e-4, |Δ|S21|| ≤ 1.56e-4 (tolerance 1e-3 linear), notch
@@ -118,9 +119,11 @@ curve is in the record; the case prints it.
 ### Why the record is truncated, and what stands in for a decay level
 
 Every Stage B rung stopped at a DECLARED record length (`--real-nrts`
-60 000 / 84 853 / 120 000, about 10 ns) rather than at an energy criterion. The
-tutorial's default 1e-5 did not finish: two uncapped runs (369367263243,
-369367263269) passed 107 minutes on the coarsest rung alone. The reason is in
+60 000 / 84 853 / 120 000, about 10 ns) rather than at an energy criterion; the
+1e-4 passed with `--real-end-criteria` was not reached on any rung
+(`end_criteria_reached = false`). The tutorial's default did not finish: two
+uncapped runs (369367263243, 369367263269), which passed no end criteria and so
+ran the pinned build's 1e-6, passed 107 minutes on the coarsest rung alone. The reason is in
 the record — the box energy sits FLAT at about −31 dB from N to 2N steps
 (`final_energy_db` −31.27 / −30.49 / −31.83), a trapped mode that no end
 criterion closes.
@@ -157,6 +160,82 @@ maxima above the band) and not judged in the record.
 | `stage_b_fine` | 0.786526 – 1.000174 | min 0.459049 |
 
 That band edge, 12 GHz, is where the case reads both curves.
+
+### Stop-criterion labels corrected, 2026-09-24
+
+Only labels changed; no number in the record changed. EndCriteria was never
+passed to Stage A, so the pinned openEMS build ran its C++ default 1e-6
+(`openems.cpp:117`), not the 1e-5 the python binding's docstring states. Stage
+B ran 1e-4, passed explicitly. The two uncapped runs 369367263243 and
+369367263269 ran 1e-6. Parsed-JSON diff of `openems_sheen.json` against its
+previous version: 15 string leaves and no other leaf —
+`meta.end_criteria`, `meta.nrts` (it said the library default on every real
+pass; Stage B passed `--real-nrts`), `meta.stages.stage_a.end_criteria_declared`,
+the seven `stop_criteria_note` fields under `meta.stages` and the three under
+`meta.merged_from`, `meta.stage_a_reproducibility.what_it_is`,
+`meta.delta_list[8]` (1e-5 → 1e-6, and the decay it implies, 50 → 60 dB), and
+the new `meta.end_criteria_note`, which quotes the previous values. The maker
+writes the same labels from now on.
+
+## Three openEMS probes of this board outside the record, 2026-09-22/23
+
+Facts from three cluster jobs that ran openEMS on this board outside the record.
+The record itself is NOT regenerated from them. The probe scripts are on branch
+`archive/sheen-lpf-probes-20260923`, `scripts/diagnostics/sheen_box_probe/`; the
+jobs ran them at rfx commits 6635cafa, 696267ba and a2d80e83, whose
+`scripts/diagnostics/sheen_box_probe/` trees are identical to the archive
+branch's 18dc4948, fd44b404 and 6e6f07a0. Artifacts on the lab share, under
+`research/rfx/.omx/`.
+
+**The box probe** — VESSL 369367263565, artifacts
+`sheen-box-probe-openems/20260922T172301Z-6635cafa/` (`probe.log`,
+`sheen_box_probe_openems.json`, `sheen_box_probe_openems.png`). The
+`stage_b_coarse` board (198.5 µm, 4 substrate cells) with the side walls (the
+y faces) moved or changed, run with `--real-nrts 60000 --real-end-criteria
+0.0001 --accept-truncation`; B0 is the record's own box and reproduces
+`stage_b_coarse` (7.99387 GHz, 0.0000 %).
+
+| id | wall clearance | y faces | box energy at the end | steps | null | against B0 |
+|---|---|---|---|---|---|---|
+| B0 | 3 mm | MUR | −30.06 dB | 60 000 (cap) | 7.99387 GHz | — |
+| B1 | 12 mm | MUR | −45.96 dB | 8 621 (1.446 ns) | 8.01281 GHz | +0.24 % |
+| B2 | 3 mm | PML_8 | −43.53 dB | 8 251 (1.384 ns) | 8.01582 GHz | +0.27 % |
+| B3 | 12 mm | PML_8 | −43.51 dB | 8 029 (1.347 ns) | 8.02055 GHz | +0.33 % |
+
+With PML or a 12 mm wall the run ends on its criterion in about 1.4 ns; the
+3 mm MUR walls hold the −31 dB plateau the record's rungs show
+(`final_energy_db` −31.27 / −30.49 / −31.83).
+
+**The smoothed-mesh ladder with PML side walls** — VESSL 369367263788 (four
+rungs) and 369367263789 (the fifth), artifacts
+`sheen-smoothed-ladder-openems/20260923T062930Z-a2d80e83-1p0-0p7071067811865476-0p5-0p35355339059327373/`
+and `sheen-smoothed-ladder-openems/20260923T062940Z-a2d80e83-0p25/`
+(`probe.log`, `sheen_box_probe_openems_ladder.json`, `.png`). Box B2 above
+(3 mm clearance, PML_8 on the y faces), the record's smoothed mesh at five
+factors, `--real-nrts 400000 --real-end-criteria 0.0001` with truncation
+refused; every rung ended on its criterion.
+
+| resolution | substrate cells | cells | box energy at the end | stopband null (5-10 GHz) |
+|---|---|---|---|---|
+| 198.5 µm | 4 | 417 000 | −42.91 dB | 8.0175 GHz |
+| 140.4 µm | 6 | 1 130 780 | −41.14 dB | 8.0225 GHz |
+| 99.25 µm | 10 | 3 248 430 | −40.49 dB | 8.0402 GHz |
+| 70.2 µm | 22 | 10 039 185 | −40.05 dB | 8.0713 GHz |
+| 49.6 µm | 20 | 24 769 800 | −40.0 dB | 8.0607 GHz |
+
+So the frozen `stage_b_fine` is not the converged value of openEMS's own
+ladder.
+
+**openEMS on rfx's own lattice** — VESSL 369367263706 (h/3, h/5, h/7) and
+369367263704 (h/12), artifacts
+`sheen-identical-grid-openems/20260923T033616Z-696267ba-h3-5-7/` and
+`sheen-identical-grid-openems/20260923T033124Z-696267ba-h12/` (`probe.log`,
+`sheen_identical_grid_openems.json`, `.png`). openEMS handed the mesh lines of
+rfx's ladder rungs (dx = h_sub/n) instead of its own smoothed mesh, PML_8 on
+every face but the PEC ground, end criterion 1e-4 passed explicitly: the ~8 GHz
+null at 8.195 / 8.224 / 8.186 / 8.206 GHz at h/3, h/5, h/7 and h/12 (8.19484 /
+8.22403 / 8.18551 / 8.20585 GHz in `probe.log`); every run ended on its
+criterion (−44.49 / −40.76 / −40.06 / −40.02 dB).
 
 ## `validation/crossval/_07_sheen_results/openems.json` — removed 2026-09-23
 
