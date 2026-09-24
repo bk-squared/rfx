@@ -178,7 +178,13 @@ class _RSSLiveSampler:
             self._last_reported_mb = mb
             suffix = f" during {self.current_nodeid}" if self.current_nodeid else ""
             # flush=True: a SIGKILL must leave this line in the streamed log.
-            print(f"[rss-live] VmHWM {mb:.0f} MB{suffix}", flush=True)
+            # stderr, not stdout: this thread prints at any moment, and a test
+            # that captures stdout through the process-global
+            # contextlib.redirect_stdout (rfx.ad_diagnostics.inspect_ad_saved_residuals
+            # reading jax's printed residuals) would otherwise read this line
+            # as a residual and get an unknown total -- the intermittent
+            # "assert None" of the design-box tape tests in the PR lane.
+            print(f"[rss-live] VmHWM {mb:.0f} MB{suffix}", file=sys.stderr, flush=True)
 
     def _run(self) -> None:
         while not self._stop_event.wait(self.interval_s):

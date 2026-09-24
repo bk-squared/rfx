@@ -52,9 +52,12 @@ thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude) and
 the three rules the PI approved with it on 2026-09-22: the mesh statement
 (the last two rungs within 1 %), the deep-null exclusion (a bin where either
 curve is below −20 dB is judged by position only) and the ring-down witness
-(−40 dB, the repo's rule).  Every one is a named constant below with its
-source.  No threshold is derived from a run, and this case commits no record
-of a run.
+(−40 dB, the repo's rule); and the two the PI approved on 2026-09-24: a
+ladder step within 0.1 % is flat, not a direction, and the magnitude is
+compared with rfx's frequency axis scaled so the two notches coincide.  The
+shared ones are named constants in ``tests/crossval/_v2_judging.py``, the
+rest below, each with its source.  No threshold is derived from a run, and
+this case commits no record of a run.
 
 How to run it
 -------------
@@ -87,6 +90,16 @@ from rfx import Box, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 from tests._realized_geometry import _node_line, realized
+from tests.crossval._v2_judging import (
+    CONVERGED,
+    DEEP_NULL_DB,
+    FLAT_STEP,
+    FREQ_BAR,
+    LADDER_AGREEMENT,
+    MAG_BAR_DB,
+    aligned_magnitude,
+    mesh_statement,
+)
 
 # ---------------------------------------------------------------- geometry
 # Every length in metres, every frequency in hertz.  Substrate, trace and stub
@@ -185,13 +198,10 @@ N_FREQS = 400
 REFERENCE_BAND_HZ = (2.0e9, 7.0e9)
 
 # ------------------------------------------------------------ thresholds
-# The v2 accuracy bar (rfx CLAUDE.md, PI 2026-09-20):
-FREQ_BAR = 0.01          # resonances, cutoffs, notches, band edges: within 1 %
-MAG_BAR_DB = 2.0         # power and magnitude: within 2 dB
-# Rules approved by the PI with this case's plan (2026-09-22):
-LADDER_AGREEMENT = 0.01  # mesh statement: the last two rungs differ by < 1 %
-DEEP_NULL_DB = -20.0     # a bin where either curve is below this is judged by
-#                          position only, never by magnitude
+# The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB; PI 2026-09-20), the
+# mesh statement (LADDER_AGREEMENT 1 %, FLAT_STEP 0.1 %) and the deep-null
+# level (DEEP_NULL_DB −20 dB) are imported from tests/crossval/_v2_judging.py,
+# with the rules that use them (PI 2026-09-22 and 2026-09-24).
 # Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive structure cannot scatter more power than it receives, so a raw
@@ -635,19 +645,17 @@ def _db(mag) -> np.ndarray:
     return 20.0 * np.log10(np.maximum(np.asarray(mag, dtype=float), 1e-300))
 
 
-def _interp_db(freqs_hz, s21_db, ref_f_ghz) -> np.ndarray:
-    """rfx's |S21| in dB sampled at the reference frequencies (dB is what the
-    2 dB bar is stated in, so the interpolation happens in dB)."""
-    return np.interp(np.asarray(ref_f_ghz, dtype=float) * 1e9,
-                     np.asarray(freqs_hz, dtype=float),
-                     np.asarray(s21_db, dtype=float),
-                     left=np.nan, right=np.nan)
-
-
 def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
     """ΔdB of rfx − reference at every reference frequency inside the band
     both curves cover where BOTH are above the deep-null level, plus the
     notch-frequency distance.
+
+    The ΔdB is taken twice, by ``aligned_magnitude`` in
+    ``tests/crossval/_v2_judging.py``: on the two frequency axes as solved
+    (reported), and with rfx's axis scaled by f_ref_notch / f_rfx_notch so the
+    two notches coincide (the value the 2 dB bar judges, PI 2026-09-24).  In
+    both, rfx's |S21| is interpolated in dB onto the reference frequencies (dB
+    is what the 2 dB bar is stated in).
 
     The deep-null exclusion is two-sided on purpose: a bin where one curve is
     in its null and the other is not is the two notches sitting at different
@@ -655,21 +663,27 @@ def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
     as a magnitude error would score one offset twice."""
     ref_f_hz = np.asarray(ref_f_ghz, dtype=float) * 1e9
     ref_db = _db(ref_s21_mag)
-    ours = _interp_db(rung["freqs_hz"], _db(np.abs(rung["s21"])), ref_f_ghz)
     lo, hi = REFERENCE_BAND_HZ
-    in_band = (ref_f_hz >= lo) & (ref_f_hz <= hi)
-    keep = (in_band & (ref_db >= DEEP_NULL_DB) & (ours >= DEEP_NULL_DB)
-            & np.isfinite(ours))
-    delta = ours - ref_db
     ref_notch = notch_frequency(ref_f_hz, ref_s21_mag, lo, hi)
     our_notch = notch_frequency(rung["freqs_hz"], np.abs(rung["s21"]), lo, hi)
-    max_abs = float(np.max(np.abs(delta[keep]))) if keep.any() else float("nan")
-    worst = int(np.argmax(np.where(keep, np.abs(delta), -np.inf))) if keep.any() else -1
+    m = aligned_magnitude(ref_f_hz, ref_db, rung["freqs_hz"], _db(np.abs(rung["s21"])),
+                          ref_notch["f"], our_notch["f"], REFERENCE_BAND_HZ,
+                          floor_db=DEEP_NULL_DB)
+    solved, aligned = m["unaligned"], m["aligned"]
     out = dict(
         label=label, ref_f_ghz=np.asarray(ref_f_ghz, float), ref_db=ref_db,
-        ours_db=ours, delta_db=delta, compared=keep, in_band=in_band,
-        n_in_band=int(in_band.sum()),
-        n_compared=int(keep.sum()), max_abs_delta_db=max_abs, worst_index=worst,
+        ours_db=solved["ours_db"], delta_db=solved["delta_db"],
+        compared=solved["compared"], in_band=m["in_band"],
+        n_in_band=m["n_in_band"],
+        n_compared=solved["n_compared"], max_abs_delta_db=solved["max_abs_delta_db"],
+        worst_index=solved["worst_index"],
+        scale=m["scale"],
+        aligned_ours_db=aligned["ours_db"], aligned_delta_db=aligned["delta_db"],
+        aligned_compared=aligned["compared"],
+        aligned_n_compared=aligned["n_compared"],
+        aligned_max_abs_delta_db=aligned["max_abs_delta_db"],
+        aligned_worst_index=aligned["worst_index"],
+        aligned_worst_f_ghz=aligned["f_at_max_hz"] / 1e9,
         ref_notch_ghz=ref_notch["f"] / 1e9, our_notch_ghz=our_notch["f"] / 1e9,
         ref_notch_depth_db=ref_notch["depth_db"],
         our_notch_depth_db=our_notch["depth_db"],
@@ -691,20 +705,31 @@ def _print_comparison(c: dict) -> None:
           f"reference frequencies inside {lo/1e9:.0f}–{hi/1e9:.0f} GHz "
           f"({c['ref_f_ghz'].size} in the record; both curves above "
           f"{DEEP_NULL_DB:.0f} dB); max |ΔdB| = {c['max_abs_delta_db']:.3f} dB")
+    print(f"    aligned (rfx frequency axis × {c['scale']:.6f}, so the notches "
+          f"coincide): |S21| dB compared at {c['aligned_n_compared']} of the "
+          f"{c['n_in_band']}; max |ΔdB| = {c['aligned_max_abs_delta_db']:.3f} dB "
+          f"at {c['aligned_worst_f_ghz']:.4f} GHz")
     idx = np.flatnonzero(c["in_band"])
     stride = max(1, int(np.ceil(idx.size / _MAX_TABLE_ROWS)))
     shown = set(idx[::stride].tolist())
-    if c["worst_index"] >= 0:
-        shown.add(c["worst_index"])
+    for worst in (c["worst_index"], c["aligned_worst_index"]):
+        if worst >= 0:
+            shown.add(worst)
     if stride > 1:
         print(f"    (in-band table printed every {stride} reference bins, plus "
-              "the worst compared bin marked *)")
-    print("    f_GHz, ref_dB, rfx_dB, delta_dB, compared")
+              "the worst compared bin marked * as solved and ^ aligned, # both)")
+    print("    f_GHz, ref_dB, rfx_dB, delta_dB, compared, "
+          "rfx_aligned_dB, delta_aligned_dB, compared_aligned")
     for i in sorted(shown):
-        mark = "*" if i == c["worst_index"] else " "
+        worst_solved = i == c["worst_index"]
+        worst_aligned = i == c["aligned_worst_index"]
+        mark = ("#" if worst_solved and worst_aligned else
+                "*" if worst_solved else "^" if worst_aligned else " ")
         print(f"     {mark}{c['ref_f_ghz'][i]:8.4f} {c['ref_db'][i]:10.3f} "
               f"{c['ours_db'][i]:10.3f} {c['delta_db'][i]:9.3f}  "
-              f"{bool(c['compared'][i])}")
+              f"{bool(c['compared'][i])!s:5} "
+              f"{c['aligned_ours_db'][i]:10.3f} {c['aligned_delta_db'][i]:9.3f}  "
+              f"{bool(c['aligned_compared'][i])}")
 
 
 # ------------------------------------------------------------------ ladder
@@ -861,16 +886,19 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
 
     # ---- (b) mesh statement: the notch must settle along the ladder --------
     notches = [r["notch"]["f"] for r in results]
+    mesh_stmt = mesh_statement(notches, [f"{r['dx_m']*1e6:.2f}µm" for r in results])
     print("\n  mesh statement — notch frequency along the rfx ladder:")
     for r in results:
         print(f"    dx {r['dx_m']*1e6:8.3f} µm  {r['notch']['f']/1e9:.5f} GHz  "
               f"{r['n_cells']} cells  {r['wall_s']:.1f} s")
     if len(notches) >= 2:
-        last_two_pct = 100.0 * abs(notches[-1] - notches[-2]) / notches[-2]
-        print(f"    last two rungs differ by {last_two_pct:.3f} % "
+        print(f"    last two rungs differ by {mesh_stmt['last_two_pct']:.3f} % "
               f"(bar {LADDER_AGREEMENT*100:.0f} %)")
-    else:
-        last_two_pct = float("nan")
+        print("    steps " + ", ".join(
+            f"{p:+.3f} %" + (" (flat)" if fl else "")
+            for p, fl in zip(mesh_stmt["steps_pct"], mesh_stmt["flat"]))
+            + f" (flat when within {FLAT_STEP*100:.1f} %); monotone "
+            f"{mesh_stmt['monotone']} -> {mesh_stmt['verdict']}")
 
     # The reference's own mesh statement, read off its record: the tutorial's
     # own mesh, then the same structure at finer cell sizes.
@@ -894,8 +922,6 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
     # env override exists for — and the test skips at the end instead of
     # passing or failing.
     partial = len(rungs) < len(LADDER_M)
-    monotone = (all(b > a for a, b in zip(notches, notches[1:]))
-                or all(b < a for a, b in zip(notches, notches[1:])))
 
     # ---- (c) the comparison: finest rung against the openEMS fine rung -----
     # Every distance and the figure are printed BEFORE any verdict, so a run
@@ -961,12 +987,11 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
             "and this run states no verdict.")
 
     # ---- (b) the mesh statement comes first: without it nothing is judged --
-    assert monotone, (
-        "the notch frequency does not move monotonically along the ladder: "
-        f"{[f'{f/1e9:.5f} GHz' for f in notches]} at "
-        f"{[f'{d*1e6:.2f}µm' for d in rungs]}. Without a monotone trend the "
-        "mesh is not shown to converge and the comparison says nothing.")
-    if not last_two_pct < LADDER_AGREEMENT * 100.0:
+    # Not shown to converge — a step larger than FLAT_STEP against the trend
+    # (PI 2026-09-24), or the last two rungs LADDER_AGREEMENT or more apart
+    # (PI 2026-09-22) — states the numbers and xfails; it is not a failure.
+    # Every witness above has already hard-failed a bad rung.
+    if mesh_stmt["verdict"] != CONVERGED:
         # Known limitation, PI decision 2026-09-22: on a uniform staircase mesh
         # the notch converges from above with an observed order of about 0.65
         # in dx (the realized strip steps 4 -> 9 -> 14 node rows), so the last
@@ -979,24 +1004,32 @@ def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
         # taken and the comparison below judges for real. Every witness above
         # (ring-down, passivity, the arm-length premise) still fails the test.
         pytest.xfail(
-            "known limitation (PI 2026-09-22): the uniform mesh has not "
-            f"converged — the two finest rungs put the notch {last_two_pct:.3f} % "
-            f"apart (bar {LADDER_AGREEMENT*100:.0f} %): "
-            f"{[f'{f/1e9:.5f} GHz' for f in notches]}; the finest rung sits "
-            f"{fine['notch_pct']:.3f} % from the openEMS tutorial's "
+            "known limitation (PI 2026-09-22, 2026-09-24): the uniform mesh is "
+            f"not shown to converge — {mesh_stmt['reason']}. The finest rung "
+            f"sits {fine['notch_pct']:.3f} % from the openEMS tutorial's "
             f"{fine['ref_notch_ghz']:.4f} GHz and its |S21| differs by up to "
-            f"{fine['max_abs_delta_db']:.3f} dB. The comparison above is "
-            "reported, not judged.")
+            f"{fine['aligned_max_abs_delta_db']:.3f} dB with the notches "
+            f"aligned ({fine['max_abs_delta_db']:.3f} dB as solved). The "
+            "comparison above is reported, not judged.")
     assert fine["notch_pct"] < FREQ_BAR * 100.0, (
         f"the notch sits {fine['notch_pct']:.3f} % from the openEMS tutorial "
         f"record's {fine['ref_notch_ghz']:.4f} GHz (bar {FREQ_BAR*100:.0f} %); "
         f"rfx reads {fine['our_notch_ghz']:.4f} GHz on the "
         f"{finest['dx_m']*1e6:.2f} µm mesh.")
-    assert fine["max_abs_delta_db"] <= MAG_BAR_DB, (
+    # The magnitude, judged with the notch offset the frequency bar has just
+    # judged taken out (PI 2026-09-24): rfx's axis scaled by f_ref / f_rfx.
+    assert fine["aligned_max_abs_delta_db"] <= MAG_BAR_DB, (
         f"|S21| differs from the openEMS tutorial record by up to "
-        f"{fine['max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB) over the "
-        f"{fine['n_compared']} reference frequencies where both curves are above "
-        f"{DEEP_NULL_DB:.0f} dB.")
+        f"{fine['aligned_max_abs_delta_db']:.3f} dB at "
+        f"{fine['aligned_worst_f_ghz']:.4f} GHz (bar {MAG_BAR_DB:.0f} dB) over "
+        f"the {fine['aligned_n_compared']} reference frequencies where both "
+        f"curves are above {DEEP_NULL_DB:.0f} dB, with rfx's frequency axis "
+        f"scaled by {fine['scale']:.6f} so the notches coincide "
+        f"({fine['max_abs_delta_db']:.3f} dB as solved, reported).")
+    print(f"\n  judged: notch {fine['notch_pct']:.3f} % from the openEMS tutorial "
+          f"(bar {FREQ_BAR*100:.0f} %); |S21| aligned max |ΔdB| "
+          f"{fine['aligned_max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB); "
+          f"as solved {fine['max_abs_delta_db']:.3f} dB, reported, not judged")
 
 
 def _write_figure(results, palace, openems, tmp_path) -> Path:

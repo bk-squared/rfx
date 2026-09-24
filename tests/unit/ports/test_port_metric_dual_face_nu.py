@@ -592,10 +592,11 @@ def test_msl_mode_profile_uniform_regression_after_physical_span_correction():
 #
 # The element current has to become a current DENSITY through the node's DUAL
 # face, and the inductor's implicit self-coupling `gamma` has to use the same
-# area:
+# area. Since #1245 the inductor is trapezoidal (it loads the node with
+# I_avg = (I^{n+1} + I^n)/2):
 #
-#     E^{n+1} = (D0*E_std - I^n / dual_area) / (D0 + gamma)
-#     I^{n+1} = I^n + (dt*d_par/L) * E^{n+1}
+#     E^{n+1} = e_std - (I^n/dual_area + (gamma/4)*(e_std + E^n)) / (D0 + gamma/4)
+#     I^{n+1} = I^n + (dt*d_par/(2L)) * (E^{n+1} + E^n)
 #     gamma   = dt * d_par / (L * dual_area)
 #
 # The old pair spelled both with `d_par**2`.  That is self-consistent — it is
@@ -654,9 +655,10 @@ def test_nu_parallel_inductor_realizes_its_henries_on_a_graded_mesh(
     OPERATIONAL definition, so this cannot pass by restating the rule.  The
     discrete Ampere law at the node says the field is loaded with
     ``I_implied = -dual_area * D0 * (E_new - E_std)``; the element's own ODE
-    (``L dI/dt = E*d_par``) produced ``i_L_new``.  The inductance the FIELD
-    sees is therefore ``L * i_L_new / I_implied``.  ``dual_area`` comes from
-    ``1/grid.inv_d*``.
+    (``L dI/dt = E*d_par``) carried ``I_avg = (i_L_new + i_L)/2`` over the
+    step (trapezoidal since #1245; before it, backward Euler carried
+    ``i_L_new``).  The inductance the FIELD sees is therefore
+    ``L * I_avg / I_implied``.  ``dual_area`` comes from ``1/grid.inv_d*``.
 
     Measured before this gate existed (x2/y3/z4 fixture, target 1.0)::
 
@@ -677,16 +679,16 @@ def test_nu_parallel_inductor_realizes_its_henries_on_a_graded_mesh(
     meta = build_rlc_meta(grid, spec, mats)
     assert (meta.i, meta.j, meta.k) == idx
 
-    e_std, i_L = 3.7, 2.5e-3
+    e_std, e_prev, i_L = 3.7, 1.3, 2.5e-3
     state = _single_node_state(grid, component, idx, e_std)
     new_state, rlc_new = _update_parallel(
-        state, _rlc_state_with_current(i_L), meta)
+        state, _rlc_state_with_current(i_L), meta, jnp.asarray(e_prev))
     e_new = float(getattr(new_state, component)[idx])
-    i_new = float(rlc_new.inductor_current)
+    i_avg = 0.5 * (float(rlc_new.inductor_current) + i_L)
 
     area = _oracle_dual_area(grid, idx, component)
     i_implied = -area * meta.D0 * (e_new - e_std)
-    ratio = i_new / i_implied
+    ratio = i_avg / i_implied
     assert ratio == pytest.approx(1.0, rel=_F32_METRIC_REL), (
         f"{component} at a {NODE_KINDS[node]} node: L_realized/L = {ratio}"
     )
@@ -792,14 +794,24 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
             if meta.is_series:
                 state, rlc = _update_series(state, rlc, meta, e_prev)
             else:
-                state, rlc = _update_parallel(state, rlc, meta)
+                state, rlc = _update_parallel(state, rlc, meta, e_prev)
         return (float(getattr(state, component)[idx]),
                 float(rlc.inductor_current))
 
+    # The two PARALLEL pins moved with #1245 (the inductor is trapezoidal and
+    # solved with its edge field). Same witness as the series pins below: the
+    # node capacitance D0*A*dt/d (stamps included) in parallel with L, driven
+    # by D0*A*amp_n held over each step (matrix exponential, float64); at
+    # step 200 the inductor current is 6.1279e-07 A for pure L (old pin
+    # 6.3947e-07, +4.35 %; now 6.2640e-07, +2.22 % -- this harness node
+    # rings at 120 GHz, 0.29 rad per step) and 6.4365e-04 A for R+L+C (old
+    # 6.4156e-04, -0.32 %; now 6.4364e-04, -0.0016 %). The R here enters
+    # only D0 (the harness has no Yee update to apply sigma). (Closed-form
+    # script and numbers: the #1245 PR.)
     assert drive("parallel", 0.0, 1e-9, 0.0, "ez") == (
-        -0.10559134930372238, 6.394681690835569e-07)
+        -0.2504979968070984, 6.264010607992532e-07)
     assert drive("parallel", 50.0, 1e-9, 1e-12, "ez") == (
-        66.87545013427734, 0.0006415600073523819)
+        67.66089630126953, 0.0006436360999941826)
     # The two SERIES pins moved with #1163 (the element is solved together
     # with its edge field). This harness is one node with no curl, loaded by
     # the element: a node capacitance D0*A*dt/d driven by the per-step

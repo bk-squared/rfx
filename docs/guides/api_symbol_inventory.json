@@ -2666,6 +2666,9 @@
       "grid",
       "sigma_threshold"
     ],
+    "distributed_override_layout": [
+      "devices"
+    ],
     "estimate_ad_memory": [
       "n_steps",
       "available_memory_gb",
@@ -2779,13 +2782,19 @@
       "exchange_interval",
       "skip_preflight",
       "report_every",
-      "report_label"
+      "report_label",
+      "ringdown"
     ],
     "s_matrix_lane": [
       "lane"
     ],
     "set_periodic_axes": [
       "axes"
+    ],
+    "shard_distributed_override": [
+      "array",
+      "devices",
+      "pad_value"
     ],
     "validate_subgrid": [
       "mode"
