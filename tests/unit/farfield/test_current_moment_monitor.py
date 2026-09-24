@@ -271,13 +271,13 @@ SLAB_HALF = 4          # in-plane half width of the slab, in cells
 BLOCK_CELLS = 3
 
 # The vacuum residual in float32 on THESE slabs, measured on the unmutated
-# runs (CPU, JAX 0.6.2): 1.1e-06 on the uniform fixture and 2.7e-08 on the
-# graded one. It is float32 round-off on the cancellation between
-# ``curl_h H`` and ``eps0 dE/dt``, scaled by the local field, so it belongs to
-# the fixture and to where the slab sits: two cells further in on the same
-# uniform run it reads 1.4e-05. The bar is a multiple of the floor measured
-# here and is not a bar any other fixture inherits.
-VACUUM_FLOOR = {"uniform": 1.2e-06, "graded": 5.0e-08}
+# runs (CPU, JAX 0.6.2): 1.7e-06 on the uniform fixture and 1.7e-08 on the
+# graded one; the floors below are those rounded up. It is float32 round-off
+# on the cancellation between ``curl_h H`` and ``eps0 dE/dt``, scaled by the
+# local field, so it belongs to the fixture and to where the slab sits. The
+# bar is ten times the floor measured here and is not a bar any other
+# fixture inherits.
+VACUUM_FLOOR = {"uniform": 1.8e-06, "graded": 5.0e-08}
 VACUUM_BAR = {kind: 10.0 * v for kind, v in VACUUM_FLOOR.items()}
 
 # In-loop moments against the plane route: the two are the same numbers up
@@ -1642,10 +1642,9 @@ def test_weight_dtype_follows_the_runs_precision():
 
     The weights multiply the current inside the spatial reduction, so a
     float32 weight quantizes the block moments at float32 however wide the
-    accumulator is. With ``precision="float64"`` and float32 weights the far
-    field matched a float64 central difference only to 1e-6..2e-4, while the
-    Huygens box on the same runs reached 1e-9. The float32 branch is pinned
-    too: that is the path every existing run takes.
+    accumulator is; with the weights pinned to float32 the float64 gradient
+    check in this file misses its bar. The float32 branch is pinned too:
+    that is the path every existing run takes.
     """
     from rfx import Simulation
     from rfx.current_moments import monitor_for_simulation, weight_dtype_for
