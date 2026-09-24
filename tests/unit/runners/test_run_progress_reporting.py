@@ -685,4 +685,5 @@ def test_reporter_line_shape(capsys):
     assert "| elapsed 0:00:00 |" in line
     assert "steps/s | ETA " in line
     assert r.last_reported == 250
-    assert capsys.readouterr().out.strip() == line.strip()
+    printed = [ln for ln in capsys.readouterr().out.splitlines() if "[PROGRESS]" in ln]
+    assert printed == [line.rstrip("\n")]

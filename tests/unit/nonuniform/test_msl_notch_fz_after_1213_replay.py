@@ -673,6 +673,9 @@ def _r2_note_f0_rebuild(section: str) -> dict:
                 worst_ulp=float(s.group(6)))
 
 
+# A note checked against what the instrument prints: documentation, run by
+# the non-required docs-consistency workflow only (PI, 2026-09-22).
+@pytest.mark.docs_consistency
 def test_the_second_notes_results_are_still_what_its_tables_print(monkeypatch):
     """The third note may not change a byte of the second note's Results.
 
@@ -712,8 +715,11 @@ UNEDITED_BLOBS = {
         "96692703d9d8fa535082d1ba9089578e0f7cf481",
     "validation/research/multiband_nu/results/msl_notch_graded.json":
         "16e6adf90962c8ee3b914b504440fbe06bba933d",
+    # Re-pinned when that file's two notes checks became numeric or moved to
+    # the docs-consistency workflow (required checks compare no text); its
+    # record pins are unchanged. Main's blob before that was e8733b79.
     "tests/unit/nonuniform/test_msl_notch_fz_replay.py":
-        "e8733b79d9949efc8c56d27569eb5d011ec01a22",
+        "6273d23edd1af81b19321b37904e528594ebc9c5",
 }
 
 
@@ -736,6 +742,7 @@ NOTE = _ROOT / ins.AFTER_1213_NOTE_PATH
 PREDECLARATION_BLOB = "b7757db27eb06b434bd49a1124170fa2b41f84f7"
 
 
+@pytest.mark.docs_consistency   # the note's text, against its commit
 def test_sections_0_to_7_are_the_pre_declaration_as_committed():
     """Everything before the Results is 64ce5cd2's file, then one blank line."""
     data = NOTE.read_bytes()
@@ -744,6 +751,9 @@ def test_sections_0_to_7_are_the_pre_declaration_as_committed():
     assert _blob(frozen[:-1]) == PREDECLARATION_BLOB
 
 
+# A note checked against what the instrument prints: documentation, run by
+# the non-required docs-consistency workflow only (PI, 2026-09-22).
+@pytest.mark.docs_consistency
 def test_the_notes_results_are_what_tables_prints(capsys):
     """The note's Results, heading to Conclusions, against ``--tables``.
 

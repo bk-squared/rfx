@@ -32,6 +32,7 @@ import pytest
 
 from validation.research.multiband_nu import msl_notch_graded as ins
 from tests.crossval.msl_notch_filter import test_msl_notch_filter as case
+from tests._printed_numbers import agrees, printed_with_decimals
 
 _RESULTS = (Path(__file__).resolve().parents[3] / "validation" / "research"
             / "multiband_nu" / "results")
@@ -876,8 +877,12 @@ def test_the_tables_the_note_carries_are_generated_from_the_records(arms):
         assert heading in md, heading
     for key in sorted(arms):
         assert f"| {key} |" in md, key
-    assert f"{RECORDED_W5_LIMIT_GHZ:.5f}" in md
-    assert f"{RECORDED_REFERENCE_GHZ:.5f}" in md
+    # The tables re-derive both from the records through fits whose last
+    # printed digit can follow the BLAS kernel (#1262), so they are read back
+    # as numbers, to one unit of the fifth decimal the table prints.
+    fifth = printed_with_decimals(md, 5)
+    assert any(agrees(t, RECORDED_W5_LIMIT_GHZ) for t in fifth)
+    assert any(agrees(t, RECORDED_REFERENCE_GHZ) for t in fifth)
     assert RECORDED_W6_CLASS in md
     assert f"{RECORDED_W8_N_Z_FOR_THE_BAR}" in md
     # Every window the verdicts carry appears in the section.  A local name
@@ -1512,6 +1517,9 @@ def test_f6_the_synthetic_zero(arms, f6):
                 assert abs(r["error_log_hz"]) < 1e3, (k, r)
 
 
+# A note checked against what the instrument prints: documentation, run by
+# the non-required docs-consistency workflow only (PI, 2026-09-22).
+@pytest.mark.docs_consistency
 def test_the_notes_f6_is_the_instruments_f6_byte_for_byte(arms, f6):
     """The note's F.6 is what ``--tables`` prints, to the byte.
 

@@ -228,9 +228,13 @@ def test_live_sampler_line_format_with_nodeid(monkeypatch, capsys):
 
     sampler._sample_once()
 
+    # Asserted on this sampler's own line. The session's real sampler, which
+    # the fast-suite lane runs, reads the same patched function and may add its
+    # own line (it names this test's nodeid, not the fake one).
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err.strip() == "[rss-live] VmHWM 1500 MB during tests/test_fake.py::test_thing"
+    assert "[rss-live]" not in captured.out
+    assert captured.err.splitlines().count(
+        "[rss-live] VmHWM 1500 MB during tests/test_fake.py::test_thing") == 1
 
 
 def test_live_sampler_line_format_without_nodeid(monkeypatch, capsys):
@@ -243,24 +247,26 @@ def test_live_sampler_line_format_without_nodeid(monkeypatch, capsys):
     sampler._sample_once()
 
     captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err.strip() == "[rss-live] VmHWM 1500 MB"
+    assert "[rss-live]" not in captured.out
+    # The session's real sampler always names a nodeid, so the bare line is ours.
+    assert captured.err.splitlines().count("[rss-live] VmHWM 1500 MB") == 1
 
 
 def test_live_sampler_skips_below_threshold_and_when_unavailable(monkeypatch, capsys):
     """No line at all when the delta is below threshold, or when the VmHWM
     reading is unavailable (None)."""
     sampler = conftest._RSSLiveSampler(threshold_mb=500.0)
+    sampler.current_nodeid = "tests/test_fake.py::test_thing"   # marks our lines
 
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 100.0)  # +100 MB < 500 MB
     sampler._sample_once()
     captured = capsys.readouterr()
-    assert captured.out == "" and captured.err == ""
+    assert "test_fake.py" not in captured.out + captured.err
 
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: None)
     sampler._sample_once()
     captured = capsys.readouterr()
-    assert captured.out == "" and captured.err == ""
+    assert "test_fake.py" not in captured.out + captured.err
 
 
 def test_live_sampler_thread_starts_is_daemon_and_stops_cleanly(monkeypatch):
@@ -437,5 +443,5 @@ def test_live_sampler_line_does_not_enter_a_redirected_stdout(monkeypatch, capsy
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         sampler._sample_once()
-    assert buffer.getvalue() == ""
+    assert "[rss-live]" not in buffer.getvalue()
     assert "[rss-live] VmHWM 1500 MB" in capsys.readouterr().err
