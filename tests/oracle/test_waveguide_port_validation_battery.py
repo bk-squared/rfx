@@ -225,7 +225,8 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
 # reflection — complementary, and neither is an identity.
 #
 # With the magnetic CPML profile at the Yee half cell the 10-layer load reflects at most
-# 0.0135 over 4.5–8 GHz (was 0.156) and 4 layers reflect 0.119, so the earlier 13–16 %
+# 0.0135 over 4.5–8 GHz (0.156 on 2026-07-20; 0.119 with the integer-node profile
+# on today's tree) and 4 layers reflect 0.119, so the earlier 13–16 %
 # floor was the absorber, not the source plane. Gate 0.05; the 4-layer witness must
 # clear 0.08.
 
@@ -247,7 +248,7 @@ def test_matched_load_s11_empty_waveguide():
     print("[matched-load] |S22| per freq:", np.array2string(s22, precision=3))
     print(f"[matched-load] max reflection = {max_refl:.4f}; "
           f"min absorbed fraction (1-|S11|^2) = {min_absorbed:.4f}")
-    print('[matched-load] With the magnetic CPML profile at the Yee half cell the 10-layer load reflects at most 0.0135 over 4.5–8 GHz (was 0.156) and 4 layers reflect 0.119, so the earlier 13–16 % floor was the absorber, not the source plane. Gate 0.05; the 4-layer witness must clear 0.08.')
+    print("[matched-load] With the magnetic CPML profile at the Yee half cell the 10-layer load reflects at most 0.0135 over 4.5–8 GHz (0.156 on 2026-07-20; 0.119 with the integer-node profile on today's tree) and 4 layers reflect 0.119, so the earlier 13–16 % floor was the absorber, not the source plane. Gate 0.05; the 4-layer witness must clear 0.08.")
 
     assert max_refl < 0.05, (
         f"Matched-load reflection |S11|={max_refl:.4f} exceeds 0.05 — the "

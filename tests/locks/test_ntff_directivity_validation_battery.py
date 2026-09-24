@@ -461,7 +461,8 @@ def test_ntff_absolute_power_calibration_vs_flux_box(base_rung):
     ratio = p_ntff / p_flux
     assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_BASE, (
         f"P_ntff/P_flux = {ratio:.6f}, predicted {_RATIO_PREDICTED} "
-        f"(measured 0.500321, gate +/-{_RATIO_TOL_BASE}) — the absolute "
+        "(measured 0.498485430 with the magnetic CPML profile at the Yee half cell, "
+        f"gate +/-{_RATIO_TOL_BASE}) — the absolute "
         f"scale of the NTFF chain, or the E/H time slot it is handed, "
         f"has moved")
 
@@ -772,7 +773,8 @@ def test_nonuniform_lane_power_calibration_and_slot(base_rung):
         f"(|err| {err_db:.6f} dB, measured 0.000515, gate {_NU_D_ERR_MAX_DB})")
     assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_BASE, (
         f"NU lane P_ntff/P_flux = {ratio:.7f}, predicted {_RATIO_PREDICTED} "
-        f"(measured 0.500321, gate +/-{_RATIO_TOL_BASE}) — the NU runner's "
+        "(measured 0.498486761 with the magnetic CPML profile at the Yee half cell, "
+        f"gate +/-{_RATIO_TOL_BASE}) — the NU runner's "
         f"NTFF slot, or the absolute scale of the transform, has moved")
     assert abs(ratio - ratio_uniform) < _NU_VS_UNIFORM_RATIO_MAX, (
         f"the two lanes disagree on the NTFF/flux power ratio: NU "
