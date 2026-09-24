@@ -132,6 +132,10 @@ def init_lorentz(
     -------
     (LorentzCoeffs, LorentzState)
     """
+    # #1236: these coefficients are cell-owned (one per cell, all three
+    # components); a lumped stamp in the total loads all three edges.
+    from rfx.core.yee import warn_lumped_on_cell_owned_lane
+    warn_lumped_on_cell_owned_lane(materials, "Lorentz/Drude dispersion")
     shape = materials.eps_r.shape
     n_poles = len(poles)
 

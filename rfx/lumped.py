@@ -291,14 +291,15 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     if spec.R > 0:
         materials = _stamp_sigma(
             materials, (i, j, k),
-            _port_sigma(grid, (i, j, k), spec.component, spec.R))
+            _port_sigma(grid, (i, j, k), spec.component, spec.R),
+            spec.component)
 
     if spec.C > 0:
         d_par = _d_par(grid, (i, j, k), spec.component)
         dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
         materials = _stamp_eps(
             materials, (i, j, k),
-            spec.C * d_par / (EPS_0 * dual_b * dual_c))
+            spec.C * d_par / (EPS_0 * dual_b * dual_c), spec.component)
 
     return materials
 
@@ -416,7 +417,7 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
         R = _resolve_value(spec.R, r_val)
         materials = _stamp_sigma(
             materials, (i, j, k),
-            _port_sigma(grid, (i, j, k), spec.component, R))
+            _port_sigma(grid, (i, j, k), spec.component, R), spec.component)
 
     if spec.C > 0:
         C = _resolve_value(spec.C, c_val)
@@ -425,7 +426,8 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
         # Same dual-face fold as the concrete path (#691). d_par / dual_b /
         # dual_c are plain floats from the grid, so a traced C stays traced.
         materials = _stamp_eps(
-            materials, (i, j, k), C * d_par / (EPS_0 * dual_b * dual_c))
+            materials, (i, j, k), C * d_par / (EPS_0 * dual_b * dual_c),
+            spec.component)
 
     return materials
 

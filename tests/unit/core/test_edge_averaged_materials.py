@@ -246,28 +246,35 @@ def test_a_periodic_axis_wraps_and_a_non_periodic_one_replicates():
 # lumped stamps are edge-owned: they are not averaged
 # ---------------------------------------------------------------------------
 
-def test_a_lumped_stamp_reaches_its_own_edge_undiluted():
+@pytest.mark.parametrize("component", ["ex", "ey", "ez"])
+def test_a_lumped_stamp_reaches_its_own_edge_undiluted(component):
     """A 50 ohm port's conductance across one edge, not a quarter of it.
 
-    The stamp is recorded in ``sigma`` AND in ``sigma_lumped``.
-    ``component_e_materials`` averages ``sigma - sigma_lumped`` and adds the
-    stamp back at its own cell, so the cell sees the whole conductance on all
-    three components and its neighbours see none of it. Averaging the stamp
-    instead left a wire port reading |S11| = 0.20 against the closed-form 1/3.
+    The stamp is recorded in ``sigma`` AND in ``sigma_lumped`` (per E
+    component, #1236). ``component_e_materials`` averages ``sigma`` minus the
+    stamps and adds each back at its own cell, on its own component, so the
+    port's edge sees the whole conductance and no other edge sees any of it.
+    Averaging the stamp instead left a wire port reading |S11| = 0.20 against
+    the closed-form 1/3; adding it to all three components put the port's
+    load on the two transverse edges at its node as well (#1236).
     """
     from rfx.core.yee import component_e_materials
+    from rfx.sources.sources import stamp_lumped_sigma
 
     g = 1.0 / (50.0 * DX)          # the port_sigma of a 50 ohm cubic cell
     cell = (2, 3, 4)
-    sigma = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
-    lumped = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
+    axis = {"ex": 0, "ey": 1, "ez": 2}[component]
     eps = jnp.ones(SHAPE, jnp.float32)
-
-    mats = MaterialArrays(eps, sigma, jnp.ones(SHAPE), sigma_lumped=lumped)
+    mats = stamp_lumped_sigma(
+        MaterialArrays(eps, jnp.zeros(SHAPE, jnp.float32), jnp.ones(SHAPE)),
+        cell, g, component)
+    sigma = mats.sigma
     _, sig_c = component_e_materials(mats)
-    for name, arr in zip(("ex", "ey", "ez"), sig_c):
-        assert float(np.asarray(arr)[cell]) == pytest.approx(g, rel=1e-6), (
-            f"{name}: the lumped stamp arrived diluted at its own cell")
+    for c, (name, arr) in enumerate(zip(("ex", "ey", "ez"), sig_c)):
+        want = g if c == axis else 0.0
+        assert float(np.asarray(arr)[cell]) == pytest.approx(want, rel=1e-6), (
+            f"{name}: a stamp on {component} reads {float(np.asarray(arr)[cell])}"
+            f" on {name} at its own cell, want {want}")
     # and nowhere else
     for arr in sig_c:
         a = np.asarray(arr).copy()
@@ -312,9 +319,11 @@ def test_the_cell_helper_agrees_with_the_grid_wide_one(component):
     rng = np.random.default_rng(1210)
     eps = jnp.asarray(1.0 + 9.0 * rng.random(SHAPE).astype(np.float32))
     sigma = jnp.asarray(1e3 * rng.random(SHAPE).astype(np.float32))
-    lump = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(77.0)
-    mats = MaterialArrays(eps, sigma + lump, jnp.ones(SHAPE),
-                          sigma_lumped=lump)
+    lump_z = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(77.0)
+    lump_x = jnp.zeros(SHAPE, jnp.float32).at[2, 3, 4].add(13.0)
+    # Two elements on one node, on two components (#1236).
+    mats = MaterialArrays(eps, sigma + lump_x + lump_z, jnp.ones(SHAPE),
+                          sigma_lumped=(lump_x, None, lump_z))
     axis = {"ex": 0, "ey": 1, "ez": 2}[component]
 
     for periodic in [(False, False, False), (True, True, True)]:
@@ -400,8 +409,9 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
     lumped = jnp.zeros(SHAPE, jnp.float32).at[cell].add(g)
     # A non-uniform VOLUME sigma as well, so the wrap is exercised.
     vol = jnp.asarray((np.indices(SHAPE)[0] * 1.0).astype(np.float32))
+    # The element sits on Ez (#1236: the record carries its component).
     mats = MaterialArrays(jnp.ones(SHAPE, jnp.float32), sigma + vol,
-                          jnp.ones(SHAPE), sigma_lumped=lumped)
+                          jnp.ones(SHAPE), sigma_lumped=(None, None, lumped))
 
     for periodic in [(True, True, True), (True, False, False)]:
         _, sig_c = component_e_materials(mats, periodic)
@@ -412,9 +422,11 @@ def test_a_lumped_stamp_is_edge_owned_on_a_periodic_axis_too():
                                    jnp.ones(SHAPE))
             base = np.asarray(component_e_materials(plain, periodic)[1][
                 {"ex": 0, "ey": 1, "ez": 2}[name]])
-            assert a[cell] - base[cell] == pytest.approx(g, rel=1e-5), (
-                f"{name}: the stamp did not arrive whole at its own cell "
-                f"(periodic={periodic})")
+            want = g if name == "ez" else 0.0
+            assert a[cell] - base[cell] == pytest.approx(want, rel=1e-5,
+                                                         abs=1e-3), (
+                f"{name}: the stamp did not arrive whole at its own cell, "
+                f"on its own component only (periodic={periodic})")
             assert a[wrapped] - base[wrapped] == pytest.approx(0.0, abs=1e-3), (
                 f"{name}: the stamp wrapped onto the far face "
                 f"(periodic={periodic})")

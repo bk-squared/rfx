@@ -670,7 +670,7 @@ def setup_coaxial_port(grid: Grid, port: CoaxialPort, materials):
     from rfx.sources.sources import (
         port_sigma as _port_sigma, stamp_lumped_sigma as _stamp_sigma)
     sp = _port_sigma(grid, gap_idx, component, port.impedance)
-    materials = _stamp_sigma(materials, gap_idx, sp)
+    materials = _stamp_sigma(materials, gap_idx, sp, component)
 
     return materials
 

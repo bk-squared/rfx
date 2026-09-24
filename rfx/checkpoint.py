@@ -19,7 +19,7 @@ try:
 except ImportError:
     h5py = None
 
-from rfx.core.yee import FDTDState, MaterialArrays
+from rfx.core.yee import FDTDState, MaterialArrays, lumped_components
 
 
 def _require_h5py():
@@ -170,6 +170,13 @@ def save_materials(path: str | Path, materials: MaterialArrays) -> None:
         grp.create_dataset("eps_r", data=np.array(materials.eps_r))
         grp.create_dataset("sigma", data=np.array(materials.sigma))
         grp.create_dataset("mu_r", data=np.array(materials.mu_r))
+        # The lumped records (#1210), per E component (#1236): without them a
+        # reloaded port load is averaged over four cells (quartered).
+        for name in ("sigma_lumped", "eps_r_lumped"):
+            parts = lumped_components(getattr(materials, name, None))
+            for comp, part in zip(("ex", "ey", "ez"), parts):
+                if part is not None:
+                    grp.create_dataset(f"{name}_{comp}", data=np.array(part))
 
 
 def load_materials(path: str | Path) -> MaterialArrays:
@@ -179,8 +186,17 @@ def load_materials(path: str | Path) -> MaterialArrays:
 
     with h5py.File(path, "r") as f:
         grp = f["materials"]
+        records = {}
+        for name in ("sigma_lumped", "eps_r_lumped"):
+            parts = tuple(
+                jnp.array(grp[f"{name}_{comp}"][:])
+                if f"{name}_{comp}" in grp else None
+                for comp in ("ex", "ey", "ez"))
+            records[name] = (None if all(p is None for p in parts)
+                             else parts)
         return MaterialArrays(
             eps_r=jnp.array(grp["eps_r"][:]),
             sigma=jnp.array(grp["sigma"][:]),
             mu_r=jnp.array(grp["mu_r"][:]),
+            **records,
         )

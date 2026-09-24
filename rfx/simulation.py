@@ -21,6 +21,7 @@ from rfx.core.yee import (
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
     e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, _shift_bwd,
+    map_lumped,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -874,17 +875,18 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
         sig = sig.at[box_local].set(sig_box)
 
     # A lumped stamp in the window's context layer is edge-owned, not a cell
-    # volume, so it is removed before the average and added back at its cell —
-    # the same rule ``component_e_materials`` applies grid-wide (#1210). The
-    # design box itself is fenced off port and source cells.
-    eps_l = getattr(materials, "eps_r_lumped", None)
-    sig_l = getattr(materials, "sigma_lumped", None)
+    # volume, so it is removed before the average and added back at its cell,
+    # on its own component — the same rule ``component_e_materials`` applies
+    # grid-wide (#1210, #1236). The design box itself is fenced off port and
+    # source cells.
     win_mats = MaterialArrays(
         eps_r=eps, sigma=sig, mu_r=None,
-        eps_r_lumped=(None if eps_l is None
-                      else jnp.asarray(eps_l)[win].astype(eps.dtype)),
-        sigma_lumped=(None if sig_l is None
-                      else jnp.asarray(sig_l)[win].astype(sig.dtype)))
+        eps_r_lumped=map_lumped(
+            getattr(materials, "eps_r_lumped", None),
+            lambda a: jnp.asarray(a)[win].astype(eps.dtype)),
+        sigma_lumped=map_lumped(
+            getattr(materials, "sigma_lumped", None),
+            lambda a: jnp.asarray(a)[win].astype(sig.dtype)))
     eps_c, sig_c = component_e_materials(win_mats, (False, False, False))
 
     if per_edge:
