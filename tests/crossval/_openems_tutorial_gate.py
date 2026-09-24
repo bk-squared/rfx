@@ -38,9 +38,10 @@ of the tutorial already lives:
     tutorial's own ``third_mesh`` refinement at the trace's Y-edges) with port[0]
     ``excite=-1`` (verbatim, not "corrected" to +1) and ``FeedShift=10*resolution``,
     ``MeasPlaneShift=MSL_length/3`` on BOTH ports. openEMS(NrTS, EndCriteria) are
-    left at the library's own defaults (NrTS~=1e9, EndCriteria=1e-5 --
-    ``python/openEMS/openEMS.pyx`` docstring, fetched 2026-08-04) because the
-    tutorial itself never overrides them.
+    left at the library's own defaults (NrTS~=1e9; EndCriteria is not passed, so
+    the pinned build runs its C++ default 1e-6 -- openems.cpp:117 -- and not the
+    1e-5 the ``python/openEMS/openEMS.pyx`` docstring, fetched 2026-08-04, states;
+    label corrected 2026-09-24) because the tutorial itself never overrides them.
 
 THE RECORDED REPRODUCTION (task recipe ``external_solver_comparator.md``, step 2)
 ---------------------------------------------------------------------------------
@@ -1243,7 +1244,10 @@ def run_stage_a(*, sim_root: str, threads: int, refined_extremum,
                 csx_unit_m=A_UNIT),
             "substrate_z_cells_declared": A_SUBSTRATE_Z_CELLS,
             "nrts_declared": "openEMS library default (~1e9)",
-            "end_criteria_declared": "openEMS library default (1e-5)",
+            "end_criteria_declared": (
+                "not passed: the pinned openEMS build's C++ default 1e-6 "
+                "(openems.cpp:117; the python binding's docstring says 1e-5, "
+                "which is not what runs)"),
             "calcport_grid": f"linspace(1e6, {A_F_MAX_HZ}, {A_N_FREQS})",
             "calcport_passes": "one, no ref_impedance (the precedent's own tick)",
             "plan_estimate": tutorial_plan(label, A_MSL_LENGTH_UM, 1.0),

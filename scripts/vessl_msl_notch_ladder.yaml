@@ -1,0 +1,56 @@
+name: rfx-msl-notch-ladder-v2-judging
+description: "The MSL notch filter's gpu-marked mesh ladder, on branch crossval/v2-judging-rules (the v2 judging rules the PI approved 2026-09-24: flat ladder step 0.1 %, magnitude compared with the notches aligned). Exported with git archive. One-off, crossval lane leader, 2026-09-24."
+tags: [rfx, crossval, msl-notch, one-off]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_GPU_SUITE_REF: "origin/crossval/v2-judging-rules"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  cd "$primary"
+  git config --global --add safe.directory "$primary" || true
+  echo "=== MSL notch filter ladder, v2 judging rules (one-off) ==="
+  git fetch -q origin
+  ref="${RFX_GPU_SUITE_REF:-origin/main}"
+  sha=$(git rev-parse "$ref")
+  short=$(git rev-parse --short "$ref")
+  echo "suite ref: $ref = $sha"
+  src="/tmp/rfx-msl-notch-$short"
+  rm -rf "$src" && mkdir -p "$src"
+  git archive --format=tar "$sha" | tar -xf - -C "$src"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  export RFX_REPO_ROOT="$src"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  out="$primary/.omx/msl-notch-ladder-v2-judging/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  export RFX_CROSSVAL_FIG_DIR="$out"
+  test_id="tests/crossval/msl_notch_filter/test_msl_notch_filter.py::test_msl_notch_filter_matches_the_openems_tutorial"
+  echo "=== collect ==="
+  python -m pytest "$test_id" -m gpu --collect-only -q -p no:cacheprovider | tail -5
+  echo "=== run ==="
+  # pytest's own exit status is written inside the brace group; `$?` after
+  # `| tee` would be tee's.
+  set +e
+  { timeout 7200 python -m pytest "$test_id" -m gpu -s -q -ra -p no:cacheprovider; echo "$?" > "$out/ladder.rc"; } 2>&1 | tee "$out/ladder.log"
+  set -e
+  rc=$(cat "$out/ladder.rc")
+  echo "=== summary ==="
+  tail -n 5 "$out/ladder.log"
+  ls -la "$out"
+  echo "ladder_rc=$rc"
+  echo "artifacts: $out"
+  exit "$rc"

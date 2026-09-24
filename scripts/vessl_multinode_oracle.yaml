@@ -1,0 +1,31 @@
+name: rfx-multinode-oracle
+description: "Template: one RTX4090, whole x domain 200/400/800. Render with prepare_multinode_launch.py."
+tags: [rfx, multinode, measurement, oracle]
+resources:
+  cluster: remilab-c0
+  preset: gpu-rtx4090
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  RFX_SRC: /root/workspace/claude-workspace/rfx/mirrors/multinode-probe.git
+  RFX_RUNS_ROOT: /root/workspace/claude-workspace/rfx/runs
+  RFX_EXPECTED_SHA: RENDER_REQUIRED
+  RFX_STAMP: RENDER_REQUIRED
+  RFX_KIND: oracle
+  RFX_NX: "200"
+  PYTHONUNBUFFERED: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: C.UTF-8
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  git config --global --add safe.directory "$RFX_SRC"
+  test "$RFX_EXPECTED_SHA" != RENDER_REQUIRED
+  test "$(git -C "$RFX_SRC" rev-parse "${RFX_REF:-green}^{commit}")" = "$RFX_EXPECTED_SHA"
+  RFX_BOOTSTRAP=$(mktemp -d /tmp/rfx-multinode-bootstrap.XXXXXX)
+  export RFX_BOOTSTRAP
+  for file in multinode_probe_job.sh summarize_multinode_job.py; do
+    git -C "$RFX_SRC" show "$RFX_EXPECTED_SHA:scripts/diagnostics/$file" > "$RFX_BOOTSTRAP/$file"
+  done
+  exec sh "$RFX_BOOTSTRAP/multinode_probe_job.sh"
