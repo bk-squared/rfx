@@ -2897,18 +2897,34 @@ def run(
         ``lo, lo+1, ...``) with ``body`` and take a frame after every step
         whose completed-step count is a multiple of ``snap_interval`` (#1258).
 
-        The steps run as: a head scan up to the next multiple (only when
-        ``lo`` is not one, i.e. inside a misaligned ``report_every`` chunk),
-        a scan over blocks of ``snap_interval`` steps whose body is an inner
-        scan followed by the frame read from the carry, and a tail scan over
-        the remaining steps. Every piece calls the same ``body`` on the same
-        ``xs`` rows in the same order, so the carry is the one a single scan
-        produces; the probe rows are joined back in step order. Returns
-        ``(carry, (probe_rows, [frames per component]))``, the output layout
-        of the ``interval == 1`` path.
+        The steps run as up to three kinds of piece, in step order:
 
-        The block body is built once per ``body`` so repeated calls (one per
-        ``report_every`` chunk) reuse its trace and compiled executable.
+        * ``plain`` -- a scan of ``body`` (the head up to the next multiple,
+          inside a misaligned ``report_every`` chunk; the tail after the last
+          multiple), with the frame read from the carry when the piece ends
+          on a multiple;
+        * ``blocks`` -- a scan over blocks of ``snap_interval`` steps whose
+          body is an inner scan of ``body`` followed by the frame read from
+          the carry;
+        * ``rec`` -- a scan of ``body`` that also outputs every step's frame,
+          of which the rows ending on a multiple are kept.
+
+        A ONE-step plain piece is never run on its own: XLA removes a loop
+        that runs once and inlines its body, which fuses the step with what
+        follows and moved the last bit of Ex/Ey on a PEC box (arm64 CPU,
+        0.1-1 ULP). It is merged with a neighbour into a ``rec`` piece
+        (a block gives up one block: at most ``snap_interval + 1`` extra
+        frames, dropped at once). Every piece calls the same ``body`` on the
+        same ``xs`` rows in the same order, inside a loop of at least two
+        steps, so the carry is the one a single scan produces; the probe
+        rows are joined back in step order. Returns
+        ``(carry, (probe_rows, [frames per component]))``, the output layout
+        of the ``interval == 1`` path. A chunk of one step is run as the
+        one-step scan the unchunked path would also run.
+
+        The block and recording bodies are built once per ``body`` so
+        repeated calls (one per ``report_every`` chunk) reuse their traces
+        and compiled executables.
         """
         m = snap_interval
 
@@ -2916,33 +2932,76 @@ def run(
             c, (p,) = jax.lax.scan(body, c, block_xs)
             return c, (p, _take_snapshot(c["fdtd"]))
 
-        def record(carry, xs_seg, lo):
-            n = int(jax.tree_util.tree_leaves(xs_seg)[0].shape[0])
+        def rec_body(c, x):
+            c, (p,) = body(c, x)
+            return c, (p, _take_snapshot(c["fdtd"]))
+
+        def pieces_of(n, lo):
             head = min((-lo) % m, n)
             n_blocks = (n - head) // m
             tail = n - head - n_blocks * m
-            probe_parts, frame_parts = [], []
-
-            def rows(a, b):
-                return jax.tree_util.tree_map(lambda x: x[a:b], xs_seg)
-
+            pieces = []
             if head:
-                carry, (p,) = jax.lax.scan(body, carry, rows(0, head))
-                probe_parts.append(p)
-                if (lo + head) % m == 0:
-                    frame_parts.append(
-                        [f[None] for f in _take_snapshot(carry["fdtd"])])
+                pieces.append(["plain", head])
             if n_blocks:
-                blocks = jax.tree_util.tree_map(
-                    lambda x: x[head:head + n_blocks * m].reshape(
-                        n_blocks, m, *x.shape[1:]),
-                    xs_seg)
-                carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
-                probe_parts.append(p.reshape(n_blocks * m, *p.shape[2:]))
-                frame_parts.append(list(f))
+                pieces.append(["blocks", n_blocks * m])
             if tail:
-                carry, (p,) = jax.lax.scan(body, carry, rows(n - tail, n))
-                probe_parts.append(p)
+                pieces.append(["plain", tail])
+            # Merge every one-step plain piece into a neighbour.
+            while len(pieces) > 1:
+                i = next((k for k, pc in enumerate(pieces)
+                          if pc[0] == "plain" and pc[1] == 1), None)
+                if i is None:
+                    break
+                j = i + 1 if i + 1 < len(pieces) else i - 1
+                kind, length = pieces[j]
+                if kind == "blocks":
+                    taken = m
+                    if length > m:
+                        pieces[j][1] = length - m
+                        rest = [pieces[j]]
+                    else:
+                        rest = []
+                    merged = ["rec", 1 + taken]
+                    if j > i:
+                        pieces[i:j + 1] = [merged] + rest
+                    else:
+                        pieces[j:i + 1] = rest + [merged]
+                else:
+                    merged = ["rec", 1 + length]
+                    lo_k, hi_k = min(i, j), max(i, j)
+                    pieces[lo_k:hi_k + 1] = [merged]
+            return pieces
+
+        def record(carry, xs_seg, lo):
+            n = int(jax.tree_util.tree_leaves(xs_seg)[0].shape[0])
+            probe_parts, frame_parts = [], []
+            start = 0
+            for kind, length in pieces_of(n, lo):
+                rows = jax.tree_util.tree_map(
+                    lambda x, a=start, b=start + length: x[a:b], xs_seg)
+                if kind == "plain":
+                    carry, (p,) = jax.lax.scan(body, carry, rows)
+                    probe_parts.append(p)
+                    if (lo + start + length) % m == 0:
+                        frame_parts.append(
+                            [f[None] for f in _take_snapshot(carry["fdtd"])])
+                elif kind == "blocks":
+                    nb = length // m
+                    blocks = jax.tree_util.tree_map(
+                        lambda x: x.reshape(nb, m, *x.shape[1:]), rows)
+                    carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
+                    probe_parts.append(p.reshape(nb * m, *p.shape[2:]))
+                    frame_parts.append(list(f))
+                else:  # "rec"
+                    carry, (p, f) = jax.lax.scan(rec_body, carry, rows)
+                    probe_parts.append(p)
+                    keep = [r for r in range(length)
+                            if (lo + start + r + 1) % m == 0]
+                    if keep:
+                        idx = jnp.asarray(keep, dtype=jnp.int32)
+                        frame_parts.append([ff[idx] for ff in f])
+                start += length
 
             if not probe_parts:
                 # n == 0: the zero-length scan the other paths return.

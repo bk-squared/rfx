@@ -1121,6 +1121,10 @@ class ForwardResult(NamedTuple):
     need plane-integrated V/I (e.g. waveguide-port or microstrip-port
     line-integrated voltage / closed-loop current).  ``None`` when no
     plane probes were registered.
+
+    ``dt`` is the time step the solver advanced by, the spacing of
+    ``time_series``. Read time and frequency with it, not with
+    ``grid.dt``: ``stencil_order=4`` steps at ``0.857 * grid.dt``.
     """
     time_series: jnp.ndarray
     ntff_data: object = None
@@ -1132,6 +1136,7 @@ class ForwardResult(NamedTuple):
     wire_port_sparams: object = None
     dft_planes: object = None
     settling_probe_info: object = None
+    dt: object = None
 
     @property
     def settling_db(self) -> float | None:

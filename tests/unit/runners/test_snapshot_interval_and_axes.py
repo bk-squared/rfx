@@ -37,14 +37,16 @@ _DOM = (0.012, 0.012, 0.012)
 _DX = 1e-3
 
 
-def _loaded_sim():
-    """Small CPML box with every accumulator a snapshot could disturb.
+def _loaded_sim(boundary="cpml"):
+    """Small box with every accumulator a snapshot could disturb.
 
     The wire port takes the single-port path whose S-parameters come from the
     SAME scan as the snapshot (not from a separate extraction run), so S is a
-    real witness here.
+    real witness here. ``boundary="pec"`` is the model a GPU runs through the
+    fused H+E kernel (``update_he_fast``; checked by forcing run()'s backend
+    flag and counting its traces); ``"cpml"`` takes the absorber path.
     """
-    sim = Simulation(freq_max=10e9, domain=_DOM, dx=_DX, boundary="cpml",
+    sim = Simulation(freq_max=10e9, domain=_DOM, dx=_DX, boundary=boundary,
                      cpml_layers=6)
     sim.add(Box((0.004, 0.003, 0.002), (0.008, 0.007, 0.006)), material="fr4")
     sim.add_port((0.006, 0.006, 0.005), "ez", impedance=50.0, extent=0.002)
@@ -75,25 +77,33 @@ def _slice_index(sim):
 
 @pytest.fixture(scope="module")
 def runs():
-    """``{(n_steps, interval or None): Result}`` for the loaded model."""
-    sim = _loaded_sim()
-    kz = _slice_index(sim)
+    """``{(boundary, n_steps, interval or None): Result}`` for the loaded
+    model, with CPML (absorber path) and with PEC walls (the model a GPU runs
+    through the fused H+E kernel). ``runs[(n, m)]`` is the CPML entry."""
     out = {}
-    for n in (40, 41):
-        out[(n, None)] = sim.run(n_steps=n, compute_s_params=True,
-                                 skip_preflight=True)
-        for m in (1, 3, 10):
-            spec = SnapshotSpec(interval=m, components=("ez", "hy"),
-                                slice_axis=2, slice_index=kz)
-            out[(n, m)] = sim.run(n_steps=n, snapshot=spec,
-                                  compute_s_params=True, skip_preflight=True)
+    for boundary in ("cpml", "pec"):
+        sim = _loaded_sim(boundary)
+        kz = _slice_index(sim)
+        for n in (40, 41):
+            out[(boundary, n, None)] = sim.run(
+                n_steps=n, compute_s_params=True, skip_preflight=True)
+            for m in (1, 3, 10):
+                spec = SnapshotSpec(interval=m, components=("ez", "hy"),
+                                    slice_axis=2, slice_index=kz)
+                out[(boundary, n, m)] = sim.run(
+                    n_steps=n, snapshot=spec, compute_s_params=True,
+                    skip_preflight=True)
+    for (boundary, n, m), res in list(out.items()):
+        if boundary == "cpml":
+            out[(n, m)] = res
     return out
 
 
 @pytest.mark.parametrize("n", [40, 41])
 @pytest.mark.parametrize("m", [1, 3, 10])
-def test_frame_count_is_n_steps_over_interval(runs, n, m):
-    res = runs[(n, m)]
+@pytest.mark.parametrize("boundary", ["cpml", "pec"])
+def test_frame_count_is_n_steps_over_interval(runs, boundary, n, m):
+    res = runs[(boundary, n, m)]
     for comp in ("ez", "hy"):
         frames = np.asarray(res.snapshots[comp])
         assert frames.shape[0] == n // m, (
@@ -107,9 +117,10 @@ def test_frame_count_is_n_steps_over_interval(runs, n, m):
 
 @pytest.mark.parametrize("n", [40, 41])
 @pytest.mark.parametrize("m", [3, 10])
-def test_frames_are_every_mth_step_of_the_interval_1_run(runs, n, m):
-    every = runs[(n, 1)].snapshots
-    got = runs[(n, m)].snapshots
+@pytest.mark.parametrize("boundary", ["cpml", "pec"])
+def test_frames_are_every_mth_step_of_the_interval_1_run(runs, boundary, n, m):
+    every = runs[(boundary, n, 1)].snapshots
+    got = runs[(boundary, n, m)].snapshots
     for comp in ("ez", "hy"):
         want = np.asarray(every[comp])[m - 1::m][: n // m]
         assert np.array_equal(np.asarray(got[comp]), want), (
@@ -119,17 +130,20 @@ def test_frames_are_every_mth_step_of_the_interval_1_run(runs, n, m):
 
 @pytest.mark.parametrize("n", [40, 41])
 @pytest.mark.parametrize("m", [1, 3, 10])
+@pytest.mark.parametrize("boundary", ["cpml", "pec"])
 def test_every_other_output_is_bit_identical_to_the_run_without_snapshot(
-        runs, n, m):
-    ref = _observables(runs[(n, None)])
-    got = _observables(runs[(n, m)])
+        runs, boundary, n, m):
+    """n=41 is not a multiple of 3 or 10, so the remainder scan runs."""
+    ref = _observables(runs[(boundary, n, None)])
+    got = _observables(runs[(boundary, n, m)])
     # Liveness: an identity over zeros would pass for the wrong reason.
     for key in ("time_series", "s_params", "dft[pz]", "flux[fx].e1_dft",
                 "state.ez", "state.hy"):
         assert np.abs(ref[key]).max() > 0.0, f"{key} is identically zero"
     moved = [k for k in ref if not np.array_equal(ref[k], got[k])]
     assert not moved, (
-        f"recording snapshots at interval={m} moved {moved} (n_steps={n})")
+        f"{boundary}: recording snapshots at interval={m} moved {moved} "
+        f"(n_steps={n})")
 
 
 def test_chunked_progress_run_records_the_same_frames(runs, capsys):
