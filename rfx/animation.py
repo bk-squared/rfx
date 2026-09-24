@@ -26,6 +26,22 @@ def _require_mpl():
         )
 
 
+def _animation_frame_times(result, component: str, interval: int):
+    """Time in seconds of each animated frame, or ``None`` without axes.
+
+    A ``Result`` carries ``snapshot_axes`` (#1259), so its frames are
+    labelled by the time they were taken; a bare snapshots dict does not,
+    and its frames are labelled by number only.
+    """
+    if isinstance(result, dict):
+        return None
+    axes = (getattr(result, "snapshot_axes", None) or {}).get(component)
+    if axes is None:
+        return None
+    times_s = np.asarray(axes.times_s)
+    return times_s[::interval] if interval > 1 else times_s
+
+
 def save_field_animation(
     result,
     filename: str,
@@ -74,7 +90,10 @@ def save_field_animation(
         Figure size in inches ``(width, height)``.
     interval : int
         Frame stride — use every *interval*-th snapshot frame.
-        Default 1 (every frame).
+        Default 1 (every frame). This is a stride over the RECORDED frames,
+        applied after the run, not ``SnapshotSpec.interval`` (which is in
+        time steps): a run recorded every 10 steps animated with
+        ``interval=3`` shows every 30th step.
 
     Returns
     -------
@@ -123,6 +142,11 @@ def save_field_animation(
     # ------------------------------------------------------------------
     if interval > 1:
         data = data[::interval]
+    times_s = _animation_frame_times(result, component, interval)
+    if times_s is not None and len(times_s) != data.shape[0]:
+        raise ValueError(
+            f"snapshot_axes[{component!r}] lists {len(times_s)} frame times "
+            f"for {data.shape[0]} frames")
 
     n_frames = data.shape[0]
     if n_frames == 0:
@@ -181,13 +205,20 @@ def save_field_animation(
         aspect="equal",
     )
     fig.colorbar(im, ax=ax, label=component)
-    title_obj = ax.set_title(f"{component} (frame 1/{n_frames})")
+
+    def _title(frame):
+        if times_s is None:
+            return f"{component} (frame {frame + 1}/{n_frames})"
+        return (f"{component}  t = {times_s[frame] * 1e12:.2f} ps "
+                f"(frame {frame + 1}/{n_frames})")
+
+    title_obj = ax.set_title(_title(0))
     ax.set_xlabel(f"{xlabel} (cells)")
     ax.set_ylabel(f"{ylabel} (cells)")
 
     def _update(frame):
         im.set_data(data[frame].T)
-        title_obj.set_text(f"{component} (frame {frame + 1}/{n_frames})")
+        title_obj.set_text(_title(frame))
         return [im, title_obj]
 
     anim = FuncAnimation(

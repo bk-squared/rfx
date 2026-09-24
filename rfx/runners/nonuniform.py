@@ -579,7 +579,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
 
 def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
-                        sheet_specs=()):
+                        sheet_specs=(), drawn_eps_r=None):
     """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
@@ -587,12 +587,22 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
       * the eigenmode J+M launch is FENCED — ``run_nonuniform`` carries no
         magnetic-source channel, so the Schelkunoff H-source would have
         nowhere to go; and
-      * the substrate ``eps_r`` is read from ``materials_drive`` so the
-        value stays concrete under ``jax.grad`` (the same concreteness split
-        ``make_current_source`` uses on this path), and the feed's own
-        termination conductance is stamped into ``materials_drive`` as well
-        as ``materials`` before the feed is built from it (#1256: the
-        drive's Cb has to be the E update's, port load included).
+      * the feed's own termination conductance is stamped into
+        ``materials_drive`` as well as ``materials`` before the feed is
+        built from it (#1256: the drive's Cb has to be the E update's, port
+        load included), and ``materials_drive`` carries any whole-grid
+        eps/sigma override, traced or not (#1267).
+
+    The substrate ``eps_r`` of the launch fixture -- the static-Laplace mode
+    shape, when the port does not state ``eps_r_sub`` -- is read at the
+    feed's centre cell from ``drawn_eps_r``, the permittivity as drawn,
+    whenever an override is in force, and from ``materials_drive`` (which is
+    then the drawn one) otherwise. The fixture is a static shape: under an
+    override the uniform ``forward()`` reads it from the registered
+    materials too (#483), so a finite difference through the override and
+    ``jax.grad`` differentiate one function, and a traced override never
+    reaches the host-side Laplace solve. Only the Cb each feed cell is
+    driven through follows the override.
 
     The Ez point-sources are appended to ``sources`` (they ride the generic
     NU point-source scan injection). The per-probe DFT planes are registered
@@ -638,7 +648,9 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         if pe.eps_r_sub is not None:
             eps_r_sub = float(pe.eps_r_sub)
         else:
-            eps_r_sub = float(np.asarray(materials_drive.eps_r[eps_cell]))
+            _fixture_eps = (materials_drive.eps_r if drawn_eps_r is None
+                            else drawn_eps_r)
+            eps_r_sub = float(np.asarray(_fixture_eps[eps_cell]))
         mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
 
         materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)
@@ -881,12 +893,27 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         _pec_wires = []
 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
-    # arrays for the scan. Every source and port DRIVE is built from
-    # ``materials_drive`` instead: the arrays as assembled, before the
-    # override, so the drive normalisation stays concrete under
-    # ``jax.grad`` (``make_current_source`` takes ``float()`` of a concrete
-    # eps/sigma) and a two-run S-matrix reference is driven exactly as the
-    # device run is.
+    # arrays for the scan, and every source and port DRIVE is built from
+    # ``materials_drive``, which starts from the SAME arrays -- overridden,
+    # and traced when the override is (#1267). A drive pushes its current
+    # through the Cb = dt/(eps + sigma*dt/2) of the edge it feeds, so it has
+    # to read the permittivity the E update reads there. Built from the
+    # arrays as drawn, as this lane did until #1267, a device whose
+    # permittivity under the port came from the override was driven
+    # Cb_drawn/Cb_override times too hard: a layered substrate (eps_r
+    # 3.38/3.38/10.2 under a 50 ohm wire) supplied by override read S11
+    # 0.027 away from the same board declared as materials, +0.065 dB at
+    # 6 GHz, and any permittivity derivative taken through the override
+    # carried that ratio's derivative as a false amplitude term. The
+    # uniform ``forward()`` builds its drives from the traced overridden
+    # materials (``rfx/api/_execute.py``); a traced override now makes this
+    # lane's source table traced in the same way (``make_current_source``
+    # and ``make_msl_port_sources`` stay in jnp for a tracer). A two-run
+    # reference (the waveguide S-matrix's vacuum override) likewise drives
+    # any current source through its own arrays; its modal port drives never
+    # read them. The one thing still read from the arrays as drawn is the
+    # MSL launch fixture's substrate eps_r (``_setup_msl_ports_nu``,
+    # ``drawn_eps_r``): a static mode shape, as on the uniform lane (#483).
     #
     # #1256: ``materials_drive`` is not a frozen snapshot. Each port below
     # stamps its termination conductance into BOTH copies. A port drives a
@@ -903,7 +930,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # concrete; on a traced mesh (#1207) sigma_port is traced, and so is the
     # drive, exactly as the E update is.
     materials_drive = materials
+    _drawn_eps_r = None     # only an override separates drawn from stepped
     if eps_override is not None or sigma_override is not None:
+        _drawn_eps_r = materials.eps_r
         # A whole-grid override REPLACES the array, so any lumped stamp that
         # was folded into it is gone; its #1210 record goes with it, or the
         # E update would add back a load the override does not carry.
@@ -915,6 +944,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sigma_lumped=(None if sigma_override is not None
                           else materials.sigma_lumped),
         )
+        materials_drive = materials     # #1267: the drive sees the override
     elif design_box is not None:
         # #1183, the same rule at the same place: the design permittivity
         # sets the precision of the material arithmetic, exactly as an
@@ -1363,6 +1393,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sim, grid, materials, materials_drive, sources, sizing_n,
             pec_edge_masks,
             geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
+            drawn_eps_r=_drawn_eps_r,
         )
 
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``

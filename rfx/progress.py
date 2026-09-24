@@ -270,6 +270,7 @@ def scan_with_progress(
     label: str = "",
     stream: object | None = None,
     trace_probes: tuple = (),
+    chunk_scan=None,
 ):
     """``jax.lax.scan(body, carry_init, xs)`` split into host-side chunks.
 
@@ -288,6 +289,14 @@ def scan_with_progress(
     tracer entering the scan body through them is captured in ``body``'s
     closure and is otherwise invisible to :func:`check_not_traced` (see its
     docstring for exactly what that guard does and does not cover).
+
+    ``chunk_scan``, when given, replaces the per-chunk
+    ``jax.lax.scan(body, carry, xs_chunk)`` with
+    ``chunk_scan(carry, xs_chunk, lo)``, ``lo`` being the global index of
+    the chunk's first step. ``run()`` passes one that records field
+    snapshots at global multiples of their interval (#1258); it must return
+    the same ``(carry, outputs)`` pair, with every output leaf stacked on a
+    leading axis that concatenates across chunks.
 
     Costs, so they are not buried:
 
@@ -309,11 +318,15 @@ def scan_with_progress(
     every = validate_report_every(report_every, n_steps=n_steps)
     check_not_traced(carry_init, xs, *trace_probes)
 
+    if chunk_scan is None:
+        def chunk_scan(carry, xs_chunk, lo):
+            return jax.lax.scan(body, carry, xs_chunk)
+
     n_steps = int(n_steps)
     if n_steps <= 0:
         # Degenerate length: defer to the plain scan so the zero-length
         # output structure matches the unchunked path exactly.
-        return jax.lax.scan(body, carry_init, xs)
+        return chunk_scan(carry_init, xs, 0)
 
     # The chunk loop slices every xs leaf on its leading axis, which is only
     # equivalent to the unchunked scan if that axis IS the step axis. A
@@ -337,7 +350,7 @@ def scan_with_progress(
         this = min(every, n_steps - done)
         lo, hi = done, done + this
         xs_chunk = jax.tree_util.tree_map(lambda a: a[lo:hi], xs)
-        carry, ys = jax.lax.scan(body, carry, xs_chunk)
+        carry, ys = chunk_scan(carry, xs_chunk, lo)
         # Block before reading the clock: JAX dispatch is asynchronous, so
         # an unsynchronised loop would queue every chunk and report the
         # host's dispatch rate instead of the solver's.

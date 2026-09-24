@@ -1034,8 +1034,11 @@ def save_simulation_dataset(path, sim, result, *,
             if hasattr(result, "grid") and result.grid is not None:
                 grid = result.grid
                 inp.attrs["grid_shape"] = grid.shape
-                # float(grid.dt): host-boundary — HDF5 metadata, never inside a trace.
-                inp.attrs["dt"] = float(grid.dt)
+                # The step the solver took, the spacing of the time series
+                # written below: stencil_order=4 derates it below grid.dt.
+                # float(): host-boundary -- HDF5 metadata, never inside a trace.
+                dt = getattr(result, "dt", None)
+                inp.attrs["dt"] = float(grid.dt if dt is None else dt)
 
         # Output group
         out = f.create_group("output")
