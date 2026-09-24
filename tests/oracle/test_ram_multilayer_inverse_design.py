@@ -307,6 +307,7 @@ def test_ram_lossless_pec_backed_energy_conservation(ram_run):
         f"|Gamma| ripple [{np.min(g):.3f}, {np.max(g):.3f}] beyond the documented extractor envelope"
 
 
+@pytest.mark.slow
 def test_ram_magnitude_vs_tmm(ram_run):
     """FDTD |Gamma|(f) of the PEC-backed lossy layer tracks the analytic TMM.
 

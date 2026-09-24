@@ -617,7 +617,7 @@ def test_two_plane_comparator_recovers_synthetic_alpha():
 @pytest.mark.xfail(
     strict=True, raises=AssertionError,
     reason="#1231: since #1178 continued the guide's sheet plates into the absorber, "
-           "the plates' attenuation reads 0.7457 Np/m against the recorded 0.69823 (+6.8 %)")
+           "the plates' attenuation reads 0.7453 Np/m against the recorded 0.69823 (+6.7 %)")
 def test_alpha_envelope_regression_lock():
     """DIAGNOSTIC pin (not a physics pass): the measured envelope itself.
     alpha at f0 stays within +-5% of the recorded MEASURED_ALPHA, and the
