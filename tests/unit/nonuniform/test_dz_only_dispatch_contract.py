@@ -77,7 +77,6 @@ DZ_ONLY_CONTRACT = {
     "compute_waveguide_s_matrix": "nu-lane",   # THE #811 fix
     "compute_msl_s_matrix": "nu-lane",         # dz-aware since the NU MSL lane
     "compute_mixed_s_matrix": "raises",
-    "compute_coaxial_s_matrix": "raises",
     "compute_coaxial_line_reflection": "raises",
     "compute_coaxial_two_port": "raises",
     "compute_coax_msl_transition": "raises",
@@ -247,14 +246,6 @@ def test_mixed_dz_only_raises():
                  impedance=50.0, extent=_H_SUB, terminates=1)
     with pytest.raises(NotImplementedError, match="uniform mesh"):
         sim.compute_mixed_s_matrix(skip_preflight=True)
-
-
-def test_coaxial_s_matrix_dz_only_raises():
-    sim = Simulation(freq_max=26e9, domain=(0.020, 0.020, 0.020),
-                     boundary="pec", dz_profile=np.full(20, 1e-3))
-    sim.add_coaxial_port((0.010, 0.010, 0.015), face="top")
-    with pytest.raises(NotImplementedError, match="uniform Yee lane only"):
-        sim.compute_coaxial_s_matrix(n_steps=1, n_freqs=1)
 
 
 def test_coaxial_line_reflection_dz_only_raises():

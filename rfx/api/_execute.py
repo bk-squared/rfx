@@ -2158,11 +2158,16 @@ class _ExecuteMixin:
             from rfx.lumped import build_rlc_meta_traced
             _rlc_ov = rlc_values_override or {}
             rlc_metas = []
+            from rfx.simulation import resolve_periodic as _resolve_periodic
+            # The run's own periodic flags: a series element's D0 is its
+            # edge's E-update coefficient (#1163).
+            _rlc_periodic = _resolve_periodic(grid, periodic_bool)
             for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
                 _v = _rlc_ov.get(_rlc_idx, {})
                 rlc_metas.append(build_rlc_meta_traced(
                     grid, _rlc_spec, materials,
                     r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
+                    periodic=_rlc_periodic,
                 ))
 
         result = _run(
@@ -3707,10 +3712,12 @@ class _ExecuteMixin:
 
         if self._coaxial_ports:
             raise NotImplementedError(
-                "add_coaxial_port() is not wired into Simulation.forward() "
-                "as a validated high-level source/port path. Use "
-                "add_port(..., extent=...) for differentiable probe-feed "
-                "S11 objectives."
+                "add_coaxial_port() is not wired into Simulation.forward(). "
+                "A coaxial port's S-parameters come from "
+                "compute_coaxial_line_reflection(...) (one-port reflection) "
+                "or compute_coaxial_two_port(...) (through line); both take "
+                "eps_scale= for jax.grad. Use add_port(..., extent=...) for "
+                "differentiable probe-feed S11 objectives."
             )
 
         if port_s11_freqs is not None:
@@ -4184,12 +4191,13 @@ class _ExecuteMixin:
 
         if self._coaxial_ports:
             raise NotImplementedError(
-                "add_coaxial_port() is not wired into Simulation.run() as a "
-                "validated high-level source/port path. Use "
-                "add_port(..., extent=...) for current claims-bearing "
-                "probe-feed S-parameters, or the low-level "
-                "rfx.sources.coaxial_port helpers for diagnostic material/"
-                "source experiments."
+                "add_coaxial_port() is not wired into Simulation.run(). A "
+                "coaxial port's S-parameters come from "
+                "compute_coaxial_line_reflection(...) (one-port reflection) "
+                "or compute_coaxial_two_port(...) (through line); for a "
+                "single add_coaxial_port(), compute_s_matrix(lane=...) "
+                "dispatches to either. Use add_port(..., extent=...) for "
+                "probe-feed S-parameters."
             )
 
         self._validate_run_sparameter_request(

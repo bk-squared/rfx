@@ -9,11 +9,8 @@ from __future__ import annotations
 import pytest
 
 from rfx import CoaxialPort, GaussianPulse, Simulation
-from rfx.core.yee import EPS_0, init_materials, init_state
-from rfx.core.yee import cell_component_e_coeffs
-from rfx.grid import Grid
+from rfx.core.yee import EPS_0
 from rfx.sources.coaxial_port import (
-    PEC_SIGMA,
     PTFE_EPS_R,
     SMA_OUTER_RADIUS,
     SMA_PIN_RADIUS,
@@ -25,8 +22,6 @@ from rfx.sources.coaxial_port import (
     coaxial_tem_reference_plane_s11,
     coaxial_tem_reference_plane_vi,
     coaxial_tem_reference_plane_vi_from_cartesian_plane,
-    make_coaxial_port_source,
-    setup_coaxial_port,
 )
 
 
@@ -36,25 +31,6 @@ class ConstantWaveform:
 
     def __call__(self, t: float) -> float:
         return self.amplitude
-
-
-FACE_CASES = [
-    pytest.param("top", (0.010, 0.010, 0.015), "ez", id="top"),
-    pytest.param("bottom", (0.010, 0.010, 0.005), "ez", id="bottom"),
-    pytest.param("front", (0.010, 0.005, 0.010), "ey", id="front"),
-    pytest.param("back", (0.010, 0.015, 0.010), "ey", id="back"),
-    pytest.param("left", (0.005, 0.010, 0.010), "ex", id="left"),
-    pytest.param("right", (0.015, 0.010, 0.010), "ex", id="right"),
-]
-
-
-def _make_grid() -> Grid:
-    return Grid(
-        freq_max=10e9,
-        domain=(0.020, 0.020, 0.020),
-        dx=0.5e-3,
-        cpml_layers=0,
-    )
 
 
 def test_add_coaxial_port_records_defaults_on_simulation():
@@ -99,56 +75,6 @@ def test_add_coaxial_port_preserves_explicit_parameters_and_waveform():
     assert port.outer_radius == pytest.approx(1.4e-3)
     assert port.impedance == pytest.approx(75.0)
     assert port.excitation is waveform
-
-
-def test_setup_coaxial_port_stamps_pin_dielectric_and_gap_conductivity():
-    """The coax pin and shell are a SIGMA FILL, not a PEC realization.
-
-    ``setup_coaxial_port`` writes ``sigma >= PEC_SIGMA`` straight into the
-    material arrays; the pin and shell never become a geometry entry, never
-    enter ``pec_mask``, and are not classified by ``classify_pec_entry``. So
-    they are outside the lattice ownership contract by decision, not by
-    oversight — design note §1.8 fences sigma-fill conductors as a LOSSY
-    VOLUME model (fields decay inside a conductive cell) and leaves them
-    unchanged, with their own node-vs-cell debts (the shell one cell inside
-    ``b``) filed as a follow-up. This test is the pin on that fence: it
-    asserts the stamp reaches ``sigma``, which is exactly what a
-    realized-edge query would NOT see.
-    """
-    grid = _make_grid()
-    base_materials = init_materials(grid.shape)
-    port = CoaxialPort(
-        position=(0.010, 0.010, 0.015),
-        face="top",
-        pin_length=5e-3,
-        pin_radius=SMA_PIN_RADIUS,
-        outer_radius=SMA_OUTER_RADIUS,
-        impedance=50.0,
-        excitation=ConstantWaveform(0.0),
-    )
-
-    stamped = setup_coaxial_port(grid, port, base_materials)
-
-    pin_idx = grid.position_to_index((0.010, 0.010, 0.0125))
-    ptfe_idx = grid.position_to_index((0.0110, 0.010, 0.0125))
-    shell_idx = grid.position_to_index((0.0120, 0.010, 0.0125))
-    free_idx = grid.position_to_index((0.0140, 0.010, 0.0125))
-    gap_idx = grid.position_to_index(port.position)
-
-    assert float(stamped.eps_r[pin_idx]) == pytest.approx(1.0)
-    assert float(stamped.sigma[pin_idx]) >= PEC_SIGMA
-
-    assert float(stamped.eps_r[ptfe_idx]) == pytest.approx(PTFE_EPS_R)
-    assert float(stamped.sigma[ptfe_idx]) == pytest.approx(0.0)
-
-    assert float(stamped.eps_r[shell_idx]) == pytest.approx(1.0)
-    assert float(stamped.sigma[shell_idx]) >= PEC_SIGMA
-
-    assert float(stamped.eps_r[free_idx]) == pytest.approx(1.0)
-    assert float(stamped.sigma[free_idx]) == pytest.approx(0.0)
-
-    sigma_port = 1.0 / (port.impedance * grid.dx)
-    assert float(stamped.sigma[gap_idx]) >= sigma_port
 
 
 def test_coaxial_tem_analytic_helpers_match_closed_form_identities():
@@ -308,42 +234,3 @@ def test_coaxial_tem_reference_plane_vi_validates_sampling_geometry():
             inner_radius=SMA_PIN_RADIUS,
             outer_radius=SMA_OUTER_RADIUS,
         )
-
-
-@pytest.mark.parametrize(("face", "position", "component"), FACE_CASES)
-def test_make_coaxial_port_source_injects_expected_e_field_component(face, position, component):
-    grid = _make_grid()
-    waveform = ConstantWaveform(2.5)
-    port = CoaxialPort(
-        position=position,
-        face=face,
-        pin_length=5e-3,
-        pin_radius=SMA_PIN_RADIUS,
-        outer_radius=SMA_OUTER_RADIUS,
-        impedance=50.0,
-        excitation=waveform,
-    )
-    materials = setup_coaxial_port(grid, port, init_materials(grid.shape))
-    source = make_coaxial_port_source(grid, port, materials, n_steps=8)
-    state = init_state(grid.shape)
-
-    updated = source(state, 0.0)
-    gap_idx = grid.position_to_index(position)
-
-    # #1210: the drive coefficient is the E update's OWN per-component Cb at
-    # the gap node -- the mean of eps and sigma over the four cells that
-    # node's edge touches -- not the owning cell's. The gap sits against the
-    # coax conductors, so the two differ by 4/3 here; a hand-written
-    # cell-centred reference was a second spelling of the material-to-edge
-    # rule and read 1.0000e-6 where the update writes 1.3333e-6.
-    cb = float(cell_component_e_coeffs(
-        materials, gap_idx, component, grid.dt)[1])
-    expected_delta = cb * waveform.amplitude / grid.dx
-
-    for field_name in ("ex", "ey", "ez"):
-        field = getattr(updated, field_name)
-        observed = float(field[gap_idx])
-        if field_name == component:
-            assert observed == pytest.approx(expected_delta)
-        else:
-            assert observed == pytest.approx(0.0)

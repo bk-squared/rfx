@@ -721,7 +721,11 @@ def run_uniform(
     # Lumped RLC elements
     rlc_metas = None
     if sim._lumped_rlc:
-        rlc_metas = [build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc]
+        # The run's own periodic flags (after the TFSF override above): a
+        # series element's D0 is its edge's E-update coefficient (#1163).
+        _rlc_periodic = _simulation.resolve_periodic(grid, periodic)
+        rlc_metas = [build_rlc_meta(grid, spec, materials, periodic=_rlc_periodic)
+                     for spec in sim._lumped_rlc]
 
     # #677: assemble the surface-impedance sheet ctx against the FINAL
     # realized PEC edges of this run (after the port clearing above —

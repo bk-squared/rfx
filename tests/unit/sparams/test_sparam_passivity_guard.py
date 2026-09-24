@@ -61,7 +61,7 @@ def test_nonpassive_smatrix_raises_under_strict():
     s[0, 0, :] = 1.5
     with pytest.raises(ValueError, match="UNRELIABLE"):
         _warn_if_nonpassive_smatrix(
-            _result(s), extractor="compute_coaxial_s_matrix", strict=True
+            _result(s), extractor="compute_coaxial_two_port", strict=True
         )
 
 

@@ -483,7 +483,9 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # 2026-09-22: the MSL notch filter's row left the table when the case was
     # rebuilt as tests/crossval/msl_notch_filter/, and took 5 of the 9. Floor
     # lowered to the measured remainder, 4.
-    (BENCHMARKS, "Reference cases"): 4,
+    # 2026-09-23: the MSL thru-line phase case's row left the table with the
+    # case and took 2 of the 4. Floor lowered to the measured remainder, 2.
+    (BENCHMARKS, "Reference cases"): 2,
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -598,8 +600,16 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # case's committed run logs left in the same pass and carried no citation.
 # Measured after the removal: 325 references, 305 value-checked, 32 artifacts.
 # The floors are lowered to the measured values.
-MIN_REFERENCES = 325
-MIN_VALUE_CHECKED = 305
+# 2026-09-23 (the MSL thru-line phase case removed): its manifest entry,
+# validation README row and public benchmarks row left the gated surface,
+# taking 6 citations (5 value-checked). Every one of them reached
+# validation/crossval/_issue812_phase_identity/regate_evidence.json, which
+# stays -- tests/crossval/test_patch_msl_public_carriers.py reads it and two
+# gated design notes still cite it -- so no artifact leaves the count.
+# Measured after the removal: 319 references, 300 value-checked, 32 artifacts.
+# The floors are lowered to the measured values.
+MIN_REFERENCES = 319
+MIN_VALUE_CHECKED = 300
 MIN_DISTINCT_ARTIFACTS = 32
 
 

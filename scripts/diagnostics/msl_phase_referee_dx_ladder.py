@@ -94,7 +94,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import io
 import json
 import sys
@@ -116,12 +115,12 @@ from rfx.api import Simulation  # noqa: E402
 from rfx.api._sparams import _resolve_msl_auto_offsets  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.geometry.csg import Box  # noqa: E402
+from rfx.microstrip import microstrip_eps_eff  # noqa: E402
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff  # noqa: E402
 from rfx.sources.msl_port import MSLPort, msl_probe_x_coords_n  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE = REPO_ROOT / "tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json"
-REFEREE_CASE = REPO_ROOT / "validation/crossval/20_msl_phase_referee.py"
 
 # --- declared geometry, identical to the committed builder ------------------
 EPS_R = 3.66            # RO4350B
@@ -528,17 +527,33 @@ def assert_dx50_identity(ref_geom: dict) -> list[str]:
 # ---------------------------------------------------------------------------
 # Derived quantities
 # ---------------------------------------------------------------------------
-def load_referee_case():
-    """The crossval case module, loaded by path (its filename starts with a
-    digit, so it is not importable by name).  Same idiom as
-    ``tests/crossval/test_msl_phase_referee_header.py``."""
-    spec = importlib.util.spec_from_file_location(
-        "_msl_phase_referee_case", REFEREE_CASE)
-    if spec is None or spec.loader is None:
-        raise SystemExit(f"cannot load the crossval case at {REFEREE_CASE}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def _beta_frac_from_eps_eff_frac(eps_eff_frac: float) -> float:
+    """Fractional beta deviation produced by a fractional eps_eff deviation.
+
+    beta = 2*pi*f*sqrt(eps_eff)/c0, so the fractional beta change is
+    sqrt(1 + eps_eff_frac) - 1, sign-preserving.  Moved unchanged from the
+    MSL thru-line phase cross-validation case
+    (``validation/crossval/20_msl_phase_referee.py``, removed 2026-09-23).
+    """
+    return float(np.sqrt(1.0 + eps_eff_frac) - 1.0)
+
+
+def _bahl_garg_thickness_eps_eff_dev_frac(eps_r: float, w_m: float, h_m: float,
+                                          t_m: float) -> float:
+    """Fractional eps_eff change from a strip of thickness ``t_m``
+    (Bahl-Garg; Garg et al., Microstrip Lines and Slotlines, 3e):
+    d_eps_eff = -(eps_r - 1)*(t/h)/(4.6*sqrt(w/h)) < 0 for any t > 0,
+    divided by the zero-thickness quasi-static eps_eff.
+
+    Moved from the same removed case.  Its private copy of the zero-thickness
+    eps_eff (Pozar eq. 3.195 with the u < 1 term) existed only because that
+    script could not import rfx; this script does, so the denominator is
+    ``rfx.microstrip.microstrip_eps_eff``, the function that copy was pinned
+    against -- same formula, same operation order.
+    """
+    eps_eff0 = microstrip_eps_eff(w_m, h_m, eps_r)
+    d_eps = -(eps_r - 1.0) * (t_m / h_m) / (4.6 * np.sqrt(w_m / h_m))
+    return float(d_eps / eps_eff0)
 
 
 def closed_form_beta(freqs_hz: np.ndarray) -> tuple[np.ndarray, float, float]:
@@ -628,19 +643,18 @@ def derive(core: dict, dump_path: Path, dx: float) -> dict:
     Per bin and band-mean over the gated bins, for the production beta and for
     the float64 refit of the same stored phasors.
     """
-    case = load_referee_case()
     freqs = np.asarray(core["freqs_hz"], dtype=np.float64)
     beta_prod = np.asarray(core["beta_production_real"], dtype=np.float64)
     beta_cf, eps_eff_cf, z0_cf = closed_form_beta(freqs)
     gate = (freqs >= GATE_F_LO_HZ) & (freqs <= GATE_F_HI_HZ)
 
-    # The one-cell-thickness prediction, from the crossval case's own term,
-    # with t = dx passed by KEYWORD (the call site in that file passes t_m and
-    # dx_m in swapped positional order -- inert at dx = 50 where both are
-    # 50 um, wrong at any second dx, which is exactly this ladder).
-    bg_eps_frac = case._bahl_garg_thickness_eps_eff_dev_frac(
+    # The one-cell-thickness prediction, with t = dx passed by KEYWORD (the
+    # removed crossval case's own call site passed t_m and dx_m in swapped
+    # positional order -- inert at dx = 50 where both are 50 um, wrong at any
+    # second dx, which is exactly this ladder).
+    bg_eps_frac = _bahl_garg_thickness_eps_eff_dev_frac(
         eps_r=EPS_R, w_m=W_TRACE, h_m=H_CLOSED_FORM, t_m=dx)
-    bg_beta_frac = case._beta_frac_from_eps_eff_frac(bg_eps_frac)
+    bg_beta_frac = _beta_frac_from_eps_eff_frac(bg_eps_frac)
 
     out: dict = {
         "closed_form": {
@@ -657,12 +671,13 @@ def derive(core: dict, dump_path: Path, dx: float) -> dict:
             "h_m": H_CLOSED_FORM,
             "eps_eff_dev_frac": float(bg_eps_frac),
             "beta_dev_frac": float(bg_beta_frac),
-            "source": ("validation/crossval/20_msl_phase_referee.py "
-                       "_bahl_garg_thickness_eps_eff_dev_frac, t_m passed by "
-                       "keyword"),
+            "source": ("scripts/diagnostics/msl_phase_referee_dx_ladder.py "
+                       "_bahl_garg_thickness_eps_eff_dev_frac (moved from "
+                       "validation/crossval/20_msl_phase_referee.py), t_m "
+                       "passed by keyword"),
             "alternatives": {
-                f"h={h * 1e6:g}um": float(case._beta_frac_from_eps_eff_frac(
-                    case._bahl_garg_thickness_eps_eff_dev_frac(
+                f"h={h * 1e6:g}um": float(_beta_frac_from_eps_eff_frac(
+                    _bahl_garg_thickness_eps_eff_dev_frac(
                         eps_r=EPS_R, w_m=W_TRACE, h_m=h, t_m=dx)))
                 for h in (H_CLOSED_FORM, H_SUB, 300e-6)
             },

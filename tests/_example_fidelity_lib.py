@@ -76,7 +76,6 @@ SOLVE_ATTRS = frozenset({
     "compute_msl_s_matrix",
     "compute_waveguide_s_matrix",
     "compute_mixed_s_matrix",
-    "compute_coaxial_s_matrix",
     "compute_coaxial_line_reflection",
     "compute_coaxial_two_port",
     "compute_coax_msl_transition",
@@ -366,11 +365,6 @@ CLASSIFICATION: dict[str, Entry] = {
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)
-    "validation/crossval/20_msl_phase_referee.py": Entry(
-        "no_simulation",
-        "Stage A drives openEMS/ContinuousStructure and explicitly does NOT "
-        "import rfx (own docstring); Stage B only reads a committed rfx-"
-        "produced JSON record -- no Simulation is built by this script"),
     "validation/crossval/_patch_feed_contract.py": Entry(
         "no_simulation",
         "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
