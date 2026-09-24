@@ -69,6 +69,8 @@ from rfx.runners._distributed_common import (
     cpml_coeff_e_vacuum,
     cpml_coeff_h_vacuum,
     exchange_component_shmap,
+    exchange_h_yee_shmap,
+    exchange_e_yee_shmap,
     inject_sources_shmap,
     sample_probes_shmap,
     shard_stacked,
@@ -580,20 +582,17 @@ def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
 # The NU scan body uses the same ghost-exchange contract as the uniform
 # distributed runner; the body lived here verbatim and is now the shared
 # ``exchange_component_shmap`` in ``_distributed_common.py``. Kept as a
-# module-local alias so the existing call sites are unchanged.
+# module-local alias for legacy callers and the shared-kernel identity lock.
 _exchange_component_nu_shmap = exchange_component_shmap
 
 
 def _exchange_h_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
-    return state._replace(
-        hx=_exchange_component_nu_shmap(state.hx, mesh, n_devices),
-        hy=_exchange_component_nu_shmap(state.hy, mesh, n_devices),
-        hz=_exchange_component_nu_shmap(state.hz, mesh, n_devices),
-    )
+    """Refill only the Hy/Hz left ghosts consumed by the E curl."""
+    return exchange_h_yee_shmap(state, mesh, n_devices)
 
 
 def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
-    """Refill the E ghost rows from the neighbour ranks' real rows.
+    """Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
 
     Placement contract: this is the LAST stage of the E half-step in
     :func:`run_nonuniform_distributed_pec` — after sources and after every
@@ -602,11 +601,7 @@ def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int) -> FDTDState:
     right ghost plane; a copy taken before the owner zeroed its PEC edges
     there is stale (#931 seam-cell divergence).
     """
-    return state._replace(
-        ex=_exchange_component_nu_shmap(state.ex, mesh, n_devices),
-        ey=_exchange_component_nu_shmap(state.ey, mesh, n_devices),
-        ez=_exchange_component_nu_shmap(state.ez, mesh, n_devices),
-    )
+    return exchange_e_yee_shmap(state, mesh, n_devices)
 
 
 # #1038 leg 3. ``_apply_pec_face_nu_shmap``'s body now lives as
@@ -2496,6 +2491,7 @@ def run_nonuniform_distributed_pec(
     def _sample_probes_shmap(st):
         return sample_probes_shmap(
             st, mesh, n_prb, prb_local_specs, prb_device_ids,
+            reduce_devices=False,
         )
 
     # ------------------------------------------------------------------
@@ -2749,7 +2745,7 @@ def run_nonuniform_distributed_pec(
         #    cell; see the docstring).
         st = _exchange_e_ghosts_nu(st, mesh, n_devices)
 
-        # 10. Probe accumulation (rank-conditional sample + lax.psum).
+        # 10. Owner-masked samples; reduce devices once after all scans.
         #     Phase 2F emit_time_series=False: skip the probe-sample
         #     accumulation entirely so the AD tape is not loaded with
         #     per-step probe entries.  ``probe_out`` becomes a 0-length
@@ -2888,6 +2884,10 @@ def run_nonuniform_distributed_pec(
             full_ys = jnp.concatenate([warmup_ys, opt_ys], axis=0)
         else:
             full_ys = opt_ys
+        if emit_time_series:
+            # (time, device, probe) -> replicated (time, probe), including
+            # empty probes. Keep warmup stop_gradient and tail discard above.
+            full_ys = jnp.sum(full_ys, axis=1)
         return final_, full_ys
 
     final_carry, probe_ts = run_fn(
