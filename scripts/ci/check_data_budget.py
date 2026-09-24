@@ -15,7 +15,11 @@ Four rules over the PR's diff against its merge base, all mechanical:
    ``LINE_BUDGET`` lines in total, and binary ones at most ``BINARY_BUDGET``
    bytes. Deletions are free: moving records out is the point.
 2. No data file the PR adds or modifies may exceed ``FILE_CAP`` bytes, on the
-   allowlist or off it (``SIZE_EXEMPT`` names the one exception and why).
+   allowlist or off it, except a file in a frozen-data home that a reader names
+   (rule 3's test), which may reach ``FROZEN_FILE_CAP``. Four fixtures tests
+   read, added 2026-09-10..24, were 1.04-1.81 MB; at one cap for everything
+   they would have needed the exception label, and a label needed for routine
+   work stops meaning anything. ``SIZE_EXEMPT`` names the one exception.
 3. A data file newly placed in a frozen-data home -- ``tests/fixtures/``,
    ``tests/data/``, ``tests/crossval/<case>/reference/`` -- must be named by a
    tracked non-data file under ``tests/`` or ``rfx/``: by its file name, by
@@ -48,7 +52,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path, PurePosixPath
-from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
+from typing import Dict, FrozenSet, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHANGELOG_CHECK = REPO_ROOT / "scripts" / "ci" / "check_changelog_fragment.py"
@@ -56,6 +60,7 @@ _CHANGELOG_CHECK = REPO_ROOT / "scripts" / "ci" / "check_changelog_fragment.py"
 LINE_BUDGET = 500
 BINARY_BUDGET = 200_000  # bytes
 FILE_CAP = 1_000_000  # bytes
+FROZEN_FILE_CAP = 5_000_000  # bytes, a named file in a frozen-data home
 EXCEPTION_LABEL = "data-budget-exception"
 ARCHIVE_REPO = "bk-squared/rfx-archive"
 ARCHIVE_PATH = "rfx/records/<YYYYMMDD>-<topic>/"
@@ -168,6 +173,7 @@ class Findings(NamedTuple):
     over_cap: List[Change]
     unreferenced: List[Change]
     new_frozen: List[Change]
+    named: FrozenSet[str]  # frozen-data paths a reader names, among those asked about
 
     @property
     def line_total(self) -> int:
@@ -323,6 +329,13 @@ def is_named(token: str, text: str) -> bool:
     return False
 
 
+def size_cap(path: str, named: FrozenSet[str]) -> int:
+    """The largest a data file at *path* may be (rule 2)."""
+    if FROZEN_HOME_RE.match(path) and path in named:
+        return FROZEN_FILE_CAP
+    return FILE_CAP
+
+
 def evaluate(base: str, head: str, repo: Path) -> Findings:
     """What the PR's data changes are, sorted into the four rules' buckets."""
     statuses = _statuses(base, head, repo)
@@ -337,22 +350,31 @@ def evaluate(base: str, head: str, repo: Path) -> Findings:
     outside = [change for change in changes if not allowlisted(change.path)]
     outside_lines = [c for c in outside if c.added]
     outside_binary = [c for c in outside if c.added is None]
-    over_cap = [
-        change for change in changes
-        if change.size > FILE_CAP and change.path not in SIZE_EXEMPT
-    ]
     new_frozen = [
         change for change in changes
         if change.status in ("A", "R", "C") and FROZEN_HOME_RE.match(change.path)
     ]
-    unreferenced: List[Change] = []
-    if new_frozen:
+    # A reader is looked for on every new frozen file (rule 3) and on every
+    # frozen file over FILE_CAP, new or edited (rule 2's larger cap).
+    asked = new_frozen + [
+        change for change in changes
+        if change.size > FILE_CAP and FROZEN_HOME_RE.match(change.path)
+        and change not in new_frozen
+    ]
+    named: FrozenSet[str] = frozenset()
+    if asked:
         text = reader_text(head, repo)
-        unreferenced = [
-            change for change in new_frozen
-            if not any(is_named(token, text) for token in reference_tokens(change.path))
-        ]
-    return Findings(changes, outside_lines, outside_binary, over_cap, unreferenced, new_frozen)
+        named = frozenset(
+            change.path for change in asked
+            if any(is_named(token, text) for token in reference_tokens(change.path))
+        )
+    unreferenced = [change for change in new_frozen if change.path not in named]
+    over_cap = [
+        change for change in changes
+        if change.path not in SIZE_EXEMPT and change.size > size_cap(change.path, named)
+    ]
+    return Findings(changes, outside_lines, outside_binary, over_cap, unreferenced,
+                    new_frozen, named)
 
 
 def _listing(changes: Iterable[Change], value, unit: str, limit: int = 15) -> List[str]:
@@ -382,8 +404,14 @@ def failures(findings: Findings) -> List[str]:
         ]))
     if findings.over_cap:
         out.append("\n".join([
-            f"{len(findings.over_cap)} data file(s) over {FILE_CAP:,} bytes:",
-            *_listing(findings.over_cap, lambda change: change.size, "bytes"),
+            f"{len(findings.over_cap)} data file(s) over their size cap ({FILE_CAP:,} "
+            f"bytes; {FROZEN_FILE_CAP:,} for a file in a frozen-data home that a "
+            f"reader names):",
+            *[f"      {change.size:>10,} bytes (cap "
+              f"{size_cap(change.path, findings.named):,})  {change.path}"
+              for change in sorted(findings.over_cap, key=lambda c: -c.size)[:15]],
+            *([f"      ... and {len(findings.over_cap) - 15} more"]
+              if len(findings.over_cap) > 15 else []),
         ]))
     if findings.unreferenced:
         out.append("\n".join([
@@ -405,7 +433,8 @@ Where the data goes:
   Name that path and the archive commit in the PR body.
   Frozen reference data a test reads goes under tests/fixtures/,
   tests/data/ or tests/crossval/<case>/reference/, named by the test that
-  reads it, and no one file over {FILE_CAP:,} bytes.
+  reads it, and no one file over {FROZEN_FILE_CAP:,} bytes there
+  ({FILE_CAP:,} anywhere else).
   If this PR has to carry the data anyway, apply the label
   '{EXCEPTION_LABEL}' and re-run the failed job (no push needed: the
   labels are read when the job runs). The weekly governance audit lists

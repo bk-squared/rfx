@@ -275,12 +275,74 @@ def test_allowlisted_data_does_not_spend_the_budget(repo: Path) -> None:
 
 def test_the_size_cap_applies_on_the_allowlist_too(repo: Path) -> None:
     base = _git(repo, "rev-parse", "HEAD")
-    _write(repo, "tests/fixtures/case/fixture.json", "x" * 1_000_001)
+    _write(repo, "validation/crossval/manifest.json", "x" * 1_000_001)
+    head = _commit(repo)
+    failures = _check(repo, base, head)
+    assert len(failures) == 1 and "over their size cap" in failures[0]
+    assert "(cap 1,000,000)  validation/crossval/manifest.json" in failures[0]
+
+
+@pytest.mark.parametrize("path,named,cap", [
+    ("tests/fixtures/case/fixture.json", {"tests/fixtures/case/fixture.json"}, 5_000_000),
+    ("tests/data/x.json", {"tests/data/x.json"}, 5_000_000),
+    ("tests/crossval/c/reference/r.json", {"tests/crossval/c/reference/r.json"}, 5_000_000),
+    ("tests/fixtures/case/fixture.json", set(), 1_000_000),     # no reader names it
+    ("validation/crossval/manifest.json", {"validation/crossval/manifest.json"}, 1_000_000),
+    ("tests/contracts/boundary_registry.json", {"tests/contracts/boundary_registry.json"}, 1_000_000),
+])
+def test_only_a_named_file_in_a_frozen_home_gets_the_larger_cap(path, named, cap) -> None:
+    assert budget.size_cap(path, frozenset(named)) == cap
+
+
+def test_a_named_frozen_file_may_reach_5_MB(repo: Path) -> None:
+    """Four fixtures tests read, added 2026-09-10..24, were 1.04-1.81 MB."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/case/fixture.json", "x" * 5_000_000)
+    _write(repo, "tests/unit/test_case.py", 'FIX = "fixture.json"\n')
+    head = _commit(repo)
+    assert _check(repo, base, head) == []
+
+
+def test_a_named_frozen_file_over_5_MB_fails(repo: Path) -> None:
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/case/fixture.json", "x" * 5_000_001)
     _write(repo, "tests/unit/test_case.py", 'FIX = "fixture.json"\n')
     head = _commit(repo)
     failures = _check(repo, base, head)
-    assert len(failures) == 1 and "over 1,000,000 bytes" in failures[0]
-    assert "tests/fixtures/case/fixture.json" in failures[0]
+    assert len(failures) == 1
+    assert "(cap 5,000,000)  tests/fixtures/case/fixture.json" in failures[0]
+
+
+def test_an_edited_named_frozen_file_gets_the_larger_cap(repo: Path) -> None:
+    """Rule 3 only asks about new files; the larger cap still needs a reader."""
+    _write(repo, "tests/fixtures/case/fixture.json", _lines(5))
+    _write(repo, "tests/unit/test_case.py", 'FIX = "fixture.json"\n')
+    base = _commit(repo, "a small fixture on main")
+    _write(repo, "tests/fixtures/case/fixture.json", "x" * 2_000_000)
+    head = _commit(repo, "regenerate it larger")
+    assert _check(repo, base, head) == []
+
+
+@pytest.mark.parametrize("size,failing", [(1_000_000, 0), (1_000_001, 1)])
+def test_an_unnamed_frozen_file_keeps_the_1_MB_cap(repo: Path, size: int, failing: int) -> None:
+    """Edited, so rule 3 does not apply: only the cap can fail it."""
+    _write(repo, "tests/fixtures/orphan_case/orphan.json", _lines(5))
+    base = _commit(repo, "an unread fixture already on main")
+    _write(repo, "tests/fixtures/orphan_case/orphan.json", "x" * size)
+    head = _commit(repo, "grow it")
+    failures = _check(repo, base, head)
+    assert len(failures) == failing
+    if failing:
+        assert "(cap 1,000,000)  tests/fixtures/orphan_case/orphan.json" in failures[0]
+
+
+def test_a_new_unnamed_frozen_file_over_1_MB_fails_both_rules(repo: Path) -> None:
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/orphan_case/orphan.json", "x" * 2_000_000)
+    head = _commit(repo)
+    failures = _check(repo, base, head)
+    assert len(failures) == 2
+    assert "(cap 1,000,000)" in failures[0] and "no tracked file" in failures[1]
 
 
 def test_the_size_cap_is_inclusive_and_test_durations_is_exempt(repo: Path) -> None:
