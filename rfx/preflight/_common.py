@@ -45,7 +45,7 @@ import json
 import numpy as np
 
 from rfx._grid_metric import (
-    NODE_TOUCH_REL, cells_crossed, distinct_cell_sizes,
+    NODE_TOUCH_REL, cells_crossed, is_one_cell_size,
 )
 from rfx.core.jax_utils import is_tracer
 
@@ -699,7 +699,7 @@ def profile_span_is_uniform(scalar_dx: float, profile,
     The span crosses the cells it overlaps by more than the node-touch
     tolerance, and cells are one size when they agree to the same relative
     tolerance, both the S-parameter reference-span check's
-    (``rfx._grid_metric.cells_crossed`` / ``distinct_cell_sizes``). A span
+    (``rfx._grid_metric.cells_crossed`` / ``is_one_cell_size``). A span
     that starts or ends on a node therefore stops there -- counting the cell
     beyond it made a span lying wholly inside one zone look mixed the moment
     it touched the zone's edge -- and a runway built as ``np.diff`` of node
@@ -721,4 +721,4 @@ def profile_span_is_uniform(scalar_dx: float, profile,
     tol = NODE_TOUCH_REL * float(np.min(a))
     if crossed.size == 0 and (hi <= tol or lo >= float(np.sum(a)) - tol):
         return False
-    return len(distinct_cell_sizes(crossed)) <= 1
+    return is_one_cell_size(crossed)

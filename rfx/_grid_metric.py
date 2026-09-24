@@ -249,3 +249,16 @@ def distinct_cell_sizes(sizes) -> list[float]:
                    for d in distinct):
             distinct.append(float(v))
     return distinct
+
+
+def is_one_cell_size(sizes) -> bool:
+    """``len(distinct_cell_sizes(sizes)) <= 1`` without the per-size loop.
+
+    Every size is compared with the first, as that function does. Its loop
+    grows with cells times distinct sizes: 18 s for a 2000-cell profile
+    whose cells all differ, on every preflight of such a model.
+    """
+    s = np.asarray(sizes, dtype=np.float64).ravel()
+    if s.size == 0:
+        return True
+    return bool(np.all(np.isclose(s, s[0], rtol=SAME_CELL_RTOL, atol=0.0)))

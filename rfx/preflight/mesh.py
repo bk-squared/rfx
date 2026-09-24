@@ -85,7 +85,7 @@ import math
 import numpy as np
 
 from rfx.grid import C0
-from rfx._grid_metric import distinct_cell_sizes
+from rfx._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 
@@ -1066,7 +1066,7 @@ def _validate_cfg_nonuniform_limitations(
             _tfsf_prof = {"x": self._dx_profile, "y": self._dy_profile,
                           "z": self._dz_profile}[_tfsf_ax]
             if (_tfsf_prof is not None and not is_tracer(_tfsf_prof)
-                    and len(distinct_cell_sizes(_tfsf_prof)) > 1):
+                    and not is_one_cell_size(_tfsf_prof)):
                 _tp = np.asarray(_tfsf_prof, dtype=float)
                 _w.warn(
                     PreflightWarning(

@@ -447,6 +447,14 @@ def test_a_source_outside_the_fine_face_band_is_not_flagged():
 # ---------------------------------------------------------------------------
 
 def _notch_like_board(feed_cells, n_probe_offset, tail=14):
+    """``_notch_like_sim``'s board, preflighted: ``(report, ramp cells)``."""
+    sim, n_ramp = _notch_like_sim(feed_cells, n_probe_offset, tail)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim.preflight(), n_ramp
+
+
+def _notch_like_sim(feed_cells, n_probe_offset, tail=14):
     """A board whose port runway is refined 2x below the boundary cell.
 
     ``feed_cells`` indexes the profile, so a caller can put the feed plane
@@ -476,9 +484,7 @@ def _notch_like_board(feed_cells, n_probe_offset, tail=14):
                      width=w, height=h, direction="+x", impedance=50.0,
                      n_probe_offset=n_probe_offset, n_probe_spacing=3,
                      n_probes=5)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return sim.preflight(), len(ramp)
+    return sim, len(ramp)
 
 
 def test_the_msl_standoff_advisory_counts_the_runway_cell():
@@ -1118,8 +1124,15 @@ def test_an_automatic_offset_is_not_told_to_stay_automatic():
 def test_an_explicit_offset_on_a_fine_runway_is_not_told_to_go_automatic():
     """The same arithmetic for an explicit offset of 7 on the runway: the
     automatic choice would be 5, fewer cells than the 7 already set, so
-    "leave it None" is not a remedy there either."""
-    report, _ = _notch_like_board(14 + 20, 7)
+    "leave it None" is not a remedy there either. The S-parameter routing
+    check builds its remedy in a separate branch, so it is asserted too."""
+    sim, _ = _notch_like_sim(14 + 20, 7)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
     text = _finding(report, "OWN feed plane")
     assert "Set n_probe_offset >= 10;" in text, text
     assert "leave it None for the safe default" not in text, text
+    msg = _forward_message(sim)
+    assert "set n_probe_offset >= 10; leaving it None counts" in msg, msg
+    assert "leave it None for the safe default" not in msg, msg
