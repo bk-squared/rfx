@@ -216,9 +216,14 @@ _BOX_STEPS = 4800
 #: load on the gap only they reach 0.50 / 0.42). Without them the modes that
 #: barely touch the port's Ez edge ring longer: last-400-step max / peak at
 #: 2400 steps 1.6e-4 ... 1.21e-3 (RL-0.1 and RLC-0.1 over the bar), at 4800
-#: steps 7.7e-6 ... 3.9e-4, and still falling at 9600 (RL-0.1: 1.21e-3,
-#: 6.2e-4, 3.7e-4, 2.4e-4, 2.0e-4 at 2400/3600/4800/7200/9600) -- a slower
-#: decay, not growth. The replaced update diverges long before 2400.
+#: steps 7.7e-6 ... 3.9e-4. RL-0.1 then levels off rather than decaying to
+#: zero: 1.21e-3, 3.70e-4, 2.03e-4, 1.82e-4, 1.60e-4, 1.62e-4 at
+#: 2400/4800/9600/14400/19200/24000 steps, zero-mean (3.7e-8 of peak over
+#: steps 16000-24000) -- a lightly damped oscillation of the 1 nH inductor
+#: with the edge's cell capacitance, which only 0.1 ohm damps now that the
+#: spurious 50 ohm load on the port node's Ex edge (the edge that joins the
+#: port node to the element node) is gone. No growth; 6.2x under
+#: the bar. The replaced update diverges long before 2400.
 _DECAY_FRACTION = 1e-3
 
 _L = 1e-9

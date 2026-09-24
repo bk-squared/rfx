@@ -55,9 +55,13 @@ class MaterialArrays(NamedTuple):
     field on the two loaded sides against 0.37 on the free one).
     ``None`` is bit-identical to averaging ``eps_r`` and ``sigma`` outright.
 
-    Readers that take the cell TOTAL (``sigma[i, j, k]``) and apply it to all
-    three components are cell-owned lanes (the dispersive Debye/Lorentz
-    coefficients, a parallel RLC's ``D0``); see :func:`lumped_components`.
+    Every RLC element's ``D0`` (series and parallel) reads its own edge
+    through ``rfx.lumped.edge_update_denominator`` -> ``cell_component_e_materials``.
+    The lanes whose volume is still CELL-owned (the distributed slab update,
+    UPML) take :func:`cell_owned_component_materials`: the cell total minus
+    the other components' stamps. The dispersive Debye/Lorentz coefficients
+    still apply the cell total to all three components (#1260) and warn
+    (:func:`warn_lumped_on_cell_owned_lane`).
     """
 
     # Relative permittivity (Nx, Ny, Nz) — used in E update
@@ -166,7 +170,7 @@ def cell_owned_component_materials(materials):
     """Per-component ``(eps_r, sigma)`` for a CELL-OWNED lane (#1236).
 
     A lane that takes every coefficient from the cell that owns the edge (the
-    distributed slab update) reads ``materials.sigma`` for all three
+    distributed slab update, UPML's ``init_upml``) reads ``materials.sigma`` for all three
     components, so a stamp in that total loads all three edges at its node.
     This returns, per component ``c``, the cell total minus the stamps that
     belong to the OTHER two components: the volume stays cell-owned (that

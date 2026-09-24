@@ -13,26 +13,19 @@ and Ey edges leaving the node, and the two runs differed by 14 % of the peak
 field here (found by #1163's gate). On a one-cell parallel-plate line, where
 those two edges carry no field, they already agreed to 3.5e-7.
 
-Needs the series update of #1163 (``rfx.lumped.edge_update_denominator``);
-skipped until that lands. The threshold is the one pre-declared for this gate
+Uses the series update of #1163 (``rfx.lumped.edge_update_denominator``,
+on main since ceffe30b). The threshold is the one pre-declared for this gate
 (G2): 1e-5 of the peak field.
 """
 from __future__ import annotations
 
 import numpy as np
-import pytest
 
-import rfx.lumped
 from rfx import GaussianPulse, Simulation
 
 _DX = 1e-3
 _STEPS = 1200
 _R = 300.0
-
-pytestmark = pytest.mark.skipif(
-    not hasattr(rfx.lumped, "edge_update_denominator"),
-    reason="needs #1163's coupled series-element update "
-           "(rfx.lumped.edge_update_denominator)")
 
 
 def _box(element):

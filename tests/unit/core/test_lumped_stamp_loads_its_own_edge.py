@@ -200,3 +200,48 @@ def test_a_dispersive_lane_says_it_loads_all_three_edges():
         warnings.simplefilter("error")
         init_debye([DebyePole(delta_eps=1.0, tau=1e-11)],
                    init_materials(SHAPE), DT)
+
+
+@pytest.mark.parametrize("component", COMPONENTS)
+def test_the_upml_coefficients_load_the_own_edge_only(component):
+    """``boundary="upml"`` replaces the whole E update with ``init_upml``'s
+    coefficients (cell-owned volume). A 50 ohm stamp on one component must
+    change that component's Ca/Cb at its node and leave the other two
+    bit-identical to the unstamped build."""
+    from rfx.boundaries.upml import init_upml
+    from rfx.core.yee import init_materials
+    from rfx.grid import Grid
+
+    grid = Grid(freq_max=1e10, domain=(8e-3, 8e-3, 8e-3), dx=1e-3,
+                cpml_layers=4)
+    cell = tuple(n // 2 for n in grid.shape)
+    base = init_materials(grid.shape)._replace(
+        eps_r=jnp.full(grid.shape, 2.2, jnp.float32))
+    mats = stamp_lumped_sigma(base, cell, 1.0 / (50.0 * DX), component)
+    c0, c1 = init_upml(grid, base), init_upml(grid, mats)
+    axis = COMPONENTS.index(component)
+    for c, comp in enumerate(COMPONENTS):
+        for name in ("ca", "cb"):
+            a0 = np.asarray(getattr(c0, f"{name}_{comp}"))
+            a1 = np.asarray(getattr(c1, f"{name}_{comp}"))
+            changed = [tuple(int(v) for v in x) for x in np.argwhere(a0 != a1)]
+            assert changed == ([cell] if c == axis else []), (
+                f"UPML {name}_{comp}: a stamp on {component} at {cell} "
+                f"changed {changed}")
+
+
+def test_save_and_load_materials_keep_the_per_component_records(tmp_path):
+    """A reloaded MaterialArrays must carry its lumped records per component:
+    without them the port load is averaged over four cells (quartered)."""
+    pytest.importorskip("h5py")
+    from rfx.checkpoint import load_materials, save_materials
+    mats = stamp_lumped_eps(stamp_lumped_sigma(_background(), CELL, 20.0, "ez"),
+                            CELL, 3.0, "ex")
+    save_materials(tmp_path / "m.h5", mats)
+    back = load_materials(tmp_path / "m.h5")
+    for name in ("sigma_lumped", "eps_r_lumped"):
+        for a, b in zip(getattr(mats, name), getattr(back, name)):
+            assert (a is None and b is None) or np.array_equal(np.asarray(a), np.asarray(b)), name
+    for a, b in zip(component_e_materials(mats), component_e_materials(back)):
+        for x, y in zip(a, b):
+            assert np.array_equal(np.asarray(x), np.asarray(y))

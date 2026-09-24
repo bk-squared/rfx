@@ -24,6 +24,7 @@ gate threshold 1e-3 is the one pre-declared for it (G1).
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from rfx import GaussianPulse, PolylineWire, Simulation, realized_pec_edge_masks
 
@@ -34,13 +35,13 @@ N_CPML = 10
 N_STEPS = 300
 
 
-def _dipole():
+def _dipole(boundary="cpml"):
     dx = L_DIP / N_CELLS
     n_arm = (N_CELLS - 1) // 2
     nz = 2 * N_LAT + N_CELLS
     sim = Simulation(freq_max=6e9,
                      domain=(2 * N_LAT * dx, 2 * N_LAT * dx, nz * dx),
-                     dx=dx, boundary="cpml", cpml_layers=N_CPML)
+                     dx=dx, boundary=boundary, cpml_layers=N_CPML)
     xc = yc = N_LAT * dx
     z_lo = N_LAT * dx
     z_port = (N_LAT + n_arm) * dx
@@ -85,8 +86,14 @@ def _assert_realized(sim, n_arm):
     assert (i, j) == ((nx - 1) // 2, (ny - 1) // 2) and nx % 2 == 1
 
 
-def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides():
-    sim, names, n_arm = _dipole()
+# UPML replaces the whole E update with its own coefficients
+# (rfx/boundaries/upml.py::init_upml), so it is a separate lane for the port's
+# load and gets its own row: before the UPML half of #1236 it still pinned the
+# loaded side to 0.088 of its mirror.
+@pytest.mark.parametrize("boundary", ["cpml", "upml"])
+def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(
+        boundary):
+    sim, names, n_arm = _dipole(boundary)
     _assert_realized(sim, n_arm)
     res = sim.run(n_steps=N_STEPS, skip_preflight=True, compute_s_params=False)
     ts = dict(zip(names, np.asarray(res.time_series).T))
