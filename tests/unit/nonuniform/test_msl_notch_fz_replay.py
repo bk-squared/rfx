@@ -32,7 +32,8 @@ import pytest
 
 from validation.research.multiband_nu import msl_notch_graded as ins
 from tests.crossval.msl_notch_filter import test_msl_notch_filter as case
-from tests._printed_numbers import agrees, printed_with_decimals
+from tests._printed_numbers import (NUMBER, agrees, assert_same_numbers,
+                                    printed_with_decimals)
 
 _RESULTS = (Path(__file__).resolve().parents[3] / "validation" / "research"
             / "multiband_nu" / "results")
@@ -1544,3 +1545,17 @@ def test_the_notes_f6_is_the_instruments_f6_byte_for_byte(arms, f6):
                                      "### F.4 ", "### F.5", head,
                                      "### Conclusions")]
     assert order == sorted(order)
+
+
+def test_f6_prints_the_numbers_the_note_was_written_from(f6):
+    """F.6's numbers still block; its words are the docs-consistency workflow's.
+
+    Frozen, in order, from the note's F.6 when its text left the required
+    lanes (#1289). F.6 is the part of the Results that reads the same on every
+    machine and in every checkout.
+    """
+    fixture = (Path(__file__).resolve().parents[2] / "fixtures"
+               / "msl_notch_tables" / "printed_numbers.json")
+    with fixture.open() as fh:
+        want = json.load(fh)["fz_f6"]["numbers"]
+    assert_same_numbers(want, NUMBER.findall("\n".join(ins.f6_markdown(f6))))

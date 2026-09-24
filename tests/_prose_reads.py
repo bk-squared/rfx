@@ -17,8 +17,16 @@ public pages and the design notes live. A test without the marker fails at
 teardown, naming the files, if it opened one, if a fixture it uses opened one
 when it was set up (a cached module- or session-scoped fixture counts for every
 test that uses it, not only the first), or if its module opened one while it
-was imported. A module that reads prose at import is a documentation module,
-so all of its tests carry the marker.
+was imported, or if pytest opened one while it generated that test's
+parameters. A module that reads prose at import is a documentation module, so
+all of its tests carry the marker.
+
+A few required tests read prose on purpose because the file is part of a gate,
+not documentation: the hash of a pre-declaration's frozen sections (acceptance
+criteria may not be edited after the result), or the rule that a
+known-limitations entry stays while its defect is open. Such a test carries
+``@pytest.mark.reads_docs_for_gate(reason="...")``; a marker without a
+non-empty reason fails the test whether or not it reads anything.
 
 What it cannot see: a file read by a subprocess the test starts (another
 interpreter), a file read by a module that an earlier test module imported
@@ -43,12 +51,14 @@ from pathlib import Path
 import pytest
 
 MARKER = "docs_consistency"
+GATE_MARKER = "reads_docs_for_gate"
 REPO = Path(__file__).resolve().parents[1]
 _DOCS = str(REPO / "docs") + os.sep
 _SUFFIXES = (".md", ".mdx", ".rst")
 
 #: What pytest is doing: a test's or a test module's nodeid, a fixture's
-#: ``(baseid, argname)``, or None in between.
+#: ``(baseid, argname)``, a test function being parametrized
+#: ``(parent nodeid, name, "params")``, or None in between.
 _where: object = None
 #: ``_where`` -> prose paths (repository-relative) opened while it was current.
 _reads: dict[object, list[str]] = {}
@@ -77,6 +87,9 @@ def pytest_configure(config: pytest.Config) -> None:
     config.addinivalue_line(
         "markers", f"{MARKER}: documentation checked against code, records or "
         "script output; runs only in the non-required docs-consistency workflow")
+    config.addinivalue_line(
+        "markers", f"{GATE_MARKER}(reason): a required test that reads a file "
+        "under docs/ because the file is part of a gate; the reason is mandatory")
     if not _installed:            # an audit hook cannot be removed; add it once
         sys.addaudithook(_audit)
         _installed = True
@@ -90,6 +103,17 @@ def pytest_make_collect_report(collector):
         yield
         return
     previous, _where = _where, collector.nodeid
+    try:
+        yield
+    finally:
+        _where = previous
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_pycollect_makeitem(collector, name, obj):
+    """Record what is opened while one test function is parametrized."""
+    global _where
+    previous, _where = _where, (collector.nodeid, name, "params")
     try:
         yield
     finally:
@@ -135,7 +159,16 @@ def _no_prose_read_outside_docs_consistency(request):
     item = request.node
     module = item.getparent(pytest.Module)
     read = _reads.pop(item.nodeid, []) + _fixture_reads(item) + (
-        _reads.get(module.nodeid, []) if module is not None else [])
+        _reads.get(module.nodeid, []) if module is not None else []) + (
+        _reads.get((item.parent.nodeid, getattr(item, "originalname", item.name),
+                    "params"), []))
+    gate = item.get_closest_marker(GATE_MARKER)
+    if gate is not None:
+        reason = gate.kwargs.get("reason", gate.args[0] if gate.args else "")
+        if not (isinstance(reason, str) and reason.strip()):
+            pytest.fail(f"@pytest.mark.{GATE_MARKER} needs a non-empty reason= "
+                        "saying which gate the file belongs to.", pytrace=False)
+        return
     if read and item.get_closest_marker(MARKER) is None:
         pytest.fail(
             f"this test reads prose ({', '.join(sorted(set(read)))}) but is not "
@@ -143,6 +176,8 @@ def _no_prose_read_outside_docs_consistency(request):
             "a documentation mismatch never holds a merge (PI, 2026-09-22/24). "
             f"Mark it @pytest.mark.{MARKER} (the whole module if it reads the "
             "file at import) so the docs-consistency workflow runs it instead; "
-            "if it pins a number, read the number from its record, not from a note.",
+            "if it pins a number, read the number from its record, not from a note; "
+            f"if the file is part of a gate, mark it @pytest.mark.{GATE_MARKER}"
+            '(reason="...").',
             pytrace=False,
         )

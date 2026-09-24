@@ -44,3 +44,25 @@ def printed_after(text: str, label: str) -> list[str]:
 def printed_with_decimals(text: str, decimals: int) -> list[str]:
     """Every number in ``text`` printed with exactly ``decimals`` places."""
     return re.findall(rf"(?<![\d.])[-+]?\d+\.\d{{{decimals}}}(?![\d.])", text)
+
+
+def assert_same_numbers(want: list[str], got: list[str]) -> None:
+    """Two printed number sequences agree, number by number.
+
+    Integers, and numbers printed without a decimal point, must be equal. A
+    number with decimals may differ by one unit in its last printed place (of
+    the smaller exponent across a decade edge in e-notation), and may not
+    change its printed shape: the same count of decimals, e-notation or not.
+    These are #1262's rules for a table re-derived on another machine.
+    """
+    assert len(want) == len(got), (len(want), len(got))
+    for x, y in zip(want, got):
+        if x == y:
+            continue
+        mx, _, ex = x.lower().partition("e")
+        my, _, ey = y.lower().partition("e")
+        assert "." in mx and "." in my, (x, y)
+        places = len(mx.split(".")[1])
+        assert places == len(my.split(".")[1]) and bool(ex) == bool(ey), (x, y)
+        unit = 10.0 ** (min(int(ex or 0), int(ey or 0)) - places)
+        assert abs(float(x) - float(y)) <= 1.000001 * unit, (x, y)

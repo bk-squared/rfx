@@ -2,9 +2,13 @@ name: docs-consistency
 
 # Notes, guides and READMEs checked against what the code, a committed record or
 # a script prints: every test marked `docs_consistency`. NOT a required check,
-# on purpose. A documentation mismatch never holds a merge (PI, 2026-09-22):
-# the documentation is brought up to date in one pass before a release, so a
-# red run here is a line for the documentation-batch issue, not a blocked PR.
+# on purpose. A documentation mismatch never holds a merge (PI, 2026-09-22).
+# It runs on every PR and every push to main so its reds stay visible, and they
+# are fixed in the documentation batch before a release: each red goes as one
+# line to the open documentation-batch issue (lane:examples-docs, tracker 1171).
+# Numbers, tests, gates and records still block. A record number that only a
+# prose check held is pinned in a required test, and a file that is part of a
+# gate is read by a required test marked `reads_docs_for_gate(reason=...)`.
 #
 # Required checks compare numbers with a tolerance, never text (PI,
 # 2026-09-24). Of the nine red `main` runs of 2026-09-22/24, four were a notes

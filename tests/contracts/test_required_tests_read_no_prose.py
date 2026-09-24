@@ -9,10 +9,14 @@ the required gates deselect that marker and the non-required docs-consistency
 workflow runs it.
 
 ``tests/_prose_reads.py`` enforces it at run time: it fails a test without the
-marker that opened prose. These tests show that the plugin is wired into every
-session this repository runs, that the required gates deselect the marker, and
--- by running planted tests through the plugin in a separate interpreter --
-that it catches each way a test reads prose and passes what it should pass.
+marker that opened prose, unless the test carries
+``reads_docs_for_gate(reason=...)`` because the file is part of a gate (a
+pre-declaration's frozen sections, a known-limitations entry that must stay).
+These tests show that the plugin is wired into every session this repository
+runs, that the required gates deselect the marker, and -- by running planted
+tests through the plugin in a separate interpreter -- that it catches each way
+a test reads prose, refuses the opt-out without a reason, and passes what it
+should pass.
 """
 
 from __future__ import annotations
@@ -80,6 +84,43 @@ _PLANTED = {
         def test_second_user_is_not(note):
             assert note
     ''',
+    "test_gate_opt_out.py": f'''
+        import pytest
+        from pathlib import Path
+
+        @pytest.mark.reads_docs_for_gate(reason="pre-declaration hash")
+        def test_reads_for_a_named_gate():
+            assert Path({str(NOTE)!r}).read_text()
+
+        @pytest.mark.reads_docs_for_gate(reason="  ")
+        def test_blank_reason():
+            assert True
+
+        @pytest.mark.reads_docs_for_gate
+        def test_no_reason():
+            assert True
+    ''',
+    # A note read while pytest parametrizes one function counts for that
+    # function only, not for its neighbours in the module.
+    "test_generated_params.py": f'''
+        import pytest
+        from pathlib import Path
+
+        def pytest_generate_tests(metafunc):
+            if metafunc.function.__name__.startswith("test_params_"):
+                metafunc.parametrize(
+                    "line", Path({str(NOTE)!r}).read_text().splitlines()[:1], ids=["n"])
+
+        @pytest.mark.docs_consistency
+        def test_params_marked(line):
+            assert line is not None
+
+        def test_params_unmarked(line):
+            assert line is not None
+
+        def test_neighbour_reads_nothing():
+            assert True
+    ''',
     "test_not_prose.py": f'''
         from pathlib import Path
 
@@ -90,19 +131,28 @@ _PLANTED = {
     ''',
 }
 
-#: What the plugin must say about each planted test: failed at teardown, or passed.
+#: What the plugin must say about each planted test: passed, or failed at
+#: teardown with the message that names the rule it broke.
+_READS = "reads prose"
+_REASON = "needs a non-empty reason"
 _EXPECTED = {
-    "test_note_equals_tables": "error",
+    "test_note_equals_tables": ("error", _READS),
     "test_marked_note_check": "passed",
-    "test_reads_through_open": "error",
-    "test_uses_nothing_from_the_text": "error",
+    "test_reads_through_open": ("error", _READS),
+    "test_uses_nothing_from_the_text": ("error", _READS),
     "test_first_user_is_marked": "passed",
-    "test_second_user_is_not": "error",
+    "test_second_user_is_not": ("error", _READS),
+    "test_reads_for_a_named_gate": "passed",
+    "test_blank_reason": ("error", _REASON),
+    "test_no_reason": ("error", _REASON),
+    "test_params_marked[n]": "passed",
+    "test_params_unmarked[n]": ("error", _READS),
+    "test_neighbour_reads_nothing": "passed",
     "test_reads_configuration_a_record_and_a_readme": "passed",
 }
 
 
-def _outcomes(tmp_path: Path) -> dict[str, str]:
+def _outcomes(tmp_path: Path) -> dict[str, object]:
     for name, body in _PLANTED.items():
         (tmp_path / name).write_text(textwrap.dedent(body), encoding="utf-8")
     report = tmp_path / "report.xml"
@@ -114,15 +164,16 @@ def _outcomes(tmp_path: Path) -> dict[str, str]:
         cwd=tmp_path, env=env, capture_output=True, text=True, timeout=300,
     )
     assert report.is_file(), proc.stdout + proc.stderr
-    outcomes: dict[str, str] = {}
+    outcomes: dict[str, object] = {}
     for case in ET.parse(report).getroot().iter("testcase"):
         kinds = {child.tag for child in case}
-        outcomes[case.get("name")] = ("error" if "error" in kinds else
-                                      "failed" if "failure" in kinds else
-                                      "skipped" if "skipped" in kinds else "passed")
         if "error" in kinds:
             message = next(c for c in case if c.tag == "error").get("message", "")
-            assert "docs_consistency" in message and "reads prose" in message, message
+            which = [m for m in (_READS, _REASON) if m in message]
+            outcomes[case.get("name")] = ("error", which[0] if which else message)
+        else:
+            outcomes[case.get("name")] = ("failed" if "failure" in kinds else
+                                          "skipped" if "skipped" in kinds else "passed")
     return outcomes
 
 

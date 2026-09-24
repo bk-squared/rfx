@@ -1120,6 +1120,15 @@ def _predeclaration_section_7_2() -> str:
     return text.split("### 7.2", 1)[1].split("### 7.3", 1)[0]
 
 
+def test_the_realized_board_is_320_by_480_um(ref):
+    """The code's own record of the board Stage 2 builds. The next test, which
+    asks whether §7.2 still describes it, is documentation and runs in the
+    docs-consistency workflow (PI, 2026-09-22); the numbers stay here."""
+    realized = ref.RFX_REALIZED_RECORD["realized"]
+    assert round(realized["h_sub_m"] * 1e6) == 320
+    assert round(realized["w_trace_node_span_m"] * 1e6) == 480
+
+
 @pytest.mark.docs_consistency
 def test_predeclaration_7_2_describes_the_board_stage_2_actually_builds(ref):
     """#723 in documentation form: a Stage-2 number quoted against a §7.2
@@ -1131,7 +1140,6 @@ def test_predeclaration_7_2_describes_the_board_stage_2_actually_builds(ref):
     realized = ref.RFX_REALIZED_RECORD["realized"]
     h_um = round(realized["h_sub_m"] * 1e6)
     w_um = round(realized["w_trace_node_span_m"] * 1e6)
-    assert h_um == 320 and w_um == 480
     assert f"{h_um}" in sec, "§7.2 does not carry the realized substrate height"
     assert f"{w_um}" in sec, "§7.2 does not carry the realized trace width"
     # the superseded bullet must not survive verbatim

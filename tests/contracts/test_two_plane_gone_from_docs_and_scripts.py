@@ -132,7 +132,19 @@ def _rel(p: Path) -> str:
     return p.relative_to(REPO).as_posix()
 
 
-def _scan():
+#: Prose -- a page, a README, a changelog -- is checked with the other
+#: documentation, in the non-required docs-consistency workflow (PI,
+#: 2026-09-22). A script or harness that still passes the keyword raises a
+#: TypeError for whoever runs it, so code stays in the required lanes.
+PROSE_SUFFIXES = (".md", ".mdx", ".rst")
+KINDS = ("code", "prose")
+
+
+def _kind(rel: str) -> str:
+    return "prose" if rel.endswith(PROSE_SUFFIXES) else "code"
+
+
+def _scan(kind: str):
     seen = {}
     roots = [REPO / r for r in LIVE_ROOTS] + [REPO / f for f in LIVE_FILES]
     for root in roots:
@@ -141,6 +153,8 @@ def _scan():
             if not p.is_file():
                 continue
             rel = _rel(p)
+            if _kind(rel) != kind:
+                continue
             if any(rel.startswith(t + "/") for t in EXCLUDED_TREES):
                 continue
             if any(part in EXCLUDED_DIR_NAMES for part in p.parts):
@@ -159,10 +173,17 @@ def _scan():
     return seen
 
 
-@pytest.mark.docs_consistency
-def test_no_live_two_plane_outside_the_allowlist():
+def _by_kind(kinds=KINDS):
+    """One test per kind; the prose one runs in the docs-consistency workflow."""
+    return pytest.mark.parametrize("kind", [
+        pytest.param(k, marks=pytest.mark.docs_consistency) if k == "prose" else k
+        for k in kinds])
+
+
+@_by_kind()
+def test_no_live_two_plane_outside_the_allowlist(kind):
     """A live doc or script must not carry the deleted keyword."""
-    seen = _scan()
+    seen = _scan(kind)
     offenders = {k: v for k, v in seen.items()
                  if k not in ALLOWED and k not in PENDING}
     assert offenders == {}, (
@@ -174,29 +195,29 @@ def test_no_live_two_plane_outside_the_allowlist():
                     for k, v in sorted(offenders.items())))
 
 
-@pytest.mark.docs_consistency
-def test_no_allowlist_entry_is_stale():
+@_by_kind()
+def test_no_allowlist_entry_is_stale(kind):
     """An allowlist naming a file that no longer has the token hides nothing —
     but it does teach the next reader that the entry is load-bearing when it
     is not. Delete it."""
-    seen = _scan()
-    stale = [k for k in ALLOWED
-             if not (REPO / k).exists() or k not in seen]
+    seen = _scan(kind)
+    stale = [k for k in ALLOWED if _kind(k) == kind
+             and (not (REPO / k).exists() or k not in seen)]
     assert stale == [], (
         "these ALLOWED entries no longer carry `two_plane` (or the file is "
         f"gone) — delete the row: {stale}")
 
 
-@pytest.mark.docs_consistency
-def test_no_pending_entry_is_stale():
+@_by_kind()
+def test_no_pending_entry_is_stale(kind):
     """PENDING is a schedule, and it must expire on its own.
 
     When the owning group's migration lands, its file stops carrying the
     token and this test goes red naming the row to delete. Without this, a
     pending list is indistinguishable from an allowlist.
     """
-    seen = _scan()
-    done = [k for k in PENDING if k not in seen]
+    seen = _scan(kind)
+    done = [k for k in PENDING if _kind(k) == kind and k not in seen]
     assert done == [], (
         "these #931 migrations have landed — delete their PENDING rows so the "
         f"gate covers them again: {done}")
