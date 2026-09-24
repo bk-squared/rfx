@@ -588,7 +588,9 @@ def test_periodic_axes_rejected():
     sim = _sim()
     with pytest.warns(DeprecationWarning):
         sim.set_periodic_axes("x")
-    with pytest.raises(ValueError, match="does not support periodic boundary axes"):
+    # A periodic lateral axis has no absorber, so the all-six-faces absorber
+    # requirement (issue 1218) is the refusal that fires first.
+    with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
 

@@ -29,7 +29,10 @@ the four on which the shipped lane fails; it fails on the shift, not on the
 peak. The case is built by the battery's own driver, so the live board is the
 swept one, and the record lengths are asserted before the solve.
 
-Lane: slow_physics, the weekly CPU lane.
+Lane: slow_physics, the weekly CPU lane: 70 s on four pinned VESSL CPU cores
+(run 369367264656). With both coax lanes forced back to ``cpml_axes="z"``
+inside the runner call, every helper call kept, the same test fails on the
+shift, 0.0313 at 9.2 GHz (run 369367264657).
 """
 from __future__ import annotations
 
