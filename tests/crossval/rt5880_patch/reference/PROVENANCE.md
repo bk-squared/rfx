@@ -103,6 +103,21 @@ truncated. dt is read from openEMS's Nyquist line (±0.5 – 1.0 %,
 Resonance shifts: coarse → mid **+0.198 %**, mid → fine **+0.195 %**,
 coarse → fine **+0.394 %**.
 
+The "resonance" column above is the record's own estimate, the |S11| minimum.
+The case judges f0 = the Re(Zin) maximum instead (decision of 2026-09-24;
+`refined_remax` in `tests/crossval/_v2_judging.py`: the largest Re(Zin) bin in
+the record's window, the parabola vertex through it and its neighbours, R the
+parabola's value, X Im(Zin) interpolated at the vertex). Read from the same
+arrays, and pinned by the case's fast test on `stage_b_fine`:
+
+| stage | f0 (Re(Zin) maximum) | R(f0) | X(f0) |
+|---|---|---|---|
+| `stage_b_coarse` | 2.296423 GHz | 74.872 Ω | +38.021 Ω |
+| `stage_b_mid` | 2.300227 GHz | 75.453 Ω | +39.502 Ω |
+| `stage_b_fine` | 2.303804 GHz | 75.735 Ω | +42.982 Ω |
+
+f0 shifts: coarse → mid **+0.166 %**, mid → fine **+0.155 %**.
+
 The JUDGED reference is `stage_b_fine`. `stage_b_coarse` and `stage_b_mid` are
 the record's own mesh statement.
 

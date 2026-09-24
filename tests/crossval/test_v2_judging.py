@@ -27,6 +27,8 @@ from tests.crossval._v2_judging import (
     input_resistance,
     level_crossing,
     mesh_statement,
+    refined_remax,
+    remax_half_grid_witness,
 )
 
 GHZ = 1e9
@@ -210,45 +212,97 @@ def test_the_floor_is_applied_to_the_aligned_rfx_curve_not_the_unaligned_one():
     assert worst_unaligned_rfx < DEEP_NULL_DB
 
 
-# ------------------------------------------------------- input resistance
-PATCH_F = np.linspace(1.6e9, 3.4e9, 901)        # the RT5880 record's grid
+# ------------------------------------------- resonance and input resistance
+PATCH_F = np.linspace(1.6e9, 3.4e9, 901)        # the RT5880 record's grid, 2 MHz
+PATCH_BAND = (1.9325e9, 2.8987e9)               # 0.8-1.2 x its TL-model TM010
 
 
 def _zin(f, f0, r0, q, x_series):
     """A parallel resonance (R ``r0`` at ``f0``, quality ``q``) behind a series
-    reactance ``x_series``: Re(Zin) peaks at ``r0`` exactly at ``f0``."""
+    probe reactance ``x_series``: Re(Zin) peaks at ``r0`` exactly at ``f0``,
+    whatever ``x_series`` is."""
     f = np.asarray(f, float)
     return r0 / (1.0 + 1j * q * (f / f0 - f0 / f)) + 1j * x_series
 
 
-def test_the_input_resistance_is_read_at_each_curves_own_resonance():
-    """rfx's resonance 0.6 % above the reference's, the same 48.5 ohm
-    resistance there, a different series reactance (the probe).  Read at
-    each curve's own resonance the two resistances agree; rfx's read at the
-    REFERENCE's resonance is 0.6 % down its own skirt and is 11 % low."""
-    f_ref, f_our = 2.34418e9, 2.34418e9 * 1.00606
-    ref = _zin(PATCH_F, f_ref, 48.5, 30.0, 7.6)
-    ours = _zin(PATCH_F, f_our, 48.5, 30.0, 15.5)
-    c = input_resistance(PATCH_F, ref, f_ref, PATCH_F, ours, f_our)
+def _s11_dip_hz(f, zin, band=PATCH_BAND, z0=50.0):
+    s = np.abs((zin - z0) / (zin + z0))
+    k = (f >= band[0]) & (f <= band[1])
+    return float(f[k][np.argmin(s[k])])
+
+
+def test_the_re_max_does_not_move_with_the_probe_reactance():
+    """The same cavity (f0 2.303804 GHz, R 75.7 ohm, Q 12) behind two probe
+    reactances, +43 and +50.5 ohm (the two solvers' X at f0 on the RT5880
+    patch).  Re(Zin) peaks at the same f0 and height for both; the |S11|
+    minimum, computed from the same Zin against 50 ohm, sits elsewhere and
+    moves with the reactance."""
+    f0, r0, q = 2.303804e9, 75.7, 12.0
+    a = _zin(PATCH_F, f0, r0, q, 43.0)
+    b = _zin(PATCH_F, f0, r0, q, 50.5)
+    ea, eb = refined_remax(PATCH_F, a, *PATCH_BAND), refined_remax(PATCH_F, b, *PATCH_BAND)
+    dip_a, dip_b = _s11_dip_hz(PATCH_F, a), _s11_dip_hz(PATCH_F, b)
+    print(f"\n  Re-max f0 {ea['f0_hz']/1e9:.6f} / {eb['f0_hz']/1e9:.6f} GHz, R "
+          f"{ea['r_ohm']:.3f} / {eb['r_ohm']:.3f} ohm, X {ea['x_ohm']:.2f} / "
+          f"{eb['x_ohm']:.2f} ohm; |S11| minimum {dip_a/1e9:.4f} / {dip_b/1e9:.4f} GHz")
+    assert ea["flags"] == [] and eb["flags"] == []
+    assert ea["f0_hz"] == pytest.approx(f0, rel=1e-5)
+    assert eb["f0_hz"] == pytest.approx(f0, rel=1e-5)
+    assert ea["r_ohm"] == pytest.approx(r0, rel=1e-4)
+    assert eb["x_ohm"] - ea["x_ohm"] == pytest.approx(7.5, abs=0.05)
+    # the premise: the |S11| minimum is 3 % away from f0 and moves with the
+    # probe (by one 2 MHz bin here)
+    assert abs(dip_a - f0) / f0 > 0.03
+    assert dip_b - dip_a == pytest.approx(2e6)
+
+
+def test_the_re_max_is_refined_between_bins():
+    """f0 0.9 MHz from the nearest 2 MHz bin: the parabola vertex lands within
+    0.001 % of it, the bin itself 0.039 % off; the half-grid witness puts the
+    two half-density estimates well inside one fine bin of each other."""
+    f0 = 2.3031e9
+    z = _zin(PATCH_F, f0, 75.7, 12.0, 43.0)
+    e = refined_remax(PATCH_F, z, *PATCH_BAND)
+    w = remax_half_grid_witness(PATCH_F, z, *PATCH_BAND)
+    print(f"\n  bin {e['bin_f_hz']/1e9:.6f} GHz, refined {e['f0_hz']/1e9:.6f} GHz "
+          f"(shift {e['sub_bin_shift']:+.3f} bin); half grids "
+          f"{[round(v/1e9, 6) for v in w['f0_even_odd_hz']]} GHz, spread "
+          f"{w['spread_bins']:.4f} bin")
+    assert abs(e["bin_f_hz"] - f0) / f0 > 3.5e-4
+    assert abs(e["f0_hz"] - f0) / f0 < 1e-5
+    assert w["spread_bins"] < 0.1
+
+
+def test_f0_and_r_are_read_each_on_its_own_curve():
+    """rfx's resonance 0.604 % above the reference's, the same 75.7 ohm
+    resistance there, a probe reactance 7.5 ohm higher.  Each read at its own
+    Re(Zin) peak the resistances agree; rfx's Re(Zin) read at the
+    REFERENCE's f0 sits down its own resonance curve, 11.6 % low."""
+    f_ref, f_our = 2.303804e9, 2.303804e9 * 1.00604
+    ref = _zin(PATCH_F, f_ref, 75.7, 30.0, 43.0)
+    ours = _zin(PATCH_F, f_our, 75.7, 30.0, 50.5)
+    c = input_resistance(PATCH_F, ref, PATCH_F, ours, PATCH_BAND)
     wrong = float(np.interp(f_ref, PATCH_F, ours.real))
-    print(f"\n  R ref {c['r_ref_ohm']:.3f} ohm at {f_ref/1e9:.5f} GHz, R rfx "
-          f"{c['r_ours_ohm']:.3f} ohm at {f_our/1e9:.5f} GHz: {c['rel']*100:.3f} % "
-          f"(bar {c['bar']*100:.0f} %); X {c['x_ref_ohm']:.2f} / {c['x_ours_ohm']:.2f} "
-          f"ohm (reported); rfx's R read at the reference's resonance: {wrong:.3f} ohm")
+    print(f"\n  f0 {c['ref']['f0_hz']/1e9:.6f} -> {c['ours']['f0_hz']/1e9:.6f} GHz "
+          f"({c['f0_pct']:+.3f} %); R {c['r_ref_ohm']:.3f} / {c['r_ours_ohm']:.3f} ohm "
+          f"({c['rel']*100:.3f} %, bar {c['bar']*100:.0f} %); X {c['x_ref_ohm']:.2f} / "
+          f"{c['x_ours_ohm']:.2f} ohm (reported); rfx's Re(Zin) at the reference's "
+          f"f0: {wrong:.3f} ohm")
+    assert c["f0_pct"] == pytest.approx(0.604, abs=2e-3)
     assert c["rel"] < 1e-3
     assert c["passed"] is True
-    assert c["x_ours_ohm"] - c["x_ref_ohm"] == pytest.approx(7.9, abs=0.2)
-    assert abs(wrong - 48.5) / 48.5 > 0.10       # the premise of the test
+    assert c["x_ours_ohm"] - c["x_ref_ohm"] == pytest.approx(7.5, abs=0.2)
+    assert abs(wrong - 75.7) / 75.7 > 0.10       # the premise of the test
 
 
 @pytest.mark.parametrize("ratio, passed", [(1.019, True), (1.021, False),
                                            (0.981, True), (0.979, False)])
 def test_the_resistance_bar_is_two_percent(ratio, passed):
     """Same resonance, rfx's resistance ``ratio`` times the reference's."""
-    f0 = 2.34e9
-    ref = _zin(PATCH_F, f0, 48.5, 30.0, 7.6)
-    ours = _zin(PATCH_F, f0, 48.5 * ratio, 30.0, 7.6)
-    c = input_resistance(PATCH_F, ref, f0, PATCH_F, ours, f0)
+    f0 = 2.303804e9
+    ref = _zin(PATCH_F, f0, 75.7, 12.0, 43.0)
+    ours = _zin(PATCH_F, f0, 75.7 * ratio, 12.0, 43.0)
+    c = input_resistance(PATCH_F, ref, PATCH_F, ours, PATCH_BAND)
     print(f"\n  ratio {ratio}: {c['rel']*100:.3f} % against {c['bar']*100:.0f} %")
     assert RESISTANCE_BAR == 0.02
     assert c["bar"] == RESISTANCE_BAR
@@ -256,10 +310,15 @@ def test_the_resistance_bar_is_two_percent(ratio, passed):
     assert c["passed"] is passed
 
 
-def test_a_resonance_outside_the_curve_is_refused():
-    ref = _zin(PATCH_F, 2.34e9, 48.5, 30.0, 7.6)
-    with pytest.raises(ValueError, match="outside"):
-        input_resistance(PATCH_F, ref, 2.34e9, PATCH_F, ref, 3.5e9)
+def test_a_peak_on_the_window_edge_is_refused():
+    """A Re(Zin) that still rises at the window's top edge has no peak inside
+    it: the estimate is flagged, and judging it is refused."""
+    ref = _zin(PATCH_F, 2.303804e9, 75.7, 12.0, 43.0)
+    ours = _zin(PATCH_F, 3.2e9, 75.7, 12.0, 43.0)
+    e = refined_remax(PATCH_F, ours, *PATCH_BAND)
+    assert e["flags"] == ["peak on the window's edge"]
+    with pytest.raises(ValueError, match="cannot be judged"):
+        input_resistance(PATCH_F, ref, PATCH_F, ours, PATCH_BAND)
 
 
 # ---------------------------------------------------- level crossing (R-c)

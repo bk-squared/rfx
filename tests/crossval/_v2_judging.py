@@ -22,12 +22,13 @@ rfx, no solver):
   above ``DEEP_NULL_DB``.  The unaligned maximum is returned beside it, to be
   reported and not judged.  (PI 2026-09-24, rule R-b.)
 
-* :func:`input_resistance` -- the input resistance at a resonance (PI
-  2026-09-24, decision (가) for the RT5880 patch antenna): Re(Zin) read on
-  each curve at that curve's OWN resonance frequency, by linear interpolation
-  of Re(Zin) between the two bins that bracket it, and held to
-  ``RESISTANCE_BAR`` relative to the reference's.  Im(Zin) is returned beside
-  it, reported, not judged.
+* :func:`refined_remax` / :func:`input_resistance` -- a probe-fed
+  resonator's resonance and input resistance (PI 2026-09-24, decision (가) for
+  the RT5880 patch antenna; the resonance located at the Re(Zin) maximum by
+  the lane leader's decision of the same day): f0 = argmax Re(Zin) refined
+  to sub-bin, R = Re(Zin) there, each on its OWN curve with the same
+  estimator; R is held to ``RESISTANCE_BAR`` relative to the reference's.
+  Im(Zin) at f0 is returned beside it, reported, not judged.
 
 * :func:`level_crossing` -- a feature defined by where a curve crosses a level
   (a -3 dB corner, a band edge), rule R-c (PI 2026-09-24).  Its frequency
@@ -204,52 +205,104 @@ def aligned_magnitude(ref_f, ref_db, our_f, our_db, f_ref_feature, f_our_feature
     }
 
 
-def resistance_at(freqs_hz, zin, f_hz) -> float:
-    """Re(Zin) at ``f_hz``, linearly interpolated between the two bins of
-    ``freqs_hz`` that bracket it.  Refuses a frequency outside the curve."""
+def refined_remax(freqs_hz, zin, lo, hi) -> dict:
+    """A probe-fed resonator's resonance, located where Re(Zin) peaks.
+
+    Near a single cavity mode the port sees Zin ~ jX_probe + R / (1 + jQ(f/f0
+    - f0/f)): Re(Zin) peaks at f0 at the height R whatever the probe's series
+    reactance X_probe is, while the |S11| minimum moves with X_probe.  The
+    estimator: the largest Re(Zin) bin inside ``[lo, hi]`` (Hz, inclusive); the
+    vertex of the parabola through Re(Zin) at that bin and its two neighbours
+    (a linear-domain fit, the vertex of a maximum, clamped to one bin); R is
+    the parabola's value at the vertex; X is Im(Zin) linearly interpolated
+    between the two bins that bracket the vertex.  (Ported from the CST lane's
+    ``refined_remax``, 2026-09-24, not imported.)
+
+    Returns ``f0_hz``, ``r_ohm``, ``x_ohm``, ``index``, ``bin_f_hz``,
+    ``sub_bin_shift``, ``bin_width_hz``, ``r_bin_ohm`` and ``flags``: a peak on
+    the window's edge or a three-bin curvature that is not concave is returned
+    unrefined and flagged, and a flagged estimate is not to be judged.
+    """
     f = np.asarray(freqs_hz, dtype=float)
     z = np.asarray(zin, dtype=complex)
-    f_hz = float(f_hz)
-    if not (np.isfinite(f_hz) and f[0] <= f_hz <= f[-1]):
-        raise ValueError(f"{f_hz} Hz is outside the curve's {f[0]}-{f[-1]} Hz")
-    return float(np.interp(f_hz, f, z.real))
+    if f.size < 3 or np.any(np.diff(f) <= 0.0):
+        raise ValueError("the frequency axis must be strictly increasing, 3+ bins")
+    idx = np.flatnonzero((f >= lo) & (f <= hi))
+    if idx.size == 0:
+        raise ValueError(f"no bin inside {lo}-{hi} Hz")
+    zr, zi = z.real, z.imag
+    i = int(idx[np.argmax(zr[idx])])
+    h = float(f[i + 1] - f[i]) if i + 1 < f.size else float(f[i] - f[i - 1])
+    flags = []
+    d, r = 0.0, float(zr[i])
+    if i in (int(idx[0]), int(idx[-1])) or not 0 < i < f.size - 1:
+        flags.append("peak on the window's edge")
+    else:
+        y0, y1, y2 = float(zr[i - 1]), float(zr[i]), float(zr[i + 1])
+        denom = y0 - 2.0 * y1 + y2
+        if denom >= 0.0:
+            flags.append("three-bin curvature not concave")
+        else:
+            d = max(-1.0, min(1.0, 0.5 * (y0 - y2) / denom))
+            r = y1 - 0.25 * (y0 - y2) * d
+    f0 = float(f[i]) + d * h
+    if d >= 0.0 and i + 1 < f.size:
+        a, b, t = i, i + 1, d
+    elif d < 0.0 and i > 0:
+        a, b, t = i - 1, i, 1.0 + d
+    else:
+        a, b, t = i, i, 0.0
+    x = float(zi[a] + t * (zi[b] - zi[a]))
+    return {"f0_hz": f0, "r_ohm": r, "x_ohm": x, "index": i, "bin_f_hz": float(f[i]),
+            "sub_bin_shift": d, "bin_width_hz": h, "r_bin_ohm": float(zr[i]),
+            "flags": flags}
 
 
-def reactance_at(freqs_hz, zin, f_hz) -> float:
-    """Im(Zin) at ``f_hz``, interpolated as :func:`resistance_at` does."""
+def remax_half_grid_witness(freqs_hz, zin, lo, hi) -> dict:
+    """:func:`refined_remax` on the two interleaved half-density sub-grids.
+    A bin-quantised estimator would put its two answers a whole (fine) bin
+    apart or more; returns ``f0_even_odd_hz``, ``spread_hz`` and
+    ``spread_bins`` (in bins of the full grid).  Reported, not judged."""
     f = np.asarray(freqs_hz, dtype=float)
     z = np.asarray(zin, dtype=complex)
-    resistance_at(f, z, f_hz)          # the same range check
-    return float(np.interp(float(f_hz), f, z.imag))
+    out = [refined_remax(f[k::2], z[k::2], lo, hi)["f0_hz"] for k in (0, 1)]
+    spread = abs(out[0] - out[1])
+    return {"f0_even_odd_hz": out, "spread_hz": spread,
+            "spread_bins": spread / float(f[1] - f[0])}
 
 
-def input_resistance(ref_f, ref_zin, f_ref_feature, our_f, our_zin,
-                     f_our_feature, bar=None) -> dict:
-    """The input resistance at the resonance, each curve read at its OWN
-    resonance frequency (decision (가), PI 2026-09-24).
+def input_resistance(ref_f, ref_zin, our_f, our_zin, band, bar=None) -> dict:
+    """Decision (가), PI 2026-09-24: the resonance frequency f0 and the input
+    resistance R at it, each located on its OWN curve by the same estimator,
+    :func:`refined_remax`, over the same window ``band`` = ``(lo, hi)`` Hz.
 
-    ``ref_f``/``ref_zin`` and ``our_f``/``our_zin`` are the two curves (Hz,
-    complex ohms); ``f_ref_feature`` and ``f_our_feature`` each curve's own
-    resonance, found by the case with one estimator for both.  Returns
-    ``r_ref_ohm``, ``r_ours_ohm``, ``rel`` (|r_ours - r_ref| / r_ref),
-    ``bar``, ``passed`` (``rel <= bar``), and ``x_ref_ohm``, ``x_ours_ohm``
-    (the reactances there, reported, not judged)."""
+    Returns ``ref`` and ``ours`` (the two estimates), ``f0_pct`` (rfx's f0
+    relative to the reference's, signed, in percent), ``rel`` (|R_ours -
+    R_ref| / R_ref), ``bar``, ``passed`` (``rel <= bar``), and the reactances
+    ``x_ref_ohm`` / ``x_ours_ohm`` at the two f0 (reported, not judged).
+    Refuses (ValueError) an estimate the estimator flagged."""
     bar = RESISTANCE_BAR if bar is None else float(bar)
-    r_ref = resistance_at(ref_f, ref_zin, f_ref_feature)
-    r_ours = resistance_at(our_f, our_zin, f_our_feature)
-    if not r_ref > 0.0:
-        raise ValueError(f"the reference's input resistance is {r_ref} ohm")
-    rel = abs(r_ours - r_ref) / r_ref
+    lo, hi = band
+    ref = refined_remax(ref_f, ref_zin, lo, hi)
+    ours = refined_remax(our_f, our_zin, lo, hi)
+    for name, e in (("reference", ref), ("rfx", ours)):
+        if e["flags"]:
+            raise ValueError(f"the {name}'s Re(Zin) peak cannot be judged: "
+                             f"{e['flags']} at {e['bin_f_hz']/1e9:.6f} GHz")
+    if not ref["r_ohm"] > 0.0:
+        raise ValueError(f"the reference's input resistance is {ref['r_ohm']} ohm")
+    rel = abs(ours["r_ohm"] - ref["r_ohm"]) / ref["r_ohm"]
     return {
-        "f_ref_hz": float(f_ref_feature),
-        "f_ours_hz": float(f_our_feature),
-        "r_ref_ohm": r_ref,
-        "r_ours_ohm": r_ours,
+        "ref": ref,
+        "ours": ours,
+        "f0_pct": 100.0 * (ours["f0_hz"] - ref["f0_hz"]) / ref["f0_hz"],
+        "r_ref_ohm": ref["r_ohm"],
+        "r_ours_ohm": ours["r_ohm"],
         "rel": rel,
         "bar": bar,
         "passed": bool(rel <= bar),
-        "x_ref_ohm": reactance_at(ref_f, ref_zin, f_ref_feature),
-        "x_ours_ohm": reactance_at(our_f, our_zin, f_our_feature),
+        "x_ref_ohm": ref["x_ohm"],
+        "x_ours_ohm": ours["x_ohm"],
     }
 
 

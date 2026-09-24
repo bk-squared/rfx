@@ -79,17 +79,22 @@ and this case is judged by decision (가).  The shared constants are in
 threshold is derived from a run, and this case commits no record of a run.
 
 What is judged (decision (가), PI 2026-09-24): the TM010 resonance frequency
-within 1 % (``FREQ_BAR``), and the input RESISTANCE at the resonance,
-|Re Zin_rfx − Re Zin_ref| / Re Zin_ref within 2 % (``RESISTANCE_BAR``).
-Each curve's resonance is its own |S11| minimum in the record's window (the
-shared ``refined_extremum`` on log|S11|), and each curve's Zin is read at its
-own resonance, Re and Im linearly interpolated between the two bracketing
-bins — one estimator for both.  REPORTED, not judged: |S11| with the
-resonances aligned and as solved, Im(Zin), the depth and the −10 dB band
-edges.  The reason, which the test prints: neither solver declares a probe
-radius, so each solver's feed cell sets the probe's series reactance; the
-input reactance at the resonance differs, and it sets the dip's depth and
-width.
+f0 within 1 % (``FREQ_BAR``), and the input RESISTANCE there,
+|R_rfx − R_ref| / R_ref within 2 % (``RESISTANCE_BAR``).  f0 is where Re(Zin)
+peaks (the lane leader's decision of 2026-09-24, after #715's request for a
+port-independent resonant frequency): near the mode the port sees
+Zin ≈ jX_probe + R / (1 + jQ(f/f0 − f0/f)), so the Re(Zin) maximum sits at f0
+at height R whatever the probe's series reactance, while the |S11| minimum
+moves with it.  Both curves go through one estimator, ``refined_remax`` in
+``tests/crossval/_v2_judging.py``: the largest Re(Zin) bin in the record's
+window, the vertex of the parabola through it and its neighbours, R the
+parabola's value there, X Im(Zin) interpolated at the vertex; the mesh
+statement runs on the same f0 along the ladder.  REPORTED, not judged: the
+|S11| minimum's frequency and depth, X(f0), the −10 dB band edges, and |S11|
+aligned and as solved.  The reason, which the test prints: neither solver
+declares a probe radius, so each solver's feed cell sets the probe's series
+reactance; the input reactance at resonance differs, and it sets the dip's
+depth and width.
 
 How to run it
 -------------
@@ -138,6 +143,8 @@ from tests.crossval._v2_judging import (
     aligned_magnitude,
     input_resistance,
     mesh_statement,
+    refined_remax,
+    remax_half_grid_witness,
 )
 
 # ---------------------------------------------------------------- geometry
@@ -342,8 +349,10 @@ FREQS_HZ = np.linspace(SWEEP_HZ[0], SWEEP_HZ[1], N_FREQS)
 # The resonance is searched inside the record's own window
 # (``meta.resonance_band_ghz``): 0.80–1.20 × the Balanis transmission-line
 # estimate of this patch's TM010 (``meta.tl_model_tm010_hz``), which is the
-# retired script's own search window.  Estimator: the repository's shared
-# ``refined_extremum`` on log|S11|, the record's own.
+# retired script's own search window.  Two estimators run in it: the judged
+# resonance f0 is the Re(Zin) peak (``refined_remax`` in
+# tests/crossval/_v2_judging.py), and the reported |S11| minimum is the
+# repository's shared ``refined_extremum`` on log|S11|, the record's own.
 F_TM010_TL_MODEL_HZ = 2415595433.5060616
 RESONANCE_BAND_HZ = (0.80 * F_TM010_TL_MODEL_HZ, 1.20 * F_TM010_TL_MODEL_HZ)
 MINUS10_DB = -10.0
@@ -993,24 +1002,27 @@ def _stage_curve(stage: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def _compare(label: str, rung: dict, stage: dict) -> dict:
-    """The resonance distance and the input resistance at the resonance (the
-    two judged quantities, decision (가)), and the reported ones: ΔdB of
-    rfx − reference at every bin of the record where BOTH curves are above
-    the deep-null level, Im(Zin), the depth and the −10 dB band.
+    """The two judged quantities (decision (가)) and the reported ones.
 
-    The input resistance comes from ``input_resistance`` in
-    ``tests/crossval/_v2_judging.py``: each curve's Zin read at that curve's
-    own resonance (``resonance()``, one estimator for both).  The ΔdB is taken
-    twice, by ``aligned_magnitude``: on the two frequency axes as solved (the
-    two grids are the same 901 bins, so nothing is interpolated), and with
-    rfx's axis scaled by f_ref / f_rfx at the TM010 resonance so the two
-    resonances coincide (rfx's |S11| interpolated in dB onto the record's
-    bins).  Both are reported, not judged (decision (가)).
+    Judged, by ``input_resistance`` in ``tests/crossval/_v2_judging.py``: f0
+    (the Re(Zin) peak, ``refined_remax``) and R at it, each located on its own
+    curve by the same estimator over ``RESONANCE_BAND_HZ``.
+
+    Reported: the |S11| minimum's frequency and depth and the −10 dB band
+    (``resonance()``, the record's own dip rules), X(f0), and ΔdB of rfx −
+    reference at every bin of the record where BOTH curves are above the
+    deep-null level, taken twice by ``aligned_magnitude``: on the two axes as
+    solved (the two grids are the same 901 bins, so nothing is interpolated)
+    and with rfx's axis scaled by f0_ref / f0_rfx.  Rule R-b (PI 2026-09-24)
+    judges the magnitude after aligning the JUDGED feature; the judged
+    feature is f0 now, so the alignment is on f0, but R-b's 2 dB judgement
+    does not apply to this case: decision (가) reports the magnitude and
+    judges nothing on it.
 
     The deep-null exclusion is two-sided on purpose: a bin where one curve is
     in its dip and the other is not is the two dips sitting at different
-    frequencies, which the frequency bar already judges; counting it again as a
-    magnitude error would score one offset twice."""
+    frequencies; counting it as a magnitude error would score one offset
+    twice."""
     ref_f, ref_mag, ref_zin = _stage_curve(stage)
     ours_f = np.asarray(rung["freqs_hz"], dtype=float)
     assert ours_f.shape == ref_f.shape and np.allclose(ours_f, ref_f, rtol=0, atol=1.0), (
@@ -1018,20 +1030,14 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
     ref_db = _db(ref_mag)
     ref_res = resonance(ref_f, ref_mag, ref_zin)
     our_res = rung["resonance"]
+    zr = input_resistance(ref_f, ref_zin, ours_f, zin_from_s11(rung["s11"]),
+                          RESONANCE_BAND_HZ)
     m = aligned_magnitude(ref_f, ref_db, ours_f, _db(np.abs(rung["s11"])),
-                          ref_res["f"], our_res["f"], SWEEP_HZ, floor_db=DEEP_NULL_DB)
+                          zr["ref"]["f0_hz"], zr["ours"]["f0_hz"], SWEEP_HZ,
+                          floor_db=DEEP_NULL_DB)
     solved, aligned = m["unaligned"], m["aligned"]
-    zr = input_resistance(ref_f, ref_zin, ref_res["f"],
-                          ours_f, zin_from_s11(rung["s11"]), our_res["f"])
-    # One estimator: the resistance judged is the one resonance() reports.
-    assert zr["r_ref_ohm"] == pytest.approx(ref_res["zin"].real, abs=1e-9), (
-        f"reference: Re Zin {zr['r_ref_ohm']:.4f} Ω judged at {zr['f_ref_hz']/1e9:.6f} "
-        f"GHz, {ref_res['zin'].real:.4f} Ω at its resonance {ref_res['f']/1e9:.6f} GHz")
-    assert zr["r_ours_ohm"] == pytest.approx(our_res["zin"].real, abs=1e-9), (
-        f"rfx: Re Zin {zr['r_ours_ohm']:.4f} Ω judged at {zr['f_ours_hz']/1e9:.6f} "
-        f"GHz, {our_res['zin'].real:.4f} Ω at its resonance {our_res['f']/1e9:.6f} GHz")
     return dict(
-        resistance=zr,
+        resistance=zr, f0_pct=zr["f0_pct"],
         label=label, f_hz=ref_f, ref_db=ref_db, ours_db=solved["ours_db"],
         delta_db=solved["delta_db"], compared=solved["compared"],
         n_bins=int(ref_f.size), n_compared=solved["n_compared"],
@@ -1063,22 +1069,24 @@ REPORTED_REASON = (
 
 def _print_comparison(c: dict) -> None:
     r, o, z = c["ref_res"], c["our_res"], c["resistance"]
+    zo, zf = z["ours"], z["ref"]
     print(f"  --- {c['label']} ---")
-    print(f"    resonance (judged, bar {FREQ_BAR*100:.0f} %): rfx {o['f']/1e9:.5f} GHz "
-          f"vs reference {r['f']/1e9:.5f} GHz -> {c['res_pct']:+.3f} % "
-          f"(|Δ| {abs(c['res_pct']):.3f} %)")
-    print(f"    input resistance at the resonance (judged, bar "
-          f"{z['bar']*100:.0f} %): rfx Re Zin {z['r_ours_ohm']:.3f} Ω at its "
-          f"{z['f_ours_hz']/1e9:.5f} GHz vs reference {z['r_ref_ohm']:.3f} Ω at its "
-          f"{z['f_ref_hz']/1e9:.5f} GHz -> {z['rel']*100:.3f} % — each curve's Zin "
-          "read at its own |S11| minimum (refined_extremum on log|S11|), Re and "
-          "Im interpolated linearly between the bracketing bins")
+    print(f"    resonance f0 = the Re(Zin) peak (judged, bar {FREQ_BAR*100:.0f} %): "
+          f"rfx {zo['f0_hz']/1e9:.6f} GHz vs reference {zf['f0_hz']/1e9:.6f} GHz -> "
+          f"{z['f0_pct']:+.3f} % — both by refined_remax (largest Re(Zin) bin in "
+          f"{RESONANCE_BAND_HZ[0]/1e9:.4f}–{RESONANCE_BAND_HZ[1]/1e9:.4f} GHz, "
+          f"parabola vertex; sub-bin shifts {zo['sub_bin_shift']:+.3f} / "
+          f"{zf['sub_bin_shift']:+.3f})")
+    print(f"    input resistance R(f0) (judged, bar {z['bar']*100:g} %): rfx "
+          f"{z['r_ours_ohm']:.3f} Ω vs reference {z['r_ref_ohm']:.3f} Ω -> "
+          f"{100.0*(z['r_ours_ohm']-z['r_ref_ohm'])/z['r_ref_ohm']:+.3f} % "
+          f"(|Δ| {z['rel']*100:.3f} %)")
     print("    REPORTED, not judged — "
           + REPORTED_REASON.format(x_ours=z["x_ours_ohm"], x_ref=z["x_ref_ohm"]) + ":")
-    print(f"    Im Zin at the resonance (reported): rfx {z['x_ours_ohm']:+.2f} Ω vs "
-          f"{z['x_ref_ohm']:+.2f} Ω; Zin rfx {o['zin'].real:.2f}{o['zin'].imag:+.2f}j Ω "
-          f"vs {r['zin'].real:.2f}{r['zin'].imag:+.2f}j Ω")
-    print(f"    depth (reported): rfx {o['depth_db']:.2f} dB vs {r['depth_db']:.2f} dB")
+    print(f"    X(f0) (reported): rfx {z['x_ours_ohm']:+.2f} Ω vs {z['x_ref_ohm']:+.2f} Ω")
+    print(f"    |S11| minimum (reported): rfx {o['f']/1e9:.5f} GHz vs {r['f']/1e9:.5f} "
+          f"GHz -> {c['res_pct']:+.3f} %; depth rfx {o['depth_db']:.2f} dB vs "
+          f"{r['depth_db']:.2f} dB")
     print(f"    −10 dB band edges (reported): rfx {o['f_lo_10db']/1e9:.4f} – "
           f"{o['f_hi_10db']/1e9:.4f} GHz ({o['bw_10db']/1e6:.1f} MHz) vs "
           f"{r['f_lo_10db']/1e9:.4f} – {r['f_hi_10db']/1e9:.4f} GHz "
@@ -1089,7 +1097,7 @@ def _print_comparison(c: dict) -> None:
           + (f" at {c['f_hz'][c['worst_index']]/1e9:.4f} GHz"
              if c["worst_index"] >= 0 else ""))
     print(f"    |S11| aligned (reported; rfx frequency axis × {c['scale']:.6f}, so "
-          f"the resonances coincide): dB compared at {c['aligned_n_compared']} of the "
+          f"the two f0 coincide): dB compared at {c['aligned_n_compared']} of the "
           f"{c['n_bins']}; max |ΔdB| = {c['aligned_max_abs_delta_db']:.3f} dB at "
           f"{c['aligned_worst_f_ghz']:.4f} GHz")
     idx = np.arange(c["n_bins"])
@@ -1098,9 +1106,9 @@ def _print_comparison(c: dict) -> None:
     for worst in (c["worst_index"], c["aligned_worst_index"]):
         if worst >= 0:
             shown.add(worst)
-    shown.add(r["index"])
-    shown.add(o["index"])
-    print(f"    (table printed every {stride} bins, plus the two resonance bins and "
+    shown.update((r["index"], o["index"], zf["index"], zo["index"]))
+    print(f"    (table printed every {stride} bins, plus the two |S11| minimum bins, "
+          "the two Re(Zin) peak bins and "
           "the worst compared bin marked * as solved and ^ aligned, # both)")
     print("    f_GHz, ref_dB, rfx_dB, delta_dB, compared, "
           "rfx_aligned_dB, delta_aligned_dB, compared_aligned")
@@ -1143,6 +1151,9 @@ def _reference_box_run(base: dict, dx: float, rec: dict) -> dict:
           f"{DOMAIN_Z_M*1e3:.3f} mm; the absorber depth unchanged")
     other = run_rung(dx, fr)
     other_res = resonance(other["freqs_hz"], np.abs(other["s11"]), zin_from_s11(other["s11"]))
+    other_rm = refined_remax(other["freqs_hz"], zin_from_s11(other["s11"]),
+                             *RESONANCE_BAND_HZ)
+    base_rm = base["remax"]
     f = np.asarray(base["freqs_hz"], dtype=float)
     a = _db(np.abs(base["s11"]))
     b = _db(np.abs(other["s11"]))
@@ -1151,6 +1162,9 @@ def _reference_box_run(base: dict, dx: float, rec: dict) -> dict:
     worst = int(np.argmax(np.where(keep, np.abs(d), -np.inf)))
     out = {
         "dx_m": dx, "frame": fr, "s11": other["s11"],
+        "f0_hz": other_rm["f0_hz"], "r_ohm": other_rm["r_ohm"], "x_ohm": other_rm["x_ohm"],
+        "f0_shift_pct": 100.0 * (other_rm["f0_hz"] - base_rm["f0_hz"]) / base_rm["f0_hz"],
+        "r_shift_pct": 100.0 * (other_rm["r_ohm"] - base_rm["r_ohm"]) / base_rm["r_ohm"],
         "resonance_hz": other_res["f"], "depth_db": other_res["depth_db"],
         "zin": other_res["zin"], "bw_10db_hz": other_res["bw_10db"],
         "resonance_shift_pct": 100.0 * (other_res["f"] - base["resonance"]["f"])
@@ -1159,7 +1173,12 @@ def _reference_box_run(base: dict, dx: float, rec: dict) -> dict:
         "worst_f_hz": float(f[worst]), "n_cells": other["n_cells"],
         "wall_s": other["wall_s"], "settling_db": other["settling_db"],
     }
-    print(f"  resonance {other_res['f']/1e9:.6f} GHz ({other_res['depth_db']:.2f} dB, "
+    print(f"  f0 (the Re(Zin) peak) {other_rm['f0_hz']/1e9:.6f} GHz, R "
+          f"{other_rm['r_ohm']:.3f} Ω, X {other_rm['x_ohm']:+.3f} Ω in the record's box "
+          f"vs {base_rm['f0_hz']/1e9:.6f} GHz, {base_rm['r_ohm']:.3f} Ω, "
+          f"{base_rm['x_ohm']:+.3f} Ω in the ladder's: f0 {out['f0_shift_pct']:+.3f} %, "
+          f"R {out['r_shift_pct']:+.3f} %")
+    print(f"  |S11| minimum {other_res['f']/1e9:.6f} GHz ({other_res['depth_db']:.2f} dB, "
           f"−10 dB band {other_res['bw_10db']/1e6:.2f} MHz, Zin "
           f"{other_res['zin'].real:.2f}{other_res['zin'].imag:+.2f}j Ω) in the "
           f"record's box vs {base['resonance']['f']/1e9:.6f} GHz "
@@ -1199,16 +1218,23 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
     for dx in rungs:
         print(f"\n=== rung dx = {dx*1e6:.3f} µm ===")
         r = run_rung(dx)
-        r["resonance"] = res = resonance(r["freqs_hz"], np.abs(r["s11"]),
-                                         zin_from_s11(r["s11"]))
-        r["s11_db"] = _db(np.abs(r["s11"]))
-        print(f"  resonance {res['f']/1e9:.6f} GHz (bin {res['bin_f']/1e9:.5f}, "
-              f"sub-bin shift {res['sub_bin_shift']:+.3f}), depth "
-              f"{res['depth_db']:.3f} dB, −10 dB band {res['bw_10db']/1e6:.2f} MHz "
-              f"({res['f_lo_10db']/1e9:.5f} – {res['f_hi_10db']/1e9:.5f} GHz), Zin "
-              f"{res['zin'].real:.2f}{res['zin'].imag:+.2f}j Ω")
-        print("  |S11| on the record's grid — f_GHz, |S11| dB, Re Zin, Im Zin:")
         zin = zin_from_s11(r["s11"])
+        r["resonance"] = res = resonance(r["freqs_hz"], np.abs(r["s11"]), zin)
+        r["remax"] = rm = refined_remax(r["freqs_hz"], zin, *RESONANCE_BAND_HZ)
+        r["remax_half_grid"] = hg = remax_half_grid_witness(r["freqs_hz"], zin,
+                                                            *RESONANCE_BAND_HZ)
+        r["s11_db"] = _db(np.abs(r["s11"]))
+        print(f"  resonance f0 (the Re(Zin) peak) {rm['f0_hz']/1e9:.6f} GHz (bin "
+              f"{rm['bin_f_hz']/1e9:.5f}, sub-bin shift {rm['sub_bin_shift']:+.3f}), "
+              f"R {rm['r_ohm']:.3f} Ω, X {rm['x_ohm']:+.3f} Ω, flags {rm['flags']}; "
+              f"half-grid estimates {[round(v/1e9, 6) for v in hg['f0_even_odd_hz']]} GHz "
+              f"({hg['spread_bins']:.3f} bin apart, reported)")
+        print(f"  |S11| minimum (reported) {res['f']/1e9:.6f} GHz (bin "
+              f"{res['bin_f']/1e9:.5f}, sub-bin shift {res['sub_bin_shift']:+.3f}), "
+              f"depth {res['depth_db']:.3f} dB, −10 dB band {res['bw_10db']/1e6:.2f} MHz "
+              f"({res['f_lo_10db']/1e9:.5f} – {res['f_hi_10db']/1e9:.5f} GHz), Zin "
+              f"there {res['zin'].real:.2f}{res['zin'].imag:+.2f}j Ω")
+        print("  |S11| on the record's grid — f_GHz, |S11| dB, Re Zin, Im Zin:")
         for f, a, z in zip(r["freqs_hz"], r["s11_db"], zin):
             print(f"    {f/1e9:8.4f} {a:10.4f} {z.real:10.3f} {z.imag:10.3f}")
         results.append(r)
@@ -1217,11 +1243,14 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         if len(results) == 1:
             ref_box = _reference_box_run(r, dx, openems)
 
-    # ---- (a) mesh statement: the resonance must settle along the ladder ------
-    resonances = [r["resonance"]["f"] for r in results]
-    print("\n  mesh statement — resonance along the rfx ladder:")
+    # ---- (a) mesh statement: f0 (the Re(Zin) peak) must settle along the ladder
+    resonances = [r["remax"]["f0_hz"] for r in results]
+    print("\n  mesh statement — f0 (the Re(Zin) peak) along the rfx ladder; the "
+          "|S11| minimum beside it, reported:")
     for r in results:
-        print(f"    dx {r['dx_m']*1e6:8.3f} µm  {r['resonance']['f']/1e9:.6f} GHz  "
+        print(f"    dx {r['dx_m']*1e6:8.3f} µm  f0 {r['remax']['f0_hz']/1e9:.6f} GHz  "
+              f"R {r['remax']['r_ohm']:7.3f} Ω  X {r['remax']['x_ohm']:+7.3f} Ω  "
+              f"|S11| min {r['resonance']['f']/1e9:.6f} GHz "
               f"{r['resonance']['depth_db']:7.2f} dB  {r['n_cells']} cells  "
               f"{r['n_steps']} steps  {r['wall_s']:.1f} s")
     mesh_stmt = mesh_statement(resonances, [f"{r['dx_m']*1e6:.3f}µm" for r in results])
@@ -1248,15 +1277,17 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         ms = stages[name]
         f, mag, zin = _stage_curve(st)
         rr = resonance(f, mag, zin)
-        ref_res.append(rr["f"])
+        rx = refined_remax(f, zin, *RESONANCE_BAND_HZ)
+        ref_res.append(rx["f0_hz"])
         print(f"    {name:15s} factor {ms['resolution_factor']:.4f}  "
               f"{ms['mesh_realized']['substrate_z_cells_realized']} substrate cells  "
-              f"{ms['mesh_realized']['n_cells']:9d} cells  resonance "
+              f"{ms['mesh_realized']['n_cells']:9d} cells  f0 {rx['f0_hz']/1e9:.6f} GHz "
+              f"R {rx['r_ohm']:.3f} Ω X {rx['x_ohm']:+.3f} Ω;  |S11| minimum "
               f"{rr['f']/1e9:.6f} GHz  {rr['depth_db']:7.2f} dB  −10 dB band "
               f"{rr['bw_10db']/1e6:.1f} MHz  Zin {rr['zin'].real:.2f}"
               f"{rr['zin'].imag:+.2f}j Ω  end energy "
               f"{ms['solver_run']['final_energy_db']:.2f} dB")
-    print(f"    coarse -> mid {100.0*(ref_res[1]-ref_res[0])/ref_res[0]:+.3f} %, "
+    print(f"    f0 coarse -> mid {100.0*(ref_res[1]-ref_res[0])/ref_res[0]:+.3f} %, "
           f"mid -> fine {100.0*(ref_res[2]-ref_res[1])/ref_res[1]:+.3f} %")
 
     # A partial ladder shows no convergence trend, so it states no verdict: the
@@ -1283,7 +1314,9 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
     # ---- (c) the figure ----------------------------------------------------
     fig_path = _write_figure(results, openems, tmp_path, ref_box)
     print(f"\n  figure: {fig_path}")
-    print(f"  the openEMS record's box at {ref_box['dx_m']*1e6:.3f} µm: resonance "
+    print(f"  the openEMS record's box at {ref_box['dx_m']*1e6:.3f} µm: f0 "
+          f"{ref_box['f0_hz']/1e9:.6f} GHz, {ref_box['f0_shift_pct']:+.3f} %, R "
+          f"{ref_box['r_ohm']:.3f} Ω ({ref_box['r_shift_pct']:+.3f} %); |S11| minimum "
           f"{ref_box['resonance_hz']/1e9:.6f} GHz, "
           f"{ref_box['resonance_shift_pct']:+.3f} % against the ladder box at the "
           f"same cell; |S11| up to {ref_box['max_abs_delta_db']:.3f} dB apart "
@@ -1293,7 +1326,7 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
     if partial:
         pytest.skip(
             "RFX_RT5880_PATCH_RUNGS restricted the ladder to "
-            f"{[f'{d*1e6:.3f}µm' for d in rungs]}; the resonances are "
+            f"{[f'{d*1e6:.3f}µm' for d in rungs]}; f0 (the Re(Zin) peak) reads "
             f"{[f'{f/1e9:.6f} GHz' for f in resonances]}. A partial ladder shows no "
             "convergence trend, so the distances above are a diagnostic and this "
             "run states no verdict.")
@@ -1313,33 +1346,36 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         # longer taken and the comparison judges for real.
         pytest.xfail(
             "known limitation (PI 2026-09-22, 2026-09-24): the uniform mesh is "
-            f"not shown to converge — {mesh_stmt['reason']}. The finest rung "
-            f"sits {fine['res_pct']:+.3f} % from the openEMS record's "
-            f"{fine['ref_res']['f']/1e9:.5f} GHz and its input resistance there "
-            f"{fine['resistance']['rel']*100:.3f} % from the record's "
+            f"not shown to converge — {mesh_stmt['reason']}. The finest rung's f0 "
+            f"sits {fine['f0_pct']:+.3f} % from the openEMS record's "
+            f"{fine['resistance']['ref']['f0_hz']/1e9:.6f} GHz and its input "
+            f"resistance there {fine['resistance']['rel']*100:.3f} % from the record's "
             f"({fine['resistance']['r_ours_ohm']:.3f} vs "
             f"{fine['resistance']['r_ref_ohm']:.3f} Ω). The comparison above is "
             "reported, not judged.")
-    assert abs(fine["res_pct"]) < FREQ_BAR * 100.0, (
-        f"the resonance sits {fine['res_pct']:+.3f} % from the openEMS record's "
-        f"{fine['ref_res']['f']/1e9:.5f} GHz (bar {FREQ_BAR*100:.0f} %); rfx reads "
-        f"{fine['our_res']['f']/1e9:.5f} GHz on the {finest['dx_m']*1e6:.3f} µm mesh.")
-    # The input resistance at the resonance, each curve read at its own
-    # resonance (decision (가), PI 2026-09-24).
     zr = fine["resistance"]
+    assert abs(fine["f0_pct"]) < FREQ_BAR * 100.0, (
+        f"the resonance f0 (the Re(Zin) peak) sits {fine['f0_pct']:+.3f} % from the "
+        f"openEMS record's {zr['ref']['f0_hz']/1e9:.6f} GHz (bar "
+        f"{FREQ_BAR*100:.0f} %); rfx reads {zr['ours']['f0_hz']/1e9:.6f} GHz on the "
+        f"{finest['dx_m']*1e6:.3f} µm mesh.")
+    # The input resistance at f0, each curve read at its own Re(Zin) peak
+    # (decision (가), PI 2026-09-24).
     assert zr["passed"], (
-        f"the input resistance at the resonance differs by {zr['rel']*100:.3f} % "
-        f"(bar {zr['bar']*100:g} %): rfx Re Zin {zr['r_ours_ohm']:.3f} Ω at "
-        f"{zr['f_ours_hz']/1e9:.5f} GHz vs the openEMS record's "
-        f"{zr['r_ref_ohm']:.3f} Ω at {zr['f_ref_hz']/1e9:.5f} GHz, each read at its "
-        "own |S11| minimum.")
+        f"the input resistance at f0 differs by {zr['rel']*100:.3f} % "
+        f"(bar {zr['bar']*100:g} %): rfx R {zr['r_ours_ohm']:.3f} Ω at "
+        f"{zr['ours']['f0_hz']/1e9:.6f} GHz vs the openEMS record's "
+        f"{zr['r_ref_ohm']:.3f} Ω at {zr['ref']['f0_hz']/1e9:.6f} GHz, each at its "
+        "own Re(Zin) peak.")
     reason = REPORTED_REASON.format(x_ours=zr["x_ours_ohm"], x_ref=zr["x_ref_ohm"])
-    print(f"\n  judged: resonance {fine['res_pct']:+.3f} % from the openEMS record "
-          f"(bar {FREQ_BAR*100:.0f} %); input resistance at the resonance "
-          f"{zr['r_ours_ohm']:.3f} vs {zr['r_ref_ohm']:.3f} Ω, {zr['rel']*100:.3f} % "
+    print(f"\n  judged: f0 (the Re(Zin) peak) {fine['f0_pct']:+.3f} % from the openEMS "
+          f"record (bar {FREQ_BAR*100:.0f} %); R(f0) {zr['r_ours_ohm']:.3f} vs "
+          f"{zr['r_ref_ohm']:.3f} Ω, {zr['rel']*100:.3f} % "
           f"(bar {RESISTANCE_BAR*100:.0f} %)")
-    print(f"  reported, not judged — {reason}: Im Zin {zr['x_ours_ohm']:+.2f} vs "
-          f"{zr['x_ref_ohm']:+.2f} Ω; depth {fine['our_res']['depth_db']:.2f} vs "
+    print(f"  reported, not judged — {reason}: X(f0) {zr['x_ours_ohm']:+.2f} vs "
+          f"{zr['x_ref_ohm']:+.2f} Ω; |S11| minimum {fine['res_pct']:+.3f} % "
+          f"({fine['our_res']['f']/1e9:.5f} vs {fine['ref_res']['f']/1e9:.5f} GHz), "
+          f"depth {fine['our_res']['depth_db']:.2f} vs "
           f"{fine['ref_res']['depth_db']:.2f} dB; −10 dB band "
           f"{fine['our_res']['f_lo_10db']/1e9:.4f}–{fine['our_res']['f_hi_10db']/1e9:.4f}"
           f" vs {fine['ref_res']['f_lo_10db']/1e9:.4f}–"
@@ -1683,6 +1719,18 @@ def test_the_reference_file_is_what_the_provenance_says():
                                                abs=1e3)
         assert got["zin"].real == pytest.approx(want["zin_at_refined_ohm"]["re"], abs=1e-6)
         assert got["zin"].imag == pytest.approx(want["zin_at_refined_ohm"]["im"], abs=1e-6)
+        # f0 and R by the judged estimator, the Re(Zin) peak, on the record's
+        # own arrays.
+        rx = refined_remax(f, zin, *RESONANCE_BAND_HZ)
+        print(f"  openEMS {n}: f0 (the Re(Zin) peak) {rx['f0_hz']/1e9:.6f} GHz, R "
+              f"{rx['r_ohm']:.3f} Ω, X {rx['x_ohm']:+.3f} Ω, flags {rx['flags']}")
+        assert rx["flags"] == []
+        if n == OPENEMS_JUDGED_STAGE:
+            # Frozen values the case's two judged quantities are held against
+            # (the lane leader's check of 2026-09-24 read the same numbers).
+            assert rx["f0_hz"] == pytest.approx(2.303804e9, abs=1e3)
+            assert rx["r_ohm"] == pytest.approx(75.735, abs=1e-3)
+            assert rx["x_ohm"] == pytest.approx(42.98, abs=1e-2)
         f_frozen, depth_frozen, bw_frozen = frozen[n]
         assert want["refined_f_ghz"] == pytest.approx(f_frozen, abs=1e-12)
         assert want["depth_db"] == pytest.approx(depth_frozen, abs=1e-9)
