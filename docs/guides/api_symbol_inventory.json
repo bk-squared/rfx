@@ -2782,7 +2782,8 @@
       "exchange_interval",
       "skip_preflight",
       "report_every",
-      "report_label"
+      "report_label",
+      "ringdown"
     ],
     "s_matrix_lane": [
       "lane"
