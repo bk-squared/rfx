@@ -1268,6 +1268,15 @@ def plan_openems_projection(
             "translation. The far-field would then be computed on a different "
             "surface than the design specifies",
         )
+    if observables.get("current_moments") is not None:   # optional key
+        raise _refuse(
+            "add_current_moment_monitor(...)",
+            "openEMS has no counterpart: the monitor reduces rfx's own Yee-edge "
+            "current to per-block moments inside the time loop, and no openEMS "
+            "dump or post-processing in this repository computes them. "
+            "Dropping it would silently produce a script that does not measure "
+            "what was asked for",
+        )
 
     materials = _plan_materials(document)
     geometry, port_priority, _metal_base = _plan_geometry(document, materials)

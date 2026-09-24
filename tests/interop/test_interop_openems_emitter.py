@@ -764,6 +764,18 @@ def test_refuses_thin_conductor_and_observables():
         emit_openems_script(doc)
 
 
+def test_refuses_the_current_moment_monitor():
+    """openEMS computes nothing like the in-loop block current moments, so a
+    design that declares them is refused by name, not emitted without them;
+    the same design without the monitor emits."""
+    sim = _cavity()
+    emit_openems_script(design_to_dict(sim), freqs_hz=_CAVITY_FREQS)
+    sim.add_current_moment_monitor((0.005, 0.005, 0.005), (0.025, 0.015, 0.010),
+                                   block_size=5e-3, freqs=[1.0e9])
+    with _refuses("add_current_moment_monitor"):
+        emit_openems_script(design_to_dict(sim), freqs_hz=_CAVITY_FREQS)
+
+
 def test_refuses_dispersive_and_magnetic_materials():
     for key, value, pattern in (
         ("debye_poles", [{"delta_eps": 1.0, "tau": 1e-12}], "Debye poles"),

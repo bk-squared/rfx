@@ -411,7 +411,7 @@ def _current_moment_monitor_design() -> Simulation:
                    amplitude_kind="current")
     sim.add_current_moment_monitor(
         (0.006, 0.006, 0.010), (0.018, 0.018, 0.014), block_size=4e-3,
-        freqs=[6e9, 8e9], margin_cells=(2, 1, 0), off_cells=2)
+        freqs=[5e9, 7e9], margin_cells=(2, 1, 0), off_cells=2)
     return sim
 
 

@@ -805,23 +805,24 @@ def test_block_far_field_expansion_against_a_direct_sum():
 
 
 # The strip dipole below, against the face-centre NTFF box on the same run
-# (CPU, JAX 0.6.2, 1 mm cells, 4 mm blocks, order 2). The comparison reads
-# only what a common time origin cannot change: the two routes stamp their
-# fields at times whose offset has not been established, so a complex
-# distance would mix a per-frequency phase into the verdict. Measured at
-# 6 / 8 / 10 GHz: the largest difference of the two patterns, each in dB below
-# its own peak, over the directions where the box's pattern is within 20 dB of
-# its peak, 0.0061 / 0.0128 / 0.0278 dB; directivity 0.0008 / 0.0035 / 0.0092
-# dB apart; radiated power 0.0025 / 0.0064 / 0.0148 dB apart. The differences
-# grow with frequency and the complex distance does not move when the blocks
-# shrink to 2 mm, i.e. they are not the block expansion. Bars: twice the
-# worst measured value of each. P alone (order 0) on the same accumulator
-# reads 0.105 / 0.174 / 0.272 dB on the pattern and must stay above the
-# pattern bar at every frequency.
+# (CPU, JAX 0.6.2, 1 mm cells, 2 mm blocks through the 4 mm slab, k*|delta|
+# 0.28 / 0.38 / 0.48, order 2). The comparison reads only what a common time
+# origin cannot change: the two routes stamp their fields at times whose
+# offset has not been established, so a complex distance would mix a
+# per-frequency phase into the verdict. Measured at 6 / 8 / 10 GHz: the
+# largest difference of the two patterns, each in dB below its own peak, over
+# the directions where the box's pattern is within 20 dB of its peak,
+# 0.0054 / 0.0103 / 0.0221 dB; directivity 0.0006 / 0.0031 / 0.0082 dB apart;
+# radiated power 0.0026 / 0.0068 / 0.0158 dB apart. With 4 mm blocks
+# (k*|delta| up to 0.67, now refused) the same run read 0.0061 / 0.0128 /
+# 0.0278 dB on the pattern. Bars: twice the worst measured value of each,
+# rounded up to two digits. P alone (order 0) on the same accumulator reads
+# 0.107 / 0.211 / 0.369 dB on the pattern and must stay above the pattern bar
+# at every frequency.
 DIPOLE_SHAPE_FLOOR_DB = -20.0
-DIPOLE_SHAPE_BAR_DB = 0.06
-DIPOLE_DIRECTIVITY_BAR_DB = 0.02
-DIPOLE_POWER_BAR_DB = 0.03
+DIPOLE_SHAPE_BAR_DB = 0.045
+DIPOLE_DIRECTIVITY_BAR_DB = 0.017
+DIPOLE_POWER_BAR_DB = 0.032
 DIPOLE_FREQS = np.array([6e9, 8e9, 10e9])
 
 
@@ -845,9 +846,9 @@ def _strip_dipole_run():
     sim.add_ntff_box((4e-3, 4e-3, 4e-3), (lx - 4e-3, ly - 4e-3, lz - 4e-3),
                      freqs=DIPOLE_FREQS)
     sim.add_current_moment_monitor(
-        (xc - L / 2 - 2e-3, yc - 2e-3, zc - 2e-3),
+        (xc - L / 2 - 2e-3, yc - 1e-3, zc - 2e-3),
         (xc + L / 2 + 2e-3, yc + 3e-3, zc + 2e-3),
-        block_size=4e-3, freqs=DIPOLE_FREQS)
+        block_size=2e-3, freqs=DIPOLE_FREQS)
     return sim.run(n_steps=1200, skip_preflight=True)
 
 
@@ -911,7 +912,7 @@ def test_far_field_refuses_a_result_without_moments():
 # 5. The gradient through the monitor
 # ---------------------------------------------------------------------------
 
-GRAD_FREQS = np.array([8e9, 1.0e10])
+GRAD_FREQS = np.array([4e9, 5e9])     # k*|delta| 0.39 / 0.49
 GRAD_N_STEPS = 220
 
 
@@ -950,11 +951,11 @@ def test_gradient_through_the_monitor_matches_a_central_difference():
     The power radiated into two directions at two frequencies, as a function
     of the permittivity of a small block beside the source, differentiated
     under ``jax.jit`` (the way ``optimize(jit=True)`` compiles a step).
-    Measured (CPU, at eps_r = 2): the AD gradient and the central difference
-    agree to 1.2e-9 relative at a step of 1e-4, 1.2e-7 at 1e-3 and 1.2e-5 at
-    1e-2 — the difference falls as the square of the step, so it is the
-    difference quotient's own truncation. The jitted value is the plain
-    call's.
+    Measured (CPU, at eps_r = 2, 4 / 5 GHz): the AD gradient and the central
+    difference agree to 1.4e-9 relative at a step of 1e-4, 1.4e-7 at 1e-3 and
+    1.4e-5 at 1e-2 — the difference falls as the square of the step, so it is
+    the difference quotient's own truncation. The jitted value is the plain
+    call's (2.3e-16 relative).
     """
     with enable_x64():
         objective = _grad_problem()
@@ -1026,7 +1027,7 @@ def test_nonuniform_lane_matches_the_uniform_lane():
 # 7. Through the public API: a port, a substrate, both lanes
 # ---------------------------------------------------------------------------
 
-API_FREQS = np.array([6e9, 9e9])
+API_FREQS = np.array([5e9, 7e9])      # k*|delta| up to 0.47 / 0.49
 
 
 def _api_board(lane):
@@ -1137,7 +1138,7 @@ def _ringdown_box(lane):
                  waveform=GaussianPulse(f0=13.0e9, bandwidth=0.8, cutoff=4.5))
     sim.add_current_moment_monitor(
         (1 * mm, 1 * mm, 1 * mm), (11 * mm, 11 * mm, 6 * mm),
-        block_size=2 * mm, freqs=np.array([10e9, 12.4e9, 14e9]))
+        block_size=2 * mm, freqs=np.array([6e9, 8e9]))   # k*|delta| <= 0.49
     return sim
 
 
@@ -1517,10 +1518,10 @@ def test_declaration_accepts_order_two_only(order):
 
 
 # The Simulation-level models below test refusals, lanes and weight dtypes,
-# not patterns, so their frequency list does not weaken them. It is 3 and
-# 5 GHz so that their 6 mm blocks through a 12 mm slab (k*|delta| 1.46 at
-# 10 GHz) stay inside the block-extent bound (0.73 at 5 GHz).
-GUARD_FREQS = np.array([3e9, 5e9])
+# not patterns, so their frequency list does not weaken them. It is 2 and
+# 3 GHz so that their 6 mm blocks through a 12 mm slab (k*|delta| 1.46 at
+# 10 GHz) stay inside the block-extent bound (0.44 at 3 GHz).
+GUARD_FREQS = np.array([2e9, 3e9])
 
 
 # The model the guard tests below vary: 2 mm cells, a 24 mm cube of vacuum
@@ -1651,40 +1652,118 @@ def test_refuses_a_design_box_outside_the_slab():
         jax.grad(f)(2.0)
 
 
-# The block-extent bound (rfx.current_moments.MAX_K_OFFSET = 1.0): k at the
+# The block-extent bound (rfx.current_moments.MAX_K_OFFSET = 0.5): k at the
 # highest monitored frequency times the largest distance from a block's centre
-# to an edge in it, slab thickness included, must not exceed 1.0. The
-# second-order expansion drops terms of order (k|delta|)^3/6.
+# to an edge in it, slab thickness included, must not exceed 0.5. The
+# expansion is second order; a board sets the bound because in each block
+# column the patch current and its ground return nearly cancel in total moment
+# P, so the board radiates through the first moment Q and the dropped term is
+# second order in k|delta| relative to what radiates (third order for a dipole
+# or wire, where P dominates).
 #
-# Ladder the bound comes from: 1 mm cells, 6 / 8 / 10 GHz, 3000 steps; the
-# block pattern against the NTFF box on the same run. Structures: x strip
-# dipole 14 mm (1-14 mm blocks), x wire 8+20 mm (1-12 mm), z dipoles 6 / 10 /
-# 14 / 20 mm (2-4 mm), z wires 4+10 and 8+20 mm (4 mm). "shape" is the largest
-# dB difference of the two patterns, each normalized to its own peak, within
-# 20 dB of the box's peak; dD directivity, dP radiated power. 54 points:
+# "shape" is the largest dB difference of two patterns, each normalized to its
+# own peak, within 20 dB of the reference's peak; dD directivity.
 #
-#   k|delta|    points  shape max dB (where)          |dD| max  |dP| max  >0.2 dB
-#   0.26-0.47     11    0.114 (x wire, 1 mm blocks)     0.015     0.023     0
-#   0.53-0.74     10    0.115 (x wire, 4 mm blocks)     0.017     0.022     0
-#   0.84-0.98      8    0.185 (x dipole, 10 mm blocks)  0.016     0.019     0
-#   1.06-1.25      9    0.420 (x dipole, 10 mm, 1.23)   0.030     0.023     1
-#   1.27-1.41      2    0.903 (x wire, 12 mm, 1.41)     0.087     0.104     2
-#   1.52-1.96      9    0.537 (x dipole, 14 mm, 1.59)   0.036     0.038     4
-#   2.04-3.39      5    6.670 (z wire 8+20, 3.39)       0.351     2.087     5
-#   0.21-0.30     13    0.134 (tutorial patch, 2 mm     0.011     0.023     0
-#                              cells, 8 mm blocks, 2.0-2.8 GHz, RTX 3090)
+# Tutorial patch (examples/tutorials/patch_antenna_demo.py), 2 mm cells,
+# 2.0 / 2.4 / 2.8 / 3.4 / 4.0 GHz: one run with one-cell blocks, coarser
+# blocks (4-28 mm) built exactly from those moments by the parallel-axis
+# shift, shape against the one-cell pattern (the one-cell pattern itself is
+# 0.03-0.15 dB off the NTFF box):
 #
-# Every point at or below 1.0 is within 0.19 dB in shape; the first point
-# above 0.2 dB is at 1.23. Dropped: the same wires in a 46 mm domain, whose
-# far end lay outside the NTFF box, so the box itself missed current. The
-# tutorial patch at 1 mm (k|delta| 0.32 at 13 frequencies, 0.46 at 50) is
-# accepted; its pattern was not compared at 1 mm.
+#   k|delta|    points  shape max dB (where)          |dD| max  >0.2 dB
+#   0.10-0.21      6    0.021 (8 mm, 2.0 GHz)           0.003     0
+#   0.26-0.46      8    0.162 (12 mm, 2.8 GHz)          0.019     0
+#   0.54-0.68      7    0.308 (16 mm, 2.8 GHz; 0.203    0.042     4
+#                       at 0.54)
+#   0.76-0.96      8    0.715 (28 mm, 2.4 GHz)          0.088     5
+#   1.12-1.60      6    1.955 (28 mm, 4.0 GHz)          0.189     6
+#
+# One block against the direct sum of its current (the test below repeats
+# the first two rows):
+#
+#   current in the block                         k|delta| 0.5   0.7    1.0
+#   a sheet over its opposite, 1/12 of the side  0.187          0.368  0.748
+#   a square loop (P = 0)                        0.180          0.354  0.726
+#   a uniform sheet (P dominates)                0.002          0.007  0.029
+#
+# Strip dipoles and wires, 1 mm cells, 6 / 8 / 10 GHz, 3000 steps, against
+# the NTFF box on the same run (x dipole 14 mm, 1-14 mm blocks; x wire 8+20
+# mm, 1-12 mm; z dipoles 6-20 mm and z wires 4+10 / 8+20 mm, 2-4 mm):
+#
+#   k|delta|    points  shape max dB (where)          |dD| max  |dP| max
+#   0.26-0.47     11    0.114 (x wire, 1 mm blocks)     0.015     0.023
+#   0.53-0.74     10    0.115 (x wire, 4 mm blocks)     0.017     0.022
+#   0.84-0.98      8    0.185 (x dipole, 10 mm blocks)  0.016     0.019
+#   1.06-1.25      9    0.420 (x dipole, 10 mm, 1.23)   0.030     0.023
+#   1.27-1.96     11    0.903 (x wire, 12 mm, 1.41)     0.087     0.104
+#   2.04-3.39      5    6.670 (z wire 8+20, 3.39)       0.351     2.087
+#
+# Dropped from that ladder: the same wires in a 46 mm domain, whose far end
+# lay outside the NTFF box, so the box itself missed current. The tutorial
+# patch at 1 mm, 8 mm blocks, 50 frequencies to 4 GHz (k|delta| 0.46) stays
+# accepted.
+
+
+def _block_vs_direct_sum(pos, current, k_offset):
+    """Shape dB of one block's second-order pattern against the direct sum of
+    its point currents, with k chosen so that k * |delta|max = k_offset."""
+    from rfx import radiation_pattern
+    from rfx.farfield import FarFieldResult
+    th = np.linspace(0.0, np.pi, 61)
+    ph = np.linspace(0.0, 2.0 * np.pi, 48, endpoint=False)
+    centre = pos.mean(axis=0)
+    d = pos - centre
+    k = k_offset / float(np.sqrt((d ** 2).sum(axis=1)).max())
+    st, ct, sp, cp = np.sin(th)[:, None], np.cos(th)[:, None], np.sin(ph), np.cos(ph)
+    one = np.ones_like(st * cp)
+    r_hat = np.stack([st * cp, st * sp, ct * one], -1).reshape(-1, 3)
+    t_hat = np.stack([ct * cp, ct * sp, -st * one], -1).reshape(-1, 3)
+    p_hat = np.stack([-sp * one, cp * one, 0.0 * one], -1).reshape(-1, 3)
+    n_vec = np.exp(1j * k * (r_hat @ pos.T)) @ current
+    ref = FarFieldResult(E_theta=(n_vec * t_hat).sum(1).reshape(1, th.size, ph.size),
+                         E_phi=(n_vec * p_hat).sum(1).reshape(1, th.size, ph.size),
+                         theta=th, phi=ph, freqs=np.array([1.0]))
+    P = current.sum(0)
+    Q = np.einsum("na,nb->ab", d, current)
+    T = np.einsum("na,nb,nc->abc", d, d, current)
+    a, b = block_far_field_np(th, ph, centre[None], P[None], Q[None], T[None], k, 2)
+    got = ref._replace(E_theta=np.asarray(a)[None], E_phi=np.asarray(b)[None])
+    ra, rb = radiation_pattern(got)[0], radiation_pattern(ref)[0]
+    return float(np.max(np.abs(ra - rb)[rb >= -20.0]))
+
+
+def test_the_block_extent_bound_holds_where_the_total_moment_cancels():
+    """At k*|delta| = MAX_K_OFFSET, a block whose total moment cancels (a
+    current sheet over its opposite, as a patch column over its ground; a
+    loop) still reads within 0.2 dB of its direct sum. Measured: 0.187 and
+    0.180 dB at 0.5; 0.748 and 0.726 dB at 1.0."""
+    from rfx.current_moments import MAX_K_OFFSET
+    g = np.linspace(-0.5, 0.5, 41)[:-1] + 1.0 / 80.0
+    X, Y = (v.ravel() for v in np.meshgrid(g, g, indexing="ij"))
+    h = 1.0 / 12.0
+    pair = np.concatenate([np.stack([X, Y, np.full(X.size, h / 2)], 1),
+                           np.stack([X, Y, np.full(X.size, -h / 2)], 1)])
+    pair_j = np.zeros(pair.shape, complex)
+    pair_j[:X.size, 0], pair_j[X.size:, 0] = 1.0, -1.0
+    s = np.linspace(-0.5, 0.5, 200)
+    z = 0.0 * s
+    sides = [(np.c_[s, z - 0.5, z], (1, 0, 0)), (np.c_[z + 0.5, s, z], (0, 1, 0)),
+             (np.c_[-s, z + 0.5, z], (-1, 0, 0)), (np.c_[z - 0.5, -s, z], (0, -1, 0))]
+    loop = np.concatenate([p for p, _ in sides])
+    loop_j = np.concatenate([np.tile(v, (s.size, 1)) for _, v in sides]).astype(complex)
+    for pos, cur in ((pair, pair_j), (loop, loop_j)):
+        assert _block_vs_direct_sum(pos, cur, MAX_K_OFFSET) <= 0.2
+        # the same block at twice the bound is well past it
+        assert _block_vs_direct_sum(pos, cur, 2.0 * MAX_K_OFFSET) > 0.5
+
 
 def test_refuses_blocks_too_large_for_the_frequency():
-    """The 12 mm slab of the guard model is one 6 mm-block-wide column 12 mm
-    thick: k*|delta| = 1.46 at 10 GHz is refused, 0.73 at 5 GHz is not."""
+    """The guard model's slab is 6 mm blocks through 12 mm of thickness:
+    k*|delta| = 1.46 at 10 GHz and 0.73 at 5 GHz are refused, 0.44 at 3 GHz
+    is not."""
     from rfx import Simulation
-    for freqs, refused in ((FREQS, True), (GUARD_FREQS, False)):
+    for freqs, refused in ((FREQS, True), (np.array([5e9]), True),
+                           (GUARD_FREQS, False)):
         sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
                          cpml_layers=6, boundary="cpml")
         sim.add_source((1.2e-2,) * 3, "ez", amplitude_kind="current")

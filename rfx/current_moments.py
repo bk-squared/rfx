@@ -1028,14 +1028,16 @@ def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None):
 
 #: The largest k * |delta| the block expansion is trusted at: k at the highest
 #: monitored frequency, |delta| the largest distance from a block's centre to
-#: an edge in it (slab thickness included). The expansion drops terms of order
-#: (k |delta|)^3 / 6. Measured against the NTFF box on the same run (strip
-#: dipoles and wires along x and z, 1 mm cells, 1-14 mm blocks, 6-10 GHz):
-#: every point at or below 1.0 is within 0.19 dB in pattern shape; the first
-#: points above 0.2 dB are at 1.23 and 1.27, and a 28 mm wire along z reads
-#: 0.9 / 3.9 / 6.7 dB at 2.0 / 2.7 / 3.4 (tests/unit/farfield/
-#: test_current_moment_monitor.py carries the table).
-MAX_K_OFFSET = 1.0
+#: an edge in it (slab thickness included). On a board each block column holds
+#: a current and its return just below it, their total moments cancel, and
+#: what radiates is the first moment, so the dropped term is second order in
+#: k|delta| relative to it, not third. Pattern shape measured on the tutorial
+#: patch (2 mm cells; coarse blocks built from the one-cell moments of the same
+#: run, against the one-cell pattern) and on a current sheet over its opposite
+#: (against the direct sum): at most 0.19 dB at k|delta| <= 0.5, 0.4 dB at 0.8,
+#: 0.7 dB at 1.0 (tests/unit/farfield/test_current_moment_monitor.py carries
+#: the table).
+MAX_K_OFFSET = 0.5
 
 
 def refuse_blocks_too_large(monitor, freqs) -> None:
