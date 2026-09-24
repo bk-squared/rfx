@@ -11,9 +11,16 @@ stamped, so its Cb lacked sigma_port and the edges received
 ``1 + sigma_port*dt/(2*eps)`` times the declared current -- 2.911 at this
 board's Courant step. The factor carries dt, so the absolute field per unit
 drive changed with the time step (x0.850 for a step 0.772 times shorter), and
-it carries the dual cell sizes at the feed through sigma_port. S-parameters
-are ratios of two responses to the same drive and did not move (S11 at 4 GHz
-changed by 1e-4 between the two steps before and after the fix).
+it carries the dual cell sizes at the feed through sigma_port. On this board
+all three port cells see the same factor, so S11 -- a ratio of two responses
+to the same drive -- did not move (4 GHz S11 changed by 1e-4 between the two
+steps, before and after the fix). When the port's cells see DIFFERENT
+factors the drive is also mis-shaped along the wire and S-parameters move:
+a layered substrate or graded cells under the port, or a lumped R/C across
+one of the port's edges, whose fold into Cb the drive also lacked (0.3 pF on
+the middle edge here: |S11| read +0.143 dB at 2 GHz on the graded lane, a
+passive board reflecting more than it receives, against -0.005 dB on the
+uniform lane).
 
 What is checked, at 4 GHz, below the patch resonance:
 
@@ -28,8 +35,11 @@ What is checked, at 4 GHz, below the patch resonance:
    materials with the port's own stamp removed -- sends both red, by the
    factor the closed form predicts;
 4. a build-time check on every port kind the graded lane drives (wire,
-   single-cell lumped, MSL feed): the Cb each drive is built from equals the
-   Cb the stepper applies on that edge. It needs no time stepping.
+   single-cell lumped, MSL feed, and a wire or lumped port with a lumped
+   capacitor across its edge): the Cb each drive is built from equals the
+   Cb the stepper applies on that edge. It needs no time stepping;
+5. end to end, a 0.3 pF capacitor across the middle edge of the wire port:
+   the two lanes agree on |S11| at 2 and 4 GHz within 1e-4.
 
 The two lanes read a port waveform in different units, and (1) converts
 between them. The uniform lane adds ``Cb * w / (n * d_par)`` per step per live
@@ -91,7 +101,12 @@ def _drive_factor(dt):
     return 1.0 + SIGMA_PORT * dt / (2.0 * EPS_R * EPS_0)
 
 
-def _board(*, graded, dt=None, port="wire"):
+#: The port edge a lumped capacitor is put across: the wire port's middle
+#: Ez edge, and the single-cell lumped port's own edge.
+RLC_POS = (I_PORT * DX, J_PORT * DX, Z_G + DX)
+
+
+def _board(*, graded, dt=None, port="wire", cap=None):
     kw = {}
     if graded:
         # A uniform-VALUED profile: the graded lane on the same cells.
@@ -126,6 +141,8 @@ def _board(*, graded, dt=None, port="wire"):
                          waveform=pulse)
     else:
         raise ValueError(port)
+    if cap is not None:
+        sim.add_lumped_rlc(RLC_POS, "ez", C=float(cap), topology="parallel")
     sim.add_probe(PROBE, "ez")
     return sim
 
@@ -141,14 +158,30 @@ def _strip_lumped_sigma(materials):
                               sigma_lumped=None)
 
 
-def _unstamped_drive():
+def _strip_lumped_eps(materials):
+    """The materials without any lumped permittivity stamp -- a capacitor's
+    fold. On the boards here the only one is the capacitor across the port
+    edge, so this is the drive the runner built before the RLC fold reached
+    it (port conductance kept)."""
+    lumped = getattr(materials, "eps_r_lumped", None)
+    if lumped is None:
+        return materials
+    return materials._replace(eps_r=materials.eps_r - lumped,
+                              eps_r_lumped=None)
+
+
+_STRIP = {"sigma": _strip_lumped_sigma, "eps": _strip_lumped_eps}
+
+
+def _unstamped_drive(strip="sigma"):
     """Mutation (b): the runner still calls ``make_current_source`` exactly
-    as it does; only the materials it hands over lose the port's own load."""
+    as it does; only the materials it hands over lose the port's own load
+    (``strip="sigma"``) or the capacitor's fold (``strip="eps"``)."""
     real = _nu_runner.make_current_source
+    _cut = _STRIP[strip]
 
     def _pre_fix(grid, ijk, comp, wf, n, materials, *a, **kw):
-        return real(grid, ijk, comp, wf, n, _strip_lumped_sigma(materials),
-                    *a, **kw)
+        return real(grid, ijk, comp, wf, n, _cut(materials), *a, **kw)
 
     return mock.patch.object(_nu_runner, "make_current_source", _pre_fix)
 
@@ -272,14 +305,15 @@ class _Built(Exception):
     pass
 
 
-def _drive_and_stepper_materials(sim, *, strip=False):
+def _drive_and_stepper_materials(sim, *, strip=None):
     """Build the graded run up to the scan and return
     ``[(cell, component, drive materials)], stepper materials, dt``.
 
     The recorder sits between the runner and each real drive builder and
     records what the builder RECEIVES. ``strip=True`` is mutation (b): the
     materials lose their lumped stamps on the way in -- the pre-fix drive --
-    and every call is kept.
+    and every call is kept. ``strip`` names which stamps: "sigma" (the
+    port's own load) or "eps" (a capacitor's fold).
     """
     handed = []
     import rfx.sources.msl_port as _msl
@@ -287,7 +321,7 @@ def _drive_and_stepper_materials(sim, *, strip=False):
     real_msl = _msl.make_msl_port_sources
 
     def _in(materials):
-        return _strip_lumped_sigma(materials) if strip else materials
+        return _STRIP[strip](materials) if strip else materials
 
     def _cs(grid, ijk, comp, wf, n, materials, *a, **kw):
         m = _in(materials)
@@ -316,10 +350,30 @@ def _drive_and_stepper_materials(sim, *, strip=False):
     return handed, stepped["materials"], stepped["dt"]
 
 
-def _worst_cb_mismatch(port, *, strip=False):
+#: port kind -> (board port, capacitor across the port edge, what mutation
+#: (b) strips from the drive). 1 pF is large enough that a drive without the
+#: fold is off by an order of magnitude.
+_BUILD_CASES = {
+    "wire": ("wire", None, "sigma"),
+    "lumped": ("lumped", None, "sigma"),
+    "msl": ("msl", None, "sigma"),
+    "wire+C": ("wire", 1e-12, "eps"),
+    "lumped+C": ("lumped", 1e-12, "eps"),
+}
+
+
+def _worst_cb_mismatch(case, *, mutated=False):
+    port, cap, strip = _BUILD_CASES[case]
     handed, stepper, dt = _drive_and_stepper_materials(
-        _board(graded=True, port=port), strip=strip)
-    assert handed, f"no drive was built for the {port} port"
+        _board(graded=True, port=port, cap=cap),
+        strip=strip if mutated else None)
+    assert handed, f"no drive was built for the {case} port"
+    if cap is not None:
+        # realized, not declared: the capacitor sits on a driven edge
+        lumped = np.asarray(stepper.eps_r_lumped)
+        on = {tuple(int(v) for v in c) for c in np.argwhere(lumped != 0)}
+        driven = {tuple(int(v) for v in cell) for cell, _, _ in handed}
+        assert len(on) == 1 and on <= driven, (on, driven)
     worst = 0.0
     for cell, comp, drive in handed:
         cb_drive = float(cell_component_e_coeffs(drive, cell, comp, dt)[1])
@@ -328,21 +382,74 @@ def _worst_cb_mismatch(port, *, strip=False):
     return worst, len(handed)
 
 
-@pytest.mark.parametrize("port", ["wire", "lumped", "msl"])
-def test_every_graded_port_drive_uses_the_steppers_cb(port):
-    worst, n = _worst_cb_mismatch(port)
-    print(f"[build] {port}: {n} driven edges, "
+@pytest.mark.parametrize("case", list(_BUILD_CASES))
+def test_every_graded_port_drive_uses_the_steppers_cb(case):
+    worst, n = _worst_cb_mismatch(case)
+    print(f"[build] {case}: {n} driven edges, "
           f"max |Cb_drive/Cb_step - 1| = {worst:.3e}")
     assert worst <= 1e-6, (
-        f"{port} port: a drive is built on a Cb {worst:.4f} off the "
-        f"stepper's -- the port's own load is missing from the drive")
+        f"{case} port: a drive is built on a Cb {worst:.4f} off the "
+        f"stepper's -- a lumped load on the driven edge is missing from it")
 
 
-@pytest.mark.parametrize("port", ["wire", "lumped", "msl"])
-def test_the_build_check_sees_a_drive_without_the_load(port):
+@pytest.mark.parametrize("case", list(_BUILD_CASES))
+def test_the_build_check_sees_a_drive_without_the_load(case):
     """Mutation (b) of the build check: every drive builder is handed the
-    materials without the lumped stamps, every call is kept, and the check
-    above -- unchanged -- goes red."""
-    worst, _ = _worst_cb_mismatch(port, strip=True)
-    print(f"[build-mutation] {port}: max |Cb_drive/Cb_step - 1| = {worst:.3e}")
+    materials without the port's load (or without the capacitor's fold),
+    every call is kept, and the check above -- unchanged -- goes red."""
+    worst, _ = _worst_cb_mismatch(case, mutated=True)
+    print(f"[build-mutation] {case}: max |Cb_drive/Cb_step - 1| = {worst:.3e}")
     assert worst > 1e-2
+
+
+# --------------------------------------------------------------------------
+# 5. end to end: a capacitor across the port edge
+# --------------------------------------------------------------------------
+
+CAP_E2E = 0.3e-12
+F_RLC = (2e9, 4e9)
+RLC_LANE_ATOL = 1e-4
+
+
+@functools.lru_cache(maxsize=None)
+def _s11_with_cap(lane, mutated=False):
+    """|S11| at F_RLC through the public ``run()``, 0.3 pF across the wire
+    port's middle edge. The graded run is pinned to the uniform step."""
+    dt_uniform = float(_board(graded=False)._build_grid().dt)
+    n = int(round(T_RECORD / dt_uniform))
+    freqs = jnp.asarray(F_RLC)
+    if lane == "uniform":
+        assert not mutated
+        sim = _board(graded=False, cap=CAP_E2E)
+    else:
+        sim = _board(graded=True, dt=dt_uniform, cap=CAP_E2E)
+    kw = dict(n_steps=n, compute_s_params=True, s_param_freqs=freqs,
+              skip_preflight=True)
+    if mutated:
+        with _unstamped_drive("eps"):
+            r = sim.run(**kw)
+    else:
+        r = sim.run(**kw)
+    assert float(r.dt) == dt_uniform
+    return np.abs(np.asarray(r.s_params).reshape(-1))
+
+
+def test_lanes_agree_on_s11_with_a_capacitor_across_the_port_edge():
+    """A lumped capacitor in parallel with the port's middle edge makes the
+    three port cells unequal, so a drive that leaves the capacitor out of
+    one cell's Cb is mis-shaped along the wire and S11 itself moves."""
+    uni = _s11_with_cap("uniform")
+    grd = _s11_with_cap("graded")
+    diff = np.max(np.abs(grd - uni))
+    print(f"[rlc] |S11| uniform {20*np.log10(uni)} dB, graded "
+          f"{20*np.log10(grd)} dB, max |d|S11|| = {diff:.2e}")
+    assert diff <= RLC_LANE_ATOL, (uni, grd)
+
+
+def test_mutation_a_drive_without_the_capacitor_fold_breaks_s11_parity():
+    uni = _s11_with_cap("uniform")
+    grd = _s11_with_cap("graded", mutated=True)
+    diff = np.max(np.abs(grd - uni))
+    print(f"[rlc-mutation] |S11| uniform {20*np.log10(uni)} dB, graded "
+          f"{20*np.log10(grd)} dB, max |d|S11|| = {diff:.2e}")
+    assert diff > 10 * RLC_LANE_ATOL

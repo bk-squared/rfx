@@ -895,9 +895,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # injected (1 + sigma_port*dt/(2*eps)) times the declared current --
     # 2.9 on a 50 ohm port across three 0.5 mm cells of eps_r 3.38 at the
     # Courant step, so the absolute field depended on dt and on the dual
-    # cell sizes at the feed while S-parameters, being ratios, hid it. The
-    # uniform lane builds its port sources after the stamp and never had
-    # this. On a concrete mesh the stamp is a host float and the copy stays
+    # cell sizes at the feed. S-parameters, ratios of two responses to one
+    # drive, hid it only where every cell of the port had the same factor;
+    # a layered substrate, graded cells or a lumped R/C under the port
+    # made the factors unequal and moved S11 too. The uniform lane builds
+    # its port sources after the stamp and never had this. On a concrete mesh the stamp is a host float and the copy stays
     # concrete; on a traced mesh (#1207) sigma_port is traced, and so is the
     # drive, exactly as the E update is.
     materials_drive = materials
@@ -980,11 +982,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         aniso_eps = assemble_interface_eps_nu(sim, grid, materials)
 
     # Fold RLC R/C into materials before other port/source setup
-    # (mirrors the uniform path).
+    # (mirrors the uniform path). #1256: into the drive's copy too -- an
+    # R or C across a driven edge is part of that edge's Cb, and a drive
+    # built without it is off by the element's own (eps + sigma*dt/2) ratio.
     if sim._lumped_rlc:
         from rfx.lumped import setup_rlc_materials
         for spec in sim._lumped_rlc:
             materials = setup_rlc_materials(grid, spec, materials)
+            materials_drive = setup_rlc_materials(grid, spec, materials_drive)
 
     # Initialize Debye/Lorentz dispersion coefficients
     debye = None
