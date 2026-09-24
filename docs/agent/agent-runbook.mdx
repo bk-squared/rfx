@@ -55,7 +55,7 @@ short gate a PR must pass, in the order CI runs them, stopping at the first fail
 Measure it rather than trusting this sentence: on 2026-09-18 `tests/contracts` alone
 was 5 min 16 s of it, and everything else together was under ten seconds.
 
-`scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, pr-body, workflow-yaml, contract-tests.
+`scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, data-budget, pr-body, workflow-yaml, contract-tests.
 
 ```
 scripts/ci/local.sh                   # the six steps; pr-body reports skipped

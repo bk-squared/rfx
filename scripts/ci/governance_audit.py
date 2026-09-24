@@ -19,6 +19,10 @@ and issues, so no per-PR gate can see them:
   perfectly well-formed issue with no ``lane:*`` label, invisible to every lane
   query, and nothing on the issue itself says so. Asking for the LABEL rather
   than the heading is what catches that.
+* **Data carried past the budget.** ``scripts/ci/check_data_budget.py`` lets a
+  PR labelled ``data-budget-exception`` merge records the budget would refuse,
+  with a warning on that PR only. Whether the label became the way records land
+  is a question about many PRs, so it is counted here.
 * **One campaign at a time.** The PI's standing instruction is that work runs
   one campaign at a time, and an open milestone is how that is visible. A merged
   PR that closes an issue outside every open milestone is work that happened off
@@ -30,11 +34,14 @@ forbidden -- the report is deliberately loud (a failing row exits 1, so the
 scheduled run is RED and shows up in the Actions list) because a green weekly
 summary nobody opens reports nothing. Do not make it a required check.
 
-One section is INFORMATIONAL and never touches the exit code: merged PRs that
-close no issue. Infrastructure and documentation work legitimately closes
+Two sections are INFORMATIONAL and never touch the exit code. Merged PRs that
+close no issue: infrastructure and documentation work legitimately closes
 nothing, and on the week this was written that section alone was 65 of 102
 merged PRs -- a report that is red every week for a thing that is usually fine
-is a report nobody opens by the third week.
+is a report nobody opens by the third week. And merged PRs that added or
+modified more than ``FROZEN_REPORT_BYTES`` of frozen test data: the data budget
+allows 5,000,000 bytes per PR in the frozen-data homes, which bounds each PR and
+not their sum, so the sum is watched here, with the total on main in the header.
 
 Reads GitHub through ``gh``; classification is a pure function over the JSON so
 the tests need no network. Stdlib only, Python 3.10.
@@ -62,6 +69,7 @@ from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHECK_PR_BODY = REPO_ROOT / "scripts" / "ci" / "check_pr_body.py"
 _ISSUE_LANE = REPO_ROOT / "scripts" / "ci" / "issue_lane_label.py"
+_DATA_BUDGET = REPO_ROOT / "scripts" / "ci" / "check_data_budget.py"
 
 DEFAULT_DAYS = 7
 
@@ -88,6 +96,8 @@ def _load(path: Path, name: str):
 # unreviewed every Monday.
 _cpb = _load(_CHECK_PR_BODY, "rfx_check_pr_body")
 _lane = _load(_ISSUE_LANE, "rfx_issue_lane_label")
+# The label name is the gate's own constant, for the same reason.
+_budget = _load(_DATA_BUDGET, "rfx_check_data_budget")
 
 
 class Row(NamedTuple):
@@ -101,7 +111,10 @@ class Row(NamedTuple):
 
 #: Heading, and the sentence under it, for each kind. Printed in this order.
 #: Kinds that do NOT set the exit code. Listed and counted, never failed on.
-INFORMATIONAL = ("unlinked",)
+INFORMATIONAL = ("unlinked", "frozen")
+
+#: A merged PR that added or modified more frozen-home data than this is listed.
+FROZEN_REPORT_BYTES = 1_000_000
 
 SECTIONS = (
     (
@@ -109,6 +122,12 @@ SECTIONS = (
         "Merged PRs with no accepted review, or a claimed exception",
         "`Review: skipped` is allowed for the two exceptions. An exception "
         "claimed often is not an exception.",
+    ),
+    (
+        "data-budget",
+        "Merged PRs that carried the data-budget exception",
+        "The data budget was not enforced on these: records, oversized files or "
+        "unread fixtures may have landed. Records belong in bk-squared/rfx-archive.",
     ),
     (
         "unlabelled",
@@ -129,6 +148,13 @@ SECTIONS = (
         "Merged PRs closing an issue outside every open milestone",
         "Work that happened off the current campaign, or an issue that should "
         "have been added to one.",
+    ),
+    (
+        "frozen",
+        "Merged PRs adding over 1,000,000 bytes of frozen test data (informational)",
+        "Bytes the PR added or modified under tests/fixtures/, tests/data/ and "
+        "tests/crossval/<case>/reference/. The data budget allows 5,000,000 per PR; "
+        "this list is where the sum across PRs shows. Does not make the run red.",
     ),
     (
         "unlinked",
@@ -168,18 +194,23 @@ def linked_issues(body: str) -> List[int]:
     return seen
 
 
-def lane_labels_of(issue: dict) -> List[str]:
-    """The ``lane:*`` labels on an issue record.
+def label_names(record: dict) -> List[str]:
+    """Every label name on an issue or PR record.
 
-    ``gh issue list --json labels`` gives ``[{"name": ...}, ...]``; a plain list
-    of names is accepted too, so a fixture need not carry the wrapper.
+    ``gh ... --json labels`` gives ``[{"name": ...}, ...]``; a plain list of
+    names is accepted too, so a fixture need not carry the wrapper.
     """
     out: List[str] = []
-    for label in issue.get("labels") or []:
+    for label in record.get("labels") or []:
         name = label.get("name") if isinstance(label, dict) else label
-        if isinstance(name, str) and name.startswith("lane:"):
+        if isinstance(name, str):
             out.append(name)
     return out
+
+
+def lane_labels_of(issue: dict) -> List[str]:
+    """The ``lane:*`` labels on an issue record."""
+    return [name for name in label_names(issue) if name.startswith("lane:")]
 
 
 def _in_open_milestone(issue: Optional[dict]) -> bool:
@@ -213,6 +244,22 @@ def classify(
         state, detail = review_state(body)
         if state != "ok":
             rows.append(Row("review", ref, title, detail or "no accepted `Review:` line"))
+
+        if _budget.EXCEPTION_LABEL in label_names(pr):
+            rows.append(Row(
+                "data-budget", ref, title,
+                f"carried `{_budget.EXCEPTION_LABEL}`: the data budget was not enforced",
+            ))
+
+        # Absent when the payload carries no merge commit to measure; None when
+        # the measurement failed, which is said rather than skipped.
+        if "frozen_bytes" in pr:
+            frozen = pr["frozen_bytes"]
+            if frozen is None:
+                rows.append(Row("frozen", ref, title,
+                                "not measured: the merge commit is not in this checkout"))
+            elif frozen > FROZEN_REPORT_BYTES:
+                rows.append(Row("frozen", ref, title, f"{frozen:,} bytes"))
 
         links = linked_issues(body)
         if not links:
@@ -266,6 +313,13 @@ def render(rows: Iterable[Row], since: dt.date, until: dt.date, counts: dict) ->
         f"{counts.get('prs', 0)} merged PRs, {counts.get('issues', 0)} issues opened.",
         "",
     ]
+    if counts.get("frozen_main") is not None:
+        files, size = counts["frozen_main"]
+        out += [
+            f"Frozen test data on main: {files:,} files, {size:,} bytes "
+            f"(tests/fixtures/, tests/data/, tests/crossval/<case>/reference/).",
+            "",
+        ]
     if not rows:
         out += ["Nothing to look at.", ""]
         return "\n".join(out)
@@ -367,13 +421,26 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
     prs = _capped(_gh([
         "pr", "list", "--state", "merged", "--limit", str(limit),
         "--search", f"merged:>={since.isoformat()}",
-        "--json", "number,title,body,mergedAt,url",
+        "--json", "number,title,body,mergedAt,url,labels,mergeCommit",
     ]), limit, "merged PRs", window)
     issues = _capped(_gh([
         "issue", "list", "--state", "all", "--limit", str(limit),
         "--search", f"created:>={since.isoformat()}",
         "--json", "number,title,body,createdAt,url,labels",
     ]), limit, "opened issues", window)
+
+    for pr in prs:
+        oid = (pr.get("mergeCommit") or {}).get("oid")
+        if not oid:
+            continue
+        try:
+            pr["frozen_bytes"] = _budget.frozen_bytes(f"{oid}^1", oid, REPO_ROOT)
+        except subprocess.CalledProcessError:
+            pr["frozen_bytes"] = None
+    try:
+        frozen_main = list(_budget.frozen_on("HEAD", REPO_ROOT))
+    except subprocess.CalledProcessError:
+        frozen_main = None
 
     wanted = {n for pr in prs for n in linked_issues(pr.get("body") or "")}
     index: Dict[int, dict] = {}
@@ -403,6 +470,7 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
         "merged_prs": prs,
         "opened_issues": issues,
         "issue_index": {str(k): v for k, v in index.items()},
+        "frozen_main": frozen_main,
     }
 
 
@@ -422,6 +490,7 @@ def report(data: dict) -> tuple[str, int]:
         {
             "prs": len(data.get("merged_prs") or []),
             "issues": len(data.get("opened_issues") or []),
+            "frozen_main": data.get("frozen_main"),
         },
     )
     return text, len(failing_rows(rows))

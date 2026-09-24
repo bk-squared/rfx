@@ -500,3 +500,96 @@ def test_the_workflow_names_the_job_and_passes_labels_as_json():
     assert "PR_LABELS:" not in workflow
     assert "${{ join(" not in workflow
     assert "REQUIRED check in branch protection" in workflow
+
+
+# --------------------------------------------------------------------------
+# At most 12 lines (PI, 2026-09-24)
+# --------------------------------------------------------------------------
+
+
+def _long_fragment(number: int, lines: int) -> str:
+    """A fragment of exactly *lines* lines once the assembler strips it."""
+    head = f"### Fixed — headline number {number} (#{number})\n"
+    return head + "".join(f"- bullet {i}.\n" for i in range(lines - 1))
+
+
+def test_fragment_line_count_matches_what_the_assembler_inserts():
+    assert checker.fragment_line_count(_long_fragment(7, 12)) == 12
+    # Leading and trailing blank lines are dropped by the assembler, so they are
+    # not counted; blank lines between bullets are inserted, so they are.
+    assert checker.fragment_line_count("\n\n" + _long_fragment(7, 12) + "\n\n\n") == 12
+    assert checker.fragment_line_count("### h (#7)\n\n- a\n\n- b\n") == 5
+    assert checker.fragment_line_count(_long_fragment(7, 12).replace("\n", "\r\n")) == 12
+    assert checker.fragment_line_count("") == 0
+
+
+def test_an_added_fragment_of_12_lines_passes(git_repo: Path):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "changelog.d" / "77.fixed.md").write_text(
+        _long_fragment(77, 12), encoding="utf-8")
+    head = _commit(git_repo, "a 12-line fragment")
+    assert _run_check(git_repo, base, head) == []
+
+
+def test_an_added_fragment_of_13_lines_fails(git_repo: Path):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "changelog.d" / "77.fixed.md").write_text(
+        _long_fragment(77, 13), encoding="utf-8")
+    head = _commit(git_repo, "a 13-line fragment")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1
+    assert "changelog.d/77.fixed.md is 13 lines" in failures[0]
+    assert "at most 12, heading included" in failures[0]
+    assert "PR body" in failures[0] and "bk-squared/rfx-archive" in failures[0]
+
+
+def test_editing_a_long_fragment_on_main_is_checked(git_repo: Path):
+    (git_repo / "changelog.d" / "50.fixed.md").write_text(
+        _long_fragment(50, 18), encoding="utf-8")
+    base = _commit(git_repo, "an 18-line fragment already on main")
+    (git_repo / "changelog.d" / "50.fixed.md").write_text(
+        _long_fragment(50, 19), encoding="utf-8")
+    head = _commit(git_repo, "add a bullet to it")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1 and "50.fixed.md is 19 lines" in failures[0]
+
+
+def test_long_fragments_already_on_main_are_not_rechecked(git_repo: Path):
+    (git_repo / "changelog.d" / "50.fixed.md").write_text(
+        _long_fragment(50, 137), encoding="utf-8")
+    base = _commit(git_repo, "a 137-line fragment already on main")
+    (git_repo / "rfx" / "simulation.py").write_text("x = 9\n", encoding="utf-8")
+    (git_repo / "changelog.d" / "77.fixed.md").write_text(
+        _long_fragment(77, 4), encoding="utf-8")
+    head = _commit(git_repo, "an unrelated PR")
+    assert _run_check(git_repo, base, head) == []
+
+
+def test_a_release_deleting_long_fragments_is_not_checked(git_repo: Path):
+    (git_repo / "changelog.d" / "50.fixed.md").write_text(
+        _long_fragment(50, 40), encoding="utf-8")
+    base = _commit(git_repo, "a long fragment already on main")
+    (git_repo / "changelog.d" / "50.fixed.md").unlink()
+    (git_repo / "CHANGELOG.md").write_text(SYNTHETIC + "\nassembled\n", encoding="utf-8")
+    head = _commit(git_repo, "assemble")
+    assert _run_check(git_repo, base, head, labels=["release"]) == []
+
+
+def test_a_renamed_long_fragment_counts_as_written(git_repo: Path):
+    """The destination of a rename is a file this PR puts on main."""
+    (git_repo / "changelog.d" / "50.fixed.md").write_text(
+        _long_fragment(50, 20), encoding="utf-8")
+    base = _commit(git_repo, "a long fragment")
+    _git(git_repo, "mv", "changelog.d/50.fixed.md", "changelog.d/51.fixed.md")
+    (git_repo / "changelog.d" / "51.fixed.md").write_text(
+        _long_fragment(51, 20), encoding="utf-8")
+    head = _commit(git_repo, "renumber it")
+    failures = _run_check(git_repo, base, head)
+    assert len(failures) == 1 and "51.fixed.md is 20 lines" in failures[0]
+
+
+def test_the_readme_is_not_capped(git_repo: Path):
+    base = _git(git_repo, "rev-parse", "HEAD")
+    (git_repo / "changelog.d" / "README.md").write_text("# docs\n" * 40, encoding="utf-8")
+    head = _commit(git_repo, "long README")
+    assert _run_check(git_repo, base, head) == []
