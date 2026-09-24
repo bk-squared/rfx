@@ -34,6 +34,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests import _electrical_length as EL
+
 FIXTURE = (Path(__file__).resolve().parents[1] / "fixtures"
            / "lumped_wire_chain_battery" / "fixture.json")
 
@@ -756,6 +758,52 @@ def test_the_recorded_phase_slope_follows_from_the_stored_s11(fixture, key):
     assert block["measured"] == pytest.approx(measured, rel=1e-9), key
     assert block["same_sign"] == bool(
         block["measured"] * block["analytic_realized_length"] > 0.0), key
+
+
+def _electrical_length_vs_closed_form(entry) -> float:
+    """S11's reflection-phase slope against the closed form's on the realized
+    length, over the bins where it reflects above -20 dB: every bin of a
+    reflecting line."""
+    s11 = _complex(entry["s11"])
+    freqs = np.asarray(entry["freqs_hz"], dtype=float)
+    zc = ETA0 * N_H_CELLS[entry["kind"]]
+    closed = s11_of(zin_line(zc, beta_of(freqs),
+                             realized_length_m(entry["dut"], entry["rung_um"]),
+                             z_load_of(entry["dut"], zc)), zc)
+    return EL.electrical_length_ratio(freqs, s11, closed, EL.transmitting_bins(s11))
+
+
+JUDGED_ELECTRICAL_LENGTH = [f"{k}_{d}_{um}um" for k in KINDS for d in REFLECTING_DUTS
+                            for um in RUNGS_UM if um <= RECOMMENDED_RUNG_UM[d]]
+RECORDED_ELECTRICAL_LENGTH = [f"{k}_{d}_{um}um" for k in KINDS for d in REFLECTING_DUTS
+                              for um in RUNGS_UM if um > RECOMMENDED_RUNG_UM[d]]
+
+
+@pytest.mark.parametrize("key", JUDGED_ELECTRICAL_LENGTH)
+def test_the_line_is_as_long_electrically_as_its_closed_form(fixture, key):
+    """The v2 bar's phase item (PI 2026-09-24) on a one-port: the least-squares
+    slope of S11's unwrapped phase against frequency, which is the round trip to
+    the termination, within 1 % of the closed form's ``Gamma_L exp(-2j beta L)``
+    on the realized length, at the recommended cell size and every finer one.
+    The phase at a single bin is not judged, and neither are the crossings'
+    distances here: those are the tests above."""
+    ratio = _electrical_length_vs_closed_form(_solve(fixture, key))
+    assert abs(ratio) <= EL.ELECTRICAL_LENGTH_FRAC, (
+        f"{key}: S11's phase slope is {ratio * 100:+.3f} % from the closed form's — the "
+        f"line is that much longer electrically than it is drawn "
+        f"(bar {EL.ELECTRICAL_LENGTH_FRAC * 100:.0f} %)")
+
+
+@pytest.mark.parametrize("key", RECORDED_ELECTRICAL_LENGTH)
+def test_the_coarser_rung_records_its_electrical_length(fixture, key):
+    """At 1.0 mm, coarser than the cell size the battery recommends, the same
+    number is reported and not judged: the bar applies from the recommended
+    rung down. It still has to be a reading, and of a line whose phase falls
+    with frequency as the closed form's does."""
+    ratio = _electrical_length_vs_closed_form(_solve(fixture, key))
+    print(f"[electrical length] {key}: {ratio * 100:+.3f} % against the closed form "
+          "(recorded; coarser than the recommended cell size, not judged)")
+    assert math.isfinite(ratio) and ratio > -1.0, key
 
 
 @pytest.mark.parametrize("kind", KINDS)

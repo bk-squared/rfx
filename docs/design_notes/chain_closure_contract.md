@@ -144,7 +144,7 @@ the ULP-span assert evaluated first, (b) reference-plane invariance, (c) a 3-run
 
 | | waveguide battery | reduced battery |
 |---|---|---|
-| verdict numbers | per item and bin, `gate_from_envelope(measured) x 1.5` | the v2 accuracy bar, the same for every family: magnitude within 2 dB of the referee, frequencies (resonance, notch, cutoff, band edge) within 1 %, the curve's trend over the band agreeing, never a single-bin verdict. Passivity: max column power <= 1 + 0.02. Reciprocity: `max_f |S_ij - S_ji| / max|S| <= 0.02`. AD vs FD: `rel <= 0.05`. Forward identity: `rtol=1e-5, atol=1e-7`. |
+| verdict numbers | per item and bin, `gate_from_envelope(measured) x 1.5` | the v2 accuracy bar, the same for every family: magnitude within 2 dB of the referee, frequencies (resonance, notch, cutoff, band edge) within 1 %, a line's electrical length within 1 % (below), the curve's trend over the band agreeing, never a single-bin verdict. Passivity: max column power <= 1 + 0.02. Reciprocity: `max_f |S_ij - S_ji| / max|S| <= 0.02`. AD vs FD: `rel <= 0.05`. Forward identity: `rtol=1e-5, atol=1e-7`. |
 | the dx ladder | a non-increase test | the same three rungs ALSO set the cell size the support matrix recommends to users: the coarsest rung from which every quantity above stays inside the bar against the finest rung, stated as cells per wavelength and cells per smallest dimension |
 | pre-declaration | every tolerance, position and drive setting | one short note per family: fixture dimensions, the three rungs, the DUTs, the referee. The tolerances are the bar above and are not re-declared |
 | size | 3 DUTs x 3 rungs x 2 lanes, three runs | 2-3 DUTs x 3 rungs x 1 lane, one run; a second run only after a written root cause |
@@ -163,6 +163,19 @@ against a referee. It is held to an upper bound (-20 dB) and recorded as that st
 inside the core of a null (bins where the finest rung or the closed form is at or below -20 dB) the
 verdict is the null's FREQUENCY against 1 %, and its depth is recorded without a comparison. The 2 dB
 comparison applies everywhere else.
+
+**Electrical length (PI 2026-09-24).** A line's phase delay is the least-squares slope of its
+unwrapped transmission phase against frequency, `polyfit(f, unwrap(angle(S21)), 1)`, over the bins
+where |S21| is above -20 dB; for a one-port it is the slope of the reflection phase over the bins
+where it reflects above -20 dB. It is within 1 % of the reference's slope over the same bins:
+`|slope_measured / slope_reference - 1| <= 0.01`. The reference spans the planes where the extractor
+references S, which are not always the feed planes: the coax two-port's feed planes, the microstrip
+S matrix's first probe planes (`rfx/sparams/msl.py:163-169`), the waveguide's recorded or requested
+reference planes, the lumped and wire one-port's port node with the line's realized length. The bins
+have to be one contiguous run: across a transmission zero the unwrap can take the zero's half-turn
+either way, so a notch's slope is not read. The phase at a single bin is not judged. The batteries
+hold a stored S to its closed form with this measure (`tests/_electrical_length.py`); the drift locks
+hold a live S to the stored one.
 
 **Per family.**
 

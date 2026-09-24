@@ -1,5 +1,5 @@
-"""The microstrip chain battery's stub notch on its coarsest mesh, solved again
-and held to its stored S.
+"""The microstrip chain battery's stub notch and thru on their coarsest mesh,
+solved again and held to their stored S.
 
 The battery (``tests/fixtures/msl_chain_battery/fixture.json``) is a 600 um
 microstrip on 300 um of eps_r = 3.66 over a ground wall, 20 mm between its two
@@ -30,6 +30,24 @@ S to the stored S with the bar the battery is judged by:
 * the record's own verdicts at this mesh — the record settles below -40 dB,
   column power at most 1.02, reciprocity at most 0.02 — hold for the live S.
 
+The thru is the same board without the stub. It has no frequency feature, so
+the notch's checks have nothing to hold on it except its magnitude, and a line
+that grows longer electrically transmits exactly as before. Its lock holds:
+
+* |S21| within 2 dB at every bin, and |S11| under the -20 dB bound the battery
+  holds the thru's reflection to;
+* the electrical length of S21 within 1 % of the record's: the least-squares
+  slope of its unwrapped phase against frequency, live over stored (the PI's
+  phase item of 2026-09-24). S sits at the first probe planes, 16.4 mm apart,
+  not at the feed planes (``rfx/sparams/msl.py:163-169``); a live and a stored
+  record of one board share those planes, so the ratio between them does not
+  depend on where they are;
+* the phase direction and the record's verdicts, as for the notch.
+
+The notch's own slope is not read this way: across its transmission zero the
+unwrapped phase can take the zero's half-turn either way (-11.06 or -1.8 rad
+across the band on this record), so its slope measures the unwrap, not the line.
+
 A red here means the stored battery describes a different solver from the one
 under test. The remedy is to measure the battery again, not to move anything in
 this file.
@@ -38,15 +56,16 @@ Lane: gpu and slow, the gpu step of the weekly A6000 lane
 (scripts/vessl_validation_lane_a6000.yaml, submitted by validation.yml's
 weekly-a6000-lane job). That step runs ``pytest -m gpu``; its run of
 2026-09-23 at 3247dc0e ended gpu_rc=0 with 171 passed. Wall time: 60 s on the
-A6000 (run 369367264070). The same solve takes 34 min on four VESSL CPU cores
-(run 369367264068), which keeps it off the CPU lanes.
+A6000 (run 369367264070) for the notch; the thru is a board of the same size.
+The notch's solve takes 34 min on four VESSL CPU cores (run 369367264068),
+which keeps both off the CPU lanes.
 """
 LOCK_PROVENANCE = {
     "fixture": "tests/fixtures/msl_chain_battery/fixture.json",
     "generator": "scripts/diagnostics/msl_chain_battery_measure.py",
     "commit": "d160dcf1",
     "date": "2026-09-23",
-    "run_id": "369367263991",
+    "run_id": "369367263991 (notch), 369367263992 (thru)",
     "host": "VESSL gpu-rtx4090, jax 0.6.2 cuda, float32",
     "pinned_until": "2027-03-23",
 }
@@ -67,6 +86,7 @@ REMEASURE = (f"`PYTHONPATH=. python {DRIVER} --stage solve --dut <notch|thru> "
 
 RUNG_UM = 100
 KEY = f"notch_{RUNG_UM}um"
+THRU_KEY = f"thru_{RUNG_UM}um"
 
 
 @pytest.fixture(scope="module")
@@ -79,32 +99,57 @@ def driver():
     return drift.load_driver(DRIVER)
 
 
-@pytest.mark.gpu
-@pytest.mark.slow
-def test_the_notch_on_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver):
-    entry = fixture["solves"][KEY]
+def _solve_live(fixture, driver, key: str, dut: str):
+    """The record ``key``, the board the driver builds for it today, solved.
+
+    Refuses before any step when the record names another commit than this
+    guard, or when the realized trace, stub, substrate, ports or drive differ
+    from the record's."""
+    entry = fixture["solves"][key]
     assert entry["provenance"]["commit"].startswith(LOCK_PROVENANCE["commit"]), (
-        f"{KEY} was measured at {entry['provenance']['commit']}, but this guard's "
+        f"{key} was measured at {entry['provenance']['commit']}, but this guard's "
         f"LOCK_PROVENANCE names {LOCK_PROVENANCE['commit']}: the battery was measured "
         "again and the guard was not moved to the new records")
     dx = RUNG_UM * 1e-6
 
     # Before any step: the board the driver builds today is the recorded board —
-    # the same trace rows, stub columns and open end, the same substrate cells
-    # under the strip, the same port feed and probe planes, the same drive.
-    sim = driver.build_sim(dx, "notch", drive=entry["drive"])
-    live_geometry = driver.assert_realized(sim, dx, "notch")
+    # the same trace rows (and, on the notch, stub columns and open end), the
+    # same substrate cells under the strip, the same port feed and probe planes,
+    # the same drive.
+    sim = driver.build_sim(dx, dut, drive=entry["drive"])
+    live_geometry = driver.assert_realized(sim, dx, dut)
     moved = drift.realized_differences(entry["realized"], live_geometry)
     assert not moved, drift.stale_record(
-        FAMILY, KEY, ["the board built today is not the recorded board: "
+        FAMILY, key, ["the board built today is not the recorded board: "
                       + "; ".join(moved)], REMEASURE)
 
     result = driver.solve(sim, num_periods=entry["num_periods"])
-    live = np.asarray(result.S)
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     np.testing.assert_allclose(np.asarray(result.freqs, dtype=float), freqs,
                                rtol=1e-6, atol=0.0)
-    stored = drift.complex_array(entry["S"])
+    return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(result.S)
+
+
+def _verdict_findings(driver, entry, result, live) -> list[str]:
+    """The record's own verdicts — settled, column power, reciprocity — computed
+    from the live S."""
+    power = driver.power_metrics(live)
+    settling = (None if result.settling_db is None
+                else np.asarray(result.settling_db, dtype=float))
+    return drift.verdict_findings(entry, {
+        "settled": bool(settling is not None
+                        and np.all(settling <= drift.SETTLING_DB)),
+        "column_power_within_bar": bool(
+            power["max_column_power"] <= drift.COLUMN_POWER_MAX),
+        "reciprocity_within_bar": bool(
+            power["reciprocity_metric"] <= drift.RECIPROCITY_MAX),
+    }, (("settled",), ("column_power_within_bar",), ("reciprocity_within_bar",)))
+
+
+@pytest.mark.gpu
+@pytest.mark.slow
+def test_the_notch_on_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver):
+    entry, result, freqs, stored, live = _solve_live(fixture, driver, KEY, "notch")
 
     notch_stored = driver.parabolic_min(freqs, np.abs(stored[1, 0, :]))
     notch_live = driver.parabolic_min(freqs, np.abs(live[1, 0, :]))
@@ -125,17 +170,25 @@ def test_the_notch_on_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, dr
                                          live[0, 0, :], deep=core, report=report)
     findings += drift.phase_direction_findings("S21", freqs, stored[1, 0, :],
                                                live[1, 0, :], deep=core, report=report)
-
-    power = driver.power_metrics(live)
-    settling = (None if result.settling_db is None
-                else np.asarray(result.settling_db, dtype=float))
-    findings += drift.verdict_findings(entry, {
-        "settled": bool(settling is not None
-                        and np.all(settling <= drift.SETTLING_DB)),
-        "column_power_within_bar": bool(
-            power["max_column_power"] <= drift.COLUMN_POWER_MAX),
-        "reciprocity_within_bar": bool(
-            power["reciprocity_metric"] <= drift.RECIPROCITY_MAX),
-    }, (("settled",), ("column_power_within_bar",), ("reciprocity_within_bar",)))
+    findings += _verdict_findings(driver, entry, result, live)
     print(f"[battery drift] {KEY}: " + "; ".join(report))
     assert not findings, drift.stale_record(FAMILY, KEY, findings, REMEASURE)
+
+
+@pytest.mark.gpu
+@pytest.mark.slow
+def test_the_thru_on_the_coarsest_mesh_still_solves_to_its_stored_s(fixture, driver):
+    entry, result, freqs, stored, live = _solve_live(fixture, driver, THRU_KEY, "thru")
+
+    report: list[str] = []
+    findings = drift.magnitude_findings("|S21|", freqs, stored[1, 0, :], live[1, 0, :],
+                                        report=report)
+    findings += drift.bound_findings("the thru's |S11|", freqs, live[0, 0, :],
+                                     report=report)
+    findings += drift.phase_direction_findings("S21", freqs, stored[1, 0, :],
+                                               live[1, 0, :], report=report)
+    findings += drift.electrical_length_findings("S21", freqs, stored[1, 0, :],
+                                                 live[1, 0, :], report=report)
+    findings += _verdict_findings(driver, entry, result, live)
+    print(f"[battery drift] {THRU_KEY}: " + "; ".join(report))
+    assert not findings, drift.stale_record(FAMILY, THRU_KEY, findings, REMEASURE)
