@@ -209,7 +209,6 @@ def mag_run():
             "g_lossy": gband(s_mu2), "g_lossless": gband(s_lossless)}
 
 
-@pytest.mark.slow
 def test_mu_r_channel_is_live(mag_run):
     """forward(mu_r_override=2) must differ from mu_r=1 — proves mu_r reaches the
     H-update (not a silent no-op)."""
@@ -278,7 +277,6 @@ def test_mu_r_gradient_vs_analytic_tmm(mag_run):
     assert 0.4 < ratio < 2.5, f"|AD/analytic|={ratio:.2f} outside the discretization envelope"
 
 
-@pytest.mark.slow
 def test_magnetic_magnitude_vs_tmm(mag_run):
     """FDTD |Gamma|(f) of the PEC-backed magnetic lossy layer tracks the magnetic
     TMM (eta=sqrt(mu/eps)), gated against the +-half-cell thickness band."""
@@ -292,7 +290,6 @@ def test_magnetic_magnitude_vs_tmm(mag_run):
     assert np.max(err) < 0.11, f"max dist to magnetic-TMM band = {np.max(err):.3f}"
 
 
-@pytest.mark.slow
 def test_magnetic_lossless_energy_conservation(mag_run):
     """A lossless mu_r!=1 PEC-backed layer still reflects everything: |Gamma|~1 in
     the mean (energy conservation), within the two-run extractor's total-reflector
@@ -303,7 +300,6 @@ def test_magnetic_lossless_energy_conservation(mag_run):
         f"|Gamma| ripple [{np.min(g):.3f}, {np.max(g):.3f}] beyond extractor envelope"
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("axis,n_cells", [("x", 40), ("y", 12), ("z", 4)])
 @pytest.mark.parametrize("graded", [False, True], ids=["equal-cells", "graded"])
 def test_mu_r_override_fenced_on_nonuniform(axis, n_cells, graded):

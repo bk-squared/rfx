@@ -900,7 +900,6 @@ def refplane_thru():
     return S, diag
 
 
-@pytest.mark.slow_physics
 def test_refplane_thru_s21_tracks_box_referee(refplane_thru):
     """Plane-path |S21| within the Phase-0 closed-box referee class.
 
@@ -916,7 +915,6 @@ def test_refplane_thru_s21_tracks_box_referee(refplane_thru):
         f"plane-path |S21| left the Phase-0 referee class: resid={resid}")
 
 
-@pytest.mark.slow_physics
 def test_refplane_thru_leaves_legacy_lock_band_loudly(refplane_thru):
     """LOUD RE-BASELINE (issue #313 falsifier item 8): the plane path
     must move |S21| OUT of the committed legacy regression-lock band
@@ -931,7 +929,6 @@ def test_refplane_thru_leaves_legacy_lock_band_loudly(refplane_thru):
         "kappa deflation returned (issue #313)")
 
 
-@pytest.mark.slow_physics
 def test_refplane_thru_reciprocity(refplane_thru):
     """S21 vs S12 on the symmetric thru (measured <= 0.38% rel)."""
     S, _ = refplane_thru
@@ -939,7 +936,6 @@ def test_refplane_thru_reciprocity(refplane_thru):
     assert np.all(rel <= _RECIP_REL_MAX), f"reciprocity broke: {rel}"
 
 
-@pytest.mark.slow_physics
 def test_refplane_thru_measured_line_constants(refplane_thru):
     """Measured Zc and beta land in the Phase-0 mid-line class.
 
@@ -973,7 +969,6 @@ def test_refplane_thru_measured_line_constants(refplane_thru):
                 f"port {p} beta/(w/c) left the measured class: {b}")
 
 
-@pytest.mark.slow_physics
 def test_refplane_thru_deembedded_phase_tracks_measured_beta(refplane_thru):
     """arg(S21) after de-embedding = -beta_meas*L to sub-milliradian
     (measured <= 8.4e-4 rad; gate 0.02 rad, ~24x margin). This is the
@@ -986,7 +981,6 @@ def test_refplane_thru_deembedded_phase_tracks_measured_beta(refplane_thru):
         f"de-embedded S21 phase left the measured-beta track: {dev}")
 
 
-@pytest.mark.slow_physics
 def test_refplane_thru_energy_and_passivity_labeled(refplane_thru):
     """Energy/passivity envelope of the MIXED matrix — honesty label.
 

@@ -72,7 +72,6 @@ def test_coax_reflection_grad_finite_and_fd_consistent():
     assert rel <= 0.05, f"AD={float(g):+.6e} vs FD={fd:+.6e} (rel diff {rel:.3f} > 5%)"
 
 
-@pytest.mark.slow_physics
 def test_coax_eps_scale_unity_matches_concrete_path():
     """The AD path does not change the physics: ``eps_scale=1.0`` (jnp path) matches
     ``eps_scale=None`` (validated numpy path) in |S11|."""

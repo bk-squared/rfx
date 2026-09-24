@@ -642,7 +642,6 @@ def _live_compare(fx, rung: str):
 # against any fixture and is therefore unaffected by which instrument wrote one.
 
 
-@pytest.mark.slow
 def test_live_ad_vs_fd_slab_s21_mag2_coarse_rung():
     """One §5(a) leg live on CPU: slab, normalize=False, eps θ, |S21|² at the
     band centre — float32 reverse-mode AD vs a second-order forward x64 FD.

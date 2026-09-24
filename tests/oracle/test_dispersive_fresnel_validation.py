@@ -240,7 +240,6 @@ def test_drude_pole_matches_closed_form():
     assert np.all(closed_form.real > 0.0)
 
 
-@pytest.mark.slow_physics
 def test_dispersive_fresnel_debye():
     """FDTD R(f) of a single-Debye-pole slab vs the transfer-matrix oracle."""
     eps_c = eval_debye(FREQS_RT, DEBYE_EPS_INF,
@@ -258,7 +257,6 @@ def test_dispersive_fresnel_debye():
     )
 
 
-@pytest.mark.slow_physics
 def test_dispersive_fresnel_lorentz():
     """FDTD R(f) of a single-Lorentz-pole slab (resonance in-band) vs oracle."""
     pole = lorentz_pole(LOR_DELTA_EPS, LOR_W0, LOR_DELTA)
@@ -275,7 +273,6 @@ def test_dispersive_fresnel_lorentz():
     )
 
 
-@pytest.mark.slow_physics
 def test_dispersive_fresnel_drude():
     """FDTD R(f) of a single-Drude-pole slab (omega_0 = 0) vs the same oracle.
 

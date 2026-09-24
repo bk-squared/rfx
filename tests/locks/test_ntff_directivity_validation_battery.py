@@ -633,7 +633,6 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
 # slow_physics battery (opt-in: -m slow_physics)
 # ===========================================================================
 
-@pytest.mark.slow_physics
 def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
     """dx-ladder witness: D error shrinks with refinement; per-rung ratio bands.
 
@@ -747,7 +746,6 @@ def _build_nu_sim(dx: float, nz_cells: int) -> Simulation:
     return sim
 
 
-@pytest.mark.slow_physics
 def test_nonuniform_lane_power_calibration_and_slot(base_rung):
     """The NU runner must hand the accumulator the same E/H pair as the uniform one.
 
@@ -840,7 +838,6 @@ _BOX_SWEEP_HALF_WIDTHS_M = (9.0e-3, 18.0e-3, 27.0e-3)
 _BOX_SWEEP_ERR_MAX_DB = 0.01
 
 
-@pytest.mark.slow_physics
 @pytest.mark.parametrize("half_width_m", _BOX_SWEEP_HALF_WIDTHS_M,
                          ids=["hw9mm", "hw18mm", "hw27mm"])
 def test_directivity_error_stays_small_however_large_the_huygens_box(half_width_m):

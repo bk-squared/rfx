@@ -274,7 +274,6 @@ def PEC_D_cells():
     return int(round(PEC_D / DX))
 
 
-@pytest.mark.slow
 def test_ram_claims_bearing_runs_are_drained(ram_run):
     """Settling witness on the WITH-PEC (claims-bearing) runs, not the vacuum
     reference: the PEC/quarter-wave cavity must still ring down below -40 dB or the
@@ -283,7 +282,6 @@ def test_ram_claims_bearing_runs_are_drained(ram_run):
     assert ram_run["settle_barepec"] < -40.0, f"bare-PEC run not drained: {ram_run['settle_barepec']:.1f} dB"
 
 
-@pytest.mark.slow
 def test_ram_reflection_phase_bare_pec(ram_run):
     """A bare PEC at the reference plane must return Gamma ~ -1 (phase ~180 deg),
     NOT +1 (phase ~0). |Gamma| is blind to conjugation/negation, so this is the
@@ -295,7 +293,6 @@ def test_ram_reflection_phase_bare_pec(ram_run):
     assert dphase < 25.0, f"bare PEC phase {np.degrees(np.angle(g)):.1f} deg not ~180 (Gamma~-1)"
 
 
-@pytest.mark.slow
 def test_ram_lossless_pec_backed_energy_conservation(ram_run):
     """A LOSSLESS PEC-backed layer reflects everything: energy conservation forces
     |Gamma|=1. This is the two-run extractor's WORST case; the per-frequency |Gamma|
@@ -310,7 +307,6 @@ def test_ram_lossless_pec_backed_energy_conservation(ram_run):
         f"|Gamma| ripple [{np.min(g):.3f}, {np.max(g):.3f}] beyond the documented extractor envelope"
 
 
-@pytest.mark.slow
 def test_ram_magnitude_vs_tmm(ram_run):
     """FDTD |Gamma|(f) of the PEC-backed lossy layer tracks the analytic TMM.
 
