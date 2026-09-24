@@ -106,20 +106,6 @@ def changed_paths(base: str, head: str, repo: Path) -> List[Entry]:
     return entries
 
 
-def written_paths(base: str, head: str, repo: Path) -> List[str]:
-    """Paths the PR adds or edits, as they are named at head.
-
-    ``--name-only`` prints a rename's or copy's destination, never its source,
-    so a fragment renumbered by this PR counts as written and one it only
-    deletes does not.
-    """
-    out = subprocess.run(
-        ["git", "diff", "--name-only", "-z", "--diff-filter=AMRCT", f"{base}...{head}"],
-        cwd=repo, capture_output=True, check=True,
-    ).stdout.decode("utf-8", "surrogateescape")
-    return [path for path in out.split("\0") if path]
-
-
 def fragment_line_count(text: str) -> int:
     """Lines the fragment adds to ``CHANGELOG.md``, heading included."""
     body = text.replace("\r\n", "\n").strip("\n")
@@ -147,7 +133,6 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
     assemble = _load_assembler()
     try:
         entries = changed_paths(base, head, repo)
-        written = set(written_paths(base, head, repo))
     except subprocess.CalledProcessError:
         return [
             f"cannot diff {base}...{head} in {repo}. Both commits must be "
@@ -200,8 +185,11 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
             assemble.validate_fragment_text(name, text)
         except assemble.FragmentError as exc:
             failures.append(f"{exc}\n  See {FRAGMENT_DIR}/README.md for the shape.")
+        # Every path this loop reaches is in the diff and present at head: added,
+        # edited, or a rename's destination. A fragment the PR does not touch
+        # never reaches it, which is what "not re-checked" means.
         count = fragment_line_count(text)
-        if path in written and count > MAX_FRAGMENT_LINES:
+        if count > MAX_FRAGMENT_LINES:
             failures.append(
                 f"{path} is {count} lines; a fragment is at most "
                 f"{MAX_FRAGMENT_LINES}, heading included.\n"
