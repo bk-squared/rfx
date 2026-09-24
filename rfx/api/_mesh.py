@@ -198,6 +198,40 @@ class _MeshMixin:
             "boundary=BoundarySpec(x=..., y=..., z=Boundary(lo='pmc', "
             "hi='pmc')). Or pass an explicit uniform dx= so the 2-D lane runs.")
 
+    def _nonuniform_refinement_refusal(self):
+        """Why a refinement cannot run on this model's mesh, or ``None``.
+
+        The non-uniform lane has no subgrid: nothing on it reads
+        ``add_refinement``, so a refined model ran the unrefined graded mesh,
+        bit-identical to the same model without the refinement and with no
+        warning (#1240). Decided on the RESOLVED mesh, the property that picks
+        the lane, so a profile that auto-meshing produced counts too. One text
+        for the preflight finding and the run-time refusal.
+        """
+        ref = getattr(self, "_refinement", None)
+        if ref is None or not self._uses_nonuniform_mesh:
+            return None
+        z_lo, z_hi = ref["z_range"]
+        ratio = ref["ratio"]
+        return (
+            f"add_refinement(z_range=({z_lo * 1e3:g}, {z_hi * 1e3:g}) mm, "
+            f"ratio={ratio}) asks for subgridding on a non-uniform mesh (an "
+            "axis profile was given, or auto-meshing produced one), and that "
+            "is refused: the non-uniform lane has no subgrid, so it would "
+            "ignore the refinement and solve the unrefined mesh, "
+            "bit-identical to the same model without it (#1240). Either use "
+            "a uniform base mesh (dx= and no dx/dy/dz profile) and keep "
+            "add_refinement, or remove add_refinement and pass a dz_profile "
+            f"whose cells between z = {z_lo * 1e3:g} and {z_hi * 1e3:g} mm "
+            f"are as fine as the refinement asked for (the coarse cell "
+            f"there divided by {ratio}).")
+
+    def _require_no_refinement_on_the_nonuniform_lane(self):
+        """Refuse a refinement where the non-uniform lane would drop it."""
+        reason = self._nonuniform_refinement_refusal()
+        if reason is not None:
+            raise NotImplementedError(reason)
+
     def _require_uniform_mesh(self, consumer):
         if self._uses_nonuniform_mesh:
             raise NotImplementedError(

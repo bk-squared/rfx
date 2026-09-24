@@ -2989,6 +2989,9 @@ class _ExecuteMixin:
         if self._solver == "adi":
             self._require_uniform_mesh("solver='adi'")
         self._require_mode_the_nonuniform_lane_solves()
+        # Every non-uniform lane below, single-device and distributed, run()
+        # and forward(), has no subgrid and would drop a refinement (#1240).
+        self._require_no_refinement_on_the_nonuniform_lane()
         is_nonuniform = self._uses_nonuniform_mesh
 
         def _reject_lane_precision(lane: str) -> None:
