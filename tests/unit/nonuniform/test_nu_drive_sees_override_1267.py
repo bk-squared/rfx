@@ -50,11 +50,12 @@ What is checked:
    call kept (the lumped stamps put back on top, which is exactly the copy
    the runner kept before the fix), sends 1-3 red by the factors recorded
    in each test;
-6. at build time, every port kind the graded lane drives (wire, single-cell
-   lumped, MSL feed, and a wire or lumped port with a capacitor across its
-   edge) under an override: the Cb each drive is built from equals the Cb
-   the stepper applies on that edge; and a traced override reaches the MSL
-   feed without touching its static launch fixture.
+6. at build time, every source kind the graded lane drives (wire,
+   single-cell lumped, MSL feed, a wire or lumped port with a capacitor
+   across its edge, and a soft current source) under an override: the Cb
+   each drive is built from equals the Cb the stepper applies on that edge;
+   and an override, traced or concrete, reaches the MSL feed's Cb without
+   touching its static launch fixture, which reads the drawn eps_r.
 
 The drive is traced when the override is (as on the uniform lane); the MSL
 launch fixture's substrate eps_r -- a static mode shape, the uniform
@@ -134,6 +135,10 @@ def _board(eps_lo, eps_hi, *, port="wire", cap=None):
         sim.add_port(position=(I_PORT * DX, J_PORT * DX, Z_G + 2 * DX),
                      component="ez", impedance=Z0, excite=True,
                      waveform=pulse)
+    elif port == "source":
+        # A soft current source (no load), in the top (eps_r 10.2) layer.
+        sim.add_source((I_PORT * DX, J_PORT * DX, Z_G + 2 * DX), "ez",
+                       amplitude_kind="current", waveform=pulse)
     elif port == "msl":
         # A 2 mm trace on the laminate face, fed from the -x end.
         sim.add_pinned_sheet(plane_index=K_P, i_range=(2, NX - 2),
@@ -487,6 +492,9 @@ def test_mutation_the_drive_from_the_drawn_arrays_sends_1_to_3_red():
 _BUILD_CASES = {
     "wire": ("wire", None),
     "lumped": ("lumped", None),
+    # a soft current source carries no load, so the drawn/override Cb ratio
+    # is the bare permittivity ratio: 10.2/3.38 = 3.018 before the fix
+    "source": ("source", None),
     "msl": ("msl", None),
     "wire+C": ("wire", 1e-12),
     "lumped+C": ("lumped", 1e-12),
@@ -532,29 +540,54 @@ def test_the_build_check_sees_a_drive_from_the_drawn_arrays(case):
     assert worst > 1e-2
 
 
-def test_a_traced_override_drives_the_msl_feed_and_keeps_its_fixture():
-    """The MSL feed's Cb follows a traced override (the drive table is
-    traced), while the launch fixture -- the static-Laplace mode shape,
-    built from the substrate eps_r at the feed's centre cell -- is still
-    computed from the drawn array, on the host."""
+def _recording_msl_profile(seen):
     import rfx.sources.msl_port as _msl
-    sim = _board(EPS_LO, EPS_LO, port="msl")
-    eps0 = jnp.asarray(_drawn(sim).eps_r)
-    mask = jnp.asarray(_mask("whole"))
-    seen = []
     real_profile = _msl.compute_msl_mode_profile
 
     def _profile(grid, port, eps_r_sub, *a, **kw):
         seen.append(eps_r_sub)
         return real_profile(grid, port, eps_r_sub, *a, **kw)
 
+    return mock.patch.object(_msl, "compute_msl_mode_profile", _profile)
+
+
+def test_a_traced_override_drives_the_msl_feed_and_keeps_its_fixture():
+    """The MSL feed's Cb follows a traced override (the drive table is
+    traced), while the launch fixture -- the static-Laplace mode shape,
+    built from the substrate eps_r at the feed's centre cell -- is still
+    computed from the drawn array, on the host."""
+    sim = _board(EPS_LO, EPS_LO, port="msl")
+    eps0 = jnp.asarray(_drawn(sim).eps_r)
+    mask = jnp.asarray(_mask("whole"))
+    seen = []
+
     def f(a):
         r = run_nonuniform_path(sim, n_steps=300, compute_s_params=False,
                                 eps_override=eps0 * jnp.exp(a * mask))
         return jnp.sum(jnp.asarray(r.time_series) ** 2)
 
-    with mock.patch.object(_msl, "compute_msl_mode_profile", _profile):
+    with _recording_msl_profile(seen):
         g = float(jax.grad(f)(jnp.asarray(0.0)))
     assert np.isfinite(g) and g != 0.0
+    assert seen and all(type(v) is float and v == pytest.approx(EPS_LO)
+                        for v in seen), seen
+
+
+def test_a_concrete_override_keeps_the_msl_launch_fixture_on_the_drawn_eps():
+    """The same rule on the concrete path: an override that raises the slab
+    under the feed to 3.38 x e^0.1 changes the Cb the feed is driven
+    through, not the mode shape it launches -- that is still built from the
+    drawn 3.38, so a finite difference through the override and ``jax.grad``
+    differentiate one function (#483). A fixture that read the overridden
+    array instead moved the probe field by 0.12-0.34 % (review of #1267) and
+    is red here. Stating ``eps_r_sub`` on the port takes the read away."""
+    sim = _board(EPS_LO, EPS_LO, port="msl")
+    raised = np.asarray(_drawn(sim).eps_r) * np.exp(LN_STEP * _mask("whole"))
+    feed = (4 + CPML, 10 + CPML, K_G + 1 + CPML)     # a substrate cell at it
+    assert raised[feed] == pytest.approx(EPS_LO * np.exp(LN_STEP), rel=1e-6)
+    seen = []
+    with _recording_msl_profile(seen):
+        run_nonuniform_path(sim, n_steps=40, compute_s_params=False,
+                            eps_override=jnp.asarray(raised, jnp.float32))
     assert seen and all(type(v) is float and v == pytest.approx(EPS_LO)
                         for v in seen), seen
