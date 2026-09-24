@@ -409,6 +409,21 @@ def test_the_ladder_converges_and_sets_a_recommended_cell_size(fixture):
     # back from the fixture and compared with itself. A row claiming a mesh is
     # inside the bar while its own dB difference says otherwise must fail, and
     # so must a ladder that recommends nothing.
+    # The ladder's own numbers, re-derived from each rung's stored S (review of PR 1253).
+    keys = [f"notch_{um}um" for um in lad["rungs_um"]]
+    Ss = [_complex(fixture["solves"][k]["S"]) for k in keys]
+    fr = [np.asarray(fixture["solves"][k]["freqs_hz"], dtype=float) for k in keys]
+    f_s = [_notch_hz(f, S[1, 0, :], int(np.argmin(np.abs(S[1, 0, :])))) for f, S in zip(fr, Ss)]
+    np.testing.assert_allclose(fs, f_s, rtol=1e-6)
+    np.testing.assert_allclose(lad["notch_frac_vs_finest"],
+                               [abs(x - f_s[-1]) / f_s[-1] for x in f_s], rtol=1e-4, atol=1e-8)
+    assert ratio == pytest.approx(diffs[1] / diffs[0], rel=1e-9)
+    outside = np.setdiff1d(np.arange(Ss[-1].shape[2]), lad["notch_core"]["bin_indices"])
+    for name, (a, b) in (("s21", (1, 0)), ("s11", (0, 0))):
+        for i, S in enumerate(Ss):
+            d = np.abs(_db(S[a, b, :]) - _db(Ss[-1][a, b, :]))[outside].max()
+            assert lad[f"{name}_vs_finest"][i]["max_db_diff_vs_finest_outside_notch_core"] == \
+                pytest.approx(d, abs=1e-9), (name, keys[i])
     rows = lad["rung_within_bar_vs_finest"]
     bar_db = fixture["bar"]["magnitude_db"]
     bar_frac = fixture["bar"]["frequency_frac"]
