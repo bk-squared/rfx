@@ -69,12 +69,13 @@ DZP = np.array([0.8, 0.6, 1.4, 1.4, 0.8]) * MM
 
 
 def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE,
-         precision="float32"):
+         precision="float32", stencil_order=2):
     """The box on one lane; ``cells`` sets the port's length in cells."""
     kw = ({"dx_profile": DXP, "dy_profile": DYP, "dz_profile": DZP}
           if lane == "graded" else {})
     sim = Simulation(freq_max=freq_max, domain=(12 * MM, 11 * MM, 5 * MM),
-                     dx=1.0 * MM, boundary="pec", precision=precision, **kw)
+                     dx=1.0 * MM, boundary="pec", precision=precision,
+                     stencil_order=stencil_order, **kw)
     eps_r, q_d, f_ref = 2.2, 300.0, 12.5e9
     sim.add_material("fill", eps_r=eps_r,
                      sigma=2.0 * np.pi * f_ref * 8.854187817e-12 * eps_r / q_d)
@@ -779,6 +780,11 @@ def _case_graded_loop_in_the_pad():
     return sim, {}
 
 
+def _case_stencil_order_4():
+    # the uniform PEC box: (2,4) runs there, and steps at 0.857 of grid.dt
+    return _box("uniform", stencil_order=4), {}
+
+
 def _case_not_a_spec():
     return _wire(_open_box()), {"ringdown": {"window_start": 0.5}}
 
@@ -799,6 +805,7 @@ def _case_not_a_spec():
     (_case_no_sparams, "compute_s_params=False"),
     (_case_uniform_two_ports, "supports one wire port"),
     (_case_graded_loop_in_the_pad, "absorber pad"),
+    (_case_stencil_order_4, r"run\(ringdown=...\) is not supported with stencil_order=4.*grid's dt"),
     (_case_not_a_spec, "RingdownSpec"),
 ])
 def test_what_the_completion_does_not_cover_is_refused(case, match):

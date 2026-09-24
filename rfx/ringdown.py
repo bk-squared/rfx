@@ -774,6 +774,7 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
     if getattr(sim, "_mode", "3d") != "3d":
         raise NotImplementedError(
             f"{caller}(ringdown=...) needs mode='3d'; this model is mode={sim._mode!r}.")
+    _refuse_stencil_order(sim, caller)
     if getattr(sim, "_solver", None) == "adi":
         raise NotImplementedError(f"{caller}(ringdown=...) is not supported with solver='adi'.")
     if getattr(sim, "_refinement", None) is not None:
@@ -828,6 +829,17 @@ def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
         raise ValueError(
             f"{caller}(ringdown=...) needs a driven wire port: with every port passive "
             "run() reports a per-cell diagnostic, not a scattering parameter.")
+
+
+def _refuse_stencil_order(sim, caller: str) -> None:
+    """The completion works in the grid's ``dt``; the (2,4) stencil does not step at it."""
+    order = getattr(sim, "_stencil_order", 2)
+    if order != 2:
+        raise NotImplementedError(
+            f"{caller}(ringdown=...) is not supported with stencil_order={order}: "
+            "the completion's decimation, pole mapping and DFT phases use the "
+            "grid's dt, and the (2,4) stencil steps at 0.857 of it. Not "
+            "supported in this version; use stencil_order=2.")
 
 
 def refuse_run_lane(lane: str, n_wire_ports: int) -> None:
@@ -1422,6 +1434,29 @@ class RingdownRun:
                                     "s_accumulator_roundoff"), **report_extra)
         return S, report, None
 
+    @staticmethod
+    def _check_solver_step(result, step=None) -> None:
+        """The run stepped at the grid's ``dt``, or ``_NotCompleted``.
+
+        The completion (decimation plan, pole mapping ``log(lambda)/(D dt)``,
+        DFT and replay phases) works in ``grid.dt``. A result that reports the
+        step its solver took (``Result.dt`` / ``ForwardResult.dt``) must have
+        taken that one; ``stencil_order=4`` steps at 0.857 of it (refused
+        before the run). ``step`` overrides the result's own field.
+        """
+        from rfx.core.jax_utils import is_tracer
+
+        step = getattr(result, "dt", None) if step is None else step
+        if step is None or is_tracer(step):
+            return
+        step_f, grid_f = float(step), float(result.grid.dt)
+        if step_f != grid_f:
+            raise _NotCompleted(
+                "solver_dt", step_f / grid_f, 1.0,
+                f"the solver stepped at dt = {step_f:.6g} s and the grid's dt is "
+                f"{grid_f:.6g} s (ratio {step_f / grid_f:.4g}); the completion's "
+                "decimation, pole mapping and DFT phases use the grid's dt.")
+
     def _read_metas_checked(self, result, run_grid) -> list:
         """The wire ports as the run realized them, or ``_NotCompleted`` (W0)."""
         try:
@@ -1450,6 +1485,7 @@ class RingdownRun:
 
     def _rebuild_inputs(self, result, ts_all, n_user):
         """The port metadata the run realized and the probe samples it covers."""
+        self._check_solver_step(result)
         run_grid = result.grid
         resolve = _lane_resolver(self.lane, run_grid)
         for comp, idx in self.probe_keys:
@@ -1791,11 +1827,12 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
 class _ForwardReportContext:
     """What the lazy report of a ``forward(ringdown=...)`` needs besides arrays."""
 
-    def __init__(self, plan, metas, grid, bins):
+    def __init__(self, plan, metas, grid, bins, step=None):
         self.plan = plan
         self.metas = tuple(metas)
         self.grid = grid
         self.bins = np.asarray(bins, dtype=np.float64)
+        self.step = step            # the solver's own dt (ForwardResult.dt)
 
     def report(self, res) -> RingdownReport:
         from dataclasses import replace
@@ -1810,7 +1847,7 @@ class _ForwardReportContext:
             s_plain = s_plain.reshape(1, 1, -1).astype(np.complex64)
         result_like = SimpleNamespace(
             wire_port_sparams=tuple(zip(self.metas, res._accs)), s_params=s_plain,
-            grid=self.grid, freqs=self.bins)
+            grid=self.grid, freqs=self.bins, dt=self.step)
         S_host, report, nc = plan._host_report(result_like, np.asarray(res._channels), 0)
         if nc is not None:
             return report
@@ -1966,9 +2003,13 @@ class RingdownForward(RingdownRun):
         accs = tuple(tuple(a) for _meta, a in (result.wire_port_sparams or ()))
         bins = (self.bins if self.bins is not None
                 else np.asarray(result.freqs, dtype=np.float64))
-        ctx = _ForwardReportContext(self, metas, result.grid, bins)
+        from rfx.core.jax_utils import is_tracer
+        step = getattr(result, "dt", None)
+        ctx = _ForwardReportContext(self, metas, result.grid, bins,
+                                    None if is_tracer(step) else step)
         status_fail = jnp.asarray([rj.STATUS_FAILED, rj.STATUS_FAILED], dtype=jnp.int32)
         try:
+            self._check_solver_step(result)
             pms = self._read_metas_checked(result, result.grid)
             layouts = self._layouts_checked(
                 pms, {key: j for j, key in enumerate(self.probe_keys)})

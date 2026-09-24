@@ -297,19 +297,43 @@ def _case_source_on():
     return sim, {}, r"forward\(ringdown=...\): the wire port .* is still on"
 
 
+def _case_stencil_order_4():
+    return (_box("uniform", stencil_order=4), {},
+            r"forward\(ringdown=...\) is not supported with stencil_order=4.*grid's dt")
+
+
 def _case_not_a_spec():
     return _box("uniform"), {"ringdown": {"window_start": 0.5}}, "RingdownSpec"
 
 
 @pytest.mark.parametrize("case", [_case_distributed, _case_no_time_series,
                                   _case_uniform_without_bins, _case_uniform_two_ports,
-                                  _case_lumped, _case_source_on, _case_not_a_spec])
+                                  _case_lumped, _case_source_on, _case_stencil_order_4,
+                                  _case_not_a_spec])
 def test_what_the_completion_does_not_cover_is_refused(case):
     sim, kw, match = case()
     kw.setdefault("port_s11_freqs", FREQS)
     spec = kw.pop("ringdown", RingdownSpec())
     with pytest.raises((NotImplementedError, ValueError, TypeError), match=match):
         sim.forward(n_steps=400, skip_preflight=True, ringdown=spec, **kw)
+
+
+def test_a_run_that_stepped_at_another_dt_is_not_completed(monkeypatch):
+    """With the stencil refusal removed, the (2,4) box steps at 0.857 of the
+    grid's dt while the completion would work in the grid's: the realized
+    step is checked, the completed S is NaN (not a number built on the wrong
+    dt, which a jitted objective would differentiate unseen), and the report
+    names the two steps."""
+    monkeypatch.setattr(rd, "_refuse_stencil_order", lambda sim, caller: None)
+    f = _box("uniform", stencil_order=4).forward(
+        n_steps=1500, skip_preflight=True, port_s11_freqs=FREQS, ringdown=RingdownSpec())
+    assert float(f.dt) != float(f.grid.dt)
+    assert np.all(np.isnan(np.asarray(f.ringdown.s_params)))
+    assert np.all(np.isnan(np.asarray(f.ringdown.s_params_long)))
+    rep = f.ringdown.report
+    print(f"\n[stencil_order=4, refusal removed] {rep.failure}")
+    assert not rep.completed and rep.failure.startswith("solver_dt")
+    assert rep.witness("solver_dt").value == pytest.approx(float(f.dt) / float(f.grid.dt))
 
 
 # ---------------------------------------------------------------------------
