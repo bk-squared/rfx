@@ -970,6 +970,12 @@ CLASSIFICATION: dict[str, str] = {
     # reviews' scripts and printed output under its reviews/, each attributed
     # where it is quoted.
     "docs/design_notes/20260923_boundary_model_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # The FZ ladder re-solved after #1213, pre-declaration. No `::` span. Its
+    # section-1 numbers are R2's |S21|^2 readings, printed by §F.6 of
+    # 20260922_msl_notch_fz_ladder_predeclaration.md and pinned by
+    # tests/unit/nonuniform/test_msl_notch_fz_replay.py; its own results will
+    # come from results/msl_notch_graded_fz_after_1213.json.
+    "docs/design_notes/20260923_msl_notch_fz_after_1213_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,

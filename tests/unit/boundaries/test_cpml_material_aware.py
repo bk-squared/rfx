@@ -287,6 +287,9 @@ def _nu_capture_distributed_final_state(eps_r: float, devices) -> object:
     orig = _dnu.run_nonuniform_distributed_pec
 
     def _wrap(*a, **kw):
+        # forward() no longer asks the runner for the gathered state; this
+        # test reads it, so request it explicitly.
+        kw["gather_final_state"] = True
         out = orig(*a, **kw)
         cap["state"] = out.get("final_state")
         return out
