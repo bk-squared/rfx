@@ -2255,6 +2255,8 @@
     "tests/locks/test_absorber_discipline_witness.py::test_passivity_witness_is_present_and_physical[waveguide_wr62_kuband_broad_e5_envelope]": 0.0017159589999664604,
     "tests/locks/test_absorber_discipline_witness.py::test_passivity_witness_is_present_and_physical[waveguide_wr90_nu_flux_broad_e5_envelope]": 0.0019367130000773614,
     "tests/locks/test_absorber_discipline_witness.py::test_the_glob_finds_the_committed_lanes": 0.0017045170000073995,
+    "tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[bead]": 179.59,
+    "tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[thru]": 160.9,
     "tests/locks/test_cpml_axis_params_refactor_bit_identical.py::test_cpml_axis_params_boundary_cell_sizes_match_grid_dx": 0.007474621000028492,
     "tests/locks/test_cpml_axis_params_refactor_bit_identical.py::test_cpml_axis_params_is_six_face_after_pr1": 0.05118739700014885,
     "tests/locks/test_cpml_axis_params_refactor_bit_identical.py::test_cpml_hi_face_profiles_are_pre_flipped": 0.008194289000016397,

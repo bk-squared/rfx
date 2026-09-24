@@ -1,9 +1,9 @@
 # .test_durations — provenance
 
 Regenerated 2026-09-21 on `main` (`150ed1d8`, assembled at `2bad0f51`) from `regen-durations` run
-[35613805791](https://github.com/bk-squared/rfx/actions/runs/35613805791). **8286 entries in the
-file**, of which **57 of them carried unchanged** from the 10625-entry file this replaces, plus one
-entry set by hand (below). Nine of that run's ten jobs succeeded; `slow (3)` was killed by the runner
+[35613805791](https://github.com/bk-squared/rfx/actions/runs/35613805791). **8288 entries in the
+file**, of which **57 of them carried unchanged** from the 10625-entry file this replaces, plus three
+entries set by hand (below). Nine of that run's ten jobs succeeded; `slow (3)` was killed by the runner
 twice — lost communication on the first try, exit 137 at 31 % on the rerun, in
 `tests/unit/geometry/test_mesh_import.py`, so it is memory, not time — as `slow (3)` was on
 2026-09-16 too. The merge therefore keeps a committed value for a currently collected test that no
@@ -14,12 +14,17 @@ measured them and the replaced file had none either; pytest-split places them by
 unknown ids. The counts here are computed from the artifacts, the replaced file and those
 collection lists; the contract below checks the first two against the file.
 
-**One entry is not a measurement of this run.**
+**Three entries are not measurements of this run.**
 `tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
 is priced at 2247 s, read from the weekly lane's run 35599919970 (shard 2 of 4, 12:58:29 → 13:35:56
 on 2026-09-21). The file this replaces priced it at 202.2 s; that gap is what cut shard 2 at the
 120-minute limit that day. Its shard is the one the regeneration cannot finish, so a runner
 measurement of it does not exist; the weekly run's clock is the closest thing.
+
+The two coaxial chain-battery drift locks, `tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[bead]`
+and `[thru]`, are priced at 179.59 s and 160.90 s: their call times on four VESSL CPU cores
+(pinned with `taskset`), run 369367264301 on 2026-09-24, added when the tests were. No runner has
+measured them; without an entry pytest-split would price each at the file's mean.
 
 Every entry is a raw measurement. **No floor is added** — see below.
 

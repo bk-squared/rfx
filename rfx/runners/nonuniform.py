@@ -577,7 +577,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     )
 
 
-def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
+def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
                         sheet_specs=()):
     """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
@@ -587,9 +587,12 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
       * the eigenmode J+M launch is FENCED — ``run_nonuniform`` carries no
         magnetic-source channel, so the Schelkunoff H-source would have
         nowhere to go; and
-      * the substrate ``eps_r`` is read from ``materials_concrete`` so the
+      * the substrate ``eps_r`` is read from ``materials_drive`` so the
         value stays concrete under ``jax.grad`` (the same concreteness split
-        ``make_current_source`` uses on this path).
+        ``make_current_source`` uses on this path), and the feed's own
+        termination conductance is stamped into ``materials_drive`` as well
+        as ``materials`` before the feed is built from it (#1256: the
+        drive's Cb has to be the E update's, port load included).
 
     The Ez point-sources are appended to ``sources`` (they ride the generic
     NU point-source scan injection). The per-probe DFT planes are registered
@@ -635,13 +638,15 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_concrete, sources,
         if pe.eps_r_sub is not None:
             eps_r_sub = float(pe.eps_r_sub)
         else:
-            eps_r_sub = float(np.asarray(materials_concrete.eps_r[eps_cell]))
+            eps_r_sub = float(np.asarray(materials_drive.eps_r[eps_cell]))
         mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
 
         materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)
+        materials_drive = setup_msl_port(      # #1256
+            grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
             sources.extend(make_msl_port_sources(
-                grid, mp, materials_concrete, n_steps, mode_profile=mode_profile,
+                grid, mp, materials_drive, n_steps, mode_profile=mode_profile,
             ))
         if pec_edge_masks is not None:
             from rfx.boundaries.pec import clear_edges
@@ -876,12 +881,28 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         _pec_wires = []
 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
-    # arrays for the scan. We keep the original concrete ``materials`` for
-    # ``make_current_source`` (which calls ``float(materials.eps_r[i,j,k])``)
-    # so that source normalisation stays concrete under ``jax.grad``; the
-    # override is folded into a separate ``materials_scan`` used for
-    # port-sigma updates and the scan launch.
-    materials_concrete = materials
+    # arrays for the scan. Every source and port DRIVE is built from
+    # ``materials_drive`` instead: the arrays as assembled, before the
+    # override, so the drive normalisation stays concrete under
+    # ``jax.grad`` (``make_current_source`` takes ``float()`` of a concrete
+    # eps/sigma) and a two-run S-matrix reference is driven exactly as the
+    # device run is.
+    #
+    # #1256: ``materials_drive`` is not a frozen snapshot. Each port below
+    # stamps its termination conductance into BOTH copies. A port drives a
+    # current into an edge whose update coefficient Cb = dt/(eps + sigma*dt/2)
+    # includes that port's own conductance; a drive built without it
+    # injected (1 + sigma_port*dt/(2*eps)) times the declared current --
+    # 2.9 on a 50 ohm port across three 0.5 mm cells of eps_r 3.38 at the
+    # Courant step, so the absolute field depended on dt and on the dual
+    # cell sizes at the feed. S-parameters, ratios of two responses to one
+    # drive, hid it only where every cell of the port had the same factor;
+    # a layered substrate, graded cells or a lumped R/C under the port
+    # made the factors unequal and moved S11 too. The uniform lane builds
+    # its port sources after the stamp and never had this. On a concrete mesh the stamp is a host float and the copy stays
+    # concrete; on a traced mesh (#1207) sigma_port is traced, and so is the
+    # drive, exactly as the E update is.
+    materials_drive = materials
     if eps_override is not None or sigma_override is not None:
         # A whole-grid override REPLACES the array, so any lumped stamp that
         # was folded into it is gone; its #1210 record goes with it, or the
@@ -961,11 +982,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         aniso_eps = assemble_interface_eps_nu(sim, grid, materials)
 
     # Fold RLC R/C into materials before other port/source setup
-    # (mirrors the uniform path).
+    # (mirrors the uniform path). #1256: into the drive's copy too -- an
+    # R or C across a driven edge is part of that edge's Cb, and a drive
+    # built without it is off by the element's own (eps + sigma*dt/2) ratio.
     if sim._lumped_rlc:
         from rfx.lumped import setup_rlc_materials
         for spec in sim._lumped_rlc:
             materials = setup_rlc_materials(grid, spec, materials)
+            materials_drive = setup_rlc_materials(grid, spec, materials_drive)
 
     # Initialize Debye/Lorentz dispersion coefficients
     debye = None
@@ -1009,7 +1033,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             # #571) threaded — None/'current' are bit-identical no-ops here.
             src = make_current_source(
                 grid, idx, pe.component, pe.waveform, sizing_n,
-                materials_concrete, amplitude_kind=pe.amplitude_kind)
+                materials_drive, amplitude_kind=pe.amplitude_kind)
             sources.append(src)
         elif pe.extent is not None:
             # Wire port on non-uniform grid
@@ -1107,6 +1131,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     # 50 ohm termination presented 200 ohm.
                     materials = _stamp_lumped_sigma(
                         materials, (ci, cj, ck), sigma_port, pe.component)
+                    # #1256: and into the copy the drive is built from.
+                    materials_drive = _stamp_lumped_sigma(
+                        materials_drive, (ci, cj, ck), sigma_port, pe.component)
                     # No PEC clearing here (#931 §1.9, corrected): a cell
                     # is LIVE exactly when the port component's own edge is
                     # not PEC, so releasing that component is a no-op, and
@@ -1136,7 +1163,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         continue
                     src = make_current_source(
                         grid, cell_ijk, pe.component,
-                        pe.waveform, sizing_n, materials_concrete)
+                        pe.waveform, sizing_n, materials_drive)
                     # Scale by 1/n_live for distributed excitation. A traced
                     # source table stays traced: on a mesh design variable
                     # the injected current moment is normalized by the port
@@ -1202,6 +1229,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
             materials = _stamp_lumped_sigma(      # #1210, #1236
                 materials, (i, j, k), sigma_port, pe.component)
+            materials_drive = _stamp_lumped_sigma(    # #1256, #1236
+                materials_drive, (i, j, k), sigma_port, pe.component)
             if pec_edge_masks is not None:
                 # The lumped port drives ONE edge: its own component at
                 # its own cell (#931 §1.9, corrected).
@@ -1209,7 +1238,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     pec_edge_masks, [(i, j, k)], component=pe.component)
             if pe.excite:
                 src = make_current_source(
-                    grid, idx, pe.component, pe.waveform, sizing_n, materials_concrete)
+                    grid, idx, pe.component, pe.waveform, sizing_n, materials_drive)
                 sources.append(src)
 
     for pe in sim._probes:
@@ -1342,7 +1371,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # registered by compute_msl_s_matrix via add_dft_plane_probe.
     if getattr(sim, "_msl_ports", None):
         materials, pec_edge_masks = _setup_msl_ports_nu(
-            sim, grid, materials, materials_concrete, sources, sizing_n,
+            sim, grid, materials, materials_drive, sources, sizing_n,
             pec_edge_masks,
             geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
         )
