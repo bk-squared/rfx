@@ -24,7 +24,12 @@ Board, cross-section, drive and record unit are the coax chain battery's
     PYTHONPATH=. python scripts/diagnostics/coax_open_check_config.py \\
         --rung 4 --z-mm 40 --out <run-dir> --run-id <id>
     PYTHONPATH=. python scripts/diagnostics/coax_open_check_config.py \\
-        --summarize <dir with every record> [--run-index <json>]
+        --summarize <shipped lane's records> [--new <fixed lane's records> \\
+        --artifact-out <path outside the repository>]
+
+Measurement records stay out of this repository (PI, 2026-09-24). The record of
+2026-09-24 is ``rfx/records/20260924-coax-closed-can/open_check_config.json`` in
+``bk-squared/rfx-archive``.
 """
 from __future__ import annotations
 
@@ -142,9 +147,9 @@ def _rows(directory: Path) -> list[dict]:
     return rows
 
 
-def summarize(args) -> int:
+def summarize(args, artifact_out: Path | None = None) -> int:
     """Print one row per record, or — with ``--new`` and ``--artifact-out`` —
-    write the committed record of the sweep: the shipped lane's records (the
+    write the record of the sweep: the shipped lane's records (the
     ``--summarize`` directory) beside the fixed lane's (``--new``), board by
     board. Arithmetic only."""
     old = _rows(Path(args.summarize))
@@ -166,6 +171,7 @@ def summarize(args) -> int:
                                    "shift_12_24_per_bin", "passes", "cell_steps")}})
     art = {
         "schema": SCHEMA, "driver": DRIVER, "reuses": battery.DRIVER,
+        "artifact": str(artifact_out),
         "what": ("The coax one-port lane's open termination at 4 and 6 annulus cells on "
                  "the battery's 8 x 8 mm cross-section, 40 mm and 25 mm long, at 12 and 24 "
                  "line traversals: the shipped lane (absorbers on z only) beside the fixed "
@@ -177,8 +183,9 @@ def summarize(args) -> int:
         "freqs_hz": battery.FREQS.astype(float).tolist(),
         "table": table, "shipped": old, "fixed": new,
     }
-    out = Path(args.artifact_out)
-    out.write_text(json.dumps(art, indent=1) + "\n")
+    artifact_out.parent.mkdir(parents=True, exist_ok=True)
+    artifact_out.write_text(json.dumps(art, indent=1) + "\n")
+    print(f"wrote {artifact_out}", file=sys.stderr)
     for row in table:
         print(json.dumps(row))
     return 0
@@ -195,9 +202,14 @@ def main() -> int:
                     help="a directory of records (with its run_index.json)")
     ap.add_argument("--new", default=None,
                     help="summarize only: the fixed lane's directory, beside --summarize's")
-    ap.add_argument("--artifact-out", default=None)
+    ap.add_argument("--artifact-out", default=None,
+                    help="summarize with --new only: where the record is written, outside "
+                         "the repository")
     args = ap.parse_args()
     if args.summarize:
+        if args.new:
+            return summarize(args, battery.record_path_outside_the_repository(
+                ap, args.artifact_out))
         return summarize(args)
     if args.rung is None or not args.out:
         ap.error("--rung and --out are required")

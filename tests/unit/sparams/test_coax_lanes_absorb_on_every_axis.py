@@ -7,8 +7,8 @@ were vacuum backed by the PEC grid faces, a closed metal can around the line,
 and the can held that field between the shell and its walls. The open end
 coupled it back, so the open's |S11| rose above 1 and grew with the record:
 1.018 at 12 line traversals and 1.046 at 24 at 9 annulus cells, and 1.0015 at
-both with the lateral pads absorbing (issue 1218,
-``tests/fixtures/coax_chain_battery/open_closed_can_arms.json``).
+both with the lateral pads absorbing (issue 1218; the records are in rfx-archive,
+``rfx/records/20260924-coax-closed-can/open_closed_can_arms.json``).
 
 ``compute_coaxial_line_reflection`` and ``compute_coaxial_two_port`` now hand
 the runner ``cpml_axes="xyz"``, refuse any other value, and refuse a board with

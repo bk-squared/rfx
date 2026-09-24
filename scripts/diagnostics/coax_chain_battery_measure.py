@@ -1820,6 +1820,22 @@ def fixture_provenance(p: dict, index: dict | None, stage_file: str) -> dict:
     return out
 
 
+def record_path_outside_the_repository(ap, value, flag: str = "--artifact-out") -> Path:
+    """Where a diagnostic writes its assembled record: a path outside this
+    repository, and never a default. Measurement records that no test reads stay
+    out of the code repository (PI, 2026-09-24); they live in rfx-archive under
+    ``rfx/records/<date>-<topic>/``. ``ap.error`` exits on a missing path or one
+    inside the repository."""
+    if not value:
+        ap.error(f"{flag} is required: a path outside the repository (measurement "
+                 "records stay out of it, PI 2026-09-24)")
+    out = Path(value).resolve()
+    if out == REPO or REPO in out.parents:
+        ap.error(f"{flag} must be outside the repository: measurement records stay out "
+                 "of it (PI, 2026-09-24)")
+    return out
+
+
 def _load_stage(out: Path, name: str) -> dict | None:
     p = out / name
     if not p.exists():

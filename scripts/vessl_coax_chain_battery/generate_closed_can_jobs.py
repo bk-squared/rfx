@@ -79,6 +79,11 @@ run: |-
   echo COAX_CLOSED_CAN_JOB_DONE
 """
 
+# The records this campaign reads and writes live outside the repository
+# (PI, 2026-09-24): rfx-archive's checkout on the shared volume the jobs mount.
+ARCHIVE_RECORDS = ("/root/workspace/byungkwan-workspace/research/rfx-archive/rfx/records/"
+                   "20260924-coax-closed-can")
+
 COMMAND = ('  {{ timeout {timeout} "$PY" {driver} {cli} --out "$WORK/out" --run-id "{prefix}" '
            '2>&1; echo "rc=$?"; }} | tee -a "$OUT/run.log" | tail -80')
 
@@ -87,7 +92,8 @@ def jobs() -> list[dict]:
     out = [dict(
         key="smoke",
         clis=["--smoke --arm ALL", "--smoke --w1",
-              '--smoke --assemble --artifact-out "$WORK/out/smoke_open_closed_can_arms.json"'],
+              '--smoke --assemble --artifact-out "$OUT/smoke_open_closed_can_arms.json" '
+              f'--open-absorber-record {ARCHIVE_RECORDS}/open_absorber_diagnostic.json'],
         description=("Closed-can test, smoke: every arm, W1 and the assembler at a one- and "
                      "two-unit record, to exercise the code paths before the campaign."),
     )]

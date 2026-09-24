@@ -995,10 +995,10 @@ CLASSIFICATION: dict[str, str] = {
     # come from results/msl_notch_graded_fz_after_1213.json.
     "docs/design_notes/20260923_msl_notch_fz_after_1213_predeclaration.md": NO_ARTIFACT_REFERENCE,
     # The coax open closed-can pre-declaration (issue 1218). No `::` span: its
-    # numbers are read from tests/fixtures/coax_chain_battery/
-    # open_absorber_diagnostic.json and the coax battery's fixture.json, each
-    # named where it is quoted; the arms it declares are recorded in
-    # tests/fixtures/coax_chain_battery/open_closed_can_arms.json.
+    # numbers are read from open_absorber_diagnostic.json and the coax battery's
+    # fixture.json, each named where it is quoted; the arms it declares are
+    # recorded in open_closed_can_arms.json. Both records moved to rfx-archive
+    # (rfx/records/20260924-coax-closed-can/) under the 2026-09-24 rule.
     "docs/design_notes/20260924_coax_open_closed_can_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,

@@ -68,7 +68,12 @@ Usage (from a clean checkout; the ``rfx`` import must resolve to this tree)::
         --layout-only [--arm T2]
     PYTHONPATH=. python scripts/diagnostics/coax_open_closed_can_arms.py \\
         --assemble --out <dir with every record> --run-index <json> \\
-        --artifact-out tests/fixtures/coax_chain_battery/open_closed_can_arms.json
+        --open-absorber-record <open_absorber_diagnostic.json> \\
+        --artifact-out <path outside the repository>
+
+Measurement records stay out of this repository (PI, 2026-09-24). The record of
+2026-09-24 and the open-absorber record it reads are in ``bk-squared/rfx-archive``
+under ``rfx/records/20260924-coax-closed-can/``.
 """
 from __future__ import annotations
 
@@ -114,10 +119,8 @@ from rfx.sparams.coax import _coax_pec_edge_masks  # noqa: E402
 SCHEMA = "rfx.coax_open_closed_can_arms"
 SCHEMA_VERSION = 1
 DRIVER = "scripts/diagnostics/coax_open_closed_can_arms.py"
-ARTIFACT = "tests/fixtures/coax_chain_battery/open_closed_can_arms.json"
 PREDECLARATION = "docs/design_notes/20260924_coax_open_closed_can_predeclaration.md"
 PREDECLARATION_COMMIT = "043556f2c8d4f9f5676ab8b59f84303d588f7dc1"
-OPEN_ABSORBER_ARTIFACT = "tests/fixtures/coax_chain_battery/open_absorber_diagnostic.json"
 
 RUNG = battery.CLAIMS_RUNG            # 9 annulus cells: dx = (b - a) / 9
 GAP_CELLS = RUNG                      # one annulus width between a cap and the pin end
@@ -1422,7 +1425,7 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
                  "shielded line ends behind the feeds (T2). Complex S per bin, the realized "
                  "geometry and provenance per arm, the declared predictions evaluated as "
                  "arithmetic, and W1's TE cutoffs. No verdict."),
-        "driver": DRIVER, "reuses": battery.DRIVER, "artifact": ARTIFACT,
+        "driver": DRIVER, "reuses": battery.DRIVER, "artifact": str(artifact_out),
         "predeclaration": PREDECLARATION, "predeclaration_commit": PREDECLARATION_COMMIT,
         "assembled_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "assembler_commit": battery.git_sha(),
@@ -1591,7 +1594,7 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
     # W1 beside the growth frequencies of O0 and of the stored 16 mm board
     growth = {"this_campaign_O0": {t: (None if o0[t] is None else o0[t]["argmax_hz"])
                                    for t in ("u12", "u24")}}
-    stored = json.loads((battery.REPO / OPEN_ABSORBER_ARTIFACT).read_text())
+    stored = json.loads(Path(args.open_absorber_record).read_text())
     growth["stored_open_absorber_records"] = {
         f"{row['arm']}_rung9_u{row['record_units']:g}": {
             "board_m": row["board_m"], "max_abs_s11": row["max_abs_s11"],
@@ -1636,7 +1639,11 @@ def main() -> int:
                          "run id and run directory name")
     ap.add_argument("--resource-choice", default=None,
                     help="assemble only: the resource decision record, stored as-is")
-    ap.add_argument("--artifact-out", default=str(battery.REPO / ARTIFACT))
+    ap.add_argument("--open-absorber-record", default=None,
+                    help="assemble only: the open-absorber diagnostic's record, whose "
+                         "growth frequencies W1 is set beside")
+    ap.add_argument("--artifact-out", default=None,
+                    help="assemble only: where the record is written, outside the repository")
     args = ap.parse_args()
 
     if args.layout_only:
@@ -1646,7 +1653,10 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.assemble:
-        stage_assemble(args, out, Path(args.artifact_out))
+        artifact_out = battery.record_path_outside_the_repository(ap, args.artifact_out)
+        if not args.open_absorber_record:
+            ap.error("--open-absorber-record is required with --assemble")
+        stage_assemble(args, out, artifact_out)
         return 0
     if args.w1:
         stage_w1(args, out / w1_name(args.smoke))

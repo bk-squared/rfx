@@ -39,7 +39,11 @@ Usage (from a clean checkout; the ``rfx`` import must resolve to this tree)::
         --layout-only
     PYTHONPATH=. python scripts/diagnostics/coax_open_absorber_diagnostic.py \\
         --assemble --out <dir with every arm JSON> --run-index <json> \\
-        --artifact-out tests/fixtures/coax_chain_battery/open_absorber_diagnostic.json
+        --artifact-out <path outside the repository>
+
+Measurement records stay out of this repository (PI, 2026-09-24). The record of
+2026-09-23 is ``rfx/records/20260924-coax-closed-can/open_absorber_diagnostic.json``
+in ``bk-squared/rfx-archive``.
 """
 from __future__ import annotations
 
@@ -66,7 +70,6 @@ from rfx.sparams.coax import _coax_pec_edge_masks  # noqa: E402
 SCHEMA = "rfx.coax_open_absorber_diagnostic"
 SCHEMA_VERSION = 1
 DRIVER = "scripts/diagnostics/coax_open_absorber_diagnostic.py"
-ARTIFACT = "tests/fixtures/coax_chain_battery/open_absorber_diagnostic.json"
 BATTERY_ARTIFACT = battery.ARTIFACT
 PREDECLARATION = ("the leader's pre-declaration, a local note that is not committed; the "
                   "arms and thresholds it declares are restated in this artifact's "
@@ -504,7 +507,7 @@ def stage_assemble(args, out: Path, artifact_out: Path) -> None:
                  "battery's own: the end moved 2b above the -z absorber, the board "
                  "widened to 16 x 16 mm, and both. Measurements beside the pre-declared "
                  "thresholds; no verdict."),
-        "driver": DRIVER, "reuses": battery.DRIVER, "artifact": ARTIFACT,
+        "driver": DRIVER, "reuses": battery.DRIVER, "artifact": str(artifact_out),
         "battery_artifact": BATTERY_ARTIFACT, "predeclaration": PREDECLARATION,
         "assembled_utc": _dt.datetime.now(_dt.timezone.utc).isoformat(),
         "assembler_commit": battery.git_sha(),
@@ -779,7 +782,8 @@ def main() -> int:
     ap.add_argument("--run-index", default=None,
                     help="assemble only: a JSON mapping each arm file to its compute "
                          "run id and run directory name")
-    ap.add_argument("--artifact-out", default=str(battery.REPO / ARTIFACT))
+    ap.add_argument("--artifact-out", default=None,
+                    help="assemble only: where the record is written, outside the repository")
     args = ap.parse_args()
 
     if args.layout_only:
@@ -789,7 +793,8 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     if args.assemble:
-        stage_assemble(args, out, Path(args.artifact_out))
+        stage_assemble(args, out,
+                       battery.record_path_outside_the_repository(ap, args.artifact_out))
         return 0
     if args.arm is None:
         ap.error("one of --arm, --assemble or --layout-only is required")
