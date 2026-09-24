@@ -805,15 +805,23 @@ def test_block_far_field_expansion_against_a_direct_sum():
 
 
 # The strip dipole below, against the face-centre NTFF box on the same run
-# (CPU, JAX 0.6.2, 1 mm cells, 4 mm blocks, order 2): complex relative L2 of
-# the pattern 4.1e-04 / 1.0e-03 / 2.3e-03 at 6 / 8 / 10 GHz, directivity
-# 0.001 / 0.004 / 0.009 dB apart. The difference grows about as the square of
-# the frequency and does not move when the blocks shrink to 2 mm, i.e. it is
-# not the block expansion; P alone (order 0) on the same accumulator is
-# 4.7e-02 .. 8.1e-02 off. Bars: twice the worst measured value; the P-only
-# control must stay five times above the pattern bar.
-DIPOLE_PATTERN_BAR = 5e-3
+# (CPU, JAX 0.6.2, 1 mm cells, 4 mm blocks, order 2). The comparison reads
+# only what a common time origin cannot change: the two routes stamp their
+# fields at times whose offset has not been established, so a complex
+# distance would mix a per-frequency phase into the verdict. Measured at
+# 6 / 8 / 10 GHz: the largest difference of the two patterns, each in dB below
+# its own peak, over the directions where the box's pattern is within 20 dB of
+# its peak, 0.0061 / 0.0128 / 0.0278 dB; directivity 0.0008 / 0.0035 / 0.0092
+# dB apart; radiated power 0.0025 / 0.0064 / 0.0148 dB apart. The differences
+# grow with frequency and the complex distance does not move when the blocks
+# shrink to 2 mm, i.e. they are not the block expansion. Bars: twice the
+# worst measured value of each. P alone (order 0) on the same accumulator
+# reads 0.105 / 0.174 / 0.272 dB on the pattern and must stay above the
+# pattern bar at every frequency.
+DIPOLE_SHAPE_FLOOR_DB = -20.0
+DIPOLE_SHAPE_BAR_DB = 0.06
 DIPOLE_DIRECTIVITY_BAR_DB = 0.02
+DIPOLE_POWER_BAR_DB = 0.03
 DIPOLE_FREQS = np.array([6e9, 8e9, 10e9])
 
 
@@ -860,17 +868,24 @@ def test_far_field_matches_the_ntff_box_on_a_strip_dipole():
     assert mon.E_theta.shape == box.E_theta.shape == (3, 37, 36)
     np.testing.assert_allclose(mon.freqs, DIPOLE_FREQS, rtol=1e-7)
 
-    def rel(ff_a, ff_b, f):
-        return _rel_l2(np.concatenate([ff_a.E_theta[f].ravel(),
-                                       ff_a.E_phi[f].ravel()]),
-                       np.concatenate([ff_b.E_theta[f].ravel(),
-                                       ff_b.E_phi[f].ravel()]))
+    def shape_db(ff):
+        """Largest dB difference above the floor, per frequency."""
+        a, b = radiation_pattern(ff), radiation_pattern(box)
+        return [float(np.max(np.abs(a[f] - b[f])[b[f] >= DIPOLE_SHAPE_FLOOR_DB]))
+                for f in range(3)]
 
-    pattern = [rel(mon, box, f) for f in range(3)]
-    assert max(pattern) <= DIPOLE_PATTERN_BAR, pattern
+    def radiated(ff):
+        power = np.abs(ff.E_theta) ** 2 + np.abs(ff.E_phi) ** 2
+        th, ph = np.asarray(ff.theta), np.asarray(ff.phi)
+        w = (np.sin(th) * np.gradient(th))[None, :, None] * np.gradient(ph)
+        return np.sum(power * w, axis=(1, 2))
+
+    shape = shape_db(mon)
+    assert max(shape) <= DIPOLE_SHAPE_BAR_DB, shape
     d_db = np.abs(directivity(mon) - directivity(box))
     assert d_db.max() <= DIPOLE_DIRECTIVITY_BAR_DB, d_db
-    assert np.isfinite(radiation_pattern(mon)).all()
+    p_db = np.abs(10.0 * np.log10(radiated(mon) / radiated(box)))
+    assert p_db.max() <= DIPOLE_POWER_BAR_DB, p_db
     assert np.isfinite(axial_ratio(mon)).all()
 
     # Negative control on the same accumulator: the total moment P alone.
@@ -878,9 +893,8 @@ def test_far_field_matches_the_ntff_box_on_a_strip_dipole():
     p_only = res._replace(
         current_moment_data=(np.asarray(res.current_moment_data[0])[..., :1],),
         current_moment_monitor=m._replace(order=0))
-    control = [rel(current_moment_far_field(p_only, theta, phi), box, f)
-               for f in range(3)]
-    assert min(control) >= 5.0 * DIPOLE_PATTERN_BAR, control
+    control = shape_db(current_moment_far_field(p_only, theta, phi))
+    assert min(control) > DIPOLE_SHAPE_BAR_DB, control
 
 
 def test_far_field_refuses_a_result_without_moments():
@@ -901,23 +915,28 @@ GRAD_FREQS = np.array([8e9, 1.0e10])
 GRAD_N_STEPS = 220
 
 
+GRAD_BOX = ((7e-3, 5e-3, 5e-3), (8e-3, 7e-3, 7e-3))   # 2 x 3 x 3 cells
+
+
 def _grad_problem():
-    """A soft Ex element beside a dielectric block whose eps_r is the knob."""
+    """A soft Ex element beside a dielectric block whose eps_r is the knob.
+
+    The block is a ``design_box``: a traced whole-grid ``eps_override`` could
+    put material anywhere and is refused while the monitor is on, a design
+    box is checked against the slab.
+    """
     from rfx import Simulation
     sim = Simulation(freq_max=12e9, domain=(12e-3, 12e-3, 12e-3), dx=1e-3,
                      boundary="cpml", cpml_layers=6, precision="float64")
     sim.add_source((6e-3, 6e-3, 6e-3), "ex")
-    sim.add_current_moment_monitor((3e-3, 3e-3, 4e-3), (9e-3, 9e-3, 8e-3),
-                                   block_size=3e-3, freqs=GRAD_FREQS)
-    grid = sim._build_grid()
-    c = np.asarray(grid.shape) // 2
-    mask = np.zeros(grid.shape)
-    mask[c[0] + 1:c[0] + 3, c[1] - 1:c[1] + 2, c[2] - 1:c[2] + 2] = 1.0
+    sim.add_current_moment_monitor((2e-3, 2e-3, 2e-3), (10e-3, 10e-3, 10e-3),
+                                   block_size=4e-3, freqs=GRAD_FREQS)
     theta, phi = np.array([0.3, 1.2]), np.array([0.4])
 
-    def objective(alpha):
-        eps = jnp.ones(grid.shape, dtype=jnp.float64) + alpha * jnp.asarray(mask)
-        fr = sim.forward(eps_override=eps, n_steps=GRAD_N_STEPS,
+    def objective(eps_r):
+        box_eps = jnp.ones((2, 3, 3), dtype=jnp.float64) * eps_r
+        fr = sim.forward(design_box=GRAD_BOX, design_eps_override=box_eps,
+                         n_steps=GRAD_N_STEPS, checkpoint=False,
                          skip_preflight=True)
         ff = current_moment_far_field(fr, theta, phi)
         return jnp.sum(jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2)
@@ -931,10 +950,11 @@ def test_gradient_through_the_monitor_matches_a_central_difference():
     The power radiated into two directions at two frequencies, as a function
     of the permittivity of a small block beside the source, differentiated
     under ``jax.jit`` (the way ``optimize(jit=True)`` compiles a step).
-    Measured (CPU): the AD gradient and the central difference agree to
-    8e-10 relative at a step of 1e-4, 7.5e-8 at 1e-3 and 7.5e-6 at 1e-2 —
-    the difference falls as the square of the step, so it is the difference
-    quotient's own truncation. The jitted value is the plain call's.
+    Measured (CPU, at eps_r = 2): the AD gradient and the central difference
+    agree to 1.2e-9 relative at a step of 1e-4, 1.2e-7 at 1e-3 and 1.2e-5 at
+    1e-2 — the difference falls as the square of the step, so it is the
+    difference quotient's own truncation. The jitted value is the plain
+    call's.
     """
     with enable_x64():
         objective = _grad_problem()
@@ -1029,7 +1049,7 @@ def _api_board(lane):
     sim.add_material("sub", eps_r=3.38, sigma=0.02)
     sim.add(Box((3e-3, 3e-3, 3e-3), (13e-3, 13e-3, top)), material="sub")
     sim.add_port((8e-3, 8e-3, 3e-3), "ez", impedance=50.0, extent=top - 3e-3)
-    sim.add_current_moment_monitor((4e-3, 4e-3, 2.0e-3), (12e-3, 12e-3, 6e-3),
+    sim.add_current_moment_monitor((1e-3, 1e-3, 2.0e-3), (15e-3, 15e-3, 6e-3),
                                    block_size=4e-3, freqs=API_FREQS)
     grid = (sim._build_nonuniform_grid() if lane == "graded"
             else sim._build_grid())
@@ -1097,21 +1117,26 @@ def test_the_public_run_matches_the_plane_route_with_a_port(lane):
 
 
 def _ringdown_box(lane):
-    """A lossy dielectric-filled metal box driven by a 50 ohm wire port."""
+    """A lossy dielectric block in open space, fed by a 50 ohm wire port."""
     from rfx import Box, GaussianPulse, Simulation
     mm = 1e-3
-    kw = ({"dz_profile": np.array([0.8, 0.6, 1.4, 1.4, 0.8]) * mm}
-          if lane == "graded" else {})
-    sim = Simulation(freq_max=20e9, domain=(12 * mm, 11 * mm, 5 * mm),
-                     dx=1.0 * mm, boundary="pec", **kw)
+    if lane == "graded":
+        # nodes 0, 1, 2, 2.8, 3.4, 4.8, 6, 7, 8 mm
+        dz = np.array([1.0, 1.0, 0.8, 0.6, 1.4, 1.2, 1.0, 1.0]) * mm
+        kw, lz, top = {"dz_profile": dz}, float(dz.sum()), 3.4 * mm
+        pos, ext = (6 * mm, 6 * mm, 2.8 * mm), 0.6 * mm
+    else:
+        kw, lz, top = {}, 8 * mm, 4 * mm
+        pos, ext = (6 * mm, 6 * mm, 2 * mm), 1.0 * mm
+    sim = Simulation(freq_max=20e9, domain=(12 * mm, 12 * mm, lz),
+                     dx=1.0 * mm, boundary="cpml", cpml_layers=6, **kw)
     sim.add_material("fill", eps_r=2.2, sigma=0.0127)
-    sim.add(Box((0, 0, 0), (12 * mm, 11 * mm, 5 * mm)), material="fill")
-    pos, ext = (((2 * mm, 2 * mm, 0.8 * mm), 0.6 * mm) if lane == "graded"
-                else ((2 * mm, 2 * mm, 0.0), 1.0 * mm))
+    sim.add(Box((3 * mm, 3 * mm, 2 * mm), (9 * mm, 9 * mm, top)),
+            material="fill")
     sim.add_port(position=pos, component="ez", impedance=50.0, extent=ext,
                  waveform=GaussianPulse(f0=13.0e9, bandwidth=0.8, cutoff=4.5))
     sim.add_current_moment_monitor(
-        (2 * mm, 2 * mm, 1.4 * mm), (10 * mm, 9 * mm, 3.8 * mm),
+        (1 * mm, 1 * mm, 1 * mm), (11 * mm, 11 * mm, 6 * mm),
         block_size=2 * mm, freqs=np.array([10e9, 12.4e9, 14e9]))
     return sim
 
@@ -1123,13 +1148,14 @@ def test_ringdown_completion_returns_the_same_moments(lane):
     completion assembles S through the lane's result assembly with a
     stand-in set-up that carries no monitor.
 
-    Bit for bit on CPU. On a GPU (RTX 3090, JAX 0.6.2) the added probes
-    compile to a different program and the float32 sums round differently
-    in the last digits, so the comparison is the repository's cross-trace
-    rule, the one ``run(ringdown=)``'s own W0 witness reads: at most 9 ULP,
-    counted at the array's peak in its own real dtype."""
+    Bit for bit on CPU. On a GPU the added probes compile to a different
+    program and the float32 sums can round differently in the last digits
+    (RTX 3090, JAX 0.6.2, on an earlier closed-box version of this fixture:
+    0.06 ULP uniform, 1.0 ULP graded), so the comparison is the repository's
+    cross-trace rule, the one ``run(ringdown=)``'s own W0 witness reads: at
+    most 9 ULP, counted at the array's peak in its own real dtype."""
     from rfx.ringdown import RingdownSpec
-    n = 1500 if lane == "uniform" else 2500
+    n = 800 if lane == "uniform" else 1200
     kw = dict(n_steps=n, compute_s_params=True,
               s_param_freqs=np.array([10e9, 12.4e9, 14e9]),
               skip_preflight=True)
@@ -1475,6 +1501,147 @@ def test_refuses_the_fourth_order_stencil():
         block_size=6e-3, freqs=FREQS)
     with pytest.raises(NotImplementedError, match="stencil_order=4"):
         sim.run(n_steps=4, skip_preflight=True)
+
+
+@pytest.mark.parametrize("order", [0, 1])
+def test_declaration_accepts_order_two_only(order):
+    """Below order 2 the block centre's half-cell offset from the x-directed
+    edges is left in the pattern (order 1) or Q is dropped (order 0)."""
+    from rfx import Simulation
+    sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
+                     cpml_layers=6, boundary="cpml")
+    with pytest.raises(ValueError, match="only order=2"):
+        sim.add_current_moment_monitor(
+            corner_lo=(6e-3,) * 3, corner_hi=(18e-3,) * 3, block_size=6e-3,
+            freqs=FREQS, order=order)
+
+
+# The model the guard tests below vary: 2 mm cells, a 24 mm cube of vacuum
+# in CPML, a soft Ez source at the centre, and a slab from 6 to 18 mm on
+# every axis, i.e. node indices 9..15 with a 6-cell absorber. Its interior
+# (the window without the outermost layer) is edge index 10..14 in-plane and
+# node planes 10..14; a cell must sit at index 10..13 on every axis for all
+# twelve of its edges to be inside.
+def _guard_sim(**kw):
+    from rfx import Simulation
+    sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
+                     cpml_layers=6, **({"boundary": "cpml"} | kw))
+    sim.add_source((1.2e-2, 1.2e-2, 1.2e-2), "ez", amplitude_kind="current")
+    sim.add_current_moment_monitor(
+        corner_lo=(6e-3,) * 3, corner_hi=(18e-3,) * 3, block_size=6e-3,
+        freqs=FREQS)
+    return sim
+
+
+def _guard_runs(sim, **kw):
+    return sim.run(n_steps=4, skip_preflight=True, **kw)
+
+
+def _block(sim, lo_mm, hi_mm, material="diel"):
+    from rfx import Box
+    if material == "diel" and "diel" not in sim._materials:
+        sim.add_material("diel", eps_r=3.0)
+    sim.add(Box(tuple(v * 1e-3 for v in lo_mm), tuple(v * 1e-3 for v in hi_mm)),
+            material=material)
+    return sim
+
+
+def test_refuses_a_magnetic_material():
+    """``mu_r != 1`` radiates through magnetization current, which the
+    electric-current identity does not contain — even inside the slab."""
+    sim = _guard_sim()
+    sim.add_material("ferrite", eps_r=1.0, mu_r=2.0)
+    _block(sim, (10, 10, 10), (14, 14, 14), material="ferrite")
+    with pytest.raises(NotImplementedError, match="mu_r != 1"):
+        _guard_runs(sim)
+
+
+def test_refuses_a_magnetic_override_the_model_does_not_declare():
+    """The check reads the permeability the run uses, not the declared
+    material list: a concrete ``mu_r_override`` on ``forward()`` is seen."""
+    sim = _guard_sim()
+    mu = np.ones(sim._build_grid().shape, dtype=np.float32)
+    mu[12, 12, 12] = 1.5
+    with pytest.raises(NotImplementedError, match="mu_r != 1"):
+        sim.forward(mu_r_override=jnp.asarray(mu), n_steps=4,
+                    skip_preflight=True)
+
+
+def test_refuses_conducting_domain_faces():
+    sim = _guard_sim(boundary="pec")
+    with pytest.raises(NotImplementedError, match="PEC domain face"):
+        _guard_runs(sim)
+
+
+@pytest.mark.parametrize("case", [
+    "dielectric outside", "dielectric on the outermost layer",
+    "conductor sheet crossing the slab", "source outside", "port outside",
+    "lumped element outside", "dispersive material outside"])
+def test_refuses_a_radiator_the_slab_does_not_hold(case):
+    """Current outside the slab radiates and never enters the pattern."""
+    from rfx import Box, DebyePole
+    sim = _guard_sim()
+    if case == "dielectric outside":
+        _block(sim, (2, 2, 2), (4, 4, 4))
+    elif case == "dielectric on the outermost layer":
+        # cells 9..10 on x: cell 9's edges lie on the slab's first layer
+        _block(sim, (6, 10, 10), (10, 14, 14))
+    elif case == "conductor sheet crossing the slab":
+        sim.add(Box((8e-3, 8e-3, 12e-3), (20e-3, 16e-3, 12e-3)), material="pec")
+    elif case == "source outside":
+        sim.add_source((3e-3, 12e-3, 12e-3), "ez", amplitude_kind="current")
+    elif case == "port outside":
+        sim.add_port((20e-3, 12e-3, 10e-3), "ez", impedance=50.0)
+    elif case == "lumped element outside":
+        sim.add_lumped_rlc((12e-3, 20e-3, 12e-3), "ez", R=50.0)
+    else:
+        sim.add_material("debye", eps_r=1.0,
+                         debye_poles=[DebyePole(delta_eps=1.5, tau=1e-11)])
+        _block(sim, (2, 2, 2), (4, 4, 4), material="debye")
+    with pytest.raises(NotImplementedError, match="outside the slab's interior"):
+        _guard_runs(sim)
+
+
+def test_accepts_the_same_structures_one_cell_further_in():
+    """The positive half of the guard: a dielectric block whose cells are all
+    at interior indices, a conductor sheet, a port and a lumped element inside
+    the slab run and return the moments."""
+    from rfx import Box
+    sim = _guard_sim()
+    _block(sim, (8, 10, 10), (12, 14, 14))
+    sim.add(Box((8e-3, 8e-3, 14e-3), (16e-3, 16e-3, 14e-3)), material="pec")
+    sim.add_port((14e-3, 12e-3, 10e-3), "ez", impedance=50.0)
+    sim.add_lumped_rlc((10e-3, 14e-3, 12e-3), "ez", R=50.0)
+    res = _guard_runs(sim)
+    assert res.current_moment_data is not None
+
+
+def test_refuses_a_traced_whole_grid_override():
+    """A traced ``eps_override`` could put material anywhere; a design box is
+    the way to hand a design variable in (the gradient test above uses one)."""
+    sim = _guard_sim()
+    shape = sim._build_grid().shape
+
+    def f(a):
+        eps = jnp.ones(shape) + a * jnp.zeros(shape).at[12, 12, 12].set(1.0)
+        return jnp.sum(sim.forward(eps_override=eps, n_steps=4,
+                                   skip_preflight=True).time_series)
+
+    with pytest.raises(NotImplementedError, match="traced whole-grid"):
+        jax.grad(f)(1.0)
+
+
+def test_refuses_a_design_box_outside_the_slab():
+    sim = _guard_sim()
+
+    def f(a):
+        return jnp.sum(sim.forward(
+            design_box=((2e-3, 2e-3, 2e-3), (4e-3, 4e-3, 4e-3)),
+            design_eps_override=jnp.ones((2, 2, 2)) * a, n_steps=4,
+            skip_preflight=True).time_series)
+
+    with pytest.raises(NotImplementedError, match="design region"):
+        jax.grad(f)(2.0)
 
 
 def test_declaration_rejects_an_unknown_keyword():
