@@ -9,10 +9,12 @@ archive commit (PI, 2026-09-24). Over the 14 days to 2026-09-24, ``rfx/``
 changed by +39,849/-37,028 lines on main while JSON alone changed by 3.78
 million, and a reviewer cannot read a diff of that shape.
 
-Four rules over the PR's diff against its merge base, all mechanical:
+Six rules over the PR's diff against its merge base, all mechanical:
 
 1. Data files added or modified OUTSIDE ``ALLOWLIST`` may add at most
-   ``LINE_BUDGET`` lines in total, and binary ones at most ``BINARY_BUDGET``
+   ``LINE_BUDGET`` lines and ``TEXT_BYTE_BUDGET`` bytes of text in total (a
+   whole added file, and the growth of a modified one: ten one-line JSON files
+   of 0.95 MB each are ten lines), and binary ones at most ``BINARY_BUDGET``
    bytes. Deletions are free: moving records out is the point.
 2. No data file the PR adds or modifies may exceed ``FILE_CAP`` bytes, on the
    allowlist or off it, except a file in a frozen-data home that a reader names
@@ -22,20 +24,28 @@ Four rules over the PR's diff against its merge base, all mechanical:
    work stops meaning anything. ``SIZE_EXEMPT`` names the one exception.
 3. A data file newly placed in a frozen-data home -- ``tests/fixtures/``,
    ``tests/data/``, ``tests/crossval/<case>/reference/`` -- must be named by a
-   tracked non-data file under ``tests/`` or ``rfx/``: by its file name, by
-   its name without its data suffixes (``f"{case}.json"`` readers), or, when it
-   sits in a subdirectory of its home, by that subdirectory's name (glob
-   readers). The two shorter names count only when ``_distinctive``.
-   The allowlist lets those homes grow past the budget; this is what keeps a
-   record from being parked there.
-4. A PR labelled ``data-budget-exception`` passes whatever it carries, with a
+   reader: a tracked ``.py`` file under ``tests/`` or ``rfx/`` that is not a
+   test of this gate. Named means its file name, or its name without its data
+   suffixes (``f"{case}.json"`` readers), appears in the reader as a whole
+   name; or, when it sits in a subdirectory of its home, that subdirectory's
+   name is a path component of a string literal in a reader (glob readers).
+   The two shorter names count only when ``_distinctive``. A README beside the
+   records, or this gate's own tests, cannot vouch for them.
+4. The data files a PR adds or modifies in the frozen-data homes hold at most
+   ``FROZEN_BUDGET`` bytes in total. The allowlist lets those homes grow past
+   rule 1, and a name is text a record can borrow; this bounds what borrowing
+   buys. The largest legitimate PR in the 14-day window was 2,338,905 bytes.
+5. A PR that adds or modifies a ``.gitattributes`` fails: ``validation/** -diff``
+   turns a 9,000-line CSV into a 196 kB binary that passes rule 1.
+6. A PR labelled ``data-budget-exception`` passes whatever it carries, with a
    warning annotation and the would-be failures in the step summary. The
    weekly ``scripts/ci/governance_audit.py`` lists every merged PR that
    carried the label.
 
 What a "data file" is: ``DATA_SUFFIXES`` by the last suffix, Touchstone
-``.sNp``, and the names in ``DATA_NAMES``. Git decides text or binary (numstat
-``-``), not the suffix.
+``.sNp``, the names in ``DATA_NAMES``, and any file git calls binary that is
+not an image (``IMAGE_SUFFIXES``). Git decides text or binary (numstat ``-``),
+not the suffix. Markdown and YAML are text and never data here.
 
 Inputs: ``--base``/``--head`` shas (the workflow passes the pull request's
 ``base.sha`` and ``head.sha``) and ``PR_LABELS_JSON``, the PR's labels as a
@@ -47,6 +57,7 @@ there is nothing to compare and the check says so. Stdlib only.
 from __future__ import annotations
 
 import argparse
+import ast
 import importlib.util
 import os
 import re
@@ -60,8 +71,10 @@ _CHANGELOG_CHECK = REPO_ROOT / "scripts" / "ci" / "check_changelog_fragment.py"
 
 LINE_BUDGET = 500
 BINARY_BUDGET = 200_000  # bytes
+TEXT_BYTE_BUDGET = 200_000  # bytes
 FILE_CAP = 1_000_000  # bytes
 FROZEN_FILE_CAP = 5_000_000  # bytes, a named file in a frozen-data home
+FROZEN_BUDGET = 5_000_000  # bytes per PR across the frozen-data homes
 EXCEPTION_LABEL = "data-budget-exception"
 ARCHIVE_REPO = "bk-squared/rfx-archive"
 ARCHIVE_PATH = "rfx/records/<YYYYMMDD>-<topic>/"
@@ -79,6 +92,8 @@ DATA_SUFFIXES = frozenset({
 TOUCHSTONE_RE = re.compile(r"\.s\d+p\Z")
 #: Data by content, with no data suffix. pytest-split's JSON file.
 DATA_NAMES = frozenset({".test_durations"})
+#: Binary files that are figures, not data: never counted.
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".pdf"})
 
 #: Data paths that change as part of ordinary code work, and the evidence:
 #: PRs among the 222 merged 2026-09-10..24 that touched the path, and the
@@ -109,8 +124,12 @@ SIZE_EXEMPT = {
     ".test_durations": "1.14 MB; pytest-split reads the whole suite's durations from one file",
 }
 
-#: Where the referencing files for rule 3 are looked for.
+#: Where the readers for rule 3 are looked for, and what they are.
 READER_ROOTS = ("tests", "rfx")
+READER_SUFFIX = ".py"
+#: A ``.py`` file that names this gate is a test of it, not a reader of data:
+#: its fixtures name ``orphan_case``, ``sweep``, ``point_07`` and so on.
+GATE_NAME = "check_data_budget"
 
 
 def _load(path: Path, name: str):
@@ -154,6 +173,13 @@ def is_data(path: str) -> bool:
     return suffix in DATA_SUFFIXES or TOUCHSTONE_RE.search(suffix) is not None
 
 
+def counted(path: str, binary: bool) -> bool:
+    """Whether the budget sees this file: a data file, or a non-image binary."""
+    if is_data(path):
+        return True
+    return binary and PurePosixPath(path).suffix.lower() not in IMAGE_SUFFIXES
+
+
 def allowlisted(path: str) -> bool:
     return any(regex.match(path) for regex in _ALLOW_RES)
 
@@ -162,27 +188,38 @@ class Change(NamedTuple):
     """One data file the PR adds or modifies."""
 
     path: str
-    status: str  # A, M, R or C (the destination of a rename or copy)
+    status: str  # A, M, R, C or T (the destination of a rename or copy)
     added: Optional[int]  # None when git calls it binary
     size: int  # bytes at head
+    grown: int  # bytes added: the whole file if new, else max(0, head - base)
 
 
 class Findings(NamedTuple):
     changes: List[Change]
-    outside_lines: List[Change]  # text data outside the allowlist that adds lines
+    outside_text: List[Change]  # text data outside the allowlist
     outside_binary: List[Change]  # binary data outside the allowlist
     over_cap: List[Change]
     unreferenced: List[Change]
     new_frozen: List[Change]
     named: FrozenSet[str]  # frozen-data paths a reader names, among those asked about
+    frozen: List[Change]  # every data file the PR adds or modifies in a frozen home
+    gitattributes: List[str]  # .gitattributes files the PR adds or modifies
 
     @property
     def line_total(self) -> int:
-        return sum(change.added or 0 for change in self.outside_lines)
+        return sum(change.added or 0 for change in self.outside_text)
+
+    @property
+    def text_byte_total(self) -> int:
+        return sum(change.grown for change in self.outside_text)
 
     @property
     def binary_total(self) -> int:
         return sum(change.size for change in self.outside_binary)
+
+    @property
+    def frozen_total(self) -> int:
+        return sum(change.size for change in self.frozen)
 
 
 def _git(repo: Path, *args: str) -> bytes:
@@ -195,11 +232,11 @@ def _split_z(raw: bytes) -> List[str]:
     return raw.decode("utf-8", "surrogateescape").split("\0")
 
 
-def _statuses(base: str, head: str, repo: Path) -> Dict[str, str]:
-    """Post-image path -> A/M/R/C/T for everything present at head."""
+def _statuses(base: str, head: str, repo: Path) -> Dict[str, Tuple[str, str]]:
+    """Post-image path -> (A/M/R/C/T, pre-image path) for everything present at head."""
     tokens = _split_z(_git(repo, "diff", "--name-status", "-z", "--find-renames",
                            f"{base}...{head}"))
-    out: Dict[str, str] = {}
+    out: Dict[str, Tuple[str, str]] = {}
     index = 0
     while index < len(tokens):
         status = tokens[index]
@@ -207,11 +244,11 @@ def _statuses(base: str, head: str, repo: Path) -> Dict[str, str]:
             index += 1
             continue
         if status[0] in "RC":
-            out[tokens[index + 2]] = status[0]
+            out[tokens[index + 2]] = (status[0], tokens[index + 1])
             index += 3
         else:
             if status[0] != "D":
-                out[tokens[index + 1]] = status[0]
+                out[tokens[index + 1]] = (status[0], tokens[index + 1])
             index += 2
     return out
 
@@ -250,31 +287,65 @@ def _sizes(head: str, repo: Path) -> Dict[str, int]:
     return out
 
 
-def reader_text(head: str, repo: Path) -> str:
-    """Every tracked non-data file under ``READER_ROOTS`` at head, joined."""
+def reader_sources(head: str, repo: Path) -> List[str]:
+    """The source of every reader at head: tracked ``.py`` under ``READER_ROOTS``.
+
+    A test of this gate is left out (it names ``GATE_NAME``): its fixtures are
+    names for synthetic records, and on the gate's own repository they would
+    vouch for any real record that happened to share one.
+    """
     oids: List[str] = []
     for record in _split_z(_git(repo, "ls-tree", "-r", "-z", head, "--", *READER_ROOTS)):
         if not record:
             continue
         meta, path = record.split("\t", 1)
         _mode, kind, oid = meta.split()
-        if kind == "blob" and not is_data(path):
+        if kind == "blob" and path.endswith(READER_SUFFIX):
             oids.append(oid)
     if not oids:
-        return ""
+        return []
     raw = subprocess.run(
         ["git", "cat-file", "--batch"], cwd=repo, input="\n".join(oids).encode() + b"\n",
         capture_output=True, check=True,
     ).stdout
-    parts: List[str] = []
+    sources: List[str] = []
     offset = 0
     while offset < len(raw):
         header_end = raw.index(b"\n", offset)
         size = int(raw[offset:header_end].split()[2])
         start = header_end + 1
-        parts.append(raw[start:start + size].decode("utf-8", "replace"))
+        source = raw[start:start + size].decode("utf-8", "replace")
+        if GATE_NAME not in source:
+            sources.append(source)
         offset = start + size + 1
-    return "\n\0\n".join(parts)
+    return sources
+
+
+def literal_components(sources: Iterable[str]) -> FrozenSet[str]:
+    """Every path component of every string literal in *sources*, docstrings excepted.
+
+    ``FIX / "sweep" / name`` and ``"tests/fixtures/sweep/"`` both yield
+    ``sweep``; a comment, a docstring or ``"my_sweep_dir"`` does not.
+    """
+    components = set()
+    for source in sources:
+        try:
+            tree = ast.parse(source)
+        except SyntaxError:
+            continue
+        docstrings = set()
+        for node in ast.walk(tree):
+            body = getattr(node, "body", None)
+            if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) \
+                    and body and isinstance(body[0], ast.Expr) \
+                    and isinstance(body[0].value, ast.Constant) \
+                    and isinstance(body[0].value.value, str):
+                docstrings.add(id(body[0].value))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                    and id(node) not in docstrings:
+                components.update(node.value.replace("\\", "/").split("/"))
+    return frozenset(components)
 
 
 def _data_stem(name: str) -> str:
@@ -295,16 +366,52 @@ def _distinctive(token: str) -> bool:
 
 
 def reference_tokens(path: str) -> List[str]:
-    """The names a reader may use for a frozen-data file (rule 3)."""
+    """The names a reader may use for a frozen-data file (rule 3).
+
+    The file name, then its name without data suffixes; the last entry is the
+    subdirectory when ``folder_token`` returns one.
+    """
     match = FROZEN_HOME_RE.match(path)
     rest = PurePosixPath(match.group("rest") if match else path)
     tokens = [rest.name]
     stem = _data_stem(rest.name)
     if stem != rest.name and _distinctive(stem):
         tokens.append(stem)
-    if match and len(rest.parts) > 1 and _distinctive(rest.parent.name):
-        tokens.append(rest.parent.name)
+    folder = folder_token(path)
+    if folder:
+        tokens.append(folder)
     return tokens
+
+
+def folder_token(path: str) -> str:
+    """The subdirectory of its home a frozen file sits in, or ``""``."""
+    match = FROZEN_HOME_RE.match(path)
+    if not match:
+        return ""
+    rest = PurePosixPath(match.group("rest"))
+    if len(rest.parts) > 1 and _distinctive(rest.parent.name):
+        return rest.parent.name
+    return ""
+
+
+class Readers(NamedTuple):
+    text: str  # every reader's source, joined
+    components: FrozenSet[str]  # path components of their string literals
+
+    @classmethod
+    def at(cls, head: str, repo: Path) -> "Readers":
+        sources = reader_sources(head, repo)
+        return cls("\n\0\n".join(sources), literal_components(sources))
+
+    def name(self, path: str) -> bool:
+        """Whether a reader names the frozen-data file at *path* (rule 3)."""
+        folder = folder_token(path)
+        names = reference_tokens(path)
+        if folder:
+            names = names[:-1]
+        if any(is_named(token, self.text) for token in names):
+            return True
+        return bool(folder) and folder in self.components
 
 
 def _name_char(char: str) -> bool:
@@ -338,19 +445,26 @@ def size_cap(path: str, named: FrozenSet[str]) -> int:
 
 
 def evaluate(base: str, head: str, repo: Path) -> Findings:
-    """What the PR's data changes are, sorted into the four rules' buckets."""
+    """What the PR's data changes are, sorted into the rules' buckets."""
     statuses = _statuses(base, head, repo)
     added = _added_lines(base, head, repo)
     sizes = _sizes(head, repo)
+    merge_base = _git(repo, "merge-base", base, head).decode().strip()
+    base_sizes = _sizes(merge_base, repo)
 
-    changes = [
-        Change(path, status, added.get(path), sizes.get(path, 0))
-        for path, status in sorted(statuses.items())
-        if is_data(path) and path in sizes
-    ]
+    changes = []
+    for path, (status, source) in sorted(statuses.items()):
+        if path not in sizes or not counted(path, added.get(path, 0) is None):
+            continue
+        before = base_sizes.get(source, 0) if status != "A" else 0
+        changes.append(Change(path, status, added.get(path), sizes[path],
+                              max(0, sizes[path] - before)))
     outside = [change for change in changes if not allowlisted(change.path)]
-    outside_lines = [c for c in outside if c.added]
+    outside_text = [c for c in outside if c.added is not None]
     outside_binary = [c for c in outside if c.added is None]
+    frozen = [change for change in changes if FROZEN_HOME_RE.match(change.path)]
+    gitattributes = [path for path in sorted(statuses)
+                     if PurePosixPath(path).name == ".gitattributes"]
     new_frozen = [
         change for change in changes
         if change.status in ("A", "R", "C") and FROZEN_HOME_RE.match(change.path)
@@ -364,18 +478,15 @@ def evaluate(base: str, head: str, repo: Path) -> Findings:
     ]
     named: FrozenSet[str] = frozenset()
     if asked:
-        text = reader_text(head, repo)
-        named = frozenset(
-            change.path for change in asked
-            if any(is_named(token, text) for token in reference_tokens(change.path))
-        )
+        readers = Readers.at(head, repo)
+        named = frozenset(change.path for change in asked if readers.name(change.path))
     unreferenced = [change for change in new_frozen if change.path not in named]
     over_cap = [
         change for change in changes
         if change.path not in SIZE_EXEMPT and change.size > size_cap(change.path, named)
     ]
-    return Findings(changes, outside_lines, outside_binary, over_cap, unreferenced,
-                    new_frozen, named)
+    return Findings(changes, outside_text, outside_binary, over_cap, unreferenced,
+                    new_frozen, named, frozen, gitattributes)
 
 
 def _listing(changes: Iterable[Change], value, unit: str, limit: int = 15) -> List[str]:
@@ -395,7 +506,13 @@ def failures(findings: Findings) -> List[str]:
         out.append("\n".join([
             f"data files outside the allowlist add {findings.line_total:,} lines "
             f"(budget {LINE_BUDGET}):",
-            *_listing(findings.outside_lines, lambda change: change.added or 0, "lines"),
+            *_listing(findings.outside_text, lambda change: change.added or 0, "lines"),
+        ]))
+    if findings.text_byte_total > TEXT_BYTE_BUDGET:
+        out.append("\n".join([
+            f"text data files outside the allowlist add {findings.text_byte_total:,} "
+            f"bytes (budget {TEXT_BYTE_BUDGET:,}):",
+            *_listing(findings.outside_text, lambda change: change.grown, "bytes"),
         ]))
     if findings.binary_total > BINARY_BUDGET:
         out.append("\n".join([
@@ -418,10 +535,24 @@ def failures(findings: Findings) -> List[str]:
         out.append("\n".join([
             f"{len(findings.unreferenced)} new frozen-data file(s) that no tracked "
             f"file under {' or '.join(root + '/' for root in READER_ROOTS)} names "
-            f"(by file name, name without its data suffixes, or subdirectory):",
+            f"in a .py reader (by file name, name without its data suffixes, or "
+            f"subdirectory in a string literal):",
             *[f"      {change.path}" for change in findings.unreferenced[:15]],
             *([f"      ... and {len(findings.unreferenced) - 15} more"]
               if len(findings.unreferenced) > 15 else []),
+        ]))
+    if findings.frozen_total > FROZEN_BUDGET:
+        out.append("\n".join([
+            f"data files in the frozen-data homes hold {findings.frozen_total:,} bytes "
+            f"(budget {FROZEN_BUDGET:,} per PR):",
+            *_listing(findings.frozen, lambda change: change.size, "bytes"),
+        ]))
+    if findings.gitattributes:
+        out.append("\n".join([
+            "this PR adds or edits a .gitattributes file. An attribute such as "
+            "`-diff` or an LFS filter changes what git counts, so this gate cannot "
+            "measure the PR:",
+            *[f"      {path}" for path in findings.gitattributes],
         ]))
     return out
 
@@ -432,10 +563,9 @@ Where the data goes:
   measurement of an option that was not adopted -- go to
   {ARCHIVE_REPO} under {ARCHIVE_PATH}.
   Name that path and the archive commit in the PR body.
-  Frozen reference data a test reads goes under tests/fixtures/,
-  tests/data/ or tests/crossval/<case>/reference/, named by the test that
-  reads it, and no one file over {FROZEN_FILE_CAP:,} bytes there
-  ({FILE_CAP:,} anywhere else).
+  tests/fixtures/, tests/data/ and tests/crossval/<case>/reference/ hold
+  only frozen data that a test reads; moving a record there does not make
+  it one, and they take at most {FROZEN_BUDGET:,} bytes per PR.
   If this PR has to carry the data anyway, apply the label
   '{EXCEPTION_LABEL}' and re-run the failed job (no push needed: the
   labels are read when the job runs). The weekly governance audit lists
@@ -508,10 +638,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             "", WHERE_IT_GOES, "```",
         ]))
         return 1
-    print(f"data budget ok: {findings.line_total:,} lines of data outside the "
-          f"allowlist (budget {LINE_BUDGET}), {findings.binary_total:,} bytes "
-          f"binary (budget {BINARY_BUDGET:,}), {len(findings.new_frozen)} new "
-          f"frozen-data file(s), each named by a reader")
+    print(f"data budget ok: outside the allowlist {findings.line_total:,} lines "
+          f"(budget {LINE_BUDGET}) and {findings.text_byte_total:,} bytes of text "
+          f"(budget {TEXT_BYTE_BUDGET:,}), {findings.binary_total:,} bytes binary "
+          f"(budget {BINARY_BUDGET:,}); frozen-data homes {findings.frozen_total:,} "
+          f"bytes (budget {FROZEN_BUDGET:,}), {len(findings.new_frozen)} new file(s), "
+          f"each named by a reader")
     return 0
 
 

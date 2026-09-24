@@ -470,6 +470,26 @@ def test_the_data_budget_reads_both_shas_through_env_and_labels_live() -> None:
     assert "labels.*.name" not in str(step), "labels taken from the event payload"
 
 
+def test_the_data_budget_cannot_be_made_advisory() -> None:
+    """A red data budget must fail its required job, and nothing may soften it.
+
+    `continue-on-error` on the step or the job turns a red step into a green
+    job; `|| true` after the python call does the same inside the shell; and a
+    `|| echo '["data-budget-exception"]'` fallback on the label read grants the
+    exception whenever the API call fails. The python call is the step's last
+    command, so its exit status is the step's.
+    """
+    job = load(PR_TESTS)["jobs"]["guards-and-preflight"]
+    step = _data_budget_steps("guards-and-preflight")[0]
+    assert "continue-on-error" not in job, job.get("continue-on-error")
+    assert "continue-on-error" not in step, step.get("continue-on-error")
+    run = str(step.get("run", ""))
+    assert "||" not in run, run
+    assert "set +e" not in run, run
+    lines = [line.strip() for line in run.splitlines() if line.strip()]
+    assert lines[-1].startswith("python scripts/ci/check_data_budget.py "), lines[-1]
+
+
 def test_guards_and_preflight_can_diff_and_read_labels() -> None:
     """Full history for the merge base; `pull-requests: read` for the labels."""
     job = load(PR_TESTS)["jobs"]["guards-and-preflight"]

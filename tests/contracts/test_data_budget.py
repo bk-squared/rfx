@@ -304,13 +304,15 @@ def test_a_named_frozen_file_may_reach_5_MB(repo: Path) -> None:
 
 
 def test_a_named_frozen_file_over_5_MB_fails(repo: Path) -> None:
+    """Over the file cap, and so necessarily over the per-PR frozen budget too."""
     base = _git(repo, "rev-parse", "HEAD")
     _write(repo, "tests/fixtures/case/fixture.json", "x" * 5_000_001)
     _write(repo, "tests/unit/test_case.py", 'FIX = "fixture.json"\n')
     head = _commit(repo)
     failures = _check(repo, base, head)
-    assert len(failures) == 1
+    assert len(failures) == 2
     assert "(cap 5,000,000)  tests/fixtures/case/fixture.json" in failures[0]
+    assert "hold 5,000,001 bytes (budget 5,000,000 per PR)" in failures[1]
 
 
 def test_an_edited_named_frozen_file_gets_the_larger_cap(repo: Path) -> None:
@@ -366,7 +368,7 @@ def test_a_new_fixture_no_test_names_fails(repo: Path) -> None:
 @pytest.mark.parametrize("reader", [
     'PATH = FIX / "sweep" / "point_07.json"\n',   # by file name
     'CASES = ["point_07"]  # f"{case}.json"\n',   # by name without extension
-    'for p in (FIX / "sweep").glob("*.json"):\n',  # by its subdirectory
+    'for p in (FIX / "sweep").glob("*.json"):\n    pass\n',  # by its subdirectory
 ])
 def test_a_new_fixture_a_test_names_passes(repo: Path, reader: str) -> None:
     base = _git(repo, "rev-parse", "HEAD")
@@ -411,6 +413,173 @@ def test_digits_do_not_vouch_for_a_numeric_name(repo: Path) -> None:
     _write(repo, "tests/unit/test_x.py", "X = [0, 0.01, 16]\n")
     head = _commit(repo)
     assert len(_check(repo, base, head)) == 1
+
+
+@pytest.mark.parametrize("reader_path,reader", [
+    ("tests/fixtures/sweep/README.md", "point_07.json is the 7th sweep point\n"),
+    ("tests/unit/notes.yaml", "fixture: sweep/point_07.json\n"),
+    ("tests/unit/notes.txt.md", "sweep/point_07.json\n"),
+])
+def test_only_a_py_file_is_a_reader(repo: Path, reader_path: str, reader: str) -> None:
+    """A README beside #1198's relocated records vouched for all 205 of them."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/sweep/point_07.json", _lines(5))
+    _write(repo, reader_path, reader)
+    head = _commit(repo)
+    failures = _check(repo, base, head)
+    assert len(failures) == 1 and "no tracked file" in failures[0]
+
+
+def test_a_test_of_this_gate_is_not_a_reader(repo: Path) -> None:
+    """The gate's own tests name `sweep`, `point_07`, `orphan_case` for synthetic records."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/sweep/point_07.json", _lines(5))
+    _write(repo, "tests/contracts/test_gate.py",
+           'SCRIPT = "scripts/ci/check_data_budget.py"\nX = FIX / "sweep" / "point_07.json"\n')
+    head = _commit(repo)
+    assert len(_check(repo, base, head)) == 1
+
+
+@pytest.mark.parametrize("reader,named", [
+    ('ROOT = FIX / "sweep"\n', True),
+    ('ROOT = "tests/fixtures/sweep/"\n', True),
+    ('ROOT = f"tests/fixtures/sweep/{n}"\n', True),
+    ("# the sweep folder\nROOT = FIX\n", False),               # a comment
+    ('"""Reads the sweep folder."""\nROOT = FIX\n', False),    # a docstring
+    ('ROOT = FIX / "my_sweep_dir"\n', False),                   # part of a longer name
+    ('ROOT = FIX / "sweep_v2"\n', False),
+    ("sweep = 1\n", False),                                     # an identifier, not a literal
+])
+def test_the_folder_token_must_be_a_path_component_of_a_literal(
+    repo: Path, reader: str, named: bool
+) -> None:
+    """A bare substring let `patch`, `msl`, `waveguide` vouch for relocated records."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/sweep/point_07.json", _lines(5))
+    _write(repo, "tests/unit/test_sweep.py", reader)
+    head = _commit(repo)
+    assert (_check(repo, base, head) == []) is named
+
+
+def test_a_reader_that_does_not_parse_still_names_by_file_name(repo: Path) -> None:
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/sweep/point_07.json", _lines(5))
+    _write(repo, "tests/unit/test_sweep.py", 'X = "point_07.json"\nif\n')
+    head = _commit(repo)
+    assert _check(repo, base, head) == []
+
+
+def _named_fixture(repo: Path, name: str, size: int) -> None:
+    _write(repo, f"tests/fixtures/case/{name}", "x" * size)
+    _write(repo, "tests/unit/test_case.py", 'FIX = ROOT / "case"\n')
+
+
+@pytest.mark.parametrize("second,failing", [(1_000_000, 0), (1_000_001, 1)])
+def test_the_frozen_homes_take_5_MB_per_pr(repo: Path, second: int, failing: int) -> None:
+    """Relocated #1198 was 10.3 MB; the largest real frozen-data PR was 2.34 MB."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _named_fixture(repo, "a.json", 4_000_000)
+    _write(repo, "tests/data/b.npz", "\0" * second)
+    _write(repo, "tests/unit/test_data.py", 'B = "b.npz"\n')
+    head = _commit(repo)
+    failures = _check(repo, base, head)
+    assert len(failures) == failing
+    if failing:
+        assert "hold 5,000,001 bytes (budget 5,000,000 per PR)" in failures[0]
+
+
+def test_an_edited_frozen_file_counts_its_whole_size(repo: Path) -> None:
+    _named_fixture(repo, "a.json", 3_000_000)
+    base = _commit(repo, "a large fixture on main")
+    _named_fixture(repo, "a.json", 3_000_001)
+    _named_fixture(repo, "b.json", 2_000_000)
+    head = _commit(repo, "touch it and add another")
+    failures = _check(repo, base, head)
+    assert len(failures) == 1 and "hold 5,000,001 bytes" in failures[0]
+
+
+@pytest.mark.parametrize("size,failing", [(200_000, 0), (200_001, 1)])
+def test_the_text_byte_budget_is_200_kB_inclusive(repo: Path, size: int, failing: int) -> None:
+    """Ten one-line JSON files of 949,820 bytes were `10 lines` and passed."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "validation/study/a.json", "x" * (size - 100_000))
+    _write(repo, "validation/study/b.json", "y" * 100_000)
+    head = _commit(repo)
+    findings = budget.evaluate(base, head, repo)
+    assert findings.line_total == 2 and findings.text_byte_total == size
+    failures = _check(repo, base, head)
+    assert len(failures) == failing
+    if failing:
+        assert f"add {size:,} bytes (budget 200,000)" in failures[0]
+
+
+@pytest.mark.parametrize("grown,failing", [(200_000, 0), (200_001, 1)])
+def test_a_modified_text_file_counts_its_growth(repo: Path, grown: int, failing: int) -> None:
+    _write(repo, "validation/study/a.json", "x" * 150_000)
+    base = _commit(repo, "a record on main")
+    _write(repo, "validation/study/a.json", "x" * (150_000 + grown))
+    head = _commit(repo)
+    assert budget.evaluate(base, head, repo).text_byte_total == grown
+    assert len(_check(repo, base, head)) == failing
+
+
+def test_a_shrinking_text_file_counts_nothing(repo: Path) -> None:
+    _write(repo, "validation/study/a.json", "x" * 900_000)
+    base = _commit(repo, "a record on main")
+    _write(repo, "validation/study/a.json", "y" * 300_000)
+    head = _commit(repo)
+    assert budget.evaluate(base, head, repo).text_byte_total == 0
+
+
+@pytest.mark.parametrize("path,counted", [
+    ("validation/study/blob.qqq", True),     # no data suffix, binary: counted
+    ("validation/study/model.bin", True),
+    ("docs/figures/plot.png", False),        # an image
+    ("docs/figures/paper.pdf", False),
+])
+def test_any_binary_that_is_not_an_image_is_counted(repo: Path, path: str, counted: bool) -> None:
+    base = _git(repo, "rev-parse", "HEAD")
+    _binary(repo, path, 300_000)
+    head = _commit(repo)
+    assert (len(_check(repo, base, head)) == 1) is counted
+
+
+@pytest.mark.parametrize("path", ["docs/notes/big.md", "validation/study/job.yaml"])
+def test_markdown_and_yaml_are_never_counted(repo: Path, path: str) -> None:
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, path, "line\n" * 5000)
+    head = _commit(repo)
+    assert budget.evaluate(base, head, repo).changes == []
+
+
+@pytest.mark.parametrize("path", [".gitattributes", "validation/.gitattributes"])
+def test_adding_a_gitattributes_fails(repo: Path, path: str) -> None:
+    """`validation/** -diff` turned a 9,000-line CSV into a passing 196 kB binary."""
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, path, "*.csv -diff\n")
+    _write(repo, "validation/study/sweep.csv", _lines(9000))
+    head = _commit(repo)
+    failures = _check(repo, base, head)
+    assert any(".gitattributes" in failure and path in failure for failure in failures)
+
+
+def test_editing_a_gitattributes_fails_and_deleting_one_does_not(repo: Path) -> None:
+    _write(repo, ".gitattributes", "*.sh text eol=lf\n")
+    base = _commit(repo, "attributes on main")
+    _write(repo, ".gitattributes", "*.sh text eol=lf\n*.json -diff\n")
+    edited = _commit(repo, "edit")
+    assert len(_check(repo, base, edited)) == 1
+    (repo / ".gitattributes").unlink()
+    deleted = _commit(repo, "delete")
+    assert _check(repo, base, deleted) == []
+
+
+def test_the_label_lets_a_gitattributes_through(repo: Path, monkeypatch) -> None:
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, ".gitattributes", "*.npz filter=lfs\n")
+    head = _commit(repo)
+    assert _main(monkeypatch, repo, base, head) == 1
+    assert _main(monkeypatch, repo, base, head, labels='["data-budget-exception"]') == 0
 
 
 def test_a_reader_outside_tests_and_rfx_does_not_count(repo: Path) -> None:
@@ -484,6 +653,9 @@ def test_a_violation_exits_1_and_says_where_the_data_goes(repo: Path, monkeypatc
     assert "rfx/records/<YYYYMMDD>-<topic>/" in err
     assert "archive commit in the PR" in err
     assert "data-budget-exception" in err
+    # The frozen-data homes are named only to say records do not belong there.
+    assert "only frozen data that a test reads" in err
+    assert "does not make\n  it one" in err
 
 
 def test_a_clean_pr_exits_0_and_says_what_it_measured(repo: Path, monkeypatch, capsys) -> None:
@@ -491,7 +663,9 @@ def test_a_clean_pr_exits_0_and_says_what_it_measured(repo: Path, monkeypatch, c
     _write(repo, "validation/study/small.json", _lines(10))
     head = _commit(repo)
     assert _main(monkeypatch, repo, base, head) == 0
-    assert "10 lines of data outside the allowlist" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "outside the allowlist 10 lines (budget 500)" in out
+    assert "bytes of text (budget 200,000)" in out
 
 
 def test_the_exception_label_passes_loudly(repo: Path, monkeypatch, capsys, tmp_path) -> None:
