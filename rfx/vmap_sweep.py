@@ -1072,9 +1072,6 @@ def vmap_material_sweep(
     base_materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(
         grid, pec_sheets=_sweep_pec_sheets, pec_wires=_sweep_pec_wires)
 
-    # The sequential fallback hands the caller's n_steps to run() unresolved:
-    # on the subgridded lane run() reads an explicit count as FINE steps, so
-    # the coarse count below would cover 1/ratio of the requested time.
     caller_n_steps = n_steps
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
@@ -1138,9 +1135,16 @@ def vmap_material_sweep(
             "support.",
             stacklevel=2,
         )
+        # Every swept copy gets the same explicit count, so the traces stack
+        # (auto-meshing can give each value its own cell). On the subgridded
+        # lane run() reads an explicit count as FINE steps, so a refined
+        # model gets the fine count for num_periods, as run() resolves it
+        # itself; the coarse count would cover 1/ratio of the time (#1240).
+        fallback_n_steps = n_steps
+        if caller_n_steps is None and sim._refinement is not None:
+            fallback_n_steps = n_steps * int(sim._refinement["ratio"])
         return _sequential_fallback(
-            sim, param_name, param_values, n_steps=caller_n_steps,
-            num_periods=num_periods,
+            sim, param_name, param_values, n_steps=fallback_n_steps,
         )
 
 
@@ -1149,8 +1153,7 @@ def _sequential_fallback(
     param_name: str,
     param_values: np.ndarray,
     *,
-    n_steps: int | None,
-    num_periods: float = 20.0,
+    n_steps: int,
 ) -> VmapSweepResult:
     """Sequential fallback when vmap is not possible.
 
@@ -1190,8 +1193,7 @@ def _sequential_fallback(
         # Preflight only the first sim (this sequential fallback re-runs a
         # structurally-identical setup); skip thereafter to avoid per-iteration
         # preflight noise.
-        result = sim_copy.run(n_steps=n_steps, num_periods=num_periods,
-                              skip_preflight=_i > 0)
+        result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0)
         all_ts.append(np.asarray(result.time_series))
 
         if result.dft_planes:

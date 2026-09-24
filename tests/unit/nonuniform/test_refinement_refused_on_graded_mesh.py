@@ -325,6 +325,30 @@ def test_vmap_sequential_fallback_covers_the_duration_run_covers():
     np.testing.assert_allclose(swept, direct, rtol=1e-6, atol=0.0)
 
 
+def test_vmap_sequential_fallback_stacks_an_auto_meshed_sweep():
+    """No refinement, no dx=: auto-meshing reads the swept permittivity, so
+    each value resolves its own cell and step count (eps_r 2 and 3 gave 105
+    and 140 steps at 2 periods). The sweep hands every copy the base model's
+    count, so the traces stack as on main instead of failing to."""
+    from rfx.vmap_sweep import vmap_material_sweep
+
+    def model():
+        sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
+                         boundary="pec")
+        sim.add_material("diel", eps_r=2.0)
+        sim.add(Box((0.0, 0.0, 0.0), (0.012, 0.012, 0.004)), material="diel")
+        sim.add_port((0.004, 0.006, 0.006), "ez", impedance=50.0,
+                     waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
+        sim.add_probe((0.008, 0.006, 0.006), "ez")
+        return sim
+
+    n_base = _quiet(lambda: model()._build_grid().num_timesteps(
+        num_periods=2.0))
+    result = _quiet(lambda: vmap_material_sweep(model(), "eps_r", [2.0, 3.0],
+                                                num_periods=2.0))
+    assert np.asarray(result.time_series).shape == (2, n_base, 1)
+
+
 def test_lumped_wire_scan_driver_refuses():
     """It calls the uniform forward lane directly, without forward(); the
     lane's own refusal covers it."""
