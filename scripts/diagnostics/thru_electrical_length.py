@@ -740,6 +740,10 @@ def main(argv=None) -> int:
     ap.add_argument("--out", required=True, type=Path,
                     help="output path; measurement records stay outside the repository")
     args = ap.parse_args(argv)
+    out = args.out.resolve()
+    if out == REPO or REPO in out.parents:
+        ap.error("--out must be outside the repository: measurement records stay out of it "
+                 "(PI, 2026-09-24)")
 
     commit = _git("rev-parse", "HEAD")      # no fallback: an unstamped record is not written
     fixtures = (COAX, MSL, LUMPED_WIRE, WAVEGUIDE)
@@ -756,7 +760,7 @@ def main(argv=None) -> int:
         "schema": SCHEMA,
         "schema_version": SCHEMA_VERSION,
         "driver": DRIVER,
-        "artifact": str(args.out),
+        "artifact": str(out),
         "what": __doc__.split("\n\n")[1].replace("\n", " "),
         "measure": {
             "bins": f"measured 20 log10 |S21| > {LEVEL_DB} dB (S11 on the one-ports)",
@@ -775,7 +779,6 @@ def main(argv=None) -> int:
         "lumped_wire": lw,
         "waveguide": wg,
     }
-    out = args.out.resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=1)
