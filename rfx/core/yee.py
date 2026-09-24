@@ -132,10 +132,11 @@ def warn_lumped_on_cell_owned_lane(materials, lane):
 
     The Debye/Lorentz E updates take ONE coefficient per cell from the cell
     total (``materials.sigma`` / ``eps_r``) and apply it to all three
-    components; #1210's per-edge rule does not reach them. A lumped element
-    folded into that total (a port's load, an RLC R or C) therefore loads the
-    two other E edges at its node as well -- the defect #1236 removed from the
-    per-component lanes. This warns instead of refusing: a port on a
+    components; #1210's per-edge rule does not reach them (#1260), and a
+    dispersive material ANYWHERE in the model puts the whole grid on them. A
+    lumped element folded into that total (a port's load, an RLC R or C),
+    wherever it sits, therefore loads the two other E edges at its node as
+    well -- the defect #1236 removed from the per-component lanes. This warns instead of refusing: a port on a
     dispersive model is a supported workflow (material fitting), and the
     error is bounded by the transverse field at the node (none where those
     edges lie on a PEC plane; a dipole's feed gap moved +0.34 % in resonance
@@ -149,14 +150,15 @@ def warn_lumped_on_cell_owned_lane(materials, lane):
         return
     import warnings
     warnings.warn(
-        f"{lane}: this E update takes its coefficients from the cell, one "
-        "value for all three components, so a lumped element in this model "
-        "(a lumped/wire/MSL port's load, an RLC R or C) also loads the two "
-        "other E edges at its node, not only its own (#1236). Where the node "
-        "carries a transverse field (a dipole's feed gap) this shifts the "
-        "result (+0.34 % resonance on a dipole at lambda/43); where those "
-        "edges lie on a PEC plane it does nothing. The non-dispersive lanes "
-        "load the element's own edge only.",
+        f"{lane}: a Debye/Lorentz material anywhere in the model puts the "
+        "WHOLE grid on an E update that takes one coefficient per cell for "
+        "all three components (#1260), so every lumped element in this model "
+        "(a lumped/wire/MSL port's load, an RLC R or C), wherever it sits, "
+        "also loads the two other E edges at its node, not only its own "
+        "(#1236). Where the node carries a transverse field (a dipole's feed "
+        "gap) this shifts the result (+0.34 % resonance on a dipole at "
+        "lambda/43); where those edges lie on a PEC plane it does nothing. "
+        "Models with no dispersive material load the element's own edge only.",
         UserWarning, stacklevel=3)
 
 
