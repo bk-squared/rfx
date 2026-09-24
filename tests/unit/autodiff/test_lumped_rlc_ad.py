@@ -220,7 +220,9 @@ def test_forward_no_rlc_byte_identity():
     """
     # #1012 re-pin, CPU float32, regenerate_forward_no_rlc_s11_golden.py:
     # max|S11_new - S11_old| = 4.539863221e-5; tolerances unchanged.
-    # WHY: leader fills.
+    # WHY: the port sits in a six-layer CPML box, and #1012 samples the magnetic CPML profile at the Yee half cell. For a
+    # single-device run that is the only solver change, and it moves S11 by at most 4.5e-5. The test still guards what it
+    # was written for: forward() without an RLC element is a pure skip.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_forward_no_rlc_s11.npy"))
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
                      boundary="cpml", cpml_layers=6)

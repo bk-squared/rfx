@@ -152,7 +152,9 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     #     max column power 1.00000232 -> 1.00000447.
     #   Both modes: settling A -47.8906 / -49.7788 dB;
     #                        B -70.8846 / -70.9755 dB (left / right).
-    # WHY: leader fills.
+    # WHY: #1012 samples the magnetic CPML profile at the Yee half cell, so the absorber behind both ports reflects less.
+    # This 4-period snapshot has no oracle of its own; the settled run of the same empty matched guide above is the
+    # oracle, and it moves toward it: max|S11| 0.155 -> 0.0096, column power 1.022 -> 1.0015 (normalize=False).
     _EXPECTED_SHA = {
         "false": "c41da23dd1101dfac23b96216026e90d0381b5f6ee8ff326806b347dd7f702b8",
         "true":  "82ec3bb49a51332d25dae8c772130b3c9253e6949c8010bbad112175606bca2e",
