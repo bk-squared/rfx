@@ -23,8 +23,9 @@ Four rules over the PR's diff against its merge base, all mechanical:
 3. A data file newly placed in a frozen-data home -- ``tests/fixtures/``,
    ``tests/data/``, ``tests/crossval/<case>/reference/`` -- must be named by a
    tracked non-data file under ``tests/`` or ``rfx/``: by its file name, by
-   its name without extensions (``f"{case}.json"`` readers), or, when it sits
-   in a subdirectory of its home, by that subdirectory's name (glob readers).
+   its name without its data suffixes (``f"{case}.json"`` readers), or, when it
+   sits in a subdirectory of its home, by that subdirectory's name (glob
+   readers). The two shorter names count only when ``_distinctive``.
    The allowlist lets those homes grow past the budget; this is what keeps a
    record from being parked there.
 4. A PR labelled ``data-budget-exception`` passes whatever it carries, with a
@@ -417,7 +418,7 @@ def failures(findings: Findings) -> List[str]:
         out.append("\n".join([
             f"{len(findings.unreferenced)} new frozen-data file(s) that no tracked "
             f"file under {' or '.join(root + '/' for root in READER_ROOTS)} names "
-            f"(by file name, name without extensions, or subdirectory):",
+            f"(by file name, name without its data suffixes, or subdirectory):",
             *[f"      {change.path}" for change in findings.unreferenced[:15]],
             *([f"      ... and {len(findings.unreferenced) - 15} more"]
               if len(findings.unreferenced) > 15 else []),
