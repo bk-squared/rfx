@@ -353,18 +353,43 @@ def test_a_three_cell_port_completes_its_whole_gap_voltage(lane):
         assert w1.ok and w1.value <= rd.W1_BAR, w1
 
 
-def test_the_error_witness_fails_a_graded_record_cut_at_a_third_of_its_decay_time():
-    """The graded box stopped at 1500 steps (1.72 ns, a third of TM110's
-    5 ns amplitude decay time): its completed S is 1.6e-3 off the completed
-    30,000-step answer, above the 1e-3 bar. WE compares the completion from
-    [T/2, T] with the one from the window started twice as early, [T/4, T], and reads
-    1.6e-3: the report is not ok and WE is the witness that fails. W2
+def test_the_error_witness_fails_a_graded_record_cut_at_a_fifth_of_its_decay_time():
+    """The graded box stopped at 1200 steps (1.37 ns, about a fifth of TM110's
+    amplitude decay time): its completion is genuinely off the completed
+    30,000-step answer, above the 1e-3 bar, and WE -- the completion from
+    [T/2, T] against the one from the window started twice as early,
+    [T/4, T] -- reads it and is the only judged witness that fails. W2
     ([T/2, T] against [T/2, 0.9 T]) is reported, not judged, and only
-    printed here: it read 3.0e-4 under JAX 0.10.2 and 1.7e-3 under JAX
-    0.4.33, on port records that differ by 1e-7 to 3e-7 of their peak (the
-    pencil keeps a different rank on each); WE read 1.615e-3 and 1.622e-3."""
+    printed here.
+
+    TM110 of this box from the 30,000-step completion. #1236 moved it: the
+    port used to put its 50 ohm load also on the Ex and Ey edges at its node,
+    a spurious loss that damped the box.
+
+        tree                     f (GHz)   loaded Q   amplitude decay time
+        main before #1236        12.402    201.7      5.18 ns
+        after #1236              12.406    244.4      6.27 ns
+
+    Completed-S error against the 30,000-step completion, and WE (JAX 0.10.2):
+
+        record              tree     actual     WE         judged failures
+        1500 (1.72 ns)      before   1.649e-3   1.615e-3   WE  (0.33 tau)
+        1500 (1.72 ns)      after    1.420e-4   1.406e-4   none (0.27 tau)
+        1827 (2.09 ns)      after    4.3e-5     4.3e-5     none (tau/3)
+        1200 (1.37 ns)      before   2.17e-3    2.17e-3    WE  (0.27 tau)
+        1200 (1.37 ns)      after    1.98e-3    1.71e-3    WE  (0.22 tau)
+        1000 (1.14 ns)      after    1.39e-3    1.42e-3    WE
+
+    This test was written at 1500 steps, a third of main's decay time. After
+    #1236 a record cut at a third of the box's own decay time completes to
+    4.3e-5, and WE rightly passes it, so the cut moved to 1200 steps, where the
+    completion is off on both trees. The error is not monotonic in the record
+    length (1.39e-3 at 1000 steps, 1.98e-3 at 1200); at 800 and 600 steps WE
+    is not formed (the pulse is still on in [T/4, T]) and W2 is judged.
+    W2 at 1200 steps: 2.99e-3 after #1236, 1.74e-2 before.
+    """
     with pytest.warns(UserWarning, match="witness failed -- WE"):
-        short, cap = _run_captured(_box("graded"), 1500, ringdown=RingdownSpec())
+        short, cap = _run_captured(_box("graded"), 1200, ringdown=RingdownSpec())
     rep = short.ringdown.report
     we, w2 = rep.witness("WE"), rep.witness("W2")
     ref = _long("graded").ringdown.s_params.astype(np.complex128)
@@ -377,12 +402,12 @@ def test_the_error_witness_fails_a_graded_record_cut_at_a_third_of_its_decay_tim
     S_half, S_quarter = (
         np.asarray(k["observable"](k["plain"] + rd.tail_dft(
             rd.identify(Y, dt, n0, n, **kw), n - 1, freqs))).astype(np.complex128)
-        for n0 in (750, 375))
+        for n0 in (600, 300))
     we_hand = float(np.max(np.abs(S_half - S_quarter)))
-    print(f"\n[graded, 1500 steps] actual {actual:.3e}; WE {we.value:.3e} "
+    print(f"\n[graded, 1200 steps] actual {actual:.3e}; WE {we.value:.3e} "
           f"(by hand {we_hand:.3e}, WE/actual {we.value / actual:.3g}); W2 "
           f"{w2.value:.3e} (W2/actual {w2.value / actual:.3g})\n{rep.summary()}")
-    assert n_start == 750 and rep.long_window_steps == (375, 1500)
+    assert n_start == 600 and rep.long_window_steps == (300, 1200)
     assert we.value == we_hand
     assert we.judged and not we.ok and we.value > we.bar
     assert not w2.judged
