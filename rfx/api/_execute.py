@@ -2169,6 +2169,9 @@ class _ExecuteMixin:
                     r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                     periodic=_rlc_periodic,
                 ))
+            # #1245: at most one element with its own solve per realized edge.
+            from rfx.lumped import refuse_stacked_solved_elements
+            refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
 
         result = _run(
             grid,

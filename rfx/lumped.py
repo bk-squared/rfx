@@ -547,6 +547,54 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     )
 
 
+def _describe_spec(n, spec: LumpedRLCSpec) -> str:
+    vals = ", ".join(f"{name}={float(v):g}" for name, v in
+                     (("R", spec.R), ("L", spec.L), ("C", spec.C)) if float(v) > 0)
+    pos = ", ".join(f"{float(p):g}" for p in spec.position)
+    return (f"add_lumped_rlc #{n} ({vals}, topology={spec.topology!r}, "
+            f"component={spec.component!r}, position=({pos}))")
+
+
+def refuse_stacked_solved_elements(specs, metas) -> None:
+    """Refuse two lumped elements with their OWN solve on one edge (#1245).
+
+    An element with an inductor (parallel topology) or a series element with
+    two or more components is solved together with its edge field in one
+    implicit step, against ``e_std`` and ``E^n``. Two such elements on the
+    same edge and component each solve against a field the other one changes
+    in the same step: the pair is not the parallel circuit it declares, and
+    the run gains energy (measured in a closed PEC box, float64: a parallel
+    4 nH + 1 pF with another 4 nH on its edge x4.1 in 6400 steps; two series
+    4 nH + 10 pF x4.0, as on main before #1245). Folded elements (parallel R and C, and a series
+    element with a single component) have no solve of their own -- they add
+    into the edge's material, which the one solved element reads through
+    ``D0`` -- so any number of them may share the edge with one solved
+    element.
+
+    ``specs`` are the declarations and ``metas`` the elements built from them
+    (same order), i.e. AFTER each position has snapped to its realized edge.
+    """
+    first = {}
+    for n, (spec, meta) in enumerate(zip(specs, metas)):
+        if not (meta.is_series or meta.has_inductor):
+            continue
+        edge = (int(meta.i), int(meta.j), int(meta.k), meta.component)
+        if edge in first:
+            m = first[edge]
+            raise NotImplementedError(
+                f"{_describe_spec(m, specs[m])} and {_describe_spec(n, spec)} "
+                f"both land on the {edge[3]} edge of cell {edge[:3]}. Each is "
+                "solved together with that edge's field in its own implicit "
+                "step, and two such solves on one edge act on a field the other "
+                "has already changed: the pair gains energy instead of being the "
+                "parallel circuit it declares (issue #1245). Model them as ONE "
+                "add_lumped_rlc with the combined value (two parallel inductors "
+                "L1*L2/(L1+L2)), or place them on different edges. Folded "
+                "elements -- parallel R and C, or a series element with a "
+                "single component -- may share the edge with one of them.")
+        first[edge] = n
+
+
 # ---------------------------------------------------------------------------
 # Per-timestep ADE update
 # ---------------------------------------------------------------------------

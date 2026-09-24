@@ -23,7 +23,8 @@ order (E^n read, H update, E update, PEC, lumped element); the element update
 is looked up in :mod:`rfx.lumped` at call time.
 
 MEASURED over 1600 steps (10.6 periods of the LC): float64 fields,
-max |W/W0 - 1| = 3.6e-15; float32 fields, 2.3e-6. The backward-Euler inductor
+max |W/W0 - 1| = 3.6e-15; float32 fields, 2.3e-6. The inductor holds
+0.484 of W0 on average and 0.977 at its peak. The backward-Euler inductor
 this replaced (the field loaded by I^{n+1}, half a step late) lost 91.6 % of
 the energy over the same run (W/W0 = 0.084): the series resistance w^2 L dt
 it carried. Written as (D0*e_std - I/A - (gamma/4)*E^n)/(D0 + gamma/4), the
@@ -55,6 +56,10 @@ N_STEPS = 1600
 #: float32 bar sits 4x over its measurement and 11x under the ill-conditioned
 #: spelling's 1.1e-4.
 BARS = {"float64": 1e-10, "float32": 1e-5}
+#: 1/2 L I^2 over W0: MEASURED 0.484 on average and 0.977 at its peak (the box's
+#: own field keeps the rest); 0 and 0 if the inductor update is a no-op.
+INDUCTOR_MEAN_SHARE = (0.45, 0.50)
+INDUCTOR_PEAK_SHARE = 0.95
 
 
 def _energy_trace(field_dtype):
@@ -91,22 +96,31 @@ def _energy_trace(field_dtype):
                                     zip(h_old, (st.hx, st.hy, st.hz)))
         st = apply_pec(update_e(st, mats, dt, dx, periodic))
         st, rlc = lumped.update_rlc_element(st, rlc, meta, e_prev)
-        return (st, rlc), w_e + w_h + w_l
+        return (st, rlc), (w_e + w_h + w_l, w_l)
 
-    _, w = jax.lax.scan(step, (st0, rlc0), None, length=N_STEPS)
+    _, (w, w_l) = jax.lax.scan(step, (st0, rlc0), None, length=N_STEPS)
     periods = N_STEPS * dt / (2 * np.pi * np.sqrt(L_H * C_F))
-    return np.asarray(w, dtype=np.float64), periods
+    return (np.asarray(w, dtype=np.float64), np.asarray(w_l, dtype=np.float64),
+            periods)
 
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
 def test_parallel_lc_in_a_pec_box_keeps_its_energy(precision):
     if precision == "float64":
         with _enable_x64(True):
-            w, periods = _energy_trace(jnp.float64)
+            w, w_l, periods = _energy_trace(jnp.float64)
     else:
-        w, periods = _energy_trace(jnp.float32)
+        w, w_l, periods = _energy_trace(jnp.float32)
     assert periods >= 10.0
     assert np.all(np.isfinite(w)) and w[0] > 0.0
+    # The inductor must take part: an LC ring hands the whole energy to L
+    # once per half period and holds half of it on average. An inductor
+    # update that did nothing would leave a lossless folded C, and the
+    # energy check alone would pass.
+    share, peak = w_l.mean() / w[0], w_l.max() / w[0]
+    assert INDUCTOR_MEAN_SHARE[0] <= share <= INDUCTOR_MEAN_SHARE[1] and peak >= INDUCTOR_PEAK_SHARE, (
+        f"{precision}: the inductor held {share:.3f} of the energy on average and "
+        f"{peak:.3f} at most (an L||C ring: ~0.5 and ~1)")
     drift = np.abs(w / w[0] - 1.0)
     n = int(np.argmax(drift))
     assert drift.max() <= BARS[precision], (

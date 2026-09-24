@@ -726,6 +726,9 @@ def run_uniform(
         _rlc_periodic = _simulation.resolve_periodic(grid, periodic)
         rlc_metas = [build_rlc_meta(grid, spec, materials, periodic=_rlc_periodic)
                      for spec in sim._lumped_rlc]
+        # #1245: at most one element with its own solve per realized edge.
+        from rfx.lumped import refuse_stacked_solved_elements
+        refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
 
     # #677: assemble the surface-impedance sheet ctx against the FINAL
     # realized PEC edges of this run (after the port clearing above —

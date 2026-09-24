@@ -1308,10 +1308,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     rlc_metas: tuple = ()
     rlc_states_init: tuple = ()
     if sim._lumped_rlc:
-        from rfx.lumped import build_rlc_meta, init_rlc_state
+        from rfx.lumped import (build_rlc_meta, init_rlc_state,
+                                refuse_stacked_solved_elements)
         rlc_metas = tuple(
             build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc
         )
+        # #1245: at most one element with its own solve per realized edge.
+        refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
         rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
 
     # Waveguide ports: build per-port config via NU-aware
