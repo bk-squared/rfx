@@ -34,6 +34,13 @@ and settling checks skip them with that reason — only the open, which
 identity within the traced path (the bead in two containers, rtol 1e-5 / atol
 1e-7); the untraced-against-traced thru arm compares two functions by design and
 is held to its measured envelope.
+
+Of 2026-09-24 (PI, R1): settling is judged by the contract's amplitude
+substitute, and the 25 and 100 ohm loads stay judged with their narrowband
+doubling changes recorded as the closed-can footprint. Passivity and the thru's
+-20 dB bound are checked at every rung, the ladder's zeros are re-derived from
+each rung's S, and the recommended cell size is pinned at 4 annulus cells for
+every judged DUT.
 """
 import json
 import math
@@ -154,6 +161,15 @@ OPEN_NOT_JUDGED_REASON = (
     "grows with record length (open_absorber_diagnostic.json); PI 2026-09-23")
 NOT_JUDGED = {"open": OPEN_NOT_JUDGED_REASON}
 
+# R1 (PI 2026-09-24), restated for the same reason: the two loads stay judged,
+# and their claims-rung records carry this note beside the doubling facts.
+LOADS_FOOTPRINT_NOTE = (
+    "stays judged at 9 annulus cells: the narrowband record-doubling changes near "
+    "6.7-6.9 and 9.7-10.6 GHz are the same closed-can footprint as the open's "
+    "(issue 1218), recorded as a fact and not as a failure; settling is judged by the "
+    "contract's amplitude substitute as implemented; PI 2026-09-24")
+FOOTPRINT = {"r25": LOADS_FOOTPRINT_NOTE, "r100": LOADS_FOOTPRINT_NOTE}
+
 
 def _skip_if_not_judged(entry, what):
     if entry.get("judged", True) is False:
@@ -272,9 +288,14 @@ def test_every_stored_summary_follows_from_the_stored_s(fixture, key):
 
 CLAIMS_TWO_PORT = tuple(f"{d}_rung{CLAIMS_RUNG}" for d in TWO_PORT_DUTS)
 CLAIMS_ONE_PORT = tuple(f"{d}_rung{CLAIMS_RUNG}" for d in ONE_PORT_DUTS)
+# Passivity is a property of every record, not of the claims rung: a coarser
+# rung that returns more power than it receives is not a rung to recommend, and
+# the recommended cell size (4 annulus cells) is the coarsest of them.
+ALL_TWO_PORT = tuple(f"{d}_rung{r}" for d in TWO_PORT_DUTS for r in RUNGS)
+ALL_ONE_PORT = tuple(f"{d}_rung{r}" for d in ONE_PORT_DUTS for r in RUNGS)
 
 
-@pytest.mark.parametrize("key", CLAIMS_TWO_PORT)
+@pytest.mark.parametrize("key", ALL_TWO_PORT)
 def test_raw_column_power_stays_inside_the_passivity_bar(fixture, key):
     entry = _solve(fixture, key)
     measured = _column_power(_complex(entry["S"])).max()
@@ -292,7 +313,7 @@ def test_reciprocity_stays_inside_the_bar(fixture, key):
         f"{key}: max_f |S21 - S12| / max|S| = {measured:.6f}")
 
 
-@pytest.mark.parametrize("key", CLAIMS_ONE_PORT)
+@pytest.mark.parametrize("key", ALL_ONE_PORT)
 def test_the_one_port_reflection_is_passive(fixture, key):
     """A one-port's column power IS ``|Gamma|^2``, so the contract's 1.02 applies
     to the square and not to the magnitude. An excess is non-physical and is an
@@ -363,6 +384,64 @@ def test_only_the_open_is_left_unjudged(fixture):
     assert any(dut == "open" for _, dut, _ in places), "the fixture carries no open record"
 
 
+def test_the_loads_carry_the_closed_can_footprint_and_stay_judged(fixture):
+    """R1 (PI 2026-09-24): the 25 and 100 ohm loads' narrowband doubling changes
+    are recorded beside their records as the closed-can footprint, and the loads
+    stay judged. Only those two carry the note, word for word."""
+    places = [(f"solves[{k}]", e["dut"], e, e["rung_annulus_cells"] == CLAIMS_RUNG)
+              for k, e in fixture["solves"].items()]
+    places += [(f"record_length_invariance[{d}]", d, e, True)
+               for d, e in fixture["record_length_invariance"].items()]
+    places += [(f"ladder[{d}]", d, e, True) for d, e in fixture["ladder"].items()]
+    for where, dut, entry, carries in places:
+        if dut in FOOTPRINT and carries:
+            assert entry.get("footprint_note") == FOOTPRINT[dut], where
+            assert entry.get("judged") is True, where
+        else:
+            assert "footprint_note" not in entry, where
+
+
+def test_every_doubling_and_power_span_fact_follows_from_the_stored_s(fixture):
+    """The facts R1 and R2 add beside the verdicts: the column-power span of
+    every record, and what doubling the record did per bin in dB."""
+    def span(S):
+        col = _column_power(S) if S.ndim == 3 else np.abs(S) ** 2
+        return [float(col.min()), float(col.max())]
+
+    for key, entry in fixture["solves"].items():
+        S = _complex(entry["S"] if entry["lane"] == "two_port" else entry["S11"])
+        np.testing.assert_allclose(entry["column_power_span"], span(S), rtol=1e-12,
+                                   err_msg=key)
+    for dut, inv in fixture["record_length_invariance"].items():
+        base = fixture["solves"][f"{dut}_rung{CLAIMS_RUNG}"]
+        a = _complex(base["S"] if inv["lane"] == "two_port" else base["S11"])
+        b = _complex(inv["S_doubled"])
+        np.testing.assert_allclose(inv["column_power_span"], [span(a), span(b)],
+                                   rtol=1e-12, err_msg=dut)
+        freqs = np.asarray(inv["freqs_hz"], dtype=float)
+        entries = ({"s11": (0, 0), "s21": (1, 0), "s12": (0, 1), "s22": (1, 1)}
+                   if inv["lane"] == "two_port" else {"s11": None})
+        assert set(inv["doubling_db_change"]) == set(entries), dut
+        level = fixture["bar"]["deep_null_db"]
+        for name, ij in entries.items():
+            x = a[ij[0], ij[1], :] if ij else a
+            y = b[ij[0], ij[1], :] if ij else b
+            ch = np.abs(_db(x) - _db(y))
+            # a bin where either record is deep is left out (PI 2026-09-21)
+            live = (_db(x) > level) & (_db(y) > level)
+            rec = inv["doubling_db_change"][name]
+            assert [v is None for v in rec["db_change"]] == (~live).tolist(), (dut, name)
+            np.testing.assert_allclose(
+                [v for v in rec["db_change"] if v is not None], ch[live],
+                rtol=1e-9, atol=1e-12, err_msg=f"{dut} {name}")
+            assert rec["n_deep_bins_left_out"] == int((~live).sum()), (dut, name)
+            if live.any():
+                assert rec["max_db_change"] == pytest.approx(float(ch[live].max()), rel=1e-9)
+            else:
+                assert rec["max_db_change"] is None, (dut, name)
+            assert rec["bins_above_0p1_db_hz"] == freqs[live & (ch > 0.1)].tolist(), (dut, name)
+
+
 def test_the_doubled_record_arm_is_derived_from_its_own_stored_s(fixture):
     """The invariance number has to follow from the two stored matrices, or it
     is a summary nobody can check."""
@@ -431,17 +510,19 @@ def test_the_bead_magnitudes_match_the_analytic_tem_section(fixture):
         f"(bar {fixture['bar']['magnitude_db']} dB)")
 
 
-def test_the_thru_reflection_stays_below_the_deep_null_bound(fixture):
-    """The control. Its |S11| is near zero by construction, so it is held to an
-    upper bound at every bin rather than compared in dB — the line's own
-    reflection floor."""
-    entry = _solve(fixture, f"thru_rung{CLAIMS_RUNG}")
-    S = _complex(entry["S"])
-    floor = float(_db(S[0, 0, :]).max())
-    assert floor <= fixture["bar"]["deep_null_db"], (
-        f"the thru reflects {floor:.2f} dB at its worst bin, above the "
-        f"{fixture['bar']['deep_null_db']} dB bound — the matched feeds are not "
-        "matched on this line")
+@pytest.mark.parametrize("rung", RUNGS)
+def test_the_thru_reflection_stays_below_the_deep_null_bound(fixture, rung):
+    """The control. Its |S11| and |S22| are near zero by construction, so they
+    are held to an upper bound at every bin rather than compared in dB — the
+    line's own reflection floor — at every rung, the recommended one included."""
+    key = f"thru_rung{rung}"
+    S = _complex(_solve(fixture, key)["S"])
+    for name, (i, j) in (("S11", (0, 0)), ("S22", (1, 1))):
+        floor = float(_db(S[i, j, :]).max())
+        assert floor <= fixture["bar"]["deep_null_db"], (
+            f"{key}: the thru's {name} is {floor:.2f} dB at its worst bin, above the "
+            f"{fixture['bar']['deep_null_db']} dB bound — the matched feeds are not "
+            "matched on this line")
 
 
 @pytest.mark.parametrize("dut", ONE_PORT_DUTS)
@@ -468,11 +549,32 @@ def test_the_one_port_loads_match_their_analytic_reflection(fixture, dut):
 # criterion 3(c) — the ladder and the recommended cell size
 # ---------------------------------------------------------------------------
 
+def _rung_zero_hz(entry):
+    """A rung's reflection zero from its own stored S, with this test's
+    estimator (the parabola vertex on |S11|^2 around the deepest bin)."""
+    freqs = np.asarray(entry["freqs_hz"], dtype=float)
+    s11 = _complex(entry["S"])[0, 0, :]
+    k = int(np.argmin(np.abs(s11)))
+    assert 0 < k < len(freqs) - 1, "the reflection zero sits on a band edge"
+    return _zero_hz(freqs, s11, k)
+
+
 def test_the_ladder_converges_and_sets_a_recommended_cell_size(fixture):
     lad = fixture["ladder"].get("bead")
     if lad is None:
         pytest.skip("the bead ladder is not assembled")
     assert lad["rungs_annulus_cells"] == list(RUNGS), lad["rungs_annulus_cells"]
+    # The frequency verdict decides the recommended cell size, so the zeros are
+    # re-derived from each rung's stored S, not read from the ladder block.
+    rungs = [row["rung"] for row in lad["rung_within_bar_vs_finest"]]
+    mine = [_rung_zero_hz(fixture["solves"][k]) for k in rungs]
+    # rtol 1e-6, as the per-solve check uses: the assembler's vertex assumes a
+    # uniform bin step and the stored bins are float32-rounded (6e-8 apart).
+    np.testing.assert_allclose(lad["reflection_zero_interp_hz"], mine, rtol=1e-6, atol=0.0)
+    fine = mine[-1]
+    for row, f in zip(lad["rung_within_bar_vs_finest"], mine):
+        within = bool(abs(f - fine) / fine <= fixture["bar"]["frequency_frac"])
+        assert row["zero_within_1pct"] is within, (row["rung"], f, fine)
     fs = lad["reflection_zero_interp_hz"]
     diffs = [abs(fs[i + 1] - fs[i]) for i in range(len(fs) - 1)]
     np.testing.assert_allclose(diffs, lad["successive_diff_hz"], rtol=1e-9, atol=1.0)
@@ -487,9 +589,22 @@ def test_the_ladder_converges_and_sets_a_recommended_cell_size(fixture):
         assert row["all_inside_bar"] == all(flags), row
     qualifying = [r["rung"] for r in rows if r["all_inside_bar"]]
     assert lad["coarsest_rung_within_bar"] == (qualifying[0] if qualifying else None)
-    assert lad["coarsest_rung_within_bar"] is not None, (
-        "no rung stays inside the bar against the finest, so this battery "
-        "recommends no cell size")
+
+
+# The cell size this battery hands a user: the coarsest rung inside the bar for
+# every judged DUT, measured 2026-09-23 at 4 annulus cells. A change that moves
+# any judged DUT's recommendation reds here instead of passing on "not None".
+RECOMMENDED_RUNG = 4
+
+
+@pytest.mark.parametrize("dut", DUTS)
+def test_the_recommended_cell_size_is_four_annulus_cells(fixture, dut):
+    lad = fixture["ladder"].get(dut)
+    assert lad is not None, f"the {dut} ladder is not assembled"
+    _skip_if_not_judged(lad, f"the {dut} ladder")
+    assert lad["coarsest_rung_within_bar"] == f"{dut}_rung{RECOMMENDED_RUNG}", (
+        f"{dut}: the coarsest rung inside the bar is {lad['coarsest_rung_within_bar']}, "
+        f"not {RECOMMENDED_RUNG} annulus cells")
 
 
 def _ladder_curve(entry, name):

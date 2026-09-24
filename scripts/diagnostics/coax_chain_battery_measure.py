@@ -1908,14 +1908,49 @@ def _records_share_one_solver_tree(out: Path) -> dict:
             f"the stage records in {out} were measured on different solver trees and "
             f"cannot be one fixture: {lines}. Re-run the stages that are behind, or "
             "assemble them into a separate artifact.")
+    # A record's commit has to stay fetchable after the branch is squashed, or
+    # the tree check above cannot be repeated on a fresh clone. One that the
+    # assembler's own head does not contain must be held by a tag that resolves
+    # to it; a commit held by neither is refused.
+    kept = {}
+    for sha in sorted(seen):
+        on_head = subprocess.run(["git", "merge-base", "--is-ancestor", sha, head],
+                                 cwd=str(REPO), capture_output=True).returncode == 0
+        tag = PROVENANCE_TAGS.get(sha)
+        if tag is not None:
+            try:
+                target = subprocess.check_output(
+                    ["git", "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"],
+                    cwd=str(REPO), text=True, stderr=subprocess.PIPE).strip()
+            except subprocess.CalledProcessError as exc:
+                raise RuntimeError(f"the provenance tag {tag} for {sha} does not resolve "
+                                   f"here: {exc.stderr.strip()}") from exc
+            if target != sha:
+                raise RuntimeError(f"the provenance tag {tag} points at {target}, not {sha}")
+        if not on_head and tag is None:
+            raise RuntimeError(
+                f"{len(seen[sha])} stage record(s) name {sha}, which the assembler's head "
+                "does not contain and no provenance tag holds; tag it (PROVENANCE_TAGS) "
+                "or re-run those stages")
+        kept[sha] = {"contained_in_assembler_head": on_head, "tag": tag}
     return {
         "record_commits": {sha: sorted(names) for sha, names in sorted(seen.items())},
+        "record_commits_kept_by": kept,
         "rfx_tree": trees[head],
         "rfx_tree_identical_across_record_commits_and_assembler": True,
         "what": ("every stage record names its commit; the rfx/ tree at each of those "
                  "commits and at the assembler's is the same git object, i.e. "
-                 "`git diff <a> <b> -- rfx/` is empty between any two of them"),
+                 "`git diff <a> <b> -- rfx/` is empty between any two of them, and a "
+                 "commit the assembler's head does not contain is held by the tag named"),
     }
+
+
+# Commits that stage records name but the branch no longer contains (it was
+# rebased after the 2026-09-22 campaign), each held by a pushed tag so the
+# records' commit stays fetchable after the squash merge.
+PROVENANCE_TAGS = {
+    "ca6da2b17e3f42a3ca50678c9f7eb662c88e53af": "provenance/coax-chain-battery-ca6da2b1",
+}
 
 
 # The rulings this fixture is judged under, cited where each one applies.
@@ -1940,7 +1975,28 @@ RULINGS = {
     "deep_quantity_by_the_bound_leader_2026_09_23": (
         "leader 2026-09-23 (L2): a ladder quantity below -20 dB on the finest rung or in "
         "the closed form is judged by the bound, never by a dB comparison"),
+    "loads_closed_can_footprint_pi_2026_09_24": (
+        "PI 2026-09-24 (R1): the 25 and 100 ohm loads stay judged at 9 annulus cells; their "
+        "narrowband record-doubling changes near 6.7-6.9 and 9.7-10.6 GHz are the same "
+        "closed-can footprint as the open's (issue 1218), recorded as a fact and not as a "
+        "failure. Settling is judged by the contract's amplitude substitute as "
+        "implemented, max |d|S|| <= one tenth of the magnitude gate in amplitude; the "
+        "pre-declaration's addendum item 3 wrote it as 0.1 dB, which misstated it"),
+    "column_power_half_not_applied_leader_2026_09_24": (
+        "leader default 2026-09-24 (R2), pending the PI's word: the contract substitute's "
+        "second half (column power within 1e-3 of unity on a lossless structure) is not "
+        "applied to the V-I coax lane; the reduced battery's passivity bar (<= 1.02) "
+        "governs, and every record's column-power span is recorded as a fact"),
 }
+
+# R1 (PI 2026-09-24), the note the two loads' claims-rung records carry beside
+# their doubling facts. They stay judged.
+LOADS_FOOTPRINT_NOTE = (
+    "stays judged at 9 annulus cells: the narrowband record-doubling changes near "
+    "6.7-6.9 and 9.7-10.6 GHz are the same closed-can footprint as the open's "
+    "(issue 1218), recorded as a fact and not as a failure; settling is judged by the "
+    "contract's amplitude substitute as implemented; PI 2026-09-24")
+FOOTPRINT_DUTS = {"r25": LOADS_FOOTPRINT_NOTE, "r100": LOADS_FOOTPRINT_NOTE}
 
 # P1 (PI 2026-09-23), the reason every open record carries, verbatim.
 OPEN_NOT_JUDGED_REASON = (
@@ -1956,6 +2012,47 @@ NOT_JUDGED_DUTS = {"open": OPEN_NOT_JUDGED_REASON}
 # pinned at 1.5 x that.
 THRU_TRACED_VS_UNTRACED_ENVELOPE = 1.041e-3
 THRU_TRACED_VS_UNTRACED_MEASURED = 6.938e-4
+
+
+def _column_power_span(S) -> list:
+    """[min, max] over bins (and columns) of the column power: sum_i |S_ij|^2 on
+    a two-port, |Gamma|^2 on a one-port."""
+    S = np.asarray(S)
+    col = np.sum(np.abs(S) ** 2, axis=0) if S.ndim == 3 else np.abs(S) ** 2
+    return [float(col.min()), float(col.max())]
+
+
+def _max_db_vs(g, want: float) -> float:
+    return float(np.max(np.abs(20.0 * np.log10(np.maximum(np.abs(g), 1e-300))
+                               - 20.0 * np.log10(max(want, 1e-300)))))
+
+
+def _doubling_db_change(Sb, Sd, freqs, lane: str) -> dict:
+    """What doubling the record did, per entry and per bin, in dB. A fact beside
+    the amplitude substitute that judges settling (R1, PI 2026-09-24). A bin
+    where either record is at or below the deep-null level is left out (null):
+    a dB change between two near-zeros says nothing (PI 2026-09-21)."""
+    level = BAR["deep_null_db"]
+    names = ({"s11": (0, 0), "s21": (1, 0), "s12": (0, 1), "s22": (1, 1)}
+             if lane == "two_port" else {"s11": None})
+    out = {}
+    for name, ij in names.items():
+        b = Sb if ij is None else Sb[ij[0], ij[1], :]
+        d = Sd if ij is None else Sd[ij[0], ij[1], :]
+        db_b = 20.0 * np.log10(np.maximum(np.abs(b), 1e-300))
+        db_d = 20.0 * np.log10(np.maximum(np.abs(d), 1e-300))
+        deep = (db_b <= level) | (db_d <= level)
+        ch = np.abs(db_b - db_d)
+        live = ~deep
+        k = int(np.argmax(np.where(live, ch, -1.0))) if live.any() else None
+        out[name] = {
+            "db_change": [None if dp else float(c) for c, dp in zip(ch, deep)],
+            "n_deep_bins_left_out": int(deep.sum()),
+            "max_db_change": None if k is None else float(ch[k]),
+            "max_db_change_hz": None if k is None else float(freqs[k]),
+            "bins_above_0p1_db_hz": freqs[live & (ch > 0.1)].astype(float).tolist(),
+        }
+    return out
 
 
 def _judged(dut: str) -> dict:
@@ -2218,7 +2315,13 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
                         20.0 * np.log10(np.maximum(np.abs(g), 1e-300))
                         - 20.0 * np.log10(max(refr["abs_gamma"], 1e-300))))),
                 }
+            # R2 (leader default 2026-09-24): the column-power span of every
+            # record, a fact; the passivity bar (<= 1.02) is what is judged.
+            entry["column_power_span"] = _column_power_span(
+                _S(res["S"]) if lane == "two_port" else _S(res["S11"]))
             entry.update(_judged(dut))
+            if rung == CLAIMS_RUNG and dut in FOOTPRINT_DUTS:
+                entry["footprint_note"] = FOOTPRINT_DUTS[dut]
             fix["solves"][f"{dut}_rung{rung}"] = entry
 
     # --- record-length invariance, the settling substitute -----------------
@@ -2261,11 +2364,21 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
             "shift_bound": 10 ** (BAR["magnitude_db"] / 20.0) - 1.0,
             "shift_bound_tenth": (10 ** (BAR["magnitude_db"] / 20.0) - 1.0) / 10.0,
             "max_column_power": [col_b, col_d],
+            "column_power_span": [_column_power_span(Sb), _column_power_span(Sd)],
             "energy_witness": [rb["settling"], rd["settling"]],
             "S_doubled": (rd["S"] if lane == "two_port" else rd["S11"]),
             **_judged(dut),
+            "doubling_db_change": _doubling_db_change(
+                Sb, Sd, np.asarray(rd["freqs_hz"], dtype=float), lane),
             "freqs_hz": rd["freqs_hz"],
         }
+        if lane == "one_port":
+            want = one_port_referee(dut, a=a, b=b, eps_fill=float(PTFE_EPS_R))["abs_gamma"]
+            fix["record_length_invariance"][dut]["max_db_vs_closed_form"] = {
+                "base": _max_db_vs(Sb, want), "doubled": _max_db_vs(Sd, want),
+                "closed_form_abs_gamma": want}
+        if dut in FOOTPRINT_DUTS:
+            fix["record_length_invariance"][dut]["footprint_note"] = FOOTPRINT_DUTS[dut]
 
     # --- the dx ladder ------------------------------------------------------
     for dut in DUTS:
@@ -2439,6 +2552,8 @@ def stage_assemble(args, out: Path, fixture_out: Path) -> None:
         qualifying = [r for r in inside if r["all_inside_bar"]]
         lad["coarsest_rung_within_bar"] = qualifying[0]["rung"] if qualifying else None
         lad.update(_judged(dut))
+        if dut in FOOTPRINT_DUTS:
+            lad["footprint_note"] = FOOTPRINT_DUTS[dut]
         fix["ladder"][dut] = lad
 
     # --- the line's own two witnesses, per rung ----------------------------

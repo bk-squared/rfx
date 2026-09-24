@@ -154,3 +154,15 @@ where they apply.
     inside a reflection zero's core (the bead's |S11| and |S22|) is compared in dB outside the
     core; inside it the verdict stays the zero's frequency (PI ruling of 2026-09-21). The
     thru's rung verdict therefore reads on |S21| within 2 dB and on the bound.
+
+## Addendum 3 (2026-09-24, after the review of the re-run)
+
+12. **Settling is judged by the contract's form, not by item 3's "0.1 dB" (PI).** Item 3
+    wrote the record-doubling substitute as "a change above 0.1 dB anywhere in band". That
+    misstated the contract, which asks for the shift below one tenth of the magnitude gate:
+    `max |d|S|| <= (10^(2/20) - 1) / 10 = 0.0259` in amplitude, which is 0.22 dB at |S| = 1
+    and 0.66 dB at |Gamma| = 0.33. The contract's form governs, as the replay test already
+    implements it (PI 2026-09-24). Under it the 25 and 100 ohm loads stay judged at 9
+    annulus cells. Their narrowband doubling changes near 6.7-6.9 and 9.7-10.6 GHz are
+    recorded in the fixture as the same closed-can footprint as the open's (issue 1218),
+    not as a failure.
