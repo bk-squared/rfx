@@ -2782,6 +2782,11 @@ def _build_nu_scan(
     def step_fn(carry, xs):
         step_idx, src_vals = xs
         st = carry["fdtd"]
+        # #1163: E^n at each lumped RLC edge, read before the E update (the
+        # series element is solved together with its edge field).
+        rlc_e_prev = (
+            tuple(getattr(st, m.component)[m.i, m.j, m.k] for m in rlc_metas)
+            if use_lumped_rlc else ())
 
         # H update (non-uniform)
         st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h)
@@ -2888,8 +2893,9 @@ def _build_nu_scan(
         if use_lumped_rlc:
             from rfx.lumped import update_rlc_element
             new_rlc_states = []
-            for rlc_st, meta in zip(carry["rlc_states"], rlc_metas):
-                st, rlc_st_new = update_rlc_element(st, rlc_st, meta)
+            for rlc_st, meta, e_prev in zip(
+                    carry["rlc_states"], rlc_metas, rlc_e_prev):
+                st, rlc_st_new = update_rlc_element(st, rlc_st, meta, e_prev)
                 new_rlc_states.append(rlc_st_new)
 
         # Sources (point sources + wire port excitation)

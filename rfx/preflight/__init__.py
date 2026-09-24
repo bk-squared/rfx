@@ -71,8 +71,9 @@ Modules:
   guard and the #386 unresolved-pulse advisory. It moves no module-level
   name.
 * :mod:`rfx.preflight.ports` — the lumped/wire-port and coaxial-port
-  family: six ``_PreflightMixin`` bodies covering the #589 coax
-  junction-aperture short, the #425 TFSF-plus-lumped-RLC refusal, the two
+  family: five ``_PreflightMixin`` bodies (six moved; #1163 deleted the #425
+  TFSF-plus-lumped-RLC warning) covering the #589 coax
+  junction-aperture short, the two
   #313 reference-plane advisories, the #929/#931 port-frozen-by-realized-PEC
   check with its wire-port cell-centre helper, and the #71 floating
   single-cell port. Its one module-level leaf, ``_component_is_dead``,

@@ -2452,7 +2452,7 @@ def test_coax_msl_transition_attempt2_instrument_verification():
     # rfx.sparams._common._finalize_sparam_result(result_obj,
     # extractor="compute_coax_msl_transition", strict=strict_passivity)
     # epilogue (also used by compute_waveguide_s_matrix and
-    # compute_coaxial_s_matrix), which is the one call site that actually
+    # compute_coaxial_two_port), which is the one call site that actually
     # invokes this guard function in production; calling it directly here
     # is a faithful stand-in, not a different code path (issue #585
     # final-verify, nit n2).
@@ -4330,7 +4330,7 @@ def test_cross_family_transition_defaults_to_refusing_single_family_lanes_do_not
         "compute_coax_msl_transition must refuse a non-passive S by default "
         "(issue #838, PI decision 2026-09-20)"
     )
-    for name in ("compute_coaxial_s_matrix", "compute_coaxial_two_port"):
+    for name in ("compute_coaxial_two_port",):
         default = inspect.signature(
             getattr(Simulation, name)).parameters["strict_passivity"].default
         assert default is False, (

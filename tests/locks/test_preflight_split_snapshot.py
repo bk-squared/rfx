@@ -133,6 +133,13 @@ was needed. The message text of ``source_decoupled`` itself was re-blessed
 in the same change (it now states the per-lane behaviour #1075 measured);
 that is a report-text re-bless of the kind this docstring describes above.
 
+Issue #1163 REMOVED one, ``tfsf_lumped_rlc``. It emitted only
+``tfsf_lumped_rlc_unstable``, and #1163 deleted that check with the series
+RLC edge coupling it described, so the fixture had nothing left to witness.
+Measured with the command below on the tree before and after: 67 -> 66
+snapshot files, 77 -> 76 literal codes, 66 -> 65 witnessed, and the same 11
+unwitnessed codes -- the removed code was witnessed and left both sides.
+
 The 11 unwitnessed codes left are the honest hole, and every one of them
 belongs to a family this lock has already discharged or to a body no builder
 reaches: the two remaining ``precision_*`` guards,
@@ -333,7 +340,7 @@ cost is that editing one of those fixtures reds this lock -- which is correct,
 because an edited fixture invalidates the committed baseline and the snapshot
 must be regenerated with that edit as its justification.
 
-Twelve builders have no importable callable to reach and are reproduced
+Eleven builders (twelve until #1163) have no importable callable to reach and are reproduced
 verbatim below, each naming the source line it came from:
 
 * ``_nu_grading_sim`` -- body of ``_grading_advisories``,
@@ -342,9 +349,9 @@ verbatim below, each naming the source line it came from:
 * ``_dispersive_pole_sim`` and ``_flux_region_sim`` -- each stitches together
   two or three module-level pieces of its source file.
 * ``_pec_box_subcell_sim``, ``_pec_zero_cells_sim``,
-  ``_pec_realization_refused_sim``, ``_pec_boundary_open_sim`` and
-  ``_tfsf_lumped_rlc_sim`` -- their geometry is inline in the body of a test
-  function, not a named builder.
+  ``_pec_realization_refused_sim`` and ``_pec_boundary_open_sim`` -- their
+  geometry is inline in the body of a test function, not a named builder.
+  (``_tfsf_lumped_rlc_sim`` was the fifth; #1163 removed it with its check.)
 * ``_thin_conductor_graded_node_sim``, ``_source_on_graded_node_sim`` and
   ``_nonuniform_tfsf_oblique_sim`` (leg 5) -- inline for the same reason;
   the second one's owning helper returns joined report TEXT rather than a
@@ -882,7 +889,8 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_floating_single_cell_port",
         "_validate_cfg_port_inside_pec",
         "_validate_cfg_refplane_placement",
-        "_validate_cfg_tfsf_with_lumped_rlc",
+        # ``_validate_cfg_tfsf_with_lumped_rlc`` stood here; deleted
+        # 2026-09-23 (#1163) with the series-RLC coupling it warned about.
         "_wire_port_cell_centers",
     ),
     "rfx.preflight.absorber": (
@@ -1218,23 +1226,6 @@ def _pec_boundary_open_sim():
     sim.add_source((0.03, 0.03, 0.03), "ez")
     sim.add(Box((0.028, 0.028, 0.020), (0.032, 0.032, 0.024)), material="pec")
     sim.add_ntff_box((0.01, 0.01, 0.01), (0.05, 0.05, 0.05))
-    return sim
-
-
-def _tfsf_lumped_rlc_sim():
-    """TFSF plane wave plus a lumped RLC: the unstable pairing.
-
-    Body of ``test_tfsf_plus_lumped_rlc_warns``,
-    ``tests/unit/preflight/test_preflight_guards.py:1079``, verbatim.
-    """
-    from rfx import Simulation
-
-    sim = Simulation(freq_max=16e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 20,
-                     boundary="cpml", cpml_layers=8, mode="3d")
-    sim.add_tfsf_source(f0=8e9, bandwidth=0.6, polarization="ez",
-                        direction="+x", waveform="modulated_gaussian")
-    sim.add_lumped_rlc(position=(0.010, 0.010, 0.010), component="ez",
-                       R=50.0, C=0.20e-12, topology="series")
     return sim
 
 
@@ -2010,7 +2001,8 @@ _FIXTURES = (
     ("pec_realization_refused",
      _pec_realization_refused_sim, {}, None),                     # leg 2
     ("pec_boundary_open", _pec_boundary_open_sim, {}, None),      # leg 2/6
-    ("tfsf_lumped_rlc", _tfsf_lumped_rlc_sim, {}, None),          # leg 6
+    # ("tfsf_lumped_rlc", ...) leg 6 -- removed 2026-09-23 (#1163) with the
+    # check it witnessed; see the module docstring's coverage paragraph.
     ("wire_port_dead_extent",                                     # leg 6
      lambda: _inverse_design("_microstrip_sim", 1.5e-3), {}, None),
     ("ntff_small_ground_plane",                                   # ntff leg

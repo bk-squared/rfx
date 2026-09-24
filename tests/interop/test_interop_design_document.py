@@ -158,8 +158,8 @@ def _waveguide_with_dispersive_slab() -> Simulation:
     return sim
 
 
-def _coax_cavity_with_terminations() -> Simulation:
-    """PEC cavity, coaxial port with all three cell-relative terminations."""
+def _coax_cavity() -> Simulation:
+    """PEC cavity with a coaxial port (its termination builders left in #1212)."""
     sim = Simulation(freq_max=6e9, domain=(0.040, 0.040, 0.020), dx=5e-4, boundary="pec")
     sim.add_coaxial_port(
         (0.020, 0.020, 0.020),
@@ -170,9 +170,6 @@ def _coax_cavity_with_terminations() -> Simulation:
         impedance=50.0,
         waveform=ModulatedGaussian(f0=3e9, bandwidth=0.6, amplitude=2.0, cutoff=4.0),
     )
-    sim.add_coaxial_matched_load(0, target_impedance=50.0, axial_offset_cells=2)
-    sim.add_coaxial_open_termination(0, pin_retract_cells=2)
-    sim.add_coaxial_pec_end_cap(0, axial_offset_cells=1)
     sim.add_lumped_rlc((0.010, 0.010, 0.010), "ez", R=50.0, L=1e-9, C=1e-12, topology="series")
     sim.add_thin_conductor(
         Box(corner_lo=(0.005, 0.005, 0.005), corner_hi=(0.015, 0.015, 0.005)),
@@ -409,7 +406,7 @@ def _pec_sheet_and_volume() -> Simulation:
 DESIGN_BUILDERS = {
     "graded_microstrip": _graded_microstrip,
     "waveguide_dispersive": _waveguide_with_dispersive_slab,
-    "coax_cavity": _coax_cavity_with_terminations,
+    "coax_cavity": _coax_cavity,
     "msl_pair_wire_port": _msl_pair_with_wire_port,
     "floquet_unit_cell": _floquet_unit_cell,
     "tfsf_scatterer": _tfsf_scatterer,
@@ -561,9 +558,6 @@ def test_every_builder_method_is_covered_by_the_document():
     }
     expected = {
         "add",
-        "add_coaxial_matched_load",
-        "add_coaxial_open_termination",
-        "add_coaxial_pec_end_cap",
         "add_coaxial_port",
         "add_dft_plane_probe",
         "add_floquet_port",
@@ -1313,15 +1307,31 @@ def test_import_does_not_widen_the_tfsf_boundary_fence():
 # Non-portability annotation
 # ---------------------------------------------------------------------------
 
-def test_non_portable_annotation_flags_cell_relative_state():
-    paths = {
-        note["path"] for note in design_to_dict(_coax_cavity_with_terminations())["non_portable"]
-    }
-    assert {
-        "excitations.coaxial_matched_loads",
-        "excitations.coaxial_open_terminations",
-        "excitations.coaxial_pec_end_caps",
-    } <= paths
+_REMOVED_COAXIAL_TERMINATIONS = {
+    "coaxial_matched_loads": {
+        "port_index": 0, "target_impedance": 50.0, "axial_offset_cells": 2},
+    "coaxial_open_terminations": {"port_index": 0, "pin_retract_cells": 2},
+    "coaxial_pec_end_caps": {"port_index": 0, "axial_offset_cells": 1},
+}
+
+
+def test_removed_coaxial_termination_keys_export_empty_and_load_empty():
+    """The v2 keys stay so a pre-#1212 document without entries still loads."""
+    document = design_to_dict(_coax_cavity())
+    for key in _REMOVED_COAXIAL_TERMINATIONS:
+        assert document["excitations"][key] == []
+    simulation_from_design(json.loads(json.dumps(document)))
+
+
+@pytest.mark.parametrize("key", sorted(_REMOVED_COAXIAL_TERMINATIONS))
+def test_removed_coaxial_termination_entry_is_refused_naming_1212(key):
+    """A document carrying an entry for a builder removed in #1212 is refused."""
+    document = design_to_dict(_coax_cavity())
+    document["excitations"][key] = [dict(_REMOVED_COAXIAL_TERMINATIONS[key])]
+    with pytest.raises(UnsupportedDesignFeature, match=r"#1212") as exc:
+        simulation_from_design(document)
+    assert f"excitations.{key}" in str(exc.value)
+    assert "compute_coaxial_line_reflection" in str(exc.value)
 
 
 def test_non_portable_annotation_flags_msl_probe_cell_counts():
@@ -1391,7 +1401,7 @@ def test_non_portable_annotation_is_empty_for_a_plain_pec_design():
 
 
 def test_non_portable_annotation_is_sorted():
-    document = design_to_dict(_coax_cavity_with_terminations())
+    document = design_to_dict(_msl_pair_with_wire_port())
     paths = [note["path"] for note in document["non_portable"]]
     assert paths == sorted(paths)
 
@@ -1403,7 +1413,7 @@ def test_non_portable_annotation_cannot_be_stripped():
     importer re-exports and compares, a downstream tool cannot delete the
     annotation to make rfx-only state look portable.
     """
-    document = design_to_dict(_coax_cavity_with_terminations())
+    document = design_to_dict(_msl_pair_with_wire_port())
     assert document["non_portable"]
     document["non_portable"] = []
 
