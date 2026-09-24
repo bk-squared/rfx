@@ -118,7 +118,8 @@ def _run_captured(sim, n, **kw):
                     skip_preflight=True, **kw)
     finally:
         rd.two_window_witness = orig
-    if cap and r.ringdown is not None and r.ringdown.s_params is not None:
+    if r.ringdown is not None and r.ringdown.s_params is not None:
+        assert cap, "a completed run did not go through two_window_witness"
         Y, dt, freqs, n_record, n_start = cap["args"]
         k = cap["kw"]
         main = rd.identify(np.asarray(Y)[:n_record], dt, n_start, n_record,
@@ -356,7 +357,7 @@ def test_the_error_witness_fails_a_graded_record_cut_at_a_third_of_its_decay_tim
     """The graded box stopped at 1500 steps (1.72 ns, a third of TM110's
     5 ns amplitude decay time): its completed S is 1.6e-3 off the completed
     30,000-step answer, above the 1e-3 bar. WE compares the completion from
-    [T/2, T] with the one from the window of double span [T/4, T] and reads
+    [T/2, T] with the one from the window started twice as early, [T/4, T], and reads
     1.6e-3: the report is not ok and WE is the witness that fails. W2
     ([T/2, T] against [T/2, 0.9 T]) is reported, not judged, and only
     printed here: it read 3.0e-4 under JAX 0.10.2 and 1.7e-3 under JAX

@@ -44,8 +44,8 @@ The method (every rule fixed here, none tuned per board)
    window, poles fixed, columns normalised (harminv's amplitude fit).
 6. Completion by the closed form above, per channel.
 
-The error witness ``WE`` identifies the poles a second time on the window of
-double span ``[n_start / 2, N)`` and completes the SAME record with them; the
+The error witness ``WE`` identifies the poles a second time on a window that
+starts twice as early, ``[n_start / 2, N)``, and completes the SAME record with them; the
 largest difference of the two answers is the witness. On the research boards
 it read the actual error within 0.84-3.2x wherever the record resolves the
 structure (rfx #1254, R-i). It needs the sources off over its window too; when
@@ -106,7 +106,7 @@ __all__ = [
     "tail_dft",
     "complete_spectra",
     "two_window_witness",
-    "double_span_witness",
+    "early_start_witness",
 ]
 
 
@@ -380,6 +380,17 @@ def _as_2d(series) -> tuple[np.ndarray, bool]:
     return y, False
 
 
+def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
+    """A caller-supplied ``(nf,)`` or ``(nf, C)`` spectrum as ``(nf, C)``, or raise."""
+    a = np.asarray(arr)
+    if a.ndim == 1:
+        a = a[:, None]
+    if a.shape != (nf, n_ch):
+        raise ValueError(f"{name} has shape {np.shape(arr)}; expected ({nf}, {n_ch}) "
+                         f"or ({nf},) for a single channel")
+    return a
+
+
 def plain_dft(series, dt, freqs, *, chunk: int = 4096) -> np.ndarray:
     """``dt * sum_n y_n exp(-j 2 pi f n dt)`` over the whole ``series``.
 
@@ -603,6 +614,8 @@ def two_window_witness(series, dt, freqs, n_record, n_start, *, freq_max,
     model_short = identify(Y, dt, n_start, n_split, **kw)
     if plain is None:
         plain = plain_dft(Y, dt, freqs)
+    else:
+        plain = _given_spectra(plain, np.size(freqs), Y.shape[1], "plain")
     spectra = plain + tail_dft(model, n_record - 1, freqs)
     spectra_short = plain + tail_dft(model_short, n_record - 1, freqs)
     obs = (lambda a: a) if observable is None else observable
@@ -616,7 +629,7 @@ def _long_window_start(n_record, window_start) -> int:
     return int(round(0.5 * float(window_start) * int(n_record)))
 
 
-class DoubleSpanWitness(NamedTuple):
+class EarlyStartWitness(NamedTuple):
     """``WE`` and the completion it compares with the main one."""
 
     value: float
@@ -625,12 +638,14 @@ class DoubleSpanWitness(NamedTuple):
     n_start_long: int
 
 
-def double_span_witness(series, dt, freqs, n_record, window_start, *, freq_max,
+def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
                         guard=0.9, sv_rel=1.0e-6, unit_tol=1.0e-6,
-                        observable=None, plain=None, spectra=None) -> DoubleSpanWitness:
+                        observable=None, plain=None, spectra=None) -> EarlyStartWitness:
     """Complete ``series[:n_record]`` from ``[window_start T, T]`` and from ``[window_start/2 T, T]``.
 
-    The second window has double the span of the first and contains it. Both
+    The second window starts twice as early (at half the first one's start) and
+    contains it: with the default ``window_start`` 0.5 it spans 0.75 T against
+    0.5 T. Both
     completions add their tail after the SAME last sample (``n_record - 1``);
     ``value`` is the largest absolute difference of the two observables
     (``observable`` as in :func:`two_window_witness`). ``spectra`` may carry
@@ -649,6 +664,10 @@ def double_span_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     kw = dict(freq_max=freq_max, guard=guard, sv_rel=sv_rel, unit_tol=unit_tol)
     if plain is None:
         plain = plain_dft(Y, dt, freqs)
+    else:
+        plain = _given_spectra(plain, np.size(freqs), Y.shape[1], "plain")
+    if spectra is not None:
+        spectra = _given_spectra(spectra, np.size(freqs), Y.shape[1], "spectra")
     if spectra is None:
         spectra = plain + tail_dft(identify(Y, dt, n_start, n_record, **kw),
                                    n_record - 1, freqs)
@@ -657,7 +676,7 @@ def double_span_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     obs = (lambda a: a) if observable is None else observable
     value = float(np.max(np.abs(np.asarray(obs(spectra), dtype=np.complex128)
                                 - np.asarray(obs(spectra_long), dtype=np.complex128))))
-    return DoubleSpanWitness(value, spectra_long, model_long, n_long)
+    return EarlyStartWitness(value, spectra_long, model_long, n_long)
 
 
 def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
@@ -1296,14 +1315,14 @@ class RingdownRun:
                                 "#1254, R-i)"),
             ]
         try:
-            we = double_span_witness(
+            we = early_start_witness(
                 Y, dt, f_bins, self.n_steps, ws, freq_max=ref_hz, guard=spec.guard,
                 sv_rel=spec.sv_rel, unit_tol=spec.unit_tol, observable=to_s,
                 plain=plain, spectra=w2.spectra)
             we_value, we_note = we.value, ""
             state["long_rank"] = we.model_long.rank
             state["long_n_kept"] = int(we.model_long.s.size)
-        except (ValueError, np.linalg.LinAlgError) as exc:
+        except Exception as exc:  # the completed S already exists: never lose it here
             we_value = math.nan
             we_note = (f"the identification on [{0.5 * ws:g} T, T] failed: {exc}; "
                        "a WE that cannot be read fails")

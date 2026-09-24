@@ -360,7 +360,7 @@ PAIR = (
 
 
 @pytest.mark.parametrize("window_start", [0.5, 0.6])
-def test_the_double_span_witness_is_the_difference_of_two_hand_completions(window_start):
+def test_the_early_start_witness_is_the_difference_of_two_hand_completions(window_start):
     """A 3.64 ns record (3000 steps) of two equal Q 400 modes 0.1 % apart,
     rounded to float32: the pair beats slowly, so a completion depends on
     how much of the beat its window saw. WE is the completion from
@@ -380,8 +380,8 @@ def test_the_double_span_witness_is_the_difference_of_two_hand_completions(windo
     c_main = plain + rd.tail_dft(rd.identify(y, DT, n_main, n, **kw), n - 1, FREQS)
     c_long = plain + rd.tail_dft(rd.identify(y, DT, n_long, n, **kw), n - 1, FREQS)
     we_hand = float(np.max(np.abs(c_main - c_long)))
-    w = rd.double_span_witness(y, DT, FREQS, n, window_start, **kw)
-    w_given = rd.double_span_witness(y, DT, FREQS, n, window_start, plain=plain,
+    w = rd.early_start_witness(y, DT, FREQS, n, window_start, **kw)
+    w_given = rd.early_start_witness(y, DT, FREQS, n, window_start, plain=plain,
                                      spectra=c_main, **kw)
     scale = float(np.max(np.abs(truth)))
     actual = float(np.max(np.abs(c_main - truth)))
@@ -414,3 +414,21 @@ def test_the_growing_pole_rule_exempts_only_zero_frequency():
 def test_the_spec_refuses_what_it_cannot_mean(kw):
     with pytest.raises(ValueError):
         rd.RingdownSpec(**kw)
+
+
+def test_a_single_channel_spectrum_given_by_the_caller_is_not_broadcast():
+    """A (n,) series with a (nf,) plain spectrum: the witness reads what it reads
+    when it computes the plain DFT itself, and a wrong shape is refused."""
+    n = 3000
+    y = _record(n, modes=((2.5e9, 200.0, 0.5), (2.03e9, 60.0, 0.3)))[:, 0]
+    kw = dict(freq_max=4.0e9)
+    plain = rd.plain_dft(y, DT, FREQS)
+    assert plain.shape == (FREQS.size,)
+    own = rd.early_start_witness(y, DT, FREQS, n, 0.5, **kw).value
+    given = rd.early_start_witness(y, DT, FREQS, n, 0.5, plain=plain, **kw).value
+    assert given == own
+    assert rd.two_window_witness(y, DT, FREQS, n, n // 2, plain=plain, **kw).value \
+        == rd.two_window_witness(y, DT, FREQS, n, n // 2, **kw).value
+    with pytest.raises(ValueError, match="plain has shape"):
+        rd.early_start_witness(y, DT, FREQS, n, 0.5, plain=plain[:-1], **kw)
+
