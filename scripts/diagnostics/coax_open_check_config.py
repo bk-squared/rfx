@@ -119,22 +119,68 @@ def stage(args, out: Path) -> None:
     battery._log(f"check r{rung} z{z_mm:g}: {json.dumps(rec['check'])}")
 
 
-def summarize(args) -> int:
-    index = json.loads(Path(args.run_index).read_text()) if args.run_index else {}
+def _rows(directory: Path) -> list[dict]:
+    index_path = directory / "run_index.json"
+    index = json.loads(index_path.read_text()) if index_path.exists() else {}
     rows = []
-    for p in sorted(Path(args.summarize).glob("open_check_rung*_z*mm.json")):
+    for p in sorted(directory.glob("open_check_rung*_z*mm.json")):
         rec = json.loads(p.read_text())
         if "check" not in rec:
             continue
-        rows.append({"file": p.name, "commit": rec["provenance"]["commit"],
-                     "absorbing_axes": rec["absorbing_axes"],
-                     "rung_annulus_cells": rec["rung_annulus_cells"],
-                     "board_m": rec["board_m"], "device_kind": rec["device_kind"],
-                     "compute_run_id": (index.get(p.name) or {}).get("vessl_run_id"),
-                     **rec["check"],
-                     "argmax_hz": {u: rec["records"][u]["summary"]["argmax_hz"]
-                                   for u in ("u12", "u24")}})
-    print(json.dumps(rows, indent=1))
+        rows.append({
+            "file": p.name,
+            "provenance": battery.fixture_provenance(rec["provenance"], index, p.name),
+            "absorbing_axes": rec["absorbing_axes"],
+            "rung_annulus_cells": rec["rung_annulus_cells"],
+            "board_m": rec["board_m"], "device_kind": rec["device_kind"],
+            **rec["check"],
+            "records": {u: {"record_units": r["record_units"], "n_steps": r["n_steps"],
+                            "S11": r["result"]["S11"], "summary": r["summary"],
+                            "status": r["result"]["status"], "wall_s": r["wall_s"]}
+                        for u, r in rec["records"].items()},
+        })
+    return rows
+
+
+def summarize(args) -> int:
+    """Print one row per record, or — with ``--new`` and ``--artifact-out`` —
+    write the committed record of the sweep: the shipped lane's records (the
+    ``--summarize`` directory) beside the fixed lane's (``--new``), board by
+    board. Arithmetic only."""
+    old = _rows(Path(args.summarize))
+    if not args.new:
+        print(json.dumps([{k: v for k, v in r.items() if k != "records"} for r in old],
+                         indent=1))
+        return 0
+    new = _rows(Path(args.new))
+    boards = sorted({(r["rung_annulus_cells"], r["board_m"][2]) for r in old + new})
+    table = []
+    for rung, z in boards:
+        pick = {lane: next((r for r in rows if r["rung_annulus_cells"] == rung
+                            and r["board_m"][2] == z), None)
+                for lane, rows in (("shipped", old), ("fixed", new))}
+        table.append({"rung_annulus_cells": rung, "board_z_m": z,
+                      **{f"{lane}_{k}": (None if r is None else r[k])
+                         for lane, r in pick.items()
+                         for k in ("absorbing_axes", "max_abs_gamma_12", "max_abs_gamma_24",
+                                   "shift_12_24_per_bin", "passes", "cell_steps")}})
+    art = {
+        "schema": SCHEMA, "driver": DRIVER, "reuses": battery.DRIVER,
+        "what": ("The coax one-port lane's open termination at 4 and 6 annulus cells on "
+                 "the battery's 8 x 8 mm cross-section, 40 mm and 25 mm long, at 12 and 24 "
+                 "line traversals: the shipped lane (absorbers on z only) beside the fixed "
+                 "one (all three axes), with the check an always-on test applies. No verdict."),
+        "check": {"max_abs_gamma_bound": MAX_ABS_GAMMA, "shift_bound": DOUBLING_SHIFT_MAX,
+                  "shift_definition": ("max over bins of | |Gamma| at 24 traversals - "
+                                       "|Gamma| at 12 |"),
+                  "passes": "max |Gamma| <= bound at both records and shift < bound"},
+        "freqs_hz": battery.FREQS.astype(float).tolist(),
+        "table": table, "shipped": old, "fixed": new,
+    }
+    out = Path(args.artifact_out)
+    out.write_text(json.dumps(art, indent=1) + "\n")
+    for row in table:
+        print(json.dumps(row))
     return 0
 
 
@@ -145,8 +191,11 @@ def main() -> int:
     ap.add_argument("--z-mm", type=float, default=battery.DOMAIN_ONEPORT[2] * 1e3)
     ap.add_argument("--out")
     ap.add_argument("--run-id", default=None)
-    ap.add_argument("--summarize", default=None)
-    ap.add_argument("--run-index", default=None)
+    ap.add_argument("--summarize", default=None,
+                    help="a directory of records (with its run_index.json)")
+    ap.add_argument("--new", default=None,
+                    help="summarize only: the fixed lane's directory, beside --summarize's")
+    ap.add_argument("--artifact-out", default=None)
     args = ap.parse_args()
     if args.summarize:
         return summarize(args)
