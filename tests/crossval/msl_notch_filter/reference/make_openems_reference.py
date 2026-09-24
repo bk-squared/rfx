@@ -419,8 +419,10 @@ def _dry_run(stage: str, fine_factor: float) -> int:
           f"{REPRODUCE_GATE_RECORD['real_pass_wall_time_s']} s real pass)")
     print(f"boundary          {A_BOUNDARY}")
     print(f"excitation        SetGaussExcite({A_F_MAX_HZ/2:.4g}, {A_F_MAX_HZ/2:.4g}) Hz")
-    print("NrTS / EndCriteria  openEMS library defaults (~1e9 / 1e-5) on every real "
-          "pass; 200 / 0.0 on the smoke pass")
+    print("NrTS / EndCriteria  not passed on a real pass: NrTS ~1e9 (the python "
+          "binding's default) and EndCriteria 1e-6 (the pinned build's C++ default, "
+          "openems.cpp:117; the binding's docstring says 1e-5, which is not what "
+          "runs); 200 / 0.0 on the smoke pass")
     print(f"CalcPort grid     linspace(1e6, {A_F_MAX_HZ:.4g}, {A_N_FREQS})")
     print(f"analytic notch    F_NOTCH_AN = {F_NOTCH_AN_HZ/1e9:.4f} GHz "
           f"(eps_eff = {_A_EPS_EFF:.5f}, Hammerstad-Jensen)")
@@ -741,7 +743,10 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict,
             "boundary": A_BOUNDARY,
             "excitation": f"SetGaussExcite({A_F_MAX_HZ/2.0}, {A_F_MAX_HZ/2.0}) Hz",
             "nrts": "openEMS library default (~1e9) on every real pass; 200 on the smoke pass",
-            "end_criteria": "openEMS library default (1e-5) on every real pass; 0.0 on the smoke pass",
+            "end_criteria": ("not passed on any real pass, so the pinned openEMS build's "
+                             "C++ default 1e-6 ran (openems.cpp:117; the python binding's "
+                             "docstring says 1e-5, which is not what runs); 0.0 on the "
+                             "smoke pass"),
             "calcport_grid": f"linspace(1e6, {A_F_MAX_HZ}, {A_N_FREQS})",
             "calcport_passes": (
                 "one pass, no ref_impedance -- the precedent's own tick, kept"

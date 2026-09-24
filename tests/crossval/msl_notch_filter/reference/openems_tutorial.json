@@ -44,7 +44,8 @@
   ],
   "excitation": "SetGaussExcite(3500000000.0, 3500000000.0) Hz",
   "nrts": "openEMS library default (~1e9) on every real pass; 200 on the smoke pass",
-  "end_criteria": "openEMS library default (1e-5) on every real pass; 0.0 on the smoke pass",
+  "end_criteria": "not passed on any real pass, so the pinned openEMS build's C++ default 1e-6 ran (openems.cpp:117; the python binding's docstring says 1e-5, which is not what runs); 0.0 on the smoke pass",
+  "end_criteria_note": "2026-09-24: only this label was corrected (it read 'openEMS library default (1e-5)'); no number in this record changed",
   "calcport_grid": "linspace(1e6, 7000000000.0, 1601)",
   "notch_estimator": "validation/crossval/comparators/spectral_features.py::refined_extremum, transform='log', band 2-7 GHz",
   "witness_band_ghz": [

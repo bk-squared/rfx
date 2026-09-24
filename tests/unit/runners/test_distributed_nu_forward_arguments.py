@@ -1,4 +1,4 @@
-"""NU forward's compiled time loop receives per-cell data as jit arguments."""
+"""NU forward passes all arrays (including spacings) as time-loop jit arguments."""
 
 from functools import partial
 import re
@@ -46,9 +46,8 @@ def _per_cell_captures(body):
         if isinstance(value, jax.core.Tracer) or id(value) in seen:
             return
         seen.add(id(value))
-        if isinstance(value, jax.Array):
-            if value.ndim >= 3:
-                captured.append((path, value.shape))
+        if isinstance(value, (jax.Array, np.ndarray)):
+            captured.append((path, value.shape))
             return
         if isinstance(value, FunctionType):
             for name, cell in zip(value.__code__.co_freevars, value.__closure__ or ()):
@@ -102,6 +101,7 @@ def loop_program(request):
             return entry
 
         def run(*args, **kwargs):
+            records["captures"].extend(_per_cell_captures(fn))
             hlo = entry.lower(*args, **kwargs).compile().as_text()
             for match in re.finditer(r"(\w+)\[([\d,]*)\](?:\{[^}]*\})?\s+constant\(", hlo):
                 dims = tuple(int(d) for d in match.group(2).split(",") if d)

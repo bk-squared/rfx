@@ -17,8 +17,8 @@ moment a reader is asked whether the tracker still agrees -- drift becomes a
 deliberate act rather than an oversight.
 
 The OPEN check itself belongs to the weekly audit, which has a network and a
-schedule. Last run by hand on 2026-09-18 with `gh issue view <N> --json state`:
-all eleven below OPEN, and the two closed ones removed in the same change.
+schedule. Last run by hand on 2026-09-23 with `gh issue view <N> --json state`:
+all five below OPEN.
 """
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"
 SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 
-# Every issue the page cites, verified OPEN on 2026-09-18. Edit this set in the
+# Every issue the page cites, verified OPEN on 2026-09-23. Edit this set in the
 # same change that adds or removes an entry, and re-check the tracker when you
 # do -- that re-check is the whole point of the set being written down.
 # #1101 (the port_aperture_snap advisory naming the wrong source for the
@@ -73,27 +73,28 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # 2026-09-21: the PI closed it as a stated accuracy in the support matrix. The
 # offset is still real and unattributed, so the prose stays without the arrow
 # and 830 sits in RESOLVED_REFERENCES.
-# #801 (a lossless grounded patch gaining energy behind a thin absorber) joined
-# on 2026-09-22 for the part PR #1178 does not fix: with a traced mesh axis no
-# conductor is continued into the absorber, so that run keeps the old behaviour.
-# #1181 (a gradient converging later in record length than the value it belongs
-# to) joined on 2026-09-22 with the "Gradients and optimization" section, and was
-# OPEN when checked with `gh issue view 1181 --json state` that day. The witness
-# landing with it is a MEASUREMENT a caller opts into, not a fix: a too-short
-# record still hands an optimizer the wrong slope, so the entry stays until the
-# defect itself is pinned.
+# #838 left on 2026-09-23: closed as not planned before 2.0 by PI decision.
+# The coax-to-microstrip power over-read remains a standing limitation, with
+# its closed issue named for provenance in RESOLVED_REFERENCES.
+# #1230 replaces #801 on 2026-09-23 for the part PR #1178 does not fix: with a
+# traced mesh axis no conductor is continued into the absorber. #801 is closed;
+# the residual is tracked by #1230.
+# #1181 left on 2026-09-23: the truncated-record gradient limitation remains,
+# and the witness in PR #1186 is opt-in. Both closed numbers are provenance
+# in RESOLVED_REFERENCES, not arrows to open work.
+# #820 left on 2026-09-23: tests/unit/farfield/test_rcs_translation_invariance.py
+# now pins the monostatic RCS spread under whole-cell target translations.
 # #1221 (magnetic faces on distributed and ADI lanes, and the Yee half-cell wall)
 # joined on 2026-09-23; OPEN checked with
 # `gh issue view 1221 --repo bk-squared/rfx --json number,state,url,title,updatedAt`.
-CITED_ISSUES = frozenset({838, 820, 737, 715, 1022, 1181, 801, 1221})
+CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
 
-# Numbers the prose names for provenance rather than as a live defect: a CLOSED
-# issue quoted to say what part of the problem is already fixed. #1043 (the
-# runners' pad continuation, closed) is named inside the #1066 entry to mark the
-# boundary of what remains. These are allowed to appear without a citation line;
+# Numbers the prose names for provenance rather than as open work: a CLOSED
+# issue or PR recording a fix, measurement or settled decision. These are
+# allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 1043, 1100, 1122})
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186})
 # #1100 and #1122 join it together: the taper entry names both to record which
 # half was fixed and what was decided about the other, and both are closed.
 
