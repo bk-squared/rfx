@@ -2568,6 +2568,7 @@
     "tests/oracle/test_cavity.py::test_grid_creation": 0.0017076640006052912,
     "tests/oracle/test_cavity.py::test_pec_cavity_resonance": 13.231965654999385,
     "tests/oracle/test_cavity.py::test_pec_zeros_boundary": 0.3361268850003398,
+    "tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled": 69.56,
     "tests/oracle/test_conservation_laws.py::test_causality_no_signal_before_source": 19.022700663999785,
     "tests/oracle/test_conservation_laws.py::test_passivity_two_port_empty_waveguide": 8.05499654300047,
     "tests/oracle/test_conservation_laws.py::test_reciprocity_asymmetric_structure": 36.346081079999294,
