@@ -506,9 +506,11 @@ def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
     spectra into S; the witness must fail it, warn, and keep the plain
     record's number in its note without the non-passive clause.
 
-    Seam: ``rd._assemble`` also builds the W0 and W1 comparisons, so only the
-    call that follows ``rd.two_window_witness`` -- ``S = to_s(w2.spectra)``,
-    the completed S the passivity witness reads -- is scaled.
+    Seam: ``rd._assemble`` also builds the W0, W1 and WE comparisons, so only
+    the call that follows ``rd.two_window_witness`` -- ``S = to_s(w2.spectra)``,
+    the completed S the passivity witness reads -- is scaled. The run is made
+    with ``sim.run`` directly: ``_run``'s bit-for-bit recomputation of the
+    completed S would, by design, see the injected scale.
     """
     orig_assemble, orig_two_window = rd._assemble, rd.two_window_witness
     armed = {"on": False}
@@ -527,8 +529,10 @@ def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
 
     monkeypatch.setattr(rd, "two_window_witness", two_window)
     monkeypatch.setattr(rd, "_assemble", assemble)
-    with pytest.warns(UserWarning, match="passivity"):
-        r = _run(_box("uniform", cells=3), 1500, ringdown=RingdownSpec())
+    with pytest.warns(UserWarning, match="witness failed -- passivity"):
+        r = _box("uniform", cells=3).run(
+            n_steps=1500, compute_s_params=True, s_param_freqs=FREQS,
+            skip_preflight=True, ringdown=RingdownSpec())
     rep = r.ringdown.report
     w = rep.witness("passivity")
     plain = float(np.max(np.abs(np.asarray(r.s_params)[0, 0])))
@@ -539,7 +543,7 @@ def test_the_passivity_witness_fails_a_non_passive_completion(monkeypatch):
     assert not rep.ok
     assert f"{plain:.6g}" in w.note
     assert "non-passive without the completion" not in w.note
-    assert rep.witness("W0").ok and rep.witness("W1").ok and rep.witness("W2").ok
+    assert [x.name for x in rep.witnesses if x.judged and not x.ok] == ["passivity"]
 
 
 def test_w1_catches_a_completion_fed_the_midpoint_voltage(monkeypatch):
