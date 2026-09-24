@@ -965,7 +965,7 @@ def weight_dtype_for(sim):
             else np.float32)
 
 
-def monitor_for_simulation(sim, grid, periodic=None):
+def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None):
     """The monitor a ``Simulation`` declared, realized against the built grid.
 
     ``Simulation.add_current_moment_monitor`` only records the declaration;
@@ -973,6 +973,9 @@ def monitor_for_simulation(sim, grid, periodic=None):
     solve actually builds, so they are realized here — the repo's
     assert-realized-not-declared rule. Returns ``None`` when nothing was
     declared, which is what keeps every existing run unchanged.
+
+    ``overrides`` are the material arrays a ``forward()`` call replaces the
+    model's own with (see :func:`refuse_current_the_monitor_cannot_see`).
     """
     spec = getattr(sim, "_current_moments", None)
     if spec is None:
@@ -1000,10 +1003,218 @@ def monitor_for_simulation(sim, grid, periodic=None):
             "together: inside the total-field region the E update carries the "
             "incident-field correction, so the current read there would "
             "include the injection and not just the structure's current.")
-    return current_moment_monitor_from_grid(
+    monitor = current_moment_monitor_from_grid(
         grid, corner_lo=corner_lo, corner_hi=corner_hi,
         block_size=block_size, freqs=freqs, order=order,
         periodic=periodic, dtype=weight_dtype_for(sim), **(extra or {}))
+    refuse_current_the_monitor_cannot_see(sim, grid, monitor,
+                                          overrides=overrides)
+    return monitor
+
+
+def _slab_interior(monitor, shape):
+    """Per-component E-edge masks of the slab without its outermost layer."""
+    m = monitor
+    inner = []
+    for c in range(3):
+        mask = np.zeros(tuple(int(v) for v in shape), dtype=bool)
+        k_top = m.k_hi if c < 2 else m.k_hi - 1     # ez lives on half planes
+        mask[m.i_lo + 1:m.i_hi - 1, m.j_lo + 1:m.j_hi - 1, m.k_lo + 1:k_top] = True
+        inner.append(mask)
+    return inner
+
+
+def _cells_to_edges(cell_mask, periodic):
+    """E edges touching a marked cell: the four cells an edge averages over."""
+    from rfx.core.yee import edge_averaged_materials
+    marked = np.asarray(cell_mask, dtype=np.float64)
+    _eps, sig = edge_averaged_materials(np.ones_like(marked), marked, periodic)
+    return [np.asarray(v) > 0.0 for v in sig]
+
+
+def _outside_slab_refusal(monitor, grid, what, component, index):
+    i, j, k = (int(v) for v in index)
+    m = monitor
+    return NotImplementedError(
+        f"the current-moment monitor reads only the current inside its slab, "
+        f"and {what} sits on the {'xyz'[component]}-directed E edge at index "
+        f"({i}, {j}, {k}), outside the slab's interior (edge indices "
+        f"i {m.i_lo + 1}..{m.i_hi - 2}, j {m.j_lo + 1}..{m.j_hi - 2}, "
+        f"k {m.k_lo + 1}..{m.k_hi - (2 if component == 2 else 1)}: the slab "
+        "window without its "
+        "outermost layer). Current flowing there radiates but never enters "
+        "the pattern. Enlarge the slab (corners or margin_cells) so every "
+        "conductor, dielectric, port and source lies inside it.")
+
+
+def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
+                                          overrides=None):
+    """Refuse, before the run, a model whose current the monitor cannot see.
+
+    The monitor's pattern is the radiation of the ELECTRIC current inside its
+    slab. Two kinds of model radiate through something else:
+
+    * magnetic material or a magnetic wall: a region with ``mu_r != 1``
+      radiates through its magnetization current, and a PMC face carries
+      magnetic surface current; ``J = curl_h H - eps0 dE/dt`` contains
+      neither;
+    * a radiator outside the slab: a dielectric or lossy cell, a conductor
+      (volume, sheet, wire, surface-impedance sheet, PEC domain face), a
+      dispersive or Kerr cell, a lumped element, a port or a source whose E
+      edge is not inside the slab. Its current is real and never read. The
+      slab's outermost edge layer counts as outside.
+
+    Measured on what the solve realizes: the material arrays assembled from
+    the model (evaluated at trace time even under an outer ``jax.jit``) with
+    the edge rule the E update uses, the realized PEC edges, the realized
+    port and source cells. ``overrides`` (``eps_r``, ``sigma``, ``mu_r``,
+    ``pec_mask``, ``pec_occupancy``, ``design_box``, ``design_occupancy``)
+    are what ``forward()`` replaces the model's own arrays with: a concrete
+    override is measured, a traced whole-grid one cannot be and is refused,
+    and a design box is measured by its cell bounds.
+    """
+    import warnings as _warnings
+
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.core.jax_utils import is_tracer
+    from rfx.core.yee import component_e_materials
+
+    ov = dict(overrides or {})
+    for name in ("eps_r", "sigma", "mu_r", "pec_mask", "pec_occupancy"):
+        if ov.get(name) is not None and is_tracer(ov[name]):
+            raise NotImplementedError(
+                f"the current-moment monitor needs to know where the model "
+                f"carries current, and a traced whole-grid {name} override "
+                "can put material anywhere, including outside its slab. Hand "
+                "the design variable in through forward(design_box=..., "
+                "design_eps_override=...) instead: the box is checked "
+                "against the slab.")
+
+    spec = getattr(sim, "_boundary_spec", None)
+    if spec is not None and spec.pmc_faces():
+        raise NotImplementedError(
+            "the current-moment monitor reads the electric current only; a "
+            f"PMC face ({', '.join(sorted(spec.pmc_faces()))}) carries a "
+            "magnetic surface current it never sees. Use absorbing "
+            "boundaries while this monitor is on.")
+    if spec is not None and spec.pec_faces():
+        raise NotImplementedError(
+            "the current-moment monitor reads only the current inside its "
+            f"slab; a PEC domain face ({', '.join(sorted(spec.pec_faces()))}) "
+            "is a conductor outside it whose current is never read. Use "
+            "absorbing boundaries while this monitor is on.")
+    plane_ports = [name for name, attr in (
+        ("waveguide", "_waveguide_ports"), ("microstrip", "_msl_ports"),
+        ("coaxial", "_coaxial_ports"), ("Floquet", "_floquet_ports"))
+        if getattr(sim, attr, None)]
+    if plane_ports:
+        raise NotImplementedError(
+            f"the current-moment monitor is not supported with a "
+            f"{plane_ports[0]} port: a plane port drives and terminates a "
+            "whole cross-section of a line that leaves the radiator (and a "
+            "microstrip port's modal launch includes a magnetic source), so "
+            "the slab cannot hold all of its current. Feed the structure "
+            "with add_port() or add_source() inside the slab.")
+
+    nonuniform = getattr(grid, "dx_arr", None) is not None
+    periodic = sim._periodic_flags()
+    sheet_specs, pec_sheets, pec_wires = [], [], []
+    with jax.ensure_compile_time_eval(), _warnings.catch_warnings():
+        _warnings.simplefilter("ignore")
+        if nonuniform:
+            materials, debye, lorentz, pec_mask = sim._assemble_materials_nu(
+                grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
+                pec_wires=pec_wires)
+            kerr = None
+        else:
+            (materials, debye, lorentz, pec_mask, _shapes, _bshapes,
+             kerr) = sim._assemble_materials(
+                grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
+                pec_wires=pec_wires)
+        replace = {name: ov[name] for name in ("eps_r", "sigma", "mu_r")
+                   if ov.get(name) is not None}
+        if replace:
+            materials = materials._replace(
+                **{k: jnp.asarray(v) for k, v in replace.items()})
+
+        mu = np.asarray(materials.mu_r)
+        if np.any(mu != 1.0):
+            idx = tuple(int(v[0]) for v in np.nonzero(mu != 1.0))
+            raise NotImplementedError(
+                "the current-moment monitor reads the electric current only; "
+                f"the model has mu_r != 1 (first at cell {idx}), and a "
+                "magnetic material radiates through its magnetization "
+                "current, which J = curl_h H - eps0 dE/dt does not contain. "
+                "Refused rather than approximated.")
+
+        interior = _slab_interior(monitor, grid.shape)
+
+        def check(edge_masks, what):
+            for c in range(3):
+                bad = np.asarray(edge_masks[c], dtype=bool) & ~interior[c]
+                if bad.any():
+                    raise _outside_slab_refusal(
+                        monitor, grid, what, c,
+                        tuple(v[0] for v in np.nonzero(bad)))
+
+        eps_c, sig_c = component_e_materials(materials, periodic)
+        check([(np.asarray(e) != 1.0) | (np.asarray(g) != 0.0)
+               for e, g in zip(eps_c, sig_c)],
+              "a dielectric or lossy material")
+
+        cells = None if pec_mask is None else np.asarray(pec_mask, dtype=bool)
+        for name in ("pec_mask", "pec_occupancy"):
+            if ov.get(name) is not None:
+                extra = np.asarray(ov[name]) > 0
+                cells = extra if cells is None else (cells | extra)
+        if cells is not None or pec_sheets or pec_wires:
+            check(realized_pec_edge_masks(cells, sheets=tuple(pec_sheets),
+                                          wires=tuple(pec_wires),
+                                          periodic=periodic),
+                  "a conductor (PEC volume, sheet or wire)")
+        if sheet_specs:
+            from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+            ctx = build_sheet_impedance_ctx(sheet_specs, periodic=periodic)
+            check((ctx.mask_ex, ctx.mask_ey, ctx.mask_ez),
+                  "a surface-impedance sheet")
+        for poles in (debye, lorentz):
+            for mask in (poles[1] if poles is not None else ()):
+                check(_cells_to_edges(np.asarray(mask) != 0, periodic),
+                      "a dispersive (Debye/Lorentz) material")
+        if kerr is not None and np.any(np.asarray(kerr) != 0):
+            check(_cells_to_edges(np.asarray(kerr) != 0, periodic),
+                  "a Kerr material")
+        for key, what in (("design_box", "a design region (design_box)"),
+                          ("design_occupancy", "a design occupancy box")):
+            box = ov.get(key)
+            if box is not None:
+                i0, i1, j0, j1, k0, k1 = (int(v) for v in box.bounds)
+                region = np.zeros(tuple(int(v) for v in grid.shape), bool)
+                region[i0:i1, j0:j1, k0:k1] = True
+                check(_cells_to_edges(region, periodic), what)
+
+    if nonuniform:
+        from rfx.nonuniform import position_to_index as _index
+    else:
+        def _index(g, pos):
+            return g.position_to_index(pos)
+    fed = [np.zeros(tuple(int(v) for v in grid.shape), bool) for _ in range(3)]
+    for pe in list(getattr(sim, "_ports", ()) or ()):
+        c = "xyz".index(str(pe.component)[-1])
+        start = _index(grid, tuple(pe.position))
+        stop = start
+        if getattr(pe, "extent", None) is not None:
+            end = list(pe.position)
+            end[c] = end[c] + float(pe.extent)
+            stop = _index(grid, tuple(end))
+        idx = list(start)
+        for n in range(start[c], max(stop[c], start[c] + 1)):
+            idx[c] = n
+            fed[c][tuple(idx)] = True
+    for spec_rlc in list(getattr(sim, "_lumped_rlc", ()) or ()):
+        c = "xyz".index(str(spec_rlc.component)[-1])
+        fed[c][tuple(_index(grid, tuple(spec_rlc.position)))] = True
+    check(fed, "a source, port or lumped element")
 
 
 # Lanes whose scan body accumulates the monitor. Every other entry point has

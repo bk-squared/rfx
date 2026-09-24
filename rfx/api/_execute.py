@@ -1389,6 +1389,7 @@ class _ExecuteMixin:
         sheet_impedance: object | None = None,
         design_box: object | None = None,
         design_occupancy: object | None = None,
+        monitor_overrides: dict | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
 
@@ -1981,7 +1982,10 @@ class _ExecuteMixin:
         # builds, so a forward()/value_and_grad call accumulates the same
         # numbers the forward run does.
         from rfx.current_moments import monitor_for_simulation as _cm_for_sim
-        current_moments_fwd = _cm_for_sim(self, grid, periodic_bool)
+        current_moments_fwd = _cm_for_sim(
+            self, grid, periodic_bool,
+            overrides={**(monitor_overrides or {}), "design_box": design_box,
+                       "design_occupancy": design_occupancy})
 
         # Flux monitors — same configs the run() lane builds, so the
         # issue-#488 mixed-family magnitude channel can read Poynting
@@ -4135,6 +4139,10 @@ class _ExecuteMixin:
             sheet_impedance=_fwd_sheet_ctx,
             design_box=_design_spec,
             design_occupancy=_design_occ_spec,
+            monitor_overrides={"eps_r": eps_override, "sigma": sigma_override,
+                               "mu_r": mu_r_override,
+                               "pec_mask": pec_mask_override,
+                               "pec_occupancy": pec_occupancy_override},
         )
         _warn_if_nonfinite_result(_res, context="forward")
         from rfx.current_moments import require_accumulated_current_moments

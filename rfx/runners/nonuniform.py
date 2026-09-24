@@ -1541,7 +1541,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     from rfx.current_moments import monitor_for_simulation as _cm_for_sim
     _declared_periodic = tuple(
         axis in getattr(sim, "_periodic_axes", "") for axis in "xyz")
-    current_moments = _cm_for_sim(sim, grid, periodic=_declared_periodic)
+    current_moments = _cm_for_sim(
+        sim, grid, periodic=_declared_periodic,
+        overrides={"eps_r": eps_override, "sigma": sigma_override,
+                   "pec_mask": pec_mask_override,
+                   "pec_occupancy": pec_occupancy_override,
+                   "design_box": design_box})
 
     # #677: assemble the surface-impedance sheet ctx from the specs the
     # assembler emitted, against the FINAL realized PEC edges of this run

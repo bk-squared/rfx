@@ -2949,8 +2949,9 @@ class Simulation(
         freqs : array
             Frequencies (Hz).
         order : int
-            2 (default) keeps P, Q and T — 30 numbers per block. 1 keeps 12,
-            0 keeps 3 and is a negative control, not a usable rule.
+            2 (the only accepted value) keeps P, Q and T — 30 numbers per
+            block. Lower orders are refused; the low-level
+            ``rfx.current_moments.build_current_moment_monitor`` keeps them.
 
         Notes
         -----
@@ -2967,13 +2968,26 @@ class Simulation(
         fiction. Periodic/Bloch axes, TFSF sources, ``stencil_order=4``, a
         graded or dx != dy in-plane mesh, a traced mesh profile, and every
         lane whose scan body does not accumulate the monitor are refused
-        rather than approximated.
+        rather than approximated. So is a model the pattern would silently
+        leave out: magnetic material (``mu_r != 1``), a PEC or PMC domain
+        face, a plane port, and any dielectric, conductor, dispersive cell,
+        port, lumped element or source that is not inside the slab (its
+        outermost edge layer counts as outside).
 
         The named arguments here are the whole public surface. The low-level
         builder additionally takes deliberately wrong metrics, centres, curl
         signs and time stamps so the mutation harness can measure what the
         declared checks catch; those never reach a user's declaration.
         """
+        if int(order) != 2:
+            raise ValueError(
+                f"add_current_moment_monitor(order={order}): only order=2 is "
+                "supported. Each block is expanded about the mean position of "
+                "its edges, which sits half a Yee cell off the x-directed "
+                "edges' own centroid; the second moment T absorbs that offset, "
+                "while order 1 leaves a floor of about 0.5-0.9 % in the "
+                "pattern (measured on the tutorial patch) and order 0 drops "
+                "the first moment Q altogether.")
         self._current_moments = (corner_lo, corner_hi, float(block_size),
                                  freqs, int(order),
                                  {"margin_cells": margin_cells,
