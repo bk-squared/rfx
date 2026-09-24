@@ -511,6 +511,7 @@ class _PreflightMixin:
                     profile_span_is_uniform as _profile_span_is_uniform,
                 )
                 from rfx.preflight.msl import (
+                    msl_axis_runs_interval_solve as _runs_interval_solve,
                     msl_auto_probe_ladder as _auto_ladder,
                     msl_auto_probe_offset_cells as _auto_offset_cells,
                     msl_auto_probe_offset_term as _auto_offset_term,
@@ -592,7 +593,10 @@ class _PreflightMixin:
                                "in the boundary cell because counted in this "
                                "runway's own cells its probe ladder would "
                                "cross a grading ramp")
-                            + f", {_none_off} cells")
+                            + (", at least " if _none_on_runway
+                               and _runs_interval_solve(_runway_profile)
+                               else ", ")
+                            + f"{_none_off} cells")
                     if _off < _nf_cells:
                         _remedy = (
                             f"set n_probe_offset >= {_nf_cells} explicitly; the "

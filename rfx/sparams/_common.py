@@ -576,6 +576,18 @@ def _msl_axis_spacing(grid, axis: int):
     return (None if graded else lo), graded, True
 
 
+def _msl_axis_cell_f64(grid, axis: int) -> float:
+    """The cell of an ungraded axis, from the float64 cell spine.
+
+    ``_msl_axis_spacing`` reads the float32 solver store, which is what the
+    interval solve has always counted in. A count compared with the one
+    ``add_msl_port`` made in its float64 scalar is read here instead, so an
+    axis whose cell IS that scalar reproduces the stored count exactly.
+    """
+    pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
+    return float(np.asarray(grid.cells(axis), dtype=np.float64)[pad_lo])
+
+
 def _resolve_msl_auto_offsets(sim, entries, grid):
     """Issue #469: solve the probe-offset interval for AUTO-offset ports.
 
@@ -668,7 +680,10 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     one length along it, and the stored counts are kept. Either way the
     #469 interval solve and the #681 widening, which count reflector and
     absorber distances in cells, do not run on a graded axis, and the skip
-    warning says so.
+    warning says so. On an ungraded axis the same lengths are recounted in
+    that axis's own cell before the interval solve starts from them, which
+    matters where that cell is not the scalar: a uniform ``dy_profile`` finer
+    than ``dx``, or an auto mesh that chose ``dx`` after the port.
     """
     _auto_spacing = getattr(sim, "_msl_auto_probe_spacing", {}) or {}
     if not sim._msl_auto_offset_min and not _auto_spacing:
@@ -682,7 +697,11 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         msl_nearest_downstream_reflector,
     )
     from rfx.preflight._common import _fmt_len
-    from rfx.preflight.msl import msl_auto_probe_ladder
+    from rfx.preflight.msl import (
+        msl_auto_probe_ladder,
+        msl_auto_probe_offset_cells,
+        msl_auto_probe_spacing_cells,
+    )
     from rfx.sources.msl_port import (
         _MSL_AXIS_INDEX as _MSL_AX,
         msl_axis_roles as _msl_axis_roles,
@@ -768,6 +787,28 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             resolved.append(
                 dataclasses.replace(pe, **_fields) if _fields else pe)
             continue
+        # A uniform propagation axis can still have a cell other than the one
+        # add_msl_port counted in: a uniform dy_profile finer than dx, or an
+        # auto mesh that settled on another dx after the port was registered.
+        # The stored lengths are recounted in this axis's own cell, so the
+        # interval solve below starts from the right lower edge and spacing.
+        # Where the two cells are equal the counts are the stored ones.
+        _lengths = _auto_lengths.get(pe.name)
+        if _lengths is not None:
+            _cell_u = _msl_axis_cell_f64(grid, _ip)
+            _recount = {}
+            if off_min is not None:
+                off_min = msl_auto_probe_offset_cells(
+                    _lengths[0], float(pe.height), _cell_u)
+                if off_min != int(pe.n_probe_offset):
+                    _recount["n_probe_offset"] = off_min
+            if sp_eps_eff is not None:
+                _sp_reg = msl_auto_probe_spacing_cells(
+                    _lengths[1], int(pe.n_probes), _cell_u)
+                if _sp_reg != int(pe.n_probe_spacing):
+                    _recount["n_probe_spacing"] = _sp_reg
+            if _recount:
+                pe = dataclasses.replace(pe, **_recount)
         d_refl, _, _unevaluated = msl_nearest_downstream_reflector(
             getattr(sim, "_geometry", []),
             x_probe=float(pe.position[_ip]),
@@ -790,7 +831,8 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 f"reflector scan could not evaluate "
                 f"{len(_unevaluated)} conductor(s) — "
                 + "; ".join(_unevaluated)
-                + "; the stored offset and spacing are kept")
+                + "; the upstream-only offset and the registration spacing, "
+                "counted in this axis's cell, are kept")
             resolved.append(pe)
             continue
         # --- Auto probe-spacing widening (issue #681, docstring above).

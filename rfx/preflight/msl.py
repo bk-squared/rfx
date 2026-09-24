@@ -62,6 +62,8 @@ from typing import Literal
 
 import numpy as np
 
+from rfx._grid_metric import is_one_cell_size
+from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _fmt_len,
     _absorber_boundary_for_axis,
@@ -483,6 +485,21 @@ def msl_auto_probe_ladder(profile, scalar_dx: float, feed_m: float,
     on_one_zone = profile_span_is_uniform(
         scalar_dx, profile, node, reach if direction_sign > 0 else -reach)
     return off, sp, cell, on_one_zone
+
+
+def msl_axis_runs_interval_solve(profile) -> bool:
+    """Whether the driver runs the #469 interval solve on this axis.
+
+    It does on an axis with no profile or a profile of one cell size, where
+    an automatic offset is only the LOWER edge: a downstream reflector can
+    move it to the interval midpoint. On a graded axis it does not, and the
+    count is the one the driver uses.
+    """
+    if profile is None:
+        return True
+    if is_tracer(profile):
+        return False
+    return is_one_cell_size(np.asarray(profile, dtype=float))
 
 
 def msl_nearest_downstream_reflector(
@@ -2045,7 +2062,10 @@ def _check_msl_port_geometry(
                     f"would cross a grading ramp"
                     if _nf_on_ramp else
                     f"counts {_nf_none_term} in this runway's "
-                    f"{_fmt_len(_nf_none_cell)} cells, {_nf_none_off} cells")
+                    f"{_fmt_len(_nf_none_cell)} cells, "
+                    + ("at least " if msl_axis_runs_interval_solve(
+                        _prop_profile) else "")
+                    + f"{_nf_none_off} cells")
             _nf_opening = (
                 f"the automatic n_probe_offset={int(_nf_off)} puts probe 0 "
                 if _nf_is_auto else
