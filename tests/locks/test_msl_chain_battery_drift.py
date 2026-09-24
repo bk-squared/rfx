@@ -30,9 +30,10 @@ S to the stored S with the bar the battery is judged by:
 * the record's own verdicts at this mesh — the record settles below -40 dB,
   column power at most 1.02, reciprocity at most 0.02 — hold for the live S.
 
-The thru is the same board without the stub. It has no frequency feature, so
-the notch's checks have nothing to hold on it except its magnitude, and a line
-that grows longer electrically transmits exactly as before. Its lock holds:
+The thru is the same board without the stub, built and checked the same way
+before any step. It has no frequency feature to place, and a line that grows
+longer electrically transmits exactly as before, so its magnitude says nothing
+about its length. Its lock holds:
 
 * |S21| within 2 dB at every bin, and |S11| under the -20 dB bound the battery
   holds the thru's reflection to;
@@ -56,9 +57,9 @@ Lane: gpu and slow, the gpu step of the weekly A6000 lane
 (scripts/vessl_validation_lane_a6000.yaml, submitted by validation.yml's
 weekly-a6000-lane job). That step runs ``pytest -m gpu``; its run of
 2026-09-23 at 3247dc0e ended gpu_rc=0 with 171 passed. Wall time: 60 s on the
-A6000 (run 369367264070) for the notch; the thru is a board of the same size.
-The notch's solve takes 34 min on four VESSL CPU cores (run 369367264068),
-which keeps both off the CPU lanes.
+A6000 for the notch (run 369367264070); 75 s for the notch and 68 s for the
+thru on an RTX 3080 (run 369367264556). The notch's solve takes 34 min on four
+VESSL CPU cores (run 369367264068), which keeps both off the CPU lanes.
 """
 LOCK_PROVENANCE = {
     "fixture": "tests/fixtures/msl_chain_battery/fixture.json",

@@ -2,15 +2,15 @@
 
 A lossless line between two reference planes transmits with
 ``S21 = exp(-j beta L)``. Its phase falls as the frequency rises, by ``2 pi``
-times the line's delay per hertz, and ``|S21|`` carries none of it: a 5 %
-permittivity rise in the coaxial battery's line lengthens it electrically by
-about 2.4 % and leaves ``|S21|`` where it was. So the bar reads the delay
-itself. It is the least-squares slope of ``unwrap(angle(S21))`` against
-frequency over the bins where ``|S21|`` is above -20 dB, measured between the
-planes the extractor references S to, and it has to be within 1 % of the
-reference's slope over the same bins. A one-port reads its reflection phase the
-same way, over the bins where it reflects. The phase at a single bin is not
-judged (``docs/design_notes/chain_closure_contract.md``).
+times the line's delay per hertz, and ``|S21|`` carries none of it: with every
+edge permittivity above vacuum read 5 % high, the coaxial battery's thru solves
+2.48 % longer electrically while its ``|S21|`` moves 0.01 dB (VESSL run
+369367264558). So the bar reads the delay itself. It is the least-squares slope
+of ``unwrap(angle(S21))`` against frequency over the bins where ``|S21|`` is
+above -20 dB, measured between the planes the extractor references S to, and it
+has to be within 1 % of the reference's slope over the same bins. A one-port
+reads its reflection phase the same way, over the bins where it reflects. The
+phase at a single bin is not judged (``docs/design_notes/chain_closure_contract.md``).
 
 The batteries hold a stored S to its closed form with this; the drift locks in
 ``tests/locks/`` hold a live S to the stored one.

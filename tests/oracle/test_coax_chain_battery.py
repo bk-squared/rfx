@@ -526,8 +526,9 @@ def test_each_line_is_as_long_electrically_as_its_closed_form(fixture, dut, rung
     for the thru, and for the bead the same line with the four-annulus-width
     section of 4x permittivity where the record says it sits. ``eps`` is the
     fill the grid realized. The thru has no frequency feature, so nothing else
-    in this file sees it grow longer: a 5 % permittivity rise delays it about
-    2.4 % more and leaves |S21| where it was.
+    in this file sees it grow longer: with every edge permittivity above vacuum
+    read 5 % high the solved thru is 2.48 % longer electrically and its |S21|
+    moves 0.01 dB.
     """
     key = f"{dut}_rung{rung}"
     entry = _solve(fixture, key)

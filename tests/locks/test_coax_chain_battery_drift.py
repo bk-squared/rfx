@@ -24,7 +24,8 @@ battery is judged by:
   least-squares slope of S21's unwrapped phase against frequency, live over
   stored. The thru has no frequency feature, so this is the only check here
   that sees it grow longer: with every edge permittivity above vacuum read
-  5 % high it transmits as before and delays about 2.4 % more;
+  5 % high its |S21| moves 0.010 dB and its electrical length 2.48 % (run
+  369367264558);
 * the thru's |S11| and |S22| held to -20 dB, a deep null compared with nothing
   (the PI's 2026-09-21 ruling);
 * the bead's reflection zero — the vertex of the parabola through |S11|^2, the

@@ -19,11 +19,11 @@ a quantity that is near zero by construction held to -20 dB, a frequency
 feature (a notch, a reflection zero, a phase crossing) within 1 %, and a line's
 electrical length — the slope of its unwrapped phase against frequency — within
 1 % (the PI's phase item of 2026-09-24, ``tests/_electrical_length.py``). A
-line with no frequency feature has nothing else that sees its length: a 5 %
-permittivity rise lengthens the coaxial thru by about 2.4 % and leaves |S21|
-where it was. The phase also has to turn the same way with frequency as it did
-in the record, which is what a conjugated S (the other time convention) changes
-and nothing else sees.
+line with no frequency feature has nothing else that sees its length: with
+every edge permittivity above vacuum read 5 % high the coaxial thru solves
+2.48 % longer electrically while its |S21| moves 0.01 dB. The phase also has to
+turn the same way with frequency as it did in the record, which is what a
+conjugated S (the other time convention) changes and nothing else sees.
 
 This module holds the arithmetic the three guards share. The rules each family
 applies are in its own lock module.
