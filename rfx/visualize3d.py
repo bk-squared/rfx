@@ -518,6 +518,7 @@ def save_field_animation(
     cmap: str = "RdBu_r",
     scale: float = 1e3,
     dpi: int = 100,
+    axes: dict | None = None,
 ) -> str:
     """Create a field animation (GIF/MP4) from snapshot data.
 
@@ -526,6 +527,10 @@ def save_field_animation(
     snapshots : dict
         From ``result.snapshots`` — keys are component names,
         values are (n_frames, ...) arrays.
+    axes : dict or None
+        ``result.snapshot_axes`` (#1259). When given, each frame's title
+        carries the time it was taken; without it frames are numbered only
+        (a frame is ``SnapshotSpec.interval`` time steps, not one).
     grid : Grid
     filename : str
         Output filename (without extension). GIF by default.
@@ -572,11 +577,25 @@ def save_field_animation(
     vmax = float(np.max(np.abs(data))) or 1.0
     grid.dx * scale
 
+    times_s = None
+    if axes is not None and component in axes:
+        times_s = np.asarray(axes[component].times_s)
+        if len(times_s) != n_frames:
+            raise ValueError(
+                f"axes[{component!r}] lists {len(times_s)} frame times for "
+                f"{n_frames} frames")
+
+    def _title(frame):
+        if times_s is None:
+            return f"{component} (frame {frame}/{n_frames})"
+        return (f"{component}  t = {times_s[frame] * 1e12:.2f} ps "
+                f"(frame {frame}/{n_frames})")
+
     fig, ax = plt.subplots(figsize=(7, 5))
     im = ax.imshow(data[0].T, origin="lower", cmap=cmap,
                    vmin=-vmax, vmax=vmax, aspect="equal")
     fig.colorbar(im, ax=ax, label=component)
-    title = ax.set_title(f"{component} (frame 0/{n_frames})")
+    title = ax.set_title(_title(0))
 
     axis_labels = {"x": ("y", "z"), "y": ("x", "z"), "z": ("x", "y")}
     xlabel, ylabel = axis_labels[slice_axis]
@@ -585,7 +604,7 @@ def save_field_animation(
 
     def _update(frame):
         im.set_data(data[frame].T)
-        title.set_text(f"{component} (frame {frame}/{n_frames})")
+        title.set_text(_title(frame))
         return [im, title]
 
     try:
@@ -602,7 +621,7 @@ def save_field_animation(
         os.makedirs(frame_dir, exist_ok=True)
         for i in range(min(n_frames, 100)):
             im.set_data(data[i].T)
-            title.set_text(f"{component} (frame {i}/{n_frames})")
+            title.set_text(_title(i))
             fig.savefig(f"{frame_dir}/frame_{i:04d}.png", dpi=dpi)
         plt.close(fig)
         return frame_dir

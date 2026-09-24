@@ -616,12 +616,13 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # gated design notes still cite it -- so no artifact leaves the count.
 # Measured after the removal: 319 references, 300 value-checked, 32 artifacts.
 # The floors are lowered to the measured values.
-# 2026-09-24: the CPML receipts moved to rfx-archive. Removing their 14
-# value-checked references and two artifacts changes the measured census from
-# 333/314/34 to 319/300/32; the existing three floors need no change.
-MIN_REFERENCES = 319
-MIN_VALUE_CHECKED = 300
-MIN_DISTINCT_ARTIFACTS = 32
+# 2026-09-24: after removing the CPML receipts to rfx-archive and the old
+# Sheen low-pass filter records, the merged-tree census measures 297 references,
+# 280 value-checked references and 30 distinct artifacts. Set all three floors
+# to that measured census.
+MIN_REFERENCES = 297
+MIN_VALUE_CHECKED = 280
+MIN_DISTINCT_ARTIFACTS = 30
 
 
 # --------------------------------------------------------------------------
@@ -1096,6 +1097,17 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
     # no opted-in citation ever reached them, so they need no prefix. Those
     # artifacts are at commit 2ce4c28d.
     "tests/fixtures/cv06b_estimator_regate/",
+    # 2026-09-23, the Sheen low-pass filter: the case was rebuilt as
+    # tests/crossval/sheen_lpf/ and its script, its two committed run records
+    # and its estimator-falsifier summary went with it; the Palace FEM record
+    # moved to tests/crossval/sheen_lpf/reference/palace_fem.json, so the old
+    # fixture path is gone too. Two sections of
+    # docs/design_notes/estimator_resolution_regate.md and one of
+    # docs/design_notes/20260908_docs_truth_audit.md cite these paths; those
+    # citations are skipped now. Those artifacts are at commit d902c8ea.
+    "validation/crossval/_07_sheen_results/",
+    "tests/fixtures/cv07_estimator_regate/",
+    "tests/fixtures/sheen_lpf_e4/",
 )
 
 

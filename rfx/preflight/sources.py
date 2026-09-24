@@ -54,7 +54,7 @@ import math
 
 import numpy as np
 
-from rfx.core.jax_utils import is_tracer
+from rfx.preflight._common import profile_boundary_cell
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0
 
@@ -178,19 +178,25 @@ def _validate_cfg_source_on_reflector_plane(
         set(self._pec_faces) | _spec_pec_faces | set(_pmc_faces_set)
     )
     if _all_reflector_faces:
-        _profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
+        # The tolerance is half a cell AT THE FACE, and the two faces of an
+        # axis need not be the same cell. This used to take the boundary
+        # scalar on x and y whatever the mesh did, and on z it took the
+        # profile's LEADING entry for both faces -- so a port on z_hi was
+        # judged against z_lo's cell. Each face now reads its own, through
+        # the same rule the grid's ``boundary_cell(axis, side)`` applies
+        # (G17).
+        _axis_profiles = (self._dx_profile, self._dy_profile,
+                          self._dz_profile)
         for face in _all_reflector_faces:
             ax_name = face[0]
             side = face[2:]
             ax_i = "xyz".index(ax_name)
-            _profile = _profiles[ax_i]
-            _dx_face = float(dx)
-            if _profile is not None and not is_tracer(_profile):
-                _dx_face = float(_profile[0 if side == "lo" else -1])
+            _face_cell = profile_boundary_cell(
+                dx, _axis_profiles[ax_i], side)
             face_kind = "PMC" if face in _pmc_faces_set else "PEC"
             d_ext = self._domain[ax_i] if ax_i < len(self._domain) else self._domain[-1]
             plane_coord = 0.0 if side == "lo" else float(d_ext)
-            tol = 0.5 * _dx_face
+            tol = 0.5 * _face_cell
             for pe in self._ports:
                 pos = pe.position
                 coord = pos[ax_i]
@@ -227,7 +233,7 @@ def _validate_cfg_source_on_reflector_plane(
                                 f"the plane, including the half of a line that "
                                 f"the plane cuts along its centre. To radiate into "
                                 f"the volume, place the source one cell "
-                                f"({_fmt_len(_dx_face)}) off the plane. The distributed "
+                                f"({_fmt_len(_face_cell)}) off the plane. The distributed "
                                 f"lanes do not realise a magnetic wall: with no "
                                 f"absorbing face the plane is shorted, and with "
                                 f"absorbing faces the cells next to it absorb, so "
@@ -242,7 +248,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"on normal E (it must be zero at the plane), "
                             f"so the source fights the mirror image. Use a "
                             f"tangential E source offset by one cell "
-                            f"({_fmt_len(_dx_face)}) off the plane."
+                            f"({_fmt_len(_face_cell)}) off the plane."
                         )
                     elif comp_field == "h" and is_tangential:
                         msg = (
@@ -271,7 +277,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"force to zero, which makes the result "
                             f"numerically inconsistent rather than silent. "
                             f"Use a normal E source at this face, or offset "
-                            f"by one cell ({_dx_face*1e3:.3g} mm) off "
+                            f"by one cell ({_face_cell*1e3:.3g} mm) off "
                             f"the plane."
                         )
                     elif comp_field == "h" and not is_tangential:
@@ -281,7 +287,7 @@ def _validate_cfg_source_on_reflector_plane(
                             f"NORMAL H component. PEC imposes odd symmetry "
                             f"on normal H (it must be zero at the plane). "
                             f"Use a tangential H source or offset by one "
-                            f"cell ({_dx_face*1e3:.3g} mm) off the plane."
+                            f"cell ({_face_cell*1e3:.3g} mm) off the plane."
                         )
                     else:
                         msg = None      # tangential H or normal E on PEC is legit

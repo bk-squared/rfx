@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Palace port-S.csv gate/summary for the cv07 Sheen LPF referee.
+"""Palace port-S.csv gate/summary for the Sheen low-pass filter referee.
 
 Usage:
   python3 check_sparams.py postpro/sheen_probe_4090/port-S.csv --gate     # passivity gate (exit 3 on fail)
@@ -47,7 +47,7 @@ def main():
     print("FULL: n=%d bins, max(|S11|^2+|S21|^2)=%.4f" % (len(data), worst))
     print("FIRST NULL (argmin |S21|): f=%.4f GHz, |S21|=%.5f (%.1f dB), |S11|=%.4f"
           % (fn, s21n, 20 * math.log10(max(s21n, 1e-12)), s11n))
-    print("REFERENCE POINTS (cv07 first S21 null, raw argmin bin, post-regeneration "
+    print("REFERENCE POINTS (the Sheen low-pass filter's first S21 null, raw argmin bin, post-regeneration "
           "#931, VESSL 369367259192): rfx 8.202 | openEMS 7.983 GHz")
 
 

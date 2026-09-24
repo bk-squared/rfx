@@ -22,6 +22,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests import _electrical_length as EL
+
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "msl_chain_battery" / "fixture.json"
 
 C0 = 299792458.0
@@ -288,6 +290,45 @@ def test_the_notch_frequency_at_the_claims_rung_matches_the_quarter_wave_value(f
     assert frac <= fixture["bar"]["frequency_frac"], (
         f"notch {f_meas/1e9:.5f} GHz against the analytic {f_an/1e9:.5f} GHz is "
         f"{frac*100:.3f} % — the bar is {fixture['bar']['frequency_frac']*100:.1f} %")
+
+
+@pytest.mark.parametrize("um", (100, 50, 25))
+def test_the_thru_is_as_long_electrically_as_its_closed_form(fixture, um):
+    """The v2 bar's phase item (PI 2026-09-24): the least-squares slope of the
+    unwrapped phase of S21 against frequency, over the bins where |S21| is above
+    -20 dB, within 1 % of the closed form's slope over the same bins, at every
+    rung.
+
+    The planes are where the extractor puts S. ``compute_msl_s_matrix`` forms S
+    from V and I at each port's FIRST PROBE PLANE and does not move it back to
+    the feed (``rfx/sparams/msl.py:163-169``), so the line between the planes is
+    16.4 mm long (16.45 mm on the 25 um mesh), not the 20 mm between the
+    board's ports: read against 20 mm, this record would be 17 % short. The
+    closed form is ``exp(-j omega sqrt(eps_eff) L / c)`` with rfx's own
+    quasi-static eps_eff at the declared 600 um width, the one the extractor
+    anchors its line fit on — static, zero thickness, no dispersion.
+    """
+    key = f"thru_{um}um"
+    entry = _solve(fixture, key)
+    freqs = np.asarray(entry["freqs_hz"], dtype=float)
+    S = _complex(entry["S"])
+    dec = entry["declared"]
+    port1, port2 = entry["realized"]["ports"]
+    x1, x2 = float(port1["probe_planes_m"][0]), float(port2["probe_planes_m"][0])
+    assert port1["feed_plane_m"] < x1 < x2 < port2["feed_plane_m"], (
+        f"{key}: the first probe planes {x1}, {x2} m do not lie between the feeds")
+    L = x2 - x1
+    _, eps_eff = _hj(dec["w_trace_m"], dec["h_sub_m"], dec["eps_r"])
+    assert eps_eff == pytest.approx(dec["hj_eps_eff"], rel=1e-12), (
+        f"{key}: this file's closed form gives eps_eff {eps_eff}, the record's "
+        f"{dec['hj_eps_eff']}")
+    reference = np.exp(-1j * 2.0 * np.pi * freqs * math.sqrt(eps_eff) * L / C0)
+    ratio = EL.electrical_length_ratio(freqs, S[1, 0, :], reference,
+                                       EL.transmitting_bins(S[1, 0, :]))
+    assert abs(ratio) <= EL.ELECTRICAL_LENGTH_FRAC, (
+        f"{key}: S21's phase slope is {ratio * 100:+.3f} % from the closed form's over "
+        f"the {L * 1e3:.3f} mm between the first probe planes (eps_eff {eps_eff:.5f}); "
+        f"bar {EL.ELECTRICAL_LENGTH_FRAC * 100:.0f} %")
 
 
 def test_the_thru_lines_reflection_stays_under_its_bound(fixture):

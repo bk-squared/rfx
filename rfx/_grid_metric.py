@@ -160,6 +160,18 @@ AXES = ("x", "y", "z")
 #: by float64 accumulation, so the grid re-check is held to the same figure.
 DECLARED_SPAN_TOL_M = 1e-12
 
+#: A span overlapping a cell by no more than this fraction of the axis's
+#: smallest cell does not cross it. A plane declared on a node lands a few
+#: 1e-18 m to either side of the cumulative sum a mesher or the grid's
+#: coordinate spine gives for that node, and without the slack it drags in
+#: the cell on the far side.
+NODE_TOUCH_REL = 1e-3
+
+#: Two cells are one size when they agree to this relative tolerance. A
+#: profile built as ``np.diff`` of node coordinates carries 1e-14-relative
+#: noise between cells that are meant to be equal.
+SAME_CELL_RTOL = 1e-9
+
 
 def normalize_axis(axis) -> int:
     """``"x"``/``"y"``/``"z"`` or ``0``/``1``/``2`` to an axis index.
@@ -208,3 +220,45 @@ def dual_spacings_from_cells(cells: np.ndarray) -> np.ndarray:
     if d.size > 1:
         dual[1:] = 0.5 * (d[:-1] + d[1:])
     return dual
+
+
+def cells_crossed(cells, lo: float, hi: float) -> np.ndarray:
+    """The interior cells a span ``[lo, hi]`` crosses, in order.
+
+    ``cells`` are interior cell widths with the first interior node at 0. A
+    cell counts as crossed when the span overlaps it by more than
+    ``NODE_TOUCH_REL`` of the smallest cell, so a span that starts or ends
+    on a node does not reach the cell beyond it. The S-parameter
+    reference-span check and the preflight checks both read this one rule.
+    """
+    d = np.asarray(cells, dtype=np.float64)
+    if d.size == 0:
+        return d.copy()
+    edges = np.insert(np.cumsum(d), 0, 0.0)
+    tol = NODE_TOUCH_REL * float(np.min(d))
+    crossed = (edges[:-1] < float(hi) - tol) & (edges[1:] > float(lo) + tol)
+    return d[crossed]
+
+
+def distinct_cell_sizes(sizes) -> list[float]:
+    """The different cell sizes among ``sizes``, first occurrence first,
+    two sizes being the same when they agree to ``SAME_CELL_RTOL``."""
+    distinct: list[float] = []
+    for v in np.asarray(sizes, dtype=np.float64).ravel():
+        if not any(np.isclose(v, d, rtol=SAME_CELL_RTOL, atol=0.0)
+                   for d in distinct):
+            distinct.append(float(v))
+    return distinct
+
+
+def is_one_cell_size(sizes) -> bool:
+    """``len(distinct_cell_sizes(sizes)) <= 1`` without the per-size loop.
+
+    Every size is compared with the first, as that function does. Its loop
+    grows with cells times distinct sizes: 18 s for a 2000-cell profile
+    whose cells all differ, on every preflight of such a model.
+    """
+    s = np.asarray(sizes, dtype=np.float64).ravel()
+    if s.size == 0:
+        return True
+    return bool(np.all(np.isclose(s, s[0], rtol=SAME_CELL_RTOL, atol=0.0)))

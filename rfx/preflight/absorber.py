@@ -85,6 +85,7 @@ from rfx.preflight._common import (
     _coord_in_absorber,
     _coord_near_absorber,
     _fmt_len,
+    profile_boundary_cell,
     PreflightConfigError,
     PreflightWarning,
 )
@@ -381,21 +382,26 @@ def _validate_cfg_compute_cpml_thickness(
     _per_layer = (cpml_thickness / self._cpml_layers
                   if self._cpml_layers else 0.0)
 
+    _axis_profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
+
     def _face_thickness(ax_idx: int, side: str) -> float:
         ax_name = "xyz"[ax_idx]
         n_face = _face_layers[f"{ax_name}_{side}"]
         if n_face <= 0:
             return 0.0
-        if (ax_name == "z"
-                and self._dz_profile is not None
-                and not is_tracer(self._dz_profile)):
-            # Non-uniform z aggregates real cell sizes rather than
-            # n*dx. The LEADING entries are used on both sides, as
-            # before -- a hi-face trailing aggregation would be more
-            # faithful on a graded profile but is a separate change
-            # with its own regression surface.
-            n = min(n_face, len(self._dz_profile))
-            return float(sum(self._dz_profile[:n]))
+        _prof = _axis_profiles[ax_idx]
+        if _prof is not None and not is_tracer(_prof):
+            # The absorber on a face is copies of THAT face's boundary cell
+            # -- ``_pad_profile`` fills each pad with the profile's own end
+            # -- so its thickness is that cell times the face's own layer
+            # count. This summed the LEADING profile entries for both sides,
+            # which are interior cells and are the wrong face's on hi; on a
+            # profile whose ends differ by 5x it over-reported the fine face
+            # 5x, and that number is read as a calibrated clearance buffer
+            # by the MSL and waveguide advisories (G17). The same expression
+            # as ``_validate_cfg_nonuniform_limitations``, which now reads
+            # its z thickness from this function rather than repeating it.
+            return n_face * profile_boundary_cell(self._dx, _prof, side)
         return n_face * _per_layer
 
     cpml_thick_lo = [_face_thickness(ax, "lo") for ax in range(3)]
@@ -687,6 +693,24 @@ def _validate_cfg_absorber_placement(
     carry CPML fringe/reflection error even though they are not
     literally inside the absorbing medium.
     """
+    # The proximity band is measured INWARD from where the absorber begins,
+    # so the cells it occupies are the profile's own end cells on that face,
+    # not the boundary scalar. On a profile whose ends differ the band was
+    # the wrong width on at least one face, and the quoted length named a
+    # cell that is nowhere near the face it describes (G17).
+    _axis_profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
+
+    def _near_absorber_band(coord, domain_extent, ct_lo, ct_hi, ax_i):
+        """``(near?, band width)`` for one axis, each face on its own cell."""
+        _prof = _axis_profiles[ax_i]
+        _cell_lo = profile_boundary_cell(dx, _prof, "lo")
+        _cell_hi = profile_boundary_cell(dx, _prof, "hi")
+        if _coord_near_absorber(coord, domain_extent, ct_lo, 0.0, _cell_lo):
+            return True, _ABSORBER_PROXIMITY_CELLS * _cell_lo
+        if _coord_near_absorber(coord, domain_extent, 0.0, ct_hi, _cell_hi):
+            return True, _ABSORBER_PROXIMITY_CELLS * _cell_hi
+        return False, _ABSORBER_PROXIMITY_CELLS * dx
+
     if cpml_thickness > 0:
         _internal = getattr(self, "_internal_probe_indices", frozenset())
         for _pi, pe in enumerate(self._probes):
@@ -718,7 +742,9 @@ def _validate_cfg_absorber_placement(
                         stacklevel=3,
                     )
                     break
-                if _coord_near_absorber(coord, domain_extent, ct_lo, ct_hi, dx):
+                _near, _band = _near_absorber_band(
+                    coord, domain_extent, ct_lo, ct_hi, ax_i)
+                if _near:
                     # Issue #510 nit 1: worded off the domain edge, not
                     # off "where the absorber begins" — the edge is
                     # exactly what _coord_near_absorber measures from
@@ -740,7 +766,7 @@ def _validate_cfg_absorber_placement(
                         PreflightWarning(
                             f"Probe at {pos} is within "
                             f"{_ABSORBER_PROXIMITY_CELLS} cells "
-                            f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
+                            f"({_fmt_len(_band)}) of the "
                             f"domain edge on the {'xyz'[ax]}-axis, just past which "
                             f"the {absorber_label} absorber is active. "
                             f"Fields there carry CPML fringe/reflection error; move "
@@ -772,7 +798,9 @@ def _validate_cfg_absorber_placement(
                         stacklevel=3,
                     )
                     break
-                if _coord_near_absorber(coord, domain_extent, ct_lo, ct_hi, dx):
+                _near, _band = _near_absorber_band(
+                    coord, domain_extent, ct_lo, ct_hi, ax_i)
+                if _near:
                     # Issue #510 nit 1 — see the matching probe-loop
                     # comment above; same unconditionally-true
                     # domain-edge framing.
@@ -780,7 +808,7 @@ def _validate_cfg_absorber_placement(
                         PreflightWarning(
                             f"Source/port at {pos} is within "
                             f"{_ABSORBER_PROXIMITY_CELLS} cells "
-                            f"({_fmt_len(_ABSORBER_PROXIMITY_CELLS * dx)}) of the "
+                            f"({_fmt_len(_band)}) of the "
                             f"domain edge on the {'xyz'[ax]}-axis, just past which "
                             f"the {absorber_label} absorber is active. "
                             f"Fields there carry CPML fringe/reflection error; move "
