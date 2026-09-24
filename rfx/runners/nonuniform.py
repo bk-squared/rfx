@@ -1528,6 +1528,21 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_box = with_face_centre_collocation(ntff_box, grid)
         ntff_data_init = init_ntff_data(ntff_box)
 
+    # In-loop block current moments (rfx.current_moments), realized against
+    # the grid the solve actually builds.
+    #
+    # The DECLARED axes are handed over, not this lane's effective ones. The
+    # NU stepper installs no periodic boundary at all (the assembler above
+    # passes ``periodic=(False, False, False)`` unconditionally), so passing
+    # the effective flags would make the monitor's periodic refusal dead code
+    # here and a user who called ``set_periodic_axes()`` would get a monitor
+    # built for a wrap the solve does not have. Refusing the declaration is
+    # the honest answer on this lane.
+    from rfx.current_moments import monitor_for_simulation as _cm_for_sim
+    _declared_periodic = tuple(
+        axis in getattr(sim, "_periodic_axes", "") for axis in "xyz")
+    current_moments = _cm_for_sim(sim, grid, periodic=_declared_periodic)
+
     # #677: assemble the surface-impedance sheet ctx from the specs the
     # assembler emitted, against the FINAL realized PEC edges of this run
     # (PEC wins on overlapping edges). Crossing-normal refusal lives in the
@@ -1580,6 +1595,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         rlc_states=rlc_states_init,
         ntff_box=ntff_box,
         ntff_data=ntff_data_init,
+        current_moments=current_moments,
         waveguide_ports=waveguide_port_cfgs if waveguide_port_cfgs else None,
         tfsf=tfsf_pair,
         emit_time_series=emit_time_series,
@@ -1769,6 +1785,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         freqs=freqs_out,
         ntff_data=r.get("ntff_data"),
         ntff_box=ntff_box,
+        current_moment_data=r.get("current_moment_data"),
+        current_moment_monitor=current_moments,
         dft_planes=dft_planes_dict,
         wire_port_sparams=wire_port_sparams_result,
         flux_monitors=flux_monitors_dict,

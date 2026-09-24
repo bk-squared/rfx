@@ -286,6 +286,12 @@ class SimResult(NamedTuple):
         by ``_ORDER4_CFL_FACTOR``; the time series and every frame are
         sampled at this step, so time and frequency must be read with it,
         not with ``grid.dt``.
+    current_moment_data : (accumulator, kahan) or None
+        Block current moments accumulated inside the time loop
+        (``rfx.current_moments``). The accumulator is
+        ``(n_freqs, n_blocks, 3, n_weights)``.
+    current_moment_monitor : CurrentMomentMonitor or None
+        The slab, block map and centres those moments belong to.
     """
     state: FDTDState | None
     time_series: jnp.ndarray
@@ -301,6 +307,8 @@ class SimResult(NamedTuple):
     wire_refplane_sparams: tuple | None = None
     snapshot_axes: dict | None = None
     dt: float | None = None
+    current_moment_data: object = None
+    current_moment_monitor: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -1193,6 +1201,7 @@ def _build_step_setup(
     sheet_impedance: "object | None" = None,
     design_box: "DesignBoxSpec | None" = None,
     design_occupancy: "DesignOccupancySpec | None" = None,
+    current_moments: "object | None" = None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -1236,6 +1245,7 @@ def _build_step_setup(
     use_lorentz = lorentz is not None
     use_tfsf = tfsf is not None
     use_ntff = ntff is not None
+    use_current_moments = current_moments is not None
     use_dft_planes = len(dft_planes) > 0
     use_flux_monitors = len(flux_monitors) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
@@ -1457,6 +1467,19 @@ def _build_step_setup(
         # closes under jax_enable_x64 instead of raising a dtype mismatch.
         carry_init["ntff"] = _init_ntff_data(ntff, field_dtype=_field_dtype)
 
+    accumulate_current_moments_fn = None
+    if use_current_moments:
+        from rfx.current_moments import (
+            accumulate_current_moments as _accumulate_cm,
+            init_current_moment_data as _init_cm,
+        )
+        accumulate_current_moments_fn = _accumulate_cm
+        # Same dtype policy as the NTFF carry (#646): the accumulator follows
+        # the field dtype with a complex64 floor so the scan carry closes
+        # under jax_enable_x64.
+        carry_init["current_moments"] = _init_cm(
+            current_moments, field_dtype=_field_dtype)
+
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
 
@@ -1646,6 +1669,8 @@ def _build_step_setup(
         use_debye=use_debye,
         use_lorentz=use_lorentz,
         use_ntff=use_ntff,
+        use_current_moments=use_current_moments,
+        current_moments=current_moments,
         use_dft_planes=use_dft_planes,
         use_flux_monitors=use_flux_monitors,
         use_waveguide_ports=use_waveguide_ports,
@@ -1707,6 +1732,7 @@ def _build_step_setup(
         update_tfsf_2d_e=update_tfsf_2d_e if _tfsf_is_2d else None,
         init_ntff_data=init_ntff_data_fn,
         accumulate_ntff=accumulate_ntff_fn,
+        accumulate_current_moments=accumulate_current_moments_fn,
         apply_kerr_ade=apply_kerr_ade if use_kerr else None,
         update_rlc_element=update_rlc_element if use_lumped_rlc else None,
     )
@@ -1828,6 +1854,10 @@ class _StepContext:
     conformal_weights: Any = None
     kerr_chi3: Any = None
     ntff: Any = None
+    # In-loop block current moments (rfx.current_moments). Default OFF so
+    # every existing caller's context is unchanged.
+    use_current_moments: bool = False
+    current_moments: Any = None
     pec_faces_frozen: Any = frozenset()
     pmc_faces_frozen: Any = frozenset()
 
@@ -1875,6 +1905,7 @@ class _StepContext:
     update_tfsf_2d_e: Callable | None = None
     init_ntff_data: Callable | None = None
     accumulate_ntff: Callable | None = None
+    accumulate_current_moments: Callable | None = None
     apply_kerr_ade: Callable | None = None
     update_rlc_element: Callable | None = None
 
@@ -1935,6 +1966,9 @@ def make_core_step(ctx: _StepContext):
         _sheet_coeffs = _sheet_update_coeffs(
             ctx.sheet_impedance.sigma_sheet, materials, dt)
 
+    if ctx.use_current_moments:
+        from rfx.current_moments import slab_e_snapshot as _slab_e_snapshot
+
     def core_step(carry, step_idx, src_vals, mag_src_vals):
         st = carry["fdtd"]
         tfsf_h_state = None
@@ -1945,6 +1979,15 @@ def make_core_step(ctx: _StepContext):
             tuple(getattr(st, m.component)[m.i, m.j, m.k]
                   for m in ctx.rlc_meta)
             if ctx.use_lumped_rlc else ())
+
+        # E^n on the slab, taken before anything in this step writes E. The
+        # H update below does not touch E, so this is the same array the
+        # E update is about to consume — and the difference against the
+        # post-update field is exactly one timestep, which is what makes
+        # ``J = curl_h H - eps0 dE/dt`` the lattice's own current.
+        # Slab-sized: the reverse-mode tape carries the slab, not the domain.
+        if ctx.use_current_moments:
+            e_prev_slab = _slab_e_snapshot(st, ctx.current_moments)
 
         if ctx.use_fast_he:
             # Fast path: combined H+E update with PEC baked into
@@ -2420,6 +2463,14 @@ def make_core_step(ctx: _StepContext):
             ntff_new = ctx.accumulate_ntff(
                 carry["ntff"], st, ctx.ntff, dt, step_idx)
 
+        # Block current moments — same slot as the NTFF box, so the state
+        # holds E at (n+1)*dt and H at (n+1/2)*dt, and the soft-source loop
+        # above has already put the feed current into E.
+        if ctx.use_current_moments:
+            cm_new = ctx.accumulate_current_moments(
+                carry["current_moments"], st, e_prev_slab,
+                ctx.current_moments, dt, step_idx)
+
         if ctx.use_dft_planes:
             t_plane = st.step * dt
             new_dft_planes = []
@@ -2524,6 +2575,8 @@ def make_core_step(ctx: _StepContext):
             new_carry["tfsf"] = tfsf_new
         if ctx.use_ntff:
             new_carry["ntff"] = ntff_new
+        if ctx.use_current_moments:
+            new_carry["current_moments"] = cm_new
         if ctx.use_dft_planes:
             new_carry["dft_planes"] = tuple(new_dft_planes)
         if ctx.use_flux_monitors:
@@ -2562,6 +2615,7 @@ def run(
     flux_monitors: list | None = None,
     waveguide_ports: list | None = None,
     ntff: object | None = None,
+    current_moments: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
     checkpoint_segments: int | None = None,
@@ -2744,6 +2798,7 @@ def run(
         flux_monitors=flux_monitors,
         waveguide_ports=waveguide_ports,
         ntff=ntff,
+        current_moments=current_moments,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
@@ -3191,6 +3246,8 @@ def run(
         wire_refplane_sparams=final_wire_refplanes,
         snapshot_axes=snap_axes,
         dt=dt,
+        current_moment_data=final_carry.get("current_moments"),
+        current_moment_monitor=current_moments,
     )
 
 
@@ -3277,6 +3334,7 @@ def run_until_decay(
     flux_monitors: list | None = None,
     waveguide_ports: list | None = None,
     ntff: object | None = None,
+    current_moments: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
@@ -3450,6 +3508,7 @@ def run_until_decay(
         flux_monitors=flux_monitors,
         waveguide_ports=waveguide_ports,
         ntff=ntff,
+        current_moments=current_moments,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
@@ -3807,4 +3866,6 @@ def run_until_decay(
         grid=grid,
         snapshot_axes=snap_axes,
         dt=_setup.dt,
+        current_moment_data=carry.get("current_moments"),
+        current_moment_monitor=current_moments,
     )

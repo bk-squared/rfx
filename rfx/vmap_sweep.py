@@ -1038,6 +1038,8 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
+    from rfx.current_moments import refuse_current_moment_monitor
+    refuse_current_moment_monitor(sim, "vmap material sweep")
     if return_fields:
         raise ValueError(
             "return_fields=True is not implemented on vmap_material_sweep "

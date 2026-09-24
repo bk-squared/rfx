@@ -88,6 +88,7 @@ from rfx.farfield import (
     radiation_pattern, directivity,
     axial_ratio, axial_ratio_dB, polarization_tilt, polarization_sense,
 )
+from rfx.current_moments import current_moment_far_field
 from rfx.rcs import compute_rcs, compute_rcs_jax, RCSResult
 from rfx.antenna import (
     antenna_gain, antenna_gain_dB, antenna_efficiency,
@@ -303,6 +304,7 @@ __all__ = [
     # far-field / antenna
     "NTFFBox", "NTFFData", "FarFieldResult", "make_ntff_box",
     "compute_far_field", "compute_far_field_jax", "radiation_pattern", "directivity",
+    "current_moment_far_field",
     "axial_ratio", "axial_ratio_dB", "polarization_tilt", "polarization_sense",
     "antenna_gain", "antenna_gain_dB", "antenna_efficiency",
     "half_power_beamwidth", "front_to_back_ratio",

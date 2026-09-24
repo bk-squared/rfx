@@ -726,6 +726,14 @@
         "expected_order"
       ]
     },
+    "current_moment_far_field": {
+      "kind": "function",
+      "params": [
+        "result",
+        "theta",
+        "phi"
+      ]
+    },
     "deembed_port_extension": {
       "kind": "function",
       "params": [
@@ -1821,6 +1829,7 @@
         "flux_monitors",
         "waveguide_ports",
         "ntff",
+        "current_moments",
         "snapshot",
         "checkpoint",
         "checkpoint_segments",
@@ -1937,6 +1946,7 @@
         "rlc_states",
         "ntff_box",
         "ntff_data",
+        "current_moments",
         "waveguide_ports",
         "tfsf",
         "flux_monitors",
@@ -1976,6 +1986,7 @@
         "flux_monitors",
         "waveguide_ports",
         "ntff",
+        "current_moments",
         "snapshot",
         "checkpoint",
         "aniso_eps",
@@ -2421,6 +2432,15 @@
       "impedance",
       "waveform",
       "terminates"
+    ],
+    "add_current_moment_monitor": [
+      "corner_lo",
+      "corner_hi",
+      "block_size",
+      "freqs",
+      "order",
+      "margin_cells",
+      "off_cells"
     ],
     "add_dft_plane_probe": [
       "axis",

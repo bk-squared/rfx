@@ -2442,6 +2442,8 @@ class _NUScanSetup(NamedTuple):
     use_lumped_rlc: bool
     use_ntff: bool
     use_waveguide_ports: bool
+    use_current_moments: bool = False
+    current_moments: object = None
 
 
 def _build_nu_scan(
@@ -2467,6 +2469,7 @@ def _build_nu_scan(
     rlc_states: tuple = (),
     ntff_box=None,
     ntff_data=None,
+    current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
     flux_monitors: list | None = None,
@@ -2497,6 +2500,7 @@ def _build_nu_scan(
     use_flux_monitors = len(flux_monitors) > 0
     use_lumped_rlc = len(rlc_metas) > 0
     use_ntff = ntff_box is not None and ntff_data is not None
+    use_current_moments = current_moments is not None
     use_waveguide_ports = len(waveguide_ports) > 0
     use_tfsf = tfsf is not None
 
@@ -2714,6 +2718,15 @@ def _build_nu_scan(
     # accumulate_ntff. Box indices and freqs are Python-static.
     if use_ntff:
         carry_init["ntff"] = ntff_data
+    if use_current_moments:
+        from rfx.current_moments import (
+            accumulate_current_moments as _accumulate_cm,
+            init_current_moment_data as _init_cm,
+            slab_e_snapshot as _slab_e_snapshot,
+        )
+        # Same dtype policy as the NTFF carry (#646).
+        carry_init["current_moments"] = _init_cm(
+            current_moments, field_dtype=carry_init["fdtd"].ex.dtype)
 
     # Waveguide-port time-series carry (mirrors uniform path).
     # Phase 2 cleanup (2026-04-25) removed in-scan DFT accumulators;
@@ -2787,6 +2800,12 @@ def _build_nu_scan(
         rlc_e_prev = (
             tuple(getattr(st, m.component)[m.i, m.j, m.k] for m in rlc_metas)
             if use_lumped_rlc else ())
+
+        # E^n on the slab, before anything in this step writes E (the H
+        # update below does not touch it). Slab-sized so the reverse-mode
+        # tape carries the slab and not the domain.
+        if use_current_moments:
+            e_prev_slab = _slab_e_snapshot(st, current_moments)
 
         # H update (non-uniform)
         st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h)
@@ -3092,6 +3111,14 @@ def _build_nu_scan(
             from rfx.farfield import accumulate_ntff
             new_ntff = accumulate_ntff(carry["ntff"], st, ntff_box, dt, step_idx)
 
+        # Block current moments — same slot as the NTFF box: E at (n+1)*dt,
+        # H at (n+1/2)*dt, with the feed current already injected.
+        new_cm = None
+        if use_current_moments:
+            new_cm = _accumulate_cm(
+                carry["current_moments"], st, e_prev_slab, current_moments,
+                dt, step_idx)
+
         # TFSF 1D auxiliary E-field update (mirrors uniform scan body:
         # called AFTER sources, closes the leapfrog step).
         tfsf_new = None
@@ -3124,6 +3151,8 @@ def _build_nu_scan(
             new_carry["rlc_states"] = tuple(new_rlc_states)
         if use_ntff and new_ntff is not None:
             new_carry["ntff"] = new_ntff
+        if use_current_moments and new_cm is not None:
+            new_carry["current_moments"] = new_cm
         if use_waveguide_ports and new_waveguide_port_accs is not None:
             new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
         if use_tfsf and tfsf_new is not None:
@@ -3149,6 +3178,8 @@ def _build_nu_scan(
         use_lumped_rlc=use_lumped_rlc,
         use_ntff=use_ntff,
         use_waveguide_ports=use_waveguide_ports,
+        use_current_moments=use_current_moments,
+        current_moments=current_moments,
     )
 
 
@@ -3175,6 +3206,7 @@ def run_nonuniform(
     rlc_states: tuple = (),
     ntff_box=None,
     ntff_data=None,
+    current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
     flux_monitors: list | None = None,
@@ -3222,6 +3254,7 @@ def run_nonuniform(
         rlc_states=rlc_states,
         ntff_box=ntff_box,
         ntff_data=ntff_data,
+        current_moments=current_moments,
         waveguide_ports=waveguide_ports,
         tfsf=tfsf,
         flux_monitors=flux_monitors,
@@ -3428,6 +3461,13 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
     # Surface final NTFF DFT accumulators
     if use_ntff:
         result["ntff_data"] = final["ntff"]
+
+    # Surface the in-loop block current moments and the slab they belong to.
+    # getattr: run(ringdown=) assembles S through here with a stand-in setup
+    # (rfx.ringdown._assemble) that carries no monitor.
+    if getattr(setup, "use_current_moments", False):
+        result["current_moment_data"] = final["current_moments"]
+        result["current_moment_monitor"] = setup.current_moments
 
     # Surface final waveguide-port configs (with recorded modal V/I
     # time series; spectra are extracted post-scan via rect-DFT).
@@ -3679,6 +3719,7 @@ def run_nonuniform_until_decay(
     rlc_states: tuple = (),
     ntff_box=None,
     ntff_data=None,
+    current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
     flux_monitors: list | None = None,
@@ -3781,6 +3822,7 @@ def run_nonuniform_until_decay(
         rlc_states=rlc_states,
         ntff_box=ntff_box,
         ntff_data=ntff_data,
+        current_moments=current_moments,
         waveguide_ports=waveguide_ports,
         tfsf=tfsf,
         flux_monitors=flux_monitors,

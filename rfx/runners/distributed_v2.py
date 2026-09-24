@@ -615,6 +615,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     refuse_unsupported_distributed_features(
         sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
 
+    # Only now, past the single-device fallbacks above: those return through
+    # ``sim.run()``, which DOES accumulate the monitor.
+    from rfx.current_moments import refuse_current_moment_monitor
+    refuse_current_moment_monitor(sim, "distributed (v2) runner")
+
     from rfx.api import Result
 
     if devices is None:
