@@ -3550,6 +3550,7 @@ class _ExecuteMixin:
         exchange_interval: int = 1,
         port_s11_freqs: object | None = None,
         rlc_values_override: dict | None = None,
+        ringdown: RingdownSpec | None = None,
         **_removed_kwargs,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
@@ -3838,6 +3839,29 @@ class _ExecuteMixin:
             an override — previously it was a silent no-op.
             Uniform-path only; the non-uniform / distributed lanes do not
             iterate ``self._lumped_rlc`` in ``forward()``.
+        ringdown : rfx.ringdown.RingdownSpec or None
+            Issue #1254. Complete the wire-port S-parameters of a record cut
+            while the structure still rings, inside the differentiable
+            program: ``ForwardResult.ringdown.s_params`` is the completion
+            ``run(ringdown=...)`` gives of the same record (the poles of the
+            port voltage and current identified on ``[window_start T, T]``,
+            the unrecorded tail of each spectrum added in closed form), and
+            ``jax.grad`` through it differentiates the infinite-record
+            spectrum (the poles by the frozen Gauss-Newton implicit
+            derivative, the residues re-fitted), not the cut record.
+            ``.s_params_long`` is the completion from the window that starts
+            twice as early; the gradient through it, against the gradient
+            through ``.s_params``, is the gradient's witness
+            (:func:`rfx.ringdown.gradient_witness`). ``.report`` holds the
+            checks of the value (W0, W1, WE and the rest, as ``run()``'s),
+            computed on the host from a concrete result and ``None`` while
+            traced. Wire ports only (``add_port(..., extent=...)``); on the
+            uniform lane one port and ``port_s11_freqs=`` are needed (the
+            bins), on the graded lane the completion uses the lane's own
+            bins. Everything ``run(ringdown=...)`` refuses is refused, and
+            so are ``distributed=True`` and ``emit_time_series=False``.
+            ``None`` (default) leaves every output and the traced program as
+            they were.
 
         Returns
         -------
@@ -3891,6 +3915,10 @@ class _ExecuteMixin:
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)
+        if ringdown is not None:
+            from rfx.ringdown import refuse_forward_request
+            refuse_forward_request(self, ringdown, distributed=distributed,
+                                   emit_time_series=emit_time_series)
 
         # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable
@@ -3958,6 +3986,12 @@ class _ExecuteMixin:
              }.get(plan.lane, plan.lane),
             entry="Simulation.forward()",
             instead="use run() on a uniform mesh")
+        if ringdown is not None:
+            from rfx.ringdown import refuse_forward_lane
+            refuse_forward_lane(plan.lane, sum(
+                1 for p in self._ports
+                if float(p.impedance) > 0.0 and p.extent is not None),
+                port_s11_freqs=port_s11_freqs)
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
         # loudly rather than silently returning a zero gradient on a lane that
@@ -4076,7 +4110,8 @@ class _ExecuteMixin:
                     lorentz_spec=None,
                     kerr_chi3=None,
                 )
-            result = self._forward_nonuniform_from_materials(
+            _nu_fwd_call = functools.partial(
+                self._forward_nonuniform_from_materials,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
@@ -4088,6 +4123,13 @@ class _ExecuteMixin:
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
             )
+            if ringdown is None:
+                result = _nu_fwd_call()
+            else:
+                from rfx.ringdown import RingdownForward
+                result = RingdownForward(
+                    self, ringdown, lane="graded", n_steps=plan.n_steps,
+                    grid=self._build_nonuniform_grid()).run(_nu_fwd_call)
             return self._attach_run_settling_witness(
                 result, n_steps=plan.n_steps, num_periods=num_periods,
                 context="forward")
@@ -4204,7 +4246,8 @@ class _ExecuteMixin:
                 materials = materials._replace(
                     eps_r=materials.eps_r.astype(_design_dtype))
 
-        _res = self._forward_from_materials(
+        _fwd_call = functools.partial(
+            self._forward_from_materials,
             grid,
             materials,
             debye_spec,
@@ -4223,6 +4266,12 @@ class _ExecuteMixin:
             design_box=_design_spec,
             design_occupancy=_design_occ_spec,
         )
+        if ringdown is None:
+            _res = _fwd_call()
+        else:
+            from rfx.ringdown import RingdownForward
+            _res = RingdownForward(self, ringdown, lane="uniform", n_steps=n_steps,
+                                   grid=grid, bins=port_s11_freqs).run(_fwd_call)
         _warn_if_nonfinite_result(_res, context="forward")
         return self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods,

@@ -66,12 +66,13 @@ DYP = np.array([1.0, 1.4, 0.8, 0.6, 0.8, 0.9, 1.0, 1.1, 1.2, 1.2, 1.0]) * MM
 DZP = np.array([0.8, 0.6, 1.4, 1.4, 0.8]) * MM
 
 
-def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE):
+def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE,
+         precision="float32"):
     """The box on one lane; ``cells`` sets the port's length in cells."""
     kw = ({"dx_profile": DXP, "dy_profile": DYP, "dz_profile": DZP}
           if lane == "graded" else {})
     sim = Simulation(freq_max=freq_max, domain=(12 * MM, 11 * MM, 5 * MM),
-                     dx=1.0 * MM, boundary="pec", **kw)
+                     dx=1.0 * MM, boundary="pec", precision=precision, **kw)
     eps_r, q_d, f_ref = 2.2, 300.0, 12.5e9
     sim.add_material("fill", eps_r=eps_r,
                      sigma=2.0 * np.pi * f_ref * 8.854187817e-12 * eps_r / q_d)

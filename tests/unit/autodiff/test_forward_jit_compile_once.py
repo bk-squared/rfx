@@ -241,6 +241,35 @@ def test_repeat_calls_of_the_jitted_gradient_do_not_compile():
     assert float(jnp.max(jnp.abs(g0))) > 0.0
 
 
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
+def test_repeat_calls_with_ringdown_do_not_compile(lane):
+    """The same with ``forward(ringdown=RingdownSpec())`` (#1254) on the
+    ring-down box, both lanes: the host identification is a callback inside
+    the compiled program. First call compiles; the next two, at new design
+    values, compile nothing and return new values and nonzero gradients."""
+    from rfx.ringdown import RingdownSpec
+    from tests.unit.sparams.test_ringdown_run import FREQS, _box
+
+    sim = _box(lane)
+    grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
+    eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
+    kw = {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+
+    def loss(p):
+        r = sim.forward(n_steps=600, skip_preflight=True, eps_override=eps * p,
+                        ringdown=RingdownSpec(), **kw)
+        return jnp.sum(jnp.abs(r.ringdown.s_params) ** 2)
+
+    step = jax.jit(jax.value_and_grad(loss))
+    (v0, g0), n0 = _compiles(step, jnp.float32(1.0))
+    assert n0 >= 1, "the compile counter saw no compile on the first call"
+    (v1, g1), n1 = _compiles(step, jnp.float32(1.001))
+    (v2, g2), n2 = _compiles(step, jnp.float32(1.002))
+    assert (n1, n2) == (0, 0), f"repeat calls compiled {n1} and {n2} times"
+    assert np.isfinite(float(v0)) and float(v1) != float(v0) != float(v2)
+    assert all(np.isfinite(float(g)) and float(g) != 0.0 for g in (g0, g1, g2))
+
+
 def _conductor_and_uniform_lumped_port():
     """A PEC block, a 50 ohm lumped port (no extent) and a probe, uniform mesh."""
     sim = Simulation(freq_max=2 * F0, domain=(16e-3, 14e-3, 12e-3), dx=DX,
