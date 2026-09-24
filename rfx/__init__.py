@@ -150,6 +150,9 @@ from rfx.visualize3d import (
 )
 from rfx.animation import save_field_animation
 from rfx.simulation import SnapshotSpec
+# #1259: where and when each recorded field sample sits. On the package, not
+# on the curated star surface (``__all__``), like save_snapshots.
+from rfx.snapshots import SnapshotAxes, snapshot_axes, field_sample_coords
 from rfx.checkpoint import (
     save_state, load_state, save_snapshots, load_snapshots,
     save_materials, load_materials,

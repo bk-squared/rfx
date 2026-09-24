@@ -100,16 +100,25 @@ def save_snapshots(
     snapshots: dict[str, jnp.ndarray],
     grid=None,
     dt: float | None = None,
+    axes: dict | None = None,
 ) -> None:
     """Save field snapshots to an HDF5 file.
 
     Parameters
     ----------
     path : str or Path
-    snapshots : dict mapping component name to (n_steps, ...) array
+    snapshots : dict mapping component name to (n_frames, ...) array
     grid : Grid or None
     dt : float or None
-        Timestep for time-axis metadata.
+        Timestep for time-axis metadata. Also writes the attribute
+        ``n_steps``, which (its historical name notwithstanding) is the
+        number of FRAMES in the first array, and ``n_frames``, the same
+        number under its right name.
+    axes : dict[str, SnapshotAxes] or None
+        ``Result.snapshot_axes`` (#1259). Stored per component under
+        ``axes/<component>`` -- the sample coordinates, the slice plane and
+        the step count and time of every frame -- and returned by
+        :func:`load_snapshots` as ``metadata["axes"]``.
     """
     _require_h5py()
     path = Path(path)
@@ -121,9 +130,15 @@ def save_snapshots(
             grp.create_dataset(name, data=np.array(arr))
 
         if dt is not None:
-            n_steps = next(iter(snapshots.values())).shape[0]
+            n_frames = next(iter(snapshots.values())).shape[0]
             grp.attrs["dt"] = dt
-            grp.attrs["n_steps"] = n_steps
+            grp.attrs["n_steps"] = n_frames
+            grp.attrs["n_frames"] = n_frames
+
+        if axes is not None:
+            agrp = f.create_group("axes")
+            for comp, ax in axes.items():
+                _write_snapshot_axes(agrp.create_group(comp), ax)
 
         if grid is not None:
             g = f.create_group("grid")
@@ -141,6 +156,9 @@ def load_snapshots(path: str | Path) -> tuple[dict[str, np.ndarray], dict]:
     -------
     snapshots : dict mapping component name to numpy array
     metadata : dict
+        File attributes; ``metadata["axes"]`` holds the
+        ``{component: SnapshotAxes}`` saved with ``axes=``, when there are
+        any.
     """
     _require_h5py()
     path = Path(path)
@@ -156,7 +174,58 @@ def load_snapshots(path: str | Path) -> tuple[dict[str, np.ndarray], dict]:
             if "shape" in metadata:
                 metadata["shape"] = tuple(metadata["shape"])
 
+        if "axes" in f:
+            metadata["axes"] = {
+                comp: _read_snapshot_axes(f["axes"][comp])
+                for comp in f["axes"]}
+
     return snapshots, metadata
+
+
+def _write_snapshot_axes(grp, ax) -> None:
+    """One ``SnapshotAxes`` into an HDF5 group (``None`` as a sentinel)."""
+    grp.attrs["component"] = ax.component
+    grp.attrs["dims"] = [str(d) for d in ax.dims]
+    grp.attrs["stagger"] = np.asarray(ax.stagger, dtype=np.float64)
+    grp.attrs["slice_axis"] = "" if ax.slice_axis is None else ax.slice_axis
+    grp.attrs["slice_index"] = -1 if ax.slice_index is None else int(ax.slice_index)
+    grp.attrs["slice_coord"] = (np.nan if ax.slice_coord is None
+                                else float(ax.slice_coord))
+    grp.attrs["interval"] = int(ax.interval)
+    grp.attrs["n_steps"] = int(ax.n_steps)
+    grp.attrs["dt"] = float(ax.dt)
+    grp.create_dataset("steps", data=np.asarray(ax.steps, dtype=np.int64))
+    grp.create_dataset("times_s", data=np.asarray(ax.times_s, dtype=np.float64))
+    cgrp = grp.create_group("coords")
+    for name, arr in ax.coords.items():
+        cgrp.create_dataset(name, data=np.asarray(arr, dtype=np.float64))
+
+
+def _read_snapshot_axes(grp):
+    from rfx.snapshots import SnapshotAxes
+
+    def _ro(arr):
+        arr.flags.writeable = False
+        return arr
+
+    dims = tuple(str(d) for d in grp.attrs["dims"])
+    slice_axis = str(grp.attrs["slice_axis"]) or None
+    slice_index = int(grp.attrs["slice_index"])
+    slice_coord = float(grp.attrs["slice_coord"])
+    return SnapshotAxes(
+        component=str(grp.attrs["component"]),
+        dims=dims,
+        coords={name: _ro(grp["coords"][name][:]) for name in dims[1:]},
+        stagger=tuple(float(v) for v in grp.attrs["stagger"]),
+        slice_axis=slice_axis,
+        slice_index=None if slice_axis is None else slice_index,
+        slice_coord=None if slice_axis is None else slice_coord,
+        interval=int(grp.attrs["interval"]),
+        n_steps=int(grp.attrs["n_steps"]),
+        steps=_ro(grp["steps"][:]),
+        times_s=_ro(grp["times_s"][:]),
+        dt=float(grp.attrs["dt"]),
+    )
 
 
 def save_materials(path: str | Path, materials: MaterialArrays) -> None:
