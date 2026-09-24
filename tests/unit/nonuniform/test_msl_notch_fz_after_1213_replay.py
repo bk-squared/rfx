@@ -538,11 +538,13 @@ def test_each_new_arm_solved_its_namesakes_mesh(arms, v, key):
 
 
 def test_z6r_solved_r2s_z6_to_the_last_bit(arms):
-    """The record fact under W9's 0.0000 MHz: Z6r's four S curves are R2's
-    Z6's bit for bit, though the two jobs ran different ``rfx/`` trees."""
+    """The record fact under W9's 0.0000 MHz: Z6r's four S curves, its port
+    impedance and its passivity curve are R2's Z6's bit for bit, though the
+    two jobs ran different ``rfx/`` trees (the note's Conclusions say so)."""
     z6r, z6 = arms["Z6r"], arms["Z6"]
     for field in ("freqs_hz", "s11_re", "s11_im", "s21_re", "s21_im",
-                  "s12_re", "s12_im", "s22_re", "s22_im"):
+                  "s12_re", "s12_im", "s22_re", "s22_im",
+                  "z0_re", "z0_im", "z0_median_ohm", "sigma_max_excess"):
         assert z6r[field] == z6[field], field
     assert z6r["provenance"]["rfx_tree"] == _REVERT[1] != R2_Z6_RFX_TREE
     assert arms["Z6m"]["s21_re"] != z6["s21_re"]

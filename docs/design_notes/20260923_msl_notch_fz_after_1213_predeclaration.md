@@ -299,25 +299,32 @@ The finest rung, Z16m, from the reference: +0.1066 % (|S21|^2), +0.1507 % (log).
 
 ### Conclusions (leader; read against G.1–G.4 and the two records)
 
-**R2's substrate term was the old interface rule, and on the current solver the substrate
-cell hardly matters to this notch.** On the same four meshes, main reads the notch 77.66,
-60.14, 41.10 and 31.02 MHz lower than R2 did (W9). With 6 substrate cells the notch is now
-3.674809 GHz, 0.94 MHz (+0.026 %) above openEMS; before #1213 the same mesh read +2.14 %.
+**On the current solver the substrate cell hardly matters to this notch, and at the coarsest
+mesh #1213 alone moved it by 77.66 MHz.** On the same four meshes, main reads the notch 77.66,
+60.14, 41.10 and 31.02 MHz lower than R2 did (W9). Whether that makes the old interface rule
+R2's whole substrate term is W10's question, and W10 reads "partly": its span condition holds
+by a wide margin, and only its order bar is missed, by 0.015 (below). With 6 substrate cells
+the notch is now 3.674809 GHz, 0.94 MHz (+0.026 %) above openEMS; before #1213 the same mesh
+read +2.14 %.
 Refining to 16 cells moves it by 2.98 MHz in all (0.08 %), where R2 moved 43.67 MHz, and the
 direction has reversed: the notch now rises slightly as the substrate cell shrinks.
 
-**The whole move is #1213's.** Z6r is main with #1213's `rfx/` change reverted and nothing
-else. Its S-parameters, port impedance and passivity curves equal R2's Z6 bit for bit, although
-its `rfx/` tree and R2's differ in 44 files (`git diff --stat d558382f 9c8fd9b6 -- rfx/`). So on
-this board everything else that changed in `rfx/` between R2's tree and cca8ee5b changes no
-arithmetic in the solve, and the 77.66 MHz at Z6 is #1213 alone (W9 attribution).
+**At Z6 the whole move is #1213's.** Z6r is main with #1213's `rfx/` change reverted and
+nothing else. Its S-parameters, port impedance and passivity curves equal R2's Z6 bit for bit,
+although its `rfx/` tree and R2's differ in 44 files (`git diff --stat d558382f 9c8fd9b6 --
+rfx/`). So everything else that changed in `rfx/` between R2's tree and cca8ee5b changes no bit
+of any recorded output on Z6's mesh, and the 77.66 MHz at Z6 is #1213 alone (W9 attribution).
+The revert arm exists only at Z6. At Z8m, Cm and Z16m the difference from R2 also carries the
+other `rfx/` changes, and giving it to #1213 there is inference from Z6, not measurement.
 
-**The removed error is first order in the substrate cell, as §0's mechanism predicts.** Per
+**The removed error behaves as first order in the substrate cell, as §0's mechanism
+predicts.** Per
 rung, R2 minus the new notch is 1.83, 1.89, 1.94 and 1.95 MHz per µm of substrate cell, and
 between neighbouring rungs it falls with order 0.89, 0.94 and 0.98 (derived:
-ln(Δ_i/Δ_{i+1}) / ln(FZ_i/FZ_{i+1}), Δ from G.4's W9 table). That is what a layer of about
-FZ/2 under the strip would give if the tangential field saw it as air: an error proportional
-to the cell that vanishes with it. The record measures the shift and its order, not the
+ln(Δ_i/Δ_{i+1}) / ln(FZ_i/FZ_{i+1}), Δ from G.4's W9 table; the formula assumes Δ vanishes
+with the cell, which is §0's premise and not something four rungs show on their own). That is
+what a layer of about FZ/2 under the strip would give if the tangential field saw it as air:
+an error proportional to the cell that vanishes with it. The record measures the shift and its order, not the
 field in that layer. The mechanism is §0's, and these numbers are consistent with it.
 
 **The frozen verdicts.** W10 is "partly". The span condition holds by a wide margin
@@ -329,13 +336,15 @@ W11 FIRED: the two ladders' declared-rule limits are 9.67 MHz apart (0.263 % of 
 reference, against a 0.20 % bar). By §4 at least one ladder is outside its asymptotic range,
 and this note does not choose between them. One fact bears on the question without settling
 it. R2's rungs are the new rungs plus a term of order 0.89 to 0.98 and opposite sign (the
-paragraph above), and a single power law fitted to the sum of two such terms returns the
-limit of neither.
+paragraph above), and a single power law fitted to the sum of two such terms returns a limit
+biased away from the one they would share.
 
 **The substrate rule for trees that contain #1213 (W12).** By every |S21|² reading, 2
-substrate cells put the notch within 1 % of the ladder's own limit. The log readings give 2
-to 4. That bar is loose for this board: at 6 cells the notch is already 0.105 % below the
-ladder's limit and 0.081 % below the 16-cell rung (derived from G.2 and W10's declared
+substrate cells put the notch within 1 % of the ladder's own limit, and the log readings give
+2 to 4. Those counts are extrapolated: the coarsest rung solved has 6 cells (42.3 µm), 2 cells
+is a 127 µm cell, three times coarser, and the power laws were fitted on 6 to 16 cells, with
+W11 fired. The measured statement is the 6-cell one: at 6 cells the notch is 0.105 % below
+the ladder's limit and 0.081 % below the 16-cell rung (derived from G.2 and W10's declared
 limit). R2's rule of 17 to 21 cells described the pre-#1213 solver and does not apply to main.
 The 6-cell rung costs 372 s against 1080 s for 16 cells on one RTX 4090 (G.2).
 
