@@ -165,6 +165,23 @@ def _drawn(sim):
     return materials
 
 
+def _lumped_total(record):
+    """The cell-level sum of a lumped record: since #1236 a record is None or
+    a 3-tuple of per-E-component arrays / None; the cell total is their sum
+    (what ``materials.sigma`` / ``eps_r`` carry on top of the volume)."""
+    if record is None:
+        return None
+    if not isinstance(record, (tuple, list)):
+        return record
+    parts = [r for r in record if r is not None]
+    if not parts:
+        return None
+    total = parts[0]
+    for r in parts[1:]:
+        total = total + r
+    return total
+
+
 @contextmanager
 def _pre_override_drive(drawn):
     """Mutation (b): the pre-#1267 drive. Every builder call is kept; the
@@ -178,8 +195,8 @@ def _pre_override_drive(drawn):
     inner_msl = _msl.make_msl_port_sources
 
     def _back(m):
-        eps_l = getattr(m, "eps_r_lumped", None)
-        sig_l = getattr(m, "sigma_lumped", None)
+        eps_l = _lumped_total(getattr(m, "eps_r_lumped", None))
+        sig_l = _lumped_total(getattr(m, "sigma_lumped", None))
         return m._replace(
             eps_r=drawn.eps_r if eps_l is None else drawn.eps_r + eps_l,
             sigma=drawn.sigma if sig_l is None else drawn.sigma + sig_l)
@@ -509,7 +526,7 @@ def _worst_cb_mismatch(case, *, mutated=False):
         sim, eps_override=ovr, mutate_from=_drawn(sim) if mutated else None)
     assert handed, f"no drive was built for the {case} port"
     if cap is not None:
-        lumped = np.asarray(stepper.eps_r_lumped)
+        lumped = np.asarray(_lumped_total(stepper.eps_r_lumped))
         on = {tuple(int(v) for v in c) for c in np.argwhere(lumped != 0)}
         driven = {tuple(int(v) for v in cell) for cell, _, _ in handed}
         assert len(on) == 1 and on <= driven, (on, driven)
