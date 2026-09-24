@@ -1401,7 +1401,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # them. With a dispersive material anywhere in the model the E update runs
     # on these coefficients alone and never reads ``materials.sigma`` (#1257):
     # built before the port stamps they left every port unterminated, and a
-    # 50 ohm and a 5000 ohm port stepped the same field.
+    # 50 ohm and a 5000 ohm port gave the same waveform.
     debye = None
     if debye_spec is not None:
         debye_poles, debye_masks = debye_spec
