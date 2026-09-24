@@ -40,8 +40,17 @@ def test_forward_wire_port_sparams_populated():
     """forward(port_s11_freqs=...) must populate result.s_params + wire_port_sparams."""
     sim = _build_wire_port_cavity()
     freqs = jnp.linspace(1.5e9, 4.5e9, 7, dtype=jnp.float32)
+    # 160 periods, not 40 (#1236). The port's conductance used to be added to
+    # the Ex and Ey edges at each of its six nodes as well, a column of
+    # resistors across the cavity's radial field (pinned there to 0.001-0.009
+    # of Ez; 0.26-0.88 with the load on the Ez edges only). That spurious loss
+    # damped the lossless cavity: after 40 periods its field was -25.8 dB
+    # down; without it only -8.2 dB, and a DFT of that unsettled record read
+    # |S11| = 1.05 and 0.36 at two bins. At 160 periods (-33.9 dB) every bin
+    # is 0.93-0.9999; 640 periods (-81 dB) moves the lowest bin (4.0 GHz)
+    # 0.931 -> 0.942 and every other bin by < 4e-4.
     result = sim.forward(
-        num_periods=40,
+        num_periods=160,
         port_s11_freqs=freqs,
         skip_preflight=True,
     )

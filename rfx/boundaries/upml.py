@@ -33,7 +33,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.boundaries.cpml import _get_axis_cell_sizes
-from rfx.core.yee import EPS_0, MU_0, FDTDState, MaterialArrays, _shift_bwd, _shift_fwd
+from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, _shift_bwd,
+                          _shift_fwd, cell_owned_component_materials)
 
 
 class UPMLCoeffs(NamedTuple):
@@ -183,7 +184,15 @@ def init_upml(
     sEz, sHz = _get_sigma("z")
 
     mu_abs = materials.mu_r * jnp.float32(MU_0)
-    sigma_mat = materials.sigma.astype(jnp.float32)
+    # #1236: a lumped element (a port's load, an RLC R or C) loads its own E
+    # edge only. This lane's E coefficients stay CELL-owned for the volume --
+    # #1210's four-cell edge average was not carried into UPML, and doing it
+    # here would move every inhomogeneous UPML result, a separate change --
+    # so each component takes the cell total minus the stamps that belong to
+    # the other two components, the rule the distributed slab update uses.
+    # With no lumped record the three entries ARE materials.eps_r / .sigma.
+    eps_r_c, sigma_c = cell_owned_component_materials(materials)
+    sigma_mat_c = tuple(s_.astype(jnp.float32) for s_ in sigma_c)
     dt = jnp.float32(grid.dt)
     eps_0 = jnp.float32(EPS_0)
 
@@ -216,17 +225,14 @@ def init_upml(
         eps_abs_ey = eps_ey.astype(jnp.float32) * eps_0
         eps_abs_ez = eps_ez.astype(jnp.float32) * eps_0
     else:
-        eps_abs_scalar = materials.eps_r * eps_0
-        eps_abs_ex = eps_abs_scalar
-        eps_abs_ey = eps_abs_scalar
-        eps_abs_ez = eps_abs_scalar
+        eps_abs_ex, eps_abs_ey, eps_abs_ez = (e_ * eps_0 for e_ in eps_r_c)
 
     # Perpendicular σ: E_x gets damping from y,z PML (using E-position σ)
     sigma_perp_ex = sEy + sEz
     sigma_perp_ey = sEx + sEz
     sigma_perp_ez = sEx + sEy
 
-    def _e_coeffs(sigma_perp, eps_abs):
+    def _e_coeffs(sigma_perp, eps_abs, sigma_mat):
         loss_pml = sigma_perp * dt / (jnp.float32(2.0) * eps_0)
         loss_mat = sigma_mat * dt / (jnp.float32(2.0) * eps_abs)
         loss = loss_pml + loss_mat
@@ -235,9 +241,9 @@ def init_upml(
         cb = (dt / eps_abs) / denom
         return ca.astype(jnp.float32), cb.astype(jnp.float32)
 
-    ca_ex, cb_ex = _e_coeffs(sigma_perp_ex, eps_abs_ex)
-    ca_ey, cb_ey = _e_coeffs(sigma_perp_ey, eps_abs_ey)
-    ca_ez, cb_ez = _e_coeffs(sigma_perp_ez, eps_abs_ez)
+    ca_ex, cb_ex = _e_coeffs(sigma_perp_ex, eps_abs_ex, sigma_mat_c[0])
+    ca_ey, cb_ey = _e_coeffs(sigma_perp_ey, eps_abs_ey, sigma_mat_c[1])
+    ca_ez, cb_ez = _e_coeffs(sigma_perp_ez, eps_abs_ez, sigma_mat_c[2])
 
     # H perpendicular: use H-position σ
     sigma_perp_hx = sHy + sHz

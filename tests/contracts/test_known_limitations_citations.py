@@ -87,14 +87,22 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # #1221 (magnetic faces on distributed and ADI lanes, and the Yee half-cell wall)
 # joined on 2026-09-23; OPEN checked with
 # `gh issue view 1221 --repo bk-squared/rfx --json number,state,url,title,updatedAt`.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
+# #1260 (a Debye/Lorentz material anywhere puts the whole grid on the
+# cell-owned E update, so every lumped element loads all three edges at its
+# node) and #1257 (a graded mesh with a dispersive material leaves a port
+# unterminated) joined on 2026-09-24 with the dispersive-lane entry of #1236;
+# both OPEN, checked with `gh issue view <N> --json number,state`.
+CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1257, 1260})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
 # allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186})
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1236})
+# #1236 is named in the dispersive-lane entry as the fix that put every lumped
+# element on its own edge on the non-dispersive lanes; the PR that adds the
+# entry closes it.
 # #1100 and #1122 join it together: the taper entry names both to record which
 # half was fixed and what was decided about the other, and both are closed.
 
