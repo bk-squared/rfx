@@ -63,6 +63,9 @@ def config_of(data):
         "checkpoint_every": data.get("checkpoint_every", arguments.get("checkpoint_every")) or 0,
         "jax_version": data.get("jax_version"),
         "jaxlib_version": data.get("jaxlib_version"),
+        # Fusion flags move rounding and time; the memory fraction moves time and capacity.
+        "xla_flags": (data.get("environment") or {}).get("XLA_FLAGS"),
+        "mem_fraction": (data.get("environment") or {}).get("XLA_PYTHON_CLIENT_MEM_FRACTION"),
     }
     config.update({key: data.get(key) for key in PHYSICS_FIELDS})
     return config
@@ -330,12 +333,14 @@ def compare(oracle_roots, distributed_roots):
             problems += [f"{run.label} and the one-rank run {o.label} are rfx tree {run.rfx_tree} but "
                          f"differ: {mismatch(run, o)}" for o in same_tree]
         else:
+            # No oracle of this tree is not an error: an A/B job needs none. Report it.
             found = ", ".join(f"{o.label} (tree {o.rfx_tree})" for o in oracles) or "none"
             others = [r for r in oracle_runs.values() if r.n_ranks != 1]
             note = ("; runs there with more than one rank are not oracles: "
                     + ", ".join(f"{r.label} (n_ranks {r.n_ranks})" for r in others)) if others else ""
-            problems.append(f"{run.label}: no one-rank run of rfx tree {run.rfx_tree} (commit {run.commit}) "
-                            f"under --oracle; one-rank runs found: {found}{note}")
+            unpaired.append({"run": run.describe(),
+                             "reason": f"no one-rank run of rfx tree {run.rfx_tree} (commit {run.commit}) "
+                                       f"under --oracle; one-rank runs found: {found}{note}"})
     ab_rows = []
     for (directory, tag), a in sorted(every.items()):
         b = every.get((directory, tag + "-b"))
