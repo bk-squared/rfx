@@ -86,7 +86,8 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str, lane: str) -> None:
     so the open's |S11| rose above 1 and grew with the record (1.018 at 12
     line traversals, 1.046 at 24, at 9 annulus cells). With the lateral pads
     absorbing, the same open reads at most 1.0015 and does not move with the
-    record (both in tests/fixtures/coax_chain_battery/open_closed_can_arms.json).
+    record (both in rfx-archive, rfx/records/20260924-coax-closed-can/
+    open_closed_can_arms.json).
     A face without an absorber is a PEC wall and closes the can again, so
     every face needs positive CPML thickness.
     """
