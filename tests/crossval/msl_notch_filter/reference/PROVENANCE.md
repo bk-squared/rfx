@@ -37,7 +37,7 @@ the case is created or its geometry changes.
 | method | FDTD, the tutorial's own thirds-rule mesh |
 | boundary | `['PML_8', 'PML_8', 'MUR', 'MUR', 'PEC', 'MUR']` |
 | excitation | `SetGaussExcite(3.5 GHz, 3.5 GHz)` |
-| `NrTS` / end criteria | the openEMS library defaults (~1e9 and 1e-5) on every real pass |
+| `NrTS` / end criteria | not passed on any real pass: `NrTS` ~1e9 (the python binding's default) and end criteria 1e-6 (the pinned build's C++ default, `openems.cpp:117`; the binding's docstring says 1e-5, which is not what runs) |
 | frequency points | 1601, `linspace(1 MHz, 7 GHz)`, in every stage |
 | arrays | `freqs_ghz`, `s11_mag`, `s21_mag` LINEAR; `s11_deg`, `s21_deg` in degrees; `energy_sum` per bin |
 | deltas from the tutorial | `meta.delta_list`: geometry NONE (the 50 mm arms and everything the tutorial derives from them are unchanged); mesh rung only (a resolution factor that also refines the substrate's own z lines); nothing else |

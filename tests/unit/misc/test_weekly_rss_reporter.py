@@ -228,8 +228,9 @@ def test_live_sampler_line_format_with_nodeid(monkeypatch, capsys):
 
     sampler._sample_once()
 
-    out = capsys.readouterr().out
-    assert out.strip() == "[rss-live] VmHWM 1500 MB during tests/test_fake.py::test_thing"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.strip() == "[rss-live] VmHWM 1500 MB during tests/test_fake.py::test_thing"
 
 
 def test_live_sampler_line_format_without_nodeid(monkeypatch, capsys):
@@ -241,8 +242,9 @@ def test_live_sampler_line_format_without_nodeid(monkeypatch, capsys):
 
     sampler._sample_once()
 
-    out = capsys.readouterr().out
-    assert out.strip() == "[rss-live] VmHWM 1500 MB"
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.strip() == "[rss-live] VmHWM 1500 MB"
 
 
 def test_live_sampler_skips_below_threshold_and_when_unavailable(monkeypatch, capsys):
@@ -252,11 +254,13 @@ def test_live_sampler_skips_below_threshold_and_when_unavailable(monkeypatch, ca
 
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 100.0)  # +100 MB < 500 MB
     sampler._sample_once()
-    assert capsys.readouterr().out == ""
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
 
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: None)
     sampler._sample_once()
-    assert capsys.readouterr().out == ""
+    captured = capsys.readouterr()
+    assert captured.out == "" and captured.err == ""
 
 
 def test_live_sampler_thread_starts_is_daemon_and_stops_cleanly(monkeypatch):
@@ -388,7 +392,7 @@ def test_live_sampler_line_survives_sigkill_with_dash_s():
         f"expected the child to die from SIGKILL, got returncode={result.returncode}\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
-    assert "[rss-live] VmHWM" in result.stdout, (
+    assert "[rss-live] VmHWM" in result.stderr, (
         "expected at least one [rss-live] line to survive the SIGKILL under -s\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
@@ -410,8 +414,28 @@ def test_live_sampler_line_lost_without_dash_s():
         f"expected the child to die from SIGKILL, got returncode={result.returncode}\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
-    assert "[rss-live] VmHWM" not in result.stdout, (
+    assert "[rss-live] VmHWM" not in result.stdout + result.stderr, (
         "expected NO [rss-live] line without -s (pytest's default capture "
         "should swallow it)\n"
-        f"stdout={result.stdout}"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
     )
+
+
+def test_live_sampler_line_does_not_enter_a_redirected_stdout(monkeypatch, capsys):
+    """The sampler thread prints at any moment. A test that captures stdout
+    through the process-global ``contextlib.redirect_stdout`` -- as
+    ``rfx.ad_diagnostics.inspect_ad_saved_residuals`` does to read jax's
+    printed residuals -- must not receive the sampler's line: it would parse
+    it as a residual of unknown size and return ``total_estimated_bytes=None``
+    (the intermittent "assert None" of the design-box tape tests, PR lane,
+    2026-09-23/24). The line goes to stderr."""
+    import contextlib
+    import io
+
+    monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 1500.0)
+    sampler = conftest._RSSLiveSampler(threshold_mb=500.0)
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        sampler._sample_once()
+    assert buffer.getvalue() == ""
+    assert "[rss-live] VmHWM 1500 MB" in capsys.readouterr().err
