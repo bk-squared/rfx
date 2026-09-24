@@ -2604,7 +2604,10 @@ class _ExecuteMixin:
         from rfx.nonuniform import (
             position_to_index as _nu_pos_to_idx,
             make_current_source as _nu_make_current_source,
+            current_source_samples as _nu_current_source_samples,
+            current_source_volume as _nu_current_source_volume,
         )
+        from rfx.api._source_semantics import needs_scale as _needs_scale
         from rfx.simulation import ProbeSpec, SourceSpec
 
         # ---- Resolve devices (V3 §5 semantics) ----
@@ -2779,7 +2782,21 @@ class _ExecuteMixin:
                 "distributed=True forward path; remove the lumped_rlc "
                 "spec or omit distributed=True."
             )
+        # A current source enters the field through the Cb of its edge, so
+        # its drive has to read the permittivity arrays the E update reads
+        # (#1279; the single-device lane's #1267/#1280). Under an eps/sigma
+        # override those are the override -- possibly traced, possibly
+        # x-sharded across processes, so the host cannot read it cell by
+        # cell. Such a source hands the runner its current I(t) and its dV,
+        # and the runner builds Cb inside its jitted program from the staged
+        # slabs its E update receives (``material_drive_scales``). Without an
+        # override, and for a 'field' source (whose amplitude is divided by
+        # the same Cb), the table is built here from the drawn materials as
+        # before.
+        _drive_from_override = (eps_override is not None
+                                or sigma_override is not None)
         sources: list[SourceSpec] = []
+        material_drive: list = []
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(
@@ -2789,9 +2806,19 @@ class _ExecuteMixin:
                     "source (impedance=0)."
                 )
             idx = _nu_pos_to_idx(grid, pe.position)
-            # Use concrete materials so make_current_source can resolve
-            # eps / sigma to Python floats (it calls ``float(...)`` on
-            # both for the source-cell normalisation).
+            if (_drive_from_override
+                    and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
+                dV, _ = _nu_current_source_volume(grid, idx, pe.component)
+                sources.append(SourceSpec(
+                    i=int(idx[0]), j=int(idx[1]), k=int(idx[2]),
+                    component=pe.component,
+                    waveform=jnp.asarray(_nu_current_source_samples(
+                        grid, pe.waveform, n_steps)),
+                ))
+                material_drive.append(float(dV))
+                continue
+            # Concrete drawn materials: make_current_source resolves eps /
+            # sigma to Python floats for the source-cell normalisation.
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,
                 materials, amplitude_kind=pe.amplitude_kind,
@@ -2800,6 +2827,7 @@ class _ExecuteMixin:
                 i=int(si), j=int(sj), k=int(sk),
                 component=sc, waveform=jnp.asarray(wf),
             ))
+            material_drive.append(None)
 
         if eps_override is not None or sigma_override is not None:
             materials = materials._replace(
@@ -2822,9 +2850,11 @@ class _ExecuteMixin:
                 else (pec_mask | pec_mask_override)
             )
 
-        # Stage one input at a time. In particular, the source normalization
-        # above has consumed concrete cell scalars; no second MaterialArrays
-        # may keep the original whole-domain eps/sigma alive during the scan.
+        # Stage one input at a time. The source normalization above has
+        # consumed concrete cell scalars (a material-driven source reads its
+        # Cb from the staged slabs in the runner instead); no second
+        # MaterialArrays may keep the original whole-domain eps/sigma alive
+        # during the scan.
         staged = []
         for name, pad_value in (("eps_r", 1.0), ("sigma", 0.0), ("mu_r", 1.0)):
             override = eps_override if name == "eps_r" else sigma_override if name == "sigma" else None
@@ -2908,6 +2938,7 @@ class _ExecuteMixin:
             emit_time_series=emit_time_series,
             gather_final_state=False,
             pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
+            material_drive=tuple(material_drive),
         )
 
         # ---- Repackage into ForwardResult via the shared lane helper.
