@@ -3096,6 +3096,10 @@ class _ExecuteMixin:
                 _reject_lane_precision("fwd_nonuniform")
                 return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
 
+            # The uniform forward lane has no subgrid either (#1240).
+            self._require_no_refinement_without_a_subgrid(
+                "forward()/optimize()")
+
             # Uniform forward lane: the remaining kwargs are NU-only.
             if not emit_time_series:
                 raise NotImplementedError(

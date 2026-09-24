@@ -18,6 +18,12 @@ property ``_dispatch_plan`` picks the lane with) and sits in three places:
 * ``run_nonuniform_path``: the lane itself, which the graded branch of
   ``compute_waveguide_s_matrix`` reaches without ``_dispatch_plan``.
 
+``forward()`` on a UNIFORM mesh dropped it the same way (bit-identical,
+peak 1.079171e6 both): only ``run()`` has a subgridded lane. ``_dispatch_plan``
+refuses it there too, and ``topology_optimize()``, which calls the forward
+lane without ``_dispatch_plan``, refuses it itself; ``optimize()`` goes
+through ``forward()``.
+
 The ADI lane never dropped a refinement: ``_validate_adi_configuration``
 refuses it. Locked here too.
 """
@@ -27,6 +33,7 @@ from __future__ import annotations
 import warnings
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -210,6 +217,47 @@ def test_graded_waveguide_s_matrix_refuses():
     with pytest.raises(NotImplementedError, match=_REFUSED):
         _quiet(lambda: sim.compute_waveguide_s_matrix(n_steps=1,
                                                       normalize="flux"))
+
+
+# ---------------------------------------------------------------------------
+# The differentiable entry points on a uniform mesh: no subgridded lane
+# ---------------------------------------------------------------------------
+
+_NO_SUBGRID = "no subgridded lane"
+
+
+def test_uniform_forward_refuses():
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID) as exc:
+        _quiet(lambda: _box(True, graded=False).forward(n_steps=N_STEPS))
+    assert "takes effect in run(), on a uniform mesh" in str(exc.value)
+
+
+def test_optimize_refuses():
+    from rfx.optimize import DesignRegion, optimize
+
+    region = DesignRegion(corner_lo=(0.005, 0.005, 0.005),
+                          corner_hi=(0.007, 0.007, 0.007), eps_range=(1.0, 4.0))
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: optimize(_box(True, graded=False), region,
+                                lambda r: -jnp.sum(r.time_series ** 2),
+                                n_iters=1, n_steps=8, verbose=False,
+                                skip_preflight=True))
+
+
+def test_topology_optimize_refuses():
+    """It calls the forward lane directly, not through _dispatch_plan."""
+    from rfx.topology import TopologyDesignRegion, topology_optimize
+
+    region = TopologyDesignRegion(corner_lo=(0.005, 0.005, 0.005),
+                                  corner_hi=(0.007, 0.007, 0.007),
+                                  material_bg="air", material_fg="fr4",
+                                  beta_projection=1.0)
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: topology_optimize(
+            _box(True, graded=False), region,
+            lambda r: -jnp.sum(r.time_series ** 2), n_iterations=1,
+            learning_rate=0.05, beta_schedule=[(0, 1.0)], verbose=False,
+            skip_preflight=True))
 
 
 # ---------------------------------------------------------------------------

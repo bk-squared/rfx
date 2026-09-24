@@ -232,6 +232,27 @@ class _MeshMixin:
         if reason is not None:
             raise NotImplementedError(reason)
 
+    def _require_no_refinement_without_a_subgrid(self, entry):
+        """Refuse a refinement on an entry point with no subgridded lane.
+
+        Only ``run()`` dispatches to the subgridded lane. ``forward()`` on a
+        uniform mesh runs ``_forward_from_materials``, which never reads
+        ``add_refinement``: a refined model came back bit-identical to the
+        unrefined one, with no warning (#1240). ``optimize()`` reaches it
+        through ``forward()``, ``topology_optimize()`` directly.
+        """
+        ref = getattr(self, "_refinement", None)
+        if ref is None:
+            return
+        z_lo, z_hi = ref["z_range"]
+        raise NotImplementedError(
+            f"add_refinement(z_range=({z_lo * 1e3:g}, {z_hi * 1e3:g}) mm, "
+            f"ratio={ref['ratio']}) is refused on {entry}: there is no "
+            f"subgridded lane behind {entry}, so the refinement would be "
+            "ignored and the unrefined grid solved, bit-identical to the same "
+            "model without it (#1240). add_refinement takes effect in run(), "
+            f"on a uniform mesh. Remove the refinement to use {entry}.")
+
     def _require_uniform_mesh(self, consumer):
         if self._uses_nonuniform_mesh:
             raise NotImplementedError(

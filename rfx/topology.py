@@ -386,6 +386,8 @@ def topology_optimize(
         Contains final density, permittivity, loss history, and beta history.
     """
     sim._require_uniform_mesh("topology_optimize")
+    # Calls _forward_from_materials without forward()'s dispatch (#1240).
+    sim._require_no_refinement_without_a_subgrid("topology_optimize()")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # #677 lane fence, deliberately ABOVE the optional-dependency import:
     # the surface-impedance sheet is unsupported on this lane whether or not
