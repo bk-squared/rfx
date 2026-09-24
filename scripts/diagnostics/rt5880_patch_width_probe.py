@@ -21,9 +21,11 @@ test_rt5880_patch.py``: ``build``, ``realized_geometry``, ``check_realized``,
 * arm A, the control: the case's board as it is, at h/4.  It must reproduce the
   logged R and f0; both are printed beside the new numbers.
 * arm B: the same board with the patch width W = 49.2125 mm (62 h/4) and the
-  ground width GP_Y = 65.0875 mm (82 h/4) -- node-aligned, so every rung
-  realizes the same node spans -- everything else unchanged (L 40 mm, GP_X
-  56 mm, the probe at -8.73125 mm, the box, the CPML, NUM_PERIODS, the band), at
+  ground width GP_Y = 65.0875 mm (82 h/4) and GP_X = 55.5625 mm (70 h/4) --
+  node-aligned, so every rung realizes the same patch and ground node spans and
+  the same substrate extent (the substrate is drawn over the ground's
+  footprint) -- everything else unchanged (L 40 mm, the probe at -8.73125 mm,
+  the box, the CPML, NUM_PERIODS, the band), at
   h/4, h/8 and h/12.  Before each rung is solved its realized node spans are
   held to the declared widths and to one another within 1 nm, and the probe to
   its node (``check_realized``); a rung that differs is refused.
@@ -79,19 +81,23 @@ LOGGED_R_OHM = (71.093, 72.997, 71.920)
 
 ARM_B_W_PATCH = 62 * T.H_SUB / 4      # 49.2125 mm, node-aligned on h/4, h/8, h/12
 ARM_B_GP_Y = 82 * T.H_SUB / 4         # 65.0875 mm
+# Leader 2026-09-25: GP_X too. The substrate is drawn over the ground's footprint, and at
+# GP_X = 56 mm it realized 71 / 141 / 211 cells (56.36 / 55.96 / 55.83 mm); the h/4 smoke
+# showed the substrate's y extent alone (83 -> 82 cells) moving R by +0.45 %.
+ARM_B_GP_X = 70 * T.H_SUB / 4         # 55.5625 mm: ground node span and substrate extent
 SPAN_TOL_M = 1e-9
 SPAN_KEYS = ("patch_x_node_m", "patch_y_node_m", "ground_x_node_m", "ground_y_node_m")
 
 
 def _set_board(arm: str) -> None:
-    """Arm A: the case's constants as imported.  Arm B: W and GP_Y moved."""
+    """Arm A: the case's constants as imported.  Arm B: W, GP_Y and GP_X moved."""
     if arm == "A":
-        T.W_PATCH, T.GP_Y = _ORIGINAL["W_PATCH"], _ORIGINAL["GP_Y"]
+        T.W_PATCH, T.GP_Y, T.GP_X = _ORIGINAL["W_PATCH"], _ORIGINAL["GP_Y"], _ORIGINAL["GP_X"]
     else:
-        T.W_PATCH, T.GP_Y = ARM_B_W_PATCH, ARM_B_GP_Y
+        T.W_PATCH, T.GP_Y, T.GP_X = ARM_B_W_PATCH, ARM_B_GP_Y, ARM_B_GP_X
 
 
-_ORIGINAL = {"W_PATCH": T.W_PATCH, "GP_Y": T.GP_Y}
+_ORIGINAL = {"W_PATCH": T.W_PATCH, "GP_Y": T.GP_Y, "GP_X": T.GP_X}
 
 
 def _spans(g: dict, dx: float) -> dict:
@@ -154,7 +160,9 @@ def _check_arm_b(s: dict, first: dict | None, label: str) -> None:
     the same four spans on every rung (the probe is held to its node by
     check_realized)."""
     bad = []
-    for k, v in (("patch_y_node_m", ARM_B_W_PATCH), ("ground_y_node_m", ARM_B_GP_Y)):
+    for k, v in (("patch_y_node_m", ARM_B_W_PATCH), ("ground_y_node_m", ARM_B_GP_Y),
+                 ("ground_x_node_m", ARM_B_GP_X), ("substrate_x_m", ARM_B_GP_X),
+                 ("substrate_y_m", ARM_B_GP_Y)):
         if abs(s[k] - v) > SPAN_TOL_M:
             bad.append(f"{k} {s[k]*1e3:.6f} mm, declared {v*1e3:.6f} mm")
     if first is not None:
@@ -280,7 +288,7 @@ def main(argv=None) -> int:
         if n not in (4, 8, 12):
             raise SystemExit(f"h/{n} is not a rung of the case's ladder")
     print(f"RT5880 patch width probe -- arm A (the case's board) at h/4; arm B (W "
-          f"{ARM_B_W_PATCH*1e3:.4f} mm, GP_Y {ARM_B_GP_Y*1e3:.4f} mm) at "
+          f"{ARM_B_W_PATCH*1e3:.4f} mm, GP_Y {ARM_B_GP_Y*1e3:.4f} mm, GP_X {ARM_B_GP_X*1e3:.4f} mm) at "
           f"{['h/%d' % n for n in rungs_n]}; NUM_PERIODS "
           f"{args.smoke_periods if args.smoke else T.NUM_PERIODS}"
           + ("  [SMOKE]" if args.smoke else ""))
