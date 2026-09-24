@@ -124,7 +124,7 @@ def test_the_leakage_the_tfsf_advisory_quotes():
     A plane wave with nothing in its way must stay inside the TFSF box. On
     uniform 1 mm x cells the scattered-field region reads about 1e-5 of the
     total-field peak, and grading only y keeps it there. Grading x
-    1 / 0.5 / 1 mm (20 cells each) puts 0.6 of the peak outside the box: the
+    1 / 0.5 / 1 mm (20 cells each) puts 0.7 of the peak outside the box: the
     incident line is built on the 1 mm boundary cell, so the wave it injects
     at the far plane is not the one the graded grid delivers there. The
     advisory fires on that board and on no other.
@@ -136,7 +136,12 @@ def test_the_leakage_the_tfsf_advisory_quotes():
         [np.full(20, _DX), np.full(20, 0.5 * _DX), np.full(20, _DX)]))
     assert uniform < 2e-5, uniform
     assert y_graded < 2e-5, y_graded
-    assert 0.55 < x_graded < 0.65, x_graded
+    # 0.716 with the magnetic CPML profile at the Yee half cell, the same with
+    # 8, 16 or 24 absorber layers. Before #1012 this read 0.598 with 8 layers,
+    # 0.677 with 16 and 0.702 with 24: the probe sits 1 mm in front of the x-hi
+    # absorber, and the old absorber's reflection reached it (Addendum 11 of
+    # #1012).
+    assert 0.67 < x_graded < 0.77, x_graded
     assert (flagged_u, flagged_y, flagged_x) == (False, False, True)
 
 
