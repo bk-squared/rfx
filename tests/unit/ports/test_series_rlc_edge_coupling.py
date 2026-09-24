@@ -200,7 +200,7 @@ def test_series_element_on_an_edge_that_already_carries_a_folded_load():
 # ---------------------------------------------------------------------------
 
 _BOX_DX = 1e-3
-_BOX_STEPS = 2400
+_BOX_STEPS = 4800
 
 #: MEASURED with this update (2400 steps, dx = 1 mm): the largest field over
 #: the last 400 steps is 8e-6 ... 3.4e-5 of the run's peak on these rows (the
@@ -208,6 +208,17 @@ _BOX_STEPS = 2400
 #: steps: at most 3.3e-5). Every row here fails with the replaced update:
 #: non-finite or past 1e33 by step 2400 at R = 0.1 and 50 ohm (RC, RL, RLC),
 #: 4.8e24 at R = 150 ohm (RC).
+#:
+#: #1236 moved the record from 2400 to 4800 steps (threshold unchanged). The
+#: 50 ohm port used to be a 50 ohm resistor on the Ex and Ey edges at its node
+#: as well as on its Ez gap; those two spurious loads damped the box (the
+#: port node's radial fields were pinned to 0.034 / 0.013 of its Ez; with the
+#: load on the gap only they reach 0.50 / 0.42). Without them the modes that
+#: barely touch the port's Ez edge ring longer: last-400-step max / peak at
+#: 2400 steps 1.6e-4 ... 1.21e-3 (RL-0.1 and RLC-0.1 over the bar), at 4800
+#: steps 7.7e-6 ... 3.9e-4, and still falling at 9600 (RL-0.1: 1.21e-3,
+#: 6.2e-4, 3.7e-4, 2.4e-4, 2.0e-4 at 2400/3600/4800/7200/9600) -- a slower
+#: decay, not growth. The replaced update diverges long before 2400.
 _DECAY_FRACTION = 1e-3
 
 _L = 1e-9
