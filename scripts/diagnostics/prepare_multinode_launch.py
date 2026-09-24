@@ -41,6 +41,9 @@ def main():
     parser.add_argument("--grad", action="store_true", help="forward lane: also time jax.grad")
     parser.add_argument("--checkpoint-every", type=int, default=0,
                         help="forward lane: segmented remat length (0 = none)")
+    parser.add_argument("--steps-short", type=int, default=0,
+                        help="forward lane: also time this many steps; the difference gives the "
+                             "per-step cost without compilation (0 = off)")
     parser.add_argument("--ref-b", help="second solver ref run after --ref in the same job (A/B on the same nodes)")
     parser.add_argument("--tooling-sha-b", help="full commit SHA that --ref-b must resolve to")
     parser.add_argument("--two", action="append", type=int, metavar="NX_PER_RANK",
@@ -71,7 +74,8 @@ def main():
     if args.grad and args.lane != "forward":
         parser.error("--grad needs --lane forward")
     shape_env.update(RFX_LANE=args.lane, RFX_GRAD="1" if args.grad else "0",
-                     RFX_CHECKPOINT_EVERY=str(args.checkpoint_every))
+                     RFX_CHECKPOINT_EVERY=str(args.checkpoint_every),
+                     RFX_STEPS_SHORT=str(args.steps_short))
     if bool(args.ref_b) != bool(args.tooling_sha_b):
         parser.error("--ref-b and --tooling-sha-b go together")
     if args.ref_b:

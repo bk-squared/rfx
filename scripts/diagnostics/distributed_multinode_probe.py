@@ -168,30 +168,38 @@ def forward_design(sim, jax, np):
 
 
 def measure_forward(sim, args, jax, np, eps):
-    """Wall time of one forward (and, with --grad, one jax.grad) call."""
+    """Wall time of one forward (and, with --grad, one jax.grad) call.
+
+    forward() compiles on every call, so these times include compilation. With
+    --steps-short each repeat first runs the same calls at that step count; the
+    difference of the two times over the step difference is the loop's cost per
+    step without compilation.
+    """
     import jax.numpy as jnp
 
-    kwargs = dict(distributed=True, devices=jax.devices(), n_steps=args.steps,
-                  skip_preflight=True)
+    kwargs = dict(distributed=True, devices=jax.devices(), skip_preflight=True)
     if args.checkpoint_every:
         kwargs["checkpoint_every"] = args.checkpoint_every
 
-    def trace_of(e):
-        return sim.forward(eps_override=e, **kwargs).time_series
+    def trace_of(e, steps):
+        return sim.forward(eps_override=e, n_steps=steps, **kwargs).time_series
 
     record = {"status": "ok", "gather_succeeded": True}
     trace, grad = None, None
-    start = time.perf_counter()
+    # The long run goes last: its trace and gradient are the ones saved.
+    runs = ([("_short", args.steps_short)] if args.steps_short else []) + [("", args.steps)]
     try:
-        trace = trace_of(eps)
-        jax.block_until_ready(trace)
-        record["run_seconds"] = time.perf_counter() - start
-        if args.grad:
-            start_grad = time.perf_counter()
-            grad = jax.grad(lambda e: jnp.sum(trace_of(e) ** 2))(eps)
-            jax.block_until_ready(grad)
-            record["grad_seconds"] = time.perf_counter() - start_grad
-            record["grad_sharding"] = str(grad.sharding)
+        for suffix, steps in runs:
+            start = time.perf_counter()
+            trace = trace_of(eps, steps)
+            jax.block_until_ready(trace)
+            record["run_seconds" + suffix] = time.perf_counter() - start
+            if args.grad:
+                start_grad = time.perf_counter()
+                grad = jax.grad(lambda e: jnp.sum(trace_of(e, steps) ** 2))(eps)
+                jax.block_until_ready(grad)
+                record["grad_seconds" + suffix] = time.perf_counter() - start_grad
+                record["grad_sharding"] = str(grad.sharding)
         record["trace_fully_replicated"] = bool(getattr(trace, "is_fully_replicated", False))
     except Exception as exc:
         record["exception"] = exception_record(exc)
@@ -201,6 +209,9 @@ def measure_forward(sim, args, jax, np, eps):
     for field in ("run_seconds", "grad_seconds"):
         if record.get(field) is not None:
             record[field + "_per_step"] = record[field] / args.steps
+        if record.get(field) is not None and record.get(field + "_short") is not None:
+            record[field + "_marginal_per_step"] = (
+                (record[field] - record[field + "_short"]) / (args.steps - args.steps_short))
     record["trace_origin"] = "forward.time_series"
     record["memory"] = memory_stats(jax.devices(), args.process_id)
     return record, trace, grad
@@ -231,6 +242,9 @@ def parse_args():
                              "and save each process's gradient shards")
     parser.add_argument("--checkpoint-every", type=int, default=0,
                         help="forward lane: segmented remat length (0 = none)")
+    parser.add_argument("--steps-short", type=int, default=0,
+                        help="forward lane: each repeat also runs this many steps first; the time "
+                             "difference gives the per-step cost without compilation (0 = off)")
     parser.add_argument("--local-devices", action="store_true",
                         help="one process drives every local device (e.g. a 2xA6000 node); "
                              "--nx-per-rank is per device")
@@ -243,6 +257,8 @@ def parse_args():
         parser.error("process-id must be in [0, process-count)")
     if args.grad and args.lane != "forward":
         parser.error("--grad needs --lane forward")
+    if args.steps_short and (args.lane != "forward" or not 0 < args.steps_short < args.steps):
+        parser.error("--steps-short needs --lane forward and 0 < steps-short < steps")
     if args.process_count > 1 and not args.coordinator_address:
         parser.error("multiple processes require --coordinator-address")
     if not args.tag or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
@@ -408,6 +424,11 @@ def main():
             median = statistics.median(values) if values else None
             data[field] = {"values": values, "median": median,
                            "median_per_step": median / args.steps if median is not None else None}
+            marginal = [r[field + "_marginal_per_step"] for r in data["runs"]
+                        if not r["warmup"] and r.get(field + "_marginal_per_step") is not None]
+            if marginal:
+                data[field].update(steps_short=args.steps_short, marginal_per_step=marginal,
+                                   median_marginal_per_step=statistics.median(marginal))
         data["memory"] = memory_stats(jax.devices(), args.process_id)
     except Exception as exc:
         data["exception"] = exception_record(exc)

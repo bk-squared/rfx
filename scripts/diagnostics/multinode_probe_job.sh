@@ -117,7 +117,8 @@ run_probe() {
     --process-count "$world" --process-id "$rank" --local-device-id 0 --output "$out" --tag "$1"
   # local: one process drives every GPU the preset gives it (e.g. gpu-a6000-2).
   [ "$RFX_KIND" = local ] && set -- "$@" --local-devices
-  set -- "$@" --lane "${RFX_LANE:-run}" --checkpoint-every "${RFX_CHECKPOINT_EVERY:-0}"
+  set -- "$@" --lane "${RFX_LANE:-run}" --checkpoint-every "${RFX_CHECKPOINT_EVERY:-0}" \
+    --steps-short "${RFX_STEPS_SHORT:-0}"
   [ "${RFX_GRAD:-0}" = 1 ] && set -- "$@" --grad
   [ "$world" -eq 1 ] || set -- "$@" --coordinator-address "$coordinator"
   timeout --signal=TERM --kill-after=30s 1800s python scripts/diagnostics/distributed_multinode_probe.py "$@"
