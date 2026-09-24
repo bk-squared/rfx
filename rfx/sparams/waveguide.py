@@ -550,6 +550,8 @@ def compute_waveguide_s_matrix(
         ref_materials_per_port = []
         ref_pec_edge_masks_per_port = []
         for _i, _ref_sim in enumerate(port_reference_sims):
+            _ref_sim._require_no_refinement_without_a_subgrid(
+                f"compute_waveguide_s_matrix(port_reference_sims[{_i}])")
             _ref_grid = _ref_sim._build_grid()
             if _ref_grid.shape != grid.shape or float(_ref_grid.dx) != float(grid.dx):
                 raise ValueError(

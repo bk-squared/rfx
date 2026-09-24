@@ -240,20 +240,28 @@ class _MeshMixin:
         refined model came back bit-identical to the unrefined one, with no
         warning (#1240): ``forward()`` (and ``optimize()`` through it),
         ``topology_optimize()``, the ``vmap_material_sweep()`` batched kernel,
-        the uniform ``compute_waveguide_s_matrix()`` scan and
-        ``differentiable_material_fit()``.
+        the uniform ``compute_waveguide_s_matrix()`` scan and its per-port
+        reference models, ``differentiable_material_fit()``,
+        ``compute_lumped_wire_s_matrix_via_scan()`` and a direct
+        ``run_uniform()`` call.
         """
         ref = getattr(self, "_refinement", None)
         if ref is None:
             return
         z_lo, z_hi = ref["z_range"]
+        ratio = ref["ratio"]
         raise NotImplementedError(
             f"add_refinement(z_range=({z_lo * 1e3:g}, {z_hi * 1e3:g}) mm, "
-            f"ratio={ref['ratio']}) is refused on {entry}: there is no "
+            f"ratio={ratio}) is refused on {entry}: there is no "
             f"subgridded lane behind {entry}, so the refinement would be "
             "ignored and the unrefined grid solved, bit-identical to the same "
             "model without it (#1240). add_refinement takes effect in run(), "
-            f"on a uniform mesh. Remove the refinement to use {entry}.")
+            f"on a uniform mesh. Remove the refinement to use {entry}. "
+            "forward(), optimize(), compute_waveguide_s_matrix() and "
+            "vmap_material_sweep() also take a non-uniform mesh: a dz_profile "
+            f"whose cells between z = {z_lo * 1e3:g} and {z_hi * 1e3:g} mm "
+            "are as fine as the refinement asked for (the coarse cell there "
+            f"divided by {ratio}) gives them that resolution.")
 
     def _require_uniform_mesh(self, consumer):
         if self._uses_nonuniform_mesh:

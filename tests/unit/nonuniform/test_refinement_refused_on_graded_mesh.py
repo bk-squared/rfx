@@ -273,6 +273,96 @@ def test_uniform_vmap_material_sweep_refuses():
                                            [1.0, 2.0], n_steps=8))
 
 
+def _lumped_port_box(refine, eps_r=2.0):
+    """A lumped port sends vmap_material_sweep to its sequential run() path.
+
+    12 mm PEC box, 1 mm cells, a 2 mm substrate on the floor, 50 ohm port;
+    the refinement covers z = 0 to 8 mm.
+    """
+    sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012), dx=1e-3,
+                     boundary="pec")
+    sim.add_material("diel", eps_r=eps_r)
+    sim.add(Box((0.0, 0.0, 0.0), (0.012, 0.012, 0.002)), material="diel")
+    sim.add_port((0.004, 0.006, 0.004), "ez", impedance=50.0,
+                 waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
+    sim.add_probe((0.008, 0.006, 0.004), "ez")
+    if refine:
+        sim.add_refinement(z_range=(0.0, 0.008), ratio=2)
+    return sim
+
+
+def _sweep_trace(**kw):
+    from rfx.vmap_sweep import vmap_material_sweep
+
+    result = _quiet(lambda: vmap_material_sweep(
+        _lumped_port_box(True), "diel.eps_r", [3.0], **kw))
+    return np.asarray(result.time_series)[0]
+
+
+def _run_trace(refine, **kw):
+    return np.asarray(_quiet(lambda: _lumped_port_box(refine, eps_r=3.0)
+                             .run(**kw).time_series))
+
+
+def test_vmap_sequential_fallback_still_solves_the_refinement():
+    """The fallback calls run(), which has the subgridded lane: not refused,
+    and each swept value is the refined run() of that value."""
+    swept = _sweep_trace(n_steps=N_STEPS)
+    direct = _run_trace(True, n_steps=N_STEPS)
+    np.testing.assert_allclose(swept, direct, rtol=1e-6, atol=0.0)
+    unrefined = _run_trace(False, n_steps=N_STEPS)
+    assert not np.allclose(swept, unrefined, rtol=0.1), \
+        "the swept trace must be the refined solve, not the coarse one"
+
+
+def test_vmap_sequential_fallback_covers_the_duration_run_covers():
+    """With n_steps left to num_periods, the fallback's trace spans the same
+    time as run()'s: run() resolves the count on the subgridded lane (fine
+    steps), where a coarse count would cover 1/ratio of it."""
+    swept = _sweep_trace(num_periods=2.0)
+    direct = _run_trace(True, num_periods=2.0)
+    assert swept.shape == direct.shape, (swept.shape, direct.shape)
+    np.testing.assert_allclose(swept, direct, rtol=1e-6, atol=0.0)
+
+
+def test_lumped_wire_scan_driver_refuses():
+    """It calls the uniform forward lane directly, without forward()."""
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: compute_lumped_wire_s_matrix_via_scan(
+            _lumped_port_box(True), np.linspace(3e9, 7e9, 3), n_steps=8))
+
+
+def test_waveguide_port_reference_model_with_a_refinement_refuses():
+    """A per-port reference model is built on the uniform grid too."""
+    def two_port(refine):
+        sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
+                         boundary="cpml", cpml_layers=10, dx=0.004)
+        common = dict(mode=(1, 0), mode_type="TE",
+                      freqs=np.linspace(4.5e9, 8e9, 3), f0=6e9,
+                      ref_offset=3, probe_offset=8)
+        sim.add_waveguide_port(0.01, direction="+x", name="a", **common)
+        sim.add_waveguide_port(0.11, direction="-x", name="b", **common)
+        if refine:
+            sim.add_refinement(z_range=(0.006, 0.014), ratio=2)
+        return sim
+
+    refs = [two_port(True), two_port(False)]
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: two_port(False).compute_waveguide_s_matrix(
+            n_steps=10, normalize="flux", port_reference_sims=refs))
+
+
+def test_direct_run_uniform_refuses():
+    """rfx.runners.run_uniform is exported; run() never sends it a refined
+    model, a direct call must not solve one without the refinement."""
+    from rfx.runners import run_uniform
+
+    with pytest.raises(NotImplementedError, match=_NO_SUBGRID):
+        _quiet(lambda: run_uniform(_box(True, graded=False), n_steps=8))
+
+
 def test_uniform_waveguide_s_matrix_refuses():
     sim = Simulation(
         freq_max=8e9, domain=(0.06, 0.02286, 0.01016), dx=3e-3,

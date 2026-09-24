@@ -1065,9 +1065,6 @@ def vmap_material_sweep(
                       UserWarning, stacklevel=2)
         return _sequential_fallback(sim, param_name, param_values, n_steps=n_steps)
 
-    # The batched kernel has no subgrid and never read add_refinement (#1240).
-    sim._require_no_refinement_without_a_subgrid("vmap_material_sweep()")
-
     # Build grid and base materials once
     grid = sim._build_grid()
     _sweep_pec_sheets: list = []
@@ -1075,6 +1072,10 @@ def vmap_material_sweep(
     base_materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(
         grid, pec_sheets=_sweep_pec_sheets, pec_wires=_sweep_pec_wires)
 
+    # The sequential fallback hands the caller's n_steps to run() unresolved:
+    # on the subgridded lane run() reads an explicit count as FINE steps, so
+    # the coarse count below would cover 1/ratio of the requested time.
+    caller_n_steps = n_steps
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
 
@@ -1091,6 +1092,9 @@ def vmap_material_sweep(
     jax_param_values = jnp.asarray(param_values)
 
     if run_one_fn is not None:
+        # The batched kernel has no subgrid and never read add_refinement;
+        # the sequential fallback below runs it through run() (#1240).
+        sim._require_no_refinement_without_a_subgrid("vmap_material_sweep()")
         # Fast path: vmap over material arrays
         batched_materials = _build_batched_materials(
             sim, grid, base_materials, param_name, jax_param_values,
@@ -1135,7 +1139,8 @@ def vmap_material_sweep(
             stacklevel=2,
         )
         return _sequential_fallback(
-            sim, param_name, param_values, n_steps=n_steps,
+            sim, param_name, param_values, n_steps=caller_n_steps,
+            num_periods=num_periods,
         )
 
 
@@ -1144,7 +1149,8 @@ def _sequential_fallback(
     param_name: str,
     param_values: np.ndarray,
     *,
-    n_steps: int,
+    n_steps: int | None,
+    num_periods: float = 20.0,
 ) -> VmapSweepResult:
     """Sequential fallback when vmap is not possible.
 
@@ -1184,7 +1190,8 @@ def _sequential_fallback(
         # Preflight only the first sim (this sequential fallback re-runs a
         # structurally-identical setup); skip thereafter to avoid per-iteration
         # preflight noise.
-        result = sim_copy.run(n_steps=n_steps, skip_preflight=_i > 0)
+        result = sim_copy.run(n_steps=n_steps, num_periods=num_periods,
+                              skip_preflight=_i > 0)
         all_ts.append(np.asarray(result.time_series))
 
         if result.dft_planes:
