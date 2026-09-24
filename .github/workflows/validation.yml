@@ -135,12 +135,16 @@ jobs:
       # so this lane deliberately RE-INCLUDES slow and slow_physics: those gates
       # run here and nowhere else on a schedule (issue #717 item 1). Verified by
       # --collect-only and by run 32004256088, where the e4 gates executed.
+      #
+      # "not docs_consistency": for the same reason this -m would re-include the
+      # tests that compare documentation prose. Those run in docs-consistency.yml;
+      # a documentation mismatch must not turn this physics lane red.
       - name: Run slow suite — shard ${{ matrix.group }} of 5
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
           pytest -v -ra -s
-          -m "not gpu and not highmem"
+          -m "not gpu and not highmem and not docs_consistency"
           --splits 5 --group ${{ matrix.group }}
           --ignore=tests/crossval/test_meep_crossval.py
           --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
