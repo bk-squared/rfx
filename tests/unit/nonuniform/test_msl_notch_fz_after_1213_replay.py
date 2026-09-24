@@ -9,7 +9,7 @@ five arms solved for the note and R2's four rungs reused -- and this file
 re-derives all of it with the instrument's own functions and pins what the
 records say each window was.
 
-Three kinds of test live here.
+Four kinds of test live here.
 
 * The windows on SYNTHETIC ladders whose answer is known, one per branch of
   each verdict.  These need no record.
@@ -18,6 +18,9 @@ Three kinds of test live here.
 * The second note's Results section, byte for byte against what its
   ``--tables`` prints today, because the third note adds functions to the
   same instrument and may not change any of the second note's output.
+* This note's own Results against its ``--tables``, its sections 0-7 against
+  the pre-declaration commit, and the two earlier records and R2's replay
+  against main's bytes.
 
 Nothing here builds a ``Simulation`` or steps a field -- the guard below
 replaces the instrument's ``Simulation`` with one that raises.
@@ -215,12 +218,18 @@ def test_w9_attribution_splits_z6_on_one_mesh(rest_mhz, attribution):
     (30.0, 0.9, "partly"),
     (35.5, 0.8, "not the interface"),
     (43.0, 2.0, "not the interface"),       # a high order does not rescue it
+    # A ladder that RISES as the cell shrinks, as the recorded one does: the
+    # bars read the span's magnitude, so each branch is reached from below.
+    (-15.0, 2.0, "the interface was the substrate term"),
+    (-15.0, 1.2, "partly"),
+    (-43.0, 2.0, "not the interface"),
 ])
 def test_w10_reads_both_the_span_and_the_order(span_mhz, p, verdict):
     """Each branch of W10 on a ladder that is an exact power law.
 
     The bars are fractions of R2's own span, 43.666 MHz, so half is 21.83
-    and 0.8 of it is 34.93: the spans above sit clear of both edges.
+    and 0.8 of it is 34.93: the spans above sit clear of both edges.  A
+    negative span is a ladder that rises toward its limit.
     """
     arms = _ladder(_power_ladder(3.668, span_mhz, p))
     r = ins.w10_new_ladder(arms)
@@ -355,6 +364,268 @@ def test_an_after_1213_arm_whose_export_is_not_its_tree_is_refused():
                     rfx_tree_exported="2" * 40)
 
 
+# ------------------------------------------------- the windows, on the record
+#: What the committed record holds, transcribed from it and from the note's
+#: Results.  Pinned means pinned: W11 FIRED and is pinned FIRED.
+RECORDED_ARMS = ("Cm", "Z16m", "Z6m", "Z6r", "Z8m")
+#: Each new arm's notch (GHz): the |S21|^2 vertex, then the log vertex.
+RECORDED_NOTCH_GHZ = {
+    "Z6m": (3.674809, 3.672677),
+    "Z8m": (3.676144, 3.675747),
+    "Cm": (3.677308, 3.678996),
+    "Z16m": (3.677785, 3.679892),
+    "Z6r": (3.752466, 3.749938),
+}
+RECORDED_RUN_IDS = {"Z6m": "369367263949", "Z6r": "369367263950",
+                    "Z8m": "369367263956", "Cm": "369367263959",
+                    "Z16m": "369367263960"}
+#: The commit each job read, and ``git rev-parse <commit>:rfx`` of it.
+_MAIN = ("17971050aa0d702e8636a1f456e53d00a6860cb8",
+         "b91a81bf4fe2931fe94e7be255c12fc7ad45a710")
+_REVERT = ("9c8fd9b605204b6272c262a4d49017c3c2306933",
+           "2af37eafe9e1e1feefa3bb27ba80525bd81f53db")
+RECORDED_COMMIT_AND_TREE = {"Z6m": _MAIN, "Z8m": _MAIN, "Cm": _MAIN,
+                            "Z16m": _MAIN, "Z6r": _REVERT}
+#: ``git rev-parse d558382f:rfx``, transcribed: the tree R2's Z6 ran.  Z6r ran
+#: a different one.
+R2_Z6_RFX_TREE = "544af8a8c41d18f14be119b424635c56dce515f0"
+RECORDED_W9_VERDICT = "moved"
+RECORDED_W9_ATTRIBUTION = "#1213 alone"
+#: New minus R2 per rung (MHz): |S21|^2, then log.
+RECORDED_W9_DELTA_MHZ = {
+    "Z6m": (-77.6571, -77.2613),
+    "Z8m": (-60.1437, -58.0334),
+    "Cm": (-41.0999, -37.6389),
+    "Z16m": (-31.0151, -30.4970),
+}
+RECORDED_W9_REST_OF_DIFF_MHZ = 0.0
+RECORDED_W9_CHANGE_1213_MHZ = -77.6571
+RECORDED_W10_VERDICT = "partly"
+RECORDED_W10_SPAN_MHZ = -2.9760
+RECORDED_W10_R2_SPAN_MHZ = 43.6659
+RECORDED_W10_SPAN_RATIO = -0.0682
+RECORDED_W10_HALF_BAR_MHZ = 21.8330
+RECORDED_W10_MOST_BAR_MHZ = 34.9328
+RECORDED_W10_ORDER = 1.4847
+RECORDED_W10_ORDER_AT_COARSE_ENDPOINT = 1.5315
+RECORDED_W10_LIMIT_GHZ = 3.678681
+RECORDED_W10_STEPS_MHZ = [1.3354, 1.1634, 0.4772]
+RECORDED_W10_MONOTONE = True
+RECORDED_W11_VERDICT = "FIRED"
+RECORDED_W11_LIMIT_NEW_GHZ = 3.678681
+RECORDED_W11_LIMIT_R2_GHZ = 3.669008
+RECORDED_W11_DIFFERENCE_MHZ = 9.6729
+RECORDED_W11_DIFFERENCE_PCT = 0.2633
+RECORDED_W11_BAR_MHZ = 7.3477
+RECORDED_W11_R2_SPREAD_PCT = 0.1996
+#: W12 per reading, in :func:`order_readings` order: declared, coarse
+#: endpoint, the two triples, the three-parameter fit.
+RECORDED_W12_KEYS = ["declared", "coarse_endpoint", "triple_0", "triple_1",
+                     "three_parameter"]
+RECORDED_W12_FZ_UM = {"power": [193.8880, 184.1512, 204.4266, 179.1327,
+                                196.9212],
+                      "log": [102.3486, 96.6780, 130.7974, 67.6662,
+                              108.5079]}
+RECORDED_W12_N_Z = {"power": [2, 2, 2, 2, 2], "log": [3, 3, 2, 4, 3]}
+RECORDED_W12_FINEST_PCT = {"power": 0.1066, "log": 0.1507}
+
+
+@pytest.fixture(scope="module")
+def record_file():
+    assert RECORD.is_file(), f"the record is missing: {RECORD}"
+    with RECORD.open() as fh:
+        return json.load(fh)
+
+
+@pytest.fixture(scope="module")
+def arms():
+    """The five new arms and R2's four rungs, as the instrument loads them."""
+    return ins.load_after_1213_arms(RECORD, R2_RECORD)
+
+
+@pytest.fixture(scope="module")
+def v(arms):
+    return ins.after_1213_verdicts(arms)
+
+
+def test_the_record_holds_the_arms_and_windows_it_is_pinned_to_hold(
+        record_file, arms):
+    """Exactly the five arms of section 2, and the windows as section 4."""
+    assert record_file["schema"] == "msl_notch_graded_fz_after_1213/1"
+    assert record_file["note"] == ins.AFTER_1213_NOTE_PATH
+    assert record_file["reused_from"] == "msl_notch_graded_fz.json"
+    assert record_file["reused_arms"] == ["Z6", "Z8", "C_off_re", "Z16"]
+    assert record_file["namesakes"] == ins.AFTER_1213_NAMESAKES
+    assert record_file["commits"] == [dict(c) for c in ins.AFTER_1213_COMMITS]
+    assert [c["commit"] for c in record_file["commits"]] == [
+        _MAIN[0], _REVERT[0]]
+    assert sorted(record_file["arms"]) == sorted(RECORDED_ARMS) == sorted(
+        ins.AFTER_1213_ARMS)
+    assert sorted(arms) == sorted(set(RECORDED_ARMS) | set(ins.R2_LADDER))
+    w = record_file["windows"]
+    assert w["primary_transform"] == "power"
+    assert (w["W9_moved_bar_hz"], w["W9_attribution_bar_hz"]) == (1.0e6,
+                                                                  0.05e6)
+    assert w["W9_revert_arm"] == "Z6r"
+    assert w["W10_ladder"] == ["Z6m", "Z8m", "Cm", "Z16m"]
+    assert w["W10_r2_ladder"] == ["Z6", "Z8", "C_off_re", "Z16"]
+    assert (w["W10_interface_span_fraction"], w["W10_interface_min_order"],
+            w["W10_not_interface_span_fraction"]) == (0.5, 1.5, 0.8)
+    assert w["W11_bar_pct"] == 0.20
+    assert w["W12_freq_bar_pct"] == case.FREQ_BAR * 100.0
+    for key, rec in sorted(record_file["arms"].items()):
+        assert rec["arm"] == key
+        assert rec["smoke"] is False, f"{key} was recorded from a capped run"
+        assert rec["num_periods"] == case.NUM_PERIODS
+        for field in ("freqs_hz", "s11_re", "s11_im", "s21_re", "s21_im"):
+            assert len(rec[field]) == case.N_FREQS, (key, field)
+
+
+def test_every_new_arm_names_its_run_its_commit_and_the_tree_it_ran(
+        record_file):
+    """Section 6's provenance: commit, ``rfx/`` tree, run, GPU, the export."""
+    for key, rec in sorted(record_file["arms"].items()):
+        p = rec["provenance"]
+        commit, tree = RECORDED_COMMIT_AND_TREE[key]
+        assert p["run_id"] == RECORDED_RUN_IDS[key], key
+        assert p["git_sha"] == commit, key
+        assert p["rfx_tree"] == p["rfx_tree_exported"] == tree, key
+        assert p["rfx_tree_exported_matches"] is True, key
+        assert p["jax_backend"] == "gpu" and p["gpu_device_kind"], key
+        assert p["argv"][p["argv"].index("--arm") + 1] == key
+        assert p["argv"][p["argv"].index("--commit") + 1] == commit
+    assert len({r["provenance"]["run_id"]
+                for r in record_file["arms"].values()}) == len(RECORDED_ARMS)
+
+
+def test_the_witnesses_are_inside_their_bars_for_every_new_arm(record_file):
+    for key, rec in sorted(record_file["arms"].items()):
+        w = rec["witnesses"]
+        assert w["worst_settling_db"] <= case.SETTLING_DB, key
+        assert w["worst_sigma_excess"] <= case.PASSIVITY_EXCESS_BAR, key
+
+
+@pytest.mark.parametrize("key", sorted(RECORDED_NOTCH_GHZ))
+def test_each_new_notch_is_re_derived_from_the_curve(arms, key):
+    """The shared estimator on the recorded |S21|, both ways, against the pin."""
+    power, log = RECORDED_NOTCH_GHZ[key]
+    assert ins.notch_of(arms[key], "power")["f"] / 1e9 == pytest.approx(
+        power, abs=5e-7)
+    got = ins.notch_of(arms[key], "log")
+    assert got["f"] / 1e9 == pytest.approx(log, abs=5e-7)
+    assert got["f"] == pytest.approx(arms[key]["notch"]["f"], abs=1.0)
+
+
+@pytest.mark.parametrize("key", RECORDED_ARMS)
+def test_each_new_arm_solved_its_namesakes_mesh(arms, v, key):
+    """G.1 on the records: every cell of the three profiles, every declared
+    field, and R3's realized block equal to the R2 namesake's.
+
+    The profiles and the grid are compared here directly on the two records
+    as well as through :func:`mesh_against_namesake`, so an emptied
+    comparison is not the only witness.
+    """
+    old = arms[ins.AFTER_1213_NAMESAKES[key]]
+    for axis in ("x", "y", "z"):
+        assert arms[key]["profiles"][axis] == old["profiles"][axis], (
+            key, axis)
+    for field in ("grid_shape", "dt_s", "n_substrate_cells", "fine_cell_m",
+                  "substrate_cell_m"):
+        assert arms[key][field] == old[field], (key, field)
+    m = v["mesh"][key]
+    assert m["mesh_identical"] is True and m["profiles_bit_identical"] is True
+    assert m["fields_differing"] == [] and m["realized_equal"] is True
+
+
+def test_z6r_solved_r2s_z6_to_the_last_bit(arms):
+    """The record fact under W9's 0.0000 MHz: Z6r's four S curves are R2's
+    Z6's bit for bit, though the two jobs ran different ``rfx/`` trees."""
+    z6r, z6 = arms["Z6r"], arms["Z6"]
+    for field in ("freqs_hz", "s11_re", "s11_im", "s21_re", "s21_im",
+                  "s12_re", "s12_im", "s22_re", "s22_im"):
+        assert z6r[field] == z6[field], field
+    assert z6r["provenance"]["rfx_tree"] == _REVERT[1] != R2_Z6_RFX_TREE
+    assert arms["Z6m"]["s21_re"] != z6["s21_re"]
+
+
+def test_w9_on_the_record_moved_and_1213_alone(v):
+    r = v["W9"]
+    assert r["verdict"] == RECORDED_W9_VERDICT
+    assert r["transform"] == "power"
+    assert r["delta_z6_hz"] / 1e6 == pytest.approx(
+        RECORDED_W9_DELTA_MHZ["Z6m"][0], abs=5e-5)
+    for row in r["rows"]:
+        power, log = RECORDED_W9_DELTA_MHZ[row["arm"]]
+        assert row["delta_hz"]["power"] / 1e6 == pytest.approx(power,
+                                                               abs=5e-5)
+        assert row["delta_hz"]["log"] / 1e6 == pytest.approx(log, abs=5e-5)
+    assert r["revert_present"] is True
+    assert r["attribution"] == RECORDED_W9_ATTRIBUTION
+    assert r["rest_of_diff_hz"]["power"] == RECORDED_W9_REST_OF_DIFF_MHZ
+    assert r["rest_of_diff_hz"]["log"] == RECORDED_W9_REST_OF_DIFF_MHZ
+    assert r["change_1213_hz"]["power"] / 1e6 == pytest.approx(
+        RECORDED_W9_CHANGE_1213_MHZ, abs=5e-5)
+
+
+def test_w10_on_the_record_partly(v):
+    """Partly: the span is under half of R2's and the order under 1.5."""
+    r = v["W10"]
+    nw = r["new"]["power"]
+    assert r["verdict"] == RECORDED_W10_VERDICT
+    assert r["span_hz"] / 1e6 == pytest.approx(RECORDED_W10_SPAN_MHZ,
+                                               abs=5e-5)
+    assert r["span_r2_hz"] / 1e6 == pytest.approx(RECORDED_W10_R2_SPAN_MHZ,
+                                                  abs=5e-5)
+    assert r["span_ratio"] == pytest.approx(RECORDED_W10_SPAN_RATIO,
+                                            abs=5e-5)
+    assert r["interface_span_bar_hz"] / 1e6 == pytest.approx(
+        RECORDED_W10_HALF_BAR_MHZ, abs=5e-5)
+    assert r["not_interface_span_bar_hz"] / 1e6 == pytest.approx(
+        RECORDED_W10_MOST_BAR_MHZ, abs=5e-5)
+    assert r["declared_order"] == pytest.approx(RECORDED_W10_ORDER, abs=5e-5)
+    assert nw["declared"]["order"] == r["declared_order"]
+    assert nw["declared"]["limit_hz"] / 1e9 == pytest.approx(
+        RECORDED_W10_LIMIT_GHZ, abs=5e-7)
+    assert {q["key"]: q for q in nw["readings"]}["coarse_endpoint"][
+        "order"] == pytest.approx(RECORDED_W10_ORDER_AT_COARSE_ENDPOINT,
+                                  abs=5e-5)
+    assert [s / 1e6 for s in nw["steps_hz"]] == pytest.approx(
+        RECORDED_W10_STEPS_MHZ, abs=5e-5)
+    assert nw["monotone"] is RECORDED_W10_MONOTONE
+    assert nw["arms"] == ["Z6m", "Z8m", "Cm", "Z16m"]
+
+
+def test_w11_on_the_record_fired(v):
+    r = v["W11"]
+    assert r["verdict"] == RECORDED_W11_VERDICT
+    assert r["limit_new_hz"] / 1e9 == pytest.approx(RECORDED_W11_LIMIT_NEW_GHZ,
+                                                    abs=5e-7)
+    assert r["limit_r2_hz"] / 1e9 == pytest.approx(RECORDED_W11_LIMIT_R2_GHZ,
+                                                   abs=5e-7)
+    assert r["difference_hz"] / 1e6 == pytest.approx(
+        RECORDED_W11_DIFFERENCE_MHZ, abs=5e-5)
+    assert r["difference_pct"] == pytest.approx(RECORDED_W11_DIFFERENCE_PCT,
+                                                abs=5e-5)
+    assert r["bar_hz"] / 1e6 == pytest.approx(RECORDED_W11_BAR_MHZ, abs=5e-5)
+    assert r["r2_readings_spread_pct"] == pytest.approx(
+        RECORDED_W11_R2_SPREAD_PCT, abs=5e-5)
+
+
+def test_w12_on_the_record_is_reported_without_a_verdict(v):
+    r = v["W12"]
+    assert r["verdict"] is None
+    for t in ins.TRANSFORMS:
+        rows = r["readings"][t]
+        assert [q["key"] for q in rows] == RECORDED_W12_KEYS
+        assert [q["substrate_cell_for_the_bar_m"] * 1e6 for q in rows] == (
+            pytest.approx(RECORDED_W12_FZ_UM[t], abs=5e-5)), t
+        assert [q["n_substrate_cells_for_the_bar"] for q in rows] == (
+            RECORDED_W12_N_Z[t]), t
+        assert r["finest_from_reference_pct"][t] == pytest.approx(
+            RECORDED_W12_FINEST_PCT[t], abs=5e-5)
+    assert r["finest_arm"] == "Z16m"
+
+
 # ------------------------------- the second note's Results, byte for byte
 R2_NOTE = _ROOT / ins.FZ_NOTE_PATH
 
@@ -434,10 +705,48 @@ UNEDITED_BLOBS = {
 }
 
 
-@pytest.mark.parametrize("path", sorted(UNEDITED_BLOBS))
-def test_the_earlier_records_and_r2s_replay_are_byte_for_byte_mains(path):
+def _blob(data: bytes) -> str:
+    """``git hash-object`` of these bytes."""
     import hashlib
 
-    data = (_ROOT / path).read_bytes()
-    blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
-    assert blob == UNEDITED_BLOBS[path], path
+    return hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+
+
+@pytest.mark.parametrize("path", sorted(UNEDITED_BLOBS))
+def test_the_earlier_records_and_r2s_replay_are_byte_for_byte_mains(path):
+    assert _blob((_ROOT / path).read_bytes()) == UNEDITED_BLOBS[path], path
+
+
+# ---------------------------------------- this note's Results, byte for byte
+NOTE = _ROOT / ins.AFTER_1213_NOTE_PATH
+#: The note's blob as the pre-declaration commit 64ce5cd2 holds it, before
+#: any arm ran.  Sections 0-7 are frozen from that commit.
+PREDECLARATION_BLOB = "b7757db27eb06b434bd49a1124170fa2b41f84f7"
+
+
+def test_sections_0_to_7_are_the_pre_declaration_as_committed():
+    """Everything before the Results is 64ce5cd2's file, then one blank line."""
+    data = NOTE.read_bytes()
+    frozen = data[:data.index(b"## Results (facts)")]
+    assert frozen.endswith(b"\n\n")
+    assert _blob(frozen[:-1]) == PREDECLARATION_BLOB
+
+
+def test_the_notes_results_are_what_tables_prints(capsys):
+    """The note's Results, heading to Conclusions, against ``--tables``.
+
+    ``--tables`` is run through the instrument's own command line on the two
+    committed records.  The note's side ends where the leader's Conclusions
+    begin: at ``Conclusions: leader fills.`` while it stands, or at a
+    ``### Conclusions`` heading once the leader writes one in its place.
+    """
+    assert ins.main(["--tables", "--out", str(RECORD),
+                     "--fz-out", str(R2_RECORD)]) == 0
+    md = capsys.readouterr().out
+    printed = md[md.index("## Results (facts)"):
+                 md.index("Conclusions: leader fills.")]
+    note = NOTE.read_text()
+    start = note.index("## Results (facts)")
+    end = min(i for i in (note.find("Conclusions: leader fills.", start),
+                          note.find("### Conclusions", start)) if i >= 0)
+    assert note[start:end] == printed

@@ -133,3 +133,168 @@ singularity at the strip edge in the plane normal to the sheet (R2 §0's origina
 
 One Opus instance implements from this note and submits the jobs. The leader reads the records
 and writes the Conclusions. A separate Opus instance reviews.
+
+## Results (facts)
+
+Appended after the runs; sections 0-7 above are unchanged.  Every number below is read
+from `validation/research/multiband_nu/results/msl_notch_graded_fz_after_1213.json` and, for R2's four
+rungs, from `msl_notch_graded_fz.json`, by `after_1213_markdown_tables()` in the instrument.
+`tests/unit/nonuniform/test_msl_notch_fz_after_1213_replay.py` re-derives the same numbers from
+the same two files.  Every notch is the |S21|^2 vertex (section 3) unless a column says `log`;
+the log vertex judges nothing.  The reference is the openEMS tutorial's `stage_b_fine` read the
+same way: 3.673868 GHz (|S21|^2), 3.674356 GHz (log).
+
+### G.1 The mesh each arm solved, against its R2 namesake
+
+Both sides of every comparison are the profiles and fields the GPU job's own build wrote into
+its record; nothing is rebuilt here.  "Declared mesh fields" is every field of
+`MESH_BLOCK_FIELDS`: the rung, the board drawn on it, the probe and feed placement, the grid
+shape and the time step.  "Realized block" is R3's reading of the lattice (sheet plane, node
+rows, permittivity either side of the sheet), which each `rfx/` tree takes for itself.
+
+| arm | R2 namesake | F (um) | FZ (um) | substrate cells | z tail cell (um) | grid nodes | grid cells | dt (fs) | three profiles equal, bit for bit | declared mesh fields equal | realized block equal |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Z6m | Z6 | 24.2915 | 42.3333 | 6 | 114.7303 | 267x270x33 | 2,289,728 | 52.5605 | True | True | True |
+| Z8m | Z8 | 24.2915 | 31.7500 | 8 | 111.0135 | 267x270x38 | 2,647,498 | 49.8894 | True | True | True |
+| Cm | C_off_re | 24.2915 | 21.1667 | 12 | 109.6286 | 267x270x47 | 3,291,484 | 44.0446 | True | True | True |
+| Z16m | Z16 | 24.2915 | 15.8750 | 16 | 107.7639 | 267x270x56 | 3,935,470 | 38.4993 | True | True | True |
+| Z6r | Z6 | 24.2915 | 42.3333 | 6 | 114.7303 | 267x270x33 | 2,289,728 | 52.5605 | True | True | True |
+
+### G.2 What each arm measured
+
+| arm | record | notch (GHz) | log (GHz) | above the reference (%) | depth (dB) | worst settling (dB) | worst passivity excess | grid cells | wall (s) |
+|---|---|---|---|---|---|---|---|---|---|
+| Z6m | new | 3.674809 | 3.672677 | +0.0256 | -44.65 | -91.45 | 0.00447 | 2,289,728 | 372.2 |
+| Z8m | new | 3.676144 | 3.675747 | +0.0620 | -43.17 | -92.74 | 0.00450 | 2,647,498 | 739.1 |
+| Cm | new | 3.677308 | 3.678996 | +0.0936 | -44.09 | -94.01 | 0.00450 | 3,291,484 | 1047.7 |
+| Z16m | new | 3.677785 | 3.679892 | +0.1066 | -44.66 | -94.63 | 0.00452 | 3,935,470 | 1079.7 |
+| Z6r | new | 3.752466 | 3.749938 | +2.1394 | -46.65 | -95.19 | 0.00434 | 2,289,728 | 357.4 |
+| Z6 | R2 | 3.752466 | 3.749938 | +2.1394 | -46.65 | -95.19 | 0.00434 | 2,289,728 | 357.0 |
+| Z8 | R2 | 3.736288 | 3.733780 | +1.6990 | -47.18 | -94.97 | 0.00441 | 2,647,498 | 715.9 |
+| C_off_re | R2 | 3.718408 | 3.716635 | +1.2123 | -50.81 | -94.89 | 0.00443 | 3,291,484 | 1008.1 |
+| Z16 | R2 | 3.708800 | 3.710389 | +0.9508 | -44.11 | -95.07 | 0.00447 | 3,935,470 | 1081.9 |
+
+Bars, for the two witness columns: ring-down -40 dB, passivity excess 0.01.
+
+### G.3 Provenance
+
+`rfx/ tree` is `git rev-parse <commit>:rfx`, read by the job in the source repository.
+`exported tree matches` compares it with the same hash taken of the `rfx/` the job exported and
+imported, before anything imported it.  R2's arms carry neither field: they were recorded before
+the instrument read them, and their blocks are left as measured.
+
+| arm | VESSL run | commit | rfx/ tree | exported tree matches | GPU | jax | started (UTC) |
+|---|---|---|---|---|---|---|---|
+| Z6m | 369367263949 | 17971050aa0d | b91a81bf4fe2 | True | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-23T10:29:11+00:00 |
+| Z8m | 369367263956 | 17971050aa0d | b91a81bf4fe2 | True | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-23T10:40:42+00:00 |
+| Cm | 369367263959 | 17971050aa0d | b91a81bf4fe2 | True | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-23T10:45:07+00:00 |
+| Z16m | 369367263960 | 17971050aa0d | b91a81bf4fe2 | True | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-23T10:48:42+00:00 |
+| Z6r | 369367263950 | 9c8fd9b60520 | 2af37eafe9e1 | True | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-23T10:37:08+00:00 |
+| Z6 | 369367263365 | d558382f3f5f | n/a | n/a | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-22T09:17:12+00:00 |
+| Z8 | 369367263367 | d558382f3f5f | n/a | n/a | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-22T09:25:28+00:00 |
+| C_off_re | 369367263518 | c4d6aee830e2 | n/a | n/a | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-22T16:38:45+00:00 |
+| Z16 | 369367263368 | d558382f3f5f | n/a | n/a | NVIDIA GeForce RTX 4090 | 0.4.33.dev20241023+e3c6d6430 | 2026-09-22T09:28:13+00:00 |
+
+The branch each new arm's commit lives on, both on origin:
+
+| commit | branch | what it is |
+|---|---|---|
+| 17971050aa0d | `nu/notch-fz-after-1213` | the note's own branch: main cca8ee5b plus the note and this instrument; its rfx/ is main's |
+| 9c8fd9b60520 | `nu/notch-fz-after-1213-revert1213` | a measurement branch, never merged: the commit above with #1213's rfx/ change reverted and nothing else, for Z6r |
+
+### G.4 The frozen windows
+
+**W9 -- did the board move, and was it #1213?**  Each rung against its R2 namesake: the same
+mesh (G.1), a different `rfx/` tree (G.3).
+
+| rung | R2 namesake | FZ (um) | R2 (GHz) | new (GHz) | new minus R2 (MHz) | R2, log (GHz) | new, log (GHz) | new minus R2, log (MHz) |
+|---|---|---|---|---|---|---|---|---|
+| Z6m | Z6 | 42.3333 | 3.752466 | 3.674809 | -77.6571 | 3.749938 | 3.672677 | -77.2613 |
+| Z8m | Z8 | 31.7500 | 3.736288 | 3.676144 | -60.1437 | 3.733780 | 3.675747 | -58.0334 |
+| Cm | C_off_re | 21.1667 | 3.718408 | 3.677308 | -41.0999 | 3.716635 | 3.678996 | -37.6389 |
+| Z16m | Z16 | 15.8750 | 3.708800 | 3.677785 | -31.0151 | 3.710389 | 3.679892 | -30.4970 |
+
+| Z6m minus Z6 (MHz) | bar (MHz) | verdict |
+|---|---|---|
+| -77.6571 | 1.00 | moved |
+
+Attribution.  Z6r is Z6's mesh on main with #1213's `rfx/` change reverted, so on one
+mesh the step from R2's Z6 to Z6m splits into the rest of the `rfx/` diff (R2's Z6 to Z6r)
+and #1213's own change (Z6r to Z6m).
+
+| estimator | R2's Z6 (GHz) | Z6r (GHz) | Z6m (GHz) | Z6r minus R2's Z6 (MHz) | Z6m minus Z6r (MHz) |
+|---|---|---|---|---|---|
+| power | 3.752466 | 3.752466 | 3.674809 | +0.0000 | -77.6571 |
+| log | 3.749938 | 3.749938 | 3.672677 | +0.0000 | -77.2613 |
+
+| abs(Z6r minus R2's Z6) (MHz) | bar (MHz) | attribution |
+|---|---|---|
+| 0.0000 | 0.05 | #1213 alone |
+
+**W10 -- the new ladder.**  Z6m -> Z8m -> Cm -> Z16m against R2's Z6 -> Z8 -> C_off_re -> Z16, at
+F = 24.2915 um.  Each step is from the rung above.
+
+| FZ (um) | substrate cells | R2 rung | R2 (GHz) | step (MHz) | new rung | new (GHz) | step (MHz) | new, log (GHz) | step, log (MHz) |
+|---|---|---|---|---|---|---|---|---|---|
+| 42.3333 | 6 | Z6 | 3.752466 | n/a | Z6m | 3.674809 | n/a | 3.672677 | n/a |
+| 31.7500 | 8 | Z8 | 3.736288 | -16.1780 | Z8m | 3.676144 | +1.3354 | 3.675747 | +3.0700 |
+| 21.1667 | 12 | C_off_re | 3.718408 | -17.8804 | Cm | 3.677308 | +1.1634 | 3.678996 | +3.2492 |
+| 15.8750 | 16 | Z16 | 3.708800 | -9.6076 | Z16m | 3.677785 | +0.4772 | 3.679892 | +0.8962 |
+
+Every reading of the order, both ladders, each with its limit and the limit's distance from
+the reference.  The first four take the limit from the finest two rungs the reading covers, at
+its order; the three-parameter fit carries its own.  The declared rule is the first row.
+
+| how the order is read | ladder | order | limit (GHz) | limit minus the reference (MHz) | same (%) |
+|---|---|---|---|---|---|
+| declared: least squares of the log step against the midpoint of each pair's log FZ | R2 | 0.7518 | 3.669008 | -4.8606 | -0.1323 |
+| declared: least squares of the log step against the midpoint of each pair's log FZ | new | 1.4847 | 3.678681 | +4.8123 | +0.1310 |
+| the same, each step at the coarser rung of its pair | R2 | 0.8030 | 3.671829 | -2.0396 | -0.0555 |
+| the same, each step at the coarser rung of its pair | new | 1.5315 | 3.678647 | +4.7786 | +0.1301 |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | R2 | 0.7064 | 3.664495 | -9.3731 | -0.2551 |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | new | 1.4074 | 3.678820 | +4.9515 | +0.1348 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | R2 | 0.7958 | 3.671457 | -2.4113 | -0.0656 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | new | 1.5576 | 3.678629 | +4.7608 | +0.1296 |
+| f_inf + A FZ^p fitted to all four notches at once | R2 | 0.7429 | 3.667992 | -5.8769 | -0.1600 |
+| f_inf + A FZ^p fitted to all four notches at once | new | 1.4562 | 3.678729 | +4.8610 | +0.1323 |
+
+The three-parameter fit leaves 0.0514 MHz rms on R2's ladder and 0.0052 MHz rms on the new
+one, four points and three unknowns each.
+
+| ladder | estimator | monotone | span, coarsest minus finest (MHz) | declared-rule order | declared-rule limit (GHz) |
+|---|---|---|---|---|---|
+| R2 | power | True | +43.6659 | 0.7518 | 3.669008 |
+| R2 | log | True | +39.5489 | 1.3713 | 3.697475 |
+| new | power | True | -2.9760 | 1.4847 | 3.678681 |
+| new | log | True | -7.2153 | 1.7763 | 3.681236 |
+
+| new span over R2's | half of R2's span (MHz) | order bar | 0.8 of R2's span (MHz) | verdict |
+|---|---|---|---|---|
+| -0.0682 | 21.8330 | 1.5 | 34.9328 | partly |
+
+**W11 -- one limit.**  Both limits by the declared rule, under |S21|^2.
+
+| new ladder's limit (GHz) | R2's limit (GHz) | abs difference (MHz) | same, % of the reference | bar (%) | bar (MHz) | R2's five readings' spread (%) | verdict |
+|---|---|---|---|---|---|---|---|
+| 3.678681 | 3.669008 | 9.6729 | 0.2633 | 0.20 | 7.3477 | 0.1996 | FIRED |
+
+**W12 -- the substrate rule for the current solver.**  Reported, no verdict.  W8's derivation
+on the new ladder, per reading: FZ = (bar x limit / abs(A))^(1/p) and n_z = ceil(h / FZ),
+the bar 1 % of that reading's OWN limit.
+
+| how the order is read | estimator | order | limit (GHz) | abs(A) | FZ for the bar (um) | n_z for the bar |
+|---|---|---|---|---|---|---|
+| declared: least squares of the log step against the midpoint of each pair's log FZ | power | 1.4847 | 3.678681 | 1.1951e+13 | 193.8880 | 2 |
+| declared: least squares of the log step against the midpoint of each pair's log FZ | log | 1.7763 | 3.681236 | 4.5025e+14 | 102.3486 | 3 |
+| the same, each step at the coarser rung of its pair | power | 1.5315 | 3.678647 | 1.9296e+13 | 184.1512 | 2 |
+| the same, each step at the coarser rung of its pair | log | 1.8682 | 3.681151 | 1.1652e+15 | 96.6780 | 3 |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | power | 1.4074 | 3.678820 | 5.7318e+12 | 204.4266 | 2 |
+| the ratio of two successive steps, rungs 42.333 / 31.750 / 21.167 um | log | 0.8333 | 3.687079 | 6.3495e+10 | 130.7974 | 2 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | power | 1.5576 | 3.678629 | 2.5212e+13 | 179.1327 | 2 |
+| the ratio of two successive steps, rungs 31.750 / 21.167 / 15.875 um | log | 2.6578 | 3.680672 | 4.4476e+18 | 67.6662 | 4 |
+| f_inf + A FZ^p fitted to all four notches at once | power | 1.4562 | 3.678729 | 9.1633e+12 | 196.9212 | 2 |
+| f_inf + A FZ^p fitted to all four notches at once | log | 1.3950 | 3.682534 | 1.2497e+13 | 108.5079 | 3 |
+
+The finest rung, Z16m, from the reference: +0.1066 % (|S21|^2), +0.1507 % (log).
+
+Conclusions: leader fills.
