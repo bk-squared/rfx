@@ -52,7 +52,7 @@ them.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import Mapping, NamedTuple
 
 import numpy as np
 
@@ -290,6 +290,98 @@ def snapshot_axes(grid, snapshot, n_steps: int, *,
             dt=dt,
         )
     return out
+
+
+class SnapshotPiece(NamedTuple):
+    """One scan of a snapshot-recording run (see :func:`plan_snapshot_pieces`).
+
+    ``kind``: ``"plain"`` (a scan of the step), ``"blocks"`` (a scan over
+    blocks of ``interval`` steps, each an inner scan followed by a frame) or
+    ``"rec"`` (a scan of the step that also outputs every step's frame).
+    ``start`` and ``length`` are in steps from the segment's first step.
+    ``frame_rows`` are the rows of the piece (0-based, within the piece)
+    after which a frame is kept.
+    """
+    kind: str
+    start: int
+    length: int
+    frame_rows: tuple
+
+
+def plan_snapshot_pieces(n: int, lo: int, interval: int) -> list:
+    """How ``run()`` scans ``n`` steps (global steps ``lo, lo+1, ...``) when
+    it records a frame after every step whose completed-step count is a
+    multiple of ``interval`` (#1258).
+
+    Pure Python; returns :class:`SnapshotPiece` rows in step order. First a
+    ``plain`` head up to the next multiple (only when ``lo`` is not one,
+    inside a misaligned ``report_every`` chunk), then ``blocks``, then a
+    ``plain`` tail after the last multiple.
+
+    A one-step ``plain`` piece is not left on its own unless the segment IS
+    one step: XLA removes a loop that runs once and inlines its body, which
+    fuses that step with what follows and moved the last bit of Ex/Ey on a
+    PEC box (arm64 CPU, 0.1-1 ULP). It is joined with ONE step of a
+    neighbour into a ``rec`` piece of two or three steps: a neighbouring
+    ``plain`` piece gives its adjacent step, an adjacent ``rec`` piece grows
+    by one, and a ``blocks`` neighbour gives its adjacent block's adjacent
+    step and keeps the rest of that block as a ``plain`` piece of
+    ``interval - 1`` steps. A ``rec`` piece therefore holds at most three
+    frames before its unwanted rows are dropped, whatever the interval.
+    """
+    n, lo, m = int(n), int(lo), int(interval)
+    if m < 1 or n < 0:
+        raise ValueError(f"need interval >= 1 and n >= 0, got {m}, {n}")
+    head = min((-lo) % m, n)
+    n_blocks = (n - head) // m
+    tail = n - head - n_blocks * m
+    runs = []                       # [kind, length], in step order
+    if head:
+        runs.append(["plain", head])
+    if n_blocks:
+        runs.append(["blocks", n_blocks * m])
+    if tail:
+        runs.append(["plain", tail])
+
+    while len(runs) > 1:
+        i = next((k for k, (kind, length) in enumerate(runs)
+                  if kind == "plain" and length == 1), None)
+        if i is None:
+            break
+        # Neighbour: a plain piece first, then the shorter rec piece, then
+        # blocks.
+        cands = [j for j in (i - 1, i + 1) if 0 <= j < len(runs)]
+        rank = {"plain": 0, "rec": 1, "blocks": 2}
+        j = min(cands, key=lambda k: (rank[runs[k][0]], runs[k][1]))
+        kind, length = runs[j]
+        right = j > i
+        if kind == "rec":
+            new = [["rec", length + 1]]
+        elif kind == "plain":
+            rest = [["plain", length - 1]] if length > 2 else []
+            merged = ["rec", 2 if length != 2 else 3]
+            new = [merged] + rest if right else rest + [merged]
+        else:                       # blocks: borrow one step of one block
+            others = [["blocks", length - m]] if length > m else []
+            part = [["plain", m - 1]] if m > 1 else []
+            if right:
+                new = [["rec", 2]] + part + others
+            else:
+                new = others + part + [["rec", 2]]
+        runs[min(i, j):max(i, j) + 1] = new
+
+    pieces, start = [], 0
+    for kind, length in runs:
+        if kind == "blocks":
+            rows = tuple(range(m - 1, length, m))
+        else:
+            rows = tuple(r for r in range(length)
+                         if (lo + start + r + 1) % m == 0)
+            if kind == "plain":
+                rows = rows[-1:] if rows and rows[-1] == length - 1 else ()
+        pieces.append(SnapshotPiece(kind, start, length, rows))
+        start += length
+    return pieces
 
 
 def snapshot_extractor(snapshot):

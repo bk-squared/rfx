@@ -38,7 +38,8 @@ from rfx.progress import (
     validate_report_every,
 )
 from rfx.snapshots import (
-    snapshot_axes, snapshot_extractor, validate_snapshot_spec,
+    plan_snapshot_pieces, snapshot_axes, snapshot_extractor,
+    validate_snapshot_spec,
 )
 
 
@@ -2628,10 +2629,14 @@ def run(
         steps, plus a scan over the remaining ``n_steps % interval``) and
         records after each block, so the step body is the one a run without
         a snapshot compiles. The remainder scan is a second compile of the
-        step body; with ``report_every`` a chunk that does not start on a
-        multiple of the interval adds a short head scan, and each distinct
-        head / tail length compiles once. With ``checkpoint_segments`` the
-        interval must divide the segment length
+        step body; a remainder of ONE step is instead joined with the last
+        step of the last block into a two-step scan (a one-step scan is
+        inlined by XLA and changed the last bit), leaving the rest of that
+        block as a scan of ``interval - 1`` steps. With ``report_every`` a
+        chunk that does not start on a multiple of the interval adds a short
+        head scan, and each distinct piece length compiles once
+        (``rfx.snapshots.plan_snapshot_pieces`` lays the pieces out). With
+        ``checkpoint_segments`` the interval must divide the segment length
         ``n_steps // checkpoint_segments``.
     checkpoint : bool
         If True, wrap the scan body with ``jax.checkpoint`` to
@@ -2897,29 +2902,28 @@ def run(
         ``lo, lo+1, ...``) with ``body`` and take a frame after every step
         whose completed-step count is a multiple of ``snap_interval`` (#1258).
 
-        The steps run as up to three kinds of piece, in step order:
+        The steps run as the pieces :func:`rfx.snapshots.plan_snapshot_pieces`
+        lays out, in step order:
 
-        * ``plain`` -- a scan of ``body`` (the head up to the next multiple,
-          inside a misaligned ``report_every`` chunk; the tail after the last
-          multiple), with the frame read from the carry when the piece ends
-          on a multiple;
+        * ``plain`` -- a scan of ``body``, with the frame read from the carry
+          when the piece ends on a multiple;
         * ``blocks`` -- a scan over blocks of ``snap_interval`` steps whose
           body is an inner scan of ``body`` followed by the frame read from
           the carry;
-        * ``rec`` -- a scan of ``body`` that also outputs every step's frame,
-          of which the rows ending on a multiple are kept.
+        * ``rec`` -- a scan of ``body`` over two or three steps that also
+          outputs each step's frame, of which the rows ending on a multiple
+          are kept.
 
-        A ONE-step plain piece is never run on its own: XLA removes a loop
-        that runs once and inlines its body, which fuses the step with what
-        follows and moved the last bit of Ex/Ey on a PEC box (arm64 CPU,
-        0.1-1 ULP). It is merged with a neighbour into a ``rec`` piece
-        (a block gives up one block: at most ``snap_interval + 1`` extra
-        frames, dropped at once). Every piece calls the same ``body`` on the
-        same ``xs`` rows in the same order, inside a loop of at least two
-        steps, so the carry is the one a single scan produces; the probe
-        rows are joined back in step order. Returns
+        A one-step plain piece never runs on its own (XLA inlines a loop that
+        runs once, and the inlined step moved the last bit of Ex/Ey on a PEC
+        box): the planner joins it with ONE step of a neighbour into a
+        ``rec`` piece, so at most three frames exist before the unwanted ones
+        are dropped, whatever the interval. Every piece calls the same
+        ``body`` on the same ``xs`` rows in the same order, inside a loop of
+        at least two steps, so the carry is the one a single scan produces;
+        the probe rows are joined back in step order. Returns
         ``(carry, (probe_rows, [frames per component]))``, the output layout
-        of the ``interval == 1`` path. A chunk of one step is run as the
+        of the ``interval == 1`` path. A segment of one step is run as the
         one-step scan the unchunked path would also run.
 
         The block and recording bodies are built once per ``body`` so
@@ -2936,58 +2940,20 @@ def run(
             c, (p,) = body(c, x)
             return c, (p, _take_snapshot(c["fdtd"]))
 
-        def pieces_of(n, lo):
-            head = min((-lo) % m, n)
-            n_blocks = (n - head) // m
-            tail = n - head - n_blocks * m
-            pieces = []
-            if head:
-                pieces.append(["plain", head])
-            if n_blocks:
-                pieces.append(["blocks", n_blocks * m])
-            if tail:
-                pieces.append(["plain", tail])
-            # Merge every one-step plain piece into a neighbour.
-            while len(pieces) > 1:
-                i = next((k for k, pc in enumerate(pieces)
-                          if pc[0] == "plain" and pc[1] == 1), None)
-                if i is None:
-                    break
-                j = i + 1 if i + 1 < len(pieces) else i - 1
-                kind, length = pieces[j]
-                if kind == "blocks":
-                    taken = m
-                    if length > m:
-                        pieces[j][1] = length - m
-                        rest = [pieces[j]]
-                    else:
-                        rest = []
-                    merged = ["rec", 1 + taken]
-                    if j > i:
-                        pieces[i:j + 1] = [merged] + rest
-                    else:
-                        pieces[j:i + 1] = rest + [merged]
-                else:
-                    merged = ["rec", 1 + length]
-                    lo_k, hi_k = min(i, j), max(i, j)
-                    pieces[lo_k:hi_k + 1] = [merged]
-            return pieces
-
         def record(carry, xs_seg, lo):
             n = int(jax.tree_util.tree_leaves(xs_seg)[0].shape[0])
             probe_parts, frame_parts = [], []
-            start = 0
-            for kind, length in pieces_of(n, lo):
-                rows = jax.tree_util.tree_map(
-                    lambda x, a=start, b=start + length: x[a:b], xs_seg)
-                if kind == "plain":
+            for piece in plan_snapshot_pieces(n, lo, m):
+                a, b = piece.start, piece.start + piece.length
+                rows = jax.tree_util.tree_map(lambda x: x[a:b], xs_seg)
+                if piece.kind == "plain":
                     carry, (p,) = jax.lax.scan(body, carry, rows)
                     probe_parts.append(p)
-                    if (lo + start + length) % m == 0:
+                    if piece.frame_rows:
                         frame_parts.append(
                             [f[None] for f in _take_snapshot(carry["fdtd"])])
-                elif kind == "blocks":
-                    nb = length // m
+                elif piece.kind == "blocks":
+                    nb = piece.length // m
                     blocks = jax.tree_util.tree_map(
                         lambda x: x.reshape(nb, m, *x.shape[1:]), rows)
                     carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
@@ -2996,12 +2962,9 @@ def run(
                 else:  # "rec"
                     carry, (p, f) = jax.lax.scan(rec_body, carry, rows)
                     probe_parts.append(p)
-                    keep = [r for r in range(length)
-                            if (lo + start + r + 1) % m == 0]
-                    if keep:
-                        idx = jnp.asarray(keep, dtype=jnp.int32)
+                    if piece.frame_rows:
+                        idx = jnp.asarray(piece.frame_rows, dtype=jnp.int32)
                         frame_parts.append([ff[idx] for ff in f])
-                start += length
 
             if not probe_parts:
                 # n == 0: the zero-length scan the other paths return.
