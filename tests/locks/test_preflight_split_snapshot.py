@@ -2255,7 +2255,7 @@ def test_preflight_report_matches_the_committed_snapshot(
     assert have == want, (
         f"{fixture_id}: the preflight report text differs from the committed "
         f"snapshot ({path.relative_to(_REPO)}).\n"
-        f"{_unified(expected, got, fixture_id)}\n"
+        f"{_unified(want, have, fixture_id)}\n"
         f"{_UPDATE_HINT}"
     )
 

@@ -1123,16 +1123,22 @@ def collect(root: Path, documents=DOCUMENTS) -> list[Reference]:
 # citation as it was written when this split was made, and the required lanes
 # check each one against its record. A document that adds a citation adds it
 # there too if the number is to block.
+#
+# Nothing here opens a document while pytest collects: the documents are
+# parametrized by name and parsed inside the test body, so a note that is
+# deleted or carries a malformed citation fails its docs_consistency test and
+# cannot interrupt collection in a required lane.
 # --------------------------------------------------------------------------
 
-_MANIFEST_REFS = collect(_REPO, (MANIFEST,))
 FROZEN_CITATIONS = _REPO / "tests" / "fixtures" / "cited_record_values.json"
+_NOTES = tuple(doc for doc in DOCUMENTS if doc != MANIFEST)
 
 
 @functools.lru_cache(maxsize=None)
 def _refs() -> tuple[Reference, ...]:
     """Every citation in every gated document. Reads the notes, so only
-    docs_consistency tests call it (tests/_prose_reads.py holds the rest to it)."""
+    docs_consistency test bodies call it (tests/_prose_reads.py holds the rest
+    to it)."""
     return tuple(collect(_REPO))
 
 
@@ -1148,22 +1154,24 @@ def _ref_id(r: Reference) -> str:
     return f"{r.doc.split('/')[-1]}:{r.site}:{r.keypath}"
 
 
-def pytest_generate_tests(metafunc) -> None:
-    # Parametrized here, not in a decorator, so that importing this module does
-    # not read the notes: only collecting the one docs test below does.
-    if metafunc.function is test_every_number_a_note_cites_matches_its_artifact:
-        notes = [r for r in _refs() if r.doc != MANIFEST]
-        metafunc.parametrize("ref", notes, ids=[_ref_id(r) for r in notes])
+def _check_all(refs) -> None:
+    failures = []
+    for ref in refs:
+        try:
+            check(_REPO, ref)
+        except AssertionError as exc:
+            failures.append(str(exc))
+    assert not failures, f"{len(failures)} citation(s) failed:\n\n" + "\n\n".join(failures)
 
 
-@pytest.mark.parametrize("ref", _MANIFEST_REFS, ids=[_ref_id(r) for r in _MANIFEST_REFS])
-def test_every_number_the_manifest_cites_matches_its_artifact(ref: Reference) -> None:
-    check(_REPO, ref)
+def test_every_number_the_manifest_cites_matches_its_artifact() -> None:
+    _check_all(collect(_REPO, (MANIFEST,)))
 
 
 @pytest.mark.docs_consistency
-def test_every_number_a_note_cites_matches_its_artifact(ref: Reference) -> None:
-    check(_REPO, ref)
+@pytest.mark.parametrize("doc", _NOTES)
+def test_every_number_a_note_cites_matches_its_artifact(doc: str) -> None:
+    _check_all(collect(_REPO, (doc,)))
 
 
 @pytest.mark.parametrize("ref", _frozen_refs(), ids=[_ref_id(r) for r in _frozen_refs()])

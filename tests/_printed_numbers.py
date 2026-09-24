@@ -29,6 +29,12 @@ def last_place(token: str) -> float:
     return 10.0 ** (int(exponent or 0) - decimals)
 
 
+def significant_figures(token: str) -> int:
+    """Significant figures printed: ``"12.35"`` -> 4, ``"0.01234"`` -> 4, ``"1.2e+05"`` -> 2."""
+    mantissa = token.lower().partition("e")[0].lstrip("+-").replace(".", "")
+    return len(mantissa.lstrip("0")) or 1
+
+
 def agrees(token: str, value: float) -> bool:
     """``token`` is ``value`` to within one unit in its last printed place."""
     return abs(float(token) - value) <= 1.000001 * last_place(token)

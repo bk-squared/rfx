@@ -21,12 +21,20 @@ was imported, or if pytest opened one while it generated that test's
 parameters. A module that reads prose at import is a documentation module, so
 all of its tests carry the marker.
 
+Nothing legitimate opens prose outside those four: not a conftest, not a
+session hook, not the collection of a directory. A prose file opened while
+none of them is current fails the whole session (fail closed), naming the file.
+
 A few required tests read prose on purpose because the file is part of a gate,
 not documentation: the hash of a pre-declaration's frozen sections (acceptance
 criteria may not be edited after the result), or the rule that a
 known-limitations entry stays while its defect is open. Such a test carries
-``@pytest.mark.reads_docs_for_gate(reason="...")``; a marker without a
-non-empty reason fails the test whether or not it reads anything.
+``@pytest.mark.reads_docs_for_gate(reason="...")`` on the test function itself
+-- not on a class or module, where it would cover tests nobody chose -- and a
+marker without a non-empty reason fails the test whether or not it reads
+anything. ``tests/contracts/test_required_tests_read_no_prose.py`` pins the
+set of such tests, with their reasons, and the set of ``docs_consistency``
+tests, so a change to either shows in the diff.
 
 What it cannot see: a file read by a subprocess the test starts (another
 interpreter), a file read by a module that an earlier test module imported
@@ -62,6 +70,8 @@ _SUFFIXES = (".md", ".mdx", ".rst")
 _where: object = None
 #: ``_where`` -> prose paths (repository-relative) opened while it was current.
 _reads: dict[object, list[str]] = {}
+#: Prose opened while ``_where`` was None; any entry fails the session.
+_outside: list[str] = []
 _installed = False
 
 
@@ -75,10 +85,12 @@ def is_prose(path: object) -> bool:
 
 
 def _audit(event: str, args: tuple) -> None:
-    if event != "open" or _where is None:
+    if event != "open" or not is_prose(args[0]):
         return
-    if is_prose(args[0]):
-        rel = os.path.relpath(os.path.abspath(os.fsdecode(args[0])), REPO)
+    rel = os.path.relpath(os.path.abspath(os.fsdecode(args[0])), REPO)
+    if _where is None:
+        _outside.append(rel)
+    else:
         _reads.setdefault(_where, []).append(rel)
 
 
@@ -133,11 +145,13 @@ def pytest_fixture_setup(fixturedef, request):
 
 def _fixture_reads(item) -> list[str]:
     info = getattr(item, "_fixtureinfo", None)
-    if info is None:
-        return []
+    # The one this item gets from each static request; the rest are overridden.
+    defs = [d[-1] for d in info.name2fixturedefs.values() if d] if info else []
+    # A fixture the test asks for itself (request.getfixturevalue) is not in the
+    # static closure; the item's request records every one it resolved.
+    defs += list(getattr(getattr(item, "_request", None), "_fixture_defs", {}).values())
     read = []
-    for defs in info.name2fixturedefs.values():
-        fixturedef = defs[-1]          # the one this item gets; the rest are overridden
+    for fixturedef in {id(d): d for d in defs}.values():
         read += _reads.get((fixturedef.baseid, fixturedef.argname), [])
     return read
 
@@ -162,8 +176,13 @@ def _no_prose_read_outside_docs_consistency(request):
         _reads.get(module.nodeid, []) if module is not None else []) + (
         _reads.get((item.parent.nodeid, getattr(item, "originalname", item.name),
                     "params"), []))
-    gate = item.get_closest_marker(GATE_MARKER)
-    if gate is not None:
+    gates = list(item.iter_markers_with_node(GATE_MARKER))
+    if gates:
+        node, gate = gates[0]
+        if node is not item:
+            pytest.fail(f"@pytest.mark.{GATE_MARKER} is on {node.nodeid}; it must "
+                        "decorate the one test function that reads the gate's "
+                        "file, not a class or module.", pytrace=False)
         reason = gate.kwargs.get("reason", gate.args[0] if gate.args else "")
         if not (isinstance(reason, str) and reason.strip()):
             pytest.fail(f"@pytest.mark.{GATE_MARKER} needs a non-empty reason= "
@@ -181,3 +200,21 @@ def _no_prose_read_outside_docs_consistency(request):
             '(reason="...").',
             pytrace=False,
         )
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionfinish(session, exitstatus):
+    """Fail closed: prose opened outside any test, fixture or module import."""
+    if not _outside:
+        return
+    message = (
+        f"prose was opened outside any test, fixture or test-module import: "
+        f"{', '.join(sorted(set(_outside)))}. A conftest, a session hook or a "
+        "directory's collection has no reason to read a note or a guide; move "
+        f"the read into a test marked `{MARKER}` (tests/_prose_reads.py).")
+    reporter = session.config.pluginmanager.get_plugin("terminalreporter")
+    if reporter is not None:
+        reporter.write_line(message, red=True)
+    else:
+        print(message, file=sys.__stderr__)
+    session.exitstatus = pytest.ExitCode.TESTS_FAILED
