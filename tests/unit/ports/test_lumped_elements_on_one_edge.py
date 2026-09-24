@@ -99,7 +99,8 @@ def _probe(sim, n=300):
 
 def test_folded_elements_share_an_edge_with_one_solved_element():
     """A folded 1 pF declared beside a 2 nH is the 2 nH + 1 pF element, bit
-    for bit; a folded R and C on one edge still add in the material."""
+    for bit; a folded R and a folded C may share an edge with ONE solved
+    element (here the series 50 ohm + 1 F)."""
     here = (4e-3, 4e-3, 4e-3)
     split = _probe(_box([(here, "ez", dict(C=1e-12, topology="parallel")),
                          (here, "ez", dict(L=2e-9, topology="parallel"))]))

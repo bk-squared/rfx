@@ -565,8 +565,8 @@ def refuse_stacked_solved_elements(specs, metas) -> None:
     in the same step: the pair is not the parallel circuit it declares, and
     the run gains energy (measured in a closed PEC box, float64: a parallel
     4 nH + 1 pF with another 4 nH on its edge x4.1 in 6400 steps; two series
-    4 nH + 10 pF x4.0, as on main before #1245). Folded elements (parallel R and C, and a series
-    element with a single component) have no solve of their own -- they add
+    4 nH + 10 pF x4.0, as on main before #1245). Folded elements (parallel R and C, and a pure R
+    or pure C declared "series") have no solve of their own -- they add
     into the edge's material, which the one solved element reads through
     ``D0`` -- so any number of them may share the edge with one solved
     element.
@@ -590,8 +590,9 @@ def refuse_stacked_solved_elements(specs, metas) -> None:
                 "parallel circuit it declares (issue #1245). Model them as ONE "
                 "add_lumped_rlc with the combined value (two parallel inductors "
                 "L1*L2/(L1+L2)), or place them on different edges. Folded "
-                "elements -- parallel R and C, or a series element with a "
-                "single component -- may share the edge with one of them.")
+                "elements -- a parallel R or C, or a pure R or pure C declared "
+                "series -- may share the edge with one of them; a pure L is "
+                "solved, whichever topology it is declared with.")
         first[edge] = n
 
 
