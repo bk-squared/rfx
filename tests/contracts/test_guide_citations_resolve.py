@@ -205,6 +205,7 @@ def unresolved_links(page_dir: Path, text: str, *,
 
 
 @pytest.mark.parametrize("page", GUIDES, ids=lambda p: p.name)
+@pytest.mark.docs_consistency
 def test_every_relative_link_is_in_the_repository(page: Path) -> None:
     assert GUIDES, "the glob found no guides"
     missing = unresolved_links(page.parent, page.read_text(encoding="utf-8"))

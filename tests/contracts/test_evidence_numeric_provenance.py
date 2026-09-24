@@ -63,6 +63,10 @@ import pytest
 
 from tests._git_tracked import git_available, tracked_set
 
+# Documentation checked against the code or a record: run only by the
+# non-required docs-consistency workflow (PI, 2026-09-22).
+pytestmark = pytest.mark.docs_consistency
+
 _REPO = Path(__file__).resolve().parents[2]
 
 # --------------------------------------------------------------------------

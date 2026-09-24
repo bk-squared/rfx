@@ -474,6 +474,7 @@ def test_cv15_builder_rejects_an_unknown_feed():
         cv15.build_rfx_sim(feed="two_plane")
 
 
+@pytest.mark.docs_consistency
 def test_cv15_current_measurement_prose_follows_committed_legs():
     """Regeneration must update the case banner and its decomposition rationale."""
     import json

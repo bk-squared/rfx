@@ -25,6 +25,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
+# Documentation checked against the code or a record: run only by the
+# non-required docs-consistency workflow (PI, 2026-09-22).
+pytestmark = pytest.mark.docs_consistency
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"

@@ -279,12 +279,16 @@ def test_a_skipped_job_says_why_in_its_log(job: str) -> None:
 # Every required gate clears the marker filter
 # --------------------------------------------------------------------------
 
-#: `pyproject.toml` sets `addopts = "-m 'not gpu and not slow and not slow_physics'"`.
-#: A step that runs a REQUIRED gate has to override it: otherwise marking one
-#: test `slow` quietly removes it from a gate that is still reported green, and
-#: nobody finds out. The explicit `-m "not gpu"` puts the CPU-safety half back,
-#: and `--strict-markers` makes a marker typo an error instead of a no-op.
-GATE_PYTEST_FLAGS = ('-o addopts=""', '-m "not gpu"', "--strict-markers")
+#: `pyproject.toml` sets `addopts = "-m 'not gpu and not slow and not slow_physics
+#: and not docs_consistency'"`. A step that runs a REQUIRED gate has to override
+#: it: otherwise marking one test `slow` quietly removes it from a gate that is
+#: still reported green, and nobody finds out. The explicit `-m` puts back the
+#: CPU-safety half and the documentation half -- a documentation mismatch never
+#: holds a merge (PI, 2026-09-22), so `docs_consistency` tests run only in the
+#: non-required docs-consistency workflow -- and `--strict-markers` makes a
+#: marker typo an error instead of a no-op.
+GATE_PYTEST_FLAGS = ('-o addopts=""', '-m "not gpu and not docs_consistency"',
+                     "--strict-markers")
 
 
 #: A quoted token holding both a path separator and `::` is a single test id --
@@ -411,11 +415,15 @@ def test_the_workflow_asks_for_changes_to_be_a_required_check() -> None:
     dependency, and a skipped job does not fail a required context -- so a merge
     would go through having run no tests. The `main` ruleset has required
     `changes` since 2026-09-19, and the job is a checkout and a stdlib script, so
-    keeping it costs nothing. This pins the reason in both the workflow and the
-    runbook, so a later edit cannot quietly drop it.
+    keeping it costs nothing. This pins the reason in the workflow, so a later
+    edit cannot quietly drop it; the runbook's copy is the next test.
     """
     text = PR_TESTS.read_text(encoding="utf-8")
     assert "`changes` MUST BE A REQUIRED CHECK" in text
+
+
+@pytest.mark.docs_consistency
+def test_the_runbook_says_changes_must_be_a_required_check() -> None:
     runbook = RUNBOOK.read_text(encoding="utf-8")
     assert "`changes` must be a required check too" in runbook
 
@@ -479,6 +487,7 @@ def _runbook_steps() -> list[str]:
     )
 
 
+@pytest.mark.docs_consistency
 def test_local_sh_and_the_runbook_list_the_same_steps_in_the_same_order() -> None:
     assert _local_sh_steps() == _runbook_steps()
 
@@ -539,6 +548,7 @@ def test_every_local_step_can_pick_its_interpreter() -> None:
     )
 
 
+@pytest.mark.docs_consistency
 def test_the_runbook_tells_authors_to_run_it_before_every_push() -> None:
     text = RUNBOOK.read_text(encoding="utf-8")
     assert "run `scripts/ci/local.sh` before every push" in text

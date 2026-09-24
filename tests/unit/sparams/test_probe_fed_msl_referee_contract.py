@@ -1120,6 +1120,7 @@ def _predeclaration_section_7_2() -> str:
     return text.split("### 7.2", 1)[1].split("### 7.3", 1)[0]
 
 
+@pytest.mark.docs_consistency
 def test_predeclaration_7_2_describes_the_board_stage_2_actually_builds(ref):
     """#723 in documentation form: a Stage-2 number quoted against a §7.2
     that describes a different model is the same failure as measuring the
@@ -1139,6 +1140,7 @@ def test_predeclaration_7_2_describes_the_board_stage_2_actually_builds(ref):
     ), "§7.2 still asserts the declared geometry as the model"
 
 
+@pytest.mark.docs_consistency
 def test_predeclaration_7_2_carries_an_explicit_supersession_note():
     """Not merely edited: the amendment must NAME what it supersedes --
     review blocker B4 (both open ends) and the realized board -- so the

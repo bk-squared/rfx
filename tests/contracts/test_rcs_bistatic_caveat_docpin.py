@@ -24,7 +24,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from rfx.rcs import RCSResult, compute_rcs
+
+# Documentation checked against the code or a record: run only by the
+# non-required docs-consistency workflow (PI, 2026-09-22).
+pytestmark = pytest.mark.docs_consistency
 
 
 def _norm(text: str) -> str:

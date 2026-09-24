@@ -112,7 +112,7 @@ begin 5
 # the local run silently collects two fewer tests than CI does, which is the
 # local-is-weaker-than-CI gap these scripts exist to close. Costs about 27 s.
 "$PYTHON" -m pytest tests/contracts -q -x \
-  -o addopts="" -m "not gpu" --strict-markers || fail
+  -o addopts="" -m "not gpu and not docs_consistency" --strict-markers || fail
 
 echo
 echo "all ${#STEP_NAMES[@]} steps passed"

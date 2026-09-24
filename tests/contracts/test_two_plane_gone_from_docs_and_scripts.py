@@ -37,6 +37,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO = Path(__file__).resolve().parents[2]
 
 # Trees this gate owns. rfx/ belongs to the contract file's own grep.
@@ -157,6 +159,7 @@ def _scan():
     return seen
 
 
+@pytest.mark.docs_consistency
 def test_no_live_two_plane_outside_the_allowlist():
     """A live doc or script must not carry the deleted keyword."""
     seen = _scan()
@@ -171,6 +174,7 @@ def test_no_live_two_plane_outside_the_allowlist():
                     for k, v in sorted(offenders.items())))
 
 
+@pytest.mark.docs_consistency
 def test_no_allowlist_entry_is_stale():
     """An allowlist naming a file that no longer has the token hides nothing —
     but it does teach the next reader that the entry is load-bearing when it
@@ -183,6 +187,7 @@ def test_no_allowlist_entry_is_stale():
         f"gone) — delete the row: {stale}")
 
 
+@pytest.mark.docs_consistency
 def test_no_pending_entry_is_stale():
     """PENDING is a schedule, and it must expire on its own.
 

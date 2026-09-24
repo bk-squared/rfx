@@ -658,6 +658,7 @@ def test_lane_map_is_complete_in_both_directions(matrix_json_by_primitive):
     )
 
 
+@pytest.mark.docs_consistency
 def test_lane_map_headers_exist_in_markdown(matrix_md_sections):
     missing = [h for h in LANE_SECTION_MAP.values() if h not in matrix_md_sections]
     assert not missing, f"LANE_SECTION_MAP header(s) not found in the .md: {missing}"
@@ -698,6 +699,7 @@ def test_json_status_anchors_reference_mapped_primitives_with_matching_arity():
 
 
 @pytest.mark.parametrize("primitive,header", sorted(LANE_SECTION_MAP.items()))
+@pytest.mark.docs_consistency
 def test_json_numeric_claims_appear_in_markdown(
     primitive, header, matrix_json_by_primitive, matrix_md_sections
 ):
@@ -729,6 +731,7 @@ def test_json_numeric_claims_appear_in_markdown(
 
 
 @pytest.mark.parametrize("primitive,header", sorted(LANE_SECTION_MAP.items()))
+@pytest.mark.docs_consistency
 def test_markdown_run_ids_appear_in_json(
     primitive, header, matrix_json_by_primitive, matrix_md_sections
 ):
@@ -758,6 +761,7 @@ def test_markdown_run_ids_appear_in_json(
 
 
 @pytest.mark.parametrize("primitive,header", sorted(LANE_SECTION_MAP.items()))
+@pytest.mark.docs_consistency
 def test_status_token_polarity_agrees(
     primitive, header, matrix_json_by_primitive, matrix_md_sections
 ):
@@ -836,6 +840,7 @@ def test_api_summary_row_map_covers_all_mapped_lanes():
 
 
 @pytest.mark.parametrize("primitive,header", sorted(LANE_SECTION_MAP.items()))
+@pytest.mark.docs_consistency
 def test_api_summary_status_cell_agrees_with_section_status(
     primitive, header, matrix_md_sections
 ):
@@ -884,6 +889,7 @@ def test_api_summary_status_cell_agrees_with_section_status(
 
 
 @pytest.mark.parametrize("primitive,header", sorted(LANE_SECTION_MAP.items()))
+@pytest.mark.docs_consistency
 def test_ad_traceable_no_is_not_overclaimed_in_markdown(
     primitive, header, matrix_json_by_primitive, matrix_md_sections
 ):
