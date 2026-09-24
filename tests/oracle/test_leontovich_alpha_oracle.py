@@ -828,7 +828,7 @@ def test_sqrt_sigma_discriminator_o4a():
 
 
 @pytest.mark.xfail(
-    strict=False,
+    strict=False, raises=AssertionError,
     reason="#1231: since #1178 continued the plates into the absorber the guide-fit "
            "ratio reads 0.599, just inside the band, so this XPASSes; non-strict until "
            "#1231 decides whether continuation stays. History: "

@@ -779,23 +779,38 @@ def test_physics_gates_at_the_claims_rung(fx):
 # measured cross-backend envelope and are not moved here.
 
 
-def _live_compare(fx_, rung: str):
-    for dut in F.DUTS:
+def _live_compare(fx_, rung: str, duts=F.DUTS):
+    # Every cell is measured and printed before any assertion, so one red cell
+    # does not hide the cells after it.
+    cells = []
+    for dut in duts:
         for lane in F.LANES:
             label = G.LANE_LABELS[lane]
             stored = _cell(fx_, dut, rung, label)
             sim, res, S, codes = _measure_cell(dut, rung, lane)
-            assert codes == sorted(f["code"] for f in stored["preflight"]), (dut, rung, label, codes)
             S0 = G.s_from_json(stored["s_params"])
             d = float(np.max(np.abs(S - S0)))
             m = G.cell_metrics(S)
             print(f"[live {dut}-{rung}-{label}] max|S_live-S_fixture|={d:.3e} "
                   f"settling={np.asarray(res.settling_db)} colpow={m['column_power_max']:.5f} "
                   f"recip_c={m['reciprocity_complex_max']:.2e}")
-            assert np.all(np.isfinite(S))
-            assert d <= LIVE_ABS_S_TOL, (dut, rung, label, d, LIVE_ABS_S_TOL,
-                                         "cross-backend excess is reported with both backends' "
-                                         "numbers, never absorbed by widening the pin (§5.11)")
+            cells.append((dut, label, stored, S, codes, d))
+    for dut, label, stored, S, codes, d in cells:
+        assert codes == sorted(f["code"] for f in stored["preflight"]), (dut, rung, label, codes)
+        assert np.all(np.isfinite(S))
+        assert d <= LIVE_ABS_S_TOL, (dut, rung, label, d, LIVE_ABS_S_TOL,
+                                     "cross-backend excess is reported with both backends' "
+                                     "numbers, never absorbed by widening the pin (§5.11)")
+
+
+_NOT_SLAB = tuple(d for d in F.DUTS if d != "slab")
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("rung", ["coarse", "mid"])
+def test_live_cells_reproduce_the_fixture_cpu(live_fx, rung):
+    """§5.11 row 1 against the realized-PEC contract-build measurement (thru, PEC short)."""
+    _live_compare(live_fx, rung, _NOT_SLAB)
 
 
 @pytest.mark.slow
@@ -804,9 +819,16 @@ def _live_compare(fx_, rung: str):
     reason="#1292: dielectric slab in waveguide, live S vs contract fixture max|ΔS| "
            "0.413 coarse / 0.181 mid since #1213")
 @pytest.mark.parametrize("rung", ["coarse", "mid"])
-def test_live_cells_reproduce_the_fixture_cpu(live_fx, rung):
-    """§5.11 row 1 against the realized-PEC contract-build measurement."""
-    _live_compare(live_fx, rung)
+def test_live_slab_cells_reproduce_the_fixture_cpu(live_fx, rung):
+    """§5.11 row 1, the dielectric-slab cells, split out so #1292 quarantines only them."""
+    _live_compare(live_fx, rung, ("slab",))
+
+
+@pytest.mark.slow
+@pytest.mark.gpu
+def test_live_cells_reproduce_the_fixture_fine_rung(live_fx):
+    """§5.11 row 2, on the GPU lane (the fine rung is 4x the steps; thru, PEC short)."""
+    _live_compare(live_fx, "fine", _NOT_SLAB)
 
 
 @pytest.mark.slow
@@ -815,9 +837,9 @@ def test_live_cells_reproduce_the_fixture_cpu(live_fx, rung):
     strict=True, raises=AssertionError,
     reason="#1292: dielectric slab in waveguide, fine rung live S vs contract fixture "
            "max|ΔS| 0.0883 (coarse 0.413, mid 0.181 bisect to #1213; fine not bisected)")
-def test_live_cells_reproduce_the_fixture_fine_rung(live_fx):
-    """§5.11 row 2, on the GPU lane (the fine rung is 4x the steps)."""
-    _live_compare(live_fx, "fine")
+def test_live_slab_cells_reproduce_the_fixture_fine_rung(live_fx):
+    """§5.11 row 2, the dielectric-slab cells (see the cpu pair above)."""
+    _live_compare(live_fx, "fine", ("slab",))
 
 
 @pytest.mark.slow

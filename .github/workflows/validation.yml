@@ -171,6 +171,9 @@ jobs:
   # token lives in the `vessl` environment (schedule + manual dispatch only).
   weekly-a6000-lane:
     runs-on: ubuntu-latest
+    # 360 is the GitHub-hosted job maximum. The poll below (330 x ~63 s = ~348 min,
+    # measured 2026-09-24) must outlast the lane's own pytest timeouts in
+    # scripts/vessl_validation_lane_a6000.yaml (1800 + 18000 s plus ~200 s setup).
     timeout-minutes: 360
     environment: vessl
     steps:
