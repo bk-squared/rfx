@@ -72,7 +72,9 @@ geometry, `cells` holds all 18 comparisons, and `cell_provenance` records each
 old/new source and max complex A−old-frozen, B−old-frozen and B−reference distance.
 
 The 12 thru/PEC-short cells and their provenance are retained exactly from
-`fixture_1012_cpml_half_cell_run369367264028.json`, measured in VESSL **369367264028**
+`bk-squared/rfx-archive`
+`rfx/records/20260924-1012-cpml-half-cell/fixture_1012_cpml_half_cell_run369367264028.json`
+at `5e86eb5`, measured in VESSL **369367264028**
 (arm B, commit `c0d2cfd035471768a0a8ad374110041afa205e00`). The six slab cells use
 arm B of VESSL **369367264100**, commit `315313793ae4c96c8e27af4eb48e3517db078082`;
 its comparison arm A was `1f7204630c8b83cf6b4530fdd45cc52353d699a6`.
@@ -81,9 +83,9 @@ Replacement cells use the saved S matrices, grid values, preflight codes and
 settling dB. Preflight entries contain only `code`, because that is what the
 capture saved and the live comparison reads. Uncaptured warning text, settling
 records and other historical fields are not relabeled as new measurements.
-All historical fixture files, including the previous live-cell record, remain
-unchanged. Historical enforcement hashes, tolerances, AD/FD, ladder and
-plane-shift replay records also remain unchanged.
+All retained fixture files remain unchanged; the previous live-cell record is
+archived byte for byte at the path and commit above. Historical enforcement
+hashes, tolerances, AD/FD, ladder and plane-shift replay records also remain unchanged.
 
 The source run used `_measure_cell(dut, rung, lane)` in
 `tests/oracle/test_waveguide_chain_battery.py` for all three rungs and both
