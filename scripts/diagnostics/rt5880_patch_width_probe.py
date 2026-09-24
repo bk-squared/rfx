@@ -79,12 +79,20 @@ from tests.crossval.rt5880_patch import test_rt5880_patch as T  # noqa: E402
 LOGGED_H4 = {"f0_hz": 2.300078e9, "r_ohm": 71.093}
 LOGGED_R_OHM = (71.093, 72.997, 71.920)
 
-ARM_B_W_PATCH = 62 * T.H_SUB / 4      # 49.2125 mm, node-aligned on h/4, h/8, h/12
-ARM_B_GP_Y = 82 * T.H_SUB / 4         # 65.0875 mm
-# Leader 2026-09-25: GP_X too. The substrate is drawn over the ground's footprint, and at
-# GP_X = 56 mm it realized 71 / 141 / 211 cells (56.36 / 55.96 / 55.83 mm); the h/4 smoke
-# showed the substrate's y extent alone (83 -> 82 cells) moving R by +0.45 %.
-ARM_B_GP_X = 70 * T.H_SUB / 4         # 55.5625 mm: ground node span and substrate extent
+# Leader 2026-09-25, after run 369367264633: drawing an edge exactly ON a common node is a
+# knife edge for a volume. Box rasterization is half-open [lo, hi) over node coordinates, and at
+# h/12 the substrate at GP_X = 55.5625 mm realized 211 cells, not 210 (one float ulp flipped the
+# hi-face node). Every arm-B edge is therefore drawn EDGE_PAD outside a node common to h/4, h/8
+# and h/12 (0.05 mm < half the finest cell, 0.132 mm). A sheet then covers exactly the common
+# nodes on every rung (node spans identical), and the substrate covers nodes -N..N inclusive,
+# i.e. count*dx = common span + dx: it shrinks monotonically with dx, with no tie left to flip.
+EDGE_PAD = 0.05e-3
+ARM_B_W_COMMON = 62 * T.H_SUB / 4      # 49.2125 mm
+ARM_B_GP_Y_COMMON = 82 * T.H_SUB / 4   # 65.0875 mm
+ARM_B_GP_X_COMMON = 70 * T.H_SUB / 4   # 55.5625 mm
+ARM_B_W_PATCH = ARM_B_W_COMMON + 2 * EDGE_PAD
+ARM_B_GP_Y = ARM_B_GP_Y_COMMON + 2 * EDGE_PAD
+ARM_B_GP_X = ARM_B_GP_X_COMMON + 2 * EDGE_PAD
 SPAN_TOL_M = 1e-9
 SPAN_KEYS = ("patch_x_node_m", "patch_y_node_m", "ground_x_node_m", "ground_y_node_m")
 
@@ -104,6 +112,7 @@ def _spans(g: dict, dx: float) -> dict:
     from rfx.mesh_edges import EDGE_OFFSET
     p, gr = g["patch"], g["ground"]
     return {
+        "dx_m": dx,
         "patch_x_node_m": p["x_node_span_m"], "patch_y_node_m": p["y_node_span_m"],
         "ground_x_node_m": gr["x_node_span_m"], "ground_y_node_m": gr["y_node_span_m"],
         "patch_x_solved_m": p["x_node_span_m"] + 2 * EDGE_OFFSET * dx,
@@ -160,9 +169,11 @@ def _check_arm_b(s: dict, first: dict | None, label: str) -> None:
     the same four spans on every rung (the probe is held to its node by
     check_realized)."""
     bad = []
-    for k, v in (("patch_y_node_m", ARM_B_W_PATCH), ("ground_y_node_m", ARM_B_GP_Y),
-                 ("ground_x_node_m", ARM_B_GP_X), ("substrate_x_m", ARM_B_GP_X),
-                 ("substrate_y_m", ARM_B_GP_Y)):
+    dx = s["dx_m"]
+    for k, v in (("patch_y_node_m", ARM_B_W_COMMON), ("ground_y_node_m", ARM_B_GP_Y_COMMON),
+                 ("ground_x_node_m", ARM_B_GP_X_COMMON),
+                 ("substrate_x_m", ARM_B_GP_X_COMMON + dx),
+                 ("substrate_y_m", ARM_B_GP_Y_COMMON + dx)):
         if abs(s[k] - v) > SPAN_TOL_M:
             bad.append(f"{k} {s[k]*1e3:.6f} mm, declared {v*1e3:.6f} mm")
     if first is not None:
