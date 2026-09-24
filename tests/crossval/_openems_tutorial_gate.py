@@ -155,17 +155,26 @@ REPRODUCE_GATE_RECORD = {
         "fetched_verbatim_on": "2026-08-04",
         "fetched_via": "gh api repos/thliebig/openEMS/contents/python/Tutorials/MSL_NotchFilter.py",
     },
-    "port_in_this_repository": "validation/crossval/20_msl_phase_referee.py",
+    # The reproduction ran in the MSL thru-line phase case's script, whose port
+    # this module copies byte for byte. That case was removed on 2026-09-23;
+    # its run log moved beside the MSL notch filter's reference, and its
+    # result JSON is readable at rfx commit b25df603.
+    "port_in_this_repository": (
+        "tests/crossval/_openems_tutorial_gate.py (the run itself used "
+        "validation/crossval/20_msl_phase_referee.py, removed 2026-09-23)"
+    ),
     "reproduced_f_notch_hz": 3671100625.0,
     "analytic_f_notch_hz": 3687193135.4851503,
     "reproduced_f_notch_dev_pct": 0.4364433837294213,
     "vessl_run_id": "369367251705",
-    "log_path": "validation/crossval/_20_msl_phase_referee_logs/20260804T070702Z_run.log",
+    "log_path": "tests/crossval/msl_notch_filter/reference/tutorial_reproduction_20260804T070702Z_run.log",
     "log_lines": "10-17",
     "real_pass_wall_time_s": 41.6,
     "real_pass_wall_time_source": (
         "validation/crossval/_20_msl_phase_referee_logs/20260804T055009Z_result.json, "
-        "stage_a.elapsed_s -- the wall time is not in the run log's text"
+        "stage_a.elapsed_s, at rfx commit b25df603 (removed with the MSL "
+        "thru-line phase case on 2026-09-23) -- the wall time is not in the "
+        "run log's text"
     ),
     "verified_on": "2026-08-04",
 }

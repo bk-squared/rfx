@@ -1354,31 +1354,6 @@ class WaveguideSMatrixResult(NamedTuple):
     s21_phase_residual_meta: dict | None = None
 
 
-class CoaxialSMatrixResult(NamedTuple):
-    """Coaxial scattering result from the experimental TEM plane-source API.
-
-    The result schema mirrors :class:`WaveguideSMatrixResult` so the
-    validation/replay infrastructure (``validate_port_smatrix``,
-    ``compare_sparameter_datasets``) can consume both. The status field flags
-    whether any per-frequency V/I sample fell below the configured signal
-    floor; downstream tools should treat ``"degraded"`` rows with care.
-
-    The reference plane is the cross-section that was injected on; ``z_tem``
-    is the analytic ``Z_TEM`` used both for the source amplitude and for the
-    power-wave decomposition.
-    """
-
-    s_params: np.ndarray
-    freqs: np.ndarray
-    port_names: tuple[str, ...]
-    port_faces: tuple[str, ...]
-    reference_planes: np.ndarray
-    z_tem_ohm: np.ndarray
-    voltages: np.ndarray
-    currents: np.ndarray
-    status: str
-
-
 class CoaxialLineReflectionResult(NamedTuple):
     """One-port reflection from the validated coaxial transmission-line method.
 
@@ -1893,9 +1868,8 @@ class CoaxMSLTransitionResult:
     ``strict_passivity=True`` as its default, so a non-passive extracted S
     raises ``ValueError`` from the shared guard instead of being returned;
     pass ``strict_passivity=False`` to get the diagnostic matrix with a
-    ``UserWarning``. The single-family coax lanes
-    (:class:`CoaxialSMatrixResult`, :class:`CoaxialTwoPortResult`) keep the
-    ``False`` default.
+    ``UserWarning``. The single-family coax two-port lane
+    (:class:`CoaxialTwoPortResult`) keeps the ``False`` default.
 
     Like :class:`MixedSMatrixResult`, ``s_params`` is in the **Kurokawa
     power-wave convention**: each port's raw modal-voltage wave amplitude
@@ -2252,7 +2226,6 @@ __all__ = [
     "_FloquetPortEntry",
     "WaveguideSParamResult",
     "WaveguideSMatrixResult",
-    "CoaxialSMatrixResult",
     "CoaxialLineReflectionResult",
     "CoaxialTwoPortResult",
     "_MSLPortEntry",

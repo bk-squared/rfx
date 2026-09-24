@@ -45,12 +45,12 @@ def test_msl_producer_current_geometry_quotes_committed_metadata():
     assert f"n_probe_spacing={spacings.pop()} for both ports" in current
 
 
+# The case script, its validation README row and its public benchmarks row
+# carried these numbers too; they left with the MSL thru-line phase case
+# (2026-09-23). The two pages below still state them.
 @pytest.mark.parametrize("carrier", [
-    "validation/crossval/20_msl_phase_referee.py",
     "docs/guides/sparameter_support_matrix.md",
     "docs/design_notes/issue812_phase_identity_predeclaration.md",
-    "validation/README.md",
-    "docs/public/guide/benchmarks.mdx",
 ])
 def test_msl_current_replay_quotes_fixture_and_labels_historical_openems(carrier):
     cv20 = _json("validation/crossval/_issue812_phase_identity/regate_evidence.json")["cv20"]

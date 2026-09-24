@@ -698,10 +698,12 @@ def test_nu_series_element_loads_the_node_through_its_dual_face(
         component, node):
     """``_update_series`` has its own current-density conversion.
 
-    Read the area back out of the update rather than trusting the field:
-    ``(D0 + gamma)*E_new = D0*E_std - I_new/area`` inverts to
-    ``area = -I_new / ((D0 + gamma)*E_new - D0*E_std)``, which holds whatever
-    ``gamma`` is, so this gate isolates the area alone.
+    Read the area back out of the update rather than trusting the field.
+    Since #1163 the series element is solved together with its edge field:
+    Ampere at the node is ``D0*(E_new - E_std) = -I_avg/area`` with the
+    time-centred current ``I_avg = (I_new + I_old)/2``, which inverts to
+    ``area = -I_avg / (D0*(E_new - E_std))`` whatever the element law is, so
+    this gate isolates the area alone.
     """
     from rfx.lumped import _update_series
 
@@ -712,15 +714,15 @@ def test_nu_series_element_loads_the_node_through_its_dual_face(
     meta = build_rlc_meta(grid, spec, mats)
     assert meta.is_series, "fixture must exercise the series ADE"
 
-    e_std, i_s = 3.7, 2.5e-3
+    e_std, e_prev, i_s = 3.7, 1.3, 2.5e-3
     state = _single_node_state(grid, component, idx, e_std)
     new_state, rlc_new = _update_series(
-        state, _rlc_state_with_current(i_s), meta)
+        state, _rlc_state_with_current(i_s), meta, jnp.asarray(e_prev))
     e_new = float(getattr(new_state, component)[idx])
-    i_new = float(rlc_new.inductor_current)
+    i_avg = 0.5 * (float(rlc_new.inductor_current) + i_s)
 
-    denom = (meta.D0 + meta.gamma) * e_new - meta.D0 * e_std
-    area_implied = -i_new / denom
+    denom = meta.D0 * (e_new - e_std)
+    area_implied = -i_avg / denom
     area_oracle = _oracle_dual_area(grid, idx, component)
     assert area_implied == pytest.approx(area_oracle, rel=_F32_METRIC_REL), (
         f"{component} at a {NODE_KINDS[node]} node: the series ADE converts "
@@ -782,12 +784,15 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
         state = FDTDState(**{n: z for n in ("ex", "ey", "ez", "hx", "hy", "hz")},
                           step=jnp.asarray(0))
         rlc = init_rlc_state()
-        step_fn = _update_series if meta.is_series else _update_parallel
         for n in range(steps):
             amp = np.sin(2.0 * np.pi * 5e9 * n * float(grid.dt))
+            e_prev = getattr(state, component)[idx]
             state = state._replace(
                 **{component: getattr(state, component).at[idx].add(amp)})
-            state, rlc = step_fn(state, rlc, meta)
+            if meta.is_series:
+                state, rlc = _update_series(state, rlc, meta, e_prev)
+            else:
+                state, rlc = _update_parallel(state, rlc, meta)
         return (float(getattr(state, component)[idx]),
                 float(rlc.inductor_current))
 
@@ -795,10 +800,25 @@ def test_uniform_lane_rlc_ade_output_does_not_move_under_the_dual_area_fold():
         -0.10559134930372238, 6.394681690835569e-07)
     assert drive("parallel", 50.0, 1e-9, 1e-12, "ez") == (
         66.87545013427734, 0.0006415600073523819)
+    # The two SERIES pins moved with #1163 (the element is solved together
+    # with its edge field). This harness is one node with no curl, loaded by
+    # the element: a node capacitance D0*A*dt/d driven by the per-step
+    # increments amp_n. The ELEMENT CURRENT is the witness here: with the
+    # increments read as a current D0*A*amp_n held over each step (matrix
+    # exponential, float64), at step 200 the current is 6.3437e-07 A for R+L
+    # (old pin 6.8085e-07, 7.3 % off; now 6.3646e-07, 0.33 %) and
+    # 6.3300e-07 A for R+L+C (old 6.5973e-07, 4.2 %; now 6.3503e-07, 0.32 %).
+    # The node FIELD at one step is not a witness: it is a small residual
+    # whose value depends on how the source increments are modelled inside a
+    # step, so no closed form is claimed for it. The old pins were the
+    # explicit coupling's R - d/(D0*A) = 50 - 215 ohm, a negative resistance.
+    # Re-pinned again when D0 became eps/dt + sigma/2 of the edge (the old
+    # series pin read 1/Cb in float32, 1e-7 apart): E moved 8e-5 relative,
+    # I 3e-7. (Closed-form script and numbers: the #1163 PR.)
     assert drive("series", 50.0, 1e-9, 0.0, "ex") == (
-        -0.6224570274353027, 6.808482453379838e-07)
+        0.030034542083740234, 6.364606974784692e-07)
     assert drive("series", 50.0, 1e-9, 1e-12, "ey") == (
-        -0.3608303666114807, 6.59729153085209e-07)
+        0.2854260802268982, 6.350324497361726e-07)
 
 
 # ---------------------------------------------------------------------------

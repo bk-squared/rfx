@@ -40,7 +40,6 @@ from rfx.nonuniform import NonUniformGrid, interior_cells
 
 from rfx.api._spec import (
     WaveguideSMatrixResult,
-    CoaxialSMatrixResult,
     CoaxialLineReflectionResult,
     CoaxialTwoPortResult,
     MSLSMatrixResult,
@@ -164,8 +163,6 @@ class _SparamMixin:
     from rfx.sparams.mixed import compute_mixed_s_matrix
 
     from rfx.sparams import coax as _coax
-
-    compute_coaxial_s_matrix = _coax.compute_coaxial_s_matrix
 
     compute_coaxial_line_reflection = _coax.compute_coaxial_line_reflection
 

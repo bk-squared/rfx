@@ -35,11 +35,10 @@ This file replaces three entries of the ``guards-and-preflight`` PR lane
    strict aggregate raise, ``raise_for_failure``, validator crashes
    propagate, run() advisory tier vs forward() error tier, the issue #166
    2D collapsed-z and unit-adaptive formatting locks.
-4. **TFSF plane-wave + lumped RLC guard** — was
-   ``test_preflight_tfsf_lumped.py``: a bare ``add_lumped_rlc`` driven by a
-   TFSF plane wave has no defined series circuit and diverges (~1e35 by
-   ~250 steps); the advisory warns on that pairing and not on TFSF alone or
-   on the validated port-fed lane.
+4. **TFSF plane-wave + lumped RLC** — was ``test_preflight_tfsf_lumped.py``,
+   the guard of an advisory that called the pairing unstable. #1163 deleted
+   the advisory with the series-RLC edge coupling that made it diverge; the
+   section now checks, on the same fixture, that the pairing decays.
 
 Every assertion, tolerance, fixture value and parametrisation of the
 absorbed files is kept verbatim (the identical ``_issues`` / ``_has`` /
@@ -54,7 +53,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from rfx import Simulation, Box, GaussianPulse
+from rfx import Simulation, Box
 from rfx.api._preflight import (
     _PreflightMixin,
     PreflightErrorWarning,
@@ -1087,34 +1086,42 @@ def test_mesh_warning_uses_adaptive_units_at_optical_scale():
 # formerly tests/unit/preflight/test_preflight_guards.py
 # ===========================================================================
 
-_CODE = "tfsf_lumped_rlc_unstable"
+# 2026-09-23 (#1163): this section held the ``tfsf_lumped_rlc_unstable``
+# advisory's guard (it warns on TFSF + lumped RLC) and two no-false-positive
+# checks for it. The advisory is deleted: the divergence it described was the
+# series RLC element's own edge coupling (it realized R - d/(D0*A), a negative
+# resistance below ~215 ohm), not the TFSF source, and #1163 fixes that
+# coupling. What replaces the guard is the behaviour it guarded, on its OWN
+# fixture: the pairing it called unstable must now decay.
+#
+# MEASURED (1200 steps): max over the last 400 steps / peak = 2.0e-4 (series
+# 50 ohm + 0.2 pF), 2.4e-4 (series 50 ohm + 1 nH + 0.2 pF), 4.9e-4 (parallel
+# 50 ohm || 0.2 pF, which never diverged -- the old advisory warned on it too).
+# With the replaced series update, same fixture and step count: R+C is
+# non-finite from step 246, R+L+C reaches 3.7e10 by step 1200.
+_TFSF_RLC_STEPS = 1200
+_TFSF_RLC_DECAY = 1e-3
 
 
-def test_tfsf_plus_lumped_rlc_warns():
+@pytest.mark.parametrize("l_h,topology", [
+    (0.0, "series"), (1e-9, "series"), (0.0, "parallel"),
+], ids=["series-RC", "series-RLC", "parallel-RC"])
+def test_tfsf_plane_wave_on_a_lumped_rlc_decays(l_h, topology):
     sim = Simulation(freq_max=16e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 20,
                      boundary="cpml", cpml_layers=8, mode="3d")
     sim.add_tfsf_source(f0=8e9, bandwidth=0.6, polarization="ez", direction="+x",
                         waveform="modulated_gaussian")
     sim.add_lumped_rlc(position=(0.010, 0.010, 0.010), component="ez",
-                       R=50.0, C=0.20e-12, topology="series")
-    assert _CODE in _codes(sim), "TFSF + lumped RLC should warn about the unstable pairing"
-
-
-def test_tfsf_alone_no_warning():
-    """No false positive: a TFSF plane wave with no lumped element must NOT warn."""
-    sim = Simulation(freq_max=16e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 20,
-                     boundary="cpml", cpml_layers=8, mode="3d")
-    sim.add_tfsf_source(f0=8e9, bandwidth=0.6, polarization="ez", direction="+x",
-                        waveform="modulated_gaussian")
-    assert _CODE not in _codes(sim)
-
-
-def test_lumped_rlc_with_port_no_warning():
-    """No false positive: the validated PORT-fed varactor lane must NOT warn."""
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
-                     boundary="cpml", cpml_layers=6)
-    sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez", impedance=50.0,
-                 waveform=GaussianPulse(f0=5e9, bandwidth=0.9))
-    sim.add_lumped_rlc(position=(0.0093, 0.0093, 0.0093), component="ez",
-                       R=50.0, C=0.20e-12, topology="series")
-    assert _CODE not in _codes(sim)
+                       R=50.0, L=l_h, C=0.20e-12, topology=topology)
+    sim.add_vector_probe((0.010, 0.010, 0.010))
+    ts = np.abs(np.asarray(
+        sim.run(n_steps=_TFSF_RLC_STEPS, skip_preflight=True).time_series))
+    assert np.all(np.isfinite(ts)), (
+        f"TFSF + {topology} 50 ohm, L={l_h}, 0.2 pF: non-finite field at step "
+        f"{int(np.argmax(~np.isfinite(ts).all(axis=1)))}")
+    peak = float(ts.max())
+    tail = float(ts[-400:].max())
+    assert peak > 1e-3, "the plane wave never reached the element"
+    assert tail <= _TFSF_RLC_DECAY * peak, (
+        f"TFSF + {topology} 50 ohm, L={l_h}, 0.2 pF: last 400 steps reach "
+        f"{tail:.3e} against a peak of {peak:.3e}")

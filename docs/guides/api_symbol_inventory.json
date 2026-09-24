@@ -67,9 +67,6 @@
     "CoaxialPort": {
       "kind": "class"
     },
-    "CoaxialSMatrixResult": {
-      "kind": "class"
-    },
     "CoaxialTEMCartesianPlaneVI": {
       "kind": "class"
     },
@@ -1494,7 +1491,8 @@
         "n_starts",
         "best_iterate",
         "step_clamp",
-        "seed"
+        "seed",
+        "jit"
       ]
     },
     "parametric_sweep": {
@@ -2394,19 +2392,6 @@
       "shape",
       "material"
     ],
-    "add_coaxial_matched_load": [
-      "port_index",
-      "target_impedance",
-      "axial_offset_cells"
-    ],
-    "add_coaxial_open_termination": [
-      "port_index",
-      "pin_retract_cells"
-    ],
-    "add_coaxial_pec_end_cap": [
-      "port_index",
-      "axial_offset_cells"
-    ],
     "add_coaxial_port": [
       "position",
       "face",
@@ -2583,6 +2568,9 @@
       "result",
       "kwargs"
     ],
+    "boundary_model": [
+      "rcs"
+    ],
     "compute_coax_msl_transition": [
       "junction_x",
       "eps_r_sub",
@@ -2618,16 +2606,6 @@
       "feed_impedance",
       "dut_impedance",
       "eps_scale"
-    ],
-    "compute_coaxial_s_matrix": [
-      "n_steps",
-      "freqs",
-      "n_freqs",
-      "field_scale",
-      "magnetic_ratio",
-      "signal_floor",
-      "reference_plane_axial_index_offset",
-      "strict_passivity"
     ],
     "compute_coaxial_two_port": [
       "n_steps",

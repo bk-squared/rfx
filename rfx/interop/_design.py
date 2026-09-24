@@ -82,8 +82,6 @@ no meaning in another solver, and the document says so explicitly in its
 ``non_portable`` list rather than leaving a later external emitter to
 rediscover it:
 
-- ``_coaxial_terminations`` / ``_coaxial_open_terminations`` /
-  ``_coaxial_pec_end_caps`` carry **cell-relative** axial offsets;
 - ``_MSLPortEntry.n_probe_offset`` / ``n_probe_spacing`` are **cell counts**
   derived from ``_dx`` at registration time;
 - ``_WaveguidePortEntry.probe_offset`` / ``ref_offset`` and
@@ -819,10 +817,9 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_adi_cfl_factor",
     "_boundary",
     "_boundary_spec",
-    "_coaxial_open_terminations",
-    "_coaxial_pec_end_caps",
+    # B1 descriptor derived from the exported boundary and feature entries.
+    "_boundary_model",
     "_coaxial_ports",
-    "_coaxial_terminations",
     "_cpml_kappa_max",
     "_cpml_layers",
     "_dft_planes",
@@ -1162,44 +1159,40 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
 
 
 # ---------------------------------------------------------------------------
-# Coaxial termination tuples (cell-relative)
+# Coaxial termination entries (removed, #1212)
 # ---------------------------------------------------------------------------
+#
+# ``add_coaxial_matched_load``, ``add_coaxial_open_termination`` and
+# ``add_coaxial_pec_end_cap`` registered cell-relative terminations that only
+# the single-plane coaxial S-matrix lane consumed; the builders and the lane
+# were removed together in #1212.
+# The three ``rfx-design-ir/v2`` keys stay in ``excitations`` so a document
+# written before the removal still loads when it registered none: they are
+# exported as empty lists, an empty list imports as nothing, and an entry in
+# any of them is refused (``_refuse_removed_coaxial_terminations``).
 
-def _dump_coaxial_matched_loads(sim: Any) -> list[dict[str, Any]]:
-    out = []
-    for index, item in enumerate(sim._coaxial_terminations):
-        what = f"_coaxial_terminations[{index}]"
-        if len(item) != 3:
-            raise _refuse(f"{what} must be a 3-tuple, got {item!r}")
-        port_index, impedance, offset = item
-        out.append(
-            {
-                "port_index": _integer(port_index, what=f"{what}.port_index"),
-                "target_impedance": check_number(impedance, what=f"{what}.target_impedance"),
-                "axial_offset_cells": _integer(
-                    offset, what=f"{what}.axial_offset_cells"
-                ),
-            }
-        )
-    return out
+_REMOVED_COAXIAL_TERMINATION_KEYS: tuple[tuple[str, str], ...] = (
+    ("coaxial_matched_loads", "add_coaxial_matched_load"),
+    ("coaxial_open_terminations", "add_coaxial_open_termination"),
+    ("coaxial_pec_end_caps", "add_coaxial_pec_end_cap"),
+)
 
 
-def _dump_coaxial_pairs(
-    items: Any, second_key: str, *, what: str
-) -> list[dict[str, Any]]:
-    out = []
-    for index, item in enumerate(items):
-        label = f"{what}[{index}]"
-        if len(item) != 2:
-            raise _refuse(f"{label} must be a 2-tuple, got {item!r}")
-        port_index, value = item
-        out.append(
-            {
-                "port_index": _integer(port_index, what=f"{label}.port_index"),
-                second_key: _integer(value, what=f"{label}.{second_key}"),
-            }
-        )
-    return out
+def _refuse_removed_coaxial_terminations(excitations: dict[str, Any]) -> None:
+    for key, builder in _REMOVED_COAXIAL_TERMINATION_KEYS:
+        entries = _entry_list(excitations, key, what="excitations")
+        if entries:
+            raise _refuse(
+                f"excitations.{key} holds {len(entries)} entr"
+                f"{'y' if len(entries) == 1 else 'ies'} from Simulation."
+                f"{builder}(), which was removed in #1212 together with the "
+                "single-plane coaxial S-matrix lane that was its only "
+                "consumer. For a coaxial one-port with a short, open or "
+                "matched load use compute_coaxial_line_reflection("
+                "termination=..., dut_impedance=...). To load the rest of this "
+                "design, delete the entries and any non_portable note whose "
+                f"path is excitations.{key}."
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -1293,17 +1286,6 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
             "probe_offset and ref_offset are cell counts from the source "
             "plane, not physical distances",
         )
-    for key, field in (
-        ("coaxial_matched_loads", "axial_offset_cells"),
-        ("coaxial_open_terminations", "pin_retract_cells"),
-        ("coaxial_pec_end_caps", "axial_offset_cells"),
-    ):
-        if excitations[key]:
-            note(
-                f"excitations.{key}",
-                f"{field} is a cell-relative offset; the termination moves "
-                f"physically if dx changes",
-            )
     if excitations["tfsf"] is not None:
         note(
             "excitations.tfsf",
@@ -1528,17 +1510,10 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 CoaxialPort,
                 what="_coaxial_ports",
             ),
-            "coaxial_matched_loads": _dump_coaxial_matched_loads(sim),
-            "coaxial_open_terminations": _dump_coaxial_pairs(
-                sim._coaxial_open_terminations,
-                "pin_retract_cells",
-                what="_coaxial_open_terminations",
-            ),
-            "coaxial_pec_end_caps": _dump_coaxial_pairs(
-                sim._coaxial_pec_end_caps,
-                "axial_offset_cells",
-                what="_coaxial_pec_end_caps",
-            ),
+            # Removed builders (#1212); kept empty so v2 readers see the keys.
+            "coaxial_matched_loads": [],
+            "coaxial_open_terminations": [],
+            "coaxial_pec_end_caps": [],
             "floquet_ports": _dump_list(
                 sim._floquet_ports,
                 _FLOQUET_PORT_FIELDS,
@@ -1734,6 +1709,7 @@ def simulation_from_design(document: Any) -> Any:
 
     excitations = _section(document, "excitations", what="design document")
     _require_exact_keys(excitations, _EXCITATION_KEYS, what="excitations")
+    _refuse_removed_coaxial_terminations(excitations)
 
     observables = _section(document, "observables", what="design document")
     _require_exact_keys(observables, _OBSERVABLE_KEYS, what="observables")
@@ -1846,55 +1822,6 @@ def simulation_from_design(document: Any) -> Any:
             impedance=values["impedance"],
             waveform=values["excitation"],
             terminates=_termination_inputs(sim, values["terminates"]),
-        )
-
-    for index, payload in enumerate(
-        _entry_list(excitations, "coaxial_matched_loads", what="excitations")
-    ):
-        what = f"excitations.coaxial_matched_loads[{index}]"
-        if not isinstance(payload, dict):
-            raise _refuse(f"{what} must be a mapping, got {type(payload).__name__}")
-        _require_exact_keys(
-            payload,
-            {"port_index", "target_impedance", "axial_offset_cells"},
-            what=what,
-        )
-        sim.add_coaxial_matched_load(
-            _integer(payload["port_index"], what=f"{what}.port_index"),
-            target_impedance=check_number(
-                payload["target_impedance"], what=f"{what}.target_impedance"
-            ),
-            axial_offset_cells=_integer(
-                payload["axial_offset_cells"], what=f"{what}.axial_offset_cells"
-            ),
-        )
-
-    for index, payload in enumerate(
-        _entry_list(excitations, "coaxial_open_terminations", what="excitations")
-    ):
-        what = f"excitations.coaxial_open_terminations[{index}]"
-        if not isinstance(payload, dict):
-            raise _refuse(f"{what} must be a mapping, got {type(payload).__name__}")
-        _require_exact_keys(payload, {"port_index", "pin_retract_cells"}, what=what)
-        sim.add_coaxial_open_termination(
-            _integer(payload["port_index"], what=f"{what}.port_index"),
-            pin_retract_cells=_integer(
-                payload["pin_retract_cells"], what=f"{what}.pin_retract_cells"
-            ),
-        )
-
-    for index, payload in enumerate(
-        _entry_list(excitations, "coaxial_pec_end_caps", what="excitations")
-    ):
-        what = f"excitations.coaxial_pec_end_caps[{index}]"
-        if not isinstance(payload, dict):
-            raise _refuse(f"{what} must be a mapping, got {type(payload).__name__}")
-        _require_exact_keys(payload, {"port_index", "axial_offset_cells"}, what=what)
-        sim.add_coaxial_pec_end_cap(
-            _integer(payload["port_index"], what=f"{what}.port_index"),
-            axial_offset_cells=_integer(
-                payload["axial_offset_cells"], what=f"{what}.axial_offset_cells"
-            ),
         )
 
     for index, payload in enumerate(

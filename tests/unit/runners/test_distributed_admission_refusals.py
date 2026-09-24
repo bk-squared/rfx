@@ -1,4 +1,7 @@
-"""Refuse four input classes before distributed field updates.
+"""Refuse the input classes the distributed lanes would drop or get wrong.
+
+Periodic/Bloch boundaries, extended and passive ports, surface monitors
+(flux, NTFF, DFT planes), Kerr materials, lumped RLC elements, subgridding.
 
 Exercise the public dispatch and both runner entries with two CPU devices.
 PEC controls use the relative tolerance from
@@ -32,7 +35,8 @@ def _devices():
 
 
 def _build(*, entry="api", periodic="", boundary="pec", port=None,
-           flux=False, ntff=False, kerr=False, debye=False):
+           flux=False, ntff=False, kerr=False, debye=False, rlc=None,
+           refine=False, dft=False, msl=False):
     """A PEC box has a source at x=6 mm and Ez probes at x=12 and 22 mm."""
     # v1 requires nx divisible by two; v2 pads the 25-cell x grid.
     domain_x = 23e-3 if entry == "v1" else 24e-3
@@ -62,6 +66,20 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
             sim.add_material("debye", eps_r=2.0,
                              debye_poles=[DebyePole(delta_eps=1.5, tau=1e-11)])
             sim.add(Box((8e-3, 3e-3, 3e-3), (16e-3, 9e-3, 9e-3)), material="debye")
+        if rlc is not None:
+            sim.add_lumped_rlc((9e-3, 6e-3, 6e-3), "ez", **rlc)
+        if refine:
+            sim.add_refinement(z_range=(4e-3, 8e-3), ratio=2)
+        if dft:
+            sim.add_dft_plane_probe(axis="x", coordinate=12e-3, n_freqs=3)
+        if msl:
+            # A 2 mm PEC trace on a 1 mm substrate over the z-lo PEC wall.
+            sim.add_material("substrate", eps_r=3.66)
+            sim.add(Box((0, 0, 0), (domain_x, 12e-3, 1e-3)), material="substrate")
+            sim.add(Box((1e-3, 5e-3, 1e-3), (domain_x - 1e-3, 7e-3, 2e-3)),
+                    material="pec")
+            sim.add_msl_port(position=(2e-3, 6e-3, 0.0), width=2e-3, height=1e-3,
+                             direction="+x", impedance=50.0)
     return sim
 
 
@@ -152,6 +170,107 @@ def test_kerr_material_is_refused(entry):
     """A chi3 block between source and probe: this lane drops chi3 (linear physics)."""
     sim = _build(entry=entry, kerr=True)
     _assert_refused(sim, entry, "Kerr chi3", "'kerr'", "as linear")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+@pytest.mark.parametrize("element", ({"R": 10.0}, {"R": 10.0, "L": 1e-9}),
+                         ids=("stamped_R", "series_RL"))
+def test_lumped_rlc_element_is_refused(entry, element):
+    """An element between source and probe: this lane never applies it (#1239).
+
+    Measured before the refusal (#1239's 12 mm box, 10 ohm): the multi-device
+    probe peak was bit-identical to the box without the element and 76 % above
+    the single-device peak, where the element lowers it by 43 %. A lone R is
+    stamped into the material; R+L has its own time update.
+    """
+    sim = _build(entry=entry, rlc=element)
+    _assert_refused(sim, entry, "add_lumped_rlc()", "as if the elements were absent")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+def test_subgrid_refinement_is_refused(entry):
+    """The lanes have no subgrid coupling; before the refusal a refined box ran
+    bit-identical to the unrefined one (review of #1239)."""
+    sim = _build(entry=entry, refine=True)
+    _assert_refused(sim, entry, "add_refinement()")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+def test_msl_port_is_refused(entry):
+    """Before the refusal a trace fed by an MSL port read exactly 0 under the
+    trace on two devices (22.3 on one) - review of #1239."""
+    sim = _build(entry=entry, msl=True)
+    _assert_refused(sim, entry, "add_msl_port()")
+
+
+# How the multi-device lanes (sim.run(devices=...), both runners) treat every
+# attribute a Simulation carries. Five silent drops were found one at a time
+# (Kerr #1214, lumped RLC #1239, subgridding, DFT planes on a direct call, MSL
+# ports); a new attribute fails the test below until someone decides whether
+# the lanes carry it, refuse it (refuse_unsupported_distributed_features or the
+# run() dispatch), fall back to one device, or can ignore it.
+DISPOSITION = {
+    "_adi_cfl_factor": "setting of solver='adi', which run() refuses with devices",
+    "_boundary": "carried: pec, cpml; upml refused by run() and the v2 runner",
+    "_boundary_model": "derived from the boundary spec; carried",
+    "_boundary_spec": "carried (per-face PEC/PMC/CPML); periodic refused",
+    "_coaxial_ports": "refused by run() before dispatch",
+    "_cpml_kappa_max": "carried",
+    "_cpml_layers": "carried",
+    "_dft_planes": "refused",
+    "_domain": "carried",
+    "_dt_min_cell": "carried through the built grid's dt",
+    "_dt_pin": "carried through the built grid's dt",
+    "_dx": "carried",
+    "_dx_profile": "carried (non-uniform lane)",
+    "_dy_profile": "carried (non-uniform lane)",
+    "_dz_profile": "carried (non-uniform lane)",
+    "_floquet_ports": "refused through the periodic axes they set",
+    "_flux_monitors": "refused",
+    "_freq_max": "setting",
+    "_geometry": "carried through material assembly; PEC sheets and wires refused",
+    "_interface_eps": "'sampled' carried; 'dual_average' refused by run()",
+    "_internal_probe_indices": "probe bookkeeping",
+    "_lumped_rlc": "refused",
+    "_materials": "carried: eps, sigma, mu, Debye, Lorentz; Kerr refused",
+    "_mode": "carried: 2-D modes match one device bit for bit",
+    "_msl_auto_offset_min": "MSL port data; MSL ports refused",
+    "_msl_auto_probe_spacing": "MSL port data; MSL ports refused",
+    "_msl_ports": "refused",
+    "_ntff": "refused",
+    "_pec_faces": "carried",
+    "_periodic_axes": "refused",
+    "_pinned_sheets": "refused as PEC sheets",
+    "_ports": "carried: single-cell lumped ports; extended and passive refused",
+    "_precision": "float32 carried; other precisions refused by run()",
+    "_probes": "carried",
+    "_refinement": "refused",
+    "_solver": "yee carried; adi refused by run()",
+    "_stencil_order": "2 carried; 4 refused",
+    "_tfsf": "falls back to one device with a warning",
+    "_thin_conductors": "stamped into the materials; f0 sheets refused",
+    "_waveguide_ports": "falls back to one device with a warning",
+}
+
+
+def test_every_simulation_attribute_has_a_distributed_disposition():
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=1e-3)
+    new = sorted(set(vars(sim)) - set(DISPOSITION))
+    # Only a NEW attribute can be dropped silently; a removed one cannot, so a
+    # stale entry here is harmless and does not fail another lane's cleanup.
+    assert not new, (
+        f"Simulation gained {new}: decide how sim.run(devices=...) treats each "
+        "(carry it, refuse it in refuse_unsupported_distributed_features, or record "
+        "why the lanes can ignore it) and add it to DISPOSITION")
+
+
+@pytest.mark.parametrize("entry", ENTRIES)
+def test_dft_plane_probe_is_refused(entry):
+    """run() refused these in its dispatch; a direct runner call did not."""
+    sim = _build(entry=entry, dft=True)
+    _assert_refused(sim, entry, "add_dft_plane_probe()")
 
 
 @pytest.mark.parametrize("entry", ("api", "v2"))

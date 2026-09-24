@@ -24,9 +24,9 @@ import pytest
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.farfield import NTFFBox, compute_far_field
-from rfx.sources.tfsf import init_tfsf
+from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
 from rfx.simulation import run
-from rfx.rcs import compute_rcs, compute_rcs_jax, _incident_spectrum_amplitude
+from rfx.rcs import compute_rcs, compute_rcs_jax
 
 F0, BW = 10e9, 0.5
 CPML = 8
@@ -45,10 +45,14 @@ def _materials(grid, eps_scale):
     return mb._replace(eps_r=mb.eps_r + eps_scale * 3.0 * jnp.asarray(block))  # ε_r=4 @ scale=1
 
 
+def _tfsf(grid):
+    return init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
+                     f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
+                     direction="+x", angle_deg=0.0)
+
+
 def _setup_run(grid, materials):
-    cfg, st = init_tfsf(nx=grid.nx, dx=grid.dx, dt=grid.dt, cpml_layers=CPML, tfsf_margin=3,
-                        f0=F0, bandwidth=BW, amplitude=1.0, polarization="ez",
-                        direction="+x", angle_deg=0.0)
+    cfg, st = _tfsf(grid)
     fl = getattr(grid, "face_layers", None) or {k: CPML for k in
                  ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
     box = NTFFBox.from_grid(
@@ -63,7 +67,8 @@ def _setup_run(grid, materials):
 @pytest.fixture(scope="module")
 def rcs_run():
     grid = Grid(freq_max=15e9, domain=DOMAIN, dx=DX, cpml_layers=CPML)
-    e_inc = _incident_spectrum_amplitude(F0, BW, FREQS, grid.dt, N_STEPS)
+    # the incident the grid carries, as compute_rcs normalizes (#820)
+    e_inc = measure_normal_incident_spectrum(*_tfsf(grid), N_STEPS, FREQS, grid.dt)
     mats = _materials(grid, 1.0)
     ntff_data, box = _setup_run(grid, mats)
     return {"grid": grid, "e_inc": e_inc, "mats": mats, "ntff_data": ntff_data, "box": box}

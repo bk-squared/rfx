@@ -179,9 +179,23 @@ def test_run_series_rlc_byte_identity():
 
     The traced lane is a SEPARATE code path; the concrete build_rlc_meta /
     setup_rlc_materials / run(lumped_rlc=...) numerics must be untouched.
-    (On-platform this is exact array_equal; the golden was proven byte-identical
-    to main in the WP 4-E session.  A tight tolerance guards against real
-    numeric regressions while tolerating cross-machine float32 noise.)
+    (On-platform this is exact array_equal; a tight tolerance guards against
+    real numeric regressions while tolerating cross-machine float32 noise.)
+
+    Re-pinned for #1163. The golden recorded before it GREW: the series
+    50 ohm + 10 nH + 1 pF element in this closed, lossless PEC box multiplied
+    the probe field by ~5.5 every 150 steps, from 1.1e-3 to 3.7e3 by step 1500
+    -- the explicit coupling's resistance R - d/(D0*A) was negative. A passive
+    element in a lossless cavity cannot add energy; with the element solved
+    together with its edge field the probe stays below 7.4e-4 for all 1500
+    steps. There is no closed form for this cavity; the element's impedance is
+    gated against one in tests/oracle/test_series_rlc_load_on_line.py. atol was
+    1e-2 against a 3.7e3 peak (2.7e-6 of it); it is now 1e-6 against a 7.4e-4
+    peak, so the golden still has something to hold. Not tighter: the same run
+    in float64 fields differs from this float32 golden by 1.1e-7 (#1163
+    review), so a cross-platform float32 reorder can reach that scale; the
+    replaced update departs from this golden by more than 1e-5 from step 1
+    and by more than 1e-3 from step 108.
     """
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_lumped_rlc_run_series.npy"))
     R, L, C = 50.0, 10e-9, 1e-12
@@ -194,7 +208,7 @@ def test_run_series_rlc_byte_identity():
     sim.add_probe(position=(0.005, 0.005, 0.005), component="ez")
     got = np.asarray(sim.run(n_steps=1500).time_series)
     assert got.shape == golden.shape
-    np.testing.assert_allclose(got, golden, rtol=1e-5, atol=1e-2)
+    np.testing.assert_allclose(got, golden, rtol=1e-5, atol=1e-6)
 
 
 def test_forward_no_rlc_byte_identity():

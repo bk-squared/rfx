@@ -1,0 +1,234 @@
+name: rfx-rt5880-patch-openems-reference
+description: "The RT/Duroid 5880 probe-fed patch antenna -- regenerate its openEMS reference WITH provenance. A 40.0 x 50.0 mm patch on RT/Duroid 5880 (eps_r 2.2, tan delta 0.001, h 3.175 mm) over a 56 x 66 mm ground, fed by a 50 ohm lumped probe 9 mm off centre; its TM010 resonance (transmission-line estimate 2.4156 GHz) shows as an |S11| dip. The committed record validation/crossval/_15_patch_results/openems.json names no openEMS version, build, run, stop criterion or second mesh. STAGE A is the reproduce gate and is openEMS's OWN python/Tutorials/Simple_Patch_Antenna.py, verbatim (sha256 33017faa..., openEMS 2000574e, the submodule of the openEMS-Project build this image stamps; the job refuses an image that does not carry that exact file), solved in the same invocation: its refined |S11| minimum must lie within +-1 % of the 2.430 GHz dip read off the tutorial's own documentation figure AND be at least 10 dB deep (the tutorial's own resonance criterion). It is a DIFFERENT patch on a different substrate -- it proves the solver and the lumped port reproduce a published result, nothing about the RT5880 board. If it fails, the job exits 1 and no Stage B record is written. STAGE B is the RT5880 board on THREE meshes -- resolution factors 1.0, 1/sqrt(2) and 0.5, the substrate carrying 4, 6 and 8 cells -- copied from validation/crossval/15_patch_antenna_rt5880.py's run_openems and proved to be that builder, character for character, by --self-check before the solver starts. What differs from that builder is declared in the record: PML_8 on all six faces, laid OUTSIDE the retired box so the absorber's inner faces sit at the same place on every rung (the Sheen board's MUR walls held its box energy at -31 dB for six hours; PML ended the run in 1.4 ns); NrTS 1e9 and EndCriteria 1e-5 passed explicitly (left unset, the pinned build runs 1e-6, not the 1e-5 its docstring states); and no evenly spaced patch line within half a patch cell of the probe, a thirds-rule line or an edge -- without that, the finest mesh lost the probe's y = 0 line to CSXCAD's near-duplicate rule and a coarse line sat on the +x radiating edge. Before every solve the realized lines are read back and the probe, thirds-rule, ground, substrate and absorber-face lines must be exact; a stage that fails is not solved, and the dry run makes the same check with CSXCAD's own smoothing before the solver starts. The dry run estimates the job at about 17 minutes on 8 threads, 38 at the tutorial's measured speed and timestep ratio. The record carries per stage complex S11 and Zin on every bin, the |S11| minimum (shared sub-bin estimator), its depth, the -10 dB band, Zin at resonance, max |S11|^2 (gated <= 1.05) and the NF2FF directivity at resonance (reported only; NO_NF2FF non-empty turns it off). After every stage the record so far goes to openems_patch_PARTIAL.json, so a timeout keeps what finished. Every stage's stdout log, smoke and real, is copied next to the record. When a gate fires the record built so far goes to openems_patch_FAILED.json before the non-zero exit. The job clones the pinned commit itself into /tmp and refuses to measure anything else. Env: EXPECT (the commit; empty or the placeholder FILL_BEFORE_SUBMIT refuses). CPU lane, remilab-c0. Submit with scripts/vessl_submit.sh so the run id is recorded -- the record's run_id field is null by design, VESSL does not export the id into the pod."
+tags: [rfx, crossval, rt5880-patch, openems, reference]
+resources:
+  cluster: remilab-c0
+  cpu: 8
+  memory: 16Gi
+# The image is pinned by DIGEST, not by the tag 5b423bdfe0c8: one remilab-c0 node
+# caches an older build under that tag with no RFX_OPENEMS_COMMIT stamp, and a job
+# landing there refuses in its first second. Copied from the Sheen reference job
+# (crossval/sheen-lpf-test, commit 3aef6d26): the digest is the registry's build
+# of the tag created 2026-09-21T17:45Z, RFX_OPENEMS_COMMIT=5b423bdfe0c84064cf9028167bb759007c33b182.
+image: ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  # OMP_NUM_THREADS=1: openEMS's own numThreads (passed explicitly as
+  # --threads 8 below, matching resources.cpu=8) does the parallelism.
+  OMP_NUM_THREADS: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  # REQUIRED. The commit this job measures. The job clones the repository itself
+  # and checks this commit out; a clone whose HEAD does not start with this
+  # string exits 3 rather than measuring the wrong tree. The placeholder
+  # refuses too -- an unpinned run produces a record with no provenance.
+  EXPECT: "FILL_BEFORE_SUBMIT"
+  # The image this job runs, recorded into the record's meta beside the openEMS
+  # build commit the image stamps into RFX_OPENEMS_COMMIT. Keep it equal to
+  # `image:` above; the run block prints both.
+  RFX_OPENEMS_IMAGE: "ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff"
+  # Non-empty passes --no-nf2ff: Stage B then records no near-field box and
+  # reports no directivity. EMPTY (the default) keeps the far field on; the dry
+  # run prints its estimated dump size per rung, and the dumps are deleted from
+  # /tmp after each rung's directivity is read.
+  NO_NF2FF: ""
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  echo "=== The RT/Duroid 5880 patch antenna: openEMS reference, with provenance ==="
+  date
+
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  "$PY" --version
+  # The image stamps the openEMS build it compiled. A record that cannot name the
+  # solver build it came from is not a reference, so an unstamped image stops here.
+  if [ -z "${RFX_OPENEMS_COMMIT:-}" ]; then
+    echo "FATAL: RFX_OPENEMS_COMMIT is empty -- this image does not stamp its openEMS build, so the record could not name the solver that produced it. Refusing to measure."
+    exit 3
+  fi
+  echo "RFX_OPENEMS_COMMIT=$RFX_OPENEMS_COMMIT"
+  echo "RFX_OPENEMS_IMAGE=${RFX_OPENEMS_IMAGE:-unset}"
+  "$PY" -c "from openEMS.openEMS import openEMS; print('openEMS from image: OK')"
+  "$PY" -c "from CSXCAD.CSXCAD import ContinuousStructure; from openEMS.ports import LumpedPort; print('CSXCAD + LumpedPort: OK')"
+  # The reproduce gate's tutorial as the image ships it. The maker checks the same
+  # file against its pinned sha256 and refuses on a mismatch; this line only shows it.
+  TUT=/tmp/openEMS-Project/openEMS/python/Tutorials/Simple_Patch_Antenna.py
+  if [ -f "$TUT" ]; then sha256sum "$TUT"; else echo "(the image carries no $TUT)"; fi
+
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+
+  # An EMPTY EXPECT would match every sha in the case below, so it refuses too.
+  if [ -z "${EXPECT:-}" ] || [ "$EXPECT" = "FILL_BEFORE_SUBMIT" ]; then
+    echo "FATAL: EXPECT is empty or still holds the FILL_BEFORE_SUBMIT placeholder -- pin the commit before submitting"
+    exit 3
+  fi
+
+  SRC=/tmp/rfx-rt5880-patch-ref
+  rm -rf "$SRC"
+  # Clone the DEFAULT branch and fetch the pinned commit by its sha, so the job
+  # still runs after the topic branch is merged and deleted.
+  git clone -q https://github.com/bk-squared/rfx.git "$SRC"
+  git config --global --add safe.directory "$SRC" || true
+  git -C "$SRC" fetch -q origin "$EXPECT"
+  git -C "$SRC" checkout -q "$EXPECT"
+  sha=$(git -C "$SRC" rev-parse HEAD)
+  export RFX_COMMIT="$sha"
+  short=$(git -C "$SRC" rev-parse --short HEAD)
+  case "$sha" in
+    "$EXPECT"*) echo "provenance: $sha (matches EXPECT=$EXPECT)" ;;
+    *) echo "WRONG TREE: clone HEAD is $sha, EXPECT is $EXPECT -- refusing to measure"; exit 3 ;;
+  esac
+  cd "$SRC"
+  git status --short || true
+
+  if ! "$PY" -c "import numpy, h5py" >/dev/null 2>&1; then
+    "$PY" -m pip install -q "numpy<2" "h5py>=3.8"
+  fi
+  "$PY" -c "import numpy; print('numpy', numpy.__version__)"
+
+  NF2FF_ARG=""
+  if [ -n "${NO_NF2FF:-}" ]; then
+    NF2FF_ARG="--no-nf2ff"
+  fi
+  echo "far field: ${NF2FF_ARG:-on (the default)}"
+
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  out="$primary/.omx/rt5880-patch-openems/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  echo "artifacts: $out"
+
+  # A killed, evicted or timed-out job still leaves its exit code and the
+  # one-line summary. `rc` is unset until the solve runs, hence the default.
+  trap 'st=$?; rc_now=${rc:-$st}; echo "$rc_now" > "$out/exit_code"; { echo "rt5880_patch_openems_reference_rc=$rc_now"; echo "commit=$sha"; echo "image=${RFX_OPENEMS_IMAGE:-unset}"; echo "openems_build=$RFX_OPENEMS_COMMIT"; echo "record=$out/openems_patch.json"; echo "partial_record=$out/openems_patch_PARTIAL.json"; echo "failed_record=$out/openems_patch_FAILED.json"; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
+
+  DRV=tests/crossval/rt5880_patch/reference/make_openems_reference.py
+  test -f "$DRV" || { echo "STALE CLONE: the reference maker is missing at $DRV"; exit 3; }
+  GATE=tests/crossval/_openems_tutorial_gate.py
+  test -f "$GATE" || { echo "STALE CLONE: the shared tutorial gate is missing at $GATE"; exit 3; }
+
+  # Pure-numpy checks first, seconds each: a constant, a drifted builder or a
+  # layout bug must not burn a stage. `tee` returns ITS OWN status, so each rc is
+  # captured in a subshell that writes it to a file.
+  ( set +e; "$PY" -u "$DRV" --self-check; echo $? > "$out/self_check.rc" ) | tee "$out/self_check.log"
+  sc_rc=$(cat "$out/self_check.rc")
+  if [ "$sc_rc" != "0" ]; then
+    echo "FATAL: --self-check exited $sc_rc -- see $out/self_check.log. Not starting the solver."
+    exit 3
+  fi
+  ( set +e; "$PY" -u "$DRV" --dry-run --stage both $NF2FF_ARG; echo $? > "$out/dry_run.rc" ) | tee "$out/stage_plan.log"
+  dr_rc=$(cat "$out/dry_run.rc")
+  if [ "$dr_rc" != "0" ]; then
+    echo "FATAL: --dry-run exited $dr_rc -- see $out/stage_plan.log. Not starting the solver."
+    exit 3
+  fi
+
+  # POSIX rc capture across a pipe: the VESSL runner shell is dash/busybox-ash,
+  # so there is no PIPESTATUS; the left side writes its own rc to a file.
+  ( set +e
+    timeout 21600 "$PY" -u "$DRV" --stage both $NF2FF_ARG \
+      --output "$out/openems_patch.json" \
+      --sim-root /tmp/rt5880_patch_openems --threads 8 2>&1
+    echo $? > "$out/exit_code"
+  ) | tee "$out/run.log"
+  rc=$(cat "$out/exit_code")
+  echo "rt5880_patch_openems_reference_rc=$rc"
+
+  # The solver's stdout is the only place the timestep, the energy trace and
+  # openEMS's own warnings exist, and /tmp goes away with the pod. Copy every
+  # stage's log, smoke and real, next to the record, and point the record's own
+  # path fields at the copies.
+  echo "===== persisting the solver logs ====="
+  for d in /tmp/rt5880_patch_openems/*/; do
+    [ -d "$d" ] || continue
+    stage=$(basename "$d")
+    src="${d}_openems_stdout.log"
+    if [ -f "$src" ]; then
+      case "$stage" in
+        *_smoke) dest="$out/${stage%_smoke}_smoke_openems_stdout.log" ;;
+        *)       dest="$out/${stage}_real_openems_stdout.log" ;;
+      esac
+      cp "$src" "$dest" && echo "  $src -> $dest ($(wc -c < "$dest") bytes)"
+    else
+      echo "  (no log at $src)"
+    fi
+  done
+  for rec in "$out/openems_patch.json" "$out/openems_patch_PARTIAL.json" "$out/openems_patch_FAILED.json"; do
+    [ -f "$rec" ] || continue
+    "$PY" -c 'import json,os,sys; p,d=sys.argv[1],sys.argv[2]; a=json.load(open(p)); st=(a.get("meta") or {}).get("stages") or {}; pick=lambda n,suf: os.path.join(d,n+suf+"_openems_stdout.log"); [s.update({k:pick(n,suf) for k,suf in (("stdout_log_path","_real"),("smoke_stdout_log_path","_smoke")) if os.path.isfile(pick(n,suf))}) for n,s in st.items() if isinstance(s,dict)]; json.dump(a,open(p,"w"),indent=1); print("log paths rewritten in",p,"for",sorted(st))' "$rec" "$out" || echo "  (could not rewrite log paths in $rec)"
+  done
+
+  # Settling positive control, as a CHECK rather than a printout. openEMS's
+  # max-timesteps warning must appear in EVERY smoke pass's log (200 steps at
+  # EndCriteria 0 can never converge) and in NO real pass's: Stage B passes
+  # NrTS 1e9 / EndCriteria 1e-5 and Stage A the tutorial's 30000 / 1e-4, and each
+  # must end on its energy criterion. Same binary, same stream; only the
+  # smoke/real split differs. If that pattern does not hold, the truncation gate
+  # was not watching anything, and the job exits 4 -- AFTER the record is written.
+  echo "===== settling positive control (openEMS's own max-timesteps warning) ====="
+  PHRASE="reached before the end-criteria of"
+  settling_rc=0
+  smoke_logs=$(find /tmp/rt5880_patch_openems -name "_openems_stdout.log" -path "*_smoke/*" 2>/dev/null || true)
+  real_logs=$(find /tmp/rt5880_patch_openems -name "_openems_stdout.log" -not -path "*_smoke/*" 2>/dev/null || true)
+  if [ -z "$smoke_logs" ]; then
+    echo "SETTLING CONTROL: no smoke-pass log found under /tmp/rt5880_patch_openems -- the control cannot speak"
+    settling_rc=4
+  fi
+  for f in $smoke_logs; do
+    if grep -q "$PHRASE" "$f"; then
+      echo "  ok   smoke   $f carries the max-timesteps warning"
+    else
+      echo "  RED  smoke   $f does NOT carry the max-timesteps warning -- the phrase this gate greps for has changed"
+      settling_rc=4
+    fi
+  done
+  for f in $real_logs; do
+    if grep -q "$PHRASE" "$f"; then
+      echo "  RED  real    $f carries the max-timesteps warning -- that real pass was truncated"
+      settling_rc=4
+    else
+      echo "  ok   real    $f reached its end criteria"
+    fi
+  done
+  echo "settling_positive_control_rc=$settling_rc"
+  echo "$settling_rc" > "$out/settling_control.rc"
+
+  echo "===== record summary ====="
+  if [ -f "$out/openems_patch_FAILED.json" ]; then
+    echo "A GATE FIRED. Its evidence is $out/openems_patch_FAILED.json -- the arrays measured before the gate and failed_gate."
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); print("failed_gate:", a.get("failed_gate")); [print("%-16s |S11|^2 band max=%s min=%s" % (k, (a[k] or {}).get("max_s11_power_band"), (a[k] or {}).get("min_s11_power_band"))) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_patch_FAILED.json" || true
+  fi
+  if [ -f "$out/openems_patch.json" ]; then
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); ms=a["meta"]["stages"]; g=a["meta"].get("stage_a_gate") or {}; print("stage_a reproduce gate passed=%s measured=%s Hz deviation=%s %%" % (g.get("passed"), g.get("measured_f_hz"), g.get("deviation_pct"))); [print("%-16s min |S11| %s GHz at %s dB | -10 dB band %s MHz | Zin %s | Dmax %s dBi | %s cells, %s substrate cells | dt %s s, %s steps, last energy %s dB, %s s" % (k, (a[k].get("resonance") or {}).get("refined_f_ghz"), (a[k].get("resonance") or {}).get("depth_db"), ((a[k].get("resonance") or {}).get("band_minus10db") or {}).get("width_mhz"), (a[k].get("resonance") or {}).get("zin_at_refined_ohm"), (a[k].get("farfield") or {}).get("dmax_dbi"), (ms[k].get("mesh_realized") or {}).get("n_cells"), (ms[k].get("mesh_realized") or {}).get("substrate_z_cells_realized"), (ms[k].get("solver_run") or {}).get("dt_s"), (ms[k].get("solver_run") or {}).get("timesteps"), (ms[k].get("solver_run") or {}).get("final_energy_db"), (ms[k].get("solver_run") or {}).get("wall_time_s"))) for k in ("stage_a","stage_b_coarse","stage_b_mid","stage_b_fine") if a.get(k)]' "$out/openems_patch.json" || true
+  elif [ -f "$out/openems_patch_PARTIAL.json" ]; then
+    echo "ONLY A PARTIAL RECORD: $out/openems_patch_PARTIAL.json holds the stages that finished before the run stopped."
+    "$PY" -c 'import json,sys; a=json.load(open(sys.argv[1])); print("stages completed:", a["meta"].get("stages_completed"))' "$out/openems_patch_PARTIAL.json" || true
+  elif [ ! -f "$out/openems_patch_FAILED.json" ]; then
+    echo "(no record written at all -- the run did not reach a stage)"
+  fi
+
+  ls -la "$out"
+  echo "artifacts persisted to (mounted, survives teardown): $out"
+  echo "run_id is NOT in the record: VESSL does not export it into the pod, the submitter writes it"
+
+  # Evidence first: the record and the summary above are already written. Only now
+  # does the settling control get to change the verdict.
+  if [ "$rc" = "0" ] && [ "$settling_rc" != "0" ]; then
+    echo "SETTLING POSITIVE CONTROL FAILED: the stages ran and the record was written, but the control above did not hold, so no settling statement in it is supported."
+    rc=4
+  fi
+
+  echo "=== verdict ==="
+  case "$rc" in
+    0) echo "PASS: the reproduce gate passed and all three Stage B rungs were written. Read each rung's realized mesh, PML faces and smallest cell before quoting a number." ;;
+    1) echo "GATE FAILED: the reproduce gate, a realized-line check or a sanity gate failed -- the log names which. No number from this run is usable." ;;
+    2) echo "openEMS NOT IMPORTABLE despite the image probes passing -- investigate the bindings" ;;
+    3) echo "CONFIG ERROR: a missing solver stamp, a failed self-check or dry run, a drifted builder, an image whose tutorial differs from the frozen one, or a layout bug in the maker -- not a physics finding" ;;
+    4) echo "SETTLING POSITIVE CONTROL FAILED: read $out/settling_control.rc and the per-log lines above. The record exists; its settling statements do not stand up." ;;
+    124) echo "TIMEOUT: the 21600 s budget was exhausted -- the stages that finished are in openems_patch_PARTIAL.json; report the wall clock, do NOT shorten the record to fit" ;;
+    *) echo "ERROR: unexpected exit code $rc" ;;
+  esac
+  exit "$rc"

@@ -11,9 +11,8 @@ Modules:
   and wave solve, the settling / passivity / reciprocity witnesses, the
   ringdown and geometry advisories, the mixed and coaxial power-wave
   assemblers, and the shared constants.
-* :mod:`rfx.sparams.coax` — ``compute_coaxial_s_matrix``,
-  ``compute_coaxial_line_reflection``, ``compute_coaxial_two_port`` and
-  ``compute_coax_msl_transition``.
+* :mod:`rfx.sparams.coax` — ``compute_coaxial_line_reflection``,
+  ``compute_coaxial_two_port`` and ``compute_coax_msl_transition``.
 * :mod:`rfx.sparams.waveguide` — ``compute_waveguide_s_matrix`` and its
   non-uniform-mesh lane ``_compute_waveguide_s_matrix_nu``.
 * :mod:`rfx.sparams.mixed` — ``compute_mixed_s_matrix``, the lumped/wire +

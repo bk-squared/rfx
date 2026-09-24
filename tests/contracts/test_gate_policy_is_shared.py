@@ -129,7 +129,10 @@ _QUANTIZED_GATE_FILES = [
     #     0.01, four decades above the measurement -- a bar that gates nothing.
     #     Each quantum is chosen so the round-up is the last significant figure
     #     of that angle's own measurement.
-    REPO / "tests" / "unit" / "farfield" / "test_rcs280_reference_subtraction.py",
+    # (2026-09-23, #820, PI: the rcs280 lane left this list. Its magnitude
+    # checks are judged against exact Mie at the v2 bar, 2 dB, not a window
+    # derived from a measured envelope; the rcs280 notes above describe what
+    # it was. The aux-absorber lane stays.)
     REPO / "tests" / "unit" / "sources" / "test_tfsf_aux_absorber_reflection.py",
 ]
 

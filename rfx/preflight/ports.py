@@ -4,8 +4,7 @@
 Issue #980 Phase 3, leg 6. The ports family asks what the LATTICE does to a
 port after it is drawn: whether a coaxial pin meets registered PEC at its
 junction plane and is shorted by geometry rather than by the port (#589),
-whether a lumped RLC element is being illuminated by a TFSF plane wave (the
-#425 divergence), where ``reference_plane_cells`` puts the measurement planes
+where ``reference_plane_cells`` puts the measurement planes
 (#313), which of a port's, source's or probe's field components the realized
 PEC edge set has FROZEN (#929 / #931 §1.7, with the #314/#319 dead-cell
 advisories, the #556 end-gap finding and the #544 non-uniform skip), and
@@ -208,33 +207,18 @@ def _check_coaxial_port_junction_aperture(self) -> None:
         )
 
 
-def _validate_cfg_tfsf_with_lumped_rlc(self, _w) -> None:
-    """Warn: a lumped RLC element illuminated by a TFSF plane wave is unstable.
-
-    A ``add_lumped_rlc(...)`` element driven by a TFSF plane wave diverges
-    (measured: blow-up to ~1e35 by ~250 steps, C-independent). The root cause is
-    the TFSF total/scattered-field decomposition coupling into the lumped ADE
-    current, NOT a missing circuit path: embedding the element in a PEC-gap
-    structure does NOT cure it (tested 2026-07-22, #425 — a two-electrode PEC gap
-    still grows 0.1→1e25→NaN over ~800 steps; see
-    docs/research_notes/experiments/tfsf_lumped_pec_gap_stability.py). So there is
-    no geometry fix at the API level; a stable plane-wave lumped lane needs a
-    solver-level fix to the TFSF↔lumped coupling. The tunable-load (varactor)
-    gradient IS validated on the PORT-fed lane (``add_port`` +
-    ``forward(rlc_values_override=...)`` — tests/unit/autodiff/test_lumped_rlc_ad.py); use that
-    for varactor/RIS design. See the tracking issue (#425).
-    """
-    if self._tfsf is None or not self._lumped_rlc:
-        return
-    _w.warn(PreflightWarning(
-        "add_lumped_rlc(...) + a TFSF plane-wave source is numerically unstable "
-        "(fields diverge, C-independent). This is the TFSF↔lumped-ADE coupling, "
-        "not a missing circuit path — a PEC-gap structure does NOT cure it "
-        "(tested, #425). Use the validated PORT-fed lane (add_port + "
-        "forward(rlc_values_override=...)) for varactor/tunable-load design.",
-        code="tfsf_lumped_rlc_unstable",
-        source="_validate_cfg_tfsf_with_lumped_rlc",
-    ))
+# 2026-09-23 (#1163): ``_validate_cfg_tfsf_with_lumped_rlc`` (code
+# ``tfsf_lumped_rlc_unstable``, the #425 "TFSF plus lumped RLC diverges"
+# warning) stood here and was DELETED. The divergence it warned about was the
+# series RLC element's own coupling to its edge field -- the element took its
+# current from the field before that current had acted and so realized
+# R - d/(D0*A), a negative resistance below ~215 ohm -- not anything TFSF
+# does. #1163 solves the element together with its edge field; on this
+# check's own fixture, series 50 ohm + 0.2 pF and 50 ohm + 1 nH + 0.2 pF under
+# a TFSF plane wave now decay (they went non-finite at steps 246 and 2673),
+# and the parallel pairing it also warned about was stable before and after.
+# ``tests/unit/preflight/test_preflight_guards.py`` keeps that fixture as a
+# stability test.
 
 
 def _validate_cfg_refplane_placement(self, _w) -> None:
@@ -808,7 +792,7 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
 # ---------------------------------------------------------------------------
 # Pre-move ``__qualname__``, restored explicitly.
 #
-# Each of the six functions above was a ``def`` in the ``_PreflightMixin``
+# Each of the functions above was a ``def`` in the ``_PreflightMixin``
 # class body, so its ``__qualname__`` read ``_PreflightMixin.<name>``; a
 # module-level ``def`` gets the bare name instead. ``rfx/api/__init__.py``
 # rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at
@@ -817,8 +801,10 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
 # reports -- a user-visible behaviour change inside a pure code-motion step.
 # ``tests/unit/autodiff/test_design_mask_removed.py
 # ::test_no_public_simulation_method_leaks_a_mixin_class_name`` states the
-# rule but only walks PUBLIC members, and all six names here are private, so
-# ``tests/locks/test_preflight_split_snapshot.py`` pins these six directly.
+# rule but only walks PUBLIC members, and all these names are private, so
+# ``tests/locks/test_preflight_split_snapshot.py`` pins them directly. Six
+# moved here; five remain since #1163 deleted
+# ``_validate_cfg_tfsf_with_lumped_rlc``.
 #
 # None of the six was a ``@staticmethod`` -- the one staticmethod this leg
 # moves is ``_validate_tfsf_vacuum_boundary``, which went to
@@ -828,9 +814,6 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
 # ---------------------------------------------------------------------------
 _check_coaxial_port_junction_aperture.__qualname__ = (
     "_PreflightMixin._check_coaxial_port_junction_aperture"
-)
-_validate_cfg_tfsf_with_lumped_rlc.__qualname__ = (
-    "_PreflightMixin._validate_cfg_tfsf_with_lumped_rlc"
 )
 _validate_cfg_refplane_placement.__qualname__ = (
     "_PreflightMixin._validate_cfg_refplane_placement"

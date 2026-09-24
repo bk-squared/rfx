@@ -660,9 +660,9 @@ class _CompileMixin:
     def _build_materials(self, grid: Grid) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Build material arrays and optional Debye/Lorentz coefficients.
 
-        This helper drops ``pec_mask`` by construction — its three
-        callers (the coaxial S-matrix / reflection / two-port lanes in
-        ``rfx/api/_sparams.py``) drive ``_run`` with materials only, and
+        This helper drops ``pec_mask`` by construction — its callers
+        (the coaxial reflection / two-port lanes in
+        ``rfx/sparams/coax.py``) drive ``_run`` with materials only, and
         their conductors are the sigma-fill coax shell and pin that
         design note §1.8 fences out of the ownership contract.  A
         declared PEC SHEET or WIRE has no material to fall back on: it
@@ -695,8 +695,8 @@ class _CompileMixin:
                 _declared.append(
                     f"a PEC volume of {int(jnp.sum(_bm_pec))} cell(s)")
             raise NotImplementedError(
-                "the coaxial S-parameter lanes (compute_coaxial_s_matrix, "
-                "compute_coaxial_line_reflection, compute_coaxial_two_port) "
+                "the coaxial S-parameter lanes (compute_coaxial_line_reflection, "
+                "compute_coaxial_two_port) "
                 "do not realize declared PEC geometry of ANY kind (#931): "
                 "they step from material arrays only, so the cell mask is "
                 "discarded and a sheet or a wire owns no cell to begin "
