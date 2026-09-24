@@ -351,20 +351,25 @@ def measure_forward(sim, args, jax, eps, clock):
 
     record = {"status": "ok", "gather_succeeded": True}
     trace, grad = None, None
-    # The long run goes last: its trace and gradient are the ones saved.
+    # The long run goes last. Only its trace and gradient are returned (to be
+    # validated and saved): a short call's must never stand in for a failed long one.
     runs = ([("_short", args.steps_short)] if args.steps_short else []) + [("", args.steps)]
     try:
         for suffix, steps in runs:
             start = time.perf_counter()
-            trace = trace_of(eps, steps)
-            jax.block_until_ready(trace)
+            series = trace_of(eps, steps)
+            jax.block_until_ready(series)
             book(record, "run_seconds" + suffix, start, time.perf_counter(), clock)
+            if not suffix:
+                trace = series
             if args.grad:
                 start = time.perf_counter()
-                grad = jax.grad(lambda e: jnp.sum(trace_of(e, steps) ** 2))(eps)
-                jax.block_until_ready(grad)
+                gradient = jax.grad(lambda e: jnp.sum(trace_of(e, steps) ** 2))(eps)
+                jax.block_until_ready(gradient)
                 book(record, "grad_seconds" + suffix, start, time.perf_counter(), clock)
-                record["grad_sharding"] = str(grad.sharding)
+                record["grad_sharding"] = str(gradient.sharding)
+                if not suffix:
+                    grad = gradient
         record["trace_fully_replicated"] = bool(getattr(trace, "is_fully_replicated", False))
     except Exception as exc:
         record["exception"] = exception_record(exc)
