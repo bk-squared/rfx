@@ -307,7 +307,13 @@ def test_mutation_both_builds_before_the_stamps_sends_everything_red():
         f"{p}+{d} ratio rel {r:.3e} trace rel {t:.3e}"
         for (p, d), (r, t) in lanes.items()), file=sys.stderr)
     assert all(v >= OPEN_FRACTION for v in shares.values()), shares
-    assert not any(_within_block_factor(f) for f in factors.values()), factors
+    # The loose band is held to the lumped and wire ports only. The MSL
+    # factor under this mutation (4.17, and 3.83 once #1269 lands) sits
+    # within 30 % of the band's edge, so a mesh or #1260 change could move
+    # it inside without the defect coming back; the primary bar above and
+    # the lane cases below carry the MSL port.
+    assert not any(_within_block_factor(f) for (port, _), f in factors.items()
+                   if port != "msl"), factors
     assert all(abs(r) > LANE_RATIO_RTOL and t > LANE_TRACE_RTOL
                for r, t in lanes.values()), lanes
 
