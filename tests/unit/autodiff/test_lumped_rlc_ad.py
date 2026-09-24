@@ -218,6 +218,9 @@ def test_forward_no_rlc_byte_identity():
     forward(); the new self._lumped_rlc branch must be a pure skip when there
     is no RLC element.
     """
+    # #1012 re-pin, CPU float32, regenerate_forward_no_rlc_s11_golden.py:
+    # max|S11_new - S11_old| = 4.539863221e-5; tolerances unchanged.
+    # WHY: leader fills.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_forward_no_rlc_s11.npy"))
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
                      boundary="cpml", cpml_layers=6)

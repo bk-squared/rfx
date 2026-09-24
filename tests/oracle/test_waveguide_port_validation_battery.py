@@ -216,8 +216,7 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
 # most-telling diagnostic for extractor + PML quality". Switching to the
 # single-run ``normalize=False`` reflection is a STRENGTHENING, not a
 # loosening: it is the correct tool for an absorber-quality claim and it
-# moves with the boundary (measured max|S11| = 0.156 at 10 layers vs
-# 0.418 at 4 layers). This test carries that crippled-CPML falsifier
+# moves with the boundary. This test carries that crippled-CPML falsifier
 # inline, mirroring the phase-gate's in-test perturbation witness.
 #
 # This is the direct waveguide-lane PML-reflection witness the family
@@ -225,9 +224,10 @@ def _s_matrix(sim, *, num_periods=40, normalize=True):
 # extractor on TOTAL reflection; this binds the ABSORBER on near-zero
 # reflection — complementary, and neither is an identity.
 #
-# Meep class: <1 %.  OpenEMS class: <5 %. rfx single-run reflection sits
-# ~13-16 % (dominated by the source-plane Z_TE residual, not the absorber);
-# the gate binds absorber DEGRADATION, which trebles it.
+# With the magnetic CPML profile at the Yee half cell the 10-layer load reflects at most
+# 0.0135 over 4.5–8 GHz (was 0.156) and 4 layers reflect 0.119, so the earlier 13–16 %
+# floor was the absorber, not the source plane. Gate 0.05; the 4-layer witness must
+# clear 0.08.
 
 def test_matched_load_s11_empty_waveguide():
     freqs = np.linspace(4.5e9, 8.0e9, 10)
@@ -247,32 +247,22 @@ def test_matched_load_s11_empty_waveguide():
     print("[matched-load] |S22| per freq:", np.array2string(s22, precision=3))
     print(f"[matched-load] max reflection = {max_refl:.4f}; "
           f"min absorbed fraction (1-|S11|^2) = {min_absorbed:.4f}")
-    print("[matched-load] measured 2026-07-20: max|S11|=0.156, min_absorbed=0.976 "
-          "(10 layers); crippled 4-layer -> 0.418 / 0.825")
+    print('[matched-load] With the magnetic CPML profile at the Yee half cell the 10-layer load reflects at most 0.0135 over 4.5–8 GHz (was 0.156) and 4 layers reflect 0.119, so the earlier 13–16 % floor was the absorber, not the source plane. Gate 0.05; the 4-layer witness must clear 0.08.')
 
-    # Binding gate: reflection off the matched CPML termination. Measured
-    # 0.156 (10 layers, 2026-07-20); gate 0.20. NOT a loosening of the old
-    # 0.02 gate — that gate read a two-run identity (always 0, issue #395).
-    # Headroom note: healthy 0.156 sits at ~78% of the 0.20 gate (the ~13-16%
-    # floor is the documented source-plane Z_TE residual). FDTD here is
-    # deterministic (bit-identical reruns) so this is stable in-process; if a
-    # cross-machine float-drift false-alarm ever appears, re-measure the floor
-    # and ratchet — do NOT just widen the gate (the crippled-4-layer falsifier
-    # below clears 0.25, so there is a real 0.05 separation to protect).
-    assert max_refl < 0.20, (
-        f"Matched-load reflection |S11|={max_refl:.4f} exceeds 0.20 — the "
+    assert max_refl < 0.05, (
+        f"Matched-load reflection |S11|={max_refl:.4f} exceeds 0.05 — the "
         "CPML termination is not absorbing as well as the validated "
         "envelope, or the single-run extractor regressed."
     )
     # Absorbed-power witness: the matched load must absorb >=95% of the
-    # incident modal power at every frequency (measured 0.976).
+    # incident modal power at every frequency.
     assert min_absorbed > 0.95, (
         f"Matched load absorbs only {min_absorbed:.4f} of incident power "
         "(<0.95) — degraded CPML absorber."
     )
 
     # In-test discrimination falsifier (issue #395): the SAME geometry with
-    # a crippled 4-layer CPML must FAIL the 0.20 gate, proving this gate
+    # a crippled 4-layer CPML must FAIL the 0.05 gate, proving this gate
     # observes real absorber quality and is not vacuous. A regression that
     # re-vacuumed the gate (e.g. reverting to normalize=True) would let the
     # crippled run pass and trip this witness.
@@ -283,10 +273,10 @@ def test_matched_load_s11_empty_waveguide():
         np.abs(s_bad[idx_bad["right"], idx_bad["right"], :]).max(),
     ))
     print(f"[matched-load] crippled 4-layer CPML max reflection = {bad_refl:.4f} "
-          f"(must exceed the 0.20 gate to prove non-vacuity)")
-    assert bad_refl > 0.25, (
+          f"(must exceed 0.08 to prove non-vacuity)")
+    assert bad_refl > 0.08, (
         f"Crippled-CPML witness failed: 4-layer reflection {bad_refl:.4f} did "
-        "not rise clear of the 0.20 gate — the matched-load gate may have "
+        "not rise clear of 0.08 (matched-load gate 0.05) — the matched-load gate may have "
         "gone vacuous again (issue #395)."
     )
 

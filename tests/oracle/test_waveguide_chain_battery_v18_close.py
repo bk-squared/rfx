@@ -70,8 +70,8 @@ from tests.oracle.test_waveguide_chain_battery import (
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_v18_close.json"
 LIVE_FIXTURE = FIXTURE.with_name("fixture_931_realized_pec_forward2_run369367259427.json")
-LIVE_CELLS_FIXTURE = FIXTURE.with_name("fixture_1012_cpml_half_cell_run369367264028.json")
-LIVE_CELLS_SHA256 = "268b4dceef1bca091e21f18fbeaa2272105827e846002be614d1bb055d55ddc2"
+LIVE_CELLS_FIXTURE = FIXTURE.with_name("fixture_1012_cpml_half_cell_run369367264100.json")
+LIVE_CELLS_SHA256 = "90ac2c88a7686baa888f9b7de5f0d145a81e89d3d153a25a235bf45e463ee74b"
 RUN2 = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_guide_cell_aperture.json"
 FROZEN = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
@@ -313,7 +313,7 @@ def live_fx() -> dict:
 
 @pytest.fixture(scope="module")
 def live_cells_fx() -> dict:
-    # #1012 remeasured only thru/short cells; historical replay stays on #931.
+    # #1012 live cells include the slab re-freeze; historical replay stays on #931.
     raw = LIVE_CELLS_FIXTURE.read_bytes()
     assert hashlib.sha256(raw).hexdigest() == LIVE_CELLS_SHA256, "live cell record SHA-256 mismatch"
     return json.loads(raw)

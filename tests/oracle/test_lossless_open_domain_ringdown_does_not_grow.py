@@ -330,18 +330,20 @@ def test_lossless_open_domain_ringdown_decays_on_every_probe():
 
 @pytest.mark.gpu
 @pytest.mark.slow_physics
-def test_the_gate_is_red_without_conductor_continuation(monkeypatch):
-    """The falsifier: without conductor continuation the gate above must be RED.
-
-    One mutation: the shared helper returns the declared shape, so the ground plane ends at the
-    absorber entrance as it did before #801, on the six-layer arm that grew on main. Measured
-    red: settling 0.00 dB, worst log rate +5.842e-04 per step (module docstring). If this ever
-    passes quietly, the gate above has stopped discriminating and its green tells you nothing.
+def test_the_gate_is_red_without_continuation_and_with_integer_magnetic_profile(monkeypatch):
+    """Since #1012 a ground plane that stops at the absorber entrance no longer slows this
+    patch's decay: without continuation the six-layer model settles to −44.7 dB (VESSL
+    369367264100). The falsifier therefore restores both defects — the ground cut at the
+    absorber entrance and the magnetic CPML grading on the integer nodes — which
+    measured −24.4 dB settling on main.
     """
+    from tests._cpml_integer_profile import restore_integer_cpml_profile
+
+    restore_integer_cpml_profile(monkeypatch)
     rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, continuation_off=True)
     gate_green = settling <= SETTLING_DB_BAR and max(rates) < MAX_LOG_RATE_PER_STEP
     assert not gate_green, (
-        f"the uncontinued six-layer model no longer turns the gate red: log rates {rates} per "
+        f"the uncontinued six-layer model with integer-node magnetic grading no longer turns the gate red: log rates {rates} per "
         f"step (worst {max(rates):.3e} against {MAX_LOG_RATE_PER_STEP:.1e}), settling "
         f"{settling:.2f} dB against {SETTLING_DB_BAR:.0f} dB. Recorded red state on the "
         f"(187, 142, 61) grid: worst +5.84241689243745e-4, settling 0.00 dB. "

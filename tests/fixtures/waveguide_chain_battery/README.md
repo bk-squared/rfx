@@ -58,31 +58,38 @@ replay: `tests/_waveguide_chain_battery_gates.py`.
 
 ## #1012 live cell reference
 
-#1012 samples the magnetic CPML profile at the Yee half cell; the empty guide's
-worst reflection at the fine rung falls from −42.8 dB to −55.8 dB, and every
-thru/short cell moves by up to 0.029; #1012 also moves the slab cells (by 0.0271 / 0.0130 / 0.0063 coarse / mid / fine, false normalization); they were already stale since #1213 (0.41 / 0.181 / 0.088 from this record on main) and must be re-frozen on a tree that contains both.
+#1012 samples the magnetic CPML profile at the Yee half cell; the empty guide's worst
+reflection at the fine rung falls from −42.8 dB to −55.8 dB, and every thru/short cell moves
+by up to 0.029. The slab cells are re-frozen from VESSL 369367264100 (arm B, commit
+31531379, which contains #1213 and #1012). Their distance from the Airy reference at fine /
+mid / coarse (false normalization) is 0.0149 / 0.0607 / 0.287; the record they replace was
+0.101 / 0.232 / 0.581.
 
-`fixture_1012_cpml_half_cell_run369367264028.json` is the new reference for the
+`fixture_1012_cpml_half_cell_run369367264100.json` is the reference for the
 CPU and GPU live **cell** comparisons. It uses the distinct schema
 `rfx.waveguide_chain_battery.live_cells`, version 1: `fixture` holds the unchanged
 geometry, `cells` holds all 18 comparisons, and `cell_provenance` records each
 old/new source and max complex A−old-frozen, B−old-frozen and B−reference distance.
-The sources are main `d160dcf18a05190ecb79bbeaf8ee3e1d989d9cc0` (A) and
-`c0d2cfd035471768a0a8ad374110041afa205e00` (B), measured in VESSL **369367264028**.
 
-The 12 thru/PEC-short cells use B's saved S matrices, grid values, preflight
-codes and settling dB. Preflight entries contain only `code`, because that is
-what the capture saved and the live comparison reads; uncaptured warning text,
-settling records and other historical fields are not relabeled as new data.
-The six slab cell objects are copied exactly from run **369367259427**. All
-historical fixture files, enforcement hashes, tolerances, AD/FD, ladder and
-plane-shift replay records stay unchanged. This is a partial re-freeze, not a
-claim that those historical measurements were rerun.
+The 12 thru/PEC-short cells and their provenance are retained exactly from
+`fixture_1012_cpml_half_cell_run369367264028.json`, measured in VESSL **369367264028**
+(arm B, commit `c0d2cfd035471768a0a8ad374110041afa205e00`). The six slab cells use
+arm B of VESSL **369367264100**, commit `315313793ae4c96c8e27af4eb48e3517db078082`;
+its comparison arm A was `1f7204630c8b83cf6b4530fdd45cc52353d699a6`.
 
-The run used the existing `_measure_cell(dut, rung, lane)` entry in
+Replacement cells use the saved S matrices, grid values, preflight codes and
+settling dB. Preflight entries contain only `code`, because that is what the
+capture saved and the live comparison reads. Uncaptured warning text, settling
+records and other historical fields are not relabeled as new measurements.
+All historical fixture files, including the previous live-cell record, remain
+unchanged. Historical enforcement hashes, tolerances, AD/FD, ladder and
+plane-shift replay records also remain unchanged.
+
+The source run used `_measure_cell(dut, rung, lane)` in
 `tests/oracle/test_waveguide_chain_battery.py` for all three rungs and both
-normalizations. The new record stores the source JSON hashes and per-cell run
-IDs and commits; its filename names the run that supplied the replacement cells.
+normalizations. The new record stores source JSON hashes and per-cell run IDs
+and commits; its filename names the run supplying the six replacement slab cells.
+SHA-256: `90ac2c88a7686baa888f9b7de5f0d145a81e89d3d153a25a235bf45e463ee74b`.
 
 Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are written as
 `[re, im]` pairs. Every measured number carries the provenance block that produced it.
