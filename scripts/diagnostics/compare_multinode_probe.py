@@ -142,14 +142,18 @@ def load_runs(roots):
 
 def difference(a, b):
     """a against the reference b (same shape)."""
+    bitwise = a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
+    if not (np.isfinite(a).all() and np.isfinite(b).all()):
+        return {"reason": "non-finite values", "bitwise_equal": bitwise,
+                "non_finite_elements": [int(np.count_nonzero(~np.isfinite(a))),
+                                        int(np.count_nonzero(~np.isfinite(b)))]}
     a64, b64 = a.astype(np.float64), b.astype(np.float64)
     max_diff = float(np.max(np.abs(a64 - b64))) if a.size else 0.0
     peak = float(np.max(np.abs(b64))) if b.size else 0.0
     return {"max_abs_diff": max_diff, "reference_peak": peak,
             "relative_to_peak": max_diff / peak if peak else None,
             "ulp_of_peak": max_diff / float(np.spacing(np.float32(peak))) if peak else None,
-            "elements_differing": int(np.count_nonzero(a != b)),
-            "bitwise_equal": a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()}
+            "elements_differing": int(np.count_nonzero(a != b)), "bitwise_equal": bitwise}
 
 
 def load_trace(run):
@@ -255,15 +259,20 @@ def timing_of(run, field):
     summary = timing_summary(records, field, run.config["steps"], run.config["steps_short"])
     summary["aggregation"] = "slowest rank per timed repeat"
     if incomplete:
-        summary["reason"] = f"timed repeats {incomplete} have no {field} on every rank"
+        summary["reason"] = f"timed repeats {incomplete} are missing, or have no {field}, on some rank"
     return summary
 
 
 def ratio(numerator, denominator, key):
+    """top / bottom, or the reason there is none (a marginal can come out <= 0)."""
     if numerator.get("reason") or denominator.get("reason"):
-        return None
+        return None, "a timing has missing repeats"
     top, bottom = numerator.get(key), denominator.get(key)
-    return top / bottom if top is not None and bottom else None
+    if top is None or bottom is None:
+        return None, f"no {key} on one side"
+    if top <= 0 or bottom <= 0:
+        return None, f"not computed: {key} is {top:.3g} and {bottom:.3g}; a ratio needs both > 0"
+    return top / bottom, None
 
 
 def compare_runs(run, reference, run_name, reference_name):
@@ -274,11 +283,13 @@ def compare_runs(run, reference, run_name, reference_name):
         mine, theirs = timing_of(run, field), timing_of(reference, field)
         if not mine.get("values") and not theirs.get("values"):
             continue
-        row["timing"][field] = {
-            run_name: mine, reference_name: theirs,
-            f"{run_name}_over_{reference_name}_median_marginal_per_step":
-                ratio(mine, theirs, "median_marginal_per_step"),
-            f"{run_name}_over_{reference_name}_median_incl_compile": ratio(mine, theirs, "median")}
+        row["timing"][field] = {run_name: mine, reference_name: theirs}
+        for key, name in (("median_marginal_per_step", "median_marginal_per_step"),
+                          ("median", "median_incl_compile")):
+            value, why = ratio(mine, theirs, key)
+            row["timing"][field][f"{run_name}_over_{reference_name}_{name}"] = value
+            if why:
+                row["timing"][field][f"{run_name}_over_{reference_name}_{name}_note"] = why
     row["ranks"] = {}
     for name, item in ((run_name, run), (reference_name, reference)):
         row["ranks"][name] = [
