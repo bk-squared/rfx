@@ -276,10 +276,25 @@ def test_w11_fires_when_a_limit_does_not_exist():
 
 
 def test_w12_is_w8s_derivation_per_reading():
-    """FZ = (bar x limit / abs(A))^(1/p) and n_z = ceil(h / FZ), per row."""
-    arms = _ladder(_power_ladder(3.668, 15.0, 2.0))
+    """FZ = (bar x limit / abs(A))^(1/p) and n_z = ceil(h / FZ), per row.
+
+    First against the power law the ladder was BUILT from, whose limit,
+    amplitude and order are known here without asking the instrument; then
+    every row against its own three numbers.
+    """
+    f_inf, span, p = 3.668, 15.0, 2.0
+    arms = _ladder(_power_ladder(f_inf, span, p))
     r = ins.w12_substrate_rule(arms)
     assert r["verdict"] is None
+    h_um = [_R2_FZ_UM[ins.AFTER_1213_NAMESAKES[k]]
+            for k in ins.AFTER_1213_LADDER]
+    a_hz_per_m_p = (span * 1e6 / (h_um[0] ** p - h_um[-1] ** p)) * 1e6 ** p
+    fz_known = (case.FREQ_BAR * f_inf * 1e9 / a_hz_per_m_p) ** (1.0 / p)
+    declared = {q["key"]: q for q in r["readings"]["power"]}["declared"]
+    assert declared["substrate_cell_for_the_bar_m"] == pytest.approx(
+        fz_known, rel=1e-5)
+    assert declared["n_substrate_cells_for_the_bar"] == int(np.ceil(
+        case.SUBSTRATE_THICKNESS_M / fz_known - 1e-12))
     for t in ins.TRANSFORMS:
         for q in r["readings"][t]:
             if not (np.isfinite(q["order"]) and q["order"] > 0):
@@ -403,3 +418,26 @@ def test_the_second_notes_results_are_still_what_its_tables_print(monkeypatch):
     printed = md[md.index("## Results (facts)"):
                  md.index("Conclusions: leader fills.")]
     assert printed == in_note
+
+
+# ------------------------------------------- the two earlier records, unedited
+#: The git blob hashes of the two earlier records and of R2's replay, as main
+#: cca8ee5b holds them.  Section 6: "The R2 record and its replay are
+#: untouched."  Computed from the bytes on disk, so no git is needed to check.
+UNEDITED_BLOBS = {
+    "validation/research/multiband_nu/results/msl_notch_graded_fz.json":
+        "96692703d9d8fa535082d1ba9089578e0f7cf481",
+    "validation/research/multiband_nu/results/msl_notch_graded.json":
+        "16e6adf90962c8ee3b914b504440fbe06bba933d",
+    "tests/unit/nonuniform/test_msl_notch_fz_replay.py":
+        "e8733b79d9949efc8c56d27569eb5d011ec01a22",
+}
+
+
+@pytest.mark.parametrize("path", sorted(UNEDITED_BLOBS))
+def test_the_earlier_records_and_r2s_replay_are_byte_for_byte_mains(path):
+    import hashlib
+
+    data = (_ROOT / path).read_bytes()
+    blob = hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest()
+    assert blob == UNEDITED_BLOBS[path], path

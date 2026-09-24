@@ -298,6 +298,20 @@ AFTER_1213_LADDER = ("Z6m", "Z8m", "Cm", "Z16m")
 R2_LADDER = FZ_LADDER_ONE_COMMIT
 #: The attribution arm: Z6's mesh on main with #1213's rfx/ change reverted.
 AFTER_1213_REVERT_ARM = "Z6r"
+#: The commits the third note's jobs read, and the branch each lives on.  A
+#: commit only this pod's clone holds is provenance nobody else can resolve,
+#: so both branches are on origin; the revert branch is a measurement branch
+#: and is never merged.
+AFTER_1213_COMMITS = (
+    dict(commit="17971050aa0d702e8636a1f456e53d00a6860cb8",
+         branch="nu/notch-fz-after-1213",
+         what="the note's own branch: main cca8ee5b plus the note and this "
+              "instrument; its rfx/ is main's"),
+    dict(commit="9c8fd9b605204b6272c262a4d49017c3c2306933",
+         branch="nu/notch-fz-after-1213-revert1213",
+         what="a measurement branch, never merged: the commit above with "
+              "#1213's rfx/ change reverted and nothing else, for Z6r"),
+)
 #: Every arm this module can run, whichever record it lands in.
 ARM_TABLE: dict[str, Arm] = {**ARMS, **FZ_ARMS, **AFTER_1213_ARMS}
 
@@ -3801,6 +3815,13 @@ def after_1213_markdown_tables(arms: dict) -> str:
           f"{pr.get('gpu_device_kind') or 'n/a'} | {pr['jax_version']} | "
           f"{pr['started_utc']} |")
     w("")
+    w("The branch each new arm's commit lives on, both on origin:")
+    w("")
+    w("| commit | branch | what it is |")
+    w("|---|---|---|")
+    for c in AFTER_1213_COMMITS:
+        w(f"| {c['commit'][:12]} | `{c['branch']}` | {c['what']} |")
+    w("")
 
     if "W9" not in v:
         w("Conclusions: leader fills.")
@@ -4448,6 +4469,7 @@ def _empty_file(kind: str = "graded") -> dict:
             "reused_from": "msl_notch_graded_fz.json",
             "reused_arms": list(R2_LADDER),
             "namesakes": dict(AFTER_1213_NAMESAKES),
+            "commits": [dict(c) for c in AFTER_1213_COMMITS],
             "windows": {
                 "primary_transform": AFTER_1213_PRIMARY,
                 "W9_moved_bar_hz": W9_MOVED_BAR_HZ,
