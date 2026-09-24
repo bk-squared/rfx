@@ -395,6 +395,10 @@ def topology_optimize(
     # package exists is a fence nothing checks in the default CI image).
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "topology-optimization")
+    # #1240: the same reasoning for a refinement. The forward lane refuses it
+    # too, but only after the optax import, so without the extra it was a
+    # refusal nothing checked.
+    sim._require_no_refinement_without_a_subgrid("topology_optimize()")
     try:
         import optax
     except ImportError:
