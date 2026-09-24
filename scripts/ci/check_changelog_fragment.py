@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """CI gate for changelog fragments (issue #934).
 
-Three rules, all mechanical:
+Four rules, all mechanical:
 
 1. ``CHANGELOG.md`` may only be edited by a PR labelled ``release``. Every
    other PR writes ``changelog.d/<number>.<type>.md`` instead, which is what
@@ -11,6 +11,12 @@ Three rules, all mechanical:
 3. Fragment names, heading lines and bodies must be well formed. The validator
    is the assembler's own, imported here, so CI and the release step cannot
    drift.
+4. A fragment the PR adds or edits is at most ``MAX_FRAGMENT_LINES`` lines,
+   heading included, counted as the assembler inserts it (leading and trailing
+   blank lines dropped). It says what changed for a user; measurement,
+   falsifiers and review history go in the PR body and ``bk-squared/rfx-archive``
+   (PI, 2026-09-24: fragments on main that day ran a median of 18 lines and up
+   to 137). Fragments already on main are not re-checked.
 
 Inputs: ``--base``/``--head`` shas (the workflow passes the pull request's
 ``base.sha`` and ``head.sha``), ``PR_LABELS_JSON`` (the JSON array GitHub's
@@ -38,6 +44,7 @@ CHANGELOG = "CHANGELOG.md"
 FRAGMENT_DIR = "changelog.d"
 RELEASE_LABEL = "release"
 GUARDED_PREFIX = "rfx/"
+MAX_FRAGMENT_LINES = 12
 
 #: ``(status, path, present_at_head)``.
 Entry = Tuple[str, str, bool]
@@ -99,6 +106,26 @@ def changed_paths(base: str, head: str, repo: Path) -> List[Entry]:
     return entries
 
 
+def written_paths(base: str, head: str, repo: Path) -> List[str]:
+    """Paths the PR adds or edits, as they are named at head.
+
+    ``--name-only`` prints a rename's or copy's destination, never its source,
+    so a fragment renumbered by this PR counts as written and one it only
+    deletes does not.
+    """
+    out = subprocess.run(
+        ["git", "diff", "--name-only", "-z", "--diff-filter=AMRCT", f"{base}...{head}"],
+        cwd=repo, capture_output=True, check=True,
+    ).stdout.decode("utf-8", "surrogateescape")
+    return [path for path in out.split("\0") if path]
+
+
+def fragment_line_count(text: str) -> int:
+    """Lines the fragment adds to ``CHANGELOG.md``, heading included."""
+    body = text.replace("\r\n", "\n").strip("\n")
+    return len(body.split("\n")) if body else 0
+
+
 def _is_fragment(path: str) -> bool:
     return (
         path.startswith(FRAGMENT_DIR + "/")
@@ -120,6 +147,7 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
     assemble = _load_assembler()
     try:
         entries = changed_paths(base, head, repo)
+        written = set(written_paths(base, head, repo))
     except subprocess.CalledProcessError:
         return [
             f"cannot diff {base}...{head} in {repo}. Both commits must be "
@@ -172,6 +200,15 @@ def check(base: str, head: str, labels: Sequence[str], repo: Path,
             assemble.validate_fragment_text(name, text)
         except assemble.FragmentError as exc:
             failures.append(f"{exc}\n  See {FRAGMENT_DIR}/README.md for the shape.")
+        count = fragment_line_count(text)
+        if path in written and count > MAX_FRAGMENT_LINES:
+            failures.append(
+                f"{path} is {count} lines; a fragment is at most "
+                f"{MAX_FRAGMENT_LINES}, heading included.\n"
+                f"  It says what changed for a user. Measurement, falsifiers and\n"
+                f"  review history go in the PR body, and records in\n"
+                f"  bk-squared/rfx-archive. See {FRAGMENT_DIR}/README.md."
+            )
     return failures
 
 

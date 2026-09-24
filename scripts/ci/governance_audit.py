@@ -19,6 +19,10 @@ and issues, so no per-PR gate can see them:
   perfectly well-formed issue with no ``lane:*`` label, invisible to every lane
   query, and nothing on the issue itself says so. Asking for the LABEL rather
   than the heading is what catches that.
+* **Data carried past the budget.** ``scripts/ci/check_data_budget.py`` lets a
+  PR labelled ``data-budget-exception`` merge records the budget would refuse,
+  with a warning on that PR only. Whether the label became the way records land
+  is a question about many PRs, so it is counted here.
 * **One campaign at a time.** The PI's standing instruction is that work runs
   one campaign at a time, and an open milestone is how that is visible. A merged
   PR that closes an issue outside every open milestone is work that happened off
@@ -62,6 +66,7 @@ from typing import Dict, Iterable, List, NamedTuple, Optional, Sequence
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _CHECK_PR_BODY = REPO_ROOT / "scripts" / "ci" / "check_pr_body.py"
 _ISSUE_LANE = REPO_ROOT / "scripts" / "ci" / "issue_lane_label.py"
+_DATA_BUDGET = REPO_ROOT / "scripts" / "ci" / "check_data_budget.py"
 
 DEFAULT_DAYS = 7
 
@@ -88,6 +93,8 @@ def _load(path: Path, name: str):
 # unreviewed every Monday.
 _cpb = _load(_CHECK_PR_BODY, "rfx_check_pr_body")
 _lane = _load(_ISSUE_LANE, "rfx_issue_lane_label")
+# The label name is the gate's own constant, for the same reason.
+_budget = _load(_DATA_BUDGET, "rfx_check_data_budget")
 
 
 class Row(NamedTuple):
@@ -109,6 +116,12 @@ SECTIONS = (
         "Merged PRs with no accepted review, or a claimed exception",
         "`Review: skipped` is allowed for the two exceptions. An exception "
         "claimed often is not an exception.",
+    ),
+    (
+        "data-budget",
+        "Merged PRs that carried the data-budget exception",
+        "The data budget was not enforced on these: records, oversized files or "
+        "unread fixtures may have landed. Records belong in bk-squared/rfx-archive.",
     ),
     (
         "unlabelled",
@@ -168,18 +181,23 @@ def linked_issues(body: str) -> List[int]:
     return seen
 
 
-def lane_labels_of(issue: dict) -> List[str]:
-    """The ``lane:*`` labels on an issue record.
+def label_names(record: dict) -> List[str]:
+    """Every label name on an issue or PR record.
 
-    ``gh issue list --json labels`` gives ``[{"name": ...}, ...]``; a plain list
-    of names is accepted too, so a fixture need not carry the wrapper.
+    ``gh ... --json labels`` gives ``[{"name": ...}, ...]``; a plain list of
+    names is accepted too, so a fixture need not carry the wrapper.
     """
     out: List[str] = []
-    for label in issue.get("labels") or []:
+    for label in record.get("labels") or []:
         name = label.get("name") if isinstance(label, dict) else label
-        if isinstance(name, str) and name.startswith("lane:"):
+        if isinstance(name, str):
             out.append(name)
     return out
+
+
+def lane_labels_of(issue: dict) -> List[str]:
+    """The ``lane:*`` labels on an issue record."""
+    return [name for name in label_names(issue) if name.startswith("lane:")]
 
 
 def _in_open_milestone(issue: Optional[dict]) -> bool:
@@ -213,6 +231,12 @@ def classify(
         state, detail = review_state(body)
         if state != "ok":
             rows.append(Row("review", ref, title, detail or "no accepted `Review:` line"))
+
+        if _budget.EXCEPTION_LABEL in label_names(pr):
+            rows.append(Row(
+                "data-budget", ref, title,
+                f"carried `{_budget.EXCEPTION_LABEL}`: the data budget was not enforced",
+            ))
 
         links = linked_issues(body)
         if not links:
@@ -367,7 +391,7 @@ def fetch(days: int, limit: int = FETCH_LIMIT) -> dict:
     prs = _capped(_gh([
         "pr", "list", "--state", "merged", "--limit", str(limit),
         "--search", f"merged:>={since.isoformat()}",
-        "--json", "number,title,body,mergedAt,url",
+        "--json", "number,title,body,mergedAt,url,labels",
     ]), limit, "merged PRs", window)
     issues = _capped(_gh([
         "issue", "list", "--state", "all", "--limit", str(limit),

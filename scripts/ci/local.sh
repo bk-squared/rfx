@@ -11,7 +11,7 @@
 # Those are 35 minutes, and `.github/workflows/pr-tests.yml` only starts them
 # when the diff touches code (`scripts/ci/changed_paths.py` decides).
 #
-#   scripts/ci/local.sh                 # the six steps; pr-body reports skipped
+#   scripts/ci/local.sh                 # the seven steps; pr-body reports skipped
 #   scripts/ci/local.sh /tmp/body.md    # also check that PR body
 #   PYTHON=.venv/bin/python scripts/ci/local.sh
 #   CHANGELOG_BASE=origin/main CHANGELOG_HEAD=HEAD scripts/ci/local.sh
@@ -23,7 +23,7 @@
 
 set -uo pipefail
 
-STEP_NAMES=(ruff docs-hygiene changelog-fragment pr-body workflow-yaml contract-tests)
+STEP_NAMES=(ruff docs-hygiene changelog-fragment data-budget pr-body workflow-yaml contract-tests)
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -32,8 +32,8 @@ cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export PYTHON="${PYTHON:-python3}"
 BODY_PATH="${1:-}"
 
-# What the changelog gate diffs against. CI uses the PR's base and head shas;
-# locally the merge base with origin/main is the same question.
+# What the changelog and data-budget gates diff against. CI uses the PR's base
+# and head shas; locally the merge base with origin/main is the same question.
 CHANGELOG_BASE="${CHANGELOG_BASE:-origin/main}"
 CHANGELOG_HEAD="${CHANGELOG_HEAD:-HEAD}"
 step_index=0
@@ -74,6 +74,13 @@ echo "  ok — a fragment exists for every rfx/ change, and CHANGELOG.md is unto
 "$PYTHON" scripts/changelog/assemble.py --check || fail
 
 begin 3
+# The SAME script the data-budget step of guards-and-preflight runs. Locally
+# PR_LABELS_JSON is empty, so the exception label never applies here: a red
+# step means CI will be red until the records move or the label is applied.
+"$PYTHON" scripts/ci/check_data_budget.py \
+  --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" || fail
+
+begin 4
 if [ -n "$BODY_PATH" ]; then
   "$PYTHON" scripts/ci/check_pr_body.py --file "$BODY_PATH" || fail
   echo "PR body OK: $BODY_PATH"
@@ -81,7 +88,7 @@ else
   echo "skipped — pass a path to check a PR body: scripts/ci/local.sh /tmp/body.md"
 fi
 
-begin 4
+begin 5
 "$PYTHON" - <<'PYEOF' || fail
 import sys
 from pathlib import Path
@@ -107,7 +114,7 @@ if bad:
     sys.exit(f"{bad} workflow file(s) do not parse")
 PYEOF
 
-begin 5
+begin 6
 # The same flags the required gate in pr-tests.yml uses. Without `-o addopts=""`
 # the local run silently collects two fewer tests than CI does, which is the
 # local-is-weaker-than-CI gap these scripts exist to close. Costs about 27 s.

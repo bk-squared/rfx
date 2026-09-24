@@ -204,6 +204,18 @@ def _is_shared_setup(step: dict) -> bool:
     return any(marker in text for marker in SHARED_SETUP)
 
 
+#: Gates about the DIFF rather than the code, which must run on both branches
+#: because a "not code" diff is exactly what they judge: a PR adding records
+#: under docs/ or scripts/ never reaches the code branch. Only in the job named
+#: here -- in `fast-suite` the same step would run six times.
+BOTH_BRANCH_GATES = {"guards-and-preflight": ("scripts/ci/check_data_budget.py",)}
+
+
+def _is_both_branch_gate(job: str, step: dict) -> bool:
+    run = str(step.get("run", ""))
+    return any(script in run for script in BOTH_BRANCH_GATES.get(job, ()))
+
+
 @pytest.mark.parametrize("job", HEAVY_JOBS)
 def test_the_first_step_is_the_checkout(job: str) -> None:
     """Every test below reasons about "the steps after checkout"."""
@@ -238,6 +250,7 @@ def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:  #
         for step in steps[1:]
         if not str(step.get("if", "")).strip()
         and not _is_shared_setup(step)
+        and not _is_both_branch_gate(job, step)
     ]
     assert not ungated, f"`{job}` steps run regardless of the verdict: {ungated}"
 
@@ -420,6 +433,52 @@ def test_the_workflow_asks_for_changes_to_be_a_required_check() -> None:
     assert "`changes` must be a required check too" in runbook
 
 
+def _data_budget_steps(job: str) -> list[dict]:
+    steps = load(PR_TESTS)["jobs"][job]["steps"]
+    return [s for s in steps if "scripts/ci/check_data_budget.py" in str(s.get("run", ""))]
+
+
+def test_the_data_budget_runs_once_on_both_branches() -> None:
+    """In `guards-and-preflight`, ungated; nowhere in the six shards.
+
+    A PR that adds records under docs/ or scripts/ is a not-code diff, so a
+    step gated on the code branch would never see the case it exists for. It
+    lives in an existing required job because a new check context binds only
+    once the PI adds it to the ruleset.
+    """
+    steps = _data_budget_steps("guards-and-preflight")
+    assert len(steps) == 1, [s.get("name") for s in steps]
+    assert not str(steps[0].get("if", "")).strip(), steps[0].get("if")
+    assert not _data_budget_steps("fast-suite")
+
+
+def test_the_data_budget_reads_both_shas_through_env_and_labels_live() -> None:
+    """The shas through `env:`; the labels from the API, not the payload.
+
+    This workflow does not re-run on `labeled`, so a label counts only by
+    re-running the failed job, and a re-run replays the original payload. A
+    label applied after the push is visible only to a live read.
+    """
+    step = _data_budget_steps("guards-and-preflight")[0]
+    env = step.get("env") or {}
+    assert env.get("BASE_SHA") == "${{ github.event.pull_request.base.sha }}"
+    assert env.get("HEAD_SHA") == "${{ github.event.pull_request.head.sha }}"
+    assert "GH_TOKEN" in env and "PR_NUMBER" in env
+    run = str(step.get("run", ""))
+    assert '--base "$BASE_SHA" --head "$HEAD_SHA"' in run
+    assert "gh pr view" in run and "PR_LABELS_JSON" in run
+    assert "labels.*.name" not in str(step), "labels taken from the event payload"
+
+
+def test_guards_and_preflight_can_diff_and_read_labels() -> None:
+    """Full history for the merge base; `pull-requests: read` for the labels."""
+    job = load(PR_TESTS)["jobs"]["guards-and-preflight"]
+    checkout = job["steps"][0]
+    assert (checkout.get("with") or {}).get("fetch-depth") == 0, checkout
+    assert (job.get("permissions") or {}).get("pull-requests") == "read", job.get("permissions")
+    assert (job.get("permissions") or {}).get("contents") == "read", job.get("permissions")
+
+
 def test_pushes_to_main_still_trigger_the_lane() -> None:
     triggers = load(PR_TESTS).get("on", load(PR_TESTS).get(True))
     assert triggers["push"]["branches"] == ["main"]
@@ -490,6 +549,7 @@ def test_local_sh_runs_the_real_entry_points() -> None:
         "scripts/ci/lint.sh",
         "scripts/ci/docs_hygiene.sh",
         "scripts/ci/check_changelog_fragment.py",
+        "scripts/ci/check_data_budget.py",
         "scripts/ci/check_pr_body.py --file",
         "pytest tests/contracts",
     ):
