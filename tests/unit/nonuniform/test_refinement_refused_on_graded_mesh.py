@@ -23,7 +23,9 @@ entry points dropped a refinement the same way: ``forward()`` (bit-identical,
 peak 1.079171e6 both), ``topology_optimize()`` (bit-identical loss history),
 the ``vmap_material_sweep()`` batched kernel and the uniform
 ``compute_waveguide_s_matrix()`` scan (both bit-identical). Each refuses it
-now; ``optimize()`` goes through ``forward()``, and
+now through one shared check. ``forward()`` and ``topology_optimize()`` both
+enter the uniform forward lane (``_forward_from_materials``), which refuses it
+once for both; ``optimize()`` goes through ``forward()``, and
 ``differentiable_material_fit()`` runs its own uniform scan.
 
 The ADI lane never dropped a refinement: ``_validate_adi_configuration``
@@ -247,7 +249,7 @@ def test_optimize_refuses():
 
 
 def test_topology_optimize_refuses():
-    """It calls the forward lane directly, not through _dispatch_plan."""
+    """It enters the forward lane without forward() or _dispatch_plan."""
     from rfx.topology import TopologyDesignRegion, topology_optimize
 
     region = TopologyDesignRegion(corner_lo=(0.005, 0.005, 0.005),

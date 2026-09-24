@@ -1439,6 +1439,13 @@ class _ExecuteMixin:
                 return_state=False,
             )
 
+        # The uniform forward lane has no subgrid (#1240). forward() (and
+        # optimize() through it) and topology_optimize() all enter here; the
+        # other callers never carry a refinement (run() sends one to the
+        # subgridded lane, compute_mixed_s_matrix refuses it first).
+        self._require_no_refinement_without_a_subgrid(
+            "forward()/optimize()/topology_optimize()")
+
         from rfx.simulation import (
             run as _run,
             make_probe,
@@ -3095,10 +3102,6 @@ class _ExecuteMixin:
                 _n = n_steps if n_steps is not None else _fwd_nu_n_steps()
                 _reject_lane_precision("fwd_nonuniform")
                 return _DispatchPlan(lane="fwd_nonuniform", n_steps=_n)
-
-            # The uniform forward lane has no subgrid either (#1240).
-            self._require_no_refinement_without_a_subgrid(
-                "forward()/optimize()")
 
             # Uniform forward lane: the remaining kwargs are NU-only.
             if not emit_time_series:
