@@ -5,8 +5,8 @@ Four jobs, one stage each, on the CPU preset (pinned commit, clean-tree guard,
 node-local copy, EXIT-trap collection, the CPU JAX 0.6.2 wheel):
 
 * ``open-settles-as-fixed`` — ``tests/oracle/test_coax_open_end_settles.py`` as
-  shipped, pinned to four cores so its wall time is the one the weekly lane's
-  runner sees;
+  shipped, pinned to four cores so its wall time can be set beside the other
+  entries of ``.test_durations``;
 * ``open-settles-forced-z`` — the same test with both coax lanes forced back to
   ``cpml_axes="z"`` inside the runner call, every helper call kept: the
   mutation that revives the closed can. The test has to go red;
@@ -126,11 +126,11 @@ NEEDS_NEWER_GIT = (
 
 JOBS = (
     dict(key="open-settles-as-fixed", taskset="taskset -c 0-3 ", mutation="",
-         pytest_args='-m slow_physics -s tests/oracle/test_coax_open_end_settles.py',
+         pytest_args='-s tests/oracle/test_coax_open_end_settles.py',
          description=("Issue 1218 fix: the coax open end on the cheapest board where the "
                       "shipped lane fails, as shipped, on four pinned cores.")),
     dict(key="open-settles-forced-z", taskset="taskset -c 0-3 ", mutation=MUTATION,
-         pytest_args='-m slow_physics -s tests/oracle/test_coax_open_end_settles.py',
+         pytest_args='-s tests/oracle/test_coax_open_end_settles.py',
          description=("Issue 1218 fix, mutation: both coax lanes forced back to "
                       "cpml_axes=z in the runner call, helper calls kept; the open-end "
                       "check has to go red.")),
