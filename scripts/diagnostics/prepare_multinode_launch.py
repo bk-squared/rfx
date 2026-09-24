@@ -163,6 +163,11 @@ def main():
                "--working-dir", "/input/mn", "--output-dir", "/output",
                "--command", "sh /input/mn/multinode_probe_job.sh"]
         for key, value in env.items():
+            # The experiment CLI splits each hyperparameter on every "=" and aborts
+            # on a value that holds one ("jax[cuda12]==0.6.2"); refuse it here.
+            if "=" in str(value):
+                parser.error(f"{key}={value}: an experiment hyperparameter value cannot contain '=' "
+                             "(write a pip pin as 'jax[cuda12]>0.6.1,<0.6.3')")
             cli.extend(["--hyperparameter", f"{key}={value}"])
         log = out / f"{job}.submit.log"
         receipt = artifacts / job
