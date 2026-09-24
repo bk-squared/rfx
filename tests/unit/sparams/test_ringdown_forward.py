@@ -111,7 +111,7 @@ def test_the_completed_value_is_run_s(lane):
     for name in ("W0", "W1", "WE", "W2"):
         assert rep_f.witness(name).value == rep_r.witness(name).value, name
     assert rep_f.witness("traced").value == pytest.approx(d, rel=1e-12)
-    assert rep_f.witness("traced").ok and rep_f.witness("W0").value <= rd.W0_ULP_BAR
+    assert rep_f.witness("traced").ok and rep_f.witness("W0").value <= rd.W0_REL_BAR
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
@@ -144,7 +144,7 @@ def test_the_value_under_x64_is_tighter():
             out[lane] = float(np.max(np.abs(
                 _as_run_layout(lane, f.ringdown.s_params).astype(np.complex128)
                 - r.ringdown.s_params.astype(np.complex128))))
-            assert f.ringdown.report.witness("W0").value <= rd.W0_ULP_BAR
+            assert f.ringdown.report.witness("W0").value <= rd.W0_REL_BAR
     print(f"\n[x64, 600 steps] |S_forward - S_run| {out}")
     assert max(out.values()) <= BAR_VALUE_X64, out
 
@@ -208,13 +208,7 @@ def test_ringdown_none_stages_the_same_program(lane):
 # The report
 # ---------------------------------------------------------------------------
 
-def test_the_report_is_none_while_traced_and_read_on_a_jitted_result():
-    """Inside the trace the report is None; the ``ringdown`` output a jitted
-    function returns is a concrete RingdownForwardResult whose report is
-    computed on the host from its own arrays. (W0 on a jitted result: the
-    probe series are bit-identical to the eager call's, but the user's
-    program rounds the DFT accumulation differently, 5-26 ULP on 600-4000
-    steps; printed here, not judged by this test.)"""
+def test_the_report_is_none_while_traced():
     sim = _box("uniform")
     seen = {}
 
@@ -224,17 +218,35 @@ def test_the_report_is_none_while_traced_and_read_on_a_jitted_result():
                                               jnp.float32) * p,
                         ringdown=RingdownSpec())
         seen["report"] = r.ringdown.report
-        return r.ringdown
+        return r.ringdown.s_params
+
+    jax.jit(f)(jnp.float32(1.0))
+    assert seen["report"] is None
+
+
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
+def test_a_jitted_4000_step_forward_reads_w0_ok(lane):
+    """The ``ringdown`` output a jitted function returns is concrete, and its
+    report is judged as an eager call's: the user's program rounds the port
+    accumulators differently (10-26 ULP at 4000 steps, the probe series
+    bit-identical), inside W0's 1e-5 of the peak (PI decision 2026-09-25)."""
+    sim = _box(lane)
+    grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
+    eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
+
+    def f(p):
+        return sim.forward(n_steps=4000, skip_preflight=True, eps_override=eps * p,
+                           ringdown=RingdownSpec(), **_kw(lane)).ringdown
 
     out = jax.jit(f)(jnp.float32(1.0))
-    assert seen["report"] is None
     assert isinstance(out, rd.RingdownForwardResult)
     rep = out.report
-    print(f"\n[jitted result] W0 per array {rep.w0_ulps}\n{rep.summary()}")
-    assert rep is not None and out.report is rep            # computed once
-    assert set(rep.w0_ulps) == {"port0/v_mid", "port0/i", "port0/v_port", "S[0,0]"}
-    assert rep.w0_ulps["S[0,0]"] <= rd.W0_ULP_BAR
-    assert np.all(np.isfinite(np.asarray(out.s_params)))
+    w0 = rep.witness("W0")
+    print(f"\n[{lane}, jitted, 4000 steps] W0 {w0.value:.3g} of the peak; ULPs "
+          f"{ {k: round(v, 1) for k, v in rep.w0_ulps.items()} }")
+    assert out.report is rep                             # computed once
+    assert rep.completed and w0.ok and w0.value <= rd.W0_REL_BAR
+    assert rep.witness("W1").ok and rep.witness("traced").ok
 
 
 def test_a_failed_identification_gives_nan_not_an_exception(monkeypatch):

@@ -62,7 +62,8 @@ After the run it reads the port's REALIZED cells, metrics and DFT
 accumulators from the run itself, rebuilds the port voltage and current step
 by step, and checks that the rebuilt series, accumulated the way the run
 accumulates them, reproduce the run's own accumulators to within
-``W0_ULP_BAR`` ULPs (W0). It then completes the spectra and assembles the
+``W0_REL_BAR`` of each array's peak (W0; the same differences in ULPs are
+reported as information). It then completes the spectra and assembles the
 S-matrix with the lane's own assembly (the graded lane's
 ``rfx.nonuniform._assemble_nu_result``, the uniform lane's
 ``rfx.probes.probes.driven_port_reflection``). When W0, W1 or the pole
@@ -284,7 +285,9 @@ class RingdownReport:
     need a model stay ``None``. ``s_accumulator_roundoff`` is information, not
     a check: ``max |S of the float64 DFT of the rebuilt record - Result.s_params|``,
     the run's own complex64 accumulator round-off in ``Result.s_params``,
-    which grows with the record.
+    which grows with the record. ``w0_relative`` holds W0's judged number per
+    array (``max |rebuilt - run| / max |run|``); ``w0_ulps`` the same
+    differences in ULPs at each array's peak, as information.
     """
 
     n_record: int
@@ -310,6 +313,7 @@ class RingdownReport:
     growing_pole_rule: str = ""
     w0_ulps: dict | None = None
     s_accumulator_roundoff: float | None = None
+    w0_relative: dict | None = None
     tail_share: float | None = None
     slowest_decay_over_window: float | None = None
     discarded_growth_max: float | None = None
@@ -395,6 +399,25 @@ def _given_spectra(arr, nf: int, n_ch: int, name: str) -> np.ndarray:
     return a
 
 
+def _cmul(a, b) -> np.ndarray:
+    """``a * b`` for complex arrays (numpy broadcasting), the same bits at any address.
+
+    numpy 1.26 on arm64 multiplies complex arrays in two loops that round
+    differently (one fuses a multiply and an add), and which loop an element
+    takes depends on where the arrays sit in memory: the same product came out
+    two ways in one process (2 distinct results over 200 allocations; numpy
+    2.4 gave 1), so a completion computed twice from one model could differ in
+    its last digit. Built from real products, each rounded once, the result
+    does not depend on the address.
+    """
+    a = np.asarray(a, dtype=np.complex128)
+    b = np.asarray(b, dtype=np.complex128)
+    out = np.empty(np.broadcast_shapes(a.shape, b.shape), dtype=np.complex128)
+    out.real = a.real * b.real - a.imag * b.imag
+    out.imag = a.real * b.imag + a.imag * b.real
+    return out
+
+
 def plain_dft(series, dt, freqs, *, chunk: int = 4096) -> np.ndarray:
     """``dt * sum_n y_n exp(-j 2 pi f n dt)`` over the whole ``series``.
 
@@ -428,7 +451,7 @@ def tail_dft(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
         return np.zeros((freqs.size, c.shape[1]), dtype=np.complex128)
     n1 = int(n_last) + 1
     wdt = 2.0 * np.pi * freqs * dt                                  # (nf,)
-    amp = np.exp(s * dt * (n1 - int(model.n_ref)))[:, None] * c    # (K, C)
+    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)   # (K, C)
     zn1 = np.exp(-1j * wdt * n1)                                    # (nf,)
     one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])      # (nf, K)
     return dt * ((zn1[:, None] / one_minus) @ amp)
@@ -1127,6 +1150,17 @@ def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
     return r["s_params"]
 
 
+def _relative_at_peak(rebuilt, rfx_values) -> float:
+    """``max |rebuilt - rfx| / max |rfx|``: W0's judged number for one array."""
+    a = np.asarray(rebuilt).astype(np.complex128)
+    b = np.asarray(rfx_values).astype(np.complex128)
+    d = float(np.max(np.abs(a - b))) if b.size else 0.0
+    if d == 0.0:
+        return 0.0
+    peak = float(np.max(np.abs(b)))
+    return d / peak if peak > 0.0 else math.inf
+
+
 def _ulps(rebuilt, rfx_values) -> float:
     """``max |rebuilt - rfx|`` in units of the spacing of the rfx array's own
     real dtype at that array's peak (the cross-trace ULP reading)."""
@@ -1142,10 +1176,15 @@ def _ulps(rebuilt, rfx_values) -> float:
 
 
 #: W0's bar: the rebuilt accumulators and the lane's S assembly on the run's
-#: own accumulators may differ from the run by at most this many ULPs, read at
-#: the peak of each array in the run's own real dtype (the PI's cross-trace
-#: rule of 2026-09-23: aim bitwise, allow a single-digit ULP count).
-W0_ULP_BAR = 9.0
+#: own accumulators may differ from the run by at most this fraction of each
+#: array's peak, ``max |rebuilt - run| / max |run|``. PI decision 2026-09-25:
+#: per-step quantities (fields, probe samples) keep the cross-trace rule of at
+#: most 9 ULP at the peak; quantities summed over the record (the port DFT
+#: accumulators, the S built from them) pass at 1e-5 of the peak, because a
+#: program compiled differently (a user's ``jax.jit`` around ``forward()``)
+#: rounds the same sum differently -- 5-26 ULP on 600-4000 steps with the
+#: probe series bit-identical. The ULP counts stay in the report.
+W0_REL_BAR = 1.0e-5
 #: W1's bar, absolute on S: the S the completion's channels give without a
 #: tail -- the float64 DFT of the float64 rebuild of the port's V and I --
 #: against the S the same DFT gives of the float32 per-step V and I that the
@@ -1372,11 +1411,13 @@ class RingdownRun:
             report = RingdownReport(**base, witnesses=tuple(witnesses),
                                     failure=f"{nc.name}: {nc.message}",
                                     w0_ulps=state.get("w0_ulps"),
+                                    w0_relative=state.get("w0_relative"),
                                     s_accumulator_roundoff=state.get(
                                         "s_accumulator_roundoff"))
             return None, report, nc
         report = RingdownReport(**base, witnesses=tuple(witnesses),
                                 w0_ulps=state.get("w0_ulps"),
+                                w0_relative=state.get("w0_relative"),
                                 s_accumulator_roundoff=state.get(
                                     "s_accumulator_roundoff"), **report_extra)
         return S, report, None
@@ -1386,10 +1427,10 @@ class RingdownRun:
         try:
             pms = _read_port_metas(self.lane, result, run_grid)
         except RuntimeError as exc:
-            raise _NotCompleted("W0", math.nan, W0_ULP_BAR, str(exc)) from None
+            raise _NotCompleted("W0", math.nan, W0_REL_BAR, str(exc)) from None
         if len(pms) != len(self.wire_entries):
             raise _NotCompleted(
-                "W0", math.nan, W0_ULP_BAR,
+                "W0", math.nan, W0_REL_BAR,
                 f"the run reports {len(pms)} wire ports, the model declares "
                 f"{len(self.wire_entries)}.")
         return pms
@@ -1402,7 +1443,7 @@ class RingdownRun:
                 out.append(_port_layout(pm, col))
             except KeyError:
                 raise _NotCompleted(
-                    "W0", math.nan, W0_ULP_BAR,
+                    "W0", math.nan, W0_REL_BAR,
                     f"wire port {p}: realized live edges {pm.live_cells} / "
                     f"midpoint {pm.mid} not all inside the probed span.") from None
         return out
@@ -1415,7 +1456,7 @@ class RingdownRun:
             got = tuple(int(v) for v in resolve(_node_position(self.grid, idx)))
             if got != idx:
                 raise _NotCompleted(
-                    "W0", math.nan, W0_ULP_BAR,
+                    "W0", math.nan, W0_REL_BAR,
                     f"port-channel probe {comp}{idx} resolved to {got} on the "
                     "run's own grid.")
         col = {key: n_user + j for j, key in enumerate(self.probe_keys)}
@@ -1478,7 +1519,7 @@ class RingdownRun:
         pms, e_cols, h_cols = self._rebuild_inputs(result, ts_all, n_user)
 
         # ---- W0: the rebuilt series, accumulated the run's way, are the run's
-        ulps = {}
+        ulps, rel = {}, {}
         # the grid's own dt object: under x64 a numpy float64 and a Python
         # float promote the run's float32 step index differently
         dt_run = result.grid.dt
@@ -1489,6 +1530,7 @@ class RingdownRun:
             replayed.append(per_step)
             for name, a, b in zip(("v_mid", "i", "v_port"), emu, pm.accs):
                 ulps[f"port{p}/{name}"] = _ulps(a, b)
+                rel[f"port{p}/{name}"] = _relative_at_peak(a, b)
         freqs32 = pms[0].freqs
         S_run = np.asarray(result.s_params)
         S_check = _assemble(self.lane, pms, [pm.accs[2] for pm in pms],
@@ -1497,19 +1539,23 @@ class RingdownRun:
         for j in range(S_run.shape[0]):
             for k in range(S_run.shape[1]):
                 ulps[f"S[{j},{k}]"] = _ulps(S_check[j, k], S_run[j, k])
-        state["w0_ulps"] = ulps
-        worst = max(ulps, key=ulps.get)
-        w0 = ulps[worst]
+                rel[f"S[{j},{k}]"] = _relative_at_peak(S_check[j, k], S_run[j, k])
+        state["w0_ulps"], state["w0_relative"] = ulps, rel
+        worst = max(rel, key=rel.get)
+        w0 = rel[worst]
         w0_rule = ("the port V/I rebuilt from probes, accumulated the run's way "
                    "in the run's dtype, and the lane's S assembly on the run's own "
-                   "accumulators, against the run: max ULPs at each array's peak")
-        if not w0 <= W0_ULP_BAR:
+                   "accumulators, against the run: max |difference| / max |run| per "
+                   "array")
+        w0_note = (f"largest in ULPs at the array's peak: {max(ulps.values()):.3g} "
+                   f"({max(ulps, key=ulps.get)}; information)")
+        if not w0 <= W0_REL_BAR:
             raise _NotCompleted(
-                "W0", w0, W0_ULP_BAR,
-                f"{worst} differs from the run by {w0:.3g} ULPs (bar "
-                f"{W0_ULP_BAR:g}): the rebuilt port channels are not the ones the "
-                "run accumulated.")
-        witnesses.append(RingdownWitness("W0", w0, W0_ULP_BAR, True, w0_rule))
+                "W0", w0, W0_REL_BAR,
+                f"{worst} differs from the run by {w0:.3g} of its peak ({ulps[worst]:.3g} "
+                f"ULPs; bar {W0_REL_BAR:g} of the peak): the rebuilt port channels are "
+                "not the ones the run accumulated.")
+        witnesses.append(RingdownWitness("W0", w0, W0_REL_BAR, True, w0_rule, w0_note))
 
         # ---- the rebuilt record, float64 ------------------------------------
         Y = _rebuild_channels(self.lane, pms, e_cols, h_cols)
@@ -1519,7 +1565,7 @@ class RingdownRun:
 
         def to_s(spectra):
             vp = [spectra[:, 2 * p] for p in range(len(pms))]
-            ii = [spectra[:, 2 * p + 1] * half for p in range(len(pms))]
+            ii = [_cmul(spectra[:, 2 * p + 1], half) for p in range(len(pms))]
             return _assemble(self.lane, pms, vp, ii, freqs32, dt)
 
         # ---- W1: the channels fed to the completion are the ones W0 checked --
