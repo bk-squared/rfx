@@ -67,13 +67,9 @@ run_worker() {
   sha=$(git -C "$work/src" rev-parse HEAD)
   printf '%s\n' "$sha" > "$out/commit.rank$rank.txt"
   printf '%s\n' "$resolved" > "$out/tooling-commit.rank$rank.txt"
-  tree=$(git -C "$work/src" rev-parse HEAD:rfx)
-  baseline=$(git -C "$work/src" rev-parse "$RFX_EXPECTED_SHA":rfx)
-  [ "$tree" = "$baseline" ] || { echo "rfx tree differs from the pinned commit"; return 1; }
-  printf '%s\n' "$tree" > "$out/rfx-tree.rank$rank.txt"
-  for file in distributed_multinode_probe.py compare_multinode_probe.py; do
-    git -C "$source_repo" show "$resolved:scripts/diagnostics/$file" > "$work/src/scripts/diagnostics/$file"
-  done
+  # The probe runs from this checkout: it records HEAD:rfx, counts uncommitted
+  # rfx/ paths (rfx_dirty) and refuses an rfx imported from anywhere else.
+  git -C "$work/src" rev-parse HEAD:rfx > "$out/rfx-tree.rank$rank.txt"
   cd "$work/src"
   export PYTHONPATH="$work/src"
   export RFX_TOOLING_SHA="$resolved"
@@ -83,7 +79,7 @@ run_worker() {
   [ -z "${RFX_PIP_JAX:-}" ] || python -m pip install -q "$RFX_PIP_JAX"
   python -m pip install -q 'numpy<2' 'scipy>=1.11,<1.15' 'h5py>=3.8,<4' 'matplotlib>=3.7,<3.10' 'pyyaml>=6,<7'
   python -m pip freeze > "$out/pip-freeze.rank$rank.txt"
-  nvidia-smi --query-gpu=name,uuid,pci.bus_id,memory.total --format=csv > "$out/gpu.rank$rank.csv"
+  nvidia-smi --query-gpu=name,uuid,pci.bus_id,memory.total,driver_version --format=csv > "$out/gpu.rank$rank.csv"
   printf 'hostname=%s\nrank=%s\nworld=%s\ncoordinator=%s\nmaster_addr=%s\n' \
     "$HOSTNAME" "$rank" "$world" "$coordinator" "${MASTER_ADDR:-}" > "$out/topology.rank$rank.txt"
   # DMI product UUID identifies the host when readable; pod hostname alone is
@@ -98,15 +94,14 @@ run_worker() {
   [ -n "${RFX_REF_B:-}" ] || return 0
   # A/B on the same nodes: a second solver ref, same probe arguments, tag "<job>-b".
   # Node pairs differ by ~2x in cross-node cost, so before and after must share them.
+  # B runs the probe file of its own commit; compare_multinode_probe.py reports
+  # whether it is byte-identical to A's (same_probe_sha256).
   resolved_b=$(git -C "$source_repo" rev-parse "$RFX_REF_B^{commit}")
   [ "$resolved_b" = "${RFX_EXPECTED_SHA_B:?}" ] || { echo "$RFX_REF_B differs from pinned SHA"; return 1; }
   git clone -q --no-hardlinks "$source_repo" "$work/src_b"
   git -C "$work/src_b" checkout -q --detach "$RFX_EXPECTED_SHA_B"
   git -C "$work/src_b" rev-parse HEAD > "$out/commit-b.rank$rank.txt"
   git -C "$work/src_b" rev-parse HEAD:rfx > "$out/rfx-tree-b.rank$rank.txt"
-  for file in distributed_multinode_probe.py compare_multinode_probe.py; do
-    git -C "$source_repo" show "$resolved_b:scripts/diagnostics/$file" > "$work/src_b/scripts/diagnostics/$file"
-  done
   cd "$work/src_b"
   export PYTHONPATH="$work/src_b" RFX_TOOLING_SHA="$resolved_b"
   # Rank 0 hosts the coordinator: let it leave the first run and start the second
