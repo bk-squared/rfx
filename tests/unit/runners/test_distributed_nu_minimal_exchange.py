@@ -72,6 +72,13 @@ def _model():
                            waveform=lambda t: jnp.cos(t * 2e10))
         for component in _FIELDS:
             sim.add_probe(pos, component)
+    # Rows 4 and 13 share local index 5 on the two ranks of a 2-device split: a
+    # sample kept without its owner mask adds the other rank's live value. The
+    # seam probes cannot show that; their aliases fall on rows that stay zero.
+    for i in (4, 13):
+        pos = (float(edges[i] - edges[grid.pad_x_lo]), 2e-3, 2e-3)
+        assert position_to_index(grid, pos)[0] == i
+        sim.add_probe(pos, "ez")
     sim.add_material("lossy_poles", eps_r=2.5, sigma=.03,
                      debye_poles=[DebyePole(.5, 1e-11)],
                      lorentz_poles=[lorentz_pole(.5, 2 * np.pi * 3e9, 1e9)])
@@ -358,7 +365,8 @@ def _child(mode, *args, devices=2):
     print(run.stdout)
 
 
-@pytest.mark.parametrize("sharded", [False, True])
+# The local-design case differs only in staging, which #1247's fast tests pin.
+@pytest.mark.parametrize("sharded", [pytest.param(False, marks=pytest.mark.slow), True])
 def test_trace_and_design_gradients_match_full_exchange(monkeypatch, sharded):
     _parity(monkeypatch, sharded)
 

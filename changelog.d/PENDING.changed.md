@@ -9,6 +9,6 @@
   after the loop. That is 2 collectives per step in the forward loop and 2 in the reverse
   loop.
 - Probe traces are bit-identical to the full exchange, and the permittivity, conductivity
-  and occupancy gradients agree with it within 9 float32 ULP of each gradient's peak (JAX
+  and occupancy gradients agree with it within 3.5 float32 ULP of each gradient's peak (JAX
   0.10.2, 0.6.2 and 0.4.33 on CPU; 2, 3 and 4 devices with uneven slabs; a model with a
   lossy Debye + Lorentz block, a PEC block, PMC and PEC faces, CPML and a graded x mesh).
