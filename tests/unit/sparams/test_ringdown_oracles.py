@@ -350,6 +350,51 @@ def test_the_two_window_witness_is_small_on_a_clean_record_and_flags_a_short_one
     assert 0.1 <= ws.value / actual <= 10.0, (ws.value, actual)
 
 
+#: Two equal Q 400 modes at 2.5 GHz, 0.1 % apart, and a Q 60 mode at 2.03 GHz
+#: (the close pair of rfx #1254's research item R-i, panel A).
+PAIR = (
+    (2.5e9, 400.0, 0.5 * np.exp(0.2j)),
+    (2.5e9 * 1.001, 400.0, 0.5 * np.exp(2.5j)),
+    (2.03e9, 60.0, 0.3 + 0.0j),
+)
+
+
+@pytest.mark.parametrize("window_start", [0.5, 0.6])
+def test_the_double_span_witness_is_the_difference_of_two_hand_completions(window_start):
+    """A 3.64 ns record (3000 steps) of two equal Q 400 modes 0.1 % apart,
+    rounded to float32: the pair beats slowly, so a completion depends on
+    how much of the beat its window saw. WE is the completion from
+    [ws T, T] against the one from [ws/2 T, T], both adding their tail after
+    the same last sample; here each is built by hand from ``identify`` and
+    ``tail_dft`` on those two windows, and the witness must return exactly
+    their largest difference, whether or not the caller hands it the main
+    completion. On this record WE reads the actual error (against the
+    analytic infinite-record DFT) within 2x; W2 is printed beside it."""
+    n = 3000
+    y = _record(n, DT, PAIR).astype(np.float32).astype(np.float64)
+    truth = _analytic_infinite_dft(DT, FREQS, PAIR)
+    kw = dict(freq_max=F_MAX, guard=0.9, sv_rel=1.0e-6, unit_tol=1.0e-6)
+    n_main = int(round(window_start * n))
+    n_long = int(round(0.5 * window_start * n))
+    plain = rd.plain_dft(y, DT, FREQS)
+    c_main = plain + rd.tail_dft(rd.identify(y, DT, n_main, n, **kw), n - 1, FREQS)
+    c_long = plain + rd.tail_dft(rd.identify(y, DT, n_long, n, **kw), n - 1, FREQS)
+    we_hand = float(np.max(np.abs(c_main - c_long)))
+    w = rd.double_span_witness(y, DT, FREQS, n, window_start, **kw)
+    w_given = rd.double_span_witness(y, DT, FREQS, n, window_start, plain=plain,
+                                     spectra=c_main, **kw)
+    scale = float(np.max(np.abs(truth)))
+    actual = float(np.max(np.abs(c_main - truth)))
+    w2 = rd.two_window_witness(y, DT, FREQS, n, n_main, **kw).value
+    print(f"\n[pair 0.1 %, ws {window_start}] actual {actual / scale:.3e}, WE "
+          f"{we_hand / scale:.3e} (x{we_hand / actual:.3g}), W2 {w2 / scale:.3e} "
+          f"(x{w2 / actual:.3g}) of the peak")
+    assert w.n_start_long == w_given.n_start_long == n_long
+    assert w.value == we_hand and w_given.value == we_hand
+    assert np.array_equal(w.spectra_long, c_long)
+    assert 0.5 < we_hand / actual < 2.0, (we_hand, actual)
+
+
 def test_the_growing_pole_rule_exempts_only_zero_frequency():
     record_s = 1e-8
     s = np.array([
