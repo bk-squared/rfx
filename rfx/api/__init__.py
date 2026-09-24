@@ -2964,9 +2964,10 @@ class Simulation(
         -----
         The slab must lie in the interior: inside the absorber the E update
         is not Ampere's law, so a current read there is the absorber's
-        fiction. Periodic/Bloch axes, TFSF sources, a graded or dx != dy
-        in-plane mesh, a traced mesh profile, and every lane whose scan body
-        does not accumulate the monitor are refused rather than approximated.
+        fiction. Periodic/Bloch axes, TFSF sources, ``stencil_order=4``, a
+        graded or dx != dy in-plane mesh, a traced mesh profile, and every
+        lane whose scan body does not accumulate the monitor are refused
+        rather than approximated.
 
         The named arguments here are the whole public surface. The low-level
         builder additionally takes deliberately wrong metrics, centres, curl
