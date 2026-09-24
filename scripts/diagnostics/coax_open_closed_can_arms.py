@@ -1001,11 +1001,14 @@ def _solve_two_port(geom: dict, n_steps: int, *, cpml_axes: str, with_probes: bo
 def witness_record(ts, names: list[str], n_steps: int) -> dict:
     """Per point probe: the peak, when it came, the lane's settling measure
     (mean E^2 over the last tenth of the record against its peak, in dB) and
-    a block-maximum envelope of |E| over the record."""
+    a block-maximum envelope of |E| over the record (100 blocks, 4 significant
+    digits: a shape, not a number to compare). A probe whose field is exactly
+    zero through the whole record (a region no field reaches) has no settling
+    measure; it is marked ``identically_zero`` instead of reading 0 dB."""
     if ts is None:
         return None
     ts = np.asarray(ts, dtype=float)
-    block = max(1, int(n_steps) // 200)
+    block = max(1, -(-int(n_steps) // 100))
     tiny = np.finfo(float).tiny
     out = {"block_steps": block, "n_steps": int(n_steps),
            "all_finite": bool(np.all(np.isfinite(ts))), "probes": {}}
@@ -1014,11 +1017,14 @@ def witness_record(ts, names: list[str], n_steps: int) -> dict:
         p = e ** 2
         tail = max(1, p.size // 10)
         k = int(np.argmax(p))
-        env = [float(np.max(np.abs(e[s:s + block]))) for s in range(0, e.size, block)]
+        zero = bool(p[k] == 0.0)
+        env = [float(f"{np.max(np.abs(e[s:s + block])):.4g}") for s in range(0, e.size, block)]
         out["probes"][name] = {
+            "identically_zero": zero,
             "peak_abs": float(math.sqrt(p[k])), "peak_step": k,
             "end_tenth_rms": float(math.sqrt(p[-tail:].mean())),
-            "settling_db": float(10.0 * np.log10((p[-tail:].mean() + tiny) / (p[k] + tiny))),
+            "settling_db": None if zero else float(
+                10.0 * np.log10((p[-tail:].mean() + tiny) / (p[k] + tiny))),
             "envelope_max_abs": env,
         }
     return out
