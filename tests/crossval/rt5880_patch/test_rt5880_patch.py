@@ -1,12 +1,12 @@
 """The RT/Duroid 5880 probe-fed patch antenna — cross-validated against openEMS.
 
-A 40 × 50 mm rectangular patch sits on 3.175 mm of RT/Duroid 5880 (εr 2.2,
-tanδ 0.001) over a 56 × 66 mm ground, fed by a 50 Ω probe from the ground to
-the patch 8.73125 mm off centre along the 40 mm resonant length.  The patch and the
-ground form an open cavity whose TM010 mode resonates near 2.34 GHz: the
-cavity's length plus the fringing field at its two radiating edges sets the
-frequency, and radiation through those edges loads it, so the probe sees a
-matched |S11| dip there.  The fringing extension has no closed form accurate
+A 39.7 × 49.25 mm rectangular patch sits on 3.175 mm of RT/Duroid 5880 (εr 2.2,
+tanδ 0.001) over a 55.6 × 65.1 mm ground, fed by a 50 Ω probe from the ground
+to the patch 8.73125 mm off centre along the resonant length.  The patch and
+the ground form an open cavity whose TM010 mode resonates in the record's
+window (``RESONANCE_BAND_HZ``): the cavity's length plus the fringing field at
+its two radiating edges sets the frequency, and radiation through those edges
+loads it, so the probe sees a matched |S11| dip there.  The fringing extension has no closed form accurate
 to 1 %, so rfx's |S11| curve is compared with frozen openEMS results instead of
 with an analytic expression.
 
@@ -16,21 +16,21 @@ The metal, the substrate and the probe are the same in both solvers; the box
 around them is not.
 
 * the openEMS record — the ground centred at the origin, absorbing PML_8 on all
-  six faces with their inner faces 60 mm clear of the ground's edges, 40 mm
-  below it and 86.8 mm above the patch (``meta.stages.*.geometry_realized.pml``);
+  six faces with their inner faces at x ±88, y ±93 and z −40 / +90 mm
+  (``meta.stages.*.geometry_realized.pml``);
 * rfx here — the patch centred at (``PATCH_CENTRE_X_M``, ``PATCH_CENTRE_Y_M``),
-  the declared domain 10.1 mm clear of the ground's x edges, 11.45 mm clear of
-  its y edges, 9.525 mm below the ground and 15.875 mm above the patch, with a
-  19.05 mm deep CPML OUTSIDE that domain on every face (rfx grid convention):
-  24, 48 and 72 cells on the three rungs, the same absorber in metres.
+  the declared domain 24·h × 28·h in plane and centred on it (``X_CLEARANCE_M``
+  and ``Y_CLEARANCE_M`` clear of the ground's edges), 9.525 mm below the ground
+  and 15.875 mm above the patch, with a 19.05 mm deep CPML OUTSIDE that domain on
+  every face (rfx grid convention): 24, 48 and 72 cells on the three rungs,
+  the same absorber in metres.
 
 rfx does not run its ladder in the record's 176 × 186 × 130 mm box: at h/12
 it would hold about 230 M cells before the absorber.  What the box does to
-this board was measured at h/4 (the table above ``AIR_H``): across the
-absorber depths and air gaps tried the resonance spans 2.3316–2.3485 GHz
-(0.72 %), and with a 16-cell absorber it had not levelled at 28.6 mm of added
-air.  The case states that table, and the reference-box run solves the
-coarsest rung once more with the declared domain's faces on the record's own
+the resonance was measured on the retired 40 × 50 mm board at h/4 (the
+comment above ``AIR_H``): it moved with the absorber's depth and with the air
+added, and had not levelled.  The reference-box run solves the coarsest rung
+once more with the declared domain's faces on the record's own
 absorber inner faces (x ±88, y ±93, z −40 / +90 mm about the ground's centre,
 read from the record and snapped to the nearest h/4 node) and the ladder's
 absorber depth outside them, and reports how far the resonance and |S11| move
@@ -54,19 +54,19 @@ Reference (``reference/``, provenance in ``reference/PROVENANCE.md``):
 The ladder
 ----------
 dx = h_sub/n puts both substrate faces — the ground sheet and the patch sheet —
-on node planes on every rung (issue #723).  The in-plane edges cannot land on
-nodes: 20 mm is 6.2992 cells of h, never a whole number of any h/n.  A PEC
-sheet covers the nodes inside its drawn footprint, so the RESONANT LENGTH the
-lattice builds is the span of the patch's node columns, and on most h/n rungs
-that span jumps around: 39.1583 mm at h/6, 39.9143 mm at h/7, 39.6875 mm at
-h/8 (measured, ``LADDER_M`` below carries the table).  A ladder that mixed them
-would put a length change of up to 2 % — about 1.3 % in the resonance — into a
-trend that is supposed to be the mesh's.  ``assert_realized`` therefore holds
-the resonant length the coarsest rung realizes and refuses a rung that realizes
-another, the way the Sheen low-pass filter's test refuses a rung whose two
-feeds realize different widths.  The rungs that pass are h/4, h/8 and h/12
-(793.75, 396.875 and 264.583 µm): every one of them covers the patch with
-node columns 39.6875 mm apart.
+on node planes on every rung (issue #723).  In plane, a PEC sheet realizes the
+nodes inside its drawn footprint and the substrate, a volume, whole cells, so
+the two realize different edges, and an edge that falls between nodes
+realizes a different length on each h/n.  The board therefore puts every edge
+just outside a node common to h/4, h/8 and h/12 (PI 2026-09-25; the patch
+centre is a node): the patch covers node columns 39.6875 mm and rows
+49.2125 mm apart and the ground 55.5625 × 65.0875 mm on all three rungs, and
+the substrate one cell more than the ground's node span along x and along y.
+``assert_realized`` holds each rung to exactly that, and the probe to its
+node, and refuses a rung that realizes anything else, the way the Sheen
+low-pass filter's test refuses a rung whose two feeds realize different
+widths.  The rungs that pass are h/4, h/8 and h/12 (793.75, 396.875 and
+264.583 µm).
 
 The thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude)
 and the three rules the PI approved with the MSL notch filter's plan on
@@ -109,15 +109,15 @@ without it the figure goes under pytest's ``tmp_path``.  Set
 mesh statement and the comparison then apply to the rungs given, which is a
 diagnostic, not the case's verdict.  Unset, the full ladder runs.
 
-The four fast tests carry no mark: they build the structure (h/4 and h/8
-only; the 52.7 M-cell h/12 board is checked by ``assert_realized`` inside the
-ladder, before it is solved) and read the reference file, and never step the
-FDTD.
+The fast tests carry no mark: they build the structure (in the ladder's box
+at h/4 and h/8, and every rung from h/4 to h/12 in a build-only box just
+around the board; the ladder's own h/12 board is checked by
+``assert_realized`` inside the ladder, before it is solved) and read the
+reference file, and never step the FDTD.
 """
 
 from __future__ import annotations
 
-import functools
 import json
 import math
 import os
@@ -159,10 +159,25 @@ EPS0 = 8.8541878128e-12
 # The loss tangent as a conductivity at 2.4 GHz — the retired builder's and the
 # openEMS record's own ``kappa`` (``stand_in.materials.sub.kappa``).
 SIGMA_SUB = 2.0 * math.pi * 2.4e9 * EPS0 * EPS_R * TAN_DELTA
-L_PATCH = 40.0e-3            # resonant length, along x
-W_PATCH = 50.0e-3            # radiating-edge width, along y
-GP_X = 56.0e-3               # ground plane
-GP_Y = 66.0e-3
+# PI 2026-09-25: the board every rung can represent.  Each edge sits just
+# outside a node common to h/4, h/8 and h/12 (the patch centre is a node):
+# half-extents 25, 31, 35 and 41 cells of h/4 plus 6.25, 18.75, 18.75 and
+# 6.25 µm.  The retired script's board was 40 × 50 mm on a 56 × 66 mm ground;
+# the openEMS maker declares the same move (its delta 10).  Its 40 mm length
+# covers the same node columns as 39.7 mm on all three rungs, so
+# ``check_realized`` cannot tell the two apart; the board-vs-record test does.
+L_PATCH = 39.7e-3            # resonant length, along x
+W_PATCH = 49.25e-3           # radiating-edge width, along y
+GP_X = 55.6e-3               # ground plane; the substrate covers the same footprint
+GP_Y = 65.1e-3
+# What every rung must realize (``check_realized``): the patch and ground node
+# spans between the common nodes, and the substrate, a volume, one cell more
+# than the ground's node span: its cell count times dx is that span plus dx,
+# along x and along y.
+_Q = H_SUB / 4
+PATCH_NODE_SPAN_M = (2 * 25 * _Q, 2 * 31 * _Q)      # 39.6875 × 49.2125 mm
+GROUND_NODE_SPAN_M = (2 * 35 * _Q, 2 * 41 * _Q)     # 55.5625 × 65.0875 mm
+SPAN_REALIZED_TOL_M = 1e-9
 # The probe, off centre along the resonant length.  PI 2026-09-24: moved from
 # the retired script's −9.0 mm to −8.73125 mm = −11, −22 and −33 cells of h/4,
 # h/8 and h/12 from the patch centre, a lattice node on every rung, so the
@@ -195,37 +210,13 @@ FREQ_MAX_HZ = 4.0e9
 # the absorber moves the resonance (the table below), so a fixed cell count
 # would put an absorber change into the mesh trend.
 #
-# MEASURED at h/4 on CPU (local, 2026-09-24; this file's board, NUM_PERIODS =
-# 60; the probe was declared at −9 mm then and h/4 realized it at −8.73125 mm,
-# the node it is declared at now, so the h/4 board is the same), the
-# resonance and depth against the air added beyond the smallest box
-# below on every face (that box: 10.1 / 11.45 mm clear of the ground's x / y
-# edges, 9.525 mm below it, 15.875 mm above the patch) and the CPML depth;
-# the last column is max |ΔdB| of |S11| against the +6h / 24-cell run over the
-# bins where both curves are above −20 dB (every worst bin sits on the dip's
-# shoulders, 2.32–2.35 GHz):
-#
-#     air added      CPML              resonance      depth       max |ΔdB|
-#     0              8 (6.35 mm)       2.348539 GHz   −17.90 dB   7.309 dB
-#     0             16 (12.70 mm)      2.339521 GHz   −20.95 dB   3.984 dB
-#     0             24 (19.05 mm)      2.337070 GHz   −22.11 dB   2.684 dB
-#     3h (9.53 mm)   8                 2.345119 GHz   −28.56 dB   5.942 dB
-#     3h            16                 2.338055 GHz   −25.72 dB   2.771 dB
-#     3h            24                 2.335882 GHz   −25.06 dB   (not kept)
-#     6h (19.05 mm)  8                 2.338409 GHz   −36.41 dB   3.306 dB
-#     6h            16                 2.334838 GHz   −29.36 dB   1.179 dB
-#     6h            24                 2.333734 GHz   −26.52 dB   —
-#     9h (28.58 mm) 16                 2.331641 GHz   −28.38 dB   1.632 dB
-#
-# (The 3h / 24-cell row was this file's earlier box witness, run locally; its
-# curve was not kept.)  At 16 cells the resonance keeps falling as air is added,
-# −0.06, −0.14 and −0.14 % per 3·h step up to 9·h, and has not levelled there;
-# at 24 cells −0.05 and −0.09 % per step up to 6·h; at every air gap a deeper
-# absorber lowers it too.  The ladder's box is ``AIR_H`` = 0 with
-# a 6·h (19.05 mm) absorber: at h/12 it is 52.7 M cells, where +6·h of air at
-# the same depth would be 143 M (an RTX 4090 ran out of memory on 134 M,
-# docs/agent/gpu-throughput.mdx).  At h/4 this box reads 2.337070 GHz, +0.143 %
-# from the +6h / 24-cell box and +0.233 % from the +9h / 16-cell one.  The
+# MEASURED on the retired 40 × 50 mm board at h/4 (CPU, 2026-09-24; the table
+# is in this file at 0a92af49): with a 16-cell absorber the resonance kept
+# falling as air was added, up to 9·h, and had not levelled there; with 24
+# cells it fell too, and at every air gap a deeper absorber lowered it.  The
+# ladder's box is ``AIR_H`` = 0 with a 6·h (19.05 mm) absorber: at h/12 it is
+# 52.7 M cells, where +6·h of air at the same depth would be 143 M (an RTX 4090
+# ran out of memory on 134 M, docs/agent/gpu-throughput.mdx).  The
 # reference-box run below (``reference_box_frame``) solves the coarsest rung
 # once more in the openEMS record's own box on every ladder run, and reports it.
 AIR_H = 0
@@ -241,6 +232,7 @@ class Frame(NamedTuple):
     z_patch: float      # the substrate top, the patch sheet's plane
     domain: tuple       # the declared domain, CPML outside it
     label: str = ""     # what the box is, for the banner (empty: the ladder's)
+    cpml_cells: int = 0  # the absorber in cells; 0 is the ladder's CPML_THICKNESS_H·h
 
 
 def frame(air_h: int = AIR_H) -> Frame:
@@ -304,6 +296,18 @@ Y_CLEARANCE_M = PATCH_CENTRE_Y_M - GP_Y / 2
 BELOW_GROUND_M = GROUND_Z_M
 ABOVE_PATCH_M = DOMAIN_Z_M - PATCH_Z_M
 
+# The board in a box barely larger than its ground, with an eight-cell absorber
+# outside it.  Nothing is solved in it: the fast tests build every candidate
+# rung in it, h/12 included, whose build in the ladder's box does not fit the
+# PR lane (``FAST_LADDER_M``).  Its patch centre and ground plane are whole
+# numbers of h from the domain origin, as in the ladder's box, so every h/n
+# puts the same nodes under the board; the fast test checks that the two boxes
+# realize the same board on the rungs it builds in both.
+BUILD_CHECK_FRAME = Frame(-2, 10 * H_SUB, 12 * H_SUB, H_SUB, 2 * H_SUB,
+                          (20 * H_SUB, 24 * H_SUB, 3 * H_SUB),
+                          label="a build-only box just around the board",
+                          cpml_cells=8)
+
 
 def cpml_layers(dx: float) -> int:
     """CPML cells at ``dx`` for an absorber ``CPML_THICKNESS_H``·h deep."""
@@ -315,31 +319,11 @@ def cpml_layers(dx: float) -> int:
 # --- the ladder -----------------------------------------------------------
 # dx = h_sub/n keeps both substrate faces on node planes (issue #723).
 #
-# MEASURED at build time on this board (``realized_geometry`` below, the
-# product's own sheet footprints), the node span of the patch's node columns
-# along the resonant length, and whether ``assert_realized`` accepts the rung:
-#
-#     n   dx (µm)    resonant length (mm)        n   dx (µm)    resonant length (mm)
-#     4   793.750    39.6875   accepted          9   352.778    39.5111   refused
-#     5   635.000    39.3700   refused          10   317.500    39.3700   refused
-#     6   529.167    39.1583   refused          11   288.636    39.8318   refused
-#     7   453.571    39.9143   refused          12   264.583    39.6875   accepted
-#     8   396.875    39.6875   accepted
-#
-# WHY: 20 mm is 6.2992·n cells of h/n, and a sheet covers the nodes inside
-# its footprint, so each half of the patch realizes floor(6.2992·n) cells.
-# For n = 4, 8, 12 that is 25, 50 and 75 cells — the same 19.84375 mm each
-# side — and for every other n up to 12 it is a different length.  (n = 7, 14,
-# 21 share a second family, 39.9143 mm; its second rung alone, h/14, would cost
-# more cell-steps in this box than this whole ladder.)
-#
-# THE RUNG CRITERION IS THE RESONANT LENGTH, AND THE PROBE.  The probe is
-# declared on a node of every rung (FEED_OFFSET_X above), and ``check_realized``
-# refuses a rung that realizes it anywhere else.  The width and the ground
-# realize within a cell of their declared values on every rung but not
-# identically — measured, patch width node span 49.2125 / 49.2125 / 49.7417 mm,
-# ground node spans 55.5625 × 65.0875 / 55.5625 × 65.8812 / 55.5625 × 65.6167
-# mm at h/4, h/8, h/12.  They are printed per rung and not judged.
+# THE RUNG CRITERION IS ONE BOARD.  Each edge is declared just outside a node
+# common to h/4, h/8 and h/12 and the probe on one (the constants above), and
+# ``check_realized`` refuses a rung whose patch or ground node spans, substrate
+# cell counts or probe node differ from those.  Every h/n from h/4 to h/12 is
+# built in the fast test (``CANDIDATE_RUNGS_N``); only h/4, h/8 and h/12 pass.
 LADDER_M = (
     H_SUB / 4,    # 793.750 µm,  4 substrate cells
     H_SUB / 8,    # 396.875 µm,  8 substrate cells
@@ -350,8 +334,7 @@ DX_COARSEST_M = LADDER_M[0]
 # --- the sweep ------------------------------------------------------------
 # rfx samples the record's OWN frequency grid, linspace(1.6, 3.4 GHz, 901), so
 # the judged comparison needs no interpolation.  DFT bins cost no time steps.
-# The bin is 2 MHz, under a tenth of the 1 % frequency bar at the resonance
-# (23 MHz at 2.34 GHz).
+# The bin is 2 MHz; 1 % of any frequency above 2 GHz is ten bins or more.
 N_FREQS = 901
 SWEEP_HZ = (1.6e9, 3.4e9)
 FREQS_HZ = np.linspace(SWEEP_HZ[0], SWEEP_HZ[1], N_FREQS)
@@ -363,27 +346,18 @@ FREQS_HZ = np.linspace(SWEEP_HZ[0], SWEEP_HZ[1], N_FREQS)
 # resonance f0 is the Re(Zin) peak (``refined_remax`` in
 # tests/crossval/_v2_judging.py), and the reported |S11| minimum is the
 # repository's shared ``refined_extremum`` on log|S11|, the record's own.
-F_TM010_TL_MODEL_HZ = 2415595433.5060616
+F_TM010_TL_MODEL_HZ = 2433373588.639094
 RESONANCE_BAND_HZ = (0.80 * F_TM010_TL_MODEL_HZ, 1.20 * F_TM010_TL_MODEL_HZ)
 MINUS10_DB = -10.0
 
 # --- the record length ----------------------------------------------------
 # ``num_periods`` is in periods of ``freq_max`` (0.25 ns here).  MEASURED on
-# this board at h/4 on CPU (local, 2026-09-24; in the smallest box with an
-# 8-cell absorber, the first row of the box table above; the h/4 probe node
-# then was the one declared now, see that table), ring-down settling of
-# the witness probe, the resonance and its depth:
-#
-#     num_periods = 30    −44.57 dB    2.348553 GHz   −17.381 dB
-#     num_periods = 40    −57.65 dB    2.348549 GHz   −17.800 dB
-#     num_periods = 60    −83.35 dB    2.348539 GHz   −17.896 dB
-#     num_periods = 120  −117.58 dB    2.348540 GHz   −17.899 dB
-#
-# 60 meets the −40 dB rule with 43 dB to spare and puts the resonance within
-# 1 kHz and the depth within 0.003 dB of the doubled record; in the ladder's box
-# (19.05 mm absorber) the same 60 periods ring down to −80.62 dB.  The
-# ring-down is set by the patch's radiation Q, a physical time, so the same
-# record length in nanoseconds serves every rung.
+# the retired 40 × 50 mm board at h/4 (CPU, 2026-09-24; the table is in this
+# file at 0a92af49): 60 met the −40 dB rule with margin and moved the
+# resonance and its depth by nothing that matters against the doubled record.
+# The ring-down is set by the patch's radiation Q, a physical time, so the same
+# record length in nanoseconds serves every rung, and every run checks its own
+# settling against ``SETTLING_DB`` before it is compared.
 NUM_PERIODS = 60.0
 
 # --- the ring-down witness probe -------------------------------------------
@@ -405,8 +379,7 @@ WITNESS_PROBE_OFFSET_M = (15.0e-3, 5.0e-3, H_SUB / 2)
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive one-port cannot reflect more power than it receives, so |S11| more
 # than one percent above one is a measurement artefact — the rung stops instead
-# of being compared.  Measured on this board at h/4 in the ladder's box
-# (NUM_PERIODS = 60): settling −80.62 dB, max |S11| 0.99276 over 1.6–3.4 GHz.
+# of being compared.
 SETTLING_DB = -40.0
 PASSIVITY_EXCESS_BAR = 0.01
 
@@ -427,7 +400,7 @@ def _sim(dx: float, fr: Frame = FRAME) -> Simulation:
         freq_max=FREQ_MAX_HZ,
         domain=fr.domain,
         dx=dx,
-        cpml_layers=cpml_layers(dx),
+        cpml_layers=fr.cpml_cells or cpml_layers(dx),
         boundary=BoundarySpec.uniform("cpml"),
     )
     sim.add_material("rt5880", eps_r=EPS_R, sigma=SIGMA_SUB)
@@ -440,9 +413,10 @@ def _ground_box(fr: Frame = FRAME, z: float | None = None) -> Box:
                (fr.cx + GP_X / 2, fr.cy + GP_Y / 2, z))
 
 
-def _substrate_box(fr: Frame = FRAME) -> Box:
-    return Box((fr.cx - GP_X / 2, fr.cy - GP_Y / 2, fr.z_ground),
-               (fr.cx + GP_X / 2, fr.cy + GP_Y / 2, fr.z_patch))
+def _substrate_box(fr: Frame = FRAME, footprint: tuple | None = None) -> Box:
+    fx, fy = (GP_X, GP_Y) if footprint is None else footprint
+    return Box((fr.cx - fx / 2, fr.cy - fy / 2, fr.z_ground),
+               (fr.cx + fx / 2, fr.cy + fy / 2, fr.z_patch))
 
 
 def _patch_box(fr: Frame = FRAME, *, x_hi_trim: float = 0.0,
@@ -539,6 +513,19 @@ def _build_patch_one_cell_short(dx: float) -> Simulation:
     sim.add(_ground_box(), material="pec")
     sim.add(_substrate_box(), material="rt5880")
     sim.add(_patch_box(x_hi_trim=dx), material="pec")
+    _add_probe_and_witness(sim)
+    return sim
+
+
+def _build_substrate_on_the_knife_edge(dx: float) -> Simulation:
+    """The substrate drawn exactly on the ground's outermost nodes (the common
+    nodes) instead of just outside them.  Only the mutation test builds it:
+    a volume whose face sits on a node takes or drops the cell beyond it by
+    rounding, so the laminate no longer overhangs the ground by one cell."""
+    sim = _sim(dx)
+    sim.add(_ground_box(), material="pec")
+    sim.add(_substrate_box(footprint=GROUND_NODE_SPAN_M), material="rt5880")
+    sim.add(_patch_box(), material="pec")
     _add_probe_and_witness(sim)
     return sim
 
@@ -670,7 +657,7 @@ def realized_geometry(sim: Simulation) -> dict:
 
     if len(z_sheets) != 2:
         return out
-    # The ground is the larger of the two sheets (56 × 66 mm against 40 × 50).
+    # The ground is the larger of the two sheets.
     spans = [(_span(np.asarray(sp.footprint), xs, ys, dx), int(sp.plane)) for sp in z_sheets]
     spans.sort(key=lambda t: t[0]["n_cols"] * t[0]["n_rows"], reverse=True)
     (ground, k_ground), (patch, k_patch) = spans
@@ -692,15 +679,18 @@ def realized_geometry(sim: Simulation) -> dict:
     out["edge_offset_cells"] = float(EDGE_OFFSET)
     out["patch_x_solved_m"] = patch["x_node_span_m"] + 2 * EDGE_OFFSET * dx
     out["patch_y_solved_m"] = patch["y_node_span_m"] + 2 * EDGE_OFFSET * dx
+    # The substrate in plane, from the same assembled material: the cells that
+    # carry the laminate's permittivity along x and along y through the
+    # patch's centre node, halfway between the two sheets.
+    i_c = int(np.argmin(np.abs(xs - patch["centre_m"][0])))
+    j_c = int(np.argmin(np.abs(ys - patch["centre_m"][1])))
+    k_c = (k_ground + k_patch) // 2
+    on = np.abs(eps - EPS_R) < 1e-6
+    out["substrate_x_cells"] = int(on[:, j_c, k_c].sum())
+    out["substrate_y_cells"] = int(on[i_c, :, k_c].sum())
+    out["substrate_x_m"] = out["substrate_x_cells"] * dx
+    out["substrate_y_m"] = out["substrate_y_cells"] * dx
     return out
-
-
-@functools.lru_cache(maxsize=1)
-def _ladder_resonant_length_m() -> float:
-    """The patch's resonant length as the coarsest rung realizes it — the
-    node span every rung of the ladder must realize (see ``LADDER_M``)."""
-    g = realized_geometry(build(DX_COARSEST_M))
-    return float(g["patch"]["x_node_span_m"])
 
 
 def assert_realized(sim: Simulation, dx: float, fr: Frame = FRAME) -> dict:
@@ -771,17 +761,32 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
                 f"dx={dx*1e6:.2f}µm: the {name} realizes a {got*1e3:.4f} mm strip, "
                 f"more than one cell from the declared {declared*1e3:.3f} mm.")
 
-    # --- the resonant length, the same on every rung -------------------------------
-    held = _ladder_resonant_length_m()
-    got = g["patch"]["x_node_span_m"]
-    if abs(got - held) > 1e-9:
-        raise AssertionError(
-            f"dx={dx*1e6:.2f}µm: the patch's node columns span {got*1e3:.4f} mm "
-            f"along its resonant length; the ladder holds {held*1e3:.4f} mm, what "
-            f"the coarsest rung ({DX_COARSEST_M*1e6:.2f} µm) realizes. The TM010 "
-            "resonance scales with that length, so this rung solves a different "
-            f"antenna ({100*(got-held)/held:+.3f} % in length) and a ladder "
-            "through it would put a length change into the mesh trend.")
+    # --- one board on every rung: the sheets and the substrate -------------------
+    # PI 2026-09-25: the patch and ground node spans are the common nodes, and
+    # the substrate's cells span the ground's node span plus one cell, on every
+    # rung.  A rung that realizes anything else solves a different antenna, and
+    # a ladder through it would put that change into the mesh trend.
+    held = (("the patch's node span along x (the resonant length)",
+             g["patch"]["x_node_span_m"], PATCH_NODE_SPAN_M[0]),
+            ("the patch's node span along y (the radiating width)",
+             g["patch"]["y_node_span_m"], PATCH_NODE_SPAN_M[1]),
+            ("the ground's node span along x", g["ground"]["x_node_span_m"],
+             GROUND_NODE_SPAN_M[0]),
+            ("the ground's node span along y", g["ground"]["y_node_span_m"],
+             GROUND_NODE_SPAN_M[1]),
+            ("the substrate's cells along x times dx", g["substrate_x_m"],
+             GROUND_NODE_SPAN_M[0] + dx),
+            ("the substrate's cells along y times dx", g["substrate_y_m"],
+             GROUND_NODE_SPAN_M[1] + dx))
+    for name, got, want in held:
+        if abs(got - want) > SPAN_REALIZED_TOL_M:
+            raise AssertionError(
+                f"dx={dx*1e6:.2f}µm: {name} is {got*1e3:.6f} mm; the board holds "
+                f"{want*1e3:.6f} mm on every rung ({100*(got-want)/want:+.4f} %). "
+                "Every edge is declared just outside a node common to h/4, h/8 and "
+                "h/12; a rung that realizes another span solves a different "
+                "antenna, and a ladder through it would put that change into the "
+                "mesh trend.")
     cx, cy = g["patch"]["centre_m"]
     if abs(cx - fr.cx) > 1e-9 or abs(cy - fr.cy) > 1e-9:
         raise AssertionError(
@@ -849,6 +854,10 @@ def _print_realized(g: dict, dx: float) -> None:
               f"{s['y_node_span_m']*1e3:9.4f} mm, strip {s['y_strip_m']*1e3:9.4f} mm "
               f"(declared {dec_y*1e3:.3f}); centre ({s['centre_m'][0]*1e3:.4f}, "
               f"{s['centre_m'][1]*1e3:.4f}) mm")
+    if "substrate_x_cells" in g:
+        print(f"    substrate through the patch centre: {g['substrate_x_cells']} × "
+              f"{g['substrate_y_cells']} cells = {g['substrate_x_m']*1e3:.6f} × "
+              f"{g['substrate_y_m']*1e3:.6f} mm")
     if "patch_x_solved_m" in g:
         print(f"    patch as rfx's EDGE_OFFSET model solves it "
               f"({g['edge_offset_cells']:.2f} cell past each edge node; reported): "
@@ -1488,52 +1497,98 @@ def _write_figure(results, openems, tmp_path, ref_box=None) -> Path:
 
 
 # -------------------------------------------------------------- fast tests
-# The candidate rungs the ladder was chosen from, with what ``assert_realized``
-# does with each (the table above ``LADDER_M``).
-CANDIDATE_RUNGS_N = (4, 5, 6, 7, 8)
-# The ladder rungs the fast test builds: h/4 and h/8.  The h/12 board is
-# 52.7 M cells and its build holds about 5.9 GB (13.7 s); the PR lane's runner
-# is not given that, and the ladder's own ``assert_realized`` checks h/12
-# before it is solved.
+# The candidate rungs: every h/n from h/4 to h/12.  Each is built in
+# ``BUILD_CHECK_FRAME`` and must be refused unless it is a rung of the ladder.
+CANDIDATE_RUNGS_N = tuple(range(4, 13))
+# The ladder rungs the fast test also builds in the ladder's own box: h/4 and
+# h/8.  There the h/12 board is 52.7 M cells, too large a build for the PR
+# lane's runner; the ladder's own ``assert_realized`` checks it before it is
+# solved.
 FAST_LADDER_M = LADDER_M[:2]
+_SAME_BOARD_KEYS = (("patch", "x_node_span_m"), ("patch", "y_node_span_m"),
+                    ("ground", "x_node_span_m"), ("ground", "y_node_span_m"),
+                    ("substrate_x_cells",), ("substrate_y_cells",),
+                    ("probe_offset_from_patch_centre_m",))
+
+
+def _board_of(g: dict) -> tuple:
+    out = []
+    for key in _SAME_BOARD_KEYS:
+        v = g
+        for k in key:
+            v = v[k]
+        out.extend(v if isinstance(v, tuple) else (v,))
+    return tuple(float(v) for v in out)
 
 
 def test_the_lattice_builds_the_declared_board_on_every_rung():
-    """Build-time only: the h/4 and h/8 ladder rungs realize the declared
-    board, and every other h/n from h/4 to h/8 is refused for realizing another
-    resonant length (h/12 is checked inside the ladder; h/9 … h/11, measured in
-    the table above ``LADDER_M``, are not rebuilt here: each is 40–50 M cells
-    in this box)."""
-    print(f"\n  declared board: patch {L_PATCH*1e3:.1f} × {W_PATCH*1e3:.1f} mm centred "
+    """Build-time only: every rung of the ladder realizes the declared board,
+    and every other h/n from h/4 to h/12 is refused for realizing another one.
+    All candidates are built in the build-only box; h/4 and h/8 are also built
+    in the ladder's box, and the two boxes must realize the same board there."""
+    fr = BUILD_CHECK_FRAME
+    print(f"\n  declared board: patch {L_PATCH*1e3:.2f} × {W_PATCH*1e3:.2f} mm centred "
           f"at ({PATCH_CENTRE_X_M*1e3:.3f}, {PATCH_CENTRE_Y_M*1e3:.3f}) mm, ground "
-          f"{GP_X*1e3:.0f} × {GP_Y*1e3:.0f} mm on z = {GROUND_Z_M*1e3:.3f} mm, patch on "
+          f"{GP_X*1e3:.2f} × {GP_Y*1e3:.2f} mm on z = {GROUND_Z_M*1e3:.3f} mm, patch on "
           f"z = {PATCH_Z_M*1e3:.3f} mm, probe {FEED_OFFSET_X*1e3:+.5f} mm along x; box "
           f"{DOMAIN_X_M*1e3:.3f} × {DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm")
-    for dx in FAST_LADDER_M:
-        g = assert_realized(build(dx), dx)
-        _print_realized(g, dx)
-        assert g["patch"]["x_node_span_m"] == pytest.approx(_ladder_resonant_length_m(),
-                                                            abs=1e-9)
-
-    accepted = []
+    accepted, built = [], {}
     for n in CANDIDATE_RUNGS_N:
         dx = H_SUB / n
-        g = realized_geometry(build(dx))
+        g = realized_geometry(build(dx, fr))
+        built[n] = g
         try:
-            check_realized(g, dx)
+            check_realized(g, dx, fr)
         except AssertionError as exc:
             verdict = f"refused — {str(exc)[:110]}..."
         else:
             verdict = "accepted"
             accepted.append(n)
-        print(f"  h/{n:<2d} {dx*1e6:8.3f} µm: resonant length (node span) "
-              f"{g['patch']['x_node_span_m']*1e3:.4f} mm, width "
-              f"{g['patch']['y_node_span_m']*1e3:.4f} mm, probe "
+        print(f"  h/{n:<2d} {dx*1e6:8.3f} µm: patch node span "
+              f"{g['patch']['x_node_span_m']*1e3:.4f} × "
+              f"{g['patch']['y_node_span_m']*1e3:.4f} mm, ground "
+              f"{g['ground']['x_node_span_m']*1e3:.4f} × "
+              f"{g['ground']['y_node_span_m']*1e3:.4f} mm, substrate "
+              f"{g['substrate_x_cells']} × {g['substrate_y_cells']} cells, probe "
               f"{g['probe_offset_from_patch_centre_m'][0]*1e3:+.4f} mm — {verdict}")
     ladder_n = tuple(int(round(H_SUB / d)) for d in LADDER_M)
-    assert tuple(accepted) == tuple(n for n in CANDIDATE_RUNGS_N if n in ladder_n), (
+    assert tuple(accepted) == ladder_n, (
         f"the rungs assert_realized accepts among h/{CANDIDATE_RUNGS_N[0]} … "
         f"h/{CANDIDATE_RUNGS_N[-1]} are {accepted}, not the ladder's {ladder_n}")
+
+    for dx in FAST_LADDER_M:
+        g = assert_realized(build(dx), dx)
+        _print_realized(g, dx)
+        n = int(round(H_SUB / dx))
+        assert _board_of(g) == pytest.approx(_board_of(built[n]), abs=1e-12), (
+            f"h/{n}: the ladder's box and the build-only box realize different "
+            f"boards: {_board_of(g)} against {_board_of(built[n])}")
+
+
+def test_a_board_off_the_common_nodes_is_refused(monkeypatch):
+    """The case declared with the retired 50 mm width (``W_PATCH`` = 50 mm),
+    built on the three rungs of the ladder in the build-only box.  Its radiating
+    edges fall between the common nodes, so a finer rung covers other node rows
+    than a coarser one, and the ladder refuses it before any rung is solved."""
+    import sys
+    monkeypatch.setattr(sys.modules[__name__], "W_PATCH", 50.0e-3)
+    fr = BUILD_CHECK_FRAME
+    verdicts = {}
+    for dx in LADDER_M:
+        n = int(round(H_SUB / dx))
+        g = realized_geometry(build(dx, fr))
+        try:
+            check_realized(g, dx, fr)
+        except AssertionError as exc:
+            verdicts[n] = str(exc)
+        else:
+            verdicts[n] = "accepted"
+        print(f"\n  W = 50 mm at h/{n}: patch node span "
+              f"{g['patch']['x_node_span_m']*1e3:.4f} × "
+              f"{g['patch']['y_node_span_m']*1e3:.4f} mm — {verdicts[n]}")
+    refused = [n for n, v in verdicts.items() if v != "accepted"]
+    assert refused, "a 50 mm wide patch passed every rung of the ladder"
+    assert all("the patch's node span along y" in verdicts[n] for n in refused), verdicts
 
 
 def test_assert_realized_catches_each_mutation():
@@ -1549,7 +1604,9 @@ def test_assert_realized_catches_each_mutation():
         ("probe drawn one cell short of the patch", _build_feed_one_cell_short,
          "does not reach the patch sheet"),
         ("patch drawn one cell short along its resonant length",
-         _build_patch_one_cell_short, "the ladder holds"),
+         _build_patch_one_cell_short, "the board holds"),
+        ("substrate drawn exactly on the ground's outermost nodes (the knife edge)",
+         _build_substrate_on_the_knife_edge, "the substrate's cells along"),
         ("a PEC wire drawn along the probe, ground to patch",
          _build_probe_shorted_by_a_wire, "is a PEC edge"),
     )
@@ -1667,7 +1724,7 @@ def test_the_board_is_the_openems_record_s_board():
 
     # The board rfx builds, against the record rather than against the
     # constants: h/4, the coarsest rung, is enough — every rung realizes the
-    # same resonant length (``assert_realized``).
+    # same board (``assert_realized``).
     b = _record_board(rec, OPENEMS_JUDGED_STAGE)
     dx = DX_COARSEST_M
     g = realized_geometry(build(dx))
