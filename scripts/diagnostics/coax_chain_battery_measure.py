@@ -1959,9 +1959,6 @@ RULINGS = {
         "PI 2026-09-21: a quantity near zero by construction is not compared in dB "
         "from rung to rung; the thru's |S11| is held to the -20 dB bound at every bin, "
         "and inside a reflection zero's core the verdict is the zero's frequency"),
-    "open_not_judged_pi_2026_09_23": (
-        "PI 2026-09-23 (P1): the coax battery closes WITHOUT the open termination; every "
-        "open record stays in the fixture as measured and is marked judged: false"),
     "identity_within_the_traced_path_pi_2026_09_23": (
         "PI 2026-09-23 (P2): criterion 1(2) for coax is the identity WITHIN the traced "
         "path (the bead in a numpy vs a jnp container, rtol 1e-5 / atol 1e-7). The "
@@ -1975,13 +1972,18 @@ RULINGS = {
     "deep_quantity_by_the_bound_leader_2026_09_23": (
         "leader 2026-09-23 (L2): a ladder quantity below -20 dB on the finest rung or in "
         "the closed form is judged by the bound, never by a dB comparison"),
-    "loads_closed_can_footprint_pi_2026_09_24": (
-        "PI 2026-09-24 (R1): the 25 and 100 ohm loads stay judged at 9 annulus cells; their "
-        "narrowband record-doubling changes near 6.7-6.9 and 9.7-10.6 GHz are the same "
-        "closed-can footprint as the open's (issue 1218), recorded as a fact and not as a "
-        "failure. Settling is judged by the contract's amplitude substitute as "
+    "settling_by_the_amplitude_substitute_pi_2026_09_24": (
+        "PI 2026-09-24 (R1): settling is judged by the contract's amplitude substitute as "
         "implemented, max |d|S|| <= one tenth of the magnitude gate in amplitude; the "
         "pre-declaration's addendum item 3 wrote it as 0.1 dB, which misstated it"),
+    "open_judged_all_axis_absorption_leader_2026_09_25": (
+        "leader 2026-09-25 (the pre-declaration's addendum of that date, issue 1218): both "
+        "coax lanes absorb on all three axes, so the lateral PEC can that held the field "
+        "leaving an unshielded conductor end is gone. The open termination is judged again, "
+        "like the short and the loads: magnitude within the bar, passivity 1.02, and "
+        "record-length invariance (12 -> 24 traversals, shift below 0.0259). The open's "
+        "exclusion of 2026-09-23 (P1) and the loads' closed-can footprint note of "
+        "2026-09-24 (R1) lapse with the fix"),
     "column_power_half_not_applied_leader_2026_09_24": (
         "leader default 2026-09-24 (R2), pending the PI's word: the contract substitute's "
         "second half (column power within 1e-3 of unity on a lossless structure) is not "
@@ -1989,21 +1991,13 @@ RULINGS = {
         "governs, and every record's column-power span is recorded as a fact"),
 }
 
-# R1 (PI 2026-09-24), the note the two loads' claims-rung records carry beside
-# their doubling facts. They stay judged.
-LOADS_FOOTPRINT_NOTE = (
-    "stays judged at 9 annulus cells: the narrowband record-doubling changes near "
-    "6.7-6.9 and 9.7-10.6 GHz are the same closed-can footprint as the open's "
-    "(issue 1218), recorded as a fact and not as a failure; settling is judged by the "
-    "contract's amplitude substitute as implemented; PI 2026-09-24")
-FOOTPRINT_DUTS = {"r25": LOADS_FOOTPRINT_NOTE, "r100": LOADS_FOOTPRINT_NOTE}
-
-# P1 (PI 2026-09-23), the reason every open record carries, verbatim.
-OPEN_NOT_JUDGED_REASON = (
-    "open end inside the lane's closed PEC can (absorbers on z only); its reflection "
-    "does not settle at 9 annulus cells — energy near the outer region's first cutoff "
-    "grows with record length (open_absorber_diagnostic.json); PI 2026-09-23")
-NOT_JUDGED_DUTS = {"open": OPEN_NOT_JUDGED_REASON}
+# Every DUT is judged and no record carries a footprint note: the open's
+# exclusion (P1, PI 2026-09-23) and the loads' closed-can footprint note (R1,
+# PI 2026-09-24) lapsed when both lanes began absorbing on all three axes
+# (issue 1218; the pre-declaration's addendum of 2026-09-25). The machinery stays
+# so that a later ruling can name a DUT again.
+FOOTPRINT_DUTS: dict[str, str] = {}
+NOT_JUDGED_DUTS: dict[str, str] = {}
 
 # P2 (PI 2026-09-23). The thru arm of the identity stage compares the untraced
 # call (float64 NumPy assembly) with the traced one (float32 jnp): two functions

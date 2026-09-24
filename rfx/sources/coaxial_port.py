@@ -1622,6 +1622,35 @@ def stamp_coaxial_line(
             "The mesh is too coarse for this line; refine it or widen the wall."
         )
 
+    # The clamp above keeps a cell of clearance in continuous arithmetic. The
+    # conductor is realized as shorted edges, and a cell i shorts edges on
+    # nodes i AND i + 1, so on the high side of an axis the realized wall
+    # reaches one node past its last cell and the clamp's cell of clearance
+    # can realize as none: a conductor on an absorber's inner face. The coax
+    # lanes absorb on x and y (issue 1218), so the realized clearance is
+    # checked, in whole cells, against every padded lateral face.
+    conductor = np.asarray(shell | pin_mask)
+    for axis, name, n_axis, pad_lo_, pad_hi_ in (
+        (0, "x", nx, pad_x_lo, pad_x_hi), (1, "y", ny, pad_y_lo, pad_y_hi),
+    ):
+        cells = np.nonzero(conductor.any(axis=tuple(t for t in range(3) if t != axis)))[0]
+        gaps = []
+        if pad_lo_:
+            gaps.append((f"{name}-lo", int(cells.min()) - pad_lo_))
+        if pad_hi_:
+            gaps.append((f"{name}-hi", (n_axis - 1 - pad_hi_) - (int(cells.max()) + 1)))
+        for face, gap in gaps:
+            if gap < 1:
+                raise ValueError(
+                    f"the coaxial line at ({cx * 1e3:.4g}, {cy * 1e3:.4g}) mm with "
+                    f"outer radius {b * 1e3:.4g} mm realizes its outer wall "
+                    f"{gap} cell(s) from the {face} absorber's inner face; at "
+                    f"least one whole cell of vacuum is required, because a "
+                    f"conductor inside or on a CPML pad diverges. Move the line "
+                    f"further from that face, shrink outer_radius, or enlarge "
+                    f"the board."
+                )
+
     eps = np.array(materials.eps_r)
     sig = np.array(materials.sigma)
     # Only the dielectric is written into the material arrays. The conductors
