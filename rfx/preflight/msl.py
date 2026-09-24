@@ -62,6 +62,8 @@ from typing import Literal
 
 import numpy as np
 
+from rfx._grid_metric import is_one_cell_size
+from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _fmt_len,
     _absorber_boundary_for_axis,
@@ -393,6 +395,111 @@ def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
     if not (h > 0.0) or not (dx > 0.0) or not (math.isfinite(h) and math.isfinite(dx)):
         return floor
     return max(floor, int(round(_MSL_NEAR_FIELD_STANDOFF_H_SUB * h / dx)))
+
+
+# ``add_msl_port``'s automatic probe ladder, as LENGTHS counted in a cell.
+#
+# The automatic offset clears two near-field scales of the launch, and both
+# are lengths: the source fringing (``5*h_sub``, the standoff above) and
+# ``lambda_eff/(4*pi)`` at f_max. The automatic spacing keeps the ladder span
+# at ``lambda_eff/8``. ``add_msl_port`` counts them in the simulation's scalar
+# cell; on a graded propagation axis the driver-time resolver
+# (``rfx.sparams._common._resolve_msl_auto_offsets``) counts the same lengths
+# in the runway cell at the port, and preflight check 5 and the S-parameter
+# routing check ask what the automatic offset would be. All four call the
+# functions below, so they cannot disagree about a port. With the scalar cell
+# they return the integers ``add_msl_port`` has always stored.
+
+_MSL_AUTO_MIN_SPACING_CELLS = 2
+
+
+def msl_auto_probe_offset_cells(near_field_m: float, h_sub_m: float,
+                                cell_m: float) -> int:
+    """The automatic ``n_probe_offset`` counted in ``cell_m``.
+
+    ``max(3, round(near_field_m / cell_m), round(5*h_sub_m / cell_m))``, where
+    ``near_field_m`` is ``lambda_eff/(4*pi)`` at f_max as ``add_msl_port``
+    stored it and the fringing term is
+    :func:`msl_source_near_field_standoff_cells`.
+    """
+    return max(msl_source_near_field_standoff_cells(h_sub_m, cell_m),
+               int(round(float(near_field_m) / float(cell_m))))
+
+
+def msl_auto_probe_spacing_cells(span_m: float, n_probes: int,
+                                 cell_m: float) -> int:
+    """The automatic ``n_probe_spacing`` counted in ``cell_m``: the ladder
+    span ``span_m`` (``lambda_eff/8``) split into ``n_probes - 1`` steps,
+    never below two cells."""
+    return max(_MSL_AUTO_MIN_SPACING_CELLS,
+               int(round(float(span_m) / (int(n_probes) - 1) / float(cell_m))))
+
+
+def msl_auto_probe_offset_term(near_field_m: float, h_sub_m: float,
+                               cell_m: float) -> str:
+    """Name the term that sets :func:`msl_auto_probe_offset_cells`, with its
+    length, for advisory text."""
+    n = msl_auto_probe_offset_cells(near_field_m, h_sub_m, cell_m)
+    lam_cells = int(round(float(near_field_m) / float(cell_m)))
+    fringe_cells = int(round(
+        _MSL_NEAR_FIELD_STANDOFF_H_SUB * float(h_sub_m) / float(cell_m)))
+    terms = []
+    if lam_cells == n:
+        terms.append(f"λ_eff/(4π) at f_max = {_fmt_len(near_field_m)}")
+    if fringe_cells == n:
+        terms.append(
+            f"5·h_sub = {_fmt_len(_MSL_NEAR_FIELD_STANDOFF_H_SUB * h_sub_m)}")
+    if not terms:
+        return f"the {_MSL_NEAR_FIELD_MIN_OFFSET_CELLS}-cell minimum"
+    return " and ".join(terms)
+
+
+def msl_auto_probe_ladder(profile, scalar_dx: float, feed_m: float,
+                          direction_sign: float, n_probes: int,
+                          near_field_m: float, h_sub_m: float, span_m: float,
+                          *, n_probe_offset=None, n_probe_spacing=None):
+    """The automatic probe ladder counted in the runway cell at a port.
+
+    Returns ``(n_probe_offset, n_probe_spacing, runway_cell, on_one_zone)``.
+
+    ``profile`` holds the propagation axis's interior cells with the first
+    interior node at 0 (a declared ``dx_profile``, or ``interior_cells`` of a
+    built grid); ``None`` means every cell is ``scalar_dx``. The runway cell is
+    the one beside the node the source is stamped on, on the side the port
+    launches into. An explicit ``n_probe_offset`` or ``n_probe_spacing`` is
+    returned as given; only the automatic ones are counted here.
+
+    ``on_one_zone`` says whether the span from that node through the deepest
+    probe crosses cells of one size. Where it does not, a count of runway
+    cells names no single length along the ladder, and the caller must not
+    use the counts.
+    """
+    node = profile_node_at(scalar_dx, profile, feed_m)
+    cell = profile_cell_at(scalar_dx, profile, node,
+                           toward="hi" if direction_sign > 0 else "lo")
+    off = (int(n_probe_offset) if n_probe_offset is not None
+           else msl_auto_probe_offset_cells(near_field_m, h_sub_m, cell))
+    sp = (int(n_probe_spacing) if n_probe_spacing is not None
+          else msl_auto_probe_spacing_cells(span_m, n_probes, cell))
+    reach = (off + (int(n_probes) - 1) * sp) * cell
+    on_one_zone = profile_span_is_uniform(
+        scalar_dx, profile, node, reach if direction_sign > 0 else -reach)
+    return off, sp, cell, on_one_zone
+
+
+def msl_axis_runs_interval_solve(profile) -> bool:
+    """Whether the driver runs the #469 interval solve on this axis.
+
+    It does on an axis with no profile or a profile of one cell size, where
+    an automatic offset is only the LOWER edge: a downstream reflector can
+    move it to the interval midpoint. On a graded axis it does not, and the
+    count is the one the driver uses.
+    """
+    if profile is None:
+        return True
+    if is_tracer(profile):
+        return False
+    return is_one_cell_size(np.asarray(profile, dtype=float))
 
 
 def msl_nearest_downstream_reflector(
@@ -1918,36 +2025,75 @@ def _check_msl_port_geometry(
         elif _nf_off is not None and int(_nf_off) < _nf_cells:
             _nf_realized = (_nf_real if _nf_real is not None
                             else int(_nf_off) * _runway_cell)
-            # add_msl_port floors an AUTOMATIC offset to 5·h_sub counted in
-            # the boundary cell. On a runway finer than that cell the floor
-            # is short, and this check is how such a port gets here; "leave
-            # it None" is then the advice that produced the short offset.
-            # None is offered only where that floor clears this runway.
+            # What leaving the offset None gives on this port, counted the
+            # way the driver counts it: the automatic lengths in this
+            # runway's cell where the ladder lies in one zone, and in the
+            # boundary cell add_msl_port used where it would cross a ramp.
+            # An automatic port reaches this branch only in the second case;
+            # "leave it None" is then the advice that produced the short
+            # offset, so None is offered only where it clears this runway.
             _nf_is_auto = pe.name in getattr(self, "_msl_auto_offset_min", {})
-            _nf_none_clears = (
-                msl_source_near_field_standoff_cells(h_sub, dx) >= _nf_cells)
+            _nf_lengths = getattr(
+                self, "_msl_auto_probe_lengths", {}).get(pe.name)
+            _nf_none_clears = False
+            _nf_none_txt = ""
+            _nf_on_ramp = False
+            if _nf_lengths is not None:
+                _nf_sp_auto = pe.name in getattr(
+                    self, "_msl_auto_probe_spacing", {})
+                _nf_none_off, _, _nf_none_cell, _nf_none_on_runway = (
+                    msl_auto_probe_ladder(
+                        _prop_profile, dx, x_feed, _dir_sign, n_pr,
+                        _nf_lengths[0], h_sub, _nf_lengths[1],
+                        n_probe_spacing=(None if _nf_sp_auto
+                                         else pe.n_probe_spacing)))
+                if not _nf_none_on_runway:
+                    _nf_on_ramp = True
+                    _nf_none_cell = dx
+                    _nf_none_off = msl_auto_probe_offset_cells(
+                        _nf_lengths[0], h_sub, dx)
+                _nf_none_clears = _nf_none_off >= _nf_cells
+                _nf_none_term = msl_auto_probe_offset_term(
+                    _nf_lengths[0], h_sub, _nf_none_cell)
+                _nf_none_txt = (
+                    f"counts {_nf_none_term} in the boundary cell "
+                    f"({_fmt_len(dx)}), {_nf_none_off} cells, because "
+                    f"counted in this runway's own cells its probe ladder "
+                    f"would cross a grading ramp"
+                    if _nf_on_ramp else
+                    f"counts {_nf_none_term} in this runway's "
+                    f"{_fmt_len(_nf_none_cell)} cells, "
+                    + ("at least " if msl_axis_runs_interval_solve(
+                        _prop_profile) else "")
+                    + f"{_nf_none_off} cells")
             _nf_opening = (
                 f"the automatic n_probe_offset={int(_nf_off)} puts probe 0 "
                 if _nf_is_auto else
                 f"n_probe_offset={int(_nf_off)} puts probe 0 "
             )
             _nf_auto_txt = (
-                f" add_msl_port chose {int(_nf_off)} by counting 5·h_sub in "
-                f"the boundary cell ({_fmt_len(dx)}); this port's runway "
-                f"cells are {_fmt_len(_runway_cell)}, so on this runway the "
-                f"automatic floor falls short."
+                f" add_msl_port chose {int(_nf_off)} by counting "
+                + (msl_auto_probe_offset_term(_nf_lengths[0], h_sub, dx)
+                   if _nf_lengths is not None else "its near-field lengths")
+                + f" in the boundary cell ({_fmt_len(dx)}); this port's "
+                f"runway cells are {_fmt_len(_runway_cell)}, so on this "
+                f"runway the automatic floor falls short."
+                + (" The driver keeps that count because, counted in this "
+                   "runway's own cells, the probe ladder would cross a "
+                   "grading ramp." if _nf_on_ramp else "")
                 if _nf_is_auto else ""
             )
             _nf_remedy = (
                 f"Set n_probe_offset >= {_nf_cells} explicitly on this port; "
                 f"leaving it None chooses {int(_nf_off)} again."
                 if _nf_is_auto else
-                f"Set n_probe_offset >= {_nf_cells}, or leave it None "
-                f"for the safe default."
+                f"Set n_probe_offset >= {_nf_cells}, or leave it None: the "
+                f"automatic offset {_nf_none_txt}."
                 if _nf_none_clears else
-                f"Set n_probe_offset >= {_nf_cells}; leaving it None counts "
-                f"5·h_sub in the boundary cell ({_fmt_len(dx)}) and falls "
-                f"short on this runway."
+                f"Set n_probe_offset >= {_nf_cells}; leaving it None "
+                f"{_nf_none_txt}, and falls short on this runway."
+                if _nf_none_txt else
+                f"Set n_probe_offset >= {_nf_cells}."
             )
             _nf_msg = (
                 f"MSL port '{pe.name}' (direction={pe.direction!r}): "

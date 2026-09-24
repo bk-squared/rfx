@@ -40,9 +40,10 @@ FORM_ISSUE = "### What is wrong\n\nx\n\n### Lane\n\nlane:absorber\n"
 HAND_ISSUE = "Filed by hand, no form, no lane.\n"
 
 
-def pr(number: int, body: str, title: str = "a change") -> dict:
+def pr(number: int, body: str, title: str = "a change", labels: list | None = None) -> dict:
     return {"number": number, "title": title, "body": body,
-            "mergedAt": "2026-09-17T00:00:00Z", "url": f"u/{number}"}
+            "mergedAt": "2026-09-17T00:00:00Z", "url": f"u/{number}",
+            "labels": labels or []}
 
 
 def issue(number: int, body: str, milestone: dict | None = None,
@@ -189,8 +190,8 @@ def test_a_pr_closing_no_issue_does_not_make_the_run_red() -> None:
     assert audit.failing_rows(rows) == []
 
 
-@pytest.mark.parametrize("kind", ["review", "form", "milestone", "unlabelled"])
-def test_the_other_three_sections_do_make_the_run_red(kind: str) -> None:
+@pytest.mark.parametrize("kind", ["review", "data-budget", "form", "milestone", "unlabelled"])
+def test_the_other_sections_do_make_the_run_red(kind: str) -> None:
     assert audit.failing_rows([audit.Row(kind, "#1", "t", "d")])
 
 
@@ -207,6 +208,141 @@ def test_each_linked_issue_gets_its_own_row() -> None:
     )
     assert kinds(rows) == ["milestone", "milestone"]
     assert "#10" in rows[0].detail and "#11" in rows[1].detail
+
+
+# --------------------------------------------------------------------------
+# The data-budget exception
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("labels", [
+    [{"name": "data-budget-exception"}, {"name": "lane:ci-infra"}],
+    ["data-budget-exception"],
+])
+def test_a_pr_that_carried_the_data_budget_exception_is_listed(labels) -> None:
+    """The gate lets it through with a warning on that PR only; the week sees it here."""
+    body = f"{ACCEPTED}\n\nFixes #10\n"
+    rows = audit.classify([pr(1, body, labels=labels)], [],
+                          {10: issue(10, "", OPEN_MILESTONE)})
+    assert kinds(rows) == ["data-budget"]
+    assert "not enforced" in rows[0].detail
+    assert audit.failing_rows(rows), "an exception claimed is a row to look at"
+
+
+def test_the_audit_reads_the_label_name_from_the_gate() -> None:
+    """One constant: a renamed label must not leave the audit counting the old one."""
+    assert audit._budget.EXCEPTION_LABEL == "data-budget-exception"
+    assert audit._budget.__file__.endswith("scripts/ci/check_data_budget.py")
+
+
+@pytest.mark.parametrize("labels", [[], ["lane:ci-infra"], ["x,data-budget-exception"], None])
+def test_a_pr_without_the_label_gets_no_data_budget_row(labels) -> None:
+    body = f"{ACCEPTED}\n\nFixes #10\n"
+    record = pr(1, body)
+    record["labels"] = labels
+    rows = audit.classify([record], [], {10: issue(10, "", OPEN_MILESTONE)})
+    assert rows == []
+
+
+def test_the_pr_listing_asks_github_for_labels() -> None:
+    """Without the field no merged PR carries the label and the row never appears."""
+    source = Path(audit.__file__).read_text(encoding="utf-8")
+    assert "number,title,body,mergedAt,url,labels" in source
+
+
+# --------------------------------------------------------------------------
+# Frozen test data: informational, and the total on main
+# --------------------------------------------------------------------------
+
+
+def _frozen_pr(frozen) -> dict:
+    record = pr(1, f"{ACCEPTED}\n\nFixes #10\n")
+    record["frozen_bytes"] = frozen
+    return record
+
+
+@pytest.mark.parametrize("frozen,listed", [(1_000_001, True), (1_000_000, False), (0, False)])
+def test_a_pr_adding_over_1_MB_of_frozen_data_is_listed(frozen: int, listed: bool) -> None:
+    """The budget bounds each PR at 5 MB, not their sum; the sum is watched here."""
+    rows = audit.classify([_frozen_pr(frozen)], [], {10: issue(10, "", OPEN_MILESTONE)})
+    assert (kinds(rows) == ["frozen"]) is listed
+    if listed:
+        assert rows[0].detail == f"{frozen:,} bytes"
+
+
+def test_the_frozen_section_never_makes_the_run_red() -> None:
+    rows = audit.classify([_frozen_pr(4_900_000)], [], {10: issue(10, "", OPEN_MILESTONE)})
+    assert kinds(rows) == ["frozen"] and audit.failing_rows(rows) == []
+
+
+def test_an_unmeasured_pr_is_said_not_skipped() -> None:
+    rows = audit.classify([_frozen_pr(None)], [], {10: issue(10, "", OPEN_MILESTONE)})
+    assert kinds(rows) == ["frozen"] and "not measured" in rows[0].detail
+
+
+def test_a_payload_without_a_measurement_gets_no_frozen_row() -> None:
+    rows = audit.classify([pr(1, f"{ACCEPTED}\n\nFixes #10\n")], [],
+                          {10: issue(10, "", OPEN_MILESTONE)})
+    assert rows == []
+
+
+def test_the_header_states_the_frozen_total_on_main() -> None:
+    text = audit.render([], dt.date(2026, 9, 11), dt.date(2026, 9, 18),
+                        {"prs": 3, "issues": 2, "frozen_main": [206, 21_345_678]})
+    assert "Frozen test data on main: 206 files, 21,345,678 bytes" in text
+
+
+def test_fetch_measures_each_merge_commit_with_the_gates_own_code(monkeypatch) -> None:
+    """The bytes come from check_data_budget.frozen_bytes, the gate's rule-4 measure."""
+    calls = []
+
+    def fake_gh(args):
+        if args[0] == "pr":
+            record = pr(1, f"{ACCEPTED}\n\nhousekeeping\n")
+            record["mergeCommit"] = {"oid": "abc123"}
+            return [record, pr(2, f"{ACCEPTED}\n\nhousekeeping\n")]
+        return []
+
+    def fake_frozen_bytes(base, head, repo):
+        calls.append((base, head))
+        return 2_500_000
+
+    monkeypatch.setattr(audit, "_gh", fake_gh)
+    monkeypatch.setattr(audit._budget, "frozen_bytes", fake_frozen_bytes)
+    monkeypatch.setattr(audit._budget, "frozen_on", lambda rev, repo: (7, 9_000_000))
+    data = audit.fetch(7)
+    assert calls == [("abc123^1", "abc123")]
+    assert data["merged_prs"][0]["frozen_bytes"] == 2_500_000
+    assert "frozen_bytes" not in data["merged_prs"][1]
+    assert data["frozen_main"] == [7, 9_000_000]
+    text, count = audit.report(data)
+    assert "| #1 | a change | 2,500,000 bytes |" in text
+    assert "Frozen test data on main: 7 files, 9,000,000 bytes" in text
+    assert count == 0
+
+
+def test_a_failed_measurement_is_recorded_as_none(monkeypatch) -> None:
+    def fake_gh(args):
+        if args[0] == "pr":
+            record = pr(1, f"{ACCEPTED}\n\nhousekeeping\n")
+            record["mergeCommit"] = {"oid": "0" * 40}
+            return [record]
+        return []
+
+    monkeypatch.setattr(audit, "_gh", fake_gh)
+    data = audit.fetch(7)
+    assert data["merged_prs"][0]["frozen_bytes"] is None
+
+
+def test_the_pr_listing_asks_github_for_the_merge_commit() -> None:
+    source = Path(audit.__file__).read_text(encoding="utf-8")
+    assert "number,title,body,mergedAt,url,labels,mergeCommit" in source
+
+
+def test_the_audit_workflow_checks_out_full_history() -> None:
+    """A shallow clone has no merge commits to measure."""
+    workflow = (REPO / ".github" / "workflows" / "governance-audit.yml").read_text(encoding="utf-8")
+    assert "fetch-depth: 0" in workflow
 
 
 # --------------------------------------------------------------------------
@@ -343,7 +479,7 @@ def test_every_row_kind_has_a_section_heading() -> None:
 def test_the_sections_cover_every_kind_classify_can_emit() -> None:
     """Pinned by name: a kind added to classify and not to SECTIONS vanishes."""
     assert {kind for kind, _, _ in audit.SECTIONS} == {
-        "review", "unlabelled", "form", "milestone", "unlinked",
+        "review", "data-budget", "unlabelled", "form", "milestone", "frozen", "unlinked",
     }
 
 

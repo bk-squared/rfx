@@ -43,7 +43,8 @@ W_TRACE = 0.002413
 H_SUB = 0.000794
 
 
-def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006):
+def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006,
+                             **port_kw):
     sim = Simulation(freq_max=20e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
@@ -56,7 +57,8 @@ def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006):
     sim.add(Box((patch_x0, 0.003, H_SUB),
                 (patch_x1, 0.02332, H_SUB)), material="pec")
     sim.add_msl_port(position=(0.0025, Y_C, 0.0), width=W_TRACE, height=H_SUB,
-                     direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
+                     direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1",
+                     **port_kw)
     return sim
 
 
@@ -305,15 +307,30 @@ def test_graded_width_axis_does_not_block_the_solve(direction):
     assert not _skips(caught)
 
 
+#: What a graded propagation axis resolves to on the ``_profiles`` board
+#: (#810). The graded profile has 101 cells, 25.0 mm (25 of DX, 50 of 1.5 DX,
+#: 26 of DX), while ``_pw`` mirrors a '-' port about the 20 mm board length,
+#: so a '+' feed (2.5 mm) sits in the leading DX zone and a '-' feed
+#: (17.5 mm) inside the 1.5 DX zone. '+': the 20-cell offset counted in DX
+#: runs past that zone's end at 4.96 mm, so the stored count stays. '-':
+#: counted in the zone's own 297.75 um cells, 5 h_sub = 3.97 mm is 13 cells
+#: and the 13 + 4 x 2 cell ladder stays in the zone.
+_GRADED_PROP_OFFSET = {"+x": 20, "+y": 20, "-x": 13, "-y": 13}
+
+
 @pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
 def test_graded_propagation_axis_bails_out_and_says_so(direction):
-    """Graded propagation axis: keep the stored edge, but WARN."""
+    """Graded propagation axis: no #469 interval solve, and a WARNING. The
+    automatic offset is the fringing length counted in the runway cell
+    where the ladder stays in one zone, else the stored count."""
     sim = _nu_sim(direction, **_profiles(direction, prop_ratio=1.5))
     off, caught = _resolved(sim)
-    assert off == 20, "a graded propagation axis must keep the stored edge"
+    assert off == _GRADED_PROP_OFFSET[direction]
     msgs = _skips(caught)
     assert len(msgs) == 1, msgs
     assert f"propagation axis {direction[1]} is GRADED" in msgs[0]
+    assert ("would cross a grading ramp" if direction[0] == "+"
+            else "counted in this port's own runway cell") in msgs[0]
     assert f"direction={direction!r}" in msgs[0]
     assert "'p1'" in msgs[0]
     assert "#686" in msgs[0]
@@ -332,7 +349,7 @@ def test_axis_roles_are_not_permutable(direction):
     """
     graded_prop, _ = _resolved(
         _nu_sim(direction, **_profiles(direction, prop_ratio=1.5)))
-    assert graded_prop == 20, (
+    assert graded_prop == _GRADED_PROP_OFFSET[direction], (
         f"{direction}: grading the propagation axis must bail out")
 
     graded_width, _ = _resolved(
@@ -478,3 +495,319 @@ def test_graded_propagation_axis_keeps_registration_spacing():
             sim._build_nonuniform_grid(),
         )
     assert r.n_probe_spacing == sim._msl_ports[0].n_probe_spacing
+
+
+# ---------------------------------------------------------------------------
+# Issue #810: on a graded propagation axis the automatic offset and spacing
+# are LENGTHS counted in the runway's own cells.
+#
+# A 254 um RO4350-like board (eps_r 3.66) whose feed runway is refined to
+# 127 um under a 254 um boundary cell. add_msl_port counts the automatic
+# lengths in the 254 um scalar; on the runway that count realizes half of
+# each length. Hand arithmetic (lambda_eff = c / f_max / sqrt(3.66)):
+#
+#   f_max    5 h_sub    lambda_eff/(4 pi)   lambda_eff/32 (one step, N=5)
+#   20 GHz   1.270 mm   0.624 mm            0.245 mm
+#   5.5 GHz  1.270 mm   2.267 mm            0.890 mm
+#
+#   stored (254 um): 20 GHz offset 5, spacing 2;   5.5 GHz offset 9, spacing 4
+#   runway (127 um): 20 GHz offset 10, spacing 2;  5.5 GHz offset 18, spacing 7
+#
+# so before #810 probe 0 sat 5 x 127 = 635 um (20 GHz) and 9 x 127 =
+# 1.143 mm (5.5 GHz) from the source, inside the 1.270 mm fringing length,
+# and at 5.5 GHz the ladder spanned 16 x 127 = 2.03 mm of the 3.56 mm
+# lambda_eff/8.
+# ---------------------------------------------------------------------------
+
+_RW_FINE = 127e-6
+_RW_H = 254e-6
+_RW_EPS = 3.66
+_RW_CELLS = 80
+
+
+def _runway_profile():
+    coarse = 2 * _RW_FINE
+    ramp, c = [], coarse
+    while c > _RW_FINE * 1.0001:
+        c = max(c / 1.25, _RW_FINE)
+        ramp.append(c)
+    prof = np.array([coarse] * 14 + ramp + [_RW_FINE] * _RW_CELLS
+                    + ramp[::-1] + [coarse] * 14, float)
+    first = 14 + len(ramp)
+    return prof, first, first + _RW_CELLS
+
+
+def _step_profile():
+    """A 254 um | 127 um | 254 um profile with abrupt steps, no ramp."""
+    prof = np.array([2 * _RW_FINE] * 20 + [_RW_FINE] * _RW_CELLS
+                    + [2 * _RW_FINE] * 20, float)
+    return prof, 20, 20 + _RW_CELLS
+
+
+def _runway_board(direction, f_max, runway_node=10.3, profile=None,
+                  **port_kw):
+    """The board above, graded along ``direction``'s axis. The feed is
+    declared ``runway_node`` runway cells in from the runway's launch-side
+    end (0.3 of a cell past a node, so the source snaps onto that node).
+    ``profile`` swaps in another ``(cells, first, last)`` runway."""
+    prof, first, last = profile or _runway_profile()
+    edges = np.concatenate([[0.0], np.cumsum(prof)])
+    length, width = float(edges[-1]), 10 * _RW_H
+    feed = (float(edges[first]) + runway_node * _RW_FINE
+            if direction[0] == "+"
+            else float(edges[last]) - runway_node * _RW_FINE)
+    if direction[1] == "x":
+        dom, kw = (length, width), {"dx_profile": prof}
+        pos, trace = (feed, width / 2), ((0.0, width / 2 - _RW_H),
+                                         (length, width / 2 + _RW_H))
+    else:
+        dom, kw = (width, length), {"dy_profile": prof}
+        pos, trace = (width / 2, feed), ((width / 2 - _RW_H, 0.0),
+                                         (width / 2 + _RW_H, length))
+    sim = Simulation(freq_max=f_max, domain=(*dom, _RW_H + 1.5e-3),
+                     dx=2 * _RW_FINE, cpml_layers=8, **kw)
+    sim.add_material("sub", eps_r=_RW_EPS)
+    sim.add(Box((0, 0, 0), (*dom, _RW_H)), material="sub")
+    sim.add(Box((*trace[0], _RW_H), (*trace[1], _RW_H)), material="pec")
+    sim.add_msl_port(position=(*pos, 0.0), width=2 * _RW_H, height=_RW_H,
+                     direction=direction, impedance=50.0, name="p1",
+                     **port_kw)
+    return sim
+
+
+def _resolve_on_its_grid(sim):
+    grid = sim._build_nonuniform_grid()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        (r,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), grid)
+    return r, grid, _skips(caught)
+
+
+def _realized_ladder(grid, entry):
+    """Source node and probe nodes as the extractor samples them, read off
+    the grid (the same two calls preflight check 5 makes)."""
+    from rfx.sources.msl_port import (
+        msl_port_from_entry, msl_probe_x_coords_n,
+        msl_sampled_node_coordinates,
+    )
+    port = msl_port_from_entry(entry)
+    ladder = msl_probe_x_coords_n(
+        grid, port, n_probes=entry.n_probes,
+        n_offset_cells=entry.n_probe_offset,
+        n_spacing_cells=entry.n_probe_spacing)
+    ladder = msl_sampled_node_coordinates(grid, port, ladder)
+    ax = "xyz".index(entry.direction[1])
+    (source,) = msl_sampled_node_coordinates(
+        grid, port, (float(entry.position[ax]),))
+    return float(source), [float(c) for c in ladder]
+
+
+_RW_CASES = [  # (f_max, stored offset/spacing, runway offset/spacing)
+    (20e9, (5, 2), (10, 2)),
+    (5.5e9, (9, 4), (18, 7)),
+]
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+@pytest.mark.parametrize("f_max,stored,runway", _RW_CASES)
+def test_auto_ladder_is_counted_in_the_runway_cell(direction, f_max,
+                                                   stored, runway):
+    """The automatic offset and spacing are lengths; on the refined runway
+    they are counted in its 127 um cells. Probe 0 then sits at least the
+    fringing length 5*h_sub from the node the source is stamped on, and the
+    ladder spans lambda_eff/8 to within one runway cell -- both distances
+    read off the grid's nodes, not re-multiplied from a cell size."""
+    import math
+    sim = _runway_board(direction, f_max)
+    pe = sim._msl_ports[0]
+    assert (pe.n_probe_offset, pe.n_probe_spacing) == stored
+    r, grid, skips = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == runway
+
+    source, ladder = _realized_ladder(grid, r)
+    lam_eff = 2.998e8 / f_max / math.sqrt(_RW_EPS)
+    probe0 = abs(ladder[0] - source)
+    assert probe0 >= 5 * _RW_H - 1e-9, (
+        f"probe 0 is {probe0 * 1e6:.1f} um from the source, inside the "
+        f"{5 * _RW_H * 1e6:.0f} um fringing length")
+    assert probe0 >= lam_eff / (4 * math.pi) - _RW_FINE / 2
+    span = abs(ladder[-1] - ladder[0])
+    assert abs(span - lam_eff / 8) <= _RW_FINE, (
+        f"ladder spans {span * 1e3:.3f} mm against lambda_eff/8 = "
+        f"{lam_eff / 8 * 1e3:.3f} mm")
+    # every probe on the runway, so the counts name those lengths
+    steps = np.diff([source] + ladder)
+    assert np.allclose(np.abs(steps[1:]), r.n_probe_spacing * _RW_FINE,
+                       rtol=1e-9, atol=0)
+    # the #469/#681 solves still do not run on a graded axis, and it says so
+    (msg,) = skips
+    assert f"propagation axis {direction[1]} is GRADED" in msg
+    assert "counted in this port's own runway cell" in msg
+    assert "downstream reflector clearance is NOT enforced" in msg
+
+
+def test_explicit_offset_keeps_its_count_while_auto_spacing_moves():
+    """Explicit values are never touched: an explicit offset stays, and the
+    automatic spacing beside it is still counted in the runway cell."""
+    sim = _runway_board("+x", 5.5e9, n_probe_offset=12)
+    r, _, _ = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == (12, 7)
+    sim = _runway_board("+x", 5.5e9, n_probe_spacing=3)
+    r, _, _ = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == (18, 3)
+
+
+def test_runway_count_is_idempotent_and_leaves_the_entry_alone():
+    sim = _runway_board("+x", 5.5e9)
+    r1, grid, _ = _resolve_on_its_grid(sim)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        (r2,) = _resolve_msl_auto_offsets(sim, [r1], grid)
+    assert (r1.n_probe_offset, r1.n_probe_spacing) \
+        == (r2.n_probe_offset, r2.n_probe_spacing) == (18, 7)
+    assert (sim._msl_ports[0].n_probe_offset,
+            sim._msl_ports[0].n_probe_spacing) == (9, 4)
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_a_ladder_that_would_cross_a_ramp_keeps_the_stored_counts(direction):
+    """Feed 50 runway cells in: counted in the runway cell the 5.5 GHz
+    ladder reaches 18 + 4 x 7 = 46 cells, past the runway's 80th cell and
+    up the trailing ramp, where a cell count names no single length. The
+    stored counts stay and the warning says why."""
+    sim = _runway_board(direction, 5.5e9, runway_node=50.3)
+    r, _, skips = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == (9, 4)
+    (msg,) = skips
+    assert f"propagation axis {direction[1]} is GRADED" in msg
+    assert "would cross a grading ramp" in msg
+    assert "offset 18 + 4 x spacing 7 cells of 127µm" in msg
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_the_recount_reads_the_cell_on_the_launch_side_of_the_source_node(
+        direction):
+    """Source node ON an abrupt 254|127 um step, probes on the 127 um side.
+    The two cells beside the node differ by 2x, and only the one the port
+    launches into (above the node for '+', below it for '-') is the runway:
+    counted there, 10 cells = 1.270 mm; counted in the other, 5 cells =
+    635 um again (#1278 review F2)."""
+    sim = _runway_board(direction, 20e9, runway_node=0.0,
+                        profile=_step_profile())
+    r, grid, _ = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == (10, 2)
+    source, ladder = _realized_ladder(grid, r)
+    assert abs(ladder[0] - source) == pytest.approx(10 * _RW_FINE, rel=1e-9)
+
+
+@pytest.mark.parametrize("direction", ("+x", "-x"))
+def test_an_explicit_offset_decides_the_zone_with_its_own_count(direction):
+    """Explicit offset 40 with the automatic spacing, 5.5 GHz, source 20
+    cells into the 80-cell runway. The ladder the driver would probe is the
+    explicit 40 + 4 x 7 = 68 cells, which climbs the trailing ramp, so the
+    spacing stays the stored 4. Deciding the zone on the automatic offset
+    (18 + 4 x 7 = 46 cells) would call it one zone (#1278 review F3)."""
+    sim = _runway_board(direction, 5.5e9, runway_node=20.3, n_probe_offset=40)
+    r, _, skips = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == (40, 4)
+    (msg,) = skips
+    assert "offset 40 + 4 x spacing 7 cells of 127µm" in msg
+    assert "would cross a grading ramp" in msg
+
+
+@pytest.mark.parametrize("direction", _ALL_DIRECTIONS)
+def test_the_zone_is_measured_from_the_stamped_node(direction):
+    """The 127 um zone is the 80-cell runway plus the last ramp cell on each
+    side, which the 1.25 ramp clamps to 127 um: 82 cells. With the source
+    node 63 cells into the runway, the 20 GHz ladder (10 + 4 x 2 cells) ends
+    exactly on the zone's last node, so it lies in one zone. The feed is
+    declared 0.3 of a cell past that node; a span measured from the declared
+    feed would run 0.3 cell into the 130 um ramp cell and keep the stored
+    5 cells (#1278 review F4)."""
+    prof, first, last = _runway_profile()
+    assert prof[first - 1] == prof[last] == _RW_FINE
+    assert prof[first - 2] > _RW_FINE and prof[last + 1] > _RW_FINE
+    sim = _runway_board(direction, 20e9, runway_node=63.3)
+    r, _, skips = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == (10, 2)
+    (msg,) = skips
+    assert "counted in this port's own runway cell" in msg
+
+
+def _y_runway_board(direction, **port_kw):
+    """A +y/-y port on a UNIFORM 127 um dy_profile under dx = 254 um. The y
+    axis is not graded, so the interval solve runs on it."""
+    ny = 120
+    ly, lx = ny * _RW_FINE, 10 * _RW_H
+    sim = Simulation(freq_max=20e9, domain=(lx, ly, _RW_H + 1.5e-3),
+                     dx=2 * _RW_FINE, cpml_layers=8,
+                     dy_profile=np.full(ny, _RW_FINE))
+    sim.add_material("sub", eps_r=_RW_EPS)
+    sim.add(Box((0, 0, 0), (lx, ly, _RW_H)), material="sub")
+    sim.add(Box((lx / 2 - _RW_H, 0, _RW_H), (lx / 2 + _RW_H, ly, _RW_H)),
+            material="pec")
+    feed = 20.3 * _RW_FINE if direction[0] == "+" else ly - 20.3 * _RW_FINE
+    sim.add_msl_port(position=(lx / 2, feed, 0.0), width=2 * _RW_H,
+                     height=_RW_H, direction=direction, impedance=50.0,
+                     name="p1", **port_kw)
+    return sim
+
+
+def _routing_message(sim):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(Exception) as exc:
+            sim.preflight_sparameters(calculator="forward", strict=True)
+    return str(exc.value)
+
+
+def _own_feed_findings(sim):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        report = sim.preflight()
+    return [str(i) for i in report.issues if "OWN feed plane" in str(i)]
+
+
+@pytest.mark.parametrize("direction", ("+y", "-y"))
+def test_a_uniform_runway_finer_than_dx_counts_in_its_own_cell(direction):
+    """A uniform y axis of 127 um cells under dx = 254 um is not graded, so
+    the driver runs the interval solve there, from add_msl_port's count in
+    254 um: 5 cells = 635 um, half the fringing length. The lower edge is now
+    recounted in the axis's own cell, 10 cells, and the driver, the
+    S-parameter routing check and preflight check 5 give that one number
+    (#1278 review F1)."""
+    sim = _y_runway_board(direction)
+    assert sim._msl_ports[0].n_probe_offset == 5          # counted in dx
+    r, grid, _ = _resolve_on_its_grid(sim)
+    assert r.n_probe_offset == 10
+    # The #681 absorber budget counts from the recounted offset and binds
+    # here: 17 cells per step. Counted from the stored 5 it would give 18
+    # and put the deepest probe 0.41 mm past the absorber clearance.
+    assert r.n_probe_spacing == 17
+    source, ladder = _realized_ladder(grid, r)
+    assert abs(ladder[0] - source) == pytest.approx(5 * _RW_H, rel=1e-9)
+    # the automatic port: neither preflight site calls it short
+    assert "source fringing transient" not in _routing_message(sim)
+    assert not _own_feed_findings(sim)
+    # an explicit 7: both sites say None gives those 10 cells
+    sim7 = _y_runway_board(direction, n_probe_offset=7)
+    none_txt = ("leave it None: the automatic offset counts 5·h_sub = "
+                "1.27mm in this runway's 127µm cells, at least 10 cells")
+    assert none_txt in _routing_message(sim7)
+    (finding,) = _own_feed_findings(sim7)
+    assert none_txt in finding, finding
+
+
+def test_the_none_count_on_a_uniform_axis_is_a_lower_edge():
+    """On the uniform #469 board the automatic offset is the lower edge 20;
+    with the patch downstream the driver takes the interval midpoint 26. The
+    preflight sites quote None's count as a minimum (#1278 review F6)."""
+    sim = _sim_with_feed_and_patch()
+    (r,) = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), _grid())
+    assert r.n_probe_offset == 26
+    sim7 = _sim_with_feed_and_patch(n_probe_offset=7)
+    none_txt = ("the automatic offset counts 5·h_sub = 3.97mm in this "
+                "runway's 198.5µm cells, at least 20 cells")
+    (finding,) = _own_feed_findings(sim7)
+    assert none_txt in finding, finding
+    assert none_txt in _routing_message(sim7)

@@ -1021,17 +1021,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             materials = setup_rlc_materials(grid, spec, materials)
             materials_drive = setup_rlc_materials(grid, spec, materials_drive)
 
-    # Initialize Debye/Lorentz dispersion coefficients
-    debye = None
-    if debye_spec is not None:
-        debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks)
-
-    lorentz = None
-    if lorentz_spec is not None:
-        lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks)
-
     sources = []
     probes = []
     wire_port_specs = []
@@ -1160,10 +1149,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     # the edge average. Stamped bare it was quartered, and a
                     # 50 ohm termination presented 200 ohm.
                     materials = _stamp_lumped_sigma(
-                        materials, (ci, cj, ck), sigma_port)
+                        materials, (ci, cj, ck), sigma_port, pe.component)
                     # #1256: and into the copy the drive is built from.
                     materials_drive = _stamp_lumped_sigma(
-                        materials_drive, (ci, cj, ck), sigma_port)
+                        materials_drive, (ci, cj, ck), sigma_port, pe.component)
                     # No PEC clearing here (#931 §1.9, corrected): a cell
                     # is LIVE exactly when the port component's own edge is
                     # not PEC, so releasing that component is a no-op, and
@@ -1257,10 +1246,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 d_parallel = dxi
                 d_perp1, d_perp2 = dual_yj, dual_zk
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
-            materials = _stamp_lumped_sigma(      # #1210
-                materials, (i, j, k), sigma_port)
-            materials_drive = _stamp_lumped_sigma(    # #1256
-                materials_drive, (i, j, k), sigma_port)
+            materials = _stamp_lumped_sigma(      # #1210, #1236
+                materials, (i, j, k), sigma_port, pe.component)
+            materials_drive = _stamp_lumped_sigma(    # #1256, #1236
+                materials_drive, (i, j, k), sigma_port, pe.component)
             if pec_edge_masks is not None:
                 # The lumped port drives ONE edge: its own component at
                 # its own cell (#931 §1.9, corrected).
@@ -1406,6 +1395,22 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
             drawn_eps_r=_drawn_eps_r,
         )
+
+    # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
+    # (the wire, lumped and MSL port loads above), as the uniform lane builds
+    # them. With a dispersive material anywhere in the model the E update runs
+    # on these coefficients alone and never reads ``materials.sigma`` (#1257):
+    # built before the port stamps they left every port unterminated, and a
+    # 50 ohm and a 5000 ohm port gave the same waveform.
+    debye = None
+    if debye_spec is not None:
+        debye_poles, debye_masks = debye_spec
+        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks)
+
+    lorentz = None
+    if lorentz_spec is not None:
+        lorentz_poles, lorentz_masks = lorentz_spec
+        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks)
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
     # probe plane (issue #88 flux-extractor path). Built from the same

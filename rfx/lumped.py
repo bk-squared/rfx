@@ -252,7 +252,8 @@ def edge_update_denominator(materials, cell, component, dt,
     the element's ``D0`` has to be built from the edge's own ``eps`` and
     ``sigma``: :func:`rfx.core.yee.cell_component_e_materials` at the
     element's cell and component -- the mean of the four incident cells'
-    volume material plus the lumped stamps at this cell (#1210), the values
+    volume material plus the lumped stamps on this edge (this cell, this
+    component: #1210, #1236), the values
     ``update_e`` turns into ``Cb``. Reading ``materials.eps_r[i, j, k]`` /
     ``sigma[i, j, k]`` instead is the single-cell value, which differs from
     what the update uses wherever the four cells around the edge are not one
@@ -338,14 +339,15 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     if spec.R > 0:
         materials = _stamp_sigma(
             materials, (i, j, k),
-            _port_sigma(grid, (i, j, k), spec.component, spec.R))
+            _port_sigma(grid, (i, j, k), spec.component, spec.R),
+            spec.component)
 
     if spec.C > 0:
         d_par = _d_par(grid, (i, j, k), spec.component)
         dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
         materials = _stamp_eps(
             materials, (i, j, k),
-            spec.C * d_par / (EPS_0 * dual_b * dual_c))
+            spec.C * d_par / (EPS_0 * dual_b * dual_c), spec.component)
 
     return materials
 
@@ -465,7 +467,7 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
         R = _resolve_value(spec.R, r_val)
         materials = _stamp_sigma(
             materials, (i, j, k),
-            _port_sigma(grid, (i, j, k), spec.component, R))
+            _port_sigma(grid, (i, j, k), spec.component, R), spec.component)
 
     if spec.C > 0:
         C = _resolve_value(spec.C, c_val)
@@ -474,7 +476,8 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
         # Same dual-face fold as the concrete path (#691). d_par / dual_b /
         # dual_c are plain floats from the grid, so a traced C stays traced.
         materials = _stamp_eps(
-            materials, (i, j, k), C * d_par / (EPS_0 * dual_b * dual_c))
+            materials, (i, j, k), C * d_par / (EPS_0 * dual_b * dual_c),
+            spec.component)
 
     return materials
 

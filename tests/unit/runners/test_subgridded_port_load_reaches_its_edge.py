@@ -34,6 +34,11 @@ SHAPE = (12, 12, 12)
 Z0 = 50.0
 
 
+def _edge_stamp(materials, cell, value):
+    """The runner's stamp for a port on Ez (#1210, per component #1236)."""
+    return stamp_lumped_sigma(materials, cell, value, "ez")
+
+
 def _bare_stamp(materials, cell, value):
     """What ``rfx/runners/subgridded.py`` did before #1210."""
     i, j, k = cell
@@ -41,7 +46,7 @@ def _bare_stamp(materials, cell, value):
 
 
 @pytest.mark.parametrize("stamp,expect",
-                         [(stamp_lumped_sigma, 1.0), (_bare_stamp, 0.25)],
+                         [(_edge_stamp, 1.0), (_bare_stamp, 0.25)],
                          ids=["edge-owned", "mutation-bare-stamp"])
 def test_the_fine_grid_port_conductance_is_realized_whole(stamp, expect):
     cell = (6, 6, 6)
@@ -70,7 +75,7 @@ def test_the_stamp_does_not_leak_onto_neighbouring_fine_edges():
     """A lumped load belongs to one edge; averaging would put it on twelve."""
     cell = (6, 6, 6)
     sigma_port = 1.0 / (Z0 * DX_F)
-    mats = stamp_lumped_sigma(init_materials(SHAPE), cell, sigma_port)
+    mats = stamp_lumped_sigma(init_materials(SHAPE), cell, sigma_port, "ez")
 
     for neighbour in [(6, 7, 6), (6, 6, 7), (7, 6, 6), (6, 5, 6)]:
         _, s = cell_component_e_materials(mats, neighbour, "ez")
@@ -85,11 +90,14 @@ def test_the_wire_port_branch_stamps_every_live_cell():
     cells = [(6, 6, 5), (6, 6, 6), (6, 6, 7)]
     mats = init_materials(SHAPE)
     for c in cells:
-        mats = stamp_lumped_sigma(mats, c, sigma_per_cell)
+        mats = stamp_lumped_sigma(mats, c, sigma_per_cell, "ez")
 
     assert isinstance(mats, MaterialArrays)
     assert mats.sigma_lumped is not None
-    assert np.count_nonzero(np.asarray(mats.sigma_lumped)) == len(cells)
+    # The record is per E component (#1236): every stamp on the Ez record.
+    sx, sy, sz = mats.sigma_lumped
+    assert sx is None and sy is None
+    assert np.count_nonzero(np.asarray(sz)) == len(cells)
     for c in cells:
         _, s = cell_component_e_materials(mats, c, "ez")
         assert float(s) == pytest.approx(sigma_per_cell, rel=1e-6)

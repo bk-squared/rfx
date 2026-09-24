@@ -45,6 +45,9 @@ def write_json(path, data):
 
 
 def array_signature(value):
+    if isinstance(value, tuple):
+        # A per-component lumped record (#1236): (x, y, z) of arrays / None.
+        return [None if v is None else array_signature(v) for v in value]
     a = np.ascontiguousarray(value)
     return dict(
         shape=list(a.shape),
