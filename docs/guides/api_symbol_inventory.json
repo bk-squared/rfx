@@ -238,6 +238,9 @@
     "Simulation": {
       "kind": "class"
     },
+    "SnapshotAxes": {
+      "kind": "class"
+    },
     "SnapshotSpec": {
       "kind": "class"
     },
@@ -1019,6 +1022,13 @@
       "params": [
         "names",
         "weights"
+      ]
+    },
+    "field_sample_coords": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "component"
       ]
     },
     "field_softmax": {
@@ -2106,7 +2116,8 @@
         "path",
         "snapshots",
         "grid",
-        "dt"
+        "dt",
+        "axes"
       ]
     },
     "save_state": {
@@ -2133,6 +2144,15 @@
         "cells",
         "max_ratio",
         "preserve_regions"
+      ]
+    },
+    "snapshot_axes": {
+      "kind": "function",
+      "params": [
+        "grid",
+        "snapshot",
+        "n_steps",
+        "dt"
       ]
     },
     "solve_rectangular_modes": {

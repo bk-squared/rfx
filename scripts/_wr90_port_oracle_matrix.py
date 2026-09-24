@@ -2368,7 +2368,10 @@ def run_phase2b_closed_domain_energy(
             n_steps,
             boundary="pec",
             sources=[src],
-            snapshot=SnapshotSpec(components=("ex", "ey", "ez", "hx", "hy", "hz")),
+            # interval=1: the energy trace below indexes frames by step.
+            # The default interval (10) was never applied before #1258.
+            snapshot=SnapshotSpec(interval=1,
+                                  components=("ex", "ey", "ez", "hx", "hy", "hz")),
         )
         start_idx = stop_step + 10
         energies = np.asarray([

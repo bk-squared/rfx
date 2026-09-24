@@ -1029,6 +1029,7 @@ def run_uniform(
         waveguide_ports=waveguide_ports_result,
         waveguide_sparams=waveguide_sparams_result,
         snapshots=sim_result.snapshots,
+        snapshot_axes=sim_result.snapshot_axes,
         grid=grid,
         dt=grid.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),

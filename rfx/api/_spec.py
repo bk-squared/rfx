@@ -697,7 +697,10 @@ class Result(NamedTuple):
     waveguide_sparams : dict[str, WaveguideSParamResult] or None
         High-level calibrated waveguide S-parameters keyed by port name.
     snapshots : dict[str, ndarray] or None
-        Field snapshots keyed by component name.
+        Field snapshots keyed by component name, each
+        ``(n_steps // interval, ...)``: frame ``k`` holds the fields after
+        step ``(k + 1) * interval`` (see ``SnapshotSpec``). Indexed on the
+        padded lattice, like ``state``.
     grid : Grid or None
         Grid metadata for post-processing helpers and advanced objectives.
     settling_db : float or None
@@ -768,6 +771,15 @@ class Result(NamedTuple):
     #: witnesses are in (``.report``). ``None`` on every other run; every
     #: other field is the same as without ``ringdown=``.
     ringdown: object = None
+    #: Per snapshot component, a :class:`rfx.snapshots.SnapshotAxes`: the
+    #: coordinate in metres of every recorded sample along each kept axis
+    #: (model frame, CPML cells included), the slice plane, and the step
+    #: count and time of each frame -- E at ``steps * dt``, H half a step
+    #: earlier (#1259). ``None`` when no snapshot was recorded. For the
+    #: arrays of ``state`` use ``rfx.field_sample_coords(grid, component)``;
+    #: ``state`` holds E at ``state.step * dt`` and H at
+    #: ``(state.step - 1/2) * dt``.
+    snapshot_axes: dict | None = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
