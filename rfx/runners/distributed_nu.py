@@ -1437,12 +1437,14 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     ey = state.ey
     ez = state.ez
 
-    # ==================================================    # X-axis CPML — rank-conditional (rank 0 owns x-lo, rank N-1 owns x-hi).
+    # =========================================================
+    # X-axis CPML — rank-conditional (rank 0 owns x-lo, rank N-1 owns x-hi).
     # Internal slab seams are NOT physical CPML boundaries (V3 bullet 2);
     # interior ranks compute the candidate update but the where-mask
     # discards both the field correction and the psi-state update so
     # interior x-face psi stays exactly zero (Class C assertion).
-    # ==================================================    # --- X-lo: Ey from dHz/dx ---
+    # =========================================================
+    # --- X-lo: Ey from dHz/dx ---
     hz_xlo = state.hz[xlo, :, :]
     hz_shifted_xlo = _shift_bwd(state.hz, 0)[xlo, :, :]
     curl_hz_dx_xlo = (hz_xlo - hz_shifted_xlo) / dx_x
@@ -1498,8 +1500,10 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     ez = ez.at[xhi, :, :].add(ez_corr_xhi)
     new_psi_ez_xhi = jnp.where(is_last, new_psi_ez_xhi, cpml_state.psi_ez_xhi)
 
-    # ==================================================    # Y-axis CPML — every rank, sliced over local x extent.
-    # ==================================================    # --- Y-lo: Ex from dHz/dy ---
+    # =========================================================
+    # Y-axis CPML — every rank, sliced over local x extent.
+    # =========================================================
+    # --- Y-lo: Ex from dHz/dy ---
     hz_ylo = state.hz[:, :n, :]
     hz_shifted_ylo = _shift_bwd(state.hz, 1)[:, :n, :]
     curl_hz_dy_ylo = (hz_ylo - hz_shifted_ylo) / dx_y
@@ -1543,8 +1547,10 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     kappa_corr_ez_yhi = jnp.transpose((1.0 / k_yr - 1.0) * curl_hx_dy_yhi_t, (2, 0, 1))
     ez = ez.at[:, -n:, :].add(-ce_yhi * kappa_corr_ez_yhi)
 
-    # ==================================================    # Z-axis CPML — every rank, sliced over local x extent.
-    # ==================================================    # --- Z-lo: Ex from dHy/dz ---
+    # =========================================================
+    # Z-axis CPML — every rank, sliced over local x extent.
+    # =========================================================
+    # --- Z-lo: Ex from dHy/dz ---
     hy_zlo = state.hy[:, :, :n]
     hy_shifted_zlo = _shift_bwd(state.hy, 2)[:, :, :n]
     curl_hy_dz_zlo = (hy_zlo - hy_shifted_zlo) / dz_lo
