@@ -23,6 +23,7 @@ What is pinned here, on both lanes:
 * the short record's completed S11 matches the long record's within the
   measured envelope while its plain S11 does not, and the witnesses read ok;
 * the driven column of a two-port graded box and a three-cell port likewise;
+  W1 catches a completion fed the midpoint cell's voltage of that port;
 * the decimation reference covers the requested band, and a port on a CPML
   floor of the graded lane is probed inside the grid;
 * every model the completion does not cover is refused with its reason.
@@ -144,6 +145,11 @@ def test_w0_holds_and_the_completion_has_the_shape_of_the_run(short_runs):
     amp = [p.amplitude for p in rep.poles]
     assert amp == sorted(amp, reverse=True)
     assert 0.0 < rep.tail_share < 1.0 and rep.slowest_decay_over_window > 0.0
+    gw = rep.witness("growing_poles")
+    assert gw.ok and gw.value == 0.0 and "not judged" in gw.rule
+    assert rep.discarded_growth_max is not None
+    print(f"[{lane}] W1 {rep.witness('W1').value:.3g}, accumulator round-off "
+          f"{rep.s_accumulator_roundoff:.3g}; {gw.note}")
     assert plain.ringdown is None
 
 
@@ -294,6 +300,9 @@ def test_a_three_cell_port_completes_its_whole_gap_voltage(lane):
           f"{short.ringdown.report.witness('W1').value:.2e}")
     assert db_l < 0.05 and deg_l < 0.5, (db_l, deg_l)
     assert db_c < 0.05 and deg_c < 0.5, (db_c, deg_c)
+    for r in (short, long):
+        w1 = r.ringdown.report.witness("W1")
+        assert w1.ok and w1.value <= rd.W1_BAR, w1
 
 
 def test_the_decimation_reference_covers_the_requested_band():
@@ -353,23 +362,45 @@ def test_the_passivity_witness_reads_the_plain_record_too():
     assert f"{plain:.6g}" in w.note and "non-passive without the completion" in w.note
 
 
-@pytest.mark.parametrize("check", ["W1", "identification"])
-def test_a_failed_check_returns_the_run_uncompleted(check, monkeypatch):
-    """When W1 or the pole identification fails, nothing is completed and
-    nothing is discarded: the plain result comes back with the failure named."""
+def test_w1_catches_a_completion_fed_the_midpoint_voltage(monkeypatch):
+    """Feed the completion the midpoint cell's voltage of a three-cell port
+    instead of the whole-gap voltage (the float64 rebuild only; the replay W0
+    checks is left alone). W1 sees the two V/I constructions disagree by about
+    0.9 in |S|, and the run comes back uncompleted with W1's number."""
+    plain = _run(_box("uniform", cells=3), 600)
+    orig = rd._port_vi
+
+    def midpoint_voltage(lane, pm, metrics, e, hx, hy, hz):
+        v, v_port, i_val = orig(lane, pm, metrics, e, hx, hy, hz)
+        if isinstance(e, np.ndarray) and e.dtype == np.float64:
+            return v, v, i_val
+        return v, v_port, i_val
+
+    monkeypatch.setattr(rd, "_port_vi", midpoint_voltage)
+    with pytest.warns(UserWarning, match="W1 failed"):
+        r = _run(_box("uniform", cells=3), 600, ringdown=RingdownSpec())
+    rep = r.ringdown.report
+    assert r.ringdown.s_params is None and rep.failure.startswith("W1")
+    assert rep.witness("W0").ok and rep.witness("W1").value > 0.1
+    for f in ("time_series", "s_params", "freqs"):
+        assert np.array_equal(np.asarray(getattr(plain, f)), np.asarray(getattr(r, f)))
+
+
+def test_a_failed_identification_returns_the_run_uncompleted(monkeypatch):
+    """When the pole identification fails, nothing is completed and nothing is
+    discarded: the plain result comes back with the failure named."""
     plain = _run(_box("uniform"), 600)
-    if check == "W1":
-        monkeypatch.setattr(rd, "W1_BAR", 0.0)
-    else:
-        def _no_pencil(*_a, **_k):
-            raise ValueError("a window of 3 decimated samples is too short for a "
-                             "matrix pencil")
-        monkeypatch.setattr(rd, "_pencil", _no_pencil)
-    with pytest.warns(UserWarning, match=f"{check} failed"):
+
+    def _no_pencil(*_a, **_k):
+        raise ValueError("a window of 3 decimated samples is too short for a "
+                         "matrix pencil")
+
+    monkeypatch.setattr(rd, "_pencil", _no_pencil)
+    with pytest.warns(UserWarning, match="identification failed"):
         r = _run(_box("uniform"), 600, ringdown=RingdownSpec())
     rep = r.ringdown.report
-    assert r.ringdown.s_params is None and rep.failure.startswith(check)
-    assert rep.witness("W0").ok
+    assert r.ringdown.s_params is None and rep.failure.startswith("identification")
+    assert rep.witness("W0").ok and rep.witness("W1").ok
     for f in ("time_series", "s_params", "freqs"):
         assert np.array_equal(np.asarray(getattr(plain, f)), np.asarray(getattr(r, f)))
 

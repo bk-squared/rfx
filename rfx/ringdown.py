@@ -266,7 +266,10 @@ class RingdownReport:
     When a check that decides whether the completion can be trusted at all
     fails (W0, W1, the identification), nothing is completed: ``failure``
     names the check and its number, ``completed`` is False, and the fields that
-    need a model stay ``None``.
+    need a model stay ``None``. ``s_accumulator_roundoff`` is information, not
+    a check: ``max |S of the float64 DFT of the rebuilt record - Result.s_params|``,
+    the run's own complex64 accumulator round-off in ``Result.s_params``,
+    which grows with the record.
     """
 
     n_record: int
@@ -288,8 +291,11 @@ class RingdownReport:
     poles: tuple = ()
     growing_pole_rule: str = ""
     w0_ulps: dict | None = None
+    s_accumulator_roundoff: float | None = None
     tail_share: float | None = None
     slowest_decay_over_window: float | None = None
+    discarded_growth_max: float | None = None
+    discarded_growth_f_hz: float | None = None
 
     @property
     def completed(self) -> bool:
@@ -320,6 +326,9 @@ class RingdownReport:
                      f"dropped by the guard, {self.n_growing_discarded} growing "
                      f"discarded); tail share {self.tail_share:.3g}, slowest decay "
                      f"{self.slowest_decay_over_window:.3g} windows")
+        if self.s_accumulator_roundoff is not None:
+            head += (f"; Result.s_params' own accumulator round-off "
+                     f"{self.s_accumulator_roundoff:.2e} (information)")
         else:
             head += f"; NOT COMPLETED: {self.failure}"
         lines = [head]
@@ -832,7 +841,9 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
     the probe samples: ``t = float32(step) * dt``, the kernel
     ``exp(-j 2 pi f t)`` cast to complex64 and times ``dt``, the current's
     kernel times ``half_step_current_phase``, a sequential complex64 sum.
-    Returns ``(v, i, v_port)`` accumulators as numpy arrays of the run's dtype.
+    Returns ``((v, i, v_port) accumulators as numpy arrays of the run's dtype,
+    (v_port, i) per step)`` -- the per-step series are the values the scan
+    accumulated, in the dtype it computed them in (float32 on a float32 run).
     """
     import jax
     import jax.numpy as jnp
@@ -851,7 +862,7 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
         i_phase = phase * _half_i_phase(
             freqs.astype(jnp.float64), dt).astype(jnp.complex64)
         return (v_dft + v * phase, i_dft + i_val * i_phase,
-                vp_dft + v_port * phase), None
+                vp_dft + v_port * phase), (v_port, i_val)
 
     nf = int(freqs.shape[0])
     # The run's own carry dtype: complex64, or complex128 on the uniform lane
@@ -864,8 +875,8 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
         # rfx's own kernel requests float64 that x64-off JAX serves as
         # float32; the emulation repeats the request, and its warning.
         warnings.simplefilter("ignore")
-        final, _ = jax.jit(lambda c, x: jax.lax.scan(body, c, x))(init, xs)
-    return tuple(np.asarray(a) for a in final)
+        final, per_step = jax.jit(lambda c, x: jax.lax.scan(body, c, x))(init, xs)
+    return tuple(np.asarray(a) for a in final), tuple(np.asarray(a) for a in per_step)
 
 
 def _assemble(lane: str, pms, spectra_vp, spectra_i, freqs32, dt, v_mid=None):
@@ -930,18 +941,14 @@ def _ulps(rebuilt, rfx_values) -> float:
 #: the peak of each array in the run's own real dtype (the PI's cross-trace
 #: rule of 2026-09-23: aim bitwise, allow a single-digit ULP count).
 W0_ULP_BAR = 9.0
-#: W1's bar: the completion's own plain part (the float64 DFT of the rebuilt
-#: record, no tail), assembled by the lane's S assembly, against
-#: ``Result.s_params`` -- absolute, on S. Not set yet: on clean runs the value
-#: grows with the record (rfx's own complex64 accumulator round-off), up to
-#: 1.1e-4 at 60,000 steps, so W1 is reported and does not gate.
-W1_BAR = math.inf
-#: The discarded-growth bar: a pole the pencil discarded as growing fails the
-#: growing-pole witness when its size at the record's end, relative to the
-#: channel's RMS over the window, exceeds this. Not set yet: on short clean
-#: records the discarded poles reach 7e-2 while a genuine 6e-6/step growth
-#: ending at 5e-3 reads 6e-3, so the size is reported and does not gate.
-GROWTH_BAR = math.inf
+#: W1's bar, absolute on S: the S the completion's channels give without a
+#: tail -- the float64 DFT of the float64 rebuild of the port's V and I --
+#: against the S the same DFT gives of the float32 per-step V and I that the
+#: W0 replay accumulated (W0 ties those to the run's accumulators). Neither
+#: side carries a float32 accumulation, so the difference is the two V/I
+#: constructions alone: 1.7e-7 .. 6.0e-7 on clean runs of 1,500-60,000 steps,
+#: 0.89 when the completion is fed the midpoint cell's voltage of a 3-cell port.
+W1_BAR = 1.0e-4
 
 
 class _NotCompleted(Exception):
@@ -1120,7 +1127,9 @@ class RingdownRun:
                                              False, nc.message))
             report = RingdownReport(**base, witnesses=tuple(witnesses),
                                     failure=f"{nc.name}: {nc.message}",
-                                    w0_ulps=state.get("w0_ulps"))
+                                    w0_ulps=state.get("w0_ulps"),
+                                    s_accumulator_roundoff=state.get(
+                                        "s_accumulator_roundoff"))
             warnings.warn(
                 f"ring-down completion not produced -- {nc.name} failed: "
                 f"{nc.message} Result.ringdown.s_params is None; every other "
@@ -1128,7 +1137,9 @@ class RingdownRun:
             return stripped._replace(ringdown=RingdownResult(
                 s_params=None, freqs=result.freqs, report=report))
         report = RingdownReport(**base, witnesses=tuple(witnesses),
-                                w0_ulps=state.get("w0_ulps"), **report_extra)
+                                w0_ulps=state.get("w0_ulps"),
+                                s_accumulator_roundoff=state.get(
+                                    "s_accumulator_roundoff"), **report_extra)
         if not report.ok:
             failed = ", ".join(f"{w.name} {w.value:.3e} (bar {w.bar:.3e})"
                                + (f" -- {w.note}" if w.note else "")
@@ -1194,8 +1205,11 @@ class RingdownRun:
         # the grid's own dt object: under x64 a numpy float64 and a Python
         # float promote the run's float32 step index differently
         dt_run = result.grid.dt
+        replayed = []                    # per port: the replay's float32 (v_port, i)
         for p, pm in enumerate(pms):
-            emu = _emulate_accumulators(self.lane, pm, e_cols[p], h_cols[p], dt_run)
+            emu, per_step = _emulate_accumulators(self.lane, pm, e_cols[p],
+                                                  h_cols[p], dt_run)
+            replayed.append(per_step)
             for name, a, b in zip(("v_mid", "i", "v_port"), emu, pm.accs):
                 ulps[f"port{p}/{name}"] = _ulps(a, b)
         freqs32 = pms[0].freqs
@@ -1240,18 +1254,29 @@ class RingdownRun:
             ii = [spectra[:, 2 * p + 1] * half for p in range(len(pms))]
             return _assemble(self.lane, pms, vp, ii, freqs32, dt)
 
-        # ---- W1: the completion's plain part is the run's S ----------------
+        # ---- W1: the channels fed to the completion are the ones W0 checked --
+        # float64 DFT of the float64 rebuild vs float64 DFT of the float32
+        # per-step series the W0 replay accumulated; no float32 accumulation
+        # on either side
         plain = plain_dft(Y, dt, f_bins)
-        w1 = float(np.max(np.abs(to_s(plain).astype(np.complex128)
-                                 - S_run.astype(np.complex128))))
-        w1_rule = ("max |S from the float64 DFT of the rebuilt record (no tail) "
-                   "- Result.s_params|")
+        Y32 = np.stack([np.asarray(c, dtype=np.float64)
+                        for per_step in replayed for c in per_step], axis=1)
+        S_plain = to_s(plain).astype(np.complex128)
+        w1 = float(np.max(np.abs(S_plain - to_s(plain_dft(Y32, dt, f_bins))
+                                 .astype(np.complex128))))
+        # information, not a check: the run's own complex64 accumulator
+        # round-off in Result.s_params, which grows with the record
+        roundoff = float(np.max(np.abs(S_plain - S_run.astype(np.complex128))))
+        state["s_accumulator_roundoff"] = roundoff
+        w1_rule = ("max |S of the float64 DFT of the float64 rebuild of the port "
+                   "V/I - S of the float64 DFT of the float32 per-step V/I the W0 "
+                   "replay accumulated| (no tail)")
         if not w1 <= W1_BAR:
             raise _NotCompleted(
                 "W1", w1, W1_BAR,
-                f"the rebuilt record's own plain S differs from Result.s_params "
-                f"by {w1:.3e} (bar {W1_BAR:.0e}): the channels fed to the "
-                "completion are not the port's voltage and current.")
+                f"the port channels fed to the completion give an S that differs "
+                f"by {w1:.3e} (bar {W1_BAR:.0e}) from the S of the channels W0 "
+                "tied to the run: they are not the port's voltage and current.")
         witnesses.append(RingdownWitness("W1", w1, W1_BAR, True, w1_rule))
 
         # ---- identification and completion ----------------------------------
@@ -1270,7 +1295,12 @@ class RingdownRun:
         record_s = self.n_steps * dt
         grow, exempt = growing_poles(model, record_s, spec.unit_tol)
         g = np.asarray(model.growing_amplitude, dtype=np.float64)
-        g_max = float(np.max(g)) if g.size else 0.0
+        if g.size:
+            kg = int(np.argmax(g))
+            g_max = float(g[kg])
+            g_f = float(np.asarray(model.s_growing)[kg].imag / (2.0 * np.pi))
+        else:
+            g_max, g_f = 0.0, math.nan
         driven = [p for p, pm in enumerate(pms) if pm.excite]
         s_diag = max(float(np.max(np.abs(S[p, p, :]))) for p in driven)
         s_plain = max(float(np.max(np.abs(S_run[p, p, :]))) for p in driven)
@@ -1285,13 +1315,17 @@ class RingdownRun:
                             f"max |S| difference between the completions from "
                             f"[{spec.window_start:g} T, T] and "
                             f"[{spec.window_start:g} T, {spec.split:g} T]"),
-            RingdownWitness("growing_poles", g_max, GROWTH_BAR,
-                            len(grow) == 0 and g_max <= GROWTH_BAR,
-                            GROWING_POLE_RULE + "; and no pole the pencil discarded "
-                            "as growing may be larger at the record's end than "
-                            "the bar, relative to its channel's RMS over the window",
-                            f"{len(grow)} kept growing, {len(exempt)} zero-frequency "
-                            f"exempt, {g.size} discarded"),
+            RingdownWitness("growing_poles", float(len(grow)), 0.0, len(grow) == 0,
+                            GROWING_POLE_RULE + ". Poles the pencil discarded as "
+                            "growing are sized and reported (the largest, with its "
+                            "frequency: its size at the record's end relative to "
+                            "its channel's RMS over the window) but not judged",
+                            f"{len(exempt)} zero-frequency exempt; {g.size} "
+                            f"discarded as growing, the largest {g_max:.3g} at "
+                            f"{g_f / 1e9:.4g} GHz (reported, not judged)"
+                            if g.size else
+                            f"{len(exempt)} zero-frequency exempt; none discarded "
+                            "as growing"),
             RingdownWitness("passivity", s_diag, p_bar, s_diag <= p_bar,
                             "max |S_kk| over the driven ports", p_note),
             RingdownWitness("source_off", src_ratio, float(spec.source_off_tol),
@@ -1319,5 +1353,6 @@ class RingdownRun:
             n_invalid=model.n_invalid, n_guard_dropped=model.n_guard_dropped,
             short_rank=w2.model_short.rank, short_n_kept=int(w2.model_short.s.size),
             poles=model.poles(), growing_pole_rule=GROWING_POLE_RULE,
-            tail_share=tail_share, slowest_decay_over_window=slowest)
+            tail_share=tail_share, slowest_decay_over_window=slowest,
+            discarded_growth_max=g_max, discarded_growth_f_hz=g_f)
         return S, extra
