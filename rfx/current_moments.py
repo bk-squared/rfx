@@ -987,6 +987,13 @@ def monitor_for_simulation(sim, grid, periodic=None):
                 "fixed weights before the run, and a traced mesh profile "
                 "(mesh-as-design-variable) would move them. Differentiate "
                 "the materials, not the mesh, while this monitor is on.")
+    if int(getattr(sim, "_stencil_order", 2)) != 2:
+        raise NotImplementedError(
+            "the current-moment monitor reads Ampere's law with the "
+            "second-order curl; with stencil_order=4 the E update differences "
+            "H over the wider fourth-order stencil, so the current read at a "
+            "vacuum edge would not be zero. Use stencil_order=2 while this "
+            "monitor is on.")
     if getattr(sim, "_tfsf", None) is not None:
         raise NotImplementedError(
             "the current-moment monitor and a TFSF source are not supported "

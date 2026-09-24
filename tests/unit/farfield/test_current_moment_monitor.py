@@ -1452,6 +1452,22 @@ def test_refuses_a_tfsf_source():
         sim.run(n_steps=4, skip_preflight=True)
 
 
+def test_refuses_the_fourth_order_stencil():
+    """With ``stencil_order=4`` the E update differences H over the wider
+    stencil, so the monitor's second-order curl would leave a current on
+    every vacuum edge: 2.5-2.9 % of the source block's moment in its
+    neighbours in a vacuum PEC box, against 1e-8..2e-7 at order 2."""
+    from rfx import Simulation
+    sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
+                     boundary="pec", stencil_order=4)
+    sim.add_source((1.2e-2, 1.2e-2, 1.2e-2), "ez", amplitude_kind="current")
+    sim.add_current_moment_monitor(
+        corner_lo=(0.6e-2, 0.6e-2, 0.6e-2), corner_hi=(1.8e-2, 1.8e-2, 1.8e-2),
+        block_size=6e-3, freqs=FREQS)
+    with pytest.raises(NotImplementedError, match="stencil_order=4"):
+        sim.run(n_steps=4, skip_preflight=True)
+
+
 def test_declaration_rejects_an_unknown_keyword():
     from rfx import Simulation
     sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, 2.4e-2), dx=DX,
