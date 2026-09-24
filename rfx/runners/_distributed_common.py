@@ -36,6 +36,7 @@ from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
     ade_state_dtype,
+    map_lumped,
     _shift_fwd,
     _shift_bwd,
 )
@@ -188,10 +189,16 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
         # Move only the clipped inputs. Coefficients and temporary ADE zeros
         # are then built on their destination, including on remote-process
         # meshes where only this process's addressable devices are visited.
-        # The lumped-stamp records (#1210) default to None: carry them as None.
-        local_materials = MaterialArrays(*(
-            None if arr is None else jax.device_put(arr[lo:hi], device)
-            for arr in materials))
+        # The lumped-stamp records (#1210) are None or, since #1236, a
+        # per-component 3-tuple: slice each array they hold, keep the shape.
+        def _local(arr):
+            return jax.device_put(arr[lo:hi], device)
+
+        local_materials = MaterialArrays(
+            eps_r=_local(materials.eps_r), sigma=_local(materials.sigma),
+            mu_r=_local(materials.mu_r),
+            sigma_lumped=map_lumped(materials.sigma_lumped, _local),
+            eps_r_lumped=map_lumped(materials.eps_r_lumped, _local))
         for spec, init, slabs in zip(
                 specs, (init_debye, init_lorentz), coefficient_slabs):
             if spec is None:

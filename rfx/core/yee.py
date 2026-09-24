@@ -42,12 +42,26 @@ class MaterialArrays(NamedTuple):
     non-physical).
 
     So the stamp is recorded twice: inside ``eps_r`` / ``sigma``, where every
-    reader that wants the total still finds it, and again in the two
-    ``*_lumped`` arrays. :func:`component_e_materials` averages
-    ``eps_r - eps_r_lumped`` and adds the stamp back at its own cell, for all
-    three components — exactly where the cell-owned rule put it. ``None`` means
-    no lumped stamp anywhere, and is bit-identical to averaging ``eps_r`` and
-    ``sigma`` outright.
+    reader that wants the cell's total still finds it, and again in the two
+    ``*_lumped`` records, PER E COMPONENT (#1236). A record is ``None`` (no
+    stamp anywhere) or a 3-tuple ``(x, y, z)`` whose entry ``c`` is ``None``
+    or a grid-shaped array holding the stamps of the elements that sit on
+    component ``c``'s edge. :func:`component_e_materials` averages the volume
+    (``eps_r`` minus every stamp) and adds each stamp back at its own cell, to
+    ITS OWN component only. Until #1236 the record had no component and was
+    added back to all three: a 50 ohm port on Ez was also a 50 ohm resistor on
+    the Ex and Ey edges leaving its node (a centre-fed dipole's resonance
+    +0.34 % at lambda/43, the feed-tip radial field pinned to 0.03 of the gap
+    field on the two loaded sides against 0.37 on the free one).
+    ``None`` is bit-identical to averaging ``eps_r`` and ``sigma`` outright.
+
+    Every RLC element's ``D0`` (series and parallel) reads its own edge
+    through ``rfx.lumped.edge_update_denominator`` -> ``cell_component_e_materials``.
+    The lanes whose volume is still CELL-owned (the distributed slab update,
+    UPML) take :func:`cell_owned_component_materials`: the cell total minus
+    the other components' stamps. The dispersive Debye/Lorentz coefficients
+    still apply the cell total to all three components (#1260) and warn
+    (:func:`warn_lumped_on_cell_owned_lane`).
     """
 
     # Relative permittivity (Nx, Ny, Nz) — used in E update
@@ -56,9 +70,128 @@ class MaterialArrays(NamedTuple):
     sigma: jnp.ndarray
     # Relative permeability (Nx, Ny, Nz) — used in H update
     mu_r: jnp.ndarray
-    # The edge-owned part of ``sigma`` / ``eps_r`` (lumped stamps), or None
+    # The edge-owned part of ``sigma`` / ``eps_r`` (lumped stamps): None, or
+    # a 3-tuple (x, y, z) of per-component arrays / None (#1236)
     sigma_lumped: object = None
     eps_r_lumped: object = None
+
+
+_LUMPED_AXIS = {"ex": 0, "ey": 1, "ez": 2}
+
+
+def lumped_axis(component) -> int:
+    """The axis index ``0/1/2`` of an E component name (``"ex"/"ey"/"ez"``)."""
+    try:
+        return _LUMPED_AXIS[str(component).lower()]
+    except KeyError:
+        raise ValueError(
+            f"a lumped stamp sits on one E edge: component must be 'ex', 'ey' "
+            f"or 'ez', got {component!r}") from None
+
+
+def lumped_components(record):
+    """The ``(x, y, z)`` entries of a lumped record (#1236).
+
+    ``None`` (no stamp anywhere) gives ``(None, None, None)``. A 3-tuple (or
+    list) is returned as a tuple. Anything else -- in particular a bare array,
+    the component-less record that loaded all three E edges before #1236 -- is
+    refused, so a caller written for the old record cannot silently keep the
+    old rule.
+    """
+    if record is None:
+        return (None, None, None)
+    if isinstance(record, (tuple, list)) and len(record) == 3:
+        return tuple(record)
+    raise TypeError(
+        "a lumped record is per E component since #1236: None or a 3-tuple "
+        "(x, y, z) of arrays / None, one entry per component the stamp loads; "
+        f"got {type(record).__name__}. Stamp through "
+        "rfx.sources.sources.stamp_lumped_sigma / stamp_lumped_eps with the "
+        "element's component.")
+
+
+def lumped_total(record):
+    """The sum of a record's per-component stamps (what sits in the cell
+    total), or ``None`` when the record holds no stamp. One component is
+    returned as-is, so a single-component record costs no arithmetic."""
+    total = None
+    for part in lumped_components(record):
+        if part is not None:
+            total = part if total is None else total + part
+    return total
+
+
+def map_lumped(record, fn):
+    """Apply ``fn`` to every array of a lumped record, keeping its shape:
+    ``None`` stays ``None``, a ``None`` component stays ``None``. For readers
+    that slice, pad, shard or cast the material arrays."""
+    if record is None:
+        return None
+    return tuple(None if part is None else fn(part)
+                 for part in lumped_components(record))
+
+
+def warn_lumped_on_cell_owned_lane(materials, lane):
+    """Say so when a CELL-owned coefficient builder meets a lumped record.
+
+    The Debye/Lorentz E updates take ONE coefficient per cell from the cell
+    total (``materials.sigma`` / ``eps_r``) and apply it to all three
+    components; #1210's per-edge rule does not reach them (#1260), and a
+    dispersive material ANYWHERE in the model puts the whole grid on them. A
+    lumped element folded into that total (a port's load, an RLC R or C),
+    wherever it sits, therefore loads the two other E edges at its node as
+    well -- the defect #1236 removed from the per-component lanes. This warns instead of refusing: a port on a
+    dispersive model is a supported workflow (material fitting), and the
+    error is bounded by the transverse field at the node (none where those
+    edges lie on a PEC plane; a dipole's feed gap moved +0.34 % in resonance
+    at lambda/43).
+    """
+    has = any(part is not None
+              for rec in (getattr(materials, "sigma_lumped", None),
+                          getattr(materials, "eps_r_lumped", None))
+              for part in lumped_components(rec))
+    if not has:
+        return
+    import warnings
+    warnings.warn(
+        f"{lane}: a Debye/Lorentz material anywhere in the model puts the "
+        "WHOLE grid on an E update that takes one coefficient per cell for "
+        "all three components (#1260), so every lumped element in this model "
+        "(a lumped/wire/MSL port's load, an RLC R or C), wherever it sits, "
+        "also loads the two other E edges at its node, not only its own "
+        "(#1236). Where the node carries a transverse field (a dipole's feed "
+        "gap) this shifts the result (+0.34 % resonance on a dipole at "
+        "lambda/43); where those edges lie on a PEC plane it does nothing. "
+        "Models with no dispersive material load the element's own edge only.",
+        UserWarning, stacklevel=3)
+
+
+def cell_owned_component_materials(materials):
+    """Per-component ``(eps_r, sigma)`` for a CELL-OWNED lane (#1236).
+
+    A lane that takes every coefficient from the cell that owns the edge (the
+    distributed slab update, UPML's ``init_upml``) reads ``materials.sigma`` for all three
+    components, so a stamp in that total loads all three edges at its node.
+    This returns, per component ``c``, the cell total minus the stamps that
+    belong to the OTHER two components: the volume stays cell-owned (that
+    lane's rule, #1210 not converted there) and each lumped element loads its
+    own edge only. With no record it returns ``(eps_r,)*3, (sigma,)*3``.
+    """
+    eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
+    sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
+
+    def per_component(total, parts):
+        out = []
+        for c in range(3):
+            other = None
+            for c2, part in enumerate(parts):
+                if c2 != c and part is not None:
+                    other = part if other is None else other + part
+            out.append(total if other is None else total - other)
+        return tuple(out)
+
+    return (per_component(materials.eps_r, eps_parts),
+            per_component(materials.sigma, sig_parts))
 
 
 def init_state(shape: tuple[int, int, int], *, field_dtype=jnp.float32) -> FDTDState:
@@ -445,24 +578,29 @@ def component_e_materials(materials, periodic=(False, False, False)):
     The volume part is edge-averaged; the lumped stamps
     (``sigma_lumped`` / ``eps_r_lumped``, see :class:`MaterialArrays`) are
     removed before the average and added back at their own cell, because a
-    lumped device lives on an edge and not in a cell volume.
+    lumped device lives on an edge and not in a cell volume -- and only to
+    the component whose edge it sits on (#1236): a port on Ez loads the Ez
+    edge at its node, not the Ex and Ey edges that leave the same node.
 
     With no stamps this is :func:`edge_averaged_materials` on
     ``materials.eps_r`` and ``materials.sigma`` and nothing else.
     """
     eps_v = materials.eps_r
     sig_v = materials.sigma
-    eps_l = getattr(materials, "eps_r_lumped", None)
-    sig_l = getattr(materials, "sigma_lumped", None)
+    eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
+    sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
+    eps_l = lumped_total(eps_parts)
+    sig_l = lumped_total(sig_parts)
     if eps_l is not None:
         eps_v = eps_v - eps_l
     if sig_l is not None:
         sig_v = sig_v - sig_l
     eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
-    if eps_l is not None:
-        eps_c = tuple(e + eps_l for e in eps_c)
-    if sig_l is not None:
-        sig_c = tuple(s + sig_l for s in sig_c)
+    # Each stamp back on its OWN component (#1236).
+    eps_c = tuple(e if part is None else e + part
+                  for e, part in zip(eps_c, eps_parts))
+    sig_c = tuple(s if part is None else s + part
+                  for s, part in zip(sig_c, sig_parts))
     return eps_c, sig_c
 
 
@@ -479,8 +617,9 @@ def cell_component_e_materials(materials, cell, component,
     built from traced materials.
 
     The rule is the same rule: the mean of the VOLUME material over the four
-    cells incident to that component's edge, plus the lumped stamp at this
-    cell. The out-of-domain convention is
+    cells incident to that component's edge, plus the lumped stamps at this
+    cell that sit on THIS component's edge (#1236). The out-of-domain
+    convention is
     :func:`_material_bwd_neighbour`'s — wrap on a periodic or length-1 axis,
     edge-replicate otherwise. ``test_the_cell_helper_agrees_with_the_grid_wide_one``
     pins the two against each other, so this is not a second spelling.
@@ -512,18 +651,31 @@ def cell_component_e_materials(materials, cell, component,
                 c[t2] = back(cell[t2], t2)
             idxs.append(tuple(c))
 
-    eps_l = getattr(materials, "eps_r_lumped", None)
-    sig_l = getattr(materials, "sigma_lumped", None)
+    eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
+    sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
 
-    def mean4(arr, lumped):
+    def lumped_at(parts, idx):
+        # ``lumped_total(parts)[idx]`` without a grid-sized sum: the parts are
+        # added in the same x, y, z order, so the float is the same.
+        total = None
+        for part in parts:
+            if part is not None:
+                total = part[idx] if total is None else total + part[idx]
+        return total
+
+    def mean4(arr, parts):
+        # The same arithmetic as the grid-wide rule: subtract every
+        # component's stamps from each incident cell, average, add back only
+        # this component's own stamp.
         v = [arr[i] for i in idxs]
-        if lumped is not None:
-            v = [a - lumped[i] for a, i in zip(v, idxs)]
+        if any(part is not None for part in parts):
+            v = [a - lumped_at(parts, i) for a, i in zip(v, idxs)]
         m = ((v[0] + v[1]) + (v[2] + v[3])) * 0.25
-        return m if lumped is None else m + lumped[cell]
+        own = parts[axis]
+        return m if own is None else m + own[cell]
 
-    return (mean4(materials.eps_r, eps_l),
-            mean4(materials.sigma, sig_l))
+    return (mean4(materials.eps_r, eps_parts),
+            mean4(materials.sigma, sig_parts))
 
 
 def cell_component_e_coeffs(materials, cell, component, dt,

@@ -20,6 +20,9 @@ to the stored one with the bar the battery is judged by:
   dB with nothing.
 * every phase crossing — a frequency where S11 is real — within 1 % of its
   partner of the same sign on the other curve.
+* the line's electrical length within 1 % of the record's: the least-squares
+  slope of S11's unwrapped phase against frequency, live over stored, on every
+  reflecting line (the PI's phase item of 2026-09-24).
 * the record's own verdicts at this mesh — passivity at 1.02, |S11| within
   2 dB of the closed form, the crossings against the closed form, the phase
   turning the same way with frequency as the closed form's, the matched floor —
@@ -51,6 +54,7 @@ import numpy as np
 import pytest
 
 from tests import _chain_battery_drift as drift
+from tests import _electrical_length as EL
 
 FAMILY = "lumped / wire"
 DRIVER = LOCK_PROVENANCE["generator"]
@@ -146,6 +150,8 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s11(fixture, driver, kind,
             driver.phase_crossings(freqs, stored)["crossings"],
             driver.phase_crossings(freqs, live)["crossings"],
             float(freqs[0]), float(freqs[-1]), report=report)
+        findings += drift.electrical_length_findings("S11", freqs, stored, live,
+                                                     report=report)
     findings += drift.verdict_findings(
         entry, _live_verdicts(driver, entry, live_grid, spec, live),
         VERDICTS["matched" if dut == "matched" else "reflecting"])
@@ -177,9 +183,10 @@ def test_the_crossing_rule_excuses_only_a_crossing_that_can_have_left_the_sweep(
 def test_each_check_fires_just_outside_its_bar_and_not_just_inside():
     """The comparisons all three guards share, on made-up curves straddling
     each bar: 2 dB in magnitude, -20 dB for a deep null, 1 % in frequency, the
-    phase turning the other way, a flipped verdict, a moved cell. A check that
-    stops reporting, or reports inside its bar, reds here on every pull
-    request, not only in the weekly lane that solves. Arithmetic, no solve."""
+    phase turning the other way, 1 % in electrical length, a flipped verdict, a
+    moved cell. A check that stops reporting, or reports inside its bar, reds
+    here on every pull request, not only in the weekly lane that solves.
+    Arithmetic, no solve."""
     freqs = np.linspace(1e9, 10e9, 91)
     line = np.full(freqs.size, 1.0 / 3.0 + 0j)
     assert drift.magnitude_findings("S11", freqs, line, line * 10 ** (2.05 / 20))
@@ -195,9 +202,47 @@ def test_each_check_fires_just_outside_its_bar_and_not_just_inside():
     delay = np.exp(-2j * np.pi * freqs * 0.2e-9)     # a 0.2 ns line: -11 rad over the band
     assert drift.phase_direction_findings("S21", freqs, delay, np.conj(delay))
     assert not drift.phase_direction_findings("S21", freqs, delay, 0.5 * delay)
+    assert drift.electrical_length_findings(
+        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * 0.2e-9 * 1.0105))
+    assert drift.electrical_length_findings(
+        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * 0.2e-9 * 0.9895))
+    assert not drift.electrical_length_findings(
+        "S21", freqs, delay, 0.5 * np.exp(-2j * np.pi * freqs * 0.2e-9 * 1.0095 + 0.3j))
+    assert not drift.electrical_length_findings(
+        "S21", freqs, delay, np.exp(-2j * np.pi * freqs * 0.2e-9 * 0.9905))
     assert drift.verdict_findings({"v": {"ok": True}}, {"v": {"ok": False}}, [("v", "ok")])
     assert drift.verdict_findings({"v": {"ok": False}}, {"v": {"ok": True}}, [("v", "ok")])
     assert not drift.verdict_findings({"v": None}, {"v": {"ok": False}}, [("v", "ok")])
     assert drift.realized_differences({"nodes": [32, 2, 5]}, {"nodes": [33, 2, 5]})
     assert not drift.realized_differences({"dt": 1.9065748695310057e-12},
                                           {"dt": 1.9065748695310057e-12 * (1 + 1e-12)})
+
+
+def test_the_electrical_length_is_the_ratio_of_two_delays():
+    """The measure the batteries and the locks share
+    (``tests/_electrical_length.py``), on lines whose answer is known: the
+    slope of the unwrapped phase of ``exp(-j 2 pi f tau)`` is ``-2 pi tau``, so
+    two such lines compare as ``tau1 / tau2 - 1`` whatever their magnitudes and
+    whatever constant phase they carry. Bins at or below -20 dB carry no
+    reading, and a gap in the bins is refused, because the phase unwrapped
+    across a transmission zero can take its half-turn either way. Arithmetic,
+    no solve."""
+    freqs = np.linspace(1e9, 7e9, 121)
+    tau = 0.16e-9
+    line = np.exp(-2j * np.pi * freqs * tau)
+    longer = 0.3 * np.exp(-2j * np.pi * freqs * tau * 1.02 + 1.1j)
+    all_bins = np.ones(freqs.size, dtype=bool)
+    assert EL.electrical_length_ratio(freqs, longer, line, all_bins) == pytest.approx(
+        0.02, abs=1e-12)
+    assert EL.electrical_length_ratio(freqs, line, longer, all_bins) == pytest.approx(
+        1.0 / 1.02 - 1.0, abs=1e-12)
+    assert EL.electrical_length_ratio(freqs, line, line, all_bins) == 0.0
+    notch = line.copy()
+    notch[60:64] *= 1e-3                                   # -60 dB: no phase to read
+    kept = EL.transmitting_bins(notch)
+    assert not kept[60:64].any() and kept[:60].all() and kept[64:].all()
+    with pytest.raises(ValueError, match="contiguous"):
+        EL.electrical_length_ratio(freqs, notch, line, kept)
+    assert EL.electrical_length_ratio(freqs, longer, line, kept[:60].tolist()
+                                      + [False] * 61) == pytest.approx(0.02, abs=1e-12)
+    assert EL.ELECTRICAL_LENGTH_FRAC == 0.01

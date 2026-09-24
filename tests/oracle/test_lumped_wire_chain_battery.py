@@ -34,6 +34,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests import _electrical_length as EL
+
 FIXTURE = (Path(__file__).resolve().parents[1] / "fixtures"
            / "lumped_wire_chain_battery" / "fixture.json")
 
@@ -756,6 +758,65 @@ def test_the_recorded_phase_slope_follows_from_the_stored_s11(fixture, key):
     assert block["measured"] == pytest.approx(measured, rel=1e-9), key
     assert block["same_sign"] == bool(
         block["measured"] * block["analytic_realized_length"] > 0.0), key
+
+
+def _electrical_length_vs_closed_form(fixture, entry) -> float:
+    """S11's reflection-phase slope against the closed form's on the realized
+    length, over the bins where it reflects above -20 dB: every bin of a
+    reflecting line.
+
+    The port's own reflection is taken out first. On the matched line the load
+    reflects nothing, so its stored S11 at the same cell size is what the port
+    reflects by itself: at most -21.9 dB at 1.0 mm, and its phase turns
+    +0.6 rad across the band where a round trip of the line turns -11.3 rad.
+    Every load on that rung carries the same term. Left in, it adds to the
+    load's reflection with a phase that does not turn with the line: on the
+    Zc/2 and 2 Zc lines, which reflect a third, it tilts the slope by half a
+    percent at 0.5 mm (-0.50 and +0.52 %, against -0.03 and +0.08 % with it
+    removed), which is the port and not the line's length."""
+    s11 = (_complex(entry["s11"])
+           - _complex(_solve(fixture, f"{entry['kind']}_matched_{entry['rung_um']}um")["s11"]))
+    freqs = np.asarray(entry["freqs_hz"], dtype=float)
+    zc = ETA0 * N_H_CELLS[entry["kind"]]
+    closed = s11_of(zin_line(zc, beta_of(freqs),
+                             realized_length_m(entry["dut"], entry["rung_um"]),
+                             z_load_of(entry["dut"], zc)), zc)
+    return EL.electrical_length_ratio(freqs, s11, closed, EL.transmitting_bins(s11))
+
+
+JUDGED_ELECTRICAL_LENGTH = [f"{k}_{d}_{um}um" for k in KINDS for d in REFLECTING_DUTS
+                            for um in RUNGS_UM if um <= RECOMMENDED_RUNG_UM[d]]
+RECORDED_ELECTRICAL_LENGTH = [f"{k}_{d}_{um}um" for k in KINDS for d in REFLECTING_DUTS
+                              for um in RUNGS_UM if um > RECOMMENDED_RUNG_UM[d]]
+
+
+@pytest.mark.parametrize("key", JUDGED_ELECTRICAL_LENGTH)
+def test_the_line_is_as_long_electrically_as_its_closed_form(fixture, key):
+    """The v2 bar's phase item (PI 2026-09-24) on a one-port: the least-squares
+    slope of S11's unwrapped phase against frequency, which is the round trip to
+    the termination, within 1 % of the closed form's ``Gamma_L exp(-2j beta L)``
+    on the realized length, at the recommended cell size and every finer one,
+    read with the matched line's S11 at the same cell size removed (the port's
+    own reflection, see ``_electrical_length_vs_closed_form``). The phase at a
+    single bin is not judged, and neither are the crossings' distances here:
+    those are the tests above."""
+    ratio = _electrical_length_vs_closed_form(fixture, _solve(fixture, key))
+    assert abs(ratio) <= EL.ELECTRICAL_LENGTH_FRAC, (
+        f"{key}: S11's phase slope is {ratio * 100:+.3f} % from the closed form's — the "
+        f"line is that much longer electrically than it is drawn "
+        f"(bar {EL.ELECTRICAL_LENGTH_FRAC * 100:.0f} %)")
+
+
+@pytest.mark.parametrize("key", RECORDED_ELECTRICAL_LENGTH)
+def test_the_coarser_rung_records_its_electrical_length(fixture, key):
+    """At 1.0 mm, coarser than the cell size the battery recommends, the same
+    number is reported and not judged: the bar applies from the recommended
+    rung down. It still has to be a reading, and of a line whose phase falls
+    with frequency as the closed form's does."""
+    ratio = _electrical_length_vs_closed_form(fixture, _solve(fixture, key))
+    print(f"[electrical length] {key}: {ratio * 100:+.3f} % against the closed form "
+          "(recorded; coarser than the recommended cell size, not judged)")
+    assert math.isfinite(ratio) and ratio > -1.0, key
 
 
 @pytest.mark.parametrize("kind", KINDS)

@@ -147,11 +147,28 @@ def _board(*, graded, dt=None, port="wire", cap=None):
     return sim
 
 
+def _lumped_total(record):
+    """The cell-level sum of a lumped record: since #1236 a record is None or
+    a 3-tuple of per-E-component arrays / None; the cell total is their sum
+    (what ``materials.sigma`` / ``eps_r`` carry on top of the volume)."""
+    if record is None:
+        return None
+    if not isinstance(record, (tuple, list)):
+        return record
+    parts = [r for r in record if r is not None]
+    if not parts:
+        return None
+    total = parts[0]
+    for r in parts[1:]:
+        total = total + r
+    return total
+
+
 def _strip_lumped_sigma(materials):
     """The materials without any lumped conductance stamp -- what the drive
     was built from before the fix, on a board whose only lumped stamps are
     its ports."""
-    lumped = getattr(materials, "sigma_lumped", None)
+    lumped = _lumped_total(getattr(materials, "sigma_lumped", None))
     if lumped is None:
         return materials
     return materials._replace(sigma=materials.sigma - lumped,
@@ -163,7 +180,7 @@ def _strip_lumped_eps(materials):
     fold. On the boards here the only one is the capacitor across the port
     edge, so this is the drive the runner built before the RLC fold reached
     it (port conductance kept)."""
-    lumped = getattr(materials, "eps_r_lumped", None)
+    lumped = _lumped_total(getattr(materials, "eps_r_lumped", None))
     if lumped is None:
         return materials
     return materials._replace(eps_r=materials.eps_r - lumped,
@@ -370,7 +387,7 @@ def _worst_cb_mismatch(case, *, mutated=False):
     assert handed, f"no drive was built for the {case} port"
     if cap is not None:
         # realized, not declared: the capacitor sits on a driven edge
-        lumped = np.asarray(stepper.eps_r_lumped)
+        lumped = np.asarray(_lumped_total(stepper.eps_r_lumped))
         on = {tuple(int(v) for v in c) for c in np.argwhere(lumped != 0)}
         driven = {tuple(int(v) for v in cell) for cell, _, _ in handed}
         assert len(on) == 1 and on <= driven, (on, driven)

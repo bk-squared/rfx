@@ -55,6 +55,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests import _electrical_length as EL
 from tests import _waveguide_chain_battery_fixture as F
 from tests import _waveguide_chain_battery_gates as G
 from tests import _waveguide_chain_battery_enforcement as E
@@ -856,6 +857,45 @@ def test_live_fixture_preserves_the_declared_measurement(live_fx):
     assert len(verdicts) == 179  # 185 minus exactly six authorized lossless legs
     assert sum(v == "pass" for v in verdicts.values()) == 131
     assert sum(v == "report_only" for v in verdicts.values()) == 48
+
+
+@pytest.mark.parametrize("lane", ("false", "flux"))
+@pytest.mark.parametrize("dut", ("thru", "slab"))
+def test_the_guide_is_as_long_electrically_as_its_closed_form(live_fx, dut, lane):
+    """The v2 bar's phase item (PI 2026-09-24) on the live record's claims rung
+    (36 cells across the broad wall): the least-squares slope of the unwrapped
+    phase of S21 against frequency, over the bins where |S21| is above -20 dB,
+    within 1 % of the continuum TE10 closed form's slope over the same bins.
+
+    The closed form is taken on the broad wall the grid realized, ``a = N dx``,
+    and spans the reference planes S21 is reported at. This battery requests
+    the planes the ports record at, so no plane shift enters S21's phase. The
+    thru is ``exp(-j beta L)``; the slab is the Airy section of eps_r = 4 the
+    battery's referee uses, moved to the same planes by the empty guide's beta.
+    """
+    c = _cell(live_fx, dut, "fine", lane)
+    fxc = live_fx["fixture"]
+    freqs = np.asarray(fxc["freqs_hz"], dtype=float)
+    s21 = G.s_from_json(c["s_params"])[1, 0, :]
+    left, right = (float(x) for x in c["reference_planes_m"])
+    assert (left, right) == tuple(fxc["reference_planes_default_m"]), (
+        f"{dut}/{lane}: S21 is reported at {left}, {right} m, not the recorded planes")
+    broad_wall = c["guide_cells_yz"][0] * c["dx_m"]
+    assert broad_wall == pytest.approx(G.C0_LOCAL / (2.0 * c["fc_te10_numerical_hz"]),
+                                       rel=1e-12), (dut, lane, broad_wall)
+    fc = G.C0_LOCAL / (2.0 * broad_wall)
+    beta = G.beta_continuous(freqs, fc)
+    if dut == "thru":
+        reference = np.exp(-1j * beta * (right - left))
+    else:
+        x0, x1 = (float(x) for x in fxc["slab_x_m"])
+        _, at_faces = G.airy_slab(freqs, float(fxc["slab_eps_r"]), x1 - x0, fc)
+        reference = at_faces * np.exp(-1j * beta * ((x0 - left) + (right - x1)))
+    ratio = EL.electrical_length_ratio(freqs, s21, reference, EL.transmitting_bins(s21))
+    assert abs(ratio) <= EL.ELECTRICAL_LENGTH_FRAC, (
+        f"{dut}/{lane}: S21's phase slope is {ratio * 100:+.3f} % from the continuum "
+        f"TE10 closed form's over the {(right - left) * 1e3:.2f} mm between the planes "
+        f"(bar {EL.ELECTRICAL_LENGTH_FRAC * 100:.0f} %)")
 
 
 _ENFORCEMENT = json.loads(E.ENFORCEMENT.read_text())

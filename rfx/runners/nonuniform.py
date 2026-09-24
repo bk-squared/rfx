@@ -1149,10 +1149,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     # the edge average. Stamped bare it was quartered, and a
                     # 50 ohm termination presented 200 ohm.
                     materials = _stamp_lumped_sigma(
-                        materials, (ci, cj, ck), sigma_port)
+                        materials, (ci, cj, ck), sigma_port, pe.component)
                     # #1256: and into the copy the drive is built from.
                     materials_drive = _stamp_lumped_sigma(
-                        materials_drive, (ci, cj, ck), sigma_port)
+                        materials_drive, (ci, cj, ck), sigma_port, pe.component)
                     # No PEC clearing here (#931 §1.9, corrected): a cell
                     # is LIVE exactly when the port component's own edge is
                     # not PEC, so releasing that component is a no-op, and
@@ -1246,10 +1246,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 d_parallel = dxi
                 d_perp1, d_perp2 = dual_yj, dual_zk
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
-            materials = _stamp_lumped_sigma(      # #1210
-                materials, (i, j, k), sigma_port)
-            materials_drive = _stamp_lumped_sigma(    # #1256
-                materials_drive, (i, j, k), sigma_port)
+            materials = _stamp_lumped_sigma(      # #1210, #1236
+                materials, (i, j, k), sigma_port, pe.component)
+            materials_drive = _stamp_lumped_sigma(    # #1256, #1236
+                materials_drive, (i, j, k), sigma_port, pe.component)
             if pec_edge_masks is not None:
                 # The lumped port drives ONE edge: its own component at
                 # its own cell (#931 §1.9, corrected).
