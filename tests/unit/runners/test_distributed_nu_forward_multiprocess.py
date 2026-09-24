@@ -283,6 +283,47 @@ def test_layout_validation():
     assert sg.nx_padded == shape[0]
 
 
+def test_padded_layout_as_a_local_array_is_refused():
+    """Its pad row would enter as a real cell (eps 0) and NaN the gradient."""
+    sim = _model()
+    padded = np.asarray(sim.shard_distributed_override(_host_inputs(sim)[0]))
+    with pytest.raises(ValueError, match="local override must have the grid shape"):
+        _trace(sim, padded)
+
+
+def test_non_x_sharded_override_matches_the_local_array():
+    """Any placement but P('x') on forward's mesh is a local whole-domain array."""
+    from jax.sharding import NamedSharding, PartitionSpec as P
+
+    sim = _model()
+    host = _host_inputs(sim)[0]
+    _, sharding = sim.distributed_override_layout()
+    y_split = jax.device_put(host, NamedSharding(sharding.mesh, P(None, "x")))
+    want = np.asarray(_trace(sim, jnp.asarray(host)))
+    got = np.asarray(_trace(sim, y_split))
+    assert np.any(want) and got.tobytes() == want.tobytes()
+
+
+def test_vmap_over_a_traced_mask_matches_single_calls():
+    """A traced pec_mask_override (vmap) takes the traceable split in one process."""
+    from rfx.nonuniform import position_to_index
+
+    sim = _model()
+    grid = sim._build_nonuniform_grid()
+    source = position_to_index(grid, sim._ports[0].position)
+    probe = position_to_index(grid, sim._probes[0].position)
+    masks = np.zeros((2, *grid.shape), bool)
+    # PEC between source and probe: the second member's trace must differ.
+    masks[1, source[0] + 1:probe[0], source[1], source[2]] = True
+    f = lambda m: sim.forward(pec_mask_override=m, distributed=True,
+                              devices=jax.devices("cpu"), n_steps=8,
+                              skip_preflight=True).time_series
+    batched = np.asarray(jax.vmap(f)(jnp.asarray(masks)))
+    assert np.any(batched[0] != batched[1]), "the mask must act on the trace"
+    for member, mask in zip(batched, masks):
+        _within(np.asarray(f(jnp.asarray(mask))), member)
+
+
 @pytest.mark.slow
 @pytest.mark.parametrize("kind,gate,error", [
     ("spacing", "closure", "captures"), ("halo", "parity", "ulp"),

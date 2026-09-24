@@ -2722,6 +2722,16 @@ class _ExecuteMixin:
                                ("pec_occupancy_override", pec_occupancy_override)):
             if override is not None:
                 sharded = is_forward_sharded_override(override, sharded_grid, mesh)
+                if not sharded and tuple(override.shape) != tuple(grid.shape):
+                    # A padded-layout array in any form but the x-sharded one
+                    # would feed its pad row in as a real cell (eps 0 there
+                    # gives a NaN gradient); only the grid shape is local.
+                    raise ValueError(
+                        f"{name} has shape {tuple(override.shape)}: a local override "
+                        f"must have the grid shape {tuple(grid.shape)}; the padded "
+                        f"shape {(sharded_grid.nx_padded, sharded_grid.ny, sharded_grid.nz)} "
+                        "is accepted only as an x-sharded global array with the "
+                        "sharding from Simulation.distributed_override_layout(devices).")
                 if multiprocess and not sharded:
                     raise ValueError(
                         f"{name} across processes requires an x-sharded global array "
