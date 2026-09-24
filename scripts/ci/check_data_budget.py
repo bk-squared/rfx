@@ -24,13 +24,15 @@ Six rules over the PR's diff against its merge base, all mechanical:
    work stops meaning anything. ``SIZE_EXEMPT`` names the one exception.
 3. A data file newly placed in a frozen-data home -- ``tests/fixtures/``,
    ``tests/data/``, ``tests/crossval/<case>/reference/`` -- must be named by a
-   reader: a tracked ``.py`` file under ``tests/`` or ``rfx/`` that is not a
-   test of this gate. Named means its file name, or its name without its data
+   reader (``is_reader``): a tracked ``test_*.py``, ``conftest.py`` or ``_*.py``
+   helper under ``tests/``, or any ``.py`` under ``rfx/``; never a file inside a
+   frozen-data home, and never a test of this gate. Named means its file name, or its name without its data
    suffixes (``f"{case}.json"`` readers), appears in the reader as a whole
    name; or, when it sits in a subdirectory of its home, that subdirectory's
    name is a path component of a string literal in a reader (glob readers).
-   The two shorter names count only when ``_distinctive``. A README beside the
-   records, or this gate's own tests, cannot vouch for them.
+   The two shorter names count only when ``_distinctive``. A README or an
+   ``_index.py`` beside the records, or this gate's own tests, cannot vouch
+   for them.
 4. The data files a PR adds or modifies in the frozen-data homes hold at most
    ``FROZEN_BUDGET`` bytes in total. The allowlist lets those homes grow past
    rule 1, and a name is text a record can borrow; this bounds what borrowing
@@ -124,9 +126,8 @@ SIZE_EXEMPT = {
     ".test_durations": "1.14 MB; pytest-split reads the whole suite's durations from one file",
 }
 
-#: Where the readers for rule 3 are looked for, and what they are.
+#: Where the readers for rule 3 are looked for; ``is_reader`` says which files.
 READER_ROOTS = ("tests", "rfx")
-READER_SUFFIX = ".py"
 #: A ``.py`` file that names this gate is a test of it, not a reader of data:
 #: its fixtures name ``orphan_case``, ``sweep``, ``point_07`` and so on.
 GATE_NAME = "check_data_budget"
@@ -287,8 +288,26 @@ def _sizes(head: str, repo: Path) -> Dict[str, int]:
     return out
 
 
+def is_reader(path: str) -> bool:
+    """Whether the tracked file at *path* can vouch for frozen data (rule 3).
+
+    A test module, a conftest or a ``_``-prefixed helper under ``tests/``, or
+    any module under ``rfx/``. Nothing inside a frozen-data home: a two-line
+    ``_index.py`` beside the records named them for a reviewer's stacked
+    relocation of #1198.
+    """
+    if not path.endswith(".py") or FROZEN_HOME_RE.match(path):
+        return False
+    if path.startswith("rfx/"):
+        return True
+    if not path.startswith("tests/"):
+        return False
+    name = PurePosixPath(path).name
+    return name.startswith("test_") or name.startswith("_") or name == "conftest.py"
+
+
 def reader_sources(head: str, repo: Path) -> List[str]:
-    """The source of every reader at head: tracked ``.py`` under ``READER_ROOTS``.
+    """The source of every reader at head (``is_reader``).
 
     A test of this gate is left out (it names ``GATE_NAME``): its fixtures are
     names for synthetic records, and on the gate's own repository they would
@@ -300,7 +319,7 @@ def reader_sources(head: str, repo: Path) -> List[str]:
             continue
         meta, path = record.split("\t", 1)
         _mode, kind, oid = meta.split()
-        if kind == "blob" and path.endswith(READER_SUFFIX):
+        if kind == "blob" and is_reader(path):
             oids.append(oid)
     if not oids:
         return []
@@ -444,9 +463,11 @@ def size_cap(path: str, named: FrozenSet[str]) -> int:
     return FILE_CAP
 
 
-def evaluate(base: str, head: str, repo: Path) -> Findings:
-    """What the PR's data changes are, sorted into the rules' buckets."""
-    statuses = _statuses(base, head, repo)
+def data_changes(base: str, head: str, repo: Path,
+                 statuses: Optional[Dict[str, Tuple[str, str]]] = None) -> List[Change]:
+    """Every counted file the diff ``base...head`` adds or modifies."""
+    if statuses is None:
+        statuses = _statuses(base, head, repo)
     added = _added_lines(base, head, repo)
     sizes = _sizes(head, repo)
     merge_base = _git(repo, "merge-base", base, head).decode().strip()
@@ -459,6 +480,27 @@ def evaluate(base: str, head: str, repo: Path) -> Findings:
         before = base_sizes.get(source, 0) if status != "A" else 0
         changes.append(Change(path, status, added.get(path), sizes[path],
                               max(0, sizes[path] - before)))
+    return changes
+
+
+def frozen_bytes(base: str, head: str, repo: Path) -> int:
+    """Bytes of frozen-home data the diff adds or modifies (rule 4's measure)."""
+    return sum(change.size for change in data_changes(base, head, repo)
+               if FROZEN_HOME_RE.match(change.path))
+
+
+def frozen_on(rev: str, repo: Path) -> Tuple[int, int]:
+    """``(files, bytes)`` of data in the frozen-data homes at *rev*."""
+    sizes = _sizes(rev, repo)
+    held = [size for path, size in sizes.items()
+            if FROZEN_HOME_RE.match(path) and is_data(path)]
+    return len(held), sum(held)
+
+
+def evaluate(base: str, head: str, repo: Path) -> Findings:
+    """What the PR's data changes are, sorted into the rules' buckets."""
+    statuses = _statuses(base, head, repo)
+    changes = data_changes(base, head, repo, statuses)
     outside = [change for change in changes if not allowlisted(change.path)]
     outside_text = [c for c in outside if c.added is not None]
     outside_binary = [c for c in outside if c.added is None]

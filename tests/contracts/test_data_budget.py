@@ -430,6 +430,42 @@ def test_only_a_py_file_is_a_reader(repo: Path, reader_path: str, reader: str) -
     assert len(failures) == 1 and "no tracked file" in failures[0]
 
 
+@pytest.mark.parametrize("path,reader", [
+    ("tests/unit/test_x.py", True),
+    ("tests/conftest.py", True),
+    ("tests/unit/sparams/conftest.py", True),
+    ("tests/unit/_helpers.py", True),
+    ("tests/__init__.py", True),
+    ("rfx/io/tables.py", True),
+    ("tests/unit/helpers.py", False),                       # neither a test nor a _helper
+    ("tests/unit/capture_golden.py", False),
+    ("tests/fixtures/option_b/_index.py", False),           # inside a frozen-data home
+    ("tests/fixtures/case/test_case.py", False),
+    ("tests/data/_index.py", False),
+    ("tests/crossval/c/reference/make_reference.py", False),
+    ("tests/crossval/c/test_c.py", True),                   # beside reference/, not in it
+    ("scripts/diagnostics/_x.py", False),
+    ("tests/unit/test_x.pyi", False),
+])
+def test_is_reader(path: str, reader: bool) -> None:
+    assert budget.is_reader(path) is reader
+
+
+@pytest.mark.parametrize("reader_path,counts", [
+    ("tests/fixtures/sweep/_index.py", False),   # the stacked-relocation route
+    ("tests/fixtures/_index.py", False),
+    ("tests/unit/helpers.py", False),
+    ("tests/unit/_helpers.py", True),
+    ("tests/conftest.py", True),
+])
+def test_which_py_files_can_vouch(repo: Path, reader_path: str, counts: bool) -> None:
+    base = _git(repo, "rev-parse", "HEAD")
+    _write(repo, "tests/fixtures/sweep/point_07.json", _lines(5))
+    _write(repo, reader_path, 'NAMES = ["sweep/point_07.json"]\n')
+    head = _commit(repo)
+    assert (_check(repo, base, head) == []) is counts
+
+
 def test_a_test_of_this_gate_is_not_a_reader(repo: Path) -> None:
     """The gate's own tests name `sweep`, `point_07`, `orphan_case` for synthetic records."""
     base = _git(repo, "rev-parse", "HEAD")

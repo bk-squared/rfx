@@ -37,7 +37,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Check out repository
+        # fetch-depth: 0 — the frozen-data section measures each merged PR's
+        # merge commit against its parent, which a shallow clone does not have.
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5

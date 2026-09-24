@@ -433,6 +433,10 @@ def test_the_workflow_asks_for_changes_to_be_a_required_check() -> None:
     assert "`changes` must be a required check too" in runbook
 
 
+#: The one command line whose exit status is the data-budget step's.
+DATA_BUDGET_CALL = 'python scripts/ci/check_data_budget.py --base "$BASE_SHA" --head "$HEAD_SHA"'
+
+
 def _data_budget_steps(job: str) -> list[dict]:
     steps = load(PR_TESTS)["jobs"][job]["steps"]
     return [s for s in steps if "scripts/ci/check_data_budget.py" in str(s.get("run", ""))]
@@ -483,11 +487,18 @@ def test_the_data_budget_cannot_be_made_advisory() -> None:
     step = _data_budget_steps("guards-and-preflight")[0]
     assert "continue-on-error" not in job, job.get("continue-on-error")
     assert "continue-on-error" not in step, step.get("continue-on-error")
+    # A job-level `if:` that skips the job reports Success to a required context.
+    assert "if" not in job, job.get("if")
     run = str(step.get("run", ""))
     assert "||" not in run, run
     assert "set +e" not in run, run
+    # The label is read from the API, never granted by the step itself -- an
+    # `if ! PR_LABELS_JSON=$(gh ...); then PR_LABELS_JSON='[...]'` fallback
+    # would hand out the exception whenever the read failed.
+    assert "data-budget-exception" not in run, run
+    # Exactly the invocation, so `; true` or `&& true` appended to it is red.
     lines = [line.strip() for line in run.splitlines() if line.strip()]
-    assert lines[-1].startswith("python scripts/ci/check_data_budget.py "), lines[-1]
+    assert lines[-1] == DATA_BUDGET_CALL, lines[-1]
 
 
 def test_guards_and_preflight_can_diff_and_read_labels() -> None:
