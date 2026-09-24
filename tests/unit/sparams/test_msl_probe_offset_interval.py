@@ -780,6 +780,10 @@ def test_a_uniform_runway_finer_than_dx_counts_in_its_own_cell(direction):
     assert sim._msl_ports[0].n_probe_offset == 5          # counted in dx
     r, grid, _ = _resolve_on_its_grid(sim)
     assert r.n_probe_offset == 10
+    # The #681 absorber budget counts from the recounted offset and binds
+    # here: 17 cells per step. Counted from the stored 5 it would give 18
+    # and put the deepest probe 0.41 mm past the absorber clearance.
+    assert r.n_probe_spacing == 17
     source, ladder = _realized_ladder(grid, r)
     assert abs(ladder[0] - source) == pytest.approx(5 * _RW_H, rel=1e-9)
     # the automatic port: neither preflight site calls it short
