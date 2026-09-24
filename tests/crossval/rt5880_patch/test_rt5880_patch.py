@@ -72,15 +72,24 @@ The thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude)
 and the three rules the PI approved with the MSL notch filter's plan on
 2026-09-22: the mesh statement (the last two rungs within 1 %), the deep-null
 exclusion (a bin where either curve is below −20 dB is judged by position only)
-and the ring-down witness (−40 dB, the repo's rule); and the two the PI
+and the ring-down witness (−40 dB, the repo's rule); and what the PI
 approved on 2026-09-24: a ladder step within 0.1 % is flat, not a direction,
-and the magnitude is compared with rfx's frequency axis scaled so the two
-TM010 resonances coincide.  The shared ones are named constants in
+and this case is judged by decision (가).  The shared constants are in
 ``tests/crossval/_v2_judging.py``, the rest below, each with its source.  No
 threshold is derived from a run, and this case commits no record of a run.
 
-The judged feature is the TM010 |S11| resonance.  Its depth, its −10 dB band
-and Zin at it are reported, not judged.
+What is judged (decision (가), PI 2026-09-24): the TM010 resonance frequency
+within 1 % (``FREQ_BAR``), and the input RESISTANCE at the resonance,
+|Re Zin_rfx − Re Zin_ref| / Re Zin_ref within 2 % (``RESISTANCE_BAR``).
+Each curve's resonance is its own |S11| minimum in the record's window (the
+shared ``refined_extremum`` on log|S11|), and each curve's Zin is read at its
+own resonance, Re and Im linearly interpolated between the two bracketing
+bins — one estimator for both.  REPORTED, not judged: |S11| with the
+resonances aligned and as solved, Im(Zin), the depth and the −10 dB band
+edges.  The reason, which the test prints: neither solver declares a probe
+radius, so each solver's feed cell sets the probe's series reactance; the
+input reactance at the resonance differs, and it sets the dip's depth and
+width.
 
 How to run it
 -------------
@@ -125,7 +134,9 @@ from tests.crossval._v2_judging import (
     FREQ_BAR,
     LADDER_AGREEMENT,
     MAG_BAR_DB,
+    RESISTANCE_BAR,
     aligned_magnitude,
+    input_resistance,
     mesh_statement,
 )
 
@@ -365,9 +376,11 @@ WITNESS_PROBE_OFFSET_M = (15.0e-3, 5.0e-3, H_SUB / 2)
 
 # ------------------------------------------------------------ thresholds
 # The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB; PI 2026-09-20), the
-# mesh statement (LADDER_AGREEMENT 1 %, FLAT_STEP 0.1 %) and the deep-null
-# level (DEEP_NULL_DB −20 dB) are imported from tests/crossval/_v2_judging.py,
-# with the rules that use them (PI 2026-09-22 and 2026-09-24).
+# mesh statement (LADDER_AGREEMENT 1 %, FLAT_STEP 0.1 %), the deep-null level
+# (DEEP_NULL_DB −20 dB) and the input-resistance bar (RESISTANCE_BAR 2 %,
+# decision (가)) are imported from tests/crossval/_v2_judging.py, with the
+# rules that use them (PI 2026-09-22 and 2026-09-24).  MAG_BAR_DB judges
+# nothing here since decision (가): the magnitude is reported.
 # Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive one-port cannot reflect more power than it receives, so |S11| more
@@ -980,16 +993,19 @@ def _stage_curve(stage: dict) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 
 def _compare(label: str, rung: dict, stage: dict) -> dict:
-    """ΔdB of rfx − reference at every bin of the record where BOTH curves are
-    above the deep-null level, plus the resonance distance and the reported
-    features.
+    """The resonance distance and the input resistance at the resonance (the
+    two judged quantities, decision (가)), and the reported ones: ΔdB of
+    rfx − reference at every bin of the record where BOTH curves are above
+    the deep-null level, Im(Zin), the depth and the −10 dB band.
 
-    The ΔdB is taken twice, by ``aligned_magnitude`` in
-    ``tests/crossval/_v2_judging.py``: on the two frequency axes as solved
-    (reported; the two grids are the same 901 bins, so nothing is
-    interpolated), and with rfx's axis scaled by f_ref / f_rfx at the TM010
-    resonance so the two resonances coincide (the value the 2 dB bar judges,
-    PI 2026-09-24; rfx's |S11| is interpolated in dB onto the record's bins).
+    The input resistance comes from ``input_resistance`` in
+    ``tests/crossval/_v2_judging.py``: each curve's Zin read at that curve's
+    own resonance (``resonance()``, one estimator for both).  The ΔdB is taken
+    twice, by ``aligned_magnitude``: on the two frequency axes as solved (the
+    two grids are the same 901 bins, so nothing is interpolated), and with
+    rfx's axis scaled by f_ref / f_rfx at the TM010 resonance so the two
+    resonances coincide (rfx's |S11| interpolated in dB onto the record's
+    bins).  Both are reported, not judged (decision (가)).
 
     The deep-null exclusion is two-sided on purpose: a bin where one curve is
     in its dip and the other is not is the two dips sitting at different
@@ -1005,7 +1021,17 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
     m = aligned_magnitude(ref_f, ref_db, ours_f, _db(np.abs(rung["s11"])),
                           ref_res["f"], our_res["f"], SWEEP_HZ, floor_db=DEEP_NULL_DB)
     solved, aligned = m["unaligned"], m["aligned"]
+    zr = input_resistance(ref_f, ref_zin, ref_res["f"],
+                          ours_f, zin_from_s11(rung["s11"]), our_res["f"])
+    # One estimator: the resistance judged is the one resonance() reports.
+    assert zr["r_ref_ohm"] == pytest.approx(ref_res["zin"].real, abs=1e-9), (
+        f"reference: Re Zin {zr['r_ref_ohm']:.4f} Ω judged at {zr['f_ref_hz']/1e9:.6f} "
+        f"GHz, {ref_res['zin'].real:.4f} Ω at its resonance {ref_res['f']/1e9:.6f} GHz")
+    assert zr["r_ours_ohm"] == pytest.approx(our_res["zin"].real, abs=1e-9), (
+        f"rfx: Re Zin {zr['r_ours_ohm']:.4f} Ω judged at {zr['f_ours_hz']/1e9:.6f} "
+        f"GHz, {our_res['zin'].real:.4f} Ω at its resonance {our_res['f']/1e9:.6f} GHz")
     return dict(
+        resistance=zr,
         label=label, f_hz=ref_f, ref_db=ref_db, ours_db=solved["ours_db"],
         delta_db=solved["delta_db"], compared=solved["compared"],
         n_bins=int(ref_f.size), n_compared=solved["n_compared"],
@@ -1026,25 +1052,44 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
 _MAX_TABLE_ROWS = 90
 
 
+# Why the magnitude features are reported and not judged (decision (가),
+# PI 2026-09-24); printed beside them with the two reactances filled in.
+REPORTED_REASON = (
+    "neither solver declares a probe radius, so each solver's feed cell sets "
+    "the probe's series reactance; the input reactance at resonance differs "
+    "(rfx {x_ours:+.2f} Ω vs openEMS {x_ref:+.2f} Ω), which sets the dip depth "
+    "and width")
+
+
 def _print_comparison(c: dict) -> None:
-    r, o = c["ref_res"], c["our_res"]
+    r, o, z = c["ref_res"], c["our_res"], c["resistance"]
     print(f"  --- {c['label']} ---")
-    print(f"    resonance: rfx {o['f']/1e9:.5f} GHz vs reference {r['f']/1e9:.5f} GHz "
-          f"-> {c['res_pct']:+.3f} % (|Δ| {abs(c['res_pct']):.3f} %)")
+    print(f"    resonance (judged, bar {FREQ_BAR*100:.0f} %): rfx {o['f']/1e9:.5f} GHz "
+          f"vs reference {r['f']/1e9:.5f} GHz -> {c['res_pct']:+.3f} % "
+          f"(|Δ| {abs(c['res_pct']):.3f} %)")
+    print(f"    input resistance at the resonance (judged, bar "
+          f"{z['bar']*100:.0f} %): rfx Re Zin {z['r_ours_ohm']:.3f} Ω at its "
+          f"{z['f_ours_hz']/1e9:.5f} GHz vs reference {z['r_ref_ohm']:.3f} Ω at its "
+          f"{z['f_ref_hz']/1e9:.5f} GHz -> {z['rel']*100:.3f} % — each curve's Zin "
+          "read at its own |S11| minimum (refined_extremum on log|S11|), Re and "
+          "Im interpolated linearly between the bracketing bins")
+    print("    REPORTED, not judged — "
+          + REPORTED_REASON.format(x_ours=z["x_ours_ohm"], x_ref=z["x_ref_ohm"]) + ":")
+    print(f"    Im Zin at the resonance (reported): rfx {z['x_ours_ohm']:+.2f} Ω vs "
+          f"{z['x_ref_ohm']:+.2f} Ω; Zin rfx {o['zin'].real:.2f}{o['zin'].imag:+.2f}j Ω "
+          f"vs {r['zin'].real:.2f}{r['zin'].imag:+.2f}j Ω")
     print(f"    depth (reported): rfx {o['depth_db']:.2f} dB vs {r['depth_db']:.2f} dB")
-    print(f"    −10 dB band (reported): rfx {o['bw_10db']/1e6:.1f} MHz "
-          f"({o['f_lo_10db']/1e9:.4f}–{o['f_hi_10db']/1e9:.4f} GHz) vs "
-          f"{r['bw_10db']/1e6:.1f} MHz ({r['f_lo_10db']/1e9:.4f}–"
-          f"{r['f_hi_10db']/1e9:.4f} GHz)")
-    print(f"    Zin at the resonance (reported): rfx {o['zin'].real:.2f}"
-          f"{o['zin'].imag:+.2f}j Ω vs {r['zin'].real:.2f}{r['zin'].imag:+.2f}j Ω")
-    print(f"    |S11| dB compared at {c['n_compared']} of the record's {c['n_bins']} "
+    print(f"    −10 dB band edges (reported): rfx {o['f_lo_10db']/1e9:.4f} – "
+          f"{o['f_hi_10db']/1e9:.4f} GHz ({o['bw_10db']/1e6:.1f} MHz) vs "
+          f"{r['f_lo_10db']/1e9:.4f} – {r['f_hi_10db']/1e9:.4f} GHz "
+          f"({r['bw_10db']/1e6:.1f} MHz)")
+    print(f"    |S11| as solved (reported): dB compared at {c['n_compared']} of the record's {c['n_bins']} "
           f"bins, {SWEEP_HZ[0]/1e9:.1f}–{SWEEP_HZ[1]/1e9:.1f} GHz (both curves above "
           f"{DEEP_NULL_DB:.0f} dB); max |ΔdB| = {c['max_abs_delta_db']:.3f} dB"
           + (f" at {c['f_hz'][c['worst_index']]/1e9:.4f} GHz"
              if c["worst_index"] >= 0 else ""))
-    print(f"    aligned (rfx frequency axis × {c['scale']:.6f}, so the resonances "
-          f"coincide): |S11| dB compared at {c['aligned_n_compared']} of the "
+    print(f"    |S11| aligned (reported; rfx frequency axis × {c['scale']:.6f}, so "
+          f"the resonances coincide): dB compared at {c['aligned_n_compared']} of the "
           f"{c['n_bins']}; max |ΔdB| = {c['aligned_max_abs_delta_db']:.3f} dB at "
           f"{c['aligned_worst_f_ghz']:.4f} GHz")
     idx = np.arange(c["n_bins"])
@@ -1263,35 +1308,44 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         # notch filter case: the v2 bar is never loosened, and a case that
         # cannot meet it says so with its numbers. The xfail is IMPERATIVE, so
         # every witness above — the ring-down, the passivity excess, the
-        # realized board — still FAILS the test; only the two comparison bars
-        # below are held back. When the mesh converges this branch is no
+        # realized board — still FAILS the test; only the two judged bars
+        # below (resonance, input resistance) are held back. When the mesh converges this branch is no
         # longer taken and the comparison judges for real.
         pytest.xfail(
             "known limitation (PI 2026-09-22, 2026-09-24): the uniform mesh is "
             f"not shown to converge — {mesh_stmt['reason']}. The finest rung "
             f"sits {fine['res_pct']:+.3f} % from the openEMS record's "
-            f"{fine['ref_res']['f']/1e9:.5f} GHz and its |S11| differs by up to "
-            f"{fine['aligned_max_abs_delta_db']:.3f} dB with the resonances "
-            f"aligned ({fine['max_abs_delta_db']:.3f} dB as solved). The "
-            "comparison above is reported, not judged.")
+            f"{fine['ref_res']['f']/1e9:.5f} GHz and its input resistance there "
+            f"{fine['resistance']['rel']*100:.3f} % from the record's "
+            f"({fine['resistance']['r_ours_ohm']:.3f} vs "
+            f"{fine['resistance']['r_ref_ohm']:.3f} Ω). The comparison above is "
+            "reported, not judged.")
     assert abs(fine["res_pct"]) < FREQ_BAR * 100.0, (
         f"the resonance sits {fine['res_pct']:+.3f} % from the openEMS record's "
         f"{fine['ref_res']['f']/1e9:.5f} GHz (bar {FREQ_BAR*100:.0f} %); rfx reads "
         f"{fine['our_res']['f']/1e9:.5f} GHz on the {finest['dx_m']*1e6:.3f} µm mesh.")
-    # The magnitude, judged with the resonance offset the frequency bar has
-    # just judged taken out (PI 2026-09-24): rfx's axis scaled by f_ref / f_rfx.
-    assert fine["aligned_max_abs_delta_db"] <= MAG_BAR_DB, (
-        f"|S11| differs from the openEMS record by up to "
-        f"{fine['aligned_max_abs_delta_db']:.3f} dB at "
-        f"{fine['aligned_worst_f_ghz']:.4f} GHz (bar {MAG_BAR_DB:.0f} dB) over "
-        f"the {fine['aligned_n_compared']} bins where both curves are above "
-        f"{DEEP_NULL_DB:.0f} dB, with rfx's frequency axis scaled by "
-        f"{fine['scale']:.6f} so the resonances coincide "
-        f"({fine['max_abs_delta_db']:.3f} dB as solved, reported).")
+    # The input resistance at the resonance, each curve read at its own
+    # resonance (decision (가), PI 2026-09-24).
+    zr = fine["resistance"]
+    assert zr["passed"], (
+        f"the input resistance at the resonance differs by {zr['rel']*100:.3f} % "
+        f"(bar {zr['bar']*100:g} %): rfx Re Zin {zr['r_ours_ohm']:.3f} Ω at "
+        f"{zr['f_ours_hz']/1e9:.5f} GHz vs the openEMS record's "
+        f"{zr['r_ref_ohm']:.3f} Ω at {zr['f_ref_hz']/1e9:.5f} GHz, each read at its "
+        "own |S11| minimum.")
+    reason = REPORTED_REASON.format(x_ours=zr["x_ours_ohm"], x_ref=zr["x_ref_ohm"])
     print(f"\n  judged: resonance {fine['res_pct']:+.3f} % from the openEMS record "
-          f"(bar {FREQ_BAR*100:.0f} %); |S11| aligned max |ΔdB| "
-          f"{fine['aligned_max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB); "
-          f"as solved {fine['max_abs_delta_db']:.3f} dB, reported, not judged")
+          f"(bar {FREQ_BAR*100:.0f} %); input resistance at the resonance "
+          f"{zr['r_ours_ohm']:.3f} vs {zr['r_ref_ohm']:.3f} Ω, {zr['rel']*100:.3f} % "
+          f"(bar {RESISTANCE_BAR*100:.0f} %)")
+    print(f"  reported, not judged — {reason}: Im Zin {zr['x_ours_ohm']:+.2f} vs "
+          f"{zr['x_ref_ohm']:+.2f} Ω; depth {fine['our_res']['depth_db']:.2f} vs "
+          f"{fine['ref_res']['depth_db']:.2f} dB; −10 dB band "
+          f"{fine['our_res']['f_lo_10db']/1e9:.4f}–{fine['our_res']['f_hi_10db']/1e9:.4f}"
+          f" vs {fine['ref_res']['f_lo_10db']/1e9:.4f}–"
+          f"{fine['ref_res']['f_hi_10db']/1e9:.4f} GHz; |S11| aligned max |ΔdB| "
+          f"{fine['aligned_max_abs_delta_db']:.3f} dB, as solved "
+          f"{fine['max_abs_delta_db']:.3f} dB")
 
 
 def _write_figure(results, openems, tmp_path, ref_box=None) -> Path:

@@ -6,7 +6,8 @@ feature frequencies the cases' GPU runs printed (VESSL 369367264046, log on
 the lab share under research/rfx/.omx/msl-cases-ladder-post1213/
 20260923T144706Z-6e6f07a0/ladder.log, for the notch and Sheen filters; the
 RT5880 patch antenna's ladder values as the crossval-lane brief of 2026-09-24
-quotes them).
+quotes them).  The input-resistance and level-crossing rules (PI 2026-09-24)
+are tested on closed-form curves written here.
 """
 
 from __future__ import annotations
@@ -16,10 +17,15 @@ import pytest
 
 from tests.crossval._v2_judging import (
     CONVERGED,
+    CROSSING_FIT_BINS,
     DEEP_NULL_DB,
+    FREQ_BAR,
     MAG_BAR_DB,
     NOT_SHOWN_TO_CONVERGE,
+    RESISTANCE_BAR,
     aligned_magnitude,
+    input_resistance,
+    level_crossing,
     mesh_statement,
 )
 
@@ -202,3 +208,146 @@ def test_the_floor_is_applied_to_the_aligned_rfx_curve_not_the_unaligned_one():
     assert c["max_abs_delta_db"] > MAG_BAR_DB
     # the premise: on rfx's unaligned axis every error bin is below the floor
     assert worst_unaligned_rfx < DEEP_NULL_DB
+
+
+# ------------------------------------------------------- input resistance
+PATCH_F = np.linspace(1.6e9, 3.4e9, 901)        # the RT5880 record's grid
+
+
+def _zin(f, f0, r0, q, x_series):
+    """A parallel resonance (R ``r0`` at ``f0``, quality ``q``) behind a series
+    reactance ``x_series``: Re(Zin) peaks at ``r0`` exactly at ``f0``."""
+    f = np.asarray(f, float)
+    return r0 / (1.0 + 1j * q * (f / f0 - f0 / f)) + 1j * x_series
+
+
+def test_the_input_resistance_is_read_at_each_curves_own_resonance():
+    """rfx's resonance 0.6 % above the reference's, the same 48.5 ohm
+    resistance there, a different series reactance (the probe).  Read at
+    each curve's own resonance the two resistances agree; rfx's read at the
+    REFERENCE's resonance is 0.6 % down its own skirt and is 11 % low."""
+    f_ref, f_our = 2.34418e9, 2.34418e9 * 1.00606
+    ref = _zin(PATCH_F, f_ref, 48.5, 30.0, 7.6)
+    ours = _zin(PATCH_F, f_our, 48.5, 30.0, 15.5)
+    c = input_resistance(PATCH_F, ref, f_ref, PATCH_F, ours, f_our)
+    wrong = float(np.interp(f_ref, PATCH_F, ours.real))
+    print(f"\n  R ref {c['r_ref_ohm']:.3f} ohm at {f_ref/1e9:.5f} GHz, R rfx "
+          f"{c['r_ours_ohm']:.3f} ohm at {f_our/1e9:.5f} GHz: {c['rel']*100:.3f} % "
+          f"(bar {c['bar']*100:.0f} %); X {c['x_ref_ohm']:.2f} / {c['x_ours_ohm']:.2f} "
+          f"ohm (reported); rfx's R read at the reference's resonance: {wrong:.3f} ohm")
+    assert c["rel"] < 1e-3
+    assert c["passed"] is True
+    assert c["x_ours_ohm"] - c["x_ref_ohm"] == pytest.approx(7.9, abs=0.2)
+    assert abs(wrong - 48.5) / 48.5 > 0.10       # the premise of the test
+
+
+@pytest.mark.parametrize("ratio, passed", [(1.019, True), (1.021, False),
+                                           (0.981, True), (0.979, False)])
+def test_the_resistance_bar_is_two_percent(ratio, passed):
+    """Same resonance, rfx's resistance ``ratio`` times the reference's."""
+    f0 = 2.34e9
+    ref = _zin(PATCH_F, f0, 48.5, 30.0, 7.6)
+    ours = _zin(PATCH_F, f0, 48.5 * ratio, 30.0, 7.6)
+    c = input_resistance(PATCH_F, ref, f0, PATCH_F, ours, f0)
+    print(f"\n  ratio {ratio}: {c['rel']*100:.3f} % against {c['bar']*100:.0f} %")
+    assert RESISTANCE_BAR == 0.02
+    assert c["bar"] == RESISTANCE_BAR
+    assert c["rel"] == pytest.approx(abs(ratio - 1.0), rel=1e-3)
+    assert c["passed"] is passed
+
+
+def test_a_resonance_outside_the_curve_is_refused():
+    ref = _zin(PATCH_F, 2.34e9, 48.5, 30.0, 7.6)
+    with pytest.raises(ValueError, match="outside"):
+        input_resistance(PATCH_F, ref, 2.34e9, PATCH_F, ref, 3.5e9)
+
+
+# ---------------------------------------------------- level crossing (R-c)
+SHEEN_F = np.linspace(0.5e9, 20e9, 801)         # the Sheen record's grid, 24.375 MHz
+F_CORNER = 5.5717e9
+
+
+def _falling_db(f, slope_db_per_ghz, f0=F_CORNER, level_db=-3.78, curvature=0.0):
+    """A dB curve crossing ``level_db`` at ``f0`` with the given slope, plus an
+    optional quadratic term (dB/GHz^2)."""
+    x = (np.asarray(f, float) - f0) / 1e9
+    return level_db + slope_db_per_ghz * x + curvature * x ** 2
+
+
+def test_the_tolerance_is_the_magnitude_bar_over_the_reference_slope():
+    """Reference falling at 12 dB/GHz: 2 dB / 12 dB/GHz = 166.7 MHz, 2.99 % of
+    5.5717 GHz.  rfx crossing 2 % high passes, where the 1 % bar would fail
+    it; 3.5 % high fails."""
+    ref_db = _falling_db(SHEEN_F, -12.0)
+    ok = level_crossing(SHEEN_F, ref_db, F_CORNER, F_CORNER * 1.02)
+    bad = level_crossing(SHEEN_F, ref_db, F_CORNER, F_CORNER * 1.035)
+    print(f"\n  slope {ok['slope_db_per_ghz']:.4f} dB/GHz over {ok['n_fit_bins']} bins "
+          f"({ok['fit_f_hz'][0]/1e9:.5f}-{ok['fit_f_hz'][1]/1e9:.5f} GHz): tolerance "
+          f"{ok['tol_hz']/1e6:.2f} MHz = {ok['tol_pct']:.3f} %; offset "
+          f"{ok['offset_pct']:+.2f} % -> {ok['passed']}, {bad['offset_pct']:+.2f} % -> "
+          f"{bad['passed']}")
+    assert ok["slope_db_per_ghz"] == pytest.approx(-12.0, rel=1e-9)
+    assert ok["tol_hz"] == pytest.approx(MAG_BAR_DB / 12.0 * 1e9, rel=1e-9)
+    assert ok["tol_pct"] == pytest.approx(100 * (MAG_BAR_DB / 12.0 * 1e9) / F_CORNER, rel=1e-9)
+    assert ok["tol_pct"] > 100 * FREQ_BAR          # the rule is not the 1 % bar
+    assert ok["passed"] is True
+    assert bad["passed"] is False
+
+
+def test_the_slope_is_the_reference_s_not_rfx_s():
+    """rfx's curve falls twice as steeply as the reference's.  The tolerance
+    is the reference's (166.7 MHz), and rfx's own slope is only reported: with
+    rfx's slope the tolerance would halve and the 2 % offset would fail."""
+    ref_db = _falling_db(SHEEN_F, -12.0)
+    f_our = F_CORNER * 1.02
+    our_db = _falling_db(SHEEN_F, -24.0, f0=f_our)
+    c = level_crossing(SHEEN_F, ref_db, F_CORNER, f_our, our_f=SHEEN_F, our_db=our_db)
+    print(f"\n  reference slope {c['slope_db_per_ghz']:.3f} dB/GHz (judged), rfx "
+          f"{c['our_slope_db_per_ghz']:.3f} dB/GHz (reported): tolerance "
+          f"{c['tol_hz']/1e6:.2f} MHz, offset {c['offset_hz']/1e6:.2f} MHz -> {c['passed']}")
+    assert c["slope_db_per_ghz"] == pytest.approx(-12.0, rel=1e-9)
+    assert c["our_slope_db_per_ghz"] == pytest.approx(-24.0, rel=1e-9)
+    assert c["tol_hz"] == pytest.approx(MAG_BAR_DB / 12.0 * 1e9, rel=1e-9)
+    assert c["passed"] is True
+
+
+def test_the_slope_is_a_five_bin_fit_not_one_bin():
+    """A reference with a 0.3 dB step between two bins right at the crossing:
+    the five-bin fit reads the local trend with the step spread over its
+    97.5 MHz (-15.7 dB/GHz); a two-point difference across the step reads
+    -24.3 dB/GHz, and one bin carries no slope at all."""
+    ref_db = _falling_db(SHEEN_F, -12.0)
+    k = int(np.argmin(np.abs(SHEEN_F - F_CORNER)))
+    ref_db[k + 1:] -= 0.3
+    c = level_crossing(SHEEN_F, ref_db, F_CORNER, F_CORNER)
+    df = SHEEN_F[1] - SHEEN_F[0]
+    two_point = (ref_db[k + 1] - ref_db[k]) / df * 1e9
+    print(f"\n  {c['n_fit_bins']} bins {c['fit_f_hz'][0]/1e9:.5f}-{c['fit_f_hz'][1]/1e9:.5f} "
+          f"GHz: slope {c['slope_db_per_ghz']:.3f} dB/GHz, residual "
+          f"{c['fit_residual_db']:.3f} dB; two-point slope across the step {two_point:.3f}")
+    assert CROSSING_FIT_BINS == 5
+    assert c["n_fit_bins"] == 5
+    assert c["fit_f_hz"][1] - c["fit_f_hz"][0] == pytest.approx(4 * df)
+    assert c["slope_db_per_ghz"] == pytest.approx(-15.692, abs=1e-3)
+    assert two_point == pytest.approx(-24.308, abs=1e-3)
+    with pytest.raises(ValueError, match="three bins"):
+        level_crossing(SHEEN_F, ref_db, F_CORNER, F_CORNER, n_fit=1)
+
+
+@pytest.mark.parametrize("name, ref_db", [
+    ("flat", np.full(SHEEN_F.size, -3.0)),
+    # an extremum: the local line is flat, the curvature is the whole shape
+    ("extremum", _falling_db(SHEEN_F, 0.0, curvature=-40.0)),
+])
+def test_a_flat_reference_is_refused(name, ref_db):
+    """A slope that cannot carry a tolerance (infinite or meaningless) is a
+    refusal, not a pass."""
+    with pytest.raises(ValueError, match="flat"):
+        level_crossing(SHEEN_F, ref_db, F_CORNER, F_CORNER * 1.001)
+    print(f"\n  {name}: refused")
+
+
+def test_a_crossing_at_the_edge_of_the_curve_is_refused():
+    ref_db = _falling_db(SHEEN_F, -12.0, f0=SHEEN_F[1])
+    with pytest.raises(ValueError, match="runs off"):
+        level_crossing(SHEEN_F, ref_db, SHEEN_F[1], SHEEN_F[1])

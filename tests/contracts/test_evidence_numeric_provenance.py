@@ -297,7 +297,12 @@ def check(root: Path, ref: Reference) -> None:
 # The opted-in surface (coverage cannot silently shrink)
 # --------------------------------------------------------------------------
 
-MANIFEST = "validation/crossval/manifest.json"
+# 2026-09-24: validation/crossval/manifest.json was deleted with the last case
+# it listed (the Sheen low-pass filter and the RT/Duroid 5880 patch antenna
+# were rebuilt under tests/crossval/), together with its runner
+# scripts/run_crossval_cpu.py and its contract test; this gate reads markdown
+# documents only from then on (docs/design_notes/20260921_crossval_role_redesign.md,
+# step 5).
 CV11_NOTE = "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md"
 # 2026-09-03: the lattice-witness standard is an evidence document of exactly the
 # class this gate exists for -- it quotes ~30 measured numbers out of committed
@@ -427,7 +432,7 @@ MARKDOWN_SITES: dict[str, str] = {
     OPEN_BOUNDARY_CONTRACT: r"^#+\s+(.*\S)\s*$",
 }
 
-DOCUMENTS = (MANIFEST, *MARKDOWN_SITES)
+DOCUMENTS = tuple(MARKDOWN_SITES)
 
 # Sites that MUST carry at least this many value-checked references. Lowering a
 # floor is a deliberate act that belongs in the same commit as the reason.
@@ -626,6 +631,10 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # removal: 299 references, 284 value-checked, 27 artifacts. The floors are
 # lowered to the measured values. Measured after this and the Sheen low-pass
 # filter's removal together: 277 references, 264 value-checked, 25 artifacts.
+# 2026-09-24 (validation/crossval/manifest.json deleted with its last case):
+# the manifest listed no case by then and carried no citation, so dropping it
+# from DOCUMENTS moves nothing. Measured after the deletion: 277 references,
+# 264 value-checked, 25 artifacts; the floors stand.
 MIN_REFERENCES = 277
 MIN_VALUE_CHECKED = 264
 MIN_DISTINCT_ARTIFACTS = 25
@@ -1022,11 +1031,7 @@ def _reference_spans(root: Path, doc: str) -> tuple[list[str], list[str]]:
 
 
 def _sites(root: Path, doc: str) -> list[tuple[str, str]]:
-    text = (root / doc).read_text(encoding="utf-8")
-    if doc == MANIFEST:
-        cases = json.loads(text)["cases"]
-        return [(case["id"], json.dumps(case, ensure_ascii=False)) for case in cases]
-    text = strip_code_blocks(text)
+    text = strip_code_blocks((root / doc).read_text(encoding="utf-8"))
     pattern = re.compile(MARKDOWN_SITES[doc], re.MULTILINE)
     marks = list(pattern.finditer(text))
     out: list[tuple[str, str]] = []
@@ -1383,8 +1388,10 @@ def test_the_gate_fires_on_a_present_but_untracked_artifact() -> None:
             check(_REPO, ref)
     finally:
         probe.unlink(missing_ok=True)
-    # and the control: the same shape resolves when the artifact IS tracked.
-    assert MANIFEST in tracked_set(_REPO)
+    # and the control: the same shape resolves when the artifact IS tracked
+    # (the anchor artifact the tests above read; until 2026-09-24 this named
+    # the cross-validation manifest, deleted that day).
+    assert B_ANCHOR_ARTIFACT in tracked_set(_REPO)
 
 
 def test_a_malformed_reference_is_rejected() -> None:
