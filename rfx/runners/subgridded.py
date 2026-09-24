@@ -741,6 +741,8 @@ def run_subgridded_path(
     subgrid S-parameter configurations are rejected by the public request and
     validation layers before this runner is reached.
     """
+    from rfx.current_moments import refuse_current_moment_monitor
+    refuse_current_moment_monitor(sim, "subgridded lane")
     main_result = _run_subgridded_once(
         sim,
         grid_coarse,

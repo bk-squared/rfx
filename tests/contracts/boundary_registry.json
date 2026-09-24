@@ -463,6 +463,11 @@
       "count": 12
     },
     {
+      "file": "rfx/current_moments.py",
+      "function": "slab_curl_h",
+      "kind": "difference"
+    },
+    {
       "file": "rfx/fidelity.py",
       "function": "_max_run_length",
       "kind": "roll/diff"

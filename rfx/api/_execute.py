@@ -1516,6 +1516,8 @@ class _ExecuteMixin:
         if self._solver == "adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI forward")
+            from rfx.current_moments import refuse_current_moment_monitor
+            refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
             if pec_occupancy is not None:
                 raise ValueError(
                     "solver='adi' does not support pec_occupancy_override; "
@@ -2075,6 +2077,12 @@ class _ExecuteMixin:
             corner_lo, corner_hi, freqs = self._ntff
             ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+        # In-loop block current moments. Same monitor object the run() lane
+        # builds, so a forward()/value_and_grad call accumulates the same
+        # numbers the forward run does.
+        from rfx.current_moments import monitor_for_simulation as _cm_for_sim
+        current_moments_fwd = _cm_for_sim(self, grid, periodic_bool)
+
         # Flux monitors — same configs the run() lane builds, so the
         # issue-#488 mixed-family magnitude channel can read Poynting
         # flux through this low-level lane too.
@@ -2300,6 +2308,7 @@ class _ExecuteMixin:
             probes=probes,
             waveguide_ports=waveguide_ports if waveguide_ports else None,
             ntff=ntff_box,
+            current_moments=current_moments_fwd,
             checkpoint=checkpoint,
             checkpoint_segments=checkpoint_segments,
             pec_mask=pec_mask_local,
@@ -2470,6 +2479,8 @@ class _ExecuteMixin:
             dft_planes=dft_planes_out,
             # The scan's own step: stencil_order=4 derates it below grid.dt.
             dt=result.dt,
+            current_moment_data=result.current_moment_data,
+            current_moment_monitor=current_moments_fwd,
         )
 
     @staticmethod
@@ -2484,6 +2495,8 @@ class _ExecuteMixin:
         dft_planes=None,
         wire_port_sparams=None,
         dt=None,
+        current_moment_data=None,
+        current_moment_monitor=None,
     ) -> ForwardResult:
         """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
 
@@ -2512,6 +2525,8 @@ class _ExecuteMixin:
             dft_planes=dft_planes,
             wire_port_sparams=wire_port_sparams,
             dt=dt,
+            current_moment_data=current_moment_data,
+            current_moment_monitor=current_moment_monitor,
         )
 
     def _forward_nonuniform_from_materials(
@@ -2594,6 +2609,9 @@ class _ExecuteMixin:
             dft_planes=getattr(result, "dft_planes", None),
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
             dt=getattr(result, "dt", None),
+            current_moment_data=getattr(result, "current_moment_data", None),
+            current_moment_monitor=getattr(
+                result, "current_moment_monitor", None),
         )
 
     def distributed_override_layout(self, devices=None):
@@ -2697,6 +2715,9 @@ class _ExecuteMixin:
                 "body does not accumulate DFT-plane fields. Drop DFT plane "
                 "probes or use the uniform lane."
             )
+        from rfx.current_moments import refuse_current_moment_monitor
+        refuse_current_moment_monitor(
+            self, "distributed non-uniform forward path")
         import warnings as _w
         from rfx.runners.distributed_nu import (
             build_sharded_nu_grid,
@@ -4386,6 +4407,8 @@ class _ExecuteMixin:
         if _design_spec is not None:
             _res = _res._replace(design_box_held_edges=_design_spec.held_edges)
         _warn_if_nonfinite_result(_res, context="forward")
+        from rfx.current_moments import require_accumulated_current_moments
+        require_accumulated_current_moments(self, _res, "forward")
         return self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods,
             context="forward")
@@ -4709,6 +4732,8 @@ class _ExecuteMixin:
                 exchange_interval=exchange_interval,
             )
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Non-uniform mesh lane ----
@@ -4795,6 +4820,8 @@ class _ExecuteMixin:
             _res = self._attach_run_settling_witness(
                 _res, n_steps=n_steps, num_periods=num_periods)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         grid = self._build_grid()
@@ -4808,6 +4835,8 @@ class _ExecuteMixin:
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI run()")
+            from rfx.current_moments import refuse_current_moment_monitor
+            refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
             self._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
@@ -4831,6 +4860,8 @@ class _ExecuteMixin:
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Subgridded lane ----
@@ -4876,6 +4907,8 @@ class _ExecuteMixin:
             _res = self._attach_run_settling_witness(
                 _res, n_steps=subgrid_n_steps)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Uniform path ----
@@ -4940,4 +4973,6 @@ class _ExecuteMixin:
         _res = self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods)
         _warn_if_nonfinite_result(_res, context="run")
+        from rfx.current_moments import require_accumulated_current_moments
+        require_accumulated_current_moments(self, _res, "run")
         return _res

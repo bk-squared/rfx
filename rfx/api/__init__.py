@@ -687,6 +687,10 @@ class Simulation(
         self._pinned_sheets: list = []
         self._coaxial_ports: list[CoaxialPort] = []
         self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
+        # (corner_lo, corner_hi, block_size, freqs, order, extra) — the
+        # declaration only; the slab and the block map are realized against
+        # the built grid in ``rfx.current_moments.monitor_for_simulation``.
+        self._current_moments: tuple | None = None
         self._tfsf: _TFSFEntry | None = None
         self._dft_planes: list[_DFTPlaneEntry] = []
         # ``_dft_plane_regions`` (runtime-only crop metadata for the internal
@@ -2909,6 +2913,70 @@ class Simulation(
         if freqs is None:
             freqs = jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs)
         self._ntff = (corner_lo, corner_hi, freqs)
+        return self
+
+    def add_current_moment_monitor(
+        self,
+        corner_lo: tuple[float, float, float],
+        corner_hi: tuple[float, float, float],
+        block_size: float,
+        freqs,
+        order: int = 2,
+        margin_cells=0,
+        off_cells: int = 0,
+    ) -> "Simulation":
+        """Accumulate the structure's own current as block moments, in-loop.
+
+        The radiation of a structure is what the current in it radiates. On
+        the Yee lattice that current is an identity the solver already
+        enforces — ``J = curl_h H - eps0 dE/dt`` at every electric-field edge
+        — so it can be read off the fields the step is holding, with nothing
+        modelled and nothing fitted. This monitor sums it over the slab
+        between ``corner_lo`` and ``corner_hi`` into a few numbers per
+        in-plane block (the total current moment and its first two spatial
+        moments about the block's own centre) and DFTs those, instead of
+        accumulating tangential E and H over a Huygens surface.
+
+        Parameters
+        ----------
+        corner_lo, corner_hi : (x, y, z) in metres
+            Opposite corners of the slab, in the same frame as
+            :meth:`add_ntff_box`. The z range picks the node planes; the
+            whole thickness goes into one block.
+        block_size : float
+            In-plane block side in metres, rounded to a whole number of
+            cells. The realized side is what the monitor reports.
+        freqs : array
+            Frequencies (Hz).
+        order : int
+            2 (default) keeps P, Q and T — 30 numbers per block. 1 keeps 12,
+            0 keeps 3 and is a negative control, not a usable rule.
+
+        Notes
+        -----
+        margin_cells : int or (mx, my, mz)
+            Extra cells around the declared corners.
+        off_cells : int
+            Shift of the in-plane partition origin, in cells. 0 and half a
+            block are the two the block rule was measured with.
+
+        Notes
+        -----
+        The slab must lie in the interior: inside the absorber the E update
+        is not Ampere's law, so a current read there is the absorber's
+        fiction. Periodic/Bloch axes, TFSF sources, a graded or dx != dy
+        in-plane mesh, a traced mesh profile, and every lane whose scan body
+        does not accumulate the monitor are refused rather than approximated.
+
+        The named arguments here are the whole public surface. The low-level
+        builder additionally takes deliberately wrong metrics, centres, curl
+        signs and time stamps so the mutation harness can measure what the
+        declared checks catch; those never reach a user's declaration.
+        """
+        self._current_moments = (corner_lo, corner_hi, float(block_size),
+                                 freqs, int(order),
+                                 {"margin_cells": margin_cells,
+                                  "off_cells": int(off_cells)})
         return self
 
     # ---- build helpers ----
