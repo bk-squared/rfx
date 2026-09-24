@@ -152,6 +152,60 @@ def measure(sim, args, jax, observer):
     return record, trace
 
 
+def forward_design(sim, jax, np):
+    """An x-sharded eps design built slab by slab from global indices, so no
+    process ever holds the whole domain: 1.0 plus 1.5 inside the middle third."""
+    shape, sharding = sim.distributed_override_layout(jax.devices())
+    nx = sim._build_nonuniform_grid().shape[0]
+
+    def local(index):
+        lo, hi, _ = index[0].indices(shape[0])
+        rows = np.arange(lo, hi)
+        values = np.where((rows >= nx // 3) & (rows < 2 * nx // 3), 2.5, 1.0)
+        return np.broadcast_to(values[:, None, None], (hi - lo, *shape[1:])).astype(np.float32)
+
+    return jax.make_array_from_callback(shape, sharding, local), shape, sharding
+
+
+def measure_forward(sim, args, jax, np, eps):
+    """Wall time of one forward (and, with --grad, one jax.grad) call."""
+    import jax.numpy as jnp
+
+    kwargs = dict(distributed=True, devices=jax.devices(), n_steps=args.steps,
+                  skip_preflight=True)
+    if args.checkpoint_every:
+        kwargs["checkpoint_every"] = args.checkpoint_every
+
+    def trace_of(e):
+        return sim.forward(eps_override=e, **kwargs).time_series
+
+    record = {"status": "ok", "gather_succeeded": True}
+    trace, grad = None, None
+    start = time.perf_counter()
+    try:
+        trace = trace_of(eps)
+        jax.block_until_ready(trace)
+        record["run_seconds"] = time.perf_counter() - start
+        if args.grad:
+            start_grad = time.perf_counter()
+            grad = jax.grad(lambda e: jnp.sum(trace_of(e) ** 2))(eps)
+            jax.block_until_ready(grad)
+            record["grad_seconds"] = time.perf_counter() - start_grad
+            record["grad_sharding"] = str(grad.sharding)
+        record["trace_fully_replicated"] = bool(getattr(trace, "is_fully_replicated", False))
+    except Exception as exc:
+        record["exception"] = exception_record(exc)
+        record["status"] = "error"
+        record["failure_phase"] = "forward"
+    record["scan_seconds"] = None
+    for field in ("run_seconds", "grad_seconds"):
+        if record.get(field) is not None:
+            record[field + "_per_step"] = record[field] / args.steps
+    record["trace_origin"] = "forward.time_series"
+    record["memory"] = memory_stats(jax.devices(), args.process_id)
+    return record, trace, grad
+
+
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--coordinator-address")
@@ -168,6 +222,15 @@ def parse_args():
     parser.add_argument("--model", choices=("vacuum", "loaded"), default="vacuum",
                         help="loaded: lossy substrate, a PEC block, a Debye and a Lorentz block, so the "
                              "material arrays are not uniform")
+    parser.add_argument("--lane", choices=("run", "forward"), default="run",
+                        help="run: sim.run(devices=...); forward: the differentiable "
+                             "forward(distributed=True) with an x-sharded eps design built "
+                             "slab by slab on each process")
+    parser.add_argument("--grad", action="store_true",
+                        help="forward lane: also time jax.grad of sum(trace**2) w.r.t. eps "
+                             "and save each process's gradient shards")
+    parser.add_argument("--checkpoint-every", type=int, default=0,
+                        help="forward lane: segmented remat length (0 = none)")
     parser.add_argument("--local-devices", action="store_true",
                         help="one process drives every local device (e.g. a 2xA6000 node); "
                              "--nx-per-rank is per device")
@@ -178,6 +241,8 @@ def parse_args():
         parser.error("each slab/grid dimension must be at least 4")
     if not 0 <= args.process_id < args.process_count:
         parser.error("process-id must be in [0, process-count)")
+    if args.grad and args.lane != "forward":
+        parser.error("--grad needs --lane forward")
     if args.process_count > 1 and not args.coordinator_address:
         parser.error("multiple processes require --coordinator-address")
     if not args.tag or any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
@@ -248,8 +313,13 @@ def main():
         data["rfx_tree"] = subprocess.check_output(
             ["git", "-C", str(root), "rev-parse", "HEAD:rfx"], text=True).strip()
         data["probe_sha256"] = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+        mesh_kwargs = {}
+        if args.lane == "forward":
+            # forward(distributed=True) is the non-uniform lane; an explicit
+            # (uniform-valued) z profile selects it without changing the cells.
+            mesh_kwargs["dz_profile"] = np.full(args.nz - 1, 1e-3)
         sim = Simulation(freq_max=15e9, domain=tuple((n - 1) * 1e-3 for n in (nx, args.ny, args.nz)),
-                         dx=1e-3, boundary="pec", precision="float32")
+                         dx=1e-3, boundary="pec", precision="float32", **mesh_kwargs)
         source = (nx * 0.5e-3, args.ny * 0.5e-3, args.nz * 0.5e-3)
         if args.model == "loaded":
             from rfx import Box, DebyePole
@@ -271,7 +341,8 @@ def main():
         probes = [(nx * fraction * 1e-3, source[1], source[2]) for fraction in (0.25, 0.5, 0.75)]
         for position in probes:
             sim.add_probe(position, "ez")
-        grid = sim._build_grid()
+        grid = sim._build_nonuniform_grid() if args.lane == "forward" else sim._build_grid()
+        data.update(lane=args.lane, grad=args.grad, checkpoint_every=args.checkpoint_every)
         data.update(realized_shape=list(grid.shape), boundary="pec", dtype="float32",
                     dx_m=1e-3, dt_seconds=float(grid.dt), freq_max_hz=15e9,
                     source_position_m=source, probe_positions_m=probes,
@@ -281,10 +352,28 @@ def main():
         distributed = n_ranks > 1
         function = run_distributed if distributed else run_single
         data["status"] = "running"
+        design = None
+        if args.lane == "forward":
+            design, design_shape, design_sharding = forward_design(sim, jax, np)
+            data.update(design_shape=list(design_shape), design_sharding=str(design_sharding))
         for index in range(args.repeats + 1):
-            observer = ScanObserver(function, jax, distributed)
-            record, trace = measure(sim, args, jax, observer)
+            grad = None
+            if args.lane == "forward":
+                record, trace, grad = measure_forward(sim, args, jax, np, design)
+            else:
+                observer = ScanObserver(function, jax, distributed)
+                record, trace = measure(sim, args, jax, observer)
             record.update(index=index, warmup=index == 0)
+            if grad is not None and index == args.repeats:
+                # Each process saves its own gradient shards with their global
+                # x ranges; the collector assembles and compares them.
+                shards = []
+                for shard in grad.addressable_shards:
+                    lo, hi, _ = shard.index[0].indices(grad.shape[0])
+                    name = f"{args.tag}.grad.x{lo:06d}-{hi:06d}.npy"
+                    np.save(args.output / name, np.asarray(shard.data), allow_pickle=False)
+                    shards.append({"file": name, "x": [lo, hi], "device": shard.device.id})
+                record["grad_shards"] = shards
             if trace is not None:
                 try:
                     # Native replicated trace only; no process_allgather or recovery sharding.
@@ -314,8 +403,8 @@ def main():
                 break
         statuses = [r["status"] for r in data["runs"]]
         exit_code = 1 if "error" in statuses else 2 if "gather_failed" in statuses else 0
-        for field in ("run_seconds", "scan_seconds"):
-            values = [r[field] for r in data["runs"] if not r["warmup"] and r[field] is not None]
+        for field in ("run_seconds", "scan_seconds", "grad_seconds"):
+            values = [r[field] for r in data["runs"] if not r["warmup"] and r.get(field) is not None]
             median = statistics.median(values) if values else None
             data[field] = {"values": values, "median": median,
                            "median_per_step": median / args.steps if median is not None else None}

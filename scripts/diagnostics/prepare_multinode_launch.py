@@ -36,6 +36,11 @@ def main():
     parser.add_argument("--model", choices=("vacuum", "loaded"), default="vacuum")
     parser.add_argument("--ref", default="green",
                         help="mirror ref the jobs pin (distinct refs let queued jobs of different commits coexist)")
+    parser.add_argument("--lane", choices=("run", "forward"), default="run",
+                        help="forward: time forward(distributed=True) with an x-sharded eps design")
+    parser.add_argument("--grad", action="store_true", help="forward lane: also time jax.grad")
+    parser.add_argument("--checkpoint-every", type=int, default=0,
+                        help="forward lane: segmented remat length (0 = none)")
     parser.add_argument("--ref-b", help="second solver ref run after --ref in the same job (A/B on the same nodes)")
     parser.add_argument("--tooling-sha-b", help="full commit SHA that --ref-b must resolve to")
     parser.add_argument("--two", action="append", type=int, metavar="NX_PER_RANK",
@@ -63,6 +68,10 @@ def main():
                  "RFX_REPEATS": str(args.repeats), "RFX_MODEL": args.model, "RFX_REF": args.ref}
     if args.mem_fraction:
         shape_env["XLA_PYTHON_CLIENT_MEM_FRACTION"] = args.mem_fraction
+    if args.grad and args.lane != "forward":
+        parser.error("--grad needs --lane forward")
+    shape_env.update(RFX_LANE=args.lane, RFX_GRAD="1" if args.grad else "0",
+                     RFX_CHECKPOINT_EVERY=str(args.checkpoint_every))
     if bool(args.ref_b) != bool(args.tooling_sha_b):
         parser.error("--ref-b and --tooling-sha-b go together")
     if args.ref_b:
