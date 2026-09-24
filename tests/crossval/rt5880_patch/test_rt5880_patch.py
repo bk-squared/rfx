@@ -24,13 +24,17 @@ around them is not.
   19.05 mm deep CPML OUTSIDE that domain on every face (rfx grid convention):
   24, 48 and 72 cells on the three rungs, the same absorber in metres.
 
-rfx does not reproduce the record's 176 × 186 × 130 mm box: at h/12 it would
-hold about 230 M cells before the absorber.  What the box does to this board
-was measured at h/4 (the table above ``AIR_H``): across the absorber depths
-and air gaps tried the resonance spans 2.3316–2.3485 GHz (0.72 %), and with a
-16-cell absorber it had not levelled at 28.6 mm of added air.  The case states that table, and the box witness
-solves the coarsest rung once more with 9.525 mm more air on every face and
-reports how far the curve moves; nothing is judged on it.
+rfx does not run its ladder in the record's 176 × 186 × 130 mm box: at h/12
+it would hold about 230 M cells before the absorber.  What the box does to
+this board was measured at h/4 (the table above ``AIR_H``): across the
+absorber depths and air gaps tried the resonance spans 2.3316–2.3485 GHz
+(0.72 %), and with a 16-cell absorber it had not levelled at 28.6 mm of added
+air.  The case states that table, and the reference-box run solves the
+coarsest rung once more with the declared domain's faces on the record's own
+absorber inner faces (x ±88, y ±93, z −40 / +90 mm about the ground's centre,
+read from the record and snapped to the nearest h/4 node) and the ladder's
+absorber depth outside them, and reports how far the resonance and |S11| move
+against the ladder box; nothing is judged on it.
 
 Reference (``reference/``, provenance in ``reference/PROVENANCE.md``):
 
@@ -68,9 +72,15 @@ The thresholds are the v2 accuracy bar (1 % in frequency, 2 dB in magnitude)
 and the three rules the PI approved with the MSL notch filter's plan on
 2026-09-22: the mesh statement (the last two rungs within 1 %), the deep-null
 exclusion (a bin where either curve is below −20 dB is judged by position only)
-and the ring-down witness (−40 dB, the repo's rule).  Every one is a named
-constant below with its source.  No threshold is derived from a run, and this
-case commits no record of a run.
+and the ring-down witness (−40 dB, the repo's rule); and the two the PI
+approved on 2026-09-24: a ladder step within 0.1 % is flat, not a direction,
+and the magnitude is compared with rfx's frequency axis scaled so the two
+TM010 resonances coincide.  The shared ones are named constants in
+``tests/crossval/_v2_judging.py``, the rest below, each with its source.  No
+threshold is derived from a run, and this case commits no record of a run.
+
+The judged feature is the TM010 |S11| resonance.  Its depth, its −10 dB band
+and Zin at it are reported, not judged.
 
 How to run it
 -------------
@@ -85,8 +95,10 @@ without it the figure goes under pytest's ``tmp_path``.  Set
 mesh statement and the comparison then apply to the rungs given, which is a
 diagnostic, not the case's verdict.  Unset, the full ladder runs.
 
-The three fast tests carry no mark: they build the structure and read the
-reference file, and never step the FDTD.
+The four fast tests carry no mark: they build the structure (h/4 and h/8
+only; the 52.7 M-cell h/12 board is checked by ``assert_realized`` inside the
+ladder, before it is solved) and read the reference file, and never step the
+FDTD.
 """
 
 from __future__ import annotations
@@ -102,10 +114,20 @@ from typing import NamedTuple
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, Simulation
+from rfx import Box, GaussianPulse, PolylineWire, Simulation
 from rfx.boundaries.spec import BoundarySpec
 
 from tests._realized_geometry import _node_line, realized
+from tests.crossval._v2_judging import (
+    CONVERGED,
+    DEEP_NULL_DB,
+    FLAT_STEP,
+    FREQ_BAR,
+    LADDER_AGREEMENT,
+    MAG_BAR_DB,
+    aligned_magnitude,
+    mesh_statement,
+)
 
 # ---------------------------------------------------------------- geometry
 # Every length in metres, every frequency in hertz.  The board is the retired
@@ -167,22 +189,19 @@ FREQ_MAX_HZ = 4.0e9
 #     6h            24                 2.333734 GHz   −26.52 dB   —
 #     9h (28.58 mm) 16                 2.331641 GHz   −28.38 dB   1.632 dB
 #
-# (The 3h / 24-cell row is this file's own box witness run locally; its curve
-# was not kept.)  At 16 cells the resonance keeps falling as air is added,
+# (The 3h / 24-cell row was this file's earlier box witness, run locally; its
+# curve was not kept.)  At 16 cells the resonance keeps falling as air is added,
 # −0.06, −0.14 and −0.14 % per 3·h step up to 9·h, and has not levelled there;
 # at 24 cells −0.05 and −0.09 % per step up to 6·h; at every air gap a deeper
 # absorber lowers it too.  The ladder's box is ``AIR_H`` = 0 with
 # a 6·h (19.05 mm) absorber: at h/12 it is 52.7 M cells, where +6·h of air at
 # the same depth would be 143 M (an RTX 4090 ran out of memory on 134 M,
 # docs/agent/gpu-throughput.mdx).  At h/4 this box reads 2.337070 GHz, +0.143 %
-# from the +6h / 24-cell box and +0.233 % from the +9h / 16-cell one.  The box
-# witness below measures the next step of air on every ladder run.
+# from the +6h / 24-cell box and +0.233 % from the +9h / 16-cell one.  The
+# reference-box run below (``reference_box_frame``) solves the coarsest rung
+# once more in the openEMS record's own box on every ladder run, and reports it.
 AIR_H = 0
 CPML_THICKNESS_H = 6
-# The box witness: the same board with BOX_WITNESS_EXTRA_AIR_H more
-# substrate thicknesses of air on every face, solved at the coarsest rung
-# only, and REPORTED (see ``_box_witness``).
-BOX_WITNESS_EXTRA_AIR_H = 3
 
 
 class Frame(NamedTuple):
@@ -193,6 +212,7 @@ class Frame(NamedTuple):
     z_ground: float     # the substrate floor, the ground sheet's plane
     z_patch: float      # the substrate top, the patch sheet's plane
     domain: tuple       # the declared domain, CPML outside it
+    label: str = ""     # what the box is, for the banner (empty: the ladder's)
 
 
 def frame(air_h: int = AIR_H) -> Frame:
@@ -201,6 +221,47 @@ def frame(air_h: int = AIR_H) -> Frame:
     z_ground = (3 + air_h) * H_SUB
     return Frame(air_h, cx, cy, z_ground, z_ground + H_SUB,
                  (2 * cx, 2 * cy, (9 + 2 * air_h) * H_SUB))
+
+
+def reference_box_frame(dx: float, rec: dict) -> Frame:
+    """The openEMS record's own box around this board, at ``dx``.
+
+    The record lays its absorber's inner faces at fixed positions about the
+    ground's centre on every rung (``meta.stages.<rung>.geometry_realized.pml.
+    faces``: x ±88, y ±93, z −40 / +90 mm).  Here the declared domain's faces
+    go there, each snapped to the nearest node of ``dx`` counted from the
+    ground's centre and from the ground plane, so that centre and both substrate
+    faces stay on nodes and the board realizes exactly as on the ladder's rung;
+    the CPML is the ladder's, ``CPML_THICKNESS_H``·h outside the domain.
+    """
+    stages = rec["meta"]["stages"]
+    faces = [stages[n]["geometry_realized"]["pml"]["faces"]
+             for n in OPENEMS_MESH_STATEMENT_STAGES + (OPENEMS_JUDGED_STAGE,)]
+    keys = ("inner_face_lo_mm", "inner_face_hi_mm")
+    for f in faces[1:]:
+        assert all(f[a][k] == faces[0][a][k] for a in "xyz" for k in keys), (
+            "the record's rungs do not share one absorber box")
+    f = faces[0]
+
+    def cells(mm: float) -> int:
+        return int(round(abs(mm) * 1e-3 / dx))
+
+    nx_lo, nx_hi = cells(f["x"]["inner_face_lo_mm"]), cells(f["x"]["inner_face_hi_mm"])
+    ny_lo, ny_hi = cells(f["y"]["inner_face_lo_mm"]), cells(f["y"]["inner_face_hi_mm"])
+    nz_lo, nz_hi = cells(f["z"]["inner_face_lo_mm"]), cells(f["z"]["inner_face_hi_mm"])
+    z_ground = nz_lo * dx
+    return Frame(-1, nx_lo * dx, ny_lo * dx, z_ground, z_ground + H_SUB,
+                 ((nx_lo + nx_hi) * dx, (ny_lo + ny_hi) * dx, (nz_lo + nz_hi) * dx),
+                 label=(f"the openEMS record's box: faces x −{nx_lo*dx*1e3:.3f} / "
+                        f"+{nx_hi*dx*1e3:.3f}, y −{ny_lo*dx*1e3:.3f} / "
+                        f"+{ny_hi*dx*1e3:.3f}, z −{nz_lo*dx*1e3:.3f} / "
+                        f"+{nz_hi*dx*1e3:.3f} mm about the ground's centre (record: "
+                        f"x {f['x']['inner_face_lo_mm']:+.0f} / "
+                        f"{f['x']['inner_face_hi_mm']:+.0f}, y "
+                        f"{f['y']['inner_face_lo_mm']:+.0f} / "
+                        f"{f['y']['inner_face_hi_mm']:+.0f}, z "
+                        f"{f['z']['inner_face_lo_mm']:+.0f} / "
+                        f"{f['z']['inner_face_hi_mm']:+.0f} mm)"))
 
 
 FRAME = frame(AIR_H)
@@ -303,13 +364,10 @@ NUM_PERIODS = 60.0
 WITNESS_PROBE_OFFSET_M = (15.0e-3, 5.0e-3, H_SUB / 2)
 
 # ------------------------------------------------------------ thresholds
-# The v2 accuracy bar (rfx CLAUDE.md, PI 2026-09-20):
-FREQ_BAR = 0.01          # resonances, cutoffs, notches, band edges: within 1 %
-MAG_BAR_DB = 2.0         # power and magnitude: within 2 dB
-# Rules approved by the PI with the MSL notch filter's plan (2026-09-22):
-LADDER_AGREEMENT = 0.01  # mesh statement: the last two rungs differ by < 1 %
-DEEP_NULL_DB = -20.0     # a bin where either curve is below this is judged by
-#                          position only, never by magnitude
+# The v2 accuracy bar (FREQ_BAR 1 %, MAG_BAR_DB 2 dB; PI 2026-09-20), the
+# mesh statement (LADDER_AGREEMENT 1 %, FLAT_STEP 0.1 %) and the deep-null
+# level (DEEP_NULL_DB −20 dB) are imported from tests/crossval/_v2_judging.py,
+# with the rules that use them (PI 2026-09-22 and 2026-09-24).
 # Witnesses on rfx's own record, not comparisons (rfx CLAUDE.md, Validation
 # rules): a record that has not rung down to −40 dB is truncation-suspect, and
 # a passive one-port cannot reflect more power than it receives, so |S11| more
@@ -381,8 +439,8 @@ def build(dx: float, fr: Frame = FRAME) -> Simulation:
     draws both with zero thickness too.  The substrate is the lossy laminate
     over the ground's footprint.  The probe is a wire port from the ground
     sheet's plane to the patch sheet's, the span openEMS's lumped port has.
-    ``fr`` places the board in the box; only the box witness passes anything
-    but the default.
+    ``fr`` places the board in the box; only the reference-box run passes
+    anything but the default.
     """
     sim = _sim(dx, fr)
     sim.add(_ground_box(fr), material="pec")
@@ -446,6 +504,21 @@ def _build_patch_one_cell_short(dx: float) -> Simulation:
     sim.add(_ground_box(), material="pec")
     sim.add(_substrate_box(), material="rt5880")
     sim.add(_patch_box(x_hi_trim=dx), material="pec")
+    _add_probe_and_witness(sim)
+    return sim
+
+
+def _build_probe_shorted_by_a_wire(dx: float) -> Simulation:
+    """A PEC wire drawn along the probe, from the ground sheet to the patch
+    sheet: every edge the port drives is then a PEC edge, and the port drives a
+    short instead of a gap.  Only the mutation test builds it."""
+    sim = _sim(dx)
+    sim.add(_ground_box(), material="pec")
+    sim.add(_substrate_box(), material="rt5880")
+    sim.add(_patch_box(), material="pec")
+    px, py = FRAME.cx + FEED_OFFSET_X, FRAME.cy
+    sim.add(PolylineWire(points=((px, py, FRAME.z_ground), (px, py, FRAME.z_patch)),
+                         radius=1e-6), material="pec")
     _add_probe_and_witness(sim)
     return sim
 
@@ -761,9 +834,10 @@ def run_rung(dx: float, fr: Frame = FRAME) -> dict:
     sim = build(dx, fr)
     g = assert_realized(sim, dx, fr)
     print(f"  box {fr.domain[0]*1e3:.3f} × {fr.domain[1]*1e3:.3f} × "
-          f"{fr.domain[2]*1e3:.3f} mm (declared domain, {fr.air_h}·h of air added; "
-          f"{cpml_layers(dx)} CPML cells = {cpml_layers(dx)*dx*1e3:.3f} mm outside it "
-          "on every face)")
+          f"{fr.domain[2]*1e3:.3f} mm (declared domain, "
+          + (fr.label if fr.label else f"{fr.air_h}·h of air added")
+          + f"; {cpml_layers(dx)} CPML cells = {cpml_layers(dx)*dx*1e3:.3f} mm "
+          "outside it on every face)")
     _print_realized(g, dx)
 
     print(f"  preflight at dx = {dx*1e6:.3f} µm:")
@@ -910,9 +984,15 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
     above the deep-null level, plus the resonance distance and the reported
     features.
 
-    The two grids are the same 901 bins, so nothing is interpolated.  The
-    deep-null exclusion is two-sided on purpose: a bin where one curve is in
-    its dip and the other is not is the two dips sitting at different
+    The ΔdB is taken twice, by ``aligned_magnitude`` in
+    ``tests/crossval/_v2_judging.py``: on the two frequency axes as solved
+    (reported; the two grids are the same 901 bins, so nothing is
+    interpolated), and with rfx's axis scaled by f_ref / f_rfx at the TM010
+    resonance so the two resonances coincide (the value the 2 dB bar judges,
+    PI 2026-09-24; rfx's |S11| is interpolated in dB onto the record's bins).
+
+    The deep-null exclusion is two-sided on purpose: a bin where one curve is
+    in its dip and the other is not is the two dips sitting at different
     frequencies, which the frequency bar already judges; counting it again as a
     magnitude error would score one offset twice."""
     ref_f, ref_mag, ref_zin = _stage_curve(stage)
@@ -920,17 +1000,24 @@ def _compare(label: str, rung: dict, stage: dict) -> dict:
     assert ours_f.shape == ref_f.shape and np.allclose(ours_f, ref_f, rtol=0, atol=1.0), (
         "rfx was not sampled on the record's own frequency grid")
     ref_db = _db(ref_mag)
-    ours_db = _db(np.abs(rung["s11"]))
-    keep = (ref_db >= DEEP_NULL_DB) & (ours_db >= DEEP_NULL_DB)
-    delta = ours_db - ref_db
     ref_res = resonance(ref_f, ref_mag, ref_zin)
     our_res = rung["resonance"]
-    max_abs = float(np.max(np.abs(delta[keep]))) if keep.any() else float("nan")
-    worst = int(np.argmax(np.where(keep, np.abs(delta), -np.inf))) if keep.any() else -1
+    m = aligned_magnitude(ref_f, ref_db, ours_f, _db(np.abs(rung["s11"])),
+                          ref_res["f"], our_res["f"], SWEEP_HZ, floor_db=DEEP_NULL_DB)
+    solved, aligned = m["unaligned"], m["aligned"]
     return dict(
-        label=label, f_hz=ref_f, ref_db=ref_db, ours_db=ours_db, delta_db=delta,
-        compared=keep, n_bins=int(ref_f.size), n_compared=int(keep.sum()),
-        max_abs_delta_db=max_abs, worst_index=worst,
+        label=label, f_hz=ref_f, ref_db=ref_db, ours_db=solved["ours_db"],
+        delta_db=solved["delta_db"], compared=solved["compared"],
+        n_bins=int(ref_f.size), n_compared=solved["n_compared"],
+        max_abs_delta_db=solved["max_abs_delta_db"],
+        worst_index=solved["worst_index"],
+        scale=m["scale"],
+        aligned_ours_db=aligned["ours_db"], aligned_delta_db=aligned["delta_db"],
+        aligned_compared=aligned["compared"],
+        aligned_n_compared=aligned["n_compared"],
+        aligned_max_abs_delta_db=aligned["max_abs_delta_db"],
+        aligned_worst_index=aligned["worst_index"],
+        aligned_worst_f_ghz=aligned["f_at_max_hz"] / 1e9,
         ref_res=ref_res, our_res=our_res,
         res_pct=100.0 * (our_res["f"] - ref_res["f"]) / ref_res["f"],
     )
@@ -956,21 +1043,32 @@ def _print_comparison(c: dict) -> None:
           f"{DEEP_NULL_DB:.0f} dB); max |ΔdB| = {c['max_abs_delta_db']:.3f} dB"
           + (f" at {c['f_hz'][c['worst_index']]/1e9:.4f} GHz"
              if c["worst_index"] >= 0 else ""))
+    print(f"    aligned (rfx frequency axis × {c['scale']:.6f}, so the resonances "
+          f"coincide): |S11| dB compared at {c['aligned_n_compared']} of the "
+          f"{c['n_bins']}; max |ΔdB| = {c['aligned_max_abs_delta_db']:.3f} dB at "
+          f"{c['aligned_worst_f_ghz']:.4f} GHz")
     idx = np.arange(c["n_bins"])
     stride = max(1, int(np.ceil(idx.size / _MAX_TABLE_ROWS)))
     shown = set(idx[::stride].tolist())
-    if c["worst_index"] >= 0:
-        shown.add(c["worst_index"])
+    for worst in (c["worst_index"], c["aligned_worst_index"]):
+        if worst >= 0:
+            shown.add(worst)
     shown.add(r["index"])
     shown.add(o["index"])
     print(f"    (table printed every {stride} bins, plus the two resonance bins and "
-          "the worst compared bin marked *)")
-    print("    f_GHz, ref_dB, rfx_dB, delta_dB, compared")
+          "the worst compared bin marked * as solved and ^ aligned, # both)")
+    print("    f_GHz, ref_dB, rfx_dB, delta_dB, compared, "
+          "rfx_aligned_dB, delta_aligned_dB, compared_aligned")
     for i in sorted(shown):
-        mark = "*" if i == c["worst_index"] else " "
+        worst_solved = i == c["worst_index"]
+        worst_aligned = i == c["aligned_worst_index"]
+        mark = ("#" if worst_solved and worst_aligned else
+                "*" if worst_solved else "^" if worst_aligned else " ")
         print(f"     {mark}{c['f_hz'][i]/1e9:8.4f} {c['ref_db'][i]:10.3f} "
               f"{c['ours_db'][i]:10.3f} {c['delta_db'][i]:9.3f}  "
-              f"{bool(c['compared'][i])}")
+              f"{bool(c['compared'][i])!s:5} "
+              f"{c['aligned_ours_db'][i]:10.3f} {c['aligned_delta_db'][i]:9.3f}  "
+              f"{bool(c['aligned_compared'][i])}")
 
 
 # ------------------------------------------------------------------ ladder
@@ -981,23 +1079,23 @@ def _rungs() -> tuple[float, ...]:
     return tuple(float(v) for v in raw.split(",") if v.strip())
 
 
-def _box_witness(base: dict, dx: float) -> dict:
-    """Solve the same board with ``BOX_WITNESS_EXTRA_AIR_H`` more substrate
-    thicknesses of air on every face, at the same cell size and with the same
-    absorber depth, and report how far its resonance and |S11| move.
+def _reference_box_run(base: dict, dx: float, rec: dict) -> dict:
+    """Solve the same board at ``dx`` in the openEMS record's own box
+    (``reference_box_frame``) and report how far its resonance and |S11| move
+    against the ladder box's run at the same ``dx``.
 
-    A witness on rfx's own record, not a comparison with the reference: rfx
-    solves this board in a smaller box than the openEMS record does (see the
-    box constants), and this measures what the box does to the observable on
-    the ladder's own code.  REPORTED, not judged — no bar has been set for it.
+    A witness on rfx's own record, not a comparison with the reference: rfx's
+    ladder solves this board in a smaller box than the openEMS record does
+    (see the box constants), and this measures, on the ladder's own code, what
+    solving it in the record's box instead does to the observable.  REPORTED,
+    not judged — no bar has been set for it.
     """
-    fr = frame(AIR_H + BOX_WITNESS_EXTRA_AIR_H)
-    print(f"\n  --- box witness at dx = {dx*1e6:.3f} µm ---")
-    print(f"  the same board with {BOX_WITNESS_EXTRA_AIR_H}·h = "
-          f"{BOX_WITNESS_EXTRA_AIR_H*H_SUB*1e3:.3f} mm more air on every face (box "
-          f"{fr.domain[0]*1e3:.3f} × {fr.domain[1]*1e3:.3f} × {fr.domain[2]*1e3:.3f} mm "
-          f"instead of {DOMAIN_X_M*1e3:.3f} × {DOMAIN_Y_M*1e3:.3f} × "
-          f"{DOMAIN_Z_M*1e3:.3f} mm; the absorber depth unchanged)")
+    fr = reference_box_frame(dx, rec)
+    print(f"\n  --- the openEMS record's box at dx = {dx*1e6:.3f} µm ---")
+    print(f"  the same board in {fr.label}; box {fr.domain[0]*1e3:.3f} × "
+          f"{fr.domain[1]*1e3:.3f} × {fr.domain[2]*1e3:.3f} mm instead of the "
+          f"ladder's {DOMAIN_X_M*1e3:.3f} × {DOMAIN_Y_M*1e3:.3f} × "
+          f"{DOMAIN_Z_M*1e3:.3f} mm; the absorber depth unchanged")
     other = run_rung(dx, fr)
     other_res = resonance(other["freqs_hz"], np.abs(other["s11"]), zin_from_s11(other["s11"]))
     f = np.asarray(base["freqs_hz"], dtype=float)
@@ -1007,39 +1105,28 @@ def _box_witness(base: dict, dx: float) -> dict:
     d = b - a
     worst = int(np.argmax(np.where(keep, np.abs(d), -np.inf)))
     out = {
-        "dx_m": dx, "extra_air_m": BOX_WITNESS_EXTRA_AIR_H * H_SUB,
+        "dx_m": dx, "frame": fr, "s11": other["s11"],
         "resonance_hz": other_res["f"], "depth_db": other_res["depth_db"],
+        "zin": other_res["zin"], "bw_10db_hz": other_res["bw_10db"],
         "resonance_shift_pct": 100.0 * (other_res["f"] - base["resonance"]["f"])
                                / base["resonance"]["f"],
         "max_abs_delta_db": float(np.max(np.abs(d[keep]))), "n_compared": int(keep.sum()),
         "worst_f_hz": float(f[worst]), "n_cells": other["n_cells"],
-        "wall_s": other["wall_s"],
+        "wall_s": other["wall_s"], "settling_db": other["settling_db"],
     }
-    print(f"  resonance {other_res['f']/1e9:.6f} GHz ({other_res['depth_db']:.2f} dB) "
-          f"in the larger box vs {base['resonance']['f']/1e9:.6f} GHz "
-          f"({base['resonance']['depth_db']:.2f} dB): {out['resonance_shift_pct']:+.3f} %")
+    print(f"  resonance {other_res['f']/1e9:.6f} GHz ({other_res['depth_db']:.2f} dB, "
+          f"−10 dB band {other_res['bw_10db']/1e6:.2f} MHz, Zin "
+          f"{other_res['zin'].real:.2f}{other_res['zin'].imag:+.2f}j Ω) in the "
+          f"record's box vs {base['resonance']['f']/1e9:.6f} GHz "
+          f"({base['resonance']['depth_db']:.2f} dB) in the ladder's: "
+          f"{out['resonance_shift_pct']:+.3f} %")
     print(f"  |S11|: max |Δ| = {out['max_abs_delta_db']:.3f} dB over "
           f"{out['n_compared']} of {f.size} bins where both curves are above "
           f"{DEEP_NULL_DB:.0f} dB; worst at {out['worst_f_hz']/1e9:.4f} GHz")
-    print("    f_GHz, larger box |S11| dB, ladder box |S11| dB, Δ")
+    print("    f_GHz, record's box |S11| dB, ladder box |S11| dB, Δ")
     for i in range(0, f.size, 10):
         print(f"      {f[i]/1e9:8.4f} {b[i]:10.3f} {a[i]:10.3f} {d[i]:8.3f}")
     return out
-
-
-def moves_monotonically(values) -> bool:
-    """The mesh statement's monotone check: every step along the ladder moves
-    the same way.
-
-    The ONE place the three cross-validation tests' monotone rule lives in this
-    file — the PI is deciding a small tolerance for it, and the leader applies
-    that decision to the MSL notch filter, the Sheen low-pass filter and this
-    case in one commit.  Until then it is the notch test's rule: strictly
-    increasing or strictly decreasing, no tolerance.
-    """
-    v = [float(x) for x in values]
-    return (all(b > a for a, b in zip(v, v[1:]))
-            or all(b < a for a, b in zip(v, v[1:])))
 
 
 @pytest.mark.gpu
@@ -1059,6 +1146,10 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
           f"{ABOVE_PATCH_M*1e3:.3f} mm above the patch), CPML "
           f"{CPML_THICKNESS_H*H_SUB*1e3:.3f} mm deep outside it")
 
+    openems = _load(_OPENEMS_JSON)
+    judged_stage = openems[OPENEMS_JUDGED_STAGE]
+    stages = openems["meta"]["stages"]
+
     results = []
     for dx in rungs:
         print(f"\n=== rung dx = {dx*1e6:.3f} µm ===")
@@ -1076,14 +1167,10 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         for f, a, z in zip(r["freqs_hz"], r["s11_db"], zin):
             print(f"    {f/1e9:8.4f} {a:10.4f} {z.real:10.3f} {z.imag:10.3f}")
         results.append(r)
-        # The premise the comparison rests on — this box does not set the
-        # observable — measured on the coarsest rung, and reported.
+        # The board in the openEMS record's own box, on the coarsest rung:
+        # what the ladder's smaller box does to the observable, reported.
         if len(results) == 1:
-            box_witness = _box_witness(r, dx)
-
-    openems = _load(_OPENEMS_JSON)
-    judged_stage = openems[OPENEMS_JUDGED_STAGE]
-    stages = openems["meta"]["stages"]
+            ref_box = _reference_box_run(r, dx, openems)
 
     # ---- (a) mesh statement: the resonance must settle along the ladder ------
     resonances = [r["resonance"]["f"] for r in results]
@@ -1092,16 +1179,19 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
         print(f"    dx {r['dx_m']*1e6:8.3f} µm  {r['resonance']['f']/1e9:.6f} GHz  "
               f"{r['resonance']['depth_db']:7.2f} dB  {r['n_cells']} cells  "
               f"{r['n_steps']} steps  {r['wall_s']:.1f} s")
+    mesh_stmt = mesh_statement(resonances, [f"{r['dx_m']*1e6:.3f}µm" for r in results])
     if len(resonances) >= 2:
         for (a, b), (ra, rb) in zip(zip(resonances, resonances[1:]),
                                     zip(results, results[1:])):
             print(f"    {ra['dx_m']*1e6:.3f} -> {rb['dx_m']*1e6:.3f} µm: "
                   f"{100.0*(b-a)/a:+.3f} %")
-        last_two_pct = 100.0 * abs(resonances[-1] - resonances[-2]) / resonances[-2]
-        print(f"    last two rungs differ by {last_two_pct:.3f} % "
+        print(f"    last two rungs differ by {mesh_stmt['last_two_pct']:.3f} % "
               f"(bar {LADDER_AGREEMENT*100:.0f} %)")
-    else:
-        last_two_pct = float("nan")
+        print("    steps " + ", ".join(
+            f"{p:+.3f} %" + (" (flat)" if fl else "")
+            for p, fl in zip(mesh_stmt["steps_pct"], mesh_stmt["flat"]))
+            + f" (flat when within {FLAT_STEP*100:.1f} %); monotone "
+            f"{mesh_stmt['monotone']} -> {mesh_stmt['verdict']}")
 
     # The reference's own mesh statement, read off its record.  Its edge
     # refinement is not a uniform √2 ladder, so its steps are printed, never
@@ -1129,7 +1219,6 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
     # override exists for — and the test skips at the end instead of passing or
     # failing.  Any rung set that is not the ladder itself, in order, is partial.
     partial = tuple(rungs) != LADDER_M
-    monotone = moves_monotonically(resonances)
 
     # ---- (b) the comparison: finest rung against the openEMS fine rung ------
     # Every distance and the figure are printed BEFORE any verdict, so a run
@@ -1147,12 +1236,14 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
             finest, openems[name]))
 
     # ---- (c) the figure ----------------------------------------------------
-    fig_path = _write_figure(results, openems, tmp_path)
+    fig_path = _write_figure(results, openems, tmp_path, ref_box)
     print(f"\n  figure: {fig_path}")
-    print(f"  box witness at {box_witness['dx_m']*1e6:.3f} µm "
-          f"(+{box_witness['extra_air_m']*1e3:.3f} mm of air on every face): resonance "
-          f"{box_witness['resonance_shift_pct']:+.3f} %, |S11| up to "
-          f"{box_witness['max_abs_delta_db']:.3f} dB — reported, not judged")
+    print(f"  the openEMS record's box at {ref_box['dx_m']*1e6:.3f} µm: resonance "
+          f"{ref_box['resonance_hz']/1e9:.6f} GHz, "
+          f"{ref_box['resonance_shift_pct']:+.3f} % against the ladder box at the "
+          f"same cell; |S11| up to {ref_box['max_abs_delta_db']:.3f} dB apart "
+          f"({ref_box['n_cells']} cells, {ref_box['wall_s']:.1f} s) — reported, "
+          "not judged")
 
     if partial:
         pytest.skip(
@@ -1163,39 +1254,47 @@ def test_rt5880_patch_matches_the_openems_reference(tmp_path):
             "run states no verdict.")
 
     # ---- (a) the mesh statement comes first: without it nothing is judged ---
-    assert monotone, (
-        "the resonance does not move monotonically along the ladder: "
-        f"{[f'{f/1e9:.6f} GHz' for f in resonances]} at "
-        f"{[f'{d*1e6:.3f}µm' for d in rungs]}. Without a monotone trend the mesh is "
-        "not shown to converge and the comparison says nothing.")
-    if not last_two_pct < LADDER_AGREEMENT * 100.0:
-        # PI decision 2026-09-22, carried over from the MSL notch filter case:
-        # the v2 bar is never loosened, and a case that cannot meet it says so
-        # with its numbers. The xfail is IMPERATIVE, so every witness above —
-        # the ring-down, the passivity excess, the realized board — and a
-        # monotonicity failure still FAIL the test; only the two comparison
-        # bars below are held back. When the mesh converges this branch is no
+    # Not shown to converge — a step larger than FLAT_STEP against the trend
+    # (PI 2026-09-24), or the last two rungs LADDER_AGREEMENT or more apart
+    # (PI 2026-09-22) — states the numbers and xfails; it is not a failure.
+    # Every witness above has already hard-failed a bad rung.
+    if mesh_stmt["verdict"] != CONVERGED:
+        # PI decisions 2026-09-22 and 2026-09-24, carried over from the MSL
+        # notch filter case: the v2 bar is never loosened, and a case that
+        # cannot meet it says so with its numbers. The xfail is IMPERATIVE, so
+        # every witness above — the ring-down, the passivity excess, the
+        # realized board — still FAILS the test; only the two comparison bars
+        # below are held back. When the mesh converges this branch is no
         # longer taken and the comparison judges for real.
         pytest.xfail(
-            "known limitation (PI 2026-09-22): the uniform mesh has not "
-            f"converged — the two finest rungs put the resonance "
-            f"{last_two_pct:.3f} % apart (bar {LADDER_AGREEMENT*100:.0f} %): "
-            f"{[f'{f/1e9:.6f} GHz' for f in resonances]}; the finest rung sits "
-            f"{fine['res_pct']:+.3f} % from the openEMS record's "
+            "known limitation (PI 2026-09-22, 2026-09-24): the uniform mesh is "
+            f"not shown to converge — {mesh_stmt['reason']}. The finest rung "
+            f"sits {fine['res_pct']:+.3f} % from the openEMS record's "
             f"{fine['ref_res']['f']/1e9:.5f} GHz and its |S11| differs by up to "
-            f"{fine['max_abs_delta_db']:.3f} dB. The comparison above is "
-            "reported, not judged.")
+            f"{fine['aligned_max_abs_delta_db']:.3f} dB with the resonances "
+            f"aligned ({fine['max_abs_delta_db']:.3f} dB as solved). The "
+            "comparison above is reported, not judged.")
     assert abs(fine["res_pct"]) < FREQ_BAR * 100.0, (
         f"the resonance sits {fine['res_pct']:+.3f} % from the openEMS record's "
         f"{fine['ref_res']['f']/1e9:.5f} GHz (bar {FREQ_BAR*100:.0f} %); rfx reads "
         f"{fine['our_res']['f']/1e9:.5f} GHz on the {finest['dx_m']*1e6:.3f} µm mesh.")
-    assert fine["max_abs_delta_db"] <= MAG_BAR_DB, (
+    # The magnitude, judged with the resonance offset the frequency bar has
+    # just judged taken out (PI 2026-09-24): rfx's axis scaled by f_ref / f_rfx.
+    assert fine["aligned_max_abs_delta_db"] <= MAG_BAR_DB, (
         f"|S11| differs from the openEMS record by up to "
-        f"{fine['max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB) over the "
-        f"{fine['n_compared']} bins where both curves are above {DEEP_NULL_DB:.0f} dB.")
+        f"{fine['aligned_max_abs_delta_db']:.3f} dB at "
+        f"{fine['aligned_worst_f_ghz']:.4f} GHz (bar {MAG_BAR_DB:.0f} dB) over "
+        f"the {fine['aligned_n_compared']} bins where both curves are above "
+        f"{DEEP_NULL_DB:.0f} dB, with rfx's frequency axis scaled by "
+        f"{fine['scale']:.6f} so the resonances coincide "
+        f"({fine['max_abs_delta_db']:.3f} dB as solved, reported).")
+    print(f"\n  judged: resonance {fine['res_pct']:+.3f} % from the openEMS record "
+          f"(bar {FREQ_BAR*100:.0f} %); |S11| aligned max |ΔdB| "
+          f"{fine['aligned_max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB); "
+          f"as solved {fine['max_abs_delta_db']:.3f} dB, reported, not judged")
 
 
-def _write_figure(results, openems, tmp_path) -> Path:
+def _write_figure(results, openems, tmp_path, ref_box=None) -> Path:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -1210,6 +1309,11 @@ def _write_figure(results, openems, tmp_path) -> Path:
     for r in results:
         ax.plot(np.asarray(r["freqs_hz"]) / 1e9, r["s11_db"], "--", lw=1.3, zorder=3,
                 label=f"rfx dx {r['dx_m']*1e6:.2f} µm")
+    if ref_box is not None:
+        ax.plot(np.asarray(results[0]["freqs_hz"]) / 1e9, _db(np.abs(ref_box["s11"])), ":",
+                lw=1.5, zorder=3, color="tab:purple",
+                label=f"rfx dx {ref_box['dx_m']*1e6:.2f} µm in the openEMS record's box "
+                      "(reported)")
     # The mesh-statement rungs first, JUDGED on top, so the curve being judged
     # against is the one the eye reads where they overlap.
     for name, alpha in zip(OPENEMS_MESH_STATEMENT_STAGES, (0.35, 0.55)):
@@ -1239,19 +1343,25 @@ def _write_figure(results, openems, tmp_path) -> Path:
 # The candidate rungs the ladder was chosen from, with what ``assert_realized``
 # does with each (the table above ``LADDER_M``).
 CANDIDATE_RUNGS_N = (4, 5, 6, 7, 8)
+# The ladder rungs the fast test builds: h/4 and h/8.  The h/12 board is
+# 52.7 M cells and its build holds about 5.9 GB (13.7 s); the PR lane's runner
+# is not given that, and the ladder's own ``assert_realized`` checks h/12
+# before it is solved.
+FAST_LADDER_M = LADDER_M[:2]
 
 
 def test_the_lattice_builds_the_declared_board_on_every_rung():
-    """Build-time only: every ladder rung realizes the declared board, and every
-    other h/n from h/4 to h/8 is refused for realizing another resonant length
-    (h/9 … h/11, measured in the table above ``LADDER_M``, are not rebuilt
-    here: each is 40–50 M cells in this box)."""
+    """Build-time only: the h/4 and h/8 ladder rungs realize the declared
+    board, and every other h/n from h/4 to h/8 is refused for realizing another
+    resonant length (h/12 is checked inside the ladder; h/9 … h/11, measured in
+    the table above ``LADDER_M``, are not rebuilt here: each is 40–50 M cells
+    in this box)."""
     print(f"\n  declared board: patch {L_PATCH*1e3:.1f} × {W_PATCH*1e3:.1f} mm centred "
           f"at ({PATCH_CENTRE_X_M*1e3:.3f}, {PATCH_CENTRE_Y_M*1e3:.3f}) mm, ground "
           f"{GP_X*1e3:.0f} × {GP_Y*1e3:.0f} mm on z = {GROUND_Z_M*1e3:.3f} mm, patch on "
           f"z = {PATCH_Z_M*1e3:.3f} mm, probe {FEED_OFFSET_X*1e3:+.1f} mm along x; box "
           f"{DOMAIN_X_M*1e3:.3f} × {DOMAIN_Y_M*1e3:.3f} × {DOMAIN_Z_M*1e3:.3f} mm")
-    for dx in LADDER_M:
+    for dx in FAST_LADDER_M:
         g = assert_realized(build(dx), dx)
         _print_realized(g, dx)
         assert g["patch"]["x_node_span_m"] == pytest.approx(_ladder_resonant_length_m(),
@@ -1292,12 +1402,140 @@ def test_assert_realized_catches_each_mutation():
          "does not reach the patch sheet"),
         ("patch drawn one cell short along its resonant length",
          _build_patch_one_cell_short, "the ladder holds"),
+        ("a PEC wire drawn along the probe, ground to patch",
+         _build_probe_shorted_by_a_wire, "is a PEC edge"),
     )
     for label, builder, expected in cases:
         with pytest.raises(AssertionError) as caught:
             assert_realized(builder(dx), dx)
         print(f"\n  {label}: {caught.value}")
         assert expected in str(caught.value), (label, str(caught.value))
+
+
+def _record_board(rec: dict, stage: str) -> dict:
+    """The board one Stage B rung of the openEMS record solved, in metres,
+    siemens per metre and ohms, read from the record's own fields and from
+    nothing in this file: the substrate from ``plan_estimate.stand_in``
+    (``materials.sub`` epsilon and kappa, and the excitation's f0, at which the
+    maker turned tanδ into kappa), the port from ``stand_in.ports``, the patch
+    edges from ``geometry_realized.patch_edges``, the probe from
+    ``geometry_realized.feed``, and the ground edges and the two metal planes
+    from ``line_check``.  The record's frame has the ground centred at the
+    origin; offsets are taken from the record's own patch centre."""
+    st = rec["meta"]["stages"][stage]
+    stand_in = st["plan_estimate"]["stand_in"]
+    mm = stand_in["unit"]
+    sub = stand_in["materials"]["sub"]
+    (port,) = stand_in["ports"]
+    edges = st["geometry_realized"]["patch_edges"]
+    rows = {r["what"]: r for r in st["line_check"]["rows"]}
+    f0 = float(stand_in["excite"][0])
+    x_lo, x_hi = (edges[k]["declared_mm"] * mm for k in ("patch_x_lo", "patch_x_hi"))
+    y_lo, y_hi = (edges[k]["declared_mm"] * mm for k in ("patch_y_lo", "patch_y_hi"))
+    feed_x, feed_y = (v * mm for v in st["geometry_realized"]["feed"]["declared_xy_mm"])
+    z_ground = rows["ground plane, z = 0"]["declared_mm"] * mm
+    z_patch = rows["patch plane, z = h"]["declared_mm"] * mm
+    return {
+        "eps_r": float(sub["epsilon"]),
+        "kappa": float(sub["kappa"]),
+        "f0_hz": f0,
+        "tan_delta": float(sub["kappa"]) / (2.0 * math.pi * f0 * EPS0 * float(sub["epsilon"])),
+        "h": z_patch - z_ground,
+        "l_patch": x_hi - x_lo,
+        "w_patch": y_hi - y_lo,
+        "gp_x": (rows["ground x+ edge"]["declared_mm"]
+                 - rows["ground x- edge"]["declared_mm"]) * mm,
+        "gp_y": (rows["ground y+ edge"]["declared_mm"]
+                 - rows["ground y- edge"]["declared_mm"]) * mm,
+        "feed_offset": (feed_x - 0.5 * (x_lo + x_hi), feed_y - 0.5 * (y_lo + y_hi)),
+        "port_r": float(port["R"]),
+        "port_direction": port["direction"],
+        "port_xy": (port["start"][0] * mm, port["start"][1] * mm),
+        "port_z": (port["start"][2] * mm, port["stop"][2] * mm),
+        "z_planes": (z_ground, z_patch),
+        "absorber_faces_mm": {a: (st["geometry_realized"]["pml"]["faces"][a]["inner_face_lo_mm"],
+                                  st["geometry_realized"]["pml"]["faces"][a]["inner_face_hi_mm"])
+                              for a in "xyz"},
+    }
+
+
+def test_the_board_is_the_openems_record_s_board():
+    """The constants rfx builds this board from, held against the board the
+    openEMS record solved, read from the record's own fields on every Stage B
+    rung (``_record_board``): εr, tanδ (and the conductivity it becomes at the
+    record's f0), the substrate thickness, the patch and the ground, the
+    probe's offset from the patch centre and its span, and the port
+    resistance.  Then the h/4 board rfx actually builds (``realized_geometry``)
+    against the record directly, and the reference-box frame's faces against
+    the record's absorber faces.  Without this test a constant could drift from
+    the record and every other test here would still pass: they compare the
+    realized board with this file's own constants."""
+    rec = _load(_OPENEMS_JSON)
+    for stage in OPENEMS_MESH_STATEMENT_STAGES + (OPENEMS_JUDGED_STAGE,):
+        b = _record_board(rec, stage)
+        print(f"\n  {stage}: εr {b['eps_r']}, kappa {b['kappa']:.6e} S/m at f0 "
+              f"{b['f0_hz']/1e9:.2f} GHz (tanδ {b['tan_delta']:.6g}), h "
+              f"{b['h']*1e3:.3f} mm, patch {b['l_patch']*1e3:.3f} × "
+              f"{b['w_patch']*1e3:.3f} mm, ground {b['gp_x']*1e3:.3f} × "
+              f"{b['gp_y']*1e3:.3f} mm, probe offset ({b['feed_offset'][0]*1e3:+.3f}, "
+              f"{b['feed_offset'][1]*1e3:+.3f}) mm spanning z {b['port_z'][0]*1e3:.3f} "
+              f"-> {b['port_z'][1]*1e3:.3f} mm, port {b['port_r']:.1f} Ω")
+        assert EPS_R == b["eps_r"], (stage, EPS_R, b["eps_r"])
+        assert TAN_DELTA == pytest.approx(b["tan_delta"], rel=1e-9), (stage, TAN_DELTA)
+        assert SIGMA_SUB == pytest.approx(b["kappa"], rel=1e-12), (stage, SIGMA_SUB)
+        assert H_SUB == pytest.approx(b["h"], abs=1e-12), (stage, H_SUB)
+        assert L_PATCH == pytest.approx(b["l_patch"], abs=1e-12), (stage, L_PATCH)
+        assert W_PATCH == pytest.approx(b["w_patch"], abs=1e-12), (stage, W_PATCH)
+        assert GP_X == pytest.approx(b["gp_x"], abs=1e-12), (stage, GP_X)
+        assert GP_Y == pytest.approx(b["gp_y"], abs=1e-12), (stage, GP_Y)
+        assert FEED_OFFSET_X == pytest.approx(b["feed_offset"][0], abs=1e-12), (
+            stage, FEED_OFFSET_X, b["feed_offset"])
+        assert b["feed_offset"][1] == pytest.approx(0.0, abs=1e-12), stage
+        assert b["port_xy"] == pytest.approx((b["feed_offset"][0], b["feed_offset"][1]),
+                                             abs=1e-12), stage
+        assert b["port_direction"] == "z"
+        assert b["port_z"] == pytest.approx(b["z_planes"], abs=1e-12), (
+            f"{stage}: the record's port spans z {b['port_z']}, its metal planes "
+            f"are {b['z_planes']}")
+        assert PORT_IMPEDANCE_OHM == b["port_r"], (stage, PORT_IMPEDANCE_OHM)
+
+    # The board rfx builds, against the record rather than against the
+    # constants: h/4, the coarsest rung, is enough — every rung realizes the
+    # same resonant length (``assert_realized``).
+    b = _record_board(rec, OPENEMS_JUDGED_STAGE)
+    dx = DX_COARSEST_M
+    g = realized_geometry(build(dx))
+    ox, oy = g["probe_offset_from_patch_centre_m"]
+    print(f"  rfx at h/4: patch strip {g['patch']['x_strip_m']*1e3:.4f} × "
+          f"{g['patch']['y_strip_m']*1e3:.4f} mm, ground strip "
+          f"{g['ground']['x_strip_m']*1e3:.4f} × {g['ground']['y_strip_m']*1e3:.4f} mm, "
+          f"probe ({ox*1e3:+.4f}, {oy*1e3:+.4f}) mm, {g['substrate_cells']} substrate "
+          f"cells, port {g['probe_impedance_ohm']:.1f} Ω, permittivities "
+          f"{g['distinct_eps_r']}")
+    assert g["probe_impedance_ohm"] == b["port_r"]
+    assert g["distinct_eps_r"] == sorted({1.0, round(b["eps_r"], 6)})
+    assert g["substrate_cells"] * dx == pytest.approx(b["h"], abs=1e-12)
+    for got, want in ((g["patch"]["x_strip_m"], b["l_patch"]),
+                      (g["patch"]["y_strip_m"], b["w_patch"]),
+                      (g["ground"]["x_strip_m"], b["gp_x"]),
+                      (g["ground"]["y_strip_m"], b["gp_y"])):
+        assert abs(got - want) <= dx, (got, want)
+    assert abs(ox - b["feed_offset"][0]) <= 0.5 * dx + 1e-12, (ox, b["feed_offset"])
+    assert abs(oy - b["feed_offset"][1]) <= 1e-12, (oy, b["feed_offset"])
+
+    # The reference-box run's domain faces sit on the record's absorber inner
+    # faces, each to within half a cell.
+    fr = reference_box_frame(dx, rec)
+    faces = b["absorber_faces_mm"]
+    got_faces = {
+        "x": (-fr.cx, fr.domain[0] - fr.cx),
+        "y": (-fr.cy, fr.domain[1] - fr.cy),
+        "z": (-fr.z_ground, fr.domain[2] - fr.z_ground),
+    }
+    print(f"  reference-box frame at h/4: {fr.label}")
+    for axis in "xyz":
+        for got, want in zip(got_faces[axis], faces[axis]):
+            assert abs(got - want * 1e-3) <= 0.5 * dx + 1e-12, (axis, got, want)
 
 
 def test_the_reference_file_is_what_the_provenance_says():
