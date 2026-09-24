@@ -246,6 +246,8 @@ def run_uniform(
     aniso_inv_eps = None
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
     if use_kottke_pec:
+        from rfx.current_moments import refuse_h_side_conductor
+        refuse_h_side_conductor(sim, 'subpixel_smoothing="kottke_pec"')
         from rfx.geometry.smoothing import (
             compute_inv_eps_tensor_diag, smoothed_shape_pairs,
             warn_unextendable_shapes,

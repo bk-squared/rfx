@@ -1516,6 +1516,13 @@ def test_declaration_accepts_order_two_only(order):
             freqs=FREQS, order=order)
 
 
+# The Simulation-level models below test refusals, lanes and weight dtypes,
+# not patterns, so their frequency list does not weaken them. It is 3 and
+# 5 GHz so that their 6 mm blocks through a 12 mm slab (k*|delta| 1.46 at
+# 10 GHz) stay inside the block-extent bound (0.73 at 5 GHz).
+GUARD_FREQS = np.array([3e9, 5e9])
+
+
 # The model the guard tests below vary: 2 mm cells, a 24 mm cube of vacuum
 # in CPML, a soft Ez source at the centre, and a slab from 6 to 18 mm on
 # every axis, i.e. node indices 9..15 with a 6-cell absorber. Its interior
@@ -1529,7 +1536,7 @@ def _guard_sim(**kw):
     sim.add_source((1.2e-2, 1.2e-2, 1.2e-2), "ez", amplitude_kind="current")
     sim.add_current_moment_monitor(
         corner_lo=(6e-3,) * 3, corner_hi=(18e-3,) * 3, block_size=6e-3,
-        freqs=FREQS)
+        freqs=GUARD_FREQS)
     return sim
 
 
@@ -1644,6 +1651,253 @@ def test_refuses_a_design_box_outside_the_slab():
         jax.grad(f)(2.0)
 
 
+# The block-extent bound (rfx.current_moments.MAX_K_OFFSET = 1.0): k at the
+# highest monitored frequency times the largest distance from a block's centre
+# to an edge in it, slab thickness included, must not exceed 1.0. The
+# second-order expansion drops terms of order (k|delta|)^3/6.
+#
+# Ladder the bound comes from: 1 mm cells, 6 / 8 / 10 GHz, 3000 steps; the
+# block pattern against the NTFF box on the same run. Structures: x strip
+# dipole 14 mm (1-14 mm blocks), x wire 8+20 mm (1-12 mm), z dipoles 6 / 10 /
+# 14 / 20 mm (2-4 mm), z wires 4+10 and 8+20 mm (4 mm). "shape" is the largest
+# dB difference of the two patterns, each normalized to its own peak, within
+# 20 dB of the box's peak; dD directivity, dP radiated power. 54 points:
+#
+#   k|delta|    points  shape max dB (where)          |dD| max  |dP| max  >0.2 dB
+#   0.26-0.47     11    0.114 (x wire, 1 mm blocks)     0.015     0.023     0
+#   0.53-0.74     10    0.115 (x wire, 4 mm blocks)     0.017     0.022     0
+#   0.84-0.98      8    0.185 (x dipole, 10 mm blocks)  0.016     0.019     0
+#   1.06-1.25      9    0.420 (x dipole, 10 mm, 1.23)   0.030     0.023     1
+#   1.27-1.41      2    0.903 (x wire, 12 mm, 1.41)     0.087     0.104     2
+#   1.52-1.96      9    0.537 (x dipole, 14 mm, 1.59)   0.036     0.038     4
+#   2.04-3.39      5    6.670 (z wire 8+20, 3.39)       0.351     2.087     5
+#   0.21-0.30     13    0.134 (tutorial patch, 2 mm     0.011     0.023     0
+#                              cells, 8 mm blocks, 2.0-2.8 GHz, RTX 3090)
+#
+# Every point at or below 1.0 is within 0.19 dB in shape; the first point
+# above 0.2 dB is at 1.23. Dropped: the same wires in a 46 mm domain, whose
+# far end lay outside the NTFF box, so the box itself missed current. The
+# tutorial patch at 1 mm (k|delta| 0.32 at 13 frequencies, 0.46 at 50) is
+# accepted; its pattern was not compared at 1 mm.
+
+def test_refuses_blocks_too_large_for_the_frequency():
+    """The 12 mm slab of the guard model is one 6 mm-block-wide column 12 mm
+    thick: k*|delta| = 1.46 at 10 GHz is refused, 0.73 at 5 GHz is not."""
+    from rfx import Simulation
+    for freqs, refused in ((FREQS, True), (GUARD_FREQS, False)):
+        sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
+                         cpml_layers=6, boundary="cpml")
+        sim.add_source((1.2e-2,) * 3, "ez", amplitude_kind="current")
+        sim.add_current_moment_monitor(
+            corner_lo=(6e-3,) * 3, corner_hi=(18e-3,) * 3, block_size=6e-3,
+            freqs=freqs)
+        if refused:
+            with pytest.raises(NotImplementedError, match="blocks are too large"):
+                _guard_runs(sim)
+        else:
+            assert _guard_runs(sim).current_moment_data is not None
+
+
+def test_refuses_a_slab_too_thick_even_with_small_blocks():
+    """The slab thickness is part of every block: 1 mm blocks do not help a
+    20 mm-thick slab at 10 GHz (k*|delta| about 2.1)."""
+    from rfx import Simulation
+    sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=1e-3,
+                     cpml_layers=6, boundary="cpml")
+    sim.add_source((1.2e-2,) * 3, "ez", amplitude_kind="current")
+    sim.add_current_moment_monitor(
+        corner_lo=(10e-3, 10e-3, 2e-3), corner_hi=(14e-3, 14e-3, 22e-3),
+        block_size=1e-3, freqs=np.array([10e9]))
+    with pytest.raises(NotImplementedError, match="thinner slab"):
+        _guard_runs(sim)
+
+
+@pytest.mark.parametrize("block_size", [0.0, -2e-3])
+def test_declaration_refuses_a_non_positive_block_size(block_size):
+    from rfx import Simulation
+    sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
+                     cpml_layers=6, boundary="cpml")
+    with pytest.raises(ValueError, match="must be positive"):
+        sim.add_current_moment_monitor(
+            corner_lo=(6e-3,) * 3, corner_hi=(18e-3,) * 3,
+            block_size=block_size, freqs=GUARD_FREQS)
+
+
+def _pec_box(sim):
+    from rfx import Box
+    sim.add(Box((10e-3, 10e-3, 14e-3), (14e-3, 14e-3, 16e-3)), material="pec")
+    return sim
+
+
+def test_refuses_kottke_pec_and_accepts_the_other_conductor_updates():
+    """``subpixel_smoothing="kottke_pec"`` zeroes H inside the cells it
+    treats as PEC, a magnetic surface current the monitor never reads; the
+    staircase and the E-side ``conformal_pec=True`` updates leave H alone."""
+    with pytest.raises(NotImplementedError, match="zeroes H"):
+        _guard_runs(_pec_box(_guard_sim()), subpixel_smoothing="kottke_pec")
+    for kw in ({}, {"conformal_pec": True}):
+        assert _guard_runs(_pec_box(_guard_sim()), **kw).current_moment_data is not None
+
+
+def test_refuses_the_kottke_occupancy_lane(monkeypatch):
+    sim = _guard_sim()
+    occ = np.zeros(sim._build_grid().shape, dtype=np.float32)
+    occ[12, 12, 12] = 1.0
+    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
+    with pytest.raises(NotImplementedError, match="zeroes H"):
+        sim.forward(pec_occupancy_override=jnp.asarray(occ), n_steps=4,
+                    skip_preflight=True)
+
+
+def _topology(region_lo_mm, region_hi_mm, material_fg):
+    from rfx.topology import TopologyDesignRegion, topology_optimize
+    sim = _guard_sim()
+    sim.add_material("diel6", eps_r=6.0)
+    region = TopologyDesignRegion(
+        corner_lo=tuple(v * 1e-3 for v in region_lo_mm),
+        corner_hi=tuple(v * 1e-3 for v in region_hi_mm),
+        material_bg="air", material_fg=material_fg)
+    theta, phi = np.array([0.5, 1.5]), np.array([0.0, 1.0])
+
+    def objective(result):
+        ff = current_moment_far_field(result, theta, phi)
+        return -jnp.sum(jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2)
+
+    return topology_optimize(sim, region, objective, n_iterations=1,
+                             verbose=False, skip_preflight=True)
+
+
+@pytest.mark.parametrize("material_fg", ["diel6", "pec"])
+def test_topology_design_region_outside_the_slab_is_refused(material_fg):
+    """``topology_optimize`` hands the solve whole-grid traced design arrays;
+    it gives the guard the design region's bounds instead."""
+    with pytest.raises(NotImplementedError, match="topology design region"):
+        _topology((18, 8, 8), (22, 16, 16), material_fg)
+
+
+@pytest.mark.slow
+def test_topology_design_region_inside_the_slab_runs():
+    assert _topology((10, 10, 10), (14, 14, 14), "diel6") is not None
+
+
+# One refused and one accepted model per branch of the guard. Each helper
+# puts the thing either outside the slab (refused) or inside it (accepted).
+def _surface_impedance_sheet(sim, inside):
+    from rfx import Box
+    z = 12e-3 if inside else 20e-3
+    sim.add_thin_conductor(Box((10e-3, 10e-3, z), (14e-3, 14e-3, z)),
+                           sigma_bulk=1e5, thickness=1e-5,
+                           surface_impedance_f0=4e9)
+
+
+def _kerr(sim, inside):
+    sim.add_material("kerr", eps_r=1.0, chi3=1e-2)
+    lo, hi = ((10, 10, 10), (14, 14, 14)) if inside else ((2, 2, 2), (4, 4, 4))
+    _block(sim, lo, hi, material="kerr")
+
+
+def _pec_wire(sim, inside):
+    from rfx.geometry.csg import PolylineWire
+    y = 12e-3 if inside else 3e-3
+    sim.add(PolylineWire(points=((10e-3, y, 12e-3), (14e-3, y, 12e-3)),
+                         radius=1e-4), material="pec")
+
+
+GUARD_BRANCHES = {
+    "surface-impedance sheet": (_surface_impedance_sheet, "surface-impedance sheet"),
+    "Kerr material": (_kerr, "Kerr material"),
+    "PEC wire": (_pec_wire, "a conductor"),
+}
+
+
+@pytest.mark.parametrize("inside", [False, True], ids=["outside", "inside"])
+@pytest.mark.parametrize("branch", list(GUARD_BRANCHES))
+def test_guard_branch_refuses_outside_and_accepts_inside(branch, inside):
+    add, message = GUARD_BRANCHES[branch]
+    sim = _guard_sim()
+    add(sim, inside)
+    if inside:
+        assert _guard_runs(sim).current_moment_data is not None
+    else:
+        with pytest.raises(NotImplementedError, match=message):
+            _guard_runs(sim)
+
+
+def test_refuses_a_pmc_face_and_accepts_absorbing_faces():
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    spec = BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
+                        y=Boundary(lo="cpml", hi="cpml"),
+                        z=Boundary(lo="pmc", hi="cpml"))
+    with pytest.raises(NotImplementedError, match="PMC face"):
+        _guard_runs(_guard_sim(boundary=spec))
+    assert _guard_runs(_guard_sim()).current_moment_data is not None
+
+
+def test_refuses_a_plane_port_and_accepts_a_lumped_port():
+    from rfx import Simulation
+
+    def bare():
+        sim = Simulation(freq_max=1.2e10, domain=(2.4e-2,) * 3, dx=DX,
+                         cpml_layers=6, boundary="cpml")
+        sim.add_current_moment_monitor(
+            corner_lo=(6e-3,) * 3, corner_hi=(18e-3,) * 3, block_size=6e-3,
+            freqs=GUARD_FREQS)
+        return sim
+
+    sim = bare()
+    sim.add_waveguide_port(4e-3, y_range=(4e-3, 20e-3), z_range=(8e-3, 16e-3),
+                           freqs=GUARD_FREQS)
+    with pytest.raises(NotImplementedError, match="waveguide port"):
+        _guard_runs(sim)
+    sim = bare()
+    sim.add_port((12e-3, 12e-3, 10e-3), "ez", impedance=50.0)
+    assert _guard_runs(sim).current_moment_data is not None
+
+
+def _forward_with(sim, **kw):
+    return sim.forward(n_steps=4, skip_preflight=True, **kw)
+
+
+@pytest.mark.parametrize("inside", [False, True], ids=["outside", "inside"])
+@pytest.mark.parametrize("override", ["pec_mask_override", "pec_occupancy_override"])
+def test_concrete_pec_overrides_are_measured(override, inside):
+    """A concrete ``pec_mask_override`` / ``pec_occupancy_override`` is part
+    of the conductor the run solves, and the guard reads it."""
+    sim = _guard_sim()
+    shape = sim._build_grid().shape
+    cell = (12, 12, 12) if inside else (5, 12, 12)
+    if override == "pec_mask_override":
+        arr = np.zeros(shape, dtype=bool)
+        arr[cell] = True
+    else:
+        arr = np.zeros(shape, dtype=np.float32)
+        arr[cell] = 1.0
+    if inside:
+        assert _forward_with(sim, **{override: jnp.asarray(arr)}).current_moment_data is not None
+    else:
+        with pytest.raises(NotImplementedError, match="a conductor"):
+            _forward_with(sim, **{override: jnp.asarray(arr)})
+
+
+@pytest.mark.parametrize("inside", [False, True], ids=["outside", "inside"])
+def test_design_occupancy_box_is_checked_by_its_bounds(inside):
+    sim = _guard_sim()
+    lo, hi = ((10e-3, 10e-3, 10e-3), (12e-3, 12e-3, 12e-3)) if inside else \
+        ((2e-3, 2e-3, 2e-3), (4e-3, 4e-3, 4e-3))
+
+    def f(a):
+        return jnp.sum(_forward_with(
+            sim, design_box=(lo, hi),
+            design_occupancy_override=jnp.ones((2, 2, 2)) * a,
+            checkpoint=False).current_moment_data[0].real)
+
+    if inside:
+        assert np.isfinite(float(jax.grad(f)(0.5)))
+    else:
+        with pytest.raises(NotImplementedError, match="design occupancy box"):
+            jax.grad(f)(0.5)
+
+
 def test_declaration_rejects_an_unknown_keyword():
     from rfx import Simulation
     sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, 2.4e-2), dx=DX,
@@ -1665,7 +1919,7 @@ def _sim_with_monitor(**kw):
     sim.add_source(position=(1.2e-2, 1.2e-2, 1.2e-2), component="ez")
     sim.add_current_moment_monitor(
         corner_lo=(0.6e-2, 0.6e-2, 0.6e-2), corner_hi=(1.8e-2, 1.8e-2, 1.8e-2),
-        block_size=6e-3, freqs=FREQS)
+        block_size=6e-3, freqs=GUARD_FREQS)
     return sim
 
 
@@ -1822,7 +2076,7 @@ def test_weight_dtype_follows_the_runs_precision():
                        precision=precision)
         s.add_current_moment_monitor(
             corner_lo=(4e-3, 4e-3, 4e-3), corner_hi=(1.6e-2, 1.6e-2, 1.2e-2),
-            block_size=6e-3, freqs=FREQS)
+            block_size=6e-3, freqs=GUARD_FREQS)
         return s
 
     s32 = _sim("float32")

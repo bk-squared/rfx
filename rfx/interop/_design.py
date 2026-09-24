@@ -728,6 +728,18 @@ _NTFF_FIELDS: dict[str, _F] = {
     "freqs": _ARRAY,
 }
 
+# add_current_moment_monitor's declaration. margin_cells is stored as given
+# (a scalar or a triple) and written out as the triple it means.
+_CURRENT_MOMENT_FIELDS: dict[str, _F] = {
+    "corner_lo": _vec(3),
+    "corner_hi": _vec(3),
+    "block_size": _NUM,
+    "freqs": _ARRAY,
+    "order": _INT,
+    "margin_cells": _ivec(3),
+    "off_cells": _INT,
+}
+
 # Record classes pinned against their field registry.  ``_PortEntry`` is
 # absent because it is split across two document sections and checked
 # separately in ``_dump_ports``.
@@ -838,6 +850,9 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_mode",
     "_msl_ports",
     "_ntff",
+    # add_current_moment_monitor: observables.current_moments, a key the
+    # document carries only when a monitor is declared.
+    "_current_moments",
     "_pec_faces",
     "_periodic_axes",
     "_ports",
@@ -1302,6 +1317,13 @@ def _non_portable(document: dict[str, Any]) -> list[dict[str, str]]:
             "(x-normal, ez/ey, CPML only) and margin is in cells; Meep has no "
             "TFSF primitive",
         )
+    if "current_moments" in document["observables"]:
+        note(
+            "observables.current_moments",
+            "the rfx in-loop block current-moment monitor has no counterpart "
+            "in another solver; its block_size and margin_cells are rules on "
+            "rfx's own lattice. observables.ntff is the portable far field",
+        )
     if document["refinement"] is not None:
         note(
             "refinement",
@@ -1413,6 +1435,23 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
             "corner_hi": _NTFF_FIELDS["corner_hi"].dump(corner_hi, "_ntff.corner_hi"),
             "freqs": _NTFF_FIELDS["freqs"].dump(freqs, "_ntff.freqs"),
         }
+
+    current_moments = None
+    if getattr(sim, "_current_moments", None) is not None:
+        spec = sim._current_moments
+        if len(spec) != 6 or not isinstance(spec[5], dict):
+            raise _refuse(
+                "_current_moments must be (corner_lo, corner_hi, block_size, "
+                f"freqs, order, extra), got {spec!r}")
+        corner_lo, corner_hi, block_size, freqs, order, extra = spec
+        margin = extra.get("margin_cells", 0)
+        margin = (margin,) * 3 if np.isscalar(margin) else tuple(margin)
+        values = {"corner_lo": corner_lo, "corner_hi": corner_hi,
+                  "block_size": block_size, "freqs": freqs, "order": order,
+                  "margin_cells": margin, "off_cells": extra.get("off_cells", 0)}
+        current_moments = {
+            key: _CURRENT_MOMENT_FIELDS[key].dump(value, f"_current_moments.{key}")
+            for key, value in values.items()}
 
     refinement = None
     if sim._refinement is not None:
@@ -1548,6 +1587,8 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
                 what="_flux_monitors",
             ),
             "ntff": ntff,
+            **({} if current_moments is None
+               else {"current_moments": current_moments}),
         },
         "refinement": refinement,
     }
@@ -1604,6 +1645,9 @@ _EXCITATION_KEYS = {
 }
 
 _OBSERVABLE_KEYS = {"probes", "dft_planes", "flux_monitors", "ntff"}
+#: Keys a document carries only when the design declares them, so documents
+#: written before they existed read back unchanged.
+_OPTIONAL_OBSERVABLE_KEYS = {"current_moments"}
 
 
 def _resolve_library_material(name: str):
@@ -1721,7 +1765,10 @@ def simulation_from_design(document: Any) -> Any:
     _refuse_removed_coaxial_terminations(excitations)
 
     observables = _section(document, "observables", what="design document")
-    _require_exact_keys(observables, _OBSERVABLE_KEYS, what="observables")
+    _require_exact_keys(
+        observables,
+        _OBSERVABLE_KEYS | (_OPTIONAL_OBSERVABLE_KEYS & set(observables)),
+        what="observables")
 
     materials = materials_from_dict(
         _section(document, "materials", what="design document")
@@ -1938,6 +1985,16 @@ def simulation_from_design(document: Any) -> Any:
         sim.add_ntff_box(
             values["corner_lo"], values["corner_hi"], values["freqs"]
         )
+
+    current_moments = observables.get("current_moments")
+    if current_moments is not None:
+        values = _load_entry(current_moments, _CURRENT_MOMENT_FIELDS,
+                             what="observables.current_moments")
+        sim.add_current_moment_monitor(
+            values["corner_lo"], values["corner_hi"], values["block_size"],
+            values["freqs"], order=values["order"],
+            margin_cells=tuple(values["margin_cells"]),
+            off_cells=values["off_cells"])
 
     _assert_round_trip(sim, document)
     return sim

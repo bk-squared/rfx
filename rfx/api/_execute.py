@@ -2135,6 +2135,9 @@ class _ExecuteMixin:
         pec_occupancy_for_run = pec_occupancy_local
         if (pec_occupancy_local is not None and
                 os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False")):
+            from rfx.current_moments import refuse_h_side_conductor
+            refuse_h_side_conductor(
+                self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
             inv_baseline = (
                 (1.0 / materials.eps_r).astype(jnp.float32),

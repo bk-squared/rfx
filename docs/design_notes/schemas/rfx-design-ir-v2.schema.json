@@ -1139,6 +1139,48 @@
               "$ref": "#/$defs/array_payload"
             }
           }
+        },
+        "current_moments": {
+          "type": "object",
+          "description": "Present only when add_current_moment_monitor was declared. rfx-only (see non_portable); margin_cells is the triple the declaration means.",
+          "additionalProperties": false,
+          "required": [
+            "corner_lo",
+            "corner_hi",
+            "block_size",
+            "freqs",
+            "order",
+            "margin_cells",
+            "off_cells"
+          ],
+          "properties": {
+            "corner_lo": {
+              "$ref": "#/$defs/vec3"
+            },
+            "corner_hi": {
+              "$ref": "#/$defs/vec3"
+            },
+            "block_size": {
+              "type": "number"
+            },
+            "freqs": {
+              "$ref": "#/$defs/array_payload"
+            },
+            "order": {
+              "type": "integer"
+            },
+            "margin_cells": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "off_cells": {
+              "type": "integer"
+            }
+          }
         }
       }
     },

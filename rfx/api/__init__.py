@@ -2979,6 +2979,10 @@ class Simulation(
         signs and time stamps so the mutation harness can measure what the
         declared checks catch; those never reach a user's declaration.
         """
+        if not float(block_size) > 0.0:
+            raise ValueError(
+                f"add_current_moment_monitor(block_size={block_size}): the "
+                "block side must be positive.")
         if int(order) != 2:
             raise ValueError(
                 f"add_current_moment_monitor(order={order}): only order=2 is "
