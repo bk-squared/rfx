@@ -632,8 +632,8 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
 @pytest.mark.slow
 @pytest.mark.xfail(
     strict=True, raises=AssertionError,
-    reason="#1292: MSL S vs historical base, 26/40 elements outside rtol 0.005/atol 0.002; "
-           "not bisected")
+    reason="#1292: MSL S vs historical base, 26/40 elements outside rtol 0.005/atol 0.002 "
+           "(max abs 0.0113) since #1213")
 def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     """End-to-end drift lock: full FDTD + assembly vs the committed golden.
 

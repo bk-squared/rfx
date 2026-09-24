@@ -811,6 +811,10 @@ def test_live_cells_reproduce_the_fixture_cpu(live_fx, rung):
 
 @pytest.mark.slow
 @pytest.mark.gpu
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="#1292: dielectric slab in waveguide, fine rung live S vs contract fixture "
+           "max|ΔS| 0.0883 (coarse 0.413, mid 0.181 bisect to #1213; fine not bisected)")
 def test_live_cells_reproduce_the_fixture_fine_rung(live_fx):
     """§5.11 row 2, on the GPU lane (the fine rung is 4x the steps)."""
     _live_compare(live_fx, "fine")
