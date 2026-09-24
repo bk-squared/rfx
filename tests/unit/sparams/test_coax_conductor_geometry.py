@@ -209,6 +209,58 @@ def test_a_wall_thinner_than_one_cell_is_refused_rather_than_silently_open():
             shell_thickness_m=1.0e-9)
 
 
+def test_a_wall_on_a_lateral_absorbers_face_is_refused():
+    """The coax lanes absorb on x and y (issue 1218), and a conductor on or in a
+    CPML pad diverges, so the wall has to keep a whole cell of vacuum from every
+    lateral absorber — measured on the REALIZED wall. The clamp keeps a cell in
+    continuous arithmetic, but a conductor cell i shorts edges on nodes i AND
+    i + 1: when the clamp binds on a high face the realized wall lands on that
+    absorber's inner face. Here the line's axis is 3 mm from the x-hi pad face
+    on 0.25 mm cells; the clamp thins the 1 mm wall to 0.695 mm, which leaves
+    one cell in continuous terms and none once rasterized."""
+    from rfx.sources.coaxial_port import SHELL_THICKNESS_M
+
+    dx = 0.25e-3
+    sim = Simulation(freq_max=40e9, domain=(0.008, 0.008, 0.012), boundary="cpml",
+                     cpml_layers=8, dx=dx)
+    g = sim._build_grid()
+    materials, _, _ = sim._build_materials(g)
+    cx = 0.005
+    span_x = (int(g.shape[0]) - 1 - int(g.pad_x_lo) - int(g.pad_x_hi)) * dx
+    room = (span_x - cx) - SMA_OUTER_RADIUS - dx          # the clamp's own arithmetic
+    assert dx <= room < SHELL_THICKNESS_M, (
+        "this case has to be one the continuous clamp alone accepts (a wall of at "
+        f"least one cell fits: {room / dx:.2f} cells), or it tests the old refusal")
+    with pytest.raises(ValueError, match=r"0 cell\(s\) from the x-hi absorber"):
+        stamp_coaxial_line(
+            g, materials, center_xy=(cx, 0.004), z_lo_index=int(g.pad_z_lo) + 4,
+            z_hi_index=int(g.shape[2]) - int(g.pad_z_hi) - 2,
+            pin_radius=SMA_PIN_RADIUS, outer_radius=SMA_OUTER_RADIUS)
+
+
+@pytest.mark.parametrize("dx", CELL_SIZES_M[1:])
+def test_the_battery_line_keeps_a_whole_cell_from_every_lateral_absorber(dx):
+    """The coax battery's own line (8 x 8 mm board, axis centred) at 4, 6 and 9
+    annulus cells, read from the realized edges rather than the stamper's cell
+    arithmetic: every shorted edge keeps at least one whole cell to each lateral
+    pad face."""
+    grid, _materials, _shell_inner, cells = _line(dx)
+    edges = realized_pec_edge_masks(cells, sheets=(), wires=())
+    for axis, name in ((0, "x"), (1, "y")):
+        n = int(grid.shape[axis])
+        touched = np.zeros(n, dtype=bool)
+        for comp, m in enumerate(edges):
+            hit = np.asarray(m, dtype=bool).any(axis=tuple(t for t in range(3) if t != axis))
+            touched |= hit
+            if comp == axis:                  # an edge along the axis also reaches node i + 1
+                touched[1:] |= hit[:-1]
+        nodes = np.nonzero(touched)[0]
+        lo_face = int(getattr(grid, f"pad_{name}_lo"))
+        hi_face = n - 1 - int(getattr(grid, f"pad_{name}_hi"))
+        assert nodes.min() - lo_face >= 1, (name, "lo", int(nodes.min()), lo_face)
+        assert hi_face - nodes.max() >= 1, (name, "hi", int(nodes.max()), hi_face)
+
+
 def test_the_conductor_is_not_written_into_sigma():
     """The realization moved out of ``materials.sigma``; a stamper that put it
     back would make both mechanisms act at once and this test would catch it."""

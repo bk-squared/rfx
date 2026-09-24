@@ -75,6 +75,46 @@ def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=N
     return tuple(np.asarray(e) | np.asarray(m) for e, m in zip(edges, merge_with))
 
 
+def _require_absorption_on_every_axis(sim, cpml_axes: str, lane: str) -> None:
+    """Both coax line lanes absorb on x, y and z (issue 1218).
+
+    With absorbers on z only, the lateral pads were vacuum backed by the PEC
+    grid faces: a closed metal can around the line. Every unshielded
+    conductor end — the open termination, and the pin and shell ending one
+    cell past the matched feed — lets field out of the annulus, and the can
+    held it between the shell and its walls; the open end coupled it back,
+    so the open's |S11| rose above 1 and grew with the record (1.018 at 12
+    line traversals, 1.046 at 24, at 9 annulus cells). With the lateral pads
+    absorbing, the same open reads at most 1.0015 and does not move with the
+    record (both in tests/fixtures/coax_chain_battery/open_closed_can_arms.json).
+    A face without an absorber is a PEC wall and closes the can again, so
+    every face needs positive CPML thickness.
+    """
+    for axis_name in "xyz":
+        face = getattr(sim._boundary_spec, axis_name)
+        if (
+            face.lo != "cpml"
+            or face.hi != "cpml"
+            or face.resolved_lo_thickness(sim._cpml_layers) <= 0
+            or face.resolved_hi_thickness(sim._cpml_layers) <= 0
+        ):
+            raise ValueError(
+                f"{lane}() requires positive CPML thickness on all six faces: "
+                "it absorbs on all three axes, and a face without an absorber "
+                "is a PEC wall that closes a metal can around the line "
+                "(issue 1218)."
+            )
+    if cpml_axes != "xyz":
+        raise ValueError(
+            f"{lane}() absorbs on all three axes and accepts only "
+            f"cpml_axes='xyz' (got {cpml_axes!r}). With absorbers on z only "
+            "the lateral pads are vacuum backed by the PEC grid faces, a "
+            "closed metal can that holds the field leaving an unshielded "
+            "conductor end; the open termination's |S11| then rose above 1 "
+            "and grew with the record (issue 1218)."
+        )
+
+
 def compute_coaxial_line_reflection(
     self,
     *,
@@ -83,7 +123,7 @@ def compute_coaxial_line_reflection(
     freqs: jnp.ndarray | None = None,
     n_freqs: int = 11,
     field_scale: float = 1.0e4,
-    cpml_axes: str = "z",
+    cpml_axes: str = "xyz",
     dut_offset_cells: int = 4,
     probe_count: int = 12,
     probe_start_cells: int = 8,
@@ -114,12 +154,23 @@ def compute_coaxial_line_reflection(
     The conductors deliberately stop ~2 cells short of the +z PML — running
     PEC into CPML is numerically unstable.
 
+    The line sits in open space: the run absorbs on all three axes
+    (``cpml_axes="xyz"``, the default and the only value accepted), so what
+    leaves the line's unshielded ends — the open termination, and the pin and
+    shell ending one cell past the matched feed — is absorbed as it would
+    radiate from a cable. ``cpml_axes="z"`` is refused: it left the lateral
+    pads as vacuum backed by the PEC grid faces, a closed metal can that held
+    that field, and the open's |S11| rose above 1 and grew with the record
+    (issue 1218).
+
     The enclosing :class:`Simulation` must use float32 precision and the
     three-dimensional, second-order uniform Yee solver with
     ``boundary="cpml"`` and ``cpml_layers > 0``. Unsupported precision,
     solver, grid, boundary, TFSF, and refinement settings raise before the
-    grid is built. The line feed requires positive CPML on both z faces,
-    ``cpml_axes="z"``, and no periodic-axis override.
+    grid is built. The run requires positive CPML thickness on all six faces
+    and no periodic-axis override, and the line's conductors must keep at
+    least one whole cell from every lateral absorber (the stamper refuses a
+    line without that room).
 
     This method constructs its own coaxial line, TEM source, DFT planes, and
     termination. Do not add separate geometry, thin conductors, lumped RLC
@@ -156,21 +207,8 @@ def compute_coaxial_line_reflection(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
             "with cpml_layers > 0 for its absorbing feed."
         )
-    z_boundary = self._boundary_spec.z
-    if (
-        z_boundary.lo != "cpml"
-        or z_boundary.hi != "cpml"
-        or z_boundary.resolved_lo_thickness(self._cpml_layers) <= 0
-        or z_boundary.resolved_hi_thickness(self._cpml_layers) <= 0
-    ):
-        raise ValueError(
-            "compute_coaxial_line_reflection() requires positive CPML "
-            "thickness on both z faces."
-        )
-    if cpml_axes != "z":
-        raise ValueError(
-            "compute_coaxial_line_reflection() requires cpml_axes='z'."
-        )
+    _require_absorption_on_every_axis(
+        self, cpml_axes, "compute_coaxial_line_reflection")
     if self._periodic_axes:
         raise ValueError(
             "compute_coaxial_line_reflection() does not support periodic "
@@ -498,7 +536,7 @@ def compute_coaxial_two_port(
     freqs: jnp.ndarray | None = None,
     n_freqs: int = 11,
     field_scale: float = 1.0e4,
-    cpml_axes: str = "z",
+    cpml_axes: str = "xyz",
     probe_count: int = 12,
     probe_start_cells: int = 8,
     probe_spacing_cells: int = 4,
@@ -571,9 +609,12 @@ def compute_coaxial_two_port(
 
     Same solver/precision/boundary contract as
     :meth:`compute_coaxial_line_reflection` (float32, 3D uniform Yee,
-    ``boundary='cpml'`` with positive CPML on all six faces,
-    ``cpml_axes='z'``, no periodic axes, no non-uniform mesh, no
-    refinement).
+    ``boundary='cpml'`` with positive CPML thickness on all six faces,
+    ``cpml_axes='xyz'``, no periodic axes, no non-uniform mesh, no
+    refinement). The run absorbs on all three axes: the line's two ends,
+    one cell past each feed, are unshielded, and with absorbers on z only
+    the lateral pads were a closed PEC can that held the field leaving them
+    (issue 1218). ``cpml_axes='z'`` is refused.
 
     Differentiable (``eps_scale``, #489 leg 3)
     -------------------------------------------
@@ -632,21 +673,7 @@ def compute_coaxial_two_port(
             "compute_coaxial_two_port() requires boundary='cpml' "
             "with cpml_layers > 0 for its absorbing feeds."
         )
-    z_boundary = self._boundary_spec.z
-    if (
-        z_boundary.lo != "cpml"
-        or z_boundary.hi != "cpml"
-        or z_boundary.resolved_lo_thickness(self._cpml_layers) <= 0
-        or z_boundary.resolved_hi_thickness(self._cpml_layers) <= 0
-    ):
-        raise ValueError(
-            "compute_coaxial_two_port() requires positive CPML "
-            "thickness on both z faces."
-        )
-    if cpml_axes != "z":
-        raise ValueError(
-            "compute_coaxial_two_port() requires cpml_axes='z'."
-        )
+    _require_absorption_on_every_axis(self, cpml_axes, "compute_coaxial_two_port")
     if self._periodic_axes:
         raise ValueError(
             "compute_coaxial_two_port() does not support periodic "
@@ -1176,10 +1203,9 @@ def compute_coax_msl_transition(
     not certify the junction's connectivity or its modal accuracy.
     Same solver/precision/boundary contract as
     :meth:`compute_coaxial_two_port` (float32, 3D uniform Yee,
-    ``boundary='cpml'`` with positive CPML on all six faces) EXCEPT
-    this method needs absorption on all three axes (``cpml_axes="xyz"``,
-    not ``"z"``): the coax's own far end needs an absorbing z face
-    exactly like the coax lane, but the MSL trace radiates in x/y too,
+    ``boundary='cpml'`` with positive CPML on all six faces, absorption on
+    all three axes): the coax's own far end needs an absorbing z face
+    exactly like the coax lane, the MSL trace radiates in x/y too,
     and the caller's own ground plane is an INTERNAL stamped/registered
     PEC layer rather than the domain's z boundary — this is also WHY
     this method cannot reuse a PEC ``z_lo`` domain boundary as the MSL
