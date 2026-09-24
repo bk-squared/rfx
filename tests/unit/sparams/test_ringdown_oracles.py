@@ -109,20 +109,31 @@ def test_tail_index_convention_with_the_true_model():
 
 
 def test_tail_keeps_its_digits_next_to_a_slow_pole():
-    """``1 - lambda z`` is taken as ``-expm1``: for a Q = 1e7 pole sitting on a
-    bin the naive ``1 - exp(x)`` has ~8 digits left; the closed form here
-    matches the same sum written with ``expm1`` in the other order."""
-    f0, q = 2.5e9, 1.0e7
-    alpha = np.pi * f0 / q
-    s = np.array([-alpha + 2j * np.pi * f0])
-    c = np.array([[1.0 + 0.0j]])
-    freqs = np.array([f0])
-    tail = rd.tail_dft(_model(s, c, 0), 99, freqs)[0, 0]
-    x = s[0] * DT - 2j * np.pi * f0 * DT
-    ref = DT * np.exp(x * 100) / (-np.expm1(x))
-    naive = DT * np.exp(x * 100) / (1.0 - np.exp(x))
-    assert abs(tail - ref) / abs(ref) < 1e-15
-    assert abs(naive - ref) / abs(ref) > 1e-12     # the digits expm1 keeps
+    """``1 - lambda z`` is taken as ``-expm1``. For a Q = 1e7 pole on its own bin
+    ``1 - lambda z`` is 7e-10, and the naive ``1 - exp(x)`` keeps ~7 digits of
+    it. The reference is the closed form in 50-digit decimal arithmetic. The
+    step is a power of two so ``s dt`` and ``2 pi f dt`` are exact and the bin
+    sits exactly on the pole: ``x = s dt - j 2 pi f dt`` is real."""
+    from decimal import Decimal, getcontext
+
+    getcontext().prec = 50
+    dt = 2.0 ** -40                                   # 0.909 ps, exact products
+    f0, q, n_last = 2.5e9, 1.0e7, 99
+    w0 = 2.0 * np.pi * f0
+    alpha = w0 / (2.0 * q)
+    s = np.array([-alpha + 1j * w0])
+    tail = rd.tail_dft(_model(s, np.array([[1.0 + 0.0j]]), 0, dt=dt), n_last,
+                       np.array([f0]))[0, 0]
+    eps = Decimal(alpha) * Decimal(dt)                # exact: dt is 2**-40
+    n1 = n_last + 1
+    ref = Decimal(dt) * (-eps * n1).exp() / (1 - (-eps).exp())
+    rel = abs(complex(tail) - float(ref)) / float(ref)
+    x = -alpha * dt
+    naive = dt * np.exp(x * n1) / (1.0 - np.exp(x))
+    rel_naive = abs(naive - float(ref)) / float(ref)
+    assert abs(tail.imag) < 1e-14 * abs(tail.real)
+    assert rel < 1e-14, rel
+    assert rel_naive > 1e-9, rel_naive              # the digits expm1 keeps
 
 
 # ---------------------------------------------------------------------------
@@ -177,13 +188,31 @@ def test_a_growing_component_is_discarded_and_counted():
     assert np.all(np.abs(model.lam) <= 1.0 + 1e-6)
 
 
-@pytest.mark.parametrize("n_window", [1235, 2058, 6431])
-def test_the_decimation_plan_is_harminvs(n_window):
-    from importlib import import_module
-    harminv = import_module("rfx.harminv")
-    factors, kept = rd.decimation_plan(n_window, DT, F_MAX)
-    ref = harminv._decimation_plan(n_window, DT, F_MAX, "auto")
-    assert (factors, kept) == (tuple(ref[0]), ref[1])
+# harminv's documented rule, applied by hand. Decimate when 1/dt > 8 f_max,
+# toward the target int(1/dt / (4 f_max)), as the largest factor <= target
+# built from stages <= 13 (tried largest stage first); keep a stage only while
+# kept = ceil(n/q) - 20 >= 10 and the pencil of the kept samples
+# (columns = int(0.33 kept)) still holds min(columns, kept - columns) >= 51.
+#   patch step, 4 GHz: 1/dt/(4 f_max) = 51.45 -> target 51 = 3 x 17 (17 > 13),
+#     50 = 10 x 5 -> stages (10, 5).
+#     n = 6431: q=10 keeps 644 - 20 = 624, int(0.33*624) = 205, min(205, 419) = 205
+#     >= 51 ok; q=5 keeps 125 - 20 = 105, int(34.65) = 34 < 51 stop -> ((10,), 624)
+#     n = 2058: q=10 keeps 206 - 20 = 186, 61 >= 51 ok; q=5 keeps 38 - 20 = 18,
+#     5 < 51 stop -> ((10,), 186)
+#   cavity step, 12 GHz: 21.85 -> 21 = 7 x 3. n = 13000: q=7 keeps 1858 - 20 = 1838
+#     (606 ok); q=3 keeps 613 - 20 = 593 (195 ok) -> ((7, 3), 593)
+#   cavity step, 4 GHz: 65.56 -> 65 = 13 x 5. n = 13000: q=13 keeps 1000 - 20 = 980
+#     (323 ok); q=5 keeps 196 - 20 = 176 (58 ok) -> ((13, 5), 176)
+#   1 ps step, 200 GHz: 1/dt = 1e12 < 8 f_max = 1.6e12 -> no decimation
+@pytest.mark.parametrize("dt, f_max, n_window, plan", [
+    (1.2148552052451076e-12, 4.0e9, 6431, ((10,), 624)),
+    (1.2148552052451076e-12, 4.0e9, 2058, ((10,), 186)),
+    (9.532874347654823e-13, 12.0e9, 13000, ((7, 3), 593)),
+    (9.532874347654823e-13, 4.0e9, 13000, ((13, 5), 176)),
+    (1.0e-12, 200.0e9, 5000, ((), 5000)),
+])
+def test_the_decimation_plan_follows_harminvs_documented_rule(dt, f_max, n_window, plan):
+    assert rd.decimation_plan(n_window, dt, f_max) == plan
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +295,39 @@ def test_the_guard_drops_no_in_band_content():
     err = _rel(c_g, _analytic_infinite_dft())
     assert err < 1e-4, err
     assert _rel(c_g, c_0) < 1e-2 * err, (_rel(c_g, c_0), err)
+
+
+def test_a_discarded_growing_component_is_sized_at_the_record_end():
+    """A component growing 6.1e-6 per step (the rate of a slightly unstable
+    update) ends the record at 1e-2 and 5e-3. The pencil discards it as
+    growing; the joint residue fit sizes it at the record's last sample,
+    relative to the channel's RMS over the window: each of its two poles
+    carries half the cosine's amplitude."""
+    t = np.arange(N_RECORD) * DT
+    rate = 5.0e6                                            # 1/s
+    base = _record()
+    for end_amp in (1e-2, 5e-3):
+        grow = end_amp * np.exp(rate * (t - t[-1])) * np.cos(2.0 * np.pi * 2.2e9 * t)
+        y = base + grow[:, None]
+        model = _identify(y)
+        assert model.s_growing.size == 2, model.s_growing
+        assert np.allclose(np.abs(model.s_growing.imag) / (2 * np.pi), 2.2e9, rtol=1e-6)
+        expected = 0.5 * end_amp / np.min(model.window_rms)
+        assert np.allclose(model.growing_amplitude, expected, rtol=0.02), (
+            model.growing_amplitude, expected)
+    clean = _identify(base.astype(np.float32).astype(np.float64))
+    assert clean.s_growing.size == 0
+
+
+def test_poles_carry_their_amplitude_largest_first():
+    y = _record()
+    model = _identify(y)
+    amp = [p.amplitude for p in model.poles()]
+    assert amp == sorted(amp, reverse=True)
+    # the slow 2.51 GHz, Q 100 pair is the largest at the window start on
+    # channel 1; the fast 3.40 GHz, Q 40 pair the smallest
+    top, bottom = model.poles()[0], model.poles()[-1]
+    assert abs(abs(top.f_hz) - 2.51e9) < 1e3 and abs(abs(bottom.f_hz) - 3.40e9) < 1e3
 
 
 # ---------------------------------------------------------------------------
