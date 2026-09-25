@@ -104,18 +104,13 @@ finite-difference cross-checks live in
 
 ## Validation
 
-Every public cross-validation case is mapped to a named analytic or external
-reference with a reproduce command and acceptance gates. Start with
-[Cross-Validation and Accuracy](docs/public/guide/validation.mdx) for the
-support limits, then [Benchmarks](docs/public/guide/benchmarks.mdx) for the
-per-case numbers. The CPU-feasible subset runs locally:
-
-```bash
-PYTHONPATH=. python scripts/run_crossval_cpu.py
-```
-
-Exit codes: `0` all gates passed, `1` a gate failed, `2` a required external
-reference was unavailable (inconclusive, not silently green).
+Structures with a closed form are checked against it in `tests/oracle/`;
+comparisons with other solvers (openEMS, Palace, Meep) run against frozen
+reference records in `tests/crossval/`. Start with
+[Cross-Validation and Accuracy](docs/public/guide/validation.mdx) for what is
+checked and what you must check yourself, then
+[Benchmarks](docs/public/guide/benchmarks.mdx) for each comparison and how to
+run it.
 
 ## Documentation
 

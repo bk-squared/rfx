@@ -19,65 +19,34 @@ the analytic tests and your own checks, read
   meshes or a whole port family.
 </Aside>
 
-Every number below is read from a committed result file. A test checks that
-each quoted value still matches its file.
-
 ## Reference cases
 
-These scripts live in `validation/crossval/`, and
-`validation/crossval/manifest.json` lists them. The table and the manifest are
-kept in step by a test.
+Each comparison is a test under `tests/crossval/`. It solves the structure in
+rfx and compares the result with a reference record frozen in the repository,
+so you do not need the other solver to re-check rfx. The records say which
+solver, version and mesh produced them.
 
-- **Validated comparison**: the script gates rfx against the reference.
-- **Diagnostic only**: the script reports a comparison, or guards one specific
-  regression. Do not read it as evidence for broader support.
+### Probe-fed patch on RT/Duroid 5880
 
-| Use | Case | What it checks | Reference | Reproduce |
-|-----|------|----------------|-----------|-----------|
-| Diagnostic only | `15_patch_antenna_rt5880` | A probe-fed 40 × 50 mm patch on RT/Duroid 5880 (εr 2.2, h = 3.175 mm) over a finite ground plane, built the same way in both solvers on a uniform mesh with 4 cells through the substrate. It exercises a probe feed, sheet conductors, CPML, ring-down resonance extraction and a near-to-far-field box end to end. | openEMS, same geometry | `python validation/crossval/15_patch_antenna_rt5880.py` |
+| | |
+|---|---|
+| Structure | A 39.7 × 49.25 mm patch on 3.175 mm RT/Duroid 5880 (εr 2.2, tan δ 0.001) over a 55.6 × 65.1 mm ground, fed by a 50 Ω probe 8.73 mm off centre. |
+| Reference | openEMS, the same board on three meshes, judged against its finest one. |
+| rfx meshes | a uniform ladder at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three rungs realize the same patch, and the test refuses a rung that does not. |
+| Judged | the TM010 resonance (where Re(Z_in) peaks) within 1 %, and the input resistance there within 2 %, on the finest rung; the last two rungs must agree within 1 % (mesh statement), and the record must ring down to −40 dB. |
+| Reported, not judged | the `\|S11\|` dip frequency and depth, the reactance at resonance and the −10 dB band edges. Neither solver declares a probe radius, so each feed cell sets the probe's series reactance, and that moves the dip. |
+| Result when it was added | resonance −0.10 % and input resistance −0.42 % from openEMS, on converged ladders ([bk-squared/rfx#1315](https://github.com/bk-squared/rfx/pull/1315)). |
+| Test | `tests/crossval/rt5880_patch/test_rt5880_patch.py` |
 
-The script gates the committed run on a coarse-mesh envelope, not on patch
-accuracy: the rfx ring-down resonance within 8 % of the openEMS `S11` dip, a
-settling level of −40 dB or lower, `max|S11| ≤ 1.05` for both solvers
-(passivity), broadside directivity within 3 dB, and a check that both
-conductor sheets and the feed land on the planes they were drawn on. The
-committed run shows:
+The case judges the resonance and the input resistance, not the `|S11|`
+curve, because the two solvers' probe models differ. It says the cavity, its
+fringing and its radiation loss agree with openEMS on this board. It does not
+say a patch on a different board or mesh is within 1 %.
 
-| Quantity | rfx | openEMS |
-|---|---|---|
-| Resonance | `validation/crossval/_15_patch_results/rfx.json::f_harminv_hz = 2.4230 GHz` (ring-down) | `validation/crossval/_15_patch_results/openems.json::f_dip_hz = 2.330 GHz` (`S11` dip) |
-| `S11` dip depth | `validation/crossval/_15_patch_results/rfx.json::s11_dip_db = -19.05 dB` | `validation/crossval/_15_patch_results/openems.json::s11_dip_db = -20.10 dB` |
-| `max\|S11\|` | `validation/crossval/_15_patch_results/rfx.json::max_abs_s11 = 0.991` | `validation/crossval/_15_patch_results/openems.json::max_abs_s11 = 0.992` |
-| Broadside directivity | `validation/crossval/_15_patch_results/rfx.json::gain_dbi = 7.20 dBi` | `validation/crossval/_15_patch_results/openems.json::gain_dbi = 7.34 dBi` |
-| Settling level | `validation/crossval/_15_patch_results/rfx.json::settle_db = -68.7 dB` | — |
+## More comparisons
 
-The two resonances differ by about 4 %, with rfx above openEMS. The meshes are
-part of the reason. openEMS adds mesh lines at the patch edges, while this rfx
-run uses a uniform grid, on which the patch edges land on the nearest grid
-nodes and the patch is solved slightly shorter than drawn. A shorter patch
-resonates higher. With mesh lines that follow the sheet edges
-(`rfx.mesh_edges.edge_aware_profiles`), the rfx resonance moves from
-`validation/crossval/_15_patch_results/rfx_uniform_70_periods.json::f_harminv_hz = 2.4242 GHz`
-to
-`validation/crossval/_15_patch_results/rfx_edge_aware_mesh.json::f_harminv_hz = 2.3904 GHz`,
-toward the openEMS value. Neither run is a converged patch answer.
-
-**Why this case is diagnostic only.** An 8 % window on the resonance is too
-wide to catch a wrongly built board. A board whose ground plane sat one cell
-below the substrate, leaving a vacuum layer in the cavity, read
-`validation/crossval/_15_patch_results/rfx_one_plane_ground_b29f9de7.json::f_harminv_hz = 2471858108`
-Hz against the openEMS dip of
-`validation/crossval/_15_patch_results/openems.json::f_dip_hz = 2330000000`
-Hz, only 6.1 % apart and inside the window. The script's geometry check
-catches that board; the frequency window does not. That wrong build can no
-longer be declared in rfx: its record is kept as the example of what the
-frequency gate cannot see.
-
-## Comparisons in the test suite
-
-More comparisons live under `tests/crossval/`. Each one runs rfx and compares
-it with a reference record frozen in the repository, so no external solver is
-needed to re-check rfx. Most are long and marked `gpu` or `slow`.
+The other comparisons under `tests/crossval/`. Most are long and marked `gpu`
+or `slow`.
 
 | Structure | Compared with | Test |
 |---|---|---|
@@ -96,56 +65,26 @@ against another solver. Those tests are in `tests/oracle/`.
 
 ## Reproduce
 
-Run a case from the repository root of a source checkout. The scripts are not
-installed with the wheel.
+The comparisons are pytest tests. The long ladders are marked `gpu` and
+`slow`, so the pull-request suite never runs them. From a source checkout:
 
 ```bash
-# Gate the committed rfx and openEMS results (seconds, no solver needed).
-python validation/crossval/15_patch_antenna_rt5880.py
+# The fast checks: build each board, check what it realizes, read the records.
+pytest tests/crossval/rt5880_patch
 
-# Re-solve the rfx side on your checkout (minutes on a CPU), then gate it.
-python validation/crossval/15_patch_antenna_rt5880.py rfx --num-periods 45 --gain
-python validation/crossval/15_patch_antenna_rt5880.py compare
-
-# Re-solve the openEMS side (needs openEMS and CSXCAD installed).
-python validation/crossval/15_patch_antenna_rt5880.py openems --gain
+# The full ladder (a GPU; the h/12 rung is about 53 M cells).
+pytest tests/crossval/rt5880_patch -m gpu
 ```
 
-A re-solve writes over the committed result file, so run it on a scratch
-branch. Its numbers can differ slightly from the committed ones when the solver
-has changed since the committed run; judge them with the same gates.
-
-The script exits with one of three codes:
-
-| Exit | Meaning |
-|------|---------|
-| `0` | Every check passed, including the comparison with the required reference. |
-| `1` | A run, a self-check or a numeric check failed. |
-| `2` | The rfx checks passed, but the required reference result or solver was missing. Inconclusive, not a pass. |
-
-To run every CPU-feasible case in a fresh process each, with a timeout:
-
-```bash
-PYTHONPATH=. python scripts/run_crossval_cpu.py
-```
-
-| Result | Meaning |
-|--------|---------|
-| `PASS` | The script returned `0` and printed no failure line. |
-| `SELF-CHECK-ONLY` | The script returned `2`. Inconclusive. |
-| `FAIL` | The script returned `1`, another code, or printed a failure line despite returning `0`. |
-| `ENV-SKIP` | An optional reference solver is installed but cannot be imported. An environment problem, not an rfx result. |
-| `TIMEOUT` | The script ran past its time limit. |
-
-The runner exits `0` only when no case ends in `FAIL` or `TIMEOUT`.
+`RFX_RT5880_PATCH_RUNGS=793.75e-6` runs only the coarsest rung. That is a
+diagnostic, not the case's verdict, because the mesh statement needs the
+ladder.
 
 ## Limits
 
-- **The patch case does not establish patch accuracy.** It shows that the
-  probe feed, sheets, absorber, ring-down extraction and far-field box work
-  together and land near openEMS. For your own patch, run a convergence study
-  and compare with a reference, as in
-  [Your First Patch Antenna](/rfx/guide/first-patch/).
+- **One board is not every patch.** The patch case covers one board and one
+  probe feed. For your own patch, run a convergence study and compare with a
+  reference, as in [Your First Patch Antenna](/rfx/guide/first-patch/).
 - **Magnitude comparisons do not cover phase.** The two filter cases compare
   `|S21|` only. On the notch filter, rfx also runs shorter feed lines than the
   reference, which moves the phase but not the magnitude.

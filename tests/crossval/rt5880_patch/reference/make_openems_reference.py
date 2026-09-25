@@ -6,15 +6,19 @@ is created or its geometry changes; this script is the thing that is run.
 
 WHAT IS SIMULATED
 -----------------
-A rectangular microstrip patch 40.0 mm long (x, the resonant length) and
-50.0 mm wide (y, the two radiating edges) on Rogers RT/Duroid 5880 (eps_r 2.2,
-tan delta 0.001, h 3.175 mm) over a finite 56 x 66 mm ground plane, fed by a
-50 ohm lumped probe that runs from the ground to the patch 9 mm off centre
-along x. The TM010 mode puts half a guided wavelength across the 40 mm, made
+A rectangular microstrip patch 39.7 mm long (x, the resonant length) and
+49.25 mm wide (y, the two radiating edges) on Rogers RT/Duroid 5880 (eps_r 2.2,
+tan delta 0.001, h 3.175 mm) over a finite 55.6 x 65.1 mm ground plane (the
+retired script's 40 x 50 mm patch and 56 x 66 mm ground, each edge moved to just
+outside a node common to rfx's h/4, h/8 and h/12 -- delta 10), fed by a
+50 ohm lumped probe that runs from the ground to the patch 8.73125 mm off
+centre along x (the retired script's 9 mm, moved to a node of every rfx rung --
+delta 9). The TM010 mode puts half a guided wavelength across the 39.7 mm, made
 electrically longer at each radiating edge by the fringing field; near that
 frequency the probe sees the patch's radiation resistance and |S11| dips. The
 transmission-line model with Hammerstad's fringing extension puts TM010 at
-2.4156 GHz. No closed form holds a probe-fed patch on a finite ground to 1 %,
+F_TM010_BOARD_HZ (2.4334 GHz for this board; 2.4156 GHz for the retired
+40 x 50 mm one). No closed form holds a probe-fed patch on a finite ground to 1 %,
 which is why this board is cross-validated against another solver and not
 against an oracle.
 
@@ -112,8 +116,8 @@ The builder is ``run_openems``'s build block, lines 1087-1125 of
 ``RETIRED_FROZEN_AT_COMMIT`` (the last commit to touch that file), frozen below
 verbatim in ``_FROZEN_BUILDER_SLICE`` so the proof survives the script's
 removal. ``_build_patch_board_at_rung``'s block IS that slice with the
-substitutions in ``B_COPY_SUBSTITUTIONS``, ``B_RUNG_SUBSTITUTIONS`` and
-``B_EDGE_SUBSTITUTIONS`` applied, and nothing else; while the script is still on
+substitutions in ``B_COPY_SUBSTITUTIONS``, ``B_RUNG_SUBSTITUTIONS``,
+``B_EDGE_SUBSTITUTIONS`` and ``B_BOX_SUBSTITUTIONS`` applied, and nothing else; while the script is still on
 disk ``--self-check`` also proves the frozen slice IS the script's, character for
 character. The deltas, in the record's meta and in the dry run: ``DELTA_LIST``
 below.
@@ -242,11 +246,20 @@ C0 = 2.99792458e8
 EPS_R = 2.2                 # RT/Duroid 5880
 TAN_DELTA = 1.0e-3
 H_SUB = 3.175e-3            # 1/8 inch
-L_PATCH = 40.0e-3          # resonant length (x)
-W_PATCH = 50.0e-3          # radiating width (y)
-GP_X = 56.0e-3
-GP_Y = 66.0e-3
-FEED_OFFSET_X = -9.0e-3    # inset feed, 9 mm off centre along L
+# PI 2026-09-25: every edge of the board just outside a node common to the rfx
+# ladder's h/4, h/8 and h/12 (h = 3.175 mm; the patch centre is a node). Each
+# half-extent is k * h/4 plus a pad: L/2 = 25 h/4 + 6.25 um, W/2 = 31 h/4 +
+# 18.75 um, GP_X/2 = 35 h/4 + 18.75 um, GP_Y/2 = 41 h/4 + 6.25 um. Declared
+# departures from the retired 40 / 50 / 56 / 66 mm: delta 10 and
+# DECLARED_CONSTANT_DEPARTURES.
+L_PATCH = 39.7e-3          # resonant length (x)
+W_PATCH = 49.25e-3         # radiating width (y)
+GP_X = 55.6e-3
+GP_Y = 65.1e-3
+# PI 2026-09-24: the probe moves to a node on every rfx rung h/4, h/8, h/12
+# (-11, -22, -33 cells of h/n from the patch centre); a declared departure from
+# the retired script's -9.0 mm, delta 9 and DECLARED_CONSTANT_DEPARTURES.
+FEED_OFFSET_X = -8.73125e-3
 N_SUB = 4
 F_LO, F_HI = 1.6e9, 3.4e9   # S11 search / sweep band
 
@@ -271,6 +284,25 @@ RETIRED_CONSTANT_LINES = {
     "N_SUB": "N_SUB = 4",
     "F_LO, F_HI": "F_LO, F_HI = 1.6e9, 3.4e9   # S11 search / sweep band",
 }
+
+# The retired constants this maker does NOT keep: name -> (the retired value,
+# this maker's value, why). --self-check holds the retired line to the first and
+# the constant to the second, so the departure is stated, not silent.
+_BOARD_REASON = ("PI 2026-09-25: every edge just outside a node common to the rfx "
+                 "ladder's h/4, h/8 and h/12; delta 10")
+DECLARED_CONSTANT_DEPARTURES = {
+    "FEED_OFFSET_X": (-9.0e-3, -8.73125e-3,
+                      "PI 2026-09-24: a node on every rfx rung h/4, h/8, h/12 "
+                      "(-11, -22, -33 cells of h/n); delta 9"),
+    "L_PATCH": (40.0e-3, 39.7e-3, _BOARD_REASON),
+    "W_PATCH": (50.0e-3, 49.25e-3, _BOARD_REASON),
+    "GP_X": (56.0e-3, 55.6e-3, _BOARD_REASON),
+    "GP_Y": (66.0e-3, 65.1e-3, _BOARD_REASON),
+}
+# The retired board, for the checks that must run on it: the TL model against
+# the retired record, the retired builder's line counts, and the negative
+# controls that reproduce what the reviewer found in the retired mesh.
+RETIRED_BOARD = {name: was for name, (was, _, _) in DECLARED_CONSTANT_DEPARTURES.items()}
 
 # What the retired, unprovenanced record says about itself, frozen so that the
 # numbers the dry run compares against survive the record's removal.
@@ -752,9 +784,20 @@ B_EDGE_SUBSTITUTIONS = [
 COMB_CLEARANCE_CELLS = 0.5
 B_PML_CELLS = 8
 # The retired box faces, in mm: the absorber's inner faces on every rung.
-B_BOX_FACES_MM = {"x": (-GP_X * 5e2 - 60.0, GP_X * 5e2 + 60.0),
-                  "y": (-GP_Y * 5e2 - 60.0, GP_Y * 5e2 + 60.0),
-                  "z": (-40.0, 90.0)}
+# Held at the retired board's air box (60 mm around the retired 56 x 66 mm
+# ground) when the ground moved to 55.6 x 65.1 mm (delta 10): the box does not
+# follow the board.
+B_BOX_FACES_MM = {"x": (-88.0, 88.0), "y": (-93.0, 93.0), "z": (-40.0, 90.0)}
+# One more keeps the box when the board changes (delta 10): the air box's x and y
+# lines are the retired faces, not 60 mm around the current ground.
+B_BOX_SUBSTITUTIONS = [
+    ("    air = 60.0",
+     "    air = 60.0  # noqa: F841  (the retired box's air; its faces are held, delta 10)"),
+    ("    mesh.AddLine('x', [-gpx / 2 - air, gpx / 2 + air])",
+     "    mesh.AddLine('x', list(B_BOX_FACES_MM['x']))  # the retired box, delta 10"),
+    ("    mesh.AddLine('y', [-gpy / 2 - air, gpy / 2 + air])",
+     "    mesh.AddLine('y', list(B_BOX_FACES_MM['y']))  # the retired box, delta 10"),
+]
 
 
 def _thirds(lo: float, hi: float, res: float) -> list:
@@ -833,9 +876,9 @@ def _build_patch_board_at_rung(ContinuousStructure, openEMS, *,
     patch_res = 1.2 * resolution_factor          # dense lines across patch, x rung
 
     # air box: generous (openEMS is cheap) -> trustworthy far-field reference
-    air = 60.0
-    mesh.AddLine('x', [-gpx / 2 - air, gpx / 2 + air])
-    mesh.AddLine('y', [-gpy / 2 - air, gpy / 2 + air])
+    air = 60.0  # noqa: F841  (the retired box's air; its faces are held, delta 10)
+    mesh.AddLine('x', list(B_BOX_FACES_MM['x']))  # the retired box, delta 10
+    mesh.AddLine('y', list(B_BOX_FACES_MM['y']))  # the retired box, delta 10
     mesh.AddLine('z', [-40.0, 90.0])
     # explicit fine lines across the patch (+2 mm skirt) so openEMS is at least
     # as converged laterally as rfx's uniform 0.79 mm -> a fair reference.
@@ -920,7 +963,8 @@ DELTA_LIST = [
     "the known-issues ledger's Sheen entry -- MUR side walls 3 mm from a substrate "
     "held that board's box energy flat at about -31 dB for 6 h, and PML on those "
     "faces ended the run by its energy criterion in 1.4 ns. Here the substrate "
-    "stops at the ground's 56 x 66 mm edge, 60 mm inside the absorber.",
+    "stops at the ground's edge (55.6 x 65.1 mm, delta 10), 60.2 / 60.45 mm inside "
+    "the absorber.",
     "DELTA 2 (stop criteria): openEMS(NrTS=30000, EndCriteria=1e-4) becomes "
     "openEMS(**kw), and the real pass PASSES NrTS = 1e9 and EndCriteria = 1e-5 "
     "(-50 dB of the box energy's peak); the record carries both. Every real pass "
@@ -942,8 +986,7 @@ DELTA_LIST = [
     "4, 6 and 8 cells (793.75, 529.17, 396.88 um). The air box does not scale. "
     "At factor 1 the three substituted expressions evaluate to the retired "
     "values; the realized rung-1 mesh still differs from the retired one by "
-    "deltas 1 and 8 (the retired builder realizes 93 x 102 x 54 lines through "
-    "CSXCAD's own smoothing at the pinned build, this rung 105 x 114 x 70).",
+    "deltas 1, 8, 9 and 10 (the dry run prints both line counts).",
     "DELTA 4 (frequency grid): the retired CalcPort grid linspace(F_LO, F_HI, "
     "n_freqs) with its default 181 points becomes 901 points over the same "
     "1.6-3.4 GHz, 2.0 MHz per bin. The band sits inside the excitation's 20 dB "
@@ -979,9 +1022,29 @@ DELTA_LIST = [
     "20.0000000000001 mm and another at y = 6.4e-14 mm, and CSXCAD's smoothing, "
     "which deletes the LOWER of two lines closer than 1e-7 of the mean spacing, "
     "deleted the probe's y = 0 line, so openEMS would have driven no edge.",
-    "NOTHING ELSE: the patch, the substrate (eps_r 2.2 with tan delta 1e-3 as a "
-    "conductivity at 2.4 GHz), the 56 x 66 mm ground, the 50 ohm lumped port "
-    "from z = 0 to z = h at x = -9 mm, SetGaussExcite(2.4e9, 1.2e9), the air box, "
+    "DELTA 9 (probe position): FEED_OFFSET_X = -9.0e-3 becomes -8.73125e-3, the "
+    "probe 8.73125 mm off the patch centre along x instead of 9 mm (PI "
+    "2026-09-24). -8.73125 mm is -11, -22 and -33 cells of rfx's h/4, h/8 and "
+    "h/12 (h = 3.175 mm) from the patch centre, a lattice node on every rung of "
+    "rfx's uniform ladder, which put the -9 mm probe at 8.731 / 9.128 / 8.996 mm. "
+    "The builder's line is unchanged (feed = FEED_OFFSET_X * 1e3); the port's x "
+    "line, the comb clearance around it (delta 8) and the line check follow the "
+    "constant.",
+    "DELTA 10 (the board on the rfx lattice): L_PATCH 40 -> 39.7 mm, W_PATCH 50 -> "
+    "49.25 mm, GP_X 56 -> 55.6 mm, GP_Y 66 -> 65.1 mm (PI 2026-09-25). Every "
+    "edge now sits just outside a node common to rfx's h/4, h/8 and h/12 "
+    "(h = 3.175 mm, the patch centre a node): half-extents 25, 31, 35 and 41 "
+    "cells of h/4 plus 6.25, 18.75, 18.75 and 6.25 um, so each rung of rfx's "
+    "uniform ladder realizes the same sheets and the same substrate. The "
+    "substrate still covers the ground's footprint. The air box does NOT follow "
+    "the ground: its x and y lines stay at the retired faces x +-88, y +-93 mm "
+    "(B_BOX_FACES_MM, B_BOX_SUBSTITUTIONS), so the absorber is where it was. The "
+    "TL model and the resonance window are computed from the new L and W "
+    "(F_TM010_BOARD_HZ, B_RESONANCE_BAND_HZ).",
+    "NOTHING ELSE: the patch and ground as sheets, the substrate (eps_r 2.2 with "
+    "tan delta 1e-3 as a conductivity at 2.4 GHz) over the ground's footprint, "
+    "the 50 ohm lumped port from z = 0 to z = h (at x = -8.73125 mm, delta 9), "
+    "SetGaussExcite(2.4e9, 1.2e9), the air box's z lines, "
     "the thirds rule, SmoothMeshLines('all', mesh_res, 1.4) and the mm length "
     "unit are the retired builder's, proved so character for character by "
     "--self-check.",
@@ -1031,7 +1094,8 @@ def _copy_proof_b() -> dict:
                   B_SLICE_LAST_LINE, "_build_patch_board_at_rung")
     derived = _FROZEN_BUILDER_SLICE
     counts = {}
-    for old, new in B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS + B_EDGE_SUBSTITUTIONS:
+    for old, new in (B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS + B_EDGE_SUBSTITUTIONS
+                     + B_BOX_SUBSTITUTIONS):
         counts[old] = derived.count(old)
         derived = derived.replace(old, new)
     text = _retired_text()
@@ -1397,9 +1461,7 @@ def _line_spec_b(resolution_factor: float) -> dict:
     required += [("x", "ground x- edge", -gpx / 2), ("x", "ground x+ edge", gpx / 2),
                  ("y", "ground y- edge", -gpy / 2), ("y", "ground y+ edge", gpy / 2),
                  ("z", "ground plane, z = 0", 0.0), ("z", "patch plane, z = h", h)]
-    air = 60.0
-    faces = {"x": (-gpx / 2 - air, gpx / 2 + air), "y": (-gpy / 2 - air, gpy / 2 + air),
-             "z": (-40.0, 90.0)}
+    faces = dict(B_BOX_FACES_MM)   # the retired box, on every board (delta 10)
     return {
         "required": required,
         "absorber_faces": [(ax, lo, hi, B_PML_CELLS) for ax, (lo, hi) in faces.items()],
@@ -2085,9 +2147,12 @@ def _build_artifact(records: dict, stage_meta: dict, stage_a_gate: dict, stages:
         "rfx_openems_image": os.environ.get("RFX_OPENEMS_IMAGE"),
         "rfx_commit": os.environ.get("RFX_COMMIT"),
         "structure": (
-            "rectangular microstrip patch 40.0 mm (x, resonant) x 50.0 mm (y) on RT/Duroid "
-            "5880 (eps_r 2.2, tan delta 1e-3, h 3.175 mm) over a 56 x 66 mm ground, 50 ohm "
-            "lumped probe from ground to patch at x = -9 mm, y = 0; copied from "
+            f"rectangular microstrip patch {L_PATCH*1e3:g} mm (x, resonant) x {W_PATCH*1e3:g} mm "
+            f"(y) on RT/Duroid 5880 (eps_r 2.2, tan delta 1e-3, h 3.175 mm) over a "
+            f"{GP_X*1e3:g} x {GP_Y*1e3:g} mm ground (the retired 40 x 50 / 56 x 66 mm "
+            "moved onto the rfx lattice, delta 10), 50 ohm "
+            f"lumped probe from ground to patch at x = {FEED_OFFSET_X*1e3:g} mm, y = 0 "
+            "(the retired -9 mm moved, delta 9); copied from "
             f"{RETIRED_REL_PATH}::{RETIRED_FUNCTION}"),
         "tl_model_tm010_hz": F_TM010_BOARD_HZ,
         "stage_a_is": ("openEMS python/Tutorials/Simple_Patch_Antenna.py, verbatim -- the "
@@ -2200,8 +2265,24 @@ def _derived_text(subs) -> str:
     return text
 
 
+class _retired_board:
+    """Within: the board constants are the retired script's (RETIRED_BOARD) --
+    for the checks that are about the retired board.  Restores on exit."""
+
+    def __enter__(self):
+        g = globals()
+        self._saved = {k: g[k] for k in RETIRED_BOARD}
+        g.update(RETIRED_BOARD)
+        return self
+
+    def __exit__(self, *exc):
+        globals().update(self._saved)
+        return False
+
+
 def _retired_realized() -> dict:
-    """The retired builder, as frozen, through the stand-in (MUR, 30000 / 1e-4)."""
+    """The retired builder, as frozen, through the stand-in (MUR, 30000 / 1e-4).
+    Call it inside ``_retired_board()`` for the retired board itself."""
     build = _exec_builder(_FROZEN_BUILDER_SLICE)
     return _realize(lambda CSX, O: build(CSX, O))
 
@@ -2209,7 +2290,8 @@ def _retired_realized() -> dict:
 def _without_delta_8_realized(resolution_factor: float) -> dict:
     """The rung builder with every delta except the comb clearance (delta 8)."""
     subs = (B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS
-            + [sub for sub in B_EDGE_SUBSTITUTIONS if "SmoothMeshLines" in sub[0]])
+            + [sub for sub in B_EDGE_SUBSTITUTIONS if "SmoothMeshLines" in sub[0]]
+            + B_BOX_SUBSTITUTIONS)
     build = _exec_builder(_derived_text(subs))
     return _realize(lambda CSX, O: build(CSX, O, nrts=B_REAL_NRTS,
                                          end_criteria=B_REAL_END_CRITERIA,
@@ -2307,9 +2389,10 @@ def _dry_run(stage: str, do_gain: bool) -> int:
           f"tutorial, never this run's gate")
     print()
     print("STAGE B -- the RT5880 board")
-    print(f"  board           {L_PATCH*1e3:.1f} x {W_PATCH*1e3:.1f} mm patch, eps_r {EPS_R}, "
-          f"tan d {TAN_DELTA:g}, h {H_SUB*1e3:.3f} mm, ground {GP_X*1e3:.0f} x {GP_Y*1e3:.0f} mm, "
-          f"feed x = {FEED_OFFSET_X*1e3:+.1f} mm")
+    print(f"  board           {L_PATCH*1e3:g} x {W_PATCH*1e3:g} mm patch, eps_r {EPS_R}, "
+          f"tan d {TAN_DELTA:g}, h {H_SUB*1e3:.3f} mm, ground {GP_X*1e3:g} x {GP_Y*1e3:g} mm "
+          f"(retired 40 x 50 / 56 x 66, delta 10), "
+          f"feed x = {FEED_OFFSET_X*1e3:+.5f} mm (retired -9.0, delta 9)")
     print(f"  TL model TM010  {F_TM010_BOARD_HZ/1e9:.4f} GHz; resonance window "
           f"{B_RESONANCE_BAND_HZ[0]/1e9:.4f}-{B_RESONANCE_BAND_HZ[1]/1e9:.4f} GHz "
           f"(the retired 0.80-1.20 x)")
@@ -2358,7 +2441,8 @@ def _dry_run(stage: str, do_gain: bool) -> int:
           f"{rr['dt_s']*1e12:.5f} ps ({dt_ratio:.3f} x this plan's CFL value) and "
           f"{rr['speed_mcells_per_s']:.1f} MC/s. Stage B at that dt ratio and that speed: "
           f"{_fmt_s(worst)} -- {worst/PLAN_JOB_BUDGET_S*100:.0f} % of the job")
-    retired = _mesh_summary(_retired_realized()["lines"], B_UNIT_M)
+    with _retired_board():
+        retired = _mesh_summary(_retired_realized()["lines"], B_UNIT_M)
     print(f"  calibration: the retired builder through the same stand-in gives "
           f"{'x'.join(str(retired['lines'][a]) for a in _AXIS_NAMES)} lines, line product "
           f"{retired['line_product']:,}; the retired record's n_cells, which its own code "
@@ -2403,8 +2487,15 @@ def _self_check() -> int:
             "FEED_OFFSET_X": FEED_OFFSET_X, "N_SUB": N_SUB, "F_LO, F_HI": (F_LO, F_HI)}
     for name, line in RETIRED_CONSTANT_LINES.items():
         value = ast.literal_eval(ast.parse(line).body[0].value)
-        check(value == mine[name], f"{name} equals the retired line {line.split('#')[0].strip()!r}",
-              f"{mine[name]!r}")
+        if name in DECLARED_CONSTANT_DEPARTURES:
+            was, now, why = DECLARED_CONSTANT_DEPARTURES[name]
+            check(value == was and mine[name] == now and now != was,
+                  f"{name} departs from the retired line {line.split('#')[0].strip()!r} "
+                  f"as declared: {was!r} -> {now!r} ({why})", f"{mine[name]!r}")
+        else:
+            check(value == mine[name],
+                  f"{name} equals the retired line {line.split('#')[0].strip()!r}",
+                  f"{mine[name]!r}")
         if retired is not None:
             check(line in retired_lines, f"that line is a whole line of {RETIRED_REL_PATH}")
     if retired is None:
@@ -2413,9 +2504,21 @@ def _self_check() -> int:
     check(abs(res_1 - RETIRED_RECORD["mesh_res_mm"]) < 1e-12,
           "rung 1.0's mesh_res is the retired record's own mesh_res_mm",
           f"{res_1!r} vs {RETIRED_RECORD['mesh_res_mm']!r}")
-    check(abs(F_TM010_BOARD_HZ - RETIRED_RECORD["f_analytic_hz"]) < 1e-3,
-          "the TL model reproduces the retired record's f_analytic_hz",
-          f"{F_TM010_BOARD_HZ:.4f} Hz")
+    f_tl_retired = f_tm010_tl_model(EPS_R, H_SUB, RETIRED_BOARD["L_PATCH"],
+                                    RETIRED_BOARD["W_PATCH"])[0]
+    check(abs(f_tl_retired - RETIRED_RECORD["f_analytic_hz"]) < 1e-3,
+          "the TL model on the retired 40 x 50 mm board reproduces the retired record's "
+          "f_analytic_hz", f"{f_tl_retired:.4f} Hz")
+    check(F_TM010_BOARD_HZ == f_tm010_tl_model(EPS_R, H_SUB, L_PATCH, W_PATCH)[0]
+          and F_TM010_BOARD_HZ != f_tl_retired,
+          f"this board's TL model is computed from L_PATCH and W_PATCH "
+          f"({L_PATCH*1e3:g} x {W_PATCH*1e3:g} mm): {F_TM010_BOARD_HZ/1e9:.6f} GHz, window "
+          f"{B_RESONANCE_BAND_HZ[0]/1e9:.6f}-{B_RESONANCE_BAND_HZ[1]/1e9:.6f} GHz")
+    check(all(abs(B_BOX_FACES_MM[a][1] - (RETIRED_BOARD[g] * 5e2 + 60.0)) < 1e-9
+              and B_BOX_FACES_MM[a][0] == -B_BOX_FACES_MM[a][1]
+              for a, g in (("x", "GP_X"), ("y", "GP_Y"))),
+          "the box faces are the retired air box, 60 mm around the retired ground "
+          "(delta 10)", f"{B_BOX_FACES_MM}")
     rec_path = _repo_root() / RETIRED_RECORD_REL_PATH
     if rec_path.is_file():
         import json
@@ -2450,12 +2553,13 @@ def _self_check() -> int:
     print("the Stage B builder IS the retired run_openems build block:")
     try:
         proof = _copy_proof_b()
-        for old, _ in B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS + B_EDGE_SUBSTITUTIONS:
+        for old, _ in (B_COPY_SUBSTITUTIONS + B_RUNG_SUBSTITUTIONS + B_EDGE_SUBSTITUTIONS
+                       + B_BOX_SUBSTITUTIONS):
             check(proof["counts"][old] == 1, f"the substitution target appears once: "
                   f"{old.strip()[:60]!r}", f"{proof['counts'][old]}")
         check(proof["matches"],
               "_build_patch_board_at_rung's block IS the frozen slice with exactly the "
-              "declared copy, rung and edge substitutions applied")
+              "declared copy, rung, edge and box substitutions applied")
         if not proof["matches"]:
             import difflib
             notes.append("\n".join(difflib.unified_diff(
@@ -2674,7 +2778,8 @@ def _self_check() -> int:
                   and port["stop"] == [FEED_OFFSET_X * 1e3, 0.0, H_SUB * 1e3],
                   f"{name} hands openEMS NrTS {B_REAL_NRTS} / EndCriteria {B_REAL_END_CRITERIA:g} "
                   f"explicitly, PML_8 x6, SetGaussExcite(2.4e9, 1.2e9), eps_r 2.2 and the probe "
-                  f"from (-9, 0, 0) to (-9, 0, h)", f"{b['kw']}")
+                  f"from ({FEED_OFFSET_X*1e3:g}, 0, 0) to ({FEED_OFFSET_X*1e3:g}, 0, h)",
+                  f"{b['kw']}")
             x = np.asarray(plans[name]["_lines"]["x"])
             span = np.diff(x[(x > -18.0) & (x < -10.0)])
             check(bool(np.allclose(np.median(span), 1.2 * f, rtol=1e-9)),
@@ -2686,16 +2791,18 @@ def _self_check() -> int:
     except Exception as exc:
         check(False, "the stand-in realizes both builders", repr(exc))
 
-    print("negative controls: the check catches what the reviewer found in the retired mesh:")
+    print("negative controls: the check catches what the reviewer found in the retired mesh "
+          "(run on the retired board's constants):")
     try:
-        bare = _without_delta_8_realized(0.5)
-        c8 = _line_check(bare["lines"], _line_spec_b(0.5))
+        with _retired_board():
+            bare = _without_delta_8_realized(0.5)
+            c8 = _line_check(bare["lines"], _line_spec_b(0.5))
+            old = _retired_realized()
+            cr = _line_check(old["lines"], _line_spec_b(1.0))
         check(not c8["passed"] and any(f.startswith("probe port y:") for f in c8["failures"]),
               "without delta 8 the finest rung loses the probe's y = 0 line (a comb line at "
               "6.4e-14 mm and CSXCAD's drop-the-lower rule) and the check FAILS on it",
               next((f for f in c8["failures"] if f.startswith("probe port y:")), "not caught"))
-        old = _retired_realized()
-        cr = _line_check(old["lines"], _line_spec_b(1.0))
         crowded = [f for f in cr["failures"] if "patch x+ edge" in f]
         check(not cr["passed"] and bool(crowded),
               "the retired builder puts an evenly spaced line ON the +x patch edge "

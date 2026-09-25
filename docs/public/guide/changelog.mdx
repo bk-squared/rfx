@@ -73,8 +73,9 @@ compare against a 1.x number.
 - **The `jax.pmap` multi-device runner** (#1296). Calling
   `rfx.runners.distributed.run_distributed` raises `RuntimeError`. Use
   `sim.run(devices=[...])`, which never used it.
-- **Most scripts in `validation/crossval/`** (#1156, #1157, #1160, #1165,
-  #1168, #1170, #1175). Structures with a closed form are now compared with it
+- **The scripts in `validation/crossval/` and its manifest** (#1156, #1157,
+  #1160, #1165, #1168, #1170, #1175, #1315); the RT/Duroid 5880 patch case
+  became `tests/crossval/rt5880_patch`. Structures with a closed form are now compared with it
   by the analytic tests in `tests/oracle/`, and comparisons with other solvers
   run against frozen reference records in `tests/crossval/`. See
   [Benchmarks](/rfx/guide/benchmarks/).

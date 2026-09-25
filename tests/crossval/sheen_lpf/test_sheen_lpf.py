@@ -76,8 +76,11 @@ stopband nulls coincide.  The shared ones are named constants in
 ``tests/crossval/_v2_judging.py``, the rest below, each with its source.  No
 threshold is derived from a run, and this case commits no record of a run.
 
-The judged feature is the stopband null (the deepest |S21| minimum in
-5–10 GHz, the estimator below).  The −3 dB corner is reported, not judged.
+The judged features are the stopband null (the deepest |S21| minimum in
+5–10 GHz, the estimator below), held to the 1 % bar as every extremum is,
+and the −3 dB corner, a level crossing, held by rule R-c (PI 2026-09-24): its
+frequency may be off by what the 2 dB magnitude bar allows along the openEMS
+curve's own slope there, 2 dB / |d(dB)/df| of the reference at its corner.
 
 How to run it
 -------------
@@ -92,7 +95,7 @@ without it the figure goes under pytest's ``tmp_path``.  Set
 statement and the comparison then apply to the rungs given, which is a
 diagnostic, not the case's verdict.  Unset, the full ladder runs.
 
-The two fast tests carry no mark: they build the structure and read the
+The three fast tests carry no mark: they build the structure and read the
 reference files, and never step the FDTD.
 """
 
@@ -119,6 +122,7 @@ from tests.crossval._v2_judging import (
     LADDER_AGREEMENT,
     MAG_BAR_DB,
     aligned_magnitude,
+    level_crossing,
     mesh_statement,
 )
 
@@ -949,6 +953,7 @@ def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
                           ref_null["f"], our_null["f"], REFERENCE_BAND_HZ,
                           floor_db=DEEP_NULL_DB)
     solved, aligned = m["unaligned"], m["aligned"]
+    corner = _corner_statement(ref_f_hz, ref_db, ref_cut, rung, our_cut)
     return dict(
         label=label, ref_f_ghz=np.asarray(ref_f_ghz, float), ref_db=ref_db,
         ours_db=solved["ours_db"], delta_db=solved["delta_db"],
@@ -967,8 +972,26 @@ def _compare(label: str, rung: dict, ref_f_ghz, ref_s21_mag) -> dict:
         ref_null_depth_db=ref_null["depth_db"],
         our_null_depth_db=our_null["depth_db"],
         null_pct=100.0 * abs(our_null["f"] - ref_null["f"]) / ref_null["f"],
-        ref_cutoff=ref_cut, our_cutoff=our_cut,
+        ref_cutoff=ref_cut, our_cutoff=our_cut, corner=corner,
     )
+
+
+def _corner_statement(ref_f_hz, ref_db, ref_cut, rung, our_cut) -> dict:
+    """The −3 dB corner under rule R-c (``level_crossing`` in
+    ``tests/crossval/_v2_judging.py``): the reference's |S21| dB slope at its
+    own corner, fitted over ``CROSSING_FIT_BINS`` (5) bins, sets the tolerance
+    2 dB / |slope|.  rfx's own slope at its corner is reported beside it.
+    ``{"refused": reason}`` when either curve has no corner or the reference's
+    slope cannot carry a tolerance."""
+    if ref_cut["f_3db"] is None or our_cut["f_3db"] is None:
+        return {"refused": (f"no corner: reference {ref_cut['f_3db']}, "
+                            f"rfx {our_cut['f_3db']}")}
+    try:
+        return level_crossing(ref_f_hz, ref_db, ref_cut["f_3db"], our_cut["f_3db"],
+                              our_f=rung["freqs_hz"],
+                              our_db=_db(np.abs(rung["s21"])))
+    except ValueError as exc:
+        return {"refused": str(exc)}
 
 
 _MAX_TABLE_ROWS = 80
@@ -981,12 +1004,20 @@ def _print_comparison(c: dict) -> None:
           f"({c['our_null_depth_db']:.2f} dB) vs reference "
           f"{c['ref_null_ghz']:.4f} GHz ({c['ref_null_depth_db']:.2f} dB) -> "
           f"{c['null_pct']:.3f} %")
-    rc, oc = c["ref_cutoff"], c["our_cutoff"]
-    if rc["f_3db"] and oc["f_3db"]:
-        print(f"    −3 dB corner (reported): rfx {oc['f_3db']/1e9:.4f} GHz vs "
-              f"reference {rc['f_3db']/1e9:.4f} GHz -> "
-              f"{100.0*abs(oc['f_3db']-rc['f_3db'])/rc['f_3db']:.3f} %; "
-              f"passband mean {oc['mean_db']:.3f} vs {rc['mean_db']:.3f} dB")
+    rc, oc, k = c["ref_cutoff"], c["our_cutoff"], c["corner"]
+    if "refused" in k:
+        print(f"    −3 dB corner (rule R-c): no verdict — {k['refused']}")
+    else:
+        print(f"    −3 dB corner (rule R-c): rfx {oc['f_3db']/1e9:.4f} GHz vs "
+              f"reference {rc['f_3db']/1e9:.4f} GHz -> {k['offset_pct']:+.3f} % "
+              f"({k['offset_hz']/1e6:+.1f} MHz); reference slope "
+              f"{k['slope_db_per_ghz']:.3f} dB/GHz over {k['n_fit_bins']} bins "
+              f"{k['fit_f_hz'][0]/1e9:.5f}–{k['fit_f_hz'][1]/1e9:.5f} GHz (largest "
+              f"fit residual {k['fit_residual_db']:.4f} dB), so {MAG_BAR_DB:.0f} dB "
+              f"allows ±{k['tol_hz']/1e6:.1f} MHz = ±{k['tol_pct']:.3f} % -> "
+              f"{'within' if k['passed'] else 'OUTSIDE'}; rfx's own slope at its "
+              f"corner {k['our_slope_db_per_ghz']:.3f} dB/GHz (reported); passband "
+              f"mean {oc['mean_db']:.3f} vs {rc['mean_db']:.3f} dB")
     print(f"    |S21| dB compared at {c['n_compared']} of the {c['n_in_band']} "
           f"reference frequencies inside {lo/1e9:.0f}–{hi/1e9:.0f} GHz "
           f"({c['ref_f_ghz'].size} in the record; both curves above "
@@ -1235,7 +1266,11 @@ def test_sheen_lpf_matches_the_openems_tutorial_reference(tmp_path):
             "the estimator naming the other member of the pair; the curves are "
             "printed above. The finest rung sits "
             f"{fine['null_pct']:.3f} % from the openEMS record's "
-            f"{fine['ref_null_ghz']:.4f} GHz and its |S21| differs by up to "
+            f"{fine['ref_null_ghz']:.4f} GHz, its −3 dB corner "
+            + ("has no verdict" if "refused" in fine["corner"] else
+               f"{fine['corner']['offset_pct']:+.3f} % from the record's (R-c "
+               f"tolerance ±{fine['corner']['tol_pct']:.3f} %)")
+            + f", and its |S21| differs by up to "
             f"{fine['aligned_max_abs_delta_db']:.3f} dB with the nulls aligned "
             f"({fine['max_abs_delta_db']:.3f} dB as solved). The comparison "
             "above is reported, not judged.")
@@ -1244,6 +1279,19 @@ def test_sheen_lpf_matches_the_openems_tutorial_reference(tmp_path):
         f"record's {fine['ref_null_ghz']:.4f} GHz (bar {FREQ_BAR*100:.0f} %); "
         f"rfx reads {fine['our_null_ghz']:.4f} GHz on the "
         f"{finest['dx_m']*1e6:.2f} µm mesh.")
+    # The −3 dB corner is a level crossing, judged by rule R-c (PI 2026-09-24):
+    # the frequency offset the 2 dB bar allows along the reference's own slope
+    # at its corner.
+    corner = fine["corner"]
+    assert "refused" not in corner, (
+        f"the −3 dB corner cannot be judged: {corner.get('refused')}")
+    assert corner["passed"], (
+        f"the −3 dB corner sits {corner['offset_pct']:+.3f} % "
+        f"({corner['offset_hz']/1e6:+.1f} MHz) from the openEMS record's "
+        f"{fine['ref_cutoff']['f_3db']/1e9:.4f} GHz; the record falls "
+        f"{abs(corner['slope_db_per_ghz']):.3f} dB/GHz there, so the "
+        f"{MAG_BAR_DB:.0f} dB bar allows ±{corner['tol_hz']/1e6:.1f} MHz "
+        f"(±{corner['tol_pct']:.3f} %; rule R-c).")
     # The magnitude, judged with the null offset the frequency bar has just
     # judged taken out (PI 2026-09-24): rfx's axis scaled by f_ref / f_rfx.
     assert fine["aligned_max_abs_delta_db"] <= MAG_BAR_DB, (
@@ -1255,7 +1303,9 @@ def test_sheen_lpf_matches_the_openems_tutorial_reference(tmp_path):
         f"scaled by {fine['scale']:.6f} so the stopband nulls coincide "
         f"({fine['max_abs_delta_db']:.3f} dB as solved, reported).")
     print(f"\n  judged: stopband null {fine['null_pct']:.3f} % from the openEMS "
-          f"record (bar {FREQ_BAR*100:.0f} %); |S21| aligned max |ΔdB| "
+          f"record (bar {FREQ_BAR*100:.0f} %); −3 dB corner "
+          f"{corner['offset_pct']:+.3f} % (R-c bar ±{corner['tol_pct']:.3f} %); "
+          f"|S21| aligned max |ΔdB| "
           f"{fine['aligned_max_abs_delta_db']:.3f} dB (bar {MAG_BAR_DB:.0f} dB); "
           f"as solved {fine['max_abs_delta_db']:.3f} dB, reported, not judged")
 
@@ -1478,6 +1528,18 @@ def test_the_reference_files_are_what_the_provenance_says():
                                              abs=1e3)
         assert rec["re_z0_median_ohm"] == pytest.approx(
             float(np.median(np.asarray(rec["re_z0"], float))), abs=1e-9)
+        # Rule R-c's tolerance at the record's own corner: its |S21| dB slope
+        # over five bins there, and 2 dB over it.
+        k = level_crossing(f_hz, _db(rec["s21_mag"]), cut["f_3db"], cut["f_3db"])
+        print(f"  openEMS {name}: −3 dB corner {cut['f_3db']/1e9:.6f} GHz, slope "
+              f"{k['slope_db_per_ghz']:.4f} dB/GHz over {k['fit_f_hz'][0]/1e9:.5f}–"
+              f"{k['fit_f_hz'][1]/1e9:.5f} GHz, R-c tolerance ±{k['tol_hz']/1e6:.2f} MHz "
+              f"= ±{k['tol_pct']:.4f} %")
+        if name == OPENEMS_JUDGED_STAGE:
+            # Frozen values the case's corner verdict rests on, pinned so a
+            # re-derived record or a changed fit is caught.
+            assert k["slope_db_per_ghz"] == pytest.approx(-11.891, abs=1e-3)
+            assert k["tol_hz"] == pytest.approx(168.19e6, abs=0.01e6)
 
     # --- the Palace FEM record --------------------------------------------
     assert palace["meta"]["solver"] == "palace"
@@ -1515,3 +1577,30 @@ def test_the_reference_files_are_what_the_provenance_says():
         assert got["f"] / 1e9 == pytest.approx(rec["null"]["parabolic_f_ghz"],
                                                abs=1e-6)
         assert got["depth_db"] == pytest.approx(rec["null"]["depth_db"], abs=1e-6)
+
+
+def test_the_corner_tolerance_is_taken_from_the_reference_curve():
+    """Rule R-c in the comparison the ladder runs, on two frozen curves and no
+    solve: openEMS's ``stage_b_coarse`` rung stands in for rfx, and
+    ``stage_b_fine`` is the reference.  The corner's tolerance must come from
+    the reference's slope at the reference's corner (−11.891 dB/GHz, the value
+    the reference-file test pins, ±168.19 MHz); the stand-in's own slope at its
+    own corner is −12.229 dB/GHz and is only reported."""
+    openems = _load(_OPENEMS_JSON)
+    coarse, fine = openems["stage_b_coarse"], openems[OPENEMS_JUDGED_STAGE]
+    rung = {
+        "freqs_hz": np.asarray(coarse["freqs_ghz"], float) * 1e9,
+        "s21": (np.asarray(coarse["s21_mag"], float)
+                * np.exp(1j * np.deg2rad(np.asarray(coarse["s21_deg"], float)))),
+    }
+    c = _compare("stand-in", rung, fine["freqs_ghz"], fine["s21_mag"])
+    k = c["corner"]
+    print(f"\n  corner: stand-in {c['our_cutoff']['f_3db']/1e9:.6f} GHz vs reference "
+          f"{c['ref_cutoff']['f_3db']/1e9:.6f} GHz -> {k['offset_pct']:+.3f} %; "
+          f"reference slope {k['slope_db_per_ghz']:.4f} dB/GHz -> ±{k['tol_hz']/1e6:.2f} "
+          f"MHz; stand-in slope {k['our_slope_db_per_ghz']:.4f} dB/GHz (reported)")
+    assert "refused" not in k
+    assert k["slope_db_per_ghz"] == pytest.approx(-11.891, abs=1e-3)
+    assert k["tol_hz"] == pytest.approx(168.19e6, abs=0.01e6)
+    assert k["our_slope_db_per_ghz"] == pytest.approx(-12.229, abs=1e-3)
+    assert k["n_fit_bins"] == 5

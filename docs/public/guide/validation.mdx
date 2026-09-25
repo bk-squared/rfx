@@ -18,7 +18,7 @@ rfx tests its solver in three independent ways.
 | Kind of check | What it compares | Where it lives | When it runs |
 |---|---|---|---|
 | **Analytic** | rfx against a closed-form answer: cavity modes, slab reflection and transmission (lossless, lossy, Debye, Lorentz, Drude, oblique TE), a PEC sphere against the Mie series, empty, shorted and slab-loaded rectangular waveguides, a WR-90 inductive iris against mode matching, lumped R, L and C loads on a line, dipole far fields | `tests/oracle/` | most on every pull request |
-| **Cross-solver** | rfx against another solver (mostly openEMS; also Palace, Meep and a boundary-element solver) on structures with no closed form: a microstrip stub notch filter, a stepped-impedance low-pass filter, a patch antenna's resonance and far field, the RCS of a PEC cube, broadband waveguide sections | `tests/crossval/`, `validation/crossval/` | on demand and on GPU, against frozen reference records |
+| **Cross-solver** | rfx against another solver (mostly openEMS; also Palace, Meep and a boundary-element solver) on structures with no closed form: a microstrip stub notch filter, a stepped-impedance low-pass filter, a patch antenna's resonance and far field, the RCS of a PEC cube, broadband waveguide sections | `tests/crossval/` | on demand and on GPU, against frozen reference records |
 | **Convergence** | rfx against itself as the mesh is refined. A result that moves when you refine the mesh is not converged yet | the same tests, and your own studies | as above |
 
 The cross-solver cases compare against reference records that are frozen in

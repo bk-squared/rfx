@@ -365,11 +365,6 @@ CLASSIFICATION: dict[str, Entry] = {
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)
-    "validation/crossval/_patch_feed_contract.py": Entry(
-        "no_simulation",
-        "cv05/cv15's explicit galvanic-feed contract (#929): reads the "
-        "registered source span and realized conductor planes of a built "
-        "Simulation; constructs no Simulation and performs no solve"),
     "validation/crossval/comparators/realized_conductors.py": Entry(
         "no_simulation",
         "crossval-side build-time realized-conductor gate (#931): takes a "
@@ -380,11 +375,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "pure-numpy sub-bin spectral-feature estimators shared by the Sheen "
         "low-pass filter and the Palace referee producers (#812 P3) -- no rfx "
         "import at all"),
-    "validation/crossval/comparators/patch_mode_identification.py": Entry(
-        "no_simulation",
-        "pure-math patch cavity mode identification (#812) -- closed-form "
-        "TM_mn0 spectrum plus a frequency-list assignment; no rfx import at "
-        "all"),
     "validation/crossval/palace/mesh_patch.py": Entry(
         "no_simulation",
         "gmsh mesh-generation utility for the Palace comparator -- no rfx "
@@ -580,17 +570,6 @@ CLASSIFICATION: dict[str, Entry] = {
         "skip, so this script would red that lane rather than skip; the "
         "snapshot row could not be captured on a machine without trimesh "
         "either. Revisit if the weekly lane ever installs the cad extra"),
-    "validation/crossval/15_patch_antenna_rt5880.py": Entry(
-        "audited",
-        "`build_rfx_sim(...)` returns (sim, patch_shape, geom) with no solve "
-        "call (separated from run_rfx() for the #740 review so the wall-plane "
-        "tests build the production geometry without solving); run_rfx() "
-        "consumes it and solves. The separable builder is still worth having "
-        "after the lattice ownership contract (#931) removed the two_plane "
-        "toggle it used to exercise: what the wall-plane tests read now is "
-        "the realized edge set itself, through realized_pec_edge_masks / "
-        "realized_wall_planes",
-        (Builder("build_rfx_sim", 0, (_v("default", do_gain=False),)),)),
     "validation/research/nu_cost/g4/cpml_baseline.py": Entry(
         "no_simulation",
         "G4 frozen low-level CPML reference; defines operators and state, "
