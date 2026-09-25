@@ -1083,7 +1083,7 @@ def _validate_cfg_nonuniform_limitations(
                         f"difference leaks into the scattered-field region "
                         f"as a spurious field. Measured with no scatterer on "
                         f"a 60-cell +x line graded 1 / 0.5 / 1 mm: the "
-                        f"scattered-field region read 0.6 of the total-field "
+                        f"scattered-field region read 0.7 of the total-field "
                         f"peak, against 1e-5 or less on uniform 1 mm cells "
                         f"and with only y graded (tests/unit/preflight/"
                         f"test_graded_axis_findings.py). Keep the "

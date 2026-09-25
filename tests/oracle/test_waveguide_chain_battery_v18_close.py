@@ -46,6 +46,7 @@ No gate, tolerance, golden or pin is moved here: the gradient-invariance pin is
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import warnings
@@ -70,6 +71,8 @@ from tests.oracle.test_waveguide_chain_battery import (
 REPO = Path(__file__).resolve().parents[2]
 FIXTURE = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_v18_close.json"
 LIVE_FIXTURE = FIXTURE.with_name("fixture_931_realized_pec_forward2_run369367259427.json")
+LIVE_CELLS_FIXTURE = FIXTURE.with_name("fixture_1012_cpml_half_cell_run369367264100.json")
+LIVE_CELLS_SHA256 = "90ac2c88a7686baa888f9b7de5f0d145a81e89d3d153a25a235bf45e463ee74b"
 RUN2 = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture_guide_cell_aperture.json"
 FROZEN = REPO / "tests" / "fixtures" / "waveguide_chain_battery" / "fixture.json"
 PREDECLARATION = "docs/design_notes/20260905_v18_close_predeclaration.md"
@@ -307,6 +310,30 @@ def fx() -> dict:
 def live_fx() -> dict:
     # A missing live reference is an ingest defect, not a reason to skip.
     return E.load_enforced_fixture()
+
+
+@pytest.fixture(scope="module")
+def live_cells_fx() -> dict:
+    # #1012 live cells include the slab re-freeze; historical replay stays on #931.
+    raw = LIVE_CELLS_FIXTURE.read_bytes()
+    assert hashlib.sha256(raw).hexdigest() == LIVE_CELLS_SHA256, "live cell record SHA-256 mismatch"
+    return json.loads(raw)
+
+
+def test_live_cell_record_integrity(live_cells_fx):
+    assert len(live_cells_fx["cells"]) == 18
+
+
+def test_live_cell_record_rejects_one_changed_byte(tmp_path, monkeypatch):
+    # Change JSON whitespace so decoding still succeeds; only integrity detects it.
+    raw = LIVE_CELLS_FIXTURE.read_bytes()
+    changed = raw.replace(b"\n", b" ", 1)
+    assert sum(a != b for a, b in zip(raw, changed)) == 1
+    path = tmp_path / LIVE_CELLS_FIXTURE.name
+    path.write_bytes(changed)
+    monkeypatch.setitem(globals(), "LIVE_CELLS_FIXTURE", path)
+    with pytest.raises(AssertionError, match="live cell record SHA-256 mismatch"):
+        live_cells_fx.__wrapped__()
 
 
 @pytest.fixture(scope="module")
@@ -779,11 +806,11 @@ def test_physics_gates_at_the_claims_rung(fx):
 # measured cross-backend envelope and are not moved here.
 
 
-def _live_compare(fx_, rung: str, duts=F.DUTS):
+def _live_compare(fx_, rung: str):
     # Every cell is measured and printed before any assertion, so one red cell
     # does not hide the cells after it.
     cells = []
-    for dut in duts:
+    for dut in F.DUTS:
         for lane in F.LANES:
             label = G.LANE_LABELS[lane]
             stored = _cell(fx_, dut, rung, label)
@@ -803,43 +830,18 @@ def _live_compare(fx_, rung: str, duts=F.DUTS):
                                      "numbers, never absorbed by widening the pin (§5.11)")
 
 
-_NOT_SLAB = tuple(d for d in F.DUTS if d != "slab")
-
-
 @pytest.mark.slow
 @pytest.mark.parametrize("rung", ["coarse", "mid"])
-def test_live_cells_reproduce_the_fixture_cpu(live_fx, rung):
-    """§5.11 row 1 against the realized-PEC contract-build measurement (thru, PEC short)."""
-    _live_compare(live_fx, rung, _NOT_SLAB)
-
-
-@pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1292: dielectric slab in waveguide, live S vs contract fixture max|ΔS| "
-           "0.413 coarse / 0.181 mid since #1213")
-@pytest.mark.parametrize("rung", ["coarse", "mid"])
-def test_live_slab_cells_reproduce_the_fixture_cpu(live_fx, rung):
-    """§5.11 row 1, the dielectric-slab cells, split out so #1292 quarantines only them."""
-    _live_compare(live_fx, rung, ("slab",))
+def test_live_cells_reproduce_the_fixture_cpu(live_cells_fx, rung):
+    """§5.11 row 1 against the realized-PEC contract-build measurement."""
+    _live_compare(live_cells_fx, rung)
 
 
 @pytest.mark.slow
 @pytest.mark.gpu
-def test_live_cells_reproduce_the_fixture_fine_rung(live_fx):
-    """§5.11 row 2, on the GPU lane (the fine rung is 4x the steps; thru, PEC short)."""
-    _live_compare(live_fx, "fine", _NOT_SLAB)
-
-
-@pytest.mark.slow
-@pytest.mark.gpu
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1292: dielectric slab in waveguide, fine rung live S vs contract fixture "
-           "max|ΔS| 0.0883 (coarse 0.413, mid 0.181 bisect to #1213; fine not bisected)")
-def test_live_slab_cells_reproduce_the_fixture_fine_rung(live_fx):
-    """§5.11 row 2, the dielectric-slab cells (see the cpu pair above)."""
-    _live_compare(live_fx, "fine", ("slab",))
+def test_live_cells_reproduce_the_fixture_fine_rung(live_cells_fx):
+    """§5.11 row 2, on the GPU lane (the fine rung is 4x the steps)."""
+    _live_compare(live_cells_fx, "fine")
 
 
 @pytest.mark.slow

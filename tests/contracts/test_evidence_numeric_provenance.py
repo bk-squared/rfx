@@ -312,6 +312,8 @@ CV19_WITNESS_NOTE = "docs/design_notes/20260903_cv19_fdfd_unitarity_witness.md"
 # falsifier argument is "no committed rung is near 1.0" -- exactly the shape that
 # is worthless if the numbers stop resolving. Opted in with its section 3.
 AUX_ECHO_NOTE = "docs/design_notes/20260904_aux_echo_record_invariant.md"
+# 2026-09-24: the CPML Yee half-cell note cites receipts in rfx-archive.
+CPML_STAGGER_NOTE = "docs/design_notes/2026-09-13_cpml_yee_stagger_correction.md"
 # 2026-09-14 (#813): the cv01 CPML flux self-check pre-declaration. Its result
 # section quotes the four-point cpml_layers sweep -- the numbers that decide a
 # pre-declared gate -- so they are resolved here rather than retyped.
@@ -487,6 +489,8 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
     # 2026-09-23: the MSL thru-line phase case's row left the table with the
     # case and took 2 of the 4. Floor lowered to the measured remainder, 2.
     (BENCHMARKS, "Reference cases"): 2,
+    # 2026-09-24: the CPML note's 12-reference floor left with its receipts
+    # under the PI archive rule; the note now cites rfx-archive in plain text.
 }
 
 # Anti-vacuity census. A green gate must mean the references are right, not that
@@ -499,6 +503,10 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # 2026-09-06 (#928): +benchmarks.mdx (93) and +8 design notes, all green at the
 # commit that opted them in; the population went 566 -> 1147 references (+581)
 # over 60 -> 64 distinct artifacts. Raised here in the same commit, as above.
+# 2026-09-14: +12, the CPML Yee half-cell stagger note's GPU-witness section,
+# and +2 distinct artifacts (the red/green witness receipts of VESSL run
+# 369367260765, cited here for the first time). Raised in the same commit that
+# adds them.
 # 2026-09-14 (#813 Arm 1): +35 references over +1 distinct artifact
 # (scripts/diagnostics/_artifacts/cv01_cpml_813/layer_sweep.json), 26 of them
 # value-checked -- the cv01 CPML pre-declaration's result section, opted in as
@@ -609,14 +617,10 @@ REQUIRED_SITES: dict[tuple[str, str], int] = {
 # gated design notes still cite it -- so no artifact leaves the count.
 # Measured after the removal: 319 references, 300 value-checked, 32 artifacts.
 # The floors are lowered to the measured values.
-# 2026-09-23 (the Sheen low-pass filter rebuilt as tests/crossval/sheen_lpf/):
-# its manifest entry and validation README row left the gated surface, and the
-# citations in two sections of the estimator-resolution re-gate note and one of
-# the 2026-09-08 docs truth audit reach the case's committed run records, its
-# estimator-falsifier summary and the old Palace fixture path (all in
-# REMOVED_ARTIFACT_PREFIXES, skipped per citation). Two artifacts leave the
-# distinct count with them. Measured after both removals: 297 references, 280
-# value-checked, 30 artifacts. The floors are lowered to the measured values.
+# 2026-09-24: after removing the CPML receipts to rfx-archive and the old
+# Sheen low-pass filter records, the merged-tree census measures 297 references,
+# 280 value-checked references and 30 distinct artifacts. Set all three floors
+# to that measured census.
 MIN_REFERENCES = 297
 MIN_VALUE_CHECKED = 280
 MIN_DISTINCT_ARTIFACTS = 30
@@ -817,6 +821,11 @@ CLASSIFICATION: dict[str, str] = {
     # out of a committed JSON, so there is no `path.json::key` for the gate to
     # resolve.
     "docs/design_notes/717_crossval_lane_decision.md": NO_ARTIFACT_REFERENCE,
+    # 2026-09-24: the measurement receipts moved to bk-squared/rfx-archive
+    # under the PI repository-contents rule. This note uses plain archive
+    # citations; operator placement stays gated by
+    # tests/unit/boundaries/test_cpml_yee_stagger.py.
+    CPML_STAGGER_NOTE: NO_ARTIFACT_REFERENCE,
     # 2026-09-10 (#931 lattice-ownership merge): 591e296e added a resolvable
     # citation to this note (cv18's Richardson envelope); opted in rather than
     # left failing NO_ARTIFACT_REFERENCE's own vacuity check.

@@ -96,7 +96,7 @@ def _grid_axis(grid, axis):
 
 
 def _build_open_graded_sim(dz_profile, *, dy_profile=None, nx=44, dx=0.5e-3,
-                           f0=9e9, add_probe=False):
+                           f0=9e9, add_probe=False, cpml_layers=8):
     """Open-CPML graded sim: ez source; monitor plane is x-normal so the
     graded z axis (and optionally graded y) is TANGENTIAL to the plane and its
     per-cell dA varies with the grading."""
@@ -106,7 +106,7 @@ def _build_open_graded_sim(dz_profile, *, dy_profile=None, nx=44, dx=0.5e-3,
     Ly = ny * dx if dy_profile is None else float(np.sum(dy_profile))
     Lx = nx * dx
     kwargs = dict(freq_max=0.5 * C0 / dx, domain=(Lx, Ly, Lz), dx=dx,
-                  dz_profile=dz, cpml_layers=8, boundary="cpml")
+                  dz_profile=dz, cpml_layers=cpml_layers, boundary="cpml")
     if dy_profile is not None:
         kwargs["dy_profile"] = np.asarray(dy_profile, dtype=float)
     sim = Simulation(**kwargs)
@@ -362,7 +362,10 @@ def test_nu_finite_flux_generality_two_gradings():
     Lx = Ly = None
     x_src = x_mon = None
     for tag, dz in [("fine", dz_fine), ("coarse", dz_coarse)]:
-        sim, grid, (Lx, Ly, Lzr) = _build_open_graded_sim(dz, add_probe=True)
+        # Sixteen absorber layers, so the cross-mesh difference is the mesh pair's own: at 9.4 GHz it reads 0.0364 with 16 and
+        # with 24 layers (VESSL 369367264472). Eight layers gave 0.0415 with the magnetic CPML profile at the Yee half cell and
+        # 0.0325 before it (#1012); the absorber's reflection moved it both ways.
+        sim, grid, (Lx, Ly, Lzr) = _build_open_graded_sim(dz, add_probe=True, cpml_layers=16)
         size_y = Ly * 0.6
         cy, cz = Ly * 0.5, Lzr * 0.5
         cx = Lx * 0.62
@@ -445,9 +448,11 @@ def test_nu_finite_flux_generality_two_gradings():
     #     PREFACTOR 3.0 is NOT derived: Yee phase-velocity error carries 1/12,
     #     and 3.0 is an empirical O(1) envelope covering the two tangential
     #     quadrature directions and the face-snapping difference between the
-    #     meshes. It is an envelope that still bites (measured 2026-09-05 on this
-    #     fixture: propagating-bin rel = [0.033, 0.029, 0.024, 0.029] against
-    #     bound = [0.039, 0.055, 0.076, 0.094], 15 % margin at the tightest bin),
+    #     meshes. It is an envelope that still bites (measured 2026-09-24 on this
+    #     fixture with 16 absorber layers: propagating-bin rel = [0.03637, 0.03126, 0.01884, 0.02354]
+    #     against bound = [0.03754, 0.05094, 0.07190, 0.09580], 3 % margin at the tightest bin;
+    #     the 2026-09-05 figures, 15 % margin, were taken on the pre-#1012
+    #     eight-layer absorber, whose reflection pulled the 9.4 GHz value 0.004 low),
     #     so a violation means "worse than this mesh pair has ever measured", NOT
     #     "worse than theory allows".
     #     Restrict the comparison to the PROPAGATING bins (monitor >= 0.2*lambda

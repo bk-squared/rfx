@@ -218,6 +218,13 @@ def test_forward_no_rlc_byte_identity():
     forward(); the new self._lumped_rlc branch must be a pure skip when there
     is no RLC element.
     """
+    # #1012 + 965b2db8 re-pin, CPU float32, regenerate_forward_no_rlc_s11_golden.py:
+    # max|S11 - main's golden| = 1.773586155e-5;
+    # max|S11 - #1012's previous golden| = 5.139599368e-2.
+    # Both changes are in this golden; tolerances unchanged.
+    # WHY: the port sits in a six-layer CPML box, and #1012 samples the magnetic CPML profile at the Yee half cell,
+    # and since 965b2db8 the port loads only its own edge. The test still guards what it
+    # was written for: forward() without an RLC element is a pure skip.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_forward_no_rlc_s11.npy"))
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 15,
                      boundary="cpml", cpml_layers=6)

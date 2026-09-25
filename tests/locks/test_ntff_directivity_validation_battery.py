@@ -77,7 +77,7 @@ values are kept beside them because the gates used to be set on those.
   dx-ladder (slow_physics): err_db 0.00052 -> 0.00012 -> 0.00006
     (monotone; was 0.0391 -> 0.0147 -> 0.0064);
     flux ratio 0.5003 / 0.5150 / 0.5226 (was 0.4948 / 0.5128 / 0.5215;
-    per-rung bands, see caveat 2)
+    historical ratios; see caveat 2)
   non-uniform lane, same fixture forced through the NU runner on a z
     profile that REALIZES the same 33 x 33 x 33 grid (dz_profile = 20 x
     3.0 mm): D = 1.761428040 dBi (err +0.000515 dB), P_ntff/P_flux =
@@ -121,22 +121,12 @@ Known numerics caveats carried by this battery (documented, not patched):
       non-zero jnp value to <= 3e-7 rel). The ladder test therefore uses
       the float64 recompute helper for ALL rungs, and the fast suite pins
       recompute==jnp on the base rung where both are healthy.
-  (2) the measured ratio drifts away from 0.5 with refinement (0.5003 ->
-      0.5150 -> 0.5226). This block used to attribute part of the
-      coarsest-rung offset to an E-time-label term,
-      0.5*cos^2(omega*dt/2) = 0.4986: that term existed because the NTFF
-      accumulator stamped E a full step early, which was a DEFECT and was
-      fixed on 2026-09-21 (E is now stamped at (n+1)*dt, its own sample
-      time). With it gone the coarsest rung sits at 0.5003, 0.00032 from
-      the derived 0.5, and no time-label term is subtracted anywhere.
-      What remains is the drift with refinement, whose mechanism is
-      CONFIRMED as the fixed-cpml_layers absorber-thinning confound: the
-      absorber is cpml_layers*dx thick, so refining dx at fixed
-      cpml_layers thins the absorber (reviewer witness: cpml_layers=12 at
-      dx=1.5 mm restores ratio 0.4980). The ladder gate is therefore a
-      PER-RUNG band centred on the measured ratios (+/-0.02 each), i.e. a
-      stability lock, NOT a convergence-to-0.5 claim; a band exit at a NEW
-      finer rung is the documented drift, not automatically a regression.
+  (2) P_ntff/P_flux is 1/2 in the continuum. With the magnetic CPML profile at the Yee
+      half cell the ratio reads 0.4985 / 0.5022 / 0.5022 at dx 3 / 1.5 / 0.75 mm (VESSL
+      369367264100). Before #1012 it drifted to 0.5150 / 0.5226 as the cells shrank; the
+      A/B on one GPU differs only in that profile, so the drift came from the absorber's
+      H-side grading sitting half a cell off, not from thinning a fixed-layer absorber.
+      Every rung is gated at |ratio − 0.5| ≤ 0.005.
 
 No network, no external solver; deterministic (fixed geometry, fixed step
 counts, rect DFT window). Tighten gates only with a fresh measured
@@ -240,25 +230,19 @@ _XPOL_SHAPE_DEV_MAX = 0.05
 # the E_phi channel carries co-pol-class magnitude (non-vacuous).
 _XPOL_PEAK_RATIO_BAND = (0.9, 1.1)
 
-# dx-ladder (slow_physics). Re-measured on this tree after the second-order
-# NTFF fix: |err_db| 0.00052 / 0.00012 / 0.00006 (was 0.0391 / 0.0147 /
-# 0.0064 with the first-order rule). Per-rung caps 0.005 / 0.002 / 0.001:
-# 10-17x the new measurement and 6-8x BELOW the old one, so a full revert of
-# the fix goes red on EVERY rung. At the old caps it stayed green on all
-# three, which is why they move.
-# Ratio bands: PER-RUNG, centred on the re-measured ratios 0.5003 / 0.5150 /
-# 0.5226, each +/-0.02 — a stability lock; the drift AWAY from 0.5 with
-# refinement is the CONFIRMED fixed-cpml_layers absorber-thinning confound
-# (module docstring caveat 2), so this deliberately does NOT assert
-# convergence to 0.5. The source-derived 0.5 +/- 0.003 gate lives ONLY on
-# the base-rung fast test above.
+# P_ntff/P_flux is 1/2 in the continuum. With the magnetic CPML profile at the Yee half
+# cell the ratio reads 0.4985 / 0.5022 / 0.5022 at dx 3 / 1.5 / 0.75 mm (VESSL
+# 369367264100). Before #1012 it drifted to 0.5150 / 0.5226 as the cells shrank; the A/B
+# on one GPU differs only in that profile, so the drift came from the absorber's H-side
+# grading sitting half a cell off, not from thinning a fixed-layer absorber. Every rung
+# is gated at |ratio − 0.5| ≤ 0.005.
 _LADDER_RUNGS = (
-    # (dx_m, n_steps, err_cap_db, ratio_center)
-    (3.0e-3, 400, 0.005, 0.5003207),
-    (1.5e-3, 800, 0.002, 0.5150090),
-    (0.75e-3, 1600, 0.001, 0.5225705),
+    # (dx_m, n_steps, err_cap_db)
+    (3.0e-3, 400, 0.005),
+    (1.5e-3, 800, 0.002),
+    (0.75e-3, 1600, 0.001),
 )
-_RATIO_BAND_LADDER = 0.02
+_RATIO_BAND_LADDER = 0.005
 
 # Guard: the ladder's first rung must BE the shared base-rung fixture
 # (the ladder test reuses it instead of re-running).
@@ -477,7 +461,8 @@ def test_ntff_absolute_power_calibration_vs_flux_box(base_rung):
     ratio = p_ntff / p_flux
     assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_BASE, (
         f"P_ntff/P_flux = {ratio:.6f}, predicted {_RATIO_PREDICTED} "
-        f"(measured 0.500321, gate +/-{_RATIO_TOL_BASE}) — the absolute "
+        "(measured 0.498485430 with the magnetic CPML profile at the Yee half cell, "
+        f"gate +/-{_RATIO_TOL_BASE}) — the absolute "
         f"scale of the NTFF chain, or the E/H time slot it is handed, "
         f"has moved")
 
@@ -634,37 +619,18 @@ def test_xdipole_pattern_shapes_make_e_phi_non_vacuous(xdipole_rung):
 # ===========================================================================
 
 def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
-    """dx-ladder witness: D error shrinks with refinement; per-rung ratio bands.
+    """Dipole directivity error shrinks; each power ratio stays within 0.005 of 1/2.
 
-    Re-measured 2026-09-21 after the transform was made second order:
-    |err_db| 0.00052 -> 0.00012 -> 0.00006 dB across dx = 3.0 / 1.5 /
-    0.75 mm (strictly monotone; was 0.0391 -> 0.0147 -> 0.0064). Per-rung
-    caps 0.005 / 0.002 / 0.001 dB — 10-17x the new measurement and 6-8x
-    below the old one, so a full revert of the fix goes red on every rung;
-    plus a strict finest < coarsest assertion.
-
-    Flux ratio uses the float64 recompute at EVERY rung because at
-    dx=0.75 mm the jnp flux path measurably flushes to exactly 0.0
-    (float32, caveat 1). Measured ratios 0.5003 / 0.5150 / 0.5226; gate =
-    PER-RUNG band centred on each measured ratio, +/-0.02. This is a
-    STABILITY lock, not a convergence-to-0.5 claim: the drift AWAY from
-    0.5 with refinement is CONFIRMED as the fixed-cpml_layers
-    absorber-thinning confound — the absorber is cpml_layers*dx thick, so
-    refining dx at fixed cpml_layers thins it (reviewer witness:
-    cpml_layers=12 at dx=1.5 mm gives ratio 0.4980, back near the
-    coarse-rung value). Consequence: a band exit at a NEW finer rung is
-    the documented drift mechanism, not automatically a regression —
-    measure the new rung (and its cpml_layers-scaled control) before
-    touching any band. The source-derived 0.5 +/- 0.003 gate lives ONLY on
-    the base-rung fast test. ~35 s CPU for the two finer rungs (the base
-    rung is reused from the module fixture).
+    Flux uses the float64 recompute at every rung to avoid the fine-rung
+    float32 underflow described in caveat (1). The base-rung fast test
+    retains its separate 0.5 +/- 0.003 band.
     """
     rungs = [base_rung]
-    for dx, n_steps, _cap, _rc in _LADDER_RUNGS[1:]:
+    for dx, n_steps, _cap in _LADDER_RUNGS[1:]:
         rungs.append(_run_rung(dx, n_steps))
 
     errs_db = []
-    for rung, (dx, _n, cap_db, ratio_center) in zip(rungs, _LADDER_RUNGS):
+    for rung, (dx, _n, cap_db) in zip(rungs, _LADDER_RUNGS):
         err_db = abs(rung["d_dbi"] - D_THEORY_DBI)
         errs_db.append(err_db)
         print(f"[ntff-battery ladder] dx={dx * 1e3:.2f} mm: "
@@ -684,11 +650,11 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
             f"dx={dx * 1e3:.2f} mm: f64 closed-box power not positive "
             f"({p_flux:.3e})")
         ratio = rung["p_ntff"] / p_flux
-        assert abs(ratio - ratio_center) < _RATIO_BAND_LADDER, (
+        assert abs(ratio - _RATIO_PREDICTED) <= _RATIO_BAND_LADDER, (
             f"dx={dx * 1e3:.2f} mm: P_ntff/P_flux = {ratio:.6f} outside "
-            f"{ratio_center} +/- {_RATIO_BAND_LADDER} (per-rung band on the "
-            f"measured 0.5003/0.5150/0.5226; drift across rungs is the "
-            f"documented fixed-cpml_layers confound, docstring caveat 2)")
+            f"{_RATIO_PREDICTED} +/- {_RATIO_BAND_LADDER} "
+            f"(continuum 1/2; magnetic CPML sampled at the Yee half cell)")
+
 
     assert errs_db[-1] < errs_db[0], (
         f"directivity error did not shrink across the ladder: "
@@ -702,8 +668,7 @@ def test_dx_ladder_directivity_converges_and_ratio_stable(base_rung):
 # The z profile must REALIZE the uniform fixture's grid, not merely declare
 # the same cell size. 28 cells of 3.0 mm builds 33 x 33 x 41 against the
 # uniform rung's 33 x 33 x 33 — the +z absorber eight cells further out —
-# and the power ratio follows it (caveat 2 records the same sensitivity to
-# the absorber's thickness): 0.4953 at 28 cells and 0.5039 at 21, the NTFF
+# and the power ratio follows it (measured before the magnetic CPML half-cell correction): 0.4953 at 28 cells and 0.5039 at 21, the NTFF
 # power unchanged to 1e-5 and the flux-box power moving. That is a different
 # structure, not a different lane. At 20 cells both lanes realize
 # 33 x 33 x 33 and the NU lane reproduces the uniform one.
@@ -806,7 +771,8 @@ def test_nonuniform_lane_power_calibration_and_slot(base_rung):
         f"(|err| {err_db:.6f} dB, measured 0.000515, gate {_NU_D_ERR_MAX_DB})")
     assert abs(ratio - _RATIO_PREDICTED) < _RATIO_TOL_BASE, (
         f"NU lane P_ntff/P_flux = {ratio:.7f}, predicted {_RATIO_PREDICTED} "
-        f"(measured 0.500321, gate +/-{_RATIO_TOL_BASE}) — the NU runner's "
+        "(measured 0.498486761 with the magnetic CPML profile at the Yee half cell, "
+        f"gate +/-{_RATIO_TOL_BASE}) — the NU runner's "
         f"NTFF slot, or the absolute scale of the transform, has moved")
     assert abs(ratio - ratio_uniform) < _NU_VS_UNIFORM_RATIO_MAX, (
         f"the two lanes disagree on the NTFF/flux power ratio: NU "

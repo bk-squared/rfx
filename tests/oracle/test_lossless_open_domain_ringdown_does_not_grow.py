@@ -6,8 +6,15 @@ envelope can only decay.  A run whose envelope turns and climbs is not a resonan
 a truncated transient -- it is the update operator with an eigenvalue outside the unit circle,
 and the only question is how long you have to wait to see it.
 
-THE RIG THIS GATE RUNS NOW (#801, PR #1178, 2026-09-22).  Both tests build ``_build(n=3, pad_h=10,
-cpml=6)``: dx = h/3, six absorber layers, grid (187, 142, 61), 19994 steps.  It is the rig that GREW
+THE RIG THIS GATE RUNS NOW (#1012, 2026-09-24).  Both tests build ``_build(n=3, pad_h=10,
+cpml=6)``: dx = h/3, six absorber layers, grid (187, 142, 61), 19994 steps.  At 150 periods,
+float32, RTX 3090 (VESSL 369367264159), the continued ground and Yee-half-cell magnetic
+grading measured -45.9632 dB settling and worst log rate -2.69821e-04 per step.  With BOTH
+the ground cut at the absorber entrance and the magnetic grading restored to integer nodes,
+settling was -24.4192 dB and the worst log rate -2.94935e-05 per step, on both main and #1012.
+The settling bar is -40 dB and the rate bar -2e-05 per step; neither threshold changed.
+
+HISTORICAL SIX-LAYER RECORD (#801, PR #1178, 2026-09-22).  It is the rig that GREW
 while conductors stopped at the absorber entrance, which is why it replaced the n = 4, eight-layer
 rig: that one settled at -43.30 dB even then, so nothing about the ground plane could turn it red,
 and a gate whose own rig has no red state is not known to measure anything.  Measured, 150 periods,
@@ -66,7 +73,7 @@ It is not chosen because its verdict moves with a parameter that has nothing to 
 physics, and a finer blocking turns the TM010/TM001 beat into an "upturn" on a perfectly healthy
 run.  A least-squares slope over many blocks does not have that sensitivity.
 
-THE FALSIFIER IS IN THIS FILE.  ``test_the_gate_is_red_under_the_pre_931_edge_rule`` runs the
+HISTORICAL EDGE-RULE FALSIFIER.  ``test_the_gate_is_red_under_the_pre_931_edge_rule`` ran the
 same arm with one mutation -- ``rfx.boundaries.pec._volume_edge_masks`` replaced by the
 ``a3e4dba4^`` body -- and requires THIS GATE'S OWN PREDICATE to come out red.  A gate whose red
 state has never been observed is not known to measure anything (this repo has been bitten by
@@ -74,7 +81,7 @@ exactly that; see the "a physics gate can bind an artifact" lesson).  Keep the t
 the mutation test stops being red, this gate has stopped discriminating and the green one means
 nothing.
 
-SINCE #801 (2026-09-21) THE FALSIFIER IS A DIFFERENT MODEL, and everything below this paragraph
+THE #801 RECORD (2026-09-21) USED A DIFFERENT MODEL, and everything below this paragraph
 about the pre-#931 edge rule is the dated record of the falsifier it replaced.  What made this rig
 grow was never the edge rule alone: the ground plane stopped at the absorber entrance, so inside
 the absorber the substrate had no ground under it and a wave ran along the absorber faces.  With
@@ -133,8 +140,8 @@ mutated arm turns up.  That is covered rather than assumed: ``conftest.py``'s ``
 settling figure; if that takes it under the bar the FALSIFIER fails loudly -- which is the right
 failure, because it says the red state was not reproduced.
 
-WHAT THIS GATE DOES NOT COVER.  It pins ONE point: ``n = 4`` (dx = h/4) with
-``cpml_layers = 8``, the arm #931 fixed.  It is not a statement about other resolutions or other
+WHAT THIS GATE DOES NOT COVER.  It pins ONE point: ``n = 3`` (dx = h/3) with
+``cpml_layers = 6`` and lateral padding 10h.  It is not a statement about other resolutions or other
 absorber depths, and it should not be read as one -- thinner absorbers on this same fixture are
 a live, separately tracked question (#801).
 
@@ -168,13 +175,11 @@ F0, BW = 8.5e9, 1.6
 NUM_PERIODS = 150.0
 
 # Gate, two-sided.
-# (1) The shipped ring-down witness's own bar.  Measured on this arm, shipped / mutated:
-#     -43.37 / 0.00 dB on the (250, 189, 81) grid before #1136; -43.30 / -35.41 dB on today's
-#     (249, 189, 81).
+# (1) The shipped ring-down witness's own bar.  Shipped / both defects restored:
+#     -45.9632 / -24.4192 dB on (187, 142, 61), VESSL 369367264159.
 SETTLING_DB_BAR = -40.0
-# (2) The late-time decay rate must be negative.  Measured worst rate per step, shipped /
-#     mutated: -1.934e-4 / +3.002e-4 before #1136; -1.926e-4 / -8.379e-5 today.  (An earlier
-#     revision quoted "+4.4e-4 mutated", a figure this file's harness produces on neither grid.)
+# (2) The late-time decay rate must be negative.  Worst rate per step, shipped /
+#     both defects restored: -2.69821e-4 / -2.94935e-5, VESSL 369367264159.
 #     The bar sits an order of magnitude above the shipped rate, so a rate that is merely "not
 #     very negative" fails too.  It does NOT separate today's mutated arm, which passes it; the
 #     settling half does.
@@ -330,21 +335,24 @@ def test_lossless_open_domain_ringdown_decays_on_every_probe():
 
 @pytest.mark.gpu
 @pytest.mark.slow_physics
-def test_the_gate_is_red_without_conductor_continuation(monkeypatch):
-    """The falsifier: without conductor continuation the gate above must be RED.
-
-    One mutation: the shared helper returns the declared shape, so the ground plane ends at the
-    absorber entrance as it did before #801, on the six-layer arm that grew on main. Measured
-    red: settling 0.00 dB, worst log rate +5.842e-04 per step (module docstring). If this ever
-    passes quietly, the gate above has stopped discriminating and its green tells you nothing.
+def test_the_gate_is_red_without_continuation_and_with_integer_magnetic_profile(monkeypatch):
+    """Since #1012 a ground plane that stops at the absorber entrance no longer slows this
+    patch's decay: without continuation the six-layer model settles to −44.7 dB (VESSL
+    369367264100). The falsifier therefore restores both defects — the ground cut at the
+    absorber entrance and the magnetic CPML grading on the integer nodes — which
+    measured −24.4 dB settling on main.
     """
+    from tests._cpml_integer_profile import restore_integer_cpml_profile
+
+    restore_integer_cpml_profile(monkeypatch)
     rates, settling, _preflight = _run_rates(monkeypatch=monkeypatch, continuation_off=True)
     gate_green = settling <= SETTLING_DB_BAR and max(rates) < MAX_LOG_RATE_PER_STEP
     assert not gate_green, (
-        f"the uncontinued six-layer model no longer turns the gate red: log rates {rates} per "
+        f"the uncontinued six-layer model with integer-node magnetic grading no longer turns the gate red: log rates {rates} per "
         f"step (worst {max(rates):.3e} against {MAX_LOG_RATE_PER_STEP:.1e}), settling "
         f"{settling:.2f} dB against {SETTLING_DB_BAR:.0f} dB. Recorded red state on the "
-        f"(187, 142, 61) grid: worst +5.84241689243745e-4, settling 0.00 dB. "
+        f"(187, 142, 61) grid: worst -2.9493505911430272e-5 per step, settling "
+        f"-24.419228473554085 dB (VESSL 369367264159, both defects restored). "
         f"Check that the shared conductor helper returns the declared shape and that the "
         f"builder and NUM_PERIODS retain the measured six-layer model.")
 
