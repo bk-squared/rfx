@@ -740,26 +740,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/runners/distributed.py",
-      "function": "_apply_pec_local",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/distributed.py",
-      "function": "_apply_pmc_local",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/distributed.py",
-      "function": "run_distributed",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/distributed.py",
-      "function": "run_distributed.distributed_scan.step_fn",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/runners/distributed_nu.py",
       "function": "_apply_cpml_e_local_nu",
       "kind": "neighbour"

@@ -142,10 +142,9 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/probes/probes.py": 7,
     "rfx/probes/sparam_driver.py": 1,
     "rfx/rcs.py": 1,
-    # 1 moved here from distributed.py with _init_cpml_distributed, when the
-    # pmap runner was retired; the total for the two files did not change.
+    # Moved here from distributed.py with _init_cpml_distributed; the pmap
+    # runner that held distributed.py's other read was removed in #1296.
     "rfx/runners/_distributed_common.py": 1,
-    "rfx/runners/distributed.py": 1,
     "rfx/runners/distributed_v2.py": 1,
     "rfx/runners/nonuniform.py": 1,
     "rfx/runners/subgridded.py": 1,

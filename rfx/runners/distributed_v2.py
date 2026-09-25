@@ -640,19 +640,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         else ()
     )
 
-    # ------------------------------------------------------------------
-    # Single-device fast path: skip all sharding overhead.
-    # ------------------------------------------------------------------
-    if n_devices == 1:
-        # This lane realizes a declared PEC volume (#1053) but the pmap
-        # runner does not, so a volume is refused HERE and runs at
-        # n_devices >= 2. Not reachable from Simulation.run(devices=...),
-        # which dispatches here only for len(devices) > 1; a direct caller
-        # passing one device gets the pmap refusal, which is honest about
-        # that runner (#1055).
-        from rfx.runners.distributed import run_distributed as _pmap_run
-        return _pmap_run(sim, n_steps=n_steps, devices=devices,
-                         exchange_interval=exchange_interval, **kwargs)
+    # One device runs the same shard_map path on a one-device mesh (#1296).
+    # Until #1296 this call was handed to the pmap runner, which dropped the
+    # declared-PEC cell mask and so refused a PEC volume at one device that
+    # this path realizes at two. Simulation.run(devices=...) dispatches here
+    # only for len(devices) > 1; a one-device run() takes the uniform lane.
 
     # ------------------------------------------------------------------
     # Build grid and materials (full domain)
@@ -999,9 +991,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
     # scan receives it as a jit argument next to ``sharded_materials`` (on
     # every topology since PI decision A, 2026-09-23), not through
-    # ``run_distributed``'s ``**kwargs``: that kwargs bag is forwarded only on
-    # the ``n_devices == 1`` fast path and is silently discarded at exactly the
-    # device counts this stage exists for.
+    # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
+    # and otherwise discarded (it was forwarded only to the pmap runner at one
+    # device, until #1296).
     sharded_pec_mask = (
         None if pec_mask is None
         else shard_x_slabs(pec_mask, n_devices, nx_per, ghost, False, shd))

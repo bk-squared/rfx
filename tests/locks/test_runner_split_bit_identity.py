@@ -111,6 +111,10 @@ mask stage onto ``distributed_v2``, and the two rows it adds
 geometry v2 acquires, captured on the pre-move tree. The thirteen #1038 rows
 above are untouched by that capture and keep their original digests.
 
+Thirteen since #1296, which removed the pmap runner and with it the two
+``distributed_v1_*`` rows. The v1-versus-v2 measurement above is theirs and
+stands as recorded; the other thirteen keep their digests.
+
 Every snapshot is checked for non-vacuity BEFORE it is stored
 (``_assert_snapshot_can_bind``): an all-zero baseline would compare identical
 to an all-zero result forever.
@@ -282,30 +286,11 @@ def _f_nonuniform_constant_profile():
     return _constant_profile_nu_sim().run(n_steps=100)
 
 
-# --- 5: v1 (jax.pmap) is reachable from the public API only as v2's
-#     n_devices == 1 fast path (rfx/runners/distributed_v2.py:626), so the
-#     fixture calls it DIRECTLY at 2 devices.
-def _f_distributed_v1_cpml_small():
-    from rfx.runners.distributed import run_distributed as _v1
-    return _v1(_small_cpml_sim(lx=0.0105), n_steps=100,
-               devices=jax.devices()[:2])
-
-
-# --- 6: tests/unit/runners/test_distributed.py:294
-#     (TestDistributedCPML::test_distributed_cpml_matches_single) geometry,
-#     again through the direct v1 entry point. Lx=0.13 realizes an EVEN nx,
-#     which v1 requires.
-def _wide_cpml_sim(lx=0.13):
-    sim = Simulation(freq_max=3e9, domain=(lx, 0.04, 0.04), boundary="cpml")
-    sim.add_source(position=(0.065, 0.02, 0.02), component="ez",
-                   waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9))
-    sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
-    return sim
-
-
-def _f_distributed_v1_cpml_wide():
-    from rfx.runners.distributed import run_distributed as _v1
-    return _v1(_wide_cpml_sim(), n_steps=100, devices=jax.devices()[:2])
+# --- 5/6: removed with the pmap runner (#1296). They drove
+#     ``rfx.runners.distributed.run_distributed`` directly at 2 devices, on
+#     the geometry of builder 1 widened to 10.5 mm and on
+#     tests/unit/runners/test_distributed.py's TestDistributedCPML geometry
+#     at Lx = 0.13 m. Fixture ids distributed_v1_cpml_small / _wide.
 
 
 # --- 7/9: sim.run(devices=[...]) is what the public API dispatches to
@@ -627,10 +612,6 @@ _FIXTURES = (
     ("nonuniform_graded_flux", _f_nonuniform_graded_flux, "nonuniform", False),
     ("nonuniform_constant_profile", _f_nonuniform_constant_profile,
      "nonuniform", False),
-    ("distributed_v1_cpml_small", _f_distributed_v1_cpml_small,
-     "distributed", True),
-    ("distributed_v1_cpml_wide", _f_distributed_v1_cpml_wide,
-     "distributed", True),
     ("distributed_v2_cpml", _f_distributed_v2_cpml, "distributed_v2", True),
     ("distributed_v2_pec", _f_distributed_v2_pec, "distributed_v2", True),
     ("distributed_v2_nu_branch", _f_distributed_v2_nu_branch,
@@ -1107,8 +1088,9 @@ def test_every_shared_helper_has_an_identity_guard():
 # back as an alias. That matters beyond tidiness --
 # tests/unit/materials/test_sheet_impedance.py keys its FENCE_REGISTRY on
 # (path, ENCLOSING FUNCTION, message) and its _fence() asserts the raising
-# TRACEBACK FRAME, so seven #677 refusals must keep being raised from inside
-# run_distributed / run_uniform / run_nonuniform_path in their current files.
+# TRACEBACK FRAME, so six #677 refusals (seven until #1296) must keep being
+# raised from inside run_distributed / run_uniform / run_nonuniform_path in
+# their current files.
 _RUNNER_ENTRY_POINTS = (
     ("uniform", "run_uniform", "rfx.runners.uniform", "run_uniform"),
     ("nonuniform", "run_nonuniform", "rfx.nonuniform", "run_nonuniform"),
@@ -1120,15 +1102,11 @@ _RUNNER_ENTRY_POINTS = (
      "run_subgridded_path"),
     ("disjoint", "run_disjoint_stage2_path", "rfx.runners.disjoint",
      "run_disjoint_stage2_path"),
-    # KEPT DELIBERATELY THROUGH #1038 leg 6. Leg 6 removed v1's PACKAGE-level
-    # export (see test_the_package_no_longer_exports_run_distributed); the
-    # MODULE still exports its entry point and must keep doing so. It is a
-    # live dependency, not dead code: distributed_v2.py:56 imports twelve
-    # names from it, rfx/api/_execute.py imports _split_materials from it,
-    # distributed_v2.run_distributed delegates to this function verbatim at
-    # n_devices == 1, tests/unit/{materials,boundaries} import it by full path
-    # as the legacy pmap runner, and one of the seven #677 FENCE_REGISTRY
-    # frames above is raised from inside it.
+    # KEPT THROUGH #1296, which removed the pmap runner: the module stays for
+    # one release, and its run_distributed is now the stub that raises with
+    # the replacement named (test_the_package_no_longer_exports_run_distributed
+    # calls it). It is still defined in rfx.runners.distributed, which is what
+    # this row pins.
     ("distributed", "run_distributed", "rfx.runners.distributed",
      "run_distributed"),
     ("distributed_v2", "run_distributed", "rfx.runners.distributed_v2",
@@ -1250,6 +1228,15 @@ def test_the_package_no_longer_exports_run_distributed():
         "not bit-identical and they disagree on the odd-nx rule.")
     assert v1.run_distributed.__module__ == "rfx.runners.distributed"
     assert v2.run_distributed.__module__ == "rfx.runners.distributed_v2"
+
+    # #1296: the pmap runner is gone; its name raises and names the
+    # replacement, whatever it is called with.
+    with pytest.raises(RuntimeError) as excinfo:
+        v1.run_distributed(object(), n_steps=1)
+    msg = str(excinfo.value)
+    for needle in ("removed in #1296", "Simulation.run(",
+                   "rfx.runners.distributed_v2.run_distributed"):
+        assert needle in msg, msg
 
 
 def test_runners_package_eager_import_list_is_unchanged():

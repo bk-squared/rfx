@@ -1,5 +1,6 @@
 """#1041/#1055 physics gate: a source in rank d's FIRST real cell must reach
-rank d-1. Parametrised over BOTH distributed runners.
+rank d-1. Parametrised over both distributed runners until #1296 removed the
+pmap one; the v1 rows below are the measurement it was gated on.
 
 ``rfx/runners/distributed_v2.py`` used to exchange the E ghost rows BEFORE
 injecting sources, in both scan bodies. A soft source written into rank d's
@@ -133,15 +134,7 @@ def _run_v2(sim):
     return sim.run(n_steps=N_STEPS, devices=jax.devices()[:2])
 
 
-def _run_v1(sim):
-    """The legacy pmap lane. Since #1049 it is not re-exported by
-    ``rfx.runners``, and ``sim.run(devices=...)`` never reaches it at 2
-    devices, so the only way to drive it here is the full-path import."""
-    from rfx.runners.distributed import run_distributed as v1
-    return v1(sim, n_steps=N_STEPS, devices=jax.devices()[:2])
-
-
-RUNNERS = {"v2": _run_v2, "v1": _run_v1}
+RUNNERS = {"v2": _run_v2}
 
 
 def _rel_per_probe(source_x, boundary, runner):
@@ -162,7 +155,7 @@ def _rel_per_probe(source_x, boundary, runner):
     return np.max(np.abs(ts_multi - ts_single), axis=0) / peaks
 
 
-@pytest.mark.parametrize("runner", ["v2", "v1"])
+@pytest.mark.parametrize("runner", ["v2"])
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
 def test_seam_cell_source_reaches_the_neighbouring_rank(boundary, runner):
     """The gate. A source in rank 1's first real cell, probed from rank 0.
@@ -183,7 +176,7 @@ def test_seam_cell_source_reaches_the_neighbouring_rank(boundary, runner):
         f"inside rank 1 deviates by {rel[1]:.3e} (gate {GATE:.0e})")
 
 
-@pytest.mark.parametrize("runner", ["v2", "v1"])
+@pytest.mark.parametrize("runner", ["v2"])
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
 def test_interior_source_control_sets_the_floor(boundary, runner):
     """The control the gate is derived from, and a floor-drift witness.
@@ -205,7 +198,7 @@ def test_interior_source_control_sets_the_floor(boundary, runner):
         "before trusting test_seam_cell_source_reaches_the_neighbouring_rank.")
 
 
-@pytest.mark.parametrize("runner", ["v2", "v1"])
+@pytest.mark.parametrize("runner", ["v2"])
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])
 def test_last_cell_source_is_the_side_that_was_never_wrong(boundary, runner):
     """The mirror placement, and the reason the #1038 lock did not move.

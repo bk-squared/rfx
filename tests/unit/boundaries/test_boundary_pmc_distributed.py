@@ -1,6 +1,6 @@
 """T8 (2026-04) — sharded PMC runtime smoke tests.
 
-Covers the three sharded runners:
+Covers the two sharded runners:
   - ``rfx/runners/distributed_nu.py``   — NU path, reached via direct
                                           call to
                                           ``run_nonuniform_distributed_pec``
@@ -11,12 +11,8 @@ Covers the three sharded runners:
   - ``rfx/runners/distributed_v2.py``  — default uniform distributed,
                                           reached via
                                           ``sim.run(..., devices=...)``.
-  - ``rfx/runners/distributed.py``     — legacy uniform (pmap) path,
-                                          reached via a direct call to
-                                          ``run_distributed`` — this is
-                                          the only code path that exercises
-                                          the T8 (2026-04) ``_apply_pmc_local``
-                                          hook inside its pmap scan body.
+  (``rfx/runners/distributed.py``, the legacy pmap path, was removed in
+  #1296; its mixed PMC + PEC case 3 now runs on distributed_v2.)
 
 Case 2 includes a NEGATIVE assertion that non-owning ranks' x-face
 slabs are NOT zeroed — catches "zero everywhere" bugs that pass the
@@ -240,18 +236,16 @@ def test_pmc_distributed_v2_x_lo_owner_and_non_owner():
 
 
 # ---------------------------------------------------------------------------
-# Case 3 — distributed.py legacy pmap uniform path, mixed PMC + PEC on z
+# Case 3 — distributed_v2 (uniform), mixed PMC + PEC on z
 # ---------------------------------------------------------------------------
 
-def test_pmc_distributed_legacy_mixed_z():
-    """Mixed PMC (z_lo) + PEC (z_hi) via the legacy ``rfx.runners.distributed``
-    pmap runner.
+def test_pmc_distributed_v2_mixed_z():
+    """Mixed PMC (z_lo) + PEC (z_hi) via ``sim.run(..., devices=...)`` ->
+    distributed_v2.
 
-    ``sim.run(..., devices=[2])`` routes through
-    ``rfx.runners.distributed_v2.run_distributed`` (the v2 shard_map
-    runner), so to exercise the legacy pmap runner's
-    ``_apply_pmc_local`` hook we call it directly with ``n_devices=1``.
-    The hook still runs under pmap; n_devices=1 keeps the test CPU-cheap.
+    Ran on the legacy pmap runner at one device until #1296 removed it; the
+    assertions are unchanged. z faces are rank-invariant under x-slab
+    decomposition, so two ranks see the same faces one rank did.
 
     Assertions:
       - z_lo PMC: tangential H (hx, hy) at k=0 is zero.
@@ -279,11 +273,7 @@ def test_pmc_distributed_legacy_mixed_z():
         ((nx // 2 + 1) * dx, ny // 2 * dx, nz // 2 * dx), "ex"
     )
 
-    # Direct call to the legacy distributed runner with n_devices=1 so
-    # the _apply_pmc_local hook inside its pmap scan body is exercised.
-    # (sim.run(..., devices=devices) would route to distributed_v2.)
-    from rfx.runners.distributed import run_distributed as legacy_run
-    result = legacy_run(sim, n_steps=30, devices=[devices[0]])
+    result = sim.run(n_steps=30, devices=devices)
 
     hx = np.asarray(result.state.hx)
     hy = np.asarray(result.state.hy)
