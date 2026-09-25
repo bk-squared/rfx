@@ -969,31 +969,39 @@ class _ExecuteMixin:
             )
 
     @staticmethod
-    def _warn_unsupported_run_kwargs(path_name: str,
-                                     unsupported_kwargs: dict,
-                                     reason_overrides: dict | None = None) -> None:
-        """Emit ``UserWarning`` for any Simulation.run kwarg that a given
-        dispatch path drops. Only non-default values are surfaced.
+    def _refuse_unsupported_run_kwargs(path_name: str,
+                                       unsupported_kwargs: dict,
+                                       *,
+                                       instead: str | None,
+                                       reason_overrides: dict | None = None) -> None:
+        """Refuse a ``Simulation.run`` argument that a lane does not implement.
 
-        Previously the distributed / non-uniform / subgridded paths
-        silently dropped most of the ``run`` kwargs (fixed 2026-04); this helper makes
-        the drop explicit at the API boundary so users can tell their
-        request was not honoured. See GitHub tracking issue for the
-        feature-request backlog to actually propagate these kwargs.
+        ``unsupported_kwargs`` maps each ``run()`` argument the
+        ``path_name`` lane does not implement to the value the caller
+        passed. A value that does not ask for the feature (the entries of
+        ``silent_values``, e.g. ``conformal_pec=False``) passes. Any other
+        value raises ``NotImplementedError`` naming the argument, the
+        lane, why the lane cannot do it and what to do instead. Running
+        without it would compute something other than what was asked
+        (a staircase PEC instead of the conformal boundary, a fixed
+        ``n_steps`` instead of a run to decay, no S-matrix), and until
+        2.0 these lanes did exactly that behind a ``UserWarning``.
 
-        ``reason_overrides`` lets a caller replace the shared per-kwarg
-        reason string with a lane-accurate one (e.g. the NU lane drops
-        ``until_decay`` only on closed boundaries, for a different reason
-        than the distributed/subgridded lanes drop it).
+        ``report_every`` is the one argument that only warns: it prints
+        progress and changes no result, so a lane without it says so and
+        runs on.
+
+        ``instead`` names how to reach a lane that implements the
+        arguments (e.g. ``"run on a uniform mesh"``), or is ``None`` when
+        there is no such lane. ``reason_overrides`` replaces the shared
+        per-argument reason with a lane-accurate one (the closed-boundary
+        non-uniform lane refuses ``until_decay`` for a different reason
+        than the distributed lane does).
         """
         import warnings as _w
-        # Per-kwarg "silent" values — the kwarg is dropped only if the
-        # user set it to a value that asks the dispatch path to do
-        # something it does not support. ``compute_s_params=False``
-        # is silent because it matches the path's actual behaviour
-        # (no S-matrix assembly), while ``compute_s_params=True``
-        # warns because the user asked for something that will not
-        # happen.
+        # Per-kwarg values that do not ask for the feature. ``None`` is
+        # compared by identity, so an array-valued argument never reaches
+        # an elementwise ``==``.
         silent_values = {
             "subpixel_smoothing": (False,),
             "checkpoint": (False,),
@@ -1006,43 +1014,98 @@ class _ExecuteMixin:
         }
         reasons = {
             "subpixel_smoothing":
-                "per-component anisotropic eps is not wired on this path",
+                "the smoothed per-component permittivity tensor is not "
+                "wired into this lane's E update, so interfaces would get "
+                "scalar eps",
             "checkpoint":
-                "reverse-mode AD will store the full tape (no "
-                "checkpoint-every support here)",
+                "this lane's time loop has no checkpointed scan, so "
+                "reverse-mode AD would store the full tape",
             "snapshot":
-                "scan-body field snapshotting is not wired on this path",
+                "this lane records no field snapshots",
             "until_decay":
-                "scan body runs for exactly n_steps; decay-based "
-                "termination is supported on the uniform lane and the "
-                "absorbing-boundary (cpml/upml) non-uniform lane only",
+                "this lane runs exactly n_steps; the decay stop exists on "
+                "the uniform lane and on the non-uniform lane with "
+                "cpml/upml boundaries",
             "conformal_pec":
-                "Dey-Mittra conformal weights are computed on a uniform "
-                "staircase mesh only",
+                "the Dey-Mittra conformal weights are wired only into the "
+                "uniform Yee lane, so PEC would be staircased",
             "compute_s_params":
-                "S-matrix assembly is not plumbed through this path",
+                "S-matrix assembly is not plumbed through this lane",
             "s_param_freqs":
-                "S-matrix assembly is not plumbed through this path",
+                "S-matrix assembly is not plumbed through this lane",
             "s_param_n_steps":
-                "S-matrix assembly is not plumbed through this path",
+                "S-matrix assembly is not plumbed through this lane",
             "report_every":
                 "host-side progress chunking (issue #667) is wired on the "
-                "uniform lane only; this path would run silently to "
-                "completion, so the request is reported rather than "
-                "dropped in silence",
+                "uniform and non-uniform lanes only",
+        }
+        remedies = {
+            "subpixel_smoothing": "drop subpixel_smoothing",
+            "checkpoint": "pass checkpoint=False",
+            "snapshot": "drop snapshot= and read Result.state or add_probe() "
+                        "time series",
+            "until_decay": "set n_steps or num_periods",
+            "conformal_pec": "pass conformal_pec=False and drop "
+                             "Boundary(conformal=True) (staircase PEC)",
+            "compute_s_params": "drop the S-parameter request",
+            "s_param_freqs": "drop the S-parameter request",
+            "s_param_n_steps": "drop s_param_n_steps and set n_steps to "
+                               "the record length you want",
         }
         if reason_overrides:
             reasons.update(reason_overrides)
-        for kw, val in unsupported_kwargs.items():
+
+        def _asks(kw, val) -> bool:
             silent = silent_values.get(kw, (None,))
-            if val in silent:
+            if val is None:
+                return None not in silent
+            if isinstance(val, (bool, int, float, str, np.generic)):
+                return val not in silent
+            return True
+
+        def _shown(val) -> str:
+            text = repr(val)
+            return text if len(text) <= 40 else f"<{type(val).__name__}>"
+
+        refused = []
+        for kw, val in unsupported_kwargs.items():
+            if kw == "report_every" or not _asks(kw, val):
                 continue
-            reason = reasons.get(kw, "not propagated")
+            refused.append(
+                f"  {kw}={_shown(val)}: {reasons.get(kw, 'not implemented')}. "
+                f"Instead: {remedies.get(kw, 'drop it')}"
+                + (f", or {instead}." if instead else ".")
+            )
+        if refused:
+            raise NotImplementedError(
+                f"Simulation.run() refuses {len(refused)} argument(s) the "
+                f"{path_name} lane does not implement; running without "
+                "them would compute something other than what was asked:\n"
+                + "\n".join(refused)
+            )
+        val = unsupported_kwargs.get("report_every")
+        if val is not None:
             _w.warn(
-                f"{kw}={val!r} is silently ignored on the {path_name} run "
-                f"path ({reason}).",
+                f"report_every={val!r} is ignored on the {path_name} run "
+                f"path ({reasons['report_every']}); the run goes on without "
+                "progress lines and its result is unchanged.",
                 UserWarning, stacklevel=3,
             )
+
+    @staticmethod
+    def _s_param_n_steps_off_record(s_param_n_steps, n_steps, until_decay):
+        """``s_param_n_steps`` where it differs from the main run's record.
+
+        For a lane that reads its S-parameters from the main run's own port
+        record, that record is ``n_steps`` long, or ends at the decay stop.
+        An equal value asks for nothing and comes back as ``None``.
+        """
+        if s_param_n_steps is None:
+            return None
+        if (until_decay is None and n_steps is not None
+                and int(s_param_n_steps) == int(n_steps)):
+            return None
+        return s_param_n_steps
 
     def _port_sparameter_entries(self) -> list:
         """Return ``add_port`` entries that are actual impedance ports.
@@ -4398,7 +4461,7 @@ class _ExecuteMixin:
                 )
                 refuse_unsupported_distributed_features(
                     self, lane="distributed multi-device run()")
-            self._warn_unsupported_run_kwargs("distributed multi-device", {
+            self._refuse_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
                 "snapshot": snapshot,
@@ -4408,7 +4471,7 @@ class _ExecuteMixin:
                 "s_param_freqs": s_param_freqs,
                 "s_param_n_steps": s_param_n_steps,
                 **({} if report_every is None else {"report_every": report_every}),
-            })
+            }, instead="omit devices= to run on one device")
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
             from rfx.runners.distributed_v2 import run_distributed
@@ -4423,32 +4486,35 @@ class _ExecuteMixin:
         if plan.lane == "run_nonuniform":
             # #383: until_decay is supported on the NU lane for absorbing
             # boundaries (the interior-energy criterion, same class as the
-            # uniform #169 stop). Closed/PEC NU domains keep warn-and-drop
-            # with a lane-accurate reason: their interior energy does not
-            # decay, and the NU lane has no point-field fallback.
-            _nu_until_decay = (
-                until_decay
-                if self._boundary in ("cpml", "upml")
-                else None
-            )
-            _nu_dropped = {
+            # uniform #169 stop). Closed/PEC NU domains refuse it with a
+            # lane-accurate reason: their interior energy does not decay,
+            # and the NU lane has no point-field fallback. The NU lane's
+            # S-parameters come from the main run's port record, so an
+            # s_param_n_steps other than that record's length is refused.
+            _nu_refused = {
                 "snapshot": snapshot,
                 "conformal_pec": conformal_pec,
+                "s_param_n_steps": self._s_param_n_steps_off_record(
+                    s_param_n_steps, n_steps, until_decay),
             }
-            if _nu_until_decay is None:
-                _nu_dropped["until_decay"] = until_decay
-            self._warn_unsupported_run_kwargs(
-                "non-uniform mesh", _nu_dropped,
+            if self._boundary not in ("cpml", "upml"):
+                _nu_refused["until_decay"] = until_decay
+            self._refuse_unsupported_run_kwargs(
+                "non-uniform mesh", _nu_refused,
+                instead="run on a uniform mesh (no dx/dy/dz profile)",
                 reason_overrides={
                     "until_decay":
                         "the interior-energy decay stop needs absorbing "
-                        "boundaries (cpml/upml); this closed-boundary "
-                        "non-uniform run executes a fixed n_steps, and the "
+                        "boundaries (cpml/upml); a closed non-uniform "
+                        "domain's energy does not decay, and the "
                         "non-uniform lane has no point-field fallback "
                         "(issue #383)",
+                    "s_param_n_steps":
+                        "this lane reads the S-parameters from the main "
+                        "run's port record, whose length is n_steps",
                 },
             )
-            if _nu_until_decay is not None:
+            if until_decay is not None:
                 # #388 DC-floor predictor for the NU decay stop. The grid
                 # build is pure (no sim-state mutation) and cheap; an
                 # advisory must never block the run, so any build failure
@@ -4470,7 +4536,7 @@ class _ExecuteMixin:
                 s_param_freqs=s_param_freqs,
                 subpixel_smoothing=subpixel_smoothing,
                 checkpoint=checkpoint,
-                until_decay=_nu_until_decay,
+                until_decay=until_decay,
                 decay_check_interval=decay_check_interval,
                 decay_min_steps=decay_min_steps,
                 decay_max_steps=decay_max_steps,
@@ -4507,13 +4573,14 @@ class _ExecuteMixin:
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI run()")
-            self._warn_unsupported_run_kwargs("adi", {
+            self._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
+                "subpixel_smoothing": subpixel_smoothing,
+                "checkpoint": checkpoint,
+                "snapshot": snapshot,
+                "until_decay": until_decay,
+                "conformal_pec": conformal_pec,
                 **({} if report_every is None else {"report_every": report_every}),
-            })
-            if until_decay is not None:
-                raise ValueError("solver='adi' does not support until_decay yet")
-            if snapshot is not None:
-                raise ValueError("solver='adi' does not support snapshots yet")
+            }, instead="use the default solver='yee'")
             if n_steps is None:
                 n_steps = grid.num_timesteps(num_periods=num_periods)
             _res = self._run_adi_from_materials(
@@ -4535,14 +4602,14 @@ class _ExecuteMixin:
         if plan.lane == "run_subgridded":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "subgridded (SBP-SAT) run()")
-            self._warn_unsupported_run_kwargs("subgridded (SBP-SAT)", {
+            self._refuse_unsupported_run_kwargs("subgridded (SBP-SAT)", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
                 "snapshot": snapshot,
                 "until_decay": until_decay,
                 "conformal_pec": conformal_pec,
                 **({} if report_every is None else {"report_every": report_every}),
-            })
+            }, instead="drop add_refinement() to run on the uniform lane")
             subgrid_n_steps = n_steps
             if subgrid_n_steps is None:
                 # The subgrid runner advances with the fine-grid CFL timestep

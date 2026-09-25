@@ -1866,24 +1866,22 @@ def test_box_and_equivalent_mask_shape_fold_bit_identically(lane):
 
 def test_dc_fold_also_accepts_a_mask_shape_on_the_uniform_lane():
     """The legacy DC fold was never Box-only on the uniform lane (it reads
-    ``shape.mask``); pin that #674 did not change it. The NU DC path keeps its
-    documented warn-and-skip for non-Box shapes."""
+    ``shape.mask``); pin that #674 did not change it. The NU DC path refuses
+    a non-Box shape (2.0); it used to warn and solve without the conductor."""
     # The DC fold samples ``shape.mask`` half-open (a sigma-fill volume
     # model, unchanged by #931), so the equivalent mask shape is half-open.
     sig_box, _, _, _ = _uniform_sigma(_box_sheet(U_Z, U_FOOT))
     sig_msk, _, _, _ = _uniform_sigma(_planar_sheet(U_Z, U_FOOT, closed=False))
     assert _sha(sig_box) == _sha(sig_msk)
 
-    with warnings.catch_warnings(record=True) as rec:
-        warnings.simplefilter("always")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         sim = Simulation(freq_max=10e9, domain=(NU_L, NU_L, 0), dx=NU_DX,
                          dz_profile=NU_DZ, boundary="cpml", cpml_layers=6)
         sim.add_thin_conductor(_planar_sheet(NU_Z, NU_FOOT),
                                sigma_bulk=SIGMA_BULK, thickness=THICKNESS)
-        mats_nu, *_ = assemble_materials_nu(sim, _nu_grid(sim))
-    assert any("non-Box shape is not yet supported" in str(w.message)
-               for w in rec), [str(w.message) for w in rec]
-    assert float(np.asarray(mats_nu.sigma).max()) == 0.0
+    with pytest.raises(NotImplementedError, match="non-Box shape"):
+        assemble_materials_nu(sim, _nu_grid(sim))
 
 
 # ---------------------------------------------------------------------------

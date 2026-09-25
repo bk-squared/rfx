@@ -323,20 +323,20 @@ def assemble_materials_nu(
                         "Shape.bounding_box()) to locate its normal; "
                         "refusing to skip it on the non-uniform path.")
             else:
-                # Legacy DC fold: left exactly as #373 shipped it. A non-Box
-                # DC sheet still warn-and-skips here — #674 asked for the
-                # surface-impedance mode, and turning a documented
-                # warn-and-skip into a fold is a behaviour change for existing
-                # models, so it is a separate decision, not a side effect.
+                # Legacy DC fold: left as #373 shipped it for Box sheets. A
+                # non-Box DC sheet used to warn and be skipped, which solved
+                # the board without that conductor; since 2.0 it is refused.
+                # Folding it instead stays the separate decision #674 left.
                 lo = getattr(tc.shape, "corner_lo", None)
                 hi = getattr(tc.shape, "corner_hi", None)
                 if lo is None or hi is None:
-                    import warnings as _warnings
-                    _warnings.warn(
-                        "lossy thin conductor with a non-Box shape is not yet "
-                        "supported on the non-uniform path and was skipped.",
-                        stacklevel=2)
-                    continue
+                    raise NotImplementedError(
+                        "a lossy thin conductor (add_thin_conductor without "
+                        "surface_impedance_f0) with a non-Box shape "
+                        f"({type(tc.shape).__name__}) is not implemented on "
+                        "the non-uniform lane; skipping it would leave the "
+                        "conductor out of the solve. Instead: draw it as a "
+                        "Box, or run on a uniform mesh.")
             extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
             n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
             d_norm = e_node_dual_spacings(
@@ -989,12 +989,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     if subpixel_smoothing:
         from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
         if debye_spec is not None or lorentz_spec is not None:
-            import warnings as _w
-            _w.warn(
-                "subpixel_smoothing=True ignored on the non-uniform path "
-                "when dispersive materials (Debye/Lorentz) are present — "
-                "the dispersive scan branch does not consume aniso_eps.",
-                stacklevel=2,
+            sim._refuse_unsupported_run_kwargs(
+                "non-uniform mesh with Debye/Lorentz materials",
+                {"subpixel_smoothing": subpixel_smoothing},
+                instead="remove the Debye/Lorentz poles",
+                reason_overrides={"subpixel_smoothing":
+                    "the dispersive E update does not read the smoothed "
+                    "per-component permittivity tensor, so interfaces "
+                    "would get scalar eps"},
             )
         else:
             # #1043 stage B: the pairs carry the CPML/UPML pad continuation,

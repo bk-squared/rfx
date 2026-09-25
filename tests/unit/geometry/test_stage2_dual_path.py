@@ -327,9 +327,11 @@ def test_nu_runner_hard_fails_on_kottke_pec():
         freq_max=10e9,
         domain=(0.04, 0.04, 0.04),
         dz_profile=[0.002] * 20,
+        # No ``conformal=True`` here: on a non-uniform mesh that declaration
+        # is refused on its own (conformal_pec) before kottke_pec is reached.
         boundary=BoundarySpec(
             x="cpml",
-            y=Boundary(lo="pec", hi="pec", conformal=True),
+            y=Boundary(lo="pec", hi="pec"),
             z="cpml",
         ),
         cpml_layers=4,
