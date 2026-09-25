@@ -2007,14 +2007,16 @@ def _sim_with_monitor(**kw):
     return sim
 
 
-@pytest.mark.parametrize("lane", ["subgridded", "disjoint", "distributed",
-                                  "distributed_v2", "vmap"])
+@pytest.mark.parametrize("lane", ["subgridded", "disjoint", "distributed_v2",
+                                  "distributed_v2_one_device", "vmap"])
 def test_lanes_that_do_not_accumulate_it_refuse_it(lane):
     """A declared monitor must not come back silently empty.
 
-    Five entry points never read the declaration; each says so. The two
-    distributed runners refuse AFTER their single-device fallbacks, because
-    those return through ``sim.run()``, which does accumulate it.
+    Four entry points never read the declaration; each says so. The shard_map
+    runner refuses AFTER its single-device fallbacks (TFSF, waveguide port),
+    because those return through ``sim.run()``, which does accumulate it, and
+    before it looks at the devices: a one-device call runs the same shard_map
+    path (#1296).
     """
     sim = _sim_with_monitor()
     with pytest.raises(NotImplementedError, match="add_current_moment_monitor"):
@@ -2024,12 +2026,12 @@ def test_lanes_that_do_not_accumulate_it_refuse_it(lane):
         elif lane == "disjoint":
             from rfx.runners.disjoint import run_disjoint_stage2_path
             run_disjoint_stage2_path(sim, None, 4)
-        elif lane == "distributed":
-            from rfx.runners.distributed import run_distributed
-            run_distributed(sim, n_steps=4)
         elif lane == "distributed_v2":
             from rfx.runners.distributed_v2 import run_distributed
             run_distributed(sim, n_steps=4)
+        elif lane == "distributed_v2_one_device":
+            from rfx.runners.distributed_v2 import run_distributed
+            run_distributed(sim, n_steps=4, devices=jax.devices()[:1])
         else:
             from rfx.vmap_sweep import vmap_material_sweep
             vmap_material_sweep(sim, "eps_r", [1.0, 2.0], n_steps=4)
