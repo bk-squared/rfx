@@ -31,7 +31,7 @@ for another.
 | Port | Calculator | Start from | Limits |
 |---|---|---|---|
 | Lumped or wire `add_port(...)` | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for a differentiable `S11` | about 60 cells per wavelength at the highest frequency | A discrete feed across one gap, not a modal line port. V is read at the port node and I half a cell toward the line, so a two-port `S21` phase is referenced to the port separation less half a cell. Lumped and wire ports return the same `S11`. |
-| Microstrip `add_msl_port(...)` | `compute_msl_s_matrix(...)` | about 3 cells across the substrate | Returns the raw extracted `S`; read `sigma_max_excess` for any passivity breach, or pass `enforce_passivity=True` to project it. Check `probe_clearance` for the probe layout and `settling_db` for the record length. |
+| Microstrip `add_msl_port(...)` | `compute_msl_s_matrix(...)` | at least 4 cells through the substrate (preflight warns below that) | Returns the raw extracted `S`; read `sigma_max_excess` for any passivity breach, or pass `enforce_passivity=True` to project it. Check `probe_clearance` for the probe layout and `settling_db` for the record length. |
 | Rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | the documented rectangular-guide modes and bands | Single-mode magnitudes have the broadest evidence; phase, junctions, multimode and graded meshes have less. Only `normalize=False` and `normalize="flux"` carry a gradient. |
 | Coaxial `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` for one port, `compute_coaxial_two_port(...)` for a through line | at least 4 cells across the annulus | Exactly one coaxial port with `face="top"`, `precision="float32"`, a uniform 3-D grid and CPML on all six faces. The calculator builds its own line, source and probes; it is not a general coaxial-network solver. |
 
@@ -43,8 +43,8 @@ impedance or reference plane. They give fields and power, not S-parameters.
 A transmission line should end at a port that absorbs it, not in the CPML.
 Name the conductor a port ends with `terminates=` on `add_port`,
 `add_msl_port` or `add_coaxial_port`; a microstrip port ends the strip under
-it by default. As a line termination, the CPML reflects about −9.4, −15.0
-and −22.3 dB at 4, 8 and 16 layers on a microstrip line. Preflight names any
+it by default. The CPML terminates a guided line much less well than a plane
+wave. Preflight names any
 conductor that runs into the absorber unterminated.
 
 ## Non-default configurations

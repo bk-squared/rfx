@@ -48,7 +48,7 @@ sim.add_polarized_source((0.010, 0.020, 0.015), polarization="slant45",
 |---|---|---|
 | `add_source` | `add_source(position, component="ez", *, waveform=None, amplitude_kind=None)` | soft point source in one cell; no load, so it suits resonance and Harminv work |
 | `add_polarized_source` | `add_polarized_source(position, *, polarization="ez", waveform=None, amplitude_kind=None)` | linear polarization: `"ex"`, `"ey"`, `"ez"`, `"slant45"` or a real `(Ex, Ey)` tuple |
-| `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform="differentiated_gaussian", method="bloch")` | plane wave travelling along x, for scattering; 3-D with CPML only |
+| `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform="differentiated_gaussian", method="bloch")` | plane wave travelling along x, for scattering; 3-D or 2-D (`mode="2d_tmz"`/`"2d_tez"`), with CPML |
 | `add_floquet_port` | see the [generated reference](/rfx/api/generated/) | experimental; no documented S-parameter API |
 
 **`amplitude_kind`.** Always pass it. `"current"` means the waveform amplitude
@@ -62,8 +62,8 @@ circular polarization from this source has not been verified. Don't use it to
 report axial ratio or sense.
 
 For the plane wave on a graded mesh, only normal incidence along `+x` or `-x`
-runs, and only when x itself is uniform. Preflight warns when the propagation
-axis is graded. Far-field and RCS use is covered in
+is valid, and only when x itself is uniform. A graded x axis still runs, with
+a preflight warning. Far-field and RCS use is covered in
 [Far-Field and RCS](/rfx/guide/farfield-rcs/).
 
 ## Ports
@@ -182,8 +182,9 @@ msl.add_msl_port((0.017, 0.004, 0.0), width=w, height=h, direction="-x",
 print(msl.s_matrix_lane())                # compute_msl_s_matrix
 ```
 
-A cell of 100 µm puts 3 cells across the 300 µm substrate. For microstrip, the
-substrate thickness sets the cell size, not the wavelength.
+A cell of 100 µm puts 3 cells across the 300 µm substrate, which is coarse
+for speed: preflight warns below 4. For microstrip, the substrate thickness
+sets the cell size, not the wavelength.
 
 ### Waveguide ports
 
@@ -340,17 +341,17 @@ print(np.abs(refl.s11))
 - **Resolution.** Lumped and wire ports: about 60 cells per wavelength at the
   highest frequency for one-port S11. At 60 cells per wavelength, `|S11|` on
   resistive loads is within 0.54 dB of the closed form, and exact on a short
-  or open. At 30 cells per wavelength, magnitudes are within 1.1 dB and
-  frequencies move 1.3–2.6 %. Coax: at least 4 cells across the annulus.
-  Microstrip: about 3 cells through the substrate.
+  or open. At 30 cells per wavelength, magnitudes are within 1.1 dB and the
+  line's phase-crossing frequencies sit 1.7–2.9 % from the closed form (the
+  lumped/wire chain battery, measured through `forward(port_s11_freqs=...)`).
+  Coax: at least 4 cells across the annulus. Microstrip: at least 4 cells
+  through the substrate (preflight warns below that).
 - **Port reference plane.** A one-cell lumped or wire port reads V at its node
   and I half a cell toward the line. A two-port S21 phase is therefore
   referenced to the port separation less half a cell. Lumped and wire ports
   return identical S11.
-- **End lines at their ports, not in the CPML.** As the termination of a line,
-  CPML reflects −9.4 / −15.0 / −22.3 dB at 4 / 8 / 16 layers on microstrip,
-  and −13.9 / −22.3 dB at 8 / 16 layers on WR-90. Let the ports terminate the
-  line.
+- **End lines at their ports, not in the CPML.** CPML terminates a guided
+  line much less well than a plane wave. Let the ports terminate the line.
 - **Coax open termination is not supported.** `termination="open"` reads
   `|Γ| > 1` on fine meshes. Track
   [issue #1218](https://github.com/bk-squared/rfx/issues/1218).

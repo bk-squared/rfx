@@ -126,8 +126,9 @@ print(report.format())
 Each `add_thin_conductor` call warns that the sheet is a **lossless PEC
 sheet**, because copper's conductivity is above the 1e6 S/m PEC threshold.
 The patch therefore has no conductor loss. If conductor loss matters for your
-Q or efficiency, pass `surface_impedance_f0=f0`. That adds a resistive sheet
-with copper's surface resistance at `f0`, on the same footprint.
+Q or efficiency, pass `surface_impedance_f0=f0`. The sheet is then modelled as
+a resistive sheet with copper's surface resistance at `f0`, on the same
+footprint, instead of as PEC.
 
 Preflight then gives two warnings about the patch size:
 

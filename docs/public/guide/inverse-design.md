@@ -292,14 +292,10 @@ print(f"|S11|^2 = {float(value):.4f}, AD dL/dR = {float(dloss_dR):.3e}, "
       f"FD dL/dR = {float(fd):.3e}")
 ```
 
-The gradient is taken at the registered value, 200 Ω, on purpose. A series
-R + C element on a cell with no port conductance can be numerically unstable at
-low resistance, and rfx does not warn. In a small closed test box the fields go
-non-finite at 100 Ω and below (the threshold lies between 100 and 120 Ω), and
-at 120 to 150 Ω they still grow without bound; at 200 Ω and above they decay.
-The threshold depends on the surroundings, so check that the loss and gradient
-are finite at every value you evaluate, and keep an optimizer's R away from the
-unstable range (for example, optimize a bounded latent variable).
+The gradient is taken at the value the element was registered with. Check that
+the loss and gradient are finite at every value you evaluate, as the `assert`
+does, and keep an optimizer's R inside a physical range (for example, optimize
+a bounded latent variable).
 
 ## Limits
 
@@ -315,7 +311,5 @@ unstable range (for example, optimize a bounded latent variable).
   `forward()`, `optimize()` and `topology_optimize()` refuse a refined model.
 - **`jit=True` fails with a tracer error**: an MSL port, or a traced mesh with a
   wire port and a conductor. Use `jit=False`.
-- **Series R + C next to a port gives NaN**: raise R (see above), and check
-  `jnp.isfinite` on the loss.
 - **Out of memory in the backward pass**: use a design box, segmented
   checkpointing or fewer steps. See [Memory Reduction](/rfx/guide/memory-reduction/).

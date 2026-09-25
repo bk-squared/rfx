@@ -47,12 +47,12 @@ The boundary decides what happens at the edge of the domain.
 |---|---|---|
 | `"cpml"` | open problems: antennas, scattering, lines that leave the box | an absorber `cpml_layers` cells thick (default 16), added **outside** `domain` |
 | `"pec"` | closed problems: cavities, shielded boxes | energy cannot leave, so resonances ring indefinitely |
-| `"pmc"` | a symmetry plane, which halves the problem | only where the fields really are symmetric |
-| `"periodic"` | infinite arrays and unit cells | the paired faces go together |
+| `"pmc"` (via `BoundarySpec`) | a symmetry plane, which halves the problem | only where the fields really are symmetric |
+| `"periodic"` (via `BoundarySpec`) | infinite arrays and unit cells | the paired faces go together |
 | `"upml"` | legacy absorber | reflects noticeably more than CPML; prefer CPML |
 
-A single string applies to all six faces. Use `BoundarySpec` to set each face
-separately:
+A single string (`"cpml"`, `"pec"` or `"upml"`) applies to all six faces. Use
+`BoundarySpec` to set each face separately, and for `"pmc"` and `"periodic"`:
 
 ```python
 from rfx import Simulation

@@ -57,7 +57,7 @@ see the same grid.
 |---|---|---|---|
 | `False` (default) | one per port | nothing; magnitudes carry a few-percent Yee impedance error | \|S11\| of strong reflectors (shorts, high-Q loads) on a uniform mesh |
 | `True` | two per port | one-way grid dispersion in transmission | S21 of a straight guide. Not for S11. |
-| `"flux"` | two per port | magnitude from Poynting flux, phase from the mode | general use; required on a graded mesh |
+| `"flux"` | two per port | magnitude from Poynting flux, phase from the mode | general use; recommended on a graded mesh (`normalize=False` is refused there) |
 
 `normalize=True` divides by an empty-guide reference run. That fixes
 transmission but not reflection. `normalize=True` also cannot be
@@ -193,15 +193,16 @@ width you drew. See
 A waveguide port's absorber must swallow the guided wave, and CPML does that
 worse near cutoff, where the guide wavelength is long. rfx warns when the
 absorber on a port's axis is thinner than 0.5 λ_g at the lowest measured
-frequency. Treat that as a floor. For scale: a WR-90 guide that simply runs
-into the CPML reflects about −13.9 dB with 8 layers and −22.3 dB with 16.
+frequency. Treat that as a floor, and end every guide at a port rather
+than running it into the absorber.
 
 ## Gradients and memory
 
 `compute_waveguide_s_matrix` accepts `eps_override=` / `sigma_override=` for
 differentiation with `normalize=False` or `"flux"`, single-mode only. For
 long runs under `jax.grad`, `checkpoint_segments=K` trades compute for memory.
-`K` must divide the number of time steps exactly.
+On a uniform mesh `K` must divide the number of time steps exactly; on a
+graded mesh it is a target segment count.
 
 ## Limits
 
@@ -213,7 +214,7 @@ long runs under `jax.grad`, `checkpoint_segments=K` trades compute for memory.
   when all ports share one cross-section and mode.
 - **Compact junctions** give non-physical matrices even with
   `port_reference_sims`. Keep the far-port conditions.
-- **Graded meshes** require `normalize="flux"`. Graded-mesh waveguide results
+- **Graded meshes** refuse `normalize=False`; use `"flux"` (or `True`). Graded-mesh waveguide results
   outside the published WR-90 comparisons are experimental.
 - **`port_reference_sims`** needs `normalize="flux"`, single-mode ports, a
   uniform mesh and no material override.

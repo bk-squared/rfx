@@ -115,14 +115,15 @@ starting points for a convergence study. They are not a substitute for one.
 
 | Port family | Start from | What the coarser mesh costs |
 |---|---|---|
-| Lumped or wire port, one-port `S11` | about 60 cells per wavelength at the highest frequency | at 60 cells/λ, `\|S11\|` of resistive loads is within 0.54 dB of the closed form (shorts and opens exact); at 30 cells/λ magnitudes are within 1.1 dB and resonances move 1.3–2.6 % |
-| Microstrip line, `compute_msl_s_matrix` | about 3 cells across the substrate (100 µm on a 300 µm substrate) | the substrate thickness sets the cell size, not the wavelength |
+| Lumped or wire port, one-port `S11` | about 60 cells per wavelength at the highest frequency | at 60 cells/λ, `\|S11\|` of resistive loads is within 0.54 dB of the closed form (shorts and opens exact); at 30 cells/λ magnitudes are within 1.1 dB and phase-crossing frequencies sit 1.7–2.9 % from the closed form (measured through `forward(port_s11_freqs=...)`) |
+| Microstrip line, `compute_msl_s_matrix` | at least 4 cells through the substrate (preflight warns below that) | the substrate thickness sets the cell size, not the wavelength |
 | Coaxial line | at least 4 cells across the annulus | refining shortens the probe span the phase fit uses, so give the probe array enough physical length |
 
 The microstrip evidence behind that row: on an open-stub notch filter
 (600 µm trace, 254 µm substrate with εr 3.66, 12 mm stub) the notch frequency
-converges to within 0.036 % of the openEMS tutorial result on a uniform mesh,
-and to within 0.03 % on a band-graded mesh with 6 cells across the substrate.
+converges to within 0.036 % of the openEMS tutorial result on a uniform mesh
+with 6 cells through the substrate, and to within 0.03 % on a band-graded mesh
+with 6 substrate cells. Coarser meshes are further off.
 
 ## Where the evidence lives
 

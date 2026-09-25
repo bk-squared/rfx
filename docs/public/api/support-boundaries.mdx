@@ -41,7 +41,7 @@ A clean preflight or a completed run does not move a feature up this scale.
 | Probes and flux monitors | **supported** | On a uniform grid. See the graded-mesh table below. |
 | Harminv resonances (`find_resonances`) | **supported** | Needs a rung-down record and some loss. |
 | Far field / RCS (NTFF) | **limited** | Benchmarked cases in [Far-Field and RCS](/rfx/guide/farfield-rcs/). |
-| Plane wave (`add_tfsf_source`) | **limited** | x-directed, 3-D, CPML. |
+| Plane wave (`add_tfsf_source`) | **limited** | x-directed, 3-D or 2-D (TMz/TEz), CPML. |
 | Graded meshes (`dx/dy/dz_profile`) | **limited by feature** | See [Graded meshes](#graded-meshes). |
 | ADI solver (`solver="adi"`) | **experimental** | 3-D PEC-cavity frequency within 2 % at `adi_cfl_factor=2`. Use Yee for results you report. |
 | Subgridding (`add_refinement`) | **not documented** | `run()` on a uniform mesh only. |
@@ -55,7 +55,7 @@ A clean preflight or a completed run does not move a feature up this scale.
 | lumped `add_port(...)` | `run(compute_s_params=True)` | **limited** | One-cell feed model. About 60 cells per wavelength for one-port S11. |
 | wire `add_port(..., extent=...)` | `run(compute_s_params=True)` | **limited** | Magnitude evidence is stronger than absolute calibration. Graded-mesh use is experimental. |
 | lumped / wire | `forward(port_s11_freqs=...)` | **limited** | S11 vectors on the uniform single-device path. |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | **limited** | Quasi-TEM (`mode="laplace"`), directions ±x and ±y. About 3 cells through the substrate. Graded mesh experimental; `mode="eigenmode"` outside scope. |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | **limited** | Quasi-TEM (`mode="laplace"`), directions ±x and ±y. At least 4 cells through the substrate (preflight warns below that). Graded mesh experimental; `mode="eigenmode"` outside scope. |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | **limited** | Uniform single-mode magnitude has broad evidence; phase, junctions and multimode less. S is a power-wave S only when all ports share one cross-section. Gradients on `normalize=False` and `"flux"`. Graded mesh experimental. |
 | `add_waveguide_port(...)` | `run(...)` → `waveguide_sparams` | **limited** | Per-port diagnostic, not the full matrix. |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | **limited** | One `face="top"` port, self-contained line, float32 uniform grid. At least 4 cells across the annulus. Open termination not supported. |
@@ -66,7 +66,8 @@ A clean preflight or a completed run does not move a feature up this scale.
 | sources, TFSF, probes, DFT planes, flux monitors | none | **not a port** | No reference impedance, so no S-parameters. |
 
 Each family has one calculator. `run(compute_s_params=True)` handles lumped and
-wire ports only. `sim.compute_s_matrix()` picks the right calculator for you;
+wire ports only. `sim.compute_s_matrix()` picks the right calculator for you, except for a
+lumped/wire-only model, which it refuses (call `run(compute_s_params=True)`);
 see [Sources & Ports](/rfx/api/sources-ports/#s-parameter-calculators).
 
 ## Graded meshes

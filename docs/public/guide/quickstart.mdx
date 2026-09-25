@@ -75,7 +75,7 @@ far fields but **not** S-parameters. Use a port for those; see
 ## 4. Observables
 
 ```python
-sim.add_probe((0.014, 0.02, 0.02), "ez")   # probe 0: in front of the slab
+sim.add_probe((0.020, 0.02, 0.02), "ez")   # probe 0: between source and slab
 sim.add_probe((0.046, 0.02, 0.02), "ez")   # probe 1: behind the slab
 ```
 
@@ -136,12 +136,13 @@ reference run without the slab. The
 | Argument | Meaning |
 |---|---|
 | `n_steps=N` | exactly N time steps |
-| `num_periods=P` | P periods of the source centre frequency (default 20) |
+| `num_periods=P` | P periods at `freq_max` (default 20) |
 | `until_decay=1e-3` | step until the field energy has decayed to that fraction of its peak, up to `decay_max_steps` |
 
 With absorbing boundaries, `until_decay` watches the total energy inside the
 domain, which is a reliable stop for spectra, flux and S-parameters. A closed
-PEC box never loses energy, so there it falls back to a single field sample.
+PEC box never loses energy, so there it falls back to a single field sample
+(on a graded mesh, a closed-boundary `until_decay` is refused instead).
 That fallback is only reliable for lossy or radiating ring-down, so use a fixed
 `n_steps` in a closed structure. Also use a fixed `n_steps` when you compare
 runs, for example in a convergence study.

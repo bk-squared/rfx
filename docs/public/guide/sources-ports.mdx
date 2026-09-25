@@ -22,7 +22,9 @@ gives S-parameters for it:
 
 Port families cannot be mixed in one S-parameter calculation. If you are not
 sure which calculator a model needs, `sim.s_matrix_lane()` tells you without
-running anything, and `sim.compute_s_matrix(**kwargs)` calls it for you.
+running anything, and `sim.compute_s_matrix(**kwargs)` calls it for you. The
+one exception is a lumped/wire-only model, which `compute_s_matrix` refuses:
+call `run(compute_s_params=True)` for those.
 
 ## Waveforms
 
@@ -163,7 +165,9 @@ Touchstone export.
   highest frequency you care about. At 60 cells per wavelength, one-port |S11|
   lands within 0.54 dB of the closed form on resistive loads, and exactly on a
   short or open. At 30 cells per wavelength, magnitudes are within 1.1 dB,
-  and resonant frequencies move by 1.3–2.6 %.
+  and the line's phase-crossing frequencies sit 1.7–2.9 % from the closed
+  form. These figures come from the lumped/wire chain battery, which measures
+  `forward(port_s11_freqs=...)` on a one-cell parallel-plate line.
 - **Know the reference plane.** A one-cell port reads its voltage at the port
   node and its current half a cell toward the line. So a two-port S21 phase
   refers to the port separation minus half a cell.
@@ -281,15 +285,17 @@ Z0. Refine before you quote Z0.
 
 Getting an accurate microstrip result:
 
-- **The substrate sets the cell size.** Use at least three cells through the
-  substrate, for example 100 µm cells on a 300 µm substrate. On a thin
-  substrate that binds long before the wavelength does. With that meshing,
-  the open-stub notch filter (600 µm trace, 254 µm substrate, ε_r 3.66,
-  12 mm stub) converges to within 0.036 % of the openEMS notch frequency on a
-  uniform mesh. A graded mesh with 6 substrate cells is within 0.03 %.
-- **End the line at its ports, not in the absorber.** CPML is a poor
-  termination for a two-conductor line: it reflects −9.4, −15.0 and −22.3 dB
-  at 4, 8 and 16 layers on microstrip. Put a port at each end of the line.
+- **The substrate sets the cell size.** On a thin substrate the substrate
+  thickness binds long before the wavelength does. Preflight warns below 4
+  cells through the substrate. Start there, then refine and check that your
+  answer stops moving. For scale: with 6 cells through the substrate, the
+  open-stub notch filter (600 µm trace, 254 µm substrate, ε_r 3.66, 12 mm
+  stub) converges to within 0.036 % of the openEMS notch frequency on a
+  uniform mesh, and a band-graded mesh with 6 substrate cells is within
+  0.03 %. Coarser meshes are further off.
+- **End the line at its ports, not in the absorber.** CPML is a much poorer
+  termination for a two-conductor line than for a plane wave. Put a port at
+  each end of the line.
 - **Give the probes room.** The automatic probe offset and spacing are chosen
   in cells from the mesh under the port, and recounted at run time on graded
   or automatic meshes. On a short feed, rfx warns if there is no clean place
@@ -383,7 +389,7 @@ Getting an accurate result:
 - **Coax** open terminations are unsupported. Coax lanes cover this one
   geometry family, and only azimuthally symmetric discontinuities.
 - **TFSF on a graded axis:** preflight warns, because the scattered-field
-  region picks up a spurious field (0.60 of the total-field peak with no
+  region picks up a spurious field (about 0.7 of the total-field peak with no
   scatterer). Normal incidence along ±x needs a uniform x axis.
 - Detailed scope for every port family is in the
   [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).

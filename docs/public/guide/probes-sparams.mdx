@@ -66,7 +66,11 @@ the fields have not rung down when the run stops, the spectrum is wrong. See
 
 `add_flux_monitor` accumulates the Poynting flux through a plane, per
 frequency. `flux_spectrum(monitor)` returns the net power through it, positive
-along `+axis`.
+along `+axis`. If it returns exact zeros at every frequency while the fields are
+clearly nonzero, the float32 `E × H*` products underflowed; outside `jit`/`grad`
+rfx warns when it detects this. That is not a physical null: pass
+`flux_spectrum(monitor, exact_f64=True)` to recompute the sum in float64, or
+increase the source amplitude.
 
 To get reflection and transmission of a slab or scatterer, run twice: once
 without the object (the **reference run**, which measures the incident power)
@@ -308,12 +312,12 @@ expect on your own coarse runs:
 
 Refining the mesh is the fix for all of them. For microstrip the substrate
 thickness, not the wavelength, usually sets the cell size: a reasonable
-starting point is about 100 µm cells for a 300 µm substrate, then refine and
-check that your answer stops moving.
+starting point is 4 cells through the substrate (preflight warns below that),
+then refine and check that your answer stops moving.
 
 End lines at their ports, as here, rather than running them into the
-absorber. CPML is a poor termination for a two-conductor line: at 8 layers it
-reflects about −15 dB on microstrip.
+absorber. CPML is a much poorer termination for a two-conductor line than for
+a plane wave.
 
 #### The `reliable` mask
 
