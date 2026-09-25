@@ -4,26 +4,35 @@ Facts only.
 
 ## Which file describes which board
 
-The board is the same everywhere: a 40.0 × 50.0 mm rectangular patch (40 mm
-along x, the resonant length) on 3.175 mm of RT/Duroid 5880 (εr 2.2, tanδ 0.001,
-taken as a conductivity at 2.4 GHz, 2.9374e-4 S/m) over a 56 × 66 mm ground; the
-substrate covers the ground's footprint; both metals have zero thickness; a
-50 Ω lumped probe runs from the ground to the patch 8.73125 mm off the patch
-centre along x. These are the constants of the retired script
-`validation/crossval/15_patch_antenna_rt5880.py` (removed 2026-09-24), frozen in
-the maker's `RETIRED_CONSTANT_LINES`, except the probe: the retired script put
-it 9 mm off centre, and the PI moved it on 2026-09-24 to −8.73125 mm, a lattice
-node on every rung of the rfx ladder (−11, −22 and −33 cells of h/4, h/8 and
-h/12; the maker's delta 9 and `DECLARED_CONSTANT_DEPARTURES`).
+The board is the same everywhere: a 39.7 × 49.25 mm rectangular patch
+(39.7 mm along x, the resonant length) on 3.175 mm of RT/Duroid 5880 (εr 2.2,
+tanδ 0.001, taken as a conductivity at 2.4 GHz, 2.9374e-4 S/m) over a
+55.6 × 65.1 mm ground; the substrate covers the ground's footprint; both metals
+have zero thickness; a 50 Ω lumped probe runs from the ground to the patch
+8.73125 mm off the patch centre along x. These are the constants of the retired
+script `validation/crossval/15_patch_antenna_rt5880.py` (removed 2026-09-24),
+frozen in the maker's `RETIRED_CONSTANT_LINES`, except five, each in the
+maker's `DECLARED_CONSTANT_DEPARTURES`:
+
+- the probe (delta 9): the retired script put it 9 mm off centre, and the PI
+  moved it on 2026-09-24 to −8.73125 mm, a lattice node on every rung of the
+  rfx ladder (−11, −22 and −33 cells of h/4, h/8 and h/12);
+- the patch and the ground (delta 10): the retired 40 × 50 mm patch over a
+  56 × 66 mm ground became 39.7 × 49.25 mm over 55.6 × 65.1 mm (PI
+  2026-09-25), every edge just outside a node common to h/4, h/8 and h/12
+  (half-extents 25, 31, 35 and 41 cells of h/4 plus 6.25, 18.75, 18.75 and
+  6.25 µm; the patch centre is a node). openEMS's air box did not follow the
+  ground: its faces stay at the retired box's x ±88, y ±93 mm.
 
 | record | box | absorber | probe |
 |---|---|---|---|
-| `openems_patch.json` | ground centred at the origin; absorber inner faces at x ±88, y ±93, z −40 / +90 mm (60 mm clear of the ground's edges, 40 mm below it, 86.8 mm above the patch) | `PML_8` on all six faces, laid outside those faces, 21.8 / 15.5 / 10.9 mm deep on the three rungs | `AddLumpedPort`, 50 Ω, z = 0 → 3.175 mm at x = −8.73125 mm, y = 0 |
-| the case's rfx runs (`test_rt5880_patch.py`) | the patch centred at (38.100, 44.450) mm in a 76.200 × 88.900 × 28.575 mm declared domain: 10.1 mm clear of the ground's x edges, 11.45 mm of its y edges, 9.525 mm below it, 15.875 mm above the patch | CPML 19.05 mm deep outside the domain on every face: 24 / 48 / 72 cells at h/4 / h/8 / h/12 | `add_port(component="ez", extent=3.175 mm)`, a 50 Ω wire port from the ground sheet's plane to the patch sheet's |
+| `openems_patch.json` | ground centred at the origin; absorber inner faces at x ±88, y ±93, z −40 / +90 mm (60.2 mm clear of the ground's x edges and 60.45 mm of its y edges, 40 mm below it, 86.8 mm above the patch) | `PML_8` on all six faces, laid outside those faces, 21.8 – 22.0 / 15.5 – 15.6 / 10.8 – 11.1 mm deep on the three rungs | `AddLumpedPort`, 50 Ω, z = 0 → 3.175 mm at x = −8.73125 mm, y = 0 |
+| the case's rfx runs (`test_rt5880_patch.py`) | the patch centred at (38.100, 44.450) mm in a 76.200 × 88.900 × 28.575 mm declared domain: 10.3 mm clear of the ground's x edges, 11.9 mm of its y edges, 9.525 mm below it, 15.875 mm above the patch | CPML 19.05 mm deep outside the domain on every face: 24 / 48 / 72 cells at h/4 / h/8 / h/12 | `add_port(component="ez", extent=3.175 mm)`, a 50 Ω wire port from the ground sheet's plane to the patch sheet's |
 
-The two boxes are not the same. How far rfx's box and absorber move this
-board's |S11| was measured at h/4 and is tabulated in the case's own file (the
-comment above `AIR_H`); on every ladder run the case also solves h/4 once in
+The two boxes are not the same. How far rfx's box and absorber move the
+resonance was measured on the retired 40 × 50 mm board at h/4 and tabulated in
+the case's own file at commit `0a92af49` (the comment above `AIR_H`); on every
+ladder run the case also solves h/4 once in
 this record's own box (the declared domain's faces on the absorber inner faces
 above, each snapped to the nearest h/4 node: x ±88.106, y ±92.869,
 z −39.688 / +89.694 mm; the ladder's 19.05 mm CPML outside) and reports how far
@@ -39,10 +48,10 @@ changes.
 |---|---|
 | tool | openEMS 0.37.0 (`openEMS.__version__`) |
 | image | `ghcr.io/bk-squared/rfx-openems@sha256:ea8df42dbf1bdcbc93479cfe0618c33695dc5266363b4873d392d10f813264ff`, build commit `5b423bdfe0c84064cf9028167bb759007c33b182` |
-| produced by | `make_openems_reference.py` beside this file, at rfx commit `a9b07818998f5839b5004beb448c1cf1fe578dda` |
-| run id | VESSL 369367264562 (remilab-c0, cpu 8, 16Gi), started 2026-09-24 22:56 KST, exit 0; the provider log is kept (retained as a reference run) |
-| artifacts | lab share, `research/rfx/.omx/rt5880-patch-openems/20260924T135835Z-a9b07818/` — per-stage `*_real_openems_stdout.log` and `*_smoke_openems_stdout.log`, `run.log`, `stage_plan.log`, `self_check.log`, `summary.txt` |
-| earlier runs | VESSL 369367264105 at `ebf34050` made the previous record, with the probe at the retired −9.0 mm (replaced 2026-09-24, `run_id_note`); VESSL 369367264094 at `a0511d7c` stopped at the fine rung, whose probe had lost its grid line. Neither run's numbers are in this record |
+| produced by | `make_openems_reference.py` beside this file, at rfx commit `be0a84a9629914d8d0a3d3ece7a9f2f0b67f607b` |
+| run id | VESSL 369367264675 (remilab-c0, cpu 8, 16Gi), started 2026-09-25 02:33 KST, exit 0; the provider log is kept (retained as a reference run) |
+| artifacts | lab share, `research/rfx/.omx/rt5880-patch-openems/20260924T173400Z-be0a84a9/` — per-stage `*_real_openems_stdout.log` and `*_smoke_openems_stdout.log`, `run.log`, `stage_plan.log`, `self_check.log`, `summary.txt` |
+| earlier runs | VESSL 369367264562 at `a9b07818` made the previous record, on the retired 40 × 50 mm patch over a 56 × 66 mm ground with the probe at −8.73125 mm (replaced 2026-09-25, `run_id_note`); VESSL 369367264105 at `ebf34050` the one before it, with the probe at the retired −9.0 mm (replaced 2026-09-24); VESSL 369367264094 at `a0511d7c` stopped at the fine rung, whose probe had lost its grid line. None of their numbers are in this record |
 | method | FDTD; the retired builder's mesh (explicit lines across the patch, the thirds rule at the patch edges, `SmoothMeshLines('all', mesh_res, 1.4)`) with the maker's line check before every pass |
 | boundary | `['PML_8'] * 6` |
 | excitation | `SetGaussExcite(2.4e9, 1.2e9)` |
@@ -50,8 +59,8 @@ changes.
 | frequency points | Stage B: 901, `linspace(1.6 GHz, 3.4 GHz)`, 2 MHz per bin; Stage A: the tutorial's 401, `linspace(1 GHz, 3 GHz)` |
 | arrays | `freqs_ghz`; `s11_re`, `s11_im`, `s11_mag` LINEAR; `s11_deg`; `zin_re_ohm`, `zin_im_ohm` (the port's own V/I); `s11_power` |
 | extraction | `CalcPort` with a 50 Ω reference; S11 against 50 Ω and Zin = V/I at the port |
-| resonance estimator | `validation/crossval/comparators/spectral_features.py::refined_extremum` on log\|S11\| inside `meta.resonance_band_ghz` = 1.932476 – 2.898715 GHz (0.80 – 1.20 × the Balanis transmission-line TM010 estimate, `meta.tl_model_tm010_hz` = 2.415595 GHz, the retired script's window); the −10 dB band by `band_at_level`; Zin interpolated at the refined frequency |
-| deltas from the retired builder | `meta.delta_list`: 1 boundaries (MUR → PML_8, laid outside the retired box), 2 stop criteria, 3 mesh rungs, 4 frequency grid, 5 resonance estimator, 6 far field at the refined resonance, 7 how the solver runs, 8 the patch lines kept clear of the port and the edges, 9 the probe at −8.73125 mm instead of −9 mm; nothing else |
+| resonance estimator | `validation/crossval/comparators/spectral_features.py::refined_extremum` on log\|S11\| inside `meta.resonance_band_ghz` = 1.946699 – 2.920048 GHz (0.80 – 1.20 × the Balanis transmission-line TM010 estimate of this board, computed from its L and W, `meta.tl_model_tm010_hz` = 2.433374 GHz; the retired script's window rule); the −10 dB band by `band_at_level`; Zin interpolated at the refined frequency |
+| deltas from the retired builder | `meta.delta_list`: 1 boundaries (MUR → PML_8, laid outside the retired box), 2 stop criteria, 3 mesh rungs, 4 frequency grid, 5 resonance estimator, 6 far field at the refined resonance, 7 how the solver runs, 8 the patch lines kept clear of the port and the edges, 9 the probe at −8.73125 mm instead of −9 mm, 10 the patch and ground on the rfx lattice (39.7 × 49.25 mm over 55.6 × 65.1 mm instead of 40 × 50 over 56 × 66; the air box's faces held); nothing else |
 | copy proof | Stage B frozen from the retired script's lines 1087–1125 at `150ed1d8`; Stage A from `python/Tutorials/Simple_Patch_Antenna.py` lines 28–104 at openEMS `2000574e` (`meta.copy_proof`), both checked by the maker's `--self-check` before the solver runs |
 | CI runs it | no |
 
@@ -68,13 +77,17 @@ figure (`python/doc/Tutorials/images/Simp_Patch_S11.png`, sha256
 
 | quantity | value |
 |---|---|
-| measured resonance | 2.432420 GHz |
-| measured depth | −26.753 dB |
+| measured resonance | 2.433030 GHz |
+| measured depth | −26.962 dB |
 | documented | 2.430 GHz |
-| deviation | +0.0996 % |
+| deviation | +0.1247 % |
 | gate window | 2.4057 – 2.4543 GHz (±1 %), depth at most −10 dB |
 | passed | yes |
-| timesteps, end energy | 13 832, −43.63 dB, 24.4 s |
+| timesteps, end energy | 12 236, −49.02 dB, 20.3 s |
+
+The previous record's run of the same tutorial, in the same image (VESSL
+369367264562), read 2.432420 GHz and −26.753 dB, 13 832 timesteps, end energy
+−43.63 dB.
 
 An earlier reproduction of the same tutorial is recorded as the audit trail in
 `meta.stage_a_recorded_reproduction`: VESSL run 369367247478 (2026-07-18),
@@ -89,9 +102,9 @@ and the substrate's own z cells; the air box does not scale.
 
 | stage | factor | substrate cells | mesh cells | smallest cell x / z | timesteps | dt | record | end energy | wall time |
 |---|---|---|---|---|---|---|---|---|---|
-| `stage_b_coarse` | 1 | 4 | 810 888 | 0.600 / 0.794 mm | 8 275 | 1.347 ps | 11.15 ns | −52.63 dB | 50.1 s |
-| `stage_b_mid` | 1/√2 | 6 | 1 863 000 | 0.424 / 0.529 mm | 10 758 | 1.040 ps | 11.18 ns | −50.20 dB | 102.6 s |
-| `stage_b_fine` | 1/2 | 8 | 4 657 660 | 0.300 / 0.397 mm | 16 065 | 0.679 ps | 10.91 ns | −50.30 dB | 480.3 s |
+| `stage_b_coarse` | 1 | 4 | 803 712 | 0.600 / 0.794 mm | 8 100 | 1.376 ps | 11.14 ns | −51.83 dB | 41.9 s |
+| `stage_b_mid` | 1/√2 | 6 | 1 863 990 | 0.424 / 0.529 mm | 11 914 | 0.916 ps | 10.91 ns | −50.13 dB | 106.3 s |
+| `stage_b_fine` | 1/2 | 8 | 4 563 888 | 0.300 / 0.397 mm | 15 759 | 0.674 ps | 10.62 ns | −50.14 dB | 417.9 s |
 
 Every rung ended on its energy criterion (`end_criteria_reached`); none is
 truncated. dt is read from openEMS's Nyquist line (±0.5 – 1.0 %,
@@ -99,12 +112,12 @@ truncated. dt is read from openEMS's Nyquist line (±0.5 – 1.0 %,
 
 | stage | resonance | depth | −10 dB band | Zin at the resonance | max \|S11\|² over 1.6–3.4 GHz | Dmax (reported) |
 |---|---|---|---|---|---|---|
-| `stage_b_coarse` | 2.332948 GHz | −24.054 dB | 67.3 MHz | 48.28 + 5.87j Ω | 0.98564 | 7.42 dBi |
-| `stage_b_mid` | 2.337493 GHz | −22.929 dB | 66.5 MHz | 48.18 + 6.77j Ω | 0.98569 | 7.41 dBi |
-| `stage_b_fine` | 2.342076 GHz | −19.491 dB | 62.7 MHz | 47.81 + 10.20j Ω | 0.98728 | 7.40 dBi |
+| `stage_b_coarse` | 2.350248 GHz | −28.710 dB | 70.5 MHz | 48.94 + 3.47j Ω | 0.98581 | 7.41 dBi |
+| `stage_b_mid` | 2.356575 GHz | −24.419 dB | 68.7 MHz | 48.51 + 5.73j Ω | 0.98612 | 7.40 dBi |
+| `stage_b_fine` | 2.359061 GHz | −20.583 dB | 65.2 MHz | 48.15 + 8.99j Ω | 0.98773 | 7.39 dBi |
 
-Resonance shifts: coarse → mid **+0.195 %**, mid → fine **+0.196 %**,
-coarse → fine **+0.391 %**.
+Resonance shifts: coarse → mid **+0.269 %**, mid → fine **+0.106 %**,
+coarse → fine **+0.375 %**.
 
 The "resonance" column above is the record's own estimate, the |S11| minimum.
 The case judges f0 = the Re(Zin) maximum instead (decision of 2026-09-24;
@@ -115,11 +128,11 @@ arrays, and pinned by the case's fast test on `stage_b_fine`:
 
 | stage | f0 (Re(Zin) maximum) | R(f0) | X(f0) |
 |---|---|---|---|
-| `stage_b_coarse` | 2.296347 GHz | 70.999 Ω | +38.133 Ω |
-| `stage_b_mid` | 2.300191 GHz | 71.598 Ω | +39.462 Ω |
-| `stage_b_fine` | 2.303839 GHz | 71.841 Ω | +43.161 Ω |
+| `stage_b_coarse` | 2.313059 GHz | 72.294 Ω | +36.420 Ω |
+| `stage_b_mid` | 2.318115 GHz | 72.857 Ω | +39.174 Ω |
+| `stage_b_fine` | 2.319490 GHz | 73.457 Ω | +42.953 Ω |
 
-f0 shifts: coarse → mid **+0.167 %**, mid → fine **+0.159 %**.
+f0 shifts: coarse → mid **+0.219 %**, mid → fine **+0.059 %**.
 
 The JUDGED reference is `stage_b_fine`. `stage_b_coarse` and `stage_b_mid` are
 the record's own mesh statement.
@@ -140,7 +153,7 @@ it accepts; the per-bin values (`s11_power`) and the band minimum are recorded.
 
 - No comparison with rfx and no verdict on the board (`meta.what_is_not_here`).
 - No record-length witness of the N/2N kind: every Stage B rung ended on its
-  1e-5 energy criterion instead (end energy −52.6 / −50.2 / −50.3 dB).
+  1e-5 energy criterion instead (end energy −51.8 / −50.1 / −50.1 dB).
 - No far-field pattern arrays: only the directivity at the resonance
   (`farfield.dmax_dbi`); the NF2FF dumps were measured and deleted in the pod.
 - No mesh finer than `stage_b_fine`, and no statement of where the thirds rule

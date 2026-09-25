@@ -38,10 +38,10 @@ against the ladder box; nothing is judged on it.
 
 Reference (``reference/``, provenance in ``reference/PROVENANCE.md``):
 
-* ``openems_patch.json`` — openEMS 0.37.0, FDTD, VESSL run 369367264562 (the probe at −8.73125 mm).
+* ``openems_patch.json`` — openEMS 0.37.0, FDTD, VESSL run 369367264675 (the board on the rfx lattice).
   openEMS's own ``Simple_Patch_Antenna`` tutorial is reproduced first as the
   reproduce gate (``stage_a``; a DIFFERENT patch on a different substrate,
-  never compared with this board): 2.43242 GHz against the 2.430 GHz its
+  never compared with this board): 2.43303 GHz against the 2.430 GHz its
   documentation plots.  Then this board on three meshes, the substrate carrying
   4, 6 and 8 cells: ``stage_b_coarse``, ``stage_b_mid``, ``stage_b_fine``.
   901 points, 1.6–3.4 GHz, complex S11 and the port's own Zin on every bin.
@@ -1776,8 +1776,8 @@ def test_the_reference_file_is_what_the_provenance_says():
     assert meta["tool"] == "openEMS"
     assert meta["openems"]["version"] == "0.37.0"
     assert meta["ci_runs_this"] is False
-    assert rec["run_id"] == "369367264562"
-    assert meta["rfx_commit"] == "a9b07818998f5839b5004beb448c1cf1fe578dda"
+    assert rec["run_id"] == "369367264675"
+    assert meta["rfx_commit"] == "be0a84a9629914d8d0a3d3ece7a9f2f0b67f607b"
     assert meta["rfx_openems_commit"] == "5b423bdfe0c84064cf9028167bb759007c33b182"
     assert meta["rfx_openems_image"] == (
         "ghcr.io/bk-squared/rfx-openems@sha256:"
@@ -1791,7 +1791,7 @@ def test_the_reference_file_is_what_the_provenance_says():
     gate = meta["stage_a_gate"]
     assert gate["passed"] is True
     assert gate["documented_f_hz"] == pytest.approx(2.430e9)
-    assert gate["measured_f_hz"] == pytest.approx(2.43242e9, abs=1e4)
+    assert gate["measured_f_hz"] == pytest.approx(2.43303e9, abs=1e4)
     assert gate["window_rel"] == 0.01
     assert "not a measurement of this board" in meta["stage_a_is"]
     assert meta["stage_a_tutorial"]["sha256"] == (
@@ -1819,9 +1819,9 @@ def test_the_reference_file_is_what_the_provenance_says():
     # Frozen values PROVENANCE.md tabulates, pinned so a re-derived or swapped
     # record is caught rather than sliding under a round bound.
     frozen = {
-        "stage_b_coarse": (2.3329480342195614, -24.0539133666632, 67.25779524778241),
-        "stage_b_mid": (2.3374933235200217, -22.92870171473815, 66.47566582153664),
-        "stage_b_fine": (2.34207600291847, -19.491377621134657, 62.73628453509161),
+        "stage_b_coarse": (2.3502478870603607, -28.710297676700577, 70.51488407755357),
+        "stage_b_mid": (2.3565745658798134, -24.418950147988795, 68.74919698934035),
+        "stage_b_fine": (2.359061319234132, -20.58337699975389, 65.17136229823394),
     }
     for n in rungs:
         st = rec[n]
@@ -1860,10 +1860,10 @@ def test_the_reference_file_is_what_the_provenance_says():
         assert rx["flags"] == []
         if n == OPENEMS_JUDGED_STAGE:
             # Frozen values the case's two judged quantities are held against
-            # (the lane leader's check of 2026-09-24 read the same numbers).
-            assert rx["f0_hz"] == pytest.approx(2.303839e9, abs=1e3)
-            assert rx["r_ohm"] == pytest.approx(71.841, abs=1e-3)
-            assert rx["x_ohm"] == pytest.approx(43.16, abs=1e-2)
+            # (the lane leader's check of 2026-09-25 read the same numbers).
+            assert rx["f0_hz"] == pytest.approx(2.319490e9, abs=1e3)
+            assert rx["r_ohm"] == pytest.approx(73.457, abs=1e-3)
+            assert rx["x_ohm"] == pytest.approx(42.95, abs=1e-2)
         f_frozen, depth_frozen, bw_frozen = frozen[n]
         assert want["refined_f_ghz"] == pytest.approx(f_frozen, abs=1e-12)
         assert want["depth_db"] == pytest.approx(depth_frozen, abs=1e-9)
