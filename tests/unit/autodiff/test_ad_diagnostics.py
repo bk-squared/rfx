@@ -451,6 +451,7 @@ def test_ad_memory_preflight_residual_context_rejects_nonfinite_values():
             residual_context={"bad": _BadJsonContext()},
         )
 
+@pytest.mark.docs_consistency
 def test_memory_reduction_docs_include_residual_inspection_boundary():
     doc = Path("docs/public/guide/memory-reduction.mdx").read_text()
 

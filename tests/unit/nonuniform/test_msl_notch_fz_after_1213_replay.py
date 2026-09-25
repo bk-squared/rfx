@@ -38,6 +38,7 @@ import pytest
 
 from validation.research.multiband_nu import msl_notch_graded as ins
 from tests.crossval.msl_notch_filter import test_msl_notch_filter as case
+from tests._printed_numbers import NUMBER, assert_same_numbers
 
 _ROOT = Path(__file__).resolve().parents[3]
 _RESULTS = _ROOT / "validation" / "research" / "multiband_nu" / "results"
@@ -673,6 +674,9 @@ def _r2_note_f0_rebuild(section: str) -> dict:
                 worst_ulp=float(s.group(6)))
 
 
+# A note checked against what the instrument prints: documentation, run by
+# the non-required docs-consistency workflow only (PI, 2026-09-22).
+@pytest.mark.docs_consistency
 def test_the_second_notes_results_are_still_what_its_tables_print(monkeypatch):
     """The third note may not change a byte of the second note's Results.
 
@@ -712,8 +716,11 @@ UNEDITED_BLOBS = {
         "96692703d9d8fa535082d1ba9089578e0f7cf481",
     "validation/research/multiband_nu/results/msl_notch_graded.json":
         "16e6adf90962c8ee3b914b504440fbe06bba933d",
+    # Re-pinned in #1289: that file's notes checks became numeric or moved to
+    # the docs-consistency workflow, and F.6's printed numbers gained a
+    # required pin; its record pins are unchanged. Main's blob was e8733b79.
     "tests/unit/nonuniform/test_msl_notch_fz_replay.py":
-        "e8733b79d9949efc8c56d27569eb5d011ec01a22",
+        "55fb97f976876f57078c6653015fff0803baa448",
 }
 
 
@@ -736,6 +743,9 @@ NOTE = _ROOT / ins.AFTER_1213_NOTE_PATH
 PREDECLARATION_BLOB = "b7757db27eb06b434bd49a1124170fa2b41f84f7"
 
 
+@pytest.mark.reads_docs_for_gate(reason=(
+    "pre-declaration hash: sections 0-7 hold the windows and bars fixed before "
+    "any arm ran; editing them after the result would loosen the gate"))
 def test_sections_0_to_7_are_the_pre_declaration_as_committed():
     """Everything before the Results is 64ce5cd2's file, then one blank line."""
     data = NOTE.read_bytes()
@@ -744,6 +754,9 @@ def test_sections_0_to_7_are_the_pre_declaration_as_committed():
     assert _blob(frozen[:-1]) == PREDECLARATION_BLOB
 
 
+# A note checked against what the instrument prints: documentation, run by
+# the non-required docs-consistency workflow only (PI, 2026-09-22).
+@pytest.mark.docs_consistency
 def test_the_notes_results_are_what_tables_prints(capsys):
     """The note's Results, heading to Conclusions, against ``--tables``.
 
@@ -764,9 +777,6 @@ def test_the_notes_results_are_what_tables_prints(capsys):
     _same_text_and_numbers(note[start:end], printed)
 
 
-_NUMBER = re.compile(r"[-+]?\d+(?:\.\d+)?(?:[eE][-+]?\d+)?")
-
-
 def _same_text_and_numbers(note, printed):
     """The note's text equals ``--tables``' text, and every number agrees to one
     unit in its last printed place (integers exactly).
@@ -781,16 +791,21 @@ def _same_text_and_numbers(note, printed):
     printed without a decimal point is still compared exactly, and a number
     may not change its printed shape (decimals, e-notation).
     """
-    assert _NUMBER.split(note) == _NUMBER.split(printed)
-    a, b = _NUMBER.findall(note), _NUMBER.findall(printed)
-    assert len(a) == len(b)
-    for x, y in zip(a, b):
-        if x == y:
-            continue
-        mx, _, ex = x.lower().partition("e")
-        my, _, ey = y.lower().partition("e")
-        assert "." in mx and "." in my, (x, y)
-        places = len(mx.split(".")[1])
-        assert places == len(my.split(".")[1]) and bool(ex) == bool(ey), (x, y)
-        unit = 10.0 ** (min(int(ex or 0), int(ey or 0)) - places)
-        assert abs(float(x) - float(y)) <= 1.000001 * unit, (x, y)
+    assert NUMBER.split(note) == NUMBER.split(printed)
+    assert_same_numbers(NUMBER.findall(note), NUMBER.findall(printed))
+
+
+# ------------------------------------------- the numbers the tables print
+#: The numbers the note's Results printed from the two records, in order,
+#: frozen when the note's text left the required lanes (#1289). The words
+#: are the docs-consistency workflow's to check; these numbers still block.
+PRINTED_NUMBERS = _ROOT / "tests" / "fixtures" / "msl_notch_tables" / "printed_numbers.json"
+
+
+def test_the_tables_print_the_numbers_the_note_was_written_from(arms):
+    md = ins.after_1213_markdown_tables(arms)
+    printed = md[md.index("## Results (facts)"):
+                 md.index("Conclusions: leader fills.")]
+    with PRINTED_NUMBERS.open() as fh:
+        want = json.load(fh)["after_1213_results"]["numbers"]
+    assert_same_numbers(want, NUMBER.findall(printed))

@@ -30,6 +30,7 @@ from rfx.api import Simulation
 from rfx.geometry.csg import Box
 from rfx.probes.probes import DFTPlaneProbe
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+from tests._printed_numbers import agrees, printed_after
 
 # ---------------------------------------------------------------------------
 # Planted-S fixture. Same manufacturing technique as
@@ -264,7 +265,11 @@ def test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning():
     assert len(messages) == 1, "one aggregate warning, not one per bin"
     message = messages[0]
     assert "3 of 3 frequency bins" in message
-    assert f"worst sigma_max = {float(_sigma_max(planted).max()):.3f}" in message
+    # The warning's SVD and this file's numpy one may differ in the last bit,
+    # so the printed value is read back and compared to its third decimal.
+    worst = printed_after(message, "worst sigma_max = ")
+    assert len(worst) == 1 and len(worst[0].split(".")[1]) == 3, worst
+    assert agrees(worst[0], float(_sigma_max(planted).max())), worst
     assert "returned exactly as extracted" in message
     assert "enforce_passivity=True" in message
     # The projection warning is the other branch's; it must not also fire.

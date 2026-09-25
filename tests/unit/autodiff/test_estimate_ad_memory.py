@@ -1174,6 +1174,7 @@ def test_ad_memory_preflight_unfit_branch_is_diagnostic_only():
     _assert_validate_physics_hint(report)
 
 
+@pytest.mark.docs_consistency
 def test_memory_reduction_docs_separate_planning_from_certificate_evidence():
     doc = Path("docs/public/guide/memory-reduction.mdx").read_text()
     assert "`static_estimate`" in doc

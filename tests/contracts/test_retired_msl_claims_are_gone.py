@@ -95,6 +95,7 @@ def test_the_scan_covers_the_pages_it_claims_to() -> None:
 
 
 @pytest.mark.parametrize("path", SCANNED, ids=lambda p: p.name)
+@pytest.mark.docs_consistency
 def test_no_page_states_a_retired_msl_claim(path: Path) -> None:
     hits = scan(path)
     assert not hits, (

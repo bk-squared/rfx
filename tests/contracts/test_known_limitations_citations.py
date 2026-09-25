@@ -25,6 +25,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"
@@ -122,20 +124,36 @@ def _page() -> str:
     return PAGE.read_text(encoding="utf-8")
 
 
-def test_the_page_cites_exactly_the_pinned_issues():
+# The pinned set is checked in two halves. An entry that disappears while its
+# issue is open hides a defect from users, and the PI's documentation rule
+# (2026-09-22) keeps that one blocking. A new citation not yet added to the set
+# is bookkeeping, and runs with the other documentation checks.
+@pytest.mark.reads_docs_for_gate(reason=(
+    "a known-limitations entry must stay while its defect is open: the one page "
+    "a PR must keep right (PI, 2026-09-22)"))
+def test_every_pinned_issue_keeps_its_entry():
     cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
     missing = CITED_ISSUES - cited
-    added = cited - CITED_ISSUES
-    assert not missing and not added, (
-        f"known_limitations.md citations drifted from the pinned set.\n"
-        f"  no longer cited: {sorted(missing)}\n"
-        f"  newly cited:     {sorted(added)}\n"
-        "Update CITED_ISSUES in this file in the same change, and check each number's "
-        "state with `gh issue view <N> --json state` while you are there — an entry "
-        "leaves this page when its issue closes and a test pins the fix."
+    assert not missing, (
+        f"known_limitations.md no longer cites {sorted(missing)}. An entry leaves "
+        "this page when its issue closes and a test pins the fix; if that happened, "
+        "drop the number from CITED_ISSUES in the same change, after checking its "
+        "state with `gh issue view <N> --json state`."
     )
 
 
+@pytest.mark.docs_consistency
+def test_the_page_cites_no_issue_outside_the_pinned_set():
+    cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
+    added = cited - CITED_ISSUES
+    assert not added, (
+        f"known_limitations.md newly cites {sorted(added)}. Add each to CITED_ISSUES "
+        "in this file in the same change, and check its state with "
+        "`gh issue view <N> --json state` while you are there."
+    )
+
+
+@pytest.mark.docs_consistency
 def test_every_citation_link_points_at_the_issue_it_names():
     mismatched = [
         (text, target) for text, target in CITATION_RE.findall(_page()) if text != target
@@ -146,6 +164,7 @@ def test_every_citation_link_points_at_the_issue_it_names():
     )
 
 
+@pytest.mark.docs_consistency
 def test_no_entry_names_an_issue_it_does_not_cite():
     """An issue mentioned in prose must be cited, or classified as resolved.
 
@@ -163,6 +182,7 @@ def test_no_entry_names_an_issue_it_does_not_cite():
     )
 
 
+@pytest.mark.docs_consistency
 def test_the_page_is_reachable_from_the_readme_and_the_support_matrix():
     """The page is a repo doc, not a public-site page.
 

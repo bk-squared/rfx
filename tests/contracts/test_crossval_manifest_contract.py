@@ -10,6 +10,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Literal, TypedDict
 
+import pytest
+
 from tests._git_tracked import git_available, is_tracked
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -416,6 +418,7 @@ def _role_evidence_label(case: CrossvalCase) -> str:
     return f"{case['role']} · {'/'.join(case['evidence_levels'])} · {reference_kinds}"
 
 
+@pytest.mark.docs_consistency
 def test_public_validation_docs_match_manifest() -> None:
     manifest = _load_manifest()
     public_cases = {
@@ -493,6 +496,7 @@ def test_the_weekly_workflow_runs_no_crossval_script() -> None:
     assert "validation/crossval/" not in workflow_text
 
 
+@pytest.mark.docs_consistency
 def test_repo_map_defers_crossval_claims_to_manifest() -> None:
     """The public agent repo-map must not blanket-label crossval as validated.
 

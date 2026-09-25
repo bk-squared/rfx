@@ -24,8 +24,9 @@ point -- so the order is exactly what this lock pins.
 
 That makes the baseline committable, and it is committed. Measured before
 writing it (see "Determinism", below), the snapshot text is invariant under
-``PYTHONHASHSEED``, JAX device count and ``JAX_ENABLE_X64``, so NOTHING is
-normalised away: what the report said is what the file holds, byte for byte.
+``PYTHONHASHSEED``, JAX device count and ``JAX_ENABLE_X64``, so the file holds
+what the report said, byte for byte, and only the numpy version's scalar repr
+is read through (the numpy-scalar paragraph below).
 
 The baseline was captured at ``8586f549`` (what ``LOCK_PROVENANCE`` records)
 and re-verified byte-unchanged at ``13fb003c``, i.e. across #1009 and #1010 --
@@ -85,11 +86,14 @@ x64-invariant either way and is left alone. Pinning the INPUT keeps the whole
 report observable in both cases; dropping the field would have hidden the
 check instead.
 
-One honest caveat, not a normalisation: seven messages embed a numpy scalar
-repr (``np.float64(0.005)``) because a declared bbox tuple is interpolated
-straight into the text. That is stable for a given numpy, and a numpy major
-upgrade that changes scalar repr will red those fixtures. That is a real
-report-text change and should be re-blessed as one, not normalised here.
+Seven messages embed a numpy scalar repr (``np.float64(0.005)``) because a
+declared bbox tuple is interpolated straight into the text. numpy 2 prints it
+that way and numpy 1 as ``0.005``, so two fixtures failed under numpy 1.26
+with the report otherwise unchanged (#1289). The full-text step therefore
+reads a numpy scalar repr as the number inside it, on both sides, and compares
+everything else exactly. The numbers themselves are reprs of declared inputs
+or arithmetic on them (measured deterministic above), so they are not given a
+tolerance: a repr's last digit is not a stated precision.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
@@ -420,11 +424,13 @@ LOCK_PROVENANCE = {
 import difflib
 import json
 import os
+import re
 import warnings
 from pathlib import Path
 
 import numpy as np
 import pytest
+
 
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
@@ -2197,7 +2203,8 @@ def _unified(expected: str, got: str, fixture_id: str, limit: int = 60) -> str:
 def test_preflight_report_matches_the_committed_snapshot(
     fixture_id, build, kwargs, calculator,
 ):
-    """The report's codes, severities, text AND ORDER are byte-pinned.
+    """The report's codes, severities, text AND ORDER are pinned; only a
+    numpy scalar's repr is read as the number it prints.
 
     Order first: ``PreflightReport`` is a ``list``, so the sequence below is
     ``_validate_simulation_config``'s own call order made observable. A
@@ -2241,13 +2248,23 @@ def test_preflight_report_matches_the_committed_snapshot(
         f"{_UPDATE_HINT}"
     )
 
-    # 3. Full text -- message wording, severity, loc, source, flux_regions.
-    assert got == expected, (
+    # 3. Full text -- message wording, severity, loc, source, flux_regions --
+    # with a numpy scalar read as the number it prints: np.float64(0.005)
+    # under numpy 2, 0.005 under numpy 1.
+    want, have = _numpy_scalars_as_numbers(expected), _numpy_scalars_as_numbers(got)
+    assert have == want, (
         f"{fixture_id}: the preflight report text differs from the committed "
         f"snapshot ({path.relative_to(_REPO)}).\n"
-        f"{_unified(expected, got, fixture_id)}\n"
+        f"{_unified(want, have, fixture_id)}\n"
         f"{_UPDATE_HINT}"
     )
+
+
+_NUMPY_SCALAR = re.compile(r"np\.(?:float|int|uint|complex)\d*\(([^()]*)\)")
+
+
+def _numpy_scalars_as_numbers(text: str) -> str:
+    return _NUMPY_SCALAR.sub(r"\1", text)
 
 
 def test_every_committed_snapshot_still_has_a_fixture():

@@ -450,6 +450,11 @@ def compute_waveguide_s_matrix(
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 
+    # The uniform waveguide scan has no subgrid and never read
+    # add_refinement (#1240); the graded branch above is refused by its runner.
+    self._require_no_refinement_without_a_subgrid(
+        "compute_waveguide_s_matrix()")
+
     # Uniform-lane honesty guard (v1.8 WP1), the mirror of the
     # non-uniform guard above. The two-run normalized lane
     # (normalize=True) assembles S on the host:
@@ -545,6 +550,8 @@ def compute_waveguide_s_matrix(
         ref_materials_per_port = []
         ref_pec_edge_masks_per_port = []
         for _i, _ref_sim in enumerate(port_reference_sims):
+            _ref_sim._require_no_refinement_without_a_subgrid(
+                f"compute_waveguide_s_matrix(port_reference_sims[{_i}])")
             _ref_grid = _ref_sim._build_grid()
             if _ref_grid.shape != grid.shape or float(_ref_grid.dx) != float(grid.dx):
                 raise ValueError(

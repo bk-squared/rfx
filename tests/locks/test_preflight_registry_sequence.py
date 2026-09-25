@@ -448,7 +448,8 @@ def test_no_extra_check_is_registered_by_importing_rfx():
         capture_output=True, text=True, cwd=str(_REPO), check=False,
     )
     assert out.returncode == 0, out.stderr
-    assert out.stdout.strip() == "[]", (
+    # The probe's answer is its last line; anything `import rfx` prints is not.
+    assert out.stdout.strip().splitlines()[-1] == "[]", (
         "importing rfx registered extra preflight config checks: "
         f"{out.stdout.strip()}. That silently changes preflight output for "
         "every caller in the process; register from an explicit opt-in "

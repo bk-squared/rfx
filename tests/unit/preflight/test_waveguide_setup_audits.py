@@ -36,6 +36,7 @@ from rfx import Simulation
 from rfx.api._preflight import WAVEGUIDE_DEFAULT_NUM_PERIODS
 
 from tests import _waveguide_chain_battery_fixture as F
+from tests._printed_numbers import agrees, printed_after, significant_figures
 
 
 C0 = 299_792_458.0
@@ -140,9 +141,18 @@ def test_record_shorter_than_one_round_trip_is_error_severity():
     # ... and it is the value that actually clears the threshold.
     assert (int(grid.num_timesteps(required)) * float(grid.dt)) / tau_far >= 3.0
 
-    # The printed values ARE the formatted hand computation, digit for digit.
-    assert f"far_path = {far_path * 1e3:.4g} mm" in text
-    assert f"T/tau_far = {ratio:.4g}" in text
+    # Every printed value is the hand computation to its last printed digit,
+    # printed the way `.4g` prints (no more than four significant figures, no
+    # trailing zeros) and with as many figures as `.4g` gives the hand value.
+    # Not compared as formatted strings: the port's cutoff comes from its own
+    # discrete mode solve, 1e-6 from the analytic one used here, so the two
+    # values can sit on either side of a rounding edge.
+    for label, value in (("far_path = ", far_path * 1e3), ("T/tau_far = ", ratio)):
+        tokens = printed_after(text, label)
+        assert all(agrees(t, value) for t in tokens), (label, tokens, value)
+        assert all(t == f"{float(t):.4g}" for t in tokens), (label, tokens)
+        assert all(significant_figures(t) >= significant_figures(f"{value:.4g}")
+                   for t in tokens), (label, tokens, f"{value:.4g}")
 
 
 def test_record_three_round_trips_long_draws_no_finding():

@@ -474,6 +474,29 @@ def test_cv15_builder_rejects_an_unknown_feed():
         cv15.build_rfx_sim(feed="two_plane")
 
 
+def test_cv15_committed_legs_hold_the_numbers_the_prose_quotes():
+    """The case banner's numbers, pinned to half a unit in the place it prints.
+
+    Whether the banner and this file still quote the legs is documentation and
+    runs in the docs-consistency workflow (the next test, PI 2026-09-22); that
+    check was the only one holding these record values, and a number still
+    blocks.
+    """
+    import json
+    from pathlib import Path
+
+    results = Path(__file__).resolve().parents[2] / "validation/crossval/_15_patch_results"
+    before = json.loads((results / "rfx_pre931_two_plane_ground_1f005d0d.json").read_text())
+    after = json.loads((results / "rfx.json").read_text())
+    assert before["f_primary_hz"] / 1e9 == pytest.approx(2.313947, abs=0.5e-6)
+    assert after["f_primary_hz"] / 1e9 == pytest.approx(2.423039, abs=0.5e-6)
+    assert (after["f_primary_hz"] / before["f_primary_hz"] - 1) * 100 == (
+        pytest.approx(4.71, abs=0.5e-2))
+    assert after["s11_dip_db"] == pytest.approx(-19.05, abs=0.5e-2)
+    assert after["f_dip_hz"] / 1e9 == pytest.approx(2.420, abs=0.5e-3)
+
+
+@pytest.mark.docs_consistency
 def test_cv15_current_measurement_prose_follows_committed_legs():
     """Regeneration must update the case banner and its decomposition rationale."""
     import json

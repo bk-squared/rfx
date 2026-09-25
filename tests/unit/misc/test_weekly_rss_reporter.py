@@ -30,7 +30,7 @@ post-test hook, so the RSS at the exact SIGKILL instant is never captured):
     passed (measured: 0 [rss-live] lines at -v -ra with default fd-capture,
     including under a `timeout -s KILL` rehearsal of the exact scenario, and
     even with --capture=tee-sys; 3 lines with -s). The unit tests above bind
-    the STRING the sampler builds (via capsys, calling _sample_once
+    the STRING the sampler builds (via capfd, calling _sample_once
     directly) -- they do NOT prove that string is ever DELIVERED anywhere a
     human or CI log could see it. Only a real subprocess pytest run, killed
     with SIGKILL and inspected from OUTSIDE pytest's own capture layer
@@ -219,7 +219,7 @@ def test_read_proc_vmhwm_mb_agrees_with_independent_ru_maxrss_band():
     )
 
 
-def test_live_sampler_line_format_with_nodeid(monkeypatch, capsys):
+def test_live_sampler_line_format_with_nodeid(monkeypatch, capfd):
     """Synthetic reading (no real allocation): a delta past the threshold
     prints the documented "[rss-live] VmHWM N MB during <nodeid>" line."""
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 1500.0)
@@ -228,12 +228,17 @@ def test_live_sampler_line_format_with_nodeid(monkeypatch, capsys):
 
     sampler._sample_once()
 
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err.strip() == "[rss-live] VmHWM 1500 MB during tests/test_fake.py::test_thing"
+    # Asserted on this sampler's own line. The session's real sampler, which
+    # the fast-suite lane runs, reads the same patched function and may add its
+    # own line (it names this test's nodeid, not the fake one). capfd, because
+    # the line goes to file descriptor 2, which capsys does not see.
+    captured = capfd.readouterr()
+    assert "[rss-live]" not in captured.out
+    assert captured.err.splitlines().count(
+        "[rss-live] VmHWM 1500 MB during tests/test_fake.py::test_thing") == 1
 
 
-def test_live_sampler_line_format_without_nodeid(monkeypatch, capsys):
+def test_live_sampler_line_format_without_nodeid(monkeypatch, capfd):
     """When no nodeid is cheaply known yet, the 'during ...' suffix is
     omitted entirely rather than printed as 'during None'."""
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 1500.0)
@@ -242,25 +247,27 @@ def test_live_sampler_line_format_without_nodeid(monkeypatch, capsys):
 
     sampler._sample_once()
 
-    captured = capsys.readouterr()
-    assert captured.out == ""
-    assert captured.err.strip() == "[rss-live] VmHWM 1500 MB"
+    captured = capfd.readouterr()
+    assert "[rss-live]" not in captured.out
+    # The session's real sampler always names a nodeid, so the bare line is ours.
+    assert captured.err.splitlines().count("[rss-live] VmHWM 1500 MB") == 1
 
 
-def test_live_sampler_skips_below_threshold_and_when_unavailable(monkeypatch, capsys):
+def test_live_sampler_skips_below_threshold_and_when_unavailable(monkeypatch, capfd):
     """No line at all when the delta is below threshold, or when the VmHWM
     reading is unavailable (None)."""
     sampler = conftest._RSSLiveSampler(threshold_mb=500.0)
+    sampler.current_nodeid = "tests/test_fake.py::test_thing"   # marks our lines
 
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: 100.0)  # +100 MB < 500 MB
     sampler._sample_once()
-    captured = capsys.readouterr()
-    assert captured.out == "" and captured.err == ""
+    captured = capfd.readouterr()
+    assert "test_fake.py" not in captured.out + captured.err
 
     monkeypatch.setattr(conftest, "_read_proc_vmhwm_mb", lambda: None)
     sampler._sample_once()
-    captured = capsys.readouterr()
-    assert captured.out == "" and captured.err == ""
+    captured = capfd.readouterr()
+    assert "test_fake.py" not in captured.out + captured.err
 
 
 def test_live_sampler_thread_starts_is_daemon_and_stops_cleanly(monkeypatch):
@@ -322,7 +329,7 @@ def test_reporter_updates_live_sampler_current_nodeid_during_test():
 # ---------------------------------------------------------------------------
 # THE property (PR #592 review, CRITICAL): does an [rss-live] line actually
 # survive a real SIGKILL, observed from OUTSIDE pytest's own capture layer?
-# The tests above bind the sampler's output STRING via capsys; none of them
+# The tests above bind the sampler's output STRING via capfd; none of them
 # prove DELIVERY through pytest's real stdout capture machinery. Only a
 # subprocess pytest run, killed for real and inspected via subprocess.run's
 # own stdout pipe (a wholly separate capture layer from pytest's internal
@@ -421,7 +428,7 @@ def test_live_sampler_line_lost_without_dash_s():
     )
 
 
-def test_live_sampler_line_does_not_enter_a_redirected_stdout(monkeypatch, capsys):
+def test_live_sampler_line_does_not_enter_a_redirected_stdout(monkeypatch, capfd):
     """The sampler thread prints at any moment. A test that captures stdout
     through the process-global ``contextlib.redirect_stdout`` -- as
     ``rfx.ad_diagnostics.inspect_ad_saved_residuals`` does to read jax's
@@ -437,5 +444,5 @@ def test_live_sampler_line_does_not_enter_a_redirected_stdout(monkeypatch, capsy
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         sampler._sample_once()
-    assert buffer.getvalue() == ""
-    assert "[rss-live] VmHWM 1500 MB" in capsys.readouterr().err
+    assert "[rss-live]" not in buffer.getvalue()
+    assert "[rss-live] VmHWM 1500 MB" in capfd.readouterr().err

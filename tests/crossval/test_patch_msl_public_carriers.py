@@ -22,6 +22,7 @@ def _text(path):
     return (ROOT / path).read_text()
 
 
+@pytest.mark.docs_consistency
 def test_patch_demo_directivity_comment_uses_current_measurement():
     artifact = _json("tests/fixtures/patch_canonical_farfield_e4/"
                      "canonical_farfield_e4_measured_369367259302.json")
@@ -30,6 +31,7 @@ def test_patch_demo_directivity_comment_uses_current_measurement():
     assert f"{artifact['measured']['d_abs_diff_db']:.4f} dB" in current
 
 
+@pytest.mark.docs_consistency
 def test_msl_producer_current_geometry_quotes_committed_metadata():
     artifact = _json("tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json")
     current = _text("scripts/diagnostics/build_msl_thru_phase_dx50um_reference.py").split(
@@ -52,6 +54,7 @@ def test_msl_producer_current_geometry_quotes_committed_metadata():
     "docs/guides/sparameter_support_matrix.md",
     "docs/design_notes/issue812_phase_identity_predeclaration.md",
 ])
+@pytest.mark.docs_consistency
 def test_msl_current_replay_quotes_fixture_and_labels_historical_openems(carrier):
     cv20 = _json("validation/crossval/_issue812_phase_identity/regate_evidence.json")["cv20"]
     source = _text(carrier)
@@ -71,6 +74,7 @@ def test_msl_current_replay_quotes_fixture_and_labels_historical_openems(carrier
     assert "historical run-2" in normalized and "openems" in normalized.lower()
 
 
+@pytest.mark.docs_consistency
 def test_patch_farfield_beam_peak_prose_quotes_committed_cut_angles():
     cuts = _json("tests/fixtures/patch_canonical_farfield_e4/"
                  "canonical_farfield_e4_measured_369367259302.json")["measured"]["cuts_deg"]
@@ -78,3 +82,39 @@ def test_patch_farfield_beam_peak_prose_quotes_committed_cut_angles():
     e, h = cuts["E_peak_deg"], cuts["H_peak_deg"]
     assert f"measured {e:.0f} deg / {h:.0f} deg" in source
     assert f"measured: rfx {e:.0f}/{h:.0f} deg" in source
+
+
+# The four checks above ask whether prose -- a comment, a docstring, a guide --
+# still quotes the committed records. That is documentation, run by the
+# non-required docs-consistency workflow (PI, 2026-09-22). They were also the
+# only tests that held these record values, and a number still blocks, so the
+# values are pinned here to half a unit in the place the prose prints them.
+def test_the_records_hold_the_numbers_the_prose_quotes():
+    far = _json("tests/fixtures/patch_canonical_farfield_e4/"
+                "canonical_farfield_e4_measured_369367259302.json")["measured"]
+    assert far["d_abs_diff_db"] == pytest.approx(0.0659, abs=0.5e-4)
+    assert far["cuts_deg"]["E_peak_deg"] == pytest.approx(-1.0, abs=0.5)
+    assert far["cuts_deg"]["H_peak_deg"] == pytest.approx(-4.0, abs=0.5)
+
+    artifact = _json("tests/fixtures/msl_phase_referee/msl_thru_rfx_dx50.json")
+    meta = artifact["meta"]
+    assert meta["trace_y_lo_realized_m"] == pytest.approx(900e-6, abs=0.5e-6)
+    assert meta["trace_y_hi_realized_m"] == pytest.approx(1500e-6, abs=0.5e-6)
+    assert meta["trace_wall_planes_realized_z_m"] == pytest.approx(
+        [250e-6, 300e-6], abs=0.5e-6)
+    assert {name: port["n_probe_spacing"]
+            for name, port in artifact["reference_plane_geometry"].items()
+            if name.startswith("msl_")} == {"msl_0": 11, "msl_1": 11}
+
+    cv20 = _json("validation/crossval/_issue812_phase_identity/"
+                 "regate_evidence.json")["cv20"]
+    assert cv20["blindness"]["audit_construction_e1_max_phase_dev_deg"] == (
+        pytest.approx(0.0647, abs=0.5e-4))
+    replay = cv20["run2_openems_with_current_rfx_fixture"]
+    assert replay["cross_solver_max_abs_raw_phase_diff_deg"] == pytest.approx(
+        0.5308, abs=0.5e-4)
+    # The pages print these two as percentages, to four decimals.
+    assert replay["analytic_beta_rfx_max_abs_dev_frac"] * 100 == pytest.approx(
+        1.4122, abs=0.5e-4)
+    assert replay["analytic_beta_openems_max_abs_dev_frac"] * 100 == pytest.approx(
+        0.3068, abs=0.5e-4)

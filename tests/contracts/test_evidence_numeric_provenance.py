@@ -54,6 +54,7 @@ It asserts NO physics and changes NO gate value.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from decimal import Decimal
@@ -1102,35 +1103,95 @@ REMOVED_ARTIFACT_PREFIXES: tuple[str, ...] = (
 )
 
 
-def collect(root: Path) -> list[Reference]:
+def collect(root: Path, documents=DOCUMENTS) -> list[Reference]:
     refs: list[Reference] = []
-    for doc in DOCUMENTS:
+    for doc in documents:
         for site, text in _sites(root, doc):
             refs.extend(r for r in parse_references(doc, site, text)
                         if not r.path.startswith(REMOVED_ARTIFACT_PREFIXES))
     return refs
 
 
-_REFS = collect(_REPO)
+# --------------------------------------------------------------------------
+# Which lane checks what (PI, 2026-09-22 and 2026-09-24)
+#
+# The manifest is JSON the crossval runner reads, so its citations are checked
+# in the required lanes. The Markdown documents are documentation: whether
+# their prose still quotes the records is checked by the non-required
+# docs-consistency workflow (docs_consistency marker). The record values they
+# cited are numbers, and numbers still block: FROZEN_CITATIONS keeps every
+# citation as it was written when this split was made, and the required lanes
+# check each one against its record. A document that adds a citation adds it
+# there too if the number is to block.
+#
+# Nothing here opens a document while pytest collects: the documents are
+# parametrized by name and parsed inside the test body, so a note that is
+# deleted or carries a malformed citation fails its docs_consistency test and
+# cannot interrupt collection in a required lane.
+# --------------------------------------------------------------------------
+
+FROZEN_CITATIONS = _REPO / "tests" / "fixtures" / "cited_record_values.json"
+_NOTES = tuple(doc for doc in DOCUMENTS if doc != MANIFEST)
 
 
-@pytest.mark.parametrize(
-    "ref", _REFS, ids=[f"{r.doc.split('/')[-1]}:{r.site}:{r.keypath}" for r in _REFS]
-)
-def test_every_cited_number_matches_its_artifact(ref: Reference) -> None:
+@functools.lru_cache(maxsize=None)
+def _refs() -> tuple[Reference, ...]:
+    """Every citation in every gated document. Reads the notes, so only
+    docs_consistency test bodies call it (tests/_prose_reads.py holds the rest
+    to it)."""
+    return tuple(collect(_REPO))
+
+
+@functools.lru_cache(maxsize=None)
+def _frozen_refs() -> tuple[Reference, ...]:
+    with FROZEN_CITATIONS.open(encoding="utf-8") as fh:
+        by_doc = json.load(fh)["citations"]
+    return tuple(ref for doc, sites in by_doc.items() for site, spans in sites.items()
+                 for span in spans for ref in parse_references(doc, site, f"`{span}`"))
+
+
+def _ref_id(r: Reference) -> str:
+    return f"{r.doc.split('/')[-1]}:{r.site}:{r.keypath}"
+
+
+def _check_all(refs) -> None:
+    failures = []
+    for ref in refs:
+        try:
+            check(_REPO, ref)
+        except AssertionError as exc:
+            failures.append(str(exc))
+    assert not failures, f"{len(failures)} citation(s) failed:\n\n" + "\n\n".join(failures)
+
+
+def test_every_number_the_manifest_cites_matches_its_artifact() -> None:
+    _check_all(collect(_REPO, (MANIFEST,)))
+
+
+@pytest.mark.docs_consistency
+@pytest.mark.parametrize("doc", _NOTES)
+def test_every_number_a_note_cites_matches_its_artifact(doc: str) -> None:
+    _check_all(collect(_REPO, (doc,)))
+
+
+@pytest.mark.parametrize("ref", _frozen_refs(), ids=[_ref_id(r) for r in _frozen_refs()])
+def test_every_frozen_citation_still_matches_its_record(ref: Reference) -> None:
+    """The record values the notes cited, to the precision they were written."""
     check(_REPO, ref)
 
 
+@pytest.mark.docs_consistency
 def test_the_cited_population_is_still_present() -> None:
-    value_checked = [r for r in _REFS if r.literal is not None]
-    artifacts = {r.path for r in _REFS}
-    assert len(_REFS) >= MIN_REFERENCES, (
-        f"only {len(_REFS)} artifact references across {list(DOCUMENTS)}; "
+    refs = _refs()
+    value_checked = [r for r in refs if r.literal is not None]
+    artifacts = {r.path for r in refs}
+    assert len(refs) >= MIN_REFERENCES, (
+        f"only {len(refs)} artifact references across {list(DOCUMENTS)}; "
         f"expected at least {MIN_REFERENCES}. If references were legitimately "
         f"removed, lower MIN_REFERENCES in the same commit and say why."
     )
     assert len(value_checked) >= MIN_VALUE_CHECKED, (
-        f"only {len(value_checked)} of {len(_REFS)} references carry a value to "
+        f"only {len(value_checked)} of {len(refs)} references carry a value to "
         f"check; expected at least {MIN_VALUE_CHECKED}. Existence-only "
         f"references keep a key alive but assert no number."
     )
@@ -1154,11 +1215,12 @@ def test_a_skipped_artifact_prefix_is_really_gone(prefix: str) -> None:
     )
 
 
+@pytest.mark.docs_consistency
 @pytest.mark.parametrize("site,floor", sorted(REQUIRED_SITES.items()),
                          ids=lambda v: str(v) if not isinstance(v, tuple) else f"{v[0].split('/')[-1]}:{v[1]}")
 def test_each_registered_site_still_carries_its_references(site, floor) -> None:
     doc, name = site
-    found = [r for r in _REFS if r.doc == doc and r.site == name and r.literal is not None]
+    found = [r for r in _refs() if r.doc == doc and r.site == name and r.literal is not None]
     assert len(found) >= floor, (
         f"{doc} [{name}] carries {len(found)} value-checked artifact "
         f"references, below its declared floor of {floor}. A rewrite that drops "
@@ -1167,6 +1229,7 @@ def test_each_registered_site_still_carries_its_references(site, floor) -> None:
     )
 
 
+@pytest.mark.docs_consistency
 def test_every_enumerated_document_is_classified() -> None:
     """No document in the two evidence-carrying trees may be unclassified.
 
@@ -1187,6 +1250,7 @@ def test_every_enumerated_document_is_classified() -> None:
     )
 
 
+@pytest.mark.docs_consistency
 @pytest.mark.parametrize("doc", sorted(CLASSIFICATION))
 def test_each_classification_holds_mechanically(doc: str) -> None:
     """Each reason is checked, not asserted in prose."""
@@ -1242,7 +1306,9 @@ def _scratch(tmp_path: Path, artifact: str, key: str, value) -> Path:
 
 
 def _cv15_dip_references() -> list[Reference]:
-    return [r for r in _REFS
+    # From the frozen copy: these falsifiers exercise the gate, and must not
+    # read the notes to do it.
+    return [r for r in _frozen_refs()
             if r.path == CV15_ARTIFACT and r.keypath == CV15_KEY and r.literal is not None]
 
 

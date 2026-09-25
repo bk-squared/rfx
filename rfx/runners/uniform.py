@@ -200,6 +200,10 @@ def run_uniform(
     """
     from rfx.api import Result, WaveguideSParamResult
 
+    # run() sends a refined model to the subgridded lane; a direct call must
+    # not solve it here without the refinement (#1240).
+    sim._require_no_refinement_without_a_subgrid("run_uniform()")
+
     # #677 v1 fences for the surface-impedance sheet operator (loud, never
     # silent): the operator replaces the standard isotropic E update at its
     # edges, so lanes that swap that update out are refused.

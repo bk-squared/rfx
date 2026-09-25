@@ -24,6 +24,8 @@ import json
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DURATIONS = REPO_ROOT / ".test_durations"
 DOC = REPO_ROOT / "scripts" / "ci" / "DURATIONS.md"
@@ -74,6 +76,7 @@ def test_the_durations_file_is_well_formed():
     )
 
 
+@pytest.mark.docs_consistency
 def test_the_doc_reports_the_entry_count_the_file_has():
     data = _durations()
     matches = ENTRIES_RE.findall(_doc_text())
@@ -87,6 +90,7 @@ def test_the_doc_reports_the_entry_count_the_file_has():
     )
 
 
+@pytest.mark.docs_consistency
 def test_the_doc_reports_a_carried_count_that_fits_the_file():
     data = _durations()
     matches = CARRIED_RE.findall(_doc_text())

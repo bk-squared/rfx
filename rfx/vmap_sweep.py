@@ -1072,6 +1072,7 @@ def vmap_material_sweep(
     base_materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(
         grid, pec_sheets=_sweep_pec_sheets, pec_wires=_sweep_pec_wires)
 
+    caller_n_steps = n_steps
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
 
@@ -1088,6 +1089,9 @@ def vmap_material_sweep(
     jax_param_values = jnp.asarray(param_values)
 
     if run_one_fn is not None:
+        # The batched kernel has no subgrid and never read add_refinement;
+        # the sequential fallback below runs it through run() (#1240).
+        sim._require_no_refinement_without_a_subgrid("vmap_material_sweep()")
         # Fast path: vmap over material arrays
         batched_materials = _build_batched_materials(
             sim, grid, base_materials, param_name, jax_param_values,
@@ -1131,8 +1135,16 @@ def vmap_material_sweep(
             "support.",
             stacklevel=2,
         )
+        # Every swept copy gets the same explicit count, so the traces stack
+        # (auto-meshing can give each value its own cell). On the subgridded
+        # lane run() reads an explicit count as FINE steps, so a refined
+        # model gets the fine count for num_periods, as run() resolves it
+        # itself; the coarse count would cover 1/ratio of the time (#1240).
+        fallback_n_steps = n_steps
+        if caller_n_steps is None and sim._refinement is not None:
+            fallback_n_steps = n_steps * int(sim._refinement["ratio"])
         return _sequential_fallback(
-            sim, param_name, param_values, n_steps=n_steps,
+            sim, param_name, param_values, n_steps=fallback_n_steps,
         )
 
 

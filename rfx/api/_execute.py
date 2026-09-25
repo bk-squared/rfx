@@ -1439,6 +1439,14 @@ class _ExecuteMixin:
                 return_state=False,
             )
 
+        # The uniform forward lane has no subgrid (#1240). forward() (and
+        # optimize() through it), topology_optimize() and
+        # compute_lumped_wire_s_matrix_via_scan() all enter here; its other
+        # callers never carry a refinement (run() sends one to the subgridded
+        # lane, compute_mixed_s_matrix refuses it first).
+        self._require_no_refinement_without_a_subgrid(
+            "forward()/optimize()/topology_optimize()")
+
         from rfx.simulation import (
             run as _run,
             make_probe,
@@ -2989,6 +2997,9 @@ class _ExecuteMixin:
         if self._solver == "adi":
             self._require_uniform_mesh("solver='adi'")
         self._require_mode_the_nonuniform_lane_solves()
+        # Every non-uniform lane below, single-device and distributed, run()
+        # and forward(), has no subgrid and would drop a refinement (#1240).
+        self._require_no_refinement_on_the_nonuniform_lane()
         is_nonuniform = self._uses_nonuniform_mesh
 
         def _reject_lane_precision(lane: str) -> None:

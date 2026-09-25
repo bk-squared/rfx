@@ -35,8 +35,12 @@ def test_mesh_intelligence_report_compares_uniform_fine_cells(capsys):
 
     report = sim.mesh_intelligence_report()
 
-    captured = capsys.readouterr()
-    assert captured.out == ""
+    # The report runs preflight() and must swallow its printed summary. Only the
+    # [PREFLIGHT] lines are this call's to check: another part of the process
+    # may write to stdout (the CI lane's memory sampler did, run 35837183022).
+    assert "[PREFLIGHT]" not in capsys.readouterr().out
+    sim.preflight()
+    assert "[PREFLIGHT]" in capsys.readouterr().out, "nothing to swallow here"
     assert isinstance(report, MeshIntelligenceReport)
     assert report.uses_nonuniform is True
     assert report.cells == report.grid_shape[0] * report.grid_shape[1] * report.grid_shape[2]

@@ -93,6 +93,7 @@ from rfx.preflight._common import (
     _fmt_freq,
     _fmt_len,
     PreflightConfigError,
+    PreflightErrorWarning,
     PreflightWarning,
 )
 
@@ -1149,6 +1150,21 @@ def _validate_cfg_subgrid_limitations(self, _w) -> None:
     here.
     """
     if self._refinement is not None:
+        # #1240: on a non-uniform mesh the refinement is not run at all. An
+        # error finding rather than a raise, so the checks after this one
+        # still report; the run-time refusal is
+        # ``_require_no_refinement_on_the_nonuniform_lane``, which
+        # skip_preflight=True does not bypass.
+        _nu_refusal = self._nonuniform_refinement_refusal()
+        if _nu_refusal is not None:
+            _w.warn(
+                PreflightErrorWarning(
+                    _nu_refusal,
+                    code="nonuniform_refinement",
+                    source="_validate_cfg_subgrid_limitations",
+                ),
+                stacklevel=3,
+            )
         if self._dft_planes:
             _w.warn(
                 PreflightWarning(
