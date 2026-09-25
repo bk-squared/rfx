@@ -2024,11 +2024,15 @@ def current_source_cb(eps_r_c, sigma_c, dt, *, traced):
     program from the slabs its E update receives (#1279), both call it.
     """
     if traced:
-        eps = jnp.asarray(eps_r_c) * EPS_0
+        # The same Cb written in eps_r units, dt/(eps0*(eps_r + sigma*dt/(2*eps0))):
+        # with eps = eps_r*eps0 ~ 1e-11, the reverse pass squares eps and a
+        # float32 cotangent above ~1e15 overflowed to a NaN gradient at the
+        # source's four cells (#1279 review). In eps_r units it stays finite.
+        eps_r = jnp.asarray(eps_r_c)
         sigma = jnp.asarray(sigma_c)
-    else:
-        eps = float(eps_r_c) * EPS_0
-        sigma = float(sigma_c)
+        return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
+    eps = float(eps_r_c) * EPS_0
+    sigma = float(sigma_c)
     loss = sigma * dt / (2.0 * eps)
 
     # Cb = dt / (eps * (1 + loss))

@@ -278,10 +278,8 @@ def test_every_edge_is_driven_through_the_steppers_cb_under_an_override(form):
 # --------------------------------------------------------------------------
 
 def _log_energy(ts):
-    """ln of the probe records' summed squares. Scale-free on purpose: the
-    raw sum (~1e16 (V/m)^2 on these boards) can overflow float32 inside the
-    reverse pass of the drive's Cb -- on the single-device lane too, main
-    included -- which is a separate defect this file does not test."""
+    """ln of the probe records' summed squares (scale-free; the raw sum is
+    ~1e16 (V/m)^2 on these boards -- see test_a_large_objective_...)."""
     return jnp.log(jnp.sum(ts ** 2))
 
 
@@ -383,10 +381,13 @@ def test_raising_eps_r_by_override_changes_the_slab_not_the_drive(form):
 # --------------------------------------------------------------------------
 
 @functools.lru_cache(maxsize=None)
-def _lane(lane, form=None, mutated=False):
+def _lane(lane, form=None, mutated=False, warmup=0, checkpoint=None):
     """``(probe record, d ln|E(8 GHz)|^2 / d ln eps_r)`` for a source in a
     drawn eps_r 3.38 slab that an override raises, with everything around it,
-    to 10.2 -- one material, so the two lanes' E updates coincide."""
+    to 10.2 -- one material, so the two lanes' E updates coincide.
+    ``warmup`` / ``checkpoint`` are forward's ``n_warmup`` / ``checkpoint_every``:
+    the warm-up steps take their own drive table, which the runner scales too."""
+    kw = dict(n_warmup=warmup, checkpoint_every=checkpoint)
     sim = _board(EPS_LO)
     grid = sim._build_nonuniform_grid()
     full = np.full(grid.shape, EPS_HI, np.float32)
@@ -397,9 +398,10 @@ def _lane(lane, form=None, mutated=False):
     def record(a):
         if lane == "single":
             return sim.forward(eps_override=jnp.asarray(full) * jnp.exp(a),
-                               n_steps=N_RECORD, skip_preflight=True).time_series[:, 0]
+                               n_steps=N_RECORD, skip_preflight=True, **kw).time_series[:, 0]
         design = _place(sim, full, form)
-        return _dist(sim, eps_override=design * jnp.exp(a), n_steps=N_RECORD).time_series[:, 0]
+        return _dist(sim, eps_override=design * jnp.exp(a), n_steps=N_RECORD,
+                     **kw).time_series[:, 0]
 
     def objective(a):
         return jnp.log(jnp.abs(_dft(record(a), grid.dt, F_BIN)) ** 2)
@@ -411,18 +413,69 @@ def _lane(lane, form=None, mutated=False):
     return ts, grad
 
 
+# (0, None): the plain run. (40, 30): 40 warm-up steps with their own drive
+# table, and segmented remat; deleting the warm-up table's scaling moved the
+# record 1.0096 and the gradient -12.3 % (#1279 review), unseen before.
+@pytest.mark.parametrize("warmup,checkpoint", [(0, None), (40, 30)])
 @pytest.mark.parametrize("form", ["local", "sharded"])
-def test_the_distributed_lane_drives_the_overridden_source_as_the_single_device_lane(form):
-    ts_s, g_s = _lane("single")
-    ts_d, g_d = _lane("dist", form)
+def test_the_distributed_lane_drives_the_overridden_source_as_the_single_device_lane(
+        form, warmup, checkpoint):
+    ts_s, g_s = _lane("single", warmup=warmup, checkpoint=checkpoint)
+    ts_d, g_d = _lane("dist", form, warmup=warmup, checkpoint=checkpoint)
     ls = _ls_ratio(ts_d, ts_s)
-    print(f"[c/{form}] distributed/single-device record: least-squares ratio "
+    print(f"[c/{form}/w{warmup}/k{checkpoint}] distributed/single-device record: least-squares ratio "
           f"{ls:.9f} ({_peak_ulp(ts_s, ts_d):.2f} ULP of the peak per sample); "
           f"d ln|E({F_BIN / 1e9:g} GHz)|^2/d ln eps_r {g_d:.7f} vs {g_s:.7f} "
           f"(rel {g_d / g_s - 1:+.2e}); a drive from the drawn slab predicts "
           f"ratio {EPS_HI / EPS_LO:.4f}")
     assert abs(ls - 1.0) <= RATIO_TOL, ls
     assert abs(g_d / g_s - 1.0) <= GRAD_RTOL, (g_d, g_s)
+
+
+def test_the_traced_drive_coefficient_has_a_finite_gradient_under_a_large_cotangent():
+    """Cb = dt/(eps + sigma*dt/2) written with eps = eps_r*eps0 ~ 1e-11 squares
+    eps in the reverse pass; a float32 cotangent above ~1e15 then overflowed to a
+    NaN gradient at the four cells a current source's drive reads -- on this lane
+    and on the single-device lane since #1280 (#1279 review). In eps_r units the
+    same Cb keeps the reverse pass finite far past any objective a board makes."""
+    from rfx.nonuniform import current_source_cb
+    dt = float(_board(EPS_LO)._build_nonuniform_grid().dt)
+    for cotangent in (1e18, 1e22, 1e26, 1e30):
+        grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt, traced=True),
+                         argnums=(0, 1))(jnp.float32(2.0), jnp.float32(0.5))
+        assert all(np.isfinite(float(g)) for g in grads), (cotangent, grads)
+
+
+def test_a_large_objective_gives_a_finite_gradient_on_both_lanes():
+    """The raw sum of squared probe samples (~1e16 (V/m)^2: two 1 A current
+    sources in a lossy slab, 40 steps, eps and sigma overridden) as the objective,
+    the reviewer's board: both lanes give a finite eps and sigma gradient."""
+    dz = np.array([0.8, 0.8, 1.0, 1.0, 1.0, 1.0, 1.0]) * 1e-3
+    sim = Simulation(freq_max=15e9, domain=(12e-3, 7e-3, float(dz.sum())), dx=1e-3,
+                     dz_profile=dz, boundary="cpml", cpml_layers=2)
+    sim.add_material("slab", eps_r=4.4, sigma=0.02)
+    sim.add(Box((3e-3, 1e-3, 0.8e-3), (11e-3, 6e-3, 5.6e-3)), material="slab")
+    for position, component in (((7e-3, 3e-3, 1.6e-3), "ey"), ((10e-3, 3e-3, 1.6e-3), "ez")):
+        sim.add_source(position, component, waveform=GaussianPulse(f0=8e9, bandwidth=0.8),
+                       amplitude_kind="current")
+    sim.add_probe((9e-3, 3e-3, 3.6e-3), "ey")
+    sim.add_probe((7e-3, 3e-3, 1.6e-3), "ey")
+    shape = sim._build_nonuniform_grid().shape
+    flat = np.arange(np.prod(shape))
+    eps = jnp.asarray((1.2 + (flat % 71) * .05).astype(np.float32).reshape(shape))
+    sig = jnp.asarray(((flat % 71) * .02).astype(np.float32).reshape(shape))
+    lanes = {"single": {}, "dist": dict(distributed=True, devices=jax.devices("cpu")[:N_DEVICES])}
+    for name, kw in lanes.items():
+        def objective(e, s):
+            ts = sim.forward(eps_override=e, sigma_override=s, n_steps=40,
+                             skip_preflight=True, **kw).time_series
+            return jnp.sum(ts ** 2)
+        value = float(objective(eps, sig))
+        ge, gs = (np.asarray(g) for g in jax.grad(objective, argnums=(0, 1))(eps, sig))
+        print(f"[large/{name}] objective {value:.3e}; finite eps/sigma gradient "
+              f"{bool(np.isfinite(ge).all())}/{bool(np.isfinite(gs).all())}")
+        assert value > 1e15, value   # the regime that overflowed; else this says nothing
+        assert np.isfinite(ge).all() and np.isfinite(gs).all(), name
 
 
 # --------------------------------------------------------------------------
