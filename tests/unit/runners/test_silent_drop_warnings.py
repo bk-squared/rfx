@@ -474,6 +474,70 @@ def test_distributed_waveguide_fallback_carries_the_conformal_walls():
     assert np.max(np.abs(c - st)) > 0.1 * peak
 
 
+def _wr90_post_sim():
+    """WR-90 section with plain (non-conformal) PEC walls and a PEC post."""
+    def build():
+        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
+                         dx=3e-3, cpml_layers=6,
+                         boundary=BoundarySpec(x="cpml", y="pec", z="pec"))
+        sim.add(Cylinder((0.03, 0.0114, 0.00508), 0.0026, 0.01016, axis="z"),
+                material="pec")
+        sim.add_waveguide_port(0.009, direction="+x", mode=(1, 0),
+                               mode_type="TE",
+                               freqs=np.linspace(6e9, 7e9, 3), f0=6.5e9,
+                               bandwidth=0.4, name="l")
+        sim.add_probe((0.042, 0.011, 0.005), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_distributed_fallback_refuses_a_conformal_request_it_would_drop():
+    """An explicit conformal_pec=True with no Boundary(conformal=True): the
+    one-device fallback re-derives False from the declaration and would
+    return the staircase post, so the request is refused, not exempted."""
+    with pytest.raises(NotImplementedError, match=_refusal(
+            "distributed multi-device", "conformal_pec")):
+        _wr90_post_sim().run(n_steps=8, conformal_pec=True,
+                             devices=_devices(), skip_preflight=True)
+    # The request is not a no-op on this model: one device, conformal post
+    # vs staircase post.
+    on, off = (np.asarray(_quiet(lambda: _wr90_post_sim().run(
+        n_steps=60, conformal_pec=flag, skip_preflight=True)).time_series)
+        for flag in (True, False))
+    assert np.max(np.abs(on - off)) > 0.1 * np.max(np.abs(off))
+
+
+def _copper_sheet_sim(nonuniform):
+    """The only metal is one add_thin_conductor sheet (copper by default,
+    which is PEC)."""
+    def build():
+        kw = ({"dz_profile": np.array([1e-3] * 4 + [0.7e-3] * 6 + [1e-3] * 4)}
+              if nonuniform else {})
+        sim = Simulation(freq_max=10e9,
+                         domain=(0.012, 0.012, 0.0 if nonuniform else 0.0122),
+                         dx=1e-3, boundary="pec", cpml_layers=0, **kw)
+        sim.add_thin_conductor(Box((0.0033, 0.0033, 0.0063),
+                                   (0.0087, 0.0087, 0.0063)))
+        sim.add_source((0.002, 0.006, 0.003), "ez", amplitude_kind="field")
+        sim.add_probe((0.006, 0.010, 0.009), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_a_copper_thin_conductor_is_pec_to_conform():
+    """A PEC thin conductor is one of the shapes the conformal weights act
+    on, so conformal_pec=True on a graded mesh with only such a sheet is
+    refused; on a uniform mesh the same request moves the answer."""
+    with pytest.raises(NotImplementedError,
+                       match=_refusal("non-uniform mesh", "conformal_pec")):
+        _copper_sheet_sim(True).run(n_steps=8, conformal_pec=True,
+                                    skip_preflight=True)
+    on, off = (np.asarray(_quiet(lambda: _copper_sheet_sim(False).run(
+        n_steps=200, conformal_pec=flag, skip_preflight=True)).time_series)
+        for flag in (True, False))
+    assert np.max(np.abs(on - off)) > 0.01 * np.max(np.abs(off))
+
+
 @pytest.mark.parametrize("lane", list(LANES))
 def test_conformal_pec_with_no_pec_is_not_refused(lane):
     """With no PEC shape the conformal weights have nothing to act on."""
