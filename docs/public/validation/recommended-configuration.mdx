@@ -1,52 +1,73 @@
 ---
 title: "Recommended Configuration"
-description: "Where to start and which RF calculations need additional limits."
+description: "Where to start, and the extra limits each S-parameter calculator and non-default mesh carries."
 sidebar:
   order: 41
 ---
 
-## Start with the uniform grid
+Use this page to choose a starting setup and the right calculator for your
+port. Each calculator has its own limits, listed here. What you must check
+before reporting any result is on
+[Cross-Validation and Accuracy](/rfx/guide/validation/).
 
-Use the **uniform Cartesian Yee** solver for ordinary RF examples and public
-reports. The commonly documented setup includes:
+## Start here
 
-- PEC, CPML, or UPML boundaries within their stated limits;
-- point/current sources and the port type appropriate to the structure;
-- probes, flux monitors, Harminv resonance extraction, selected S-parameter
-  calculations, and the documented far-field workflows; and
-- convergence checks and an analytic or independent solver comparison suited
-  to the reported observable.
+For ordinary RF work, start from the **uniform Cartesian Yee** grid:
 
-The [support matrix](/rfx/api/support-boundaries/) gives the general limits.
-For port calculations, also read the
-[S-parameter guidance](/rfx/guide/probes-sparams/).
+- `boundary="cpml"` for open problems and `"pec"` for closed ones;
+- point sources, and the port family that matches your structure;
+- probes, flux monitors, Harminv resonances, the port calculators below and
+  the documented far-field workflows.
 
-## Calculations with narrower limits
+This is the configuration with the broadest evidence. A graded mesh, the ADI
+solver and multi-device runs each carry narrower limits, listed below and in
+[Support Boundaries](/rfx/api/support-boundaries/).
 
-| Configuration | Current use and restriction |
+## Pick the calculator for your port
+
+A port calculator only works for its own port family. Do not substitute one
+for another.
+
+| Port | Calculator | Start from | Limits |
+|---|---|---|---|
+| Lumped or wire `add_port(...)` | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for a differentiable `S11` | about 60 cells per wavelength at the highest frequency | A discrete feed across one gap, not a modal line port. V is read at the port node and I half a cell toward the line, so a two-port `S21` phase is referenced to the port separation less half a cell. Lumped and wire ports return the same `S11`. |
+| Microstrip `add_msl_port(...)` | `compute_msl_s_matrix(...)` | about 3 cells across the substrate | Returns the raw extracted `S`; read `sigma_max_excess` for any passivity breach, or pass `enforce_passivity=True` to project it. Check `probe_clearance` for the probe layout and `settling_db` for the record length. |
+| Rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | the documented rectangular-guide modes and bands | Single-mode magnitudes have the broadest evidence; phase, junctions, multimode and graded meshes have less. Only `normalize=False` and `normalize="flux"` carry a gradient. |
+| Coaxial `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` for one port, `compute_coaxial_two_port(...)` for a through line | at least 4 cells across the annulus | Exactly one coaxial port with `face="top"`, `precision="float32"`, a uniform 3-D grid and CPML on all six faces. The calculator builds its own line, source and probes; it is not a general coaxial-network solver. |
+
+Field sources, plane waves, probes, DFT planes and flux monitors have no port
+impedance or reference plane. They give fields and power, not S-parameters.
+
+## End a line with its port
+
+A transmission line should end at a port that absorbs it, not in the CPML.
+Name the conductor a port ends with `terminates=` on `add_port`,
+`add_msl_port` or `add_coaxial_port`; a microstrip port ends the strip under
+it by default. As a line termination, the CPML reflects about −9.4, −15.0
+and −22.3 dB at 4, 8 and 16 layers on a microstrip line. Preflight names any
+conductor that runs into the absorber unterminated.
+
+## Non-default configurations
+
+| Configuration | What to know |
 |---|---|
-| rectangular waveguide S-matrix | Use `compute_waveguide_s_matrix(...)` for the documented rectangular-guide modes, frequency bands, normalization, reference planes, and port placement. Magnitude evidence is broader than phase and arbitrary-junction evidence. |
-| microstrip-line S-matrix | Use `compute_msl_s_matrix(...)` for the documented quasi-TEM configurations. Exclude the whole frequency slice `S[:, :, k]` wherever `reliable[p, k]` is false (S is solved jointly across drives, #507); a true entry is not an accuracy guarantee. |
-| lumped or wire-port S-parameters | Use `run(compute_s_params=True)` or the documented differentiable S11 path. These discrete lumped/wire feed models are not modal transmission-line ports. |
-| coaxial transmission-line reflection | Use `compute_coaxial_line_reflection(...)` only with float32 precision, a nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port. It builds its own line, source, probes, and termination, is not a general multi-port coaxial-network solver, and has no shared automatic passivity guard. See [Sources and Ports](/rfx/api/sources-ports/). |
-| nonuniform graded-z mesh | Check the limit for each source, port, and observable. Regression or finite-gradient coverage alone does not establish RF accuracy. |
-| differentiable design | Treat the optimization quantity as a proxy objective. Validate the final design independently with the applicable RF observable. |
+| Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/). A plane wave along a graded axis leaks into the scattered-field region (preflight warns); normal incidence along x needs a uniform x axis. `add_refinement` is refused on a graded mesh. |
+| Local refinement, `add_refinement` | Takes effect only through `run()` on a uniform mesh. `forward()`, `optimize()`, `topology_optimize()` and the S-parameter calculators refuse a refined model. |
+| Multi-device, `run(devices=[...])` | Uses the shard_map runner with `exchange_interval=1`. Lumped RLC elements, MSL ports, refinements, Kerr materials and DFT planes are refused. |
+| Differentiable design | The objective is a proxy. Check the final design with a converged forward run of the RF quantity you report. |
 
-## S-parameter API selection
+When a run argument is not implemented on the path your model takes (for
+example `until_decay`, snapshots or conformal walls on some paths), `run()`
+raises before the first step. Change the argument or the configuration; the
+message names both.
 
-- `run(compute_s_params=True)` computes lumped/wire-port S-parameters.
-- `compute_msl_s_matrix(...)` computes the microstrip-line result.
-- `compute_waveguide_s_matrix(...)` computes the rectangular-waveguide result.
-- `compute_coaxial_line_reflection(...)` computes the one-port line-reflection
-  result for the float32, nonperiodic 3D second-order uniform Yee and all-face
-  CPML setup described above. Separately registered geometry, circuit elements,
-  monitors, and coaxial termination helpers are rejected.
-- Field sources, TFSF, probes, DFT planes, and flux monitors do not define a
-  port impedance or S-matrix reference plane.
+## Limits
 
-Do not substitute one calculator for another port family. A completed run or
-an absent warning does not establish convergence, passivity, reference-plane
-correctness, or agreement with an independent RF reference. Examples and
-regression tests do not expand those validated limits either: a committed test
-locks the behaviour it was written against, at the mesh, band and configuration
-it was written for.
+- **A completed run is not a validated one.** No warning does not mean
+  converged, passive or correctly referenced. Work through the checklist on
+  [Cross-Validation and Accuracy](/rfx/guide/validation/).
+- **Examples and tests cover their own setup.** A committed test pins
+  behaviour at its own mesh, band and configuration.
+- **Coaxial open termination is not supported.** On fine meshes it reads
+  `|Γ| > 1`. Use a short, a matched load or a DUT impedance instead; track
+  [issue #1218](https://github.com/bk-squared/rfx/issues/1218).

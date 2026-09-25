@@ -1,31 +1,21 @@
 ---
 title: "Validation"
-description: "Validation evidence and current configuration limits for rfx."
+description: "Where to find how rfx is checked, which setup to start from, and how to reproduce a comparison."
 sidebar:
   order: 40
 ---
 
-Start from the [Recommended Configuration](/rfx/validation/recommended-configuration/), then
-read [Support Boundaries](/rfx/api/support-boundaries/) for the exact mesh,
-source, port, calculator, and observable restrictions.
+This section collects the pages that tell you how far to trust an rfx result.
+Start with the first one.
 
-## Configuration and required validation
-
-| Configuration | Required validation |
+| Page | Read it when you want to know |
 |---|---|
-| uniform Cartesian Yee RF/FDTD workflows | use the documented boundaries, sources, observables, convergence checks, and analytic or independent reference |
-| rectangular waveguide S-matrices | use `compute_waveguide_s_matrix(...)` only for the documented guide geometry, modes, frequency range, normalization, reference planes, and placement |
-| lumped, wire, microstrip-line, and coaxial-line calculations | use the calculator for that port family and remain within its stated limits |
-| differentiable design loops | treat the optimization quantity as a proxy and validate the final RF observable separately |
-| other repository code | treat RF accuracy as unvalidated unless a public guide and support entry define the configuration and evidence |
+| [Cross-Validation and Accuracy](/rfx/guide/validation/) | how rfx is checked, and what you must check yourself before reporting a number |
+| [Recommended Configuration](/rfx/validation/recommended-configuration/) | which setup to start from, and which calculator fits your port |
+| [Support Boundaries](/rfx/api/support-boundaries/) | whether a feature or combination is supported, limited or refused |
+| [Benchmarks](/rfx/guide/benchmarks/) | which cases compare rfx with another solver, and what they show |
+| [Cross-Solver Validation](/rfx/validation/cross-solver/) | how to run a comparison script and read its result |
 
-## Evidence, artifacts, and reports
-
-Plots, Touchstone files, HDF5 snapshots, CSV tables, and report bundles are
-useful review artifacts. They become validation evidence only when paired with
-a documented analytic result, dump replay, external-solver comparison,
-convergence study, or benchmark acceptance criterion.
-
-The measured cases themselves — every script under `validation/crossval/` with
-its reference, gate and reproduce command — are listed in
-[Benchmarks](/rfx/guide/benchmarks/).
+A plot, a Touchstone file or a report records what a run produced. It becomes
+evidence only next to a closed-form result, an independent solver, a
+measurement or a convergence study for the same setup.

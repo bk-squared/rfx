@@ -1,34 +1,46 @@
 ---
 title: "Cross-Solver Validation"
-description: "Runnable rfx comparisons with analytic results and other solvers."
+description: "How to run an rfx comparison script, read its exit code, and cite the result."
 sidebar:
   order: 42
 ---
 
-Use these scripts to reproduce a comparison for a specific RF configuration.
-They are available in a source checkout and are not installed with the Python
-wheel.
+This page is about running a comparison yourself. The cases and what they show
+are on [Benchmarks](/rfx/guide/benchmarks/).
 
-## Which script to run
+## Run a comparison
 
-The case list is [Benchmarks](/rfx/guide/benchmarks/): every script in
-`validation/crossval/`, with its reference, its pass criterion and its reproduce
-command, kept in step with `validation/crossval/manifest.json` by a test.
-
-Run a script from the repository root, for example:
+The scripts are in `validation/crossval/` in a source checkout; they are not
+installed with the wheel. Run one from the repository root:
 
 ```bash
 python validation/crossval/15_patch_antenna_rt5880.py
 ```
 
-An exit code of `0` means all configured checks passed. Exit code `1` means a
-check failed. Exit code `2` means a required external solver or reference was
-unavailable, so the comparison is inconclusive.
+By default it compares the committed rfx and reference results, which takes
+seconds and needs no external solver. [Benchmarks](/rfx/guide/benchmarks/#reproduce)
+shows how to re-solve either side.
 
-## Interpret the result
+The comparisons in `tests/crossval/` run through pytest. Most are long and
+marked `gpu` or `slow`, which the default test selection skips, so clear the
+default selection to run one (a GPU is recommended):
 
-A comparison applies to the geometry, mesh, frequency range, source, port,
-material model, boundary, and output used by that script. It is not a general
-accuracy guarantee for related designs. Record those settings and the numerical
-thresholds when citing a result. In a source checkout, `validation/README.md`
-lists the remaining cavity, waveguide, material, and port checks.
+```bash
+python -m pytest -o addopts="" tests/crossval/msl_notch_filter -q
+```
+
+## Read the result
+
+| Exit code | Meaning |
+|---|---|
+| `0` | Every check passed, including the comparison with the reference. |
+| `1` | A check failed. |
+| `2` | The rfx checks passed, but the reference result or solver was missing. Inconclusive, not a pass. |
+
+## Cite the result
+
+A comparison holds for the geometry, mesh, band, source, port, materials,
+boundaries and observable of that script. When you cite one, give the script
+path, the commit, those settings, the reference and the thresholds it used.
+Do not carry the result over to a different port, material model, boundary or
+mesh without a comparison for that setup.

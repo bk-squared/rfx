@@ -4,15 +4,11 @@ sidebar:
   order: 91
 ---
 
-Thank you for contributing to rfx. This guide is for maintainers and contributors working on the codebase, tests, and public docs.
+This page is for people who want to change rfx itself: fix a bug, add a
+feature or improve the docs. If you want to *use* rfx, start with the
+[Quick Start](/rfx/guide/quickstart/).
 
-> This is a **developer / maintainer guide**. If you are learning how to use
-> `rfx`, start with Quick Start, Sources & Ports, Non-Uniform Mesh, and the
-> other public user guides first.
-
----
-
-## Development Setup
+## Set up
 
 ```bash
 git clone https://github.com/bk-squared/rfx.git
@@ -20,171 +16,157 @@ cd rfx
 pip install -e '.[dev]'
 ```
 
-The `dev` extra installs the tools used in local development, including
-`pytest`, `pytest-xdist`, and `ruff`.
-
-If you need GPU validation, install the JAX build that matches your CUDA stack
-before running GPU-specific examples or tests, then confirm the runtime sees
-your devices:
+rfx needs Python 3.10 or newer. The `dev` extra installs `pytest`,
+`pytest-xdist`, `ruff` and the other development tools. Everything below runs
+on a CPU. To test on an NVIDIA GPU, install the JAX build that matches your
+CUDA stack first, then check that JAX sees the device:
 
 ```bash
 python -c "import jax; print(jax.devices())"
 ```
 
-## Running Tests
+## Run the tests
 
-Run the relevant tests before opening a pull request:
+The default test selection skips tests marked `slow`, `gpu`, `slow_physics`
+and `docs_consistency`, so a plain `pytest` runs the fast suite:
 
 ```bash
-# Run the full suite
-pytest tests/ -x -q
+# The tests for the area you changed (fastest feedback)
+python -m pytest tests/unit/ports -q
 
-# Run a specific test file
-pytest tests/unit/ports/test_lumped_rlc.py -x -q
+# The whole fast suite, in parallel
+python -m pytest tests -q -n auto
 
-# Run tests in parallel (requires pytest-xdist)
-pytest tests/ -x -q -n auto
-
-# Skip slow tests while iterating locally
-pytest tests/ -x -q -m "not slow"
+# One marked group on purpose, for example the slow tests of one file
+python -m pytest -o addopts="" -m slow tests/oracle/test_skin_depth_oracle.py -q
 ```
 
-Use the narrowest command that still covers your change, then finish with the
-broader suite once the change is stable.
+The whole fast suite takes a while on a laptop. Iterate on the narrowest set
+that covers your change, then run the wider suite before you open the pull
+request.
 
-## Code Style
+Tests are grouped by kind:
 
-rfx uses `ruff` in CI and follows the conventions already present in the
-codebase:
+| Directory | What it holds |
+|---|---|
+| `tests/unit/` | behaviour of one module, grouped by area (`ports/`, `sparams/`, `boundaries/`, ...) |
+| `tests/oracle/` | comparisons with closed-form answers |
+| `tests/crossval/` | comparisons with frozen results from other solvers (mostly `gpu`/`slow`) |
+| `tests/locks/` | regression locks that pin existing behaviour |
+| `tests/contracts/` | repository rules: docs, manifests, CI configuration |
 
-- Type hints on public function signatures.
-- Docstrings on public classes and functions.
-- `dataclass(frozen=True)` for immutable value objects such as shapes and
-  configs.
-- JAX-friendly code in hot paths: prefer `jnp` over `np`, avoid in-place
-  mutation, and use `jax.lax.scan` when a loop must remain JIT-compatible.
-- Imports grouped as stdlib, third-party (`jax`, `numpy`), then `rfx` modules,
-  with one blank line between groups.
-- `snake_case` for functions and variables, `PascalCase` for classes, and
-  `UPPER_CASE` for module-level constants.
+## Run the required checks
 
-## How to Add a New Feature
+`scripts/ci/local.sh` runs, in order, the short checks every pull request must
+pass: ruff, docs hygiene, the changelog fragment, the data budget, the PR body,
+workflow YAML and `tests/contracts`. It stops at the first failure.
 
-1. **Write a test first.** Add a file named `tests/unit/<module>/test_<feature>.py` with at
-   least one failing test that captures the core behavior.
-2. **Implement the feature.** Place code in the appropriate module under
-   `rfx/`. If a new module is needed, wire it into `rfx/__init__.py`.
-3. **Verify the change.** Run lint and the relevant tests:
-   ```bash
-   ruff check .
-   pytest tests/ -x -q
-   ```
-4. **Update the docs.** If the change affects users, update the relevant page
-   under `docs/public/`. Keep development records and internal validation notes out of public user guides.
-5. **Add or update docstrings.** Any new public API should carry a clear,
-   accurate docstring.
-
-## How to Add a New Geometry Primitive
-
-Geometry primitives live in `rfx/geometry/`. Follow this pattern:
-
-1. **Create** `rfx/geometry/<name>.py` with a frozen dataclass that implements
-   the `Shape` protocol:
-
-   ```python
-   from dataclasses import dataclass
-   import jax.numpy as jnp
-   from rfx.grid import Grid
-
-   @dataclass(frozen=True)
-   class MyShape:
-       """One-line description."""
-       # Parameters...
-
-       def mask(self, grid: Grid) -> jnp.ndarray:
-           """Return a boolean mask (True inside shape) on the given grid."""
-           # Implementation...
-   ```
-
-   The `mask()` method returns a boolean array of shape `grid.shape` where
-   `True` marks cells inside the geometry.
-
-2. **Export** the class from `rfx/geometry/__init__.py`:
-   ```python
-   from rfx.geometry.<name> import MyShape
-   ```
-
-3. **Export** it from the top-level `rfx/__init__.py` so users can write
-   `from rfx import MyShape`.
-
-4. **Add tests** in `tests/unit/<module>/test_<name>.py` covering:
-   - Basic mask correctness.
-   - Edge cases such as zero thickness, single-cell shapes, and boundary
-     overlap.
-   - Integration with `Simulation.add()`.
-
-5. **Document** the shape in the public guide set when it is part of a supported user workflow.
-
-## How to Submit Changes
-
-rfx uses a standard GitHub pull request workflow:
-
-1. **Fork** the repository and create a feature branch:
-   ```bash
-   git checkout -b feat/my-feature
-   ```
-2. **Make your changes** following the conventions above.
-3. **Run lint and tests** before you open the PR:
-   ```bash
-   ruff check .
-   pytest tests/ -x -q
-   ```
-4. **Commit** with a descriptive message. Conventional commit prefixes are a
-   useful convention:
-   - `feat:` for new features
-   - `fix:` for bug fixes
-   - `docs:` for documentation changes
-   - `refactor:` for internal restructuring
-   - `test:` for test-only changes
-
-   ```bash
-   git commit -m "feat: add hexagonal prism geometry primitive"
-   ```
-5. **Push** and open a pull request against `main`. Describe what changed and
-   why it matters.
-6. **Fix CI failures promptly.** If the checks fail, update the branch and push
-   again before requesting review.
-
-## Project Layout
-
+```bash
+bash scripts/ci/local.sh                 # all checks except the PR body
+bash scripts/ci/local.sh /tmp/body.md    # also check a PR body you wrote
 ```
+
+The lint step on its own is `bash scripts/ci/lint.sh`, which runs ruff with the
+project's rule selection. The fast test suite is not part of `local.sh`; CI runs
+it when a pull request touches code.
+
+## Add a changelog fragment
+
+Do not edit `CHANGELOG.md`. Add one file per pull request under `changelog.d/`:
+
+```text
+changelog.d/<number>.<type>.md
+```
+
+`<number>` is your pull request number (or the issue number), and `<type>` is
+one of `added`, `breaking`, `changed`, `deprecated`, `fixed` or `removed`. A
+change under `rfx/` must add a fragment; docs-only and test-only changes may.
+The file holds a heading and a few bullets, at most 12 lines:
+
+```markdown
+### Fixed — a lumped inductor no longer carries a spurious series resistance (#1245)
+
+- What changed for the user, the number they now get, and what to change in
+  their script, if anything.
+```
+
+The heading uses an em dash and must include `#<number>`. Check your fragment
+with:
+
+```bash
+python scripts/changelog/assemble.py --check
+```
+
+`changelog.d/README.md` has the full format.
+
+## Code conventions
+
+- Type hints and a docstring on every public function and class.
+- `dataclass(frozen=True)` for value objects such as shapes and configs.
+- JAX-friendly hot paths: `jnp` instead of `np`, no in-place mutation, and
+  `jax.lax.scan` for loops that must stay JIT-compatible.
+- `snake_case` for functions and variables, `PascalCase` for classes,
+  `UPPER_CASE` for module constants.
+- A change that affects users updates the matching page under `docs/public/`.
+  A code block in a public page must run; check it with
+  `python scripts/check_public_docs_blocks.py --only guide/<page>`.
+
+## Add a feature
+
+1. **Write a failing test first**, in `tests/unit/<area>/test_<feature>.py`.
+2. **Implement it** in the right module under `rfx/`. Export new public API
+   from `rfx/__init__.py`.
+3. **Prefer an error to a silent fallback.** If a combination is not
+   supported, raise with a message that says what to do instead.
+4. **Show it is right, not only that it runs.** For a physics change, compare
+   with a closed form (`tests/oracle/`) or a trusted reference, and say how far
+   the result moved.
+5. **Update the docs** and add the changelog fragment.
+
+A new geometry primitive lives in `rfx/geometry/`. It implements the `Shape`
+protocol in `rfx/geometry/csg.py`: `mask(grid)` and
+`mask_on_coords(x, y, z)` return a boolean occupancy, and `bounding_box()`
+returns its extent. Test it with `Simulation.add()`, including zero-thickness
+and single-cell cases.
+
+## Open a pull request
+
+1. Fork the repository and create a branch, for example
+   `git checkout -b fix/lumped-inductor-loss`.
+2. Commit with a descriptive message. Prefixes such as `feat:`, `fix:`,
+   `docs:`, `refactor:` and `test:` help.
+3. Run `bash scripts/ci/local.sh` and the tests for your area.
+4. Open the pull request against `main`. The template asks for two lines:
+   `Lane:` names the area that owns the change (one of the repository's
+   `lane:*` labels), and `Review:` records who reviewed it. Describe what
+   changed, why, and the evidence: the test you added and any number that
+   moved.
+5. If a check fails, fix it and push again.
+
+## Where things live
+
+```text
 rfx/
-  __init__.py          # Public API re-exports
-  api.py               # High-level Simulation / Result interface
-  simulation.py        # Compiled uniform-grid time loop
-  auto_config.py       # Auto-configuration logic
-  nonuniform.py        # Graded-z non-uniform runner
-  lumped.py            # Lumped RLC elements
-  grid.py              # Grid, constants, time step
-  core/                # Yee update equations
-  boundaries/          # CPML, PEC
-  sources/             # Waveforms, TFSF, waveguide ports
-  geometry/            # CSG primitives + Via / CurvedPatch
-  materials/           # Material library, dispersive models
-  runners/             # High-level uniform / non-uniform runners
-  probes/              # DFT and time-domain probes
-  harminv.py           # Matrix Pencil resonance extraction
-  farfield.py          # Near-to-far-field transform
-  rcs.py               # Radar cross section pipeline
-  optimize.py          # Inverse design optimizer
-  animation.py         # MP4/GIF field animation export
-  visualize.py         # 2D plotting utilities
-tests/                 # pytest test suite
-examples/              # Self-contained example scripts
-docs/public/guide/     # Canonical public guide source
+  __init__.py        public API re-exports
+  api/               Simulation, Result and the run / S-parameter entry points
+  simulation.py      compiled uniform-grid time loop
+  runners/           uniform, non-uniform and multi-device runners
+  core/              Yee update equations
+  boundaries/        CPML, UPML, PEC and PMC handling
+  sources/           waveforms, plane waves, waveguide and coaxial ports
+  sparams/           S-parameter extraction for each port family
+  geometry/          shapes, CAD mesh import, rasterization
+  materials/         dispersive and thin-conductor models
+  preflight/         the checks behind sim.preflight()
+  farfield.py        near-to-far-field transform
+  rcs.py             radar cross section
+  optimize.py        gradient-based inverse design
+tests/               the test suite (see above)
+examples/            the learning-path scripts
+validation/          cross-solver comparison scripts
+docs/public/         the public documentation source
 ```
 
-## Questions?
+## Questions
 
-Open an issue on [GitHub](https://github.com/bk-squared/rfx/issues) or check the
-existing [documentation](/rfx/guide/).
+Open an issue on [GitHub](https://github.com/bk-squared/rfx/issues).
