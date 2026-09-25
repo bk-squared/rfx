@@ -406,7 +406,7 @@ def _nu_shard_materials(materials, sharded_grid):
     from jax.sharding import PartitionSpec as P
 
     from rfx.core.yee import MaterialArrays
-    from rfx.runners.distributed import _split_materials
+    from rfx.runners._distributed_common import _split_materials
 
     n_devices = sharded_grid.n_devices
     ghost = sharded_grid.ghost_width
@@ -1002,6 +1002,54 @@ _SHARED_HELPER_BINDINGS = (
     # through -- the shared body returns the state only.
     ("update_e_nu_shmap", "rfx.runners.distributed_nu", "update_e_nu_shmap"),
     ("update_e_nu_shmap", "rfx.runners.distributed_v2", "update_e_nu_shmap"),
+    # Retiring the pmap runner -- the names distributed_v2 imported from
+    # distributed.py, moved verbatim so that module can stop defining them.
+    # Single definitions, not de-duplications: these rows say each importer
+    # holds the moved object and not a copy left behind. distributed_v2 binds
+    # eleven of them at module level (the twelfth, gather_array_x, has its rows
+    # above); distributed.py re-exports all fourteen for one release, the three
+    # E kernels _update_e_local_with_dispersion calls included. distributed_nu
+    # imports the four dispersive splitters function-locally, so it has no
+    # module attribute to guard.
+    ("_split_state", "rfx.runners.distributed_v2", "_split_state"),
+    ("_split_state", "rfx.runners.distributed", "_split_state"),
+    ("_split_materials", "rfx.runners.distributed_v2", "_split_materials"),
+    ("_split_materials", "rfx.runners.distributed", "_split_materials"),
+    ("_split_debye_coeffs", "rfx.runners.distributed_v2",
+     "_split_debye_coeffs"),
+    ("_split_debye_coeffs", "rfx.runners.distributed", "_split_debye_coeffs"),
+    ("_split_debye_state", "rfx.runners.distributed_v2", "_split_debye_state"),
+    ("_split_debye_state", "rfx.runners.distributed", "_split_debye_state"),
+    ("_split_lorentz_coeffs", "rfx.runners.distributed_v2",
+     "_split_lorentz_coeffs"),
+    ("_split_lorentz_coeffs", "rfx.runners.distributed",
+     "_split_lorentz_coeffs"),
+    ("_split_lorentz_state", "rfx.runners.distributed_v2",
+     "_split_lorentz_state"),
+    ("_split_lorentz_state", "rfx.runners.distributed", "_split_lorentz_state"),
+    ("_update_h_local", "rfx.runners.distributed_v2", "_update_h_local"),
+    ("_update_h_local", "rfx.runners.distributed", "_update_h_local"),
+    ("_update_e_local", "rfx.runners.distributed", "_update_e_local"),
+    ("_update_e_debye_local", "rfx.runners.distributed",
+     "_update_e_debye_local"),
+    ("_update_e_lorentz_local", "rfx.runners.distributed",
+     "_update_e_lorentz_local"),
+    ("_update_e_local_with_dispersion", "rfx.runners.distributed_v2",
+     "_update_e_local_with_dispersion"),
+    ("_update_e_local_with_dispersion", "rfx.runners.distributed",
+     "_update_e_local_with_dispersion"),
+    ("_init_cpml_distributed", "rfx.runners.distributed_v2",
+     "_init_cpml_distributed"),
+    ("_init_cpml_distributed", "rfx.runners.distributed",
+     "_init_cpml_distributed"),
+    ("_apply_cpml_e_distributed", "rfx.runners.distributed_v2",
+     "_apply_cpml_e_distributed"),
+    ("_apply_cpml_e_distributed", "rfx.runners.distributed",
+     "_apply_cpml_e_distributed"),
+    ("_apply_cpml_h_distributed", "rfx.runners.distributed_v2",
+     "_apply_cpml_h_distributed"),
+    ("_apply_cpml_h_distributed", "rfx.runners.distributed",
+     "_apply_cpml_h_distributed"),
 )
 
 

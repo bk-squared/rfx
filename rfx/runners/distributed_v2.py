@@ -64,9 +64,11 @@ from rfx.sources.sources import LumpedPort, setup_lumped_port
 from rfx.materials.debye import DebyeCoeffs, DebyeState
 from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 
-# Re-export domain splitting helpers from the original module so existing
-# callers that import them directly continue to work.
-from rfx.runners.distributed import (
+# Domain splitting, local Yee update and x-slab CPML helpers. They lived in
+# ``distributed.py`` until its pmap runner was retired; the names this module
+# does not call are still bound here so callers that import them from it keep
+# working.
+from rfx.runners._distributed_common import (
     gather_array_x,
     _split_state,
     _split_materials,

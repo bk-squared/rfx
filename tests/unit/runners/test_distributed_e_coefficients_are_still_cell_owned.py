@@ -30,7 +30,7 @@ from rfx.core.yee import (
     FDTDState, MaterialArrays, e_update_coeffs,
     edge_averaged_e_update_coeffs,
 )
-from rfx.runners.distributed import _update_e_local
+from rfx.runners._distributed_common import _update_e_local
 
 DT = 1.0e-12
 DX = 1.0e-3

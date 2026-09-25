@@ -15,13 +15,13 @@ import numpy as np
 import pytest
 
 from rfx import Simulation, GaussianPulse
-from rfx.runners.distributed import (
+from rfx.runners._distributed_common import (
     split_array_x,
     gather_array_x,
     _split_state,
-    _gather_state,
     _split_materials,
 )
+from rfx.runners.distributed import _gather_state
 from rfx.core.yee import init_state, init_materials
 
 # Historical note (#623, same class as #622's test_distributed_nu_kernel.py

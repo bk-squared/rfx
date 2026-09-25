@@ -71,7 +71,7 @@ def _shard_materials_nu(materials, sharded_grid):
             mu_r=jnp.pad(materials.mu_r, pad, constant_values=1.0),
         )
 
-    from rfx.runners.distributed import _split_materials
+    from rfx.runners._distributed_common import _split_materials
     mat_slabs = _split_materials(materials, n_devices, ghost)
 
     def _shard_stacked(arr):
