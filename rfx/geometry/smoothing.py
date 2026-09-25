@@ -633,6 +633,37 @@ def _conductor_reached_faces(sim, grid, shape, lattice, nodes):
     return reached
 
 
+class _ContinuedSheetShape(NamedTuple):
+    """A sheet's face-adjacent occupancy continued along its own plane.
+
+    Keep the declared sampler: its holes and disconnected strips must reach
+    the absorber unchanged. Index replication lives here so every assembler
+    and fidelity reader using ``continued_conductor_shape`` sees the same
+    footprint, including when the sheet sampler requests only its mid-plane.
+    """
+
+    declared: Shape
+    indices: tuple
+    bounds: tuple
+
+    def bounding_box(self):
+        return self.bounds
+
+    def mask_on_coords(self, x, y, z):
+        mask = self.declared.mask_on_coords(x, y, z)
+        for axis, indices in enumerate(self.indices):
+            if indices is not None:
+                mask = jnp.take(mask, indices, axis=axis)
+        return mask
+
+    def mask(self, grid):
+        from rfx.geometry.rasterize_grid import (
+            coords_from_nonuniform_grid, coords_from_uniform_grid)
+        coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+                  else coords_from_uniform_grid(grid))
+        return self.mask_on_coords(coords.x, coords.y, coords.z)
+
+
 def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
@@ -678,6 +709,30 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
                       if candidate.shape is shape), None)
     held = (_conductor_reached_faces(sim, grid, shape, lattice, nodes)
             if any(other is entry for other in held_conductor_entries(sim, grid)) else set())
+    from rfx.geometry.csg import Box
+    if (not isinstance(shape, Box)
+            and any(tc.shape is shape and (tc.is_pec or tc.surface_impedance_f0 is not None)
+                    for tc in getattr(sim, "_thin_conductors", ()))):
+        lo, hi = declared_bounds(shape)
+        normal = min(range(3), key=lambda a: hi[a] - lo[a])
+        faces = {face for face in _conductor_reached_faces(sim, grid, shape, lattice, nodes)
+                 if face[0] != normal} - held
+        if not faces:
+            return shape
+        indices = [None] * 3
+        bounds = [list(lo), list(hi)]
+        for axis, side in sorted(faces):
+            n = len(nodes[axis])
+            pad = int(pads[axis][side == "hi"])
+            if indices[axis] is None:
+                indices[axis] = np.arange(n)
+            if side == "lo":
+                indices[axis][:pad] = pad
+                bounds[0][axis] = float(nodes[axis][0]) - _PAD_CONTINUE_CELLS * _axis_cells(nodes[axis])[0]
+            else:
+                indices[axis][n-pad:] = n-1-pad
+                bounds[1][axis] = float(nodes[axis][-1]) + _PAD_CONTINUE_CELLS * _axis_cells(nodes[axis])[1]
+        return _ContinuedSheetShape(shape, tuple(indices), tuple(tuple(b) for b in bounds))
     pairs, findings = extend_shapes_into_cpml_pad(
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied,
