@@ -5,340 +5,247 @@ sidebar:
   order: 6
 ---
 
+A graded mesh uses small cells only where the geometry needs them, such as a
+thin substrate, and large cells in the air around it. This page shows how to
+build a cell-size profile, pass it to `Simulation`, and check that your
+geometry lands where you drew it.
 
-rfx supports a **non-uniform (graded) Yee grid**. The common case below is a
-graded z-profile (`dz_profile`) with uniform `dx` and `dy`, for thin layered
-structures. `dx_profile` and `dy_profile` can grade the transverse axes,
-but their boundary-cell and domain-extent contracts differ from `dz_profile`.
-For concrete arrays, both `dx_profile` endpoints must equal the scalar `dx`,
-while the two concrete `dy_profile` endpoints must equal each other. For traced
-profiles, the caller must keep both `dx_profile` and `dy_profile` endpoints
-equal to the scalar `dx`. Domain-extent behavior is described with the setup
-example below. Use the uniform Cartesian Yee grid first. Choose a graded grid
-only when a thin feature would make a uniform grid impractical, and validate
-the final RF observable against a uniform or external reference.
+Start with a uniform grid. Switch to a graded one when a thin feature would
+make a uniform grid too large, and then compare the final result against a
+uniform run or another reference.
 
-### Support status
+## When a graded mesh pays off
 
-- suitable for thin-substrate or layered-z RF setup studies when the observable
-  remains inside its documented limits;
-- memory and mesh reports are planning artifacts, not physics validation;
-- most unsupported combinations raise explicit errors rather than silently
-  dropping features; a few (NTFF, DFT-plane probes, full-plane flux monitors)
-  instead run on the graded-z path but are not part of the validated default —
-  see the table below.
+A 1.6 mm substrate at 0.5 mm cells gets only 3 cells, which is too coarse.
+Shrinking a uniform cell to 0.2 mm resolves it, but it refines all three axes:
+about 15× more cells. A graded z profile puts 0.27 mm cells in the substrate
+and 1.5 mm cells in the air, and leaves x and y alone.
 
-Unsupported or restricted combinations:
-
-| Combination | Public status |
+| Situation | Mesh |
 |---|---|
-| periodic (Floquet) ports + non-uniform z mesh | unsupported (raises) |
-| single-cell lumped-port S-parameters + non-uniform z mesh | unsupported (raises); nonuniform `add_port(..., extent=...)` WirePort extraction is experimental, so compare it with the uniform calculation or use a uniform grid |
-| coaxial-port S-parameters + non-uniform z mesh | unsupported (raises) |
-| lumped-RLC + non-uniform z mesh | runs as a field ADE element (time-domain fields only); no S-parameter output — not a S-param workflow and does not raise |
-| `compute_msl_s_matrix()` + non-uniform mesh | `mode='laplace'`/`'uniform'` only (the `add_msl_port` default); `mode='eigenmode'` raises |
-| `compute_waveguide_s_matrix()` + non-uniform mesh (`dx_profile`/`dy_profile`/`dz_profile`) | single-mode ports with `normalize=True` or `normalize='flux'`; one stored Palace comparison covers `normalize='flux'`, a graded-`dy` ratio of 2, WR-90 empty/PEC-short/dielectric-slab cases, and magnitude over 8.2--12.4 GHz (`max_mag_abs_diff=0.008529`, previously `0.07009` on an under-provisioned absorber). A `dz_profile` routes to the same non-uniform lane (dispatch fixed in #811; before that, dz-only simulations silently solved on the uniform grid) — dz-graded *accuracy* is unvalidated pending the multi-band promotion tracker (#810). Treat other profiles, bands, modes, phase, and junctions as unvalidated. Differentiable `eps_override`/`sigma_override` requires flux normalization. Only `eps_override` has a nonuniform AD-vs-FD regression test; neither gradient claim is RF validation. The non-uniform lane carries the same ring-down settling witness (`settling_db`, -40 dB warning) as the uniform lane. |
-| TFSF plane-wave source + non-uniform z mesh | normal incidence along x only (`direction='+x'`/`'-x'`, `angle_deg=0`); `±z` or oblique incidence raises |
-| finite-region flux monitor (`add_flux_monitor(size=...)`) + non-uniform z mesh | unsupported (raises); use a full-plane monitor (omit `size=`) |
+| substrate much thinner than a wavelength | graded z |
+| a stack of several thin layers | graded z, one fine band per layer |
+| patch or trace edges whose size matters | in-plane profiles from `edge_aware_profiles` |
+| bulk 3-D structure, no thin features | uniform |
+| far field or RCS of a bulk object | uniform |
 
-NTFF boxes, DFT-plane probes, and full-plane flux monitors run on the graded-z
-path, but their observables must be validated
-against the uniform or external reference before any public claim.
+## Building a z profile
 
----
+A `dz_profile` is a 1-D array of cell sizes in metres, from z = 0 upward. It
+covers the physical domain; rfx adds the absorber cells itself.
 
-## When to use a non-uniform mesh
-
-| Situation | Recommendation |
-|---|---|
-| Substrate much thinner than wavelength (e.g., 1.6 mm FR4 at 2.4 GHz, lambda = 125 mm) | Evaluate a non-uniform z mesh, then validate the final observable |
-| Layer stack with multiple thin dielectric sheets | Non-uniform z can reduce cell count; keep support checks visible |
-| Bulk 3-D structure with no thin z-features | Uniform grid |
-| RCS / far-field only | Uniform grid is usually sufficient |
-
-Without a non-uniform z-profile, resolving a 1.6 mm substrate with a 0.5 mm cell gives only 3 cells — too coarse. Shrinking the uniform cell to 0.2 mm resolves the substrate but refines all three axes at once (2.5x per axis), inflating the total cell count by roughly 15x.
-
-A non-uniform profile uses **fine cells inside the substrate** (e.g., 0.27 mm) and **coarse cells in the air region** (e.g., 1.5 mm). The resulting cell-count reduction is setup-dependent; record the mesh report and verify the RF observable, rather than treating the mesh saving itself as validation evidence.
-
----
-
-## Constructing `dz_profile`
-
-`dz_profile` is a 1-D NumPy array of physical z-cell sizes in meters, from z = 0 upward through the physical domain (excluding CPML padding, which rfx adds automatically).
-
-### Manual construction
+The easiest way to build one is `make_band_profile`. Give it every interface,
+including both domain ends, and a target cell size per segment:
 
 ```python
 import numpy as np
-
-h        = 1.6e-3   # substrate thickness
-n_sub    = 6        # cells through substrate
-dz_sub   = h / n_sub          # 0.267 mm per substrate cell
-
-margin   = 30e-3    # air region above substrate
-dz_air   = 1.5e-3   # coarse air cells
-n_air    = int(round(margin / dz_air))
-
-dz_profile = np.concatenate([
-    np.full(n_sub, dz_sub),   # fine: substrate
-    np.full(n_air, dz_air),   # coarse: air
-])
-```
-
-!!! tip
-    Resolve the substrate with at least 4 cells as a practical starting point;
-    use 6–8 when the in-substrate field variation matters. Then verify the
-    resonance or S-parameter observable for the specific geometry.
-
-### Graded transition
-
-Avoid abrupt fine-to-coarse jumps; adjacent-cell ratios above 1.3x can introduce
-numerical reflections or dispersion. To build a profile whose interfaces land
-on node planes and whose adjacent-cell ratios obey a cap everywhere, use
-`make_band_profile` (also exported as `rfx.make_band_profile`):
-
-```python
 from rfx.nonuniform import make_band_profile
 
+h = 1.6e-3          # substrate thickness
+below = 20e-3       # air below the substrate
+above = 30e-3       # air above it
+
 dz_profile = make_band_profile(
-    edges=[0.0, h, h + margin],        # every interface, plus both domain ends
-    cell_sizes=[dz_sub, dz_air],        # target cell per segment
-    protected=[True, False],            # substrate: uniform, never hosts a ramp
+    edges=[0.0, below, below + h, below + h + above],
+    cell_sizes=[1.5e-3, h / 6, 1.5e-3],   # 6 cells through the substrate
+    protected=[False, True, False],        # keep the substrate uniform
     max_ratio=1.3,
 )
+print(len(dz_profile), dz_profile.min(), dz_profile.max())
 ```
 
-Each edge is a cumulative node coordinate (to 1e-12 m), every adjacent ratio
-is at most `max_ratio` — including the seam between two protected segments,
-where the coarser one is refined instead of a ramp being wedged into the finer
-one — and the profile sums to `edges[-1] - edges[0]` exactly. Ramps are
-geometric and live inside the coarser free segment on whichever side needs
-one, ascending and descending. The same function serves `dx_profile` and
-`dy_profile`: pass `boundary_cell=dx` and both end cells come out equal to
-`dx` bit-exactly, which is the contract those axes require (in-plane, keep
-`max_ratio=1.3`). Note that `preflight()` still asks for `cpml_layers`
-uniform cells against each absorbing face; the pinned cell alone does not
-provide that runway, so an in-plane profile that grades near a face draws the
-`nu_grading_reaches_absorber` advisory. Widening the end segment does not
-remove it: the plateau beside the pin is solved from the span and sits below
-the pin by 3.9 % at a 12 mm end segment, 2.3 % at 20 mm, 1.5 % at 30 mm,
-0.87 % at 50 mm and 0.43 % at 100 mm (1 mm pin, `max_ratio=1.3`, measured) —
-never the advisory's 1e-6. Close the face with PEC, or accept the advisory as
-informational; the builder has no runway argument yet.
+The result has every interface on a cell boundary (to 1e-12 m), every
+neighbouring-cell ratio at most `max_ratio`, and a sum equal to the domain
+height exactly. The ramps between sizes are placed in the unprotected
+segments.
 
-`make_z_profile` (same module) is the feature-list convenience built on the
-same engine: fine cells of `dx_fine` at every feature plane and at both domain
-ends, a ramp of ratio at most `grading` up to `dx_coarse` and back down inside
-every segment, all features on node planes:
+Rules of thumb:
 
-```python
-from rfx.nonuniform import make_z_profile
+- **At least 4 cells** through a substrate; 6–8 when the field inside it
+  matters.
+- **Neighbour ratio ≤ 1.4 in z** (the validated limit), and ≤ 1.3 in x and y.
+  Preflight warns above that.
+- **Interfaces on cell boundaries.** `make_band_profile` does this for you.
+- **Uniform cells next to the absorber.** Leave room for `cpml_layers`
+  full-size cells between the last ramp and each absorbing face. Here the
+  20 mm below and 30 mm above the substrate are enough for 8 layers.
+  Preflight warns (`nu_grading_reaches_absorber`) when a ramp reaches into
+  that runway.
 
-dz_profile = make_z_profile(
-    features=[0.0, h],      # z-positions that must align to cell boundaries
-    domain_z=h + margin,
-    dx_fine=dz_sub,
-    dx_coarse=dz_air,
-    grading=1.3,
-)
-```
+Two alternatives:
 
-Neither builder needs a `smooth_grading()` pass afterwards. `smooth_grading()`
-inserts transition cells and shifts every downstream interface (it changes the
-profile length and moves requested feature edges) — use it only on a profile
-you assembled by hand, and inspect the cumulative edges afterwards. Whichever
-way the profile was built, keep grading conservative, record the generated
-profile, and verify the RF observable against the relevant reference.
+- `make_z_profile(features, domain_z, dx_fine, dx_coarse, grading)` puts fine
+  cells at each listed z plane and at both ends, with ramps between.
+- A hand-built array with `np.concatenate`. If you do this,
+  `rfx.smooth_grading()` can insert ramp cells, but it shifts every interface
+  above them, so check the cumulative edges afterwards. Neither builder needs
+  it.
 
-## Passing `dz_profile` to `Simulation`
+## Using the profile
 
 ```python
 from rfx import Box, Simulation
-import numpy as np
-
-h = 1.6e-3
-n_sub = 6
-lower_air = np.full(24, 8e-3 / 24)   # 0.333 mm cells
-substrate = np.full(n_sub, h / n_sub)  # 0.267 mm cells
-upper_air = np.full(90, 30e-3 / 90)  # 0.333 mm cells
-dz_profile = np.concatenate((lower_air, substrate, upper_air))
-
-# Geometry boundaries must coincide with the final profile.
-z_edges = np.concatenate(([0.0], np.cumsum(dz_profile)))
-substrate_lo = z_edges[len(lower_air)]
-substrate_hi = z_edges[len(lower_air) + n_sub]
-assert np.isclose(substrate_hi - substrate_lo, h)
 
 sim = Simulation(
     freq_max=4e9,
-    domain=(0.10, 0.08, 0.0),   # Lz=0 is OK — replaced by sum(dz_profile)
-    boundary="cpml",
-    cpml_layers=12,
-    dx=5e-4,
+    domain=(0.10, 0.08, 0.0),     # z = 0: use sum(dz_profile)
+    dx=1e-3,
     dz_profile=dz_profile,
-)
-sim.add(
-    Box((0.01, 0.01, substrate_lo), (0.09, 0.07, substrate_hi)),
-    material="fr4",
+    boundary="cpml",
+    cpml_layers=8,
 )
 
-# Run preflight after Simulation and geometry are configured.
+z_edges = np.concatenate(([0.0], np.cumsum(dz_profile)))
+sub_lo, sub_hi = below, below + h
+assert np.isclose(z_edges, sub_lo).any() and np.isclose(z_edges, sub_hi).any()
+
+sim.add(Box((0.01, 0.01, sub_lo), (0.09, 0.07, sub_hi)), material="fr4")
+sim.add_thin_conductor(Box((0.01, 0.01, sub_lo), (0.09, 0.07, sub_lo)))  # ground
+
 report = sim.preflight()
-for issue in report.by_code("graded_box_rasterization"):
-    print(issue)
-# Add the source and observables, then resolve the full report before running.
+print(report.format())
 ```
 
-In the example above, `domain[2]=0` tells the constructor to replace the z
-extent with `sum(dz_profile)`. If a positive `domain[2]` is supplied, it is
-retained; rfx does not replace it or establish that it equals the profile sum.
-Set it explicitly to `float(np.sum(dz_profile))` and verify the equality when
-the profile is assembled separately. Concrete `dx_profile` and `dy_profile`
-extents are synthesized from their profile sums. Traced transverse profiles
-cannot be host-summed, so the caller must supply positive concrete
-`domain[0]` / `domain[1]` extents and keep them consistent with the profiles.
+`domain[2] = 0` tells rfx to use `sum(dz_profile)` as the height. A positive
+value is kept as given and is not checked against the profile, so pass
+`float(np.sum(dz_profile))` if you set it yourself.
 
-Transition insertion changes the final cell sequence. A fine band requested
-near a thin `Box` can otherwise shift outside the box span, leaving the material
-with fewer cells than its requested fine spacing suggests. Inspect cumulative
-edges as shown above and run preflight after registering geometry.
+Keep the interfaces on node planes, as the `assert` above checks. A sheet
+conductor lands on the nearest node plane, so a substrate face between nodes
+leaves a gap between the copper and the dielectric. Preflight's
+`graded_box_rasterization` warning fires when a thin `Box` gets far fewer
+cells than the fine spacing nearby implies; fix the profile rather than the
+warning.
 
-The `graded_box_rasterization` advisory reports the actual and implied z-cell
-counts when a `Box` occupies at most four cells and less than half of the count
-implied by nearby fine spacing. Align the material boundary to a final profile
-edge or rebuild the grading region; do not dismiss the warning based only on
-the pre-grading request.
+### Grading x and y
 
----
+`dx_profile` and `dy_profile` work the same way, with one extra rule: both end
+cells must equal the scalar `dx`, so every absorber face sees the same cell.
+`make_band_profile(..., boundary_cell=dx)` does this.
 
-## `auto_configure` detection
+The same uniform-runway rule applies next to each absorbing face. Keep fine
+bands away from absorbing faces, or close those faces with PEC.
 
-`auto_configure()` inspects the geometry for thin z-features and automatically builds a `dz_profile` when warranted:
+### Solving sheets at their drawn size
+
+A PEC sheet's in-plane edge is solved about 0.35 of a cell beyond its last
+grid node, so a patch or trace comes out slightly larger than drawn.
+Preflight reports the difference as `sheet_effective_size`; the ground sheet
+in the example above triggers it. `edge_aware_profiles` builds x and y profiles that
+place each sheet edge where it solves at the drawn size, and each solid face
+on a node:
 
 ```python
-from rfx import auto_configure, Simulation, Box
+from rfx.mesh_edges import edge_aware_profiles
 
-geometry = [
-    (Box((0, 0, 0),  (0.10, 0.08, 1.6e-3)), "fr4"),
-]
+LX, LY, LZ = 0.04, 0.03, 0.01
+board = Box((0.0, 0.0, 0.0), (LX, LY, 1.6e-3))
+patch = Box((0.0105, 0.0083, 1.6e-3), (0.0295, 0.0217, 1.6e-3))
+
+profiles = edge_aware_profiles((LX, LY, LZ), 1e-3, sheets=[patch],
+                               solids=[board])
+patch_sim = Simulation(freq_max=6e9, domain=(LX, LY, LZ), dx=1e-3,
+                       boundary="cpml", cpml_layers=8, **profiles)
+patch_sim.add(board, material="fr4")
+patch_sim.add_thin_conductor(patch)
+```
+
+Draw the geometry at its true size; do not shift it to compensate.
+
+## Letting rfx choose the mesh
+
+`auto_configure` sizes the cell, the domain, the absorber and the run length
+from your geometry and band, and builds a `dz_profile` when it finds thin z
+features:
+
+```python
+from rfx import auto_configure
 
 cfg = auto_configure(
-    geometry=geometry,
+    geometry=[(Box((0, 0, 0), (0.10, 0.08, 1.6e-3)), "fr4")],
     freq_range=(1e9, 4e9),
     materials={"fr4": {"eps_r": 4.4, "sigma": 0.025}},
     accuracy="standard",
 )
-
 print(cfg.summary())
-# SimConfig (accuracy='standard'):
-#   dx = 1.500 mm (50 cells/λ_min)
-#   ...                              # domain / cpml / n_steps / freq / source lines
-#   dz = 0.133 – 1.499 mm (67 cells, non-uniform)
-
-if cfg.uses_nonuniform:
-    print("Non-uniform z activated")
-
-sim = Simulation(**cfg.to_sim_kwargs())
+auto_sim = Simulation(**cfg.to_sim_kwargs())
 ```
 
-`SimConfig.uses_nonuniform` is `True` when `dz_profile is not None`.
-This example plans from the dielectric thickness only. Register the conductor
-separately after constructing the simulation: a sheet with
-`sim.add_thin_conductor(...)` (or the equivalent zero-thickness `Box` through
-`sim.add()`), or a volume with a cell-aligned thickness of at least one local
-cell. A PEC `Box` thinner than one cell raises rather than thin-rasterizing
-([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)).
+`cfg.uses_nonuniform` tells you whether it chose a graded z mesh. Its profile
+can step by more than the 1.4 ratio (it does here, and the `Simulation`
+constructor warns), so treat it as a starting point. It plans from the
+dielectrics you pass. Add conductors to the simulation afterwards, as
+sheets or as volumes at least one cell thick.
 
----
+If you create a `Simulation` without `dx`, rfx picks a mesh from the
+registered geometry automatically; see
+[Materials and Geometry](/rfx/guide/materials-geometry/#freeze-the-mesh-before-placing-geometry-from-it)
+for placing geometry on an automatic mesh.
 
-## CFL timestep from minimum cell
+## Time step and cost
 
-The timestep is set by the **minimum cell size** in the entire grid (including CPML padding cells), following the 3-D Courant-Friedrichs-Lewy condition:
+The time step follows the **smallest** cell anywhere in the grid:
 
-```
+```text
 dt = 0.99 / (c * sqrt(1/dx^2 + 1/dy^2 + 1/dz_min^2))
 ```
 
-For the auto-configured example above, `dz_min = 0.133 mm` with
-`dx = dy = 1.5 mm` gives approximately:
+With 1.5 mm cells in x and y and a 0.133 mm minimum in z, that is about
+0.44 ps, against 2.86 ps for a uniform 1.5 mm grid. A graded mesh has far
+fewer cells but needs more steps. Whether it is faster overall depends on the
+model.
 
-```
-dt ~= 0.99 / (c * sqrt(0.44 + 0.44 + 56.5)) ~= 0.44 ps
-```
-
-(the terms are `1/dx^2`, `1/dy^2`, and `1/dz_min^2` in mm^-2),
-compared with about `2.86 ps` for a uniform 1.5 mm grid. The non-uniform grid
-pays more timesteps because the smallest cell controls CFL; whether it is faster
-overall depends on the configured domain, material, monitors, and validation run.
-
----
-
-## Mesh and AD memory planning artifact
-
-Use `Simulation.mesh_intelligence_report(...)` before running a memory-constrained
-non-uniform case.  It compares the configured grid against a uniform-fine grid at
-the smallest configured cell size, carries preflight issues, and can include the
-segmented-AD estimate used by the non-uniform scan path.
+To estimate memory before a run, especially for gradients:
 
 ```python
 plan = sim.plan_ad_memory(n_steps=10_000, available_memory_gb=8.0)
-report = sim.mesh_intelligence_report(
-    n_steps=10_000,
-    checkpoint_every=plan.checkpoint_every,
-    available_memory_gb=8.0,
-)
-
+mesh_report = sim.mesh_intelligence_report(
+    n_steps=10_000, checkpoint_every=plan.checkpoint_every,
+    available_memory_gb=8.0)
 print(plan.recommendation)
-print(report.cell_savings_factor)
-print(report.recommendation)
-
-# Store this alongside validation or local-run artifacts.
-plan_json = plan.to_json()
-report_json = report.to_json()
+print(f"{mesh_report.cell_savings_factor:.1f}x fewer cells than uniform-fine")
 ```
 
-Use the module-level `rfx.plan_mesh(geometry, freq_range, ...)` when deriving a
-mesh from geometry, or `Simulation.plan_mesh(...)` before running an already
-configured memory-constrained non-uniform case. The returned `MeshPlan` carries
-the non-uniform profile audit in its `cell_sizes` block (`nominal_dx`,
-`dx_min`/`dx_max`, `dy_min`/`dy_max`, `dz_min`/`dz_max`, and `profiles_present`),
-the configured memory summary, optional S-parameter support checks, and
-declaration-only artifact paths. Supplying `artifact_root` names intended
-mesh-plan/report outputs but does not create directories or write files; the
-`scene` and `replay` declarations stay `not_claimed` until dedicated exporters
-exist.
+These are planning numbers. They say nothing about accuracy.
 
-From a source checkout, the same planning artifact can be generated without
-running FDTD. The `scripts/` path is not installed with the wheel:
+## What runs on a graded mesh
 
-```bash
-python scripts/memory_reduction_planning_artifact.py \
-  --n-steps 10000 \
-  --available-memory-gb 8.0 \
-  --output /tmp/rfx-memory-plan.json
-```
+| Feature | Graded mesh |
+|---|---|
+| point sources, probes | yes |
+| lumped RLC elements | in the field update; no S-parameters |
+| NTFF far field | limited: one dipole case checked against theory |
+| DFT planes, flux monitors | run; no general accuracy statement |
+| wire-port S-parameters (`add_port(..., extent=...)`) | experimental; compare with a uniform run |
+| one-cell lumped-port S-parameters | refused |
+| `compute_msl_s_matrix` | experimental; `mode="eigenmode"` refused |
+| `compute_waveguide_s_matrix` | single-mode, `normalize=True` or `"flux"` |
+| coaxial calculators | refused |
+| TFSF plane wave | normal incidence along ±x only |
+| Floquet ports, UPML | refused |
 
-Both `MeshPlan` and the mesh-intelligence report describe the planned setup;
-they do not validate the physics. Resolve every `preflight_issues` entry and
-support check, then verify the observable against an appropriate uniform-grid
-or external reference.
+Unsupported combinations raise before the first step instead of running with
+a feature silently dropped. On a graded mesh, `run()` refuses snapshots and
+`conformal_pec=True`, and on a closed (PEC) boundary it refuses `until_decay`;
+use a fixed `n_steps` there.
 
----
+## Limits
 
-## Low-level API
-
-For advanced use, `run_nonuniform` and `make_current_source` (both in `rfx.__all__`)
-expose the non-uniform field-update loop and cell-volume-normalized source
-injection directly, bypassing `Simulation`. See `rfx/nonuniform.py` for their
-signatures. Use `make_current_source` when constructing the low-level source
-array directly; the high-level `Simulation` path performs its own source
-registration and scaling.
-
-Soft-source amplitude semantics: on this path the `add_source` waveform is
-natively a **current in amperes** (`E += Cb·I/dV`, resolution-independent
-injected power). Pass `add_source(..., amplitude_kind='current')` to say so
-explicitly — the bare per-path default is deprecated (issue #571), and an
-explicit `amplitude_kind` means the same amplitude on the uniform and
-non-uniform builders.
-
----
+- **Accuracy is per observable.** A graded run that completes is not evidence
+  that its S-parameters, flux or far field are right. Compare with a uniform
+  run or an external reference.
+- **Grading ratios** above 1.4 in z, or 1.3 in x and y, are outside the
+  validated range. Preflight warns.
+- **TFSF along a graded axis:** preflight warns, because the scattered-field
+  region picks up a spurious field (0.60 of the total-field peak with no
+  scatterer). Normal incidence along ±x needs a uniform x axis.
+- **Microstrip probes on a graded feed:** the automatic probe offset and
+  spacing are counted in cells under the port, and recounted at run time.
+  Keep the feed region uniform if you want predictable probe positions.
+- **Graded-mesh waveguide results** beyond the published WR-90 comparisons
+  are experimental. A dz-only profile has no accuracy evidence yet.
+- **Subgridding (`add_refinement`)** is a different tool: it works only
+  through `run()` on a uniform mesh, and `forward()`, `optimize()` and
+  `topology_optimize()` refuse a refined model.
+- The full per-combination status is in the
+  [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md).

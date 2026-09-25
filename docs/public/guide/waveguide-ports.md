@@ -4,125 +4,152 @@ sidebar:
   order: 10
 ---
 
-rfx supports rectangular waveguide ports with analytical TE/TM mode profiles.
-The documented full-matrix path is `compute_waveguide_s_matrix(...)`, under the
-rectangular-guide evidence envelope in
-`docs/guides/sparameter_support_matrix.md`.
+A waveguide port launches one TE or TM mode of a rectangular aperture and
+splits the fields at its plane into incident and reflected mode amplitudes.
+This page shows how to get a rectangular-guide S-matrix, which normalization
+to pick, and how to handle junctions.
 
-Current evidence level: Recommended for the documented WR-style rectangular-guide
-cases. The main gates are in `tests/oracle/test_waveguide_port_validation_battery.py`
-(empty-guide max `|S11| < 0.02`, passivity `< 1.02`, PEC-short
-`0.99 <= min(|S11|)` and `max(|S11|) < 1.03`) and
-`tests/unit/sparams/test_waveguide_twoport_contract_v1.py`.
+The port aperture defines the guide. For a straight guide you do not draw
+side walls: the aperture edges act as the walls. Ports need
+`boundary="cpml"` and `mode="3d"`, and cannot share a model with lumped ports
+or a TFSF source.
 
-The port aperture defines the guide cross-section — you do not add PEC side
-walls. Measured on a 100 mm WR-90-like thru with `boundary="cpml"` and the
-aperture spanning the domain: `|S21| = 1.000` and `|S11| = 0.000` from 5 to
-7 GHz, at dx = 2 mm, 40 periods, `normalize="flux"`.
+## A two-port S-matrix
 
-Waveguide ports do **not** use `run(compute_s_params=True)` for full
-multi-port matrices. Use `compute_waveguide_s_matrix(...)` for the S-matrix;
-`run(...)` exposes only single-port `result.waveguide_sparams` diagnostics.
-
-## Single Port
+Place two ports facing each other and call `compute_waveguide_s_matrix()`. It
+drives each port in turn and assembles the full matrix.
 
 ```python
 import jax.numpy as jnp
 import numpy as np
 from rfx import Simulation
 
-sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
-                 boundary="cpml", cpml_layers=10, dx=0.002)
+# A 40 x 20 mm guide: TE10 cuts off at 3.75 GHz, the next mode at 7.5 GHz.
+freqs = jnp.linspace(5e9, 6.5e9, 7)
 
-sim.add_waveguide_port(
-    0.01,                    # x-position of port plane (meters)
-    mode=(1, 0),             # TE10 dominant mode
-    mode_type="TE",
-    freqs=jnp.linspace(4.5e9, 8e9, 50),
-    f0=6e9,                  # Center frequency for excitation pulse
-    name="input",
-)
+sim = Simulation(freq_max=10e9, domain=(0.10, 0.04, 0.02),
+                 boundary="cpml", cpml_layers=16, dx=0.002)
+sim.add_waveguide_port(0.01, direction="+x", mode=(1, 0), mode_type="TE",
+                       freqs=freqs, f0=6e9, name="left")
+sim.add_waveguide_port(0.09, direction="-x", mode=(1, 0), mode_type="TE",
+                       freqs=freqs, f0=6e9, name="right")
 
-result = sim.run(n_steps=500, compute_s_params=False)
-# Access calibrated S-params
-sp = result.waveguide_sparams["input"]
-print(f"|S11| mean: {np.mean(np.abs(sp.s11)):.3f}")
-print(f"|S21| mean: {np.mean(np.abs(sp.s21)):.3f}")
+result = sim.compute_waveguide_s_matrix(num_periods=40, normalize="flux")
+S = result.s_params            # (n_ports, n_ports, n_freqs), S[receiver, driven]
+print(np.abs(S[1, 0]).round(3))   # |S21| of the empty guide: 1.0 across the band
 ```
 
-## Two-Port S-Matrix
+The first argument is the port plane's coordinate along its normal axis, the
+axis named by `direction` (`"+x"`, `"-x"`, `"+y"`, `"-y"`, and so on). By
+default the aperture spans the whole domain cross-section; restrict it with
+`y_range=` / `z_range=` (or `x_range=` for a y-normal port).
 
-For transmission measurements, use two ports with opposite directions:
+The 2 mm mesh is coarse, chosen so the example runs in seconds. rfx warns
+that the 16-layer absorber is thinner than it recommends at 5 GHz (see
+[Absorber depth](#absorber-depth)). Keep the measurement band inside the
+single-mode range: preflight warns when `freqs` reach toward the next mode's
+cutoff. Place the two ports as mirror images in the domain, as here, so both
+see the same grid.
+
+## Choosing `normalize`
+
+| `normalize` | Runs | What it corrects | Use it for |
+|---|---|---|---|
+| `False` (default) | one per port | nothing; magnitudes carry a few-percent Yee impedance error | \|S11\| of strong reflectors (shorts, high-Q loads) on a uniform mesh |
+| `True` | two per port | one-way grid dispersion in transmission | S21 of a straight guide. Not for S11. |
+| `"flux"` | two per port | magnitude from Poynting flux, phase from the mode | general use; required on a graded mesh |
+
+`normalize=True` divides by an empty-guide reference run. That fixes
+transmission but not reflection. `normalize=True` also cannot be
+differentiated; `False` and `"flux"` can.
+
+With `normalize=False`, a passive strong reflector can read slightly above
+|S| = 1. When it rises beyond the expected range, rfx prints an advisory. Switch
+to `"flux"` or refine the mesh rather than reporting that number.
+
+rfx also checks every result for passivity and reciprocity and warns when a
+column carries more power than it received. That warning almost always means
+the extraction is wrong, not the physics.
+
+## A single port with `run()`
+
+A plain `run()` with one waveguide port gives that port's calibrated S11 and
+S21 in `result.waveguide_sparams`. Use it as a quick diagnostic. It is not the
+driven-in-turn matrix.
 
 ```python
-freqs = jnp.linspace(4.5e9, 8e9, 50)
+single = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
+                    boundary="cpml", cpml_layers=10, dx=0.002)
+single.add_waveguide_port(0.01, mode=(1, 0), freqs=freqs, f0=6e9, name="input")
 
-# A fresh guide: the single-port run above keeps its own simulation.
-sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
-                 boundary="cpml", cpml_layers=10, dx=0.002)
-
-sim.add_waveguide_port(0.01, direction="+x", name="left",
-                       mode=(1, 0), freqs=freqs, f0=6e9)
-sim.add_waveguide_port(0.09, direction="-x", name="right",
-                       mode=(1, 0), freqs=freqs, f0=6e9)
-
-result = sim.compute_waveguide_s_matrix(num_periods=30)
-S = result.s_params  # (2, 2, n_freqs) complex
-
-s11 = S[0, 0, :]  # Reflection at port 1
-s21 = S[1, 0, :]  # Transmission port 1 → port 2
-s12 = S[0, 1, :]  # Transmission port 2 → port 1 (reciprocal: S12 ≈ S21)
+res = single.run(n_steps=500)
+sp = res.waveguide_sparams["input"]      # sp.freqs, sp.s11, sp.s21
 ```
 
-## Two-Run Normalization
+## Reference planes
 
-For the documented empty-guide envelope, two-run normalization cancels Yee-grid
-dispersion and should keep `|S21|` near unity:
+Fields are sampled on grid planes, so rfx snaps each port's planes to the
+nearest one and reports where they landed. You choose where S is reported:
 
 ```python
-result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=True)
+cal = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
+                 boundary="cpml", cpml_layers=10, dx=0.002)
+
+# Report at the snapped measurement planes (the default).
+cal.add_waveguide_port(0.01, calibration_preset="measured", name="a")
+# S11 at the source plane, S21 from source to probe plane.
+cal.add_waveguide_port(0.01, calibration_preset="source_to_probe", name="b")
+# Explicit planes, in metres along the port normal, with de-embedding.
+cal.add_waveguide_port(0.01, reference_plane=0.012, probe_plane=0.034, name="c")
 ```
 
-This runs a reference simulation (empty waveguide) to cancel Yee-grid numerical
-dispersion. The single shared empty-guide reference is only correct when the
-guide walls are the domain boundary. For a **branch / T-junction / septum**
-(interior PEC), that reference strips the septum and radiates into free space,
-so the incident power `P_inc` is mis-normalized and every `|S|` inflates
-(a compact 3-port T-junction gives `normalize='flux'` max|S| ~ 9.8, |S11| ~ 1.9).
+Three ports on one plane is only to show the options; a real model uses one.
+The result's `reference_planes` and each port's `measured_reference_plane`
+give the planes actually used.
 
-For `normalize=False`, a passive strong-reflector run can sit slightly above
-unit column power because the single-run decomposition keeps a documented
-near-cutoff/Yee-grid overshoot envelope. rfx emits a **soft advisory** when the
-result rises above that envelope but remains below the hard unreliability limit.
-Treat the advisory as a prompt to use `normalize="flux"`, increase settling or
-mesh quality, or compare against a reference before promoting the number; it is
-not a physics correction.
+## More port layouts
 
-Junction S-matrices are measurable with `normalize='flux'` by passing per-port
-matched-straight-guide references — one `Simulation` per driven port, each the
-straight continuation of that port's guide with no junction:
+Ports can face along any axis, and several can share one boundary:
+
+```python
+# A y-directed guide.
+ydir = Simulation(freq_max=10e9, domain=(0.04, 0.12, 0.02),
+                  boundary="cpml", cpml_layers=10, dx=0.002)
+ydir.add_waveguide_port(0.01, direction="+y", name="bottom")
+ydir.add_waveguide_port(0.09, direction="-y", name="top")
+
+# Two parallel guides entering through the same x face.
+pair = Simulation(freq_max=10e9, domain=(0.12, 0.10, 0.02),
+                  boundary="cpml", cpml_layers=10, dx=0.002)
+pair.add_waveguide_port(0.01, y_range=(0.0, 0.04), direction="+x", name="lo")
+pair.add_waveguide_port(0.01, y_range=(0.06, 0.10), direction="+x", name="hi")
+```
+
+`n_modes > 1` records several modes per port. Multimode results are assembled
+outside the differentiable path.
+
+## Junctions and interior walls
+
+The default references assume the guide walls are the domain boundary. A
+T-junction, branch or septum has interior PEC walls, and the empty reference
+then radiates into open space: every |S| inflates badly (max |S| near 10 on a
+compact T). For these, pass `normalize="flux"` with one reference simulation
+per port: the straight continuation of that port's guide, with no junction.
 
 ```python
 from rfx import Box
 
 port_kwargs = dict(mode=(1, 0), mode_type="TE", f0=6e9,
-                   freqs=jnp.linspace(4.5e9, 8e9, 6),
+                   freqs=jnp.linspace(4.5e9, 6.5e9, 4),
                    z_range=(0.0, 0.02), ref_offset=3, probe_offset=15)
 
 
-def three_port_guide(walls):
-    """Same domain, dx and boundary for the device and every reference —
-    only the interior PEC walls differ.
-
-    Guide walls are conductor VOLUMES: each `Box` realizes tangential walls at
-    both of its drawn faces and shorts the normal edges between them, so the
-    guide width the solver sees is the width that was drawn. Foil would be a
-    sheet declaration instead; see the materials-and-geometry guide.
-    """
+def three_port(walls):
+    """Same domain, mesh and ports each time; only the PEC walls change."""
     s = Simulation(freq_max=10e9, domain=(0.12, 0.12, 0.02),
                    boundary="cpml", cpml_layers=10, dx=0.002)
-    for corner_lo, corner_hi in walls:
-        s.add(Box(corner_lo, corner_hi), material="pec")
+    for lo, hi in walls:
+        s.add(Box(lo, hi), material="pec")
     s.add_waveguide_port(0.01, y_range=(0.04, 0.08), direction="+x",
                          name="left", **port_kwargs)
     s.add_waveguide_port(0.11, y_range=(0.04, 0.08), direction="-x",
@@ -132,81 +159,63 @@ def three_port_guide(walls):
     return s
 
 
-HORIZONTAL = [((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
+horizontal = [((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
               ((0.0, 0.08, 0.0), (0.12, 0.12, 0.02))]
-VERTICAL = [((0.0, 0.0, 0.0), (0.04, 0.12, 0.02)),
+vertical = [((0.0, 0.0, 0.0), (0.04, 0.12, 0.02)),
             ((0.08, 0.0, 0.0), (0.12, 0.12, 0.02))]
 
-# The device: main guide along x with one arm opening in +y. These arms are
-# COMPACT — the paragraph below states what that costs.
-sim = three_port_guide([((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
-                        ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
-                        ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02))])
-ref_left = three_port_guide(HORIZONTAL)
-ref_right = three_port_guide(HORIZONTAL)
-ref_top = three_port_guide(VERTICAL)
+tee = three_port([((0.0, 0.0, 0.0), (0.12, 0.04, 0.02)),
+                  ((0.0, 0.08, 0.0), (0.04, 0.12, 0.02)),
+                  ((0.08, 0.08, 0.0), (0.12, 0.12, 0.02))])
 
-result = sim.compute_waveguide_s_matrix(
-    num_periods=30, normalize="flux",
-    port_reference_sims=[ref_left, ref_right, ref_top],
-)
+junction = tee.compute_waveguide_s_matrix(
+    num_periods=20, normalize="flux",
+    port_reference_sims=[three_port(horizontal), three_port(horizontal),
+                         three_port(vertical)])
 ```
 
-This is correct **only under the far-port discipline**: place each probe plane
-at least 5 evanescent decay lengths of the next higher mode from the junction,
-use CPML at least ~0.5 guide wavelengths thick, and confirm a converged mesh.
-On a far-port geometry the matched-reference path reaches passivity ~1.00,
-reciprocity ~0.001 and ~0.087 vs MEEP. On **compact** geometry the reference
-fixes |S11| (1.86 → 0.49) but the overall matrix stays non-physical (residual
-max|S| ~ 3.9); `compute_waveguide_s_matrix` emits clearance / CPML advisories
-and its passivity self-check fires. This does not make arbitrary compact
-junctions valid — keep the far-port discipline.
+The references are necessary but not sufficient. This compact example still
+gives a non-physical matrix, and rfx warns about probe clearance and absorber
+depth. A physical junction S-matrix also needs:
 
-## Multi-Axis Ports
+- each probe plane at least 5 decay lengths of the next higher mode away from
+  the junction;
+- an absorber at least about 0.5 guide wavelengths deep at the lowest
+  frequency;
+- a converged mesh.
 
-Ports can be placed on any axis-normal boundary:
+The walls here are PEC volumes, so the guide width the solver sees is the
+width you drew. See
+[How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
 
-```python
-sim = Simulation(freq_max=10e9, domain=(0.04, 0.12, 0.02),
-                 boundary="cpml", cpml_layers=10, dx=0.002)
+## Absorber depth
 
-# Y-normal ports for a y-directed waveguide
-sim.add_waveguide_port(0.01, direction="+y", name="bottom")
-sim.add_waveguide_port(0.09, direction="-y", name="top")
-```
+A waveguide port's absorber must swallow the guided wave, and CPML does that
+worse near cutoff, where the guide wavelength is long. rfx warns when the
+absorber on a port's axis is thinner than 0.5 λ_g at the lowest measured
+frequency. Treat that as a floor. For scale: a WR-90 guide that simply runs
+into the CPML reflects about −13.9 dB with 8 layers and −22.3 dB with 16.
 
-## Disjoint Aperture Ports (N-port)
+## Gradients and memory
 
-Multiple ports on the same boundary for parallel-guide or branch networks:
+`compute_waveguide_s_matrix` accepts `eps_override=` / `sigma_override=` for
+differentiation with `normalize=False` or `"flux"`, single-mode only. For
+long runs under `jax.grad`, `checkpoint_segments=K` trades compute for memory.
+`K` must divide the number of time steps exactly.
 
-```python
-sim = Simulation(freq_max=10e9, domain=(0.12, 0.10, 0.02),
-                 boundary="cpml", cpml_layers=10, dx=0.002)
+## Limits
 
-sim.add_waveguide_port(0.01, y_range=(0.0, 0.04), z_range=(0.0, 0.02),
-                       direction="+x", name="left_lo")
-sim.add_waveguide_port(0.01, y_range=(0.06, 0.10), z_range=(0.0, 0.02),
-                       direction="+x", name="left_hi")
-```
-
-## Calibration Options
-
-```python
-sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
-                 boundary="cpml", cpml_layers=10, dx=0.002)
-
-# Report S-params at the snapped measurement planes (default)
-sim.add_waveguide_port(0.01, calibration_preset="measured")
-
-# Report S11 at source plane, S21 at probe plane
-sim.add_waveguide_port(0.01, calibration_preset="source_to_probe")
-
-# Explicit reporting planes with de-embedding
-sim.add_waveguide_port(0.01, reference_plane=0.012, probe_plane=0.034)
-```
-
-For reverse-mode AD or memory-heavy waveguide runs on the uniform Yee path,
-`compute_waveguide_s_matrix(checkpoint_segments=K)` reuses the segmented
-checkpointing machinery from the core runner. `K` must divide the timestep
-count exactly; non-uniform waveguide extraction rejects this knob rather than
-silently falling back to the linear-memory scan.
+- **Validated scope** is uniform, single-mode, straight rectangular guides and
+  same-guide junctions under the far-port conditions above. Phase is
+  validated on fewer configurations than magnitude.
+- **Ports with different cross-sections** are outside the validated scope.
+  S is a ratio of each port's own modal waves, so it equals a power-wave S only
+  when all ports share one cross-section and mode.
+- **Compact junctions** give non-physical matrices even with
+  `port_reference_sims`. Keep the far-port conditions.
+- **Graded meshes** require `normalize="flux"`. Graded-mesh waveguide results
+  outside the published WR-90 comparisons are experimental.
+- **`port_reference_sims`** needs `normalize="flux"`, single-mode ports, a
+  uniform mesh and no material override.
+- Full scope, with the comparisons behind it, is in the
+  [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).
