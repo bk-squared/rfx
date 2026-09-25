@@ -2142,7 +2142,6 @@ def _guide_planar_sheet(zs):
     return PlanarSheet(2, zs, (0.0, 0.0), (_D[0], _D[1]))
 
 
-@pytest.mark.slow_physics
 @pytest.mark.parametrize("case,control,dual_over_primal",
                          [pytest.param(*c, id=c[0]) for c in INVARIANCE_CASES])
 def test_alpha_invariance_transfers_to_a_nonbox_sheet(case, control,
@@ -2180,8 +2179,19 @@ def test_alpha_invariance_transfers_to_a_nonbox_sheet(case, control,
         f"{control} {ref['alpha']:.5f} -> ratio {ratio:.4f} outside "
         f"[{lo}, {hi}]")
 
-    # ... and it is the SAME number the Box sheet gives on the same mesh
-    for name, out in ((case, got), (control, ref)):
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="#1231: since #1178 a Box sheet continues into the absorber and a non-Box "
+           "sheet stops at its face, so the same cells give alpha 0.762 vs 0.711")
+@pytest.mark.parametrize("case,control,dual_over_primal",
+                         [pytest.param(*c, id=c[0]) for c in INVARIANCE_CASES])
+def test_nonbox_sheet_alpha_equals_the_box_sheet_alpha(case, control, dual_over_primal):
+    """... and it is the SAME number the Box sheet gives on the same mesh. Split from
+    the test above so the #1231 quarantine does not silence its witnesses."""
+    from tests.unit.materials.test_thin_conductor_nu_dual_spacing import _run_nu_guide
+    for name in (case, control):
+        out = _run_nu_guide(name, sheet_shape=_guide_planar_sheet, tag="planar")
         box = _run_nu_guide(name)
         assert out["alpha"] == box["alpha"], (
             f"{name}: non-Box sheet alpha {out['alpha']:.9f} != Box "

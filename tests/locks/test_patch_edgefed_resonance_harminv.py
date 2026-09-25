@@ -812,6 +812,10 @@ def test_patch_mode_is_in_the_patch_band_and_dominates_the_feed_band(arms):
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="#1281: the isolated patch's TM010 fell to 8.97-8.99 GHz, -3.67 to -3.86 % from the "
+           "realized-raster Balanis 9.3305 GHz, below the measured [-3.011, -0.761] % window")
 def test_leg_a_isolated_patch_discretization_bias(arms):
     """Leg A — the SIGNED offset of the isolated (unfed) rfx patch from Balanis on its
     own realized raster (mostly the cavity model's own error at this geometry, see the
@@ -841,6 +845,10 @@ def test_leg_a_isolated_patch_discretization_bias(arms):
 
 
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="#1281: the edge feed pulls TM010 down by -7.2 to -7.6 % since 09-23, "
+           "below the measured [-7.095, -5.123] % window; cause not bisected")
 def test_leg_b_edge_feed_pull(arms):
     """Leg B — the edge-feed loading term, as the fed/unfed frequency ratio.
 

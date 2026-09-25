@@ -377,7 +377,6 @@ def test_no_transverse_only_dispatch_predicate_remains():
 # catch.
 # ---------------------------------------------------------------------------
 
-@pytest.mark.slow_physics
 def test_two_different_z_meshes_change_the_answer():
     import warnings
 
@@ -404,7 +403,6 @@ def test_two_different_z_meshes_change_the_answer():
     )
 
 
-@pytest.mark.slow_physics
 def test_dz_only_short_run_fires_the_settling_witness():
     """#827 (waveguide instance): the NU lane carries the uniform lane's
     ring-down settling witness. A deliberately short dz-only run

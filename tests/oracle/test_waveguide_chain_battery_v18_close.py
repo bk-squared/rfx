@@ -807,22 +807,27 @@ def test_physics_gates_at_the_claims_rung(fx):
 
 
 def _live_compare(fx_, rung: str):
+    # Every cell is measured and printed before any assertion, so one red cell
+    # does not hide the cells after it.
+    cells = []
     for dut in F.DUTS:
         for lane in F.LANES:
             label = G.LANE_LABELS[lane]
             stored = _cell(fx_, dut, rung, label)
             sim, res, S, codes = _measure_cell(dut, rung, lane)
-            assert codes == sorted(f["code"] for f in stored["preflight"]), (dut, rung, label, codes)
             S0 = G.s_from_json(stored["s_params"])
             d = float(np.max(np.abs(S - S0)))
             m = G.cell_metrics(S)
             print(f"[live {dut}-{rung}-{label}] max|S_live-S_fixture|={d:.3e} "
                   f"settling={np.asarray(res.settling_db)} colpow={m['column_power_max']:.5f} "
                   f"recip_c={m['reciprocity_complex_max']:.2e}")
-            assert np.all(np.isfinite(S))
-            assert d <= LIVE_ABS_S_TOL, (dut, rung, label, d, LIVE_ABS_S_TOL,
-                                         "cross-backend excess is reported with both backends' "
-                                         "numbers, never absorbed by widening the pin (§5.11)")
+            cells.append((dut, label, stored, S, codes, d))
+    for dut, label, stored, S, codes, d in cells:
+        assert codes == sorted(f["code"] for f in stored["preflight"]), (dut, rung, label, codes)
+        assert np.all(np.isfinite(S))
+        assert d <= LIVE_ABS_S_TOL, (dut, rung, label, d, LIVE_ABS_S_TOL,
+                                     "cross-backend excess is reported with both backends' "
+                                     "numbers, never absorbed by widening the pin (§5.11)")
 
 
 @pytest.mark.slow
