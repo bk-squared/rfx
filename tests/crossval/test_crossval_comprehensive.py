@@ -320,6 +320,10 @@ class TestLumpedPortCavity:
     not just resonance frequency.
     """
 
+    @pytest.mark.xfail(
+        strict=True, raises=AssertionError,
+        reason="#1304: a lossless one-port has |S11|=1; the −10 dB dip bar contradicts "
+               "energy conservation")
     def test_rfx_lumped_port_s11(self):
         """Lumped port S11 should show a local dip near cavity resonance.
 
