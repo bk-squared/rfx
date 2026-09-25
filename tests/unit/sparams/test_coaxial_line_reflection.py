@@ -260,8 +260,8 @@ def test_mixed_precision_is_rejected_before_coaxial_line_run():
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 
 
-@pytest.mark.parametrize("cpml_axes", ("", "x", "xyz"))
-def test_non_axial_cpml_selection_is_rejected_before_coaxial_line_run(cpml_axes):
+@pytest.mark.parametrize("cpml_axes", ("", "x", "xy", "z"))
+def test_absorbing_on_fewer_than_three_axes_is_rejected_before_coaxial_line_run(cpml_axes):
     sim = Simulation(
         domain=(0.008, 0.008, 0.040),
         freq_max=40.0e9,
@@ -270,7 +270,7 @@ def test_non_axial_cpml_selection_is_rejected_before_coaxial_line_run(cpml_axes)
     )
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
 
-    with pytest.raises(ValueError, match="requires cpml_axes='z'"):
+    with pytest.raises(ValueError, match="accepts only cpml_axes='xyz'"):
         sim.compute_coaxial_line_reflection(
             n_steps=1,
             n_freqs=1,
@@ -289,7 +289,9 @@ def test_periodic_axis_is_rejected_before_coaxial_line_run():
     with pytest.warns(DeprecationWarning):
         sim.set_periodic_axes("x")
 
-    with pytest.raises(ValueError, match="does not support periodic boundary axes"):
+    # A periodic lateral axis has no absorber, so the all-six-faces absorber
+    # requirement (issue 1218) is the refusal that fires first.
+    with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 
 
@@ -307,13 +309,13 @@ def test_nonabsorbing_z_face_is_rejected_before_coaxial_line_run(z_boundary):
     sim = Simulation(
         domain=(0.008, 0.008, 0.040),
         freq_max=40.0e9,
-        boundary={"x": "pec", "y": "pec", "z": z_boundary},
+        boundary={"x": "cpml", "y": "cpml", "z": z_boundary},
         cpml_layers=16,
         dx=1.0e-3,
     )
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
 
-    with pytest.raises(ValueError, match="positive CPML thickness on both z faces"):
+    with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 
 
@@ -336,7 +338,9 @@ def test_mixed_transverse_boundary_is_rejected_before_coaxial_line_run(boundary)
     )
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
 
-    with pytest.raises(ValueError, match="CPML tokens on all six boundary faces"):
+    # A lateral face without an absorber is a PEC or PMC wall behind the line:
+    # the closed can of issue 1218 on that side.
+    with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 
 

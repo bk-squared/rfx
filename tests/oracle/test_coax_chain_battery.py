@@ -26,21 +26,21 @@ quantity that is deep on the finest rung or in the closed form at every bin
 quantity deep only in a zero's core is compared in dB outside it (the leader's
 L2, 2026-09-23).
 
-Two PI rulings of 2026-09-23 are encoded as well. P1: the battery closes
-without the open termination; the open's records stay in the fixture as
-measured, marked ``judged: false`` with the ruling's reason, and the passivity
-and settling checks skip them with that reason — only the open, which
-``test_only_the_open_is_left_unjudged`` holds. P2: criterion 1(2) is the
-identity within the traced path (the bead in two containers, rtol 1e-5 / atol
-1e-7); the untraced-against-traced thru arm compares two functions by design and
-is held to its measured envelope.
-
+P2 (PI 2026-09-23): criterion 1(2) is the identity within the traced path
+(the bead in two containers, rtol 1e-5 / atol 1e-7); the untraced-against-traced
+thru arm compares two functions by design and is held to its measured envelope.
 Of 2026-09-24 (PI, R1): settling is judged by the contract's amplitude
-substitute, and the 25 and 100 ohm loads stay judged with their narrowband
-doubling changes recorded as the closed-can footprint. Passivity and the thru's
--20 dB bound are checked at every rung, the ladder's zeros are re-derived from
-each rung's S, and the recommended cell size is pinned at 4 annulus cells for
-every judged DUT.
+substitute.
+
+Of 2026-09-25 (the pre-declaration's addendum, issue 1218): both coax lanes
+absorb on all three axes, so the open termination is judged again like the
+short and the loads — magnitude within the bar, passivity 1.02, record-length
+invariance — and nothing is left unjudged, which ``test_every_dut_is_judged``
+holds. The open's exclusion of 2026-09-23 (P1) and the loads' closed-can
+footprint note of 2026-09-24 lapsed with the fix, and a fixture that still
+carries either reds here. Passivity and the thru's -20 dB bound are checked at
+every rung, the ladder's zeros are re-derived from each rung's S, and the
+recommended cell size is pinned at 4 annulus cells for every DUT.
 """
 import json
 import math
@@ -155,27 +155,16 @@ def _radii(fixture):
     return line["pin_radius_m"], line["outer_radius_m"], line["fill_eps_r"]
 
 
-# P1 (PI 2026-09-23), restated rather than read from the fixture, so a fixture
-# that marks something else unjudged, or rewords why, reds instead of skipping.
-OPEN_NOT_JUDGED_REASON = (
-    "open end inside the lane's closed PEC can (absorbers on z only); its reflection "
-    "does not settle at 9 annulus cells — energy near the outer region's first cutoff "
-    "grows with record length (open_absorber_diagnostic.json); PI 2026-09-23")
-NOT_JUDGED = {"open": OPEN_NOT_JUDGED_REASON}
-
-# R1 (PI 2026-09-24), restated for the same reason: the two loads stay judged,
-# and their claims-rung records carry this note beside the doubling facts.
-LOADS_FOOTPRINT_NOTE = (
-    "stays judged at 9 annulus cells: the narrowband record-doubling changes near "
-    "6.7-6.9 and 9.7-10.6 GHz are the same closed-can footprint as the open's "
-    "(issue 1218), recorded as a fact and not as a failure; settling is judged by the "
-    "contract's amplitude substitute as implemented; PI 2026-09-24")
-FOOTPRINT = {"r25": LOADS_FOOTPRINT_NOTE, "r100": LOADS_FOOTPRINT_NOTE}
-
-
-def _skip_if_not_judged(entry, what):
-    if entry.get("judged", True) is False:
-        pytest.skip(f"{what} is not judged: {entry['judged_reason']}")
+# The rulings this fixture is judged under, restated rather than read from the
+# fixture, so a fixture judged under the lapsed ones reds instead of passing.
+RULINGS_IN_FORCE = {
+    "deep_null_pi_2026_09_21", "identity_within_the_traced_path_pi_2026_09_23",
+    "bead_whole_cells_leader_2026_09_23", "deep_quantity_by_the_bound_leader_2026_09_23",
+    "settling_by_the_amplitude_substitute_pi_2026_09_24",
+    "column_power_half_not_applied_leader_2026_09_24",
+    "open_judged_all_axis_absorption_leader_2026_09_25",
+}
+RULINGS_LAPSED = {"open_not_judged_pi_2026_09_23", "loads_closed_can_footprint_pi_2026_09_24"}
 
 
 # ---------------------------------------------------------------------------
@@ -321,7 +310,6 @@ def test_the_one_port_reflection_is_passive(fixture, key):
     to the square and not to the magnitude. An excess is non-physical and is an
     extraction or normalization finding, never physics."""
     entry = _solve(fixture, key)
-    _skip_if_not_judged(entry, key)
     g = np.abs(_complex(entry["S11"]))
     measured = float((g ** 2).max())
     k = int(np.argmax(g))
@@ -344,7 +332,6 @@ def test_the_record_is_settled_or_record_length_invariant(fixture, dut):
     bound = (10 ** (fixture["bar"]["magnitude_db"] / 20.0) - 1.0) / 10.0
     key = f"{dut}_rung{CLAIMS_RUNG}"
     entry = _solve(fixture, key)
-    _skip_if_not_judged(entry, key)
     witness = entry.get("settling")
     if witness and witness["has_energy_witness"]:
         worst = max(witness["settling_db"])
@@ -365,42 +352,43 @@ def test_the_record_is_settled_or_record_length_invariant(fixture, dut):
         "truncated, not settled")
 
 
-def test_only_the_open_is_left_unjudged(fixture):
-    """P1 (PI 2026-09-23) takes the open out of the battery's verdict and
-    nothing else. Every record, the doubled arm and the ladder of the open carry
-    ``judged: false`` with the ruling's reason word for word; every other DUT is
-    judged. A fixture that marks another DUT unjudged, or rewords the reason,
-    reds here instead of skipping its checks."""
+def _every_place(fixture):
     places = [(f"solves[{k}]", e["dut"], e) for k, e in fixture["solves"].items()]
     places += [(f"record_length_invariance[{d}]", d, e)
                for d, e in fixture["record_length_invariance"].items()]
     places += [(f"ladder[{d}]", d, e) for d, e in fixture["ladder"].items()]
+    return places
+
+
+def test_every_dut_is_judged(fixture):
+    """The addendum of 2026-09-25: with both lanes absorbing on all three axes the
+    open is judged like every other DUT. Every record, doubled arm and ladder
+    carries ``judged: true`` and no reason for not being judged, and the open is
+    among them at every rung, in the doubled arm and in the ladder."""
+    places = _every_place(fixture)
     assert places
     for where, dut, entry in places:
-        if dut in NOT_JUDGED:
-            assert entry.get("judged") is False, f"{where} is judged; P1 says it is not"
-            assert entry.get("judged_reason") == NOT_JUDGED[dut], where
-        else:
-            assert entry.get("judged") is True, f"{where} is not marked judged"
-            assert "judged_reason" not in entry, where
-    assert any(dut == "open" for _, dut, _ in places), "the fixture carries no open record"
+        assert entry.get("judged") is True, f"{where} is not marked judged"
+        assert "judged_reason" not in entry, where
+    open_places = {where for where, dut, _ in places if dut == "open"}
+    want = ({f"solves[open_rung{r}]" for r in RUNGS}
+            | {"record_length_invariance[open]", "ladder[open]"})
+    assert want <= open_places, f"the open is missing from {sorted(want - open_places)}"
 
 
-def test_the_loads_carry_the_closed_can_footprint_and_stay_judged(fixture):
-    """R1 (PI 2026-09-24): the 25 and 100 ohm loads' narrowband doubling changes
-    are recorded beside their records as the closed-can footprint, and the loads
-    stay judged. Only those two carry the note, word for word."""
-    places = [(f"solves[{k}]", e["dut"], e, e["rung_annulus_cells"] == CLAIMS_RUNG)
-              for k, e in fixture["solves"].items()]
-    places += [(f"record_length_invariance[{d}]", d, e, True)
-               for d, e in fixture["record_length_invariance"].items()]
-    places += [(f"ladder[{d}]", d, e, True) for d, e in fixture["ladder"].items()]
-    for where, dut, entry, carries in places:
-        if dut in FOOTPRINT and carries:
-            assert entry.get("footprint_note") == FOOTPRINT[dut], where
-            assert entry.get("judged") is True, where
-        else:
-            assert "footprint_note" not in entry, where
+def test_no_record_carries_the_lapsed_footprint_note(fixture):
+    """The loads' closed-can footprint note (R1, 2026-09-24) described the closed
+    can; it lapsed with the fix, and no record may carry it."""
+    for where, _dut, entry in _every_place(fixture):
+        assert "footprint_note" not in entry, where
+
+
+def test_the_fixture_is_judged_under_the_rulings_in_force(fixture):
+    rulings = set(fixture["rulings"])
+    assert rulings == RULINGS_IN_FORCE, (
+        f"missing {sorted(RULINGS_IN_FORCE - rulings)}, unexpected "
+        f"{sorted(rulings - RULINGS_IN_FORCE)}")
+    assert not rulings & RULINGS_LAPSED, sorted(rulings & RULINGS_LAPSED)
 
 
 def test_every_doubling_and_power_span_fact_follows_from_the_stored_s(fixture):
@@ -650,7 +638,6 @@ RECOMMENDED_RUNG = 4
 def test_the_recommended_cell_size_is_four_annulus_cells(fixture, dut):
     lad = fixture["ladder"].get(dut)
     assert lad is not None, f"the {dut} ladder is not assembled"
-    _skip_if_not_judged(lad, f"the {dut} ladder")
     assert lad["coarsest_rung_within_bar"] == f"{dut}_rung{RECOMMENDED_RUNG}", (
         f"{dut}: the coarsest rung inside the bar is {lad['coarsest_rung_within_bar']}, "
         f"not {RECOMMENDED_RUNG} annulus cells")

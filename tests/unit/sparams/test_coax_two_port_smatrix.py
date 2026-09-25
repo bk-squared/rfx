@@ -575,17 +575,22 @@ def test_boundary_must_be_cpml():
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
 
-def test_cpml_axes_must_be_z():
+def test_absorbing_on_z_only_is_refused():
+    """The line's two ends are unshielded; a z-only absorber left them in a
+    closed PEC can (issue 1218). The full contract, with a runner spy, is
+    ``tests/unit/sparams/test_coax_lanes_absorb_on_every_axis.py``."""
     sim = _sim()
-    with pytest.raises(ValueError, match="requires cpml_axes='z'"):
-        sim.compute_coaxial_two_port(n_steps=1, n_freqs=1, cpml_axes="xyz")
+    with pytest.raises(ValueError, match="accepts only cpml_axes='xyz'"):
+        sim.compute_coaxial_two_port(n_steps=1, n_freqs=1, cpml_axes="z")
 
 
 def test_periodic_axes_rejected():
     sim = _sim()
     with pytest.warns(DeprecationWarning):
         sim.set_periodic_axes("x")
-    with pytest.raises(ValueError, match="does not support periodic boundary axes"):
+    # A periodic lateral axis has no absorber, so the all-six-faces absorber
+    # requirement (issue 1218) is the refusal that fires first.
+    with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 
 

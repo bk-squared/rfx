@@ -176,7 +176,12 @@ REFUSED_BY_BOTH_LANES = {
                     ["face='top'"]),
     "pec-z-face": (lambda: _coax_sim(boundary=BoundarySpec(
         x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))),
-                   ["both z faces"]),
+                   ["positive CPML thickness on all six faces"]),
+    # Issue 1218: a lateral face with no absorber pad is a PEC wall behind
+    # nothing, which rebuilds the closed can on that side.
+    "no-x-hi-absorber": (lambda: _coax_sim(boundary=BoundarySpec(
+        x=Boundary(lo="cpml", hi="cpml", hi_thickness=0), y="cpml", z="cpml")),
+                         ["positive CPML thickness on all six faces"]),
     "pec-side-walls": (lambda: _coax_sim(boundary=BoundarySpec(
         x="pec", y="pec", z="cpml")),
                        ["all six boundary faces"]),
