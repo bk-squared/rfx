@@ -24,5 +24,6 @@
   the raw sum of squared probe samples of a 1 A source is ~1e16 (V/m)^2, and the
   traced drive coefficient, written with eps = eps_r*eps0 ~ 1e-11, overflowed
   float32 in the reverse pass. It is now written in eps_r units,
-  (dt/eps0)/(eps_r + sigma*dt/(2*eps0)), which moves a traced drive by about one
-  float32 ULP; concrete (untraced) drives are unchanged bit for bit.
+  (dt/eps0)/(eps_r + sigma*dt/(2*eps0)). A traced drive moves by up to 4-5
+  float32 ULP, toward the exact value (within 1.7 ULP of float64, against 3.9
+  before); concrete (untraced) drives are unchanged bit for bit.

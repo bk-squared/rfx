@@ -37,17 +37,18 @@ a2. The gradient with respect to an x-sharded override equals the one with
    the halo transpose. Its size at those cells is recorded against the gate.
 b. A one-material slab raised by e^0.1 through the override and the slab drawn
    that way give one probe record: time-domain least-squares ratio and 8 GHz
-   ratio within 9 float32 ULP of 1 (measured <= 7e-8 and <= 2.8e-7 on JAX
-   0.10.2 / 0.6.2 / 0.4.33). The per-sample difference is NOT gated at 9 ULP
+   ratio within 9 float32 ULP of 1 (measured <= 1.8e-7 and <= 3.5e-7 at d8629a2d,
+   JAX 0.10.2; the gate is 1.07e-6). The per-sample difference is NOT gated at 9 ULP
    of the peak: the override's drive is computed in float32 inside the
    program, the drawn one in float64 on the host, 1 ULP apart here, and that
-   rounding difference grows through the 200-step record to 18-33 ULP of the
+   rounding difference grows through the 200-step record to 18-40 ULP of the
    peak (forcing the host value into the program gives a bit-identical
    record).
 c. The distributed lane against the single-device lane (#1280), a source in
    material overridden from eps_r 3.38 to 10.2: the probe record's
    least-squares ratio within 9 ULP of 1, and d ln|E(8 GHz)|^2 / d ln eps_r
-   through a traced override within 1e-5 (measured <= 6.5e-7).
+   through a traced override within 1e-5 (measured <= 8.6e-7), also with 40
+   warm-up steps and checkpoint_every=30.
 d. Opt-in (``RFX_MAIN_REF=<commit>`` or ``RFX_MAIN_CHECKOUT=<dir>``): a 'field'
    source under an override, and a current source without one, are bitwise
    what main computes -- main's code run in a separate process.
