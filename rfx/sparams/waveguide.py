@@ -450,6 +450,11 @@ def compute_waveguide_s_matrix(
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 
+    # The uniform waveguide scan has no subgrid and never read
+    # add_refinement (#1240); the graded branch above is refused by its runner.
+    self._require_no_refinement_without_a_subgrid(
+        "compute_waveguide_s_matrix()")
+
     # Uniform-lane honesty guard (v1.8 WP1), the mirror of the
     # non-uniform guard above. The two-run normalized lane
     # (normalize=True) assembles S on the host:
@@ -486,6 +491,32 @@ def compute_waveguide_s_matrix(
         pec_wires=_wg_pec_wires)
     _wg_pec_sheets = tuple(_wg_pec_sheets)
     _wg_pec_wires = tuple(_wg_pec_wires)
+    # A Debye/Lorentz E update reads neither the smoothed permittivity tensor
+    # nor the Dey-Mittra eps correction built below, so both would be
+    # dropped; refused as on run()'s uniform lane (rfx/runners/uniform.py).
+    if debye_spec is not None or lorentz_spec is not None:
+        self._refuse_unsupported_run_kwargs(
+            "waveguide S-matrix with Debye/Lorentz materials", {
+                "subpixel_smoothing": subpixel_smoothing,
+                "conformal_pec": bool(
+                    self._boundary_spec.conformal_faces() and pec_shapes),
+            },
+            instead="remove the Debye/Lorentz poles",
+            entry="compute_waveguide_s_matrix()",
+            reason_overrides={
+                "subpixel_smoothing":
+                    "the dispersive E update does not read the smoothed "
+                    "per-component permittivity tensor, so interfaces "
+                    "would get scalar eps",
+                "conformal_pec":
+                    "Boundary(conformal=True) asks for Dey-Mittra walls, "
+                    "and the dispersive E update does not read their eps "
+                    "correction, so the walls would be staircased",
+            },
+            remedy_overrides={
+                "conformal_pec": "drop Boundary(conformal=True) "
+                                 "(staircase PEC)",
+            })
     # #931 §1.7: the realized PEC edges of this device — volumes,
     # sheets and wires — built ONCE and handed to every device run of
     # the extractors below.  This replaces the sigma=1e10 CELL fold
@@ -545,6 +576,8 @@ def compute_waveguide_s_matrix(
         ref_materials_per_port = []
         ref_pec_edge_masks_per_port = []
         for _i, _ref_sim in enumerate(port_reference_sims):
+            _ref_sim._require_no_refinement_without_a_subgrid(
+                f"compute_waveguide_s_matrix(port_reference_sims[{_i}])")
             _ref_grid = _ref_sim._build_grid()
             if _ref_grid.shape != grid.shape or float(_ref_grid.dx) != float(grid.dx):
                 raise ValueError(
@@ -1129,6 +1162,13 @@ def _compute_waveguide_s_matrix_nu(
     normalisation (see ``extract_waveguide_s_params_normalized``
     in ``rfx/sources/waveguide_port.py``).
     """
+    # The non-uniform scan has no Dey-Mittra update; the uniform lane of
+    # this calculator has one.
+    self._refuse_conformal_boundary(
+        "non-uniform waveguide S-matrix",
+        entry="compute_waveguide_s_matrix()",
+        instead="use compute_waveguide_s_matrix() on a uniform mesh "
+                "(no dx/dy/dz profile)")
     if self._interface_eps == "dual_average":
         raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
     from dataclasses import replace as _dc_replace

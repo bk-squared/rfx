@@ -391,6 +391,17 @@ def _forbid_generation(*args, **kwargs):
     pytest.fail("historical inspection attempted geometry/model/field generation or a file write")
 
 
+def _the_printed_document(out: str) -> dict:
+    """The JSON document ``--show-archive`` printed, wherever it sits in stdout.
+
+    Only the document is the script's. A line another part of the process
+    writes to stdout is not, and must not make it unparseable: the CI lane's
+    memory sampler put one in front of it in run 35880954542.
+    """
+    document, _ = json.JSONDecoder().raw_decode(out, out.index("{\n"))
+    return document
+
+
 @pytest.mark.parametrize("stem", _HISTORICAL_SCRIPTS)
 def test_historical_cli_refuses_implicit_generation_before_work(monkeypatch, stem):
     """A legacy command must not silently overwrite the auditable record."""
@@ -418,7 +429,7 @@ def test_explicit_archive_inspection_preserves_records_without_live_geometry(
     monkeypatch.setattr(Path, "write_text", _forbid_generation)
     monkeypatch.setattr(Path, "write_bytes", _forbid_generation)
     assert mod.main(["--show-archive"]) == 0
-    out = json.loads(capsys.readouterr().out)
+    out = _the_printed_document(capsys.readouterr().out)
     assert out["current_solver_validation"] is False
     assert out["record_kind"].startswith("historical_")
     assert out["historical_record"] == json.loads(before[expected_path])
@@ -446,4 +457,4 @@ def test_archive_inspection_rejects_changed_provenance(monkeypatch, tmp_path, ca
     with pytest.raises(SystemExit) as exc:
         mod.main(["--show-archive"])
     assert exc.value.code == 2
-    assert capsys.readouterr().out == ""
+    assert '"historical_record"' not in capsys.readouterr().out

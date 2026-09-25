@@ -414,7 +414,21 @@ def _enumerate_emission_sites():
 # fixture the series pairings now decay and the parallel one it also warned
 # on was always stable. Measured with the walk above: 120 -> 119 sites,
 # 77 -> 76 literal codes, dynamic sites unchanged.
-_FROZEN_TOTAL_SITES = 119
+# 119 -> 120, 2026-09-23 (#1209): one ``PreflightWarning`` in
+# ``_validate_cfg_nonuniform_limitations`` (``rfx/preflight/mesh.py``), code
+# ``nonuniform_tfsf`` -- an existing code, so the literal-code count holds. A
+# TFSF plane wave at normal incidence along a GRADED propagation axis, which
+# the runner accepts but injects from a 1-D line built on the boundary cell.
+# The family's two existing sites raise, because the runner refuses those
+# cases; this one warns, so it cannot share their construction.
+# 120 -> 121, 2026-09-24 (#1240): one ``PreflightErrorWarning`` in
+# ``_validate_cfg_subgrid_limitations`` (``rfx/preflight/mesh.py``), new code
+# ``nonuniform_refinement`` -- a refinement on a mesh that resolves
+# non-uniform, which that lane has no subgrid for and used to drop without a
+# word. An error finding emitted rather than raised, so the checks after it
+# still report; run() and forward() stop on it, and the lane refuses it again
+# at dispatch when preflight is skipped.
+_FROZEN_TOTAL_SITES = 121
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -428,7 +442,9 @@ _FROZEN_TOTAL_SITES = 119
 # 76 -> 77 (#801): port_conductor_continues.
 # 77 -> 76, 2026-09-23 (#1163): ``tfsf_lumped_rlc_unstable`` deleted -- see
 # the note on _FROZEN_TOTAL_SITES above.
-_FROZEN_LITERAL_CODE_COUNT = 76
+# 76 -> 77, 2026-09-24 (#1240): ``nonuniform_refinement`` -- see the note on
+# _FROZEN_TOTAL_SITES above.
+_FROZEN_LITERAL_CODE_COUNT = 77
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

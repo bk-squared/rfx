@@ -67,11 +67,11 @@ _E_ENVELOPE = 2e-6      # x dominant E-component scale
 _H_ENVELOPE = 1e-4      # x dominant H-component scale
 
 
-def _build_nu_case(n_table: int):
+def _build_nu_case(n_table: int, cpml_layers=4):
     """Tiny graded-dz CPML NU sim: 24x24x32 cells, one pulsed Ez point
     source, one Ez probe. ``n_table`` sizes the source waveform table."""
     dz = np.array([0.4e-3] * 12 + [0.6e-3] * 12)
-    grid = make_nonuniform_grid((0.008, 0.008), dz, 0.5e-3, cpml_layers=4)
+    grid = make_nonuniform_grid((0.008, 0.008), dz, 0.5e-3, cpml_layers=cpml_layers)
     materials = init_materials((grid.nx, grid.ny, grid.nz))
     pulse = GaussianPulse(f0=10e9, bandwidth=0.5)
     src_idx = position_to_index(grid, (0.004, 0.004, 0.004))
@@ -88,7 +88,12 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     max_steps = 3000
     consec = 2
 
-    grid, materials, sources, probes = _build_nu_case(max_steps)
+    # Twelve absorber layers, where the other gates here use four. A four-layer absorber 4 mm from the source holds the
+    # pulse's 1-4 GHz near field for a few hundred steps once its magnetic profile sits at the Yee half cell (#1012): at the
+    # stop step the probe keeps 1.3 % of its peak against 0.014 % in an open domain, and the stop at decay_by = 1e-4 cut that
+    # tail short by 3 %. At twelve layers the box's field energy is within 0.1 % of the open domain at the stop step
+    # (VESSL 369367264499), so this gate measures the stop rule, not the absorber.
+    grid, materials, sources, probes = _build_nu_case(max_steps, cpml_layers=12)
     r = run_nonuniform_until_decay(
         grid, materials,
         decay_by=decay_by,
@@ -128,7 +133,7 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     # Physics witness: probe spectral peak vs a 3x-longer fixed run on
     # the SAME grid/materials/sources (zero-padded common DFT grid).
     n_ref = 3 * steps_taken
-    grid2, materials2, sources2, probes2 = _build_nu_case(n_ref)
+    grid2, materials2, sources2, probes2 = _build_nu_case(n_ref, cpml_layers=12)
     r_ref = run_nonuniform(
         grid2, materials2, n_ref, sources=sources2, probes=probes2,
     )
@@ -160,10 +165,9 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     # In-band sweep (reviewer-validated, #383 review): over every
     # reference bin carrying >= 5% of the nonzero-bin (k >= 1) maximum,
     # the per-bin amplitude ratio must stay within 1e-2. Measured
-    # discrimination on this exact fixture: 2.418e-3 at the true decay
-    # stop, 7.295e-3 at 90% truncation (both pass), 9.146e-2 at 70%
-    # truncation (fails) — ~30x sharper than the DC-amplitude ratio,
-    # which only degrades to 0.973 even at 70% truncation.
+    # discrimination on this 12-layer fixture, #1012: 8.26e-4 at the true decay
+    # stop, 8.70e-4 at 90% truncation (both pass), 7.97e-2 at 70%
+    # truncation (fails).
     band = spec_ref >= 0.05 * float(np.max(spec_ref[1:]))
     inband_err = float(np.max(np.abs(spec_dec[band] / spec_ref[band] - 1.0)))
     assert inband_err <= 1e-2, (

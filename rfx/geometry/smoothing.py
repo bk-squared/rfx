@@ -26,7 +26,6 @@ Three design improvements over the original rfx linear-SDF scheme:
 
 from __future__ import annotations
 
-import warnings
 from typing import NamedTuple
 
 import jax
@@ -1109,31 +1108,29 @@ def compute_smoothed_eps_nonuniform(
     # normalisation (a traced axis comes back as its tracer).
     cell_sizes = cell_sizes_from_nonuniform_grid(nu_grid)
 
-    # Staircase fallback for shapes without an SDF: the shape's cell mask if
-    # available, otherwise skip (NU grid has no Grid-style mask adapter for
-    # arbitrary shapes today). Evaluated here so a traced mask is seen by the
-    # backend choice below.
+    # Staircase fallback for shapes without an SDF: the shape's cell mask.
+    # A shape whose mask cannot be built on a NonUniformGrid is refused, as
+    # the uniform builder refuses it: skipping it (the behaviour before 2.0,
+    # behind a warning) solved the run without that shape's permittivity.
+    # Evaluated here so a traced mask is seen by the backend choice below.
     masks = {}
     for shape, _ in shapes:
         if _has_sdf(shape):
             continue
-        masks[id(shape)] = None
-        if not hasattr(shape, "mask"):
-            continue
         try:
             masks[id(shape)] = shape.mask(nu_grid)
         except Exception as exc:
-            # A shape whose .mask() cannot handle a NonUniformGrid is
-            # skipped — but make that visible. The pre-fix bare
-            # ``except: pass`` silently dropped the shape's geometry AND
-            # would have masked a real bug (NaN, typo, unexpected error)
-            # just as quietly.
-            warnings.warn(
-                f"smoothing: {type(shape).__name__}.mask() failed "
-                f"on the non-uniform grid ({exc!r}); this shape is "
-                f"SKIPPED and its geometry is NOT applied.",
-                stacklevel=2,
-            )
+            # The uniform builder calls ``shape.mask(grid)`` too, so a
+            # uniform mesh is a way out only for a shape that has one.
+            other = (", or run on a uniform mesh" if hasattr(shape, "mask")
+                     else "")
+            raise NotImplementedError(
+                f"subpixel smoothing on a non-uniform mesh cannot place "
+                f"{type(shape).__name__}: it has no signed distance function "
+                f"and its mask() failed on the non-uniform grid ({exc!r}); "
+                f"skipping it would leave its permittivity out of the solve. "
+                f"Instead: drop subpixel_smoothing{other}."
+            ) from exc
 
     host = _host_path(*coords[:3], *centres[:3], *cell_sizes, background_eps,
                       *(e for _, e in shapes),

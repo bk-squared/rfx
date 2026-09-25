@@ -49,6 +49,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests import _electrical_length as EL
+
 FIXTURE = (Path(__file__).resolve().parents[1] / "fixtures" / "coax_chain_battery"
            / "fixture.json")
 
@@ -508,6 +510,53 @@ def test_the_bead_magnitudes_match_the_analytic_tem_section(fixture):
     assert worst21 <= fixture["bar"]["magnitude_db"], (
         f"|S21| is {worst21:.3f} dB from the analytic TEM section "
         f"(bar {fixture['bar']['magnitude_db']} dB)")
+
+
+@pytest.mark.parametrize("rung", RUNGS)
+@pytest.mark.parametrize("dut", TWO_PORT_DUTS)
+def test_each_line_is_as_long_electrically_as_its_closed_form(fixture, dut, rung):
+    """The v2 bar's phase item (PI 2026-09-24): the least-squares slope of the
+    unwrapped phase of S21 against frequency, over the bins where |S21| is above
+    -20 dB, within 1 % of the closed form's slope over the same bins, at every
+    rung.
+
+    S21 is referenced to the two feed planes (``compute_coaxial_two_port``,
+    ``rfx/sparams/coax.py:886-887`` and ``:1036``), so the closed form spans
+    exactly their separation: the bare PTFE line ``exp(-j omega sqrt(eps) L / c)``
+    for the thru, and for the bead the same line with the four-annulus-width
+    section of 4x permittivity where the record says it sits. ``eps`` is the
+    fill the grid realized. The thru has no frequency feature, so nothing else
+    in this file sees it grow longer: with every edge permittivity above vacuum
+    read 5 % high the solved thru is 2.48 % longer electrically and its |S21|
+    moves 0.01 dB.
+    """
+    key = f"{dut}_rung{rung}"
+    entry = _solve(fixture, key)
+    freqs = np.asarray(entry["freqs_hz"], dtype=float)
+    S = _complex(entry["S"])
+    real = entry["realized"]
+    top, bottom = (float(z) for z in entry["reference_planes_m"])
+    L = top - bottom
+    assert L == pytest.approx(real["feed_to_feed_m"], rel=1e-12), (
+        f"{key}: the reference planes are {L} m apart, the feeds "
+        f"{real['feed_to_feed_m']} m — S is not where the record says it is")
+    eps = float(real["fill_eps_r_realized"])
+    if dut == "thru":
+        reference = np.exp(-1j * 2.0 * np.pi * freqs * math.sqrt(eps) * L / C0)
+    else:
+        a, b, _ = _radii(fixture)
+        d1, d2 = real["d_port1_to_bead_m"], real["d_port2_to_bead_m"]
+        length = real["bead_length_realized_m"]
+        assert d1 + length + d2 == pytest.approx(L, rel=1e-12), key
+        _, _, reference = _tem_section(
+            freqs, a=a, b=b, eps_fill=eps, eps_scale=fixture["line"]["bead_eps_scale"],
+            length=length, d1=d1, d2=d2)
+    ratio = EL.electrical_length_ratio(freqs, S[1, 0, :], reference,
+                                       EL.transmitting_bins(S[1, 0, :]))
+    assert abs(ratio) <= EL.ELECTRICAL_LENGTH_FRAC, (
+        f"{key}: S21's phase slope is {ratio * 100:+.3f} % from the closed form's over "
+        f"the {L * 1e3:.3f} mm between the feed planes — the line is that much longer "
+        f"electrically than it is drawn (bar {EL.ELECTRICAL_LENGTH_FRAC * 100:.0f} %)")
 
 
 @pytest.mark.parametrize("rung", RUNGS)

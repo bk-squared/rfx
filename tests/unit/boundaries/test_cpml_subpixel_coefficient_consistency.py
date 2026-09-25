@@ -302,7 +302,9 @@ def test_threading_an_equal_permittivity_is_bit_identical():
 @pytest.mark.parametrize("subpixel,dispersive,expect_threaded", [
     (False, False, True),    # #1210: the plain E update is per-component too
     (True, False, True),     # Stage 1 -> 1/aniso_eps
-    (True, True, False),     # dispersion wins the E update, so it wins here too
+    # dispersion wins the E update, so it wins here too (with subpixel on,
+    # a dispersive run is refused since 2.0: the tensor would be dropped)
+    (False, True, False),
 ])
 def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
         monkeypatch, subpixel, dispersive, expect_threaded):

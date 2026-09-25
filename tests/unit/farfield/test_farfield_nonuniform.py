@@ -67,7 +67,6 @@ def _nu_dipole_directivity(dz_profile):
     return float(directivity(ff)[0])              # full-sphere directivity, dBi
 
 
-@pytest.mark.slow_physics
 @pytest.mark.parametrize("dz_profile,label", [
     (np.full(18, 1.5e-3), "uniform-z-via-NU-path"),
     (np.concatenate([np.full(8, 1.0e-3), np.full(14, 1.5e-3)]), "graded-z"),

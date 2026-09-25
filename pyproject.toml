@@ -70,12 +70,14 @@ rfx = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-m 'not gpu and not slow and not slow_physics'"
+addopts = "-m 'not gpu and not slow and not slow_physics and not docs_consistency'"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: tests that need GPU — too slow on CPU or GPU-specific (select with '-m gpu')",
     "distributed: tests that require multi-device / distributed setup (deselect with '-m not distributed')",
     "slow_physics: physics regression gate; included by the weekly CPU suite (except gpu/highmem lanes), locally opt-in with '-m slow_physics'",
+    "docs_consistency: a note, guide or table checked against what the code, a record or a script prints; deselected by default and run only by the non-required docs-consistency workflow, because a documentation mismatch never holds a merge (PI, 2026-09-22)",
+    "reads_docs_for_gate(reason): a required test that reads a file under docs/ because the file is part of a gate (a pre-declaration's frozen sections, a known-limitations entry that must exist); tests/_prose_reads.py fails any other required test that reads prose, and fails this marker without a reason",
     "highmem: memory-heavy weekly-lane tests (issue #545, 3-24 GB RSS high-water each); run serially on the a6000 VESSL lane the weekly workflow's weekly-a6000-lane job submits (scripts/vessl_validation_lane_a6000.yaml), ADDITIVE to slow/slow_physics/gpu (never excludes from the default fast lane on its own — addopts above only filters not gpu/slow/slow_physics)",
 ]
 

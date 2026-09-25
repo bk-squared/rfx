@@ -412,9 +412,12 @@ def test_recover_debye_reference_mode_public_entry():
         poles=[DebyePole(delta_eps=true_de * 2.0, tau=true_tau * 2.0)],
         fit_error=0.0,
     )
+    # VESSL 369367264028: 25 iterations stop short of the truth; at 100,
+    # main recovers tau=51.09 ps and #1012 55.41 ps, both within 15%.
+    # The loss at the truth is zero on both; keep the recovery tolerances.
     fit = differentiable_material_fit(
         factory, s_meas, freqs, n_debye_poles=1,
-        n_iterations=25, learning_rate=0.05, initial_guess=guess,
+        n_iterations=100, learning_rate=0.05, initial_guess=guess,
         verbose=False, normalization="reference_probe", reference_probe=1,
     )
     rec_de = float(fit.debye_poles[0].delta_eps)

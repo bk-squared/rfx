@@ -103,7 +103,8 @@ def test_2d_tez_simulation():
 # --- Snapshots ---
 
 def test_snapshot_full_field():
-    """Snapshot should capture full field at every timestep."""
+    """interval=1 captures the full field at every timestep; the default
+    interval (10) captures every tenth (#1258)."""
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.02))
     materials = init_materials(grid.shape)
 
@@ -111,7 +112,7 @@ def test_snapshot_full_field():
     n_steps = 10
     src = make_source(grid, (0.01, 0.01, 0.01), "ez", pulse, n_steps)
 
-    snap = SnapshotSpec(components=("ez",))
+    snap = SnapshotSpec(interval=1, components=("ez",))
     result = run(grid, materials, n_steps, sources=[src], snapshot=snap)
 
     assert result.snapshots is not None
@@ -119,6 +120,10 @@ def test_snapshot_full_field():
     # Shape: (n_steps, nx, ny, nz)
     assert result.snapshots["ez"].shape[0] == n_steps
     assert result.snapshots["ez"].shape[1:] == grid.shape
+
+    default = run(grid, materials, n_steps, sources=[src],
+                  snapshot=SnapshotSpec(components=("ez",)))
+    assert default.snapshots["ez"].shape == (n_steps // 10,) + grid.shape
     print(f"\nSnapshot full: ez shape={result.snapshots['ez'].shape}")
 
 
@@ -133,6 +138,7 @@ def test_snapshot_2d_slice():
 
     mid_z = grid.nz // 2
     snap = SnapshotSpec(
+        interval=1,
         components=("ez", "hx"),
         slice_axis=2,
         slice_index=mid_z,
@@ -156,7 +162,8 @@ def test_snapshot_2d_mode():
     n_steps = 10
     src = make_source(grid, (0.01, 0.01, 0.0), "ez", pulse, n_steps)
 
-    snap = SnapshotSpec(components=("ez",), slice_axis=2, slice_index=0)
+    snap = SnapshotSpec(interval=1, components=("ez",), slice_axis=2,
+                        slice_index=0)
     result = run(grid, materials, n_steps, sources=[src], snapshot=snap)
 
     assert result.snapshots is not None

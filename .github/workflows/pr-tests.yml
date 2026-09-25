@@ -92,9 +92,18 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # pull-requests: read is for the data budget below, which reads this PR's
+    # labels from the API when it runs.
+    permissions:
+      contents: read
+      pull-requests: read
     steps:
       - name: Check out repository
+        # fetch-depth: 0 — the data budget diffs base.sha...head.sha, and a
+        # shallow clone has neither commit's history to find a merge base in.
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Ungated on purpose: BOTH branches of the verdict need an interpreter and
       # the package. The false branch still runs tests/contracts below.
@@ -102,6 +111,28 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.10"
+
+      # Ungated on purpose, like the setup above: a PR that adds records under
+      # docs/ or scripts/ is a "not code" diff, and that is exactly what this
+      # gate is for. It runs here because only an existing required job can make
+      # it bind. It comes before the install so a red answer arrives in seconds.
+      #
+      # The labels are read from the API, not from the event payload: this
+      # workflow does not re-run on `labeled`, so the way a label counts is
+      # re-running the failed job, and a re-run replays the ORIGINAL payload.
+      # Only a live read sees a label applied after the push.
+      - name: Data budget — measurement records go to rfx-archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ -n "$PR_NUMBER" ]; then
+            PR_LABELS_JSON=$(gh pr view "$PR_NUMBER" --json labels --jq '[.labels[].name]')
+            export PR_LABELS_JSON
+          fi
+          python scripts/ci/check_data_budget.py --base "$BASE_SHA" --head "$HEAD_SHA"
 
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]"
@@ -122,7 +153,8 @@ jobs:
         # `-o addopts=""` overrides the pyproject marker filter so a future
         # slow/slow_physics mark inside tests/contracts cannot silently deselect
         # from it. (Two gallery-precompute tests are slow-marked today; they add
-        # 27 s.) The explicit -m "not gpu" keeps the job CPU-safe, and
+        # 27 s.) The explicit -m keeps the job CPU-safe and leaves the
+        # docs_consistency tests to their own non-required workflow, and
         # --strict-markers turns a marker typo into an error. The collect-count
         # floor catches the other way a gate goes quiet: a path that stopped
         # matching collects nothing and passes.
@@ -134,14 +166,14 @@ jobs:
           echo 'still run: they pin docs/, scripts/ and these workflows, which'
           echo 'IS what this diff changed. The changes job above lists the'
           echo 'paths; the classifier is scripts/ci/changed_paths.py.'
-          collected=$(python -m pytest --collect-only -q -o addopts="" -m "not gpu" tests/contracts | grep -c "::" || true)
+          collected=$(python -m pytest --collect-only -q -o addopts="" -m "not gpu and not docs_consistency" tests/contracts | grep -c "::" || true)
           echo "collected $collected contract tests"
           if [ "$collected" -lt 500 ]; then
             echo "FAIL: tests/contracts collected only $collected tests (<500) — silent deselection?"
             exit 1
           fi
           python -m pytest tests/contracts -q -ra -p no:cacheprovider \
-            -o addopts="" -m "not gpu" --strict-markers
+            -o addopts="" -m "not gpu and not docs_consistency" --strict-markers
 
       # `!= 'false'`, not `== 'true'`: an empty or unexpected output — a
       # classify step that died after its checkout, a future refactor that
@@ -151,7 +183,7 @@ jobs:
         if: needs.changes.outputs.code_changed != 'false'
         # -o addopts="" overrides the pyproject default marker filter so a
         # future slow/gpu mark inside these files cannot silently deselect
-        # tests from the required gate; the explicit -m "not gpu" keeps the
+        # tests from the required gate; the explicit -m keeps the
         # job CPU-safe. --strict-markers turns marker typos into errors.
         # The collect-count floor makes silent deselection detectable.
         run: |
@@ -165,14 +197,14 @@ jobs:
             tests/unit/ports/test_msl_port_preflight.py
             tests/unit/preflight/test_inverse_design_preflight.py
             tests/unit/api/test_api.py"
-          collected=$(python -m pytest --collect-only -q -o addopts="" -m "not gpu" $FILES | grep -c "::" || true)
+          collected=$(python -m pytest --collect-only -q -o addopts="" -m "not gpu and not docs_consistency" $FILES | grep -c "::" || true)
           echo "collected $collected guard tests"
           if [ "$collected" -lt 100 ]; then
             echo "FAIL: guard suite collected only $collected tests (<100) — silent deselection?"
             exit 1
           fi
           python -m pytest -q -ra -p no:cacheprovider -o addopts="" \
-            -m "not gpu" --strict-markers $FILES
+            -m "not gpu and not docs_consistency" --strict-markers $FILES
 
       - name: Conformal stale-check tripwire (slow-marked; xfails today, HARD-FAILS when the NaN is fixed)
         if: needs.changes.outputs.code_changed != 'false'

@@ -85,6 +85,7 @@ import math
 import numpy as np
 
 from rfx.grid import C0
+from rfx._grid_metric import is_one_cell_size
 from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 
@@ -92,6 +93,7 @@ from rfx.preflight._common import (
     _fmt_freq,
     _fmt_len,
     PreflightConfigError,
+    PreflightErrorWarning,
     PreflightWarning,
 )
 
@@ -1021,7 +1023,19 @@ def _validate_cfg_nonuniform_limitations(
     self, _w, cpml_thickness: float
 ) -> None:
     """P2: Non-uniform mesh shadow-lane limitations."""
-    if self._dz_profile is not None:
+    # Keyed on "is this the non-uniform lane", not on "was a z profile
+    # given". A dx-only or dy-only mesh used to skip both checks below and
+    # report All checks passed, though the TFSF auxiliary line runs along x
+    # and the absorber thickness is a per-axis question (G17).
+    # ``_uses_nonuniform_mesh`` is the same property that picks the lane's
+    # grid builder, read off the RESOLVED mesh, so a profile that arrives by
+    # auto-meshing or a design-document round trip counts too.
+    if self._uses_nonuniform_mesh:
+        # The two messages below still say "nonuniform z mesh". Since the
+        # gate above, they also reach an x- or y-only mesh, which has no z
+        # profile to name. The committed preflight snapshot pins this text, so
+        # the wording is left for the documentation pass (rfx #1171) rather
+        # than moved here.
         # P2.3: TFSF on nonuniform mesh — narrowed scope.
         # Axis-aligned ±x incidence with angle_deg=0 runs the 1D
         # auxiliary along the uniform x axis and is supported. The
@@ -1043,6 +1057,43 @@ def _validate_cfg_nonuniform_limitations(
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
+            # Normal incidence along a GRADED propagation axis is not the
+            # supported case either. The runner builds the 1-D incident line
+            # as ``init_tfsf(grid.nx, grid.dx, ...)``: nx cells of the
+            # boundary cell, while the 3-D axis is graded (G14). A warning,
+            # not a refusal: the runner accepts this case, and whether to
+            # block it is a separate decision.
+            _tfsf_ax = self._tfsf.direction[-1]
+            _tfsf_prof = {"x": self._dx_profile, "y": self._dy_profile,
+                          "z": self._dz_profile}[_tfsf_ax]
+            if (_tfsf_prof is not None and not is_tracer(_tfsf_prof)
+                    and not is_one_cell_size(_tfsf_prof)):
+                _tp = np.asarray(_tfsf_prof, dtype=float)
+                _w.warn(
+                    PreflightWarning(
+                        f"TFSF plane wave along {_tfsf_ax} on a mesh whose "
+                        f"{_tfsf_ax} cells are not one size "
+                        f"({_fmt_len(float(_tp.min()))} to "
+                        f"{_fmt_len(float(_tp.max()))}). The 1-D line that "
+                        f"computes the incident wave is built on one cell "
+                        f"size, the boundary cell, while the 3-D grid "
+                        f"carries the wave through the graded {_tfsf_ax} "
+                        f"cells. The wave the TFSF planes inject then does "
+                        f"not match the wave arriving at them, and the "
+                        f"difference leaks into the scattered-field region "
+                        f"as a spurious field. Measured with no scatterer on "
+                        f"a 60-cell +x line graded 1 / 0.5 / 1 mm: the "
+                        f"scattered-field region read 0.7 of the total-field "
+                        f"peak, against 1e-5 or less on uniform 1 mm cells "
+                        f"and with only y graded (tests/unit/preflight/"
+                        f"test_graded_axis_findings.py). Keep the "
+                        f"{_tfsf_ax} cells uniform, grading y or z instead, "
+                        f"or run on the uniform lane.",
+                        code="nonuniform_tfsf",
+                        source="_validate_cfg_nonuniform_limitations",
+                    ),
+                    stacklevel=3,
+                )
 
         # P2.6: CPML z-thickness on non-uniform mesh.
         # Skip on tracer profiles — advisory warning only.
@@ -1052,17 +1103,36 @@ def _validate_cfg_nonuniform_limitations(
         # PEC/PMC (allocation 0) no longer reports a thin absorber that
         # does not exist, and a per-face `hi_thickness` is measured at the
         # thickness it actually allocates.
-        _z_layers = max(self._preflight_face_layers()["z_lo"],
-                        self._preflight_face_layers()["z_hi"])
+        _face_layers = self._preflight_face_layers()
+        _z_layers = max(_face_layers["z_lo"], _face_layers["z_hi"])
         if (self._boundary == "cpml"
                 and _z_layers > 0
                 and not is_tracer(self._dz_profile)):
-            cpml_z_thick = sum(float(d) for d in self._dz_profile[:_z_layers])
+            # One absorber, one thickness: this reads the per-face numbers
+            # from ``_validate_cfg_compute_cpml_thickness`` rather than
+            # repeating the expression, so preflight cannot report two
+            # thicknesses for the same z absorber. It used to sum the first
+            # ``max(lo, hi)`` INTERIOR cells, which is neither face's
+            # absorber, and measured the hi face from the lo end (G17).
+            # The thinnest face is reported, since that is the one whose
+            # absorption is worst. A face that allocates no absorber
+            # (PEC/PMC/periodic) has no thickness to compare, and including
+            # its 0 would resurrect the #647 false positive.
+            _ct_lo, _ct_hi, _ = self._validate_cfg_compute_cpml_thickness(
+                cpml_thickness)
+            _z_thick_by_face = {
+                _side: _thick[2]
+                for _side, _thick in (("lo", _ct_lo), ("hi", _ct_hi))
+                if _face_layers[f"z_{_side}"] > 0
+            }
+            _thin_side = min(_z_thick_by_face, key=_z_thick_by_face.get)
+            cpml_z_thick = _z_thick_by_face[_thin_side]
+            _z_cells_reported = _face_layers[f"z_{_thin_side}"]
             if cpml_z_thick < cpml_thickness * 0.3:
                 _w.warn(
                     PreflightWarning(
                         f"CPML z-thickness is {cpml_z_thick*1e3:.1f}mm "
-                        f"({_z_layers} cells), much thinner than "
+                        f"({_z_cells_reported} cells), much thinner than "
                         f"xy-thickness {cpml_thickness*1e3:.1f}mm. "
                         f"Absorbing performance may be asymmetric. "
                         f"Consider more z cells or fewer CPML layers.",
@@ -1080,6 +1150,21 @@ def _validate_cfg_subgrid_limitations(self, _w) -> None:
     here.
     """
     if self._refinement is not None:
+        # #1240: on a non-uniform mesh the refinement is not run at all. An
+        # error finding rather than a raise, so the checks after this one
+        # still report; the run-time refusal is
+        # ``_require_no_refinement_on_the_nonuniform_lane``, which
+        # skip_preflight=True does not bypass.
+        _nu_refusal = self._nonuniform_refinement_refusal()
+        if _nu_refusal is not None:
+            _w.warn(
+                PreflightErrorWarning(
+                    _nu_refusal,
+                    code="nonuniform_refinement",
+                    source="_validate_cfg_subgrid_limitations",
+                ),
+                stacklevel=3,
+            )
         if self._dft_planes:
             _w.warn(
                 PreflightWarning(

@@ -37,7 +37,13 @@ run: |-
   rm -rf "$src" && mkdir -p "$src"
   git archive --format=tar "$sha" | tar -xf - -C "$src"
   echo "=== install runtime dependencies (exported tree, no editable install) ==="
+  # JAX 0.6.2, the version CI's Python 3.10 lane resolves (PI 2026-09-24). The image's own
+  # 0.4.33 ships an XLA whose fusion cost model aborts on
+  # CHECK_LE(common_utilization, producer_output_utilization); forward(distributed=True) hit it (#1252).
+  python -m pip install -q "jax[cuda12]==0.6.2"
   python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
+  python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
   export RFX_REPO_ROOT="$src"
   export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
   cd "$src"
@@ -60,7 +66,8 @@ run: |-
   # ${PIPESTATUS[0]} is a bashism and died with 'bad substitution' on
   # proof run 369367242339 — pytest itself completed fine).
   set +e
-  timeout 13800 python -m pytest -m gpu -q -ra -p no:cacheprovider \
+  # 20000 s: this selection took 13221 s of pytest on run 369367264767 (RTX 3090, 2026-09-25) against the old 13800.
+  timeout 20000 python -m pytest -m gpu -q -ra -p no:cacheprovider \
     > "$out/gpu_suite.log" 2>&1
   rc=$?
   set -e

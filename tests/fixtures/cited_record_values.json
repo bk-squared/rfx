@@ -1,0 +1,358 @@
+{
+ "about": "Every artifact citation the Markdown documents gated by tests/contracts/test_evidence_numeric_provenance.py carried, as written, grouped by document and section, frozen when those documents' own check left the required lanes (PR #1289). The documents are checked by the docs-consistency workflow; the record values they cite are numbers, and that file pins each one here to the precision it was written with.",
+ "citations": {
+  "docs/design_notes/20260831_cv11_broad_e4_artifact_provenance.md": {
+   "7. Numeric provenance (appended 2026-09-01, #812 round 2 — no finding changed)": [
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.historical_artifact_2026_06_16.pairs[3].max_mag_abs_diff = 0.0707",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.historical_artifact_2026_06_16.pairs[3].mean_mag_abs_diff = 0.043976",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::max_mag_abs_tol = 0.1",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.staleness_2026_08_31.summary_max_mag_abs_diff.rebuilt_from_main_baseline_stdout = 0.0186",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.settled_chain.rebuild_result_2026_08_31.numeric_fields = 54",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::provenance.settled_chain.rebuild_result_2026_08_31.bit_identical = 52"
+   ],
+   "8. Current-main refresh diagnosis (2026-09-13)": [
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].max_mag_abs_diff = 0.0193",
+    "tests/fixtures/waveguide_broad_e5/wr90_rectangular_broad_e4_comparison.json::pairs[3].mean_mag_abs_diff = 0.007767"
+   ]
+  },
+  "docs/design_notes/issue812_cv03_dispersion_regate_predeclaration.md": {
+   "8.2 CORRECTION (round 2, 2026-09-01) — item 2 of §8.1 compared two frequencies": [
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::grid.carrier_bin_f_c_over_a = 0.14898",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_eff_at_fcen_exact = 2.84411",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::grid.fcen_minus_carrier_bin_c_over_a = 0.00102",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.band_n_eff_increase_over_band = 0.1361",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_eff_at_carrier_bin = 2.83887",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_dev_pct = -0.026",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.reproduces_published_value = -0.0257",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.corrected_dev_pct = +0.1588",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_margin_factor_vs_g1 = 77",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.margin_factor_withdrawn_because",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::measured.provenance"
+   ],
+   "Correction C1 — the §8.1 group index was wrong (`n_g ~ 3.3` → 3.6083)": [
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_eff_at_carrier_bin = 2.8389",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_group_at_carrier_bin = 3.6083",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_core = 3.4641",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_and_back_64a = 230.93",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_to_fit_window_75a = 270.62"
+   ]
+  },
+  "docs/design_notes/issue812_cv03_dispersion_regate_results.md": {
+   "Corrections to this file": [
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_dev_pct = -0.026",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.published_margin_factor_vs_g1 = 77",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.corrected_dev_pct = +0.1588",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::round1_error.margin_factor_withdrawn_because",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::falsified_conclusion.reflection_free_minus_baseline_pct = +0.0574",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::falsified_conclusion.dev_pct_matched_by_row.sx40_dft150_before_round_trip = 0.1588",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::falsified_conclusion.dev_pct_matched_by_row.sx16_dft400_recipe_baseline = 0.1014",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::column_semantics_cross_check.abs_difference_pct = 0.00036"
+   ]
+  },
+  "docs/design_notes/issue812_phase_identity_predeclaration.md": {
+   "7. Corrections — round 2 review (2026-09-02)": [
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[0].k_hi = 1.032334",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[0].criterion_a_still_passes_registered",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].k_hi = 1.010778",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].criterion_a_still_passes_registered",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].k_hi = 1.004311",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].criterion_a_still_passes_registered",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.bound_frac = 0.125221",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.k_hi = 1.003945",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.implied_headroom = 1.0366"
+   ]
+  },
+  "docs/design_notes/issue812_phase_identity_results.md": {
+   "3. Corrections — round 2 (2026-09-01)": [
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.cross_solver_raw_phase_difference_is_gated",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.margin_is_the_declared_headroom_by_construction.bound_at_n_after_minus_headroom_times_excess_after",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.margin_is_the_declared_headroom_by_construction.order_p_recovery_abs_error = 0",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.predeclared_k_lo = 0.752106",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.predeclared_k_hi = 1.032334",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.e4_supporting_leg_count = 0"
+   ],
+   "3 (continued). Corrections — round 2 review (2026-09-02)": [
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].k_hi = 1.010778",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].k_hi = 1.004311",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[1].criterion_a_still_passes_registered",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.headroom_dependence[2].criterion_a_still_passes_registered",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.physics_forced_registered.k_hi = 1.003945",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.audit_construction_e1_max_phase_dev_deg = 0.0647",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.e1_tol_deg = 3.0",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_baseline = 0.7917115",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_deg_k2 = 0.7917115",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv20.blindness.dispersion_corrected_residual_max_abs_change_deg_k2 = 0.00000",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.margin_is_the_declared_headroom_by_construction.bound_at_n_after_minus_headroom_times_excess_after",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.registered_mesh.gd_margin_x = 1.2540",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.measured_refined.k_hi = 1.018527",
+    "validation/crossval/_issue812_phase_identity/regate_evidence.json::cv21.detection_floor.predeclared_k_lo = 0.752106"
+   ]
+  },
+  "docs/design_notes/20260911_harminv_record_support.md": {
+   "Actual FDTD records": [
+    "tests/fixtures/harminv_record_support/cavity_joint_adjudication_uniform.json::variants.candidate_auto.residual_ppm.TM111 = -0.4619",
+    "tests/fixtures/harminv_record_support/cavity_joint_adjudication_single_band.json::variants.candidate_auto.residual_ppm.TE201 = -0.0171",
+    "tests/fixtures/harminv_record_support/cavity_joint_adjudication_metric_defect.json::variants.candidate_auto.residual_ppm.TE102 = 5545.7482"
+   ],
+   "CI follow-up: short-record capacity correction": [
+    "tests/fixtures/harminv_record_support/capacity_impact_report.json::records[52].after.continuum_error_pct = 0.0227",
+    "tests/fixtures/harminv_record_support/capacity_impact_report.json::unchanged_records = 52"
+   ]
+  },
+  "docs/design_notes/issue1043_cpml_subpixel_coefficient_results.md": {
+   "3. G-A — the coefficient map (no FDTD)": [
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_baseline.coefficients.K_eff_norm_min = 0.007941",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_padrep.coefficients.K_eff_norm_min = -0.838213",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_padrep.fdtd.n_nonfinite = 848",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_padrep.fdtd.first_nonfinite_index = 352",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/coefficients_main.json::arms.cpml_subpixel_off.coefficients.K_eff_norm_min = 0.000662"
+   ],
+   "5. G-C — the amplification factor": [
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/amplification.json::gates.G_C.rho_old = 2.2086",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/amplification.json::gates.G_C.rho_new = 1.0000"
+   ],
+   "cv01 Run 1": [
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_main.json::mean_self = 0.9195301017439319",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_head.json::mean_self = 0.9166511849380675",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_main.json::band_trace.min = 0.8850",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_main.json::band_trace.max = 0.9289",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_head.json::band_trace.min = 0.8725",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/cv01_head.json::band_trace.max = 0.9280"
+   ]
+  },
+  "docs/design_notes/issue1043_f1_pec_short_gate_results.md": {
+   "2. The decisive measurement: record length": [
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.s11_min = 0.9942",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.s11_max = 1.0278",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.s11_min = 0.9877",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.s11_max = 1.0145",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_80periods.s11_min = 0.5724",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_80periods.s11_max = 2.8001",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_80periods.s11_min = 0.9552",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_80periods.s11_max = 1.0014",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_160periods.s11_min = 9.3597",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml_160periods.s11_max = 12.0899",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_160periods.s11_min = 0.9637",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_160periods.s11_max = 1.0014"
+   ],
+   "2b. The pre-declared residual r_A' is NOT met — recorded as declared": [
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.D_max_dev_from_unity = 0.0145",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.D_max_dev_from_unity = 0.0278",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml_160periods.D_max_dev_from_unity = 0.0363"
+   ],
+   "4. Arm D — the self-check's inputs, which is where the 3.258 → 5.621 goes": [
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.max_col_power = 5.6226",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_head.json::arms.cpml.max_abs_S = 2.1630",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.max_col_power = 3.2583",
+    "scripts/diagnostics/_artifacts/cpml_subpixel_stability/f1_main.json::arms.cpml.max_abs_S = 1.4875"
+   ]
+  },
+  "docs/design_notes/issue831_far_end_return_predeclaration.md": {
+   "Arm C — the assembled profile (NO FDTD)": [
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_eff_at_carrier_bin"
+   ],
+   "Arm C0 — the time-of-flight control (H4)": [
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_and_back_64a = 230.93",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_to_fit_window_75a = 270.62",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_group_at_carrier_bin = 3.6083"
+   ]
+  },
+  "docs/design_notes/issue831_far_end_return_results.md": {
+   "2. The control, and that the trend is real (Arms C0 and A)": [
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_and_back_64a = 230.93",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.tof_round_trip_a_over_c0.src_to_far_end_to_fit_window_75a = 270.62",
+    "docs/design_notes/issue812_cv03_dispersion_matched_frequency.json::oracle.n_group_at_carrier_bin = 3.6083"
+   ]
+  },
+  "docs/design_notes/issue1043_pad_continuation_results.md": {
+   "7. Numeric provenance": [
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_upml_20.b_over_a_carrier_bin = 0.0296",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_upml_40.b_over_a_carrier_bin = 0.0123",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_upml_60.b_over_a_carrier_bin = 0.0020",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_cpml_20.b_over_a_carrier_bin = 0.0515",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_cpml_40.b_over_a_carrier_bin = 0.0055",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_cpml_60.b_over_a_carrier_bin = 0.0006",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_upml_20.T_rfx_band_mean = 0.9682",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep_r2.json::stages.sweep.sweep_upml_20.settling_db = -138.34",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep.json::stages.sweep.sweep_upml_20.b_over_a_carrier_bin = 0.5311",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep.json::stages.sweep.sweep_upml_60.b_over_a_carrier_bin = 0.6221",
+    "scripts/diagnostics/_artifacts/cv03_seam_facet/sweep.json::stages.sweep.sweep_upml_20.settling_db = -37.33",
+    "docs/design_notes/issue1043_cv03_pad_continuation_record.json::committed_case_run.exit_code = 2",
+    "docs/design_notes/issue1043_cv03_pad_continuation_record.json::falsifier_as_predeclared.passed",
+    "docs/design_notes/issue1043_cv03_pad_continuation_record.json::falsifier_as_predeclared.b_over_a_at_20 = 0.0296",
+    "docs/design_notes/issue1043_cv03_pad_continuation_record.json::falsifier_as_predeclared.b_over_a_at_60 = 0.0020"
+   ]
+  },
+  "docs/design_notes/waveguide_false_lane_transmission_tilt_results.md": {
+   "7. Numeric provenance": [
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.max_positive_column_power_minus_1 = 0.00613509",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.max_positive_column_power_minus_1 = 0.00116108",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.max_positive_column_power_minus_1 = 0.000254614",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.rung_ratios_max_positive[0] = 5.28395",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.rung_ratios_max_positive[1] = 4.56015",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.worst_bin_s21_mag2_minus_1 = 0.00545432",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.worst_bin_s11_mag2 = 0.000680770",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.s12_mag2_minus_1[16] = 0.00445329",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.bound_2_mean_s11_mag2 = 0.00134742",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.bound_2_mean_s11_mag2 = 0.000186878",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.bound_2_mean_s11_mag2 = 0.0000340434",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.bound_violation_factor = 4.04797",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.bound_violation_factor = 5.81398",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.bound_violation_factor = 9.09988",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.colpow_over_bound = 4.55321",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.colpow_over_bound = 6.21305",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.colpow_over_bound = 8.00199",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.candidate_A_gamma_tan2[0] = 0.00493967",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.candidate_A_gamma_tan2[16] = 0.0165851",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.drive_ref.modal_power_over_recv_ref_minus_1[16] = -0.00507010",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.drive_probe.modal_power_over_recv_ref_minus_1[16] = 0.000824528",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.recv_probe.modal_power_over_recv_ref_minus_1[16] = -0.0000419546",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.mid.planes.drive_ref.modal_power_over_recv_ref_minus_1[16] = -0.00107283",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.fine.planes.drive_ref.modal_power_over_recv_ref_minus_1[16] = -0.000245309",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.drive_ref.distance_from_driven_source_m = 0.00762000",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.planes.recv_ref.x_m = 0.101600",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.predicted_edge_excess_half_f0 = 8.05694",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.measured_edge_excess = 8.13987",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.coarse.residual_norm_over_h_norm = 0.0587725",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.mid.residual_norm_over_h_norm = 0.0206606",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::profiles.fine.residual_norm_over_h_norm = 0.00728202",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__coarse.worst_abs_column_power_excess = 0.00613463",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__coarse.worst_abs_column_power_excess = 0.00606132",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__mid.worst_abs_column_power_excess = 0.00116134",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__mid.worst_abs_column_power_excess = 0.00112343",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__fine.worst_abs_column_power_excess = 0.000272334",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__fine.worst_abs_column_power_excess = 0.000283897",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.control__coarse.band_mean_s11_mag = 0.0243162",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::falsifier.h_offset_removed__coarse.band_mean_s11_mag = 0.0180169",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np40.worst_abs_column_power_excess = 0.00613463",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np80.worst_abs_column_power_excess = 0.00607264",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np160.worst_abs_column_power_excess = 0.00609875",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.mid__np40.worst_abs_column_power_excess = 0.00116134",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.mid__np160.worst_abs_column_power_excess = 0.00114989",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.fine__np40.worst_abs_column_power_excess = 0.000272334",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.fine__np80.worst_abs_column_power_excess = 0.000250041",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np40.settling_db[0] = -84.8904",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::record.coarse__np160.settling_db[0] = -108.112",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.coarse.s21_mag2_minus_1[16] = 0.00545432",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.mid.s21_mag2_minus_1[16] = 0.00108650",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::read.per_rung.fine.s21_mag2_minus_1[0] = -0.000309791",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.coarse.remeasured_column_power_minus_1_col0[16] = 0.00613463",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.mid.remeasured_column_power_minus_1_col0[16] = 0.00116134",
+    "tests/fixtures/waveguide_false_lane_column_power/transmission_tilt.json::planes.fine.remeasured_column_power_minus_1_col0[16] = 0.000253081"
+   ]
+  },
+  "docs/design_notes/waveguide_driven_plane_near_field_composition_results.md": {
+   "10. Numeric provenance": [
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.D_meas_bin16 = -0.00506140347538",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.D_pred_cal_bin16 = -0.00477157394997",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.D_te10_cal_bin16 = -0.000291219098872",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.leg1_ratio_cal_bin16 = 0.942737320426",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.D_meas_bin16 = -0.00106538640109",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.D_pred_cal_bin16 = -0.00103219005678",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.D_te10_cal_bin16 = -3.32306446518e-05",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.leg1_ratio_cal_bin16 = 0.968841028685",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_meas_bin16 = -0.00024018761608",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_pred_cal_bin16 = -0.00023513315408",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_te10_cal_bin16 = -5.05565075104e-06",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.leg1_ratio_cal_bin16 = 0.978956192319",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.identity_residual_cal_bin16 = 1.11022302463e-16",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::control.coarse.max_positive_column_power_minus_1 = 0.00613462924957",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::control.coarse.frozen_max_positive_column_power_minus_1 = 0.00613509151298",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::control.mid.max_positive_column_power_minus_1 = 0.0011613368988",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::control.fine.max_positive_column_power_minus_1 = 0.000253081321716",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.capture_witness_rel_err_v_ref_t = 3.40641293503e-07",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.capture_witness_rel_err_v_ref_t = 4.3724301908e-07",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.capture_witness_rel_err_v_ref_t = 1.6600312345e-06",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.te10_by_plane.recv_ref.ez_index_flip_antisym_fraction_bin16 = 0.176299051162",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.te10_by_plane.recv_ref.ez_index_flip_antisym_fraction_bin16 = 0.0874712215995",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.te10_by_plane.recv_ref.ez_index_flip_antisym_fraction_bin16 = 0.043656256948",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.te10_by_plane.drive_ref.ez_index_flip_antisym_fraction_bin16 = 0.21421881945",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.node_registration_readthrough.TE20_node.read_as_te10_fraction_e = 0.145045255652",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.node_registration_readthrough.TE20_node.read_as_te10_fraction_e = 0.0736951199796",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.node_registration_readthrough.TE20_node.read_as_te10_fraction_e = 0.0369899386047",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.node_registration_readthrough.TE20_node.read_as_te10_fraction_h = 0.118183716666",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.node_registration_readthrough.TE30_node.read_as_te10_fraction_e = -1.20500254506e-08",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.perp_first_hop_ratio_bin16 = 8.06836335564",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.predicted_first_hop_ratio = 7.84376319065",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.modes.TE20.perp_first_hop_ratio_bin16 = 9.44029397441",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.modes.TE20.predicted_first_hop_ratio = 9.26318463773",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE20.perp_first_hop_ratio_bin16 = 9.76054843277",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE20.predicted_first_hop_ratio = 9.64391745457",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.perp_share_of_orthogonal_field_bin16 = 0.94203677608",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.modes.TE20.perp_share_of_orthogonal_field_bin16 = 0.985028021403",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE20.perp_share_of_orthogonal_field_bin16 = 0.99614513488",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE30.perp_first_hop_ratio_bin16 = 7.72953017809",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE30.predicted_first_hop_ratio = 246.136785841",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE30.perp_first_hop_ratio_bin16 = 9.53809273725",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE30.predicted_first_hop_ratio = 362.972776107",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.perp_overlap_e_drive_ref[16] = 0.043552662982",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.modes.TE20.perp_overlap_e_drive_ref[16] = 0.0237921440842",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE20.perp_overlap_e_drive_ref[16] = 0.0123969522787",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.V_perp_over_V_bin16 = 0.0066205640709",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.V_perp_over_V_bin16 = 0.00177567147278",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.V_perp_over_V_bin16 = 0.000461615550825",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.I_perp_over_I_bin16 = 0.00403323971153",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.te10_by_plane.drive_ref.perp_fraction_e[16] = 0.0452058029301",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.te10_by_plane.drive_ref.perp_fraction_e[16] = 0.02396538778",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.te10_by_plane.drive_ref.perp_fraction_e[16] = 0.0124222702635",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref3cells.named_mode_perp_overlap_over_te10_bin16.TE20 = 0.043552662982",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref4cells.named_mode_perp_overlap_over_te10_bin16.TE20 = 0.0320647267585",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref11cells.named_mode_perp_overlap_over_te10_bin16.TE20 = 0.00395927695883",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref3cells.D_meas_bin16 = -0.00506140347538",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref4cells.D_meas_bin16 = -0.00521153356905",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref11cells.D_meas_bin16 = 0.000686169202189",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref4cells.D_pred_cal_bin16 = -0.00526609173131",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref11cells.D_pred_cal_bin16 = 0.000710941456326",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref3cells.band_mean_s11_mag = 0.0243161674589",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref4cells.band_mean_s11_mag = 0.0245576649904",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref11cells.band_mean_s11_mag = 0.0255859978497",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::falsifier.ref11cells.max_positive_column_power_minus_1 = 0.00158321857452",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.perp_mirror_control_bin16 = 0.0046068177793",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.modes.TE20.perp_mirror_control_bin16 = 0.00228059479426",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE20.perp_mirror_control_bin16 = 0.00172401364147",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.D_pred_cal_alt_ref_bin16 = -0.00476594373321",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.D_pred_cal_alt_ref_bin16 = -0.00102903707251",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_pred_cal_alt_ref_bin16 = -0.000234622901195",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.far_plane_shape_disagreement_bin16 = 0.000208557111136",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.D_pred_bin16 = -0.000373040755406",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.D_pred_bin16 = 0.00229805818739",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_pred_bin16 = 0.000414691544335",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.te10_by_plane.recv_ref.D_pred_at_this_plane[16] = 0.00232452880914",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.overlap_e_with_te10 = -2.08600497986e-16",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE30.overlap_e_with_te10 = -1.37027833151e-08",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.te10_by_plane.drive_ref.reconstruction_rel_err_V = 1.46835650497e-11",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.D_pred_recv_ref_bin16 = 3.22243134399e-08",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.D_pred_recv_ref_bin16 = 0.000416677695025",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE20.alpha_per_m[16] = 115.844697301",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.mid.modes.TE20.alpha_per_m[16] = 125.199544595",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.fine.modes.TE20.alpha_per_m[16] = 127.464983185",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE30.overlap_h_with_te10 = 0.0534383090981",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE50.overlap_h_with_te10 = 0.0972295365053",
+    "tests/fixtures/waveguide_false_lane_column_power/near_field_composition.json::read.per_rung.coarse.modes.TE70.overlap_h_with_te10 = 0.148373121362"
+   ]
+  },
+  "docs/design_notes/20260921_open_boundary_contract.md": {
+   "5. The evidence behind C2 and C5": [
+    "scripts/diagnostics/open_boundary_contract/result_main_pad0_ceil_sizing.json::arms[0].settling_db = -43.71"
+   ],
+   "8. Numeric provenance": [
+    "scripts/diagnostics/open_boundary_contract/result_main.json::arms[1].worst_rate_per_step = 2.55e-3",
+    "scripts/diagnostics/open_boundary_contract/result_main.json::arms[3].worst_rate_per_step = 7.68e-4",
+    "scripts/diagnostics/open_boundary_contract/result_main.json::arms[0].worst_rate_per_step = 5.84e-4",
+    "scripts/diagnostics/open_boundary_contract/result_main.json::arms[4].settling_db = -43.30",
+    "scripts/diagnostics/open_boundary_contract/result_main.json::arms[4].worst_rate_per_step = -1.93e-4",
+    "scripts/diagnostics/open_boundary_contract/cont/n2_pad10_cpml4_a/result.json::settling_db = -44.81",
+    "scripts/diagnostics/open_boundary_contract/cont/n2_pad10_cpml4_a/result.json::worst_rate_per_step = -3.94e-4",
+    "scripts/diagnostics/open_boundary_contract/cont/n2_pad0_cpml4_a/result.json::settling_db = -43.04",
+    "scripts/diagnostics/open_boundary_contract/cont/n2_pad0_cpml4_a/result.json::worst_rate_per_step = -3.82e-4",
+    "scripts/diagnostics/open_boundary_contract/cont/n3_pad10_cpml6_a/result.json::settling_db = -44.80",
+    "scripts/diagnostics/open_boundary_contract/cont/n3_pad10_cpml6_a/result.json::worst_rate_per_step = -2.66e-4",
+    "scripts/diagnostics/open_boundary_contract/cont/n4_pad10_cpml8_a/result.json::settling_db = -44.82",
+    "scripts/diagnostics/open_boundary_contract/cont/n4_pad10_cpml8_a/result.json::worst_rate_per_step = -1.99e-4",
+    "scripts/diagnostics/open_boundary_contract/result_main_plus_1012.json::arms[1].worst_rate_per_step = 8.03e-4"
+   ]
+  }
+ }
+}

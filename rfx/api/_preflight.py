@@ -498,18 +498,127 @@ class _PreflightMixin:
                 # other two rounded to cells, so the three disagreed in a band
                 # (5h/dx = 15.2, offset 15: rounded compliant, float violating).
                 # One helper, one answer.
+                # The standoff is a LENGTH -- the source fringing decays
+                # over ~5 substrate thicknesses, which knows nothing about
+                # the mesh -- and the cell count is that length divided by
+                # the cells the runway actually has at this port. Reading
+                # the boundary scalar counted the wrong cells for a port on
+                # a graded runway: on a 2x-refined runway it asked for half
+                # the physical standoff (G17).
+                from rfx.preflight._common import (
+                    profile_cell_at as _profile_cell_at,
+                    profile_node_at as _profile_node_at,
+                    profile_span_is_uniform as _profile_span_is_uniform,
+                )
+                from rfx.preflight.msl import (
+                    msl_axis_runs_interval_solve as _runs_interval_solve,
+                    msl_auto_probe_ladder as _auto_ladder,
+                    msl_auto_probe_offset_cells as _auto_offset_cells,
+                    msl_auto_probe_offset_term as _auto_offset_term,
+                )
+                from rfx.sources.msl_port import (
+                    msl_axis_roles as _msl_axis_roles,
+                )
+                _prop_axis, _, _, _prop_sign = _msl_axis_roles(pe.direction)
+                _ax_i = "xyz".index(_prop_axis)
+                _runway_profile = (self._dx_profile, self._dy_profile,
+                                   self._dz_profile)[_ax_i]
+                # The feed plane is the port position ON ITS OWN
+                # propagation axis: ``position[0]`` for a +x/-x port,
+                # ``position[1]`` for +y/-y.
+                _feed_coord = float(pe.position[_ax_i])
+                # The port is stamped on the node nearest that coordinate,
+                # and its probes occupy the cells on the launch side of it.
+                _feed_node = _profile_node_at(
+                    self._dx or 0.0, _runway_profile, _feed_coord)
+                _runway_dx = _profile_cell_at(
+                    self._dx or 0.0, _runway_profile, _feed_node,
+                    toward="hi" if _prop_sign > 0 else "lo")
                 _nf_cells = msl_source_near_field_standoff_cells(
-                    float(pe.height), float(self._dx) if self._dx else 0.0)
-                if (self._dx and pe.n_probe_offset is not None
-                        and int(pe.n_probe_offset) < _nf_cells):
+                    float(pe.height), _runway_dx)
+                # A count is only meaningful where the cells it counts are
+                # equal. Across a ramp the answer depends on where you start,
+                # so say so rather than answer, the way the S path already
+                # refuses a reference span that leaves one grading zone.
+                # signed: a -x port's probes run toward smaller x, so the
+                # span to inspect is on that side of the feed plane
+                _standoff_len = _nf_cells * _runway_dx * int(_prop_sign)
+                if not _profile_span_is_uniform(
+                        self._dx or 0.0, _runway_profile,
+                        _feed_node, _standoff_len):
                     messages.append(
-                        f"MSL port {pe.name!r}: n_probe_offset="
-                        f"{pe.n_probe_offset} sits within the source fringing "
-                        f"transient ({_nf_cells} cells = max(3, round("
-                        f"5·h_sub/dx))); probe 0 may corrupt the V·I-split S11 "
-                        f"of a high-Q resonant load (issue #80) — increase "
-                        f"n_probe_offset or leave it None for the safe default."
+                        f"MSL port {pe.name!r}: the source-fringing standoff "
+                        f"({abs(_standoff_len)*1e3:.3g} mm from the feed plane) "
+                        f"crosses cells of more than one size on the "
+                        f"{_prop_axis} runway, so a probe-offset in CELLS "
+                        "does not name one distance. Put the port and its "
+                        "probes inside one uniform zone of the profile."
                     )
+                elif self._dx and pe.n_probe_offset is not None:
+                    # What leaving the offset None gives on this port, counted
+                    # the way the driver counts it (#810): the automatic
+                    # lengths in this runway's cell where the ladder lies in
+                    # one zone, in the boundary cell where it would cross a
+                    # ramp. An automatic port is judged on that same count,
+                    # the offset the driver will use, not the stored one.
+                    _auto = pe.name in getattr(self, "_msl_auto_offset_min", {})
+                    _lengths = getattr(
+                        self, "_msl_auto_probe_lengths", {}).get(pe.name)
+                    _off = int(pe.n_probe_offset)
+                    _none_txt = ""
+                    _none_clears = False
+                    if _lengths is not None:
+                        _sp_auto = pe.name in getattr(
+                            self, "_msl_auto_probe_spacing", {})
+                        _none_off, _, _none_cell, _none_on_runway = (
+                            _auto_ladder(
+                                _runway_profile, float(self._dx), _feed_coord,
+                                _prop_sign, int(pe.n_probes), _lengths[0],
+                                float(pe.height), _lengths[1],
+                                n_probe_spacing=(None if _sp_auto
+                                                 else pe.n_probe_spacing)))
+                        if not _none_on_runway:
+                            _none_cell = float(self._dx)
+                            _none_off = _auto_offset_cells(
+                                _lengths[0], float(pe.height), _none_cell)
+                        if _auto:
+                            _off = _none_off
+                        _none_clears = _none_off >= _nf_cells
+                        _none_term = _auto_offset_term(
+                            _lengths[0], float(pe.height), _none_cell)
+                        _none_txt = (
+                            f"counts {_none_term} "
+                            + (f"in this runway's {_fmt_len(_none_cell)} "
+                               f"cells" if _none_on_runway else
+                               "in the boundary cell because counted in this "
+                               "runway's own cells its probe ladder would "
+                               "cross a grading ramp")
+                            + (", at least " if _none_on_runway
+                               and _runs_interval_solve(_runway_profile)
+                               else ", ")
+                            + f"{_none_off} cells")
+                    if _off < _nf_cells:
+                        _remedy = (
+                            f"set n_probe_offset >= {_nf_cells} explicitly; the "
+                            f"automatic choice {_none_txt}, and leaving it None "
+                            f"chooses {_off} again."
+                            if _auto else
+                            f"increase n_probe_offset or leave it None: the "
+                            f"automatic offset {_none_txt}."
+                            if _none_clears else
+                            f"set n_probe_offset >= {_nf_cells}; leaving it "
+                            f"None {_none_txt}, and falls short on this runway."
+                            if _none_txt else
+                            f"set n_probe_offset >= {_nf_cells}."
+                        )
+                        messages.append(
+                            f"MSL port {pe.name!r}: n_probe_offset="
+                            f"{_off} sits within the source fringing "
+                            f"transient ({_nf_cells} cells = max(3, round("
+                            f"5·h_sub/dx))); probe 0 may corrupt the V·I-split "
+                            f"S11 of a high-Q resonant load (issue #80) — "
+                            + _remedy
+                        )
         if self._waveguide_ports:
             messages.append("waveguide ports use compute_waveguide_s_matrix()")
         if self._floquet_ports:

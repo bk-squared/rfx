@@ -1,0 +1,75 @@
+name: docs-consistency
+
+# Notes, guides and READMEs checked against what the code, a committed record or
+# a script prints: every test marked `docs_consistency`. NOT a required check,
+# on purpose. A documentation mismatch never holds a merge (PI, 2026-09-22).
+# It runs on every PR and every push to main so its reds stay visible, and they
+# are fixed in the documentation batch before a release: each red goes as one
+# line to the open documentation-batch issue (lane:examples-docs, tracker 1171).
+# Numbers, tests, gates and records still block. A record number that only a
+# prose check held is pinned in a required test, and a file that is part of a
+# gate is read by a required test marked `reads_docs_for_gate(reason=...)`.
+#
+# Required checks compare numbers with a tolerance, never text (PI,
+# 2026-09-24). Of the nine red `main` runs of 2026-09-22/24, four were a notes
+# table compared with a script's output whose last digit followed the OpenBLAS
+# kernel (#1262). So the required lanes deselect this marker -- pyproject's
+# default addopts for the fast-suite shards, `-m "not gpu and not
+# docs_consistency"` for the two gates in pr-tests.yml that override addopts --
+# and this workflow selects only it. tests/_prose_reads.py fails any test that
+# reads prose without the marker, so the split cannot drift back.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Superseded runs on the same PR/branch are cancelled; pushes to main are not.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  docs-consistency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        # fetch-depth: 0 -- two notes tests ask git whether the commits their
+        # records name share an rfx/ tree, and skip on a shallow clone.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      # The same extras as the fast suite: collection imports every test module.
+      - name: Install package with dev dependencies
+        run: pip install -e ".[dev,cad]"
+
+      # -o addopts="" because the default addopts deselect exactly these tests.
+      # The collect-count floor catches the other way a lane goes quiet: a
+      # marker nobody selects any more collects nothing and passes.
+      # The four --ignore paths are the fast suite's, so both lanes collect the
+      # same modules.
+      - name: Documentation against code, records and script output
+        run: |
+          set -e
+          IGNORE="--ignore=tests/crossval/test_meep_crossval.py
+            --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
+            --ignore=tests/crossval/test_openems_crossval.py
+            --ignore=tests/crossval/test_crossval_comprehensive.py"
+          collected=$(python -m pytest --collect-only -q -o addopts="" -m "docs_consistency and not gpu" $IGNORE tests | grep -c "::" || true)
+          echo "collected $collected docs_consistency tests"
+          if [ "$collected" -lt 50 ]; then
+            echo "FAIL: only $collected docs_consistency tests collected (<50) -- silent deselection?"
+            exit 1
+          fi
+          python -m pytest -q -ra -p no:cacheprovider -o addopts="" \
+            -m "docs_consistency and not gpu" --strict-markers $IGNORE tests

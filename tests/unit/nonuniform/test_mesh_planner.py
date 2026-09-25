@@ -118,8 +118,11 @@ def test_plan_simulation_mesh_suppresses_preflight_output_and_captures_sparam_is
 
     plan = plan_simulation_mesh(sim, n_steps=4, sparameter_calculator="msl")
 
-    captured = capsys.readouterr()
-    assert captured.out == ""
+    # Only preflight's [PREFLIGHT] lines are this call's to suppress; another
+    # part of the process may write to stdout.
+    assert "[PREFLIGHT]" not in capsys.readouterr().out
+    sim.preflight()
+    assert "[PREFLIGHT]" in capsys.readouterr().out, "nothing to suppress here"
     assert plan.accuracy is None
     assert plan.plan_source == "configured_simulation"
     assert plan.grid_shape == sim.mesh_intelligence_report().grid_shape

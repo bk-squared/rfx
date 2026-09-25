@@ -95,7 +95,6 @@ import numpy as np
 import pytest
 
 
-@pytest.mark.slow
 def test_nonuniform_xy_graded_cavity_tm110_accuracy():
     """A genuinely x- AND y-graded NU mesh reproduces the closed-form TM110 cavity
     resonance to within a measured tolerance.

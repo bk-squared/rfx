@@ -52,6 +52,7 @@ from jax.experimental.shard_map import shard_map
 from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
+    map_lumped,
 )
 from rfx.simulation import (
     make_source,
@@ -63,9 +64,11 @@ from rfx.sources.sources import LumpedPort, setup_lumped_port
 from rfx.materials.debye import DebyeCoeffs, DebyeState
 from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 
-# Re-export domain splitting helpers from the original module so existing
-# callers that import them directly continue to work.
-from rfx.runners.distributed import (
+# Domain splitting, local Yee update and x-slab CPML helpers. They lived in
+# ``distributed.py`` until its pmap runner was retired; the names this module
+# does not call are still bound here so callers that import them from it keep
+# working.
+from rfx.runners._distributed_common import (
     gather_array_x,
     _split_state,
     _split_materials,
@@ -637,19 +640,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         else ()
     )
 
-    # ------------------------------------------------------------------
-    # Single-device fast path: skip all sharding overhead.
-    # ------------------------------------------------------------------
-    if n_devices == 1:
-        # This lane realizes a declared PEC volume (#1053) but the pmap
-        # runner does not, so a volume is refused HERE and runs at
-        # n_devices >= 2. Not reachable from Simulation.run(devices=...),
-        # which dispatches here only for len(devices) > 1; a direct caller
-        # passing one device gets the pmap refusal, which is honest about
-        # that runner (#1055).
-        from rfx.runners.distributed import run_distributed as _pmap_run
-        return _pmap_run(sim, n_steps=n_steps, devices=devices,
-                         exchange_interval=exchange_interval, **kwargs)
+    # One device runs the same shard_map path on a one-device mesh (#1296).
+    # Until #1296 this call was handed to the pmap runner, which dropped the
+    # declared-PEC cell mask and so refused a PEC volume at one device that
+    # this path realizes at two. Simulation.run(devices=...) dispatches here
+    # only for len(devices) > 1; a one-device run() takes the uniform lane.
 
     # ------------------------------------------------------------------
     # Build grid and materials (full domain)
@@ -751,6 +746,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             eps_r=jnp.pad(materials.eps_r, _pad_x, constant_values=1.0),
             sigma=jnp.pad(materials.sigma, _pad_x, constant_values=0.0),
             mu_r=jnp.pad(materials.mu_r, _pad_x, constant_values=1.0),
+            # #1236: the lumped records ride along (a pad cell holds none),
+            # so the slab update can keep each stamp on its own component.
+            sigma_lumped=map_lumped(
+                materials.sigma_lumped,
+                lambda a: jnp.pad(a, _pad_x, constant_values=0.0)),
+            eps_r_lumped=map_lumped(
+                materials.eps_r_lumped,
+                lambda a: jnp.pad(a, _pad_x, constant_values=0.0)),
         )
         if pec_mask is not None:
             pec_mask = jnp.pad(pec_mask, _pad_x, constant_values=True)
@@ -975,14 +978,22 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         eps_r=shard_x_slabs(materials.eps_r, n_devices, nx_per, ghost, 1.0, shd),
         sigma=shard_x_slabs(materials.sigma, n_devices, nx_per, ghost, 0.0, shd),
         mu_r=shard_x_slabs(materials.mu_r, n_devices, nx_per, ghost, 1.0, shd),
+        # #1236: a lumped element loads its own E edge only; the slab update
+        # needs the per-component record for that (None when no stamp).
+        sigma_lumped=map_lumped(
+            materials.sigma_lumped,
+            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, 0.0, shd)),
+        eps_r_lumped=map_lumped(
+            materials.eps_r_lumped,
+            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, 0.0, shd)),
     )
 
     # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
     # scan receives it as a jit argument next to ``sharded_materials`` (on
     # every topology since PI decision A, 2026-09-23), not through
-    # ``run_distributed``'s ``**kwargs``: that kwargs bag is forwarded only on
-    # the ``n_devices == 1`` fast path and is silently discarded at exactly the
-    # device counts this stage exists for.
+    # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
+    # and otherwise discarded (it was forwarded only to the pmap runner at one
+    # device, until #1296).
     sharded_pec_mask = (
         None if pec_mask is None
         else shard_x_slabs(pec_mask, n_devices, nx_per, ghost, False, shd))
@@ -1183,6 +1194,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 P("x"), P("x"), P("x"),  # hx, hy, hz
                 P(),                     # step
                 P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
+                # #1236 lumped records: None or (x, y, z) of arrays / None
+                P("x"), P("x"),
                 # debye coeffs
                 P("x"), P("x"), P("x"), P("x"), P("x"),
                 # debye state
@@ -1201,13 +1214,15 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             check_rep=False,
         )
         def _e(ex, ey, ez, hx, hy, hz, step,
-               eps_r, sigma, mu_r,
+               eps_r, sigma, mu_r, sigma_lumped, eps_r_lumped,
                d_ca, d_cb, d_cc, d_alpha, d_beta,
                d_px, d_py, d_pz,
                l_ca, l_cb, l_cc, l_a, l_b, l_c,
                l_px, l_py, l_pz, l_px_prev, l_py_prev, l_pz_prev):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+                                  sigma_lumped=sigma_lumped,
+                                  eps_r_lumped=eps_r_lumped)
             _db = (DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc, alpha=d_alpha, beta=d_beta),
                    DebyeState(px=d_px, py=d_py, pz=d_pz)) if has_debye else None
             _lr = (LorentzCoeffs(ca=l_ca, cb=l_cb, cc=l_cc, a=l_a, b=l_b, c=l_c),
@@ -1238,7 +1253,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
          nl_px, nl_py, nl_pz,
          nl_pxp, nl_pyp, nl_pzp) = _e(
             st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r,
+            mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped,
             db_coeffs.ca, db_coeffs.cb, db_coeffs.cc, db_coeffs.alpha, db_coeffs.beta,
             db_st.px, db_st.py, db_st.pz,
             lr_coeffs.ca, lr_coeffs.cb, lr_coeffs.cc, lr_coeffs.a, lr_coeffs.b, lr_coeffs.c,

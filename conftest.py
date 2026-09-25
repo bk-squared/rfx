@@ -32,6 +32,10 @@ import warnings  # noqa: E402
 import jax  # noqa: E402
 import pytest  # noqa: E402
 
+# A test that reads a note, a guide or a README must be marked docs_consistency,
+# which only the non-required docs-consistency workflow runs (PI, 2026-09-24).
+pytest_plugins = ("tests._prose_reads",)
+
 
 def pytest_configure(config):
     """Warn (but do not abort) when fewer than 2 JAX devices are visible.
@@ -184,7 +188,13 @@ class _RSSLiveSampler:
             # reading jax's printed residuals) would otherwise read this line
             # as a residual and get an unknown total -- the intermittent
             # "assert None" of the design-box tape tests in the PR lane.
-            print(f"[rss-live] VmHWM {mb:.0f} MB{suffix}", file=sys.stderr, flush=True)
+            # sys.__stderr__, not sys.stderr: capsys swaps sys.stderr for the
+            # test that is running, so the line landed in that test's captured
+            # stderr and broke any assertion on the whole stream. The original
+            # stream is file descriptor 2, which -s streams to the log and fd
+            # capture keeps with the running test's report, as before.
+            print(f"[rss-live] VmHWM {mb:.0f} MB{suffix}",
+                  file=sys.__stderr__ or sys.stderr, flush=True)
 
     def _run(self) -> None:
         while not self._stop_event.wait(self.interval_s):

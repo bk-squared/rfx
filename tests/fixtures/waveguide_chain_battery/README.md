@@ -1,6 +1,7 @@
 # waveguide_chain_battery — fixture JSON schema
 
-Four battery artifacts live in this directory, one per pre-declared run, and they share this schema.
+Four historical battery artifacts live in this directory, one per pre-declared run, and they share this schema.
+The cell-only live reference from #1012 is documented separately below.
 The separate `closure_witness.json` is documented below.
 
 | file | `schema_version` | pre-declaration | port | shift pair |
@@ -20,14 +21,14 @@ pre-declared zero-derivative leg carried as `report_only`.
 `fixture_v18_close.json` was measured under the sigma=1e10 device cell-fill operator;
 it is preserved unchanged and superseded because the device lane now applies realized PEC edges.
 
-The live reference is `fixture_931_realized_pec_forward2_run369367259427.json`,
+The historical schema-4 reference is `fixture_931_realized_pec_forward2_run369367259427.json`,
 a byte-for-byte ingest of the PI-adjudicated run **369367259427**, commit `6df7ccaf`,
 schema 4, predeclaration `bcce73c9`. The filename identifies the realized-PEC
 operator, admissible second-order forward eps stencil, and source run. Its 18 cells,
 14 AD/FD legs and 178 verdicts recompute as **102 pass / 76 report_only / 0 fail /
-0 not_interpretable**. The CPU and GPU live cell comparisons in
-`tests/oracle/test_waveguide_chain_battery_v18_close.py` use this reference;
-the third live test (coarse plane shift) checks physics directly. Historical
+0 not_interpretable**. Its historical replay remains in
+`tests/oracle/test_waveguide_chain_battery_v18_close.py`;
+the coarse plane-shift live test checks physics directly. Historical
 schema 1–3 replays retain their own artifacts and assertions.
 
 Provenance caveat: the supplied JSON records `provenance.run_id` as
@@ -54,6 +55,43 @@ parent declaration at `bcce73c9` for run 4) so that every tolerance, position an
 that run's first measured S-parameter. This file fixes the schema the measurement writes, so
 the writer and the replay gate cannot drift. Gate arithmetic shared by the writer and the
 replay: `tests/_waveguide_chain_battery_gates.py`.
+
+## #1012 live cell reference
+
+#1012 samples the magnetic CPML profile at the Yee half cell; the empty guide's worst
+reflection at the fine rung falls from −42.8 dB to −55.8 dB, and every thru/short cell moves
+by up to 0.029. The slab cells are re-frozen from VESSL 369367264100 (arm B, commit
+31531379, which contains #1213 and #1012). Their distance from the Airy reference at fine /
+mid / coarse (false normalization) is 0.0149 / 0.0607 / 0.287; the record they replace was
+0.101 / 0.232 / 0.581.
+
+`fixture_1012_cpml_half_cell_run369367264100.json` is the reference for the
+CPU and GPU live **cell** comparisons. It uses the distinct schema
+`rfx.waveguide_chain_battery.live_cells`, version 1: `fixture` holds the unchanged
+geometry, `cells` holds all 18 comparisons, and `cell_provenance` records each
+old/new source and max complex A−old-frozen, B−old-frozen and B−reference distance.
+
+The 12 thru/PEC-short cells and their provenance are retained exactly from
+`bk-squared/rfx-archive`
+`rfx/records/20260924-1012-cpml-half-cell/fixture_1012_cpml_half_cell_run369367264028.json`
+at `5e86eb5`, measured in VESSL **369367264028**
+(arm B, commit `c0d2cfd035471768a0a8ad374110041afa205e00`). The six slab cells use
+arm B of VESSL **369367264100**, commit `315313793ae4c96c8e27af4eb48e3517db078082`;
+its comparison arm A was `1f7204630c8b83cf6b4530fdd45cc52353d699a6`.
+
+Replacement cells use the saved S matrices, grid values, preflight codes and
+settling dB. Preflight entries contain only `code`, because that is what the
+capture saved and the live comparison reads. Uncaptured warning text, settling
+records and other historical fields are not relabeled as new measurements.
+All retained fixture files remain unchanged; the previous live-cell record is
+archived byte for byte at the path and commit above. Historical enforcement
+hashes, tolerances, AD/FD, ladder and plane-shift replay records also remain unchanged.
+
+The source run used `_measure_cell(dut, rung, lane)` in
+`tests/oracle/test_waveguide_chain_battery.py` for all three rungs and both
+normalizations. The new record stores source JSON hashes and per-cell run IDs
+and commits; its filename names the run supplying the six replacement slab cells.
+SHA-256: `90ac2c88a7686baa888f9b7de5f0d145a81e89d3d153a25a235bf45e463ee74b`.
 
 Units: metres, hertz, seconds, S/m, decibels, degrees. Complex values are written as
 `[re, im]` pairs. Every measured number carries the provenance block that produced it.

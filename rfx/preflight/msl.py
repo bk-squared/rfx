@@ -62,6 +62,8 @@ from typing import Literal
 
 import numpy as np
 
+from rfx._grid_metric import is_one_cell_size
+from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _fmt_len,
     _absorber_boundary_for_axis,
@@ -69,6 +71,10 @@ from rfx.preflight._common import (
     _ABSORBER_PROXIMITY_CELLS,
     _coord_near_absorber,
     PreflightWarning,
+    profile_boundary_cell,
+    profile_cell_at,
+    profile_node_at,
+    profile_span_is_uniform,
 )
 
 
@@ -389,6 +395,111 @@ def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
     if not (h > 0.0) or not (dx > 0.0) or not (math.isfinite(h) and math.isfinite(dx)):
         return floor
     return max(floor, int(round(_MSL_NEAR_FIELD_STANDOFF_H_SUB * h / dx)))
+
+
+# ``add_msl_port``'s automatic probe ladder, as LENGTHS counted in a cell.
+#
+# The automatic offset clears two near-field scales of the launch, and both
+# are lengths: the source fringing (``5*h_sub``, the standoff above) and
+# ``lambda_eff/(4*pi)`` at f_max. The automatic spacing keeps the ladder span
+# at ``lambda_eff/8``. ``add_msl_port`` counts them in the simulation's scalar
+# cell; on a graded propagation axis the driver-time resolver
+# (``rfx.sparams._common._resolve_msl_auto_offsets``) counts the same lengths
+# in the runway cell at the port, and preflight check 5 and the S-parameter
+# routing check ask what the automatic offset would be. All four call the
+# functions below, so they cannot disagree about a port. With the scalar cell
+# they return the integers ``add_msl_port`` has always stored.
+
+_MSL_AUTO_MIN_SPACING_CELLS = 2
+
+
+def msl_auto_probe_offset_cells(near_field_m: float, h_sub_m: float,
+                                cell_m: float) -> int:
+    """The automatic ``n_probe_offset`` counted in ``cell_m``.
+
+    ``max(3, round(near_field_m / cell_m), round(5*h_sub_m / cell_m))``, where
+    ``near_field_m`` is ``lambda_eff/(4*pi)`` at f_max as ``add_msl_port``
+    stored it and the fringing term is
+    :func:`msl_source_near_field_standoff_cells`.
+    """
+    return max(msl_source_near_field_standoff_cells(h_sub_m, cell_m),
+               int(round(float(near_field_m) / float(cell_m))))
+
+
+def msl_auto_probe_spacing_cells(span_m: float, n_probes: int,
+                                 cell_m: float) -> int:
+    """The automatic ``n_probe_spacing`` counted in ``cell_m``: the ladder
+    span ``span_m`` (``lambda_eff/8``) split into ``n_probes - 1`` steps,
+    never below two cells."""
+    return max(_MSL_AUTO_MIN_SPACING_CELLS,
+               int(round(float(span_m) / (int(n_probes) - 1) / float(cell_m))))
+
+
+def msl_auto_probe_offset_term(near_field_m: float, h_sub_m: float,
+                               cell_m: float) -> str:
+    """Name the term that sets :func:`msl_auto_probe_offset_cells`, with its
+    length, for advisory text."""
+    n = msl_auto_probe_offset_cells(near_field_m, h_sub_m, cell_m)
+    lam_cells = int(round(float(near_field_m) / float(cell_m)))
+    fringe_cells = int(round(
+        _MSL_NEAR_FIELD_STANDOFF_H_SUB * float(h_sub_m) / float(cell_m)))
+    terms = []
+    if lam_cells == n:
+        terms.append(f"λ_eff/(4π) at f_max = {_fmt_len(near_field_m)}")
+    if fringe_cells == n:
+        terms.append(
+            f"5·h_sub = {_fmt_len(_MSL_NEAR_FIELD_STANDOFF_H_SUB * h_sub_m)}")
+    if not terms:
+        return f"the {_MSL_NEAR_FIELD_MIN_OFFSET_CELLS}-cell minimum"
+    return " and ".join(terms)
+
+
+def msl_auto_probe_ladder(profile, scalar_dx: float, feed_m: float,
+                          direction_sign: float, n_probes: int,
+                          near_field_m: float, h_sub_m: float, span_m: float,
+                          *, n_probe_offset=None, n_probe_spacing=None):
+    """The automatic probe ladder counted in the runway cell at a port.
+
+    Returns ``(n_probe_offset, n_probe_spacing, runway_cell, on_one_zone)``.
+
+    ``profile`` holds the propagation axis's interior cells with the first
+    interior node at 0 (a declared ``dx_profile``, or ``interior_cells`` of a
+    built grid); ``None`` means every cell is ``scalar_dx``. The runway cell is
+    the one beside the node the source is stamped on, on the side the port
+    launches into. An explicit ``n_probe_offset`` or ``n_probe_spacing`` is
+    returned as given; only the automatic ones are counted here.
+
+    ``on_one_zone`` says whether the span from that node through the deepest
+    probe crosses cells of one size. Where it does not, a count of runway
+    cells names no single length along the ladder, and the caller must not
+    use the counts.
+    """
+    node = profile_node_at(scalar_dx, profile, feed_m)
+    cell = profile_cell_at(scalar_dx, profile, node,
+                           toward="hi" if direction_sign > 0 else "lo")
+    off = (int(n_probe_offset) if n_probe_offset is not None
+           else msl_auto_probe_offset_cells(near_field_m, h_sub_m, cell))
+    sp = (int(n_probe_spacing) if n_probe_spacing is not None
+          else msl_auto_probe_spacing_cells(span_m, n_probes, cell))
+    reach = (off + (int(n_probes) - 1) * sp) * cell
+    on_one_zone = profile_span_is_uniform(
+        scalar_dx, profile, node, reach if direction_sign > 0 else -reach)
+    return off, sp, cell, on_one_zone
+
+
+def msl_axis_runs_interval_solve(profile) -> bool:
+    """Whether the driver runs the #469 interval solve on this axis.
+
+    It does on an axis with no profile or a profile of one cell size, where
+    an automatic offset is only the LOWER edge: a downstream reflector can
+    move it to the interval midpoint. On a graded axis it does not, and the
+    count is the one the driver uses.
+    """
+    if profile is None:
+        return True
+    if is_tracer(profile):
+        return False
+    return is_one_cell_size(np.asarray(profile, dtype=float))
 
 
 def msl_nearest_downstream_reflector(
@@ -723,7 +834,23 @@ def msl_absorber_compliant_offset_max(
     names, so the caller passes that axis's domain extent and CPML
     thicknesses.
     """
-    from rfx.sources.msl_port import msl_probe_x_coords_n as _probe_x_coords_n
+    from rfx.sources.msl_port import (
+        msl_axis_roles as _axis_roles,
+        msl_probe_x_coords_n as _probe_x_coords_n,
+    )
+
+    # The proximity band is measured inward from where the absorber begins,
+    # so its width is the cell AT THAT FACE -- the absorber pad replicates
+    # it -- and the two faces need not agree on a profiled axis. Read off
+    # the grid this function is already walking, through the step-0a
+    # accessor; ``dx`` is the answer on a uniform grid and the fallback for
+    # anything that cannot answer (G17).
+    _prop_axis = _axis_roles(port.direction)[0]
+    try:
+        _cell_lo = float(grid.boundary_cell(_prop_axis, "lo"))
+        _cell_hi = float(grid.boundary_cell(_prop_axis, "hi"))
+    except (AttributeError, TypeError, ValueError):
+        _cell_lo = _cell_hi = float(dx)
 
     off = guess_hi
     while off >= off_lo:
@@ -734,7 +861,10 @@ def msl_absorber_compliant_offset_max(
         x_deep_candidate = ladder[-1]
         if not (
             _coord_in_absorber(x_deep_candidate, domain_x, ct_lo, ct_hi)
-            or _coord_near_absorber(x_deep_candidate, domain_x, ct_lo, ct_hi, dx)
+            or _coord_near_absorber(x_deep_candidate, domain_x, ct_lo, 0.0,
+                                    _cell_lo)
+            or _coord_near_absorber(x_deep_candidate, domain_x, 0.0, ct_hi,
+                                    _cell_hi)
         ):
             return off
         off -= 1
@@ -1019,9 +1149,11 @@ def _check_msl_port_geometry(
        error and dragged the full-ladder fit residual to
        0.342/0.264/0.222, while every window excluding it fit to
        1e-5..4e-3. The threshold is ``max(3, round(5·h_sub/dx))`` —
-       the repo's EXISTING issue-#80 Fix B constant, which
-       ``add_msl_port`` already floors every AUTO ``n_probe_offset``
-       to, so only an EXPLICIT offset can reach this check. See
+       the repo's EXISTING issue-#80 Fix B constant — with ``dx`` the
+       runway cell at the feed. ``add_msl_port`` floors every AUTO
+       ``n_probe_offset`` to the same constant counted in the BOUNDARY
+       cell, so an automatic offset reaches this check only on a runway
+       finer than that cell, and is then told to set one explicitly. See
        :func:`msl_source_near_field_standoff_cells` for the
        derivation (and for the W/h limitation it carries).
        REPORT-ONLY; the ``msl_probe_*`` ladder of
@@ -1124,6 +1256,40 @@ def _check_msl_port_geometry(
         h_sub = float(pe.height)
         _declared_ground = float(pe.position[_inr])
         _declared_trace = _declared_ground + h_sub
+
+        # Every quantity below that counts cells, or turns a cell count back
+        # into a length, reads the cells AT ITS OWN SITE (G17). The
+        # source-fringing standoff is counted on the cell the feed plane
+        # sits in; the absorber proximity band is measured inward from where
+        # the absorber begins, so its width is the cell at THAT face, and
+        # the two faces need not agree. ``dx`` remains the answer on an
+        # unprofiled axis, which is every axis of a uniform mesh.
+        _prop_profile = (self._dx_profile, self._dy_profile,
+                         self._dz_profile)[_ip]
+        # The source and the probe ladder are stamped from the node nearest
+        # the declared feed, so the cells this port uses start at that node.
+        _feed_node = profile_node_at(dx, _prop_profile, x_feed)
+        _runway_cell = profile_cell_at(
+            dx, _prop_profile, _feed_node,
+            toward="hi" if _dir_sign > 0 else "lo")
+        _abs_cell_lo = profile_boundary_cell(dx, _prop_profile, "lo")
+        _abs_cell_hi = profile_boundary_cell(dx, _prop_profile, "hi")
+        # Issue #823's invariant: checks 4, 4a and 5 and
+        # ``_validate_forward_sparameter_request`` must not disagree about
+        # the same port, so all four read this one number.
+        _nf_std_cells = msl_source_near_field_standoff_cells(
+            h_sub, _runway_cell)
+        # A count in cells names one distance only where the cells it counts
+        # are equal. Across a grading ramp it does not, and the advertised
+        # interval says so instead of quoting a number.
+        _standoff_on_one_zone = profile_span_is_uniform(
+            dx, _prop_profile, _feed_node,
+            _nf_std_cells * _runway_cell * float(_dir_sign))
+        _ramp_txt = (
+            "the source-fringing standoff crosses cells of more than one "
+            f"size on the {_prop_ax} runway, so a probe-offset in CELLS "
+            "does not name one distance here"
+        )
         _absolute_faces = (
             f"declared ground {_norm_ax}={_declared_ground*1e6:.1f}µm and "
             f"trace {_norm_ax}={_declared_trace*1e6:.1f}µm"
@@ -1436,6 +1602,9 @@ def _check_msl_port_geometry(
 
         _mp = _msl_port_from_entry(pe)
         _probe_ladder = None
+        # The node the source is stamped on, which is where the ladder is
+        # counted from; read off the grid when there is one.
+        _src_node = _feed_node
         if _msl_grid is not None:
             try:
                 _probe_ladder = _probe_x_coords_n(
@@ -1443,8 +1612,11 @@ def _check_msl_port_geometry(
                     n_offset_cells=n_off, n_spacing_cells=n_sp,
                 )
                 _probe_ladder = _sampled_node_coordinates(_msl_grid, _mp, _probe_ladder)
+                _src_node = float(
+                    _sampled_node_coordinates(_msl_grid, _mp, (x_feed,))[0])
             except Exception:
                 _probe_ladder = None
+                _src_node = _feed_node
         if _probe_ladder is not None:
             x_deep = _probe_ladder[-1]
             _ladder_dup_count = n_pr - len(set(_probe_ladder))
@@ -1454,8 +1626,24 @@ def _check_msl_port_geometry(
             # pre-fix continuous extrapolation rather than skip
             # checks 4/4a/4b outright. Degeneracy cannot be
             # detected on this path (no real ladder to inspect).
-            x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * dx
+            x_deep = x_feed + sign * (n_off + (n_pr - 1) * n_sp) * _runway_cell
             _ladder_dup_count = 0
+
+        # The interval endpoints below turn the WHOLE ladder into a cell
+        # count, not just the standoff, so the cells the LADDER occupies have
+        # to be equal as well. They need not be: a port can sit in a uniform
+        # runway and still send its deepest probe over a ramp, and the
+        # standoff guard alone would let that print an upper edge (G17).
+        _ladder_on_one_zone = profile_span_is_uniform(
+            dx, _prop_profile, _feed_node, float(x_deep) - _feed_node)
+        _offset_counts_one_distance = (
+            _standoff_on_one_zone and _ladder_on_one_zone)
+        _interval_ramp_txt = (
+            _ramp_txt if not _standoff_on_one_zone else
+            "the probe ladder crosses cells of more than one size on the "
+            f"{_prop_ax} runway, so a probe-offset in CELLS does not name "
+            "one distance here"
+        )
 
         if _ladder_dup_count > 0:
             # Issue #510 review (BLOCKING 2b): a ladder that runs
@@ -1539,16 +1727,26 @@ def _check_msl_port_geometry(
             # cleanly without its own re-derivation. Revisit with
             # the same walk-down technique if this interval is ever
             # found to mislead the same way.
-            d_feed_to_refl = nearest_d + (n_off + (n_pr - 1) * n_sp) * dx
-            off_max = int((d_feed_to_refl - min_probe_clear) / dx) - (n_pr - 1) * n_sp
+            # Every candidate ladder is stamped from the same feed NODE, so
+            # the distance to invert is node-to-reflector. The interval is
+            # printed only where the ladder's cells are one size, and there
+            # the node-to-deepest-probe distance is the count times that
+            # cell. Measuring from the declared feed instead adds the snap
+            # offset, and on a feed whose node lies toward the probes it
+            # advertised one offset more than check 4 then accepts.
+            d_node_to_refl = (nearest_d
+                              + (n_off + (n_pr - 1) * n_sp) * _runway_cell)
+            off_max = (int((d_node_to_refl - min_probe_clear) / _runway_cell)
+                       - (n_pr - 1) * n_sp)
             # Issue #823: the lower edge of the compliant interval IS
-            # the near-field standoff; one helper so checks 4, 4a, 5 and
+            # the near-field standoff; one number so checks 4, 4a, 5 and
             # _validate_forward_sparameter_request cannot disagree about
             # the same port. Numerically identical to the max(3, round(
             # 5*h/dx)) this line spelled out before.
-            _hsub_cells = msl_source_near_field_standoff_cells(h_sub, dx)
+            _hsub_cells = _nf_std_cells
             interval_txt = (
-                f"compliant n_probe_offset interval ≈ "
+                _interval_ramp_txt if not _offset_counts_one_distance
+                else f"compliant n_probe_offset interval ≈ "
                 f"[{_hsub_cells}, {off_max}] cells"
                 if off_max >= _hsub_cells
                 else "no compliant n_probe_offset exists on this feed "
@@ -1602,11 +1800,13 @@ def _check_msl_port_geometry(
         # off the scalar ``dx`` parameter, so not a new limitation.
         _domain_x = float(domain[_ip])
         _deep_idx = n_pr - 1
-        _abs_margin = _ABSORBER_PROXIMITY_CELLS * dx
+        _abs_margin_lo = _ABSORBER_PROXIMITY_CELLS * _abs_cell_lo
+        _abs_margin_hi = _ABSORBER_PROXIMITY_CELLS * _abs_cell_hi
+        _abs_margin = _abs_margin_hi if _dir_sign > 0 else _abs_margin_lo
         _abs_headroom = (
             _domain_x - x_feed if _dir_sign > 0 else x_feed
         )
-        _abs_off_lo = msl_source_near_field_standoff_cells(h_sub, dx)
+        _abs_off_lo = _nf_std_cells
         if _msl_grid is not None:
             # Issue #510 review (BLOCKING 1): the advertised endpoint
             # is now VERIFIED against the real predicate via a
@@ -1617,7 +1817,8 @@ def _check_msl_port_geometry(
             # +4 cells of slack) -- only the walked-down RESULT
             # below is ever reported.
             _abs_guess_hi = (
-                int(math.ceil(_abs_headroom / dx)) - (n_pr - 1) * n_sp + 4
+                int(math.ceil(_abs_headroom / _runway_cell))
+                - (n_pr - 1) * n_sp + 4
             )
             _abs_off_max = msl_absorber_compliant_offset_max(
                 _msl_grid, _mp,
@@ -1630,10 +1831,12 @@ def _check_msl_port_geometry(
             # estimate -- imprecise (issue #510 review, BLOCKING 1)
             # but better than no guidance at all.
             _abs_off_max = (
-                int((_abs_headroom - _abs_margin) / dx) - (n_pr - 1) * n_sp
+                int((_abs_headroom - _abs_margin) / _runway_cell)
+                - (n_pr - 1) * n_sp
             )
         _abs_interval_txt = (
-            f"compliant n_probe_offset interval ≈ "
+            _interval_ramp_txt if not _offset_counts_one_distance
+            else f"compliant n_probe_offset interval ≈ "
             f"[{_abs_off_lo}, {_abs_off_max}] cells"
             if _abs_off_max is not None and _abs_off_max >= _abs_off_lo
             else "no compliant n_probe_offset exists on this feed "
@@ -1656,8 +1859,11 @@ def _check_msl_port_geometry(
                 ),
                 stacklevel=3,
             )
-        elif _coord_near_absorber(
-            x_deep, _domain_x, cpml_thick_lo[_ip], cpml_thick_hi[_ip], dx
+        elif (
+            _coord_near_absorber(x_deep, _domain_x, cpml_thick_lo[_ip], 0.0,
+                                 _abs_cell_lo)
+            or _coord_near_absorber(x_deep, _domain_x, 0.0,
+                                    cpml_thick_hi[_ip], _abs_cell_hi)
         ):
             # Issue #510 review round-2 (nit B): this site was missed
             # when the "just past which" rephrasing (see the matching
@@ -1765,44 +1971,171 @@ def _check_msl_port_geometry(
         # REPORT-ONLY: no gate, no refusal. Same check family, same
         # ``code=`` slug as checks 1/2/2b/2c/3/4 (the check-2c / #752
         # precedent) — a new SITE, not a new advisory kind.
-        _nf_cells = msl_source_near_field_standoff_cells(h_sub, dx)
+        _nf_cells = _nf_std_cells
         _nf_off = pe.n_probe_offset
-        if _nf_off is not None and int(_nf_off) < _nf_cells:
-            _nf_realized = int(_nf_off) * dx
+        # How far probe 0 really is from the source: both ends read off the
+        # grid, the source on the node nearest the declared feed. The fringing
+        # is launched there, so that is the distance the standoff is about.
+        # On an unprofiled axis that distance is n_off * dx by construction,
+        # and the uniform lane keeps printing exactly that.
+        _nf_real = (abs(float(_probe_ladder[0]) - _src_node)
+                    if _probe_ladder and _prop_profile is not None else None)
+        _nf_snap_txt = (
+            f" The grid stamps the source on the node at "
+            f"{_prop_ax}={_src_node * 1e3:.4f}mm, "
+            f"{_fmt_len(abs(x_feed - _src_node))} from the declared feed."
+            if (_prop_profile is not None
+                and abs(x_feed - _src_node) > 1e-3 * _runway_cell) else ""
+        )
+        # ONE emission site, two readings of the same finding: how far this
+        # port's probe 0 sits from its own feed plane against the source
+        # fringing. The frozen emission surface (#737/#742) counts
+        # constructions, and this is one finding, not two.
+        _nf_msg = None
+        if not _standoff_on_one_zone:
+            # The standoff is a LENGTH and ``n_probe_offset`` is a COUNT, so
+            # the two say the same thing only where the cells the count runs
+            # over are equal. With the feed on a grading ramp they are not:
+            # this used to print ``n_off * cell-at-the-feed`` for the realized
+            # distance and a cell-count remedy derived the same way, and the
+            # grid put probe 0 somewhere else -- on a 254 um board whose
+            # runway ramps 254 -> 127 um at ratio 1.25, offset 4 read 812.8 um
+            # where the grid realizes 622.8 um, and the advertised remedy of
+            # 6 cells realizes 876.8 um, 31 % short of the 1.270 mm the
+            # fringing needs. The S-parameter routing check already refuses
+            # this port; one port gets one story, and the realized first-probe
+            # distance below is read off the ladder the extractor itself uses
+            # rather than recomputed from a cell size.
+            _nf_msg = (
+                f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                f"the source fringing decays over about five substrate "
+                f"thicknesses, {_fmt_len(5.0 * h_sub)} on this board, and "
+                f"that is a LENGTH. This port's feed sits where the mesh "
+                f"changes cell size: {_ramp_txt}. Neither the distance an "
+                f"offset buys nor the offset that would clear the transient "
+                f"is one number here."
+                + (f" The grid puts probe 0 {_fmt_len(_nf_real)} "
+                   f"({_nf_real / h_sub:.2f}·h_sub) from the feed plane."
+                   + _nf_snap_txt
+                   if _nf_real is not None else "")
+                + " Put the port and its probes inside one uniform zone of "
+                "the profile, or extend that zone to hold the standoff. "
+                "REPORT-ONLY: nothing is refused."
+            )
+        elif _nf_off is not None and int(_nf_off) < _nf_cells:
+            _nf_realized = (_nf_real if _nf_real is not None
+                            else int(_nf_off) * _runway_cell)
+            # What leaving the offset None gives on this port, counted the
+            # way the driver counts it: the automatic lengths in this
+            # runway's cell where the ladder lies in one zone, and in the
+            # boundary cell add_msl_port used where it would cross a ramp.
+            # An automatic port reaches this branch only in the second case;
+            # "leave it None" is then the advice that produced the short
+            # offset, so None is offered only where it clears this runway.
+            _nf_is_auto = pe.name in getattr(self, "_msl_auto_offset_min", {})
+            _nf_lengths = getattr(
+                self, "_msl_auto_probe_lengths", {}).get(pe.name)
+            _nf_none_clears = False
+            _nf_none_txt = ""
+            _nf_on_ramp = False
+            if _nf_lengths is not None:
+                _nf_sp_auto = pe.name in getattr(
+                    self, "_msl_auto_probe_spacing", {})
+                _nf_none_off, _, _nf_none_cell, _nf_none_on_runway = (
+                    msl_auto_probe_ladder(
+                        _prop_profile, dx, x_feed, _dir_sign, n_pr,
+                        _nf_lengths[0], h_sub, _nf_lengths[1],
+                        n_probe_spacing=(None if _nf_sp_auto
+                                         else pe.n_probe_spacing)))
+                if not _nf_none_on_runway:
+                    _nf_on_ramp = True
+                    _nf_none_cell = dx
+                    _nf_none_off = msl_auto_probe_offset_cells(
+                        _nf_lengths[0], h_sub, dx)
+                _nf_none_clears = _nf_none_off >= _nf_cells
+                _nf_none_term = msl_auto_probe_offset_term(
+                    _nf_lengths[0], h_sub, _nf_none_cell)
+                _nf_none_txt = (
+                    f"counts {_nf_none_term} in the boundary cell "
+                    f"({_fmt_len(dx)}), {_nf_none_off} cells, because "
+                    f"counted in this runway's own cells its probe ladder "
+                    f"would cross a grading ramp"
+                    if _nf_on_ramp else
+                    f"counts {_nf_none_term} in this runway's "
+                    f"{_fmt_len(_nf_none_cell)} cells, "
+                    + ("at least " if msl_axis_runs_interval_solve(
+                        _prop_profile) else "")
+                    + f"{_nf_none_off} cells")
+            _nf_opening = (
+                f"the automatic n_probe_offset={int(_nf_off)} puts probe 0 "
+                if _nf_is_auto else
+                f"n_probe_offset={int(_nf_off)} puts probe 0 "
+            )
+            _nf_auto_txt = (
+                f" add_msl_port chose {int(_nf_off)} by counting "
+                + (msl_auto_probe_offset_term(_nf_lengths[0], h_sub, dx)
+                   if _nf_lengths is not None else "its near-field lengths")
+                + f" in the boundary cell ({_fmt_len(dx)}); this port's "
+                f"runway cells are {_fmt_len(_runway_cell)}, so on this "
+                f"runway the automatic floor falls short."
+                + (" The driver keeps that count because, counted in this "
+                   "runway's own cells, the probe ladder would cross a "
+                   "grading ramp." if _nf_on_ramp else "")
+                if _nf_is_auto else ""
+            )
+            _nf_remedy = (
+                f"Set n_probe_offset >= {_nf_cells} explicitly on this port; "
+                f"leaving it None chooses {int(_nf_off)} again."
+                if _nf_is_auto else
+                f"Set n_probe_offset >= {_nf_cells}, or leave it None: the "
+                f"automatic offset {_nf_none_txt}."
+                if _nf_none_clears else
+                f"Set n_probe_offset >= {_nf_cells}; leaving it None "
+                f"{_nf_none_txt}, and falls short on this runway."
+                if _nf_none_txt else
+                f"Set n_probe_offset >= {_nf_cells}."
+            )
+            _nf_msg = (
+                f"MSL port '{pe.name}' (direction={pe.direction!r}): "
+                + _nf_opening +
+                f"{_fmt_len(_nf_realized)} "
+                f"({_nf_realized / h_sub:.2f}·h_sub) from this port's "
+                f"OWN feed plane, inside the source near-field "
+                f"standoff of {_nf_cells} cells "
+                f"({_fmt_len(_nf_cells * _runway_cell)} = 5·h_sub, "
+                f"the issue-#80 Fix B constant"
+                + ("" if _nf_is_auto else
+                   " add_msl_port's auto offset already floors to")
+                + ")." + _nf_snap_txt + _nf_auto_txt +
+                f" Within a few substrate thicknesses of "
+                f"the feed the launched field is not the guided mode "
+                f"yet: the evanescent content decays with the "
+                f"substrate's own transverse-resonance length "
+                f"2·h_sub/π = {_fmt_len(2.0 * h_sub / math.pi)} for "
+                f"THIS board (on the issue-#823 fixture, h_sub=300µm, "
+                f"that length measured 0.1932mm against a predicted "
+                f"0.19099mm — 1.1%). The decay LENGTH is a property of "
+                f"the substrate; the near-feed AMPLITUDE is not, so no "
+                f"error magnitude is predicted for your port here — "
+                f"read result diagnostics (the two-wave fit residual, "
+                f"and on the coax<->MSL lane the ladder-split witness) "
+                f"rather than trusting this offset. For reference, the "
+                f"#823 fixture's own measured amplitude (11.3 at the "
+                f"feed plane) put {5.0:.0f}·h_sub at 4.4e-3 against the "
+                f"0.02 two-wave residual bar this family holds itself "
+                f"to, and {_nf_realized / h_sub:.2f}·h_sub at "
+                f"{11.32 * math.exp(-_nf_realized / (2.0 * h_sub / math.pi)):.1e}. "
+                + _nf_remedy +
+                " REPORT-ONLY: nothing is "
+                "refused, and the rule is derived from ONE fixture "
+                "at W/h = 2 — a much wider trace may need more (the "
+                "first higher-order microstrip mode scales with "
+                "W + 2·h, which one fixture cannot separate from h)."
+            )
+        if _nf_msg is not None:
             _w.warn(
                 PreflightWarning(
-                    f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                    f"n_probe_offset={int(_nf_off)} puts probe 0 "
-                    f"{_fmt_len(_nf_realized)} "
-                    f"({_nf_realized / h_sub:.2f}·h_sub) from this port's "
-                    f"OWN feed plane, inside the source near-field "
-                    f"standoff of {_nf_cells} cells "
-                    f"({_fmt_len(_nf_cells * dx)} = 5·h_sub, the issue-#80 "
-                    f"Fix B constant add_msl_port's auto offset already "
-                    f"floors to). Within a few substrate thicknesses of "
-                    f"the feed the launched field is not the guided mode "
-                    f"yet: the evanescent content decays with the "
-                    f"substrate's own transverse-resonance length "
-                    f"2·h_sub/π = {_fmt_len(2.0 * h_sub / math.pi)} for "
-                    f"THIS board (on the issue-#823 fixture, h_sub=300µm, "
-                    f"that length measured 0.1932mm against a predicted "
-                    f"0.19099mm — 1.1%). The decay LENGTH is a property of "
-                    f"the substrate; the near-feed AMPLITUDE is not, so no "
-                    f"error magnitude is predicted for your port here — "
-                    f"read result diagnostics (the two-wave fit residual, "
-                    f"and on the coax<->MSL lane the ladder-split witness) "
-                    f"rather than trusting this offset. For reference, the "
-                    f"#823 fixture's own measured amplitude (11.3 at the "
-                    f"feed plane) put {5.0:.0f}·h_sub at 4.4e-3 against the "
-                    f"0.02 two-wave residual bar this family holds itself "
-                    f"to, and {_nf_realized / h_sub:.2f}·h_sub at "
-                    f"{11.32 * math.exp(-_nf_realized / (2.0 * h_sub / math.pi)):.1e}. "
-                    f"Set n_probe_offset >= {_nf_cells}, or leave it None "
-                    f"for the safe default. REPORT-ONLY: nothing is "
-                    f"refused, and the rule is derived from ONE fixture "
-                    f"at W/h = 2 — a much wider trace may need more (the "
-                    f"first higher-order microstrip mode scales with "
-                    f"W + 2·h, which one fixture cannot separate from h).",
+                    _nf_msg,
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),

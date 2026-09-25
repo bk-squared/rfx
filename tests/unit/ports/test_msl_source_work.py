@@ -65,7 +65,9 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
 
         old = init_state(grid.shape, field_dtype=dtype)
         # A centre-voltage-preserving perturbation orthogonal to the shaped
-        # Ez profile, plus transverse E, exercises the extra positive loss.
+        # Ez profile exercises the extra positive loss; the transverse E set
+        # here must NOT be loaded -- the port's conductivity sits on the Ez
+        # (substrate-normal) edges only (#1236).
         fringe = np.array([.1, -.2, 0., 0.]) if shaped else np.array([.1, -.1, 0., 0.])
         values = np.stack((np.full(4, .3), np.full(4, -.2), profile_e + fringe))
         for name, value in zip(("ex", "ey", "ez"), values):
@@ -90,10 +92,11 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         old_values = np.stack([np.asarray(getattr(old, name))[indices]
                                for name in ("ex", "ey", "ez")]).astype(float)
         # Midpoint work identity is derived from the field equation, not the
-        # source builder's Cb. Include all three electric components in loss.
+        # source builder's Cb. The load dissipates on Ez only (#1236); Ex and
+        # Ey store and give back nothing here (H = 0, no loss on their edges).
         mid = (old_values + new) / 2
         storage_rate = volume * np.sum(2.25 * EPS_0 * (new**2 - old_values**2)) / (2 * grid.dt)
-        loss = volume * expected_sigma * np.sum(mid**2)
+        loss = volume * expected_sigma * np.sum(mid[2]**2)
         source_work = u * volume * np.dot(profile_e, mid[2])
         scale = max(abs(storage_rate), loss, abs(source_work))
         assert abs(storage_rate + loss - source_work) < 64 * np.finfo(dtype).eps * scale
@@ -104,11 +107,13 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         # Double precision FD avoids using an f32 loss as its own referee.
         force = np.zeros_like(old_values)
         force[2] = profile_e * u
+        # Conductivity per component row (ex, ey, ez): the load's edges only.
+        sigma_rows = np.array([0.0, 0.0, expected_sigma])[:, None]
 
         def reference(alpha):
             epsilon = 2.25 * alpha * EPS_0
-            return ((epsilon - expected_sigma * grid.dt / 2) * old_values
-                    + grid.dt * force) / (epsilon + expected_sigma * grid.dt / 2)
+            return ((epsilon - sigma_rows * grid.dt / 2) * old_values
+                    + grid.dt * force) / (epsilon + sigma_rows * grid.dt / 2)
 
         np.testing.assert_allclose(new, reference(1.), rtol=64 * np.finfo(dtype).eps,
                                    atol=64 * np.finfo(dtype).eps)

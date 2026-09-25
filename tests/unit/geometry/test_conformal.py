@@ -1,6 +1,7 @@
 """Tests for Dey-Mittra conformal PEC boundaries."""
 
 import numpy as np
+import pytest
 import jax.numpy as jnp
 
 from rfx.grid import Grid
@@ -301,8 +302,11 @@ def test_conformal_with_cpml():
     assert not np.any(np.isnan(ts)), "NaN detected in time series"
 
 
-def test_conformal_with_dispersive():
-    """Conformal PEC + Debye dielectric should not conflict."""
+def test_conformal_with_dispersive_is_refused():
+    """Conformal PEC + Debye dielectric is refused (2.0).
+
+    The Debye E update never reads the Dey-Mittra eps correction, so this
+    run used to finish with a staircased PEC surface and no warning."""
     from rfx.api import Simulation
     from rfx.materials.debye import DebyePole
 
@@ -315,11 +319,8 @@ def test_conformal_with_dispersive():
     sim.add_source((0.005, 0.005, 0.02), component="ez")
     sim.add_probe((0.035, 0.035, 0.02), component="ez")
 
-    result = sim.run(n_steps=200, conformal_pec=True)
-    assert result is not None
-    ts = np.array(result.time_series)
-    assert not np.any(np.isnan(ts)), "NaN detected in conformal+dispersive run"
-    assert not np.any(np.isinf(ts)), "Inf detected in conformal+dispersive run"
+    with pytest.raises(NotImplementedError, match="conformal_pec=True"):
+        sim.run(n_steps=200, conformal_pec=True)
 
 
 def test_conformal_gradient_flows():

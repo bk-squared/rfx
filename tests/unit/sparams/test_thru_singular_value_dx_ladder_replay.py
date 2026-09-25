@@ -333,6 +333,7 @@ def test_gate_untouched_and_never_binding_on_the_ladder() -> None:
     assert v["sv_max_below_gate_at_every_rung"] is True
 
 
+@pytest.mark.docs_consistency
 def test_note_results_section_quotes_the_record() -> None:
     text = NOTE.read_text()
     head, sep, results = text.partition("## 9. RESULTS")

@@ -151,6 +151,27 @@ def build_nonuniform_grid(
         )
 
 
+def nu_thin_conductor_refusal(tc) -> str | None:
+    """Why the non-uniform assembler refuses this thin conductor, or None.
+
+    A lossy DC sheet (``add_thin_conductor`` with ``sigma_bulk`` and no
+    ``surface_impedance_f0``) folds by its Box corners here; a shape
+    without them has no fold on this lane. ``fidelity_report()`` reads the
+    same answer to report the refusal instead of raising.
+    """
+    if (getattr(tc, "is_pec", False)
+            or getattr(tc, "surface_impedance_f0", None) is not None):
+        return None
+    if (getattr(tc.shape, "corner_lo", None) is not None
+            and getattr(tc.shape, "corner_hi", None) is not None):
+        return None
+    return ("a lossy thin conductor (add_thin_conductor without "
+            "surface_impedance_f0) with a non-Box shape "
+            f"({type(tc.shape).__name__}) is not implemented on the "
+            "non-uniform lane; skipping it would leave the conductor out of "
+            "the solve. Instead: draw it as a Box, or run on a uniform mesh.")
+
+
 def assemble_materials_nu(
     sim,
     grid: NonUniformGrid,
@@ -323,20 +344,15 @@ def assemble_materials_nu(
                         "Shape.bounding_box()) to locate its normal; "
                         "refusing to skip it on the non-uniform path.")
             else:
-                # Legacy DC fold: left exactly as #373 shipped it. A non-Box
-                # DC sheet still warn-and-skips here — #674 asked for the
-                # surface-impedance mode, and turning a documented
-                # warn-and-skip into a fold is a behaviour change for existing
-                # models, so it is a separate decision, not a side effect.
-                lo = getattr(tc.shape, "corner_lo", None)
-                hi = getattr(tc.shape, "corner_hi", None)
-                if lo is None or hi is None:
-                    import warnings as _warnings
-                    _warnings.warn(
-                        "lossy thin conductor with a non-Box shape is not yet "
-                        "supported on the non-uniform path and was skipped.",
-                        stacklevel=2)
-                    continue
+                # Legacy DC fold: left as #373 shipped it for Box sheets. A
+                # non-Box DC sheet used to warn and be skipped, which solved
+                # the board without that conductor; since 2.0 it is refused.
+                # Folding it instead stays the separate decision #674 left.
+                _refusal = nu_thin_conductor_refusal(tc)
+                if _refusal is not None:
+                    raise NotImplementedError(_refusal)
+                lo = tc.shape.corner_lo
+                hi = tc.shape.corner_hi
             extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
             n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
             d_norm = e_node_dual_spacings(
@@ -579,7 +595,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
 
 def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
-                        sheet_specs=()):
+                        sheet_specs=(), drawn_eps_r=None):
     """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
@@ -587,12 +603,22 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
       * the eigenmode J+M launch is FENCED — ``run_nonuniform`` carries no
         magnetic-source channel, so the Schelkunoff H-source would have
         nowhere to go; and
-      * the substrate ``eps_r`` is read from ``materials_drive`` so the
-        value stays concrete under ``jax.grad`` (the same concreteness split
-        ``make_current_source`` uses on this path), and the feed's own
-        termination conductance is stamped into ``materials_drive`` as well
-        as ``materials`` before the feed is built from it (#1256: the
-        drive's Cb has to be the E update's, port load included).
+      * the feed's own termination conductance is stamped into
+        ``materials_drive`` as well as ``materials`` before the feed is
+        built from it (#1256: the drive's Cb has to be the E update's, port
+        load included), and ``materials_drive`` carries any whole-grid
+        eps/sigma override, traced or not (#1267).
+
+    The substrate ``eps_r`` of the launch fixture -- the static-Laplace mode
+    shape, when the port does not state ``eps_r_sub`` -- is read at the
+    feed's centre cell from ``drawn_eps_r``, the permittivity as drawn,
+    whenever an override is in force, and from ``materials_drive`` (which is
+    then the drawn one) otherwise. The fixture is a static shape: under an
+    override the uniform ``forward()`` reads it from the registered
+    materials too (#483), so a finite difference through the override and
+    ``jax.grad`` differentiate one function, and a traced override never
+    reaches the host-side Laplace solve. Only the Cb each feed cell is
+    driven through follows the override.
 
     The Ez point-sources are appended to ``sources`` (they ride the generic
     NU point-source scan injection). The per-probe DFT planes are registered
@@ -638,7 +664,9 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         if pe.eps_r_sub is not None:
             eps_r_sub = float(pe.eps_r_sub)
         else:
-            eps_r_sub = float(np.asarray(materials_drive.eps_r[eps_cell]))
+            _fixture_eps = (materials_drive.eps_r if drawn_eps_r is None
+                            else drawn_eps_r)
+            eps_r_sub = float(np.asarray(_fixture_eps[eps_cell]))
         mode_profile = compute_msl_mode_profile(grid, mp, eps_r_sub)
 
         materials = setup_msl_port(grid, mp, materials, mode_profile=mode_profile)
@@ -751,6 +779,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     """
     # every single-device non-uniform solve (run AND forward) enters here
     sim._require_mode_the_nonuniform_lane_solves()
+    # compute_waveguide_s_matrix's graded branch reaches this lane without
+    # _dispatch_plan, so the lane refuses the refinement it drops (#1240).
+    sim._require_no_refinement_on_the_nonuniform_lane()
     from rfx.api import Result
 
     _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,
@@ -881,12 +912,27 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         _pec_wires = []
 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
-    # arrays for the scan. Every source and port DRIVE is built from
-    # ``materials_drive`` instead: the arrays as assembled, before the
-    # override, so the drive normalisation stays concrete under
-    # ``jax.grad`` (``make_current_source`` takes ``float()`` of a concrete
-    # eps/sigma) and a two-run S-matrix reference is driven exactly as the
-    # device run is.
+    # arrays for the scan, and every source and port DRIVE is built from
+    # ``materials_drive``, which starts from the SAME arrays -- overridden,
+    # and traced when the override is (#1267). A drive pushes its current
+    # through the Cb = dt/(eps + sigma*dt/2) of the edge it feeds, so it has
+    # to read the permittivity the E update reads there. Built from the
+    # arrays as drawn, as this lane did until #1267, a device whose
+    # permittivity under the port came from the override was driven
+    # Cb_drawn/Cb_override times too hard: a layered substrate (eps_r
+    # 3.38/3.38/10.2 under a 50 ohm wire) supplied by override read S11
+    # 0.027 away from the same board declared as materials, +0.065 dB at
+    # 6 GHz, and any permittivity derivative taken through the override
+    # carried that ratio's derivative as a false amplitude term. The
+    # uniform ``forward()`` builds its drives from the traced overridden
+    # materials (``rfx/api/_execute.py``); a traced override now makes this
+    # lane's source table traced in the same way (``make_current_source``
+    # and ``make_msl_port_sources`` stay in jnp for a tracer). A two-run
+    # reference (the waveguide S-matrix's vacuum override) likewise drives
+    # any current source through its own arrays; its modal port drives never
+    # read them. The one thing still read from the arrays as drawn is the
+    # MSL launch fixture's substrate eps_r (``_setup_msl_ports_nu``,
+    # ``drawn_eps_r``): a static mode shape, as on the uniform lane (#483).
     #
     # #1256: ``materials_drive`` is not a frozen snapshot. Each port below
     # stamps its termination conductance into BOTH copies. A port drives a
@@ -903,7 +949,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # concrete; on a traced mesh (#1207) sigma_port is traced, and so is the
     # drive, exactly as the E update is.
     materials_drive = materials
+    _drawn_eps_r = None     # only an override separates drawn from stepped
     if eps_override is not None or sigma_override is not None:
+        _drawn_eps_r = materials.eps_r
         # A whole-grid override REPLACES the array, so any lumped stamp that
         # was folded into it is gone; its #1210 record goes with it, or the
         # E update would add back a load the override does not carry.
@@ -915,6 +963,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sigma_lumped=(None if sigma_override is not None
                           else materials.sigma_lumped),
         )
+        materials_drive = materials     # #1267: the drive sees the override
     elif design_box is not None:
         # #1183, the same rule at the same place: the design permittivity
         # sets the precision of the material arithmetic, exactly as an
@@ -956,12 +1005,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     if subpixel_smoothing:
         from rfx.geometry.smoothing import compute_smoothed_eps_nonuniform
         if debye_spec is not None or lorentz_spec is not None:
-            import warnings as _w
-            _w.warn(
-                "subpixel_smoothing=True ignored on the non-uniform path "
-                "when dispersive materials (Debye/Lorentz) are present — "
-                "the dispersive scan branch does not consume aniso_eps.",
-                stacklevel=2,
+            sim._refuse_unsupported_run_kwargs(
+                "non-uniform mesh with Debye/Lorentz materials",
+                {"subpixel_smoothing": subpixel_smoothing},
+                instead="remove the Debye/Lorentz poles",
+                reason_overrides={"subpixel_smoothing":
+                    "the dispersive E update does not read the smoothed "
+                    "per-component permittivity tensor, so interfaces "
+                    "would get scalar eps"},
             )
         else:
             # #1043 stage B: the pairs carry the CPML/UPML pad continuation,
@@ -990,17 +1041,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         for spec in sim._lumped_rlc:
             materials = setup_rlc_materials(grid, spec, materials)
             materials_drive = setup_rlc_materials(grid, spec, materials_drive)
-
-    # Initialize Debye/Lorentz dispersion coefficients
-    debye = None
-    if debye_spec is not None:
-        debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks)
-
-    lorentz = None
-    if lorentz_spec is not None:
-        lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks)
 
     sources = []
     probes = []
@@ -1130,10 +1170,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     # the edge average. Stamped bare it was quartered, and a
                     # 50 ohm termination presented 200 ohm.
                     materials = _stamp_lumped_sigma(
-                        materials, (ci, cj, ck), sigma_port)
+                        materials, (ci, cj, ck), sigma_port, pe.component)
                     # #1256: and into the copy the drive is built from.
                     materials_drive = _stamp_lumped_sigma(
-                        materials_drive, (ci, cj, ck), sigma_port)
+                        materials_drive, (ci, cj, ck), sigma_port, pe.component)
                     # No PEC clearing here (#931 §1.9, corrected): a cell
                     # is LIVE exactly when the port component's own edge is
                     # not PEC, so releasing that component is a no-op, and
@@ -1227,10 +1267,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 d_parallel = dxi
                 d_perp1, d_perp2 = dual_yj, dual_zk
             sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
-            materials = _stamp_lumped_sigma(      # #1210
-                materials, (i, j, k), sigma_port)
-            materials_drive = _stamp_lumped_sigma(    # #1256
-                materials_drive, (i, j, k), sigma_port)
+            materials = _stamp_lumped_sigma(      # #1210, #1236
+                materials, (i, j, k), sigma_port, pe.component)
+            materials_drive = _stamp_lumped_sigma(    # #1256, #1236
+                materials_drive, (i, j, k), sigma_port, pe.component)
             if pec_edge_masks is not None:
                 # The lumped port drives ONE edge: its own component at
                 # its own cell (#931 §1.9, corrected).
@@ -1374,7 +1414,24 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sim, grid, materials, materials_drive, sources, sizing_n,
             pec_edge_masks,
             geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
+            drawn_eps_r=_drawn_eps_r,
         )
+
+    # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
+    # (the wire, lumped and MSL port loads above), as the uniform lane builds
+    # them. With a dispersive material anywhere in the model the E update runs
+    # on these coefficients alone and never reads ``materials.sigma`` (#1257):
+    # built before the port stamps they left every port unterminated, and a
+    # 50 ohm and a 5000 ohm port gave the same waveform.
+    debye = None
+    if debye_spec is not None:
+        debye_poles, debye_masks = debye_spec
+        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks)
+
+    lorentz = None
+    if lorentz_spec is not None:
+        lorentz_poles, lorentz_masks = lorentz_spec
+        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks)
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
     # probe plane (issue #88 flux-extractor path). Built from the same

@@ -457,6 +457,9 @@ def differentiable_material_fit(
         debye_init[:n_debye_poles],
         lorentz_init[:n_lorentz_poles],
     )
+    # Its own uniform scan has no subgrid (#1240).
+    dummy_sim._require_no_refinement_without_a_subgrid(
+        "differentiable_material_fit()")
     grid = dummy_sim._build_grid()
     dt = grid.dt
     n_steps = grid.num_timesteps(num_periods=20.0)

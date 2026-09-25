@@ -309,12 +309,24 @@ def fidelity_report(sim, print_report: bool = True):
                      for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
     grid = sim._build_nonuniform_grid() if nonuniform else sim._build_grid()
     refused = _contract_refusals(sim, grid, nonuniform)
+    # A thin conductor the non-uniform assembler refuses (run() would
+    # raise) is left out of the audited assembly and reported on its row.
+    refused_tc = {}
+    if nonuniform:
+        from rfx.runners.nonuniform import nu_thin_conductor_refusal
+        for j, tc in enumerate(getattr(sim, "_thin_conductors", ()) or ()):
+            why = nu_thin_conductor_refusal(tc)
+            if why is not None:
+                refused_tc[j] = why
     sim_audit = sim
-    if refused:
+    if refused or refused_tc:
         import copy
         sim_audit = copy.copy(sim)
         sim_audit._geometry = [e for i, e in enumerate(sim._geometry)
                                if i not in refused]
+        sim_audit._thin_conductors = [
+            tc for j, tc in enumerate(getattr(sim, "_thin_conductors", ()) or ())
+            if j not in refused_tc]
     # #931 §1.9: the assembly's own sheet/wire classification. The report
     # derives a SheetSpec per entry (``_pec_sheet_spec``) so it can name the
     # declaration each plane came from; these are the same objects the SOLVE
@@ -912,6 +924,11 @@ def fidelity_report(sim, print_report: bool = True):
                 remedy="declare a sheet (a zero-thickness Box, or "
                        "add_thin_conductor), a PolylineWire for a filament, "
                        "or resolve the thickness with the mesh"))
+        if kind_src == "thin_conductor" and i in refused_tc:
+            item["findings"].append(dict(
+                kind="refused-by-run",
+                detail="run() would refuse this model: " + refused_tc[i],
+                remedy="draw it as a Box, or run on a uniform mesh"))
         if sheet_spec is not None:
             # #931 §1.3: a sheet owns no cell and is not in pec_mask; it is
             # realized on ONE node plane with a closed footprint.

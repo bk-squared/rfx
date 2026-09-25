@@ -25,6 +25,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"
@@ -87,14 +89,22 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # #1221 (magnetic faces on distributed and ADI lanes, and the Yee half-cell wall)
 # joined on 2026-09-23; OPEN checked with
 # `gh issue view 1221 --repo bk-squared/rfx --json number,state,url,title,updatedAt`.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
+# #1260 (a Debye/Lorentz material anywhere puts the whole grid on the
+# cell-owned E update, so every lumped element loads all three edges at its
+# node) and #1257 (a graded mesh with a dispersive material leaves a port
+# unterminated) joined on 2026-09-24 with the dispersive-lane entry of #1236;
+# both OPEN, checked with `gh issue view <N> --json number,state`.
+CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1257, 1260})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
 # allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186})
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1236})
+# #1236 is named in the dispersive-lane entry as the fix that put every lumped
+# element on its own edge on the non-dispersive lanes; the PR that adds the
+# entry closes it.
 # #1100 and #1122 join it together: the taper entry names both to record which
 # half was fixed and what was decided about the other, and both are closed.
 
@@ -114,20 +124,36 @@ def _page() -> str:
     return PAGE.read_text(encoding="utf-8")
 
 
-def test_the_page_cites_exactly_the_pinned_issues():
+# The pinned set is checked in two halves. An entry that disappears while its
+# issue is open hides a defect from users, and the PI's documentation rule
+# (2026-09-22) keeps that one blocking. A new citation not yet added to the set
+# is bookkeeping, and runs with the other documentation checks.
+@pytest.mark.reads_docs_for_gate(reason=(
+    "a known-limitations entry must stay while its defect is open: the one page "
+    "a PR must keep right (PI, 2026-09-22)"))
+def test_every_pinned_issue_keeps_its_entry():
     cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
     missing = CITED_ISSUES - cited
-    added = cited - CITED_ISSUES
-    assert not missing and not added, (
-        f"known_limitations.md citations drifted from the pinned set.\n"
-        f"  no longer cited: {sorted(missing)}\n"
-        f"  newly cited:     {sorted(added)}\n"
-        "Update CITED_ISSUES in this file in the same change, and check each number's "
-        "state with `gh issue view <N> --json state` while you are there — an entry "
-        "leaves this page when its issue closes and a test pins the fix."
+    assert not missing, (
+        f"known_limitations.md no longer cites {sorted(missing)}. An entry leaves "
+        "this page when its issue closes and a test pins the fix; if that happened, "
+        "drop the number from CITED_ISSUES in the same change, after checking its "
+        "state with `gh issue view <N> --json state`."
     )
 
 
+@pytest.mark.docs_consistency
+def test_the_page_cites_no_issue_outside_the_pinned_set():
+    cited = {int(text) for text, _ in CITATION_RE.findall(_page())}
+    added = cited - CITED_ISSUES
+    assert not added, (
+        f"known_limitations.md newly cites {sorted(added)}. Add each to CITED_ISSUES "
+        "in this file in the same change, and check its state with "
+        "`gh issue view <N> --json state` while you are there."
+    )
+
+
+@pytest.mark.docs_consistency
 def test_every_citation_link_points_at_the_issue_it_names():
     mismatched = [
         (text, target) for text, target in CITATION_RE.findall(_page()) if text != target
@@ -138,6 +164,7 @@ def test_every_citation_link_points_at_the_issue_it_names():
     )
 
 
+@pytest.mark.docs_consistency
 def test_no_entry_names_an_issue_it_does_not_cite():
     """An issue mentioned in prose must be cited, or classified as resolved.
 
@@ -155,6 +182,7 @@ def test_no_entry_names_an_issue_it_does_not_cite():
     )
 
 
+@pytest.mark.docs_consistency
 def test_the_page_is_reachable_from_the_readme_and_the_support_matrix():
     """The page is a repo doc, not a public-site page.
 

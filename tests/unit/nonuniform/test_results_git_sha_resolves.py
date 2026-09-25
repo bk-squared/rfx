@@ -121,6 +121,7 @@ def addendum(note: Path) -> str:
     return text[text.index(marker):]
 
 
+@pytest.mark.docs_consistency
 def test_every_orphaned_sha_is_named_in_its_note():
     for sha, note in ORPHANED.items():
         assert sha[:8] in addendum(NOTES / note), (

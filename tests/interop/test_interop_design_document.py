@@ -490,9 +490,11 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
     # probe placement equals what the original would measure with — is
     # compared directly below and pinned positively by
     # test_auto_msl_offset_is_frozen_resolved_in_the_document /
-    # test_auto_msl_spacing_is_frozen_resolved_in_the_document.
+    # test_auto_msl_spacing_is_frozen_resolved_in_the_document. The #810
+    # registration lengths follow the same rule: the rebuilt port's are
+    # re-derived by add_msl_port from the rebuilt geometry.
     skip_attrs = {"_msl_auto_offset_min", "_msl_auto_probe_spacing",
-                  "_msl_ports"}
+                  "_msl_auto_probe_lengths", "_msl_ports"}
     for name in sorted(set(vars(original)) - skip_attrs):
         left = _canonical(getattr(original, name))
         right = _canonical(getattr(rebuilt, name))

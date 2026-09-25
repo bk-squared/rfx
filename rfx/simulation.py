@@ -21,6 +21,7 @@ from rfx.core.yee import (
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
     e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, _shift_bwd,
+    map_lumped,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -36,6 +37,10 @@ from rfx.boundaries.pec import (
 from rfx.progress import (
     ProgressReporter, check_not_traced, scan_with_progress,
     validate_report_every,
+)
+from rfx.snapshots import (
+    plan_snapshot_pieces, snapshot_axes, snapshot_extractor,
+    validate_snapshot_spec,
 )
 
 
@@ -265,11 +270,22 @@ class SimResult(NamedTuple):
         ``(WireRefPlaneSpec, (v_dft, i_minus_dft, i_plus_dft))``; two
         entries per opted port (plane slots 0 and 1).
     snapshots : dict[str, ndarray] or None
-        Field snapshots keyed by component name.
+        Field snapshots keyed by component name, each
+        ``(n_steps // interval, ...)``; see ``SnapshotSpec``.
     ntff_box : NTFFBox or None
         NTFF box specification used for accumulation.
     grid : Grid or None
         Grid metadata needed by post-processing / objective helpers.
+    snapshot_axes : dict[str, rfx.snapshots.SnapshotAxes] or None
+        Per snapshot component: sample coordinates in metres, the slice
+        plane, and the step count and time of each frame (#1259). ``None``
+        when no snapshot was recorded.
+    dt : float or None
+        The time step the scan actually advanced by, in seconds. It is
+        ``grid.dt`` except under ``stencil_order=4``, whose step is derated
+        by ``_ORDER4_CFL_FACTOR``; the time series and every frame are
+        sampled at this step, so time and frequency must be read with it,
+        not with ``grid.dt``.
     """
     state: FDTDState | None
     time_series: jnp.ndarray
@@ -283,6 +299,8 @@ class SimResult(NamedTuple):
     ntff_box: object = None
     grid: Grid | None = None
     wire_refplane_sparams: tuple | None = None
+    snapshot_axes: dict | None = None
+    dt: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -640,14 +658,29 @@ class SnapshotSpec(NamedTuple):
     """Mid-simulation field snapshot specification.
 
     interval : int
-        Record a snapshot every *interval* timesteps.
+        Record a frame every *interval* time steps; an integer >= 1, anything
+        else is refused. Counting is 1-based over completed steps: a run of
+        ``n_steps`` records ``n_steps // interval`` frames, frame ``k``
+        (0-based) holding the fields after step ``(k + 1) * interval``, i.e.
+        after steps ``interval, 2*interval, ...``. The last
+        ``n_steps % interval`` steps record no frame. ``interval=1`` records
+        every step. Memory scales with the frame count.
     components : tuple of str
         Field components to capture, e.g. ("ez",) or ("ex", "hy").
     slice_axis : int or None
-        If not None, capture a 2-D slice at *slice_index* along this axis
-        instead of the full 3-D field (saves memory).
+        0, 1 or 2. If not None and *slice_index* is not None, capture a 2-D
+        slice at *slice_index* along this axis instead of the full 3-D field
+        (saves memory). With *slice_index* None the full field is recorded.
     slice_index : int or None
-        Index along *slice_axis*.
+        PADDED lattice index along *slice_axis*: the same index space as
+        ``grid.shape`` and ``grid.position_to_index``, CPML cells counted
+        (``grid.position_to_index(pos)[axis]`` gives the index of a physical
+        position).
+
+    Where each recorded sample sits (metres) and when each frame was taken
+    (seconds): ``Result.snapshot_axes`` after a run, or
+    ``rfx.snapshot_axes(grid, spec, n_steps)`` before one (``rfx/snapshots.py``
+    states the lattice layout and the E/H time convention).
     """
     interval: int = 10
     components: tuple = ("ez",)
@@ -874,17 +907,18 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
         sig = sig.at[box_local].set(sig_box)
 
     # A lumped stamp in the window's context layer is edge-owned, not a cell
-    # volume, so it is removed before the average and added back at its cell —
-    # the same rule ``component_e_materials`` applies grid-wide (#1210). The
-    # design box itself is fenced off port and source cells.
-    eps_l = getattr(materials, "eps_r_lumped", None)
-    sig_l = getattr(materials, "sigma_lumped", None)
+    # volume, so it is removed before the average and added back at its cell,
+    # on its own component — the same rule ``component_e_materials`` applies
+    # grid-wide (#1210, #1236). The design box itself is fenced off port and
+    # source cells.
     win_mats = MaterialArrays(
         eps_r=eps, sigma=sig, mu_r=None,
-        eps_r_lumped=(None if eps_l is None
-                      else jnp.asarray(eps_l)[win].astype(eps.dtype)),
-        sigma_lumped=(None if sig_l is None
-                      else jnp.asarray(sig_l)[win].astype(sig.dtype)))
+        eps_r_lumped=map_lumped(
+            getattr(materials, "eps_r_lumped", None),
+            lambda a: jnp.asarray(a)[win].astype(eps.dtype)),
+        sigma_lumped=map_lumped(
+            getattr(materials, "sigma_lumped", None),
+            lambda a: jnp.asarray(a)[win].astype(sig.dtype)))
     eps_c, sig_c = component_e_materials(win_mats, (False, False, False))
 
     if per_edge:
@@ -2586,7 +2620,26 @@ def run(
     ntff : NTFFBox or None
         If provided, accumulate near-to-far-field DFT on a Huygens box.
     snapshot : SnapshotSpec or None
-        If provided, record field snapshots at regular intervals.
+        If provided, record a frame after every ``snapshot.interval``-th
+        step (``n_steps // interval`` frames; see ``SnapshotSpec``), with
+        their positions and times in ``SimResult.snapshot_axes``. Recording
+        does not change any other output: the time series, DFT and port
+        accumulators and the final state are bit-identical to the same run
+        without a snapshot. ``interval=1`` records inside the step body, as
+        it always has; a larger interval runs the steps in blocks of
+        ``interval`` (``lax.scan`` over blocks of an inner ``lax.scan`` over
+        steps, plus a scan over the remaining ``n_steps % interval``) and
+        records after each block, so the step body is the one a run without
+        a snapshot compiles. The remainder scan is a second compile of the
+        step body; a remainder of ONE step is instead joined with the last
+        step of the last block into a two-step scan (a one-step scan is
+        inlined by XLA and changed the last bit), leaving the rest of that
+        block as a scan of ``interval - 1`` steps. With ``report_every`` a
+        chunk that does not start on a multiple of the interval adds a short
+        head scan, and each distinct piece length compiles once
+        (``rfx.snapshots.plan_snapshot_pieces`` lays the pieces out). With
+        ``checkpoint_segments`` the interval must divide the segment length
+        ``n_steps // checkpoint_segments``.
     checkpoint : bool
         If True, wrap the scan body with ``jax.checkpoint`` to
         trade compute for memory during reverse-mode AD.  Reduces
@@ -2792,26 +2845,21 @@ def run(
     )
 
     # ---- run()-specific: snapshot setup ----
+    # #1258: ``interval`` is honoured. interval == 1 keeps the pre-#1258 path
+    # (the frame is an extra per-step output of the step body). interval > 1
+    # records from the carry after each block of ``interval`` steps, so the
+    # step body is the SAME one a run without a snapshot compiles and memory
+    # scales with the frame count, not with n_steps.
     if use_snapshot:
-        snap_components = snapshot.components
-        snap_slice_axis = snapshot.slice_axis
-        snap_slice_index = snapshot.slice_index
+        snap_interval = validate_snapshot_spec(snapshot)
+        snap_components = tuple(snapshot.components)
+        _take_snapshot = snapshot_extractor(snapshot)
     else:
+        snap_interval = 1
         snap_components = ()
-        snap_slice_axis = None
-        snap_slice_index = None
-
-    def _take_snapshot(st):
-        """Extract snapshot fields from state."""
-        snaps = []
-        for comp in snap_components:
-            field = getattr(st, comp)
-            if snap_slice_axis is not None and snap_slice_index is not None:
-                sl = [slice(None)] * 3
-                sl[snap_slice_axis] = snap_slice_index
-                field = field[tuple(sl)]
-            snaps.append(field)
-        return snaps
+        _take_snapshot = None
+    snap_in_body = use_snapshot and snap_interval == 1
+    snap_by_block = use_snapshot and snap_interval > 1
 
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
@@ -2830,14 +2878,14 @@ def run(
         **_setup.ctx_kwargs,
         # run()-specific overrides
         use_fast_he=use_fast_he,
-        use_snapshot=use_snapshot,
+        use_snapshot=snap_in_body,
         use_monitor=False,
         use_flux_window=True,
         fast_coeffs=_fast_coeffs,
         flux_meta=flux_meta if use_flux_monitors else (),
         monitor_component="ez",
         mon_idx=None,
-        snapshot_extractor=_take_snapshot if use_snapshot else None,
+        snapshot_extractor=_take_snapshot if snap_in_body else None,
     )
     _core_step = make_core_step(_step_ctx)
 
@@ -2845,11 +2893,99 @@ def run(
         _step_idx, src_vals, mag_src_vals = xs
         new_carry, probe_out, extras = _core_step(
             carry, _step_idx, src_vals, mag_src_vals)
-        if use_snapshot:
+        if snap_in_body:
             output = (probe_out, extras["snap_fields"])
         else:
             output = (probe_out,)
         return new_carry, output
+
+    def _make_recorder(body):
+        """``record(carry, xs_seg, lo)``: scan ``xs_seg`` (global steps
+        ``lo, lo+1, ...``) with ``body`` and take a frame after every step
+        whose completed-step count is a multiple of ``snap_interval`` (#1258).
+
+        The steps run as the pieces :func:`rfx.snapshots.plan_snapshot_pieces`
+        lays out, in step order:
+
+        * ``plain`` -- a scan of ``body``, with the frame read from the carry
+          when the piece ends on a multiple;
+        * ``blocks`` -- a scan over blocks of ``snap_interval`` steps whose
+          body is an inner scan of ``body`` followed by the frame read from
+          the carry;
+        * ``rec`` -- a scan of ``body`` over two or three steps that also
+          outputs each step's frame, of which the rows ending on a multiple
+          are kept.
+
+        A one-step plain piece never runs on its own (XLA inlines a loop that
+        runs once, and the inlined step moved the last bit of Ex/Ey on a PEC
+        box): the planner joins it with ONE step of a neighbour into a
+        ``rec`` piece, so at most three frames exist before the unwanted ones
+        are dropped, whatever the interval. Every piece calls the same
+        ``body`` on the same ``xs`` rows in the same order, inside a loop of
+        at least two steps, so the carry is the one a single scan produces;
+        the probe rows are joined back in step order. Returns
+        ``(carry, (probe_rows, [frames per component]))``, the output layout
+        of the ``interval == 1`` path. A segment of one step is run as the
+        one-step scan the unchunked path would also run.
+
+        The block and recording bodies are built once per ``body`` so
+        repeated calls (one per ``report_every`` chunk) reuse their traces
+        and compiled executables.
+        """
+        m = snap_interval
+
+        def block_body(c, block_xs):
+            c, (p,) = jax.lax.scan(body, c, block_xs)
+            return c, (p, _take_snapshot(c["fdtd"]))
+
+        def rec_body(c, x):
+            c, (p,) = body(c, x)
+            return c, (p, _take_snapshot(c["fdtd"]))
+
+        def record(carry, xs_seg, lo):
+            n = int(jax.tree_util.tree_leaves(xs_seg)[0].shape[0])
+            probe_parts, frame_parts = [], []
+            for piece in plan_snapshot_pieces(n, lo, m):
+                a, b = piece.start, piece.start + piece.length
+                rows = jax.tree_util.tree_map(lambda x: x[a:b], xs_seg)
+                if piece.kind == "plain":
+                    carry, (p,) = jax.lax.scan(body, carry, rows)
+                    probe_parts.append(p)
+                    if piece.frame_rows:
+                        frame_parts.append(
+                            [f[None] for f in _take_snapshot(carry["fdtd"])])
+                elif piece.kind == "blocks":
+                    nb = piece.length // m
+                    blocks = jax.tree_util.tree_map(
+                        lambda x: x.reshape(nb, m, *x.shape[1:]), rows)
+                    carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
+                    probe_parts.append(p.reshape(nb * m, *p.shape[2:]))
+                    frame_parts.append(list(f))
+                else:  # "rec"
+                    carry, (p, f) = jax.lax.scan(rec_body, carry, rows)
+                    probe_parts.append(p)
+                    if piece.frame_rows:
+                        idx = jnp.asarray(piece.frame_rows, dtype=jnp.int32)
+                        frame_parts.append([ff[idx] for ff in f])
+
+            if not probe_parts:
+                # n == 0: the zero-length scan the other paths return.
+                carry, (p,) = jax.lax.scan(body, carry, xs_seg)
+                probe_parts.append(p)
+            probes = (probe_parts[0] if len(probe_parts) == 1
+                      else jnp.concatenate(probe_parts, axis=0))
+            if frame_parts:
+                frames = [
+                    parts[0] if len(parts) == 1
+                    else jnp.concatenate(parts, axis=0)
+                    for parts in zip(*frame_parts)]
+            else:
+                frames = [
+                    jnp.zeros((0,) + s.shape, s.dtype)
+                    for s in jax.eval_shape(_take_snapshot, carry["fdtd"])]
+            return carry, (probes, frames)
+
+        return record
 
     # ---- run ----
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms, mag_src_waveforms)
@@ -2859,7 +2995,9 @@ def run(
         # itself still keeps every step's carry, so peak memory grows
         # linearly with n_steps.
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
-        if report_every is None:
+        if report_every is None and snap_by_block:
+            final_carry, outputs = _make_recorder(body)(carry_init, xs, 0)
+        elif report_every is None:
             final_carry, outputs = jax.lax.scan(body, carry_init, xs)
         else:
             # Issue #667: same scan, driven from the host in chunks so a
@@ -2882,6 +3020,9 @@ def run(
                               pec_mask, pec_edge_masks,
                               pec_occupancy, conformal_weights,
                               kerr_chi3, debye, lorentz, tfsf),
+                # #1258: a chunk that does not start on a multiple of the
+                # snapshot interval still records at the global multiples.
+                chunk_scan=_make_recorder(body) if snap_by_block else None,
             )
     else:
         if report_every is not None:
@@ -2925,10 +3066,24 @@ def run(
                 f"because it would shift DFT accumulator integration windows."
             )
         s = n_steps // K
+        if snap_by_block and s % snap_interval != 0:
+            raise ValueError(
+                f"snapshot interval={snap_interval} does not divide the "
+                f"checkpoint segment length n_steps/checkpoint_segments="
+                f"{n_steps}/{K}={s}: every segment must record the same "
+                f"number of frames. Pick an interval that divides {s}, or a "
+                f"checkpoint_segments whose segment length is a multiple of "
+                f"{snap_interval}.")
         xs_segmented = jax.tree_util.tree_map(
             lambda a: a.reshape(K, s, *a.shape[1:]), xs)
 
+        _record_segment = _make_recorder(step_fn) if snap_by_block else None
+
         def segment_body(carry, seg_xs):
+            if snap_by_block:
+                # Each segment starts on a multiple of s, hence of the
+                # interval, so ``lo=0`` places its frames correctly.
+                return _record_segment(carry, seg_xs, 0)
             new_carry, seg_outputs = jax.lax.scan(step_fn, carry, seg_xs)
             return new_carry, seg_outputs
 
@@ -2936,19 +3091,30 @@ def run(
             segment_body, prevent_cse=False) if checkpoint else segment_body
         final_carry, seg_outputs = jax.lax.scan(
             seg_body_ckpt, carry_init, xs_segmented)
-        # seg_outputs leaves: (K, s, ...).  Flatten back to (n_steps, ...).
+        # seg_outputs leaves: (K, per-segment rows, ...). Flatten back to
+        # (K * rows, ...): n_steps for the probe rows (and for per-step
+        # frames at interval 1), n_steps // interval for block frames.
         outputs = jax.tree_util.tree_map(
-            lambda a: a.reshape(n_steps, *a.shape[2:]),
+            lambda a: a.reshape(a.shape[0] * a.shape[1], *a.shape[2:]),
             seg_outputs)
 
     if use_snapshot:
         time_series = outputs[0]
-        # outputs[1] is a list of arrays, each (n_steps, ...)
+        # outputs[1] is a list of arrays, each (n_steps // interval, ...)
         snapshots = {comp: outputs[1][i]
                      for i, comp in enumerate(snap_components)}
+        snap_axes = snapshot_axes(grid, snapshot, n_steps, dt=dt)
+        for comp in snap_components:
+            n_frames = int(snapshots[comp].shape[0])
+            if n_frames != len(snap_axes[comp].steps):
+                raise RuntimeError(
+                    f"snapshot {comp!r} recorded {n_frames} frames, expected "
+                    f"{len(snap_axes[comp].steps)} for n_steps={n_steps}, "
+                    f"interval={snap_interval} (#1258)")
     else:
         time_series = outputs[0]
         snapshots = None
+        snap_axes = None
 
     final_dft_planes = None
     if use_dft_planes:
@@ -2975,8 +3141,9 @@ def run(
                 # without dt= would otherwise keep dt=0 and silently zero every
                 # extracted spectrum (S→0). The manual Python-loop path already
                 # stamps dt via update_waveguide_port_probe; this makes the
-                # compiled run() symmetric with it.
-                dt=float(grid.dt),
+                # compiled run() symmetric with it. The scan's own step, not
+                # grid.dt: stencil_order=4 derates it.
+                dt=float(dt),
                 v_probe_t=accs[0],
                 v_ref_t=accs[1],
                 i_probe_t=accs[2],
@@ -3022,6 +3189,8 @@ def run(
         ntff_box=ntff,
         grid=grid,
         wire_refplane_sparams=final_wire_refplanes,
+        snapshot_axes=snap_axes,
+        dt=dt,
     )
 
 
@@ -3189,8 +3358,10 @@ def run_until_decay(
 
     * ``checkpoint_segments`` is not supported (raises ``NotImplementedError``
       when not ``None``).
-    * ``snapshot`` is accepted for API symmetry but **silently ignored** —
-      the Python loop does not accumulate per-step field snapshots.
+    * ``snapshot`` records a frame after every ``snapshot.interval``-th step
+      of the loop, as :func:`run` does (#1258): ``actual_steps // interval``
+      frames, positions and times in ``SimResult.snapshot_axes``. Reading
+      the frame does not touch the stepped state.
     * ``checkpoint`` (``jax.checkpoint`` gradient tape) is accepted but
       **silently ignored** — gradient checkpointing has no effect on the
       Python-loop path.
@@ -3345,6 +3516,12 @@ def run_until_decay(
             carry_in, step_idx, src_vals, mag_src_vals)
         return new_carry, probe_out, extras["monitor_val"]
 
+    # #1258: frames are read from the carry after every interval-th step.
+    if snapshot is not None:
+        snap_interval = validate_snapshot_spec(snapshot)
+        _take_snapshot = snapshot_extractor(snapshot)
+        snap_frames: list = []
+
     # ---- precompute source waveforms up to max_steps ----
     if sources:
         src_waveforms = jnp.stack([s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
@@ -3467,6 +3644,8 @@ def run_until_decay(
 
         all_probes.append(probe_out)
         actual_steps = step + 1
+        if snapshot is not None and actual_steps % snap_interval == 0:
+            snap_frames.append(_take_snapshot(carry["fdtd"]))
 
         if _reporter is not None and actual_steps % _report_every == 0:
             # Block first: JAX dispatch is asynchronous, so an unsynchronised
@@ -3568,7 +3747,8 @@ def run_until_decay(
                 # probe accumulator can't run update_waveguide_port_probe's
                 # float(dt) stamp, so without this a cfg built without dt= keeps
                 # dt=0 and the post-scan rect-DFT zeroes every spectrum.
-                dt=float(grid.dt),
+                # The scan's own step (stencil_order=4 derates it).
+                dt=float(_setup.dt),
                 v_probe_t=accs[0], v_ref_t=accs[1],
                 i_probe_t=accs[2], i_ref_t=accs[3],
                 v_inc_t=accs[4],
@@ -3598,6 +3778,21 @@ def run_until_decay(
             for fm, accs in zip(flux_monitors, carry["flux_monitors"])
         )
 
+    snapshots = snap_axes = None
+    if snapshot is not None:
+        if snap_frames:
+            snapshots = {
+                comp: jnp.stack([frame[i] for frame in snap_frames])
+                for i, comp in enumerate(snapshot.components)}
+        else:
+            snapshots = {
+                comp: jnp.zeros((0,) + s.shape, s.dtype)
+                for comp, s in zip(
+                    snapshot.components,
+                    jax.eval_shape(_take_snapshot, carry["fdtd"]))}
+        snap_axes = snapshot_axes(
+            grid, snapshot, actual_steps, dt=_setup.dt)
+
     return SimResult(
         state=carry["fdtd"] if return_state else None,
         time_series=time_series,
@@ -3607,7 +3802,9 @@ def run_until_decay(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
-        snapshots=None,
+        snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,
+        snapshot_axes=snap_axes,
+        dt=_setup.dt,
     )
