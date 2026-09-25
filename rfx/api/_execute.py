@@ -1098,6 +1098,30 @@ class _ExecuteMixin:
                 UserWarning, stacklevel=3,
             )
 
+    def _refuse_conformal_boundary(self, path_name: str, *, entry: str,
+                                   instead: str) -> None:
+        """Refuse ``Boundary(conformal=True)`` on a path with no Dey-Mittra update.
+
+        ``run()`` on the uniform lane and the uniform waveguide S-matrix
+        lane turn a conformal axis into Dey-Mittra weights on every PEC
+        shape; a path without that update solves staircased PEC instead.
+        A conformal axis always has PEC shapes to act on: both of its faces
+        are PEC, and the hi face's half-space wall is always one of the
+        uniform assembler's ``pec_shapes`` (``rfx/api/_compile.py``).
+        """
+        self._refuse_unsupported_run_kwargs(
+            path_name,
+            {"conformal_pec": bool(self._boundary_spec.conformal_faces())},
+            instead=instead,
+            entry=entry,
+            reason_overrides={"conformal_pec":
+                "Boundary(conformal=True) asks for Dey-Mittra conformal "
+                "PEC, and this path has no conformal update, so the walls "
+                "and PEC shapes would be staircased"},
+            remedy_overrides={"conformal_pec":
+                "drop Boundary(conformal=True) (staircase PEC)"},
+        )
+
     @staticmethod
     def _s_param_n_steps_off_record(s_param_n_steps, n_steps, until_decay):
         """``s_param_n_steps`` where it differs from the main run's record.
@@ -3919,6 +3943,14 @@ class _ExecuteMixin:
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
         )
+        # No forward lane (and so no optimize()) applies Dey-Mittra weights.
+        self._refuse_conformal_boundary(
+            {"fwd_uniform": "uniform forward",
+             "fwd_nonuniform": "non-uniform forward",
+             "fwd_distributed_nu": "distributed non-uniform forward",
+             }.get(plan.lane, plan.lane),
+            entry="Simulation.forward()",
+            instead="use run() on a uniform mesh")
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
         # loudly rather than silently returning a zero gradient on a lane that

@@ -1162,6 +1162,13 @@ def _compute_waveguide_s_matrix_nu(
     normalisation (see ``extract_waveguide_s_params_normalized``
     in ``rfx/sources/waveguide_port.py``).
     """
+    # The non-uniform scan has no Dey-Mittra update; the uniform lane of
+    # this calculator has one.
+    self._refuse_conformal_boundary(
+        "non-uniform waveguide S-matrix",
+        entry="compute_waveguide_s_matrix()",
+        instead="use compute_waveguide_s_matrix() on a uniform mesh "
+                "(no dx/dy/dz profile)")
     if self._interface_eps == "dual_average":
         raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
     from dataclasses import replace as _dc_replace

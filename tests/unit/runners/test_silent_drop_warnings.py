@@ -249,13 +249,14 @@ def test_dispersive_lanes_refuse_smoothing_and_conformal(nonuniform, kw, val, pe
         sim.run(n_steps=4, skip_preflight=True, **{kw: val})
 
 
-def _wr90_sim(debye, conformal=False):
+def _wr90_sim(debye, conformal=False, dz=None):
     """A short WR-90 section, optionally with a Debye slab inside."""
     def build():
         walls = Boundary(lo="pec", hi="pec", conformal=conformal)
         sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
                          dx=3e-3, cpml_layers=6,
-                         boundary=BoundarySpec(x="cpml", y=walls, z=walls))
+                         boundary=BoundarySpec(x="cpml", y=walls, z=walls),
+                         **({"dz_profile": dz} if dz is not None else {}))
         if debye:
             sim.add_material("disp", eps_r=2.0, debye_poles=[
                 DebyePole(delta_eps=1.0, tau=1e-11)])
@@ -301,6 +302,84 @@ def test_waveguide_s_matrix_still_smooths_without_dispersion():
     res = _quiet(lambda: sim.compute_waveguide_s_matrix(
         n_steps=20, normalize=True, subpixel_smoothing=True))
     assert np.asarray(res.s_params).shape[:2] == (2, 2)
+
+
+# --------------------------------------------------------------------
+# Boundary(conformal=True) off run(): forward() (so optimize()) and the
+# non-uniform waveguide S-matrix have no Dey-Mittra update. Measured before
+# the refusal: flag on vs off gave bit-identical forward() time series
+# (uniform and non-uniform) and a bit-identical non-uniform waveguide S,
+# while run() and the uniform waveguide lane moved.
+# --------------------------------------------------------------------
+
+def _conformal_cavity(conformal, nonuniform=False):
+    def build():
+        walls = Boundary(lo="pec", hi="pec", conformal=conformal)
+        sim = Simulation(freq_max=10e9, domain=(0.012, 0.0125, 0.012),
+                         dx=1e-3, cpml_layers=0,
+                         boundary=BoundarySpec(x="pec", y=walls, z="pec"),
+                         **({"dz_profile": np.full(12, 1e-3)}
+                            if nonuniform else {}))
+        sim.add(Cylinder((0.0085, 0.0085, 0.006), 0.0017, 0.008, axis="z"),
+                material="pec")
+        sim.add_source((0.004, 0.009, 0.006), "ez", amplitude_kind="field")
+        sim.add_probe((0.008, 0.004, 0.006), "ez")
+        return sim
+    return _quiet(build)
+
+
+def _optimize(sim, **kw):
+    import jax.numpy as jnp
+    from rfx.optimize import DesignRegion, optimize
+    region = DesignRegion(corner_lo=(0.002, 0.002, 0.004),
+                          corner_hi=(0.005, 0.005, 0.007), eps_range=(1.0, 4.0))
+    return optimize(sim, region, lambda r: jnp.sum(r.time_series ** 2),
+                    n_iters=1, n_steps=8, verbose=False, **kw)
+
+
+CONFORMAL_PATHS = {
+    # path: (call, entry, lane label)
+    "forward-uniform": (
+        lambda: _conformal_cavity(True).forward(
+            n_steps=8, checkpoint=False, skip_preflight=True),
+        "Simulation.forward()", "uniform forward"),
+    "forward-nonuniform": (
+        lambda: _conformal_cavity(True, nonuniform=True).forward(
+            n_steps=8, checkpoint=False, skip_preflight=True),
+        "Simulation.forward()", "non-uniform forward"),
+    "forward-distributed-nonuniform": (
+        lambda: _conformal_cavity(True, nonuniform=True).forward(
+            n_steps=8, checkpoint=False, skip_preflight=True,
+            distributed=True, devices=_devices()),
+        "Simulation.forward()", "distributed non-uniform forward"),
+    "optimize": (
+        lambda: _optimize(_conformal_cavity(True), skip_preflight=True),
+        "Simulation.forward()", "uniform forward"),
+    "waveguide-nonuniform": (
+        lambda: _wr90_sim(debye=False, conformal=True,
+                          dz=np.full(4, 0.00254)).compute_waveguide_s_matrix(
+            n_steps=20, normalize=True),
+        "compute_waveguide_s_matrix()", "non-uniform waveguide S-matrix"),
+}
+
+
+@pytest.mark.parametrize("path", list(CONFORMAL_PATHS))
+def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
+    call, entry, label = CONFORMAL_PATHS[path]
+    with pytest.raises(NotImplementedError,
+                       match=_refusal(label, "conformal_pec")) as info:
+        call()
+    msg = str(info.value)
+    assert msg.startswith(f"{entry} refuses"), msg
+    assert "drop Boundary(conformal=True)" in msg, msg
+
+
+@pytest.mark.parametrize("nonuniform", [False, True],
+                         ids=["uniform", "non-uniform"])
+def test_forward_without_a_conformal_boundary_still_runs(nonuniform):
+    res = _quiet(lambda: _conformal_cavity(False, nonuniform).forward(
+        n_steps=8, checkpoint=False, skip_preflight=True))
+    assert np.all(np.isfinite(np.asarray(res.time_series)))
 
 
 # --------------------------------------------------------------------
