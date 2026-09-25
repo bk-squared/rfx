@@ -93,7 +93,6 @@ def _measure_alpha(sigma):
     return a_fit, resid, _alpha_analytic(_FREQS_A, sigma)
 
 
-@pytest.mark.slow_physics
 @pytest.mark.parametrize("tand", [0.1, 0.3])   # low + moderate loss
 def test_lossy_slab_attenuation(tand):
     sigma = tand * (2.0 * np.pi * _F0) * EPS0 * EPS_R   # tan(delta) at F0
@@ -114,7 +113,6 @@ def test_lossy_slab_attenuation(tand):
     )
 
 
-@pytest.mark.slow_physics
 def test_lossy_cavity_Q_vs_tandelta():
     """PEC cavity filled with a low-loss dielectric: Q ~= 1/tan(delta)."""
     tand = 0.1                       # Q ~ 10 -> short ring-down, cheap

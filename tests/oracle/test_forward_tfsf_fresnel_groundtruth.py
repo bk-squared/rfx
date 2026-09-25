@@ -131,7 +131,6 @@ def fresnel_run():
     return out
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("eps", [2.0, 4.0, 9.0])
 def test_fresnel_magnitude_vs_analytic(fresnel_run, eps):
     """|Γ| matches analytic Fresnel to the Yee discretization envelope AND is passive (<1)."""
@@ -141,7 +140,6 @@ def test_fresnel_magnitude_vs_analytic(fresnel_run, eps):
     assert abs(abs(g) - abs(ga)) < 0.04, f"|Γ|={abs(g):.3f} vs analytic {abs(ga):.3f} (εr={eps})"
 
 
-@pytest.mark.slow
 def test_fresnel_phase_vs_analytic(fresnel_run):
     """De-embedded phase ~180° (up to the constant Yee half-cell reference-plane offset)."""
     for eps in (2.0, 4.0, 9.0):
@@ -150,7 +148,6 @@ def test_fresnel_phase_vs_analytic(fresnel_run):
         assert dph < 20.0, f"∠Γ={np.degrees(np.angle(g)):.1f}° vs 180° (εr={eps}, off {dph:.1f}°)"
 
 
-@pytest.mark.slow
 def test_fresnel_phase_offset_is_reference_plane_constant(fresnel_run):
     """The ~11° phase residual is a reference-plane CONSTANT (εr-independent), not a physics error."""
     phases = [np.degrees(np.angle(fresnel_run["gamma"][e])) for e in (2.0, 4.0, 9.0)]

@@ -78,7 +78,6 @@ def _series(sim, eps_arr, ns, ckpt=False):
                        skip_preflight=True).time_series  # complex for oblique
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("theta,tol", [(30.0, 0.10), (45.0, 0.08)])
 def test_oblique_fresnel_magnitude_vs_analytic(theta, tol):
     """|Γ|(θ) matches analytic oblique Fresnel R_TE and is passive; +j kernel is mandatory."""
