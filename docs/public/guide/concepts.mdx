@@ -45,7 +45,7 @@ The boundary decides what happens at the edge of the domain.
 
 | Boundary | Use it for | Notes |
 |---|---|---|
-| `"cpml"` | open problems: antennas, scattering, lines that leave the box | an absorber `cpml_layers` cells thick (default 16), **inside** the domain |
+| `"cpml"` | open problems: antennas, scattering, lines that leave the box | an absorber `cpml_layers` cells thick (default 16), added **outside** `domain` |
 | `"pec"` | closed problems: cavities, shielded boxes | energy cannot leave, so resonances ring indefinitely |
 | `"pmc"` | a symmetry plane, which halves the problem | only where the fields really are symmetric |
 | `"periodic"` | infinite arrays and unit cells | the paired faces go together |

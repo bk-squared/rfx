@@ -38,8 +38,10 @@ sim = Simulation(
   **S/m**.
 - `freq_max` does two things. It sets the default time step, and it is the
   frequency preflight uses to judge whether the mesh is fine enough.
-- The CPML absorber sits **inside** the domain. Keep sources, probes and
-  structures a few cells clear of it.
+- The CPML absorber is added **outside** the `domain` you give, so `domain`
+  is the region you model. Structures that reach the domain edge continue into
+  the absorber, which is how an infinite slab or a line leaving the box is
+  modelled. Keep sources and probes a few cells in from the edge.
 
 ## 2. Materials and geometry
 
