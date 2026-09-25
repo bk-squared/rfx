@@ -261,20 +261,26 @@ ABSORBER_SIGMA_MAX = 2.0           # S/m, quadratic profile
 SRC_X = 0.010
 N_STEPS = 4000
 
-# ---- measured envelope (see module docstring: #677 RE-MEASURE) ----
-MEASURED_ALPHA = 0.69823           # Np/m at f0, node-thin operator (#677)
-MEASURED_ALPHA_TWO_PLANE = 0.72494  # original #677 endpoint-ratio record
-# Restored by #947's absorber-only comparison: 0.87333 -> 0.72494797,
+# ---- measured envelope (historical #677 record in the module docstring) ----
+# 2026-09-25 (#1231): the plates continue into the source-side absorber
+# whatever shape they are drawn with (#1178, #1231), and the absorber's
+# magnetic profile sits at the Yee half cell (#1012); VESSL 369367264763.
+# The 2026-08-19 value 0.69823 was the plates ending at the absorber face.
+# All pins below use that run's 1N record (4000 steps); witnesses at f0:
+# fit ln-RMS residual 0.00246, settling -69.0 dB, two-plane alpha 0.77540.
+MEASURED_ALPHA = 0.74950           # Np/m at f0, continued plates (#1231)
+MEASURED_ALPHA_TWO_PLANE = 0.77540  # Np/m, same #1231 endpoint-ratio record
+# Historical #947 absorber-only comparison: 0.87333 -> 0.72494797,
 # alpha_fit 0.71565 -> 0.69823741. The 2026-09-07 re-pin attributed the
 # change to sheet rims without isolating the malformed absorber. Current
 # sheet ownership is retained; correcting nine ramp cells recovers the
 # historical profile. The diagnostic tolerance remains 5%.
-MEASURED_ENVELOPE = 0.33806        # |alpha_fit/alpha_analytic - 1| — the
+MEASURED_ENVELOPE = 0.28945        # |alpha_fit/alpha_analytic - 1| — the
 #   closed-form pairing's envelope, kept as the documented LIMIT-ANCHOR
-#   record (#700): the fixture's alpha_fit is 34% below Rs/(eta0*b)
+#   record (#700): the fixture's alpha_fit is 29% below Rs/(eta0*b)
 #   because the closed form is not an eigenvalue of this 4-conductor
 #   fixture, not because the sheet under-dissipates.
-MEASURED_GUIDE_SQRT_RATIO = 0.6089  # alpha(4*sigma)/alpha(sigma), guide fit
+MEASURED_GUIDE_SQRT_RATIO = 0.5970  # alpha(4*sigma)/alpha(sigma), same #1231 run
 
 # ---- #700 re-pair: exact 4-conductor comparator (tests/_transverse_resonance_o3) ----
 O3_FREQS = (8e9, 9e9, 10e9, 11e9, 12e9)
@@ -620,9 +626,10 @@ def test_alpha_envelope_regression_lock():
     alpha at f0 stays within +-5% of the recorded MEASURED_ALPHA, and the
     run witnesses stay clean — so any regression OR improvement of the
     node-thin sheet realization surfaces instead of drifting silently
-    behind the xfail'd contract gate below. Provenance: 2026-08-19 #677
-    re-measure, fit ln-RMS resid 0.00245, settle -71.0 dB, two-plane
-    alpha 0.72494."""
+    behind the xfail'd contract gate below. Provenance: 2026-09-25 #1231,
+    VESSL 369367264763, continued plates and the #1012 Yee-half-cell
+    magnetic absorber profile; fit ln-RMS resid 0.00246, settle -69.0 dB,
+    two-plane alpha 0.77540 (same 1N record as MEASURED_ALPHA)."""
     out = _base()
     alpha = out["alpha"][_F0_IDX]
     a2 = _alpha_two_plane(out["xs"], out["profile"][_F0_IDX])
@@ -652,12 +659,12 @@ def test_alpha_envelope_regression_lock():
     assert abs(alpha / MEASURED_ALPHA - 1.0) <= 0.05, (
         f"measured alpha moved: {alpha:.5f} vs recorded {MEASURED_ALPHA}")
     # Endpoint ratio is a distinct extractor of the same record. The
-    # absorber-only A/B recovers the original pin; this is not a claim
+    # #1231 pin uses the same continued-plate record; this is not a claim
     # that a multimode guide has one exponential attenuation constant.
     assert abs(a2 / MEASURED_ALPHA_TWO_PLANE - 1.0) <= 0.05, a2
-    # forward-wave-purity witness (re-measure run: 0.00245 ln-RMS)
+    # forward-wave-purity witness (#1231 1N record: 0.00246 ln-RMS)
     assert out["resid"][_F0_IDX] < 0.02, out["resid"][_F0_IDX]
-    # ring-down settling witness (repo rule; re-measure run: -71.0 dB)
+    # ring-down settling witness (repo rule; #1231 1N record: -69.0 dB)
     assert out["settle_db"] < -40.0, out["settle_db"]
 
 
@@ -829,8 +836,13 @@ def test_sqrt_sigma_discriminator_o4a():
 
 @pytest.mark.slow_physics
 @pytest.mark.xfail(
-    strict=True,
-    reason="#677 re-measure (2026-08-19): the GUIDE-fit sqrt-law ratio is "
+    strict=False,
+    reason="#1231 (2026-09-25): with the plates continued into the absorber "
+           "the guide-fit ratio reads 0.597, 0.003 inside the band's upper "
+           "edge; the free-standing sheet oracle still gives 0.5025, so the "
+           "guide fixture's span-average contamination this marker describes "
+           "is unchanged and a pass at the band edge is not the fix it waits for. "
+           "#677 re-measure (2026-08-19): the GUIDE-fit sqrt-law ratio is "
            "0.6089, outside the unwidened historical O4A_BAND "
            "[0.40, 0.60] — RED, and kept red rather than accommodated. "
            "Same attribution as the O3 xfail above: the independent "
