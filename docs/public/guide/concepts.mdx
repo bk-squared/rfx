@@ -1,0 +1,199 @@
+---
+title: "Core Concepts"
+description: "The mental model behind every rfx simulation: cells and time steps, boundaries, materials, the three kinds of conductor, sources versus ports, observables, and how to know a run is finished."
+sidebar:
+  order: 2
+---
+
+rfx is a finite-difference time-domain (FDTD) solver. It divides space into
+small rectangular cells, steps Maxwell's equations forward in time, and records
+what you ask for. This page explains the choices a model makes and what each
+one does to your result. Read it once before you build your own device.
+
+## The grid and the time step
+
+rfx uses the standard **Yee lattice**. Each field component lives at its own
+position in the cell. E components sit on cell edges and H components sit on
+cell faces. You rarely need the exact positions, but they explain two things
+you will see:
+
+- Geometry snaps to the lattice. A face drawn between two grid planes lands on
+  the nearest plane. `sim.fidelity_report()` prints the declared and realized
+  position of every face.
+- A probe or port reads a field at a grid location, which may be up to half a
+  cell away from the coordinate you gave.
+
+**Cell size.** The cell must resolve the shortest wavelength *inside the
+material*, λ_eff = c / (f_max √ε_r). Aim for at least 15–20 cells per λ_eff for
+propagation, and more for anything phase-sensitive. Preflight warns when a
+dielectric has fewer than 15. The thinnest feature that matters also needs a
+few cells, such as a substrate or a gap. On a uniform grid, those two
+requirements together set `dx`. When they conflict, use a graded mesh; see
+[Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/).
+
+**Time step.** rfx picks the largest stable step from the cell size (the
+Courant limit). You normally leave `dt` alone. A run of N steps covers
+`N * result.dt` seconds.
+
+**Cost.** Memory and time per step scale with the number of cells. Halving
+`dx` in 3-D gives 8× the cells and about 2× the steps, so roughly 16× the
+work. Start coarse, then refine.
+
+## Boundaries
+
+The boundary decides what happens at the edge of the domain.
+
+| Boundary | Use it for | Notes |
+|---|---|---|
+| `"cpml"` | open problems: antennas, scattering, lines that leave the box | an absorber `cpml_layers` cells thick (default 16), **inside** the domain |
+| `"pec"` | closed problems: cavities, shielded boxes | energy cannot leave, so resonances ring indefinitely |
+| `"pmc"` | a symmetry plane, which halves the problem | only where the fields really are symmetric |
+| `"periodic"` | infinite arrays and unit cells | the paired faces go together |
+| `"upml"` | legacy absorber | reflects noticeably more than CPML; prefer CPML |
+
+A single string applies to all six faces. Use `BoundarySpec` to set each face
+separately:
+
+```python
+from rfx import Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
+
+# Open on all sides except an infinite PEC ground at z = 0.
+spec = BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))
+sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.01), dx=0.5e-3,
+                 boundary=spec, cpml_layers=8)
+print(spec.to_dict())
+```
+
+Don't mix roles. A cavity with one absorbing wall is neither a cavity nor an
+antenna, and its Q means nothing. A PEC **boundary** is also infinite in its
+own plane. For a finite ground plane, draw a metal sheet inside an all-CPML
+domain instead, as described next.
+
+## Materials
+
+A material has a relative permittivity `eps_r`, a conductivity `sigma` (S/m)
+and optionally a permeability `mu_r`. Frequency-dependent materials use Debye
+or Lorentz poles. rfx ships a small library that includes `"fr4"`,
+`"rogers4350b"`, `"ptfe"`, `"copper"` and `"pec"`. See
+[Materials and Geometry](/rfx/guide/materials-geometry/).
+
+Any material with `sigma >= 1e6` S/m is treated as a **perfect conductor**.
+Its tangential E is forced to zero. The finite conductivity is not used, so
+library `copper` behaves as lossless PEC. For conductor loss on a metal sheet,
+use `add_thin_conductor(..., surface_impedance_f0=f0)`.
+
+## Three kinds of conductor
+
+Metal inside the domain is always exactly one of three things. **Your
+declaration decides which**, not the shape's size on the mesh:
+
+| Kind | Real-world object | Declare it with | What the solver builds |
+|---|---|---|---|
+| **sheet** | etched copper: ground plane, patch, trace | `sim.add_thin_conductor(Box(...))` with zero thickness on one axis | one grid plane with in-plane E zeroed; occupies no cell |
+| **volume** | plate, iris, post, machined wall | `sim.add(shape, material="pec")` | walls at both drawn faces, interior shorted |
+| **wire** | thin filament | `PolylineWire` thinner than half a cell | a path of zeroed E edges |
+
+```python
+from rfx import Box
+
+sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.01), dx=0.5e-3,
+                 boundary="cpml", cpml_layers=8)
+sim.add_material("substrate", eps_r=3.66)
+sim.add(Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.005)), material="substrate")
+
+# 35 um copper foil on the substrate floor: a sheet, zero thickness in z.
+sim.add_thin_conductor(Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.004)))
+
+# A 2 x 2 x 1 mm metal block: a volume.
+sim.add(Box((0.007, 0.007, 0.006), (0.009, 0.009, 0.007)), material="pec")
+
+sim.fidelity_report()   # declared vs realized planes for every entity
+```
+
+The first `add_thin_conductor` call warns that the sheet is lossless PEC. That
+warning is expected: see the materials note above.
+
+`sim.add()` refuses a PEC shape that is thinner than one cell but not zero. Such
+a shape is neither a sheet nor a resolved volume, so you must choose. The full
+rule, with the index conventions, is in
+[How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
+
+## Sources and ports
+
+- A **source** (`add_source`, `add_tfsf_source`, `add_polarized_source`)
+  injects a field. It has no impedance and does not load the structure. Use it
+  for fields, resonances, far-field patterns and scattering.
+- A **port** injects a signal *and* terminates the line in a known impedance,
+  so rfx can compute S-parameters. Each port family has its own calculator,
+  and only that calculator gives S-parameters for it:
+
+| Structure | Port | S-parameter calculator |
+|---|---|---|
+| discrete feed, lumped component terminals | `add_port(...)` (lumped; `extent=` makes a wire port) | `run(compute_s_params=True)` or `forward(port_s11_freqs=...)` |
+| microstrip line | `add_msl_port(...)` | `compute_msl_s_matrix()` |
+| rectangular waveguide | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
+| coaxial line | `add_coaxial_port(...)` | `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
+
+Probes, flux monitors and DFT planes record fields. They do not define a
+reference impedance or a reference plane, so they cannot produce S-parameters.
+[Sources and Ports](/rfx/guide/sources-ports/) covers every family.
+
+## Observables
+
+| Want | Use |
+|---|---|
+| a field value over time at a point | `add_probe`, `add_vector_probe` |
+| a field on a plane at chosen frequencies | `add_dft_plane_probe` |
+| power through a plane (R, T, absorption) | `add_flux_monitor` |
+| radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field` / `compute_rcs` |
+| resonant frequencies and Q | a probe plus `result.find_resonances()` (Harminv) |
+| S-parameters | a port family and its calculator (table above) |
+
+## Is the run finished?
+
+A pulse must ring down before its spectrum means anything. Every spectral
+quantity is a Fourier transform of a finite record: S-parameters, flux,
+far fields, DFT planes and resonances. If the record stops while energy is
+still bouncing around, the result is wrong in a way that no warning can fully
+catch.
+
+- Check `result.settling_db`. It gives the end-of-record energy relative to
+  the peak, and a value below about −40 dB means the record had rung down.
+- The S-parameter calculators warn when a drive's record ends too early.
+- High-Q structures need long records. A resonator with quality factor Q
+  decays over roughly Q / (π f) seconds.
+
+## Preflight and fidelity
+
+Two checks run without a solve:
+
+- `sim.preflight()` returns a report of errors and warnings about the setup.
+  Examples are cell size against wavelength, structures touching the
+  absorber, far-field boxes too close to the radiator, graded-mesh problems and
+  lossless resonators. `run()` repeats it automatically.
+- `sim.fidelity_report()` prints where each shape actually landed on the grid.
+
+Neither check is an accuracy guarantee. A clean preflight means rfx found none
+of the mistakes it knows about. Accuracy comes from a convergence study and a
+comparison with a reference; see
+[Convergence Study](/rfx/guide/tutorial-convergence/) and
+[Validation](/rfx/guide/validation/).
+
+## `run()` versus `forward()`
+
+- `sim.run(...)` is the general entry point. It returns a `Result` with probe
+  time series, S-parameters, DFT planes, flux and far-field data.
+- `sim.forward(...)` is the differentiable entry point. Wrap it in `jax.grad`
+  to get gradients with respect to material overrides or design variables.
+  It supports a narrower set of features. See
+  [Autodiff and Adjoint](/rfx/guide/autodiff-adjoint/) and
+  [Inverse Design](/rfx/guide/inverse-design/).
+
+## Precision
+
+The default is `precision="float32"`, which suits most work and is what the
+GPU runs fastest. `"float64"` needs JAX 64-bit mode enabled before you build
+the simulation. `"mixed"` stores fields in float16. Both are limited to the
+uniform, single-device solver. Mixed precision raises the CPML's reflection
+floor, so avoid it for low-reflection or S-parameter work.

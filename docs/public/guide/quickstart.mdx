@@ -1,137 +1,153 @@
 ---
 title: "Quick Start"
-description: "First simulation with the current stable rfx high-level API."
+description: "Build, check, run and read your first rfx simulation in about ten lines of Python."
 sidebar:
   order: 1
 ---
 
-This guide uses the high-level `Simulation` API for a field probe and a
-lumped/wire S-parameter example.
+This page walks through one complete simulation: a Gaussian pulse passing
+through a dielectric slab in open space. Every rfx model follows the same six
+steps:
 
-## 1. Minimal high-level run
+1. **Domain and mesh.** Create a `Simulation` with its size, cell size and
+   boundaries.
+2. **Materials and geometry.** Register materials and place shapes.
+3. **Excitation.** Add a source, or a port if you want S-parameters.
+4. **Observables.** Add probes, monitors or far-field boxes.
+5. **Preflight.** Let rfx check the setup before you spend time on a solve.
+6. **Run and read.** Call `run()` and read the returned `Result`.
 
-```python
-from rfx import Simulation, Box, GaussianPulse
+The example runs in a few seconds on a laptop CPU.
 
-sim = Simulation(
-    freq_max=5e9,
-    domain=(0.14, 0.06, 0.05),
-    dx=2e-3,
-    boundary="cpml",
-    cpml_layers=8,
-)
-
-# A small material loss supplies a finite dissipative mechanism.
-sim.add_material("slab", eps_r=2.2, sigma=0.01)
-sim.add(Box((0.07, 0.0, 0.0), (0.09, 0.06, 0.05)), material="slab")
-
-# Source and probe sit in the interior, clear of the CPML absorber.
-sim.add_source(
-    (0.03, 0.03, 0.025),
-    "ez",
-    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
-    amplitude_kind="current",
-)
-sim.add_probe((0.11, 0.03, 0.025), "ez")
-
-sim.fidelity_report()
-result = sim.run(until_decay=1e-3, report_every=250)
-modes = result.find_resonances(freq_range=(1e9, 4e9))
-```
-
-`fidelity_report()` shows how the declared geometry lands on the mesh; it does
-not predict the RF error. `report_every` is off by default and makes supported
-uniform and single-device non-uniform runs observable from the terminal when
-checkpointing is compatible. Traced and unsupported paths warn or raise rather
-than silently ignoring it.
-
-This open-domain pulse exercises the run and resonance-analysis APIs. Nothing
-here forces a mode into the 1–4 GHz band, so `modes` may come back empty. Where
-modes do appear, each Q is a finite-window estimate: repeat with longer runs and
-finer meshes, and model every radiation, dielectric, conductor and load-loss
-mechanism your Q definition assumes. Use the cavity validation workflow when Q
-is the target observable.
-
-Use `add_source()` for **unloaded resonance studies**.  
-Use `add_port()` for S-parameters against a reference impedance. The
-S-parameter support matrix states which port configurations are validated.
-
-## 2. Minimal port / S-parameter run
+## 1. Domain and mesh
 
 ```python
 import numpy as np
 from rfx import Simulation, Box, GaussianPulse
 
 sim = Simulation(
-    freq_max=5e9,
-    domain=(0.10, 0.04, 0.02),
-    dx=1.5e-3,
-    boundary="cpml",
-    cpml_layers=8,
+    freq_max=5e9,                # highest frequency you care about (Hz)
+    domain=(0.06, 0.04, 0.04),   # x, y, z size in metres
+    dx=2e-3,                     # cubic cell size in metres
+    boundary="cpml",             # absorbing (open) boundary on every face
+    cpml_layers=8,               # absorber thickness in cells
 )
-sim.add_material("dielectric", eps_r=4.0, sigma=0.01)
-sim.add(Box((0.03, 0.0, 0.0), (0.05, 0.04, 0.02)), material="dielectric")
-
-sim.add_port(
-    position=(0.01, 0.02, 0.01),
-    component="ez",
-    impedance=50.0,
-    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
-)
-
-sim.fidelity_report()
-preflight = sim.preflight()
-print(preflight.format())
-preflight.raise_for_failure()
-
-result = sim.run(n_steps=800, compute_s_params=True, report_every=200)
-s11 = result.s_params[0, 0, :]
-s11_db = 20 * np.log10(np.abs(s11) + 1e-12)
 ```
 
-## 3. Auto-configured thin-substrate setup
+- All lengths are in **metres**, frequencies in **hertz**, and conductivity in
+  **S/m**.
+- `freq_max` does two things. It sets the default time step, and it is the
+  frequency preflight uses to judge whether the mesh is fine enough.
+- The CPML absorber sits **inside** the domain. Keep sources, probes and
+  structures a few cells clear of it.
+
+## 2. Materials and geometry
 
 ```python
-from rfx import Box, auto_configure
-
-geometry = [
-    (Box((0, 0, 35e-6), (0.06, 0.06, 1.635e-3)), "substrate"),
-    (Box((0, 0, 0), (0.06, 0.06, 35e-6)), "ground"),
-]
-materials = {
-    "substrate": {"eps_r": 4.4, "sigma": 0.025},
-    "ground": {"eps_r": 1.0, "sigma": 5.8e7},
-}
-
-cfg = auto_configure(
-    geometry,
-    freq_range=(1e9, 4e9),
-    materials=materials,
-    accuracy="standard",
-)
-
-print(cfg.summary())
-
-mesh_kwargs = cfg.to_sim_kwargs()
-# mesh_kwargs is a planning result, not a complete Simulation.
+sim.add_material("slab", eps_r=3.0, sigma=0.005)
+sim.add(Box((0.028, 0.0, 0.0), (0.036, 0.04, 0.04)), material="slab")
 ```
 
-When `auto_configure()` detects a thin z-feature, it can switch to a
-**non-uniform z mesh** via `dz_profile` while keeping `dx`/`dy` coarser.
-`cfg.to_sim_kwargs()` transfers mesh and boundary constructor settings only;
-it does not include the derived `cfg.n_steps`. Materials,
-geometry, sources, ports, and probes must be registered on the `Simulation`.
-Before registering the final geometry, align thin material boundaries with the
-actual `dz_profile` edges as shown in the [Non-Uniform Mesh
-guide](/rfx/guide/nonuniform-mesh/). The `geometry` list above is a *planning*
-input, not a solver registration — the finite 35 µm bounds are what
-`auto_configure()` needs to see the thin feature. Register the ground on the
-`Simulation` with `sim.add_thin_conductor(..., thickness=35e-6)`. Handing that
-same 35 µm PEC `Box` to `sim.add()` raises: a `Box` is a volume, and 35 µm is
-under one cell ([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)). Add the substrate, source, and observables,
-run preflight, and resolve every relevant issue before `run()`.
-When the planned time budget is intended, call `sim.run(n_steps=cfg.n_steps)`
-explicitly. Next: [Your First Patch Antenna](/rfx/guide/first-patch/) builds a
-finite-ground-plane patch model and runs its setup check; the
-[Simulation API](/rfx/guide/api-reference/) page lists the current method
-signatures and result fields.
+`Box(corner_lo, corner_hi)` is an axis-aligned block. Here the slab is 8 mm
+thick along x and spans the whole cross-section. Library materials such as
+`"fr4"`, `"rogers4350b"` and `"pec"` need no `add_material` call. See
+[Materials and Geometry](/rfx/guide/materials-geometry/).
+
+## 3. Excitation
+
+```python
+sim.add_source(
+    (0.014, 0.02, 0.02),
+    "ez",
+    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+    amplitude_kind="current",
+)
+```
+
+This is a soft point source that drives `Ez` in one cell. `amplitude_kind="current"`
+means the waveform amplitude is a current in amperes. Always pass it
+explicitly. A point source has no impedance, so it gives fields, resonances and
+far fields but **not** S-parameters. Use a port for those; see
+[Sources and Ports](/rfx/guide/sources-ports/).
+
+## 4. Observables
+
+```python
+sim.add_probe((0.014, 0.02, 0.02), "ez")   # probe 0: in front of the slab
+sim.add_probe((0.046, 0.02, 0.02), "ez")   # probe 1: behind the slab
+```
+
+A probe records one field component at one point for every time step.
+
+## 5. Preflight
+
+```python
+report = sim.preflight()
+print(report.format())
+report.raise_for_failure()
+```
+
+Preflight looks for mistakes that give a wrong answer without crashing:
+- a mesh too coarse for the material and `freq_max`;
+- structures or probes inside the absorber;
+- geometry that does not land where you drew it;
+- a lossless resonator whose Q can never converge.
+
+Errors stop the run. Warnings are advisory, but read every one of them.
+`run()` repeats the check and prints any warnings.
+
+Try `eps_r=4.0` on the slab. At 2 mm cells that leaves exactly 15 cells per
+wavelength inside the dielectric, and preflight will warn about phase accuracy.
+
+## 6. Run and read the result
+
+```python
+result = sim.run(n_steps=1000)
+
+ts = np.asarray(result.time_series)      # shape (n_steps, n_probes)
+print(ts.shape, f"dt = {result.dt:.3e} s")
+
+spectrum = np.abs(np.fft.rfft(ts, axis=0))
+freqs = np.fft.rfftfreq(ts.shape[0], d=result.dt)
+in_band = (freqs > 1e9) & (freqs < 5e9)
+ratio = spectrum[in_band, 1] / spectrum[in_band, 0]
+print(f"settling: {result.settling_db:.1f} dB")
+```
+
+- `result.time_series` has one column per probe, in registration order.
+- `result.settling_db` compares the probe energy at the end of the record
+  with its peak. A value below about −40 dB means the pulse had rung down
+  when the run stopped. If it is higher, anything computed from a Fourier
+  transform of the record (spectra, S-parameters, far fields, resonances)
+  still contains a cut-off transient. Run longer.
+
+The ratio above only compares the spectra at two points. It is **not** a
+transmission coefficient, because probe 0 sees the incident and reflected
+waves together. For reflection and transmission, use two flux monitors and a
+reference run without the slab. The
+[Probes and S-Parameters](/rfx/guide/probes-sparams/) guide shows how.
+
+## Choosing the run length
+
+`run()` offers three ways to decide how long to step:
+
+| Argument | Meaning |
+|---|---|
+| `n_steps=N` | exactly N time steps |
+| `num_periods=P` | P periods of the source centre frequency (default 20) |
+| `until_decay=1e-3` | step until the field energy has decayed to that fraction of its peak, up to `decay_max_steps` |
+
+With absorbing boundaries, `until_decay` watches the total energy inside the
+domain, which is a reliable stop for spectra, flux and S-parameters. A closed
+PEC box never loses energy, so there it falls back to a single field sample.
+That fallback is only reliable for lossy or radiating ring-down, so use a fixed
+`n_steps` in a closed structure. Also use a fixed `n_steps` when you compare
+runs, for example in a convergence study.
+
+## Where to go next
+
+- [Core Concepts](/rfx/guide/concepts/): the mental model behind the six steps,
+  including cells, boundaries, conductors, sources and ports.
+- [Your First Patch Antenna](/rfx/guide/first-patch/): a real device on a
+  graded mesh.
+- [Examples](/rfx/examples/): the ordered learning path of runnable scripts.
