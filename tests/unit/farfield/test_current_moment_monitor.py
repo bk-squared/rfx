@@ -1849,12 +1849,17 @@ def _topology(region_lo_mm, region_hi_mm, material_fg):
 @pytest.mark.parametrize("material_fg", ["diel6", "pec"])
 def test_topology_design_region_outside_the_slab_is_refused(material_fg):
     """``topology_optimize`` hands the solve whole-grid traced design arrays;
-    it gives the guard the design region's bounds instead."""
+    it gives the guard the design region's bounds instead, before it imports
+    optax, so this refusal holds where the optimization extra is absent."""
     with pytest.raises(NotImplementedError, match="topology design region"):
         _topology((18, 8, 8), (22, 16, 16), material_fg)
 
 
 @pytest.mark.slow
+@pytest.mark.skipif(
+    not importlib.util.find_spec("optax"),
+    reason="optax not installed",
+)
 def test_topology_design_region_inside_the_slab_runs():
     assert _topology((10, 10, 10), (14, 14, 14), "diel6") is not None
 

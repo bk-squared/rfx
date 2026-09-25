@@ -401,6 +401,45 @@ def topology_optimize(
     # too, but only after the optax import, so without the extra it was a
     # refusal nothing checked.
     sim._require_no_refinement_without_a_subgrid("topology_optimize()")
+
+    # Build grid and compute design region indices
+    grid = sim._build_grid()
+    lo_idx = list(grid.position_to_index(design_region.corner_lo))
+    hi_idx = list(grid.position_to_index(design_region.corner_hi))
+
+    # Clamp indices to the interior region (exclude CPML padding).
+    # Without this, a design region at the domain edge can overlap
+    # with CPML cells, causing shape mismatches and incorrect gradients.
+    # Per-face pads (2026-04): a PMC/PEC/periodic face has pad=0 on its
+    # side, so the design can touch that reflector.
+    pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
+    pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)
+    dims = (grid.nx, grid.ny, grid.nz)
+    for d in range(3):
+        lo_idx[d] = max(lo_idx[d], pads_lo[d])
+        hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads_hi[d])
+    lo_idx = tuple(lo_idx)
+    hi_idx = tuple(hi_idx)
+
+    design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
+    if any(s <= 0 for s in design_shape):
+        raise ValueError(
+            f"Design region is empty after clamping to interior "
+            f"(lo_idx={lo_idx}, hi_idx={hi_idx}). Ensure the design "
+            f"region does not lie entirely within the CPML boundary."
+        )
+
+    # The design arrays reach the solve whole-grid and traced, so the
+    # current-moment monitor's guard checks the cells they can change: the
+    # design region's bounds. Same reasoning as the two fences above: run the
+    # guard here, above the optax import, and not only in the forward.
+    design_region_cells = SimpleNamespace(bounds=(
+        lo_idx[0], hi_idx[0] + 1, lo_idx[1], hi_idx[1] + 1,
+        lo_idx[2], hi_idx[2] + 1))
+    from rfx.current_moments import monitor_for_simulation
+    monitor_for_simulation(sim, grid, sim._periodic_flags(),
+                           overrides={"design_region": design_region_cells})
+
     try:
         import optax
     except ImportError:
@@ -431,33 +470,6 @@ def topology_optimize(
     pec_threshold = sim._PEC_SIGMA_THRESHOLD
     bg_is_pec = sigma_bg >= pec_threshold
     fg_is_pec = sigma_fg >= pec_threshold
-
-    # Build grid and compute design region indices
-    grid = sim._build_grid()
-    lo_idx = list(grid.position_to_index(design_region.corner_lo))
-    hi_idx = list(grid.position_to_index(design_region.corner_hi))
-
-    # Clamp indices to the interior region (exclude CPML padding).
-    # Without this, a design region at the domain edge can overlap
-    # with CPML cells, causing shape mismatches and incorrect gradients.
-    # Per-face pads (2026-04): a PMC/PEC/periodic face has pad=0 on its
-    # side, so the design can touch that reflector.
-    pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
-    pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)
-    dims = (grid.nx, grid.ny, grid.nz)
-    for d in range(3):
-        lo_idx[d] = max(lo_idx[d], pads_lo[d])
-        hi_idx[d] = min(hi_idx[d], dims[d] - 1 - pads_hi[d])
-    lo_idx = tuple(lo_idx)
-    hi_idx = tuple(hi_idx)
-
-    design_shape = tuple(hi_idx[d] - lo_idx[d] + 1 for d in range(3))
-    if any(s <= 0 for s in design_shape):
-        raise ValueError(
-            f"Design region is empty after clamping to interior "
-            f"(lo_idx={lo_idx}, hi_idx={hi_idx}). Ensure the design "
-            f"region does not lie entirely within the CPML boundary."
-        )
 
     # Compute filter radius in cells
     filt_r = design_region.effective_filter_radius
@@ -533,8 +545,7 @@ def topology_optimize(
             pec_occupancy=pec_occupancy,
             # The design arrays are whole-grid and traced; the monitor's
             # guard checks the region they can change instead.
-            monitor_overrides={"design_region": SimpleNamespace(
-                bounds=(si, ei + 1, sj, ej + 1, sk, ek + 1))},
+            monitor_overrides={"design_region": design_region_cells},
         )
         import inspect
         sig = inspect.signature(objective)
