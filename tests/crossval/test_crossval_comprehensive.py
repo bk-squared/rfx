@@ -313,58 +313,59 @@ class TestWaveguideCutoff:
 # 4. Lumped port in loaded cavity — rfx vs OpenEMS
 # =====================================================================
 
+@pytest.fixture(scope="module")
+def lumped_s11():
+    """One run of TestLumpedPortCavity's cavity, shared by its two S11 tests."""
+    from rfx import Simulation, Box, GaussianPulse
+
+    a, b, d = 50e-3, 40e-3, 20e-3
+    eps_r = 2.2
+    f_110 = (C0 / (2 * np.sqrt(eps_r))) * np.sqrt((1 / a) ** 2 + (1 / b) ** 2)
+    dx = 1e-3
+
+    sim = Simulation(freq_max=f_110 * 2, domain=(a, b, d),
+                     boundary='pec', dx=dx)
+    sim.add_material('dielectric', eps_r=eps_r)
+    sim.add(Box((0, 0, 0), (a, b, d)), material='dielectric')
+    sim.add_port((a / 3, b / 3, d / 2), 'ez', impedance=50,
+                 waveform=GaussianPulse(f0=f_110, bandwidth=0.8))
+    sim.add_probe((2 * a / 3, 2 * b / 3, d / 2), 'ez')
+
+    freqs = np.linspace(f_110 * 0.5, f_110 * 1.5, 200)
+    grid = sim._build_grid()
+    n_steps = max(20000, grid.num_timesteps(num_periods=50))
+    result = sim.run(n_steps=n_steps, compute_s_params=True, s_param_freqs=freqs)
+
+    assert result.s_params is not None
+    s11 = result.s_params[0, 0, :]
+    s11_db = 20 * np.log10(np.abs(s11) + 1e-30)
+
+    # Local minimum nearest to f_110 within ±5%
+    lo = np.searchsorted(freqs, f_110 * 0.95)
+    hi = np.searchsorted(freqs, f_110 * 1.05)
+    local_idx = lo + np.argmin(s11_db[lo:hi])
+    f_dip = freqs[local_idx]
+    err = abs(f_dip - f_110) / f_110
+
+    # Resonance contrast: the dip against the S11 values 10% away on either side.
+    idx_below = np.searchsorted(freqs, f_110 * 0.90)
+    idx_above = min(np.searchsorted(freqs, f_110 * 1.10), len(freqs) - 1)
+    s11_surround = max(s11_db[idx_below], s11_db[idx_above])
+    contrast = s11_surround - s11_db[local_idx]
+
+    print(f"\nLumped port S11: local dip at {f_dip/1e9:.4f} GHz, "
+          f"analytical={f_110/1e9:.4f} GHz, err={err*100:.1f}%, "
+          f"S11_dip={s11_db[local_idx]:.1f} dB, contrast={contrast:.1f} dB")
+    return dict(s11=s11, s11_db=s11_db, f_110=f_110, f_dip=f_dip, err=err,
+                local_idx=local_idx, contrast=contrast)
+
+
 class TestLumpedPortCavity:
     """Lumped port S11 in a dielectric-loaded PEC cavity.
 
     This tests the port model (impedance loading + V/I extraction),
     not just resonance frequency.
     """
-
-    @pytest.fixture(scope="class")
-    def lumped_s11(self):
-        """One cavity run shared by the two S11 tests below (memoized per class)."""
-        from rfx import Simulation, Box, GaussianPulse
-
-        a, b, d = 50e-3, 40e-3, 20e-3
-        eps_r = 2.2
-        f_110 = (C0 / (2 * np.sqrt(eps_r))) * np.sqrt((1 / a) ** 2 + (1 / b) ** 2)
-        dx = 1e-3
-
-        sim = Simulation(freq_max=f_110 * 2, domain=(a, b, d),
-                         boundary='pec', dx=dx)
-        sim.add_material('dielectric', eps_r=eps_r)
-        sim.add(Box((0, 0, 0), (a, b, d)), material='dielectric')
-        sim.add_port((a / 3, b / 3, d / 2), 'ez', impedance=50,
-                     waveform=GaussianPulse(f0=f_110, bandwidth=0.8))
-        sim.add_probe((2 * a / 3, 2 * b / 3, d / 2), 'ez')
-
-        freqs = np.linspace(f_110 * 0.5, f_110 * 1.5, 200)
-        grid = sim._build_grid()
-        n_steps = max(20000, grid.num_timesteps(num_periods=50))
-        result = sim.run(n_steps=n_steps, compute_s_params=True, s_param_freqs=freqs)
-
-        assert result.s_params is not None
-        s11 = result.s_params[0, 0, :]
-        s11_db = 20 * np.log10(np.abs(s11) + 1e-30)
-
-        # Local minimum nearest to f_110 within ±5%
-        lo = np.searchsorted(freqs, f_110 * 0.95)
-        hi = np.searchsorted(freqs, f_110 * 1.05)
-        local_idx = lo + np.argmin(s11_db[lo:hi])
-        f_dip = freqs[local_idx]
-        err = abs(f_dip - f_110) / f_110
-
-        # Resonance contrast: the dip against the S11 values 10% away on either side.
-        idx_below = np.searchsorted(freqs, f_110 * 0.90)
-        idx_above = min(np.searchsorted(freqs, f_110 * 1.10), len(freqs) - 1)
-        s11_surround = max(s11_db[idx_below], s11_db[idx_above])
-        contrast = s11_surround - s11_db[local_idx]
-
-        print(f"\nLumped port S11: local dip at {f_dip/1e9:.4f} GHz, "
-              f"analytical={f_110/1e9:.4f} GHz, err={err*100:.1f}%, "
-              f"S11_dip={s11_db[local_idx]:.1f} dB, contrast={contrast:.1f} dB")
-        return dict(s11=s11, s11_db=s11_db, f_110=f_110, f_dip=f_dip, err=err,
-                    local_idx=local_idx, contrast=contrast)
 
     def test_rfx_lumped_port_s11(self, lumped_s11):
         """Lumped port S11 in a dielectric-loaded PEC cavity: passive (|S11| <= 1 across
