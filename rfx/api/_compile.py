@@ -150,6 +150,23 @@ class _CompileMixin:
     # Threshold above which sigma is treated as PEC (use mask instead).
     _PEC_SIGMA_THRESHOLD = 1e6
 
+    def _has_pec_to_conform(self) -> bool:
+        """Whether the uniform assembler's ``pec_shapes`` would be non-empty.
+
+        Those shapes are what Dey-Mittra conformal weights act on; with none,
+        ``conformal_pec=True`` is a no-op on every lane. Mirrors the three
+        sources in :meth:`_assemble_materials`: a PEC geometry entry, a PEC
+        thin conductor, and the hi-face half-space wall of a
+        ``Boundary(conformal=True)`` axis (always added).
+        """
+        if self._boundary_spec.conformal_faces():
+            return True
+        if any(self._resolve_material(e.material_name).sigma
+               >= self._PEC_SIGMA_THRESHOLD for e in self._geometry):
+            return True
+        return any(getattr(tc, "is_pec", False)
+                   for tc in (getattr(self, "_thin_conductors", ()) or ()))
+
     def _assemble_materials(
         self,
         grid: Grid,

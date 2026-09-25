@@ -151,6 +151,27 @@ def build_nonuniform_grid(
         )
 
 
+def nu_thin_conductor_refusal(tc) -> str | None:
+    """Why the non-uniform assembler refuses this thin conductor, or None.
+
+    A lossy DC sheet (``add_thin_conductor`` with ``sigma_bulk`` and no
+    ``surface_impedance_f0``) folds by its Box corners here; a shape
+    without them has no fold on this lane. ``fidelity_report()`` reads the
+    same answer to report the refusal instead of raising.
+    """
+    if (getattr(tc, "is_pec", False)
+            or getattr(tc, "surface_impedance_f0", None) is not None):
+        return None
+    if (getattr(tc.shape, "corner_lo", None) is not None
+            and getattr(tc.shape, "corner_hi", None) is not None):
+        return None
+    return ("a lossy thin conductor (add_thin_conductor without "
+            "surface_impedance_f0) with a non-Box shape "
+            f"({type(tc.shape).__name__}) is not implemented on the "
+            "non-uniform lane; skipping it would leave the conductor out of "
+            "the solve. Instead: draw it as a Box, or run on a uniform mesh.")
+
+
 def assemble_materials_nu(
     sim,
     grid: NonUniformGrid,
@@ -327,16 +348,11 @@ def assemble_materials_nu(
                 # non-Box DC sheet used to warn and be skipped, which solved
                 # the board without that conductor; since 2.0 it is refused.
                 # Folding it instead stays the separate decision #674 left.
-                lo = getattr(tc.shape, "corner_lo", None)
-                hi = getattr(tc.shape, "corner_hi", None)
-                if lo is None or hi is None:
-                    raise NotImplementedError(
-                        "a lossy thin conductor (add_thin_conductor without "
-                        "surface_impedance_f0) with a non-Box shape "
-                        f"({type(tc.shape).__name__}) is not implemented on "
-                        "the non-uniform lane; skipping it would leave the "
-                        "conductor out of the solve. Instead: draw it as a "
-                        "Box, or run on a uniform mesh.")
+                _refusal = nu_thin_conductor_refusal(tc)
+                if _refusal is not None:
+                    raise NotImplementedError(_refusal)
+                lo = tc.shape.corner_lo
+                hi = tc.shape.corner_hi
             extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
             n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
             d_norm = e_node_dual_spacings(

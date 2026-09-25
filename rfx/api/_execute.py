@@ -972,7 +972,7 @@ class _ExecuteMixin:
     def _refuse_unsupported_run_kwargs(path_name: str,
                                        unsupported_kwargs: dict,
                                        *,
-                                       instead: str | None,
+                                       instead: str | dict | None,
                                        reason_overrides: dict | None = None,
                                        remedy_overrides: dict | None = None,
                                        entry: str = "Simulation.run()") -> None:
@@ -984,10 +984,12 @@ class _ExecuteMixin:
         ``silent_values``, e.g. ``conformal_pec=False``) passes. Any other
         value raises ``NotImplementedError`` naming the argument, the
         lane, why the lane cannot do it and what to do instead. Running
-        without it would compute something other than what was asked
-        (a staircase PEC instead of the conformal boundary, a fixed
-        ``n_steps`` instead of a run to decay, no S-matrix), and until
-        2.0 these lanes did exactly that behind a ``UserWarning``.
+        without it would not be the run that was asked for: most of these
+        change the result (a staircase PEC instead of the conformal
+        boundary, a fixed ``n_steps`` instead of a run to decay, no
+        S-matrix), and ``checkpoint`` changes the memory of a gradient,
+        not its value. Until 2.0 these lanes ran on behind a
+        ``UserWarning``.
 
         ``report_every`` is the one argument that only warns: it prints
         progress and changes no result, so a lane without it says so and
@@ -995,7 +997,10 @@ class _ExecuteMixin:
 
         ``instead`` names how to reach a lane that implements the
         arguments (e.g. ``"run on a uniform mesh"``), or is ``None`` when
-        there is no such lane. ``reason_overrides`` replaces the shared
+        there is no such lane. A dict gives it per argument, with ``"*"``
+        for the rest, where one lane change does not reach every argument
+        (a distributed non-uniform run that drops ``devices=`` still lands
+        on the non-uniform lane). ``reason_overrides`` replaces the shared
         per-argument reason with a lane-accurate one (the closed-boundary
         non-uniform lane refuses ``until_decay`` for a different reason
         than the distributed lane does); ``remedy_overrides`` does the same
@@ -1077,16 +1082,18 @@ class _ExecuteMixin:
         for kw, val in unsupported_kwargs.items():
             if kw == "report_every" or not _asks(kw, val):
                 continue
+            other = (instead.get(kw, instead.get("*"))
+                     if isinstance(instead, dict) else instead)
             refused.append(
                 f"  {kw}={_shown(val)}: {reasons.get(kw, 'not implemented')}. "
                 f"Instead: {remedies.get(kw, 'drop it')}"
-                + (f", or {instead}." if instead else ".")
+                + (f", or {other}." if other else ".")
             )
         if refused:
             raise NotImplementedError(
                 f"{entry} refuses {len(refused)} argument(s) the "
-                f"{path_name} lane does not implement; running without "
-                "them would compute something other than what was asked:\n"
+                f"{path_name} lane does not implement; running on without "
+                "them would not be the run that was asked for:\n"
                 + "\n".join(refused)
             )
         val = unsupported_kwargs.get("report_every")
@@ -4499,17 +4506,39 @@ class _ExecuteMixin:
                 )
                 refuse_unsupported_distributed_features(
                     self, lane="distributed multi-device run()")
+            # TFSF and waveguide-port models take the runner's single-device
+            # fallback, ``sim.run(n_steps=n_steps)``. It drops every explicit
+            # argument, but it re-derives conformal_pec from the declared
+            # Boundary(conformal=True), so that request is carried there.
+            _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
+            if ((self._tfsf is not None or self._waveguide_ports)
+                    and conformal_pec == bool(
+                        self._boundary_spec.conformal_faces())):
+                _dist_conformal = False
+            # One device on a graded mesh is the non-uniform lane, which
+            # carries neither snapshot nor conformal_pec, nor until_decay on
+            # closed boundaries.
+            _one_device = "omit devices= to run on one device"
+            _dist_instead = _one_device
+            if self._uses_nonuniform_mesh:
+                _one_uniform = ("omit devices= and run on a uniform mesh "
+                                "(no dx/dy/dz profile)")
+                _dist_instead = {"*": _one_device,
+                                 "snapshot": _one_uniform,
+                                 "conformal_pec": _one_uniform}
+                if self._boundary not in ("cpml", "upml"):
+                    _dist_instead["until_decay"] = _one_uniform
             self._refuse_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
                 "snapshot": snapshot,
                 "until_decay": until_decay,
-                "conformal_pec": conformal_pec,
+                "conformal_pec": _dist_conformal,
                 "compute_s_params": compute_s_params,
                 "s_param_freqs": s_param_freqs,
                 "s_param_n_steps": s_param_n_steps,
                 **({} if report_every is None else {"report_every": report_every}),
-            }, instead="omit devices= to run on one device")
+            }, instead=_dist_instead)
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
             from rfx.runners.distributed_v2 import run_distributed
@@ -4531,15 +4560,21 @@ class _ExecuteMixin:
             # s_param_n_steps other than that record's length is refused.
             _nu_refused = {
                 "snapshot": snapshot,
-                "conformal_pec": conformal_pec,
+                "conformal_pec": bool(
+                    conformal_pec and self._has_pec_to_conform()),
                 "s_param_n_steps": self._s_param_n_steps_off_record(
                     s_param_n_steps, n_steps, until_decay),
             }
             if self._boundary not in ("cpml", "upml"):
                 _nu_refused["until_decay"] = until_decay
+            _uniform = "run on a uniform mesh (no dx/dy/dz profile)"
             self._refuse_unsupported_run_kwargs(
                 "non-uniform mesh", _nu_refused,
-                instead="run on a uniform mesh (no dx/dy/dz profile)",
+                # One wire port reads S from the main record on the uniform
+                # lane too; only a multi-port S-matrix runs its own records.
+                instead={"*": _uniform, "s_param_n_steps": (
+                    _uniform if len(self._port_sparameter_entries()) > 1
+                    else None)},
                 reason_overrides={
                     "until_decay":
                         "the interior-energy decay stop needs absorbing "
@@ -4616,7 +4651,7 @@ class _ExecuteMixin:
                 "checkpoint": checkpoint,
                 "snapshot": snapshot,
                 "until_decay": until_decay,
-                "conformal_pec": conformal_pec,
+                "conformal_pec": bool(conformal_pec and pec_shapes),
                 **({} if report_every is None else {"report_every": report_every}),
             }, instead="use the default solver='yee'")
             if n_steps is None:
@@ -4645,7 +4680,7 @@ class _ExecuteMixin:
                 "checkpoint": checkpoint,
                 "snapshot": snapshot,
                 "until_decay": until_decay,
-                "conformal_pec": conformal_pec,
+                "conformal_pec": bool(conformal_pec and pec_shapes),
                 **({} if report_every is None else {"report_every": report_every}),
             }, instead="drop add_refinement() to run on the uniform lane")
             subgrid_n_steps = n_steps

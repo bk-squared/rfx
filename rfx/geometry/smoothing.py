@@ -1120,12 +1120,16 @@ def compute_smoothed_eps_nonuniform(
         try:
             masks[id(shape)] = shape.mask(nu_grid)
         except Exception as exc:
+            # The uniform builder calls ``shape.mask(grid)`` too, so a
+            # uniform mesh is a way out only for a shape that has one.
+            other = (", or run on a uniform mesh" if hasattr(shape, "mask")
+                     else "")
             raise NotImplementedError(
                 f"subpixel smoothing on a non-uniform mesh cannot place "
                 f"{type(shape).__name__}: it has no signed distance function "
                 f"and its mask() failed on the non-uniform grid ({exc!r}); "
                 f"skipping it would leave its permittivity out of the solve. "
-                f"Instead: drop subpixel_smoothing, or run on a uniform mesh."
+                f"Instead: drop subpixel_smoothing{other}."
             ) from exc
 
     host = _host_path(*coords[:3], *centres[:3], *cell_sizes, background_eps,

@@ -250,6 +250,24 @@ def run_uniform(
                     "eps correction, so PEC would be staircased",
             })
 
+    # The UPML E update is built from the Stage-1 per-component eps
+    # (``init_upml(aniso_eps=...)``) and never reads the Stage-2 inverse
+    # tensor ``kottke_pec`` builds, so that tensor would be dropped.
+    if sim._boundary == "upml" and grid.cpml_layers > 0:
+        sim._refuse_unsupported_run_kwargs(
+            "uniform mesh with boundary='upml'", {
+                "subpixel_smoothing": (subpixel_smoothing
+                                       if subpixel_smoothing == "kottke_pec"
+                                       else False),
+            },
+            instead="use boundary='cpml'",
+            reason_overrides={"subpixel_smoothing":
+                "the UPML E update never reads the Stage-2 inverse-"
+                "permittivity tensor, so dielectric interfaces would get "
+                "unsmoothed eps and PEC the staircase mask"},
+            remedy_overrides={"subpixel_smoothing":
+                "use subpixel_smoothing=True (Stage 1, which UPML reads)"})
+
     materials = base_materials
 
     # Fold RLC R and C into material arrays before port/source setup
