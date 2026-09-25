@@ -1961,11 +1961,13 @@ def _records_share_one_solver_tree(out: Path) -> dict:
     }
 
 
-# Commits that stage records name but the branch no longer contains (it was
-# rebased after the 2026-09-22 campaign), each held by a pushed tag so the
-# records' commit stays fetchable after the squash merge.
+# Commits that stage records name but a squash merge does not keep (the branch
+# was rebased after the 2026-09-22 campaign; the 2026-09-25 re-measure ran on
+# the fix branch's own commit), each held by a pushed tag so the records'
+# commit stays fetchable after the squash merge.
 PROVENANCE_TAGS = {
     "ca6da2b17e3f42a3ca50678c9f7eb662c88e53af": "provenance/coax-chain-battery-ca6da2b1",
+    "556ce7b61722ccbcb2fe859a0fef0a1bd6033f54": "provenance/coax-chain-battery-556ce7b6",
 }
 
 
