@@ -973,7 +973,9 @@ class _ExecuteMixin:
                                        unsupported_kwargs: dict,
                                        *,
                                        instead: str | None,
-                                       reason_overrides: dict | None = None) -> None:
+                                       reason_overrides: dict | None = None,
+                                       remedy_overrides: dict | None = None,
+                                       entry: str = "Simulation.run()") -> None:
         """Refuse a ``Simulation.run`` argument that a lane does not implement.
 
         ``unsupported_kwargs`` maps each ``run()`` argument the
@@ -996,7 +998,9 @@ class _ExecuteMixin:
         there is no such lane. ``reason_overrides`` replaces the shared
         per-argument reason with a lane-accurate one (the closed-boundary
         non-uniform lane refuses ``until_decay`` for a different reason
-        than the distributed lane does).
+        than the distributed lane does); ``remedy_overrides`` does the same
+        for what to do instead. ``entry`` names the call the user made, for
+        the S-parameter calculators that share this rule.
         """
         import warnings as _w
         # Per-kwarg values that do not ask for the feature. ``None`` is
@@ -1054,6 +1058,8 @@ class _ExecuteMixin:
         }
         if reason_overrides:
             reasons.update(reason_overrides)
+        if remedy_overrides:
+            remedies.update(remedy_overrides)
 
         def _asks(kw, val) -> bool:
             silent = silent_values.get(kw, (None,))
@@ -1078,7 +1084,7 @@ class _ExecuteMixin:
             )
         if refused:
             raise NotImplementedError(
-                f"Simulation.run() refuses {len(refused)} argument(s) the "
+                f"{entry} refuses {len(refused)} argument(s) the "
                 f"{path_name} lane does not implement; running without "
                 "them would compute something other than what was asked:\n"
                 + "\n".join(refused)

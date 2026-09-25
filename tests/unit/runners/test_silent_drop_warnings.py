@@ -249,6 +249,60 @@ def test_dispersive_lanes_refuse_smoothing_and_conformal(nonuniform, kw, val, pe
         sim.run(n_steps=4, skip_preflight=True, **{kw: val})
 
 
+def _wr90_sim(debye, conformal=False):
+    """A short WR-90 section, optionally with a Debye slab inside."""
+    def build():
+        walls = Boundary(lo="pec", hi="pec", conformal=conformal)
+        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
+                         dx=3e-3, cpml_layers=6,
+                         boundary=BoundarySpec(x="cpml", y=walls, z=walls))
+        if debye:
+            sim.add_material("disp", eps_r=2.0, debye_poles=[
+                DebyePole(delta_eps=1.0, tau=1e-11)])
+            sim.add(Box((0.024, 0.0, 0.0), (0.036, 0.02286, 0.01016)),
+                    material="disp")
+        freqs = np.linspace(6e9, 7e9, 3)
+        for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
+            sim.add_waveguide_port(x, direction=d, mode=(1, 0),
+                                   mode_type="TE", freqs=freqs, f0=6.5e9,
+                                   bandwidth=0.4, name=name)
+        return sim
+    return _quiet(build)
+
+
+@pytest.mark.parametrize("kw,val,conformal", [
+    ("subpixel_smoothing", True, False),
+    ("subpixel_smoothing", "kottke_pec", False),
+    ("conformal_pec", None, True),
+], ids=["subpixel", "kottke", "conformal-boundary"])
+def test_waveguide_s_matrix_refuses_smoothing_and_conformal_with_debye(
+        kw, val, conformal):
+    """compute_waveguide_s_matrix() shares the uniform lane's dispersive
+    E update, so it refuses the same two requests."""
+    sim = _wr90_sim(debye=True, conformal=conformal)
+    kwargs = {} if val is None else {kw: val}
+    with pytest.raises(NotImplementedError, match=_refusal(
+            "waveguide S-matrix with Debye/Lorentz materials", kw)) as info:
+        sim.compute_waveguide_s_matrix(n_steps=20, normalize=True, **kwargs)
+    msg = str(info.value)
+    assert msg.startswith("compute_waveguide_s_matrix() refuses"), msg
+    if conformal:
+        assert "Boundary(conformal=True)" in msg, msg
+
+
+def test_waveguide_s_matrix_still_smooths_without_dispersion():
+    """Control: the same call with a plain dielectric slab runs."""
+    def build():
+        sim = _wr90_sim(debye=False)
+        sim.add(Box((0.024, 0.0, 0.0), (0.036, 0.02286, 0.01016)),
+                material="fr4")
+        return sim
+    sim = _quiet(build)
+    res = _quiet(lambda: sim.compute_waveguide_s_matrix(
+        n_steps=20, normalize=True, subpixel_smoothing=True))
+    assert np.asarray(res.s_params).shape[:2] == (2, 2)
+
+
 # --------------------------------------------------------------------
 # Controls: each argument still runs on a lane that implements it.
 # --------------------------------------------------------------------

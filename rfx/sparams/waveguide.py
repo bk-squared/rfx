@@ -491,6 +491,32 @@ def compute_waveguide_s_matrix(
         pec_wires=_wg_pec_wires)
     _wg_pec_sheets = tuple(_wg_pec_sheets)
     _wg_pec_wires = tuple(_wg_pec_wires)
+    # A Debye/Lorentz E update reads neither the smoothed permittivity tensor
+    # nor the Dey-Mittra eps correction built below, so both would be
+    # dropped; refused as on run()'s uniform lane (rfx/runners/uniform.py).
+    if debye_spec is not None or lorentz_spec is not None:
+        self._refuse_unsupported_run_kwargs(
+            "waveguide S-matrix with Debye/Lorentz materials", {
+                "subpixel_smoothing": subpixel_smoothing,
+                "conformal_pec": bool(
+                    self._boundary_spec.conformal_faces() and pec_shapes),
+            },
+            instead="remove the Debye/Lorentz poles",
+            entry="compute_waveguide_s_matrix()",
+            reason_overrides={
+                "subpixel_smoothing":
+                    "the dispersive E update does not read the smoothed "
+                    "per-component permittivity tensor, so interfaces "
+                    "would get scalar eps",
+                "conformal_pec":
+                    "Boundary(conformal=True) asks for Dey-Mittra walls, "
+                    "and the dispersive E update does not read their eps "
+                    "correction, so the walls would be staircased",
+            },
+            remedy_overrides={
+                "conformal_pec": "drop Boundary(conformal=True) "
+                                 "(staircase PEC)",
+            })
     # #931 §1.7: the realized PEC edges of this device — volumes,
     # sheets and wires — built ONCE and handed to every device run of
     # the extractors below.  This replaces the sigma=1e10 CELL fold
