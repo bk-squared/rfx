@@ -2064,9 +2064,9 @@ def test_the_adi_lane_refuses_it(entry):
     with pytest.raises(NotImplementedError,
                        match="not supported on the ADI lane"):
         if entry == "run":
-            sim.run(n_steps=4)
+            sim.run(n_steps=4, skip_preflight=True)
         else:
-            sim.forward(n_steps=4)
+            sim.forward(n_steps=4, skip_preflight=True)
 
 
 def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
@@ -2081,7 +2081,7 @@ def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
     from rfx.current_moments import require_accumulated_current_moments
 
     sim = _sim_with_monitor()
-    res = sim.run(n_steps=4)
+    res = sim.run(n_steps=4, skip_preflight=True)
     assert res.current_moment_data is not None
     require_accumulated_current_moments(sim, res, "run")        # filled: silent
 
