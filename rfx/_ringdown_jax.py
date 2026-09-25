@@ -24,6 +24,13 @@ The map, ``y (n, C) -> completed spectra (nf, C)``, is the research lane's E3'
   ``W`` the 1/RMS channel weights) held constant. The right-hand side is zero
   in value, so ``s(y) == s0`` bit for bit.
 * RESIDUES re-fitted differentiably at ``s(y)`` (QR of the traced basis).
+* TAIL. ``1 - lambda z = -expm1(s dt + log z)``: near a resonance the two
+  imaginary parts, each about ``omega dt``, cancel to about ``alpha dt``, so in
+  complex64 the difference loses ``omega / alpha = 2 Q`` of its digits (a Q
+  1e4 mode completed 1.9e-3 off, its derivative 3.8e-3). The host forms
+  ``s0 dt + log z`` in float64 with the poles; the device adds only the
+  zero-valued ``ds dt``, so the value keeps float32's relative precision at
+  any Q and the derivative is unchanged.
 
 Static shapes. ``jax.jit`` needs a fixed pole count: the host returns ``k_max``
 poles, the real ones first, padded with an inert pole (``lambda = 0.5`` per
@@ -53,17 +60,21 @@ import inspect
 
 import numpy as np
 
-#: The inert padding pole, per step. Its basis column underflows toward zero
-#: and is masked anyway.
+#: The inert padding pole, per step (``s = log(0.5) / dt``). Its basis column
+#: underflows toward zero within a few hundred samples and is masked anyway.
 INERT_LAMBDA = 0.5
 #: Block length of the plain DFT (host-built float64 kernel, cast per block).
 DFT_BLOCK = 1024
 #: Mutations, for the unit tests' revived-defect checks only:
 #: ``"poles_constant"`` drops the pole derivative (the frequency-shift term is
-#: lost); ``"hold_residues"`` stops the gradient of the residues.
-MUTATIONS = (None, "poles_constant", "hold_residues")
+#: lost); ``"hold_residues"`` stops the gradient of the residues;
+#: ``"device_tail_arg"`` forms ``s dt + log z`` on the device in the working
+#: precision (the complex64 cancellation at high Q).
+MUTATIONS = (None, "poles_constant", "hold_residues", "device_tail_arg")
 #: Host status codes carried back with the poles.
 STATUS_OK, STATUS_FAILED, STATUS_OVER_BUDGET = 0, 1, 2
+#: Set by the caller (not the host) when its in-program consistency check fails.
+STATUS_INCONSISTENT = 3
 
 
 def working_dtypes():
@@ -88,18 +99,20 @@ def _callback_keywords():
 # Poles from the host
 # ---------------------------------------------------------------------------
 
-def host_poles(identify_window, window, k_max):
-    """``(s, mask, status)`` from the host, constants of the traced program.
+def host_poles(identify_window, window, k_max, dt, freqs):
+    """``(s, mask, status, tail_arg)`` from the host, constants of the traced program.
 
     ``identify_window(w)`` gets the window as a numpy array of the traced
     window's own dtype and shape, bit for bit, and returns the kept poles
     (complex, per second, at the original step). ``window`` is
     ``stop_gradient``-ed here. Returns ``s (k_max,)`` in the working complex
-    dtype (the real poles first, then inert ones), ``mask (k_max,)`` in the
-    working real dtype, and ``status`` (int32): :data:`STATUS_OK`,
-    :data:`STATUS_FAILED` (the identification raised) or
-    :data:`STATUS_OVER_BUDGET` (more than ``k_max`` poles); on either failure
-    the mask is all zero.
+    dtype (the real poles first, then inert ones, ``lambda = 0.5`` per step),
+    ``mask (k_max,)`` in the working real dtype, ``status`` (int32):
+    :data:`STATUS_OK`, :data:`STATUS_FAILED` (the identification raised) or
+    :data:`STATUS_OVER_BUDGET` (more than ``k_max`` poles), on either failure
+    with an all-zero mask; and ``tail_arg (nf, k_max)``, ``s dt + log z`` at
+    ``freqs`` formed in float64 on the host and then cast (see the module
+    docstring, TAIL).
     """
     import jax
     import jax.numpy as jnp
@@ -110,7 +123,15 @@ def host_poles(identify_window, window, k_max):
     n_words = part.itemsize // 4
     in_dtype = np.dtype(window.dtype)
     shape = tuple(int(d) for d in window.shape)
-    inert = complex(np.log(INERT_LAMBDA))
+    dt = float(dt)
+    inert = complex(np.log(INERT_LAMBDA)) / dt
+    logz = -2j * np.pi * np.asarray(freqs, dtype=np.float64) * dt      # (nf,)
+    nf = int(logz.size)
+
+    def words(z):
+        """Complex float64 values as uint32 words of their working-precision parts."""
+        parts = np.ascontiguousarray(np.stack([z.real, z.imag], axis=-1).astype(part))
+        return parts.view(np.uint32).reshape(z.shape + (2, n_words))
 
     def host(words_in):
         w = np.ascontiguousarray(np.asarray(words_in, dtype=np.uint32)).view(in_dtype)
@@ -126,24 +147,24 @@ def host_poles(identify_window, window, k_max):
             s, status = np.zeros(0, dtype=np.complex128), STATUS_OVER_BUDGET
         s_out[:s.size] = s
         mask[:s.size] = 1
-        parts = np.ascontiguousarray(np.stack([s_out.real, s_out.imag], axis=-1).astype(part))
-        return (parts.view(np.uint32).reshape(K, 2, n_words), mask,
-                np.asarray(status, dtype=np.int32))
+        arg = s_out[None, :] * dt + logz[:, None]                          # float64
+        return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg))
 
-    words = jax.lax.bitcast_convert_type(jax.lax.stop_gradient(window), jnp.uint32)
+    w_in = jax.lax.bitcast_convert_type(jax.lax.stop_gradient(window), jnp.uint32)
     shapes = (jax.ShapeDtypeStruct((K, 2, n_words), jnp.uint32),
               jax.ShapeDtypeStruct((K,), jnp.int32),
-              jax.ShapeDtypeStruct((), jnp.int32))
-    out_words, mask_i, status = jax.pure_callback(host, shapes, words,
-                                                  **_callback_keywords())
-    if n_words == 1:
-        parts = jax.lax.bitcast_convert_type(out_words[..., 0], rdt)
-    else:
-        parts = jax.lax.bitcast_convert_type(out_words, rdt)
+              jax.ShapeDtypeStruct((), jnp.int32),
+              jax.ShapeDtypeStruct((nf, K, 2, n_words), jnp.uint32))
+    s_words, mask_i, status, arg_words = jax.pure_callback(host, shapes, w_in,
+                                                           **_callback_keywords())
+
+    def from_words(x):
+        parts = jax.lax.bitcast_convert_type(x[..., 0] if n_words == 1 else x, rdt)
+        return jax.lax.complex(parts[..., 0], parts[..., 1]).astype(cdt)
+
     # The pole is the unit that crossed from the host: a complex s (1/s) in
-    # the working precision. Its inert padding is log(INERT_LAMBDA) per step.
-    s = jax.lax.complex(parts[:, 0], parts[:, 1]).astype(cdt)
-    return s, mask_i.astype(rdt), status
+    # the working precision.
+    return from_words(s_words), mask_i.astype(rdt), status, from_words(arg_words)
 
 
 # ---------------------------------------------------------------------------
@@ -172,20 +193,28 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     return float(dt) * jnp.einsum("bf,bfc->fc", jnp.asarray(z_off, dtype=cdt), inner)
 
 
-def tail_dft(s, c, n_ref, n_last, dt, freqs):
+def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
     """:func:`rfx.ringdown.tail_dft` in JAX.
 
     ``dt sum_k c_k lambda_k**(N+1-n_ref) z**(N+1) / (1 - lambda_k z)`` with
     ``1 - lambda z = -expm1(s dt - j 2 pi f dt)``. ``c (K, C)``; returns ``(nf, C)``.
+    ``tail_arg (nf, K)`` is ``s0 dt + log z`` from :func:`host_poles`, formed in
+    float64; the device adds ``(s - stop_gradient(s)) dt`` to it, zero in value.
+    ``None`` forms the sum on the device in the working precision.
     """
+    import jax
     import jax.numpy as jnp
     _rdt, cdt = working_dtypes()
     freqs = np.asarray(freqs, dtype=np.float64)
     dt = float(dt)
-    logz = jnp.asarray(-2j * np.pi * freqs * dt, dtype=cdt)                   # (nf,)
     zN1 = jnp.asarray(np.exp(-2j * np.pi * freqs * dt * (int(n_last) + 1)), dtype=cdt)
     sdt = s * dt
-    one_minus_lz = -jnp.expm1(sdt[None, :] + logz[:, None])                   # (nf, K)
+    if tail_arg is None:
+        logz = jnp.asarray(-2j * np.pi * freqs * dt, dtype=cdt)               # (nf,)
+        one_minus_lz = -jnp.expm1(sdt[None, :] + logz[:, None])               # (nf, K)
+    else:
+        dsdt = (s - jax.lax.stop_gradient(s)) * dt
+        one_minus_lz = -jnp.expm1(tail_arg + dsdt[None, :])
     amp = jnp.exp(sdt * float(int(n_last) + 1 - int(n_ref)))[:, None] * c     # (K, C)
     return dt * ((zN1[:, None] / one_minus_lz) @ amp)
 
@@ -241,13 +270,16 @@ def lstsq_masked(A, b, mask):
 # The completion map
 # ---------------------------------------------------------------------------
 
-def completion(y, dt, freqs, n_start, s0, mask, *, mutation=None, return_aux=False):
+def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
+               mutation=None, return_aux=False):
     """Completed spectra of the record ``y (n, C)`` (samples 0..n-1).
 
-    ``s0, mask`` are the window's poles from :func:`host_poles` for the window
-    ``[n_start, n)``; the tail starts after sample ``n - 1``. See the module
-    docstring for the value and the derivative. ``mutation`` exists only for
-    the unit tests' revived-defect checks (:data:`MUTATIONS`).
+    ``s0, mask, tail_arg`` come from :func:`host_poles` for the window
+    ``[n_start, n)`` and the bins ``freqs``; the tail starts after sample
+    ``n - 1``. ``plain`` may carry :func:`plain_dft` of ``y`` at ``freqs`` when
+    the caller already has it. See the module docstring for the value and the
+    derivative. ``mutation`` exists only for the unit tests' revived-defect
+    checks (:data:`MUTATIONS`).
     """
     import jax
     import jax.numpy as jnp
@@ -292,7 +324,10 @@ def completion(y, dt, freqs, n_start, s0, mask, *, mutation=None, return_aux=Fal
     if mutation == "hold_residues":
         c = jax.lax.stop_gradient(c)
 
-    spectra = plain_dft(y, dt, freqs) + tail_dft(s, c, n_start, n - 1, dt, freqs)
+    if plain is None:
+        plain = plain_dft(y, dt, freqs)
+    spectra = plain + tail_dft(s, c, n_start, n - 1, dt, freqs,
+                               None if mutation == "device_tail_arg" else tail_arg)
     if not return_aux:
         return spectra
     aux = {"s_pencil": s0, "mask": mask, "delta_s": ds, "s": s, "c": c, "c0": c0,

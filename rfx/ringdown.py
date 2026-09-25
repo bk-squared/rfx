@@ -1189,14 +1189,16 @@ def _ulps(rebuilt, rfx_values) -> float:
 
 #: W0's bar: the rebuilt accumulators and the lane's S assembly on the run's
 #: own accumulators may differ from the run by at most this fraction of each
-#: array's peak, ``max |rebuilt - run| / max |run|``. PI decision 2026-09-25:
-#: per-step quantities (fields, probe samples) keep the cross-trace rule of at
-#: most 9 ULP at the peak; quantities summed over the record (the port DFT
-#: accumulators, the S built from them) pass at 1e-5 of the peak, because a
-#: program compiled differently (a user's ``jax.jit`` around ``forward()``)
-#: rounds the same sum differently -- 5-26 ULP on 600-4000 steps with the
-#: probe series bit-identical. The ULP counts stay in the report.
-W0_REL_BAR = 1.0e-5
+#: array's peak, ``max |rebuilt - run| / max |run|``. PI decisions 2026-09-25
+#: (ledger archive 567dd2b, 3feae81): per-step quantities (fields, probe
+#: samples) keep the cross-trace rule of at most 9 ULP at the peak; quantities
+#: summed over the record (the port DFT accumulators, the S built from them)
+#: pass at 1e-4 of the peak, because a program compiled differently (a user's
+#: ``jax.jit`` around ``forward()``) rounds the same sum differently with the
+#: probe series bit-identical: 5-26 ULP on 600-4000 steps, 6.1e-6 of the peak
+#: at 4,000 steps and 1.36e-5 at 30,000 with bins across the resonance. The
+#: ULP counts stay in the report.
+W0_REL_BAR = 1.0e-4
 #: W1's bar, absolute on S: the S the completion's channels give without a
 #: tail -- the float64 DFT of the float64 rebuild of the port's V and I --
 #: against the S the same DFT gives of the float32 per-step V and I that the
@@ -1205,6 +1207,16 @@ W0_REL_BAR = 1.0e-5
 #: constructions alone: 1.7e-7 .. 6.0e-7 on clean runs of 1,500-60,000 steps,
 #: 0.89 when the completion is fed the midpoint cell's voltage of a 3-cell port.
 W1_BAR = 1.0e-4
+#: forward()'s in-program consistency: max |S of the traced tail-free DFT of the
+#: rebuilt port V and I - the run's own S from its accumulators|, absolute on S
+#: (RingdownForward._traced). ``None``: measured and reported (``consistency``
+#: in the report, not judged), not applied to the traced value. Measured on
+#: the ring-down box: clean 2.3e-6 .. 7.1e-5 (1.5k-30k steps, growing with the
+#: record); the wrong H loop 0.35-0.94, the midpoint voltage of a 3-cell port
+#: 0.70-0.99, the current's half-step phase dropped 0.036-0.10, the current
+#: one step late 0.07-0.20; every channel one step late 2.8e-5 .. 4.1e-4 (a
+#: common delay cancels in S, so S itself moves only that much).
+CONSISTENCY_BAR = None
 
 
 class _NotCompleted(Exception):
@@ -1755,8 +1767,10 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
       backward pass. ``ringdown`` must be that call's
       ``ForwardResult.ringdown`` (traced or concrete): WE is formed only when
       every source is off (at or below ``source_off_tol`` of its peak) over
-      ``[window_start/2 T, T]``. When it is not, the returned witness is not
-      judged, its value is NaN, and its note says to use the fallback;
+      ``[window_start/2 T, T]``, and, when its status is concrete, only
+      when neither completion failed (a failed one is NaN in value and
+      gradient). When it is not formed, the returned witness is not judged,
+      its value is NaN, and its note gives the reason and the fallback;
     * ``against="longer_record"`` (the fallback): ``ringdown.s_params`` of the
       same model on a record 1.5-2x longer.
 
@@ -1790,6 +1804,27 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
         plan = ringdown._ctx.plan
         r_long = float(plan.source_ratio_long)
         tol = float(plan.spec.source_off_tol)
+        from rfx import _ringdown_jax as rj
+        from rfx.core.jax_utils import is_tracer
+        status = ringdown._status
+        if not is_tracer(status):
+            st = np.asarray(status).ravel()
+            failed = [w for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), st)
+                      if int(code) != rj.STATUS_OK]
+            if failed:
+                why = {rj.STATUS_FAILED: "the identification failed",
+                       rj.STATUS_OVER_BUDGET: "more poles than the static count",
+                       rj.STATUS_INCONSISTENT: "the in-program consistency check failed"}
+                reasons = "; ".join(
+                    f"{w}: {why.get(int(code), f'status {int(code)}')}"
+                    for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), st)
+                    if int(code) != rj.STATUS_OK)
+                return RingdownWitness(
+                    name, math.nan, float(bar), False, rule,
+                    f"not formed: the completion is NaN on {', '.join(failed)} ({reasons}). "
+                    "The witness of this gradient is the same gradient from a record "
+                    "1.5-2x longer: gradient_witness(g, g_longer, against='longer_record')",
+                    judged=False)
         if not r_long <= tol:
             ws = float(plan.spec.window_start)
             return RingdownWitness(
@@ -1864,7 +1899,15 @@ class _ForwardReportContext:
             "run(ringdown=...) gives of the same record",
             "" if np.all(np.isfinite(S_traced)) else
             "the traced completion is NaN: its host identification failed")
-        return replace(report, witnesses=report.witnesses + (w,))
+        c = float(np.asarray(res._consistency))
+        wc = RingdownWitness(
+            "consistency", c, math.nan if CONSISTENCY_BAR is None else CONSISTENCY_BAR,
+            True if CONSISTENCY_BAR is None else c <= CONSISTENCY_BAR,
+            "max |S| difference, inside the traced program, between the tail-free S "
+            "of the rebuilt port V/I and the run's own S from its accumulators",
+            "information (not applied)" if CONSISTENCY_BAR is None else "",
+            judged=CONSISTENCY_BAR is not None)
+        return replace(report, witnesses=report.witnesses + (w, wc))
 
 
 class RingdownForwardResult:
@@ -1890,10 +1933,10 @@ class RingdownForwardResult:
     """
 
     __slots__ = ("s_params", "s_params_long", "freqs", "_channels", "_accs",
-                 "_s_plain", "_status", "_ctx", "_report")
+                 "_s_plain", "_status", "_consistency", "_ctx", "_report")
 
     def __init__(self, s_params, s_params_long, freqs, channels, accs, s_plain,
-                 status, ctx):
+                 status, consistency, ctx):
         self.s_params = s_params
         self.s_params_long = s_params_long
         self.freqs = freqs
@@ -1901,12 +1944,13 @@ class RingdownForwardResult:
         self._accs = accs
         self._s_plain = s_plain
         self._status = status
+        self._consistency = consistency
         self._ctx = ctx
         self._report = None
 
     def tree_flatten(self):
         return ((self.s_params, self.s_params_long, self.freqs, self._channels,
-                 self._accs, self._s_plain, self._status), self._ctx)
+                 self._accs, self._s_plain, self._status, self._consistency), self._ctx)
 
     @classmethod
     def tree_unflatten(cls, ctx, children):
@@ -1924,6 +1968,12 @@ class RingdownForwardResult:
              self._s_plain))
         if any(is_tracer(x) for x in leaves):
             return None
+        if np.ndim(self._channels) != 2:
+            raise ValueError(
+                "RingdownForwardResult.report reads one result; this one is batched "
+                f"(its port channels have shape {tuple(np.shape(self._channels))}, "
+                "one record is (n_steps, channels)), as jax.vmap returns it. Take "
+                "one element first: jax.tree_util.tree_map(lambda a: a[i], result).")
         self._report = self._ctx.report(self)
         return self._report
 
@@ -1938,6 +1988,12 @@ def _register_pytree():
 
 
 _register_pytree()
+
+
+def rdt_nan(result):
+    """The real dtype of the run's S (for a NaN consistency reading)."""
+    import jax.numpy as jnp
+    return jnp.real(jnp.asarray(result.s_params)).dtype
 
 
 class RingdownForward(RingdownRun):
@@ -1994,6 +2050,7 @@ class RingdownForward(RingdownRun):
         return stripped._replace(ringdown=self._traced(result, channels))
 
     def _traced(self, result, channels) -> RingdownForwardResult:
+        import jax
         import jax.numpy as jnp
 
         from rfx import _ringdown_jax as rj
@@ -2014,10 +2071,12 @@ class RingdownForward(RingdownRun):
             layouts = self._layouts_checked(
                 pms, {key: j for j, key in enumerate(self.probe_keys)})
         except _NotCompleted:
-            nan = jnp.full(jnp.shape(result.s_params), jnp.nan,
-                           dtype=jnp.result_type(result.s_params))
+            # NaN built from the run's own S, so the gradient of anything made
+            # from it is NaN too, not a silent 0.0
+            nan = result.s_params * jnp.nan
             return RingdownForwardResult(nan, nan, result.freqs, channels, accs,
-                                         result.s_params, status_fail, ctx)
+                                         result.s_params, status_fail,
+                                         jnp.asarray(jnp.nan, dtype=rdt_nan(result)), ctx)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
         acc_dtype = jnp.result_type(accs[0][3])
         used = sorted({j for e_cols, h_cells in layouts for j in e_cols}
@@ -2054,15 +2113,32 @@ class RingdownForward(RingdownRun):
 
         half = jnp.asarray(np.asarray(half_step_current_phase(f_bins, dt))
                            .astype(np.complex128), dtype=cdt)
+
+        def to_s(spectra):
+            vp = [spectra[:, 2 * p].astype(acc_dtype) for p in range(len(pms))]
+            ii = [(spectra[:, 2 * p + 1] * half).astype(acc_dtype) for p in range(len(pms))]
+            return _assemble_core(lane, pms, vp, ii, pms[0].freqs, dt)
+
+        # In-program consistency: the tail-free S of the traced channels
+        # against the run's own S from its accumulators. A rebuild that is not
+        # the port's V and I (W0/W1 on the host) is seen here, inside the
+        # program, where a jitted objective would otherwise use it unseen.
+        plain = rj.plain_dft(Y, dt, f_bins)
+        s_run = jnp.asarray(result.s_params)
+        consistency = jax.lax.stop_gradient(jnp.max(jnp.abs(
+            to_s(plain).astype(s_run.dtype) - s_run)))
+        consistent = (True if CONSISTENCY_BAR is None
+                      else consistency <= CONSISTENCY_BAR)
         out, status = [], []
         for n0 in (self.n_start, self.n_long):
             k_max = static_pole_bound(n - n0, Y.shape[1], dt, ref_hz)
-            s0, mask, st = rj.host_poles(identify_window, raw[n0:], k_max)
-            spectra = rj.completion(Y, dt, f_bins, n0, s0, mask)
-            vp = [spectra[:, 2 * p].astype(acc_dtype) for p in range(len(pms))]
-            ii = [(spectra[:, 2 * p + 1] * half).astype(acc_dtype) for p in range(len(pms))]
-            S = _assemble_core(lane, pms, vp, ii, pms[0].freqs, dt)
-            out.append(jnp.where(st == rj.STATUS_OK, S, jnp.asarray(jnp.nan, dtype=S.dtype)))
+            s0, mask, st, tail_arg = rj.host_poles(identify_window, raw[n0:], k_max,
+                                                   dt, f_bins)
+            spectra = rj.completion(Y, dt, f_bins, n0, s0, mask, tail_arg, plain=plain)
+            S = to_s(spectra)
+            st = jnp.where(consistent, st, rj.STATUS_INCONSISTENT)
+            # a failure reaches the value AND the gradient
+            out.append(S * jnp.where(st == rj.STATUS_OK, 1.0, jnp.nan).astype(S.real.dtype))
             status.append(st)
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
-                                     result.s_params, jnp.stack(status), ctx)
+                                     result.s_params, jnp.stack(status), consistency, ctx)

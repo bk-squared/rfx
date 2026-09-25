@@ -15,7 +15,7 @@ differs (TM110 at 12.40 GHz, loaded Q about 200).
 What is pinned here, on both lanes:
 
 * W0 -- the port voltage and current rebuilt from the port-channel probes,
-  accumulated the run's way, are the run's own accumulators to 1e-5 of each
+  accumulated the run's way, are the run's own accumulators to 1e-4 of each
   array's peak (the ULP counts printed), and the lane's S assembly on those
   accumulators is ``Result.s_params``; a rebuild reading the wrong H samples,
   dropping the current's half-step phase or reading the series one step late
@@ -312,7 +312,7 @@ def _replay_one_step_late(monkeypatch):
 
 @pytest.mark.parametrize("defect", [_replay_without_half_step, _replay_one_step_late])
 def test_w0_catches_a_replay_that_is_not_the_run_s(defect, monkeypatch):
-    """W0 judged at 1e-5 of each array's peak still sees a rebuild that drops
+    """W0 judged at 1e-4 of each array's peak still sees a rebuild that drops
     the current's half-step phase (a phase of pi f dt, 0.1 rad at 18 GHz) or
     reads the series one step late: the run comes back uncompleted."""
     defect(monkeypatch)

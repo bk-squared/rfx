@@ -115,8 +115,9 @@ def _identify_window(w):
 
 
 def _completion(y, *, k_max=K_TEST, mutation=None, return_aux=False):
-    s0, mask, _status = rj.host_poles(_identify_window, y[N_START:], k_max)
-    return rj.completion(y, DT, FREQS, N_START, s0, mask, mutation=mutation,
+    s0, mask, _status, tail_arg = rj.host_poles(_identify_window, y[N_START:], k_max,
+                                                DT, FREQS)
+    return rj.completion(y, DT, FREQS, N_START, s0, mask, tail_arg, mutation=mutation,
                          return_aux=return_aux)
 
 
@@ -276,13 +277,19 @@ def test_the_host_sees_the_window_bit_for_bit(x64):
     with (enable_x64() if x64 else contextlib.nullcontext()):
         dtype = jnp.float64 if x64 else jnp.float32
         w = jnp.asarray(y, dtype=dtype) * 1.000001
-        s, mask, status = jax.block_until_ready(
-            jax.jit(lambda a: rj.host_poles(spy, a, 4))(w))   # the callback has run
+        s, mask, status, tail_arg = jax.block_until_ready(
+            jax.jit(lambda a: rj.host_poles(spy, a, 4, DT, FREQS[:3]))(w))   # the callback has run
         w_host = np.asarray(w)
     assert seen["w"].dtype == w_host.dtype and seen["w"].shape == w_host.shape
     assert np.array_equal(seen["w"].view(np.uint8), w_host.view(np.uint8))
     assert int(status) == rj.STATUS_OK and np.asarray(mask).tolist() == [1, 1, 0, 0]
     assert np.asarray(s)[0] == pytest.approx(-1.0e8 + 2j * np.pi * 2.0e9, rel=1e-6)
+    # the pad poles are lambda = 0.5 per step, and the tail argument is s dt + log z
+    assert np.abs(np.exp(np.asarray(s)[2:] * DT)) == pytest.approx(0.5, rel=1e-5)
+    want = (np.asarray(s)[None, :].astype(np.complex128) * DT
+            - 2j * np.pi * FREQS[:3, None] * DT)
+    assert np.asarray(tail_arg).shape == (3, 4)
+    assert np.max(np.abs(np.asarray(tail_arg) - want)) < 1e-6 * np.max(np.abs(want))
 
 
 @pytest.mark.parametrize("case", ["raises", "over_budget"])
@@ -298,7 +305,7 @@ def test_a_failed_identification_comes_back_as_a_status(case):
             raise ValueError("a window of 3 decimated samples is too short")
         return np.full(5, -1.0e8 + 1j, dtype=np.complex128)
 
-    s, mask, status = jax.jit(lambda a: rj.host_poles(host, a, 4))(
+    s, mask, status, _tail_arg = jax.jit(lambda a: rj.host_poles(host, a, 4, DT, FREQS))(
         jnp.ones((50, 2), jnp.float32))
     want = rj.STATUS_FAILED if case == "raises" else rj.STATUS_OVER_BUDGET
     assert int(status) == want
@@ -306,9 +313,17 @@ def test_a_failed_identification_comes_back_as_a_status(case):
     assert np.all(np.isfinite(np.asarray(s)))
 
 
+#: The float32 map against the analytic answer, relative to the peak (float32
+#: data): measured on the base oracle (Q 40-100) value 5.8e-7 / 5.9e-7 and JVP
+#: 1.6e-6 / 1.7e-6 (JAX 0.10.2 / 0.4.33); at a Q 1e4 mode value 4.6e-6 and
+#: JVP 1.4e-5 / 1.6e-5, at Q 5e4 value 4.5e-6 and JVP 1.3e-5. Bars: 3-4x the
+#: largest.
+F32_BAR_VALUE, F32_BAR_JVP = 2.0e-5, 5.0e-5
+
+
 def test_float32_path_is_finite_complex64():
-    """Without x64 the map runs in complex64; value and JVP are finite and the
-    value is within 1e-4 of the infinite-record spectrum."""
+    """Without x64 the map runs in complex64; value and JVP are within the
+    float32 bars of the infinite-record spectrum and its derivative."""
     import jax
     import jax.numpy as jnp
     if bool(jax.config.read("jax_enable_x64")):
@@ -320,4 +335,67 @@ def test_float32_path_is_finite_complex64():
     C, dC = np.asarray(C), np.asarray(dC)
     assert C.dtype == np.complex64
     assert np.all(np.isfinite(C)) and np.all(np.isfinite(dC))
-    assert _rel(C, y_inf) < 1e-4, _rel(C, y_inf)
+    print(f"\n[float32, base oracle] value {_rel(C, y_inf):.2e}, JVP {_rel(dC, _dy):.2e} "
+          "of the peak")
+    assert _rel(C, y_inf) < F32_BAR_VALUE, _rel(C, y_inf)
+    assert _rel(dC, _dy) < F32_BAR_JVP, _rel(dC, _dy)
+
+
+#: A high-Q mode (the Q is set by the argument) beside a Q 60 one, 12,000 samples
+#: at dt 1 ps, bins 5.9-6.26 GHz across the high-Q resonance at 6.08 GHz.
+HQ_DT, HQ_FMAX, HQ_N = 1.0e-12, 10.0e9, 12000
+HQ_FREQS = 5.9e9 + 1.0e6 * np.arange(361)
+
+
+def _hq_modes(q):
+    return ((6.08e9, q, 0.3, 0.5 * np.exp(0.3j), 0.2 * np.exp(-1.0j), 0.2, -0.3),
+            (7.5e9, 60.0, 0.1, 0.4 * np.exp(1.1j), 0.3 * np.exp(0.2j), 0.1, 0.1))
+
+
+@pytest.mark.parametrize("q", [1.0e4, 5.0e4])
+@pytest.mark.parametrize("mutation", [None, "device_tail_arg"])
+def test_float32_keeps_its_precision_at_high_q(q, mutation):
+    """At a resonance ``1 - lambda z`` is the small difference of two
+    imaginary parts of about ``omega dt``; formed in complex64 it loses 2Q of
+    its digits (a Q 1e4 mode completed 1.9e-3 off, its derivative 3.8e-3; Q
+    5e4 9.7e-3 / 1.9e-2). The host forms ``s0 dt + log z`` in float64: value
+    and JVP stay at the float32 bars at any Q. With the sum formed on the
+    device (``mutation="device_tail_arg"``) the test is red."""
+    import jax
+    import jax.numpy as jnp
+    global MODES
+    if bool(jax.config.read("jax_enable_x64")):
+        pytest.skip("x64 is on in this process; the float32 path is not reachable")
+    saved = MODES
+    try:
+        MODES = _hq_modes(q)
+        s_, r_, ds_, dr_ = _modes()
+        t = np.arange(HQ_N) * HQ_DT
+        e = np.exp(np.outer(t, s_))
+        y = (e @ r_).real.astype(np.float32)
+        v = (e @ dr_ + (t[:, None] * e * ds_[None, :]) @ r_).real.astype(np.float32)
+        lam = np.exp(s_ * HQ_DT)
+        z = np.exp(-2j * np.pi * HQ_FREQS * HQ_DT)
+        den = 1.0 - lam[None, :] * z[:, None]
+        y_inf = HQ_DT * (1.0 / den) @ r_
+        dy_inf = HQ_DT * ((1.0 / den) @ dr_ + ((z[:, None] / den ** 2)
+                                               * (lam * ds_ * HQ_DT)[None, :]) @ r_)
+    finally:
+        MODES = saved
+    n0 = HQ_N // 2
+    k_max = rd.static_pole_bound(HQ_N - n0, 2, HQ_DT, HQ_FMAX)
+
+    def ident(w):
+        return rd.identify(w, HQ_DT, 0, w.shape[0], freq_max=HQ_FMAX, guard=GUARD).s
+
+    def comp(a):
+        s0, mask, _st, tail_arg = rj.host_poles(ident, a[n0:], k_max, HQ_DT, HQ_FREQS)
+        return rj.completion(a, HQ_DT, HQ_FREQS, n0, s0, mask, tail_arg, mutation=mutation)
+
+    C, dC = jax.jit(lambda a, b: jax.jvp(comp, (a,), (b,)))(jnp.asarray(y), jnp.asarray(v))
+    ev, ej = _rel(np.asarray(C), y_inf), _rel(np.asarray(dC), dy_inf)
+    print(f"\n[Q {q:g}, {mutation or 'host-formed'}] value {ev:.2e}, JVP {ej:.2e} of the peak")
+    if mutation is None:
+        assert ev < F32_BAR_VALUE and ej < F32_BAR_JVP, (ev, ej)
+    else:
+        assert ev > 10 * F32_BAR_VALUE and ej > 10 * F32_BAR_JVP, (ev, ej)

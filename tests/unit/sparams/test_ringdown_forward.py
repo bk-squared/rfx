@@ -52,10 +52,11 @@ from tests._x64_compat import enable_x64
 from tests.unit.sparams.test_ringdown_run import FREQS, MM, N_SHORT, _box, _digest
 
 #: The traced float32 completion against run()'s float64 one, max |S| over
-#: every bin and entry: measured 8.1e-6 (uniform, 1500 steps) and 5.9e-6
-#: (graded, 2500 steps), where run()'s own complex64 accumulator round-off in
-#: Result.s_params is 2.4e-6 and 6.1e-6. Bar: about 4x the larger.
-BAR_VALUE_F32 = 3.0e-5
+#: every bin and entry: measured 3.0e-6 / 1.7e-6 (uniform, 1500 steps; JAX
+#: 0.10.2 / 0.4.33), 1.5e-6 / 1.8e-6 (graded, 2500 steps) and at most 3.0e-6
+#: on a three-cell port, where run()'s own complex64 accumulator round-off in
+#: Result.s_params is 2.4e-6 (uniform) and 4.7e-6 (graded). Bar: 5x the largest.
+BAR_VALUE_F32 = 1.5e-5
 #: The same under scoped x64 (the map in complex128), 600-step records:
 #: measured 3.8e-8 on the uniform lane (the complex64 rounding of run()'s
 #: (1, 1, nf) S container there) and 0.0 on the graded lane. Bar: about 5x.
@@ -224,29 +225,55 @@ def test_the_report_is_none_while_traced():
     assert seen["report"] is None
 
 
-@pytest.mark.parametrize("lane", ["uniform", "graded"])
-def test_a_jitted_4000_step_forward_reads_w0_ok(lane):
+#: Bins across TM110 (12.42 GHz), where the port accumulators are largest.
+DENSE = np.linspace(12.30e9, 12.55e9, 101)
+
+
+@pytest.mark.parametrize("lane, bins, n", [("uniform", "8-18 GHz", 4000),
+                                           ("graded", "lane", 4000),
+                                           ("uniform", "across TM110", 16000)])
+def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     """The ``ringdown`` output a jitted function returns is concrete, and its
-    report is judged as an eager call's: the user's program rounds the port
-    accumulators differently (10-26 ULP at 4000 steps, the probe series
-    bit-identical), inside W0's 1e-5 of the peak (PI decision 2026-09-25)."""
+    report is judged as an eager call's. The user's program rounds the port
+    accumulators differently with the probe series bit-identical: measured
+    (JAX 0.10.2) 26 ULP / 1.9e-6 of the peak at 4,000 steps (uniform), and
+    182 ULP / 1.1e-5 at 16,000 steps with the bins across the resonance --
+    over the earlier 1e-5 bar, inside W0's 1e-4 (PI decision 2026-09-25)."""
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
+    kw = ({} if lane == "graded" else
+          {"port_s11_freqs": DENSE if bins == "across TM110" else FREQS})
 
     def f(p):
-        return sim.forward(n_steps=4000, skip_preflight=True, eps_override=eps * p,
-                           ringdown=RingdownSpec(), **_kw(lane)).ringdown
+        return sim.forward(n_steps=n, skip_preflight=True, eps_override=eps * p,
+                           ringdown=RingdownSpec(), **kw).ringdown
 
     out = jax.jit(f)(jnp.float32(1.0))
     assert isinstance(out, rd.RingdownForwardResult)
     rep = out.report
     w0 = rep.witness("W0")
-    print(f"\n[{lane}, jitted, 4000 steps] W0 {w0.value:.3g} of the peak; ULPs "
+    print(f"\n[{lane}, {bins}, jitted, {n} steps] W0 {w0.value:.3g} of the peak; ULPs "
           f"{ {k: round(v, 1) for k, v in rep.w0_ulps.items()} }")
     assert out.report is rep                             # computed once
     assert rep.completed and w0.ok and w0.value <= rd.W0_REL_BAR
     assert rep.witness("W1").ok and rep.witness("traced").ok
+
+
+def test_the_report_of_a_batched_result_says_to_take_one_element():
+    sim = _box("uniform")
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+
+    def f(p):
+        return sim.forward(n_steps=600, skip_preflight=True, port_s11_freqs=FREQS,
+                           eps_override=eps * p, ringdown=RingdownSpec()).ringdown
+
+    out = jax.vmap(f)(jnp.asarray([1.0, 1.001], jnp.float32))
+    assert np.shape(out.s_params) == (2, FREQS.size)
+    with pytest.raises(ValueError, match="batched.*tree_map"):
+        out.report
+    one = jax.tree_util.tree_map(lambda a: a[1], out)
+    assert one.report.completed and one.report.witness("W0").ok
 
 
 def test_a_failed_identification_gives_nan_not_an_exception(monkeypatch):
@@ -262,6 +289,88 @@ def test_a_failed_identification_gives_nan_not_an_exception(monkeypatch):
     assert np.all(np.isfinite(np.asarray(f.s_params)))
     rep = f.ringdown.report
     assert not rep.completed and rep.failure.startswith("identification")
+
+
+def _no_pencil(*_a, **_k):
+    raise ValueError("a window of 3 decimated samples is too short for a matrix pencil")
+
+
+def _long_window_fails(monkeypatch):
+    """The identification on [T/4, T] raises; the one on [T/2, T] runs."""
+    orig = rd.identify
+
+    def ident(series, dt, n_start, n_stop, **kw):
+        if int(n_stop) - int(n_start) > 0.6 * N_GRAD_SHORT:
+            raise ValueError("a window of 3 decimated samples is too short")
+        return orig(series, dt, n_start, n_stop, **kw)
+
+    monkeypatch.setattr(rd, "identify", ident)
+
+
+def _value_and_grads(sim, n, *, jit=True):
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+
+    def losses(p):
+        r = sim.forward(n_steps=n, skip_preflight=True, port_s11_freqs=FREQS,
+                        eps_override=eps * p, ringdown=RingdownSpec())
+        return jnp.stack([_loss(r.ringdown.s_params),
+                          _loss(r.ringdown.s_params_long)]), r.ringdown
+
+    f = jax.jacrev(losses, has_aux=True)
+    jac, rd_out = (jax.jit(f) if jit else f)(jnp.float32(1.0))
+    return np.asarray(jac), rd_out
+
+
+@pytest.mark.parametrize("jit", [False, True])
+def test_a_failed_identification_makes_the_gradient_nan(jit, monkeypatch):
+    """A failed completion reaches the gradient too: NaN, not 0.0 (a jitted
+    value_and_grad used to return (nan, 0.0), an optimiser step on nothing)."""
+    monkeypatch.setattr(rd, "_pencil", _no_pencil)
+    sim = _box("uniform")
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+
+    def loss(p):
+        r = sim.forward(n_steps=600, skip_preflight=True, port_s11_freqs=FREQS,
+                        eps_override=eps * p, ringdown=RingdownSpec())
+        return _loss(r.ringdown.s_params)
+
+    step = jax.value_and_grad(loss)
+    v, g = (jax.jit(step) if jit else step)(jnp.float32(1.0))
+    assert np.isnan(float(v)) and np.isnan(float(g)), (float(v), float(g))
+
+
+def test_the_gradient_witness_is_not_formed_when_both_completions_failed(monkeypatch):
+    monkeypatch.setattr(rd, "_pencil", _no_pencil)
+    jac, rd_out = _value_and_grads(_box("uniform"), N_GRAD_SHORT)
+    assert np.all(np.isnan(jac))
+    w = gradient_witness(float(jac[0]), float(jac[1]), ringdown=rd_out)
+    print(f"\n[both failed] {w.note}")
+    assert not w.judged and not w.ok and math.isnan(w.value)
+    assert w.note.startswith("not formed") and "against='longer_record'" in w.note
+    assert "[window_start T, T]" in w.note and "[window_start/2 T, T]" in w.note
+
+
+def test_the_gradient_witness_is_not_formed_when_the_long_completion_failed(monkeypatch):
+    """Only [T/4, T] fails. The witness says which window and the fallback.
+    An objective on ``s_params`` alone keeps a finite gradient (the long window
+    is not in its program). The two-cotangent pattern of the witness (jacrev,
+    or vjp with (1, 0) and (0, 1)) reads NaN in both gradients: the failed
+    window's multiplier is NaN, and its zero cotangent times NaN reaches the
+    channels both windows share -- loud, as the witness is not formed anyway."""
+    _long_window_fails(monkeypatch)
+    jac, rd_out = _value_and_grads(_box("uniform"), N_GRAD_SHORT)
+    assert np.all(np.isnan(jac))
+    sim = _box("uniform")
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+    g_main = float(jax.jit(jax.grad(lambda p: _loss(sim.forward(
+        n_steps=N_GRAD_SHORT, skip_preflight=True, port_s11_freqs=FREQS,
+        eps_override=eps * p, ringdown=RingdownSpec()).ringdown.s_params)))(jnp.float32(1.0)))
+    assert np.isfinite(g_main), g_main
+    w = gradient_witness(float(jac[0]), float(jac[1]), ringdown=rd_out)
+    print(f"\n[long window failed] {w.note}")
+    assert not w.judged and not w.ok and math.isnan(w.value)
+    assert "[window_start/2 T, T]: the identification failed" in w.note
+    assert "[window_start T, T]:" not in w.note and "against='longer_record'" in w.note
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +443,13 @@ def test_a_run_that_stepped_at_another_dt_is_not_completed(monkeypatch):
     print(f"\n[stencil_order=4, refusal removed] {rep.failure}")
     assert not rep.completed and rep.failure.startswith("solver_dt")
     assert rep.witness("solver_dt").value == pytest.approx(float(f.dt) / float(f.grid.dt))
+    # and its gradient is NaN, not 0.0
+    sim = _box("uniform", stencil_order=4)
+    eps = jnp.full(tuple(sim._build_grid().shape), 2.2, jnp.float32)
+    g = jax.jit(jax.grad(lambda p: _loss(sim.forward(
+        n_steps=1500, skip_preflight=True, port_s11_freqs=FREQS, eps_override=eps * p,
+        ringdown=RingdownSpec()).ringdown.s_params)))(jnp.float32(1.0))
+    assert np.isnan(float(g)), float(g)
 
 
 # ---------------------------------------------------------------------------
