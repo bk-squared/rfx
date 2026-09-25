@@ -3,7 +3,7 @@ description: "RT/Duroid 5880 probe-fed patch antenna cross-validation: the gpu-m
 tags: [rfx, crossval, rt5880-patch, ladder, one-off]
 resources:
   cluster: remilab-c0
-  preset: gpu-rtx4090
+  preset: gpu-24gb
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
   PYTHONUNBUFFERED: "1"
@@ -11,7 +11,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_GPU_SUITE_REF: "origin/crossval/rt5880-patch-test"
+  RFX_GPU_SUITE_REF: "origin/main"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-

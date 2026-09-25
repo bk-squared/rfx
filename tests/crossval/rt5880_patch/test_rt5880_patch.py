@@ -530,6 +530,31 @@ def _build_substrate_on_the_knife_edge(dx: float) -> Simulation:
     return sim
 
 
+def _build_ground_and_substrate_shifted_one_cell(dx: float) -> Simulation:
+    """The ground and the substrate drawn one cell to +x of the patch.  Only
+    the mutation test builds it: every span holds, but the board is not
+    centred under the patch."""
+    sim = _sim(dx)
+    shifted = FRAME._replace(cx=FRAME.cx + dx)
+    sim.add(_ground_box(shifted), material="pec")
+    sim.add(_substrate_box(shifted), material="rt5880")
+    sim.add(_patch_box(), material="pec")
+    _add_probe_and_witness(sim)
+    return sim
+
+
+def _build_substrate_shifted_one_cell(dx: float) -> Simulation:
+    """The substrate alone drawn one cell to +y of the ground and the patch.
+    Only the mutation test builds it: its cell count holds, its position does
+    not."""
+    sim = _sim(dx)
+    sim.add(_ground_box(), material="pec")
+    sim.add(_substrate_box(FRAME._replace(cy=FRAME.cy + dx)), material="rt5880")
+    sim.add(_patch_box(), material="pec")
+    _add_probe_and_witness(sim)
+    return sim
+
+
 def _build_probe_at_the_retired_offset(dx: float) -> Simulation:
     """The probe drawn at the retired script's −9.0 mm.  Only the mutation test
     builds it: at h/8 that is another node (−23 cells, −9.12813 mm) than the
@@ -690,6 +715,14 @@ def realized_geometry(sim: Simulation) -> dict:
     out["substrate_y_cells"] = int(on[i_c, :, k_c].sum())
     out["substrate_x_m"] = out["substrate_x_cells"] * dx
     out["substrate_y_m"] = out["substrate_y_cells"] * dx
+    # Where those cells sit: the first and last laminate node along each line,
+    # counted from the patch centre node (a centred substrate reads (-N, +N)).
+    xi = np.flatnonzero(on[:, j_c, k_c])
+    yj = np.flatnonzero(on[i_c, :, k_c])
+    out["substrate_x_nodes_from_centre"] = (
+        (int(xi.min()) - i_c, int(xi.max()) - i_c) if xi.size else None)
+    out["substrate_y_nodes_from_centre"] = (
+        (int(yj.min()) - j_c, int(yj.max()) - j_c) if yj.size else None)
     return out
 
 
@@ -794,6 +827,27 @@ def check_realized(g: dict, dx: float, fr: Frame = FRAME) -> dict:
             f"({cx*1e3:.4f}, {cy*1e3:.4f}) mm, not at the declared "
             f"({fr.cx*1e3:.4f}, {fr.cy*1e3:.4f}) mm; the "
             "probe's offset from the patch centre is then not the declared one.")
+    # Sizes alone do not make one board: the ground and the laminate must also
+    # sit under the patch.  One cell of laminate at a board edge moved R(f0) by
+    # 1.37 % at h/4 (VESSL 369367264633), so a shifted ground or substrate is a
+    # different antenna even when every span above holds.
+    gx, gy = g["ground"]["centre_m"]
+    if abs(gx - cx) > 1e-9 or abs(gy - cy) > 1e-9:
+        raise AssertionError(
+            f"dx={dx*1e6:.2f}µm: the realized ground is centred at "
+            f"({gx*1e3:.4f}, {gy*1e3:.4f}) mm and the patch at "
+            f"({cx*1e3:.4f}, {cy*1e3:.4f}) mm; the board holds the ground centred "
+            "under the patch.")
+    for axis in ("x", "y"):
+        rng = g[f"substrate_{axis}_nodes_from_centre"]
+        n = g[f"substrate_{axis}_cells"]
+        if rng is None or rng[0] != -rng[1] or rng[1] - rng[0] + 1 != n:
+            raise AssertionError(
+                f"dx={dx*1e6:.2f}µm: the substrate's cells along {axis} run from "
+                f"node {None if rng is None else rng[0]} to "
+                f"{None if rng is None else rng[1]} about the patch centre node "
+                f"({n} laminate cells on that line); the board holds a contiguous "
+                "laminate centred under the patch.")
 
     # --- the probe, from the ground sheet to the patch sheet -------------------------
     if g["n_ports"] != 1 or g.get("probe_component") != "ez":
@@ -1609,6 +1663,10 @@ def test_assert_realized_catches_each_mutation():
          _build_substrate_on_the_knife_edge, "the substrate's cells along"),
         ("a PEC wire drawn along the probe, ground to patch",
          _build_probe_shorted_by_a_wire, "is a PEC edge"),
+        ("ground and substrate drawn one cell to +x of the patch",
+         _build_ground_and_substrate_shifted_one_cell, "the ground centred under the patch"),
+        ("substrate alone drawn one cell to +y",
+         _build_substrate_shifted_one_cell, "a contiguous laminate centred under the patch"),
     )
     for label, builder, expected in cases:
         with pytest.raises(AssertionError) as caught:
