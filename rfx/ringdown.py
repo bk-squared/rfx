@@ -1207,16 +1207,19 @@ W0_REL_BAR = 1.0e-4
 #: constructions alone: 1.7e-7 .. 6.0e-7 on clean runs of 1,500-60,000 steps,
 #: 0.89 when the completion is fed the midpoint cell's voltage of a 3-cell port.
 W1_BAR = 1.0e-4
-#: forward()'s in-program consistency: max |S of the traced tail-free DFT of the
-#: rebuilt port V and I - the run's own S from its accumulators|, absolute on S
-#: (RingdownForward._traced). ``None``: measured and reported (``consistency``
-#: in the report, not judged), not applied to the traced value. Measured on
-#: the ring-down box: clean 2.3e-6 .. 7.1e-5 (1.5k-30k steps, growing with the
-#: record); the wrong H loop 0.35-0.94, the midpoint voltage of a 3-cell port
-#: 0.70-0.99, the current's half-step phase dropped 0.036-0.10, the current
-#: one step late 0.07-0.20; every channel one step late 2.8e-5 .. 4.1e-4 (a
-#: common delay cancels in S, so S itself moves only that much).
-CONSISTENCY_BAR = None
+#: forward()'s in-program consistency bar, absolute on S: max |S of the traced
+#: tail-free DFT of the rebuilt port V and I - the run's own S from its
+#: accumulators| (RingdownForward._traced). Above it the traced completion is
+#: NaN in value and gradient. Measured on the ring-down box: clean 2.3e-6 ..
+#: 7.1e-5 (1.5k-30k steps, both lanes, eager and jit, bins across the
+#: resonance the largest), 14x below; the defects that change S -- the wrong
+#: H loop 0.35-0.94, the midpoint voltage of a 3-cell port 0.70-0.99, the
+#: current's half-step phase dropped 0.036-0.10, the current one step late
+#: 0.07-0.20 -- at least 36x above. Every channel one step late reads 2.8e-5
+#: .. 4.1e-4: V and I pick up the same factor z, which cancels in S except at
+#: the record's end samples, so S itself moves that little; W0 catches it on
+#: the host at the accumulator level (lead's decision, #1254 PR 3 review).
+CONSISTENCY_BAR = 1.0e-3
 
 
 class _NotCompleted(Exception):

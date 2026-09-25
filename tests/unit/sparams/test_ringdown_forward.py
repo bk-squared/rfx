@@ -22,7 +22,13 @@ What is pinned here:
   ``ringdown=``, and ``ringdown=None`` stages no host callback;
 * the report is ``None`` while traced and ``run()``'s report (W0, W1, WE ...)
   plus the traced-vs-float64 witness on a concrete result, also one returned
-  by ``jax.jit``; a failed identification gives NaN, not an exception;
+  by ``jax.jit``; a failed identification gives NaN in value and gradient,
+  not an exception;
+* inside the traced program the tail-free S of the rebuilt port V and I is
+  checked against the run's own S (bar 1e-3 on S): a rebuild that changes S
+  is NaN in value and gradient, eager and jitted; a clean 30,000-step record
+  across the resonance passes; a common one-step delay of every channel,
+  which S cannot see, is left to the host W0;
 * ``jax.grad`` through the completion agrees with a central difference of the
   completed value (a consistency check on ONE record length, not the
   record-length witness);
@@ -258,6 +264,157 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     assert out.report is rep                             # computed once
     assert rep.completed and w0.ok and w0.value <= rd.W0_REL_BAR
     assert rep.witness("W1").ok and rep.witness("traced").ok
+
+
+# ---------------------------------------------------------------------------
+# In-program consistency: a rebuild that is not the port's V and I is NaN
+# ---------------------------------------------------------------------------
+
+def _wrong_h_loop(monkeypatch):
+    """The Ez port's Ampere-loop legs differenced along the swapped axes."""
+    monkeypatch.setitem(rd._LOOP_LEGS, "ez", (("hy", 1), ("hx", 0)))
+
+
+def _midpoint_voltage(monkeypatch):
+    """The traced rebuild takes the midpoint cell's voltage of a 3-cell port."""
+    orig = rd._port_vi
+
+    def vi(lane, pm, metrics, e, hx, hy, hz):
+        v, v_port, i_val = orig(lane, pm, metrics, e, hx, hy, hz)
+        if not isinstance(e, np.ndarray) and getattr(e, "ndim", 0) == 2:
+            return v, v, i_val
+        return v, v_port, i_val
+
+    monkeypatch.setattr(rd, "_port_vi", vi)
+
+
+def _half_step_dropped(monkeypatch):
+    """The traced S assembly drops the current's half-step phase."""
+    import rfx.core.dft_utils as dft_utils
+    orig = rd.RingdownForward._traced
+
+    def traced(self, result, channels):
+        with monkeypatch.context() as m:
+            m.setattr(dft_utils, "half_step_current_phase",
+                      lambda f, dt: np.ones(np.shape(f), np.complex64))
+            return orig(self, result, channels)
+
+    monkeypatch.setattr(rd.RingdownForward, "_traced", traced)
+
+
+def _shift(channels, which):
+    late = jnp.concatenate([jnp.zeros_like(channels[:1]), channels[:-1]], axis=0)
+    return jnp.where(jnp.asarray(which)[None, :], late, channels)
+
+
+def _current_one_step_late(monkeypatch):
+    """The traced rebuild reads the H samples (the current) one step late."""
+    orig = rd.RingdownForward._traced
+
+    def traced(self, result, channels):
+        h_cols = np.array([comp.startswith("h") for comp, _idx in self.probe_keys])
+        return orig(self, result, _shift(channels, h_cols))
+
+    monkeypatch.setattr(rd.RingdownForward, "_traced", traced)
+
+
+def _every_channel_one_step_late(monkeypatch):
+    """Every port channel one step late: V and I delayed together."""
+    orig = rd.RingdownForward._traced
+
+    def traced(self, result, channels):
+        return orig(self, result, _shift(channels, np.ones(len(self.probe_keys), bool)))
+
+    monkeypatch.setattr(rd.RingdownForward, "_traced", traced)
+
+
+def _loss_and_grad(sim, n, *, jit, bins=FREQS):
+    graded = bool(sim._uses_nonuniform_mesh)
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
+    kw = {} if graded else {"port_s11_freqs": bins}
+
+    def loss(p):
+        r = sim.forward(n_steps=n, skip_preflight=True, eps_override=eps * p,
+                        ringdown=RingdownSpec(), **kw)
+        return _loss(r.ringdown.s_params), r.ringdown
+
+    step = jax.value_and_grad(loss, has_aux=True)
+    (v, rd_out), g = (jax.jit(step) if jit else step)(jnp.float32(1.0))
+    return float(v), float(g), rd_out
+
+
+@pytest.mark.parametrize("jit", [False, True])
+@pytest.mark.parametrize("defect, lane, cells", [
+    (_wrong_h_loop, "uniform", 1),
+    (_midpoint_voltage, "uniform", 3),
+    (_half_step_dropped, "uniform", 1),
+    (_half_step_dropped, "graded", 1),
+    (_current_one_step_late, "uniform", 1),
+])
+def test_a_rebuild_that_is_not_the_port_s_v_and_i_is_nan(defect, lane, cells, jit,
+                                                         monkeypatch):
+    """Inside the traced program, the tail-free S of the rebuilt channels is
+    compared with the run's own S from its accumulators (bar 1e-3 on S); a
+    rebuild that changes S makes the completed value AND its gradient NaN,
+    eager and jitted, where before it returned a finite differentiable S that
+    only the host report called NOT COMPLETED."""
+    defect(monkeypatch)
+    v, g, rd_out = _loss_and_grad(_box(lane, cells=cells), 1500, jit=jit)
+    c = float(rd_out._consistency)
+    print(f"\n[{defect.__name__}, {lane}, jit={jit}] consistency {c:.3g} (bar "
+          f"{rd.CONSISTENCY_BAR:g}); loss {v}, gradient {g}")
+    assert c > rd.CONSISTENCY_BAR, c
+    assert np.isnan(v) and np.isnan(g), (v, g)
+    assert np.all(np.asarray(rd_out._status) == rj.STATUS_INCONSISTENT)
+
+
+@pytest.mark.parametrize("jit", [False, True])
+def test_a_common_one_step_delay_is_left_to_w0(jit, monkeypatch):
+    """Every channel one step late: V and I share the factor z, which cancels
+    in S but for the record's end samples, so the in-program check reads a few
+    1e-5 and leaves the value and gradient finite; the host W0, which compares
+    the accumulators themselves, flags it and the report is NOT COMPLETED."""
+    _every_channel_one_step_late(monkeypatch)
+    v, g, rd_out = _loss_and_grad(_box("uniform"), 1500, jit=jit)
+    c = float(rd_out._consistency)
+    rep = rd_out.report
+    w0 = rep.witness("W0")
+    print(f"\n[every channel one step late, jit={jit}] consistency {c:.3g}; W0 "
+          f"{w0.value:.3g} of the peak; loss {v}, gradient {g}")
+    assert c <= rd.CONSISTENCY_BAR and np.isfinite(v) and np.isfinite(g)
+    assert not rep.completed and rep.failure.startswith("W0")
+    assert w0.value > 100 * rd.W0_REL_BAR
+
+
+def _stub_identification(monkeypatch):
+    """Poles and tail stubbed out: the check reads only the tail-free S."""
+    def poles(identify_window, window, k_max, dt, freqs):
+        rdt, cdt = rj.working_dtypes()
+        return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, rdt),
+                jnp.int32(rj.STATUS_OK),
+                jnp.full((np.size(freqs), 4), np.log(rj.INERT_LAMBDA), cdt))
+
+    monkeypatch.setattr(rj, "host_poles", poles)
+    monkeypatch.setattr(rj, "completion",
+                        lambda y, dt, freqs, n0, s0, mask, tail_arg, plain=None, **k: plain)
+
+
+@pytest.mark.parametrize("jit", [False, True])
+def test_a_clean_30000_step_record_across_the_resonance_passes_the_check(jit, monkeypatch):
+    """The largest clean reading measured: 30,000 steps (57 ns), bins across
+    TM110, where the accumulators' own rounding is largest (7.1e-5, 14x under
+    the bar). The identification and tail are stubbed (the check does not read
+    them; a real 30,000-step completion takes minutes here); the traced S and
+    its gradient stay finite and the status is ok."""
+    _stub_identification(monkeypatch)
+    v, g, rd_out = _loss_and_grad(_box("uniform"), 30000, jit=jit, bins=DENSE)
+    c = float(rd_out._consistency)
+    print(f"\n[clean, 30000 steps, across TM110, jit={jit}] consistency {c:.3g} "
+          f"(bar {rd.CONSISTENCY_BAR:g})")
+    assert np.isfinite(v) and np.isfinite(g), (v, g)
+    assert np.all(np.asarray(rd_out._status) == rj.STATUS_OK)
+    assert c <= rd.CONSISTENCY_BAR, c
 
 
 def test_the_report_of_a_batched_result_says_to_take_one_element():
