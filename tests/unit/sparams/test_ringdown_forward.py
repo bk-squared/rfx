@@ -63,6 +63,11 @@ from tests.unit.sparams.test_ringdown_run import FREQS, MM, N_SHORT, _box, _dige
 #: on a three-cell port, where run()'s own complex64 accumulator round-off in
 #: Result.s_params is 2.4e-6 (uniform) and 4.7e-6 (graded). Bar: 5x the largest.
 BAR_VALUE_F32 = 1.5e-5
+#: The same difference per bin in units of the peak incident wave,
+#: |S_fwd - S_run| |a| / max|a| with a = V_port + Z0 I: float32 rounding in V
+#: and I divided by the incident wave. Measured 6.7e-8 .. 2.4e-7 on the
+#: bandwidth-0.42 pulse (a bin driven at 3.6e-4 of the peak). Bar: about 6x.
+BAR_VALUE_F32_INCIDENT = 1.5e-6
 #: The same under scoped x64 (the map in complex128), 600-step records:
 #: measured 3.8e-8 on the uniform lane (the complex64 rounding of run()'s
 #: (1, 1, nf) S container there) and 0.0 on the graded lane. Bar: about 5x.
@@ -351,14 +356,17 @@ def _loss_and_grad(sim, n, *, jit, bins=FREQS):
     (_half_step_dropped, "uniform", 1),
     (_half_step_dropped, "graded", 1),
     (_current_one_step_late, "uniform", 1),
+    (_every_channel_one_step_late, "uniform", 1),
 ])
 def test_a_rebuild_that_is_not_the_port_s_v_and_i_is_nan(defect, lane, cells, jit,
                                                          monkeypatch):
-    """Inside the traced program, the tail-free S of the rebuilt channels is
-    compared with the run's own S from its accumulators (bar 1e-3 on S); a
-    rebuild that changes S makes the completed value AND its gradient NaN,
-    eager and jitted, where before it returned a finite differentiable S that
-    only the host report called NOT COMPLETED."""
+    """Inside the traced program the tail-free DFTs of the rebuilt V_port and I
+    are compared with the run's own accumulators, per array relative to its
+    peak (W0's quantity; bar 1e-3). A rebuild that is not the port's V and I
+    makes the completed value AND its gradient NaN, eager and jitted, where
+    before it returned a finite differentiable S that only the host report
+    called NOT COMPLETED. That includes every channel one step late, which S
+    alone cannot see (V and I share the delay) and run() refuses by W0."""
     defect(monkeypatch)
     v, g, rd_out = _loss_and_grad(_box(lane, cells=cells), 1500, jit=jit)
     c = float(rd_out._consistency)
@@ -369,22 +377,58 @@ def test_a_rebuild_that_is_not_the_port_s_v_and_i_is_nan(defect, lane, cells, ji
     assert np.all(np.asarray(rd_out._status) == rj.STATUS_INCONSISTENT)
 
 
-@pytest.mark.parametrize("jit", [False, True])
-def test_a_common_one_step_delay_is_left_to_w0(jit, monkeypatch):
-    """Every channel one step late: V and I share the factor z, which cancels
-    in S but for the record's end samples, so the in-program check reads a few
-    1e-5 and leaves the value and gradient finite; the host W0, which compares
-    the accumulators themselves, flags it and the report is NOT COMPLETED."""
+def test_a_common_one_step_delay_is_refused_by_w0_too(monkeypatch):
+    """Every channel one step late: the host W0 flags it at the accumulator
+    level (0.147 of the peak) and the report is NOT COMPLETED, as the in-program
+    check made the traced value NaN; the report still carries both of the
+    forward-only lines, and the traced one names the check that caused the NaN."""
     _every_channel_one_step_late(monkeypatch)
-    v, g, rd_out = _loss_and_grad(_box("uniform"), 1500, jit=jit)
-    c = float(rd_out._consistency)
-    rep = rd_out.report
-    w0 = rep.witness("W0")
-    print(f"\n[every channel one step late, jit={jit}] consistency {c:.3g}; W0 "
-          f"{w0.value:.3g} of the peak; loss {v}, gradient {g}")
-    assert c <= rd.CONSISTENCY_BAR and np.isfinite(v) and np.isfinite(g)
+    f = _box("uniform").forward(n_steps=1500, skip_preflight=True, port_s11_freqs=FREQS,
+                                ringdown=RingdownSpec())
+    rep = f.ringdown.report
+    w0, wt, wc = rep.witness("W0"), rep.witness("traced"), rep.witness("consistency")
+    print(f"\n[every channel one step late] W0 {w0.value:.3g}; consistency "
+          f"{wc.value:.3g}; traced note: {wt.note}")
     assert not rep.completed and rep.failure.startswith("W0")
     assert w0.value > 100 * rd.W0_REL_BAR
+    assert np.all(np.isnan(np.asarray(f.ringdown.s_params)))
+    assert wc.judged and not wc.ok and wc.value > rd.CONSISTENCY_BAR
+    assert not wt.judged and "in-program consistency check failed" in wt.note
+    assert "W0 failed on the host" in wt.note
+
+
+def test_a_weakly_driven_bin_is_completed_as_run_completes_it():
+    """The pulse narrowed to bandwidth 0.42 around 13 GHz drives the 18 GHz
+    bin at 3.6e-4 of its peak (reviewer's case, 3000 steps, 8-18 GHz bins).
+    There the S-level comparison divided float32 rounding by a small incident
+    wave (1.0e-3, NaN on all 101 bins) while run() completes the record with
+    every check ok; at the channel level the reading is 3.4e-6, and the traced
+    value is run()'s completion to float32 rounding. At a weakly driven bin
+    that rounding is itself divided by the incident wave a = V + Z0 I: the
+    traced S is 3.9e-4 off at 18 GHz, 6.7e-8 .. 2.4e-7 in units of the peak
+    incident wave (|S_fwd - S_run| |a| / max|a|) across the band -- and run()'s
+    own complex64 Result.s_params is 1.0e-3 off its float64 rebuild there."""
+    pulse = GaussianPulse(f0=13.0e9, bandwidth=0.42, cutoff=4.5)
+    r = _box("uniform", pulse=pulse).run(n_steps=3000, compute_s_params=True,
+                                         skip_preflight=True, ringdown=RingdownSpec(),
+                                         s_param_freqs=FREQS)
+    f = _box("uniform", pulse=pulse).forward(n_steps=3000, skip_preflight=True,
+                                             port_s11_freqs=FREQS, ringdown=RingdownSpec())
+    c = float(f.ringdown._consistency)
+    S = np.asarray(f.ringdown.s_params).astype(np.complex128)
+    err = np.abs(S - r.ringdown.s_params[0, 0].astype(np.complex128))
+    vp, ii = (np.asarray(f.wire_port_sparams[0][1][k]).astype(np.complex128) for k in (3, 1))
+    a_rel = np.abs(vp + 50.0 * ii) / np.max(np.abs(vp + 50.0 * ii))
+    weighted = float(np.max(err * a_rel))
+    own = r.ringdown.report.s_accumulator_roundoff
+    print(f"\n[bandwidth 0.42, 3000 steps] channel consistency {c:.3g}; |S_forward - "
+          f"S_run| {err.max():.3g} at {FREQS[err.argmax()] / 1e9:.1f} GHz (|a| "
+          f"{a_rel[err.argmax()]:.2e} of its peak); in units of the peak incident wave "
+          f"{weighted:.3g}; run()'s own accumulator round-off {own:.3g}")
+    assert r.ringdown.report.ok
+    assert np.all(np.isfinite(S)) and c <= rd.CONSISTENCY_BAR
+    assert weighted <= BAR_VALUE_F32_INCIDENT, weighted
+    assert err.max() <= own, (err.max(), own)
 
 
 def _stub_identification(monkeypatch):
@@ -526,7 +570,7 @@ def test_the_gradient_witness_is_not_formed_when_the_long_completion_failed(monk
     w = gradient_witness(float(jac[0]), float(jac[1]), ringdown=rd_out)
     print(f"\n[long window failed] {w.note}")
     assert not w.judged and not w.ok and math.isnan(w.value)
-    assert "[window_start/2 T, T]: the identification failed" in w.note
+    assert "[window_start/2 T, T]: the host identification failed" in w.note
     assert "[window_start T, T]:" not in w.note and "against='longer_record'" in w.note
 
 

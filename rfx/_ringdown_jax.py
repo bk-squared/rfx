@@ -73,8 +73,10 @@ DFT_BLOCK = 1024
 MUTATIONS = (None, "poles_constant", "hold_residues", "device_tail_arg")
 #: Host status codes carried back with the poles.
 STATUS_OK, STATUS_FAILED, STATUS_OVER_BUDGET = 0, 1, 2
-#: Set by the caller (not the host) when its in-program consistency check fails.
-STATUS_INCONSISTENT = 3
+#: Set by the caller (not the host): its in-program consistency check failed,
+#: or a precondition checked before the completion (the solver's step, the
+#: port's probed span) did.
+STATUS_INCONSISTENT, STATUS_PRECONDITION = 3, 4
 
 
 def working_dtypes():

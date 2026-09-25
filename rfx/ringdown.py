@@ -1207,18 +1207,24 @@ W0_REL_BAR = 1.0e-4
 #: constructions alone: 1.7e-7 .. 6.0e-7 on clean runs of 1,500-60,000 steps,
 #: 0.89 when the completion is fed the midpoint cell's voltage of a 3-cell port.
 W1_BAR = 1.0e-4
-#: forward()'s in-program consistency bar, absolute on S: max |S of the traced
-#: tail-free DFT of the rebuilt port V and I - the run's own S from its
-#: accumulators| (RingdownForward._traced). Above it the traced completion is
-#: NaN in value and gradient. Measured on the ring-down box: clean 2.3e-6 ..
-#: 7.1e-5 (1.5k-30k steps, both lanes, eager and jit, bins across the
-#: resonance the largest), 14x below; the defects that change S -- the wrong
-#: H loop 0.35-0.94, the midpoint voltage of a 3-cell port 0.70-0.99, the
-#: current's half-step phase dropped 0.036-0.10, the current one step late
-#: 0.07-0.20 -- at least 36x above. Every channel one step late reads 2.8e-5
-#: .. 4.1e-4: V and I pick up the same factor z, which cancels in S except at
-#: the record's end samples, so S itself moves that little; W0 catches it on
-#: the host at the accumulator level (lead's decision, #1254 PR 3 review).
+#: forward()'s in-program consistency bar, at the channel level: the tail-free
+#: DFTs of the traced V_port and I against the run's own accumulators, max
+#: |difference| / the array's peak over the port channels -- W0's quantity,
+#: inside the program (RingdownForward._traced). Above it the traced
+#: completion is NaN in value and gradient (lead's decision, #1254 PR 3
+#: review). An S-level reading divided float32 rounding by the incident wave
+#: and NaN'd correct records where the drive is weak (bandwidth 0.42 pulse,
+#: the 18 GHz bin driven at 3.6e-4 of the peak: 1.0e-3 on S); at the channel
+#: level that record reads 3-4e-6. Measured on the ring-down box: clean
+#: 2.2e-6 .. 7.9e-5 at 1.5k-30k steps (both lanes, eager and jit, bins across
+#: TM110 the largest), 9.1e-5 on the lossless box (loaded Q 12,128) at 30k;
+#: defects 0.044-0.96 (the wrong H loop 0.71-0.96, the midpoint voltage of a
+#: 3-cell port 0.54-0.67, the half-step phase dropped 0.044-0.074, the current
+#: one step late 0.088-0.15, every channel one step late 0.088-0.15). Limit:
+#: the run's accumulators build their phase 2 pi f float32(step) dt in float32,
+#: so on a very long ringing record they drift from the float64 DFT of the
+#: probes -- the lossless box reads 2.3e-4 at 60k steps, 5.5e-4 at 120k, 8.5e-4
+#: at 180k and 1.1e-3 at 240k (jitted), where the check NaNs a correct record.
 CONSISTENCY_BAR = 1.0e-3
 
 
@@ -1773,7 +1779,11 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
       ``[window_start/2 T, T]``, and, when its status is concrete, only
       when neither completion failed (a failed one is NaN in value and
       gradient). When it is not formed, the returned witness is not judged,
-      its value is NaN, and its note gives the reason and the fallback;
+      its value is NaN, and its note gives the reason and the fallback. In
+      the two-cotangent pattern below a failed long window makes the MAIN
+      gradient NaN too: the failed window's zero cotangent times its NaN
+      multiplier reaches the port channels both windows share. An objective
+      built on ``s_params`` alone keeps its gradient;
     * ``against="longer_record"`` (the fallback): ``ringdown.s_params`` of the
       same model on a record 1.5-2x longer.
 
@@ -1815,11 +1825,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
             failed = [w for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), st)
                       if int(code) != rj.STATUS_OK]
             if failed:
-                why = {rj.STATUS_FAILED: "the identification failed",
-                       rj.STATUS_OVER_BUDGET: "more poles than the static count",
-                       rj.STATUS_INCONSISTENT: "the in-program consistency check failed"}
                 reasons = "; ".join(
-                    f"{w}: {why.get(int(code), f'status {int(code)}')}"
+                    f"{w}: {_status_reason(code)}"
                     for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), st)
                     if int(code) != rj.STATUS_OK)
                 return RingdownWitness(
@@ -1862,6 +1869,24 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     return RingdownWitness(name, float(value), float(bar), bool(value <= bar), rule)
 
 
+def _status_reason(code: int, consistency=None) -> str:
+    """Why a traced completion is NaN, from its status code."""
+    from rfx import _ringdown_jax as rj
+    code = int(code)
+    if code == rj.STATUS_FAILED:
+        return "the host identification failed"
+    if code == rj.STATUS_OVER_BUDGET:
+        return "the identification kept more poles than the static count"
+    if code == rj.STATUS_INCONSISTENT:
+        c = "" if consistency is None else f" (read {float(consistency):.3g}, bar {CONSISTENCY_BAR:g})"
+        return ("the in-program consistency check failed: the rebuilt port V/I "
+                f"are not the run's own{c}")
+    if code == rj.STATUS_PRECONDITION:
+        return ("a precondition checked before the completion failed (the "
+                "solver's step or the port's probed span; see the report's failure)")
+    return f"status {code}"
+
+
 class _ForwardReportContext:
     """What the lazy report of a ``forward(ringdown=...)`` needs besides arrays."""
 
@@ -1887,27 +1912,36 @@ class _ForwardReportContext:
             wire_port_sparams=tuple(zip(self.metas, res._accs)), s_params=s_plain,
             grid=self.grid, freqs=self.bins, dt=self.step)
         S_host, report, nc = plan._host_report(result_like, np.asarray(res._channels), 0)
-        if nc is not None:
-            return report
         S_traced = np.asarray(res.s_params).astype(np.complex128)
-        S_ref = np.asarray(S_host).astype(np.complex128)
-        if plan.lane == "uniform":
-            S_ref = S_ref[0, 0]
-        d = float(np.max(np.abs(S_traced - S_ref)))
+        c_now = np.asarray(res._consistency)
+        status = np.asarray(res._status).ravel()
+        nan_note = ""
+        if not np.all(np.isfinite(S_traced)):
+            nan_note = "the traced completion is NaN: " + "; ".join(
+                f"{w}: {_status_reason(code, c_now)}"
+                for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), status)
+                if int(code) != 0) if np.any(status != 0) else "the traced completion is NaN"
         tol = float(plan.spec.witness_tol)
-        w = RingdownWitness(
-            "traced", d, tol, d <= tol,
-            "max |S| difference between the traced completion (the one jax.grad "
-            "differentiates, in the working precision) and the float64 completion "
-            "run(ringdown=...) gives of the same record",
-            "" if np.all(np.isfinite(S_traced)) else
-            "the traced completion is NaN: its host identification failed")
-        c = float(np.asarray(res._consistency))
+        rule = ("max |S| difference between the traced completion (the one jax.grad "
+                "differentiates, in the working precision) and the float64 completion "
+                "run(ringdown=...) gives of the same record")
+        if nc is not None:
+            w = RingdownWitness("traced", math.nan, tol, False, rule,
+                                (nan_note + "; " if nan_note else "") + "no float64 "
+                                f"completion to compare: {nc.name} failed on the host",
+                                judged=False)
+        else:
+            S_ref = np.asarray(S_host).astype(np.complex128)
+            if plan.lane == "uniform":
+                S_ref = S_ref[0, 0]
+            d = float(np.max(np.abs(S_traced - S_ref)))
+            w = RingdownWitness("traced", d, tol, d <= tol, rule, nan_note)
+        c = float(c_now)
         wc = RingdownWitness(
             "consistency", c, math.nan if CONSISTENCY_BAR is None else CONSISTENCY_BAR,
             True if CONSISTENCY_BAR is None else c <= CONSISTENCY_BAR,
-            "max |S| difference, inside the traced program, between the tail-free S "
-            "of the rebuilt port V/I and the run's own S from its accumulators",
+            "max over the port channels, inside the traced program, of |tail-free "
+            "DFT of the rebuilt V_port or I - the run's own accumulator| / its peak",
             "information (not applied)" if CONSISTENCY_BAR is None else "",
             judged=CONSISTENCY_BAR is not None)
         return replace(report, witnesses=report.witnesses + (w, wc))
@@ -1993,7 +2027,7 @@ def _register_pytree():
 _register_pytree()
 
 
-def rdt_nan(result):
+def _rdt_nan(result):
     """The real dtype of the run's S (for a NaN consistency reading)."""
     import jax.numpy as jnp
     return jnp.real(jnp.asarray(result.s_params)).dtype
@@ -2067,7 +2101,8 @@ class RingdownForward(RingdownRun):
         step = getattr(result, "dt", None)
         ctx = _ForwardReportContext(self, metas, result.grid, bins,
                                     None if is_tracer(step) else step)
-        status_fail = jnp.asarray([rj.STATUS_FAILED, rj.STATUS_FAILED], dtype=jnp.int32)
+        status_fail = jnp.asarray([rj.STATUS_PRECONDITION, rj.STATUS_PRECONDITION],
+                                  dtype=jnp.int32)
         try:
             self._check_solver_step(result)
             pms = self._read_metas_checked(result, result.grid)
@@ -2079,7 +2114,7 @@ class RingdownForward(RingdownRun):
             nan = result.s_params * jnp.nan
             return RingdownForwardResult(nan, nan, result.freqs, channels, accs,
                                          result.s_params, status_fail,
-                                         jnp.asarray(jnp.nan, dtype=rdt_nan(result)), ctx)
+                                         jnp.asarray(jnp.nan, dtype=_rdt_nan(result)), ctx)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
         acc_dtype = jnp.result_type(accs[0][3])
         used = sorted({j for e_cols, h_cells in layouts for j in e_cols}
@@ -2122,16 +2157,25 @@ class RingdownForward(RingdownRun):
             ii = [(spectra[:, 2 * p + 1] * half).astype(acc_dtype) for p in range(len(pms))]
             return _assemble_core(lane, pms, vp, ii, pms[0].freqs, dt)
 
-        # In-program consistency: the tail-free S of the traced channels
-        # against the run's own S from its accumulators. A rebuild that is not
-        # the port's V and I (W0/W1 on the host) is seen here, inside the
-        # program, where a jitted objective would otherwise use it unseen.
+        # In-program consistency, at the channel level: the tail-free DFTs of
+        # the traced V_port and I (the current with its half-step phase, the
+        # accumulator convention) against the run's own accumulators, per
+        # array relative to that array's peak -- W0's quantity, inside the
+        # program, where a jitted objective would otherwise use a rebuild that
+        # is not the port's V and I unseen. (An S-level reading divides by the
+        # incident wave and amplified float32 rounding where the drive is weak.)
         plain = rj.plain_dft(Y, dt, f_bins)
-        s_run = jnp.asarray(result.s_params)
-        consistency = jax.lax.stop_gradient(jnp.max(jnp.abs(
-            to_s(plain).astype(s_run.dtype) - s_run)))
-        consistent = (True if CONSISTENCY_BAR is None
-                      else consistency <= CONSISTENCY_BAR)
+        worst = []
+        for p in range(len(pms)):
+            for ours, theirs in ((plain[:, 2 * p], accs[p][3]),
+                                 (plain[:, 2 * p + 1] * half, accs[p][1])):
+                theirs = jnp.asarray(theirs)
+                ours = ours.astype(theirs.dtype)
+                worst.append(jnp.max(jnp.abs(ours - theirs))
+                             / jnp.maximum(jnp.max(jnp.abs(theirs)), jnp.finfo(
+                                 jnp.real(theirs).dtype).tiny))
+        consistency = jax.lax.stop_gradient(jnp.max(jnp.stack(worst)))
+        consistent = consistency <= CONSISTENCY_BAR
         out, status = [], []
         for n0 in (self.n_start, self.n_long):
             k_max = static_pole_bound(n - n0, Y.shape[1], dt, ref_hz)
