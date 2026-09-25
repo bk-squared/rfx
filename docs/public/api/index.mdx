@@ -5,38 +5,53 @@ sidebar:
   order: 20
 ---
 
-The pages below define the documented rfx API. Treat importable symbols not
-covered here as lower-level implementation details unless a guide and support
-entry document their use.
+These pages describe the rfx API you should build on: the `Simulation` class,
+its `add_*`, `run()` and calculator methods, and the result objects they
+return. Each entry gives the signature, what it does, the key arguments and
+what it returns. For every public symbol, including lower-level helpers, see
+the [generated reference](/rfx/api/generated/).
 
 ## Pages
 
-| Page | Focus | When to use it |
-|---|---|---|
-| [Simulation](./simulation/) | builder, run loop, auto-setup | you need to create and execute a job |
-| [Geometry & Materials](./geometry-materials/) | shapes, material registration, dispersive poles | you need to place or define media |
-| [Sources & Ports](./sources-ports/) | excitation, impedance loading, calibration | you need to drive a structure or measure S-parameters |
-| [Results & Observables](./results-observables/) | return object fields and resonance extraction | you need to read solver outputs |
-| [Automation](./automation/) | `auto_configure`, `Simulation.auto`, mesh helpers | you want a derived starting point |
-| [Support Boundaries](./support-boundaries/) | recommended, limited, and unsupported combinations | you need to know whether a feature is documented |
+| Page | Covers |
+|---|---|
+| [Simulation](/rfx/api/simulation/) | the constructor, preflight, `run()`, `forward()`, `Simulation.auto()` |
+| [Results & Observables](/rfx/api/results-observables/) | probes, flux monitors, DFT planes, NTFF, snapshots; `Result`, `ForwardResult` and the S-parameter result objects |
+| [Geometry & Materials](/rfx/api/geometry-materials/) | `add_material`, dispersive poles, shapes, CAD import, metal sheets |
+| [Sources & Ports](/rfx/api/sources-ports/) | waveforms, sources, the four port families, lumped R/L/C, the S-parameter calculators |
+| [Automation](/rfx/api/automation/) | `plan_mesh`, `auto_configure`, graded-profile builders |
+| [Support Boundaries](/rfx/api/support-boundaries/) | what is supported, limited, experimental or refused |
 
-## Current documented configuration
+## Conventions
 
-The documented API covers:
+- Import from the top-level package: `from rfx import Simulation, Box,
+  GaussianPulse`.
+- Units are SI: lengths in metres, frequencies in hertz, time in seconds,
+  conductivity in S/m, impedance in ohms.
+- Positions are physical coordinates measured from the domain's lower corner,
+  which is the inner edge of the absorber, not grid indices.
+- `add_*` methods return the simulation, so they can be chained.
+- S-parameter matrices are indexed `S[receiver_port, driven_port, freq_index]`.
+- A combination rfx does not implement raises an error. It is not silently
+  skipped.
 
-- uniform Cartesian Yee RF workflows
-- PEC and CPML boundaries, plus UPML within its documented limits
-- point/current sources
-- lumped and wire ports
-- specialized microstrip-line ports
-- waveguide ports
-- one-port coaxial line reflection with float32 precision, a nonperiodic 3D
-  second-order uniform Yee grid, CPML on all six boundary faces with positive
-  thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"`
-  coaxial port; [Sources and Ports](sources-ports/) lists the method's
-  self-contained model and accepted arguments
-- probes, Harminv resonance, benchmarked NTFF, and S-parameters only within the
-  stated validation limits
+## Minimal example
 
-The exact configuration and its restrictions are in
-[Recommended Configuration](/rfx/validation/recommended-configuration/).
+```python
+from rfx import Box, GaussianPulse, Simulation
+
+sim = Simulation(freq_max=5e9, domain=(0.04, 0.03, 0.03), dx=2e-3,
+                 boundary="cpml", cpml_layers=6)
+sim.add_material("slab", eps_r=3.0, sigma=0.01)
+sim.add(Box((0.018, 0.0, 0.0), (0.024, 0.03, 0.03)), material="slab")
+sim.add_source((0.010, 0.015, 0.015), "ez",
+               waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+               amplitude_kind="current")
+sim.add_probe((0.030, 0.015, 0.015), "ez")
+
+result = sim.run(n_steps=300)
+print(result.time_series.shape, f"{result.settling_db:.1f} dB")
+```
+
+[Quick Start](/rfx/guide/quickstart/) walks through the same steps, and
+[Core Concepts](/rfx/guide/concepts/) explains the choices behind them.

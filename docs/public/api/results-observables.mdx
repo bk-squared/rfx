@@ -5,130 +5,219 @@ sidebar:
   order: 22
 ---
 
-`Result` is the object returned by `Simulation.run()`.
+This page lists what you can record, where it appears after the run, and the
+result objects of the S-parameter calculators. For worked examples see
+[Probes and S-Parameters](/rfx/guide/probes-sparams/),
+[Far-Field and RCS](/rfx/guide/farfield-rcs/) and
+[Visualization and Analysis](/rfx/guide/visualization-and-analysis/).
 
-## Primary fields
+## Observables
 
-| Field | Meaning | Public use |
+| Method | Records | Appears in |
 |---|---|---|
-| `state` | final solver state / checkpoint payload | inspection, checkpoint export, and debugging; no high-level resume API accepts it as an initial state |
-| `time_series` | recorded probe values over time | ringdown, transient response, Harminv |
-| `s_params` | lumped/wire port S-matrix | matching, filters, de-embedding |
-| `freqs` | frequency axis paired with `Result.s_params` | lumped/wire S-parameter output; DFT-plane and flux-monitor objects carry their own frequency axes |
-| `ntff_data` | near-to-far-field accumulation | radiation patterns where documented |
-| `dft_planes` | frequency-domain plane observables | slices and field maps |
-| `flux_monitors` | plane flux accumulations | transmission / reflection analysis |
-| `waveguide_sparams` | per-port waveguide diagnostics | waveguide workflows |
-| `snapshots` | saved field snapshots | visualization and post-processing |
-| `grid` | mesh metadata | reproducibility checks |
-| `dt` | timestep | time-axis conversion |
+| `add_probe(position, component="ez")` | one field component at one point, every step | `Result.time_series[:, i]` |
+| `add_vector_probe(position)` | all six components at one point | six more columns of `time_series` |
+| `add_dft_plane_probe(*, axis, coordinate, component="ez", freqs=None, n_freqs=50, name=None)` | one component on a whole plane, at chosen frequencies | `Result.dft_planes[name]` |
+| `add_flux_monitor(*, axis, coordinate, freqs=None, n_freqs=50, size=None, center=None, name=None, dft_window="rect", dft_window_alpha=0.25)` | power through a plane (or a `size` rectangle of it) | `Result.flux_monitors[name]` |
+| `add_ntff_box(corner_lo, corner_hi, freqs=None, n_freqs=50)` | tangential fields on a closed box, for far fields | `Result.ntff_data`, `Result.ntff_box` |
+| `run(snapshot=SnapshotSpec(...))` | field frames during the run | `Result.snapshots`, `Result.snapshot_axes` |
 
-## S-parameter result schemas
-
-| Calculator | Result object | Public status |
-|---|---|---|
-| `run(compute_s_params=True)` with lumped/wire `add_port(...)` | `Result.s_params`, `Result.freqs` | documented path for the matching port family |
-| `forward(port_s11_freqs=...)` with lumped/wire `add_port(...)` | `ForwardResult.s_params`, `ForwardResult.freqs` | differentiable S11 vectors, not a full multi-port matrix |
-| `compute_msl_s_matrix(...)` | `MSLSMatrixResult` with `.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.settling_db`, `.sigma_max_excess`, `.S_raw`, `.passivity_correction` | specialized microstrip-line calculation. `.S` is the raw extraction on every channel — measured, `eps_override`, traced — so the S you read and the S a gradient differentiates are one function. A raw `.S` may exceed `‖S‖₂ ≤ 1`; `.sigma_max_excess` gives `max(σ_max(S(f)) − 1, 0)` per bin and a warning names the count and the worst `σ_max`. An excess is a measurement artifact, not a device property — check `.settling_db` and `.reliable` for which. `enforce_passivity=True` opts into the projection instead (raw kept in `.S_raw`, per-bin clip in `.passivity_correction`; still skipped on the `eps_override` channel, so asking for it there gets you the raw S). Exclude the whole frequency slice `S[:, :, k]` wherever any `reliable[p, k]` is false — not just that port's column, since S is solved jointly across drives — and check `.settling_db` (< −40 dB) before quoting any value. `.assembly` records which rule produced `.S`; `.cond_a` bounds drive-system degeneracy only |
-| `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult` | rectangular waveguide workflow |
-| `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | reflection with float32 precision, a nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` coaxial port; see [Sources and Ports](/rfx/api/sources-ports/) for the self-contained model limits |
-| `run(...)` with a single waveguide port | `Result.waveguide_sparams[name]` | diagnostic per-port output |
-
-Sources, TFSF, probes, DFT planes, and flux monitors do not automatically define a high-level S-matrix workflow. Coaxial reports should use the documented line-reflection method.
-
-## Observable builders that feed `Result`
-
-| Builder | Result field | Typical use |
-|---|---|---|
-| `add_probe(...)` / `add_vector_probe(...)` | `time_series` | transient response, ringdown, local field traces |
-| `add_dft_plane_probe(...)` | `dft_planes` | frequency-domain field slices |
-| `add_flux_monitor(...)` | `flux_monitors` | reflection / transmission bookkeeping |
-| `add_ntff_box(...)` | `ntff_data`, `ntff_box` | far-field accumulation |
-
-Finite-size flux monitors use the same per-cell Poynting integrand as full-plane monitors. When both are summed over the same index window, they agree to machine precision; differences from `size=None` full-plane monitors are coverage choices, not a separate stability model.
-
-## Resonance extraction
-
-`Result.find_resonances()` runs Harminv-style mode extraction on a probe time series.
-
-Setup used by the snippets below:
+Probe columns follow registration order. Frequencies are in Hz. Positions are
+in metres and snap to the nearest grid location.
 
 ```python
-from rfx import Box, GaussianPulse, Simulation
+import numpy as np
+from rfx import Box, GaussianPulse, Simulation, SnapshotSpec, flux_spectrum
 
-sim = Simulation(
-    freq_max=4e9,
-    domain=(0.04, 0.03, 0.02),
-    dx=2e-3,
-    boundary="cpml",
-    cpml_layers=6,
+sim = Simulation(freq_max=6e9, domain=(0.04, 0.03, 0.03), dx=1e-3,
+                 boundary="cpml", cpml_layers=8)
+sim.add_material("slab", eps_r=3.0, sigma=0.01)
+sim.add(Box((0.022, 0.0, 0.0), (0.028, 0.03, 0.03)), material="slab")
+sim.add_source((0.012, 0.015, 0.015), "ez",
+               waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+               amplitude_kind="current")
+
+freqs = np.linspace(1e9, 5e9, 9)
+sim.add_probe((0.016, 0.015, 0.015), "ez")                     # column 0
+sim.add_flux_monitor(axis="x", coordinate=0.034, freqs=freqs, name="trans")
+sim.add_dft_plane_probe(axis="z", coordinate=0.015, component="ez",
+                        freqs=freqs, name="mid")
+
+result = sim.run(
+    n_steps=500,
+    snapshot=SnapshotSpec(interval=50, components=("ez",), slice_axis=2,
+                          slice_index=20),
 )
-sim.add_material("slab", eps_r=4.0, sigma=0.01)
-sim.add(Box((0.014, 0.010, 0.006), (0.026, 0.020, 0.014)), material="slab")
-sim.add_port(
-    (0.008, 0.015, 0.010),
-    "ez",
-    impedance=50.0,
-    waveform=GaussianPulse(f0=2e9, bandwidth=0.8),
-)
-sim.add_probe((0.032, 0.015, 0.010), "ez")
+
+print(result.time_series.shape)                        # (n_steps, n_probes)
+power = np.asarray(flux_spectrum(result.flux_monitors["trans"]))
+print(power.shape)                                     # one value per frequency
+axes = result.snapshot_axes["ez"]
+print(result.snapshots["ez"].shape, axes.dims, axes.times_s[:2])
 ```
 
+- `flux_spectrum(monitor)` gives the net power through the plane at each
+  frequency. For transmission, divide by the same monitor in a reference run
+  without the structure; `subtract_flux_monitors(sample, ref)` removes the
+  incident field at field level, so `flux_spectrum` of the result is the
+  scattered power.
+- A snapshot's `slice_index` counts grid cells including the absorber pad.
+  Read positions and times from `result.snapshot_axes[component]` (`coords`,
+  `times_s`, `steps`) rather than working them out. Frames are `interval` steps
+  apart.
+- Far fields: `compute_far_field(result.ntff_data, result.ntff_box,
+  result.grid, theta, phi)` returns a `FarFieldResult`; `directivity(ff)` and
+  `radiation_pattern(ff)` read it. RCS uses `compute_rcs(...)`. Both are
+  covered in [Far-Field and RCS](/rfx/guide/farfield-rcs/).
+
+## `Result`
+
+`run()` returns a `Result` (a named tuple).
+
+| Field | Contents |
+|---|---|
+| `time_series` | probe records, shape `(n_steps, n_columns)` |
+| `dt` | time step in seconds |
+| `settling_db` | energy at the end of the record relative to its peak, in dB. Below about −40 dB means the record had rung down. |
+| `settling_witness` | details behind `settling_db` |
+| `s_params`, `freqs` | lumped/wire port S-matrix `[receiver, driven, freq]` and its frequencies (Hz) |
+| `wire_port_sparams` | wire-port details |
+| `ringdown` | ring-down completion, when `run(ringdown=...)` was used |
+| `dft_planes` | `{name: DFTPlaneProbe}` |
+| `flux_monitors` | `{name: FluxMonitor}` |
+| `ntff_data`, `ntff_box` | far-field accumulation and its box |
+| `waveguide_ports`, `waveguide_sparams`, `waveguide_port_flux` | per-port waveguide data from `run()`; for the full matrix use `compute_waveguide_s_matrix()` |
+| `snapshots`, `snapshot_axes` | `{component: frames}` and their coordinates and times |
+| `grid` | the grid the run used |
+| `freq_range` | the analysis range used by `find_resonances()` |
+| `state` | final field state, for inspection or `save_state` |
+
+Helpers on `Result`:
+
+| Method | Returns |
+|---|---|
+| `find_resonances(freq_range=None, probe_idx=0, source_decay_time=None, bandpass=None, waveform=None)` | list of `HarminvMode(freq, decay, Q, amplitude, phase, error)` from one probe |
+| `s(m, n)`, `s11()`, `s21()`, `s12()`, `s22()` | complex S-parameter vector, ports numbered from 1 |
+| `s_db(m, n)` | `20 log10 |S_mn|` |
+| `freqs_hz` | the S-parameter frequency vector |
+| `assert_finite(*, raise_on_nonfinite=False)` | `True` when the observables hold no NaN/Inf |
+| `plot_time_series()`, `plot_s_params()`, `plot_smith()` | quick matplotlib plots |
+
+### Resonances
+
+`find_resonances()` runs Harminv on the part of a probe record after the
+source has died away. It suits resonators better than S-parameters because it
+does not depend on port calibration. Record a long ring-down, and give the
+structure some loss, or Q has no finite value to converge to.
+
 ```python
-result = sim.run(n_steps=8000)
-modes = result.find_resonances(freq_range=(1.5e9, 3.5e9))
+cav = Simulation(freq_max=12e9, domain=(0.030, 0.020, 0.010), dx=1e-3,
+                 boundary="pec")
+cav.add_material("lossy_air", eps_r=1.0, sigma=1e-3)
+cav.add(Box((0.0, 0.0, 0.0), (0.030, 0.020, 0.010)), material="lossy_air")
+cav.add_source((0.007, 0.006, 0.005), "ez",
+               waveform=GaussianPulse(f0=9e9, bandwidth=0.8),
+               amplitude_kind="current")
+cav.add_probe((0.021, 0.013, 0.005), "ez")
+
+ring = cav.run(n_steps=3000)
+for mode in ring.find_resonances(freq_range=(6e9, 11e9)):
+    print(f"{mode.freq / 1e9:.3f} GHz, Q = {mode.Q:.0f}")
+
+c0 = 299_792_458.0
+print(f"analytic TM110: {c0 / 2 * np.hypot(1 / 0.030, 1 / 0.020) / 1e9:.3f} GHz")
 ```
 
-Use this on a clean probe signal when you want a resonance estimate that is less dependent on port calibration than S-parameters.
+For a lower-level call on any signal, use `harminv(signal, dt, f_min, f_max,
+...)`.
 
-## Port-observable helpers
+## `ForwardResult`
 
-`rfx.validation` provides helper functions for checking S-matrix-like arrays for shape, finite values, frequency metadata, port names, and caller-selected passivity / reciprocity limits.
+`forward()` returns a smaller named tuple: `time_series`, `s_params` and
+`freqs` (lumped/wire S11 vectors when `port_s11_freqs=` is set),
+`lumped_port_sparams`, `wire_port_sparams`, `dft_planes`, `ntff_data`,
+`ntff_box`, `grid`, `dt` and `settling_probe_info`. Everything in it can carry
+a gradient.
+
+## S-parameter results
+
+All full matrices are indexed `S[receiver_port, driven_port, freq_index]`.
+
+| Calculator | Result | Main fields |
+|---|---|---|
+| `run(compute_s_params=True)` | `Result` | `s_params`, `freqs` |
+| `compute_msl_s_matrix()` | `MSLSMatrixResult` | `S`, `freqs`, `Z0`, `beta`, `port_names`, `reliable`, `settling_db`, `reference_impedances`, `sigma_max_excess`, `S_raw`, `passivity_correction` |
+| `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult` | `s_params`, `freqs`, `port_names`, `port_directions`, `reference_planes`, `settling_db`, `s21_phase_residual_deg_rms` |
+| `compute_coaxial_line_reflection()` | `CoaxialLineReflectionResult` | `s11`, `freqs`, `status`, `annulus_cells`, `gamma`, `recurrence_residual`, `fit_residual`, `z0_numerical_ohm`, `termination` |
+| `compute_coaxial_two_port()` | `CoaxialTwoPortResult` | `s_params`, `freqs`, `port_names`, `reference_planes`, `status`, `settling_db`, `cond_a`, `gamma`, `recurrence_residual`, `fit_residual` |
+
+**Microstrip.** `S` is the raw extraction, the same function a gradient
+differentiates. A raw S can exceed passivity. `sigma_max_excess[k]` gives how
+far the largest singular value exceeds 1 at bin k, and a warning names the
+bins. That is a measurement artifact, usually a record that ended too early or
+a mesh that is too coarse. `enforce_passivity=True` projects S onto the passive
+set instead; the unprojected matrix stays in `S_raw` and the correction in
+`passivity_correction`. Don't quote projected values where the correction is
+large. `reliable[p, k]` marks low-signal bins: where any entry is `False`,
+drop the whole slice `S[:, :, k]`, because S is solved jointly across drives.
+`reference_impedances` are the power-wave references; `Z0` is the fitted line
+impedance, reported separately.
+
+**Waveguide.** S is a ratio of modal voltage waves, each referenced to its own
+port's discrete modal impedance. It equals a power-wave S only when all ports
+share one cross-section. `s21_phase_residual_deg_rms` is the RMS difference
+between the S21 phase and `−βL` for a single-mode two-port. On an empty or
+matched guide it measures the port's discretization error. With a device
+between the planes, it includes the device's own phase.
+
+**Coax.** Check `status == "passed"` before using `s11`. This result does not
+go through the shared passivity check.
+
+## Checking a result
+
+Some checks run automatically and warn without changing the arrays:
+
+- `run()` and the uniform `forward()` check `time_series` and lumped/wire
+  `s_params` for NaN/Inf and for any `|S| > 1.1`. They do not test the total
+  power in a column.
+- The microstrip and waveguide calculators check column power and each entry.
+- Every calculator warns when its record has not rung down to −40 dB.
+
+Nothing checks DFT planes, flux, NTFF data or the state. Use
+`np.isfinite(...)` on them yourself. A missing warning is not a passivity or
+convergence result.
+
+For your own regression checks, `validate_port_smatrix(obj, *,
+check_passivity=True, passivity_tol=1e-9, check_reciprocity=False, ...)`
+returns a `PortValidationReport` for any S-matrix result, and
+`assert_port_smatrix_valid(...)` raises instead.
 
 ```python
-from rfx import validate_port_smatrix, assert_port_smatrix_valid
+from rfx import validate_port_smatrix
 
-report = validate_port_smatrix(result, check_passivity=True, passivity_tol=0.02)
+fake = np.zeros((2, 2, 3), dtype=complex)
+fake[1, 0] = fake[0, 1] = 0.9
+report = validate_port_smatrix(s_params=fake, freqs=np.array([1e9, 2e9, 3e9]),
+                               check_reciprocity=True)
 print(report.summary())
 ```
 
-These helpers are useful for regression checks. They do not turn an undocumented workflow into the recommended default path.
+## Saving results
 
-During normal Python execution outside JAX tracing, some calculation paths emit
-warnings without changing the arrays. Coverage is narrow:
+`write_touchstone(path, s_params, freqs, z0=50.0, ...)` and
+`read_touchstone(path)` handle `.sNp` files. `save_snapshots`,
+`save_field_vtk`, `save_far_field` and `save_state` write other outputs; see
+the [generated reference](/rfx/api/generated/).
 
-- the generic `run()` warning and uniform single-device `forward()` warning
-  inspect `time_series` and lumped/wire `s_params`, not state, NTFF, DFT-plane,
-  or flux arrays; non-uniform and distributed `forward()` paths do not invoke
-  this guard;
-- lumped/wire `run()` and uniform single-device `forward()` check individual
-  entries for non-finite values or `|S| > 1.1`, but do not test total outgoing
-  column power;
-- MSL and waveguide full-matrix calculators apply per-entry and column-power
-  checks with calculator-specific tolerances;
-- `compute_coaxial_line_reflection()` requires float32 precision, a nonperiodic
-  3D second-order uniform Yee grid, CPML on all six boundary faces with positive
-  thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"`
-  coaxial port. It builds its own line, source, probes, and termination and
-  rejects unsupported registered objects. It returns `status`, fit/recurrence
-  residuals, and `s11`, but does not run the shared passivity guard. See
-  [Sources and Ports](/rfx/api/sources-ports/) before configuring this method.
+## Limits
 
-The ring-down advisory likewise requires a probe time series and is not a
-direct NTFF or DFT convergence test. Inspect unguarded arrays explicitly. The
-absence of a warning is not a passivity, convergence, or accuracy result.
-
-For MSL results, `reliable[p, k] = False` excludes the whole frequency slice
-`S[:, :, k]` from physical interpretation — not just the driven-port column —
-because S is solved jointly across drives (`S = B·A⁻¹`, #507); the mask covers
-every driven/port record the solve consumes (#522). A `True` entry is not an
-accuracy guarantee. See
-[Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
-threshold and filtering example.
-
-## Validated observables
-
-- `time_series` and Harminv are the recommended resonance path.
-- lumped/wire, MSL, waveguide, and coaxial-line S-parameter/reflection workflows each have their own calculator and stated limits.
-- NTFF/far-field outputs should be used where the relevant guide documents the workflow.
-- Other fields are useful analysis outputs; apply the documented support status for the calculation that produced them.
+- A spectrum from a record that stopped too early is wrong. Check
+  `settling_db` before you trust flux, DFT planes, far fields, S-parameters or
+  Q.
+- Probes, DFT planes and flux monitors have no reference impedance and cannot
+  give S-parameters. Use a port.
+- `find_resonances()` on a lossless structure returns an unbounded Q. Add a
+  little loss.
+- `save_snapshots(..., dt=result.dt)` without `axes=` is wrong at the default
+  interval, because frames are `interval` steps apart. Pass
+  `axes=result.snapshot_axes` instead.

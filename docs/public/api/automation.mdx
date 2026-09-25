@@ -5,91 +5,106 @@ sidebar:
   order: 25
 ---
 
-Automation helpers derive a first-pass mesh, domain, absorber, and run budget from
-geometry plus a frequency range, so you don't hand-derive every simulation
-parameter.
+These helpers propose a mesh, domain, absorber and run length from your
+geometry and frequency range, and build graded cell profiles. Use them for a
+first setup, then read what they chose and check it with preflight. For when
+to grade a mesh at all, see [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/).
 
-## Core helpers
+## Planning from geometry
+
+| Helper | Signature | Returns |
+|---|---|---|
+| `plan_mesh` | `plan_mesh(geometry, freq_range, materials=None, accuracy="standard", *, boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None, artifact_root=None)` | `MeshPlan` |
+| `auto_configure` | `auto_configure(geometry, freq_range, materials=None, accuracy="standard", *, boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None, waveform=None, thin_conductors=())` | `SimConfig` |
+
+- `geometry`: a list of `(shape, material_name)` pairs.
+- `freq_range`: `(f_min, f_max)` in Hz. `f_max` sets the cell size, `f_min`
+  the margin around the geometry.
+- `materials`: `{name: {"eps_r": ..., "sigma": ...}}` for every material in
+  `geometry`. Pass it even for library names such as `"fr4"`: a material the
+  planner cannot find is treated as vacuum, and the cell comes out too
+  coarse.
+- `accuracy`: `"draft"` (10 cells per wavelength), `"standard"` (20) or
+  `"high"` (40). The thinnest feature can force a finer cell than that.
+- `max_memory_mb`: coarsen `dx` until the estimated memory fits.
+- `thin_conductors`: declared sheets. Each sheet's plane becomes a z mesh
+  line, so the sheet lands where you drew it.
+- A thin z feature makes the plan grade z and return a `dz_profile`.
+
+`plan_mesh` wraps `auto_configure` and adds a serializable record of what it
+chose. Prefer it.
+
+```python
+import numpy as np
+from rfx import Box, Simulation, plan_mesh
+
+geometry = [(Box((0.0, 0.0, 0.0), (0.02, 0.01, 0.0016)), "fr4")]
+materials = {"fr4": {"eps_r": 4.4, "sigma": 0.025}}
+plan = plan_mesh(geometry, freq_range=(1.5e9, 3.5e9), materials=materials,
+                 accuracy="standard")
+print(plan.to_markdown())
+
+kwargs = plan.to_sim_kwargs()   # freq_max, domain, boundary, cpml_layers, dx (+ dz_profile)
+sim = Simulation(**kwargs)
+print(sorted(kwargs))
+```
+
+`MeshPlan` holds the derived `domain`, `cell_sizes`, `cfl`, `absorber`,
+`memory`, `grid_shape`, `support_checks` and `warnings`. Export it with
+`to_dict()`, `to_json()` or `to_markdown()`. Values rfx could not determine are
+`None`, not missing. `artifact_root` only records intended output paths; it
+writes nothing.
+
+`to_sim_kwargs()` gives the constructor arguments only. It does not add your
+geometry or move it into the new domain. Add the shapes yourself, a few cells
+in from the domain edges (where the absorber begins) and with thin layers aligned to the final profile's cell
+edges, then run `sim.preflight()` and resolve what it reports.
+`SimConfig.summary()` prints the same choices as text.
+
+`sim.plan_mesh(...)` is the equivalent for a simulation you have already built.
+It also runs preflight and can check an S-parameter calculator; see
+[Simulation](/rfx/api/simulation/#checking-before-you-run).
+`Simulation.auto(freq_range, ...)` builds a simulation from the frequency
+range alone, with no geometry; see
+[Simulation](/rfx/api/simulation/#simulationauto).
+
+## Building graded profiles by hand
 
 | Helper | Signature | What it does |
 |---|---|---|
-| `auto_configure` | `auto_configure(geometry, freq_range, materials=None, accuracy="standard", *, boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None)` | derives `dx`, `domain`, CPML layers, timestep, `n_steps`, and (for thin z-features) a `dz_profile`; returns a `SimConfig` |
-| `plan_mesh` | `plan_mesh(geometry, freq_range, materials=None, accuracy="standard", *, boundary="cpml", dx_override=None, margin_override=None, n_steps_override=None, max_memory_mb=None, artifact_root=None)` | wraps `auto_configure` and returns a serializable `MeshPlan` with the derived mesh, CFL basis, absorber, memory estimate, resolution/support rows, and declaration-only artifact paths |
-| `Simulation.auto` | `Simulation.auto(freq_range, *, accuracy="standard", **kwargs)` | classmethod that builds a `Simulation` with mesh/domain/CPML derived from `freq_range` alone (empty geometry). Add geometry afterward; it warns by design to remind you |
-| `smooth_grading` | `smooth_grading(cells, max_ratio=1.3, *, preserve_regions=None)` | inserts geometric transition cells so adjacent ratios outside preserved-region interiors do not exceed `max_ratio` (default 1.3); transitions already inside a preserved region remain unchanged |
-| `apply_thirds_rule` | `apply_thirds_rule(cells, boundary_indices)` | at eligible interior material-interface indices, splits neighbouring cells into 1/3 + 2/3 pairs; edge/out-of-range indices and splits below 0.1 µm are skipped |
-
-For a nonempty geometry-derived plan, `accuracy` selects `"draft"` (10
-cells/λ), `"standard"` (20 cells/λ), or `"high"` (40 cells/λ); any other value
-raises. `Simulation.auto(...)` starts from empty geometry and uses λ/10 for its
-initial cell size regardless of that setting, although other preset fields can
-still differ. `smooth_grading` and `apply_thirds_rule` are the same primitives
-`auto_configure` calls internally when it builds a non-uniform `dz_profile`;
-reach for them directly only when hand-building a mesh.
+| `make_band_profile` | `make_band_profile(edges, cell_sizes, *, max_ratio=1.4, protected=None, boundary_cell=None, min_cells=1)` | Builds a profile from a declared stack. Every interface in `edges` lands exactly on a node plane, and every adjacent ratio stays at or below `max_ratio`. |
+| `smooth_grading` | `smooth_grading(cells, max_ratio=1.3, *, preserve_regions=None)` | Inserts transition cells so no adjacent ratio exceeds `max_ratio`. |
+| `apply_thirds_rule` | `apply_thirds_rule(cells, boundary_indices)` | Splits the cells at the given material interfaces into 1/3 + 2/3 pairs. |
 
 ```python
-from rfx import Box, plan_mesh
+from rfx import apply_thirds_rule, make_band_profile, smooth_grading
 
-geometry = [(Box((0.0, 0.0, 0.0), (0.02, 0.01, 0.002)), "fr4")]
-materials = {"fr4": {"eps_r": 4.4, "sigma": 0.025}}
+# 10 mm of 1 mm air, a 1.5 mm substrate at 0.25 mm, 13.5 mm of 1 mm air.
+dz = make_band_profile([0.0, 0.010, 0.0115, 0.025], [1e-3, 0.25e-3, 1e-3],
+                       max_ratio=1.4, protected=[False, True, False])
+print(len(dz), f"{dz.sum() * 1e3:.3f} mm", f"max ratio {np.max(dz[1:] / dz[:-1]):.2f}")
 
-plan = plan_mesh(
-    geometry,
-    freq_range=(1.5e9, 3.5e9),
-    materials=materials,
-    accuracy="standard",
-)
-print(plan.to_markdown())   # inspect the derived mesh before committing to a run
-
-# to_sim_kwargs() carries mesh/domain/boundary/dx (+ dz_profile when present).
-mesh_kwargs = plan.to_sim_kwargs()
+graded = smooth_grading([1e-3] * 4 + [0.25e-3] * 6 + [1e-3] * 4, max_ratio=1.3)
+print(len(graded), f"{graded.sum() * 1e3:.3f} mm")   # longer: cells were inserted
 ```
 
-This is a planning example, not a runnable simulation. `to_sim_kwargs()` does
-not carry geometry or translate its coordinates into the derived absorber-free
-interior. When building the `Simulation`, place the final geometry clear of
-CPML, align thin z boundaries to the final profile edges, add sources and
-observables, and resolve the resulting preflight report.
+`make_band_profile` is the one to use when layer faces must sit on grid
+planes: the total length and every interface are exact. `smooth_grading`
+**adds** cells, so the total length and the positions after the inserted
+cells change. Recompute your layer coordinates from the final profile's
+cumulative sum. Use `max_ratio=1.4` along z and 1.3 in-plane; those are the
+ratios rfx has evidence for, and preflight flags larger ones.
 
-`plan_mesh(...)` is the inspectable planning layer. It is a facade around
-`auto_configure(...)` and does not duplicate the mesh preset math. `artifact_root`
-only declares intended output paths; it never creates directories or writes files.
+## Limits
 
-The serialized `MeshPlan` (`schema_version="mesh-plan/v1"`) reports `plan_source`,
-the `freq_range`/`accuracy`/`boundary` inputs, and a stable `cell_sizes` block
-(`nominal_dx`, per-axis min/max, and `profiles_present`). Fields whose value is
-unknown are `None` rather than omitted — for example the lower frequency bound,
-`margin`, or the memory estimate. Serialize with `plan.to_dict()`,
-`plan.to_json()`, or `plan.to_markdown()`, and recover constructor kwargs with
-`plan.to_sim_kwargs()`. Geometry-derived plans use `plan_source="auto_configure"`
-and carry the requested `accuracy`, but they have not run `Simulation.preflight()`
-— a `MeshPlan` is a planning artifact, not physics validation.
-
-For an already-configured `Simulation`, use `sim.plan_mesh(...)` instead (it
-accepts a memory budget, checkpoint spacing, and optional S-parameter checks, and
-runs `preflight()`). See the [non-uniform mesh guide](/rfx/guide/nonuniform-mesh/)
-for when to choose each and [Simulation](/rfx/api/simulation/) for `Simulation.auto` and
-`sim.plan_mesh`.
-
-## When to use automation
-
-- Use it for first-pass setup, not as a replacement for design review.
-- Keep the derived mesh and domain visible in public examples.
-- Use the result in public reporting only after it matches the support matrix and
-  validation evidence for the intended RF workflow.
-
-## Non-uniform z profiles
-
-For a thin substrate, `auto_configure` may return a graded `dz_profile`
-automatically (surfaced in `MeshPlan.cell_sizes` via `profiles_present`). To
-hand-build one, use `smooth_grading()` to bound adjacent-cell ratios outside
-the interiors listed in `preserve_regions`; ratios already inside a preserved
-region are left unchanged. That is useful setup evidence, but it does not by
-itself make a graded-z workflow a validated reference path.
-
-Grading inserts transition cells, so physical material coordinates must be
-checked against the **final** cumulative cell edges. After adding geometry, run
-`sim.preflight()` and resolve `graded_box_rasterization` advisories: they flag a
-`Box` that occupies far fewer z cells than the nearby fine spacing implies. See
-the [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) guide for the alignment
-workflow.
+- The plan is a starting point, not a validation. It has not run
+  `Simulation.preflight()` for geometry you add later, nor a convergence study.
+- The cell count per wavelength in `accuracy` is a free-space figure. Check
+  that dielectrics still get enough cells: preflight warns below 15 per
+  wavelength in the material.
+- On a graded mesh, a `Box` whose faces fall between grid planes snaps to the
+  nearest one. Preflight reports this as `graded_box_rasterization`. Align
+  layers to the profile's cell edges.
+- Keep the grading out of the absorber: the first and last `cpml_layers` cells
+  of a profile on a CPML axis should be uniform. Preflight warns with
+  `nu_grading_reaches_absorber`.

@@ -114,8 +114,9 @@ sim.fidelity_report()   # declared vs realized planes for every entity
 The first `add_thin_conductor` call warns that the sheet is lossless PEC. That
 warning is expected: see the materials note above.
 
-`sim.add()` refuses a PEC shape that is thinner than one cell but not zero. Such
-a shape is neither a sheet nor a resolved volume, so you must choose. The full
+A PEC shape that is thinner than one cell but not zero is neither a sheet nor a
+resolved volume. Preflight reports it as an error and `run()` refuses it, so
+you must choose one or the other. The full
 rule, with the index conventions, is in
 [How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
 
