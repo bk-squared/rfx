@@ -174,7 +174,6 @@ def _graded_cavity_tm111(dz_profile, a, b, dx, tag):
                   sim_freqs, mode)
 
 
-@pytest.mark.slow
 def test_nonuniform_z_graded_cavity_tm111_accuracy():
     """A genuinely z-graded NU mesh reproduces the closed-form TM111 cavity
     resonance to within a measured tolerance.
@@ -319,7 +318,6 @@ def test_nonuniform_z_graded_cavity_tm111_accuracy():
     )
 
 
-@pytest.mark.slow
 def test_nonuniform_z_two_fine_band_cavity_tm111_accuracy():
     """Same cavity, same closed form, but the graded z axis carries TWO fine
     bands separated by a coarse one (small-large-small-large).

@@ -221,7 +221,7 @@ def test_wire_sparam_api_integration():
         extent=0.006,
     )
     sim.add_probe((0.01, 0.01, 0.005), "ez")
-    result = sim.run(n_steps=200, s_param_n_steps=500)
+    result = sim.run(n_steps=200)
 
     assert result.s_params is not None, "S-params should be computed for wire port"
     assert result.freqs is not None, "Freqs should be present"

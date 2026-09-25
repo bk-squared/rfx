@@ -20,8 +20,9 @@ Sections (one per scan body; each was its own file before tier 3b of the
    ``test_distributed_cpml_dielectric.py``.
 3. ``rfx/runners/distributed_nu.py`` (#205, NU lane, reached ONLY via
    ``forward(distributed=True)``) — was ``test_distributed_nu_cpml_dielectric.py``.
-4. legacy pmap runner ``rfx.runners.distributed.run_distributed`` (#205) —
-   was ``test_distributed_pmap_cpml_dielectric.py``.
+4. the legacy pmap runner's #205 fixture (was
+   ``test_distributed_pmap_cpml_dielectric.py``), run on ``sim.run(devices=...)``
+   since #1296 removed that runner.
 5. ``rfx/vmap_sweep.py`` batched scan (#205, #637) — was
    ``test_vmap_cpml_dielectric.py``.
 6. lumped / wire S-parameter extractor re-runs
@@ -51,7 +52,6 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation
-from rfx.runners.distributed import run_distributed as legacy_run
 import rfx.runners.distributed_nu as _dnu
 import rfx.runners.nonuniform as _rnu
 from rfx.vmap_sweep import vmap_material_sweep
@@ -390,18 +390,14 @@ def test_distributed_nu_cpml_forward_is_ad_finite():
 
 
 # ===========================================================================
-# 4. Legacy pmap distributed runner (issue #205)
+# 4. The legacy pmap runner's fixture, on the shard_map runner (issue #205)
 # ===========================================================================
 #
-# Companion to section 2 (which guards the LIVE shard_map runner reached via
-# ``sim.run(devices=...)``). This one guards the LEGACY pmap runner
-# ``rfx.runners.distributed.run_distributed``. Since #1038 leg 6 that full module
-# path is the ONLY way in: the package no longer re-exports the name (it used to
-# be available as ``rfx.runners.run_distributed``, which pointed the public name
-# at a runner ``sim.run()`` does not dispatch to). ``sim.run(devices=...)``
-# routes to ``distributed_v2`` instead, and reaches this runner only as v2's
-# ``n_devices == 1`` fast path. The import at the top of this file is by full
-# path already, so leg 6 changed nothing for these tests.
+# These two tests guarded the LEGACY pmap runner
+# ``rfx.runners.distributed.run_distributed``. #1296 removed that runner; the
+# fixture, the assertions and the tolerances are kept and now drive
+# ``sim.run(devices=...)``, i.e. ``distributed_v2``, on this second geometry
+# (section 2 is the first). The history below is the pmap runner's.
 #
 # Before #205 the pmap scan body passed ``None`` to the (since-#227
 # material-aware) CPML kernels (witnessed: eps_r=9, 2 devices -> inf on
@@ -436,20 +432,21 @@ def _pmap_build(eps_r):
 
 
 @requires_multidevice
-def test_pmap_distributed_cpml_dielectric_finite_and_matches_single():
-    """eps_r=9 filling the CPML through the LEGACY pmap runner: finite (was
-    inf on main) and as close to single-device as the vacuum case is."""
+def test_pmap_fixture_cpml_dielectric_finite_and_matches_single():
+    """eps_r=9 filling the CPML, on the pmap runner's fixture and now through
+    ``sim.run(devices=...)`` (#1296): finite (was inf on main) and as close to
+    single-device as the vacuum case is."""
     devs = jax.devices()[:2]
 
     # Vacuum baseline: how well does the legacy pmap path track single-device
     # when the absorber coefficient is unambiguously correct?
     vac_single = _max_abs_e(_pmap_build(1.0).run(n_steps=_PMAP_N_STEPS))
-    vac_pmap = _max_abs_e(legacy_run(_pmap_build(1.0), n_steps=_PMAP_N_STEPS, devices=devs))
+    vac_pmap = _max_abs_e(_pmap_build(1.0).run(n_steps=_PMAP_N_STEPS, devices=devs))
     assert np.isfinite(vac_pmap)
     vac_rel = abs(vac_pmap - vac_single) / max(abs(vac_single), 1e-30)
 
     diel_single = _max_abs_e(_pmap_build(_PMAP_EPS).run(n_steps=_PMAP_N_STEPS))
-    diel_pmap = _max_abs_e(legacy_run(_pmap_build(_PMAP_EPS), n_steps=_PMAP_N_STEPS, devices=devs))
+    diel_pmap = _max_abs_e(_pmap_build(_PMAP_EPS).run(n_steps=_PMAP_N_STEPS, devices=devs))
 
     # (a) finite + bounded -- the bug produced inf.
     assert np.isfinite(diel_pmap), (
@@ -470,12 +467,13 @@ def test_pmap_distributed_cpml_dielectric_finite_and_matches_single():
 
 
 @requires_multidevice
-def test_pmap_distributed_cpml_responds_to_eps():
-    """The pmap CPML coefficient must actually depend on eps_r (guards against
-    a silent regression to a constant vacuum coefficient)."""
+def test_pmap_fixture_cpml_responds_to_eps():
+    """The distributed CPML coefficient must actually depend on eps_r (guards
+    against a silent regression to a constant vacuum coefficient); the pmap
+    runner's fixture, through ``sim.run(devices=...)`` since #1296."""
     devs = jax.devices()[:2]
-    vac = _max_abs_e(legacy_run(_pmap_build(1.0), n_steps=_PMAP_N_STEPS, devices=devs))
-    diel = _max_abs_e(legacy_run(_pmap_build(_PMAP_EPS), n_steps=_PMAP_N_STEPS, devices=devs))
+    vac = _max_abs_e(_pmap_build(1.0).run(n_steps=_PMAP_N_STEPS, devices=devs))
+    diel = _max_abs_e(_pmap_build(_PMAP_EPS).run(n_steps=_PMAP_N_STEPS, devices=devs))
     assert np.isfinite(vac) and np.isfinite(diel)
     assert abs(vac - diel) / max(vac, 1e-30) > 1e-3, (
         f"vacuum ({vac:.6e}) and dielectric ({diel:.6e}) pmap responses are "

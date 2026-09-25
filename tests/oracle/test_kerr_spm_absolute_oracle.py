@@ -117,7 +117,6 @@ def oracle():
             "r_increment": r_increment, "r_short": r_short, "settle": settle}
 
 
-@pytest.mark.slow
 def test_kerr_spm_absolute_magnitude(oracle):
     """The D-based operator reproduces the textbook Δk=(3/8)χ³⟨A²⟩k0 to within ±20% (measured ≈0.93,
     residual = Yee dispersion). Excludes the increment operator (0.33) AND the pulsed artifact (0.59)."""
@@ -127,13 +126,11 @@ def test_kerr_spm_absolute_magnitude(oracle):
         f"Δk_meas={oracle['dkx_meas']:.4f} Δk_txt={oracle['dkx_txt']:.4f}")
 
 
-@pytest.mark.slow
 def test_kerr_spm_absolute_positive_sign(oracle):
     """Δk > 0 — a reactive index INCREASE (self-focusing). A dissipative/linear operator gives ~0."""
     assert oracle["dkx_meas"] > 0.1, f"Δk_meas={oracle['dkx_meas']:.4f} not a clear positive shift"
 
 
-@pytest.mark.slow
 def test_kerr_spm_gate_discriminates_operator(oracle):
     """The gate BINDS PHYSICS, not any operator: the pre-#448 increment operator underestimates the
     magnitude (ratio ≈0.33) and FAILS the [0.8,1.2] gate — so a green here means the D-based
@@ -146,7 +143,6 @@ def test_kerr_spm_gate_discriminates_operator(oracle):
         f"not clearly separated")
 
 
-@pytest.mark.slow
 def test_kerr_spm_absolute_domain_invariant(oracle):
     """The ratio is a physical property, not a domain artifact: a 0.60 m and a 0.45 m domain agree."""
     assert abs(oracle["r_dbased"] - oracle["r_short"]) < 0.15, (
@@ -154,7 +150,6 @@ def test_kerr_spm_absolute_domain_invariant(oracle):
         f"(an artifact would swing; physics is invariant)")
 
 
-@pytest.mark.slow
 def test_kerr_spm_measured_at_steady_state(oracle):
     """Settling witness: the DFT/phase-slope window is genuinely steady CW, not a transient — the
     fundamental amplitude drifts <5% between the first and second half of the window. Guards against

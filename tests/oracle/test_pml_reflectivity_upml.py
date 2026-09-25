@@ -180,7 +180,6 @@ def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
 # --------------------------------------------------------------------------- #
 # Oracle 1: reflection-floor REGRESSION LOCK.
 # --------------------------------------------------------------------------- #
-@pytest.mark.slow
 def test_upml_reflection_floor_regression():
     """UPML front-interface reflection stays at/below its measured envelope.
 
@@ -207,7 +206,6 @@ def test_upml_reflection_floor_regression():
 # --------------------------------------------------------------------------- #
 # Oracle 2: interior energy-decay absorber gate + its non-vacuity falsifier.
 # --------------------------------------------------------------------------- #
-@pytest.mark.slow
 def test_upml_interior_energy_decay():
     """A healthy UPML drains interior energy after the source stops.
 
@@ -225,7 +223,6 @@ def test_upml_interior_energy_decay():
     )
 
 
-@pytest.mark.slow
 def test_upml_energy_decay_gate_discriminates_dead_absorber(monkeypatch):
     """Non-vacuity witness (issue #398 discipline): the interior energy-decay
     gate PASSES a healthy UPML and CATCHES a broken (loss-disabled) absorber.

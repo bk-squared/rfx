@@ -15,11 +15,11 @@ declared PEC VOLUME runs there and is gated against the single-device lane by
 ``test_distributed_v2_pec_body_seam.py``. Sheets and sub-cell wires own no
 cell, nothing on that lane carries them, and they are still refused.
 
-The pmap lane in ``rfx/runners/distributed.py`` still drops the mask, so its
-refusal — a separate string — still covers all three kinds (#1055). The two
-messages are therefore checked separately: asserting one set of substrings
-against both is what would let a stale sentence survive on the lane it has
-stopped being true of.
+The pmap lane in ``rfx/runners/distributed.py`` never realized the mask, so
+its refusal covered all three kinds (#1055), and ``distributed_v2`` handed a
+one-device call to it. #1296 removed that runner: one device now runs the
+shard_map path on a one-device mesh, which realizes a volume there too and
+refuses sheets and wires with the same message it gives at two devices.
 """
 # Simulate 2 devices on CPU. Must be set BEFORE importing JAX.
 import os  # noqa: I001
@@ -64,17 +64,6 @@ def _build(kind):
                        amplitude_kind="field")
         sim.add_probe(position=(12e-3, 6e-3, 6e-3), component="ez")
     return sim
-
-
-def _assert_pmap_remedy_is_honest(msg):
-    """The pmap lane's message. It still drops the mask for all three kinds,
-    so it still names the volume and still has to say that redrawing a sheet
-    as one buys nothing there (#1055)."""
-    assert "PEC volume" in msg, msg
-    assert "does NOT help" in msg, (
-        "the refusal must say that redrawing as a volume is not a remedy "
-        "on this lane")
-    assert "sim.run()" in msg, msg
 
 
 def _assert_shmap_remedy_is_honest(msg):
@@ -144,39 +133,37 @@ def test_the_shmap_distributed_lane_refuses_a_sheet_and_a_wire(kind):
     assert res.time_series is not None
 
 
-def test_the_one_device_fast_path_still_refuses_a_volume():
-    """The seam between the two runners, pinned rather than left to surprise.
-
-    ``distributed_v2.run_distributed`` delegates to the pmap runner at
-    ``n_devices == 1``, and that runner still drops the mask — so the same
-    call refuses a declared volume at one device and runs it at two. Nobody
-    reaches this through the public API: ``rfx/api/_execute.py`` routes to
-    this lane only for ``len(devices) > 1``, and one device takes the ordinary
-    single-device lane, which realizes the volume. It is reachable by calling
-    the runner directly, and #1055 is where it closes.
+def test_the_one_device_path_runs_a_declared_volume():
+    """#1296: one device used to be handed to the pmap runner, which refused
+    this volume (#1055). It now runs the shard_map path on a one-device mesh,
+    which realizes the volume as it does at two devices. The probe sits
+    inside the metal, so the trace reads zero when the volume is realized and
+    the field of the empty box when it is dropped -- the #931 witness.
+    Numeric parity with the single-device lane is gated in
+    ``test_distributed_v2_one_device.py``.
     """
     from rfx.runners.distributed_v2 import run_distributed as shmap_run
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(NotImplementedError) as excinfo:
-            shmap_run(_build("volume"), n_steps=4, devices=jax.devices()[:1])
-    # the pmap runner's message, not this lane's
-    _assert_pmap_remedy_is_honest(str(excinfo.value))
+        inside = np.asarray(shmap_run(_build("volume"), n_steps=40,
+                                      devices=jax.devices()[:1]).time_series)
+        empty = np.asarray(shmap_run(_build("none"), n_steps=40,
+                                     devices=jax.devices()[:1]).time_series)
+    assert np.max(np.abs(empty)) > 0, "vacuous fixture: the empty box reads zero"
+    assert np.max(np.abs(inside)) <= 1e-6 * np.max(np.abs(empty)), (
+        f"the probe inside the declared PEC volume reads "
+        f"{np.max(np.abs(inside)):.3e} against {np.max(np.abs(empty)):.3e} "
+        "with the volume deleted: the one-device path dropped the metal")
 
 
-def test_the_pmap_distributed_lane_refuses_a_declared_volume():
-    """The lane ``run_distributed_v2`` delegates to at one device. It still
-    drops the mask, so its refusal still covers volumes (#1055)."""
-    from rfx.runners.distributed import run_distributed as pmap_run
+@pytest.mark.parametrize("kind", ["sheet", "wire"])
+def test_the_one_device_path_refuses_a_sheet_and_a_wire(kind):
+    """The same refusal, and the same message, as at two devices."""
+    from rfx.runners.distributed_v2 import run_distributed as shmap_run
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with pytest.raises(NotImplementedError) as excinfo:
-            pmap_run(_build("volume"), n_steps=4, devices=jax.devices()[:1])
-    _assert_pmap_remedy_is_honest(str(excinfo.value))
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        res = pmap_run(_build("none"), n_steps=4, devices=jax.devices()[:1])
-    assert res.time_series is not None
+            shmap_run(_build(kind), n_steps=4, devices=jax.devices()[:1])
+    _assert_shmap_remedy_is_honest(str(excinfo.value))

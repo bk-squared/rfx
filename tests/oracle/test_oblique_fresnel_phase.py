@@ -129,7 +129,6 @@ def _eps_slab(shape, xi, xe, eps):
     return a if eps == 1.0 else a.at[xi:xe, :, :].set(eps)
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("theta,magtol", [(30.0, 0.10), (45.0, 0.08)])
 def test_oblique_complex_gamma_vs_analytic(theta, magtol):
     """|Γ| and ∠Γ from oblique forward() match analytic Fresnel (phase up to the Yee offset)."""

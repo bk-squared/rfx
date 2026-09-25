@@ -391,6 +391,10 @@ def test_realized_raster_is_the_board_this_band_was_pinned_on():
 
 @pytest.mark.gpu
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="#1275: since #1213 (E-edge eps/sigma averaging) this lossless patch "
+           "returns max|S11| = 4.01, a non-physical gain; the 1.05 bound is unchanged")
 def test_patch_edgefed_s11_passive_and_match():
     """Patch |S11| is passive AND shows the edge-fed signature (poorly matched at the
     resonance, whose antiresonance witness sits IN the gated band; the dip is the

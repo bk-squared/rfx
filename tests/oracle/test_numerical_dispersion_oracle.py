@@ -54,7 +54,6 @@ def _measure_vp_over_c(dx):
     return w / kx_meas / C0, w / _yee_kx(F0, dt, dx) / C0
 
 
-@pytest.mark.slow
 def test_measured_phase_velocity_matches_yee_dispersion():
     """At N=15 cells/λ the measured v_p matches the analytic Yee value AND is clearly below the
     continuum c — a solver ignoring numerical dispersion would read v_p/c≈1.0 and FAIL this."""
@@ -67,7 +66,6 @@ def test_measured_phase_velocity_matches_yee_dispersion():
     assert vp_meas < 1.0 - 3e-3, f"vp_meas/c={vp_meas:.5f} looks dispersion-free (should be ~{vp_yee:.5f})"
 
 
-@pytest.mark.slow
 def test_numerical_dispersion_converges_with_resolution():
     """The Yee deficit (1 - v_p/c) shrinks as dx halves (~1/N²) and the measurement tracks it."""
     vp15, yee15 = _measure_vp_over_c(0.004)   # N=15

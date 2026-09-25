@@ -14,7 +14,6 @@ import pytest
 # now runs in the default gate.
 
 
-@pytest.mark.slow
 def test_nonuniform_z_convergence():
     """Non-uniform z-mesh: the measured resonance must converge as the
     substrate cells are refined.

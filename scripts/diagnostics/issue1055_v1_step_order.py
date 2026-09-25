@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# The v1 pmap runner (rfx.runners.distributed.run_distributed) was removed in #1296; this script ran on the commit its records name.
 """Issue #1055 measurement: does ``distributed`` (the v1 ``jax.pmap`` runner)
 carry the seam-source step-order defect #1041 measured and fixed on v2, and
 does the same two-statement reorder bring it to the lane floor?

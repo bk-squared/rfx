@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# The v1 pmap runner (rfx.runners.distributed.run_distributed) was removed in #1296; this script ran on the commit its records name.
 """Measure public sim.run exchange-interval traces, spectra, and CPU timings.
 
 Run from the worktree root (no pytest):

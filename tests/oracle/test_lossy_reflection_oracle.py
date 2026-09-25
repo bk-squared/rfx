@@ -90,7 +90,6 @@ def lossy_run():
     return {"gamma": gamma}
 
 
-@pytest.mark.slow
 def test_lossless_control_recovers_fresnel(lossy_run):
     """σ=0 anchor: recovers the lossless Fresnel |Γ|=1/3 and is passive (<1)."""
     g = lossy_run["gamma"][SIGMAS[0]]
@@ -98,7 +97,6 @@ def test_lossless_control_recovers_fresnel(lossy_run):
     assert abs(abs(g) - 1.0 / 3.0) < 0.04, f"control |Γ|={abs(g):.3f} vs lossless 0.333"
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("sigma", SIGMAS)
 def test_lossy_reflection_magnitude_vs_complex_fresnel(lossy_run, sigma):
     """|Γ| tracks the complex-ε Fresnel |(1-√ε_c)/(1+√ε_c)| as σ enters the surface impedance."""
@@ -109,7 +107,6 @@ def test_lossy_reflection_magnitude_vs_complex_fresnel(lossy_run, sigma):
         f"|Γ|={abs(g):.4f} vs complex-ε Fresnel {abs(ga):.4f} (σ/ωε0={sigma/(_W*EPS_0):.1f})")
 
 
-@pytest.mark.slow
 def test_loss_moves_reflection_discriminating(lossy_run):
     """DISCRIMINATING: loss must MOVE |Γ| away from the lossless value, matching the analytic
     shift. A solver that ignored σ in the reflection would keep |Γ|≈0.333 and fail here."""
@@ -122,7 +119,6 @@ def test_loss_moves_reflection_discriminating(lossy_run):
         f"measured |Γ| shift {shift_meas:.4f} ≠ analytic {shift_ana:.4f}")
 
 
-@pytest.mark.slow
 def test_lossy_reflection_phase_shift_vs_analytic(lossy_run):
     """After calibrating the εr/σ-independent Yee half-cell reference-plane offset at σ=0,
     the σ-dependent phase shift of Γ matches the complex-ε Fresnel prediction."""

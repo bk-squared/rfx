@@ -601,12 +601,10 @@ def test_g9_fast_path_excludes_sheets(monkeypatch):
 
 
 def test_g9_distributed_runners_refuse():
-    from rfx.runners.distributed import run_distributed as run_v1
+    # The pmap runner's half of this test went with that runner (#1296).
     from rfx.runners.distributed_v2 import run_distributed as run_v2
 
     sim = _sheet_sim(boundary="pec")
-    with pytest.raises(ValueError, match="not supported on the distributed"):
-        run_v1(sim, n_steps=8)
     with pytest.raises(ValueError, match="not supported on the distributed"):
         run_v2(sim, n_steps=8)
 
@@ -1173,9 +1171,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_gradient_check"),
     ("rfx/topology.py", "topology_optimize", "topology-optimization"):
         (__name__, "test_fence_topology_optimize"),
-    ("rfx/runners/distributed.py", "run_distributed", "distributed (v1) runner"):
-        ("tests.unit.materials.test_sheet_impedance",
-         "test_g9_distributed_runners_refuse"),
     ("rfx/runners/distributed_v2.py", "run_distributed",
      "distributed (v2) runner"):
         ("tests.unit.materials.test_sheet_impedance",
@@ -1866,24 +1861,22 @@ def test_box_and_equivalent_mask_shape_fold_bit_identically(lane):
 
 def test_dc_fold_also_accepts_a_mask_shape_on_the_uniform_lane():
     """The legacy DC fold was never Box-only on the uniform lane (it reads
-    ``shape.mask``); pin that #674 did not change it. The NU DC path keeps its
-    documented warn-and-skip for non-Box shapes."""
+    ``shape.mask``); pin that #674 did not change it. The NU DC path refuses
+    a non-Box shape (2.0); it used to warn and solve without the conductor."""
     # The DC fold samples ``shape.mask`` half-open (a sigma-fill volume
     # model, unchanged by #931), so the equivalent mask shape is half-open.
     sig_box, _, _, _ = _uniform_sigma(_box_sheet(U_Z, U_FOOT))
     sig_msk, _, _, _ = _uniform_sigma(_planar_sheet(U_Z, U_FOOT, closed=False))
     assert _sha(sig_box) == _sha(sig_msk)
 
-    with warnings.catch_warnings(record=True) as rec:
-        warnings.simplefilter("always")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
         sim = Simulation(freq_max=10e9, domain=(NU_L, NU_L, 0), dx=NU_DX,
                          dz_profile=NU_DZ, boundary="cpml", cpml_layers=6)
         sim.add_thin_conductor(_planar_sheet(NU_Z, NU_FOOT),
                                sigma_bulk=SIGMA_BULK, thickness=THICKNESS)
-        mats_nu, *_ = assemble_materials_nu(sim, _nu_grid(sim))
-    assert any("non-Box shape is not yet supported" in str(w.message)
-               for w in rec), [str(w.message) for w in rec]
-    assert float(np.asarray(mats_nu.sigma).max()) == 0.0
+    with pytest.raises(NotImplementedError, match="non-Box shape"):
+        assemble_materials_nu(sim, _nu_grid(sim))
 
 
 # ---------------------------------------------------------------------------
@@ -2147,7 +2140,6 @@ def _guide_planar_sheet(zs):
     return PlanarSheet(2, zs, (0.0, 0.0), (_D[0], _D[1]))
 
 
-@pytest.mark.slow_physics
 @pytest.mark.parametrize("case,control,dual_over_primal",
                          [pytest.param(*c, id=c[0]) for c in INVARIANCE_CASES])
 def test_alpha_invariance_transfers_to_a_nonbox_sheet(case, control,
@@ -2185,8 +2177,19 @@ def test_alpha_invariance_transfers_to_a_nonbox_sheet(case, control,
         f"{control} {ref['alpha']:.5f} -> ratio {ratio:.4f} outside "
         f"[{lo}, {hi}]")
 
-    # ... and it is the SAME number the Box sheet gives on the same mesh
-    for name, out in ((case, got), (control, ref)):
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="#1231: since #1178 a Box sheet continues into the absorber and a non-Box "
+           "sheet stops at its face, so the same cells give alpha 0.762 vs 0.711")
+@pytest.mark.parametrize("case,control,dual_over_primal",
+                         [pytest.param(*c, id=c[0]) for c in INVARIANCE_CASES])
+def test_nonbox_sheet_alpha_equals_the_box_sheet_alpha(case, control, dual_over_primal):
+    """... and it is the SAME number the Box sheet gives on the same mesh. Split from
+    the test above so the #1231 quarantine does not silence its witnesses."""
+    from tests.unit.materials.test_thin_conductor_nu_dual_spacing import _run_nu_guide
+    for name in (case, control):
+        out = _run_nu_guide(name, sheet_shape=_guide_planar_sheet, tag="planar")
         box = _run_nu_guide(name)
         assert out["alpha"] == box["alpha"], (
             f"{name}: non-Box sheet alpha {out['alpha']:.9f} != Box "

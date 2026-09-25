@@ -24,7 +24,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.runners.distributed import gather_array_x
+from rfx.runners._distributed_common import gather_array_x
 
 _N_DEVICES, _NX_LOCAL, _NY, _NZ, _GHOST = 2, 6, 3, 3, 1
 

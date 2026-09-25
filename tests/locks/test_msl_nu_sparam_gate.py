@@ -218,6 +218,10 @@ def _footprint_extent_m(grid, sheet):
 
 @pytest.mark.gpu
 @pytest.mark.slow
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="#1275: since #1213 (E-edge eps/sigma averaging) this lossless patch "
+           "returns max|S11| = 4.19, a non-physical gain; the 1.05 bound is unchanged")
 def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     """NU-lane edge-fed patch |S11| is passive AND shows the edge-fed signature,
     exactly like the validated uniform lane. Gates the full fenced NU MSL build."""

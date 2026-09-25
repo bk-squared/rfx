@@ -389,7 +389,7 @@ def test_direct_slabs_callback_only_builds_addressable_shards(monkeypatch):
 def _direct_dispersion_slabs():
     """Compare every coefficient/state with the original full-domain split."""
     import itertools
-    from rfx.runners.distributed import (
+    from rfx.runners._distributed_common import (
         _split_debye_coeffs, _split_debye_state,
         _split_lorentz_coeffs, _split_lorentz_state,
     )

@@ -3,7 +3,8 @@
 Periodic/Bloch boundaries, extended and passive ports, surface monitors
 (flux, NTFF, DFT planes), Kerr materials, lumped RLC elements, subgridding.
 
-Exercise the public dispatch and both runner entries with two CPU devices.
+Exercise the public dispatch and the shard_map runner entry with two CPU
+devices. The pmap runner entry went with that runner (#1296).
 PEC controls use the relative tolerance from
 ``test_distributed.TestDistributedRunner.test_distributed_matches_single_pec``.
 """
@@ -16,15 +17,14 @@ import pytest
 
 from rfx import Box, DebyePole, GaussianPulse, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.runners import distributed, distributed_v2
+from rfx.runners import distributed_v2
 
 
 N_STEPS = 40
-ENTRIES = ("api", "v2", "v1")
+ENTRIES = ("api", "v2")
 LANES = {
     "api": "distributed multi-device run()",
     "v2": "distributed (v2) runner",
-    "v1": "distributed (v1) pmap runner",
 }
 
 
@@ -38,8 +38,8 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
            flux=False, ntff=False, kerr=False, debye=False, rlc=None,
            refine=False, dft=False, msl=False):
     """A PEC box has a source at x=6 mm and Ez probes at x=12 and 22 mm."""
-    # v1 requires nx divisible by two; v2 pads the 25-cell x grid.
-    domain_x = 23e-3 if entry == "v1" else 24e-3
+    # v2 pads the 25-cell x grid.
+    domain_x = 24e-3
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         warnings.simplefilter("ignore", DeprecationWarning)
@@ -86,8 +86,8 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
 def _run(sim, entry, **kwargs):
     if entry == "api":
         return sim.run(n_steps=N_STEPS, devices=_devices(), **kwargs)
-    runner = distributed_v2 if entry == "v2" else distributed
-    return runner.run_distributed(sim, n_steps=N_STEPS, devices=_devices(), **kwargs)
+    return distributed_v2.run_distributed(sim, n_steps=N_STEPS, devices=_devices(),
+                                          **kwargs)
 
 
 def _assert_refused(sim, entry, *features, **kwargs):
@@ -159,8 +159,7 @@ def test_explicit_bloch_phase_is_refused():
             sim, lane="direct helper", bloch=phase)
     assert ("call sim.run(...) without devices= instead of calling this runner"
             in str(exc.value))
-    for entry in ("v2", "v1"):
-        _assert_refused(_build(entry=entry), entry, "Bloch", bloch=phase)
+    _assert_refused(_build(entry="v2"), "v2", "Bloch", bloch=phase)
     sim._bloch = phase
     _assert_refused(sim, "api", "Bloch")
 

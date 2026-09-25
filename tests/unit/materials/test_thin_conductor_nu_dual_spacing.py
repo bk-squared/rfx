@@ -409,7 +409,6 @@ def _run_nu_guide(name, sheet_shape=None, tag="box"):
     return out
 
 
-@pytest.mark.slow_physics
 @pytest.mark.parametrize("case,control,dual_over_primal", INVARIANCE_CASES)
 def test_alpha_invariant_to_sheet_node_grading(case, control,
                                                dual_over_primal):

@@ -192,7 +192,6 @@ def _run(mode):
     return sim, grid, dt, np.asarray(r.time_series)[:, 0]
 
 
-@pytest.mark.slow_physics
 def test_g1_resonance_position_ab():
     # --- assembly-identity witness: same FOOTPRINT both ways -------------
     #

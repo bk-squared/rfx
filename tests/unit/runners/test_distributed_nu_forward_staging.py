@@ -24,7 +24,7 @@ from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz, lorentz_pole
 from rfx.nonuniform import make_current_source, position_to_index
 from rfx.runners import distributed_nu as nu
-from rfx.runners.distributed import _split_materials
+from rfx.runners._distributed_common import _split_materials
 from rfx.runners._distributed_common import shard_stacked
 from rfx.simulation import ProbeSpec, SourceSpec
 

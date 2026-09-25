@@ -1,174 +1,733 @@
-"""Regression locks for the silent-drop class bug (fixed 2026-04).
+"""A ``Simulation.run`` argument a lane does not implement is refused.
 
-Previously the distributed, non-uniform, and subgridded dispatch paths
-in ``Simulation.run`` silently dropped most of the run-time kwargs
-(``checkpoint``, ``snapshot``, ``until_decay``, ``decay_*``,
-``conformal_pec``, ``conformal_min_weight``). ``subpixel_smoothing`` on
-the NU path was fixed in commit ``1a2e6c5``; this test pins the rest of
-the class:
+Before 2.0 the distributed, non-uniform, subgridded and ADI lanes warned
+that an argument "is silently ignored" and ran without it, so the result
+was a different computation from the one requested: a staircase PEC
+instead of the Dey-Mittra conformal boundary (``conformal_pec``), scalar
+eps at interfaces instead of the smoothed tensor (``subpixel_smoothing``),
+a fixed ``n_steps`` instead of a run to decay (``until_decay``), no field
+snapshot (``snapshot``), a full AD tape instead of checkpointing
+(``checkpoint``), an S-parameter record of the wrong length
+(``s_param_n_steps``). Each of those now raises ``NotImplementedError``
+naming the argument and the lane, before any time step. The rows below pin
+every (lane x argument) pair that refuses; the controls pin that the same
+argument still runs on a lane that implements it.
 
-1. **NU path**: emits an explicit ``UserWarning`` for ``snapshot``,
-   ``conformal_pec`` when set to non-default values.
-   ``subpixel_smoothing`` and ``checkpoint`` are *propagated* on the NU
-   path and therefore must NOT warn. ``until_decay`` is propagated on
-   ABSORBING (cpml/upml) NU boundaries since #383 (must NOT warn there)
-   and still warn-and-drops on closed/PEC NU boundaries, with a
-   lane-accurate reason (the interior-energy stop needs an absorber).
+``report_every`` only prints progress, so it stays a warning.
 
-2. **Subgridded path**: emits a ``UserWarning`` for each unsupported
-   kwarg (including ``subpixel_smoothing`` and ``checkpoint`` which
-   the subgridded runner cannot accept).
-
-3. **PMC + CPML preflight (P2.7)**: warns when a PMC/PEC reflector
-   face coexists with CPML on the opposite face of the same axis —
-   the current ``Grid`` allocates ``pad_{axis}`` symmetrically, so
-   the reflector plane is offset by ``pad_{axis}·dx`` from the
-   user domain edge. Tracks the per-face grid padding work item.
-
-Distributed-path warnings are not exercised here because they require
-multi-device availability; their helper entry is wired identically to
-the other paths and is covered by the unit test on
-``_warn_unsupported_run_kwargs`` below.
-
-#931 AND ``conformal_pec``. The lattice ownership contract removes
-per-entry realization knobs — ``two_plane`` is gone and passing it is a
-``TypeError`` — and a test greps ``rfx/`` for any surviving
-``realization=``-style keyword on a geometry entry. ``conformal_pec`` is
-NOT in that class and stays: it is a run-level SUBPIXEL model (Dey-Mittra
-weights) layered on top of the realized edge set, fenced in design note
-§1.8 alongside Kottke, not a second answer to "which edges are PEC". The
-uniform lane applies the realized edges AND the conformal weights; the
-NU / subgridded lanes cannot, so they warn and drop — which is what the
-rows below pin. The lanes therefore still disagree about SUBPIXEL
-treatment while agreeing about realization, and this file is where that
-distinction is visible. If ``conformal_pec`` ever moves onto the
-declaration, this test's kwarg tables are the checklist.
+The file keeps its old name because other files cite it. It also carries
+the P2.7 preflight checks (PMC/PEC face plus CPML on one axis).
 """
 
 from __future__ import annotations
 
+import re
+import sys
 import warnings
 
+import jax
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import Box, Cylinder, DebyePole, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.simulation import SnapshotSpec
+
+
+# The value each argument takes when it asks for its feature.
+ASKS = {
+    "subpixel_smoothing": True,
+    "checkpoint": True,
+    "snapshot": SnapshotSpec(interval=2, components=("ez",)),
+    "until_decay": 1e-3,
+    "conformal_pec": True,
+}
+
+
+def _quiet(build):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return build()
+
+
+# Each lane fixture takes ``pec``: a PEC block for conformal_pec to act on.
+# Without one, conformal_pec=True is a no-op on every lane and passes.
+
+def _nu_sim(pec=False):
+    """Closed (PEC) cavity with a 4-cell graded dz."""
+    def build():
+        sim = Simulation(freq_max=10e9, domain=(2e-3, 2e-3, 4e-3),
+                         dx=1e-3, boundary="pec", cpml_layers=0)
+        sim._dz_profile = np.full(4, 1e-3)
+        if pec:
+            sim.add(Box((0.0, 0.0, 2e-3), (1e-3, 1e-3, 3e-3)), material="pec")
+        sim.add_source((1e-3, 1e-3, 1e-3), "ex")
+        sim.add_probe((1e-3, 1e-3, 3e-3), "ex")
+        return sim
+    return _quiet(build)
+
+
+def _distributed_sim(pec=False):
+    def build():
+        sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
+                         dx=1e-3, boundary="pec")
+        if pec:
+            sim.add(Box((16e-3, 2e-3, 2e-3), (20e-3, 6e-3, 6e-3)),
+                    material="pec")
+        sim.add_source((6e-3, 6e-3, 6e-3), "ez", amplitude_kind="field")
+        sim.add_probe((12e-3, 6e-3, 6e-3), "ez")
+        return sim
+    return _quiet(build)
+
+
+def _subgrid_sim(pec=False):
+    def build():
+        sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
+                         dx=1e-3, boundary="pec")
+        sim.add_refinement((0.012, 0.02), ratio=2)
+        if pec:
+            sim.add(Box((0.002, 0.002, 0.002), (0.005, 0.005, 0.005)),
+                    material="pec")
+        sim.add_source((0.01, 0.01, 0.017), "ez")
+        sim.add_probe((0.012, 0.01, 0.017), "ez")
+        return sim
+    return _quiet(build)
+
+
+def _adi_sim(pec=False):
+    def build():
+        sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.01),
+                         boundary="pec", mode="2d_tmz", solver="adi")
+        if pec:
+            sim.add(Box((0.002, 0.002, 0.0), (0.004, 0.004, 0.01)),
+                    material="pec")
+        sim.add_source((0.01, 0.01, 0.0), "ez")
+        sim.add_probe((0.012, 0.01, 0.0), "ez")
+        return sim
+    return _quiet(build)
+
+
+def _devices():
+    devices = jax.devices("cpu")
+    assert len(devices) >= 2, "requires the root conftest's two CPU devices"
+    return devices[:2]
+
+
+LANES = {
+    # lane: (fixture, label in the message, extra run kwargs)
+    "non-uniform": (_nu_sim, "non-uniform mesh", {}),
+    "distributed": (_distributed_sim, "distributed multi-device", None),
+    "subgridded": (_subgrid_sim, "subgridded (SBP-SAT)", {}),
+    "adi": (_adi_sim, "ADI (solver='adi')", {}),
+}
+
+REFUSED = [
+    ("non-uniform", "snapshot"),
+    ("non-uniform", "until_decay"),      # closed boundary: no decay stop
+    ("non-uniform", "conformal_pec"),
+    *[(lane, kw) for lane in ("distributed", "subgridded", "adi")
+      for kw in ASKS],
+]
+
+
+def _refusal(label, kw):
+    return rf"(?s)refuses .*the {re.escape(label)} lane.*\b{kw}="
+
+
+@pytest.mark.parametrize("lane,kw", REFUSED, ids=[f"{a}-{b}" for a, b in REFUSED])
+def test_lane_refuses_an_argument_it_does_not_implement(lane, kw):
+    build, label, extra = LANES[lane]
+    sim = build(pec=(kw == "conformal_pec"))
+    kwargs = {"n_steps": 4, "skip_preflight": True, kw: ASKS[kw]}
+    if extra is None:
+        kwargs["devices"] = _devices()
+    with pytest.raises(NotImplementedError, match=_refusal(label, kw)) as info:
+        sim.run(**kwargs)
+    print(f"[{lane} x {kw}] {info.value}", file=sys.stderr)
+    assert "Instead:" in str(info.value)
+
+
+def test_closed_nu_until_decay_refusal_states_the_absorber_reason():
+    """#383: the closed-boundary NU refusal says why, and what works."""
+    with pytest.raises(NotImplementedError) as info:
+        _nu_sim().run(n_steps=4, until_decay=1e-3, skip_preflight=True)
+    msg = str(info.value)
+    assert "absorbing" in msg and "point-field fallback" in msg, msg
+    assert "set n_steps or num_periods" in msg, msg
+
+
+def test_conformal_boundary_declaration_is_refused_on_the_nu_lane():
+    """``Boundary(conformal=True)`` turns conformal_pec on by itself."""
+    def build():
+        spec = BoundarySpec(x="pec", y=Boundary(lo="pec", hi="pec",
+                                                conformal=True), z="pec")
+        sim = Simulation(freq_max=10e9, domain=(2e-3, 2e-3, 4e-3), dx=1e-3,
+                         boundary=spec, cpml_layers=0)
+        sim._dz_profile = np.full(4, 1e-3)
+        sim.add_source((1e-3, 1e-3, 1e-3), "ex")
+        sim.add_probe((1e-3, 1e-3, 3e-3), "ex")
+        return sim
+    sim = _quiet(build)
+    with pytest.raises(NotImplementedError,
+                       match=_refusal("non-uniform mesh", "conformal_pec")):
+        sim.run(n_steps=4, skip_preflight=True)
+
+
+def test_every_refused_argument_is_named_in_one_error():
+    sim = _subgrid_sim(pec=True)
+    with pytest.raises(NotImplementedError) as info:
+        sim.run(n_steps=4, skip_preflight=True, **ASKS)
+    msg = str(info.value)
+    assert f"refuses {len(ASKS)} argument(s)" in msg, msg
+    for kw in ASKS:
+        assert f"  {kw}=" in msg, (kw, msg)
 
 
 # --------------------------------------------------------------------
-# Helper unit-test: _warn_unsupported_run_kwargs fires only on
-# non-default values and stays quiet otherwise.
+# S-parameter record length: a lane that reads S from the main run's own
+# port record cannot honour an s_param_n_steps other than that record.
 # --------------------------------------------------------------------
 
-def test_warn_helper_silent_on_defaults():
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        Simulation._warn_unsupported_run_kwargs("dummy", {
-            "subpixel_smoothing": False,
-            "checkpoint": False,
-            "snapshot": None,
-            "until_decay": None,
-            "conformal_pec": False,
-        })
-    assert [str(w.message) for w in caught] == []
+def _wire_sim(nonuniform):
+    def build():
+        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=1e-3,
+                         boundary="pec", cpml_layers=0,
+                         **({"dz_profile": np.full(10, 1e-3)}
+                            if nonuniform else {}))
+        sim.add_port((0.01, 0.01, 0.002), "ez", impedance=50.0, extent=0.006)
+        sim.add_probe((0.01, 0.01, 0.005), "ez")
+        return sim
+    return _quiet(build)
 
 
-def test_warn_helper_fires_on_non_defaults():
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        Simulation._warn_unsupported_run_kwargs("dummy-path", {
-            "subpixel_smoothing": True,
-            "checkpoint": True,
-            "snapshot": "not-none",
-            "until_decay": 1e-3,
-            "conformal_pec": True,
-        })
-    msgs = [str(w.message) for w in caught]
-    assert any("subpixel_smoothing" in m for m in msgs)
-    assert any("checkpoint" in m for m in msgs)
-    assert any("snapshot" in m for m in msgs)
-    assert any("until_decay" in m for m in msgs)
-    assert any("conformal_pec" in m for m in msgs)
-    assert all("dummy-path" in m for m in msgs)
+@pytest.mark.parametrize("nonuniform,label", [
+    (True, "non-uniform mesh"),
+    (False, "uniform single-wire-port S-parameter"),
+])
+@pytest.mark.parametrize("compute_s_params", [True, None],
+                         ids=["asked", "default"])
+def test_one_record_lanes_refuse_a_different_s_param_n_steps(
+        nonuniform, label, compute_s_params):
+    sim = _wire_sim(nonuniform)
+    with pytest.raises(NotImplementedError,
+                       match=_refusal(label, "s_param_n_steps")) as info:
+        sim.run(n_steps=20, compute_s_params=compute_s_params,
+                s_param_freqs=np.array([2e9, 3e9]), s_param_n_steps=40,
+                skip_preflight=True)
+    # One wire port reads S from the main record on both lanes, so the
+    # only way out is the record length itself.
+    assert "run on a uniform mesh" not in str(info.value)
+
+
+def test_one_record_remedy_runs():
+    """Follow the remedy: drop s_param_n_steps and set n_steps."""
+    res = _quiet(lambda: _wire_sim(True).run(
+        n_steps=40, compute_s_params=True,
+        s_param_freqs=np.array([2e9, 3e9]), skip_preflight=True))
+    assert res.s_params is not None and res.s_params.shape[-1] == 2
+
+
+def _two_wire_sim(nonuniform):
+    def build():
+        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=1e-3,
+                         boundary="pec", cpml_layers=0,
+                         **({"dz_profile": np.full(10, 1e-3)}
+                            if nonuniform else {}))
+        for x in (0.006, 0.014):
+            sim.add_port((x, 0.01, 0.002), "ez", impedance=50.0,
+                         extent=0.006)
+        return sim
+    return _quiet(build)
+
+
+def test_two_wire_port_nu_remedy_points_to_the_uniform_driver():
+    """Two wire ports: the uniform lane drives the S-matrix in its own
+    runs, so the uniform-mesh remedy is true, and following it runs."""
+    with pytest.raises(NotImplementedError) as info:
+        _two_wire_sim(True).run(n_steps=20, compute_s_params=True,
+                                s_param_freqs=np.array([2e9, 3e9]),
+                                s_param_n_steps=30, skip_preflight=True)
+    assert "or run on a uniform mesh" in str(info.value)
+    res = _quiet(lambda: _two_wire_sim(False).run(
+        n_steps=20, compute_s_params=True, s_param_freqs=np.array([2e9, 3e9]),
+        s_param_n_steps=30, skip_preflight=True))
+    assert res.s_params is not None and res.s_params.shape == (2, 2, 2)
+
+
+@pytest.mark.parametrize("nonuniform", [True, False],
+                         ids=["non-uniform", "uniform"])
+def test_s_param_n_steps_equal_to_the_record_still_runs(nonuniform):
+    sim = _wire_sim(nonuniform)
+    res = _quiet(lambda: sim.run(
+        n_steps=20, compute_s_params=True,
+        s_param_freqs=np.array([2e9, 3e9]), s_param_n_steps=20,
+        skip_preflight=True))
+    assert res.s_params is not None and res.s_params.shape[-1] == 2
 
 
 # --------------------------------------------------------------------
-# NU-path dispatch: warn for the kwargs that stay dropped after the 2026-04 fix.
+# Debye/Lorentz materials: the dispersive E update reads neither the
+# smoothed tensor nor the Dey-Mittra eps correction.
 # --------------------------------------------------------------------
 
-def _make_nu_sim():
-    """Minimal NU sim: 1D cavity with a 4-cell graded dz."""
-    sim = Simulation(
-        freq_max=10e9,
-        domain=(2e-3, 2e-3, 4e-3),
-        dx=1e-3,
-        boundary="pec",
-        cpml_layers=0,
-    )
-    sim._dz_profile = np.full(4, 1e-3)
-    sim.add_source((1e-3, 1e-3, 1e-3), "ex")
-    sim.add_probe((1e-3, 1e-3, 3e-3), "ex")
-    return sim
+def _debye_sim(nonuniform, pec_cylinder=False):
+    def build():
+        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.02), dx=2e-3,
+                         boundary="pec", cpml_layers=0,
+                         **({"dz_profile": np.full(10, 2e-3)}
+                            if nonuniform else {}))
+        sim.add_material("disp", eps_r=4.0,
+                         debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
+        sim.add(Box((0.004, 0.004, 0.004), (0.012, 0.012, 0.012)),
+                material="disp")
+        if pec_cylinder:
+            sim.add(Cylinder((0.014, 0.014, 0.01), 0.003, 0.012, axis="z"),
+                    material="pec")
+        sim.add_source((0.006, 0.006, 0.01), "ez")
+        sim.add_probe((0.016, 0.006, 0.01), "ez")
+        return sim
+    return _quiet(build)
 
 
-@pytest.mark.parametrize(
-    "kw,val",
-    [
-        ("snapshot", "anything_truthy"),
-        ("until_decay", 1e-3),
-        ("conformal_pec", True),
-    ],
-)
-def test_nu_path_warns_on_dropped_kwargs(kw, val):
-    sim = _make_nu_sim()
-    # `snapshot` needs a SnapshotSpec-like object to even reach dispatch
-    # without type-checking; since we're testing the warn-on-entry
-    # path, we only exercise it when the sim can build a snapshot
-    # argument by passing a sentinel through. Guard at the test level.
+@pytest.mark.parametrize("nonuniform,kw,val,pec", [
+    (False, "subpixel_smoothing", True, False),
+    (False, "subpixel_smoothing", "kottke_pec", False),
+    (False, "conformal_pec", True, True),
+    (True, "subpixel_smoothing", True, False),
+], ids=["uniform-subpixel", "uniform-kottke", "uniform-conformal",
+        "nonuniform-subpixel"])
+def test_dispersive_lanes_refuse_smoothing_and_conformal(nonuniform, kw, val, pec):
+    sim = _debye_sim(nonuniform, pec_cylinder=pec)
+    label = ("non-uniform" if nonuniform else "uniform") + (
+        " mesh with Debye/Lorentz materials")
+    with pytest.raises(NotImplementedError, match=_refusal(label, kw)):
+        sim.run(n_steps=4, skip_preflight=True, **{kw: val})
+
+
+def _wr90_sim(debye, conformal=False, dz=None):
+    """A short WR-90 section, optionally with a Debye slab inside."""
+    def build():
+        walls = Boundary(lo="pec", hi="pec", conformal=conformal)
+        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
+                         dx=3e-3, cpml_layers=6,
+                         boundary=BoundarySpec(x="cpml", y=walls, z=walls),
+                         **({"dz_profile": dz} if dz is not None else {}))
+        if debye:
+            sim.add_material("disp", eps_r=2.0, debye_poles=[
+                DebyePole(delta_eps=1.0, tau=1e-11)])
+            sim.add(Box((0.024, 0.0, 0.0), (0.036, 0.02286, 0.01016)),
+                    material="disp")
+        freqs = np.linspace(6e9, 7e9, 3)
+        for x, d, name in ((0.009, "+x", "l"), (0.051, "-x", "r")):
+            sim.add_waveguide_port(x, direction=d, mode=(1, 0),
+                                   mode_type="TE", freqs=freqs, f0=6.5e9,
+                                   bandwidth=0.4, name=name)
+        return sim
+    return _quiet(build)
+
+
+@pytest.mark.parametrize("kw,val,conformal", [
+    ("subpixel_smoothing", True, False),
+    ("subpixel_smoothing", "kottke_pec", False),
+    ("conformal_pec", None, True),
+], ids=["subpixel", "kottke", "conformal-boundary"])
+def test_waveguide_s_matrix_refuses_smoothing_and_conformal_with_debye(
+        kw, val, conformal):
+    """compute_waveguide_s_matrix() shares the uniform lane's dispersive
+    E update, so it refuses the same two requests."""
+    sim = _wr90_sim(debye=True, conformal=conformal)
+    kwargs = {} if val is None else {kw: val}
+    with pytest.raises(NotImplementedError, match=_refusal(
+            "waveguide S-matrix with Debye/Lorentz materials", kw)) as info:
+        sim.compute_waveguide_s_matrix(n_steps=20, normalize=True, **kwargs)
+    msg = str(info.value)
+    assert msg.startswith("compute_waveguide_s_matrix() refuses"), msg
+    if conformal:
+        assert "Boundary(conformal=True)" in msg, msg
+
+
+def test_waveguide_s_matrix_still_smooths_without_dispersion():
+    """Control: the same call with a plain dielectric slab runs."""
+    def build():
+        sim = _wr90_sim(debye=False)
+        sim.add(Box((0.024, 0.0, 0.0), (0.036, 0.02286, 0.01016)),
+                material="fr4")
+        return sim
+    sim = _quiet(build)
+    res = _quiet(lambda: sim.compute_waveguide_s_matrix(
+        n_steps=20, normalize=True, subpixel_smoothing=True))
+    assert np.asarray(res.s_params).shape[:2] == (2, 2)
+
+
+# --------------------------------------------------------------------
+# Boundary(conformal=True) off run(): forward() (so optimize()) and the
+# non-uniform waveguide S-matrix have no Dey-Mittra update. Measured before
+# the refusal: flag on vs off gave bit-identical forward() time series
+# (uniform and non-uniform) and a bit-identical non-uniform waveguide S,
+# while run() and the uniform waveguide lane moved.
+# --------------------------------------------------------------------
+
+def _conformal_cavity(conformal, nonuniform=False):
+    def build():
+        walls = Boundary(lo="pec", hi="pec", conformal=conformal)
+        sim = Simulation(freq_max=10e9, domain=(0.012, 0.0125, 0.012),
+                         dx=1e-3, cpml_layers=0,
+                         boundary=BoundarySpec(x="pec", y=walls, z="pec"),
+                         **({"dz_profile": np.full(12, 1e-3)}
+                            if nonuniform else {}))
+        sim.add(Cylinder((0.0085, 0.0085, 0.006), 0.0017, 0.008, axis="z"),
+                material="pec")
+        sim.add_source((0.004, 0.009, 0.006), "ez", amplitude_kind="field")
+        sim.add_probe((0.008, 0.004, 0.006), "ez")
+        return sim
+    return _quiet(build)
+
+
+def _optimize(sim, **kw):
+    import jax.numpy as jnp
+    from rfx.optimize import DesignRegion, optimize
+    region = DesignRegion(corner_lo=(0.002, 0.002, 0.004),
+                          corner_hi=(0.005, 0.005, 0.007), eps_range=(1.0, 4.0))
+    return optimize(sim, region, lambda r: jnp.sum(r.time_series ** 2),
+                    n_iters=1, n_steps=8, verbose=False, **kw)
+
+
+CONFORMAL_PATHS = {
+    # path: (call, entry, lane label)
+    "forward-uniform": (
+        lambda: _conformal_cavity(True).forward(
+            n_steps=8, checkpoint=False, skip_preflight=True),
+        "Simulation.forward()", "uniform forward"),
+    "forward-nonuniform": (
+        lambda: _conformal_cavity(True, nonuniform=True).forward(
+            n_steps=8, checkpoint=False, skip_preflight=True),
+        "Simulation.forward()", "non-uniform forward"),
+    "forward-distributed-nonuniform": (
+        lambda: _conformal_cavity(True, nonuniform=True).forward(
+            n_steps=8, checkpoint=False, skip_preflight=True,
+            distributed=True, devices=_devices()),
+        "Simulation.forward()", "distributed non-uniform forward"),
+    "optimize": (
+        lambda: _optimize(_conformal_cavity(True), skip_preflight=True),
+        "Simulation.forward()", "uniform forward"),
+    "waveguide-nonuniform": (
+        lambda: _wr90_sim(debye=False, conformal=True,
+                          dz=np.full(4, 0.00254)).compute_waveguide_s_matrix(
+            n_steps=20, normalize=True),
+        "compute_waveguide_s_matrix()", "non-uniform waveguide S-matrix"),
+}
+
+
+@pytest.mark.parametrize("path", list(CONFORMAL_PATHS))
+def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
+    call, entry, label = CONFORMAL_PATHS[path]
+    with pytest.raises(NotImplementedError,
+                       match=_refusal(label, "conformal_pec")) as info:
+        call()
+    msg = str(info.value)
+    assert msg.startswith(f"{entry} refuses"), msg
+    assert "drop Boundary(conformal=True)" in msg, msg
+
+
+@pytest.mark.parametrize("nonuniform", [False, True],
+                         ids=["uniform", "non-uniform"])
+def test_forward_without_a_conformal_boundary_still_runs(nonuniform):
+    res = _quiet(lambda: _conformal_cavity(False, nonuniform).forward(
+        n_steps=8, checkpoint=False, skip_preflight=True))
+    assert np.all(np.isfinite(np.asarray(res.time_series)))
+
+
+# --------------------------------------------------------------------
+# Review of #1297: what the refusals must NOT catch, and remedies that
+# must lead to a lane that carries the argument.
+# --------------------------------------------------------------------
+
+def _wr90_probe_sim(conformal):
+    """WR-90 section, conformal walls with a fractional cell, one port."""
+    def build():
+        walls = Boundary(lo="pec", hi="pec", conformal=conformal)
+        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
+                         dx=3e-3, cpml_layers=6,
+                         boundary=BoundarySpec(x="cpml", y=walls, z=walls))
+        sim.add_waveguide_port(0.009, direction="+x", mode=(1, 0),
+                               mode_type="TE",
+                               freqs=np.linspace(6e9, 7e9, 3), f0=6.5e9,
+                               bandwidth=0.4, name="l")
+        sim.add_probe((0.03, 0.011, 0.005), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_distributed_waveguide_fallback_carries_the_conformal_walls():
+    """A waveguide-port model with devices= runs the one-device fallback,
+    which rebuilds the conformal walls from the declaration: it must run,
+    and equal the one-device conformal answer, not the staircase one."""
+    dist = _quiet(lambda: _wr90_probe_sim(True).run(
+        n_steps=40, devices=_devices(), skip_preflight=True))
+    conf = _quiet(lambda: _wr90_probe_sim(True).run(
+        n_steps=40, skip_preflight=True))
+    stair = _quiet(lambda: _wr90_probe_sim(False).run(
+        n_steps=40, skip_preflight=True))
+    d, c, st = (np.asarray(r.time_series) for r in (dist, conf, stair))
+    peak = np.max(np.abs(c))
+    np.testing.assert_allclose(d, c, rtol=0, atol=1e-6 * peak)
+    assert np.max(np.abs(c - st)) > 0.1 * peak
+
+
+def _wr90_post_sim():
+    """WR-90 section with plain (non-conformal) PEC walls and a PEC post."""
+    def build():
+        sim = Simulation(freq_max=8e9, domain=(0.06, 0.02286, 0.01016),
+                         dx=3e-3, cpml_layers=6,
+                         boundary=BoundarySpec(x="cpml", y="pec", z="pec"))
+        sim.add(Cylinder((0.03, 0.0114, 0.00508), 0.0026, 0.01016, axis="z"),
+                material="pec")
+        sim.add_waveguide_port(0.009, direction="+x", mode=(1, 0),
+                               mode_type="TE",
+                               freqs=np.linspace(6e9, 7e9, 3), f0=6.5e9,
+                               bandwidth=0.4, name="l")
+        sim.add_probe((0.042, 0.011, 0.005), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_distributed_fallback_refuses_a_conformal_request_it_would_drop():
+    """An explicit conformal_pec=True with no Boundary(conformal=True): the
+    one-device fallback re-derives False from the declaration and would
+    return the staircase post, so the request is refused, not exempted."""
+    with pytest.raises(NotImplementedError, match=_refusal(
+            "distributed multi-device", "conformal_pec")):
+        _wr90_post_sim().run(n_steps=8, conformal_pec=True,
+                             devices=_devices(), skip_preflight=True)
+    # The request is not a no-op on this model: one device, conformal post
+    # vs staircase post.
+    on, off = (np.asarray(_quiet(lambda: _wr90_post_sim().run(
+        n_steps=60, conformal_pec=flag, skip_preflight=True)).time_series)
+        for flag in (True, False))
+    assert np.max(np.abs(on - off)) > 0.1 * np.max(np.abs(off))
+
+
+def _copper_sheet_sim(nonuniform):
+    """The only metal is one add_thin_conductor sheet (copper by default,
+    which is PEC)."""
+    def build():
+        kw = ({"dz_profile": np.array([1e-3] * 4 + [0.7e-3] * 6 + [1e-3] * 4)}
+              if nonuniform else {})
+        sim = Simulation(freq_max=10e9,
+                         domain=(0.012, 0.012, 0.0 if nonuniform else 0.0122),
+                         dx=1e-3, boundary="pec", cpml_layers=0, **kw)
+        sim.add_thin_conductor(Box((0.0033, 0.0033, 0.0063),
+                                   (0.0087, 0.0087, 0.0063)))
+        sim.add_source((0.002, 0.006, 0.003), "ez", amplitude_kind="field")
+        sim.add_probe((0.006, 0.010, 0.009), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_a_copper_thin_conductor_is_pec_to_conform():
+    """A PEC thin conductor is one of the shapes the conformal weights act
+    on, so conformal_pec=True on a graded mesh with only such a sheet is
+    refused; on a uniform mesh the same request moves the answer."""
+    with pytest.raises(NotImplementedError,
+                       match=_refusal("non-uniform mesh", "conformal_pec")):
+        _copper_sheet_sim(True).run(n_steps=8, conformal_pec=True,
+                                    skip_preflight=True)
+    on, off = (np.asarray(_quiet(lambda: _copper_sheet_sim(False).run(
+        n_steps=200, conformal_pec=flag, skip_preflight=True)).time_series)
+        for flag in (True, False))
+    assert np.max(np.abs(on - off)) > 0.01 * np.max(np.abs(off))
+
+
+@pytest.mark.parametrize("lane", list(LANES))
+def test_conformal_pec_with_no_pec_is_not_refused(lane):
+    """With no PEC shape the conformal weights have nothing to act on."""
+    build, _, extra = LANES[lane]
+    kwargs = {"n_steps": 4, "skip_preflight": True, "conformal_pec": True}
+    if extra is None:
+        kwargs["devices"] = _devices()
+    res = _quiet(lambda: build().run(**kwargs))
+    assert np.all(np.isfinite(np.asarray(res.time_series)))
+
+
+def _graded_pec_sim(nonuniform=True, pec=False):
+    def build():
+        kw = ({"dz_profile": np.array([1e-3] * 4 + [0.8e-3] * 5 + [1e-3] * 4)}
+              if nonuniform else {})
+        sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
+                         dx=1e-3, boundary="pec", cpml_layers=0, **kw)
+        if pec:
+            sim.add(Box((0.0085, 0.0085, 0.003), (0.0105, 0.0105, 0.009)),
+                    material="pec")
+        sim.add_source((0.004, 0.006, 0.004), "ez", amplitude_kind="field")
+        sim.add_probe((0.008, 0.006, 0.008), "ez")
+        return sim
+    return _quiet(build)
+
+
+@pytest.mark.parametrize("kw", list(ASKS))
+def test_distributed_nu_remedies_lead_to_a_lane_that_runs(kw):
+    """devices= on a graded mesh: the remedy for each argument names a lane
+    that carries it, and following it runs."""
+    with pytest.raises(NotImplementedError) as info:
+        _graded_pec_sim(pec=True).run(n_steps=4, devices=_devices(),
+                                      skip_preflight=True, **{kw: ASKS[kw]})
+    line = next(ln for ln in str(info.value).splitlines()
+                if ln.strip().startswith(f"{kw}="))
+    uniform = "run on a uniform mesh" in line
+    assert uniform == (kw in ("snapshot", "until_decay", "conformal_pec")), line
+    extra = ({"decay_max_steps": 40, "decay_min_steps": 10,
+              "decay_check_interval": 10} if kw == "until_decay" else {})
+    res = _quiet(lambda: _graded_pec_sim(nonuniform=not uniform, pec=True).run(
+        n_steps=8, skip_preflight=True, **{kw: ASKS[kw]}, **extra))
+    assert np.all(np.isfinite(np.asarray(res.time_series)))
+
+
+class _MaskOnlyOnCoords:
+    """A user shape with occupancy and a bounding box but no mask() and no
+    signed distance function: the NU smoothing builder cannot place it."""
+
+    def __init__(self, lo, hi):
+        self._b = Box(lo, hi)
+
+    def mask_on_coords(self, x, y, z):
+        return self._b.mask_on_coords(x, y, z)
+
+    def bounding_box(self):
+        return self._b.bounding_box()
+
+
+def _nu_mask_only_sim():
+    def build():
+        sim = Simulation(freq_max=10e9, domain=(0.008, 0.008, 0.0), dx=1e-3,
+                         dz_profile=np.array([1e-3] * 4 + [0.5e-3] * 4
+                                             + [1e-3] * 4),
+                         boundary="pec", cpml_layers=0)
+        sim.add_material("diel", eps_r=6.0)
+        sim.add(_MaskOnlyOnCoords((0.002, 0.002, 0.004),
+                                  (0.006, 0.006, 0.008)), material="diel")
+        sim.add_source((0.002, 0.004, 0.003), "ez")
+        sim.add_probe((0.006, 0.004, 0.007), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_nu_smoothing_refuses_a_shape_it_cannot_place():
+    """Before 2.0 the slab vanished from the smoothed solve (the probe
+    matched the vacuum run); now the run is refused, and the remedy offers
+    no uniform mesh, whose builder needs mask() too."""
+    with pytest.raises(NotImplementedError, match="_MaskOnlyOnCoords") as info:
+        _nu_mask_only_sim().run(n_steps=20, subpixel_smoothing=True,
+                                skip_preflight=True)
+    msg = str(info.value)
+    assert msg.endswith("Instead: drop subpixel_smoothing."), msg
+    res = _quiet(lambda: _nu_mask_only_sim().run(n_steps=20,
+                                                 skip_preflight=True))
+    assert np.all(np.isfinite(np.asarray(res.time_series)))
+
+
+def _upml_sim(boundary):
+    def build():
+        sim = Simulation(freq_max=10e9, domain=(0.014, 0.014, 0.014),
+                         dx=1e-3, boundary=boundary, cpml_layers=4)
+        sim.add(Box((0.0035, 0.0035, 0.0035), (0.0075, 0.0075, 0.0075)),
+                material="fr4")
+        sim.add(Cylinder((0.0095, 0.0095, 0.007), 0.0017, 0.008, axis="z"),
+                material="pec")
+        sim.add_source((0.004, 0.010, 0.007), "ez", amplitude_kind="field")
+        sim.add_probe((0.009, 0.004, 0.007), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_upml_refuses_kottke_pec_and_its_remedies_run():
+    """The UPML E update never reads the Stage-2 tensor kottke_pec builds."""
+    with pytest.raises(NotImplementedError, match=_refusal(
+            "uniform mesh with boundary='upml'", "subpixel_smoothing")):
+        _upml_sim("upml").run(n_steps=8, subpixel_smoothing="kottke_pec",
+                              skip_preflight=True)
+    for boundary, sp in (("upml", True), ("cpml", "kottke_pec")):
+        res = _quiet(lambda: _upml_sim(boundary).run(
+            n_steps=8, subpixel_smoothing=sp, skip_preflight=True))
+        assert np.all(np.isfinite(np.asarray(res.time_series))), boundary
+
+
+def test_fidelity_report_names_the_nu_thin_conductor_refusal():
+    """The report explains the model run() would refuse, instead of
+    raising itself."""
+    def build():
+        sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.0), dx=1e-3,
+                         dz_profile=np.array([1e-3] * 4 + [0.5e-3] * 4
+                                             + [1e-3] * 4),
+                         boundary="pec", cpml_layers=0)
+        sim.add_thin_conductor(
+            Cylinder((0.006, 0.006, 0.006), 0.003, 1e-4, axis="z"),
+            sigma_bulk=1e4, thickness=35e-6)   # lossy: below the PEC cut
+        sim.add_source((0.003, 0.006, 0.003), "ez")
+        sim.add_probe((0.009, 0.006, 0.009), "ez")
+        return sim
+    sim = _quiet(build)
+    with pytest.raises(NotImplementedError, match="non-Box shape"):
+        sim.run(n_steps=4, skip_preflight=True)
+    report = _quiet(lambda: sim.fidelity_report(print_report=False))
+    found = [f for row in report for f in row.get("findings", ())
+             if f.get("kind") == "refused-by-run"]
+    assert len(found) == 1 and "run() would refuse" in found[0]["detail"]
+
+
+# --------------------------------------------------------------------
+# Controls: each argument still runs on a lane that implements it.
+# --------------------------------------------------------------------
+
+def _uniform_sim(boundary="pec"):
+    def build():
+        sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.012),
+                         dx=1e-3, boundary=boundary,
+                         cpml_layers=4 if boundary == "cpml" else 0)
+        sim.add(Box((0.003, 0.003, 0.003), (0.006, 0.006, 0.006)),
+                material="fr4")
+        sim.add(Cylinder((0.009, 0.009, 0.006), 0.0015, 0.008, axis="z"),
+                material="pec")
+        sim.add_source((0.004, 0.009, 0.006), "ez")
+        sim.add_probe((0.008, 0.004, 0.006), "ez")
+        return sim
+    return _quiet(build)
+
+
+@pytest.mark.parametrize("kw", list(ASKS))
+def test_uniform_lane_still_runs_each_argument(kw):
+    boundary = "cpml" if kw == "until_decay" else "pec"
+    sim = _uniform_sim(boundary)
+    extra = ({"decay_check_interval": 10, "decay_min_steps": 10,
+              "decay_max_steps": 40} if kw == "until_decay" else {})
+    res = _quiet(lambda: sim.run(n_steps=8, skip_preflight=True,
+                                 **{kw: ASKS[kw]}, **extra))
+    assert np.all(np.isfinite(np.asarray(res.time_series)))
     if kw == "snapshot":
-        # The helper only inspects identity vs `None`, so any non-None
-        # sentinel fires the warning. The actual run itself will not
-        # forward this sentinel anywhere.
-        sentinel = object()
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            # Hit the helper directly — the run() path validates the
-            # snapshot type at the uniform-path ingress, which we
-            # cannot dodge without a real SnapshotSpec.
-            sim._warn_unsupported_run_kwargs("non-uniform mesh",
-                                             {"snapshot": sentinel})
-        assert any("snapshot" in str(w.message) for w in caught)
-        return
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        sim.run(n_steps=16, **{kw: val})
-    msgs = [str(w.message) for w in caught]
-    assert any(kw in m and "non-uniform mesh" in m for m in msgs), (
-        f"expected a non-uniform-mesh silent-drop warning for {kw}={val!r}, "
-        f"got: {msgs}"
-    )
-    if kw == "until_decay":
-        # #383: _make_nu_sim is a closed (PEC, cpml_layers=0) NU sim, so
-        # the drop must carry the lane-accurate reason — the
-        # interior-energy stop needs absorbing boundaries.
-        assert any("until_decay" in m and "absorbing" in m for m in msgs), (
-            f"closed-boundary NU until_decay drop must state the "
-            f"absorbing-boundary reason (#383), got: {msgs}"
-        )
+        assert res.snapshots is not None and "ez" in res.snapshots
 
 
-def test_nu_path_until_decay_not_dropped_on_absorbing_boundary():
-    """#383: until_decay is propagated (no drop warning) on a CPML NU sim."""
+def test_uniform_lane_still_runs_a_separate_s_parameter_record():
+    """Two lumped ports: the S-matrix is driven in its own runs, so a
+    different s_param_n_steps is honoured there."""
+    def build():
+        sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01),
+                         boundary="pec")
+        sim.add_port((0.002, 0.005, 0.005), "ez")
+        sim.add_port((0.008, 0.005, 0.005), "ez")
+        return sim
+    sim = _quiet(build)
+    res = _quiet(lambda: sim.run(n_steps=10, compute_s_params=True,
+                                 s_param_freqs=np.array([2e9, 3e9, 4e9]),
+                                 s_param_n_steps=12, skip_preflight=True))
+    assert res.s_params is not None and res.s_params.shape == (2, 2, 3)
+
+
+def test_nu_path_until_decay_runs_on_absorbing_boundary():
+    """#383: until_decay is honoured on a CPML NU sim, with no refusal."""
     dz = np.full(8, 1e-3)
-    sim = Simulation(
-        freq_max=10e9,
-        domain=(4e-3, 4e-3, 8e-3),
-        dx=1e-3,
-        dz_profile=dz,
-        boundary="cpml",
-        cpml_layers=4,
-    )
+    sim = _quiet(lambda: Simulation(
+        freq_max=10e9, domain=(4e-3, 4e-3, 8e-3), dx=1e-3, dz_profile=dz,
+        boundary="cpml", cpml_layers=4))
     sim.add_source((2e-3, 2e-3, 2e-3), "ez")
     sim.add_probe((2e-3, 2e-3, 5e-3), "ez")
     with warnings.catch_warnings(record=True) as caught:
@@ -180,11 +739,6 @@ def test_nu_path_until_decay_not_dropped_on_absorbing_boundary():
             decay_max_steps=200,
         )
     msgs = [str(w.message) for w in caught]
-    assert not any("until_decay" in m and "silently ignored" in m
-                   for m in msgs), (
-        f"until_decay must be honoured on the absorbing-boundary NU path "
-        f"(#383), got: {msgs}"
-    )
     # Post-#392 review: this fixture's planned 200-step table (0.38 ns)
     # ends inside the default source pulse (completion t0+3*tau ~
     # 0.48 ns), so its high rel_DC (measured 2.2e-2) is a pure
@@ -201,32 +755,80 @@ def test_nu_path_until_decay_not_dropped_on_absorbing_boundary():
     assert "higher GaussianPulse cutoff" not in dc_msgs[0]
 
 
-def test_nu_path_checkpoint_does_not_warn():
-    """checkpoint is propagated through _run_nonuniform (wired 2026-04)."""
-    sim = _make_nu_sim()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        sim.run(n_steps=16, checkpoint=True)
-    msgs = [str(w.message) for w in caught]
-    assert not any("checkpoint=" in m and "non-uniform mesh" in m
-                   for m in msgs), (
-        f"checkpoint should be propagated on the NU path, not dropped. "
-        f"Warnings: {msgs}"
-    )
+def test_nu_lane_still_runs_checkpoint():
+    """checkpoint is carried by the NU runner."""
+    res = _quiet(lambda: _nu_sim().run(n_steps=16, checkpoint=True))
+    assert np.all(np.isfinite(np.asarray(res.time_series)))
 
 
-def test_nu_path_subpixel_does_not_warn():
-    """subpixel_smoothing is propagated through _run_nonuniform since 1a2e6c5."""
-    sim = _make_nu_sim()
+def _nu_dielectric_sim():
+    """Graded PEC cavity with a dielectric block off the cell planes."""
+    def build():
+        dz = np.array([1e-3] * 3 + [0.5e-3] * 4 + [1e-3] * 3)
+        sim = Simulation(freq_max=10e9, domain=(0.008, 0.008, float(dz.sum())),
+                         dx=1e-3, dz_profile=dz, boundary="pec",
+                         cpml_layers=0)
+        sim.add(Box((0.0023, 0.0023, 0.0031), (0.0057, 0.0057, 0.0057)),
+                material="fr4")
+        sim.add_source((0.002, 0.004, 0.002), "ez")
+        sim.add_probe((0.006, 0.004, 0.006), "ez")
+        return sim
+    return _quiet(build)
+
+
+def test_nu_lane_still_smooths_a_dielectric():
+    """subpixel_smoothing is carried by the NU runner: with a dielectric
+    block whose faces fall inside cells, the smoothed run differs."""
+    on = _quiet(lambda: _nu_dielectric_sim().run(
+        n_steps=60, subpixel_smoothing=True, skip_preflight=True))
+    off = _quiet(lambda: _nu_dielectric_sim().run(
+        n_steps=60, skip_preflight=True))
+    a, b = np.asarray(on.time_series), np.asarray(off.time_series)
+    assert np.all(np.isfinite(a))
+    assert np.max(np.abs(a - b)) > 1e-3 * np.max(np.abs(b))
+
+
+@pytest.mark.parametrize("lane", ["adi", "subgridded"])
+def test_report_every_stays_a_warning(lane):
+    """Progress lines change no result: the lane says so and runs on."""
+    build, label, _ = LANES[lane]
+    sim = build()
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim.run(n_steps=16, subpixel_smoothing=True)
-    msgs = [str(w.message) for w in caught]
-    assert not any("subpixel_smoothing" in m and "non-uniform mesh" in m
-                   for m in msgs), (
-        f"subpixel_smoothing should be propagated on the NU path. "
-        f"Warnings: {msgs}"
-    )
+        res = sim.run(n_steps=4, report_every=2, skip_preflight=True)
+    msgs = [str(w.message) for w in caught if "report_every" in str(w.message)]
+    assert any(label in m and "result is unchanged" in m for m in msgs), msgs
+    assert res is not None
+
+
+# --------------------------------------------------------------------
+# Helper unit tests.
+# --------------------------------------------------------------------
+
+def test_refusal_helper_passes_values_that_ask_for_nothing():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        Simulation._refuse_unsupported_run_kwargs("dummy", {
+            "subpixel_smoothing": False,
+            "checkpoint": False,
+            "snapshot": None,
+            "until_decay": None,
+            "conformal_pec": False,
+            "compute_s_params": None,
+            "s_param_freqs": None,
+            "s_param_n_steps": None,
+        }, instead="go elsewhere")
+    assert [str(w.message) for w in caught] == []
+
+
+def test_refusal_helper_warns_only_for_report_every():
+    with pytest.warns(UserWarning, match=r"report_every=5 .*dummy-path"):
+        Simulation._refuse_unsupported_run_kwargs(
+            "dummy-path", {"report_every": 5}, instead="go elsewhere")
+    with pytest.raises(NotImplementedError, match="dummy-path"):
+        Simulation._refuse_unsupported_run_kwargs(
+            "dummy-path", {"report_every": 5, "checkpoint": True},
+            instead="go elsewhere")
 
 
 # --------------------------------------------------------------------

@@ -144,7 +144,6 @@ def _methodB_pattern(theta_deg):
     return _peak_phi_deg(sig), float(settling)
 
 
-@pytest.mark.slow
 @pytest.mark.parametrize("theta_inc", [20.0, 40.0])
 def test_oblique_specular_peak_tracks_injection_angle(theta_inc):
     """PRIMARY unfakeable gate (via the public compute_rcs API): the bistatic
@@ -172,7 +171,6 @@ def test_oblique_specular_peak_tracks_injection_angle(theta_inc):
     )
 
 
-@pytest.mark.slow
 def test_oblique_rcs_normal_reduction_to_backscatter():
     """NORMAL-REDUCTION (comparator-first): the SAME 2.5-D Method-B pipeline at
     theta=0 puts the specular lobe at phi=180 deg (= backscatter = specular at

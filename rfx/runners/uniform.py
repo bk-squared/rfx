@@ -230,6 +230,44 @@ def run_uniform(
                 "silently override the ADE dispersion update at its "
                 "edges. Remove the dispersive material or the f0 sheet.")
 
+    # A Debye/Lorentz E update reads neither the smoothed permittivity
+    # tensor nor the Dey-Mittra eps correction
+    # (``_update_e_with_optional_dispersion``); running on would drop them.
+    if debye_spec is not None or lorentz_spec is not None:
+        sim._refuse_unsupported_run_kwargs(
+            "uniform mesh with Debye/Lorentz materials", {
+                "subpixel_smoothing": subpixel_smoothing,
+                "conformal_pec": bool(conformal_pec and pec_shapes),
+            },
+            instead="remove the Debye/Lorentz poles",
+            reason_overrides={
+                "subpixel_smoothing":
+                    "the dispersive E update does not read the smoothed "
+                    "per-component permittivity tensor, so interfaces "
+                    "would get scalar eps",
+                "conformal_pec":
+                    "the dispersive E update does not read the Dey-Mittra "
+                    "eps correction, so PEC would be staircased",
+            })
+
+    # The UPML E update is built from the Stage-1 per-component eps
+    # (``init_upml(aniso_eps=...)``) and never reads the Stage-2 inverse
+    # tensor ``kottke_pec`` builds, so that tensor would be dropped.
+    if sim._boundary == "upml" and grid.cpml_layers > 0:
+        sim._refuse_unsupported_run_kwargs(
+            "uniform mesh with boundary='upml'", {
+                "subpixel_smoothing": (subpixel_smoothing
+                                       if subpixel_smoothing == "kottke_pec"
+                                       else False),
+            },
+            instead="use boundary='cpml'",
+            reason_overrides={"subpixel_smoothing":
+                "the UPML E update never reads the Stage-2 inverse-"
+                "permittivity tensor, so dielectric interfaces would get "
+                "unsmoothed eps and PEC the staircase mask"},
+            remedy_overrides={"subpixel_smoothing":
+                "use subpixel_smoothing=True (Stage 1, which UPML reads)"})
+
     materials = base_materials
 
     # Fold RLC R and C into material arrays before port/source setup
@@ -465,6 +503,20 @@ def run_uniform(
                 idx = grid.position_to_index(pe.position)
                 pec_edge_masks = _clear_edges(
                     pec_edge_masks, [idx], component=pe.component)
+
+    # One wire port and no lumped port: S11 is read from the main run's own
+    # record (the fast path below), so s_param_n_steps cannot set its length.
+    if (len(wire_ports) == 1 and not lumped_ports
+            and compute_s_params is not False):
+        sim._refuse_unsupported_run_kwargs(
+            "uniform single-wire-port S-parameter", {
+                "s_param_n_steps": sim._s_param_n_steps_off_record(
+                    s_param_n_steps, n_steps, until_decay),
+            },
+            instead=None,
+            reason_overrides={"s_param_n_steps":
+                "this lane reads S11 from the main run's port record, "
+                "whose length is n_steps"})
 
     # Build wire port S-param specs for JIT-integrated DFT
     wire_sparam_specs = []

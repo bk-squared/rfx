@@ -259,7 +259,6 @@ def _run_halfwave_ntff(f0=3e9, freq_max=5e9, n_arm=7, n_steps=800,
     return ff, result
 
 
-@pytest.mark.slow_physics
 def test_halfwave_dipole_directivity():
     """Half-wave dipole directivity should be near 2.15 dBi (1.64 linear).
 

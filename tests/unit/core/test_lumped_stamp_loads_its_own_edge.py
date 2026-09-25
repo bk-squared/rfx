@@ -156,7 +156,7 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
     in a homogeneous background it must equal the single-device update on all
     three components (the port node included)."""
     from rfx.core.yee import FDTDState, init_materials, update_e
-    from rfx.runners.distributed import _update_e_local
+    from rfx.runners._distributed_common import _update_e_local
 
     mats = init_materials(SHAPE)._replace(
         eps_r=jnp.full(SHAPE, 2.2, jnp.float32),

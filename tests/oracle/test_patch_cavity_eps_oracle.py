@@ -113,7 +113,6 @@ def test_half_fill_kottke_moves_resonance_up_toward_truth():
         f"Kottke ε-interface correction too small to be real: {shift_pct:+.2f}%"
 
 
-@pytest.mark.slow
 def test_half_fill_kottke_closes_error_vs_fine_truth():
     """EFFECT (fine-truth, slow): the coarse kottke-ON resonance is closer to a
     fine-mesh converged reference than kottke-OFF — the same substrate-ε

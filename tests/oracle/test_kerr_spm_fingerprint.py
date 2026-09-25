@@ -62,7 +62,6 @@ def spm():
     return {"kx0": kx0, "pts": pts}
 
 
-@pytest.mark.slow
 def test_kerr_spm_is_reactive_positive(spm):
     """Δk_x > 0 for χ³>0 — a reactive index INCREASE (correct sign). The pre-#440 dissipative /
     a linear operator gives Δk_x ≈ 0, so this discriminates the reactive Kerr."""
@@ -70,14 +69,12 @@ def test_kerr_spm_is_reactive_positive(spm):
         assert p["dkx"] > 0.1, f"{key}: Δk_x={p['dkx']:.4f} not a clear positive (reactive) shift"
 
 
-@pytest.mark.slow
 def test_kerr_spm_is_first_order(spm):
     """Δk_x/(χ³·A²) is constant across χ³ and A — the first-order SPM fingerprint (∝ χ³·intensity)."""
     fps = np.array([p["fp"] for p in spm["pts"].values()])
     assert fps.max() / fps.min() < 1.15, f"SPM not first-order: Δk_x/(χ³A²) spread {fps}"
 
 
-@pytest.mark.slow
 def test_kerr_spm_scales_with_intensity(spm):
     """At fixed χ³, a larger drive (A 1.0→1.4) gives a proportionally larger shift (Δk_x ∝ A²)."""
     p1 = spm["pts"][(0.10, 1.0)]

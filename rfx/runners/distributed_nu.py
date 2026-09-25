@@ -1107,7 +1107,7 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
 
     from jax.sharding import NamedSharding, PartitionSpec as _P
     from rfx.materials.debye import DebyeCoeffs
-    from rfx.runners.distributed import _split_debye_coeffs
+    from rfx.runners._distributed_common import _split_debye_coeffs
 
     n_devices = sharded_grid.n_devices
     ghost = sharded_grid.ghost_width
@@ -1168,7 +1168,7 @@ def shard_debye_state_x_slab(debye_state, sharded_grid: ShardedNUGrid,
 
     from jax.sharding import NamedSharding, PartitionSpec as _P
     from rfx.materials.debye import DebyeState
-    from rfx.runners.distributed import _split_debye_state
+    from rfx.runners._distributed_common import _split_debye_state
 
     n_devices = sharded_grid.n_devices
     ghost = sharded_grid.ghost_width
@@ -1213,7 +1213,7 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
 
     from jax.sharding import NamedSharding, PartitionSpec as _P
     from rfx.materials.lorentz import LorentzCoeffs
-    from rfx.runners.distributed import _split_lorentz_coeffs
+    from rfx.runners._distributed_common import _split_lorentz_coeffs
 
     n_devices = sharded_grid.n_devices
     ghost = sharded_grid.ghost_width
@@ -1273,7 +1273,7 @@ def shard_lorentz_state_x_slab(lorentz_state, sharded_grid: ShardedNUGrid,
 
     from jax.sharding import NamedSharding, PartitionSpec as _P
     from rfx.materials.lorentz import LorentzState
-    from rfx.runners.distributed import _split_lorentz_state
+    from rfx.runners._distributed_common import _split_lorentz_state
 
     n_devices = sharded_grid.n_devices
     ghost = sharded_grid.ghost_width
