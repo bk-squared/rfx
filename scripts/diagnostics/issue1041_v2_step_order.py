@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# The v1 pmap runner (rfx.runners.distributed.run_distributed) was removed in #1296; this script ran on the commit its records name.
 """Issue #1041 measurement: does ``distributed_v2``'s step order corrupt the
 rank seam, and does ``distributed_nu``'s post-``ac782d4f`` order fix it?
 

@@ -8,7 +8,7 @@ import pytest
 from rfx.boundaries.cpml import apply_cpml_h, init_cpml
 from rfx.core.yee import init_state
 from rfx.grid import Grid
-from rfx.runners.distributed import _apply_cpml_h_distributed, _init_cpml_distributed
+from rfx.runners._distributed_common import _apply_cpml_h_distributed, _init_cpml_distributed
 from rfx.runners.distributed_nu import _apply_cpml_h_local_nu
 
 

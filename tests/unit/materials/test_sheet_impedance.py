@@ -601,12 +601,10 @@ def test_g9_fast_path_excludes_sheets(monkeypatch):
 
 
 def test_g9_distributed_runners_refuse():
-    from rfx.runners.distributed import run_distributed as run_v1
+    # The pmap runner's half of this test went with that runner (#1296).
     from rfx.runners.distributed_v2 import run_distributed as run_v2
 
     sim = _sheet_sim(boundary="pec")
-    with pytest.raises(ValueError, match="not supported on the distributed"):
-        run_v1(sim, n_steps=8)
     with pytest.raises(ValueError, match="not supported on the distributed"):
         run_v2(sim, n_steps=8)
 
@@ -1173,9 +1171,6 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_gradient_check"),
     ("rfx/topology.py", "topology_optimize", "topology-optimization"):
         (__name__, "test_fence_topology_optimize"),
-    ("rfx/runners/distributed.py", "run_distributed", "distributed (v1) runner"):
-        ("tests.unit.materials.test_sheet_impedance",
-         "test_g9_distributed_runners_refuse"),
     ("rfx/runners/distributed_v2.py", "run_distributed",
      "distributed (v2) runner"):
         ("tests.unit.materials.test_sheet_impedance",

@@ -5,17 +5,11 @@ Distributed lanes (#1038 leg 6, PI decision 2026-09-15). ``distributed_v2.py``
 dispatches there for uniform AND non-uniform grids, and it is the single
 development trunk for distributed work.
 
-``rfx.runners.distributed`` (v1, ``jax.pmap``) is the legacy lane. It is NOT
-merged into v2 -- the two are not bit-identical (max |delta| 2.794e-09 on a
-9.4145e-03 peak) and they disagree on the odd-``nx`` rule (v1 refuses, v2 pads.)
-It is kept as an internal dependency: ``distributed_v2`` imports twelve domain
-splitting / CPML names from it (including ``_split_materials``, which
-``rfx/api/_execute.py`` also imports directly) and delegates to its
-``run_distributed`` as the ``n_devices == 1`` fast path. It stays importable by
-full module path -- ``from rfx.runners.distributed import run_distributed`` --
-and is deliberately NOT exported from this package, so the package-level name
-``run_distributed`` no longer resolves to a runner that ``sim.run()`` does not
-use. Migration: ``Simulation.run(devices=[...])``, or the full module path.
+``rfx.runners.distributed`` was the v1 ``jax.pmap`` runner, removed in #1296.
+Its helpers live in ``_distributed_common``; the module remains for one release
+as a re-export whose ``run_distributed`` raises and names the replacement,
+``Simulation.run(devices=[...])`` or ``rfx.runners.distributed_v2.run_distributed``.
+Neither ``run_distributed`` is exported from this package.
 """
 
 from rfx.runners.uniform import run_uniform
