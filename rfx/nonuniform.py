@@ -2670,9 +2670,10 @@ def _build_nu_scan(
             bloch=None,
             sheet_impedance=sheet_impedance,
             cell_metas=(
-                ("source", [(s[0], s[1], s[2]) for s in sources]),
+                ("source", [(s[0], s[1], s[2], s[3]) for s in sources]),
                 ("wire port", [
-                    (int(wp["mid_i"]), int(wp["mid_j"]), int(wp["mid_k"]))
+                    (int(wp["mid_i"]), int(wp["mid_j"]), int(wp["mid_k"]),
+                     wp["component"])
                     for wp in wire_ports
                 ]),
                 ("lumped RLC element", [(m.i, m.j, m.k) for m in rlc_metas]),
