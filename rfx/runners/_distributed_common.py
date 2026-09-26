@@ -1218,12 +1218,12 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx):
     four-cell mean is transposed at every step -- measured on CPU, 2.2x the
     cell-owned lane's time per step and 2.4x its backward scratch; taken
     here, once, about the cell-owned lane's. The coefficients stay inside
-    the loop: accumulated over the whole record first, their cotangent
-    overflowed float32 in the reverse pass of ``Cb = dt/(eps_r*eps0)/(...)``
-    at a current source's edge (a NaN permittivity gradient for a 1.5e16
-    objective, ``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``).
-    ``jax.checkpoint`` recomputes this mean in the backward pass instead of
-    keeping it on the tape.
+    the loop: built here instead, the permittivity gradient of a 1.5e16
+    objective came back non-finite at four cells next to the current sources
+    (``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``; the
+    mechanism was not established -- #1317 recorded a float32 overflow of
+    ``Cb``'s reverse pass in the same test). ``jax.checkpoint`` recomputes
+    this mean in the backward pass instead of keeping it on the tape.
     """
     @partial(shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),
              check_rep=False)
