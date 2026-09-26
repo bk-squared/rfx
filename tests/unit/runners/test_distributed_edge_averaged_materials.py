@@ -486,10 +486,14 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
         slab_e_component_materials(materials, nx_per, nx, rank)   # the call is kept
         return cell_owned_component_materials(materials)
 
-    # The runners' CPML wrappers call the name bound in their own module; the
-    # E update reads _distributed_common's, which keeps the real helper.
+    # The uniform runner's CPML wrapper calls the name bound in its own module;
+    # its E update reads _distributed_common's, which keeps the real helper.
     monkeypatch.setattr(distributed_v2, "slab_e_component_materials", cell)
-    monkeypatch.setattr(distributed_nu, "slab_e_component_materials", cell)
+    # The forward lane hands its CPML the means built before the loop; the
+    # switch that picks them is kept, and answers with the cell array.
+    real_switch = distributed_nu._psi_permittivity
+    monkeypatch.setattr(distributed_nu, "_psi_permittivity",
+                        lambda cell_eps, edge_eps: real_switch(cell_eps, None))
     for lane in ("run", "fwd"):
         got, floor = _parity("cpml", lane, "faces", 2)
         gate = _gate(floor)

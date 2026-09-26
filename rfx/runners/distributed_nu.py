@@ -1344,6 +1344,15 @@ def _update_e_dispersive_local_nu(
     )
 
 
+def _psi_permittivity(cell_eps, edge_eps):
+    """The permittivity the CPML E correction's psi coefficient takes: the
+    one the E update of the same step used (#1043) -- each component's
+    four-cell mean when the update takes it, else (a dispersive model, whose
+    update is cell-owned, #1260) the cell array. The single-device switch
+    (#1303)."""
+    return cell_eps if edge_eps is None else edge_eps
+
+
 def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
                            n_cpml: int, dt: float, ghost: int,
                            n_devices: int, eps_r=None, pad_x: int = 0):
@@ -2712,11 +2721,12 @@ def run_nonuniform_distributed_pec(
         )
         return new_st, new_cs
 
-    def _apply_cpml_e_shmap(st, cs, cpml_params, materials):
+    def _apply_cpml_e_shmap(st, cs, cpml_params, materials, e_materials):
         # The psi coefficient takes the permittivity the E update of this
-        # step used (#1043): each component's four-cell edge mean, or, on a
-        # dispersive model (cell-owned update, #1260), the cell array -- the
-        # single-device switch (#1303).
+        # step used (#1043): each component's four-cell edge mean -- the one
+        # run_fn built before the loop -- or, on a dispersive model
+        # (cell-owned update, #1260), the cell array: the single-device
+        # switch (#1303).
         @partial(
             shard_map,
             mesh=mesh,
@@ -2727,6 +2737,7 @@ def run_nonuniform_distributed_pec(
                 P("x"), P("x"), P("x"), P("x"),  # y-face psi
                 P("x"), P("x"), P("x"), P("x"),  # z-face psi
                 P("x"),  # materials (material-aware CPML coeff, #205)
+                P("x"),  # the four-cell eps means, or None
             ),
             out_specs=(
                 P("x"), P("x"), P("x"),               # ex, ey, ez
@@ -2740,13 +2751,10 @@ def run_nonuniform_distributed_pec(
                psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
                psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
                psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi,
-               mat_slab):
+               mat_slab, means_eps):
             _st = FDTDState(ex=ex, ey=ey, ez=ez,
                             hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
-            eps_r_slab = (
-                mat_slab.eps_r if use_dispersion
-                else slab_e_component_materials(
-                    mat_slab, nx_per, nx_real)[0])
+            eps_r_slab = _psi_permittivity(mat_slab.eps_r, means_eps)
             _cs = cs._replace(
                 psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
                 psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
@@ -2775,7 +2783,7 @@ def run_nonuniform_distributed_pec(
             cs.psi_ey_xlo, cs.psi_ey_xhi, cs.psi_ez_xlo, cs.psi_ez_xhi,
             cs.psi_ex_ylo, cs.psi_ex_yhi, cs.psi_ez_ylo, cs.psi_ez_yhi,
             cs.psi_ex_zlo, cs.psi_ex_zhi, cs.psi_ey_zlo, cs.psi_ey_zhi,
-            materials,
+            materials, e_materials,
         )
         new_st = st._replace(ex=ex, ey=ey, ez=ez)
         new_cs = cs._replace(
@@ -2850,7 +2858,9 @@ def run_nonuniform_distributed_pec(
 
         # 5. Phase 2C: CPML E correction (after E, before sources/PEC).
         if use_cpml:
-            st, cs = _apply_cpml_e_shmap(st, cs, cpml_params, sharded_materials)
+            st, cs = _apply_cpml_e_shmap(
+                st, cs, cpml_params, sharded_materials,
+                None if e_materials is None else e_materials[0])
 
         # 6. Source injection (rank-conditional via shard_map)
         st = _inject_sources_shmap(st, src_vals)

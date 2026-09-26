@@ -1214,13 +1214,14 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx):
     Why a runner would (#1303): inside the loop the mean is loop-invariant
     and XLA hoists it out of the loop anyway, so the forward program holds
     the same six coefficient slabs either way. Under ``jax.grad`` it does
-    not: taken inside the loop, the four-cell mean is transposed at every
-    step (measured on CPU, 2.2x the cell-owned lane's time per step); taken
-    here, once (1.3x). The coefficients stay inside the loop: accumulated
-    over the whole record first, their cotangent overflowed float32 in the
-    reverse pass of ``Cb = dt/(eps_r*eps0)/(1 + ...)`` at a current
-    source's edge (a NaN permittivity gradient for a 1.5e16 objective,
-    ``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``).
+    not: taken inside the loop (in the E update and again in the CPML), the
+    four-cell mean is transposed at every step -- measured on CPU, 2.2x the
+    cell-owned lane's time per step and 2.4x its backward scratch; taken
+    here, once, about the cell-owned lane's. The coefficients stay inside
+    the loop: accumulated over the whole record first, their cotangent
+    overflowed float32 in the reverse pass of ``Cb = dt/(eps_r*eps0)/(...)``
+    at a current source's edge (a NaN permittivity gradient for a 1.5e16
+    objective, ``test_a_large_objective_gives_a_finite_gradient_on_both_lanes``).
     ``jax.checkpoint`` recomputes this mean in the backward pass instead of
     keeping it on the tape.
     """
