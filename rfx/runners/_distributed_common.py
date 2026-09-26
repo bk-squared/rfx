@@ -1178,8 +1178,10 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None):
                                 x_lo_replicated))
     eps_edge, sig_edge = component_e_materials(view, (False, False, False))
     eps_cell, sig_cell = cell_owned_component_materials(materials)
-    rows = rank * nx_per - ghost + jnp.arange(nx_local)
-    model_cell = ((rows >= 0) & (rows < nx))[:, None, None]
+    local = jnp.arange(nx_local)
+    rows = rank * nx_per - ghost + local           # global x index of each row
+    model_cell = ((local >= ghost) & (local < nx_local - ghost)
+                  & (rows < nx))[:, None, None]
 
     def per_row(edge, cell):
         return tuple(jnp.where(model_cell, e, c) for e, c in zip(edge, cell))
