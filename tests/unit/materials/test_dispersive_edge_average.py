@@ -30,7 +30,14 @@ pole's delta_eps averaged over the four cells. That is what is checked:
 6. one mesh of the half-filled cube with a Debye and with a Lorentz filling,
    against the transverse resonance solved with the complex eps(omega):
    |error| <= 5e-3 at dx = 1 mm (the cell-owned rule reads 1.7e-2, the edge
-   mean 3.2e-4 / 3.4e-4).
+   mean 2.9e-4 on the TE line read as below).
+
+   Which line is read: the TM(1,1)-to-z mode sits 29 MHz below TE(1,0)-to-z
+   here, and with a Q ~ 66 filling one linewidth (f/Q ~ 79 MHz) covers both,
+   so a single Ex probe can report the two merged. The probe used is the sum
+   of Ex at x = L/2 - dx/2 and x = L/2 + dx/2: TE(0,1)-to-z's Ex does not
+   depend on x and survives the sum, TM(1,1)-to-z's Ex ~ cos(pi x / a) cancels
+   by the cavity's mirror symmetry.
 """
 from __future__ import annotations
 
@@ -341,10 +348,13 @@ def test_the_half_filled_cube_with_a_dispersive_filling_reads_its_analytic_mode(
     sim.add(Box((0, 0, 0), (L, L, H)), material="fill")
     sim.add_source((L * 0.23, L * 0.31, L * 0.41), "ex", amplitude_kind="field",
                    waveform=GaussianPulse(f0=f0, bandwidth=1.0))
-    sim.add_probe((L * 0.73, L * 0.64, L * 0.29), "ex")
+    dx = 1e-3
+    for x in (L / 2 - dx / 2, L / 2 + dx / 2):   # the x-mirror pair (TE only)
+        sim.add_probe((x, L * 0.64, L * 0.29), "ex")
     steps = 6000
     r = sim.run(n_steps=steps, skip_preflight=True)
-    modes = [m for m in harminv(np.asarray(r.time_series)[steps // 4:, 0],
+    ts = np.asarray(r.time_series)
+    modes = [m for m in harminv((ts[:, 0] + ts[:, 1])[steps // 4:],
                                 float(r.grid.dt), *window) if m.Q > 30]
     f = max(modes, key=lambda m: m.amplitude).freq
     err = abs(f - f_an) / f_an
