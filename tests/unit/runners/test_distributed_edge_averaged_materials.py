@@ -124,7 +124,10 @@ CASES = ("eps4", "sigma", "sheet", "pec_on_slab", "cut", "faces")
 #: PEC volume are interior and bitwise in the PEC cube; in the CPML box the
 #: lanes' own CPML arithmetic moves them by up to 1.8e-5 of the record peak,
 #: rule or no rule (both lanes on the cell-owned rule read up to 8.7e-6).
-CPML_CASES = ("eps4", "sigma", "cut", "faces")
+# "yz": a lossy dielectric slab through the y and z absorbers (a substrate that runs
+# into the side CPML): pins the per-component permittivity of Ex/Ey/Ez on the y/z faces
+# (#1303 review: Ex there taking eps_z/eps_y moved it 2.5e-3 while every other case held).
+CPML_CASES = ("eps4", "sigma", "cut", "faces", "yz")
 FLOOR_CASE = {"pec_on_slab": "pec_in_vacuum"}   # the rest: "vacuum"
 
 
@@ -180,6 +183,9 @@ def _box(boundary, lane, case, n_dev, waveform=WAVEFORM):
     elif case == "faces":      # through both x faces (and the CPML there)
         sim.add_material("m", eps_r=4.0, sigma=0.1)
         sim.add(Box((-1.0, 3e-3, 3e-3), (1.0, 9e-3, 7e-3)), material="m")
+    elif case == "yz":         # through all four y/z faces (and their CPML)
+        sim.add_material("m", eps_r=4.0, sigma=0.05)
+        sim.add(Box((6e-3, -1.0, -1.0), (10e-3, 1.0, 1.0)), material="m")
     elif case != "vacuum":
         raise ValueError(case)
     return sim
@@ -385,7 +391,7 @@ def test_the_pec_cube_agrees_with_one_device(lane, case):
 
 @pytest.mark.parametrize("lane", ["run", "fwd"])
 @pytest.mark.parametrize("case", [
-    c if c in ("faces", "cut") else pytest.param(c, marks=pytest.mark.slow)
+    c if c in ("faces", "cut", "yz") else pytest.param(c, marks=pytest.mark.slow)
     for c in CPML_CASES])
 def test_the_cpml_box_agrees_with_one_device(lane, case):
     _devices(2)
@@ -607,21 +613,26 @@ def test_the_permittivity_gradient_matches_one_device(boundary):
     devices = _devices(2)
     sim = _box(boundary, "fwd", "eps4", 2)
     grid = sim._build_nonuniform_grid()
-    eps = jnp.asarray(np.asarray(sim._assemble_materials_nu(grid)[0].eps_r))
+    drawn = sim._assemble_materials_nu(grid)[0]
+    eps = jnp.asarray(np.asarray(drawn.eps_r))
+    sig = jnp.asarray(np.asarray(drawn.sigma))
 
-    def loss(e, **kw):
-        ts = sim.forward(eps_override=e, n_steps=STEPS[boundary], skip_preflight=True,
-                         checkpoint=False, **kw).time_series
+    def loss(e, s, **kw):
+        ts = sim.forward(eps_override=e, sigma_override=s, n_steps=STEPS[boundary],
+                         skip_preflight=True, checkpoint=False, **kw).time_series
         return jnp.sum(ts ** 2)
 
-    single = np.asarray(jax.grad(loss)(eps), np.float64)
-    dist = np.asarray(jax.grad(lambda e: loss(e, distributed=True, devices=devices))(eps),
-                      np.float64)
-    rel = float(np.max(np.abs(dist - single)) / np.max(np.abs(single)))
-    ulp = float(np.max(np.abs(dist - single)) / np.spacing(np.float32(np.max(np.abs(single)))))
-    print(f"[gradient/{boundary}] |g_dist - g_single| / peak {rel:.2e} ({ulp:.0f} ULP)")
-    assert np.isfinite(dist).all() and np.any(single)
-    assert rel <= GRAD_RTOL, rel
+    single = jax.grad(loss, argnums=(0, 1))(eps, sig)
+    dist = jax.grad(lambda e, s: loss(e, s, distributed=True, devices=devices),
+                    argnums=(0, 1))(eps, sig)
+    # Both design variables: the four-cell mean carries eps and sigma alike.
+    for name, g_s, g_d in zip(("eps", "sigma"), single, dist):
+        g_s, g_d = np.asarray(g_s, np.float64), np.asarray(g_d, np.float64)
+        rel = float(np.max(np.abs(g_d - g_s)) / np.max(np.abs(g_s)))
+        ulp = float(np.max(np.abs(g_d - g_s)) / np.spacing(np.float32(np.max(np.abs(g_s)))))
+        print(f"[gradient/{boundary}/{name}] |g_dist - g_single| / peak {rel:.2e} ({ulp:.0f} ULP)")
+        assert np.isfinite(g_d).all() and np.any(g_s), name
+        assert rel <= GRAD_RTOL, (name, rel)
 
 
 # --------------------------------------------------------------------------
