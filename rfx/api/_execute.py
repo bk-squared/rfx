@@ -3368,6 +3368,7 @@ class _ExecuteMixin:
         debye_spec,
         lorentz_spec,
         kerr_chi3,
+        holds_ports=False,
     ):
         """Turn the ``forward(design_box=...)`` arguments into specs (#1179/#1183).
 
@@ -3382,11 +3383,27 @@ class _ExecuteMixin:
         Returns ``(box spec or None, occupancy spec or None)``: one design
         box, and the design variable it carries — a permittivity (#1179) or
         a PEC occupancy (#1183).
+
+        ``holds_ports`` (``forward(design_box_holds_ports=True)``) lets the
+        permittivity box contain lumped and wire ports: every edge a port
+        drives or loads that lies in the box's update window is listed in
+        ``DesignBoxSpec.held_edges`` and keeps the coefficients the drawn
+        materials give it.
         """
-        from rfx.simulation import DesignBoxSpec, DesignOccupancySpec
+        from rfx.simulation import (
+            DesignBoxSpec, DesignOccupancySpec, _design_box_window,
+        )
 
         _want_eps = design_eps_override is not None
         _want_occ = design_occupancy_override is not None
+        if holds_ports and not _want_eps:
+            raise ValueError(
+                "forward(design_box_holds_ports=True) lets a PERMITTIVITY "
+                "design box (design_box with design_eps_override) contain "
+                "lumped and wire ports. It has no meaning without one, and "
+                "an occupancy box (design_occupancy_override) does not carry "
+                "it: the port setup clears the occupancy around its cell, "
+                "which the box would overwrite.")
         if design_box is None or not (_want_eps or _want_occ):
             raise ValueError(
                 "forward(design_box=...) and one of "
@@ -3479,22 +3496,39 @@ class _ExecuteMixin:
         # step-level fence (``rfx.simulation._resolve_design_box``) reads the
         # port's ``live_cells`` on the uniform lane and, on the graded lane,
         # the mid cell plus the excited edges through its ``sources`` entry.
+        #
+        # With ``holds_ports`` a port may be inside: every one of its edges in
+        # the box's update window (the box plus one cell on each plus side,
+        # where the design material also reaches) is HELD -- it keeps the
+        # coefficient the drawn materials give it, the one its load and drive
+        # were built with. The step-level resolver checks every port, source
+        # and lumped stamp it can see against this list.
         from rfx.sources.sources import wire_port_edge_span
         _axis_of = {"ex": 0, "ey": 1, "ez": 2}
+        _w = _design_box_window(bounds, tuple(grid.shape))[0]
+        _held = set()
         for _pe in self._ports:
             if _pe.impedance == 0.0:
                 continue  # a plain soft source; caught as a source cell
+            _axis = _axis_of[_pe.component]
             _lo = list(self._design_box_index_of(grid, _pe.position))
             _cell_lo = list(_lo)
             _cell_hi = list(_lo)
             if getattr(_pe, "extent", None) is not None:
-                _axis = _axis_of[_pe.component]
                 _end = list(_pe.position)
                 _end[_axis] += _pe.extent
                 _n_end = self._design_box_index_of(grid, _end)[_axis]
                 _n0, _n1 = sorted((_lo[_axis], _n_end))
                 _cell_lo[_axis], _cell_hi[_axis] = wire_port_edge_span(
                     grid, _axis, _n0, _n1, _pe.position[_axis], _end[_axis])
+            if holds_ports:
+                for _a in range(_cell_lo[_axis], _cell_hi[_axis] + 1):
+                    _edge = list(_lo)
+                    _edge[_axis] = _a
+                    if all(_w[2 * d] <= _edge[d] < _w[2 * d + 1]
+                           for d in range(3)):
+                        _held.add((_axis, *(int(v) for v in _edge)))
+                continue
             if all(bounds[2 * d] <= _cell_hi[d]
                    and _cell_lo[d] < bounds[2 * d + 1]
                    for d in range(3)):
@@ -3504,13 +3538,16 @@ class _ExecuteMixin:
                     f"port's impedance fold and its drive coefficient are "
                     f"built from the background permittivity before the time "
                     f"loop starts, so the design permittivity would not reach "
-                    f"them (#1179). Move the box off the port, or use "
-                    f"eps_override.")
+                    f"them (#1179). Move the box off the port, pass "
+                    f"design_box_holds_ports=True to keep the port inside on "
+                    f"its own drawn coefficients (its edges then take no "
+                    f"design value), or use eps_override.")
 
         return DesignBoxSpec(
             bounds=bounds,
             eps_r=design_eps_override,
             sigma=design_sigma_override,
+            held_edges=tuple(sorted(_held)),
         ), None
 
     @staticmethod
@@ -3566,6 +3603,7 @@ class _ExecuteMixin:
         design_eps_override: jnp.ndarray | None = None,
         design_sigma_override: jnp.ndarray | None = None,
         design_occupancy_override: jnp.ndarray | None = None,
+        design_box_holds_ports: bool = False,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
@@ -3658,7 +3696,8 @@ class _ExecuteMixin:
             Bloch path, combining with ``eps_override`` / ``sigma_override``
             / ``mu_r_override``, a box that reaches into the CPML absorber,
             and a box holding a source, port, lumped-RLC or
-            surface-impedance-sheet cell all RAISE. Each of those either
+            surface-impedance-sheet cell all RAISE (a lumped or wire port
+            may stay inside with *design_box_holds_ports*). Each of those either
             computes E by some other rule inside the box or reads the
             background permittivity at a box cell, and a silently dropped
             design variable is a zero gradient that reads like convergence.
@@ -3709,6 +3748,21 @@ class _ExecuteMixin:
             (``RFX_PEC_OCC_KOTTKE=1``), where the occupancy becomes an
             inverse-eps tensor inside the E update that the box's values
             never reach.
+        design_box_holds_ports : bool
+            Let a permittivity *design_box* contain lumped and wire ports
+            (default ``False``: a box holding a port raises). A port is a
+            device on its edges — a 50 ohm load and a drive built from the
+            drawn materials before the time loop — so each edge a port drives
+            or loads inside the box's update window keeps the coefficients
+            the drawn materials give it, for the update and the drive alike:
+            the design values do not reach it, their derivative through it is
+            exactly zero, and a box holding a port with the background
+            written into it gives the run without the box. The other edges of
+            the port's cells stay design variables; at a port's cell a design
+            value is the cell's volume material. The held edges come back as
+            ``ForwardResult.design_box_held_edges``, ``(axis, i, j, k)`` with
+            axis 0, 1, 2 for Ex, Ey, Ez. A soft source, a magnetic source and
+            a lumped RLC element in the box still raise.
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
         pec_occupancy_override : jnp.ndarray or None
@@ -4076,7 +4130,8 @@ class _ExecuteMixin:
         _design_requested = (design_box is not None
                              or design_eps_override is not None
                              or design_sigma_override is not None
-                             or design_occupancy_override is not None)
+                             or design_occupancy_override is not None
+                             or bool(design_box_holds_ports))
         if _design_requested:
             _design_lanes = (("fwd_uniform", "fwd_nonuniform")
                              if design_occupancy_override is None
@@ -4140,6 +4195,7 @@ class _ExecuteMixin:
                     debye_spec=None,
                     lorentz_spec=None,
                     kerr_chi3=None,
+                    holds_ports=design_box_holds_ports,
                 )
             _nu_fwd_call = functools.partial(
                 self._forward_nonuniform_from_materials,
@@ -4161,6 +4217,9 @@ class _ExecuteMixin:
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
                     grid=self._build_nonuniform_grid()).run(_nu_fwd_call)
+            if _nu_design_spec is not None:
+                result = result._replace(
+                    design_box_held_edges=_nu_design_spec.held_edges)
             return self._attach_run_settling_witness(
                 result, n_steps=plan.n_steps, num_periods=num_periods,
                 context="forward")
@@ -4260,6 +4319,7 @@ class _ExecuteMixin:
                 debye_spec=debye_spec,
                 lorentz_spec=lorentz_spec,
                 kerr_chi3=kerr_chi3,
+                holds_ports=design_box_holds_ports,
             )
         if _design_spec is not None:
             # The design permittivity sets the precision of the material
@@ -4303,6 +4363,8 @@ class _ExecuteMixin:
             from rfx.ringdown import RingdownForward
             _res = RingdownForward(self, ringdown, lane="uniform", n_steps=n_steps,
                                    grid=grid, bins=port_s11_freqs).run(_fwd_call)
+        if _design_spec is not None:
+            _res = _res._replace(design_box_held_edges=_design_spec.held_edges)
         _warn_if_nonfinite_result(_res, context="forward")
         return self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods,
