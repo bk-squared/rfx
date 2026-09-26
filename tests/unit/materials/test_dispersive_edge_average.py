@@ -362,3 +362,46 @@ def test_the_half_filled_cube_with_a_dispersive_filling_reads_its_analytic_mode(
         f"{kind}-filled half cube: TE(1,0)-to-z reads {f / 1e9:.4f} GHz against "
         f"the complex-eps root {f_an / 1e9:.4f} GHz ({err:.2e}); +1.7e-2 is the "
         f"interface edge taking the air cell alone (#1260)")
+
+
+@pytest.mark.parametrize("kind", ["debye", "lorentz"])
+def test_a_dispersive_block_across_a_periodic_seam_is_translation_invariant(kind):
+    """The edge mean wraps across a periodic face (#1260 threads ``periodic``
+    into the dispersive builders): a dispersive block and a dielectric block on
+    a periodic ring, moved as a whole so the dispersive block straddles the
+    seam, give the same probe trace. With the wrap off the trace moves 5-8 %
+    (measured by the fresh-eyes review of #1260)."""
+    from rfx import Box, GaussianPulse, Simulation
+    from rfx.boundaries.spec import BoundarySpec
+
+    dx, lx, n_steps = 1e-3, 20e-3, 400
+
+    def trace(shift):
+        bs = BoundarySpec(x="periodic", y="periodic", z="pec")
+        sim = Simulation(freq_max=15e9, domain=(lx, 3e-3, 6e-3), dx=dx, boundary=bs)
+        n = sim._build_grid().shape[0]
+        if kind == "debye":
+            sim.add_material("m", eps_r=2.0, sigma=0.3,
+                             debye_poles=[DebyePole(delta_eps=2.0, tau=15e-12)])
+        else:
+            sim.add_material("m", eps_r=2.0, sigma=0.3,
+                             lorentz_poles=[lorentz_pole(2.0, 2 * np.pi * 12e9,
+                                                         2 * np.pi * 1e9)])
+        sim.add_material("d", eps_r=5.0)
+        for first, count, mat in ((4, 5, "m"), (12, 2, "d")):
+            for t in range(count):
+                i = (first + shift + t) % n
+                sim.add(Box(((i - 0.45) * dx, -1, -1), ((i + 0.45) * dx, 1, 1)),
+                        material=mat)
+        sim.add_source((((1 + shift) % n) * dx, 1.5e-3, 2.5e-3), "ez",
+                       amplitude_kind="field",
+                       waveform=GaussianPulse(f0=6e9, bandwidth=1.0))
+        sim.add_probe((((16 + shift) % n) * dx, 1.5e-3, 2.5e-3), "ez")
+        return np.asarray(sim.run(n_steps=n_steps, skip_preflight=True).time_series)[:, 0]
+
+    ref = trace(0)
+    moved = trace(17)          # the dispersive block now straddles the seam
+    assert np.max(np.abs(ref)) > 0
+    assert np.max(np.abs(moved - ref)) <= 1e-5 * np.max(np.abs(ref)), (
+        f"{kind}: moving the model across the periodic seam changed the trace by "
+        f"{np.max(np.abs(moved - ref)) / np.max(np.abs(ref)):.3e} of its peak")

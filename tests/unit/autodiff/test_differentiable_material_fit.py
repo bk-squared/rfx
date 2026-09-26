@@ -389,8 +389,10 @@ def _i580_factory():
     "-7.24e-5/7.50e-4/-2.11e-5, at the stall 5.2e-7/1.32e-6/-5e-8 vs "
     "5.4e-7/1.38e-6/-9e-8. 100 iterations: dx 1.5 mm eps_inf 2.52, de 2.90, "
     "tau 163 ps (main 2.00, 2.99, 49.9 ps); dx 0.75 mm eps_inf 2.40, de 2.94, "
-    "tau 150 ps (main 2.09, 2.81, 51.7 ps). An optimizer-convergence question "
-    "for the material-fit owner, not a physics value; bars unchanged."))
+    "tau 150 ps (main 2.09, 2.81, 51.7 ps). At the stall the phase matches and "
+    "|S| is 4.5-9 % off, yet the loss is 1.1e-6: the loss weighs the magnitude "
+    "by raw |S|^2 (|S| ~ 0.01). A loss-weighting question for the material-fit "
+    "owner (#1324), not a physics value; bars unchanged."))
 def test_recover_debye_reference_mode_public_entry():
     """#580 acceptance: a known (eps_inf, lossy Debye pole) is recovered
     through the public differentiable_material_fit entry under
