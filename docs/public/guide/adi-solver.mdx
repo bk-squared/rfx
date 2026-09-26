@@ -5,105 +5,123 @@ sidebar:
   order: 9
 ---
 
-The default `solver="yee"` is an explicit scheme. Its timestep is bounded by the
-Courant (CFL) limit, which is set by the **smallest cell in the mesh** — a thin
-substrate, a coating, or a narrow gap forces a small timestep on the whole
-domain even when the wavelength is large. That is the stiff-mesh problem.
+`solver="adi"` is an implicit time-stepping scheme that can take steps larger
+than the usual Courant limit. It is **experimental**. This page shows when it
+helps, what the larger step costs in accuracy, and what it cannot model.
 
-`solver="adi"` (Alternating-Direction-Implicit, the Zheng–Chen–Zhang two-sub-step
-3D scheme since #338) removes the explicit CFL stability restriction for the
-homogeneous, lossless split with compatible domain boundaries.
-`adi_cfl_factor` scales the grid's Yee timestep; accuracy still depends on it.
-This guarantee does **not** extend to the current interior PEC projection.
+## Why it exists
 
-**Interior PEC is refused on both 3D and 2D TMz ADI, at every factor.**
-Preflight reports the error `adi_interior_pec_unsupported`; `run()`, `forward()`,
-and the low-level ADI step/run functions enforce it even when preflight is
-skipped. Sheets, wires, and volumes must be retained: use `solver="yee"`.
-Domain-boundary PEC without interior conductors remains supported.
+The default `solver="yee"` is explicit. Its time step is set by the smallest
+cell anywhere in the mesh, so one thin layer or narrow gap forces tiny steps on
+the whole model. ADI (the Zheng–Chen–Zhang two-sub-step scheme) removes that
+stability limit, and `adi_cfl_factor` sets how many times larger than the Yee
+step it goes.
 
-The shipped factor 5 produced growing and non-finite sheet traces on both
-lanes. Factor 1 also grew over longer runs (3D sheet peak 4.33e6; TMz sheet
-peak 1.77e19 at 4,000 steps). Lowering or clamping the factor is therefore not
-a supported remedy. A supplied internal mask is rejected structurally, even
-when all entries are false, so the guard also works under JAX tracing; use
-`None` for an absent mask. Differentiable PEC occupancy overrides have no ADI
-carrier and are explicitly refused too.
+Stability is free; accuracy is not. ADI adds a dispersion error that grows
+roughly as the square of the step. `adi_cfl_factor` is a speed setting, not an
+accuracy setting.
 
-## When to reach for it
+## Example: a PEC cavity three ways
 
-Reach for ADI when a geometrically stiff mesh — features far below the
-wavelength — is forcing an explicit run to take an impractical number of steps,
-and you can tolerate the dispersion cost below. For ordinary
-wavelength-resolved models, the explicit Yee solver is the right default and is
-more accurate step-for-step.
+This resonates an empty 24 × 12 × 36 mm PEC cavity with explicit Yee and with
+ADI at factors 2 and 5, and compares the TE101 frequency with the closed form:
 
 ```python
-from rfx import Simulation
-from rfx.boundaries.spec import BoundarySpec
+import numpy as np
+from rfx import GaussianPulse, Simulation
 
-# Closed vacuum PEC cavity, the same box the runnable demo below resonates.
-a, b, d = 24.0e-3, 12.0e-3, 36.0e-3
-dx = 1.5e-3
+C0 = 299_792_458.0
+a, b, d = 24e-3, 12e-3, 36e-3
+f_te101 = C0 / 2 * np.sqrt((1 / a) ** 2 + (1 / d) ** 2)
 
-sim = Simulation(
-    freq_max=12e9,
-    domain=(a, b, d),
-    dx=dx,
-    boundary=BoundarySpec.uniform("pec"),
-    solver="adi",
-    adi_cfl_factor=2.0,   # accuracy setting; see the envelope below
-)
+
+def cavity(solver, factor=5.0):
+    sim = Simulation(freq_max=12e9, domain=(a, b, d), dx=1.5e-3,
+                     boundary="pec", solver=solver, adi_cfl_factor=factor)
+    sim.add_source((0.37 * a, 0.41 * b, 0.20 * d), "ey",
+                   waveform=GaussianPulse(f0=f_te101, bandwidth=0.9),
+                   amplitude_kind="current")
+    sim.add_probe((0.63 * a, 0.58 * b, 0.80 * d), "ey")
+    return sim
+
+
+for label, solver, factor in [("yee", "yee", 1.0),
+                              ("adi x2", "adi", 2.0),
+                              ("adi x5", "adi", 5.0)]:
+    sim = cavity(solver, factor)
+    dt = sim.run(n_steps=2, skip_preflight=True).dt
+    n_steps = int(6.9e-9 / dt)                   # the same 6.9 ns record each time
+    result = sim.run(n_steps=n_steps)
+    modes = result.find_resonances(freq_range=(0.7 * f_te101, 1.5 * f_te101))
+    te101 = min(modes, key=lambda m: abs(m.freq - f_te101))
+    err = 100 * (te101.freq - f_te101) / f_te101
+    print(f"{label}: {n_steps} steps, TE101 error {err:+.2f}%")
 ```
 
-## The timestep trade (read before choosing `adi_cfl_factor`)
+At about 27 cells per wavelength this prints:
 
-The ADI scheme adds a temporal dispersion error that grows with the timestep,
-roughly as `dt²`. `adi_cfl_factor` is therefore a **throughput** knob, not an
-accuracy knob. On a lossless 3D PEC cavity at ~15 cells per wavelength:
-
-| `adi_cfl_factor` | eigenfrequency error | notes |
-|---|---|---|
-| 2 | −1.4% | at or below the 2% accuracy gate |
-| 3 | −2.8% | von Neumann analysis |
-| 5 (default) | −6.7% | von Neumann analysis; stable but coarse |
-
-The default is `5.0` — a stiff-mesh throughput default. **Set
-`adi_cfl_factor <= 2` when the resonance frequency, not the timestep, is what
-you need to be accurate.** Preflight emits an `adi_3d_accuracy` advisory
-whenever `adi_cfl_factor > 2` on a 3D grid, quoting this envelope.
-
-At finer resolution the error shrinks: the runnable demo below, at ~27 cells per
-wavelength, reads a cavity TE101 at **−0.54% (factor 2)** and **−2.6% (factor
-5)** against the analytic value, versus **−0.06%** for explicit Yee.
-
-## What is validated, and what is not
-
-- **3D accuracy is validated against an analytic oracle.** A lossless 3D PEC
-  cavity eigenfrequency matches the closed-form mode within the 2% gate at
-  `adi_cfl_factor = 2` (`tests/unit/misc/test_review_tier1_validation_battery.py`,
-  measured 1.2%). The 2D TMz path (`mode="2d_tmz"`) holds a 2% resonance gate at
-  5× CFL (`tests/unit/runners/test_adi.py::test_adi_cavity_resonance`). These
-  cavities contain no interior conductor; they do not validate internal PEC
-  or arbitrary material discontinuities.
-- **The stiff-mesh throughput advantage is not yet demonstrated.** The larger
-  timestep is permitted by the homogeneous ADI stability analysis, but a
-  measured end-to-end speed-and-accuracy result on a stiff production
-  mesh has not been published. Do not read ADI as a validated speed-up.
-- ADI is an **experimental solver lane**. Use the explicit Yee solver for
-  claims-bearing 3D physics.
-
-## Gradients
-
-`solver="adi"` differentiates end-to-end — `jax.grad` flows through the
-tridiagonal solve — so the ADI path is usable inside an optimization loop where
-the stiff-mesh timestep matters.
-
-## Try it
-
-```bash
-python examples/tutorials/adi_solver_demo.py
+```text
+yee: 2412 steps, TE101 error -0.06%
+adi x2: 1206 steps, TE101 error -0.54%
+adi x5: 482 steps, TE101 error -2.59%
 ```
 
-The demo resonates a vacuum PEC cavity three ways — explicit Yee, ADI at factor
-2, ADI at factor 5 — and prints the frequency error each way.
+The factor-5 run triggers the `adi_3d_accuracy` preflight advisory, which
+quotes the envelope below.
+
+## Choosing `adi_cfl_factor`
+
+On a lossless PEC cavity at about 15 cells per wavelength:
+
+| `adi_cfl_factor` | eigenfrequency error |
+|---|---|
+| 2 | −1.4 % |
+| 3 | −2.8 % |
+| 5 (default) | −6.7 % |
+
+**Use `adi_cfl_factor <= 2` when a frequency must be accurate.** The default
+of 5 is a throughput setting for stiff meshes. The error shrinks with finer
+cells, as the example shows.
+
+## What ADI can model
+
+ADI runs a small subset of rfx:
+
+- `mode="3d"` or `mode="2d_tmz"`, on a uniform mesh;
+- `boundary="pec"` or `"cpml"` (on ADI, `"cpml"` is a graded-conductivity
+  absorber, not the full CPML);
+- non-dispersive dielectrics;
+- soft sources (`add_source`) and point probes.
+
+It refuses everything else before the first step: interior conductors of any
+kind (volumes, sheets, wires), ports, TFSF, waveguide, coaxial and Floquet
+ports, lumped RLC elements, dispersive materials, DFT planes, NTFF boxes,
+graded meshes and subgridding. `run()` also refuses `until_decay`, snapshots,
+checkpointing, subpixel smoothing and `conformal_pec`.
+
+**Interior PEC is refused at every factor.** A conductor inside the domain
+made the ADI fields grow without bound, even at factor 1. Preflight reports
+`adi_interior_pec_unsupported`, and `run()` and `forward()` raise even if you
+skip preflight. A PEC domain boundary is fine. For a model with metal inside,
+use `solver="yee"`.
+
+`solver="adi"` is differentiable: `jax.grad` flows through the implicit
+solves.
+
+## Limits
+
+- **Experimental.** The 3-D lane is checked against an analytic PEC cavity
+  (within 2 % at factor 2), and the 2-D TMz lane against a cavity resonance at
+  factor 5. Neither contains a conductor or material interface.
+- **No demonstrated speed-up.** The larger step is allowed, but no measured
+  end-to-end speed and accuracy gain on a real stiff mesh has been published.
+  Do not assume ADI is faster for your model.
+- **Accuracy falls with the factor.** Keep `adi_cfl_factor <= 2` for
+  frequency-accurate results, or use Yee.
+- **No interior metal, ports or S-parameters.** Use `solver="yee"` for
+  antennas, circuits and anything you will publish.
+- Status and scope: see the
+  [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md).
+
+For a longer walk-through, run `examples/tutorials/adi_solver_demo.py` from a
+source checkout.

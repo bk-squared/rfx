@@ -1,34 +1,40 @@
 ---
 title: "Cross-Solver Validation"
-description: "Runnable rfx comparisons with analytic results and other solvers."
+description: "How to run an rfx cross-solver comparison, read its result, and cite it."
 sidebar:
   order: 42
 ---
 
-Use these scripts to reproduce a comparison for a specific RF configuration.
-They are available in a source checkout and are not installed with the Python
-wheel.
+This page is about running a comparison yourself. The cases and what they show
+are on [Benchmarks](/rfx/guide/benchmarks/).
 
-## Which script to run
+## Run a comparison
 
-The case list is [Benchmarks](/rfx/guide/benchmarks/): every script in
-`validation/crossval/`, with its reference, its pass criterion and its reproduce
-command, kept in step with `validation/crossval/manifest.json` by a test.
-
-Run a script from the repository root, for example:
+The comparisons are pytest tests under `tests/crossval/` in a source checkout;
+they are not installed with the wheel. Each one compares rfx with a reference
+record frozen in the repository, so you do not need the other solver.
 
 ```bash
-python validation/crossval/15_patch_antenna_rt5880.py
+# Fast checks: build the board, check what it realizes, read the record.
+pytest tests/crossval/rt5880_patch
+
+# The full comparison. The long ladders are marked gpu and slow, which the
+# default test selection skips; a GPU is recommended.
+pytest tests/crossval/rt5880_patch -m gpu
+python -m pytest -o addopts="" tests/crossval/msl_notch_filter -q
 ```
 
-An exit code of `0` means all configured checks passed. Exit code `1` means a
-check failed. Exit code `2` means a required external solver or reference was
-unavailable, so the comparison is inconclusive.
+## Read the result
 
-## Interpret the result
+A pass means every judged quantity was inside its bar on the rungs the test
+names. The test output also prints the quantities it reports but does not
+judge; read them before citing the case. A skip usually means the test needs a
+GPU or an optional dependency, which is not a pass.
 
-A comparison applies to the geometry, mesh, frequency range, source, port,
-material model, boundary, and output used by that script. It is not a general
-accuracy guarantee for related designs. Record those settings and the numerical
-thresholds when citing a result. In a source checkout, `validation/README.md`
-lists the remaining cavity, waveguide, material, and port checks.
+## Cite the result
+
+A comparison holds for the geometry, mesh, band, source, port, materials,
+boundaries and observable of that test. When you cite one, give the test
+path, the commit, those settings, the reference and the thresholds it used.
+Do not carry the result over to a different port, material model, boundary or
+mesh without a comparison for that setup.

@@ -1,91 +1,166 @@
 ---
 title: "Inverse Design"
-description: "Gradient-based design through the FDTD solver: the manual jax.grad loop, which objective family runs inside optimize(), and the design-region driver."
+description: "Gradient-based design through the FDTD solver: the optimize() design-region driver, which objectives run inside the gradient loop, the manual jax.grad loop, and lumped-component value design."
 sidebar:
   order: 16
 ---
 
-rfx runs a JAX-differentiable FDTD: `jax.grad` returns reverse-mode gradients of
-a scalar loss through the FDTD time-stepping, so the same solver that computes
-the fields also computes design sensitivities. If you are coming from Meep's
-adjoint terminology, start with
+rfx is differentiable end to end: `jax.grad` returns the gradient of a scalar
+loss through every FDTD time step. This page shows how to optimize a
+permittivity region with `optimize()`, which objectives work inside the
+gradient loop, and how to write your own loop with `Simulation.forward()`. For
+the background (and how this relates to adjoint solvers), see
 [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/).
 
-## How it works
+| You want to | Use |
+|---|---|
+| optimize the permittivity of a box | `optimize(sim, DesignRegion(...), objective)` |
+| optimize a metal/dielectric layout with filtering and projection | `topology_optimize(sim, TopologyDesignRegion(...), objective)` |
+| a custom loss, several kinds of variable, or your own optimizer | `jax.grad` over `sim.forward(...)` |
+| tune a lumped R, L or C value | `forward(rlc_values_override=...)` |
 
-JAX traces the solver and objective path as a computation graph. Gradient
-checkpointing recomputes forward states during backpropagation to bound
-reverse-mode memory (see [Memory Reduction](/rfx/guide/memory-reduction/)).
+The examples use coarse 2 mm meshes and a few hundred steps so the page runs in
+under a minute on a CPU. A real design uses a mesh that resolves the geometry,
+runs long enough to capture the response you optimize, and ends with a
+verification run of the final design.
 
-```text
-Forward:  eps_r → FDTD steps → probes / NTFF → scalar loss
-Backward: jax.grad(loss)(eps_r) → ∂loss/∂eps_r
-```
+## Optimize a design region
 
-## Manual gradient loop
+`optimize()` runs an Adam loop over the permittivity inside a `DesignRegion`.
+The region is a box in metres plus an `eps_range`; the optimizer works on an
+unbounded latent variable that a sigmoid maps into that range.
 
-Most designs should use the higher-level [`optimize()` driver](#design-region-api),
-which builds this loop for you. Drop to a manual `jax.grad` loop only for custom
-objectives or training loops. Stay on the differentiable `Simulation.forward()`
-API instead of hand-writing FDTD updates: build the `Simulation` once, pass an
-`eps_override` array shaped like the grid permittivity, and differentiate a
-scalar loss:
+This toy model puts a dielectric region between a source and a probe and
+maximizes the energy that reaches the probe:
 
 ```python
 import jax
 import jax.numpy as jnp
-from rfx import GaussianPulse, Simulation
+from rfx import (DesignRegion, GaussianPulse, Simulation,
+                 maximize_transmitted_energy, optimize)
 
-# Stand-in for your own configured Simulation: one soft source, one probe,
-# open (CPML) boundaries, deliberately small so the snippet runs in seconds.
-sim = Simulation(freq_max=10e9, domain=(0.03, 0.02, 0.02), dx=2e-3,
+sim = Simulation(freq_max=10e9, domain=(0.06, 0.03, 0.03), dx=2e-3,
                  boundary="cpml", cpml_layers=6)
-sim.add_source((0.010, 0.010, 0.010), "ez",
-               waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
-               amplitude_kind="current")   # required from 1.9; see Sources & Ports
-sim.add_probe((0.020, 0.010, 0.010), "ez")
+sim.add_source((0.012, 0.015, 0.015), "ez",
+               waveform=GaussianPulse(f0=6e9, bandwidth=0.8),
+               amplitude_kind="current")
+sim.add_probe((0.048, 0.015, 0.015), "ez")   # time_series column 0
 
-# Discover the grid shape from a quick run (result.grid is always populated):
-eps0 = jnp.ones(sim.run(n_steps=1).grid.shape, dtype=jnp.float32)
+region = DesignRegion(corner_lo=(0.020, 0.008, 0.008),
+                      corner_hi=(0.040, 0.022, 0.022),
+                      eps_range=(1.0, 6.0))
+objective = maximize_transmitted_energy(output_probe_idx=0)
 
-def objective(eps_r):
-    result = sim.forward(eps_override=eps_r, n_steps=150, checkpoint=True)
-    return -jnp.sum(result.time_series ** 2)  # example proxy loss
+result = optimize(sim, region, objective,
+                  n_iters=5,        # a real design runs tens to hundreds
+                  lr=0.5, n_steps=250, jit=True, verbose=False)
 
-grad = jax.grad(objective)(eps0)
+print("loss per iteration:", [f"{v:.3e}" for v in result.loss_history])
+print("eps range in the design:",
+      float(result.eps_design.min()), float(result.eps_design.max()))
 ```
 
-This differentiates the proxy objective only. It does not by itself validate the
-final RF observable; re-run the relevant port, resonance, far-field, or
-convergence check on the optimized design (see [Validation](/rfx/guide/validation/)).
+`result` is an `OptimizeResult` with `eps_design` (the permittivity in the
+region's cells), `loss_history`, and the final `latent`. Pass `latent` back as
+`init_latent=` to continue a run.
 
-You may wrap the whole loss in an outer `jax.jit` for performance-sensitive
-training loops:
+Keep the region inside the declared `domain`. Any part that reaches into the
+CPML padding outside it is clipped off, and `optimize()` raises `ValueError` if
+nothing is left.
+
+### Useful `optimize()` options
+
+| Option | What it does |
+|---|---|
+| `n_steps` / `num_periods` | record length per iteration (default 20 periods at `freq_max`). Fewer steps use less memory, but the run must still contain the response you optimize. |
+| `jit=True` | compile the loss and gradient once and reuse them in every iteration. Much faster on real models. See the caveats below. |
+| `checkpoint_segments` | segmented checkpointing on a uniform mesh, for about `sqrt(n_steps)` memory at about 2x compute. Must divide `n_steps`. See [Memory Reduction](/rfx/guide/memory-reduction/). |
+| `checkpoint_every` | the non-uniform-mesh counterpart (a chunk size in steps). |
+| `n_starts=N`, `seed` | `N` restarts from random latents; returns the best one. Helps only on a multimodal loss. |
+| `best_iterate=True` | return the lowest-loss iterate visited, not the last one. |
+| `step_clamp=value` | cap the L2 norm of each Adam step, to stop overshoot past a sharp minimum. |
+| `port_s11_freqs` | accumulate port S11 inside the loop, for the exact S11 objective below. |
+
+With `jit=True` the objective is traced, not run. It must not read a traced
+value on the host, for example `float(x)`, `np.asarray(x)` or a Python `if` on
+an array. Two models still do not trace and stop with a
+`TracerArrayConversionError` or `ConcretizationTypeError`; use the default
+`jit=False` for them:
+
+- a model with a microstrip (MSL) port;
+- a model whose mesh is itself a design variable (a traced `dz_profile`) that
+  has a wire port together with a conductor.
+
+The jitted loss and gradient can differ from the eager ones in the last float32
+bits, so a jitted optimization path can drift slightly from an eager one.
+
+## Choose an objective
+
+Objectives are functions `objective(result) -> scalar`, minimized by the
+optimizer. There are two families, and only one of them works inside the
+gradient loop.
+
+### Objectives that work inside `optimize()`
+
+`forward()` returns probe time series, NTFF data and, on request, port S11. It
+does not build the full post-processed S-parameter matrix. These objectives
+read only what `forward()` provides:
+
+| Objective | Reads | Meaning |
+|---|---|---|
+| `minimize_reflected_energy(port_probe_idx=0, late_fraction=0.5)` | probe time series | late-time energy / early-time energy at the port probe (an S11 proxy) |
+| `maximize_transmitted_energy(output_probe_idx=-1)` | probe time series | negated energy at an output probe (an S21 proxy) |
+| `minimize_s11_at_freq_wave_decomp(target_freq, port_idx=0)` | `forward(port_s11_freqs=...)` | exact \|S11\|² of a lumped port from its V/I waves |
+| `maximize_directivity(theta_target, phi_target)` | NTFF box data | directivity toward one direction |
+
+`minimize_s11_at_freq_wave_decomp` lives in `rfx.optimize_objectives`. Pass
+`port_s11_freqs=` to `optimize()` so the port accumulates the S11 it reads.
+Because it separates incident and reflected waves exactly, it has no timing
+precondition; prefer it over the reflected-energy proxy when your model has a
+lumped port.
+
+**The split window must contain the reflection.** `minimize_reflected_energy`
+splits the port probe's time series at `late_fraction` (by default, at
+half-way) and treats the late part as reflected energy. That only works if the
+round trip from the port to the reflecting feature and back arrives *after* the
+split and *before* the run ends. On a short round trip (a thin substrate, a
+feature close to the port) the reflection lands in the early window, the late
+window is almost empty, and the loss collapses toward zero. Its gradient is then
+numerical noise, and nothing raises an error.
+
+Check the loss value at the starting design before you optimize. A design that
+reflects a meaningful fraction of the pulse gives a loss around `1e-2` to
+`1e-1`; a loss near `1e-7` means the window is empty. Then fix it by cause:
+
+- the reflection arrives after the run ends: increase `n_steps`;
+- it arrives before the split: raise `late_fraction` (this moves the split
+  earlier);
+- the incident pulse and the reflection overlap in time: no split separates
+  them. Narrow the source bandwidth, or use a port with
+  `forward(port_s11_freqs=...)` and `minimize_s11_at_freq_wave_decomp`.
+
+A finite-difference check of the gradient does not catch an empty window,
+because both methods differentiate the same window and agree (see
+[A passing finite-difference check is necessary, not sufficient](/rfx/guide/autodiff-adjoint/#a-passing-finite-difference-check-is-necessary-not-sufficient)).
+
+**Directivity.** `maximize_directivity` reads `result.ntff_data`, so register a
+box with `sim.add_ntff_box(corner_lo, corner_hi)` first; without it the
+objective raises `ValueError`. Angles are in radians. Keep the default
+`log_ratio=True`: it gives the correct gradient sign for every design variable,
+including ones that change the total radiated power (conductors, loss,
+large permittivity changes). `log_ratio=False` is correct only for variables
+that leave the radiated power unchanged. NTFF objectives cost more than probe
+objectives, so iterate on a coarse mesh and check the final design with
+[Far-Field and RCS](/rfx/guide/farfield-rcs/).
+
+### Objectives for a finished `run()`
+
+These read `result.s_params` from `run(compute_s_params=True)`. They are for
+scoring a design after a full run, not for the gradient loop: inside
+`optimize()` or `forward()` they raise `ValueError`.
 
 ```python
-jit_objective = jax.jit(objective)
-jit_grad = jax.jit(jax.grad(objective))
-```
-
-The supported `forward(eps_override=...)` path is regression-locked so the
-outer-jitted loss and gradient match the eager path. Keep shape-changing setup
-choices outside the jitted function; pass continuous arrays or scalar design
-variables in as JAX arguments.
-
-## Built-in objectives: choose the right family
-
-### 1) Post-processed S-parameter objectives
-
-Each factory returns `objective(result) -> scalar` that reads `result.s_params`,
-so it applies to a completed `run(compute_s_params=True)` result. These raise
-`ValueError` inside the default `optimize()`/`forward()` loop, which does not
-build the post-processed S-parameter matrix (see family 2). An objective value
-is only as trustworthy as the S-parameter extraction behind it — confirm that
-port's S-parameter path is validated (see [Validation](/rfx/guide/validation/))
-before treating the optimized number as a physical result.
-
-```python
-from rfx import minimize_s11, maximize_s21, target_impedance, maximize_bandwidth
+from rfx import maximize_bandwidth, maximize_s21, minimize_s11, target_impedance
 
 obj_s11 = minimize_s11(freqs=jnp.array([5e9]), target_db=-10)
 obj_s21 = maximize_s21(freqs=jnp.linspace(4e9, 6e9, 20))
@@ -93,201 +168,148 @@ obj_z = target_impedance(freq=5e9, z_target=50.0)
 obj_bw = maximize_bandwidth(f_center=5e9, f_bw=2e9, s11_threshold=-10)
 ```
 
-### 2) Differentiable loop objectives for `optimize()`
+An objective is only as good as the S-parameter extraction behind it. Check the
+port's status in the
+[S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md)
+before you treat an optimized number as a physical result.
 
-The `optimize()`/`forward()` pass emits `result.time_series` but not the
-post-processed `result.s_params` matrix, so the family-1 objectives cannot run
-inside a gradient loop. Use these time-domain proxies instead — they read only
-`result.time_series` and compose with both `optimize()` and `topology_optimize()`:
+## Write your own gradient loop
+
+For a custom loss, call `sim.forward(...)` inside a function and differentiate
+it. Build the `Simulation` once, outside the loss. `eps_override` replaces the
+whole permittivity grid, so its shape is the grid shape:
 
 ```python
-from rfx import minimize_reflected_energy, maximize_transmitted_energy
+sim2 = Simulation(freq_max=10e9, domain=(0.03, 0.02, 0.02), dx=2e-3,
+                  boundary="cpml", cpml_layers=6)
+sim2.add_source((0.008, 0.010, 0.010), "ez",
+                waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+                amplitude_kind="current")
+sim2.add_probe((0.022, 0.010, 0.010), "ez")
 
-obj_reflect = minimize_reflected_energy(port_probe_idx=0)
-obj_transmit = maximize_transmitted_energy(output_probe_idx=-1)
+grid = sim2.run(n_steps=1).grid        # a one-step run gives you the grid
+eps0 = jnp.ones(grid.shape, dtype=jnp.float32)
+
+
+def loss(eps_r):
+    out = sim2.forward(eps_override=eps_r, n_steps=150)
+    return -jnp.sum(out.time_series ** 2)
+
+
+grad = jax.jit(jax.grad(loss))(eps0)
+print("gradient shape:", grad.shape)
 ```
 
-`minimize_reflected_energy` is a late-time-reflection S11 proxy;
-`maximize_transmitted_energy` is an output-power S21 proxy. Both index
-`result.time_series` columns: `port_probe_idx` selects the probe co-located with
-the excitation port, `output_probe_idx` the downstream probe.
+You can wrap the loss or its gradient in `jax.jit`. Keep anything that changes
+array shapes (the mesh, the number of steps, which ports exist) outside the
+jitted function, and pass continuous arrays or scalars in as arguments.
 
-**Precondition — the split window must contain the reflection.**
-`minimize_reflected_energy` splits the probe time series at `late_fraction`
-(default: the second half) and treats the late half as reflected energy. That
-premise only holds if the round trip from the port to the reflecting feature and
-back arrives *after* the split point and *before* the run ends. On a short
-round-trip geometry (a thin substrate, a feature close to the port), the
-reflection lands in the early "incident" half and the late window is nearly empty,
-so the proxy collapses to `~0` and its gradient becomes numerical noise — with no
-error raised. Sanity-check the loss magnitude (a meaningfully reflecting design
-sits near `1e-2`–`1e-1`, not `~1e-7`), then fix the window by its failure mode:
-enlarge `n_steps` if the reflection arrives after the run ends; **raise**
-`late_fraction` (which moves the split earlier) if it arrives before the split; or,
-if the incident pulse and reflection overlap in time on a very short round trip,
-narrow the source bandwidth to compress the incident pulse — or use an
-impedance-referenced port (`add_port(..., impedance=Z0)` with
-`forward(port_s11_freqs=...)`), which separates incident and reflected waves
-exactly. An AD-vs-finite-difference check will *not* catch an empty window:
-both differentiate the same window and agree (see
-[Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/#a-passing-finite-difference-check-is-necessary-not-sufficient)).
+### Design-box overrides (less memory)
 
-For NTFF/directivity optimization, `maximize_directivity(...)` defaults to
-`log_ratio=True`, which is sign-correct for every degree of freedom, including
-design variables that change total radiated power (conductors/PEC, lossy, or
-magnitude-changing dielectric DoFs). <!-- rfx/optimize_objectives.py:290 -->
-`log_ratio=False` drops a quotient-rule term and yields wrong-sign gradients for
-power-changing DoFs, so it is correct only for shape-preserving,
-constant-radiated-power ones. The default flipped in 1.6.7 (CHANGELOG
-`[1.6.7] - 2026-07-28`, GitHub #129), so code that relied on the old behaviour
-must now pass `log_ratio=False` explicitly.
+A whole-grid `eps_override` puts grid-sized arrays on the autodiff tape at every
+step. If only a box is a design variable, pass the box and its values instead.
+The gradient is the same, and the tape stores box-sized arrays. Pass
+`checkpoint=False` with it, because per-step checkpointing saves the full
+field state every step regardless.
 
-## Design-region API
-
-`optimize()` is the high-level driver: give it a configured `Simulation`, a
-`DesignRegion` box (physical `corner_lo`/`corner_hi` in metres plus an
-`eps_range` the design is clamped to), and a proxy objective from family 2. It
-runs an Adam gradient loop over the region's permittivity and returns an
-`OptimizeResult` with `eps_design` (optimized permittivity in the box),
-`loss_history`, and the final `latent` parameters. For port/probe setup on the
-base simulation, see [Sources & Ports](/rfx/guide/sources-ports/).
+The array must match the number of cells the box realizes on the grid (both
+corners resolve to their nearest cell and both ends are included):
 
 ```python
-from rfx import Simulation, DesignRegion, optimize, minimize_reflected_energy
+box = ((0.012, 0.006, 0.006), (0.018, 0.014, 0.014))
+lo, hi = grid.position_to_index(box[0]), grid.position_to_index(box[1])
+box_shape = tuple(int(b) - int(a) + 1 for a, b in zip(lo, hi))
 
-sim = Simulation(freq_max=10e9, domain=(0.1, 0.04, 0.02), dx=2e-3,
-                 boundary="cpml", cpml_layers=6)
-feed = (0.015, 0.02, 0.01)
-sim.add_port(position=feed, component="ez", impedance=50.0)
-sim.add_probe(feed, "ez")   # time_series column 0 -> port_probe_idx=0
 
-region = DesignRegion(
-    corner_lo=(0.03, 0.0, 0.0),
-    corner_hi=(0.07, 0.04, 0.02),
-    eps_range=(1.0, 6.0),
-)
+def box_loss(eps_box):
+    out = sim2.forward(design_box=box, design_eps_override=eps_box,
+                       n_steps=150, checkpoint=False)
+    return -jnp.sum(out.time_series ** 2)
 
-result = optimize(
-    sim,
-    region,
-    objective=minimize_reflected_energy(port_probe_idx=0),
-    n_iters=5,      # a real design runs tens to hundreds of iterations
-    lr=0.01,
-)
-# result.eps_design, result.loss_history, result.latent
+
+g_box = jax.grad(box_loss)(jnp.full(box_shape, 2.0))
+print("box gradient shape:", g_box.shape)
 ```
 
-The region is clamped to the grid interior; `optimize()` raises `ValueError` if
-it lies entirely inside the CPML absorber, so keep `corner_lo`/`corner_hi` within
-the physical domain rather than the padding.
+`design_box` also accepts a `DesignRegion`. The box must not reach into the
+CPML or contain a source, port, lumped element or surface-impedance sheet, and
+it does not combine with dispersive (Debye/Lorentz) or Kerr materials,
+subpixel smoothing, UPML, `stencil_order=4`, or the other whole-grid overrides.
+Those cases raise an error; use `eps_override` for them.
 
-For difficult or multimodal proxy losses, `optimize()` also exposes default-off
-robustness knobs:
+**A design conductivity** goes in `design_sigma_override`, in one of two forms:
 
-| Knob | Use | Default behavior |
-|---|---|---|
-| `n_starts=N` | run `N` Adam restarts and return the best one | `1`, the legacy single run |
-| `best_iterate=True` | return the lowest-loss visited iterate instead of the final iterate | `False`, final iterate |
-| `step_clamp=value` | cap the L2 norm of each Adam latent update | `None`, unclamped |
-| `seed=...` | make extra restart initializations reproducible | used only when `n_starts > 1` |
+- A single box-shaped array is **per cell**. rfx averages the four cells around
+  each edge, as it does everywhere on the grid, so the design value also reaches
+  the layer of edges on the box's plus faces.
+- A 3-tuple `(sigma_x, sigma_y, sigma_z)` is **per edge**: each array is written
+  as-is to that component's edges at the box indices, with no averaging. This is
+  what a conducting sheet needs, since its current flows only along its two
+  in-plane edges. A box-shaped per-edge array cannot reach the plus-face edge
+  layer. If your per-edge design needs that layer, declare the box one cell
+  larger on that side.
 
-These knobs do not change the objective or the electromagnetic model. They help
-only when the loss surface itself benefits from restarts, overshoot protection,
-or reproducible restart sampling.
+For metal-shape design, `design_occupancy_override` does the same for a relaxed
+PEC occupancy in `[0, 1]` on a uniform mesh.
 
-## Scalar lumped-RLC value design
+## Tune a lumped R, L or C value
 
-A lumped R/L/C element registered with `add_lumped_rlc(...)` is a circuit element
-inside the FDTD update — it produces no S-parameters by itself. To measure the
-load, pair it with an `add_port(..., impedance=Z0)`: the port supplies both the
-excitation and the S11 accumulator that `forward(port_s11_freqs=...)` reads. On
-the uniform single-device `forward(...)` lane the registered R/L/C values affect
-the differentiable run, and scalar component values can enter the AD tape
-through `rlc_values_override`.
+`add_lumped_rlc(...)` adds a circuit element to the FDTD update. It is not a
+port and produces no S-parameters. To measure the load, add a port with
+`add_port(..., impedance=Z0)` and read S11 from `forward(port_s11_freqs=...)`.
+Scalar component values enter the gradient through `rlc_values_override`, keyed
+by the 0-based order of the `add_lumped_rlc` calls. Keys you leave out keep the
+registered value. This works on the uniform, single-device `forward()` path.
 
-**Put the element a cell away from the port, not on it.** A driven port reads
-S11 from the V/I pair at its own cell, and the current there is what leaves that
-cell into the surrounding field — so an element sitting *inside* the port cell
-is in parallel with the source rather than in the network the port measures. It
-still changes the fields; S11 just cannot see it. Measured on the fixture below:
-co-located, `R = 50` and `R = 500` both move `max |S11|` by about `2e-07` and
-`dS11²/dR` collapses to `-1.15e-10`, so the gradient you would differentiate is
-numerical noise. One cell along `x` the same quantities are `8.68e-03` and
-`-8.16e-05`, and AD agrees with finite differences to 0.005 %.
+**Put the element one cell away from the port, not on the port cell.** A port
+reads S11 from the voltage and current at its own cell. An element inside that
+cell is in parallel with the source, not in the network the port measures, so
+S11 barely sees it and its gradient is numerical noise.
 
 ```python
-import jax
-import jax.numpy as jnp
-from rfx import Simulation
-
-sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
-                 boundary="cpml", cpml_layers=6)
-dx = 0.02 / 15
+dx = 1.5e-3
+sim3 = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=dx,
+                  boundary="cpml", cpml_layers=6)
 port_pos = (0.0093, 0.0093, 0.0093)
 load_pos = (port_pos[0] + dx, port_pos[1], port_pos[2])   # one cell away
-sim.add_port(position=port_pos, component="ez", impedance=50.0)
-sim.add_lumped_rlc(
-    position=load_pos,
-    component="ez",
-    R=500.0,          # see the note below on R
-    C=0.2e-12,
-    topology="series",
-)
+sim3.add_port(position=port_pos, component="ez", impedance=50.0)
+sim3.add_lumped_rlc(position=load_pos, component="ez",
+                    R=200.0, C=0.2e-12, topology="series")
+
 
 def load_loss(R):
-    result = sim.forward(
-        n_steps=800,
-        port_s11_freqs=jnp.array([5e9]),
-        rlc_values_override={0: {"R": R}},
-    )
-    # forward()'s lumped-port S11 is per-frequency, shape (n_freqs,)
-    return jnp.abs(result.s_params[0]) ** 2
+    out = sim3.forward(n_steps=800, port_s11_freqs=jnp.array([5e9]),
+                       rlc_values_override={0: {"R": R}})
+    return jnp.abs(out.s_params[0]) ** 2      # |S11|^2 at 5 GHz
 
-dloss_dR = jax.grad(load_loss)(50.0)
+
+R0 = 200.0
+value, dloss_dR = jax.value_and_grad(load_loss)(R0)
+assert jnp.isfinite(value) and jnp.isfinite(dloss_dR)
+
+fd = (load_loss(R0 + 10.0) - load_loss(R0 - 10.0)) / 20.0
+print(f"|S11|^2 = {float(value):.4f}, AD dL/dR = {float(dloss_dR):.3e}, "
+      f"FD dL/dR = {float(fd):.3e}")
 ```
 
-The mapping key is the 0-based registration order of `add_lumped_rlc(...)`
-calls; missing keys fall back to the registered float value. This surface is
-uniform single-device only. Note the division of labour in the example: the S11
-in the loss comes from `add_port` (the reference-impedance measurement), while
-`add_lumped_rlc` contributes the circuit element being designed — the RLC
-element is **not** a port type and produces no `s_params` on its own.
+The gradient is taken at the value the element was registered with. Check that
+the loss and gradient are finite at every value you evaluate, as the `assert`
+does, and keep an optimizer's R inside a physical range (for example, optimize
+a bounded latent variable).
 
-`R = 500` rather than `50` in the example is not arbitrary: a series `R + C`
-element on a cell that carries no port conductance is unstable below roughly
-`180 Ω` and drives the fields to non-finite values with no warning. See
-`scripts/diagnostics/lumped_rlc_adjacent_to_port_nan.py` for the measurement.
+## Limits
 
-## Far-field objectives with NTFF data
-
-`maximize_directivity` optimizes the directivity ratio toward a target direction.
-It reads `result.ntff_data`, `result.ntff_box`, and `result.grid`, so the base
-simulation must register a near-to-far-field box first via
-`sim.add_ntff_box(corner_lo, corner_hi)`; without it the objective raises
-`ValueError`. `theta_target`/`phi_target` are in radians.
-
-```python
-from rfx import maximize_directivity
-
-objective = maximize_directivity(
-    theta_target=0.0,  # radians
-    phi_target=0.0,
-    log_ratio=True,
-)
-```
-
-Pass this to `optimize()` like any family-2 proxy. (`optimize()` also forwards
-`result.ntff_box` as a keyword to any custom objective whose signature includes
-an `ntff_box` parameter; the built-in objective does not need that — it reads the
-box from the result.) NTFF passes cost more than probe-only losses, so iterate on
-a coarse grid, then re-run the final design through the far-field validation path
-(see [Far-field & RCS](/rfx/guide/farfield-rcs/)).
-
-## Tips
-
-- **Memory**: `checkpoint=True` is the default; for large `n_steps`, use `checkpoint_segments` (uniform) or `checkpoint_every` (non-uniform) to trade ~2x compute for ~√n_steps memory. See [Memory Reduction](/rfx/guide/memory-reduction/).
-- **Start with small grids** for design iteration, then scale up for the final verification run.
-- **Learning rate**: `0.01–0.1` is a reasonable first range for permittivity optimization; see [Gradient Behavior](/rfx/guide/gradient-behavior/).
-- **Proxy objectives first**: start with `minimize_reflected_energy()` or `maximize_transmitted_energy()`.
-- **NTFF objectives cost more** than probe-only losses; reserve them for radiation targets.
-- **GPU acceleration** depends on the installed JAX/CUDA environment; verify device placement for performance-sensitive runs.
+- **Loss near zero with a clean finite-difference check**: the observation
+  window is probably empty. See the split-window rule above.
+- **A proxy loss improved but the real metric did not**: re-run the final design
+  through the calibrated workflow (port S-parameters, resonance extraction or
+  far field) on a converged mesh. See [Validation](/rfx/guide/validation/).
+- **`ValueError` from `minimize_s11` / `maximize_s21` inside `optimize()`**:
+  those read post-processed S-parameters. Use a time-domain proxy or
+  `minimize_s11_at_freq_wave_decomp` in the loop.
+- **Mesh refinement**: `add_refinement` acts only through `run()`.
+  `forward()`, `optimize()` and `topology_optimize()` refuse a refined model.
+- **`jit=True` fails with a tracer error**: an MSL port, or a traced mesh with a
+  wire port and a conductor. Use `jit=False`.
+- **Out of memory in the backward pass**: use a design box, segmented
+  checkpointing or fewer steps. See [Memory Reduction](/rfx/guide/memory-reduction/).

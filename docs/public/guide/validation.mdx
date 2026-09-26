@@ -1,26 +1,148 @@
 ---
 title: "Cross-Validation and Accuracy"
-description: "Where the validation evidence for an rfx result lives."
+description: "How to know an rfx result is right: what rfx checks for you, what you must check yourself, and where the evidence lives."
 sidebar:
   order: 7
 ---
 
-Validation evidence for rfx is kept on three pages, split by the question you
-are asking:
+A finished run, a clean preflight and a smooth plot do not show that a number
+is right. This page answers the question you should ask before you report an
+rfx result: **how do I know it is correct?** It covers what rfx has already
+checked, what only you can check for your structure, and where the evidence
+lives.
 
-- **Which configuration should I start from, and which calculator has narrower
-  limits?** [Recommended Configuration](/rfx/validation/recommended-configuration/) — the
-  uniform Cartesian Yee starting point, plus the per-calculator restrictions for
-  waveguide, microstrip-line, lumped/wire, coaxial, graded-mesh and
-  differentiable work.
-- **Is this exact combination supported, and what must fail?**
-  [Support Boundaries](/rfx/api/support-boundaries/) — the status legend, the
-  S-parameter API table, and the combinations that are required to raise rather
-  than return a number.
-- **What has actually been measured, against what reference, with which pass
-  criterion?** [Benchmarks](/rfx/guide/benchmarks/) — every case in
-  `validation/crossval/manifest.json` with its reference, gate and reproduce
-  command. [Cross-Solver Validation](/rfx/validation/cross-solver/) explains the
-  exit codes.
+## What rfx checks
 
-A completed run, a clean preflight, and an exported artifact are none of these.
+rfx tests its solver in three independent ways.
+
+| Kind of check | What it compares | Where it lives | When it runs |
+|---|---|---|---|
+| **Analytic** | rfx against a closed-form answer: cavity modes, slab reflection and transmission (lossless, lossy, Debye, Lorentz, Drude, oblique TE), a PEC sphere against the Mie series, empty, shorted and slab-loaded rectangular waveguides, a WR-90 inductive iris against mode matching, lumped R, L and C loads on a line, dipole far fields | `tests/oracle/` | most on every pull request |
+| **Cross-solver** | rfx against another solver (mostly openEMS; also Palace, Meep and a boundary-element solver) on structures with no closed form: a microstrip stub notch filter, a stepped-impedance low-pass filter, a patch antenna's resonance and far field, the RCS of a PEC cube, broadband waveguide sections | `tests/crossval/` | on demand and on GPU, against frozen reference records |
+| **Convergence** | rfx against itself as the mesh is refined. A result that moves when you refine the mesh is not converged yet | the same tests, and your own studies | as above |
+
+The cross-solver cases compare against reference records that are frozen in
+the repository, so no external solver is needed to re-check rfx against them.
+[Benchmarks](/rfx/guide/benchmarks/) lists the cases, what each one shows and
+how to reproduce it.
+
+Two limits apply to all of this evidence:
+
+- **A passing case covers its own setup.** The geometry, mesh, band, port
+  family and observable of that case. It does not cover your structure.
+- **Some features have little or no evidence.** The support tables in
+  [Support Boundaries](/rfx/api/support-boundaries/) say which are
+  *recommended*, which are *limited* to stated conditions, and which are
+  outside the documented scope. The maintainer
+  [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
+  has the detail for each feature.
+
+## What you must check yourself
+
+rfx cannot validate your structure for you. Before you report a number, work
+through this list.
+
+1. **Preflight.** Read every warning from `sim.preflight()`. Each one names a
+   condition that can make the result wrong without an error: a mesh too
+   coarse for the material, a probe inside the absorber, geometry that lands
+   off the grid, a lossless resonator.
+2. **Run length.** Check `result.settling_db`. At −40 dB or below, the field
+   had rung down when the run stopped. Above that, spectra, S-parameters and
+   far fields still contain a cut-off transient. For gradients, the record
+   must be longer still: `rfx.gradient_record_length_witness` checks that a
+   gradient does not change when the record is doubled.
+3. **Mesh convergence.** Refine the mesh and report how far your number moves,
+   not only the finest answer. [Convergence Study](/rfx/guide/tutorial-convergence/)
+   walks through one.
+4. **Physical sanity.** A passive structure has `|S| ≤ 1`. A reciprocal one
+   has `S21 = S12`. A lossless one conserves power, `|S11|² + |S21|² = 1` or
+   `R + T = 1`. A breach means the extraction or the setup is wrong, not that
+   the device is active.
+5. **An independent reference.** Compare with a closed form where one exists,
+   otherwise with another solver or a measurement of your structure.
+6. **Stay inside the support boundaries.** Use the calculator that matches
+   your port family, within its stated limits. See
+   [Support Boundaries](/rfx/api/support-boundaries/).
+
+## Example: a cavity against its closed form
+
+A closed PEC box has an exact resonance, so it shows two of the checks above
+in a few seconds. The TM110 mode of an `a × b × d` box with `d` the shortest
+side resonates at `f = (c/2)·√((1/a)² + (1/b)²)`:
+
+```python
+import numpy as np
+from rfx import Simulation, GaussianPulse
+
+C0 = 299_792_458.0
+a, b, d = 0.024, 0.020, 0.010              # box size in metres
+f_exact = C0 / 2 * np.hypot(1 / a, 1 / b)  # TM110, about 9.756 GHz
+
+
+def tm110(dx):
+    sim = Simulation(freq_max=15e9, domain=(a, b, d), dx=dx, boundary="pec")
+    sim.add_source((0.30 * a, 0.35 * b, d / 2), "ez",
+                   waveform=GaussianPulse(f0=f_exact, bandwidth=0.8),
+                   amplitude_kind="current")
+    sim.add_probe((0.65 * a, 0.60 * b, d / 2), "ez")
+    # The same physical record length on every mesh.
+    result = sim.run(n_steps=round(3000 * 2e-3 / dx))
+    modes = result.find_resonances(freq_range=(0.8 * f_exact, 1.2 * f_exact))
+    return min(modes, key=lambda m: abs(m.freq - f_exact)).freq
+
+
+for dx in (2e-3, 1e-3, 0.5e-3):
+    f = tm110(dx)
+    print(f"dx = {dx * 1e3:.1f} mm: {f / 1e9:.4f} GHz, "
+          f"error {100 * (f / f_exact - 1):+.3f} %")
+```
+
+On a CPU this prints errors of about −0.13 %, −0.03 % and −0.01 %. Each
+halving of the cell cuts the error by about four, the second-order convergence
+the Yee scheme should show. Your own study works the same way. Pick one number
+you care about, refine the mesh, and check that the number settles toward a
+limit.
+
+The box is lossless, so its physical Q is infinite. The frequency is the
+result here; a Q from this record would only measure the record length. A
+closed box never rings down, so the run uses a fixed `n_steps` rather than
+`until_decay`.
+
+## Starting resolutions for port results
+
+Port results need finer meshes than field pictures. These are measured
+starting points for a convergence study. They are not a substitute for one.
+
+| Port family | Start from | What the coarser mesh costs |
+|---|---|---|
+| Lumped or wire port, one-port `S11` | about 60 cells per wavelength at the highest frequency | at 60 cells/λ, `\|S11\|` of resistive loads is within 0.54 dB of the closed form (shorts and opens exact); at 30 cells/λ magnitudes are within 1.1 dB and phase-crossing frequencies sit 1.7–2.9 % from the closed form (measured through `forward(port_s11_freqs=...)`) |
+| Microstrip line, `compute_msl_s_matrix` | at least 4 cells through the substrate (preflight warns below that) | the substrate thickness sets the cell size, not the wavelength |
+| Coaxial line | at least 4 cells across the annulus | refining shortens the probe span the phase fit uses, so give the probe array enough physical length |
+
+The microstrip evidence behind that row: on an open-stub notch filter
+(600 µm trace, 254 µm substrate with εr 3.66, 12 mm stub) the notch frequency
+converges to within 0.036 % of the openEMS tutorial result on a uniform mesh
+with 6 cells through the substrate, and to within 0.03 % on a band-graded mesh
+with 6 substrate cells. Coarser meshes are further off.
+
+## Where the evidence lives
+
+| Question | Page |
+|---|---|
+| Which cases compare rfx with another solver, and what do they show? | [Benchmarks](/rfx/guide/benchmarks/) |
+| Is this feature or combination supported? | [Support Boundaries](/rfx/api/support-boundaries/) |
+| Where do I start, and which calculators have narrower limits? | [Recommended Configuration](/rfx/validation/recommended-configuration/) |
+| How do I run a comparison script, and what do its exit codes mean? | [Cross-Solver Validation](/rfx/validation/cross-solver/) |
+| What is currently known to be wrong? | [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) on GitHub |
+
+## Limits
+
+- **An exported file is not evidence.** Touchstone files, plots, HDF5
+  snapshots and reports record what a run produced. Pair them with the checks
+  above before citing them.
+- **An optimizer's objective is a proxy.** A design that minimizes a
+  differentiable objective still needs its final RF result checked on its own,
+  with a converged forward run.
+- **A regression test is not an accuracy claim.** A test that pins a number
+  guards against change at its own mesh and band. It does not say the number
+  is right for yours.

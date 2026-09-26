@@ -127,8 +127,8 @@ A fixed `n_steps` makes the DFT aliasing depend on where the signal happens to
 be truncated. For dispersive or high-Q scatterers, use `until_decay=1e-5` or
 tighter. For simple lossless slabs `1e-3` is often sufficient.
 
-`until_decay` is not supported with `solver='adi'`; a `ValueError` is raised if
-you try.
+`until_decay` is not supported with `solver='adi'`; a `NotImplementedError` is
+raised before the first step if you try.
 
 ### (c) TFSF transverse-periodicity gotcha
 

@@ -1,33 +1,108 @@
 ---
 title: "Tutorial: Patch Antenna Design"
-description: "Setup and validation workflow for a rectangular microstrip patch antenna in rfx."
+description: "The workflow from a patch model that runs to a resonance, return loss and pattern you can report, and how to iterate the design with sweeps or gradients."
 sidebar:
   order: 30
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+[Your First Patch Antenna](/rfx/guide/first-patch/) builds a patch model that
+passes preflight and runs. This page is the roadmap from there to numbers you
+can report (resonance, return loss, radiation pattern) and then to design
+iteration. Each step links to the page that covers it in detail.
 
-The patch workflow starts with the model that passes preflight in
-[Your First Patch Antenna](/rfx/guide/first-patch/).
+## The workflow
 
-<Aside type="note" title="Public scope">
-  Passing preflight or a short run does not validate resonance, return loss, Q,
-  or radiation.
-</Aside>
-
-## Recommended workflow
-
-| Stage | Goal | Primary page / script |
+| Step | Goal | Where |
 |---|---|---|
-| 1. Setup check | Size the patch, resolve preflight, and verify finite data from a short run | [Your First Patch Antenna](/rfx/guide/first-patch/) |
-| 2. Radiation / reporting | Move to far-field reporting after the resonance setup is stable | [Far-Field & RCS](/rfx/guide/farfield-rcs/) |
+| 1. Model | size the patch, grade the z mesh, declare foils as sheets, clear preflight | [Your First Patch Antenna](/rfx/guide/first-patch/) |
+| 2. Resonance | run until the ring-down settles, extract modes, identify the radiating one | [Probes and S-Parameters](/rfx/guide/probes-sparams/) |
+| 3. Return loss | replace the soft source with a port and compute S11 | [Sources and Ports](/rfx/guide/sources-ports/) |
+| 4. Radiation | add an NTFF box and compute pattern and directivity | [Far-Field and RCS](/rfx/guide/farfield-rcs/) |
+| 5. Convergence | refine the mesh and report how much each number moves | [Convergence Study](/rfx/guide/tutorial-convergence/) |
+| 6. Design iteration | sweep or optimize the dimensions and substrate | [Parametric Sweeps](/rfx/guide/parametric-sweeps/), [Inverse Design](/rfx/guide/inverse-design/) |
 
-## Baseline geometry
+`examples/tutorials/patch_antenna_demo.py` runs steps 1, 2 and 4 end to end on
+the openEMS "Simple Patch Antenna" geometry, including far-field mode
+identification. [Benchmarks](/rfx/guide/benchmarks/) shows how rfx's patch
+cases compare with openEMS.
 
-Place the ground plane as a finite conductor inside the domain, not as a full-domain PEC boundary wall. For foil that is a sheet — `add_thin_conductor()` or a zero-thickness `Box` — and a `Box` with real thickness only when the metal really is that thick ([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)). A finite ground plane radiates into the absorber beneath it, which is the open-radiation problem being modelled; a PEC bottom wall turns the structure into a closed cavity and shifts the resonance high.
+## Modelling rules
 
-## Interpretation rules
+- **Finite ground, open domain.** Draw the ground plane as a conductor inside an
+  all-CPML domain. A PEC boundary wall is infinite and closes the structure into
+  a cavity, which moves the resonance.
+- **Foil is a sheet.** Declare copper foil (ground and patch) with
+  `add_thin_conductor()` on a zero-thickness `Box`. Use a thick `Box` of metal
+  only when the metal really is that thick. See
+  [Materials and Geometry](/rfx/guide/materials-geometry/).
+- **Resolve the substrate.** A thin substrate needs several cells through its
+  thickness. Use a graded `dz_profile` rather than refining the whole domain,
+  and put the substrate faces on cell boundaries. If you build the profile with
+  `smooth_grading`, derive every z coordinate from the final profile: smoothing
+  inserts transition cells that move the fine band. See
+  [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/).
+- **Keep the drawn size.** Preflight warns when patch edges fall between grid
+  planes. Refine the mesh rather than rounding L and W to the grid, because
+  rounding changes the antenna.
 
-- Patch accuracy sits in the `gate_paths` of `validation/crossval/manifest.json` — `tests/locks/test_patch_edgefed_resonance_harminv.py`, `tests/locks/test_patch_edgefed_s11_passivity.py`, `tests/oracle/test_patch_cavity_eps_oracle.py`, `tests/crossval/test_patch_canonical_farfield_e4.py`.
-- Use impedance-referenced S-parameter results only through a documented port workflow — see [Sources & Ports](/rfx/guide/sources-ports/) for `add_port`.
-- Treat non-uniform mesh variants as limited support unless the page you are following says otherwise.
+## Resonance
+
+A patch rings down slowly, so run for many periods and check
+`result.settling_db` against a -40 dB bar before you quote a frequency. With a
+soft current source feeding the patch, `run(until_decay=...)` may never stop:
+the source leaves a static charge between patch and ground that neither
+radiates nor decays. Use a fixed `num_periods` and read the settling level
+instead.
+
+`result.find_resonances(freq_range=...)` returns several modes. A rectangular
+patch has at least two low-order modes (one along each side). Identify the
+radiating design mode by its far field: a broadside beam and the peak of the
+radiated power. Don't pick it by amplitude, or by which mode is closest to the
+formula estimate. Both have picked the wrong mode on real patches.
+
+## Return loss
+
+A soft source has no impedance, so it cannot give S11. Feed the patch with a
+port instead:
+
+- a **wire port** (`add_port(..., extent=...)`) spanning the substrate, for a
+  probe feed;
+- a **microstrip port** (`add_msl_port`), for an edge or inset feed.
+
+For a lumped or wire port, use about 60 cells per wavelength at the highest
+frequency of interest for one-port S11. At that resolution the magnitude on
+resistive loads is within 0.54 dB of closed form. For a microstrip port,
+the substrate thickness sets the cell (at least 4 cells through it; preflight
+warns below that). See
+[Sources and Ports](/rfx/guide/sources-ports/) and the
+[S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).
+
+## Radiation
+
+Add a near-to-far-field box with `sim.add_ntff_box(...)` around the antenna,
+with each face about half a wavelength from the radiator where the domain
+allows. The face below the ground plane often cannot be that far; preflight
+tells you, and you should report it with the result. Evaluate the pattern at
+the radiating mode's frequency. See [Far-Field and RCS](/rfx/guide/farfield-rcs/).
+
+## Design iteration
+
+- **A few dimensions** (length, width, inset depth): sweep them with
+  `parametric_sweep` or a `ParameterSweep` grid. Each case is a full run, so
+  start coarse and refine the best region.
+- **Material or shape regions**: gradient optimization through `forward()` and
+  `optimize()`. Use an S11 objective from a port (`port_s11_freqs=`), check the
+  gradient first, and verify the final design with steps 2–5 on a converged
+  mesh. See [Inverse Design](/rfx/guide/inverse-design/).
+
+## Limits
+
+- **A short run, or a clean preflight, is not a result.** Resonance, S11, Q and
+  pattern all need a settled record and a mesh study.
+- **Coarse meshes shift the resonance, in either direction.** An under-resolved
+  substrate tends to read high and a staircased patch edge low, so the error on
+  a coarse mesh is not a fixed bias. Refine both and report the spread.
+- **Soft-source runs give no S11 and may never meet `until_decay`.** Use a port
+  for return loss and a fixed record length for ring-down.
+- **The wrong mode is easy to pick.** Confirm the radiating mode from the far
+  field.
