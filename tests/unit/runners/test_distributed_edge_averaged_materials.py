@@ -66,7 +66,8 @@ import time
 
 import jax
 
-if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[1] == "worker":
+if (__name__ == "__main__" and len(sys.argv) > 2 and sys.argv[1] == "worker"
+        and sys.argv[2] != "reference"):
     jax.distributed.initialize(sys.argv[2], 2, int(sys.argv[3]),
                                initialization_timeout=30)
 
@@ -94,6 +95,15 @@ ROOT = SCRIPT.parents[3]
 # Pre-declared gates.
 ROUNDING = 16 * 2.0 ** -23     # 1.9e-6 of the probe peak
 FLOOR_FACTOR = 4               # times the same box's agreement without the material
+#: A conductor -- the 10 ohm/sq sheet, a PEC volume -- makes the lanes' own
+#: arithmetic differ more than vacuum does, whichever rule both lanes apply.
+#: Measured with BOTH lanes on the cell-owned rule, then both on the edge
+#: mean, as a multiple of the vacuum box's agreement: the sheet on JAX 0.4.33
+#: 3.6x / 6.0x (0 / 0 on 0.6.2 and 0.10.2, bitwise), the PEC volume on its
+#: dielectric slab on 0.6.2 3.5x / 6.9x. The restored defect reads 1.9e-1
+#: and 1.1e-2 of the record peak on these two models.
+CONDUCTOR_FLOOR_FACTOR = 16
+CONDUCTOR_CASES = ("sheet", "pec_on_slab")
 GRAD_RTOL = 1e-5               # of the single-device gradient's peak
 MUTATION_MARGIN = 100          # a restored defect must exceed the gate this many times
 CI_JAX = "0.6.2"               # the required fast-suite lane's JAX (Python 3.10)
@@ -213,12 +223,13 @@ def _parity(boundary, lane, case, n_dev):
     return got, _floor(boundary, lane, FLOOR_CASE.get(case, "vacuum"), n_dev)
 
 
-def _gate(floor):
-    return [max(FLOOR_FACTOR * f, ROUNDING) for f in floor]
+def _gate(floor, case=None):
+    factor = CONDUCTOR_FLOOR_FACTOR if case in CONDUCTOR_CASES else FLOOR_FACTOR
+    return [max(factor * f, ROUNDING) for f in floor]
 
 
 def _check(label, got, floor):
-    gate = _gate(floor)
+    gate = _gate(floor, label.split("/")[1])
     print(f"[{label}] agreement {['%.2e' % g for g in got]} vs gate "
           f"{['%.2e' % g for g in gate]} (floor {['%.2e' % f for f in floor]})")
     assert all(g <= t for g, t in zip(got, gate)), (label, got, gate)
@@ -443,7 +454,7 @@ def test_mutation_the_cell_owned_coefficient_sends_every_material_case_red(monke
         for case in cases:
             for lane in ("run", "fwd"):
                 got, floor = _parity(boundary, lane, case, 2)
-                gate = _gate(floor)
+                gate = _gate(floor, case)
                 print(f"[mutation cell {boundary}/{case}/{lane}] {['%.2e' % g for g in got]}")
                 assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, (case, got, gate)
 
@@ -656,12 +667,14 @@ def test_a_dielectric_model_gives_the_plain_bits_in_every_trace_context(lane):
     for name, context in contexts.items():
         worst[name] = max(_peak_ulp(o, p) for o, p in zip(context(), plain))
     print(f"[cross-trace/{lane}] ULP of each peak, JAX {jax.__version__}: {worst}")
-    # Binding on the CI build's JAX, as the PI scoped the rule (2026-09-23);
-    # measured and reported elsewhere. There it is bitwise on main and here.
-    # On JAX 0.10.2 (Mac) this model reads 10 ULP under vjp/vmap, main 10.4,
-    # and main's VACUUM box 31: a compiler effect, not this lane's rule.
+    # Binding on the CI build's JAX, as the PI scoped the rule (2026-09-23):
+    # <= 9 ULP. There (arm64 0.6.2) the run lane is bitwise, main too, and
+    # the forward lane reads 4 ULP under jvp/vjp/value_and_grad -- main the
+    # same 4, and main's VACUUM box 13. Measured, not gated, elsewhere: on
+    # 0.10.2 (Mac) the run lane reads 10 ULP under vjp/vmap, main 10.4, main's
+    # vacuum 31. Compiler effects, not this lane's material rule.
     if jax.__version__ == CI_JAX:
-        assert all(v == 0 for v in worst.values()), worst
+        assert all(v <= 9 for v in worst.values()), worst
 
 
 # --------------------------------------------------------------------------
@@ -702,6 +715,10 @@ def _worker(address, rank, output):
 def test_two_processes_give_the_one_process_records(tmp_path):
     if sys.platform != "linux":
         pytest.skip("requires Linux: jax.distributed gRPC bind fails on macOS")
+    if tuple(int(v) for v in jax.__version__.split(".")[:2]) < (0, 5):
+        pytest.skip("JAX 0.4.x: 'Multiprocess computations aren't implemented on "
+                    "the CPU backend' (test_distributed_multihost.py's two-process "
+                    "test fails the same way there)")
     env = {**os.environ, "JAX_PLATFORMS": "cpu", "OMP_NUM_THREADS": "1",
            "PYTHONPATH": str(ROOT)}
     env = {k: v for k, v in env.items() if not k.lower().endswith("_proxy")}
