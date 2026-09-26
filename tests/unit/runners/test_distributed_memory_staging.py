@@ -140,13 +140,15 @@ def _measure(case, multi_process):
             # cannot look like retained full-domain multi-pole setup copies.
             for kind in _dispersion_kinds(case):
                 coeffs = bound[kind + "_coeffs_arg"]
-                for name, arr in zip(coeffs._fields, coeffs):
+                for name, field in zip(coeffs._fields, coeffs):
                     pad = float(1.0 / EPS_0) if kind == "lorentz" and name == "cc" else 0.0
-                    slabs = np.asarray(arr).reshape(len(devices), -1, nx_local, *grid.shape[1:])
-                    for row in (slabs[0, :, 0], slabs[-1, :, -1]):
-                        expected = np.full_like(row, pad)
-                        assert np.array_equal(row, expected), (kind, name, "physical ghost pad")
-                        assert row.tobytes() == expected.tobytes(), (kind, name, "ghost bits")
+                    # a per-E-component field (#1260) is an (x, y, z) tuple
+                    for arr in jax.tree_util.tree_leaves(field):
+                        slabs = np.asarray(arr).reshape(len(devices), -1, nx_local, *grid.shape[1:])
+                        for row in (slabs[0, :, 0], slabs[-1, :, -1]):
+                            expected = np.full_like(row, pad)
+                            assert np.array_equal(row, expected), (kind, name, "physical ghost pad")
+                            assert row.tobytes() == expected.tobytes(), (kind, name, "ghost bits")
                     ghost_checks.append(kind + "." + name)
             return result
 
@@ -278,7 +280,9 @@ def test_time_loop_holds_only_local_slabs(case, multi_process):
             assert np.prod(shape) <= 2, f"per-cell placeholder {name}: {shape}"
         for kind in kinds:
             extents = record["init_extents"][kind]
-            assert extents and max(extents) <= record["nx_local"], (
+            # + 1: the low ghost's backward neighbour, which the edge-mean
+            # coefficients read (#1260). One slab, never the domain.
+            assert extents and max(extents) <= record["nx_local"] + 1, (
                 f"whole-domain {kind} initialization: {extents}; nx_local={record['nx_local']}")
         assert len(record["ghost_checks"]) == (5 if "debye" in kinds else 0) + (6 if "lorentz" in kinds else 0)
         if case in ("volume", "mixed"):
@@ -424,7 +428,13 @@ def _direct_dispersion_slabs():
             coeffs, state = init(spec[0], materials, dt, mask=spec[1])
             expected = (split_coeffs(coeffs, n, 1), split_state(state, n, 1))
             for got_tuple, want_tuple in zip(got, expected):
-                for name, arr, stacked in zip(got_tuple._fields, got_tuple, want_tuple):
+                # ca/cb/cc/beta (Lorentz: ca/cb/cc/c) are per-E-component
+                # (x, y, z) tuples since #1260: compare leaf by leaf.
+                got_leaves = jax.tree_util.tree_flatten_with_path(got_tuple)[0]
+                want_leaves = jax.tree_util.tree_leaves(want_tuple)
+                assert len(got_leaves) == len(want_leaves)
+                for (path, arr), stacked in zip(got_leaves, want_leaves):
+                    name = jax.tree_util.keystr(path)
                     merged = stacked.reshape((stacked.shape[0] * stacked.shape[1],) + stacked.shape[2:])
                     want = jax.device_put(merged, shd)
                     assert arr.shape == want.shape and arr.dtype == want.dtype == jnp.float32
@@ -479,14 +489,19 @@ def _addressable_dispersion_slabs():
         common.stage_dispersion_slabs(
             materials, np.float64(1e-12), ([DebyePole(1., 1e-11)], [mask]),
             ([lorentz_pole(1., 2 * np.pi * 3e9, 1e9)], [mask]), 2, 4, 1, local_only)
-    assert len(reads) == 2 and len(constructions) == 11
+    # 13 Debye + 14 Lorentz coefficient arrays (per-component tuples, #1260).
+    assert len(reads) == 2 and len(constructions) == 27
     for read in reads:
-        assert np.array_equal(read, np.asarray(values[3:8]))
+        # rank 1's slab (cells 3..7 incl. its low ghost) plus cell 2: the edge
+        # mean (#1260) of the ghost reads its backward neighbour.
+        assert np.array_equal(read, np.asarray(values[2:8]))
     print("ADDRESSABLE_DISPERSION_OK")
 
 
 @pytest.mark.parametrize("mode,marker", [
-    ("direct_dispersion", "DISPERSION_SLABS_OK 720"),
+    # 36 coefficient/state arrays x (2 + 3 + 4) devices x 2 pads x 2 pole
+    # counts; 20 arrays (720) before the per-component tuples of #1260.
+    ("direct_dispersion", "DISPERSION_SLABS_OK 1296"),
     ("addressable_dispersion", "ADDRESSABLE_DISPERSION_OK"),
 ])
 def test_dispersion_slabs_in_subprocess(mode, marker):

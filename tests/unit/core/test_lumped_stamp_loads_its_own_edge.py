@@ -180,26 +180,11 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
                                    err_msg=comp)
 
 
-def test_a_dispersive_lane_says_it_loads_all_three_edges():
-    """Debye/Lorentz coefficients are one per cell for all three components
-    (cell-owned), over the whole grid once any dispersive material is present
-    (#1260). With a lumped record present that lane still puts every element
-    on all three edges at its node; it must say so, not do it silently."""
-    from rfx.materials.debye import DebyePole, init_debye
-    from rfx.core.yee import init_materials
-
-    mats = stamp_lumped_sigma(init_materials(SHAPE), CELL, 20.0, "ez")
-    with pytest.warns(UserWarning, match=r"#1260.*#1236"):
-        init_debye([DebyePole(delta_eps=1.0, tau=1e-11)], mats, DT)
-    from rfx.materials.lorentz import init_lorentz, lorentz_pole
-    with pytest.warns(UserWarning, match=r"#1260.*#1236"):
-        init_lorentz([lorentz_pole(delta_eps=1.0, omega_0=2e10, delta=1e9)],
-                     mats, DT)
-    import warnings
-    with warnings.catch_warnings():
-        warnings.simplefilter("error")
-        init_debye([DebyePole(delta_eps=1.0, tau=1e-11)],
-                   init_materials(SHAPE), DT)
+# The dispersive (Debye/Lorentz) coefficients are per component since #1260 and
+# load a stamp on its own edge only; they used to take the cell total for all
+# three components and warn. Pinned in
+# tests/unit/materials/test_dispersive_edge_average.py
+# (test_a_lumped_stamp_loads_only_its_own_edge_on_the_dispersive_lane).
 
 
 @pytest.mark.parametrize("component", COMPONENTS)

@@ -19,6 +19,20 @@ The E update becomes (including conductivity σ):
     Cb    = dt / γ
     Cc_p  = (1 - α_p) / γ
 
+Every quantity that depends on the material is built PER E COMPONENT (#1260):
+an E component lies on an edge shared by four cells, and its constitutive
+parameters are the tangential (arithmetic) mean over those cells -- ε_∞ and σ
+from :func:`rfx.core.yee.component_e_materials` (the #1210 rule, lumped
+stamps on their own component per #1236), and each pole's Δε_p as Δε_p times
+the fraction of the four cells that carry the pole. The four susceptibilities
+are in parallel along the edge exactly like the conductivities, and a pole
+has one τ_p wherever it is present, so the edge is itself a Debye medium
+with those averaged parameters. ``ca``/``cb``/``cc``/``beta`` are therefore
+3-tuples ``(x, y, z)``; ``alpha`` depends on τ_p only and stays one array
+per pole. Until #1260 all of them were one value per cell for all three
+components, so a dispersive material anywhere in a model put the whole grid
+back on the cell-owned rule.
+
 References:
     Taflove & Hagness, "Computational Electrodynamics", 3rd ed., Ch. 9
 """
@@ -31,6 +45,7 @@ import jax.numpy as jnp
 
 from rfx.core.yee import (
     EPS_0, FDTDState, MaterialArrays, _shift_bwd, ade_state_dtype,
+    component_e_materials, edge_mean_components,
 )
 
 
@@ -49,17 +64,55 @@ class DebyePole(NamedTuple):
 class DebyeCoeffs(NamedTuple):
     """Precomputed ADE update coefficients for all Debye poles.
 
-    ca : (nx, ny, nz) — E decay coefficient
-    cb : (nx, ny, nz) — curl(H) coupling coefficient
-    cc : (n_poles, nx, ny, nz) — P^n coupling into E update
-    alpha : (n_poles, nx, ny, nz) — P decay coefficient
-    beta : (n_poles, nx, ny, nz) — E coupling into P update
+    Per E component (#1260) -- each a 3-tuple ``(x, y, z)``:
+
+    ca : (nx, ny, nz) each — E decay coefficient
+    cb : (nx, ny, nz) each — curl(H) coupling coefficient
+    cc : (n_poles, nx, ny, nz) each — P^n coupling into E update
+    beta : (n_poles, nx, ny, nz) each — E coupling into P update
+
+    One array for all components:
+
+    alpha : (n_poles, nx, ny, nz) — P decay coefficient; depends on τ_p only,
+        and is the pole's value on every cell whose edges the pole reaches
+        (where an edge carries no pole its ``beta`` is 0 and its P stays 0).
     """
-    ca: jnp.ndarray
-    cb: jnp.ndarray
-    cc: jnp.ndarray      # (n_poles, nx, ny, nz)
+    ca: tuple
+    cb: tuple
+    cc: tuple            # 3 x (n_poles, nx, ny, nz)
     alpha: jnp.ndarray   # (n_poles, nx, ny, nz)
-    beta: jnp.ndarray    # (n_poles, nx, ny, nz)
+    beta: tuple          # 3 x (n_poles, nx, ny, nz)
+
+
+def per_component(field, name="coefficient"):
+    """``field`` as the ``(x, y, z)`` tuple the per-component update needs.
+
+    A bare grid array here is a coefficient built by the old cell-owned rule
+    (one value per cell for all three components, #1260) -- indexing it by
+    component would silently take a y-z plane and broadcast it, so it is
+    refused instead.
+    """
+    if isinstance(field, (tuple, list)) and len(field) == 3:
+        return field
+    raise TypeError(
+        f"dispersive {name} must be a per-E-component 3-tuple (x, y, z) "
+        f"built by init_debye / init_lorentz (#1260); got "
+        f"{type(field).__name__}")
+
+
+def pole_edge_fractions(mask, periodic=(False, False, False)):
+    """Per E component, the fraction of each edge's four cells that carry a
+    pole: ``edge_mean_components`` of the pole's cell mask (#1260). ``None``
+    (the pole everywhere) stays ``None``."""
+    if mask is None:
+        return None
+    m = jnp.asarray(mask, dtype=bool).astype(jnp.float32)
+    return edge_mean_components(m, periodic)
+
+
+def pole_reach(fractions):
+    """Cells at which ANY component's edge carries some of the pole."""
+    return (fractions[0] > 0) | (fractions[1] > 0) | (fractions[2] > 0)
 
 
 class DebyeState(NamedTuple):
@@ -80,6 +133,7 @@ def init_debye(
     mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
     *,
     field_dtype=None,
+    periodic=(False, False, False),
 ) -> tuple[DebyeCoeffs, DebyeState]:
     """Initialize Debye ADE coefficients and auxiliary state.
 
@@ -88,7 +142,8 @@ def init_debye(
     poles : list of DebyePole
         Debye relaxation poles.
     materials : MaterialArrays
-        Base material arrays (eps_r = ε_∞, sigma, mu_r).
+        Base material arrays (eps_r = ε_∞, sigma, mu_r) and the lumped-stamp
+        records (#1236).
     dt : float
         Timestep in seconds.
     mask : (nx, ny, nz) bool array or per-pole mask list, optional
@@ -102,22 +157,26 @@ def init_debye(
         the same float32 floor. This used to be a hard ``dtype=jnp.float32``
         pin, which made ``precision="float64"`` + any pole fail the
         ``lax.scan`` carry contract (issue #656).
+    periodic : per-axis flags
+        The run's periodic flags, as its non-dispersive update takes them: a
+        periodic axis wraps the edge average, any other replicates the
+        boundary cell (``rfx.core.yee._material_bwd_neighbour``).
 
     Returns
     -------
     coeffs : DebyeCoeffs
+        ``ca``/``cb``/``cc``/``beta`` per E component (see the class).
     state : DebyeState
+
+    The rule (#1260): per component, ε_∞ and σ are the edge mean of
+    :func:`rfx.core.yee.component_e_materials`, and each pole's Δε_p the edge
+    mean of the cells' Δε_p (``delta_eps`` times the fraction of the four
+    cells in the pole's mask). Homogeneous regions give the bit pattern the
+    one-per-cell rule gave: the four summands are equal and the fraction is
+    exactly 1.
     """
-    # #1236 / #1260: these coefficients are cell-owned (one per cell, all
-    # three components) over the whole grid; a lumped stamp in the total
-    # loads all three edges at its node.
-    from rfx.core.yee import warn_lumped_on_cell_owned_lane
-    warn_lumped_on_cell_owned_lane(materials, "Debye dispersion")
     shape = materials.eps_r.shape
     n_poles = len(poles)
-
-    eps_inf = materials.eps_r * EPS_0  # (nx, ny, nz)
-    sigma = materials.sigma
 
     if isinstance(mask, (list, tuple)):
         if len(mask) != n_poles:
@@ -129,59 +188,88 @@ def init_debye(
         shared_mask = None if mask is None else jnp.asarray(mask, dtype=bool)
         pole_masks = [shared_mask] * n_poles
 
+    # Per-component ε_∞ and σ: the #1210 edge mean, lumped stamps removed
+    # before it and added back to their own component (#1236).
+    eps_c, sig_c = component_e_materials(materials, periodic)
+
     # Per-pole coefficients
     alpha_list = []
-    beta_list = []
+    beta_lists = ([], [], [])
     for pole, pole_mask in zip(poles, pole_masks):
         tau = pole.tau
         de = pole.delta_eps
         a = (2.0 * tau - dt) / (2.0 * tau + dt)
         b = EPS_0 * de * dt / (2.0 * tau + dt)
 
-        if pole_mask is not None:
-            a_arr = jnp.where(pole_mask, a, 0.0)
-            b_arr = jnp.where(pole_mask, b, 0.0)
+        fractions = pole_edge_fractions(pole_mask, periodic)
+        if fractions is not None:
+            alpha_list.append(jnp.where(pole_reach(fractions), a, 0.0))
+            for c in range(3):
+                beta_lists[c].append(
+                    jnp.where(fractions[c] > 0, b * fractions[c], 0.0))
         else:
             # No dtype pin — see the matching note in
             # ``rfx.materials.lorentz.init_lorentz`` (issue #656): ``a``/``b``
             # are numpy scalars (``dt`` is ``grid.dt``, an np.float64), so
-            # this now matches the masked branch above instead of capping the
+            # this matches the masked branch above instead of capping the
             # ADE coefficients at float32 under ``precision="float64"``.
             # With x64 off JAX clamps to float32: default lane unchanged.
-            a_arr = jnp.full(shape, a)
+            alpha_list.append(jnp.full(shape, a))
             b_arr = jnp.full(shape, b)
-
-        alpha_list.append(a_arr)
-        beta_list.append(b_arr)
+            for c in range(3):
+                beta_lists[c].append(b_arr)
 
     alpha = jnp.stack(alpha_list)  # (n_poles, nx, ny, nz)
-    beta = jnp.stack(beta_list)
+    beta = tuple(jnp.stack(bl) for bl in beta_lists)
 
-    # Sum of beta across poles
-    beta_sum = jnp.sum(beta, axis=0)  # (nx, ny, nz)
+    ca, cb, cc = [], [], []
+    for c in range(3):
+        eps_inf = eps_c[c] * EPS_0
+        sigma = sig_c[c]
+        # Sum of beta across poles
+        beta_sum = jnp.sum(beta[c], axis=0)
+        # Modified update coefficients
+        gamma = eps_inf + beta_sum + sigma * dt / 2.0
+        # Guard against zero (vacuum cells with no Debye)
+        safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
+        ca.append((eps_inf - beta_sum - sigma * dt / 2.0) / safe_gamma)
+        cb.append(dt / safe_gamma)
+        # Cc for each pole: (1 - alpha_p) / gamma
+        cc.append(jnp.stack([(1.0 - alpha[p]) / safe_gamma
+                             for p in range(n_poles)]))
 
-    # Modified update coefficients
-    gamma = eps_inf + beta_sum + sigma * dt / 2.0
-    # Guard against zero (vacuum cells with no Debye)
-    safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
-
-    ca = (eps_inf - beta_sum - sigma * dt / 2.0) / safe_gamma
-    cb = dt / safe_gamma
-
-    # Cc for each pole: (1 - alpha_p) / gamma
-    cc_list = []
-    for p in range(n_poles):
-        cc_p = (1.0 - alpha[p]) / safe_gamma
-        cc_list.append(cc_p)
-    cc = jnp.stack(cc_list)  # (n_poles, nx, ny, nz)
-
-    coeffs = DebyeCoeffs(ca=ca, cb=cb, cc=cc, alpha=alpha, beta=beta)
+    coeffs = DebyeCoeffs(ca=tuple(ca), cb=tuple(cb), cc=tuple(cc),
+                         alpha=alpha, beta=beta)
 
     # Zero-initialized polarization state
     p_zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = DebyeState(px=p_zeros, py=p_zeros.copy(), pz=p_zeros.copy())
 
     return coeffs, state
+
+
+def debye_e_component(coeffs: DebyeCoeffs, c: int, e_old, curl, p,
+                      fdtype=None, pdtype=None):
+    """One E component's Debye step: ``(E^{n+1}, P^{n+1})`` for component
+    ``c`` (0, 1, 2) with its own coefficients (#1260).
+
+        E^{n+1} = Ca_c·E^n + Cb_c·curl + Σ_p Cc_{p,c}·P_p^n
+        P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n)
+
+    ``fdtype`` / ``pdtype``: the carry dtypes to narrow back to (#656);
+    ``None`` leaves the result as computed (the distributed slab bodies).
+    """
+    ca = per_component(coeffs.ca, "ca")[c]
+    cb = per_component(coeffs.cb, "cb")[c]
+    cc = per_component(coeffs.cc, "cc")[c]
+    beta = per_component(coeffs.beta, "beta")[c]
+    e_new = ca * e_old + cb * curl + jnp.sum(cc * p, axis=0)
+    if fdtype is not None:
+        e_new = e_new.astype(fdtype)
+    p_new = coeffs.alpha * p + beta * (e_new[None] + e_old[None])
+    if pdtype is not None:
+        p_new = p_new.astype(pdtype)
+    return e_new, p_new
 
 
 def update_e_debye(
@@ -219,32 +307,20 @@ def update_e_debye(
     _pdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
 
     hx, hy, hz = state.hx, state.hy, state.hz
-    ca, cb, cc = coeffs.ca, coeffs.cb, coeffs.cc
-    alpha, beta = coeffs.alpha, coeffs.beta
 
     # curl(H) via backward differences
     curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
     curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
     curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
 
-    # Save old E for P update
-    ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
-
-    # E^{n+1} = Ca·E^n + Cb·curl(H) + Σ_p Cc_p·P_p^n
-    ex_new = (ca * ex_old + cb * curl_x
-              + jnp.sum(cc * debye_state.px, axis=0)).astype(_fdtype)
-    ey_new = (ca * ey_old + cb * curl_y
-              + jnp.sum(cc * debye_state.py, axis=0)).astype(_fdtype)
-    ez_new = (ca * ez_old + cb * curl_z
-              + jnp.sum(cc * debye_state.pz, axis=0)).astype(_fdtype)
-
-    # P_p^{n+1} = α_p·P_p^n + β_p·(E^{n+1} + E^n)
-    px_new = (alpha * debye_state.px
-              + beta * (ex_new[None] + ex_old[None])).astype(_pdtype)
-    py_new = (alpha * debye_state.py
-              + beta * (ey_new[None] + ey_old[None])).astype(_pdtype)
-    pz_new = (alpha * debye_state.pz
-              + beta * (ez_new[None] + ez_old[None])).astype(_pdtype)
+    # E^{n+1} = Ca_c·E^n + Cb_c·curl(H) + Σ_p Cc_{p,c}·P_p^n, then
+    # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component (#1260)
+    ex_new, px_new = debye_e_component(coeffs, 0, state.ex, curl_x,
+                                       debye_state.px, _fdtype, _pdtype)
+    ey_new, py_new = debye_e_component(coeffs, 1, state.ey, curl_y,
+                                       debye_state.py, _fdtype, _pdtype)
+    ez_new, pz_new = debye_e_component(coeffs, 2, state.ez, curl_z,
+                                       debye_state.pz, _fdtype, _pdtype)
 
     new_fdtd = state._replace(
         ex=ex_new, ey=ey_new, ez=ez_new,

@@ -602,7 +602,9 @@ def compute_waveguide_s_matrix(
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
-    _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)
+    _, debye, lorentz = self._init_dispersion(
+        materials, grid.dt, debye_spec, lorentz_spec,
+        periodic=self._periodic_flags())
 
     # Build configs — may be a single config or a list of configs per port
     has_multimode = any(entry.n_modes > 1 for entry in entries)

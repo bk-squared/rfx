@@ -349,7 +349,7 @@
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "edge_averaged_materials.mean4",
+      "function": "edge_mean_components.mean4",
       "kind": "neighbour"
     },
     {

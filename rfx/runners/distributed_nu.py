@@ -54,6 +54,7 @@ from rfx.core.yee import (
     EPS_0,
     _shift_fwd,
     _shift_bwd,
+    map_lumped,
 )
 from rfx.core.jax_utils import is_tracer  # noqa: F401  (Phase 2C reuse target)
 # ``realized_pec_edge_masks`` moved out with the hard-mask kernel in #1053
@@ -1070,14 +1071,49 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
         NamedSharding(mesh, P("x")),
     )
     init = init_debye if kind == "debye" else init_lorentz
+    n_dev = sharded_grid.n_devices
 
     def local(mat, mask, real):
+        # The coefficients are edge means over each edge's cells (#1260), so
+        # every cell of the slab needs its backward x neighbour as the whole
+        # domain has it. The low interior ghost's neighbour is one cell
+        # further left: fetch it from the left rank (its second-to-last real
+        # cell). At the physical low face the single-device build replicates
+        # the boundary cell; here the ghost holds padding, so an invalid cell
+        # takes its right neighbour's value before ``init``. Coefficients are
+        # then equal to the whole-domain build sliced, bit for bit, on every
+        # real cell and interior ghost; physical ghosts and alignment pads get
+        # the legacy pad values below.
+        def extend(arr):
+            back = lax.ppermute(arr[-3:-2], "x",
+                                [(i, i + 1) for i in range(n_dev - 1)])
+            return jnp.concatenate([back, arr], axis=0)
+
+        real_ext = extend(real)
+
+        def face(arr):
+            arr = extend(arr)
+            nxt = jnp.concatenate([arr[1:], arr[-1:]], axis=0)
+            return jnp.where(real_ext, arr, nxt)
+
+        mat = mat._replace(
+            eps_r=face(mat.eps_r), sigma=face(mat.sigma),
+            mu_r=extend(mat.mu_r),
+            sigma_lumped=map_lumped(getattr(mat, "sigma_lumped", None), face),
+            eps_r_lumped=map_lumped(getattr(mat, "eps_r_lumped", None), face))
+        mask = jax.tree.map(face, mask)
         coeffs, state = init(poles, mat, dt, mask=mask)
+        state = jax.tree.map(lambda arr: arr[:, 1:], state)
+
         # Vacuum material padding keeps both branches finite for autodiff.
+        def pad(name, arr):
+            arr = arr[1:] if arr.ndim == 3 else arr[:, 1:]
+            return jnp.where(real, arr, float(1.0 / EPS_0)
+                             if kind == "lorentz" and name == "cc" else 0.0)
+
         coeffs = type(coeffs)(*(
-            jnp.where(real, arr, float(1.0 / EPS_0)
-                      if kind == "lorentz" and name == "cc" else 0.0)
-            for name, arr in zip(coeffs._fields, coeffs)
+            jax.tree.map(lambda arr, _n=name: pad(_n, arr), field)
+            for name, field in zip(coeffs._fields, coeffs)
         ))
         return coeffs, state
 
@@ -1122,13 +1158,14 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
     if pad_x > 0:
         pad3 = ((0, pad_x), (0, 0), (0, 0))
         pad4 = ((0, 0), (0, pad_x), (0, 0), (0, 0))
-        ca = jnp.pad(debye_coeffs.ca, pad3, constant_values=0.0)
-        cb = jnp.pad(debye_coeffs.cb, pad3, constant_values=0.0)
-        cc = jnp.pad(debye_coeffs.cc, pad4, constant_values=0.0)
-        alpha = jnp.pad(debye_coeffs.alpha, pad4, constant_values=0.0)
-        beta = jnp.pad(debye_coeffs.beta, pad4, constant_values=0.0)
-        debye_coeffs_padded = DebyeCoeffs(ca=ca, cb=cb, cc=cc,
-                                          alpha=alpha, beta=beta)
+
+        def _pad(arr):
+            # A per-E-component field (#1260) is a tuple of such arrays.
+            return jnp.pad(arr, pad3 if arr.ndim == 3 else pad4,
+                           constant_values=0.0)
+
+        debye_coeffs_padded = DebyeCoeffs(*(
+            jax.tree.map(_pad, field) for field in debye_coeffs))
     else:
         debye_coeffs_padded = debye_coeffs
 
@@ -1148,11 +1185,11 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
         return shard_stacked_poles(arr, shd)
 
     return DebyeCoeffs(
-        ca=_shard_3d(coeffs_slabs.ca),
-        cb=_shard_3d(coeffs_slabs.cb),
-        cc=_shard_4d(coeffs_slabs.cc),
-        alpha=_shard_4d(coeffs_slabs.alpha),
-        beta=_shard_4d(coeffs_slabs.beta),
+        ca=jax.tree.map(_shard_3d, coeffs_slabs.ca),
+        cb=jax.tree.map(_shard_3d, coeffs_slabs.cb),
+        cc=jax.tree.map(_shard_4d, coeffs_slabs.cc),
+        alpha=jax.tree.map(_shard_4d, coeffs_slabs.alpha),
+        beta=jax.tree.map(_shard_4d, coeffs_slabs.beta),
     )
 
 
@@ -1226,14 +1263,20 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
         # pad with the vacuum 1/EPS_0 so `gamma_base = 1/cc` is finite in
         # the mixed Debye+Lorentz path (avoids 0*inf = NaN leaking into
         # backward gradients at the x-boundary).
+        def _pad3(value):
+            return lambda arr: jnp.pad(arr, pad3, constant_values=value)
+
+        def _pad4(arr):
+            return jnp.pad(arr, pad4, constant_values=0.0)
+
+        # Per-E-component fields (#1260) are tuples: pad every leaf.
         lorentz_coeffs_padded = LorentzCoeffs(
-            ca=jnp.pad(lorentz_coeffs.ca, pad3, constant_values=0.0),
-            cb=jnp.pad(lorentz_coeffs.cb, pad3, constant_values=0.0),
-            cc=jnp.pad(lorentz_coeffs.cc, pad3,
-                       constant_values=float(1.0 / EPS_0)),
-            a=jnp.pad(lorentz_coeffs.a, pad4, constant_values=0.0),
-            b=jnp.pad(lorentz_coeffs.b, pad4, constant_values=0.0),
-            c=jnp.pad(lorentz_coeffs.c, pad4, constant_values=0.0),
+            ca=jax.tree.map(_pad3(0.0), lorentz_coeffs.ca),
+            cb=jax.tree.map(_pad3(0.0), lorentz_coeffs.cb),
+            cc=jax.tree.map(_pad3(float(1.0 / EPS_0)), lorentz_coeffs.cc),
+            a=_pad4(lorentz_coeffs.a),
+            b=_pad4(lorentz_coeffs.b),
+            c=jax.tree.map(_pad4, lorentz_coeffs.c),
         )
     else:
         lorentz_coeffs_padded = lorentz_coeffs
@@ -1251,12 +1294,12 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
         return shard_stacked_poles(arr, shd)
 
     return LorentzCoeffs(
-        ca=_shard_3d(coeffs_slabs.ca),
-        cb=_shard_3d(coeffs_slabs.cb),
-        cc=_shard_3d(coeffs_slabs.cc),
+        ca=jax.tree.map(_shard_3d, coeffs_slabs.ca),
+        cb=jax.tree.map(_shard_3d, coeffs_slabs.cb),
+        cc=jax.tree.map(_shard_3d, coeffs_slabs.cc),
         a=_shard_4d(coeffs_slabs.a),
         b=_shard_4d(coeffs_slabs.b),
-        c=_shard_4d(coeffs_slabs.c),
+        c=jax.tree.map(_shard_4d, coeffs_slabs.c),
     )
 
 

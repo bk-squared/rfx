@@ -94,17 +94,20 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # node) and #1257 (a graded mesh with a dispersive material leaves a port
 # unterminated) joined on 2026-09-24 with the dispersive-lane entry of #1236;
 # both OPEN, checked with `gh issue view <N> --json number,state`.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1257, 1260})
+# Both left on 2026-09-25 with that entry: #1260's fix builds the Debye/Lorentz
+# coefficients per E component from the edge mean, lumped stamps on their own
+# component (tests/unit/materials/test_dispersive_edge_average.py), and #1257
+# was already CLOSED (PR #1283, tests/unit/nonuniform/test_dispersive_port_load_1257.py)
+# -- `gh issue view 1257 --json state` read CLOSED that day. With the entry gone
+# the page no longer names #1236 either.
+CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
 # allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1236})
-# #1236 is named in the dispersive-lane entry as the fix that put every lumped
-# element on its own edge on the non-dispersive lanes; the PR that adds the
-# entry closes it.
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186})
 # #1100 and #1122 join it together: the taper entry names both to record which
 # half was fixed and what was decided about the other, and both are closed.
 

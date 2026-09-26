@@ -772,7 +772,10 @@ def run_uniform(
     # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
-        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32,
+        # The run's flags after the TFSF override above (#1260: the edge
+        # mean wraps on a periodic axis, as the E update's does).
+        periodic=_simulation.resolve_periodic(grid, periodic))
 
     # NTFF box
     ntff_box = None

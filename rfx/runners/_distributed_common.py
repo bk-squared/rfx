@@ -42,8 +42,13 @@ from rfx.core.yee import (
     _shift_fwd,
     _shift_bwd,
 )
-from rfx.materials.debye import DebyeCoeffs, DebyeState, init_debye
-from rfx.materials.lorentz import LorentzCoeffs, LorentzState, init_lorentz
+from rfx.materials.debye import (
+    DebyeCoeffs, DebyeState, debye_e_component, init_debye, per_component,
+)
+from rfx.materials.lorentz import (
+    LorentzCoeffs, LorentzState, init_lorentz, lorentz_e_component,
+    lorentz_p_component, mixed_e_component_coeffs,
+)
 
 __all__ = [
     "cpml_coeff_e_vacuum",
@@ -207,8 +212,14 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
         # meshes where only this process's addressable devices are visited.
         # The lumped-stamp records (#1210) are None or, since #1236, a
         # per-component 3-tuple: slice each array they hold, keep the shape.
+        # One more cell below the slab when the domain has it: the edge mean
+        # (#1260) of every slab cell, the low interior ghost included, reads
+        # its backward neighbour, so the coefficients equal the whole-domain
+        # build sliced. The extra cell is dropped again after ``init``.
+        ext = 1 if lo > 0 else 0
+
         def _local(arr):
-            return jax.device_put(arr[lo:hi], device)
+            return jax.device_put(arr[lo - ext:hi], device)
 
         local_materials = MaterialArrays(
             eps_r=_local(materials.eps_r), sigma=_local(materials.sigma),
@@ -221,7 +232,7 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
                 continue
             poles, masks = spec
             local_masks = jax.tree.map(
-                lambda mask: jax.device_put(mask[lo:hi], device), masks)
+                lambda mask: jax.device_put(mask[lo - ext:hi], device), masks)
             # Slice before changing the default device, so an uncommitted
             # whole-domain input cannot migrate just to execute its slice.
             with jax.default_device(device):
@@ -231,13 +242,20 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
 
                 def place(name, arr):
                     pad_value = float(1.0 / EPS_0) if init is init_lorentz and name == "cc" else 0.0
+                    arr = arr[ext:] if arr.ndim == 3 else arr[:, ext:]
                     if lo != want_lo or hi != want_hi:
                         widths = padding if arr.ndim == 3 else ((0, 0),) + padding
                         arr = jnp.pad(arr, widths, constant_values=pad_value)
                     return jax.device_put(arr, device)
 
-                placed = type(coeffs)(*(place(name, arr) for name, arr in
-                                       zip(coeffs._fields, coeffs)))
+                # A field is one array or, per E component since #1260, an
+                # (x, y, z) tuple of arrays: pad and place every leaf. The
+                # slab carries its low interior ghost (a real neighbour cell)
+                # and is clipped at a physical face, so the edge mean inside
+                # ``init`` is the whole-domain one on every real cell.
+                placed = type(coeffs)(*(
+                    jax.tree.map(lambda arr, _n=name: place(_n, arr), field)
+                    for name, field in zip(coeffs._fields, coeffs)))
                 # Finish the handoff before dropping slab temporaries and
                 # starting another slab; asynchronous dispatch must not pile
                 # up setup buffers on the source device.
@@ -252,11 +270,11 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
     def assemble(spec, slabs, state_type):
         if spec is None:
             return None
-        coeffs = type(slabs[0])(*(
-            jax.make_array_from_single_device_arrays(
+        coeffs = jax.tree.map(
+            lambda *parts: jax.make_array_from_single_device_arrays(
                 (n_devices * parts[0].shape[0],) + parts[0].shape[1:],
-                sharding, list(parts))
-            for parts in zip(*slabs)))
+                sharding, list(parts)),
+            *slabs)
         state_shape = (n_devices * len(spec[0]), nx_local, ny, nz)
         state = state_type(*(jnp.zeros(state_shape, dtype=ade_state_dtype(), device=sharding)
                              for _ in state_type._fields))
@@ -1345,27 +1363,26 @@ def _split_debye_coeffs(coeffs: DebyeCoeffs, n_devices, ghost=1):
 
     3-D arrays (nx, ny, nz) are split with ghost cells.
     4-D arrays (n_poles, nx, ny, nz) are split per-pole along x.
+    A per-E-component field (#1260) is a 3-tuple of such arrays; each is
+    split the same way.
     """
-    # ca, cb are (nx, ny, nz)
-    ca = split_array_x(coeffs.ca, n_devices, ghost, pad_value=0.0)
-    cb = split_array_x(coeffs.cb, n_devices, ghost, pad_value=0.0)
+    def _split3(arr):
+        return split_array_x(arr, n_devices, ghost, pad_value=0.0)
 
-    # cc, alpha, beta are (n_poles, nx, ny, nz) — split each pole along x
-    n_poles = coeffs.alpha.shape[0]
-    cc_slabs = jnp.stack([
-        split_array_x(coeffs.cc[p], n_devices, ghost, pad_value=0.0)
-        for p in range(n_poles)
-    ], axis=1)  # (n_devices, n_poles, nx_local, ny, nz)
-    alpha_slabs = jnp.stack([
-        split_array_x(coeffs.alpha[p], n_devices, ghost, pad_value=0.0)
-        for p in range(n_poles)
-    ], axis=1)
-    beta_slabs = jnp.stack([
-        split_array_x(coeffs.beta[p], n_devices, ghost, pad_value=0.0)
-        for p in range(n_poles)
-    ], axis=1)
+    def _split4(arr):
+        # (n_poles, nx, ny, nz) -> (n_devices, n_poles, nx_local, ny, nz)
+        return jnp.stack([
+            split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
+            for p in range(arr.shape[0])
+        ], axis=1)
 
-    return DebyeCoeffs(ca=ca, cb=cb, cc=cc_slabs, alpha=alpha_slabs, beta=beta_slabs)
+    return DebyeCoeffs(
+        ca=jax.tree.map(_split3, coeffs.ca),
+        cb=jax.tree.map(_split3, coeffs.cb),
+        cc=jax.tree.map(_split4, coeffs.cc),
+        alpha=jax.tree.map(_split4, coeffs.alpha),
+        beta=jax.tree.map(_split4, coeffs.beta),
+    )
 
 
 def _split_debye_state(state: DebyeState, n_devices, ghost=1):
@@ -1387,9 +1404,14 @@ def _split_debye_state(state: DebyeState, n_devices, ghost=1):
 
 
 def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1):
-    """Split LorentzCoeffs arrays along x into per-device slabs."""
-    ca = split_array_x(coeffs.ca, n_devices, ghost, pad_value=0.0)
-    cb = split_array_x(coeffs.cb, n_devices, ghost, pad_value=0.0)
+    """Split LorentzCoeffs arrays along x into per-device slabs (a
+    per-E-component field, #1260, split leaf by leaf)."""
+    ca = jax.tree.map(
+        lambda arr: split_array_x(arr, n_devices, ghost, pad_value=0.0),
+        coeffs.ca)
+    cb = jax.tree.map(
+        lambda arr: split_array_x(arr, n_devices, ghost, pad_value=0.0),
+        coeffs.cb)
     # cc = 1 / safe_gamma; the mixed Debye+Lorentz path computes
     # `gamma_base = 1 / cc`, so padding cc=0 at physical-boundary ghosts
     # yields gamma_base=inf and `numer_base = ca*gamma_base = 0*inf = NaN`.
@@ -1400,7 +1422,10 @@ def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1):
     # the vacuum cc value (1/EPS_0) so gamma_base=EPS_0 is finite at
     # ghosts; ca/alpha/beta stay padded with 0 so the ghost update is a
     # no-op forward.
-    cc = split_array_x(coeffs.cc, n_devices, ghost, pad_value=float(1.0 / EPS_0))
+    cc = jax.tree.map(
+        lambda arr: split_array_x(arr, n_devices, ghost,
+                                  pad_value=float(1.0 / EPS_0)),
+        coeffs.cc)
 
     n_poles = coeffs.a.shape[0]
 
@@ -1411,7 +1436,7 @@ def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1):
         ca=ca, cb=cb,
         a=_split_poles(coeffs.a),
         b=_split_poles(coeffs.b),
-        c=_split_poles(coeffs.c),
+        c=jax.tree.map(_split_poles, coeffs.c),
         cc=cc,
     )
 
@@ -1530,24 +1555,23 @@ def _update_e_local(state, materials, dt, dx):
 # ---------------------------------------------------------------------------
 
 def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx):
-    """E update with Debye ADE on a local slab (always non-periodic)."""
+    """E update with Debye ADE on a local slab (always non-periodic).
+
+    Per E component (#1260), the single-device body's arithmetic
+    (``rfx.materials.debye.debye_e_component``) without its dtype narrowing.
+    """
     hx, hy, hz = state.hx, state.hy, state.hz
-    ca, cb, cc = debye_coeffs.ca, debye_coeffs.cb, debye_coeffs.cc
-    alpha, beta = debye_coeffs.alpha, debye_coeffs.beta
 
     curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
     curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
     curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
 
-    ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
-
-    ex_new = ca * ex_old + cb * curl_x + jnp.sum(cc * debye_state.px, axis=0)
-    ey_new = ca * ey_old + cb * curl_y + jnp.sum(cc * debye_state.py, axis=0)
-    ez_new = ca * ez_old + cb * curl_z + jnp.sum(cc * debye_state.pz, axis=0)
-
-    px_new = alpha * debye_state.px + beta * (ex_new[None] + ex_old[None])
-    py_new = alpha * debye_state.py + beta * (ey_new[None] + ey_old[None])
-    pz_new = alpha * debye_state.pz + beta * (ez_new[None] + ez_old[None])
+    ex_new, px_new = debye_e_component(debye_coeffs, 0, state.ex, curl_x,
+                                       debye_state.px)
+    ey_new, py_new = debye_e_component(debye_coeffs, 1, state.ey, curl_y,
+                                       debye_state.py)
+    ez_new, pz_new = debye_e_component(debye_coeffs, 2, state.ez, curl_z,
+                                       debye_state.pz)
 
     new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
     new_debye = DebyeState(px=px_new, py=py_new, pz=pz_new)
@@ -1555,26 +1579,31 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx):
 
 
 def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx):
-    """E update with Lorentz/Drude ADE on a local slab (always non-periodic)."""
+    """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
+
+    Per E component (#1260), as ``rfx.materials.lorentz.update_e_lorentz``
+    without its dtype narrowing.
+    """
     hx, hy, hz = state.hx, state.hy, state.hz
-    ca, cb, cc = lorentz_coeffs.ca, lorentz_coeffs.cb, lorentz_coeffs.cc
-    a, b, c = lorentz_coeffs.a, lorentz_coeffs.b, lorentz_coeffs.c
 
     curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
     curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
     curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
 
-    px_new = a * lor_state.px + b * lor_state.px_prev + c * state.ex[None]
-    py_new = a * lor_state.py + b * lor_state.py_prev + c * state.ey[None]
-    pz_new = a * lor_state.pz + b * lor_state.pz_prev + c * state.ez[None]
+    px_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
+                                 lor_state.px_prev)
+    py_new = lorentz_p_component(lorentz_coeffs, 1, state.ey, lor_state.py,
+                                 lor_state.py_prev)
+    pz_new = lorentz_p_component(lorentz_coeffs, 2, state.ez, lor_state.pz,
+                                 lor_state.pz_prev)
 
     dpx = jnp.sum(px_new - lor_state.px, axis=0)
     dpy = jnp.sum(py_new - lor_state.py, axis=0)
     dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
 
-    ex_new = ca * state.ex + cb * curl_x - cc * dpx
-    ey_new = ca * state.ey + cb * curl_y - cc * dpy
-    ez_new = ca * state.ez + cb * curl_z - cc * dpz
+    ex_new = lorentz_e_component(lorentz_coeffs, 0, state.ex, curl_x, dpx)
+    ey_new = lorentz_e_component(lorentz_coeffs, 1, state.ey, curl_y, dpy)
+    ez_new = lorentz_e_component(lorentz_coeffs, 2, state.ez, curl_z, dpz)
 
     new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
     new_lor = LorentzState(
@@ -1605,7 +1634,13 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
             state, lorentz_coeffs, lorentz_state, dt, dx)
         return new_state, None, new_lorentz
 
-    # Mixed Debye + Lorentz
+    # Mixed Debye + Lorentz: the single-device combined coefficients
+    # (``mixed_e_component_coeffs``), per component (#1260). This body used to
+    # take ca/cb/cc from the Debye build and the Lorentz dP coefficient as
+    # 1/gamma_Lorentz; the combined update needs 1/gamma_total = 1/(gamma_Lorentz
+    # + sum beta) there, which differs on every edge that carries both a Debye
+    # and a Lorentz pole -- with the edge mean, every edge on a Debye|Lorentz
+    # interface.
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lorentz_state = lorentz
     hx, hy, hz = state.hx, state.hy, state.hz
@@ -1613,37 +1648,32 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
     curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
     curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
-    ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
+    e_old = (state.ex, state.ey, state.ez)
+    curls = (curl_x, curl_y, curl_z)
+    p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
+    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
+                lorentz_state.pz_prev)
+    p_d = (debye_state.px, debye_state.py, debye_state.pz)
 
-    px_l_new = (lorentz_coeffs.a * lorentz_state.px
-                + lorentz_coeffs.b * lorentz_state.px_prev
-                + lorentz_coeffs.c * ex_old[None])
-    py_l_new = (lorentz_coeffs.a * lorentz_state.py
-                + lorentz_coeffs.b * lorentz_state.py_prev
-                + lorentz_coeffs.c * ey_old[None])
-    pz_l_new = (lorentz_coeffs.a * lorentz_state.pz
-                + lorentz_coeffs.b * lorentz_state.pz_prev
-                + lorentz_coeffs.c * ez_old[None])
-    dpx_l = jnp.sum(px_l_new - lorentz_state.px, axis=0)
-    dpy_l = jnp.sum(py_l_new - lorentz_state.py, axis=0)
-    dpz_l = jnp.sum(pz_l_new - lorentz_state.pz, axis=0)
+    p_l_new = tuple(lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c],
+                                        p_l_prev[c]) for c in range(3))
+    e_new, p_d_new = [], []
+    for c in range(3):
+        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        ca, cb, cc_d, cc_l = mixed_e_component_coeffs(
+            debye_coeffs, lorentz_coeffs, c, dt)
+        e_c = (ca * e_old[c] + cb * curls[c]
+               + jnp.sum(cc_d * p_d[c], axis=0) - cc_l * dp_l)
+        e_new.append(e_c)
+        beta_c = per_component(debye_coeffs.beta, "beta")[c]
+        p_d_new.append(debye_coeffs.alpha * p_d[c]
+                       + beta_c * (e_c[None] + e_old[c][None]))
 
-    ca_d, cb_d, cc_d = debye_coeffs.ca, debye_coeffs.cb, debye_coeffs.cc
-    alpha_d, beta_d = debye_coeffs.alpha, debye_coeffs.beta
-    cc_l = lorentz_coeffs.cc
-
-    ex_new = ca_d * ex_old + cb_d * curl_x + jnp.sum(cc_d * debye_state.px, axis=0) - cc_l * dpx_l
-    ey_new = ca_d * ey_old + cb_d * curl_y + jnp.sum(cc_d * debye_state.py, axis=0) - cc_l * dpy_l
-    ez_new = ca_d * ez_old + cb_d * curl_z + jnp.sum(cc_d * debye_state.pz, axis=0) - cc_l * dpz_l
-
-    px_d_new = alpha_d * debye_state.px + beta_d * (ex_new[None] + ex_old[None])
-    py_d_new = alpha_d * debye_state.py + beta_d * (ey_new[None] + ey_old[None])
-    pz_d_new = alpha_d * debye_state.pz + beta_d * (ez_new[None] + ez_old[None])
-
-    new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new, step=state.step + 1)
-    new_debye_st = DebyeState(px=px_d_new, py=py_d_new, pz=pz_d_new)
+    new_fdtd = state._replace(ex=e_new[0], ey=e_new[1], ez=e_new[2],
+                              step=state.step + 1)
+    new_debye_st = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
     new_lor_st = LorentzState(
-        px=px_l_new, py=py_l_new, pz=pz_l_new,
+        px=p_l_new[0], py=p_l_new[1], pz=p_l_new[2],
         px_prev=lorentz_state.px, py_prev=lorentz_state.py, pz_prev=lorentz_state.pz,
     )
     return new_fdtd, new_debye_st, new_lor_st

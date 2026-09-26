@@ -20,6 +20,12 @@ domain-face boundary condition on the lane the ledger already has open defects
 on. That is a separate change with its own GPU witness.
 
 When someone does it, this test goes red and must be DELETED, not loosened.
+
+Not covered by this refusal: a model with a Debye or Lorentz pole. Its E update
+on these lanes is the dispersive slab body, whose coefficients are built per E
+component from the edge mean since #1260 (the staging reads each slab's
+backward neighbour and replicates the boundary cell at a physical face), so a
+dispersive distributed run agrees with the single-device one.
 """
 from __future__ import annotations
 

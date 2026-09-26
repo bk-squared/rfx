@@ -18,6 +18,13 @@ Discretized (central difference + Crank-Nicolson damping):
     b_p = -(1 - δΔt) / (1 + δΔt)
     c_p = ε₀ κ_p Δt² / (1 + δΔt)
 
+Per E component (#1260): ε_∞ and σ are the edge mean over the component's
+four incident cells (:func:`rfx.core.yee.component_e_materials`), and each
+pole's κ_p (∝ Δε_p) is κ_p times the fraction of those cells that carry the
+pole -- the same parallel-susceptibility rule as σ, see
+``rfx.materials.debye``. ``ca``/``cb``/``cc``/``c`` are 3-tuples ``(x, y,
+z)``; ``a`` and ``b`` depend on ω₀ and δ only and stay one array per pole.
+
 References:
     Taflove & Hagness, Ch. 9
 """
@@ -28,7 +35,10 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from rfx.core.yee import EPS_0, FDTDState, _shift_bwd, ade_state_dtype
+from rfx.core.yee import (
+    EPS_0, FDTDState, _shift_bwd, ade_state_dtype, component_e_materials,
+)
+from rfx.materials.debye import per_component, pole_edge_fractions, pole_reach
 
 
 class LorentzPole(NamedTuple):
@@ -77,16 +87,23 @@ def lorentz_pole(delta_eps: float, omega_0: float, delta: float) -> LorentzPole:
 class LorentzCoeffs(NamedTuple):
     """Precomputed ADE coefficients for Lorentz/Drude poles.
 
-    ca, cb : (nx, ny, nz) — E update coefficients
-    a, b, c : (n_poles, nx, ny, nz) — P recurrence coefficients
-    cc : (nx, ny, nz) — P→E coupling: 1/γ
+    Per E component (#1260) -- each a 3-tuple ``(x, y, z)``:
+
+    ca, cb : (nx, ny, nz) each — E update coefficients
+    cc : (nx, ny, nz) each — P→E coupling: 1/γ
+    c : (n_poles, nx, ny, nz) each — E^n coupling into the P recurrence (∝ κ)
+
+    One array for all components:
+
+    a, b : (n_poles, nx, ny, nz) — P recurrence coefficients (ω₀, δ only),
+        the pole's values on every cell whose edges the pole reaches.
     """
-    ca: jnp.ndarray
-    cb: jnp.ndarray
+    ca: tuple
+    cb: tuple
     a: jnp.ndarray
     b: jnp.ndarray
-    c: jnp.ndarray
-    cc: jnp.ndarray
+    c: tuple
+    cc: tuple
 
 
 class LorentzState(NamedTuple):
@@ -110,13 +127,14 @@ def init_lorentz(
     mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
     *,
     field_dtype=None,
+    periodic=(False, False, False),
 ) -> tuple[LorentzCoeffs, LorentzState]:
     """Initialize Lorentz/Drude ADE coefficients and state.
 
     Parameters
     ----------
     poles : list of LorentzPole
-    materials : MaterialArrays (eps_r = ε_∞)
+    materials : MaterialArrays (eps_r = ε_∞) with its lumped records (#1236)
     dt : float
     mask : optional spatial mask
     field_dtype : jnp dtype, optional
@@ -127,16 +145,17 @@ def init_lorentz(
         the same float32 floor. This used to be a hard ``dtype=jnp.float32``
         pin, which made ``precision="float64"`` + any pole fail the
         ``lax.scan`` carry contract (issue #656).
+    periodic : per-axis flags
+        The run's periodic flags, for the edge average (see ``init_debye``).
 
     Returns
     -------
     (LorentzCoeffs, LorentzState)
+
+    The rule is ``init_debye``'s (#1260): per component, ε_∞ and σ from
+    :func:`rfx.core.yee.component_e_materials`, and κ_p times the fraction of
+    the edge's four cells in the pole's mask.
     """
-    # #1236 / #1260: these coefficients are cell-owned (one per cell, all
-    # three components) over the whole grid; a lumped stamp in the total
-    # loads all three edges at its node.
-    from rfx.core.yee import warn_lumped_on_cell_owned_lane
-    warn_lumped_on_cell_owned_lane(materials, "Lorentz/Drude dispersion")
     shape = materials.eps_r.shape
     n_poles = len(poles)
 
@@ -150,10 +169,10 @@ def init_lorentz(
         shared_mask = None if mask is None else jnp.asarray(mask, dtype=bool)
         pole_masks = [shared_mask] * n_poles
 
-    eps_inf = materials.eps_r * EPS_0
-    sigma = materials.sigma
+    eps_c, sig_c = component_e_materials(materials, periodic)
 
-    a_list, b_list, c_list = [], [], []
+    a_list, b_list = [], []
+    c_lists = ([], [], [])
 
     for pole, pole_mask in zip(poles, pole_masks):
         w0, d, k = pole.omega_0, pole.delta, pole.kappa
@@ -163,10 +182,14 @@ def init_lorentz(
         b_val = -(1.0 - d * dt) / denom
         c_val = EPS_0 * k * dt ** 2 / denom
 
-        if pole_mask is not None:
-            a_arr = jnp.where(pole_mask, a_val, 0.0)
-            b_arr = jnp.where(pole_mask, b_val, 0.0)
-            c_arr = jnp.where(pole_mask, c_val, 0.0)
+        fractions = pole_edge_fractions(pole_mask, periodic)
+        if fractions is not None:
+            reach = pole_reach(fractions)
+            a_list.append(jnp.where(reach, a_val, 0.0))
+            b_list.append(jnp.where(reach, b_val, 0.0))
+            for comp in range(3):
+                c_lists[comp].append(jnp.where(
+                    fractions[comp] > 0, c_val * fractions[comp], 0.0))
         else:
             # No dtype pin: ``a_val``/``b_val``/``c_val`` are numpy scalars
             # (``dt`` is ``grid.dt``, an np.float64), so this matches the
@@ -175,26 +198,28 @@ def init_lorentz(
             # branches disagree and capped the ADE coefficients at float32
             # under ``precision="float64"`` (issue #656). With x64 off JAX
             # clamps to float32, so the default lane is unchanged.
-            a_arr = jnp.full(shape, a_val)
-            b_arr = jnp.full(shape, b_val)
+            a_list.append(jnp.full(shape, a_val))
+            b_list.append(jnp.full(shape, b_val))
             c_arr = jnp.full(shape, c_val)
-
-        a_list.append(a_arr)
-        b_list.append(b_arr)
-        c_list.append(c_arr)
+            for comp in range(3):
+                c_lists[comp].append(c_arr)
 
     a = jnp.stack(a_list)
     b = jnp.stack(b_list)
-    c = jnp.stack(c_list)
+    c = tuple(jnp.stack(cl) for cl in c_lists)
 
-    gamma = eps_inf + sigma * dt / 2.0
-    safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
+    ca, cb, cc = [], [], []
+    for comp in range(3):
+        eps_inf = eps_c[comp] * EPS_0
+        sigma = sig_c[comp]
+        gamma = eps_inf + sigma * dt / 2.0
+        safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
+        ca.append((eps_inf - sigma * dt / 2.0) / safe_gamma)
+        cb.append(dt / safe_gamma)
+        cc.append(1.0 / safe_gamma)
 
-    ca = (eps_inf - sigma * dt / 2.0) / safe_gamma
-    cb = dt / safe_gamma
-    cc = 1.0 / safe_gamma
-
-    coeffs = LorentzCoeffs(ca=ca, cb=cb, a=a, b=b, c=c, cc=cc)
+    coeffs = LorentzCoeffs(ca=tuple(ca), cb=tuple(cb), a=a, b=b, c=c,
+                           cc=tuple(cc))
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(
@@ -203,6 +228,45 @@ def init_lorentz(
     )
 
     return coeffs, state
+
+
+def lorentz_p_component(coeffs: LorentzCoeffs, comp: int, e_old, p, p_prev,
+                        pdtype=None):
+    """P^{n+1} = a P^n + b P^{n-1} + c_comp E^n for E component ``comp``."""
+    c = per_component(coeffs.c, "c")[comp]
+    p_new = coeffs.a * p + coeffs.b * p_prev + c * e_old[None]
+    return p_new if pdtype is None else p_new.astype(pdtype)
+
+
+def lorentz_e_component(coeffs: LorentzCoeffs, comp: int, e_old, curl, dp,
+                        fdtype=None):
+    """E^{n+1} = Ca E^n + Cb curl - Cc ΔP for E component ``comp``."""
+    ca = per_component(coeffs.ca, "ca")[comp]
+    cb = per_component(coeffs.cb, "cb")[comp]
+    cc = per_component(coeffs.cc, "cc")[comp]
+    e_new = ca * e_old + cb * curl - cc * dp
+    return e_new if fdtype is None else e_new.astype(fdtype)
+
+
+def mixed_e_component_coeffs(debye_coeffs, lorentz_coeffs, comp: int, dt):
+    """``(ca, cb, cc_debye, cc_lorentz)`` of the combined Debye + Lorentz E
+    update for component ``comp`` (#1260: each from that component's own
+    coefficients). One spelling for every lane that runs both models.
+
+    The Lorentz ΔP enters with 1/γ_total, where γ_total = γ_Lorentz + Σβ is
+    the Debye γ: the Debye P^{n+1} is implicit in E^{n+1}, the Lorentz one
+    explicit in E^n.
+    """
+    beta_sum = jnp.sum(per_component(debye_coeffs.beta, "beta")[comp], axis=0)
+    gamma_base = 1.0 / per_component(lorentz_coeffs.cc, "cc")[comp]
+    gamma_total = jnp.maximum(gamma_base + beta_sum, EPS_0 * 1e-10)
+    numer_base = per_component(lorentz_coeffs.ca, "ca")[comp] * gamma_base
+
+    ca = (numer_base - beta_sum) / gamma_total
+    cb = dt / gamma_total
+    cc_debye = (1.0 - debye_coeffs.alpha) / gamma_total
+    cc_lorentz = 1.0 / gamma_total
+    return ca, cb, cc_debye, cc_lorentz
 
 
 def update_e_lorentz(
@@ -245,31 +309,29 @@ def update_e_lorentz(
     _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
 
     hx, hy, hz = state.hx, state.hy, state.hz
-    ca, cb, cc = coeffs.ca, coeffs.cb, coeffs.cc
-    a, b, c = coeffs.a, coeffs.b, coeffs.c
 
     # curl(H)
     curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
     curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
     curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
 
-    # P^{n+1} = a P^n + b P^{n-1} + c E^n (per pole)
-    px_new = (a * lor_state.px + b * lor_state.px_prev
-              + c * state.ex[None]).astype(_pdtype)
-    py_new = (a * lor_state.py + b * lor_state.py_prev
-              + c * state.ey[None]).astype(_pdtype)
-    pz_new = (a * lor_state.pz + b * lor_state.pz_prev
-              + c * state.ez[None]).astype(_pdtype)
+    # P^{n+1} = a P^n + b P^{n-1} + c_comp E^n (per pole, per component)
+    px_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,
+                                 lor_state.px_prev, _pdtype)
+    py_new = lorentz_p_component(coeffs, 1, state.ey, lor_state.py,
+                                 lor_state.py_prev, _pdtype)
+    pz_new = lorentz_p_component(coeffs, 2, state.ez, lor_state.pz,
+                                 lor_state.pz_prev, _pdtype)
 
     # ΔP = P^{n+1} - P^n, summed over poles
     dpx = jnp.sum(px_new - lor_state.px, axis=0)
     dpy = jnp.sum(py_new - lor_state.py, axis=0)
     dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
 
-    # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP
-    ex_new = (ca * state.ex + cb * curl_x - cc * dpx).astype(_fdtype)
-    ey_new = (ca * state.ey + cb * curl_y - cc * dpy).astype(_fdtype)
-    ez_new = (ca * state.ez + cb * curl_z - cc * dpz).astype(_fdtype)
+    # E^{n+1} = Ca E^n + Cb curl(H) - Cc ΔP, per component (#1260)
+    ex_new = lorentz_e_component(coeffs, 0, state.ex, curl_x, dpx, _fdtype)
+    ey_new = lorentz_e_component(coeffs, 1, state.ey, curl_y, dpy, _fdtype)
+    ez_new = lorentz_e_component(coeffs, 2, state.ez, curl_z, dpz, _fdtype)
 
     new_fdtd = state._replace(
         ex=ex_new, ey=ey_new, ez=ez_new,

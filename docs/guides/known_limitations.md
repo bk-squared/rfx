@@ -85,28 +85,6 @@ this condition now carries that measurement, and `docs/guides/sparameter_support
 has the full reading guidance. Settled in #726 (closed): the guard and preflight
 used to contradict each other about this, and the measurement decided it.
 
-**In a model with any Debye, Lorentz or Drude material, a lumped port's load or
-a folded R or C also loads the two other E edges at its node.** A lumped
-element is a device across one Yee edge, and a model without dispersive
-materials puts it there (#1236). A dispersive material anywhere in the model —
-even one small block far from the port — moves the whole grid onto an E update
-that takes one coefficient per cell for all three components (#1260), so every
-lumped element in that model, wherever it sits, is also a resistor (or
-capacitor) of the same value on the Ex and Ey edges leaving its node (for an
-element on Ez). What it changes: at a feed whose node carries a transverse field — a
-dipole-like gap — the same three-edge load on a centre-fed half-wave dipole
-moved the resonance +0.34 % at λ/43 (+0.16 % at λ/85) and Zin by 12–28 % at
-3.5–4 GHz off resonance; at a feed whose transverse edges lie on a PEC plane or
-carry no field (a port between two plates, a wire port across a substrate) it
-changes nothing. Such a run warns: a `UserWarning` from
-`rfx.core.yee.warn_lumped_on_cell_owned_lane`, raised by `init_debye` /
-`init_lorentz`, naming #1260 and #1236. On a graded mesh with a dispersive
-material a port's load is missing altogether, a separate defect (#1257). If
-your band allows it, a constant ε and σ in place of the dispersive model avoids
-both.
-→ [#1260](https://github.com/bk-squared/rfx/issues/1260)
-→ [#1257](https://github.com/bk-squared/rfx/issues/1257)
-
 ## Absorbing boundaries
 
 **On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**

@@ -151,6 +151,35 @@ def _bits(a, b, label):
                                       float(np.max(np.abs(a - b))))
 
 
+def _gradient_bits(a, b, label, sim):
+    """The eps gradient: bitwise, except within 2 ULP on the seam cells.
+
+    Gate moved 2026-09-26 with #1260, root cause written here. The dispersive
+    coefficients are edge means over each edge's cells, so the coefficient of
+    a rank's first real cell reads the cell its left neighbour owns (the low
+    ghost). That cell's eps gradient is then the sum of two contributions --
+    through the owner's slab and through the neighbour's ghost -- which the
+    staged build adds after each slab's edge-mean transpose and the legacy
+    whole-domain build adds inside one transpose. Same terms, different
+    association: measured 1-2 ULP on 4-8 values, all on x = r*nx_per - 1 (the
+    cells copied into a ghost), traces bitwise equal, no-pole models bitwise.
+    Everywhere else the gradient stays bitwise.
+    """
+    a, b = np.asarray(a), np.asarray(b)
+    assert a.shape == b.shape and a.dtype == b.dtype, label
+    assert np.isfinite(a).all() and np.isfinite(b).all(), label + " nonfinite"
+    sg = nu.build_sharded_nu_grid(sim._build_nonuniform_grid(), len(jax.devices()))
+    seam = np.zeros(a.shape[0], bool)
+    for r in range(1, sg.n_devices):
+        if 0 <= r * sg.nx_per_rank - 1 < a.shape[0]:
+            seam[r * sg.nx_per_rank - 1] = True
+    off = ~seam
+    _bits(a[off], b[off], label + " (off the seam cells)")
+    ulp = np.spacing(np.maximum(np.abs(a[seam]), np.abs(b[seam])).astype(a.dtype))
+    excess = np.abs(a[seam] - b[seam]) - 2 * ulp
+    assert (excess <= 0).all(), (label, "seam", float(np.max(excess)))
+
+
 def _bit_case(case, checkpoint, warmup, transform):
     sim = _model(case)
     eps, kwargs = _inputs(sim, case)
@@ -188,7 +217,10 @@ def _bit_case(case, checkpoint, warmup, transform):
                       MethodType(_legacy_forward, sim))
         expected = evaluate()
     for i, (a, b) in enumerate(zip(actual, expected)):
-        _bits(a, b, f"{case}/{transform}/{i}")
+        if transform == "bits" and i == 1:
+            _gradient_bits(a, b, f"{case}/{transform}/{i}", sim)
+        else:
+            _bits(a, b, f"{case}/{transform}/{i}")
     pairs = None
     if transform != "bits":
         pairs = [np.asarray(a).tobytes() == np.asarray(b).tobytes() for a, b in (actual, expected)]
@@ -229,7 +261,9 @@ def _per_shard():
             assert x.device == y.device and x.index == y.index
             _bits(x.data, y.data, str(path))
             checked += 1
-    assert checked == 49 * len(jax.devices()), checked
+    # 65 arrays: the Debye (13) and Lorentz (14) coefficients are per-E-component
+    # (x, y, z) tuples since #1260 (5 and 6 single arrays, 49 in all, before).
+    assert checked == 65 * len(jax.devices()), checked
     print("RESULT " + json.dumps({"shard_arrays": checked, "version": jax.__version__}))
 
 
@@ -313,7 +347,9 @@ def _memory(mode, mutation="none", legacy=False):
         return
     for kind, seen in extents.items():
         assert seen or kind == "state", f"{kind} initialization was not observed"
-        assert all(e <= nx_local for e in seen), f"whole-domain {kind} initialization: {seen} > {nx_local}"
+        # nx_local + 1: the slab plus the low ghost's backward neighbour, which
+        # the edge-mean coefficients (#1260) read. Still one slab, never the domain.
+        assert all(e <= nx_local + 1 for e in seen), f"whole-domain {kind} initialization: {seen} > {nx_local} + 1"
     unexpected = [a for a in record["whole"] if not a["caller"]]
     assert not unexpected, f"whole-domain setup arrays: {unexpected}"
     sizes = list(record["bytes"].values())
@@ -354,7 +390,8 @@ def _multipole_shards():
                 assert x.device == y.device and x.index == y.index
                 _bits(x.data, y.data, str(path))
                 checked += 1
-    assert checked == 20 * len(devices)
+    # 36 arrays per device: per-E-component coefficient tuples since #1260 (20 before).
+    assert checked == 36 * len(devices)
     print("RESULT " + json.dumps({"multipole_shard_arrays": checked,
                                   "version": jax.__version__}))
 
@@ -364,7 +401,7 @@ def _zero_cc_stage(original):
         result = original(*args)
         if args[-1] == "lorentz" and result is not None:
             coeffs, state = result
-            cc = coeffs.cc.at[0].set(0.).at[-1].set(0.)
+            cc = tuple(c.at[0].set(0.).at[-1].set(0.) for c in coeffs.cc)  # per component (#1260)
             result = coeffs._replace(cc=cc), state
         return result
     return mutate

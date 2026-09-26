@@ -61,14 +61,17 @@ def test_debye_coefficients():
 
     assert abs(float(coeffs.alpha[0, 2, 2, 2]) - alpha_expected) < 1e-6, \
         f"alpha: {float(coeffs.alpha[0,2,2,2]):.8f} vs {alpha_expected:.8f}"
-    assert abs(float(coeffs.beta[0, 2, 2, 2]) - beta_expected) / beta_expected < 1e-4, \
-        "beta mismatch"
-    assert abs(float(coeffs.ca[2, 2, 2]) - ca_expected) / abs(ca_expected) < 1e-4, \
-        f"ca: {float(coeffs.ca[2,2,2]):.8f} vs {ca_expected:.8f}"
-    assert abs(float(coeffs.cb[2, 2, 2]) - cb_expected) / cb_expected < 1e-4, \
-        "cb mismatch"
-    assert abs(float(coeffs.cc[0, 2, 2, 2]) - cc_expected) / cc_expected < 1e-4, \
-        "cc mismatch"
+    # ca/cb/cc/beta are per E component since #1260; in a homogeneous
+    # material all three carry the same value.
+    for c in range(3):
+        assert abs(float(coeffs.beta[c][0, 2, 2, 2]) - beta_expected) / beta_expected < 1e-4, \
+            "beta mismatch"
+        assert abs(float(coeffs.ca[c][2, 2, 2]) - ca_expected) / abs(ca_expected) < 1e-4, \
+            f"ca: {float(coeffs.ca[c][2,2,2]):.8f} vs {ca_expected:.8f}"
+        assert abs(float(coeffs.cb[c][2, 2, 2]) - cb_expected) / cb_expected < 1e-4, \
+            "cb mismatch"
+        assert abs(float(coeffs.cc[c][0, 2, 2, 2]) - cc_expected) / cc_expected < 1e-4, \
+            "cc mismatch"
 
     # Polarization state should be zeros
     assert float(jnp.max(jnp.abs(dstate.px))) == 0.0
@@ -238,9 +241,9 @@ def test_debye_mask_selective():
 
     # In vacuum region (x < 10): ca should be standard vacuum coefficient
     # ca_vac = (eps0 - 0 - 0) / (eps0 + 0 + 0) = 1.0
-    ca_vac = float(coeffs.ca[5, 5, 5])
+    ca_vac = float(coeffs.ca[0][5, 5, 5])
     # In Debye region (x >= 10): ca should be modified
-    ca_deb = float(coeffs.ca[15, 5, 5])
+    ca_deb = float(coeffs.ca[0][15, 5, 5])
 
     print("\nDebye mask test:")
     print(f"  Ca(vacuum) = {ca_vac:.6f}")
@@ -273,8 +276,8 @@ def test_debye_two_poles():
 
     # Should have 2 poles in alpha/beta arrays
     assert coeffs.alpha.shape[0] == 2
-    assert coeffs.beta.shape[0] == 2
-    assert coeffs.cc.shape[0] == 2
+    assert all(b.shape[0] == 2 for b in coeffs.beta)   # per E component (#1260)
+    assert all(c.shape[0] == 2 for c in coeffs.cc)
 
     # P state should have 2 poles
     assert dstate.px.shape[0] == 2

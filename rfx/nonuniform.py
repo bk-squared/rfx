@@ -2300,26 +2300,22 @@ def _update_e_nu_dispersive(
     # rationale lives on ``rfx.materials.lorentz.update_e_lorentz``.
     _fdtype = state.ex.dtype
 
+    # Every coefficient is per E component (#1260): component c takes index c.
+    from rfx.materials.debye import debye_e_component, per_component
+    from rfx.materials.lorentz import (
+        lorentz_e_component, lorentz_p_component, mixed_e_component_coeffs,
+    )
+    e_old3 = (ex_old, ey_old, ez_old)
+    curls = (curl_x, curl_y, curl_z)
+
     # --- Debye only ---
     if debye is not None and lorentz is None:
         debye_coeffs, debye_state = debye
-        ca, cb, cc = debye_coeffs.ca, debye_coeffs.cb, debye_coeffs.cc
-        alpha, beta = debye_coeffs.alpha, debye_coeffs.beta
         _pdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
-
-        ex_new = (ca * ex_old + cb * curl_x
-                  + jnp.sum(cc * debye_state.px, axis=0)).astype(_fdtype)
-        ey_new = (ca * ey_old + cb * curl_y
-                  + jnp.sum(cc * debye_state.py, axis=0)).astype(_fdtype)
-        ez_new = (ca * ez_old + cb * curl_z
-                  + jnp.sum(cc * debye_state.pz, axis=0)).astype(_fdtype)
-
-        px_new = (alpha * debye_state.px
-                  + beta * (ex_new[None] + ex_old[None])).astype(_pdtype)
-        py_new = (alpha * debye_state.py
-                  + beta * (ey_new[None] + ey_old[None])).astype(_pdtype)
-        pz_new = (alpha * debye_state.pz
-                  + beta * (ez_new[None] + ez_old[None])).astype(_pdtype)
+        p_d = (debye_state.px, debye_state.py, debye_state.pz)
+        out = [debye_e_component(debye_coeffs, c, e_old3[c], curls[c], p_d[c],
+                                 _fdtype, _pdtype) for c in range(3)]
+        (ex_new, px_new), (ey_new, py_new), (ez_new, pz_new) = out
 
         new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new,
                                   step=state.step + 1)
@@ -2329,24 +2325,24 @@ def _update_e_nu_dispersive(
     # --- Lorentz only ---
     if lorentz is not None and debye is None:
         lorentz_coeffs, lor_state = lorentz
-        ca, cb, cc = lorentz_coeffs.ca, lorentz_coeffs.cb, lorentz_coeffs.cc
-        a, b, c = lorentz_coeffs.a, lorentz_coeffs.b, lorentz_coeffs.c
         _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
+        p_l = (lor_state.px, lor_state.py, lor_state.pz)
+        p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
 
-        px_new = (a * lor_state.px + b * lor_state.px_prev
-                  + c * ex_old[None]).astype(_pdtype)
-        py_new = (a * lor_state.py + b * lor_state.py_prev
-                  + c * ey_old[None]).astype(_pdtype)
-        pz_new = (a * lor_state.pz + b * lor_state.pz_prev
-                  + c * ez_old[None]).astype(_pdtype)
+        px_new, py_new, pz_new = (
+            lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c],
+                                p_l_prev[c], _pdtype) for c in range(3))
 
         dpx = jnp.sum(px_new - lor_state.px, axis=0)
         dpy = jnp.sum(py_new - lor_state.py, axis=0)
         dpz = jnp.sum(pz_new - lor_state.pz, axis=0)
 
-        ex_new = (ca * ex_old + cb * curl_x - cc * dpx).astype(_fdtype)
-        ey_new = (ca * ey_old + cb * curl_y - cc * dpy).astype(_fdtype)
-        ez_new = (ca * ez_old + cb * curl_z - cc * dpz).astype(_fdtype)
+        ex_new = lorentz_e_component(lorentz_coeffs, 0, ex_old, curl_x, dpx,
+                                     _fdtype)
+        ey_new = lorentz_e_component(lorentz_coeffs, 1, ey_old, curl_y, dpy,
+                                     _fdtype)
+        ez_new = lorentz_e_component(lorentz_coeffs, 2, ez_old, curl_z, dpz,
+                                     _fdtype)
 
         new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new,
                                   step=state.step + 1)
@@ -2363,50 +2359,32 @@ def _update_e_nu_dispersive(
     _lpdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
 
     # Explicit Lorentz polarization update first
-    px_l_new = (lorentz_coeffs.a * lor_state.px
-                + lorentz_coeffs.b * lor_state.px_prev
-                + lorentz_coeffs.c * ex_old[None]).astype(_lpdtype)
-    py_l_new = (lorentz_coeffs.a * lor_state.py
-                + lorentz_coeffs.b * lor_state.py_prev
-                + lorentz_coeffs.c * ey_old[None]).astype(_lpdtype)
-    pz_l_new = (lorentz_coeffs.a * lor_state.pz
-                + lorentz_coeffs.b * lor_state.pz_prev
-                + lorentz_coeffs.c * ez_old[None]).astype(_lpdtype)
+    p_l = (lor_state.px, lor_state.py, lor_state.pz)
+    p_l_prev = (lor_state.px_prev, lor_state.py_prev, lor_state.pz_prev)
+    p_d = (debye_state.px, debye_state.py, debye_state.pz)
+    p_l_new = tuple(
+        lorentz_p_component(lorentz_coeffs, c, e_old3[c], p_l[c], p_l_prev[c],
+                            _lpdtype) for c in range(3))
+    px_l_new, py_l_new, pz_l_new = p_l_new
 
-    dpx_l = jnp.sum(px_l_new - lor_state.px, axis=0)
-    dpy_l = jnp.sum(py_l_new - lor_state.py, axis=0)
-    dpz_l = jnp.sum(pz_l_new - lor_state.pz, axis=0)
-
-    beta_sum = jnp.sum(debye_coeffs.beta, axis=0)
-    gamma_base = 1.0 / lorentz_coeffs.cc
-    gamma_total = jnp.maximum(gamma_base + beta_sum, EPS_0 * 1e-10)
-    numer_base = lorentz_coeffs.ca * gamma_base
-
-    ca = (numer_base - beta_sum) / gamma_total
-    cb = dt / gamma_total
-    cc_debye = (1.0 - debye_coeffs.alpha) / gamma_total
-    cc_lorentz = 1.0 / gamma_total
-
-    ex_new = (ca * ex_old + cb * curl_x
-              + jnp.sum(cc_debye * debye_state.px, axis=0)
-              - cc_lorentz * dpx_l).astype(_fdtype)
-    ey_new = (ca * ey_old + cb * curl_y
-              + jnp.sum(cc_debye * debye_state.py, axis=0)
-              - cc_lorentz * dpy_l).astype(_fdtype)
-    ez_new = (ca * ez_old + cb * curl_z
-              + jnp.sum(cc_debye * debye_state.pz, axis=0)
-              - cc_lorentz * dpz_l).astype(_fdtype)
+    e_new, p_d_new = [], []
+    for c in range(3):
+        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
+            debye_coeffs, lorentz_coeffs, c, dt)
+        e_c = (ca * e_old3[c] + cb * curls[c]
+               + jnp.sum(cc_debye * p_d[c], axis=0)
+               - cc_lorentz * dp_l).astype(_fdtype)
+        e_new.append(e_c)
+        beta_c = per_component(debye_coeffs.beta, "beta")[c]
+        p_d_new.append((debye_coeffs.alpha * p_d[c]
+                        + beta_c * (e_c[None] + e_old3[c][None])
+                        ).astype(_dpdtype))
+    ex_new, ey_new, ez_new = e_new
 
     new_fdtd = state._replace(ex=ex_new, ey=ey_new, ez=ez_new,
                               step=state.step + 1)
-    new_debye = DebyeState(
-        px=(debye_coeffs.alpha * debye_state.px
-            + debye_coeffs.beta * (ex_new[None] + ex_old[None])).astype(_dpdtype),
-        py=(debye_coeffs.alpha * debye_state.py
-            + debye_coeffs.beta * (ey_new[None] + ey_old[None])).astype(_dpdtype),
-        pz=(debye_coeffs.alpha * debye_state.pz
-            + debye_coeffs.beta * (ez_new[None] + ez_old[None])).astype(_dpdtype),
-    )
+    new_debye = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
     new_lor = LorentzState(
         px=px_l_new, py=py_l_new, pz=pz_l_new,
         px_prev=lor_state.px, py_prev=lor_state.py, pz_prev=lor_state.pz,
@@ -2764,20 +2742,20 @@ def _build_nu_scan(
     # integrate different media and the combined update can amplify (see
     # ``rfx/boundaries/cpml.py``'s ``inv_eps_r_update`` docstring). The guard
     # is the same condition that selects ``update_e_nu_aniso`` below, so a
-    # dispersive run — which ignores ``aniso_eps`` — keeps ``materials.eps_r``
-    # and stays byte-identical, as does every run with no anisotropic array.
+    # dispersive run — which ignores ``aniso_eps`` — never takes it.
     # #1210: the plain graded-mesh update ``update_e_nu`` is per-component too
     # now (the mean of eps_r over each edge's four incident cells), so it gets
     # the same threading. Homogeneous pads keep their bytes — the mean of four
     # equal floats is that float exactly.
+    # #1260: the dispersive update takes its ε_∞ per component from the same
+    # mean, so a dispersive run threads it too (it used to keep the cell's
+    # ``materials.eps_r``).
     if not (use_debye or use_lorentz) and aniso_eps is not None:
         _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
-    elif not (use_debye or use_lorentz):
+    else:
         from rfx.core.yee import component_e_materials as _comp_mats
         _eps_edge_nu, _ = _comp_mats(materials, (False, False, False))
         _cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge_nu)
-    else:
-        _cpml_inv_eps_r = None
 
     def step_fn(carry, xs):
         step_idx, src_vals = xs

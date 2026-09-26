@@ -561,6 +561,7 @@ class _CompileMixin:
         lorentz_spec: _LorentzSpec | None,
         *,
         field_dtype=None,
+        periodic=(False, False, False),
     ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Initialize Debye/Lorentz coefficients for the given materials.
 
@@ -568,18 +569,22 @@ class _CompileMixin:
         driven by; the P carry is allocated at
         ``ade_state_dtype(field_dtype)`` (issue #656). Callers that leave it
         ``None`` get the ambient default float with a float32 floor.
+
+        ``periodic`` is the run's per-axis flags, as its E update takes them:
+        the coefficients are per E component, averaged over each edge's four
+        cells (#1260), and a periodic axis wraps that average.
         """
         debye = None
         if debye_spec is not None:
             debye_poles, debye_masks = debye_spec
             debye = init_debye(debye_poles, materials, dt, mask=debye_masks,
-                               field_dtype=field_dtype)
+                               field_dtype=field_dtype, periodic=periodic)
 
         lorentz = None
         if lorentz_spec is not None:
             lorentz_poles, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
-                                   field_dtype=field_dtype)
+                                   field_dtype=field_dtype, periodic=periodic)
 
         return materials, debye, lorentz
 
@@ -728,7 +733,8 @@ class _CompileMixin:
                 "not an edge rule — or solve the model with run() / "
                 "forward(), which realize the declaration.")
         _, debye, lorentz = self._init_dispersion(
-            materials, grid.dt, debye_spec, lorentz_spec)
+            materials, grid.dt, debye_spec, lorentz_spec,
+            periodic=self._periodic_flags())
         return materials, debye, lorentz
 
     @staticmethod

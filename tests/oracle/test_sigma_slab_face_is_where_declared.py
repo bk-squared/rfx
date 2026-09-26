@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx import GaussianPulse, Simulation
 from rfx.harminv import harminv
@@ -33,8 +34,16 @@ STEPS = 3000
 SIGMA = 1e5       # S/m -- a short at 10 GHz, below the 1e6 PEC-mask threshold
 
 
-def _fixture():
+def _fixture(debye_block=False):
     sim = Simulation(freq_max=2 * F0, domain=(L, L, L), dx=DX, boundary="pec")
+    if debye_block:
+        # #1260: a 1 mm, delta_eps 1e-6 Debye cube in the far upper corner puts
+        # the whole grid on the dispersive E update without changing the model.
+        from rfx import Box
+        from rfx.materials.debye import DebyePole
+        sim.add_material("dbl", eps_r=1.0,
+                         debye_poles=[DebyePole(delta_eps=1e-6, tau=1e-11)])
+        sim.add(Box((L - 2e-3,) * 3, (L - 1e-3,) * 3), material="dbl")
     sim.add_source((5.5e-3, 7.5e-3, 15.5e-3), "ex", amplitude_kind="field",
                    waveform=GaussianPulse(f0=F0, bandwidth=0.6))
     sim.add_probe((17.5e-3, 15.5e-3, 19.5e-3), "ex")
@@ -52,8 +61,14 @@ def _analytic(h):
     return C0 / 2 * np.sqrt(1.0 / L ** 2 + 1.0 / (L - h) ** 2)
 
 
-def test_sigma_slab_reads_the_pec_occupancy_lane_and_the_analytic_height():
-    sim = _fixture()
+@pytest.mark.parametrize("debye_block", [False, True],
+                         ids=["plain", "with_negligible_debye_block"])
+def test_sigma_slab_reads_the_pec_occupancy_lane_and_the_analytic_height(
+        debye_block):
+    """``with_negligible_debye_block`` (#1260): the dispersive update used to
+    build its coefficients from the owning cell over the whole grid, and this
+    fixture read 10.0585 GHz with the block present (the 5 mm slab)."""
+    sim = _fixture(debye_block)
     probe = sim.forward(n_steps=2, skip_preflight=True)
     shape = tuple(probe.grid.shape)
     dt = float(probe.grid.dt)

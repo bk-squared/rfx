@@ -51,7 +51,9 @@ def test_init_debye_is_differentiable():
         pole = DebyePole(delta_eps=delta_eps, tau=tau)
         coeffs, _ = init_debye([pole], materials, dt)
         # Loss = sum of squared ADE coefficients (differentiable scalar)
-        return jnp.sum(coeffs.ca ** 2) + jnp.sum(coeffs.cb ** 2)
+        # ca / cb are per-E-component (x, y, z) tuples since #1260
+        return (sum(jnp.sum(c ** 2) for c in coeffs.ca)
+                + sum(jnp.sum(c ** 2) for c in coeffs.cb))
 
     grad_fn = jax.grad(loss_fn, argnums=(0, 1))
     g_de, g_tau = grad_fn(jnp.float32(3.0), jnp.float32(8.3e-12))
@@ -97,7 +99,7 @@ def test_init_lorentz_is_differentiable():
     def loss_c(kappa):
         pole = LorentzPole(omega_0=w0, delta=d, kappa=kappa)
         coeffs, _ = init_lorentz([pole], materials, dt)
-        return jnp.sum(coeffs.c)
+        return sum(jnp.sum(c) for c in coeffs.c)   # per component (#1260)
 
     g_k = jax.grad(loss_c)(jnp.float32(1e20))
 

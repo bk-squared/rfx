@@ -574,55 +574,40 @@ def _update_e_with_optional_dispersion(
 
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
-    # Explicit Lorentz polarization update first.
-    px_l_new = (
-        lorentz_coeffs.a * lorentz_state.px
-        + lorentz_coeffs.b * lorentz_state.px_prev
-        + lorentz_coeffs.c * ex_old[None]
-    ).astype(_lpdtype)
-    py_l_new = (
-        lorentz_coeffs.a * lorentz_state.py
-        + lorentz_coeffs.b * lorentz_state.py_prev
-        + lorentz_coeffs.c * ey_old[None]
-    ).astype(_lpdtype)
-    pz_l_new = (
-        lorentz_coeffs.a * lorentz_state.pz
-        + lorentz_coeffs.b * lorentz_state.pz_prev
-        + lorentz_coeffs.c * ez_old[None]
-    ).astype(_lpdtype)
+    # Explicit Lorentz polarization update first (per component, #1260).
+    from rfx.materials.debye import per_component
+    from rfx.materials.lorentz import (
+        lorentz_p_component, mixed_e_component_coeffs,
+    )
+    e_old = (ex_old, ey_old, ez_old)
+    curls = (curl_x, curl_y, curl_z)
+    p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
+    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
+                lorentz_state.pz_prev)
+    p_d = (debye_state.px, debye_state.py, debye_state.pz)
+    p_l_new = tuple(
+        lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c], p_l_prev[c],
+                            _lpdtype)
+        for c in range(3))
+    px_l_new, py_l_new, pz_l_new = p_l_new
 
-    dpx_l = jnp.sum(px_l_new - lorentz_state.px, axis=0)
-    dpy_l = jnp.sum(py_l_new - lorentz_state.py, axis=0)
-    dpz_l = jnp.sum(pz_l_new - lorentz_state.pz, axis=0)
-
-    beta_sum = jnp.sum(debye_coeffs.beta, axis=0)
-    gamma_base = 1.0 / lorentz_coeffs.cc
-    gamma_total = jnp.maximum(gamma_base + beta_sum, EPS_0 * 1e-10)
-    numer_base = lorentz_coeffs.ca * gamma_base
-
-    ca = (numer_base - beta_sum) / gamma_total
-    cb = dt / gamma_total
-    cc_debye = (1.0 - debye_coeffs.alpha) / gamma_total
-    cc_lorentz = 1.0 / gamma_total
-
-    ex_new = (
-        ca * ex_old
-        + cb * curl_x
-        + jnp.sum(cc_debye * debye_state.px, axis=0)
-        - cc_lorentz * dpx_l
-    ).astype(_fdtype)
-    ey_new = (
-        ca * ey_old
-        + cb * curl_y
-        + jnp.sum(cc_debye * debye_state.py, axis=0)
-        - cc_lorentz * dpy_l
-    ).astype(_fdtype)
-    ez_new = (
-        ca * ez_old
-        + cb * curl_z
-        + jnp.sum(cc_debye * debye_state.pz, axis=0)
-        - cc_lorentz * dpz_l
-    ).astype(_fdtype)
+    e_new, p_d_new = [], []
+    for c in range(3):
+        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
+            debye_coeffs, lorentz_coeffs, c, dt)
+        e_c = (
+            ca * e_old[c]
+            + cb * curls[c]
+            + jnp.sum(cc_debye * p_d[c], axis=0)
+            - cc_lorentz * dp_l
+        ).astype(_fdtype)
+        e_new.append(e_c)
+        beta_c = per_component(debye_coeffs.beta, "beta")[c]
+        p_d_new.append((debye_coeffs.alpha * p_d[c]
+                        + beta_c * (e_c[None] + e_old[c][None])
+                        ).astype(_dpdtype))
+    ex_new, ey_new, ez_new = e_new
 
     new_fdtd = state._replace(
         ex=ex_new,
@@ -630,14 +615,7 @@ def _update_e_with_optional_dispersion(
         ez=ez_new,
         step=state.step + 1,
     )
-    new_debye = DebyeState(
-        px=(debye_coeffs.alpha * debye_state.px
-            + debye_coeffs.beta * (ex_new[None] + ex_old[None])).astype(_dpdtype),
-        py=(debye_coeffs.alpha * debye_state.py
-            + debye_coeffs.beta * (ey_new[None] + ey_old[None])).astype(_dpdtype),
-        pz=(debye_coeffs.alpha * debye_state.pz
-            + debye_coeffs.beta * (ez_new[None] + ez_old[None])).astype(_dpdtype),
-    )
+    new_debye = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
     new_lorentz = LorentzState(
         px=px_l_new,
         py=py_l_new,
@@ -1913,16 +1891,18 @@ def make_core_step(ctx: _StepContext):
     # that threaded the subpixel arrays threads this one; where the pad is
     # homogeneous the mean IS ``materials.eps_r``, so those runs keep their
     # bytes.
+    #
+    # #1260 made the DISPERSIVE update per-component as well: its ε_∞ is the
+    # same ``component_e_materials`` mean, so a dispersive run threads the same
+    # array. (It used to fall back to the cell's ``materials.eps_r``.)
     _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
     if _aniso_is_live and aniso_inv_eps is not None:
         cpml_inv_eps_r = aniso_inv_eps
     elif _aniso_is_live and aniso_eps is not None:
         cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
-    elif _aniso_is_live:
+    else:
         _eps_edge, _ = component_e_materials(materials, periodic)
         cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge)
-    else:
-        cpml_inv_eps_r = None
 
     # #677 surface-impedance sheet: Holland exponential-stepping A/B built
     # once from the FINAL run materials (background eps_r/sigma at the sheet

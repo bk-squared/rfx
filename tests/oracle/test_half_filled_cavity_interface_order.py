@@ -70,9 +70,18 @@ def _analytic():
     raise AssertionError("no root of the transverse resonance was found")
 
 
-def _measure(dx, steps, window):
+def _measure(dx, steps, window, debye_block=False):
     f0 = 0.5 * (window[0] + window[1])
     sim = Simulation(freq_max=3 * f0, domain=(L, L, L), dx=dx, boundary="pec")
+    if debye_block:
+        # #1260: a 1 mm Debye cube of delta_eps 1e-6 in the far corner of the
+        # air half -- electrically nothing, but it puts the whole grid on the
+        # dispersive E update.
+        from rfx import Box
+        from rfx.materials.debye import DebyePole
+        sim.add_material("dbl", eps_r=1.0,
+                         debye_poles=[DebyePole(delta_eps=1e-6, tau=1e-11)])
+        sim.add(Box((L - 2e-3,) * 3, (L - 1e-3,) * 3), material="dbl")
     sim.add_source((L * 0.23, L * 0.31, L * 0.41), "ex",
                    amplitude_kind="field",
                    waveform=GaussianPulse(f0=f0, bandwidth=1.0))
@@ -113,3 +122,20 @@ def test_the_half_filled_cube_reads_its_analytic_te10_and_converges():
         f"halving the mesh did not reduce the error: {err_coarse:.3e} at "
         f"dx = 1 mm, {err_fine:.3e} at dx = 0.5 mm "
         f"({f_coarse / 1e9:.4f} -> {f_fine / 1e9:.4f} GHz)")
+
+
+def test_a_negligible_debye_block_leaves_the_interface_where_it_was_drawn():
+    """#1260: with any Debye or Lorentz pole present the dispersive update
+    replaces the E update over the whole grid, and it used to build its
+    coefficients from the cell that owns each edge -- this fixture then read
+    5.3069 GHz, the cell-owned number, with a delta_eps = 1e-6 cube in a far
+    corner. Its coefficients are the edge mean now: the block changes nothing
+    (measured: 5.2161968 against 5.2161967 GHz)."""
+    f_an = _analytic()
+    window = (f_an * 0.94, f_an * 1.10)
+    f_plain = _measure(1e-3, 6000, window)
+    f_block = _measure(1e-3, 6000, window, debye_block=True)
+    assert abs(f_block - f_plain) / f_plain < 1e-5, (
+        f"a negligible Debye block moves TE(1,0) from {f_plain / 1e9:.4f} to "
+        f"{f_block / 1e9:.4f} GHz; 5.3069 GHz is the interface edge taking the "
+        f"air cell alone on the dispersive update (#1260)")
