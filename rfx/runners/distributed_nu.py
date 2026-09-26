@@ -2233,6 +2233,7 @@ def run_nonuniform_distributed_pec(
 
     nx_local = sharded_grid.nx_local
     nx_per = sharded_grid.nx_per_rank
+    nx_real = sharded_grid.nx   # an int for the step closures (#1303)
     ghost = sharded_grid.ghost_width
     ny = sharded_grid.ny
     nz = sharded_grid.nz
@@ -2349,7 +2350,7 @@ def run_nonuniform_distributed_pec(
         return update_e_nu_shmap(
             st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-            nx_per, sharded_grid.nx,
+            nx_per, nx_real,
         )
 
     # ------------------------------------------------------------------
@@ -2738,7 +2739,7 @@ def run_nonuniform_distributed_pec(
             eps_r_slab = (
                 mat_slab.eps_r if use_dispersion
                 else slab_e_component_materials(
-                    mat_slab, nx_per, sharded_grid.nx)[0])
+                    mat_slab, nx_per, nx_real)[0])
             _cs = cs._replace(
                 psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
                 psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
