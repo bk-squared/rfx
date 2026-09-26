@@ -2812,6 +2812,8 @@ def run(
     sheet_impedance: object | None = None,
     design_box: DesignBoxSpec | None = None,
     design_occupancy: DesignOccupancySpec | None = None,
+    stop_fn: Callable | None = None,
+    stop_interval: int = 250,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -2935,6 +2937,22 @@ def run(
         ``_resolve_design_occupancy`` rejects a periodic axis, an empty box
         and a box off the grid. ``Simulation.forward`` owns the lane and the
         collision with ``design_eps_override``.
+    stop_fn : callable or None
+        Issue #1254 (``Simulation.run(..., until_identified=True)``). When
+        given, the scan runs in chunks of ``stop_interval`` steps through
+        :func:`rfx.progress.scan_with_progress`, the carry threaded through,
+        and ``stop_fn(steps_done, peek)`` is called after each chunk;
+        ``peek()`` returns the record so far as a namespace with
+        ``time_series`` (``(steps_done, n_probes)``), ``wire_port_sparams``
+        (the ``(spec, accumulators)`` pairs at that step, as this function
+        returns them), ``grid`` and ``dt``. A true return ends the run
+        there, and every output is the one a run of ``steps_done`` steps
+        returns (the chunked scan is a continuation of the single one).
+        Refused with a snapshot or ``checkpoint_segments``. ``None``
+        (default) is the unchanged path.
+    stop_interval : int
+        Chunk length of the ``stop_fn`` loop (default 250). Ignored when
+        ``stop_fn`` is None.
 
     Returns
     -------
@@ -3215,12 +3233,47 @@ def run(
     # ---- run ----
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms, mag_src_waveforms)
 
+    if stop_fn is not None and (use_snapshot or checkpoint_segments is not None):
+        raise NotImplementedError(
+            "run(stop_fn=...) ends the record at a step chosen during the run; "
+            "a snapshot's frame axes and checkpoint_segments' segment lengths "
+            "are fixed from n_steps before it (issue #1254).")
+
     if checkpoint_segments is None:
         # Legacy path: optional per-step rematerialisation only. The scan
         # itself still keeps every step's carry, so peak memory grows
         # linearly with n_steps.
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
-        if report_every is None and snap_by_block:
+        if stop_fn is not None:
+            # Issue #1254: the same scan in chunks, the carry threaded
+            # through, and the caller's stop check after each chunk.
+            from types import SimpleNamespace
+
+            from rfx.progress import concat_chunks
+
+            def _after_chunk(done, carry, chunk_outputs):
+                def peek():
+                    (series,) = concat_chunks(chunk_outputs)
+                    wps = (tuple(zip(wire_sparam_meta, carry["wire_sparam_accs"]))
+                           if use_wire_sparams else None)
+                    return SimpleNamespace(time_series=series,
+                                           wire_port_sparams=wps,
+                                           grid=grid, dt=dt)
+                return bool(stop_fn(int(done), peek))
+
+            final_carry, outputs = scan_with_progress(
+                body, carry_init, xs,
+                n_steps=n_steps,
+                report_every=report_every,
+                label=report_label,
+                trace_probes=(materials, aniso_eps, aniso_inv_eps,
+                              pec_mask, pec_edge_masks,
+                              pec_occupancy, conformal_weights,
+                              kerr_chi3, debye, lorentz, tfsf),
+                stop_fn=_after_chunk,
+                chunk=int(stop_interval),
+            )
+        elif report_every is None and snap_by_block:
             final_carry, outputs = _make_recorder(body)(carry_init, xs, 0)
         elif report_every is None:
             final_carry, outputs = jax.lax.scan(body, carry_init, xs)

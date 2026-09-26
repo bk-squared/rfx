@@ -516,7 +516,9 @@ class _ExecuteMixin:
                         radiated_flux_box: tuple | None = None,
                         flux_env_checks: int = 4,
                         report_every: int | None = None,
-                        report_label: str = ""):
+                        report_label: str = "",
+                        stop_fn=None,
+                        stop_interval: int = 250):
         """Run simulation on non-uniform grid with graded dz.
 
         ``until_decay`` (issue #383) is threaded through to
@@ -559,6 +561,8 @@ class _ExecuteMixin:
             decay_energy_consecutive=decay_energy_consecutive,
             radiated_flux_box=radiated_flux_box,
             flux_env_checks=flux_env_checks,
+            **({} if stop_fn is None else
+               {"stop_fn": stop_fn, "stop_interval": stop_interval}),
         )
 
     @staticmethod
@@ -4573,6 +4577,7 @@ class _ExecuteMixin:
         report_every: int | None = None,
         report_label: str = "",
         ringdown: RingdownSpec | None = None,
+        until_identified: bool = False,
     ) -> Result:
         """Run the simulation.
 
@@ -4710,6 +4715,23 @@ class _ExecuteMixin:
             (``add_port(..., extent=...)``) on the uniform (one port) and
             graded-mesh lanes, fixed record length; other ports, TFSF, Kerr,
             ``devices=`` and ``until_decay`` are refused with the reason.
+        until_identified : bool
+            Issue #1254 — with ``ringdown=``, end the run once the completion
+            is witnessed instead of at ``n_steps``, which becomes the longest
+            record allowed. The record is checked on a geometric schedule
+            (every check at least 1.25x the record of the last); the run
+            stops at the first check where every source is off over
+            ``[T/4, T]``, the error witness ``WE`` is within ``witness_tol``
+            there and at the check before, and the record is at least half
+            the amplitude decay time ``Q / (pi f)`` of the slowest identified
+            pole. The result is the one ``run(n_steps=T, ringdown=...)``
+            returns for the stopping record ``T``, with the stop report
+            (every check's record, ``WE``, decay time, the conditions and the
+            check's wall time) in ``Result.ringdown.stop``. When no check
+            stops the run, the whole ``n_steps`` record is completed and the
+            report names the condition that failed. Refused without
+            ``ringdown=``, with ``until_decay``, ``snapshot=``, DFT planes
+            and flux monitors.
 
         Returns
         -------
@@ -4723,6 +4745,11 @@ class _ExecuteMixin:
             if isinstance(self._tfsf.waveform, CustomWaveform):
                 raise NotImplementedError(
                     "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
+        if until_identified is not False:
+            from rfx.ringdown import refuse_until_identified
+            until_identified = refuse_until_identified(
+                self, ringdown, until_identified, until_decay=until_decay,
+                snapshot=snapshot)
         if ringdown is not None:
             from rfx.ringdown import refuse_run_request
             refuse_run_request(self, ringdown, devices=devices,
@@ -4942,6 +4969,12 @@ class _ExecuteMixin:
             )
             if ringdown is None:
                 _res = _nu_call()
+            elif until_identified:
+                from rfx.ringdown import RingdownStop
+                _res = RingdownStop(
+                    self, ringdown, lane="graded", n_max=n_steps,
+                    grid=self._build_nonuniform_grid()).run(_nu_call)
+                n_steps = _res.ringdown.stop.n_stop
             else:
                 from rfx.ringdown import RingdownRun
                 _res = RingdownRun(
@@ -5097,6 +5130,11 @@ class _ExecuteMixin:
         )
         if ringdown is None:
             _res = _uniform_call()
+        elif until_identified:
+            from rfx.ringdown import RingdownStop
+            _res = RingdownStop(self, ringdown, lane="uniform", n_max=n_steps,
+                                grid=grid).run(_uniform_call)
+            n_steps = _res.ringdown.stop.n_stop
         else:
             from rfx.ringdown import RingdownRun
             _res = RingdownRun(self, ringdown, lane="uniform", n_steps=n_steps,
