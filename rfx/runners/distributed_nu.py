@@ -1428,15 +1428,20 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     # is None every face is the vacuum scalar dt/eps_0 (bit-identical to
     # pre-#205).
     if eps_r is not None:
-        eps_c = (tuple(eps_r) if isinstance(eps_r, (tuple, list))
-                 else (eps_r,) * 3)
-        _ce_ex, _ce_ey, _ce_ez = (dt / (e * EPS_0) for e in eps_c)
-        ce_ey_xlo, ce_ey_xhi = _ce_ey[xlo, :, :], _ce_ey[xhi, :, :]
-        ce_ez_xlo, ce_ez_xhi = _ce_ez[xlo, :, :], _ce_ez[xhi, :, :]
-        ce_ex_ylo, ce_ex_yhi = _ce_ex[:, :n, :], _ce_ex[:, -n:, :]
-        ce_ez_ylo, ce_ez_yhi = _ce_ez[:, :n, :], _ce_ez[:, -n:, :]
-        ce_ex_zlo, ce_ex_zhi = _ce_ex[:, :, :n], _ce_ex[:, :, -n:]
-        ce_ey_zlo, ce_ey_zhi = _ce_ey[:, :, :n], _ce_ey[:, :, -n:]
+        eps_x, eps_y, eps_z = (tuple(eps_r) if isinstance(eps_r, (tuple, list))
+                               else (eps_r,) * 3)
+
+        def _ce(eps_face):
+            # Sliced to the face BEFORE the division: the time loop then
+            # holds face-sized coefficients, not a slab per component.
+            return dt / (eps_face * EPS_0)
+
+        ce_ey_xlo, ce_ey_xhi = _ce(eps_y[xlo, :, :]), _ce(eps_y[xhi, :, :])
+        ce_ez_xlo, ce_ez_xhi = _ce(eps_z[xlo, :, :]), _ce(eps_z[xhi, :, :])
+        ce_ex_ylo, ce_ex_yhi = _ce(eps_x[:, :n, :]), _ce(eps_x[:, -n:, :])
+        ce_ez_ylo, ce_ez_yhi = _ce(eps_z[:, :n, :]), _ce(eps_z[:, -n:, :])
+        ce_ex_zlo, ce_ex_zhi = _ce(eps_x[:, :, :n]), _ce(eps_x[:, :, -n:])
+        ce_ey_zlo, ce_ey_zhi = _ce(eps_y[:, :, :n]), _ce(eps_y[:, :, -n:])
     else:
         ce_ey_xlo = ce_ey_xhi = ce_ez_xlo = ce_ez_xhi = cpml_coeff_e_vacuum(dt)
         ce_ex_ylo = ce_ex_yhi = ce_ez_ylo = ce_ez_yhi = ce_ey_xlo

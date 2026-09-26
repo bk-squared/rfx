@@ -1858,23 +1858,22 @@ def _apply_cpml_e_distributed(
     # correction array (x faces account for the ghost offset; y/z faces have
     # no x-ghost). x faces drive Ey/Ez, y faces Ex/Ez, z faces Ex/Ey.
     if eps_r is not None:
-        eps_c = (tuple(eps_r) if isinstance(eps_r, (tuple, list))
-                 else (eps_r,) * 3)
-        _ce_ex, _ce_ey, _ce_ez = (dt / (e * EPS_0) for e in eps_c)
+        eps_x, eps_y, eps_z = (tuple(eps_r) if isinstance(eps_r, (tuple, list))
+                               else (eps_r,) * 3)
+        xhi_ = (slice(-(x_hi_edge + n), -x_hi_edge) if x_hi_edge > 0
+                else slice(-n, None))
 
-        def _xlo(ce):
-            return ce[g:g + n, :, :]
+        def _ce(eps_face):
+            # Sliced to the face BEFORE the division: the time loop then
+            # holds face-sized coefficients, not a slab per component.
+            return dt / (eps_face * EPS_0)
 
-        def _xhi(ce):
-            return (ce[-(x_hi_edge + n):-x_hi_edge, :, :]
-                    if x_hi_edge > 0 else ce[-n:, :, :])
-
-        ce_ey_xlo, ce_ey_xhi = _xlo(_ce_ey), _xhi(_ce_ey)
-        ce_ez_xlo, ce_ez_xhi = _xlo(_ce_ez), _xhi(_ce_ez)
-        ce_ex_ylo, ce_ex_yhi = _ce_ex[:, :n, :], _ce_ex[:, -n:, :]
-        ce_ez_ylo, ce_ez_yhi = _ce_ez[:, :n, :], _ce_ez[:, -n:, :]
-        ce_ex_zlo, ce_ex_zhi = _ce_ex[:, :, :n], _ce_ex[:, :, -n:]
-        ce_ey_zlo, ce_ey_zhi = _ce_ey[:, :, :n], _ce_ey[:, :, -n:]
+        ce_ey_xlo, ce_ey_xhi = _ce(eps_y[g:g + n]), _ce(eps_y[xhi_])
+        ce_ez_xlo, ce_ez_xhi = _ce(eps_z[g:g + n]), _ce(eps_z[xhi_])
+        ce_ex_ylo, ce_ex_yhi = _ce(eps_x[:, :n]), _ce(eps_x[:, -n:])
+        ce_ez_ylo, ce_ez_yhi = _ce(eps_z[:, :n]), _ce(eps_z[:, -n:])
+        ce_ex_zlo, ce_ex_zhi = _ce(eps_x[:, :, :n]), _ce(eps_x[:, :, -n:])
+        ce_ey_zlo, ce_ey_zhi = _ce(eps_y[:, :, :n]), _ce(eps_y[:, :, -n:])
     else:
         ce_ey_xlo = ce_ey_xhi = ce_ez_xlo = ce_ez_xhi = cpml_coeff_e_vacuum(dt)
         ce_ex_ylo = ce_ex_yhi = ce_ez_ylo = ce_ez_yhi = ce_ey_xlo
