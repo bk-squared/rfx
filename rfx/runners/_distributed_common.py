@@ -66,6 +66,7 @@ __all__ = [
     "_update_h_local_nu",
     "_update_e_local_nu",
     "slab_e_component_materials",
+    "slab_e_coeffs_shmap",
     "update_h_nu_shmap",
     "update_e_nu_shmap",
     "_split_state",
@@ -1189,18 +1190,50 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None):
     return per_row(eps_edge, eps_cell), per_row(sig_edge, sig_cell)
 
 
-def _update_e_local_nu(state, e_materials, dt,
+def slab_e_coeffs(materials, nx_per, nx, dt, rank=None):
+    """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` of one x slab (#1303):
+    :func:`rfx.core.yee.e_update_coeffs` of each component of
+    :func:`slab_e_component_materials`. The one path the multi-device E
+    updates take to their coefficients."""
+    eps_c, sig_c = slab_e_component_materials(materials, nx_per, nx, rank)
+    pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps_c, sig_c)]
+    return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
+
+
+def slab_e_coeffs_shmap(mat, mesh, dt, nx_per, nx):
+    """:func:`slab_e_coeffs` of every slab, as x-sharded arrays, for a
+    runner that builds its E coefficients once, before its time loop.
+
+    Why a runner would (#1303): inside the loop the coefficients are
+    loop-invariant and XLA hoists them out of it anyway, so the forward
+    program holds the same six slabs either way. Under ``jax.grad`` it does
+    not: taken inside the loop, the four-cell mean is transposed at every
+    step (measured on CPU, 2.2x the cell-owned lane's time per step); built
+    here, the loop only accumulates the six coefficient cotangents (1.1x).
+    ``jax.checkpoint`` recomputes this builder in the backward pass instead
+    of keeping its linearization on the tape.
+    """
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),
+             check_rep=False)
+    def _coeffs(local):
+        return slab_e_coeffs(local, nx_per, nx, dt)
+
+    return jax.checkpoint(_coeffs)(MaterialArrays(
+        eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,
+        sigma_lumped=getattr(mat, "sigma_lumped", None),
+        eps_r_lumped=getattr(mat, "eps_r_lumped", None)))
+
+
+def _update_e_local_nu(state, e_coeffs,
                       inv_dx_slab, inv_dy_full, inv_dz_full):
     """E update on a local slab using NU inverse (cell-local) spacings.
 
-    Mirrors ``rfx/core/yee.py::update_e_nu``. ``e_materials`` is the
-    per-component ``((eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z))`` of the
-    slab, as :func:`slab_e_component_materials` builds it (#1303), and the
-    coefficients are :func:`rfx.core.yee.e_update_coeffs` of each component.
+    Mirrors ``rfx/core/yee.py::update_e_nu``. ``e_coeffs`` is the slab's
+    per-component ``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))``, as
+    :func:`slab_e_coeffs` builds them (#1303).
     """
     hx, hy, hz = state.hx, state.hy, state.hz
-    (ca_x, cb_x), (ca_y, cb_y), (ca_z, cb_z) = (
-        e_update_coeffs(e, s, dt) for e, s in zip(*e_materials))
+    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
 
     curl_x = (
         (hz - _shift_bwd(hz, 1)) * inv_dy_full[None, :, None]
@@ -1309,7 +1342,8 @@ def update_h_nu_shmap(st, mat, mesh, dt,
 
 
 def update_e_nu_shmap(st, mat, mesh, dt,
-                      inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx):
+                      inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx,
+                      e_coeffs=None):
     """E update on the NU distributed path, via ``shard_map``.
 
     The E sibling of :func:`update_h_nu_shmap`, shared by the same two
@@ -1319,9 +1353,10 @@ def update_e_nu_shmap(st, mat, mesh, dt,
     curl reads only the cell-local spacings, not the mean-spacing ones.
 
     Each component's eps and sigma are the mean over the four cells around
-    its edge, the single-device rule, built on each slab by
-    :func:`slab_e_component_materials` from ``nx_per`` (real rows per slab)
-    and ``nx`` (the unpadded global x count) (#1303).
+    its edge, the single-device rule (#1303): ``e_coeffs``, the x-sharded
+    coefficients :func:`slab_e_coeffs_shmap` built before the loop, or, when
+    it is ``None``, :func:`slab_e_coeffs` of ``mat`` on each slab, from
+    ``nx_per`` (real rows per slab) and ``nx`` (the unpadded global x count).
 
     Returns the state with ``ex``/``ey``/``ez``/``step`` replaced. Dispersion
     is NOT handled here: ``distributed_v2.run_distributed`` refuses Debye and
@@ -1338,26 +1373,27 @@ def update_e_nu_shmap(st, mat, mesh, dt,
             P("x"), P("x"), P("x"),
             P("x"), P("x"),          # lumped records: None or (x, y, z)
             P("x"), P(None), P(None),
+            P("x"),                  # e_coeffs: None or ((ca...), (cb...))
         ),
         out_specs=(P("x"), P("x"), P("x"), P()),
         check_rep=False,
     )
     def _e(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-           sigma_lumped, eps_r_lumped, invdx, invdy, invdz):
+           sigma_lumped, eps_r_lumped, invdx, invdy, invdz, coeffs):
         _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-        _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
-                              sigma_lumped=sigma_lumped,
-                              eps_r_lumped=eps_r_lumped)
-        new_st = _update_e_local_nu(
-            _st, slab_e_component_materials(_mat, nx_per, nx), dt,
-            invdx, invdy, invdz)
+        if coeffs is None:
+            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+                                  sigma_lumped=sigma_lumped,
+                                  eps_r_lumped=eps_r_lumped)
+            coeffs = slab_e_coeffs(_mat, nx_per, nx, dt)
+        new_st = _update_e_local_nu(_st, coeffs, invdx, invdy, invdz)
         return new_st.ex, new_st.ey, new_st.ez, new_st.step
 
     ex, ey, ez, step = _e(
         st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
         mat.eps_r, mat.sigma, mat.mu_r,
         getattr(mat, "sigma_lumped", None), getattr(mat, "eps_r_lumped", None),
-        inv_dx_sharded, inv_dy_rep, inv_dz_rep,
+        inv_dx_sharded, inv_dy_rep, inv_dz_rep, e_coeffs,
     )
     return st._replace(ex=ex, ey=ey, ez=ez, step=step)
 
@@ -1545,20 +1581,18 @@ def _update_h_local(state, materials, dt, dx):
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-def _update_e_local(state, e_materials, dt, dx):
+def _update_e_local(state, e_coeffs, dx):
     """E update on a local slab (including ghost cells).
 
     Identical to yee.update_e but without jit decorator and always
-    non-periodic. ``e_materials`` is the per-component
-    ``((eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z))`` of the slab, as
-    :func:`slab_e_component_materials` builds it: the mean over the four
-    cells around each edge, with a lumped element on its own edge only --
-    the single-device rule (#1210, #1236, #1303). The coefficients are
-    :func:`rfx.core.yee.e_update_coeffs` of each component.
+    non-periodic. ``e_coeffs`` is the slab's per-component
+    ``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))``, as :func:`slab_e_coeffs`
+    builds them: from the mean eps and sigma over the four cells around each
+    edge, with a lumped element on its own edge only -- the single-device
+    rule (#1210, #1236, #1303).
     """
     hx, hy, hz = state.hx, state.hy, state.hz
-    (ca_x, cb_x), (ca_y, cb_y), (ca_z, cb_z) = (
-        e_update_coeffs(e, s, dt) for e, s in zip(*e_materials))
+    (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
 
     curl_x = (
         (hz - _shift_bwd(hz, 1)) / dx
@@ -1654,7 +1688,7 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     """
     if debye is None and lorentz is None:
         return _update_e_local(
-            state, slab_e_component_materials(materials, *slab), dt, dx), None, None
+            state, slab_e_coeffs(materials, *slab, dt), dx), None, None
 
     if debye is not None and lorentz is None:
         debye_coeffs, debye_state = debye

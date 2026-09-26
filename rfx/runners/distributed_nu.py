@@ -76,6 +76,7 @@ from rfx.runners._distributed_common import (
     shard_stacked,
     shard_stacked_poles,
     shard_stacked_psi,
+    slab_e_coeffs_shmap,
     slab_e_component_materials,
     unstack_and_gather,
     update_e_nu_shmap,
@@ -2347,15 +2348,16 @@ def run_nonuniform_distributed_pec(
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
         )
 
-    def _update_e_shmap(st, mat, spacings):
+    def _update_e_shmap(st, mat, spacings, e_coeffs):
         inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
         # #1038 leg 4: body moved VERBATIM to
         # _distributed_common.update_e_nu_shmap, shared with the `is_nu`
-        # branch of distributed_v2.run_distributed.
+        # branch of distributed_v2.run_distributed. #1303: this lane hands it
+        # the coefficients run_fn built once, before the loop.
         return update_e_nu_shmap(
             st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-            nx_per, nx_real,
+            nx_per, nx_real, e_coeffs=e_coeffs,
         )
 
     # ------------------------------------------------------------------
@@ -2789,7 +2791,7 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     # Per-step scan body (Phase 2B/2C/2D ordering — see docstring)
     # ------------------------------------------------------------------
-    def step_fn(carry, xs, invariants):
+    def step_fn(carry, xs, invariants, e_coeffs=None):
         (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
          debye_coeffs, lorentz_coeffs, cpml_params, spacings) = invariants
         if cpml_spacings:
@@ -2844,7 +2846,7 @@ def run_nonuniform_distributed_pec(
                 debye_coeffs, lorentz_coeffs, spacings,
             )
         else:
-            st = _update_e_shmap(st, sharded_materials, spacings)
+            st = _update_e_shmap(st, sharded_materials, spacings, e_coeffs)
 
         # 5. Phase 2C: CPML E correction (after E, before sources/PEC).
         if use_cpml:
@@ -2976,7 +2978,13 @@ def run_nonuniform_distributed_pec(
             if warmup_xs is not None:
                 warmup_xs = _drive_xs(warmup_xs, scales)
             opt_xs = _drive_xs(opt_xs, scales)
-        scan_step = partial(step_fn, invariants=invariants)
+        # #1303: each component's (Ca, Cb) from the four-cell mean, built
+        # once for the warm-up and the optimize scans (and every remat
+        # segment) -- see slab_e_coeffs_shmap for why not inside the loop.
+        # A dispersive model's update takes its own cell-owned coefficients.
+        e_coeffs = (None if use_dispersion else slab_e_coeffs_shmap(
+            invariants[0], mesh, dt, nx_per, nx_real))
+        scan_step = partial(step_fn, invariants=invariants, e_coeffs=e_coeffs)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the
         # warmup phase are also stop_gradient'd (they're just metadata

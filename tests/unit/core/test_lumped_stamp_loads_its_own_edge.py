@@ -156,13 +156,14 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
     with the halo the runners stage. Each component's eps and sigma, built on
     each slab by ``slab_e_component_materials`` and gathered, are the
     single-device ``component_e_materials`` bit for bit, and the slab update
-    ``_update_e_local`` then equals ``update_e`` to its own rounding. The
+    ``_update_e_local`` on ``slab_e_coeffs`` then equals ``update_e`` to its
+    own rounding. The
     random background exercises the four-cell mean; one element sits on Ez
     and one on Ey at the second slab's first real cell, whose i-1 cells are
     the first slab's."""
     from rfx.core.yee import FDTDState, update_e
     from rfx.runners._distributed_common import (
-        _split_materials, _split_state, _update_e_local,
+        _split_materials, _split_state, _update_e_local, slab_e_coeffs,
         slab_e_component_materials)
 
     n_dev, nx_per = 2, SHAPE[0] // 2
@@ -191,7 +192,7 @@ def test_the_distributed_slab_update_loads_the_own_edge_only():
         for name, per_comp in zip(("eps", "sigma"), e_mats):
             for c, arr in enumerate(per_comp):
                 edge[name][c].append(np.asarray(arr)[1:1 + nx_per])
-        out = _update_e_local(local, e_mats, DT, DX)
+        out = _update_e_local(local, slab_e_coeffs(mat, nx_per, SHAPE[0], DT, rank=rank), DX)
         for c in COMPONENTS:
             fields[c].append(np.asarray(getattr(out, c))[1:1 + nx_per])
     for name, want in zip(("eps", "sigma"), component_e_materials(mats)):

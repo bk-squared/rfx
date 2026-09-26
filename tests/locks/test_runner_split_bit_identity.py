@@ -992,6 +992,10 @@ _SHARED_HELPER_BINDINGS = (
      "slab_e_component_materials"),
     ("slab_e_component_materials", "rfx.runners.distributed_v2",
      "slab_e_component_materials"),
+    # #1303 -- the forward lane's coefficients, built once before its loop
+    # from the same helper (the uniform runner builds them in its loop body).
+    ("slab_e_coeffs_shmap", "rfx.runners.distributed_nu",
+     "slab_e_coeffs_shmap"),
     # Retiring the pmap runner -- the names distributed_v2 imported from
     # distributed.py, moved verbatim so that module can stop defining them.
     # Single definitions, not de-duplications: these rows say each importer
