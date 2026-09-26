@@ -17,26 +17,31 @@ single-device helper (``slab_e_component_materials`` ->
 cell from the static material halo, the x-lo face replicates the boundary
 cell, and the CPML psi coefficient takes the same per-component permittivity.
 
-What is checked, and what it measured on Mac arm64, JAX 0.10.2:
+What is checked, and what it measured on Mac arm64, JAX 0.10.2 (differences
+as a fraction of the record's peak):
 
 a. Lane parity. Each model against the same model with its material removed
    (the vacuum box, or the PEC volume alone): the multi-device record must
    agree with the single-device one as well as that box does, within
-   ``FLOOR_FACTOR`` times its agreement or ``ROUNDING`` of the probe peak,
-   whichever is larger. In the PEC cube every material case is bitwise equal
-   to the single-device record on 2, 3 and 4 devices (uneven slabs: 13 cells
-   pad to 14 / 15 / 16), both lanes; a PEC volume on a dielectric slab reads
-   1.5e-6 (run) / 1.1e-6 (forward) against 7.7e-7 / 1.0e-6 for the volume
-   alone. In a 25-cell CPML box the vacuum floor is 1.9e-6 / 1.3e-6 and every
-   material case is at or under 4.3e-6. The defect restored reads 7.0e-3 to
-   2.1 on the same probes.
+   ``FLOOR_FACTOR`` times its agreement (``CONDUCTOR_FLOOR_FACTOR`` for the
+   sheet and the PEC volume) or ``ROUNDING``, whichever is larger. In the
+   PEC cube every material case is bitwise equal to the single-device record
+   on 2, 3 and 4 devices (uneven slabs: 13 cells pad to 14 / 15 / 16), both
+   lanes; a PEC volume on a dielectric slab reads 1.0e-6 (run) / 1.6e-6
+   (forward) against 6.9e-7 / 7.3e-7 for the volume alone. In a 25-cell CPML
+   box the vacuum floor is 2.0e-6 / 1.8e-6 and every material case is under
+   3.7e-6. The defect restored reads 6.6e-3 to 0.91.
 b. Mutations with the helper calls kept: the cell-owned coefficient (every
    material case red), a seam row reading its own row (the case whose
-   interface is on a slab cut red). The x-lo replicate is pinned at the
-   coefficient level (the slab view against the single-device rule, bit for
-   bit, with a rank-0 ghost read as its vacuum sent red): on the lanes'
-   records it changes nothing today, because the single-device references
-   zero the tangential E on that plane (the PEC backing of their faces).
+   interface is on a slab cut red), the CPML psi coefficient on the cell
+   permittivity while the update keeps the mean (red at 1.5e-3). The x-lo
+   replicate is pinned at the coefficient level (the slab view against the
+   single-device rule, bit for bit; a rank-0 ghost read as its vacuum sent
+   red): on the records it stays inside the gate, because it only sets the
+   Ey/Ez coefficient on the domain's x-lo plane, which the forward lane holds
+   at zero (its faces are PEC-backed, as the single-device lanes' are) and
+   which on the run lane's CPML body is the absorber's last and smallest
+   field (measured 1.5e-6 -> 1.6e-6).
 c. Vacuum and homogeneous models (vacuum, and eps_r 4.4 / sigma 0.02 filling
    a CPML box, both lanes): bitwise the records of the same kernels fed the
    cell values, i.e. main's rule. main itself, run out of process on the same
@@ -46,7 +51,7 @@ d. A Debye block: the multi-device lanes take the single-device switch -- the
    permittivity -- and agree within the same gate.
 e. The permittivity gradient of forward(distributed=True) through a traced
    eps_override, eps_r 4 block: within ``GRAD_RTOL`` of the single-device
-   gradient's peak (9.0e-7 PEC, 9.6e-7 CPML; 2.8 / 3.0 before).
+   gradient's peak (8.7e-7 PEC, 4.4e-7 CPML; 2.8 / 3.0 before).
 f. Slow, Linux: two processes give the one-process records.
 
 The x-hi ghost is never read by the mean (it reads the row before), and the
