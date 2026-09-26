@@ -1382,14 +1382,17 @@ class _PreflightMixin:
                 "boundary='cpml' with cpml_layers > 0 (got "
                 f"boundary={self._boundary!r}, cpml_layers={self._cpml_layers})")
         else:
-            z_boundary = self._boundary_spec.z
-            if (
-                z_boundary.lo != "cpml"
-                or z_boundary.hi != "cpml"
-                or z_boundary.resolved_lo_thickness(self._cpml_layers) <= 0
-                or z_boundary.resolved_hi_thickness(self._cpml_layers) <= 0
+            # Both lanes absorb on all three axes (issue 1218): a face without
+            # an absorber is a PEC wall that closes a can around the line.
+            if any(
+                face.lo != "cpml"
+                or face.hi != "cpml"
+                or face.resolved_lo_thickness(self._cpml_layers) <= 0
+                or face.resolved_hi_thickness(self._cpml_layers) <= 0
+                for face in (self._boundary_spec.x, self._boundary_spec.y,
+                             self._boundary_spec.z)
             ):
-                failed.append("positive CPML thickness on both z faces")
+                failed.append("positive CPML thickness on all six faces")
             if any(token != "cpml"
                    for _, _, token in self._boundary_spec.faces()):
                 failed.append("CPML on all six boundary faces")
