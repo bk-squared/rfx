@@ -203,12 +203,17 @@ class DesignBoxSpec(NamedTuple):
         drive were built from those materials before the time loop. ``axis``
         is the edge's component (0, 1, 2 for Ex, Ey, Ez), ``(i, j, k)`` its
         cell. The design values do not reach a held edge — its derivative
-        with respect to them is exactly zero — and at a held port's cell a
-        design value is the cell's VOLUME material, its port load staying on
-        the port's own edge. Listing an edge is the opt-in: a port, source or
-        lumped stamp in the box that is not on a listed edge is refused.
+        with respect to them is exactly zero — so the port keeps the DRAWN
+        material in its own feed gap: the modelled structure differs from
+        the same design written as a whole-grid ``eps_override`` by exactly
+        that gap. At any cell carrying a lumped load a cell design value is
+        the cell's VOLUME material, the load staying on its own edge.
+        Listing an edge is the opt-in: a port or source cell in the box that
+        is not on a listed edge is refused, and so is a per-edge design
+        conductivity over an unlisted load.
         ``Simulation.forward(design_box_holds_ports=True)`` lists every
-        lumped and wire port edge in the window.
+        edge of every lumped and wire port in the window, passive ports
+        included.
     """
     bounds: tuple
     eps_r: Any
@@ -928,18 +933,25 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
     grid-wide ``update_e`` coefficient bit for bit, the port's own load
     included — so the drive built from ``materials`` before the time loop
     meets the update it was built for, and the design values' derivative
-    through that edge is exactly zero. At a box cell carrying a held port's
-    load a CELL design value is that cell's volume material: the load is
-    added back on top of it, so the average that removes every stamp before
-    it spreads the cell over its edges finds the design value there and not
-    the design value less the load.
+    through that edge is exactly zero.
+
+    At a box cell carrying a lumped load -- a held port's, or a passive
+    termination's (an MSL port with ``excite=False``) -- a CELL design value
+    is that cell's volume material: the load is added back on top of it, so
+    the average that removes every stamp before it spreads the cell over its
+    edges finds the design value there and not the design value less the
+    load (which was a negative conductance, and NaN, before). That is what a
+    whole-grid ``eps_override`` / ``sigma_override`` does, since the ports
+    stamp their loads on top of the override. A per-edge conductivity has no
+    such reading and is refused over an unheld load
+    (:func:`_resolve_design_box`).
     """
     held = tuple(held_edges or ())
     write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
 
     def _cell_value(box_value, record):
-        # A held port's load lives on its own edge; keep it off the cell.
-        total = lumped_total(record) if held else None
+        # A lumped load lives on its own edge; keep it off the cell volume.
+        total = lumped_total(record)
         if total is None:
             return box_value
         return box_value + jnp.asarray(total)[win][box_local]
@@ -1218,36 +1230,43 @@ def _resolve_design_box(
 
     sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
 
-    # A lumped stamp (a port's load, an RLC element's R or C) inside the
-    # declared box that is not on a held edge. The box writes its design
-    # value over the cell total, and the average that removes every stamp
-    # before spreading a cell over its edges would then take the load out
-    # of the design value -- a negative conductance on the cell's other
-    # edges. A passive port that registers no accumulator leaves no cell in
-    # ``cell_metas``, so the stamps are read from ``materials`` itself. Only
-    # when they are concrete: a traced stamp (traced R/C, a traced mesh)
-    # keeps the cell checks above.
-    import numpy as np
-    from rfx.core.jax_utils import is_tracer
-    for name in ("sigma_lumped", "eps_r_lumped"):
+    # A per-edge design conductivity laid over a lumped load (a port's
+    # termination, an RLC element's R) that is not on a held edge. The tuple
+    # REPLACES the edge's conductivity at the box indices (#1216), load
+    # included, so the load would silently vanish. A cell design value keeps
+    # it -- the lay-in in ``_design_box_edge_coeffs`` puts the stamp back on
+    # top of the cell's volume material -- so only this form is refused. A
+    # passive termination that registers no accumulator leaves no cell in
+    # ``cell_metas``, so the stamps are read from ``materials`` itself, and
+    # only when they are concrete (a traced R or a traced mesh keeps the cell
+    # checks above).
+    if isinstance(spec.sigma, (tuple, list)):
+        import numpy as np
+        from rfx.core.jax_utils import is_tracer
         for axis, part in enumerate(lumped_components(
-                getattr(materials, name, None))):
+                getattr(materials, "sigma_lumped", None))):
             if part is None or is_tracer(part):
                 continue
-            nz = np.argwhere(np.asarray(part)[sl] != 0)
+            nz = np.argwhere(np.asarray(jnp.asarray(part)[sl]) != 0)
             loose = [(int(a) + i0, int(b) + j0, int(c) + k0)
                      for a, b, c in nz
                      if (axis, int(a) + i0, int(b) + j0, int(c) + k0)
                      not in held]
             if loose:
                 raise ValueError(
-                    f"the design box {bounds} holds a lumped {name[:-7]} "
-                    f"stamp on the {'xyz'[axis]} edge at cell(s) {loose} "
-                    f"that is not a held edge. A port's load or an RLC "
-                    f"element is a device on one edge, and the box would "
-                    f"overwrite the cell it sits in. Move the box off it, "
-                    f"or, for a lumped or wire port, pass "
-                    f"forward(design_box_holds_ports=True).")
+                    f"the design box {bounds} lays a per-edge design "
+                    f"conductivity over a lumped load on the "
+                    f"{'xyz'[axis]} edge at cell(s) {loose} (a port's "
+                    f"termination or an RLC element). A per-edge "
+                    f"conductivity REPLACES the edge's conductivity, load "
+                    f"included, so the load would be removed. Give the "
+                    f"design conductivity as one cell array instead (the "
+                    f"load then stays on its own edge and the design value "
+                    f"is the cell's volume material), or move the box off "
+                    f"the load. A lumped or wire port inside a permittivity "
+                    f"box can instead be held with "
+                    f"forward(design_box_holds_ports=True); an MSL port's "
+                    f"termination cannot be held.")
     w_sl = (slice(w_i0, w_i1), slice(w_j0, w_j1), slice(w_k0, w_k1))
     if sheet_impedance is not None:
         for mask in (sheet_impedance.mask_ex, sheet_impedance.mask_ey,

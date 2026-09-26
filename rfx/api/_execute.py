@@ -3507,9 +3507,25 @@ class _ExecuteMixin:
         _axis_of = {"ex": 0, "ey": 1, "ez": 2}
         _w = _design_box_window(bounds, tuple(grid.shape))[0]
         _held = set()
+
+        def _in_window(cell):
+            return all(_w[2 * d] <= cell[d] < _w[2 * d + 1] for d in range(3))
+
         for _pe in self._ports:
             if _pe.impedance == 0.0:
-                continue  # a plain soft source; caught as a source cell
+                # A plain soft source: caught as a source cell at the step --
+                # except on a held port edge, where a port's drive is
+                # accepted, so it is refused here whatever it sits on.
+                _src = self._design_box_index_of(grid, _pe.position)
+                if holds_ports and _in_window(_src):
+                    raise ValueError(
+                        f"the design box (cells {bounds}) holds a soft "
+                        f"source (component {_pe.component!r} at "
+                        f"{_pe.position}). design_box_holds_ports holds a "
+                        f"lumped or wire port's edges; a soft source cannot "
+                        f"be held. Move the box off the source, or use "
+                        f"eps_override.")
+                continue
             _axis = _axis_of[_pe.component]
             _lo = list(self._design_box_index_of(grid, _pe.position))
             _cell_lo = list(_lo)
@@ -3525,8 +3541,7 @@ class _ExecuteMixin:
                 for _a in range(_cell_lo[_axis], _cell_hi[_axis] + 1):
                     _edge = list(_lo)
                     _edge[_axis] = _a
-                    if all(_w[2 * d] <= _edge[d] < _w[2 * d + 1]
-                           for d in range(3)):
+                    if _in_window(_edge):
                         _held.add((_axis, *(int(v) for v in _edge)))
                 continue
             if all(bounds[2 * d] <= _cell_hi[d]
@@ -3757,12 +3772,17 @@ class _ExecuteMixin:
             the drawn materials give it, for the update and the drive alike:
             the design values do not reach it, their derivative through it is
             exactly zero, and a box holding a port with the background
-            written into it gives the run without the box. The other edges of
-            the port's cells stay design variables; at a port's cell a design
-            value is the cell's volume material. The held edges come back as
+            written into it gives the run without the box. Holding keeps the
+            DRAWN material in the port's feed gap, so the modelled structure
+            differs from the same design written as a whole-grid
+            ``eps_override`` by that gap. Passive ports (``excite=False``)
+            are held too. The other edges of the port's cells stay design
+            variables; at a port's cell a design value is the cell's volume
+            material. The held edges come back as
             ``ForwardResult.design_box_held_edges``, ``(axis, i, j, k)`` with
-            axis 0, 1, 2 for Ex, Ey, Ez. A soft source, a magnetic source and
-            a lumped RLC element in the box still raise.
+            axis 0, 1, 2 for Ex, Ey, Ez. A soft source (even on a port's
+            edge), a magnetic source and a lumped RLC element in the box
+            still raise; an MSL port's termination is not held.
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
         pec_occupancy_override : jnp.ndarray or None

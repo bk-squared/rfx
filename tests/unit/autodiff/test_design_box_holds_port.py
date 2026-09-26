@@ -36,7 +36,8 @@ three-edge wire port and a one-edge lumped port:
 * T2 -- a held edge ignores its design value: an extreme per-edge
   conductivity (1e5 S/m) written on it gives a bitwise-identical run and a
   derivative of exactly 0.0; the same value on the next Ez edge moves the
-  result.
+  result, and so does it on the Ex and Ey edges of the port's own cell,
+  which stay design variables.
 * T3 -- the gradient next to the port. d|S11|^2 (uniform) / d(probe energy)
   (graded) with respect to the conductivity of the Ez edge beside the port:
   AD against central differences (float64 on the uniform lane, the error
@@ -52,9 +53,15 @@ three-edge wire port and a one-edge lumped port:
 * ``ForwardResult.design_box_held_edges`` names exactly the port's
   rasterized edges;
 * T4 -- without the opt-in the refusal stays, and names the option; a soft
-  source in the box is refused even with it; a lumped stamp in the box that
-  is not on a held edge is refused at the step level, where a passive port
-  leaves no other trace.
+  source in the box is refused even with it, also one sitting on the port's
+  own edge;
+* passive loads without the opt-in, as on main: a permittivity box over a
+  passive MSL termination equals the same design as ``eps_override`` (and
+  over a passive lumped or wire port handed to the low-level ``run``, the
+  same design written into ``materials``); a cell-array conductivity over
+  it equals ``eps_override`` + ``sigma_override`` (main went NaN); a
+  per-edge conductivity over it, which removed the load on main, is
+  refused unless the load's edges are held.
 """
 
 from __future__ import annotations
@@ -370,6 +377,49 @@ def test_t2_a_held_edge_ignores_an_extreme_design_conductivity(port, graded):
     assert g[beside] != 0.0 and np.all(np.isfinite(g))
 
 
+@pytest.mark.parametrize("graded", LANES)
+def test_t2_the_port_cells_other_edges_stay_design_variables(graded):
+    """Only the port's own Ez edges are held. The Ex and Ey edges of the
+    port's middle cell (in the substrate, off the ground sheet) take their
+    design conductivity: 1e5 S/m there moves the run, and the derivative
+    there is not zero."""
+    port = "wire"
+    sim = _board(port, graded=graded)
+    box = _box(port, graded=graded)
+    b = _box_bounds(sim, box, graded)
+    eps, sig = _background(sim, box, graded)
+    at = (PORT_IJ[0] - b[0], PORT_IJ[1] - b[2], 1)
+    assert (2, PORT_IJ[0], PORT_IJ[1], b[4] + 1) in _port_edges(port)
+    z = jnp.zeros_like(sig)
+
+    def run(sx, sy):
+        return _forward(_board(port, graded=graded), box, eps=eps,
+                        sigma=(sx, sy, z), holds=True, graded=graded)
+
+    base = run(z, z)
+    for c, name in ((0, "Ex"), (1, "Ey")):
+        hot = z.at[at].set(1.0e5)
+        r = run(hot, z) if c == 0 else run(z, hot)
+        moved = _peak_rel(r.time_series, base.time_series)
+        print(f"[T2 other edges {'graded' if graded else 'uniform'}] 1e5 S/m "
+              f"on the port cell's {name} edge moves the probe {moved:.3e}")
+        # A held edge leaves the run bitwise unchanged (T2 above), so the
+        # witness is that this one does not. A transverse edge in the feed's
+        # cell carries little of the feed's field: measured 1.0e-4 / 2.1e-5
+        # (uniform Ex / Ey) and 3.6e-6 / 1.0e-6 (graded) of the probe peak.
+        assert not np.array_equal(np.asarray(r.time_series),
+                                  np.asarray(base.time_series)), name
+        assert moved > 0.0, (name, moved)
+
+    def loss(sx, sy):
+        return _observable(run(sx, sy))
+
+    gx, gy = jax.grad(loss, argnums=(0, 1))(z, z)
+    gx, gy = np.asarray(gx)[at], np.asarray(gy)[at]
+    print(f"   d/dsigma at the port cell: Ex {gx:.3e}, Ey {gy:.3e}")
+    assert gx != 0.0 and gy != 0.0
+
+
 # ---------------------------------------------------------------------------
 # T3 -- the gradient next to the port
 # ---------------------------------------------------------------------------
@@ -576,11 +626,11 @@ def test_t4_a_soft_source_in_the_box_is_refused_even_with_the_opt_in(graded):
     sim = _board("source", graded=graded)
     box = _box("lumped", graded=graded)
     eps, _ = _background(sim, box, graded)
-    with pytest.raises(ValueError, match="holds source cell") as info:
+    with pytest.raises(ValueError, match="holds a soft source") as info:
         sim.forward(design_box=box, design_eps_override=eps,
                     design_box_holds_ports=True, n_steps=2, checkpoint=False,
                     skip_preflight=True)
-    assert "a soft source cannot" in str(info.value)
+    assert "a soft source cannot be held" in str(info.value)
 
 
 def test_t4_the_opt_in_needs_a_permittivity_box():
@@ -597,28 +647,201 @@ def test_t4_the_opt_in_needs_a_permittivity_box():
                     skip_preflight=True)
 
 
-def test_t4_a_lumped_stamp_off_the_held_edges_is_refused_at_the_step():
-    """A passive port with no S-parameter accumulator leaves no cell in the
-    step-level ``cell_metas``: the stamp in ``materials`` is what shows it.
-    The declaration-level check is bypassed here by handing ``run`` the
-    spec directly, as a low-level caller would."""
+def test_t4_a_soft_source_on_a_held_port_edge_is_refused():
+    """The step accepts a drive on a held edge -- that is how a port's own
+    drive gets in -- so a soft source sitting exactly on the port's edge is
+    refused where the declarations are visible."""
     sim = _board("lumped")
-    grid = sim._build_grid()
+    sim.add_source((PORT_XY[0], PORT_XY[1], KG * DX), "ez",
+                   waveform=GaussianPulse(f0=F0, bandwidth=0.8))
     box = _box("lumped")
-    b = _box_bounds(sim, box, False)
-    mats = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
-    from rfx.sources.sources import setup_lumped_port, LumpedPort
-    mats = setup_lumped_port(grid, LumpedPort(
-        position=(PORT_XY[0], PORT_XY[1], KG * DX), component="ez",
-        impedance=50.0, excitation=None), mats)
     eps, _ = _background(sim, box, False)
-    spec = _sim_mod.DesignBoxSpec(bounds=b, eps_r=eps)
-    with pytest.raises(ValueError, match="lumped sigma stamp on the z edge"):
-        _sim_mod.run(grid, mats, n_steps=2, design_box=spec)
-    held = _sim_mod.DesignBoxSpec(bounds=b, eps_r=eps,
-                                  held_edges=_port_edges("lumped"))
-    r = _sim_mod.run(grid, mats, n_steps=2, design_box=held)
-    assert np.all(np.isfinite(np.asarray(r.state.ez)))
+    with pytest.raises(ValueError, match="a soft source cannot be held"):
+        sim.forward(design_box=box, design_eps_override=eps,
+                    design_box_holds_ports=True, n_steps=2, checkpoint=False,
+                    skip_preflight=True)
+
+
+# ---------------------------------------------------------------------------
+# passive loads under a box without the opt-in (as on main)
+# ---------------------------------------------------------------------------
+#
+# A passive termination -- an MSL port with ``excite=False``, or a passive
+# lumped / wire port handed to the low-level ``run`` -- stamps its load into
+# ``materials`` and drives nothing. A permittivity-only box over it is exact:
+# the load's own edge sees the design permittivity just as it would under a
+# whole-grid override, and no drive is built for another Cb. A cell-array
+# design conductivity is the cell's volume material with the load on top (as
+# under ``sigma_override``, where the ports stamp on top of the override);
+# main laid it over the load's cell total and took the load out of it, a
+# negative conductance that went NaN. A per-edge conductivity replaces the
+# load's edge conductivity outright and is refused.
+
+MSL_NX, MSL_NY = 30, 20
+MSL_ZG, MSL_ZP = 2 * DX, 4 * DX
+#: the passive termination's feed plane is x = (NX - 5) mm; the box spans it,
+#: the trace width and the lower substrate cell.
+MSL_BOX = (((MSL_NX - 7) * DX, 7 * DX, 2.25 * DX),
+           ((MSL_NX - 4) * DX, 13 * DX, 3.25 * DX))
+MSL_STEPS = 400
+
+
+def _msl_board():
+    """A 50 ohm microstrip over eps_r 3.38, driven at one end, terminated by a
+    passive MSL port at the other; float64 fields."""
+    sim = Simulation(freq_max=16e9, domain=(MSL_NX * DX, MSL_NY * DX, 10 * DX),
+                     dx=DX, boundary="cpml", cpml_layers=CPML,
+                     precision="float64")
+    sim.add_material("sub", eps_r=3.38)
+    sim.add(Box((2 * DX, 2 * DX, MSL_ZG),
+                ((MSL_NX - 2) * DX, (MSL_NY - 2) * DX, MSL_ZP)), material="sub")
+    sim.add_pinned_sheet(plane_index=2, i_range=(2, MSL_NX - 2),
+                         j_range=(2, MSL_NY - 2), name="ground")
+    sim.add_pinned_sheet(plane_index=4, i_range=(2, MSL_NX - 2),
+                         j_range=(8, 12), name="trace")
+    pulse = GaussianPulse(f0=8e9, bandwidth=0.9)
+    sim.add_msl_port(position=(5 * DX, 10 * DX, MSL_ZG), width=4 * DX,
+                     height=MSL_ZP - MSL_ZG, direction="+x", impedance=50.0,
+                     waveform=pulse)
+    sim.add_msl_port(position=((MSL_NX - 5) * DX, 10 * DX, MSL_ZG),
+                     width=4 * DX, height=MSL_ZP - MSL_ZG, direction="-x",
+                     impedance=50.0, excite=False)
+    sim.add_probe(((MSL_NX // 2) * DX, 10 * DX, 3 * DX), "ez")
+    return sim
+
+
+def _msl_design(sim):
+    """``(box slice, eps x2, sigma 0.2 S/m)`` over the realized box cells,
+    and the drawn materials."""
+    grid = sim._build_grid()
+    b = sim._design_box_bounds_from_corners(grid, MSL_BOX)
+    sl = tuple(slice(b[2 * d], b[2 * d + 1]) for d in range(3))
+    mats = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    eps = jnp.asarray(mats.eps_r[sl], jnp.float32) * 2.0
+    sig = jnp.full(eps.shape, 0.2, jnp.float32)
+    return sl, eps, sig, mats
+
+
+def _msl_forward(**kw):
+    return _msl_board().forward(n_steps=MSL_STEPS, checkpoint=False,
+                                skip_preflight=True, **kw)
+
+
+def test_the_msl_box_really_covers_the_passive_termination_load():
+    """Realized, not declared: the load's stamps are inside the box."""
+    sim = _msl_board()
+    sl, eps, _, _ = _msl_design(sim)
+    with enable_x64(), _captured_box() as seen:
+        _msl_board().forward(design_box=MSL_BOX, design_eps_override=eps,
+                             n_steps=2, checkpoint=False, skip_preflight=True)
+    (_, mats, _, _), = seen
+    parts = [p for p in mats.sigma_lumped if p is not None]
+    assert parts and sum(int(np.count_nonzero(np.asarray(p)[sl]))
+                         for p in parts) > 0
+
+
+def test_a_permittivity_box_over_a_passive_msl_termination_is_its_eps_override():
+    with enable_x64():
+        sl, eps, _, mats = _msl_design(_msl_board())
+        box = _msl_forward(design_box=MSL_BOX, design_eps_override=eps)
+        full = jnp.asarray(mats.eps_r).at[sl].set(eps)
+        ref = _msl_forward(eps_override=full)
+        rel = _peak_rel(box.time_series, ref.time_series)
+        moved = _peak_rel(ref.time_series, _msl_forward().time_series)
+        print(f"[passive MSL eps] box vs eps_override {rel:.2e} (the design "
+              f"moves the probe {moved:.2e})")
+        assert rel < 1e-12 and moved > 1e-3
+
+
+def test_a_cell_conductivity_box_over_a_passive_msl_termination_is_its_override():
+    with enable_x64():
+        sl, eps, sig, mats = _msl_design(_msl_board())
+        box = _msl_forward(design_box=MSL_BOX, design_eps_override=eps,
+                           design_sigma_override=sig)
+        ref = _msl_forward(
+            eps_override=jnp.asarray(mats.eps_r).at[sl].set(eps),
+            sigma_override=jnp.asarray(mats.sigma).at[sl].set(sig))
+        a = np.asarray(box.time_series)
+        assert np.all(np.isfinite(a))
+        rel = _peak_rel(a, ref.time_series)
+        print(f"[passive MSL cell sigma] box vs eps/sigma_override {rel:.2e}")
+        assert rel < 1e-12
+
+
+def test_a_per_edge_conductivity_over_a_passive_msl_termination_is_refused():
+    with enable_x64():
+        _, eps, sig, _ = _msl_design(_msl_board())
+        with pytest.raises(ValueError, match="per-edge design conductivity "
+                                             "over a lumped load") as info:
+            _msl_forward(design_box=MSL_BOX, design_eps_override=eps,
+                         design_sigma_override=(sig, sig, sig))
+    msg = str(info.value)
+    assert "cell array" in msg and "MSL port's termination cannot be held" in msg
+
+
+def _lowlevel_passive(port):
+    """The board's feed as a PASSIVE load stamped straight into ``materials``
+    for the low-level ``rfx.simulation.run``, a soft source beside it."""
+    from rfx.sources.sources import (
+        LumpedPort, WirePort, setup_lumped_port, setup_wire_port)
+    sim = _board(port, precision="float64")
+    grid = sim._build_grid()
+    mats = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    feed = (PORT_XY[0], PORT_XY[1], KG * DX)
+    if port == "wire":
+        mats = setup_wire_port(grid, WirePort(
+            start=feed, end=(feed[0], feed[1], feed[2] + 3 * DX),
+            component="ez", impedance=50.0), mats)
+    else:
+        mats = setup_lumped_port(grid, LumpedPort(
+            position=feed, component="ez", impedance=50.0, excitation=None),
+            mats)
+    src = _sim_mod.make_source(grid, (4e-3, 8e-3, (KG + 0.5) * DX), "ez",
+                               GaussianPulse(f0=F0, bandwidth=0.8), 300)
+    prb = _sim_mod.make_probe(grid, (12e-3, 8e-3, (KG + 0.5) * DX), "ez")
+    box = _box(port)
+    b = _box_bounds(sim, box, False)
+    eps, _ = _background(sim, box, False)
+
+    def run(m=mats, spec=None):
+        return np.asarray(_sim_mod.run(
+            grid, m, n_steps=300, field_dtype=jnp.float64, sources=[src],
+            probes=[prb], design_box=spec).time_series)
+    return run, mats, b, eps
+
+
+@pytest.mark.parametrize("port", PORTS)
+def test_lowlevel_permittivity_box_over_a_passive_port_is_exact(port):
+    with enable_x64():
+        run, mats, b, eps = _lowlevel_passive(port)
+        sl = tuple(slice(b[2 * d], b[2 * d + 1]) for d in range(3))
+        assert int(np.count_nonzero(np.asarray(mats.sigma_lumped[2])[sl])) \
+            == (3 if port == "wire" else 1)
+        nobox = run()
+        same = _peak_rel(run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps)),
+                         nobox)
+        design = run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps * 1.5))
+        oracle = run(m=mats._replace(
+            eps_r=jnp.asarray(mats.eps_r).at[sl].set(eps * 1.5)))
+        rel = _peak_rel(design, oracle)
+        print(f"[low-level passive {port}] background box vs no box "
+              f"{same:.2e}; eps x1.5 box vs eps in materials {rel:.2e} (moves "
+              f"{_peak_rel(oracle, nobox):.2e})")
+        assert same < 1e-11 and rel < 1e-11
+
+
+@pytest.mark.parametrize("port", PORTS)
+def test_lowlevel_per_edge_conductivity_over_a_passive_port(port):
+    """Refused over the unheld load; accepted once its edges are listed; a
+    listed edge outside the window is a caller error."""
+    run, mats, b, eps = _lowlevel_passive(port)
+    z = jnp.zeros_like(eps)
+    with pytest.raises(ValueError, match="per-edge design conductivity"):
+        run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps, sigma=(z, z, z)))
+    held = run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps,
+                                           sigma=(z, z, z),
+                                           held_edges=_port_edges(port)))
+    assert np.all(np.isfinite(held))
     with pytest.raises(ValueError, match="not an \\(axis, i, j, k\\) E edge"):
-        _sim_mod.run(grid, mats, n_steps=2, design_box=_sim_mod.DesignBoxSpec(
-            bounds=b, eps_r=eps, held_edges=((2, 0, 0, 0),)))
+        run(spec=_sim_mod.DesignBoxSpec(bounds=b, eps_r=eps,
+                                        held_edges=((2, 0, 0, 0),)))
