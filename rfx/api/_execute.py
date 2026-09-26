@@ -2712,7 +2712,10 @@ class _ExecuteMixin:
         from rfx.nonuniform import (
             position_to_index as _nu_pos_to_idx,
             make_current_source as _nu_make_current_source,
+            current_source_samples as _nu_current_source_samples,
+            current_source_volume as _nu_current_source_volume,
         )
+        from rfx.api._source_semantics import needs_scale as _needs_scale
         from rfx.simulation import ProbeSpec, SourceSpec
 
         # ---- Resolve devices (V3 §5 semantics) ----
@@ -2887,7 +2890,21 @@ class _ExecuteMixin:
                 "distributed=True forward path; remove the lumped_rlc "
                 "spec or omit distributed=True."
             )
+        # A current source enters the field through the Cb of its edge, so
+        # its drive has to read the permittivity arrays the E update reads
+        # (#1279; the single-device lane's #1267/#1280). Under an eps/sigma
+        # override those are the override -- possibly traced, possibly
+        # x-sharded across processes, so the host cannot read it cell by
+        # cell. Such a source hands the runner its current I(t) and its dV,
+        # and the runner builds Cb inside its jitted program from the staged
+        # slabs its E update receives (``material_drive_scales``). Without an
+        # override, and for a 'field' source (whose amplitude is divided by
+        # the same Cb), the table is built here from the drawn materials as
+        # before.
+        _drive_from_override = (eps_override is not None
+                                or sigma_override is not None)
         sources: list[SourceSpec] = []
+        material_drive: list = []
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(
@@ -2897,9 +2914,19 @@ class _ExecuteMixin:
                     "source (impedance=0)."
                 )
             idx = _nu_pos_to_idx(grid, pe.position)
-            # Use concrete materials so make_current_source can resolve
-            # eps / sigma to Python floats (it calls ``float(...)`` on
-            # both for the source-cell normalisation).
+            if (_drive_from_override
+                    and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
+                dV, _ = _nu_current_source_volume(grid, idx, pe.component)
+                sources.append(SourceSpec(
+                    i=int(idx[0]), j=int(idx[1]), k=int(idx[2]),
+                    component=pe.component,
+                    waveform=jnp.asarray(_nu_current_source_samples(
+                        grid, pe.waveform, n_steps)),
+                ))
+                material_drive.append(float(dV))
+                continue
+            # Concrete drawn materials: make_current_source resolves eps /
+            # sigma to Python floats for the source-cell normalisation.
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,
                 materials, amplitude_kind=pe.amplitude_kind,
@@ -2908,6 +2935,7 @@ class _ExecuteMixin:
                 i=int(si), j=int(sj), k=int(sk),
                 component=sc, waveform=jnp.asarray(wf),
             ))
+            material_drive.append(None)
 
         if eps_override is not None or sigma_override is not None:
             materials = materials._replace(
@@ -2930,9 +2958,11 @@ class _ExecuteMixin:
                 else (pec_mask | pec_mask_override)
             )
 
-        # Stage one input at a time. In particular, the source normalization
-        # above has consumed concrete cell scalars; no second MaterialArrays
-        # may keep the original whole-domain eps/sigma alive during the scan.
+        # Stage one input at a time. The source normalization above has
+        # consumed concrete cell scalars (a material-driven source reads its
+        # Cb from the staged slabs in the runner instead); no second
+        # MaterialArrays may keep the original whole-domain eps/sigma alive
+        # during the scan.
         staged = []
         for name, pad_value in (("eps_r", 1.0), ("sigma", 0.0), ("mu_r", 1.0)):
             override = eps_override if name == "eps_r" else sigma_override if name == "sigma" else None
@@ -3016,6 +3046,7 @@ class _ExecuteMixin:
             emit_time_series=emit_time_series,
             gather_final_state=False,
             pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
+            material_drive=tuple(material_drive),
         )
 
         # ---- Repackage into ForwardResult via the shared lane helper.
@@ -3550,6 +3581,7 @@ class _ExecuteMixin:
         exchange_interval: int = 1,
         port_s11_freqs: object | None = None,
         rlc_values_override: dict | None = None,
+        ringdown: RingdownSpec | None = None,
         **_removed_kwargs,
     ) -> ForwardResult:
         """Run a minimal differentiable forward simulation.
@@ -3838,6 +3870,29 @@ class _ExecuteMixin:
             an override — previously it was a silent no-op.
             Uniform-path only; the non-uniform / distributed lanes do not
             iterate ``self._lumped_rlc`` in ``forward()``.
+        ringdown : rfx.ringdown.RingdownSpec or None
+            Issue #1254. Complete the wire-port S-parameters of a record cut
+            while the structure still rings, inside the differentiable
+            program: ``ForwardResult.ringdown.s_params`` is the completion
+            ``run(ringdown=...)`` gives of the same record (the poles of the
+            port voltage and current identified on ``[window_start T, T]``,
+            the unrecorded tail of each spectrum added in closed form), and
+            ``jax.grad`` through it differentiates the infinite-record
+            spectrum (the poles by the frozen Gauss-Newton implicit
+            derivative, the residues re-fitted), not the cut record.
+            ``.s_params_long`` is the completion from the window that starts
+            twice as early; the gradient through it, against the gradient
+            through ``.s_params``, is the gradient's witness
+            (:func:`rfx.ringdown.gradient_witness`). ``.report`` holds the
+            checks of the value (W0, W1, WE and the rest, as ``run()``'s),
+            computed on the host from a concrete result and ``None`` while
+            traced. Wire ports only (``add_port(..., extent=...)``); on the
+            uniform lane one port and ``port_s11_freqs=`` are needed (the
+            bins), on the graded lane the completion uses the lane's own
+            bins. Everything ``run(ringdown=...)`` refuses is refused, and
+            so are ``distributed=True`` and ``emit_time_series=False``.
+            ``None`` (default) leaves every output and the traced program as
+            they were.
 
         Returns
         -------
@@ -3891,6 +3946,10 @@ class _ExecuteMixin:
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)
+        if ringdown is not None:
+            from rfx.ringdown import refuse_forward_request
+            refuse_forward_request(self, ringdown, distributed=distributed,
+                                   emit_time_series=emit_time_series)
 
         # Phase 3 (issue #44 V3 §M6): one-shot UserWarning for the opt-in
         # distributed=True path so users know the path is opt-in / unstable
@@ -3958,6 +4017,12 @@ class _ExecuteMixin:
              }.get(plan.lane, plan.lane),
             entry="Simulation.forward()",
             instead="use run() on a uniform mesh")
+        if ringdown is not None:
+            from rfx.ringdown import refuse_forward_lane
+            refuse_forward_lane(plan.lane, sum(
+                1 for p in self._ports
+                if float(p.impedance) > 0.0 and p.extent is not None),
+                port_s11_freqs=port_s11_freqs)
 
         # WP 4-E: rlc_values_override is only wired on the uniform lane.  Fail
         # loudly rather than silently returning a zero gradient on a lane that
@@ -4076,7 +4141,8 @@ class _ExecuteMixin:
                     lorentz_spec=None,
                     kerr_chi3=None,
                 )
-            result = self._forward_nonuniform_from_materials(
+            _nu_fwd_call = functools.partial(
+                self._forward_nonuniform_from_materials,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
@@ -4088,6 +4154,13 @@ class _ExecuteMixin:
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
             )
+            if ringdown is None:
+                result = _nu_fwd_call()
+            else:
+                from rfx.ringdown import RingdownForward
+                result = RingdownForward(
+                    self, ringdown, lane="graded", n_steps=plan.n_steps,
+                    grid=self._build_nonuniform_grid()).run(_nu_fwd_call)
             return self._attach_run_settling_witness(
                 result, n_steps=plan.n_steps, num_periods=num_periods,
                 context="forward")
@@ -4204,7 +4277,8 @@ class _ExecuteMixin:
                 materials = materials._replace(
                     eps_r=materials.eps_r.astype(_design_dtype))
 
-        _res = self._forward_from_materials(
+        _fwd_call = functools.partial(
+            self._forward_from_materials,
             grid,
             materials,
             debye_spec,
@@ -4223,6 +4297,12 @@ class _ExecuteMixin:
             design_box=_design_spec,
             design_occupancy=_design_occ_spec,
         )
+        if ringdown is None:
+            _res = _fwd_call()
+        else:
+            from rfx.ringdown import RingdownForward
+            _res = RingdownForward(self, ringdown, lane="uniform", n_steps=n_steps,
+                                   grid=grid, bins=port_s11_freqs).run(_fwd_call)
         _warn_if_nonfinite_result(_res, context="forward")
         return self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods,

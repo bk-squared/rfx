@@ -1966,19 +1966,19 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     the tracer-safe cb/dV resolution below so the GEO-C3
     differentiable-material path is preserved unchanged.
     """
-    import jax
     i, j, k = position_ijk
 
     # GEO-C3: on the differentiable-material path ``materials.eps_r`` /
     # ``materials.sigma`` are tracers — ``float()`` raised
     # TracerArrayConversionError. Stay in jnp when traced so the gradient
     # propagates into the waveform normalisation; keep the exact ``float()``
-    # path otherwise so non-traced output stays bit-identical.
+    # path otherwise so non-traced output stays bit-identical (both branches
+    # live in ``current_source_cb``).
     # #1210: the drive coefficient is the update's own PER-COMPONENT Cb --
     # ``update_e_nu`` multiplies each component by the mean of eps and sigma
     # over the four cells its edge touches, and this coefficient exists to
     # equal it. ``cell_component_e_materials`` indexes four cells, so the
-    # tracer branch below is the same branch it always was.
+    # tracer branch is the same branch it always was.
     from rfx.core.yee import cell_component_e_materials as _cell_comp_mats
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
@@ -1988,16 +1988,69 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
     _eps_r_c, _sigma_c = _cell_comp_mats(materials, (i, j, k), component)
-    if materials_traced:
-        eps = jnp.asarray(_eps_r_c) * EPS_0
-        sigma = jnp.asarray(_sigma_c)
-    else:
-        eps = float(_eps_r_c) * EPS_0
-        sigma = float(_sigma_c)
-    loss = sigma * grid.dt / (2.0 * eps)
+    cb = current_source_cb(_eps_r_c, _sigma_c, grid.dt,
+                           traced=materials_traced)
+    dV, grid_traced = current_source_volume(grid, (i, j, k), component)
+    any_traced = materials_traced or grid_traced
+
+    # Normalized waveform: Cb * I(t) / dV
+    # This ensures power = ∫(J·E)dV is independent of cell size
+    waveform = (cb / dV) * current_source_samples(grid, waveform_fn, n_steps)
+
+    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
+    if needs_scale(amplitude_kind, "cb_over_dv"):
+        # only 'field' lands here (scale dV/Cb). Python-level dispatch on
+        # the kind string (issue #571 dossier): cb/dV may be tracers on
+        # the GEO-C3 / mesh-as-design-variable paths, so never gate the
+        # multiply on the scale VALUE.
+        waveform = source_amplitude_scale(
+            amplitude_kind, "cb_over_dv", cb=cb, dV=dV) * waveform
+
+    waveform_out = waveform if any_traced else np.array(waveform)
+    return (i, j, k, component, waveform_out)
+
+
+def current_source_cb(eps_r_c, sigma_c, dt, *, traced):
+    """``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))`` of the edge a current
+    source feeds, from that edge's ``(eps_r, sigma)``.
+
+    ``eps_r_c`` / ``sigma_c`` are the edge's own values -- the mean over the
+    four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`
+    (#1210). ``traced=True`` keeps the arithmetic in jnp so a traced
+    permittivity stays on the tape (GEO-C3); ``traced=False`` takes
+    ``float()`` of both and computes in Python floats, the historical path.
+    The one spelling of the drive coefficient: :func:`make_current_source`
+    and the distributed graded forward, which builds it inside its jitted
+    program from the slabs its E update receives (#1279), both call it.
+    """
+    if traced:
+        # The same Cb written in eps_r units, dt/(eps0*(eps_r + sigma*dt/(2*eps0))):
+        # with eps = eps_r*eps0 ~ 1e-11, the reverse pass squares eps and a
+        # float32 cotangent above ~1e15 overflowed to a NaN gradient at the
+        # source's four cells (#1279 review). In eps_r units it stays finite.
+        eps_r = jnp.asarray(eps_r_c)
+        sigma = jnp.asarray(sigma_c)
+        return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
+    eps = float(eps_r_c) * EPS_0
+    sigma = float(sigma_c)
+    loss = sigma * dt / (2.0 * eps)
 
     # Cb = dt / (eps * (1 + loss))
-    cb = (grid.dt / eps) / (1.0 + loss)
+    return (dt / eps) / (1.0 + loss)
+
+
+def current_source_samples(grid, waveform_fn, n_steps):
+    """The current ``I(t)`` in amperes at the ``n_steps`` step times
+    ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    return jax.vmap(waveform_fn)(times)
+
+
+def current_source_volume(grid, position_ijk, component):
+    """``(dV, grid_traced)``: the control volume of the E node a current
+    source at ``position_ijk`` injects into, and whether the profile is
+    traced (then ``dV`` is a jnp scalar, else a Python float)."""
+    i, j, k = position_ijk
 
     # Control volume of the E node this source injects into (issue #672).
     # An E_a component is an EDGE along its own axis a and sits ON a node on
@@ -2026,7 +2079,6 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     grid_traced = (
         is_tracer(grid.dx_arr) or is_tracer(grid.dy_arr) or is_tracer(grid.dz)
     )
-    any_traced = materials_traced or grid_traced
     _profiles = (grid.dx_arr, grid.dy_arr, grid.dz)
     _idx = (i, j, k)
     _widths = []
@@ -2041,24 +2093,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
                 np.asarray(_profiles[_a], dtype=np.float64), _idx[_a]))
         _widths.append(_w)
     dx_local, dy_local, dz_local = _widths
-    dV = dx_local * dy_local * dz_local
-
-    # Normalized waveform: Cb * I(t) / dV
-    # This ensures power = ∫(J·E)dV is independent of cell size
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    waveform = (cb / dV) * jax.vmap(waveform_fn)(times)
-
-    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
-    if needs_scale(amplitude_kind, "cb_over_dv"):
-        # only 'field' lands here (scale dV/Cb). Python-level dispatch on
-        # the kind string (issue #571 dossier): cb/dV may be tracers on
-        # the GEO-C3 / mesh-as-design-variable paths, so never gate the
-        # multiply on the scale VALUE.
-        waveform = source_amplitude_scale(
-            amplitude_kind, "cb_over_dv", cb=cb, dV=dV) * waveform
-
-    waveform_out = waveform if any_traced else np.array(waveform)
-    return (i, j, k, component, waveform_out)
+    return dx_local * dy_local * dz_local, grid_traced
 
 
 def _bwd_neighbor(h, idx, axis):

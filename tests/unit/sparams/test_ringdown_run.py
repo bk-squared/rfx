@@ -15,9 +15,11 @@ differs (TM110 at 12.40 GHz, loaded Q about 200).
 What is pinned here, on both lanes:
 
 * W0 -- the port voltage and current rebuilt from the port-channel probes,
-  accumulated the run's way, are the run's own accumulators to <= 9 ULPs, and
-  the lane's S assembly on those accumulators is ``Result.s_params``; a rebuild
-  reading the wrong H samples is caught and the run is returned uncompleted;
+  accumulated the run's way, are the run's own accumulators to 1e-4 of each
+  array's peak (the ULP counts printed), and the lane's S assembly on those
+  accumulators is ``Result.s_params``; a rebuild reading the wrong H samples,
+  dropping the current's half-step phase or reading the series one step late
+  is caught and the run is returned uncompleted;
 * every output the run returns without ``ringdown=`` is byte-identical with it
   (SHA-256 of every array and the repr of every other value);
 * the short record's completed S11 matches the long record's within the
@@ -66,12 +68,14 @@ DYP = np.array([1.0, 1.4, 0.8, 0.6, 0.8, 0.9, 1.0, 1.1, 1.2, 1.2, 1.0]) * MM
 DZP = np.array([0.8, 0.6, 1.4, 1.4, 0.8]) * MM
 
 
-def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE):
+def _box(lane, *, second_port=False, cells=1, freq_max=20.0e9, pulse=PULSE,
+         precision="float32", stencil_order=2):
     """The box on one lane; ``cells`` sets the port's length in cells."""
     kw = ({"dx_profile": DXP, "dy_profile": DYP, "dz_profile": DZP}
           if lane == "graded" else {})
     sim = Simulation(freq_max=freq_max, domain=(12 * MM, 11 * MM, 5 * MM),
-                     dx=1.0 * MM, boundary="pec", **kw)
+                     dx=1.0 * MM, boundary="pec", precision=precision,
+                     stencil_order=stencil_order, **kw)
     eps_r, q_d, f_ref = 2.2, 300.0, 12.5e9
     sim.add_material("fill", eps_r=eps_r,
                      sigma=2.0 * np.pi * f_ref * 8.854187817e-12 * eps_r / q_d)
@@ -177,8 +181,10 @@ def test_w0_holds_and_the_completion_has_the_shape_of_the_run(short_runs):
     rdr = completed.ringdown
     assert isinstance(rdr, rd.RingdownResult), lane
     w0 = rdr.report.witness("W0")
-    print(f"\n[{lane}] W0 = {w0.value:.3g} ULP; per array {rdr.report.w0_ulps}")
-    assert w0.ok and w0.value <= rd.W0_ULP_BAR, (lane, w0)
+    print(f"\n[{lane}] W0 = {w0.value:.3g} of the peak; ULPs per array "
+          f"{rdr.report.w0_ulps}")
+    assert w0.ok and w0.value <= rd.W0_REL_BAR, (lane, w0)
+    assert set(rdr.report.w0_relative) == set(rdr.report.w0_ulps)
     s_run = np.asarray(completed.s_params)
     assert rdr.s_params.shape == s_run.shape and rdr.s_params.dtype == s_run.dtype
     assert np.array_equal(np.asarray(rdr.freqs), np.asarray(completed.freqs))
@@ -250,8 +256,9 @@ def test_w0_and_byte_identity_hold_under_scoped_x64(lane):
         plain = _run(_box(lane), 600)
         completed = _run(_box(lane), 600, ringdown=RingdownSpec())
     w0 = completed.ringdown.report.witness("W0").value
-    print(f"\n[{lane}, x64] W0 = {w0:.3g} ULP")
-    assert w0 <= rd.W0_ULP_BAR
+    print(f"\n[{lane}, x64] W0 = {w0:.3g} of the peak; ULPs per array "
+          f"{completed.ringdown.report.w0_ulps}")
+    assert w0 <= rd.W0_REL_BAR
     for f in ("time_series", "s_params", "freqs"):
         assert np.array_equal(np.asarray(getattr(plain, f)),
                               np.asarray(getattr(completed, f))), (lane, f)
@@ -267,9 +274,56 @@ def test_w0_catches_a_rebuild_that_reads_the_wrong_h_samples(monkeypatch):
         r = _run(_box("uniform"), 600, ringdown=RingdownSpec())
     rep = r.ringdown.report
     assert r.ringdown.s_params is None and not rep.completed and not rep.ok
-    assert rep.failure.startswith("W0") and rep.witness("W0").value > rd.W0_ULP_BAR
+    print(f"\n[wrong H samples] W0 = {rep.witness('W0').value:.3g} of the peak")
+    assert rep.failure.startswith("W0") and rep.witness("W0").value > rd.W0_REL_BAR
     for f in ("time_series", "s_params", "freqs"):
         assert np.array_equal(np.asarray(getattr(plain, f)), np.asarray(getattr(r, f)))
+
+
+def _replay_without_half_step(monkeypatch):
+    """The W0 replay accumulates the current without its half-step phase."""
+    import jax.numpy as jnp
+
+    import rfx.core.dft_utils as dft_utils
+    orig = rd._emulate_accumulators
+
+    def replay(*a, **k):
+        with monkeypatch.context() as m:
+            m.setattr(dft_utils, "half_step_current_phase",
+                      lambda freqs, dt: jnp.ones(jnp.shape(freqs), dtype=jnp.complex64))
+            return orig(*a, **k)
+
+    monkeypatch.setattr(rd, "_emulate_accumulators", replay)
+
+
+def _replay_one_step_late(monkeypatch):
+    """The W0 replay is fed the probe series shifted one step later."""
+    orig = rd._emulate_accumulators
+
+    def shift(a):
+        a = np.asarray(a)
+        return np.concatenate([np.zeros_like(a[:1]), a[:-1]], axis=0)
+
+    def replay(lane, pm, e32, h32, dt):
+        return orig(lane, pm, shift(e32), {k: shift(v) for k, v in h32.items()}, dt)
+
+    monkeypatch.setattr(rd, "_emulate_accumulators", replay)
+
+
+@pytest.mark.parametrize("defect", [_replay_without_half_step, _replay_one_step_late])
+def test_w0_catches_a_replay_that_is_not_the_run_s(defect, monkeypatch):
+    """W0 judged at 1e-4 of each array's peak still sees a rebuild that drops
+    the current's half-step phase (a phase of pi f dt, 0.1 rad at 18 GHz) or
+    reads the series one step late: the run comes back uncompleted."""
+    defect(monkeypatch)
+    with pytest.warns(UserWarning, match="W0 failed"):
+        r = _run(_box("uniform"), 600, ringdown=RingdownSpec())
+    rep = r.ringdown.report
+    w0 = rep.witness("W0").value
+    print(f"\n[{defect.__name__}] W0 = {w0:.3g} of the peak; per array "
+          f"{ {k: float(f'{v:.3g}') for k, v in rep.w0_relative.items()} }")
+    assert r.ringdown.s_params is None and rep.failure.startswith("W0")
+    assert w0 > 100 * rd.W0_REL_BAR, w0
 
 
 # ---------------------------------------------------------------------------
@@ -473,7 +527,7 @@ def test_a_graded_port_on_an_absorbing_floor_is_probed_inside_the_grid():
                 s_param_freqs=np.linspace(4e9, 12e9, 41), skip_preflight=True,
                 ringdown=RingdownSpec())
     rep = r.ringdown.report
-    assert rep.witness("W0").value <= rd.W0_ULP_BAR, rep.summary()
+    assert rep.witness("W0").value <= rd.W0_REL_BAR, rep.summary()
     assert rep.completed, rep.summary()
 
 
@@ -726,6 +780,11 @@ def _case_graded_loop_in_the_pad():
     return sim, {}
 
 
+def _case_stencil_order_4():
+    # the uniform PEC box: (2,4) runs there, and steps at 0.857 of grid.dt
+    return _box("uniform", stencil_order=4), {}
+
+
 def _case_not_a_spec():
     return _wire(_open_box()), {"ringdown": {"window_start": 0.5}}
 
@@ -746,6 +805,7 @@ def _case_not_a_spec():
     (_case_no_sparams, "compute_s_params=False"),
     (_case_uniform_two_ports, "supports one wire port"),
     (_case_graded_loop_in_the_pad, "absorber pad"),
+    (_case_stencil_order_4, r"run\(ringdown=...\) is not supported with stencil_order=4.*grid's dt"),
     (_case_not_a_spec, "RingdownSpec"),
 ])
 def test_what_the_completion_does_not_cover_is_refused(case, match):

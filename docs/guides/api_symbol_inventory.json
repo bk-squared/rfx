@@ -2738,6 +2738,7 @@
       "exchange_interval",
       "port_s11_freqs",
       "rlc_values_override",
+      "ringdown",
       "_removed_kwargs"
     ],
     "freeze_mesh": [],
