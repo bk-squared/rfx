@@ -395,6 +395,41 @@ def test_the_early_start_witness_is_the_difference_of_two_hand_completions(windo
     assert 0.5 < we_hand / actual < 2.0, (we_hand, actual)
 
 
+def test_the_tail_is_built_from_real_products():
+    """The completion of one model is one array, wherever numpy puts its
+    temporaries. numpy 1.26 on arm64 (the JAX 0.4.33 environment) rounds a
+    complex elementwise product two ways -- with and without a fused
+    multiply-add -- and which one it takes depends on where the output lands
+    relative to the inputs (measured: an input above the output rounds one
+    way, below it the other). The tail of the same model came out two ways in
+    one process, and the early-start witness above differed from its hand
+    computation in the last digit. ``rfx.ringdown`` builds its complex products
+    from real products, each rounded once (``_cmul``); this pins that
+    contract: ``_cmul`` is the real-product formula exactly, and the tail is
+    the closed form with that product, bit for bit. The raw ``a * b`` fails
+    both on numpy 2.4 (it always fuses) and on numpy 1.26 (on one path)."""
+    y = _record(3000, DT, PAIR).astype(np.float32).astype(np.float64)
+    m = rd.identify(y, DT, 750, 3000, freq_max=F_MAX, guard=0.9)
+    a = np.exp(1j * np.arange(6.0))[:, None] * (1.0 + 0.5j)
+    b = np.linspace(1.0, 2.0, 3) - 1j
+    ab = rd._cmul(a, b)
+    assert np.array_equal(ab.real, a.real * b.real - a.imag * b.imag)
+    assert np.array_equal(ab.imag, a.real * b.imag + a.imag * b.real)
+    assert np.max(np.abs(ab - a * b)) <= 4 * np.finfo(np.float64).eps * np.max(np.abs(ab))
+    # the closed form, spelled out with the real-product formula
+    n1 = 3000
+    e = np.exp(m.s * m.dt * (n1 - m.n_ref))[:, None]
+    amp = np.empty(m.c.shape, dtype=np.complex128)
+    amp.real = e.real * m.c.real - e.imag * m.c.imag
+    amp.imag = e.real * m.c.imag + e.imag * m.c.real
+    wdt = 2.0 * np.pi * FREQS * m.dt
+    zn1 = np.exp(-1j * wdt * n1)
+    one_minus = -np.expm1(m.s[None, :] * m.dt - 1j * wdt[:, None])
+    tail = m.dt * ((zn1[:, None] / one_minus) @ amp)
+    for _ in range(20):                          # and the same bits every call
+        assert np.array_equal(rd.tail_dft(m, n1 - 1, FREQS), tail)
+
+
 def test_the_growing_pole_rule_exempts_only_zero_frequency():
     record_s = 1e-8
     s = np.array([

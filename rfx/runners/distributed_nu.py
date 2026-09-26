@@ -1893,6 +1893,70 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     return new_state, new_cpml
 
 
+def material_drive_scales(eps_r, sigma, mesh, drives, dt):
+    """``Cb/dV`` of each material-driven current source, read from the slabs
+    the E update receives (#1279). Called inside the runner's jitted program.
+
+    A current source enters the field as ``E += Cb * I(t) / dV``, and ``Cb =
+    (dt/eps)/(1 + sigma*dt/(2*eps))`` has to be taken from the permittivity
+    the field is stepped with -- under an override, the override. The host
+    cannot read it when it is an x-sharded override whose slabs live in
+    other processes, or when it is traced, so each device reads it from its
+    own staged slab here. The per-edge rule is the one ``make_current_source``
+    and the single-device E update use: the mean over the four cells incident
+    to the edge (#1210). This lane's own E update still takes the owning
+    cell's value (``test_distributed_e_coefficients_are_still_cell_owned.py``),
+    so where those four cells differ the drive and this lane's update differ,
+    with or without an override, exactly as before #1279.
+
+    ``eps_r`` / ``sigma`` : the staged ``(n_devices * nx_local, ny, nz)``
+        arrays on ``P("x")`` -- ghost rows filled by the staging with the
+        neighbour's real cells for every override form
+        (``stage_forward_array_x_slab``, ``stage_sharded_forward_override``,
+        ``stage_concrete_forward_array``).
+    ``drives`` : static tuple of ``(dev_id, row0, cell, component, dV)``,
+        one per material-driven source. The edge's owner reads the four
+        cells :func:`rfx.core.yee.cell_component_e_materials` names for
+        ``cell`` in its local slab from row ``row0`` on. ``row0 = 0`` keeps
+        the left ghost row, so an Ey/Ez edge on a rank's first real cell
+        takes its i-1 cells from the left neighbour. On the domain's x-lo
+        face (global ``i == 0``) that row is vacuum padding, and ``row0``
+        is the ghost width: the helper then replicates the boundary cell,
+        the single-device rule. ``dV`` is the E node's control volume
+        (:func:`rfx.nonuniform.current_source_volume`).
+
+    Returns a replicated ``(len(drives),)`` float32 vector: every device
+    computes its own four-cell mean, the owner's is kept by the mask and
+    ``psum`` hands it to all. The arithmetic is
+    :func:`rfx.nonuniform.current_source_cb`'s traced branch, the one the
+    single-device lane uses for a traced override, so a traced (or
+    sharded) permittivity stays on the tape and the gradient flows back to
+    the design's owning slabs through the staging transpose.
+    """
+    from rfx.core.yee import cell_component_e_materials
+    from rfx.nonuniform import current_source_cb
+
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
+             out_specs=P(), check_rep=False)
+    def _scales(eps_local, sigma_local):
+        device = lax.axis_index("x")
+        out = []
+        for dev_id, row0, cell, component, dV in drives:
+            view = MaterialArrays(eps_r=eps_local[row0:],
+                                  sigma=sigma_local[row0:], mu_r=None)
+            eps_c, sigma_c = cell_component_e_materials(view, cell, component)
+            owner = device == dev_id
+            # A non-owner read someone else's cells; keep its masked branch
+            # finite so the cotangent through the mask stays zero, not NaN.
+            cb = current_source_cb(jnp.where(owner, eps_c, 1.0),
+                                   jnp.where(owner, sigma_c, 0.0), dt,
+                                   traced=True)
+            out.append(jnp.where(owner, cb / dV, 0.0))
+        return lax.psum(jnp.stack(out), "x")
+
+    return _scales(eps_r, sigma)
+
+
 def run_nonuniform_distributed_pec(
     sharded_grid: ShardedNUGrid,
     sharded_materials: MaterialArrays,
@@ -1914,6 +1978,7 @@ def run_nonuniform_distributed_pec(
     emit_time_series: bool = True,
     pmc_faces: frozenset = frozenset(),
     gather_final_state: bool = True,
+    material_drive=None,
 ) -> dict:
     """Phase 2B/2C/2D sharded NU scan body — hard PEC, ghost exchange,
     optional CPML, and optional Debye/Lorentz dispersion on x-slabs.
@@ -2121,6 +2186,17 @@ def run_nonuniform_distributed_pec(
     ``gather_final_state=False`` skips the full-domain field gather and
     returns ``None`` for ``final_state``. Forward uses this mode; the
     ``final_state_sharded`` entry is always available in the slab layout.
+
+    material_drive : sequence of (float or None), optional
+        One entry per source (#1279); ``None`` (the default) is all-None.
+        ``None``: the source's ``waveform`` is its complete per-step E
+        increment, already normalised (``make_current_source``). A float
+        ``dV``: the ``waveform`` is the current ``I(t)`` in amperes, and
+        the runner multiplies it by ``Cb/dV`` inside its jitted program,
+        ``Cb`` the coefficient of the source edge built from
+        ``sharded_materials`` -- the arrays its E update receives, an
+        override when there is one, traced when it is -- by
+        :func:`material_drive_scales`.
     """
     if n_devices != sharded_grid.n_devices:
         raise ValueError(
@@ -2253,6 +2329,28 @@ def run_nonuniform_distributed_pec(
 
     n_src = len(sources)
     n_prb = len(probes)
+
+    # #1279: material-driven sources. Their table column is the current
+    # I(t); run_fn scales it by Cb/dV read from the staged materials.
+    material_drive = (tuple(material_drive) if material_drive is not None
+                      else (None,) * n_src)
+    if len(material_drive) != n_src:
+        raise ValueError(
+            f"material_drive has {len(material_drive)} entries for "
+            f"{n_src} sources")
+    drives = []
+    drive_columns = []
+    for col, (s, dV) in enumerate(zip(sources, material_drive)):
+        if dV is None:
+            continue
+        # The x-lo face's left ghost row is vacuum padding, not a cell:
+        # read that slab from its first real row (see material_drive_scales).
+        row0 = ghost if s.i == 0 else 0
+        drives.append((src_device_ids[col], row0,
+                       (src_local_specs[col][0] - row0, int(s.j), int(s.k)),
+                       s.component, float(dV)))
+        drive_columns.append(col)
+    drives = tuple(drives)
 
     if n_src > 0:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
@@ -2878,8 +2976,24 @@ def run_nonuniform_distributed_pec(
     # Per-cell arrays must enter the jit as arguments: captured concrete
     # arrays become whole-domain compiled constants on every device. Keep
     # their tracer-valued counterparts shared by all scans, including remat.
+    def _drive_xs(xs, scales):
+        # (cb/dV) * I(t): the product make_current_source forms, per column.
+        steps, table = xs
+        for n, col in enumerate(drive_columns):
+            table = table.at[:, col].set(scales[n] * table[:, col])
+        return steps, table
+
     @jax.jit
     def run_fn(c0, invariants, warmup_xs, opt_xs):
+        if drives:
+            # #1279: the drive sees the materials the E update sees -- the
+            # override, on the tape when traced -- read in the program.
+            materials = invariants[0]
+            scales = material_drive_scales(
+                materials.eps_r, materials.sigma, mesh, drives, dt)
+            if warmup_xs is not None:
+                warmup_xs = _drive_xs(warmup_xs, scales)
+            opt_xs = _drive_xs(opt_xs, scales)
         scan_step = partial(step_fn, invariants=invariants)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the
