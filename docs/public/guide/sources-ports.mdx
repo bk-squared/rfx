@@ -209,6 +209,9 @@ error bound.
 uniform mesh, or several on a graded mesh. The source must be off in the
 second half of the record. Lumped, microstrip, waveguide and coaxial ports,
 TFSF, `until_decay` and `devices=` are refused.
+`forward(..., ringdown=RingdownSpec())` puts the same completion inside the
+differentiable program, so `jax.grad` sees the ringing too; it is also refused
+with `distributed=True`.
 
 ### Ending a line at a port
 

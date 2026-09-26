@@ -90,6 +90,10 @@ compare against a 1.x number.
 - **`run(ringdown=...)` judges its completion against a window that starts
   twice as early** (#1254). Some short records that read ok before now read
   not ok; the completed S-parameters themselves are unchanged.
+- **The ring-down W0 check reads the summed port accumulators at 1e-4 of each
+  array's peak** instead of a count of float rounding steps, so a jitted
+  `forward()` is no longer reported as not completed (#1318). `run(ringdown=...)`'s
+  completed S can change in its last bits.
 
 ### Added
 
@@ -97,6 +101,12 @@ compare against a 1.x number.
   S-parameters when the record ends while the structure still rings (#1254).
   `result.ringdown.report` holds the fitted poles and the witnesses; none of
   them is an error bound.
+- **`forward(..., ringdown=RingdownSpec())`** puts the same completion inside
+  the differentiable program, so `jax.grad` differentiates the ringing a short
+  record has not reached (#1318). `rfx.ringdown.gradient_witness` compares the
+  gradients from two completion windows; a failure makes the value and the
+  gradient NaN. Refused with `distributed=True` and `stencil_order=4`, as well
+  as wherever `run(ringdown=...)` is refused.
 - **Mesh lines that follow sheet edges**: `rfx.mesh_edges.edge_aware_profile`
   and `edge_aware_profiles` (#1138). A new preflight advisory,
   `sheet_effective_size`, reports a sheet solved more than 1 % off its drawn
@@ -121,6 +131,12 @@ compare against a 1.x number.
   sample (#1258).
 
 ### Fixed
+
+- **A current source in material supplied by `eps_override` /
+  `sigma_override` on the distributed graded `forward()`** was driven through
+  the permittivity as drawn, and its permittivity gradient missed the drive's
+  own derivative (#1317). It now uses the materials the field is stepped with,
+  as the single-device lane does.
 
 - **The CPML reflects far less** (#1012). Its magnetic half now reads the loss
   profile at the magnetic field's own position. Every result that depends on
