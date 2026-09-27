@@ -1,0 +1,163 @@
+{
+  "schema_version": "rfx-public-media-catalog-v1",
+  "curated_on": "2026-09-27",
+  "collection": "Historical presentation visualizations",
+  "evidence_scope": "historical-visualization-only",
+  "simulation_source_sha": null,
+  "simulation_source_sha_status": "not established by public media bundle",
+  "current_version_reproduced": false,
+  "raw_simulation_data_included": false,
+  "related_source_revision": "a9054338616b91bb1364699882c2530fa29a0048",
+  "related_source_relation": "Related public research examples; not the proven generating revision of these films.",
+  "assets": [
+    {
+      "id": "taper_traj",
+      "example_id": "waveguide-taper",
+      "media_kind": "optimization-history",
+      "original_public_url": "https://remilab.cnu.ac.kr/share/6ba431aac4d9/viewer/assets/taper_traj.mp4",
+      "video": {
+        "path": "taper_traj.mp4",
+        "sha256": "ebabbabf4e41c56364cdaf9dbf5b3c310fc6e11d373a270c6d8fa78e54ae81e2",
+        "bytes": 521051,
+        "duration_seconds": 17.0,
+        "codec": "h264",
+        "width": 1422,
+        "height": 450
+      },
+      "poster": {
+        "path": "taper_traj.jpg",
+        "sha256": "3a920a6b6d386f1c46da5183a9b5593079ad0132378e18d81c7c9402592e2e0a",
+        "bytes": 105456,
+        "frame_seconds": 8
+      },
+      "limitations": [
+        "Permittivity, S11 spectrum and section-permittivity sensitivities.",
+        "Historical paper geometry is not the commensurate WR-90 CPU setup."
+      ]
+    },
+    {
+      "id": "taper_descent",
+      "example_id": "waveguide-taper",
+      "media_kind": "optimization-history",
+      "original_public_url": "https://remilab.cnu.ac.kr/share/6ba431aac4d9/viewer/assets/taper_descent.mp4",
+      "video": {
+        "path": "taper_descent.mp4",
+        "sha256": "61d6ad12dd69252a721f4d6d84118a569374612e79a377b1d947551819050ab7",
+        "bytes": 402812,
+        "duration_seconds": 17.0,
+        "codec": "h264",
+        "width": 1422,
+        "height": 470
+      },
+      "poster": {
+        "path": "taper_descent.jpg",
+        "sha256": "bc47105f5755be7d17336ed3d0eaf0e931c05165a1b7d06d471f9637bbc85f9d",
+        "bytes": 93166,
+        "frame_seconds": 8
+      },
+      "limitations": [
+        "Historical descent visualization; not a new comparison against a classical taper."
+      ]
+    },
+    {
+      "id": "steer_traj",
+      "example_id": "beam-steering",
+      "media_kind": "optimization-history",
+      "original_public_url": "https://remilab.cnu.ac.kr/share/6ba431aac4d9/viewer/assets/steer_traj.mp4",
+      "video": {
+        "path": "steer_traj.mp4",
+        "sha256": "d6dcfd6271ba10e64e7d83ae0b80024b7058b6bd840a74132caf041489827253",
+        "bytes": 669223,
+        "duration_seconds": 30.2,
+        "codec": "h264",
+        "width": 1422,
+        "height": 480
+      },
+      "poster": {
+        "path": "steer_traj.jpg",
+        "sha256": "275af877a7b6a0a670bf30ed3deb8d83ed4135aead0e246337496df0ab413ab6",
+        "bytes": 93651,
+        "frame_seconds": 15
+      },
+      "limitations": [
+        "441 latent variables; gradient is dL/dlatent, not dL/deps_r.",
+        "Wavelength/20 trajectory; finer-mesh summary values are a different result.",
+        "Directivity, not realized gain or radiation efficiency."
+      ]
+    },
+    {
+      "id": "steer_descent",
+      "example_id": "beam-steering",
+      "media_kind": "optimization-history",
+      "original_public_url": "https://remilab.cnu.ac.kr/share/6ba431aac4d9/viewer/assets/steer_descent.mp4",
+      "video": {
+        "path": "steer_descent.mp4",
+        "sha256": "f60fbb48041fe8f8f05c97fa5dec0a371a081f8fc9a1277869928808349f0c18",
+        "bytes": 264963,
+        "duration_seconds": 11.6,
+        "codec": "h264",
+        "width": 1422,
+        "height": 510
+      },
+      "poster": {
+        "path": "steer_descent.jpg",
+        "sha256": "28145c63e3c0951018d7cba1054339d49e6635373b75e9c95ab87d1de6640f78",
+        "bytes": 98659,
+        "frame_seconds": 5
+      },
+      "limitations": [
+        "Historical descent view; preserve its original mesh and parameterization."
+      ]
+    },
+    {
+      "id": "notch_path",
+      "example_id": "microstrip-notch",
+      "media_kind": "optimization-history-with-interpolation",
+      "original_public_url": "https://remilab.cnu.ac.kr/share/6ba431aac4d9/viewer/assets/notch_path.mp4",
+      "video": {
+        "path": "notch_path.mp4",
+        "sha256": "e8c0948ea5710540b762d9f19a5756b0d6cae61af815b9fb30056b40bc68c651",
+        "bytes": 174782,
+        "duration_seconds": 18.0,
+        "codec": "h264",
+        "width": 1422,
+        "height": 490
+      },
+      "poster": {
+        "path": "notch_path.jpg",
+        "sha256": "094c77ab0763986d5492b667ce76ae5f1c4e07a1ff01f1237e85cd2a6443af9d",
+        "bytes": 84181,
+        "frame_seconds": 10
+      },
+      "limitations": [
+        "Coarse segment is illustrative interpolation; 60 fine iterations are recorded.",
+        "Final spectrum uses 7.14 mm stub; not the field replay geometry."
+      ]
+    },
+    {
+      "id": "notch_phase",
+      "example_id": "microstrip-notch",
+      "media_kind": "phasor-replay",
+      "original_public_url": "https://remilab.cnu.ac.kr/share/6ba431aac4d9/viewer/assets/notch_phase.mp4",
+      "video": {
+        "path": "notch_phase.mp4",
+        "sha256": "0dd2368dc38ec62cd22f161709322cc6e167d2e942d3697d62f2d52155a1bcb7",
+        "bytes": 95911,
+        "duration_seconds": 3.334,
+        "codec": "h264",
+        "width": 934,
+        "height": 616
+      },
+      "poster": {
+        "path": "notch_phase.jpg",
+        "sha256": "bcf45d2d3d0e3785331ab7e8a5042676fea5a5fcb0955142cec2525aea0b24ec",
+        "bytes": 46681,
+        "frame_seconds": 0
+      },
+      "limitations": [
+        "Normalized Re(Ez exp(i phase)); not a time-domain pulse.",
+        "7.22 mm stub; distinct from final 7.14 mm spectrum."
+      ]
+    }
+  ]
+}
