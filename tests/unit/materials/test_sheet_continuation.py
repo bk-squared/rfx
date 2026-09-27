@@ -189,7 +189,12 @@ def test_host_sheet_forward_under_outer_jit_equals_box(kind):
 
             eps = jnp.ones(sim._build_grid().shape, dtype=jnp.float32)
             eager, compiled = loss(eps), jax.jit(loss)(eps)
-            np.testing.assert_allclose(compiled, eager, rtol=1e-6, atol=0.)
+            # Under jit XLA fuses and reorders the float32 updates, so eager and compiled
+            # need not agree bit for bit: 3.44e-6 relative on the CI runner (PR #1334,
+            # fast-suite 4), 0 locally. A one-cell change to the sheet moves this loss by
+            # 1.7-2.3e-2 and a missing sheet by 4.0, so 1e-4 hides no geometry change.
+            # The Box == non-Box check below is exact.
+            np.testing.assert_allclose(compiled, eager, rtol=1e-4, atol=0.)
             losses.append(np.asarray(compiled))
         assert losses[0] > 0
         np.testing.assert_array_equal(losses[0], losses[1])
