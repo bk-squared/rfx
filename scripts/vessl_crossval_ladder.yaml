@@ -37,9 +37,10 @@ run: |-
   python -m pip install -q "uv==0.12.19"
   uv venv -q --python 3.11.16 /tmp/venv-py311
   PY=/tmp/venv-py311/bin/python
-  uv pip install -q --python "$PY" "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0"
+  uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0"
   # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
   "$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; assert jax.__version__ == '0.10.2', jax.__version__; assert jax.default_backend() == 'gpu', jax.default_backend()"
+  uv pip freeze --python "$PY" > "$OUT/pip_freeze.txt"
   export PYTHONPATH="$WORK"
   "$PY" -c "import jax, rfx; print('jax', jax.__version__, jax.devices(), 'rfx', rfx.__version__)"
   IGN="--ignore=tests/crossval/test_meep_crossval.py --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py --ignore=tests/crossval/test_openems_crossval.py --ignore=tests/crossval/test_crossval_comprehensive.py"
