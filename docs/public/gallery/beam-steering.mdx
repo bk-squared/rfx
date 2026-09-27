@@ -48,7 +48,8 @@ provides a short CPU setup. Run it from a matching source checkout with the exam
 dependencies installed:
 
 ```bash
-SMOKE=1 JAX_PLATFORMS=cpu python validation/tmtt_paper/beam_steering_superstrate.py
+python -m pip install -e ".[optimization]"
+SMOKE=1 JAX_PLATFORMS=cpu PYTHONPATH=. python validation/tmtt_paper/beam_steering_superstrate.py
 ```
 
 The short setup uses a coarse mesh and a few optimizer steps. It exercises the

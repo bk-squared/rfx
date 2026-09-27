@@ -49,7 +49,8 @@ In a source checkout matching the linked revision, install the project's example
 dependencies and run its documented CPU setup:
 
 ```bash
-SMOKE=1 JAX_PLATFORMS=cpu python validation/tmtt_paper/waveguide_dielectric_taper.py
+python -m pip install -e ".[optimization]"
+SMOKE=1 JAX_PLATFORMS=cpu PYTHONPATH=. python validation/tmtt_paper/waveguide_dielectric_taper.py
 ```
 
 This short run produces an initial/optimized response and material-profile figure.
