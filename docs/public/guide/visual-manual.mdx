@@ -34,6 +34,14 @@ All new video players start on a still image. Press play when you want motion;
 pause or use the timeline to compare frames. The captions describe the important
 features without requiring animation.
 
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/current-visuals/boundary-reflection.png" aria-label="Actual electric-field snapshots comparing absorbing and reflecting boundaries">
+    <source src="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4">Download the boundary comparison</a>.
+  </video>
+  <figcaption>The source and probe stay in the same positions. Absorbing boundaries let the pulse leave; metal walls reflect it and the probe continues to see returning fields. A current-run, single-mesh 2D TMz teaching example. <a href="/rfx/gallery/boundary-reflection/">Read the model, data and limits →</a></figcaption>
+</figure>
+
 ## 3. Measure the quantity you need
 
 A bright field is not by itself a power, efficiency or gain measurement.
@@ -44,7 +52,12 @@ Keep the reference run, normalization and measurement planes with the result.
 
 ## Waves and materials
 
-Start with the [dielectric slab](/rfx/gallery/multilayer_fresnel/): see how the two
+Follow a pulse through a [dielectric interface](/rfx/gallery/dielectric-interface/)
+or watch interference in a [closed cavity](/rfx/gallery/cavity-standing-wave/).
+Both provide actual time-domain snapshots and downloadable arrays generated from
+their public source. They teach field behavior on one mesh, not numerical accuracy.
+
+Then read the [dielectric slab](/rfx/gallery/multilayer_fresnel/): see how the two
 interfaces create reflection and transmission, then run the
 [flux-monitor tutorial](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/slab_rt_flux_monitor.py).
 The linked legacy gallery records an older calculation; use its stated version
