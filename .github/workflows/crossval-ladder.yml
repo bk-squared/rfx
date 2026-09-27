@@ -25,6 +25,12 @@ jobs:
     # on the weekly lane 2026-09-24) must outlast the lane's pytest timeout (14400 s) plus
     # ~200 s of setup; what is left (~100 min) is the room for a VESSL queue.
     timeout-minutes: 360
+    # One lane run at a time: a dispatch during a scheduled run (or the reverse) waits
+    # instead of submitting a second GPU job. GitHub keeps one pending run per group; a
+    # third arrival replaces it, and the replaced one ends cancelled.
+    concurrency:
+      group: crossval-ladder-gpu
+      cancel-in-progress: false
     environment: vessl
     steps:
       - name: Check out repository
