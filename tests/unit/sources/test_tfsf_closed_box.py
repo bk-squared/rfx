@@ -344,7 +344,7 @@ def test_isolated_target_scatters_into_both_open_transverse_axes():
             np.max(np.abs(fields[0][:, axis])) + 9 * np.spacing(np.float32(1.0)))
 
 
-def test_forward_run_and_remat_share_the_source_and_material_derivative():
+def test_ordinary_forward_run_and_internal_remat_share_the_source():
     from rfx.geometry.csg import Box
     sim = _sim()
     sim.add_material("target", eps_r=2.0)
@@ -353,35 +353,41 @@ def test_forward_run_and_remat_share_the_source_and_material_derivative():
     result = sim.run(n_steps=128)
     fwd = sim.forward(n_steps=128, checkpoint=False, skip_preflight=True)
     _peak_ulp(fwd.time_series, result.time_series)
-    grid = sim._build_grid()
-    materials = sim._assemble_materials(grid)[0]
-    region = jnp.asarray(materials.eps_r > 1.0)
-
-    def objective(eps, checkpoint):
-        eps_grid = jnp.where(region, eps, 1.0)
-        out = sim.forward(n_steps=128, eps_override=eps_grid,
-                          checkpoint=checkpoint,
-                          checkpoint_segments=4 if checkpoint else None,
-                          skip_preflight=True)
-        # Record-accumulated quantity: the cross-trace bar is 1e-4 peak.
-        return jnp.sum(out.time_series ** 2)
-
-    vals = []
-    for checkpoint in (False, True):
-        fn = lambda eps: objective(eps, checkpoint)
-        val, grad = jax.value_and_grad(fn)(2.0)
-        tangent = jax.jvp(fn, (2.0,), (1.0,))[1]
-        assert float(val) > 0
-        assert np.isfinite(float(grad)) and abs(float(grad)) > 0
-        np.testing.assert_allclose(grad, tangent, rtol=1e-4, atol=0)
-        vals.append(np.asarray([val, grad]))
-    np.testing.assert_allclose(vals[0], vals[1], rtol=1e-4, atol=0)
+    for segments in (None, 4):
+        remat = sim.forward(n_steps=128, checkpoint=True,
+                            checkpoint_segments=segments, skip_preflight=True)
+        _peak_ulp(remat.time_series, fwd.time_series)
+        np.testing.assert_allclose(jnp.sum(remat.time_series ** 2),
+                                   jnp.sum(fwd.time_series ** 2), rtol=1e-4, atol=0)
 
 
 @pytest.mark.parametrize("kind", ("custom", "box"))
-def test_outer_jit_refuses_unqualified_extended_tfsf_trace(kind):
+@pytest.mark.parametrize("entry,dynamic_material", [("run", False), ("forward", False),
+                                                    ("forward", True)])
+@pytest.mark.parametrize("transform", ("grad", "value_and_grad", "jvp", "vmap",
+                                      "jit", "checkpoint", "scan"))
+def test_external_transforms_refuse_extended_tfsf(kind, entry, dynamic_material, transform):
     sim = _sim(closed_box=kind == "box", waveform=(
         "differentiated_gaussian" if kind == "box" else None))
-    compiled = jax.jit(lambda: sim.forward(n_steps=8, skip_preflight=True).time_series)
+    grid = sim._build_grid()
+
+    def trace(eps):
+        kwargs = {"eps_override": jnp.full(grid.shape, eps)} if dynamic_material else {}
+        return getattr(sim, entry)(n_steps=8, skip_preflight=True, **kwargs).time_series
+
+    def objective(eps):
+        values = trace(eps)
+        return jnp.sum(values ** 2), values
+
+    calls = {
+        "grad": lambda: jax.grad(lambda eps: objective(eps)[0])(1.0),
+        "value_and_grad": lambda: jax.value_and_grad(objective, has_aux=True)(1.0),
+        "jvp": lambda: jax.jvp(trace, (1.0,), (1.0,)),
+        "vmap": lambda: jax.vmap(trace)(jnp.ones(2)),
+        "jit": lambda: jax.jit(trace)(1.0),
+        "checkpoint": lambda: jax.checkpoint(trace)(1.0),
+        "scan": lambda: jax.lax.scan(lambda eps, n: (eps, trace(eps)),
+                                    1.0, jnp.arange(2)),
+    }
     with pytest.raises(NotImplementedError, match="9-ULP cross-trace contract"):
-        compiled()
+        calls[transform]()

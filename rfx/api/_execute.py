@@ -113,6 +113,31 @@ def _staged_by_an_outer_trace() -> bool:
     return is_tracer(jnp.zeros(()))
 
 
+def _refuse_transformed_extended_tfsf(entry) -> None:
+    """Fence the new source inputs before any setup can hide caller tracing."""
+    if entry is None:
+        return
+    from rfx.sources.sources import CustomWaveform
+    if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
+        return
+    try:
+        from jax.extend.core import get_opaque_trace_state, take_current_trace
+    except ImportError:
+        raise NotImplementedError(
+            "CustomWaveform and closed_box TFSF require JAX's public "
+            "opaque trace-state and take_current_trace APIs") from None
+    caller = get_opaque_trace_state()
+    with take_current_trace():
+        eager = get_opaque_trace_state()
+    if caller != eager:
+        raise NotImplementedError(
+            "CustomWaveform and closed_box TFSF cannot be called under external "
+            "JAX transformations (grad/value_and_grad/JVP/vmap/jit/checkpoint/scan): "
+            "transformed scattered-field traces exceed the 9-ULP cross-trace "
+            "contract. Use ordinary fixed-step run/forward; forward's internal "
+            "checkpoint and segmentation options remain available.")
+
+
 def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
     """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
 
@@ -4052,6 +4077,7 @@ class _ExecuteMixin:
         float32 rounding, not necessarily bit for bit: XLA compiles the whole
         step as one program.
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         if _forward_needs_trace_time_setup(self, distributed=distributed):
             # #1225: evaluate the set-up now instead of recording it. Only
             # the operations that read a traced argument are recorded;
@@ -4076,15 +4102,6 @@ class _ExecuteMixin:
 
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
-        if self._tfsf is not None:
-            from rfx.sources.sources import CustomWaveform
-            if ((self._tfsf.closed_box or isinstance(self._tfsf.waveform, CustomWaveform))
-                    and _staged_by_an_outer_trace()):
-                raise NotImplementedError(
-                    "CustomWaveform and closed_box TFSF forward cannot be staged by an "
-                    "outer jax.jit/checkpoint/scan: the scattered-field trace exceeds "
-                    "the 9-ULP cross-trace contract. Use ordinary forward (grad/JVP "
-                    "and its internal checkpoint options are supported).")
         validate_exchange_interval(exchange_interval)
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_request
@@ -4628,6 +4645,7 @@ class _ExecuteMixin:
         -------
         Result
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
         if until_decay is not None and self._tfsf is not None:
