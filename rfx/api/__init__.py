@@ -2300,7 +2300,7 @@ class Simulation(
         grid = self._build_grid()
         entry = self._tfsf
         cfg, _ = init_tfsf(
-            grid.nx, grid.dx, grid.dt, ny=grid.ny, nz=grid.nz,
+            grid.nx, float(grid.cells("x")[0]), grid.dt, ny=grid.ny, nz=grid.nz,
             cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
             f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
             bandwidth=entry.bandwidth, amplitude=entry.amplitude,

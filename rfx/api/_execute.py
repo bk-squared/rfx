@@ -1640,10 +1640,9 @@ class _ExecuteMixin:
                 method=getattr(self._tfsf, "method", "bloch"),
                 closed_box=self._tfsf.closed_box,
             )
-            # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
-            # _auto_preflight on the concrete config; it is NOT re-run here because
-            # `materials` may be a jax tracer under jax.grad (eps_override), and the
-            # check concretizes.
+            # The legacy slab's concrete vacuum check runs via preflight.
+            # The closed box also checks the final realized operators below,
+            # after material overrides and port setup (including AD values).
             # Open-domain oblique Method B forces OPEN transverse y (CPML) with
             # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
             from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
@@ -1680,31 +1679,6 @@ class _ExecuteMixin:
             pec_edge_masks_local = _rpem_fwd(
                 pec_mask, sheets=pec_sheets, wires=pec_wires,
                 periodic=periodic_bool)
-        if self._tfsf is not None and self._tfsf.closed_box:
-            nonvacuum = list(pec_edge_masks_local or ())
-            for spec in (debye_spec, lorentz_spec):
-                if spec is not None:
-                    nonvacuum.extend(spec[1])
-            if kerr_chi3 is not None:
-                nonvacuum.append(kerr_chi3)
-            if pec_occupancy is not None:
-                nonvacuum.append(pec_occupancy)
-            if sheet_impedance is not None:
-                nonvacuum.extend((sheet_impedance.mask_ex, sheet_impedance.mask_ey,
-                                  sheet_impedance.mask_ez))
-            if self._lumped_rlc:
-                mask = jnp.zeros(grid.shape, dtype=bool)
-                for spec in self._lumped_rlc:
-                    mask = mask.at[grid.position_to_index(spec.position)].set(True)
-                nonvacuum.append(mask)
-            for spec in (design_box, design_occupancy):
-                if spec is not None:
-                    b = spec.bounds
-                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
-                                   for d in range(3))
-                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
-            self._validate_tfsf_vacuum_boundary(
-                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
@@ -2318,6 +2292,37 @@ class _ExecuteMixin:
             # #1245: at most one element with its own solve per realized edge.
             from rfx.lumped import refuse_stacked_solved_elements
             refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
+
+        # Validate the operators handed to the scan, after every port fold
+        # and PEC clearing. A passive load can reach the source shell even
+        # when all of its conductor geometry is clear of that shell.
+        if self._tfsf is not None and self._tfsf.closed_box:
+            nonvacuum = list(pec_edge_masks_local or ())
+            for spec in (debye_spec, lorentz_spec):
+                if spec is not None:
+                    nonvacuum.extend(spec[1])
+            if kerr_chi3 is not None:
+                nonvacuum.append(kerr_chi3)
+            if pec_occupancy_local is not None:
+                nonvacuum.append(pec_occupancy_local)
+            if aniso_inv_eps_run is not None:
+                nonvacuum.extend(a != 1.0 for a in aniso_inv_eps_run)
+            if sheet_impedance is not None:
+                nonvacuum.extend((sheet_impedance.mask_ex, sheet_impedance.mask_ey,
+                                  sheet_impedance.mask_ez))
+            if self._lumped_rlc:
+                mask = jnp.zeros(grid.shape, dtype=bool)
+                for spec in self._lumped_rlc:
+                    mask = mask.at[grid.position_to_index(spec.position)].set(True)
+                nonvacuum.append(mask)
+            for spec in (design_box, design_occupancy):
+                if spec is not None:
+                    b = spec.bounds
+                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                                   for d in range(3))
+                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+            self._validate_tfsf_vacuum_boundary(
+                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
 
         result = _run(
             grid,

@@ -304,6 +304,25 @@ def test_conformal_pec_operator_cannot_cross_source(on_face):
         sim.run(n_steps=2, conformal_pec=True, skip_preflight=True)
 
 
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("on_face", (False, True))
+def test_port_material_fold_is_checked_after_setup(entry, on_face):
+    from rfx.geometry.csg import Box
+    sim = _sim(waveform="differentiated_gaussian")
+    z = 0.001 if on_face else 0.005
+    # Each sheet is clear of the source shell; only the load cells between
+    # them cross it. Those conductivities are added during port setup.
+    for height in (z, z + 0.004):
+        sim.add(Box((0.007, 0.007, height), (0.011, 0.009, height)), material="pec")
+    sim.add_msl_port((0.009, 0.008, z), width=0.002, height=0.004,
+                     excite=False, mode="uniform", name="passive")
+    if on_face:
+        with pytest.raises(ValueError, match="vacuum.*all six faces"):
+            getattr(sim, entry)(n_steps=8, skip_preflight=True)
+    else:
+        getattr(sim, entry)(n_steps=8, skip_preflight=True)
+
+
 def test_isolated_target_scatters_into_both_open_transverse_axes():
     from rfx.geometry.csg import Box
     fields = []
