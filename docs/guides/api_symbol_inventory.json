@@ -226,6 +226,9 @@
     "Result": {
       "kind": "class"
     },
+    "ScatteringResponse": {
+      "kind": "class"
+    },
     "SheetSpec": {
       "kind": "class"
     },
@@ -700,7 +703,8 @@
         "cpml_layers",
         "tfsf_margin",
         "ntff_offset",
-        "subtract_incident_reference"
+        "subtract_incident_reference",
+        "phase_reference"
       ]
     },
     "compute_rcs_jax": {
