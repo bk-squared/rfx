@@ -36,7 +36,9 @@ def run_disjoint_stage2_path(
     gates pass.
     """
     from rfx.api import Result
+    from rfx.current_moments import refuse_current_moment_monitor
 
+    refuse_current_moment_monitor(sim, "disjoint z-slab research lane")
     unsupported_ports = [pe for pe in sim._ports if pe.impedance > 0.0]
     if unsupported_ports:
         raise NotImplementedError(

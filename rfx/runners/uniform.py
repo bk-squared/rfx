@@ -19,6 +19,7 @@ from rfx.sources.waveguide_port import (
     extract_waveguide_sparams,
     waveguide_plane_positions,
 )
+from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
 
@@ -283,6 +284,8 @@ def run_uniform(
     aniso_inv_eps = None
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
     if use_kottke_pec:
+        from rfx.current_moments import refuse_h_side_conductor
+        refuse_h_side_conductor(sim, 'subpixel_smoothing="kottke_pec"')
         from rfx.geometry.smoothing import (
             compute_inv_eps_tensor_diag, smoothed_shape_pairs,
             warn_unextendable_shapes,
@@ -780,6 +783,11 @@ def run_uniform(
         corner_lo, corner_hi, freqs = sim._ntff
         ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+    # In-loop block current moments (rfx.current_moments). Built here rather
+    # than at declaration time so the slab window and the block map come from
+    # the grid the solve actually builds, not from the declared corners.
+    current_moments = _cm_for_sim(sim, grid, periodic)
+
     # Lumped RLC elements
     rlc_metas = None
     if sim._lumped_rlc:
@@ -828,6 +836,7 @@ def run_uniform(
             flux_monitors=flux_monitors,
             waveguide_ports=waveguide_ports,
             ntff=ntff_box,
+            current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
@@ -863,6 +872,7 @@ def run_uniform(
             flux_monitors=flux_monitors,
             waveguide_ports=waveguide_ports,
             ntff=ntff_box,
+            current_moments=current_moments,
             snapshot=snapshot,
             checkpoint=checkpoint,
             aniso_eps=aniso_eps,
@@ -1063,6 +1073,8 @@ def run_uniform(
         freqs=freqs_out,
         ntff_data=sim_result.ntff_data,
         ntff_box=ntff_box,
+        current_moment_data=sim_result.current_moment_data,
+        current_moment_monitor=current_moments,
         dft_planes=(
             {
                 entry.name: probe
