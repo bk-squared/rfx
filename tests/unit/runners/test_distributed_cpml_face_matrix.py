@@ -98,5 +98,5 @@ def test_probe_records_match_single_device(lane, wall, face, record_property, re
             # must remain failures. The NU builder currently makes 8/8 cells
             # for the declared 4/8; matching that box is not 4/8 coverage.
             request.node.add_marker(pytest.mark.xfail(
-                strict=True, reason="#1235: NU ignores unequal per-face CPML depths (4/8 becomes 8/8)"))
+                strict=True, reason="#1346: NU ignores unequal per-face CPML depths (4/8 becomes 8/8)"))
         assert depths == (4, 8), f"requested 4/8 layers; realized {depths}"
