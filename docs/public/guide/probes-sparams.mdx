@@ -358,7 +358,7 @@ These families have their own set-up rules and their own calculators:
   [Waveguide Ports](/rfx/guide/waveguide-ports/).
 - Coax: `compute_coaxial_line_reflection()` builds its own line and returns
   one-port S11; `compute_coaxial_two_port()` gives a through-line 2-port.
-  Use at least 4 cells across the annulus, and don't use an open termination.
+  Use at least 4 cells across the annulus.
   See [Sources and Ports](/rfx/guide/sources-ports/).
 
 The [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md)
@@ -481,8 +481,8 @@ For plotting S-parameters, fields and time series, see
   ended too early or a mesh too coarse. The returned S is not clipped.
 - **Microstrip line runs into the absorber** → CPML reflects a guided line
   noticeably; end the line at its port instead.
-- **Coax with an open termination** → not supported; it can return
-  |Γ| > 1 on fine meshes.
+- **Coax refuses the model with a lateral-absorber message** → the line's
+  outer wall is within one cell of a side absorber; widen the domain.
 - **Harminv returns nothing, or a mode you did not expect** → lengthen the
   record, narrow `freq_range`, and identify modes by field pattern.
 - **Ring-down completion refuses the run** → the source is still on in the

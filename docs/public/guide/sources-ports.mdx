@@ -371,10 +371,9 @@ Getting an accurate result:
 - **Keep the probe span physical.** Probe planes are placed in cells
   (`probe_start_cells`, `probe_spacing_cells`), so refining the mesh shortens
   the length the phase fit sees. Scale the spacing up when you refine.
-- **Do not use `termination="open"`.** The open end is a closed can on this
-  lane and reads |Γ| > 1 on fine meshes
-  ([known limitation](https://github.com/bk-squared/rfx/issues/1218)). Use a
-  short or a matched load.
+- **Leave room around the line.** Both coax calculators absorb on all three
+  axes, so an open end radiates instead of ringing in a closed can. A line
+  whose outer wall comes within one cell of a lateral absorber is refused.
 
 ## Limits
 
@@ -389,7 +388,7 @@ Getting an accurate result:
   only. Wire ports on a graded mesh are experimental.
 - **Microstrip** `mode="eigenmode"` is unsupported. Graded-mesh microstrip has
   no external comparison yet. ADI, subgridding and TFSF are refused.
-- **Coax** open terminations are unsupported. Coax lanes cover this one
+- **Coax** lanes cover one
   geometry family, and only azimuthally symmetric discontinuities.
 - **TFSF on a graded axis:** preflight warns, because the scattered-field
   region picks up a spurious field (about 0.7 of the total-field peak with no

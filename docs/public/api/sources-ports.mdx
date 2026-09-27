@@ -238,8 +238,8 @@ the waveform. See the complete example below.
 | lumped/wire, differentiable | `forward(..., port_s11_freqs=freqs)` | `ForwardResult.s_params` (S11 vectors) |
 | microstrip | `compute_msl_s_matrix(*, n_steps=None, num_periods=40.0, freqs=None, n_freqs=100, enforce_passivity=False, eps_override=None, ...)` | `MSLSMatrixResult` |
 | waveguide | `compute_waveguide_s_matrix(*, n_steps=None, num_periods=20.0, normalize=False, eps_override=None, sigma_override=None, strict_passivity=False, ...)` | `WaveguideSMatrixResult` |
-| coax, one-port | `compute_coaxial_line_reflection(*, termination="short", n_steps=6000, freqs=None, n_freqs=11, cpml_axes="z", probe_count=12, probe_start_cells=8, probe_spacing_cells=4, feed_impedance=None, dut_impedance=None, eps_scale=None, ...)` | `CoaxialLineReflectionResult` |
-| coax, two-port | `compute_coaxial_two_port(*, n_steps=6000, freqs=None, n_freqs=11, cpml_axes="z", probe_count=12, feed_impedance=None, eps_scale=None, ...)` | `CoaxialTwoPortResult` |
+| coax, one-port | `compute_coaxial_line_reflection(*, termination="short", n_steps=6000, freqs=None, n_freqs=11, cpml_axes="xyz", probe_count=12, probe_start_cells=8, probe_spacing_cells=4, feed_impedance=None, dut_impedance=None, eps_scale=None, ...)` | `CoaxialLineReflectionResult` |
+| coax, two-port | `compute_coaxial_two_port(*, n_steps=6000, freqs=None, n_freqs=11, cpml_axes="xyz", probe_count=12, feed_impedance=None, eps_scale=None, ...)` | `CoaxialTwoPortResult` |
 
 Result fields are listed on [Results & Observables](/rfx/api/results-observables/#s-parameter-results).
 `run(compute_s_params=True)` handles lumped and wire ports only. It does not
@@ -297,7 +297,9 @@ The coaxial calculators check their own requirements when called.
 
 `compute_coaxial_line_reflection()` needs a float32, 3-D, second-order uniform
 Yee grid with CPML on all six faces (positive thickness on both z faces),
-`cpml_axes="z"`, no periodic axis, and exactly one `face="top"` coaxial port.
+no periodic axis, and exactly one `face="top"` coaxial port. The line absorbs
+on all three axes (`cpml_axes="xyz"`, the only accepted value); its outer wall
+must stay more than one cell from every lateral absorber.
 Nothing else may be registered: it rejects extra geometry, sheets, RLC
 elements, probes, monitors and NTFF boxes rather than ignoring them.
 
@@ -352,9 +354,8 @@ print(np.abs(refl.s11))
   return identical S11.
 - **End lines at their ports, not in the CPML.** CPML terminates a guided
   line much less well than a plane wave. Let the ports terminate the line.
-- **Coax open termination is not supported.** `termination="open"` reads
-  `|Γ| > 1` on fine meshes. Track
-  [issue #1218](https://github.com/bk-squared/rfx/issues/1218).
+- **Coax results from before the three-axis absorber** (`cpml_axes="z"`, now
+  refused) came from a line in a closed metal can and do not reproduce.
 - **Graded meshes.** Lumped-port S-parameters and coaxial ports raise on a
   graded mesh. Microstrip and waveguide calculators run there but are
   experimental. See [Support Boundaries](/rfx/api/support-boundaries/).

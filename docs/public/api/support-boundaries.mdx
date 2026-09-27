@@ -58,7 +58,7 @@ A clean preflight or a completed run does not move a feature up this scale.
 | `add_msl_port(...)` | `compute_msl_s_matrix()` | **limited** | Quasi-TEM (`mode="laplace"`), directions ±x and ±y. At least 4 cells through the substrate (preflight warns below that). Graded mesh experimental; `mode="eigenmode"` outside scope. |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | **limited** | Uniform single-mode magnitude has broad evidence; phase, junctions and multimode less. S is a power-wave S only when all ports share one cross-section. Gradients on `normalize=False` and `"flux"`. Graded mesh experimental. |
 | `add_waveguide_port(...)` | `run(...)` → `waveguide_sparams` | **limited** | Per-port diagnostic, not the full matrix. |
-| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | **limited** | One `face="top"` port, self-contained line, float32 uniform grid. At least 4 cells across the annulus. Open termination not supported. |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | **limited** | One `face="top"` port, self-contained line, float32 uniform grid. At least 4 cells across the annulus. The line absorbs on all three axes. |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | **limited** | One SMA-class through-line family, symmetric discontinuities only. |
 | lumped/wire + microstrip | `compute_mixed_s_matrix()` | **experimental** | Magnitude not validated; the default passivity projection alters the diagonal. |
 | coax + microstrip | `compute_coax_msl_transition()` | **experimental** | Diagnostic only; the matrix is not passive and is refused by default. |

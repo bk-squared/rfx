@@ -68,6 +68,6 @@ message names both.
   [Cross-Validation and Accuracy](/rfx/guide/validation/).
 - **Examples and tests cover their own setup.** A committed test pins
   behaviour at its own mesh, band and configuration.
-- **Coaxial open termination is not supported.** On fine meshes it reads
-  `|Γ| > 1`. Use a short, a matched load or a DUT impedance instead; track
-  [issue #1218](https://github.com/bk-squared/rfx/issues/1218).
+- **Coaxial results computed before the lanes absorbed on all three axes**
+  (`cpml_axes="z"`, now refused) came from a line in a closed metal can and do
+  not reproduce.
