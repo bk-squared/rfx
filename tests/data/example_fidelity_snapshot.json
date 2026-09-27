@@ -1,7 +1,7 @@
 {
   "_comment": "Regenerate with: JAX_ENABLE_X64=0 python scripts/capture_example_fidelity_snapshot.py -- SNAPSHOT of today's advisories, not a zero-advisory endorsement (see this script's module docstring and test_example_fidelity_contract.py). Nothing here time-steps: this pins build-time EMISSION only, so it is not evidence about any example's output numbers. The #729-site-1 defect (domain realized_extent_um/n_cells read NODE counts, one cell too long) was FIXED by PR #734 (a5a72280) and this snapshot was re-captured after that fix, so domain extents here are usable again (cv11 reads 23000/11000 um, matching #722). Re-captured 2026-09-02 after the report started reading the rasterizer's exact float64 node line (#833 item 2): realized_um / cell_um / face_residual_um on non-uniform lanes moved by the float32 cell-size widening (<= 0.011 um), 108 on-node residuals went to 0.0, 12 one-cell bodies stopped reading sub_cell, and 6 'inside-absorber' rows on domain-filling bodies (convergence_floor fixture; hi face read 27000.0002 um against a 27000.0 um domain) went away; no n_cells or preflight row moved.",
   "variants": {
-    "examples/inverse_design/differentiable_s11_design.py::_build_sim::default": {
+    "examples/inverse_design/differentiable_s11_design.py::build_simulation::default": {
       "fidelity": {
         "NOT AUDITED by this report": {
           "axes": {},
@@ -1279,6 +1279,166 @@
         }
       },
       "preflight": []
+    },
+    "examples/tutorials/cad_mesh_import_demo.py::build_simulation::default": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                0.0,
+                60000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 60000.0,
+              "n_cells": 60,
+              "realized_extent_um": 60000.0,
+              "realized_um": [
+                0.0,
+                60000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                0.0,
+                40000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 40000.0,
+              "n_cells": 40,
+              "realized_extent_um": 40000.0,
+              "realized_um": [
+                0.0,
+                40000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 30000.0,
+              "declared_um": [
+                0.0,
+                30000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 30000.0,
+              "n_cells": 30,
+              "realized_extent_um": 30000.0,
+              "realized_um": [
+                0.0,
+                30000.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|pec|15000.000,10000.000,14250.000um->45000.000,30000.000,15750.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 30000.0,
+              "declared_um": [
+                15000.0,
+                45000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 30000.0,
+              "realized_um": [
+                15000.0,
+                45000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 20000.0,
+              "declared_um": [
+                10000.0,
+                30000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 20000.0,
+              "realized_um": [
+                10000.0,
+                30000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 1500.0,
+              "declared_um": [
+                14250.0,
+                15750.0
+              ],
+              "face_residual_um": [
+                250.0,
+                250.0
+              ],
+              "realized_extent_um": 2000.0,
+              "realized_um": [
+                14000.0,
+                16000.0
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "z",
+              "detail": "PLACEMENT off by 250.0 um (16.67% of the declared 1500.0 um extent); SIZE 2000.0 um (+500.0 um, +33.33%). Curved boundary sampled cell-wise; midpoint shift +0.0 um (+0.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
+              "kind": "bbox-offset",
+              "midpoint_shift_um": 0.0,
+              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+            }
+          ],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 1200,
+          "realization": "volumetric PEC (>= 2 cells on every axis)"
+        }
+      },
+      "preflight": [
+        {
+          "code": "mesh_import_underresolved",
+          "loc": null,
+          "message": "Imported mesh (material 'pec') thinnest dimension ~1.500 mm is below 2 cells (~2.000 mm at dx=1.000 mm); it will be lost or staircased by rasterisation. Refine the mesh region (finer dx / subpixel smoothing) or thicken the feature.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        }
+      ]
     },
     "examples/tutorials/materials_and_dispersion.py::make_sim::default": {
       "fidelity": {
