@@ -362,6 +362,12 @@ def _v_from(label: str, fn: Callable[[ModuleType], dict]) -> Variant:
 
 
 CLASSIFICATION: dict[str, Entry] = {
+    "examples/visualization/field_movies.py": Entry(
+        "audited", "build_simulation() returns each rendered model without solving",
+        (Builder("build_simulation", None, (
+            _v("cpml", variant="cpml"), _v("pec", variant="pec"),
+            _v("cavity", variant="cavity"), _v("vacuum", variant="vacuum"),
+            _v("dielectric", variant="dielectric"))),)),
     # ---- no_simulation: zero real Simulation() calls, AST-verified ------
     # (bucket sizes are not written here: they rot. Count them with a
     #  Counter over CLASSIFICATION, the way the two docstrings above say.)
