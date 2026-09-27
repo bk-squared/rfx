@@ -9,7 +9,8 @@ record T the completion can stand on: every source off over [T/4, T], the
 error witness WE (the completions from [T/2, T] and [T/4, T] against each
 other) within its 1e-3 bar at two checks in a row, and -- the PI's floor
 (2026-09-27) -- T at least half the decay time of the slowest identified
-ringing pole (a static field, a pole at 0 Hz, left out), because a pair of modes that no window of a record separates is completed as
+mode (a pole whose own tail moves the completed S by the bar; a static field
+left out), because a pair of modes that no window of a record separates is completed as
 one mode while every witness agrees (rfx #1254, R-i: 0.03 % apart, recorded
 for 7 % of their decay time, 8.8 % off).
 
@@ -26,6 +27,12 @@ What is pinned here, on both lanes:
   half of it, and the decay time the floor reads is the settled record's own;
 * a static field under the ringing (a 0 Hz pole that does not decay) does not
   hold the floor: the stop fires at half the ringing mode's decay time;
+* what the floor is for, on synthetic records through the stop's own check and
+  schedule: a pair no short record resolves (the R-i case), a decaying mode
+  below 1/record, and a weakly coupled high-Q pair each hold the stop where WE
+  already agrees and the completion is 1-10 % off; a non-passive completion
+  does not stop; the floor reads the largest decay time of the checks the
+  two-in-a-row rule rests on;
 * no check reads the record while a source is on over [T/4, T], and the same
   pulse delayed to end at 1.34 ns moves the first check past four times its end;
 * a maximum below the floor completes the whole record and the report says
@@ -235,7 +242,7 @@ def test_a_static_field_does_not_hold_the_floor():
     constant. The floor must read the ringing mode, so the stop fires at the
     first record past half its decay time -- 3250 steps of 1 ps, checked every
     250 steps with the real check function and stop rule -- and the report
-    names the 10 GHz pole and the pole it left out."""
+    names the 10 GHz pole and the static pole it left out."""
     dt, f0, q = 1.0e-12, 10.0e9, 200.0
     alpha = math.pi * f0 / q
     t = np.arange(3250) * dt
@@ -243,31 +250,228 @@ def test_a_static_field_does_not_hold_the_floor():
     Y = np.stack([ring * np.cos(2 * np.pi * f0 * t) + 0.5,
                   ring * np.sin(2 * np.pi * f0 * t + 0.3) - 0.3], axis=1)
     f_bins = np.linspace(5e9, 15e9, 41)
-    scale = float(np.max(np.abs(rd.plain_dft(Y - np.array([0.5, -0.3]),
-                                             dt, f_bins))))
+    # the completed spectrum is 2.5x the record's at half a decay time: scale
+    # so the synthetic "S" stays below 1 and reads passive
+    scale = 4.0 * float(np.max(np.abs(rd.plain_dft(Y - np.array([0.5, -0.3]),
+                                                   dt, f_bins))))
     spec = RingdownSpec()
-    run, stop_at, checks = 0, None, []
+    sched = rd._StopSchedule(2500)
     for T in range(2500, 3251, 250):
-        c = rd._judge_record(Y[:T], dt, f_bins, T, round(spec.window_start * T),
-                             spec, ref_hz=20e9, observable=lambda a: a / scale)
-        run, stop = rd._stop_decision(run, True, c["we_ok"], c["floor_ok"])
-        checks.append((T, c))
-        print(f"\n[static field] T {T}: WE {c['we']:.2e}, floor pole "
-              f"{rd._pole_text(c['floor_pole'])}, record {c['record_over_tau']:.3f} "
-              f"decay times, left out {[(p.f_hz, p.abs_lambda) for p in c['zero_frequency_poles']]}")
-        if stop:
-            stop_at = T
+        fields = rd._judge_record(Y[:T], dt, f_bins, T, round(spec.window_start * T),
+                                  spec, ref_hz=20e9, observable=lambda a: a / scale)
+        c = sched.record(T, T * dt, dict(sources_off=True, **fields), 0.0)
+        print(f"\n[static field] T {T}: WE {c.we:.2e}, floor pole "
+              f"{rd._pole_text(c.floor_pole)}, record {c.record_over_tau:.3f} "
+              f"decay times, left out {[(p.f_hz, p.abs_lambda) for p in c.zero_frequency_poles]}")
+        if c.stop:
             break
     tau = 1.0 / alpha
-    assert stop_at == 3250, (stop_at, [(T, c["we"], c["record_over_tau"]) for T, c in checks])
-    assert stop_at * dt >= FLOOR * tau > (stop_at - 250) * dt
-    last = checks[-1][1]
-    assert abs(last["tau_slowest_s"] / tau - 1.0) < 1e-3
-    assert abs(abs(last["floor_pole"].f_hz) / f0 - 1.0) < 1e-4
-    left = last["zero_frequency_poles"]
-    assert left and all(abs(p.f_hz) < 1.0 / (stop_at * dt) for p in left)
+    last = sched.checks[-1]
+    assert last.stop and last.n_record == 3250, [(c.n_record, c.we, c.record_over_tau)
+                                                  for c in sched.checks]
+    assert last.record_s >= FLOOR * tau > (last.n_record - 250) * dt
+    assert abs(last.tau_slowest_s / tau - 1.0) < 1e-3
+    assert abs(abs(last.floor_pole.f_hz) / f0 - 1.0) < 1e-4
+    left = last.zero_frequency_poles
+    assert left and all(abs(p.f_hz) < 1.0 / last.record_s for p in left)
     # the pole left out would have held the floor: it does not decay
     assert min(p.decay_per_s for p in left) < 1e-3 * alpha
+
+
+# ---------------------------------------------------------------------------
+# What the floor and the stop's other conditions are for: synthetic records
+# through the stop's own check (_judge_record) and schedule (_StopSchedule)
+# ---------------------------------------------------------------------------
+
+_DT = 1.2148552052451076e-12
+
+
+def _modes_record(modes, n, dt=_DT):
+    """``sum_k amp_k exp(s_k t) + c.c.`` for ``(f, Q, amp)`` modes, rounded to
+    float32 like an FDTD record, as one channel; and its settled spectrum."""
+    s, r = [], []
+    for f, q, amp in modes:
+        w = 2 * np.pi * f
+        s += [-w / (2 * q) + 1j * w, -w / (2 * q) - 1j * w]
+        r += [amp, np.conj(amp)]
+    s, r = np.array(s), np.array(r)
+    t = np.arange(n) * dt
+    y = (np.exp(np.outer(t, s)) @ r).real.astype(np.float32).astype(np.float64)
+
+    def settled(freqs):
+        z = np.exp(-2j * np.pi * np.asarray(freqs) * dt)
+        return dt * (1.0 / (1.0 - np.exp(s * dt)[None, :] * z[:, None])) @ r
+
+    return y[:, None], settled
+
+
+def _one_port(modes, n, dt=1.0e-12, z0=50.0):
+    """A one-port reflection ``S = -1 + sum_k h_k alpha_k / (alpha_k + j (w - w_k))``
+    driven by a 10.5 GHz Gaussian pulse (``h`` the feature height), as the port
+    channels ``V = a + b`` and ``I = (a - b) / Z0`` rounded to float32; with the
+    settled S, the S observable and the step after which the pulse is off."""
+    from scipy.signal import lfilter
+
+    t = np.arange(n) * dt
+    a = np.exp(-((t - 200e-12) ** 2) / (2 * (40e-12) ** 2)) * np.cos(
+        2 * np.pi * 10.5e9 * (t - 200e-12))
+    b = -1.0 * a
+    poles = []
+    for f, q, h in modes:
+        alpha = math.pi * f / q
+        lam = np.exp((-alpha + 2j * math.pi * f) * dt)
+        b = b + 2.0 * np.real(h * alpha * lfilter([dt], [1.0, -lam],
+                                                   a.astype(np.complex128)))
+        poles.append((h * alpha, lam))
+    Y = np.stack([(a + b).astype(np.float32).astype(np.float64),
+                  ((a - b) / z0).astype(np.float32).astype(np.float64)], axis=1)
+    n_off = int(np.nonzero(np.abs(a) > 1e-6 * np.abs(a).max())[0][-1]) + 1
+
+    def settled(freqs):
+        z = np.exp(-2j * np.pi * np.asarray(freqs) * dt)
+        S = -np.ones(np.size(freqs), dtype=np.complex128)
+        for R, lam in poles:
+            S += R * dt / (1 - lam * z) + np.conj(R) * dt / (1 - np.conj(lam) * z)
+        return S
+
+    def to_s(sp):
+        return (sp[:, 0] - z0 * sp[:, 1]) / (sp[:, 0] + z0 * sp[:, 1])
+
+    return Y, settled, to_s, n_off
+
+
+def _synthetic_stop(Y, dt, bins, obs, n_max, *, ref_hz, n_off=0):
+    """The stop on a synthetic record: ``(checks, the completion's actual error
+    at each check against the settled answer)``; the last check stopped when
+    ``checks[-1].stop``."""
+    spec = RingdownSpec()
+    sched = rd._StopSchedule(rd._first_check_record(n_off, spec.window_start,
+                                                    rd.STOP_CHUNK))
+    errors = []
+    for done in range(rd.STOP_CHUNK, n_max + 1, rd.STOP_CHUNK):
+        if not sched.due(done):
+            continue
+        n0 = round(spec.window_start * done)
+        fields = rd._judge_record(Y[:done], dt, bins, done, n0, spec,
+                                  ref_hz=ref_hz, observable=obs)
+        c = sched.record(done, done * dt, dict(sources_off=True,
+                                               source_ratio_long=0.0, **fields), 0.0)
+        model = rd.identify(Y[:done], dt, n0, done, freq_max=ref_hz)
+        errors.append(np.asarray(obs(rd.plain_dft(Y[:done], dt, bins)
+                                     + rd.tail_dft(model, done - 1, bins))))
+        if c.stop:
+            break
+    return sched.checks, errors
+
+
+def _print_checks(label, checks, errs):
+    for c, e in zip(checks, errs):
+        print(f"  [{label}] T {c.n_record}: WE {c.we:.2e}, {c.consecutive} in a row, "
+              f"floor {rd._pole_text(c.floor_pole)} over {c.record_over_tau:.3f}, "
+              f"max|S| {c.passivity:.3f}, error {e:.2e}, stop {c.stop}")
+
+
+def test_the_floor_waits_for_a_pair_no_short_record_resolves():
+    """The R-i blind spot, scaled to seconds: two Q 100 modes at 2.5 GHz, 0.12
+    of a linewidth apart (0.12 %), beside a 2.03 GHz Q 30 mode. A short record
+    identifies the pair as one blended pole in every window, so WE agrees at
+    two checks in a row by 750 steps (0.07 of the pair's 12.7 ns decay time)
+    while the completion is 4.5 % off. The floor holds the stop until half the
+    decay time, where the pair is resolved and the completion is right."""
+    modes = [(2.5e9, 100.0, 0.5 * np.exp(0.2j)), (2.5e9 * 1.0012, 100.0, 0.5 * np.exp(2.5j)),
+             (2.03e9, 30.0, 0.3)]
+    bins = 1.5e9 + 1e7 * np.arange(201)
+    Y, settled = _modes_record(modes, 12000)
+    truth = settled(bins)
+    scale = 2.0 * float(np.max(np.abs(truth)))
+    checks, outs = _synthetic_stop(Y, _DT, bins, lambda sp: np.asarray(sp)[:, 0] / scale,
+                                   12000, ref_hz=4e9)
+    errs = [float(np.max(np.abs(o - truth / scale))) for o in outs]
+    _print_checks("R-i pair", checks, errs)
+    tau = 100.0 / (math.pi * 2.5e9)
+    early = [k for k, c in enumerate(checks) if c.consecutive >= 2 and c.record_s < FLOOR * tau]
+    assert early and errs[early[0]] > 1e-2, "WE agreed early while the completion was off"
+    assert checks[-1].stop and checks[-1].record_s >= FLOOR * tau
+    assert errs[-1] < 1e-4, errs[-1]
+
+
+def test_a_decaying_low_frequency_mode_holds_the_floor():
+    """A decaying pair at 0.15 GHz (Q 60, 0.1 % apart, decay time 127 ns),
+    period longer than the early records, beside a 2.5 GHz Q 60 mode: it is a
+    mode, not a static field, so it sets the floor and nothing stops within
+    6000 steps; at the checks where WE already agrees twice the completion is
+    1 % off."""
+    modes = [(2.5e9, 60.0, 0.5), (0.15e9, 60.0, 0.4 * np.exp(0.2j)),
+             (0.15e9 * 1.001, 60.0, 0.4 * np.exp(2.5j))]
+    bins = 0.05e9 + 1e7 * np.arange(396)
+    Y, settled = _modes_record(modes, 6000)
+    truth = settled(bins)
+    scale = 2.0 * float(np.max(np.abs(truth)))
+    checks, outs = _synthetic_stop(Y, _DT, bins, lambda sp: np.asarray(sp)[:, 0] / scale,
+                                   6000, ref_hz=4e9)
+    errs = [float(np.max(np.abs(o - truth / scale))) for o in outs]
+    _print_checks("low pair", checks, errs)
+    assert not any(c.stop for c in checks)
+    agreed = [k for k, c in enumerate(checks) if c.consecutive >= 2]
+    assert agreed and max(errs[k] for k in agreed) > 5e-3
+    for k in agreed:
+        p = checks[k].floor_pole
+        assert p is not None and abs(abs(p.f_hz) / 0.15e9 - 1.0) < 0.01, checks[k]
+        assert not checks[k].zero_frequency_poles
+
+
+def test_a_weakly_coupled_high_q_pair_holds_the_floor():
+    """A Q 40 mode at 10 GHz (feature 0.8 in S) and a pair of Q 50,000 modes at
+    11 GHz, 0.1 % apart, coupled 8x more weakly (feature 0.1 each): small in
+    time, tall in frequency. Their tails move S by more than the bar, so they
+    set the floor (decay time 1.4 us) and nothing stops within 4000 steps; at
+    the checks where WE agrees twice the completed S is 0.1 off."""
+    Y, settled, to_s, n_off = _one_port(
+        [(10.0e9, 40.0, 0.8), (11.0e9, 50000.0, 0.1), (11.011e9, 50000.0, 0.1)], 4000)
+    bins = np.linspace(8e9, 13e9, 501)
+    truth = settled(bins)
+    checks, outs = _synthetic_stop(Y, 1.0e-12, bins, to_s, 4000, ref_hz=20e9, n_off=n_off)
+    errs = [float(np.max(np.abs(o - truth))) for o in outs]
+    _print_checks("weak pair", checks, errs)
+    assert not any(c.stop for c in checks)
+    agreed = [k for k, c in enumerate(checks) if c.consecutive >= 2]
+    assert agreed and min(errs[k] for k in agreed) > 5e-2
+    for k in agreed:
+        p = checks[k].floor_pole
+        assert abs(abs(p.f_hz) / 11.0e9 - 1.0) < 2e-3 and p.q > 5000, checks[k]
+
+
+def test_a_non_passive_completion_does_not_stop():
+    """A single Q 40 mode whose feature (2.5) makes the settled |S| 1.5 at its
+    resonance: WE agrees and the record passes the floor by 1750 steps, but the
+    completion reads non-passive, as the report's passivity witness would, so
+    the run does not stop there."""
+    Y, settled, to_s, n_off = _one_port([(10.0e9, 40.0, 2.5)], 3000)
+    bins = np.linspace(8e9, 13e9, 501)
+    checks, _ = _synthetic_stop(Y, 1.0e-12, bins, to_s, 3000, ref_hz=20e9, n_off=n_off)
+    for c in checks:
+        print(f"  [non-passive] T {c.n_record}: WE {c.we:.2e}, {c.consecutive} in a row, "
+              f"floor ok {c.floor_ok}, max|S| {c.passivity:.4f} ok {c.passive_ok}, stop {c.stop}")
+    assert not any(c.stop for c in checks)
+    last = checks[-1]
+    assert last.consecutive >= 2 and last.floor_ok and last.growing_ok
+    assert not last.passive_ok and abs(last.passivity - 1.5) < 0.01
+
+
+def test_the_floor_reads_the_largest_decay_time_the_consecutive_rule_rests_on():
+    """Pure rule: two checks in a row agree, the first read a slow pole (100 ns)
+    and the second only a fast one (1 ns). The floor uses 100 ns, so a record
+    of 10 ns (0.1 of it) does not stop; a third agreeing check that also reads
+    1 ns rests on checks two and three only and stops."""
+    sched = rd._StopSchedule(250)
+    ok = dict(sources_off=True, we=1e-5, we_ok=True, passive_ok=True, growing_ok=True,
+              passivity=0.9)
+    a = sched.record(250, 5e-9, dict(ok, tau_own_s=100e-9), 0.0)
+    b = sched.record(500, 10e-9, dict(ok, tau_own_s=1e-9), 0.0)
+    c = sched.record(750, 11e-9, dict(ok, tau_own_s=1e-9), 0.0)
+    assert (a.stop, b.stop, c.stop) == (False, False, True)
+    assert b.tau_slowest_s == 100e-9 and b.floor_from == 250 and not b.floor_ok
+    assert c.tau_slowest_s == 1e-9 and c.floor_from == 750
 
 
 # ---------------------------------------------------------------------------
@@ -374,9 +578,13 @@ def test_the_graded_loop_hook_is_a_continuation():
     plain = loop(200)
     _same(loop(200, stop_fn=never), plain)
     assert seen == [(50, 50), (100, 100), (150, 150), (200, 200)]
-    stopped = loop(200, stop_fn=lambda s, p: s >= 100)
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        stopped = loop(200, stop_fn=lambda s, p: s >= 100, report_every=80)
     assert np.asarray(stopped.time_series).shape[0] == 100
     _same(stopped, loop(100))
+    last = out.getvalue().strip().splitlines()[-1].split()
+    assert last[1] == "100/200" and last[2] == "(cap)", last
     seen.clear()
     loop(151, stop_fn=never)
     assert [s for s, _ in seen] == [50, 100, 151], "no one-step last chunk"
@@ -431,8 +639,12 @@ def test_a_maximum_whose_window_holds_the_pulse_is_refused_before_the_run():
         _stop_run(_box("uniform"), 150)
 
 
-def test_the_constants_are_the_pi_decisions():
-    assert rd.STOP_FLOOR_DECAY_TIMES == FLOOR
-    assert rd.STOP_FLOOR_AMPLITUDE_REL == 1e-3 and rd.STOP_CONSECUTIVE == 2
-    assert rd.STOP_GROWTH == 1.25 and rd.STOP_CHUNK == 250
-    assert math.isclose(rd.RingdownSpec().witness_tol, 1e-3)
+def test_the_floor_is_the_pis_half_decay_time():
+    """The PI's decision (2026-09-27): no stop before half the amplitude decay
+    time Q / (pi f) of the slowest identified mode. The rest of the rule is the
+    lead's, not pinned here: which poles count as identified modes (a pole
+    whose own tail moves the completed S by witness_tol of its peak, a static
+    field left out), the largest decay time over the checks the two-in-a-row
+    rule rests on, checks 1.25x apart on 250-step chunks, and passivity and
+    growing poles read ok at the stopping check."""
+    assert rd.STOP_FLOOR_DECAY_TIMES == FLOOR == 0.5

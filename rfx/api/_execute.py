@@ -4722,13 +4722,20 @@ class _ExecuteMixin:
             (every check at least 1.25x the record of the last); the run
             stops at the first check where every source is off over
             ``[T/4, T]``, the error witness ``WE`` is within ``witness_tol``
-            there and at the check before, and the record is at least half
-            the amplitude decay time ``Q / (pi f)`` of the slowest identified
-            ringing pole (a pole the record cannot tell from zero frequency,
-            such as a static field left in a closed box, is left out). The result is the one ``run(n_steps=T, ringdown=...)``
-            returns for the stopping record ``T``, with the stop report
-            (every check's record, ``WE``, decay time, the conditions and the
-            check's wall time) in ``Result.ringdown.stop``. When no check
+            there and at the check before, the record is at least half the
+            amplitude decay time ``Q / (pi f)`` of the slowest mode whose own
+            unrecorded tail moves the completed S by ``witness_tol`` (a static
+            field left in a closed box is left out; the largest such decay
+            time over the checks the two-in-a-row rule rests on), and the
+            completion reads passive with no growing pole. The result is the
+            one ``run(n_steps=T, ringdown=...)`` returns for the stopping
+            record ``T``, with the stop report (every check's record, ``WE``,
+            the pole that set the floor, the conditions and the check's wall
+            time) in ``Result.ringdown.stop``. Each check identifies the
+            record twice (0.1-3 s on a CPU for the test cavity); on a small
+            model that costs more than the steps it saves. A weakly coupled
+            high-Q mode holds the floor for half its own decay time, which
+            can be longer than ``n_steps``. When no check
             stops the run, the whole ``n_steps`` record is completed and the
             report names the condition that failed. Refused without
             ``ringdown=``, with ``until_decay``, ``snapshot=``, DFT planes
