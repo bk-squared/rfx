@@ -2,7 +2,7 @@
 
 - A dielectric block, a conductivity fill or a thin resistive sheet now gives
   the multi-device lanes the single-device result; before, their faces sat
-  half a cell away and the field differed by percents to tens of percent.
+  up to a cell away and the field differed by percents to tens of percent.
 - The CPML absorber takes the same per-component permittivity, and the
   permittivity gradient of `forward(distributed=True)` matches `forward()`.
 - Unchanged: vacuum and uniformly filled models, and Debye/Lorentz models,
