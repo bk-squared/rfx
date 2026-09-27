@@ -193,6 +193,21 @@ run otherwise, naming the faces that don't clear it.
 If you build an `NTFFBox` yourself around a plane-wave source, it too must
 surround the injected region; rfx refuses a box that doesn't.
 
+### Complex scattered field with a phase reference
+
+For the scattered field's phase as well as its magnitude, pass
+`phase_reference=(x, y, z)` together with `subtract_incident_reference=True`.
+`compute_rcs` then returns a `ScatteringResponse` instead of an `RCSResult`:
+complex far-field amplitudes `F_theta` and `F_phi` in metres, the incident
+spectrum, and the physical point the phase is referenced to. For now this
+works on a uniform 3-D grid with symmetric CPML and normal incidence along
++x, for either transverse polarization; other layouts are refused. The
+reference's x must lie on an E-node plane inside the total-field slab (rfx
+refuses rather than snaps it), and only frequencies where the incident
+spectrum is nonzero are accepted. The phase
+is only as good as the record length, source bandwidth and mesh, so check
+convergence as you would for the magnitude.
+
 ## Plotting
 
 ```python

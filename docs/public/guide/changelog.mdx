@@ -103,6 +103,11 @@ compare against a 1.x number.
 
 ### Added
 
+- **Phase-referenced complex scattering**: `compute_rcs(...,
+  phase_reference=(x, y, z), subtract_incident_reference=True)` returns a
+  `ScatteringResponse` with complex `F_theta` / `F_phi` in metres (#1327).
+  Normal +x incidence on a uniform 3-D grid with symmetric CPML for now;
+  existing calls still return `RCSResult`.
 - **A design box can contain its own feed port** with
   `forward(design_box_holds_ports=True)` (#1319). The port's edges keep the
   drawn materials and the 50 Ω load, their gradient is zero, and
