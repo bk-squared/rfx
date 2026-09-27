@@ -31,6 +31,14 @@ TWO_PORT_DUTS = ("bead", "thru")
 ONE_PORT_DUTS = ("short", "open", "r25", "r100")
 DUTS = TWO_PORT_DUTS + ONE_PORT_DUTS
 
+# The GPU jobs' preset: a VRAM band, chosen at submission from the live
+# occupancy (gpu-8gb, or gpu-24gb when gpu-8gb is full and gpu-24gb has free
+# nodes). Every one of these jobs fits 8 GB; none depends on the GPU model. The
+# two AD stages keep the 48 GB model preset: their reverse-mode tape does not
+# fit 24 GB. The replay and lint jobs are CPU jobs.
+GPU_BANDS = ("gpu-8gb", "gpu-24gb")
+GPU_BAND = GPU_BANDS[0]
+
 RECORD_UNITS = 12.0
 DOUBLE_RECORD_UNITS = 24.0
 # The record length that puts the coarsest rung's two-port run at exactly the
@@ -89,7 +97,7 @@ run: |-
 def jobs() -> list[dict]:
     out: list[dict] = []
     out.append(dict(
-        key="pilot", preset="gpu-rtx4090",
+        key="pilot", preset=GPU_BAND,
         cli=f"--stage pilot --rung 4 --record-units {RECORD_UNITS}",
         description=("Coax chain battery pilot: record-length ladder, the wider drive, "
                      "the bead-mask control and the AD boards' own settling, at the "
@@ -98,7 +106,7 @@ def jobs() -> list[dict]:
     for dut in DUTS:
         for rung in RUNGS:
             out.append(dict(
-                key=f"solve-{dut}-r{rung}", preset="gpu-rtx4090",
+                key=f"solve-{dut}-r{rung}", preset=GPU_BAND,
                 cli=(f"--stage solve --dut {dut} --rung {rung} "
                      f"--record-units {RECORD_UNITS}"),
                 description=(f"Coax chain battery: {dut} at {rung} annulus cells, "
@@ -109,7 +117,7 @@ def jobs() -> list[dict]:
             # "double" before the rung, not after: vessl_submit.sh finds a run
             # directory by `-name "<prefix>*"`, so a prefix that EXTENDS another
             # one would have the shorter job record the longer job's id.
-            key=f"solve-{dut}-double-r{CLAIMS_RUNG}", preset="gpu-rtx4090",
+            key=f"solve-{dut}-double-r{CLAIMS_RUNG}", preset=GPU_BAND,
             cli=(f"--stage solve --dut {dut} --rung {CLAIMS_RUNG} "
                  f"--record-units {DOUBLE_RECORD_UNITS} --tag double"),
             description=(f"Coax chain battery: {dut} at the claims rung with the record "
@@ -117,7 +125,7 @@ def jobs() -> list[dict]:
                          f"this lane does not emit on the eps_scale path."),
         ))
     out.append(dict(
-        key="identity", preset="gpu-rtx4090",
+        key="identity", preset=GPU_BAND,
         cli=f"--stage identity --rung 4 --record-units {RECORD_UNITS}",
         description=("Coax chain battery: forward identity, the untraced numpy path "
                      "against the no-op jnp path and the bead in two containers."),
@@ -127,7 +135,7 @@ def jobs() -> list[dict]:
     # Keyed "bead-identity", not "identity-bead": vessl_submit.sh matches run
     # directories by prefix, and "identity" would match the longer key's.
     out.append(dict(
-        key="bead-identity", preset="gpu-rtx4090",
+        key="bead-identity", preset=GPU_BAND,
         cli=f"--stage identity --rung 4 --record-units {RECORD_UNITS} --identity-arms bead",
         description=("Coax chain battery: forward identity, the bead arm alone (the same "
                      "bead in a numpy and a jnp container)."),
@@ -149,7 +157,7 @@ def jobs() -> list[dict]:
     # this tree from the committed gate. Both were hand-written YAMLs on the
     # first round; they are generated here so the campaign regenerates whole.
     out.append(dict(
-        key="control-steps6000", preset="gpu-rtx4090",
+        key="control-steps6000", preset=GPU_BAND,
         cli=(f"--stage solve --dut thru --rung {RUNGS[0]} "
              f"--record-units {UNITS_FOR_6000_STEPS} --tag steps6000"),
         description=("Control: the thru at the coarsest rung with n_steps = 6000, the "
@@ -157,7 +165,7 @@ def jobs() -> list[dict]:
                      "can be told apart from the cell size."),
     ))
     out.append(dict(
-        key="control-committed", preset="gpu-rtx4090", pytest=True,
+        key="control-committed", preset=GPU_BAND, pytest=True,
         cli=('-m pytest -p no:cacheprovider -o addopts="" -m slow_physics -s '
              "tests/unit/sparams/test_coax_two_port_smatrix.py "
              "-k test_matched_through_line_transmits_reciprocally -q"),
@@ -184,7 +192,7 @@ def jobs() -> list[dict]:
                      "battery's driver, diagnostic and job generators."),
     ))
     out.append(dict(
-        key="plane", preset="gpu-rtx4090",
+        key="plane", preset=GPU_BAND,
         cli=f"--stage plane --rung 6 --record-units {RECORD_UNITS}",
         description=("Coax chain battery: reference-plane invariance — the bead "
                      "translated 4 cells along the line, the grid untouched."),
@@ -200,7 +208,12 @@ def main() -> int:
     ap.add_argument("--out", required=True, help="directory to write the YAMLs into")
     ap.add_argument("--only", default=None,
                     help="comma-separated job keys to write; every job when omitted")
+    ap.add_argument("--gpu-band", default=GPU_BANDS[0], choices=GPU_BANDS,
+                    help="the VRAM-band preset for the GPU jobs, read off the live "
+                         "occupancy right before submission")
     args = ap.parse_args()
+    global GPU_BAND
+    GPU_BAND = args.gpu_band
     only = None if args.only is None else set(args.only.split(","))
     known = {job["key"] for job in jobs()}
     if only is not None and not only <= known:

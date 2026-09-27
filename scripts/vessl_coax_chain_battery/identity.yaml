@@ -3,7 +3,7 @@ description: "Coax chain battery: forward identity, the untraced numpy path agai
 tags: [rfx, coax-chain-battery, identity]
 resources:
   cluster: remilab-c0
-  preset: gpu-rtx4090
+  preset: gpu-24gb
 image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
 env:
   DEBIAN_FRONTEND: noninteractive
@@ -12,7 +12,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_SHA: "ca6da2b17e3f42a3ca50678c9f7eb662c88e53af"
+  RFX_SHA: "556ce7b61722ccbcb2fe859a0fef0a1bd6033f54"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -20,7 +20,7 @@ run: |-
   PY=python
   command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
-  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-coax-battery
+  SRC=/root/workspace/byungkwan-workspace/research/rfx-wt-1218-run-h
   git config --global --add safe.directory "$SRC"
   git config --global --add safe.directory "$(git -C "$SRC" rev-parse --absolute-git-dir)"
   SHA=$(git -C "$SRC" rev-parse HEAD)
