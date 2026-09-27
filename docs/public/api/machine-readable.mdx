@@ -8,6 +8,17 @@ served on this site, as plain Markdown without navigation markup. Each Markdown
 page identifies its documentation channel, package version, source commit and
 human-readable URL.
 
+For a command-line reader:
+
+```bash
+curl --fail --location https://remilab.ai/rfx/llms.txt
+```
+
+Check the HTTP status before treating a response as documentation. The public
+edge can return an HTTP 403 response containing Cloudflare error 1010 to some automated client user agents;
+an HTML error response is not an empty API reference. The curl command above
+and Python `requests` were checked against these public endpoints.
+
 | Resource | Contents |
 |---|---|
 | [Documentation index](/rfx/llms.txt) | Task-oriented links to the public pages and API |

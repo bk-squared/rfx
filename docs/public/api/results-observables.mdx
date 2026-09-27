@@ -74,6 +74,12 @@ print(result.snapshots["ez"].shape, axes.dims, axes.times_s[:2])
 
 `run()` returns a `Result` (a named tuple).
 
+Point and vector probe samples use SI field units: `ex`, `ey`, `ez` are in
+V/m; `hx`, `hy`, `hz` are in A/m. `time_series` keeps those raw component
+values, without division by the source amplitude or a field maximum.
+Field snapshots use the same units. A gallery plot labelled `Ez / Eref`
+is a separately normalized visualization, not the stored probe value.
+
 | Field | Contents |
 |---|---|
 | `time_series` | probe records, shape `(n_steps, n_columns)` |
