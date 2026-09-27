@@ -332,17 +332,18 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     # Run as a 2d_tmz model against the same box in 3d.
     "_mode": {"": lanes(
         run_uniform=carries("3d, 2d_tmz and 2d_tez"),
-        run_nonuniform=carries(
-            "2d_tmz on one z cell between PEC walls is solved as that 3-D box, which differs from "
-            "run_uniform's 2-D solve by 0.34 of the probe peak", wrong="#1340"),
+        run_nonuniform=refuses(
+            "today dropped: 2d_tmz on one z cell between PEC walls is solved as that 3-D box "
+            "(the record equals mode='3d' bit for bit), which differs from run_uniform's 2-D solve "
+            "by 0.34 of the probe peak", wrong="#1340"),
         run_subgridded=_subgrid("z_slab_requires_guarded_boundary",
                                 "a slab across a one-cell z domain is never one-sided"),
         run_adi=carries("3d and 2d_tmz; 2d_tez refused. A 3d box one z cell thick dies with an "
                         "IndexError (measured), so its model is three cells thick"),
         run_distributed=carries("2d_tmz matched one device bit for bit (measured)"),
         fwd_uniform=carries("3d, 2d_tmz and 2d_tez"),
-        fwd_nonuniform=carries("as run_nonuniform", wrong="#1340"),
-        fwd_distributed_nu=carries("as run_nonuniform", wrong="#1340"),
+        fwd_nonuniform=refuses("today dropped, as run_nonuniform", wrong="#1340"),
+        fwd_distributed_nu=refuses("today dropped, as run_nonuniform", wrong="#1340"),
         fwd_adi=carries("as run_adi"),
     )},
 
@@ -603,15 +604,15 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             fwd_adi=ADI_PORTS,
         ),
         "scan_angle": lanes(
-            run_uniform=carries("today 30° gives the record of 0°: the angle never reaches the fields",
-                                wrong="#1221"),
+            run_uniform=refuses("today dropped: 30° gives the record of 0°, the angle never "
+                                "reaches the fields", wrong="#1221"),
             run_nonuniform=refuses("today the port launches nothing at any angle", wrong="#1312"),
             run_subgridded=_subgrid("subgrid_overlaps_absorber",
                                     "a Floquet cell absorbs on z, which production validation refuses"),
             run_adi=ADI_PORTS,
             run_distributed=refuses("the periodic axes it sets are refused (#1241)",
                                     raises="periodic / Bloch boundaries are not supported"),
-            fwd_uniform=carries("today 30° gives the record of 0°", wrong="#1221"),
+            fwd_uniform=refuses("today dropped: 30° gives the record of 0°", wrong="#1221"),
             fwd_nonuniform=refuses("today the port launches nothing at any angle", wrong="#1312"),
             fwd_distributed_nu=refuses("today the port launches nothing at any angle", wrong="#1312"),
             fwd_adi=ADI_PORTS,
@@ -733,7 +734,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             **CONFORMAL,
         ),
         "conformal_s_matrix": lanes(
-            run_uniform=carries("the lumped-port S-matrix run() returns comes from "
+            run_uniform=refuses("today dropped: the lumped-port S-matrix run() returns comes from "
                                 "_forward_from_materials, which staircases", wrong="#1299"),
             **CONFORMAL,
         ),

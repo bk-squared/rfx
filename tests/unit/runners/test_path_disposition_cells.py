@@ -621,7 +621,15 @@ def test_cell(attr, feature, lane):
     if c.wrong:
         # Fixed either way, the cell stops failing: refused, or carried.
         if _refusal(name, spec, lane, _build(spec, lane, True)) is None:
-            problems = _carried(name, spec, lane, parity=c.kind == T.CARRIES, first_only=True)
+            carries = c.kind == T.CARRIES
+            # A cell the table calls carried-with-a-known-departure always
+            # measures the effect too: its departure is the expected failure,
+            # a lane that drops the input altogether is not (#1338 re-check).
+            problems = _carried(name, spec, lane, parity=carries, first_only=not carries)
+            dropped = [p for p in problems if p.startswith("declaring it moved the record")]
+            if carries and dropped:
+                pytest.fail(f"{name} on {lane}: the table says carried with the departure "
+                            f"{c.wrong}, but the lane drops the input: " + "; ".join(dropped))
             assert not problems, f"{name} on {lane}: " + "; ".join(problems)
     elif c.kind == T.REFUSES:
         _assert_refused(name, spec, lane, c)
