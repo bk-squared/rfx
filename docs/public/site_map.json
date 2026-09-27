@@ -59,7 +59,9 @@
         "rfx/api/sources-ports",
         "rfx/api/results-observables",
         "rfx/api/automation",
-        "rfx/guide/api-reference"
+        "rfx/guide/api-reference",
+        "rfx/api/generated",
+        "rfx/api/machine-readable"
       ]
     },
     {

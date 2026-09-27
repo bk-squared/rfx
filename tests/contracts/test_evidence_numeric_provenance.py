@@ -690,6 +690,17 @@ SYMBOL_SPAN_PARSER_SCOPE = "symbol-span-parser-scope"
 CLASSIFIED_DOC_DIRS = ("docs/public/**/*.mdx", "docs/design_notes/*.md")
 
 CLASSIFICATION: dict[str, str] = {
+    "docs/public/api/generated/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/machine-readable.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/waveguide-taper.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/microstrip-notch.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/beam-steering.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/boundary-reflection.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/cavity-standing-wave.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/dielectric-interface.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/visual-manual.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/first-run.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260927_public_docs_manual_examples_api_plan.md": NO_ARTIFACT_REFERENCE,
     "docs/public/api/automation.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/api/geometry-materials.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/api/index.mdx": NO_ARTIFACT_REFERENCE,
