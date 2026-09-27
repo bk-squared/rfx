@@ -247,7 +247,7 @@ def render_timing(d: Path, out: Path) -> list[Path]:
         for yy, r in zip(y, rows):
             texts = ((h, r["fwd"], f"{r['fwd']:.1f} s, peak {r['mem_fwd'] / 1e9:.2f} GB"),
                      (0.0, r["grad"], f"{r['grad']:.1f} s, peak {r['mem_grad'] / 1e9:.2f} GB"),
-                     (-h, r["fd"], f"{r['fd']:.3g} s = {r['fd'] / 86400:.1f} days"))
+                     (-h, r["fd"], f"{r['fd']:.3g} s\n= {r['fd'] / 86400:.1f} days"))
             for off, v, t in texts:
                 ax.annotate(t, (v, yy + off), xytext=(5, 0), textcoords="offset points",
                             va="center", fontsize=12, color=INK)
