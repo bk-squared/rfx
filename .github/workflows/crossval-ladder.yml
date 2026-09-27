@@ -1,0 +1,70 @@
+name: crossval-ladder
+
+# The full mesh-ladder cross-validation cases (pytest marker `crossval_ladder`): the Sheen
+# low-pass filter and the MSL notch filter against their openEMS tutorial records. On the
+# A6000 timing run of 2026-09-24 they took 9691 s of the gpu suite's 14830 s, so they left
+# the weekly a6000 lane (validation.yml) and the per-release GPU suite for this monthly lane
+# (PI 2026-09-27). A release needs this lane green (docs/agent/agent-runbook.mdx, Releases).
+#
+# The job submits scripts/vessl_crossval_ladder.yaml at this workflow's SHA and waits for it,
+# exactly as validation.yml's weekly-a6000-lane does; the token lives in the `vessl`
+# environment. Monthly, on the 1st at 12:00 UTC, away from the weekly lane's Monday 06:00.
+
+on:
+  schedule:
+    - cron: '0 12 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  crossval-ladder:
+    runs-on: ubuntu-latest
+    # 360 is the GitHub-hosted job maximum. The poll below (330 x ~63 s = ~348 min, measured
+    # on the weekly lane 2026-09-24) must outlast the lane's pytest timeout (14400 s) plus
+    # ~200 s of setup; what is left (~100 min) is the room for a VESSL queue.
+    timeout-minutes: 360
+    environment: vessl
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the VESSL CLI
+        run: pip install -q vessl
+      - name: Submit the crossval-ladder lane at this SHA and wait for it
+        env:
+          VESSL_ACCESS_TOKEN: ${{ secrets.VESSL_ACCESS_TOKEN }}
+          VESSL_ORGANIZATION: ${{ vars.VESSL_ORGANIZATION }}
+          VESSL_PROJECT: ${{ vars.VESSL_PROJECT }}
+        run: |
+          set -uo pipefail
+          vessl configure -t "$VESSL_ACCESS_TOKEN" -o "$VESSL_ORGANIZATION" -p "$VESSL_PROJECT" >/dev/null || { echo "vessl configure failed"; exit 1; }
+          sed "s|RFX_SHA: \"origin/main\"|RFX_SHA: \"${GITHUB_SHA}\"|" scripts/vessl_crossval_ladder.yaml > /tmp/lane.yaml
+          grep -q "RFX_SHA: \"${GITHUB_SHA}\"" /tmp/lane.yaml || { echo "could not pin the SHA into the lane file"; exit 1; }
+          OUT=$(vessl run create -f /tmp/lane.yaml 2>&1 || true)
+          printf '%s\n' "$OUT" | grep -vi token || true
+          RID=$(printf '%s\n' "$OUT" | grep -oE 'runs/[^/]+/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+          [ -n "$RID" ] || { echo "could not parse a run id from the create output (a YAML verification failure prints nothing at exit 0)"; exit 1; }
+          echo "VESSL run $RID"
+          # Whatever ends this step -- give-up, cancellation, the job timeout --
+          # must not leave the GPU seat held.
+          trap 'if [ "${DONE:-0}" != 1 ]; then echo "terminating VESSL run $RID"; vessl run terminate "$RID" </dev/null >/dev/null 2>&1 || true; fi' EXIT
+          ST=""; MISSES=0
+          for i in $(seq 1 330); do
+            ST=$(vessl run read "$RID" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^\s*Status\s' | head -1 | awk '{print $2}' || true)
+            if [ -z "$ST" ]; then
+              MISSES=$((MISSES+1)); echo "$(date -u +%H:%M) status unreadable ($MISSES in a row)"
+              [ "$MISSES" -ge 15 ] && { echo "status unreadable 15 times in a row; giving up"; exit 1; }
+            else
+              MISSES=0; echo "$(date -u +%H:%M) status=$ST"
+              case "$ST" in completed|failed|terminated|stopped) break;; esac
+            fi
+            sleep 60
+          done
+          vessl run logs "$RID" --tail 400 2>/dev/null | grep -vi token | tail -60 || true
+          case "$ST" in completed|failed|terminated|stopped) DONE=1;; *) echo "crossval-ladder lane still $ST after the poll budget; terminating"; exit 1;; esac
+          [ "$ST" = completed ] || { echo "crossval-ladder lane ended with status $ST"; exit 1; }
