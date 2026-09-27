@@ -75,14 +75,14 @@ def _save(fig, path: Path, spec: dict) -> Path:
     return path
 
 
-def _movie(fig, update, n_frames, path: Path, fps: int) -> Path:
+def _movie(fig, update, n_frames, path: Path, fps: int, dpi: int = MOVIE_DPI) -> Path:
     if subprocess.run(["ffmpeg", "-version"], capture_output=True).returncode:
         raise RuntimeError("ffmpeg is required for the MP4 loops")
     mv = animation.FuncAnimation(fig, update, frames=n_frames, blit=False)
     mv.save(path, writer=animation.FFMpegWriter(
-        fps=fps, codec="libx264", bitrate=900,
+        fps=fps, codec="libx264", bitrate=2500,
         extra_args=["-pix_fmt", "yuv420p", "-movflags", "+faststart", "-an"]),
-        dpi=MOVIE_DPI)
+        dpi=dpi)
     plt.close(fig)
     return path
 
@@ -219,6 +219,31 @@ def render_patch(d: Path, out: Path) -> list[Path]:
         return (im,)
 
     made.append(_movie(fig, update, thresholds.size + n_hold, out / "patch_sensitivity.mp4", 15))
+
+    # the 4:5 loop: full map first (a readable first frame), the reveal, the full map again
+    fps = 15
+    n_open, n_close = int(1.2 * fps), int(1.8 * fps)
+    n_reveal = int(round(SOCIAL_VIDEO_S * fps)) - n_open - n_close
+    idx = np.unique(np.geomspace(1, order.size, n_reveal).astype(int)) - 1
+    thr = order[idx]
+    fig, axes = plt.subplots(2, 1, figsize=SOCIAL["figsize"], dpi=SOCIAL["dpi"],
+                             gridspec_kw={"height_ratios": [1.9, 1.0]})
+    im = _gradient_axes(axes[0], pd, fig=fig)
+    axes[0].set_title("J = |S11(f_t)|², gradient per substrate cell", fontsize=13)
+    _s11_axes(axes[1], pd)
+    fig.suptitle("RT/Duroid 5880 patch · ∂|S11(f_t)|²/∂εr per cell · one backward pass",
+                 fontsize=13)
+    fig.tight_layout()
+    frames = ([None] * n_open) + list(thr) + ([None] * n_close)
+
+    def update_social(k):
+        t = frames[k]
+        shown = pd.gmap if t is None else np.where(np.abs(pd.gmap) >= t, pd.gmap, 0.0)
+        im.set_array((shown / scale).T.ravel())
+        return (im,)
+
+    made.append(_movie(fig, update_social, len(frames), out / "patch_sensitivity_social.mp4",
+                       fps, dpi=SOCIAL["dpi"]))
     return made
 
 
@@ -268,71 +293,126 @@ def render_timing(d: Path, out: Path) -> list[Path]:
 
 
 # ------------------------------------------------------------------ AR coating
+LAYER_COLOURS = ("#2a78d6", "#e34948", "#4a3aa7")   # the three layers (validated categorical set)
+SOCIAL_VIDEO_S = 9.0
+
+
 def render_ar(d: Path, out: Path) -> list[Path]:
     it = _load(d, "iterations.npz")
     tmm = _load(d, "tmm.json")
     tc = _load(d, "tmm_curves.npz")
+    model = _load(d, "model.json")
     f = it["freqs_band_hz"] / 1e9
     R, Rt, cost, eps = it["R_band"], it["R_tmm_band"], it["cost"], it["eps_r"]
+    tmm_cost = it["tmm_cost51"]
     n_last = cost.size - 1
+    iters = np.arange(cost.size)
+    opt = np.asarray(tmm["optimum_eps_r"], dtype=float)
+    n_bins = int(model.get("n_band_bins", f.size))
+    allr = 10 * np.log10(np.maximum(np.concatenate([R.ravel(), Rt.ravel()]), 1e-12))
+    r_ylim = (np.floor(allr.min() / 5) * 5 - 5, np.ceil(allr.max() / 5) * 5)
 
-    def r_axes(ax, k, title=True):
+    # label offsets for the direct layer labels, pushed apart where two optima are close
+    order = np.argsort(opt)
+    label_dy = np.zeros(3)
+    for a, b in zip(order, order[1:]):
+        if abs(opt[b] - opt[a]) < 0.35:
+            label_dy[a] -= 7
+            label_dy[b] += 7
+
+    def r_axes(ax, k):
         ax.plot(f, 10 * np.log10(np.maximum(R[0], 1e-12)), color=RFX, alpha=0.35, lw=1.6,
                 label="rfx FDTD, start")
         ax.plot(f, 10 * np.log10(np.maximum(R[k], 1e-12)), color=RFX, label="rfx FDTD")
-        ax.plot(f, 10 * np.log10(np.maximum(Rt[k], 1e-12)), color=INK, ls="--", lw=1.6,
+        ax.plot(f, 10 * np.log10(np.maximum(Rt[k], 1e-12)), color=INK, lw=1.4,
                 label="transfer matrix, same εr")
         ax.plot(tc["freqs_band_hz"] / 1e9, 10 * np.log10(np.maximum(tc["R_opt_band"], 1e-12)),
-                color=INK, ls=":", lw=1.6, label="transfer-matrix optimum")
+                color=INK, ls="--", lw=1.4, label="transfer-matrix optimum")
         ax.set_xlabel("frequency (GHz)")
         ax.set_ylabel("|R|² (dB)")
-        allr = 10 * np.log10(np.maximum(np.concatenate([R.ravel(), Rt.ravel()]), 1e-12))
-        ax.set_ylim(np.floor(allr.min() / 5) * 5 - 5, np.ceil(allr.max() / 5) * 5)
-        ax.legend(loc="lower right", frameon=False)
-        if title:
-            ax.set_title("reflection, 8–12 GHz")
+        ax.set_ylim(*r_ylim)
+        ax.set_title("reflection")
 
-    def c_axes(ax, k):
-        x = np.arange(cost.size)
-        ax.plot(x[:k + 1], cost[:k + 1], color=RFX, label="rfx FDTD cost")
-        ax.plot([k], [cost[k]], "o", ms=8, mfc=RFX, mec=SURFACE, mew=2, clip_on=False)
-        ax.axhline(tmm["optimum_cost"], color=INK, ls="--", lw=1.6, label="transfer-matrix optimum")
+    def eps_axes(ax, k):
+        for i, c in enumerate(LAYER_COLOURS):
+            ax.axhline(opt[i], color=c, ls="--", lw=1.4)
+            ax.plot(iters[:k + 1], eps[:k + 1, i], color=c, lw=2.0)
+            ax.plot([k], [eps[k, i]], "o", ms=7, mfc=c, mec=SURFACE, mew=2, clip_on=False)
+            ax.annotate(f"εr{i + 1}", (n_last, opt[i]), xytext=(6, label_dy[i]),
+                        textcoords="offset points", va="center", fontsize=12, color=INK,
+                        annotation_clip=False)
+        ax.set_xlim(0, n_last)
+        ax.set_ylim(1.0, max(float(eps.max()), float(opt.max())) * 1.12)
+        ax.set_xlabel("Adam iteration")
+        ax.set_ylabel("layer εr")
+        ax.set_title("layer εr")
+
+    def cost_axes(ax, k):
+        ax.plot(iters[:k + 1], cost[:k + 1], color=RFX, lw=1.2, alpha=0.6,
+                label=f"FDTD cost ({n_bins} FFT bins)")
+        ax.plot(iters[:k + 1], tmm_cost[:k + 1], color=INK, lw=1.8)
+        ax.axhline(tmm["optimum_cost"], color=INK, ls="--", lw=1.4)
         ax.set_yscale("log")
         ax.set_xlim(0, n_last)
-        lo = min(float(np.min(cost)), tmm["optimum_cost"]) * 0.7
-        ax.set_ylim(lo, float(np.max(cost)) * 1.4)
+        lo = min(float(np.min(cost)), float(np.min(tmm_cost)), tmm["optimum_cost"]) * 0.8
+        ax.set_ylim(lo, max(float(np.max(cost)), float(np.max(tmm_cost))) * 1.3)
         ax.set_xlabel("Adam iteration")
         ax.set_ylabel("mean |R|², 8–12 GHz")
-        ax.legend(loc="upper right", frameon=False)
+        ax.set_title("band-mean |R|²")
+
+    def legend(fig, axes, ncol, fontsize=11):
+        handles, labels = [], []
+        for ax in axes:
+            for h, l in zip(*ax.get_legend_handles_labels()):
+                if l not in labels:
+                    handles.append(h)
+                    labels.append(l)
+        # the layer optimum lines share the dashed style of the optimum entry
+        fig.legend(handles, labels, loc="lower center", ncol=ncol, frameon=False,
+                   fontsize=fontsize)
+        return -(-len(labels) // ncol)
 
     made = []
-    fig, axes = plt.subplots(1, 2, figsize=SITE["figsize"])
+    fig, axes = plt.subplots(1, 3, figsize=SITE["figsize"])
     r_axes(axes[0], n_last)
-    c_axes(axes[1], n_last)
-    axes[1].set_title("cost per iteration")
-    fig.tight_layout()
+    eps_axes(axes[1], n_last)
+    cost_axes(axes[2], n_last)
+    rows = legend(fig, axes, 3)
+    fig.tight_layout(rect=(0, 0.05 * rows + 0.01, 0.98, 1))
     made.append(_save(fig, out / "ar_coating_site.png", SITE))
 
     fig, axes = plt.subplots(2, 1, figsize=SOCIAL["figsize"])
-    r_axes(axes[0], n_last)
-    c_axes(axes[1], n_last)
-    fig.tight_layout()
+    eps_axes(axes[0], n_last)
+    r_axes(axes[1], n_last)
+    rows = legend(fig, axes, 2)
+    fig.tight_layout(rect=(0, 0.035 * rows + 0.01, 0.96, 1))
     made.append(_save(fig, out / "ar_coating_social.png", SOCIAL))
 
-    fig, axes = plt.subplots(1, 2, figsize=(12.8, 7.2))
-    hold = 15
+    # the loops: (ii) and (i) advancing together, one frame per iterate, then a hold
+    def loop(fig, axes, path, fps, ncol, rect, label=None):
+        def update(k):
+            k = min(k, n_last)
+            for ax in axes:
+                ax.clear()
+            eps_axes(axes[0], k)
+            r_axes(axes[1], k)
+            axes[0].set_title(f"iteration {k}:  εr " + ", ".join(f"{v:.2f}" for v in eps[k]),
+                              fontsize=13)
+            return ()
+        update(0)
+        legend(fig, axes, ncol)
+        if label:
+            fig.suptitle(label, fontsize=14)
+        fig.tight_layout(rect=rect)
+        n_hold = int(round(1.5 * fps))
+        return _movie(fig, update, n_last + 1 + n_hold, path, fps, dpi=fig.dpi)
 
-    def update(k):
-        k = min(k, n_last)
-        for ax in axes:
-            ax.clear()
-        r_axes(axes[0], k)
-        c_axes(axes[1], k)
-        axes[1].set_title(f"iteration {k}   εr = " + ", ".join(f"{v:.2f}" for v in eps[k]))
-        return ()
-
-    fig.tight_layout()
-    made.append(_movie(fig, update, n_last + 1 + hold, out / "ar_coating.mp4", 10))
+    fig, axes = plt.subplots(1, 2, figsize=(12.8, 7.2), dpi=MOVIE_DPI)
+    made.append(loop(fig, axes, out / "ar_coating.mp4", 10, 4, (0, 0.07, 0.97, 1)))
+    fps = int(round((n_last + 1) / (SOCIAL_VIDEO_S - 1.5)))
+    fig, axes = plt.subplots(2, 1, figsize=SOCIAL["figsize"], dpi=SOCIAL["dpi"])
+    made.append(loop(fig, axes, out / "ar_coating_social.mp4", fps, 2, (0, 0.08, 0.96, 1),
+                     label="three-layer coating on εr = 12 · Adam through FDTD"))
     return made
 
 
@@ -378,11 +458,11 @@ def render_curves(d: Path, out: Path) -> list[Path]:
                     lw=3.2 if not marker else 0, alpha=0.6 if not marker else 1.0, zorder=2,
                     marker=marker, ms=6.5 if marker else 0, mec=SURFACE, mew=0.8, label=label)
 
-    def mag_axes(ax, sname):
+    def mag_axes(ax, sname, palace=True):
         ax.plot(f, _db(rc[sname]), color=RFX, lw=1.8, zorder=4, label=lab)
         ref_line(ax, "openems_stage_b_fine_freqs_hz", f"openems_stage_b_fine_{sname}_mag",
                  OPENEMS, "openEMS, finest mesh")
-        for mesh, mk in (("coarse", "o"), ("mid", "s")):
+        for mesh, mk in ((("coarse", "o"), ("mid", "s")) if palace else ()):
             ref_line(ax, f"palace_{mesh}_freqs_hz", f"palace_{mesh}_{sname}_mag", PALACE,
                      f"Palace, {mesh} mesh", marker=mk, ls="none")
         ax.set_xlabel("frequency (GHz)")
@@ -404,27 +484,43 @@ def render_curves(d: Path, out: Path) -> list[Path]:
         ax.set_xlabel("frequency (GHz)")
         ax.set_ylabel("input impedance (Ω)")
 
-    panels = (("s11", zin_axes) if case == "rt5880_patch" else ("s21", "s11"))
-    made = []
-    for spec, name, shape in ((SITE, "site", (1, 2)), (SOCIAL, "social", (2, 1))):
+    def figure(spec, shape, panels, path, palace=True, title=_CASE_TITLES[case]):
         fig, axes = plt.subplots(*shape, figsize=spec["figsize"])
+        axes = np.atleast_1d(axes)
         for ax, p in zip(axes, panels):
             if callable(p):
                 p(ax)
             else:
-                mag_axes(ax, p)
-        fig.suptitle(_CASE_TITLES[case], fontsize=15)
+                mag_axes(ax, p, palace=palace)
+        fig.suptitle(title, fontsize=15)
         handles, labels = [], []
         for ax in axes:
             for h, l in zip(*ax.get_legend_handles_labels()):
                 if l not in labels:
                     handles.append(h)
                     labels.append(l)
-        ncol = 3 if name == "site" else 2
+        wide = spec is SITE and shape[1] > 1
+        ncol = 3 if wide else 2
         fig.legend(handles, labels, loc="lower center", ncol=ncol, frameon=False, fontsize=12)
         rows = -(-len(labels) // ncol)
-        fig.tight_layout(rect=(0, 0.035 * rows + (0.02 if name == "site" else 0.0), 1, 1))
-        made.append(_save(fig, out / f"forward_curves_{case}_{name}.png", spec))
+        fig.tight_layout(rect=(0, 0.035 * rows + (0.02 if spec is SITE else 0.0), 1, 1))
+        return _save(fig, path, spec)
+
+    made = []
+    stem = out / f"forward_curves_{case}"
+    if case == "rt5880_patch":
+        # public: the input impedance, rfx and openEMS; evidence: with |S11|
+        made.append(figure(SITE, (1, 1), (zin_axes,), Path(f"{stem}_site.png")))
+        made.append(figure(SOCIAL, (1, 1), (zin_axes,), Path(f"{stem}_social.png")))
+        made.append(figure(SITE, (1, 2), ("s11", zin_axes), Path(f"{stem}_with_s11.png")))
+    elif case == "msl_notch_filter":
+        # public: rfx and openEMS; evidence: with the Palace record
+        made.append(figure(SITE, (1, 2), ("s21", "s11"), Path(f"{stem}_site.png"), palace=False))
+        made.append(figure(SOCIAL, (2, 1), ("s21", "s11"), Path(f"{stem}_social.png"), palace=False))
+        made.append(figure(SITE, (1, 2), ("s21", "s11"), Path(f"{stem}_with_palace.png")))
+    else:
+        # no public figure: evidence only
+        made.append(figure(SITE, (1, 2), ("s21", "s11"), Path(f"{stem}_evidence.png")))
     return made
 
 
