@@ -369,8 +369,11 @@ def test_a_dispersive_block_across_a_periodic_seam_is_translation_invariant(kind
     """The edge mean wraps across a periodic face (#1260 threads ``periodic``
     into the dispersive builders): a dispersive block and a dielectric block on
     a periodic ring, moved as a whole so the dispersive block straddles the
-    seam, give the same probe trace. With the wrap off the trace moves 5-8 %
-    (measured by the fresh-eyes review of #1260)."""
+    seam, give the same probe trace. With the wrap off the trace moves 3-7 % of
+    its peak (pole fractions' wrap forced off: 3.1e-2 Debye, 6.9e-2 Lorentz).
+    Bound 1e-3 of peak: the translated run is bitwise equal on macOS but differs
+    by float32 rounding on the Linux CI runner (2.9e-5 / 2.6e-5 of peak, measured
+    on PR 1325), so the bound sits ~35x above that and ~30x below the defect."""
     from rfx import Box, GaussianPulse, Simulation
     from rfx.boundaries.spec import BoundarySpec
 
@@ -402,6 +405,6 @@ def test_a_dispersive_block_across_a_periodic_seam_is_translation_invariant(kind
     ref = trace(0)
     moved = trace(17)          # the dispersive block now straddles the seam
     assert np.max(np.abs(ref)) > 0
-    assert np.max(np.abs(moved - ref)) <= 1e-5 * np.max(np.abs(ref)), (
+    assert np.max(np.abs(moved - ref)) <= 1e-3 * np.max(np.abs(ref)), (
         f"{kind}: moving the model across the periodic seam changed the trace by "
         f"{np.max(np.abs(moved - ref)) / np.max(np.abs(ref)):.3e} of its peak")
