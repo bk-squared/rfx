@@ -114,17 +114,23 @@ def _functions(tree):
                     yield f"{top.name}.{node.name}", node
 
 
-def _simulation_aliases(tree):
-    """Names bound to rfx.simulation.run / run_until_decay, and to the module."""
-    functions, modules = set(), set()
+def _aliases(tree):
+    """Local names an import binds to a watched function ({alias: name}; an
+    rfx.simulation kernel is named ``rfx.simulation.<name>``), and the names
+    bound to the rfx.simulation module itself."""
+    bound, modules = {}, set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "rfx.simulation":
-            functions |= {a.asname or a.name for a in node.names if a.name in _SIMULATION_KERNELS}
-        elif isinstance(node, ast.ImportFrom) and node.module == "rfx":
-            modules |= {a.asname or a.name for a in node.names if a.name == "simulation"}
+        if isinstance(node, ast.ImportFrom):
+            for a in node.names:
+                if node.module == "rfx.simulation" and a.name in _SIMULATION_KERNELS:
+                    bound[a.asname or a.name] = f"rfx.simulation.{a.name}"
+                elif a.name in _KERNELS | _FIELD_UPDATES:
+                    bound[a.asname or a.name] = a.name
+                elif node.module == "rfx" and a.name == "simulation":
+                    modules.add(a.asname or a.name)
         elif isinstance(node, ast.Import):
             modules |= {a.asname for a in node.names if a.name == "rfx.simulation" and a.asname}
-    return functions, modules
+    return bound, modules
 
 
 def _scan(predicate):
@@ -133,7 +139,7 @@ def _scan(predicate):
     for path in sorted((ROOT / "rfx").rglob("*.py")):
         rel = path.relative_to(ROOT).as_posix()
         tree = ast.parse(path.read_text())
-        aliases = _simulation_aliases(tree)
+        aliases = _aliases(tree)
         for name, fn in _functions(tree):
             if any(predicate(rel, node, aliases) for node in ast.walk(fn)
                    if isinstance(node, (ast.Name, ast.Attribute))
@@ -142,21 +148,26 @@ def _scan(predicate):
     return found
 
 
-def _references_a_kernel(rel, node, aliases):
-    functions, modules = aliases
-    name = node.attr if isinstance(node, ast.Attribute) else node.id
-    if name in _KERNELS:
-        return True
-    if rel == "rfx/simulation.py":
-        return False
+def _referenced(node, aliases):
+    """The watched name a reference resolves to, through import aliases."""
+    bound, modules = aliases
     if isinstance(node, ast.Name):
-        return name in functions
-    return (name in _SIMULATION_KERNELS and isinstance(node.value, ast.Name)
-            and node.value.id in modules)
+        return bound.get(node.id, node.id)
+    if (node.attr in _SIMULATION_KERNELS and isinstance(node.value, ast.Name)
+            and node.value.id in modules):
+        return f"rfx.simulation.{node.attr}"
+    return node.attr
+
+
+def _references_a_kernel(rel, node, aliases):
+    name = _referenced(node, aliases)
+    if name.startswith("rfx.simulation."):
+        return rel != "rfx/simulation.py"
+    return name in _KERNELS
 
 
 def _calls_a_field_update(rel, node, aliases):
-    return (node.attr if isinstance(node, ast.Attribute) else node.id) in _FIELD_UPDATES
+    return _referenced(node, aliases) in _FIELD_UPDATES
 
 
 def _fresh_attributes():
@@ -207,17 +218,28 @@ def test_every_cell_says_what_it_needs_to():
                     assert c.note, f"{where}: say what happens today"
                 if T.ROW_CLASS[attr] in (T.PHYSICS, T.OBSERVER):
                     assert c.kind != T.IGNORABLE, f"{where}: a physics input is never ignorable"
+                if c.declared:
+                    assert c.kind == T.REFUSES, where
+                if T.executable(attr) and c.kind == T.REFUSES and not c.wrong:
+                    assert c.raises, f"{where}: name a fragment of the refusal's message"
 
 
 def test_lane_columns_are_the_lanes_dispatch_plan_selects():
     tree = ast.parse((ROOT / "rfx/api/_execute.py").read_text())
-    lanes = {kw.value.value for node in ast.walk(tree)
-             if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_DispatchPlan"
-             for kw in node.keywords
-             if kw.arg == "lane" and isinstance(kw.value, ast.Constant)}
-    assert lanes == set(T.LANES), (
-        f"_dispatch_plan lanes {sorted(lanes)} != table lanes {sorted(T.LANES)}: "
+    lanes = set()
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_DispatchPlan"):
+            continue
+        lane = [kw.value for kw in node.keywords if kw.arg == "lane"]
+        assert not node.args and len(lane) == 1 and isinstance(lane[0], ast.Constant), (
+            f"rfx/api/_execute.py:{node.lineno}: a _DispatchPlan whose lane is not a keyword "
+            "constant; this test reads the lanes from those keywords")
+        lanes.add(lane[0].value)
+    routes = set(T.KERNEL_ROUTES)
+    assert lanes == set(T.LANES) - routes, (
+        f"_dispatch_plan lanes {sorted(lanes)} != table lanes {sorted(set(T.LANES) - routes)}: "
         "a new lane needs a column with a cell on every row")
+    assert {token for token, _ in T.KERNEL_ROUTES.values()} <= lanes, T.KERNEL_ROUTES
 
 
 def _check_registry(found, registry, what):
