@@ -228,3 +228,154 @@ def test_half_node_source_gives_the_same_trace_on_both_lanes():
           f"node source {control_gap:.3e}", file=sys.stderr)
     assert control_gap <= 3e-5
     assert tie_gap <= 3e-5
+
+
+# ---------------------------------------------------------------------------
+# The sites that resolve through the same rule besides the three lookups.
+# ---------------------------------------------------------------------------
+
+def _waveguide_cfg(lane, y_range, z_range, cells=(30, 23, 13)):
+    import jax.numpy as jnp
+    domain = tuple(n * DX for n in cells)
+    kw = dict(freq_max=20e9, domain=domain, dx=DX, boundary="cpml",
+              cpml_layers=8)
+    if lane == "nu":
+        kw.update(dx_profile=np.full(cells[0], DX),
+                  dy_profile=np.full(cells[1], DX),
+                  dz_profile=np.full(cells[2], DX))
+    sim = Simulation(**kw)
+    freqs = jnp.linspace(8e9, 12e9, 3)
+    sim.add_waveguide_port(5.5e-3, y_range=y_range, z_range=z_range,
+                           direction="+x", freqs=freqs)
+    entry = sim._waveguide_ports[0]
+    if lane == "nu":
+        from rfx.runners.nonuniform import _build_waveguide_port_config_nu
+        grid = sim._build_nonuniform_grid()
+        cfg = _build_waveguide_port_config_nu(sim, entry, grid, freqs, 200)
+    else:
+        grid = sim._build_grid()
+        cfg = sim._build_waveguide_port_config(entry, grid, freqs, 200)
+    return cfg, grid
+
+
+@pytest.mark.parametrize("y_range,z_range", [
+    ((2.5e-3, 12.5e-3), (1.5e-3, 6.5e-3)),    # every end on a half node
+    ((3.5e-3, 13.5e-3), (2.5e-3, 7.5e-3)),
+    ((2e-3, 12e-3), (1e-3, 6e-3)),            # control: every end on a node
+])
+def test_waveguide_aperture_ends_land_where_the_uniform_lane_puts_them(
+        y_range, z_range):
+    """A waveguide port's aperture ends are coordinates too. On main a
+    z_range of (1.5, 6.5) mm gave the NU aperture b = 5 mm against 4 mm on the
+    uniform lane. Compared on the interior index (the NU lane pads the
+    transverse faces, the uniform lane does not)."""
+    (cu, gu), (cn, gn) = (_waveguide_cfg(lane, y_range, z_range)
+                          for lane in ("uniform", "nu"))
+    for grid_u, grid_n, cfg_u, cfg_n in ((gu, gn, cu, cn),):
+        assert (cfg_u.u_lo - grid_u.pad_y_lo, cfg_u.u_hi - grid_u.pad_y_lo) == (
+            cfg_n.u_lo - grid_n.pad_y_lo, cfg_n.u_hi - grid_n.pad_y_lo)
+        assert (cfg_u.v_lo - grid_u.pad_z_lo, cfg_u.v_hi - grid_u.pad_z_lo) == (
+            cfg_n.v_lo - grid_n.pad_z_lo, cfg_n.v_hi - grid_n.pad_z_lo)
+    # The spans agree to the float32 store the NU lane still reads them from.
+    np.testing.assert_allclose(cn.a, cu.a, rtol=1e-6)
+    np.testing.assert_allclose(cn.b, cu.b, rtol=1e-6)
+
+
+PREFLIGHT_PROFILES = {
+    "const_1mm": np.full(19, DX),
+    "const_0p3": np.full(23, 0.3e-3),
+    "graded": np.r_[np.full(5, DX), [0.8e-3, 0.6e-3, 0.45e-3],
+                    np.full(9, 0.3e-3), [0.45e-3, 0.6e-3, 0.8e-3],
+                    np.full(5, DX)],
+    "graded_mil": np.r_[np.full(6, 0.508e-3), np.full(10, 0.127e-3),
+                        np.full(6, 0.508e-3)],
+}
+
+
+@pytest.mark.parametrize("name", sorted(PREFLIGHT_PROFILES))
+def test_preflight_puts_a_half_node_coordinate_on_the_grids_node(name):
+    """``profile_node_at`` is preflight's model of where a port is stamped;
+    at every half node it must name the node the grid's own lookup picks."""
+    from rfx.preflight._common import profile_node_at
+    prof = PREFLIGHT_PROFILES[name]
+    grid = make_nonuniform_grid((10e-3, 10e-3), prof, float(prof[0]),
+                                cpml_layers=8)
+    pad = grid.pad_z_lo
+    nodes = np.r_[0.0, np.cumsum(prof)]
+    grid_nodes = np.r_[0.0, np.cumsum(grid.cells("z")[pad:])]
+    mids = 0.5 * (nodes[:-1] + nodes[1:])
+    xs = np.r_[mids, np.nextafter(mids, 1), np.nextafter(mids, -1),
+               (np.arange(len(prof)) + 0.5) * float(prof[0])]
+    moved = 0
+    for x in xs[(xs >= 0) & (xs <= nodes[-1])]:
+        k = position_to_index(grid, (0.0, 0.0, float(x)))[2] - pad
+        assert profile_node_at(float(prof[0]), prof, float(x)) == pytest.approx(
+            float(grid_nodes[k]), abs=1e-15), (name, float(x), k)
+        moved += int(np.argmin(np.abs(nodes - x))) != k
+    # On every profile some half node is one the argmin put on the other node.
+    assert moved > 0
+
+
+def test_the_graded_node_report_reads_the_node_the_port_is_stamped_on():
+    """A port midway between node 3 (1 mm cells below) and node 4 (the step
+    to 0.5 mm cells) is stamped on node 4, the even one, so the report
+    names the step. Binary cell sizes make the midpoint an exact tie."""
+    coarse, fine = 2.0 ** -10, 2.0 ** -11
+    dz = np.r_[np.full(4, coarse), np.full(8, fine)]
+    sim = Simulation(freq_max=10e9, domain=(8 * coarse, 8 * coarse, 0.0),
+                     dx=coarse, dz_profile=dz, boundary="pec")
+    z = 3.5 * coarse
+    grid = sim._build_nonuniform_grid()
+    k = position_to_index(grid, (0.0, 0.0, z))[2] - grid.pad_z_lo
+    assert k == 4
+    report = sim._graded_node_report(2, z)
+    assert report is not None
+    node_pos, d_below, d_above, _dual, ratio = report
+    assert (node_pos, d_below, d_above, ratio) == (4 * coarse, coarse, fine, 2.0)
+
+
+def _traced_half_nodes_refused(cell, n, profile=None):
+    """Count run-time refusals of the traced-axis check over every half node
+    of a traced z column (the nominal mesh is ``n`` cells of ``cell``)."""
+    import jax
+    import jax.numpy as jnp
+    if profile is None:
+        profile = np.full(n, cell)
+    profile = jnp.asarray(profile, dtype=jnp.float32)
+    refused = 0
+    for k in range(n):
+        z = (k + 0.5) * cell
+
+        def f(p, z=z):
+            grid = make_nonuniform_grid((4 * cell, 4 * cell), p, cell,
+                                        cpml_layers=0)
+            position_to_index(grid, (0.0, 0.0, z))
+            return jnp.sum(p)
+
+        try:
+            jax.block_until_ready(jax.jit(f)(profile))
+            jax.effects_barrier()
+        except Exception as exc:  # the callback's ValueError, as XLA raises it
+            assert "on the mesh the run built" in str(exc)
+            refused += 1
+    return refused
+
+
+@pytest.mark.parametrize("cell,n", [(5e-4, 20), (0.254e-3, 30)])
+def test_a_traced_axis_accepts_a_half_node_coordinate(cell, n):
+    """On a traced profile equal to its nominal mesh, float32 cumulative
+    sums put one of the two nodes of a half node a few ulp nearer, either
+    one; the run-time check must not read that as the node having moved.
+    The PR review counted refusals at 4 of 40 and 51 of 60 lookups on main,
+    and at 19 of 40 and 30 of 60 on this PR's first head, on these columns
+    (two spellings of each half node)."""
+    assert _traced_half_nodes_refused(cell, n) == 0
+
+
+def test_a_traced_axis_still_refuses_a_node_that_moved():
+    """Control: cells 30 % wider than the nominal mesh over the bottom half
+    move every node line above it by several cells."""
+    cell, n = 5e-4, 20
+    profile = np.r_[np.full(10, 1.3 * cell), np.full(10, cell)]
+    profile[0] = cell       # the boundary cell stays the nominal one
+    assert _traced_half_nodes_refused(cell, n, profile) >= 8

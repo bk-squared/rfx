@@ -1070,10 +1070,17 @@ def _assert_traced_index_matches_realized(
     realized cumulative edges pick their own nearest node and the callback
     refuses when the two disagree, naming both. Nothing is raised while the
     two agree, which is the case a deformation that keeps its outer node
-    lines fixed (the mesh-as-design-variable pattern) is in. The realized
-    pick breaks an exact tie to the even node, the rule of
-    ``nearest_node_index`` (#1295), so a tie is not read as a disagreement
-    with the nominal index.
+    lines fixed (the mesh-as-design-variable pattern) is in.
+
+    A coordinate midway between two nodes is equally near both. The nominal
+    index takes the even one (``nearest_node_index``, #1295), but the
+    realized edges are cumulative sums in the traced dtype, so one neighbour
+    comes out a few ulp nearer, either one (at most 5 float32 ulp of the
+    coordinate measured on constant 0.127 to 1 mm columns of up to 400
+    cells). The nominal index is therefore accepted when it is the realized
+    nearest node, or its neighbour at a realized distance within 16 ulp of
+    the coordinate of the nearest one. That is under 1e-3 of a cell on
+    those columns; a deformation that moves a node line moves it by far more.
     """
     n_total = int(d_arr.shape[0])
     pad_hi = total_pad - pad_lo
@@ -1084,14 +1091,16 @@ def _assert_traced_index_matches_realized(
         [jnp.zeros((1,), dtype=interior.dtype), jnp.cumsum(interior)])
     dist = jnp.abs(edges - float(pos))
     nearest = jnp.argmin(dist)
-    above = jnp.minimum(nearest + 1, dist.shape[0] - 1)
-    realized_idx = jnp.where(
-        (nearest % 2 == 1) & (above > nearest) & (dist[above] == dist[nearest]),
-        nearest + 1, nearest)
+    nominal = min(int(nominal_idx), int(dist.shape[0]) - 1)
+    tol = 16 * jnp.finfo(dist.dtype).eps * jnp.maximum(
+        abs(float(pos)), edges[nearest])
+    agrees = (nearest == nominal) | (
+        (jnp.abs(nearest - nominal) == 1)
+        & (dist[nominal] - dist[nearest] <= tol))
 
-    def _check(realized):
+    def _check(realized, agrees):
         realized = int(realized)
-        if realized != int(nominal_idx):
+        if not bool(agrees):
             raise ValueError(
                 f"position {pos:.9g} m on the traced {axis} axis resolves to "
                 f"interior node {nominal_idx} on the nominal uniform mesh "
@@ -1103,7 +1112,7 @@ def _assert_traced_index_matches_realized(
                 "or give the position by node index."
             )
 
-    jax.debug.callback(_check, realized_idx)
+    jax.debug.callback(_check, nearest, agrees)
 
 
 def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
@@ -1160,9 +1169,11 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
 
     Accounts for per-face CPML padding (``pad_{axis}_lo`` leading offset).
     Each axis resolves through ``_axis_position_to_index``: the node
-    ``index_of`` names, clamped into the interior. On a constant axis that
-    is ``round(pos/cell) + pad_{axis}_lo``, the uniform ``Grid``'s own
-    lookup, bit for bit.
+    ``index_of`` names, clamped into the interior. On a constant axis, for a
+    coordinate inside the interior, that is ``round(pos/cell) +
+    pad_{axis}_lo``, the uniform ``Grid``'s own lookup, bit for bit. Outside
+    the interior the two differ: this clamps to the end node, while the
+    uniform grid returns a pad index or refuses.
     """
     i = _axis_position_to_index(grid, "x", pos[0],
                                 fallback_dx=float(grid.dx))

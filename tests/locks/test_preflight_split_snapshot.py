@@ -898,6 +898,8 @@ _REBOUND_ON_MIXIN = {
         # ``_validate_cfg_tfsf_with_lumped_rlc`` stood here; deleted
         # 2026-09-23 (#1163) with the series-RLC coupling it warned about.
         "_wire_port_cell_centers",
+        # #1295 / #1342: written in the family module, bound the same way.
+        "_validate_cfg_half_node_split",
     ),
     "rfx.preflight.absorber": (
         "_preflight_face_layers",

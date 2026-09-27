@@ -671,6 +671,28 @@ def interior_lattice_mask(mask, grid, *, cell_axes=(False, False, False)):
     return out
 
 
+def wire_vertex_nodes(points, node_axes, cell_sizes):
+    """Node of each PolylineWire vertex, and the smallest cell at them.
+
+    Each coordinate goes to the nearest node, an exact tie to the FIRST
+    (lower) one (``argmin``, §1.4). Point features round a tie to the even
+    node instead (#1295); the preflight's half-node check reads this
+    function so it compares against the node the wire really takes (#1342).
+    """
+    nodes = []
+    d_min = None
+    for p in points:
+        idx = []
+        for t in range(3):
+            x = np.asarray(node_axes[t], dtype=np.float64)
+            k = int(np.argmin(np.abs(x - float(p[t]))))
+            idx.append(k)
+            d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
+            d_min = d_here if d_min is None else min(d_min, d_here)
+        nodes.append(tuple(idx))
+    return nodes, d_min
+
+
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                        cell_sizes=None, *, name=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
@@ -718,17 +740,7 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # below that it is a filament on the axis-aligned lattice path
         # joining the nearest nodes of consecutive vertices.
-        nodes = []
-        d_min = None
-        for p in pts:
-            idx = []
-            for t in range(3):
-                x = np.asarray(node_axes[t], dtype=np.float64)
-                k = int(np.argmin(np.abs(x - float(p[t]))))
-                idx.append(k)
-                d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
-                d_min = d_here if d_min is None else min(d_min, d_here)
-            nodes.append(tuple(idx))
+        nodes, d_min = wire_vertex_nodes(pts, node_axes, cell_sizes)
         if float(radius) < 0.5 * d_min:
             edges = wire_path_edge_masks(nodes, coords.shape)
             return None, None, WireSpec(edges=edges, name=name)
