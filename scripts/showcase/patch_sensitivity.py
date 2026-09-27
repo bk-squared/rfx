@@ -58,6 +58,8 @@ F_R_ESTIMATOR = "s11_minimum"  # "s11_minimum": the module's resonance(); "remax
 MARGIN_H = 2                   # design box margin, in substrate thicknesses
 SHORT_RECORD_STEPS = 600       # A1 check: a record far shorter than the ring-down
 WITNESS_PERIOD_FACTOR = 1.5    # the record-length witness: 1.5 x the module's NUM_PERIODS
+WITNESS_TOL = 0.05             # Amendment 1 (lane leader): judged, per block, |S_1.5 - S_1.0| / |S_1.5|
+FLANK_DF_HZ = 1.0e6            # Amendment 1: d|S11|^2/df at f_t by central difference over f_t +- 1 MHz
 FD_STEPS = (0.2, 0.1, 0.05)    # Delta eps_r of a whole block
 FD_JUDGED_STEP = 0.1
 FD_REL_BAR = 0.05              # |AD - FD| / |FD| at the judged step
@@ -74,7 +76,7 @@ BLOCKS = (
     ("margin_plus_x", (25, 27), (-1, 1)),    # outside the patch, beyond the +x radiating edge
     ("margin_plus_y", (9, 11), (31, 33)),    # outside the patch, beyond the +y edge
 )
-TIMING_BOXES = ("patch", "design", "laminate")
+TIMING_BOXES = ("patch", "design", "layer")
 TIMING_REPEATS = 3
 
 
@@ -141,6 +143,7 @@ class Board:
         self.lam_cells_x = (int(xi.min()), int(xi.max()))
         self.lam_cells_y = (int(yj.min()), int(yj.max()))
         m = MARGIN_H * N_PER_H
+        n_int = [int(round(L / dx)) for L in mod.FRAME.domain[:2]]
         self.boxes = {
             "patch": (self.patch_cells_x, self.patch_cells_y, self.sub_cells_z),
             "design": ((max(self.patch_cells_x[0] - m, self.lam_cells_x[0]),
@@ -149,6 +152,10 @@ class Board:
                         min(self.patch_cells_y[1] + m, self.lam_cells_y[1])),
                        self.sub_cells_z),
             "laminate": (self.lam_cells_x, self.lam_cells_y, self.sub_cells_z),
+            # Amendment 1: the substrate z-layer across the whole physical
+            # interior, vacuum beside the laminate included, out of the CPML
+            "layer": ((self.pad[0], self.pad[0] + n_int[0] - 1),
+                      (self.pad[1], self.pad[1] + n_int[1] - 1), self.sub_cells_z),
         }
         self.xs = self.mod._node_line(self.grid, 0)
         self.ys = self.mod._node_line(self.grid, 1)
@@ -199,7 +206,10 @@ class Board:
 
     def describe_box(self, name: str) -> dict:
         (ia, ib), (ja, jb), (ka, kb) = self.boxes[name]
+        lam = int(np.sum(np.abs(self.eps[self.box_slice(name)] - self.mod.EPS_R) < 1e-6))
+        n = (ib - ia + 1) * (jb - ja + 1) * (kb - ka + 1)
         return {"cells_x": [ia, ib], "cells_y": [ja, jb], "cells_z": [ka, kb],
+                "n_laminate_cells": lam, "n_other_cells": n - lam,
                 "shape": [ib - ia + 1, jb - ja + 1, kb - ka + 1],
                 "n_cells": (ib - ia + 1) * (jb - ja + 1) * (kb - ka + 1),
                 "x_m": [float(self.xs[ia]), float(self.xs[ib + 1])],
@@ -339,34 +349,70 @@ def stage_main(out: Path) -> None:
     eps_bg = jnp.asarray(board.background("design"))
     assert np.allclose(np.asarray(eps_bg), mod.EPS_R, atol=1e-6), "design box is not all laminate"
     grads = {}
-    for tag, steps in (("short", SHORT_RECORD_STEPS if not SMOKE else 10), ("full", n_steps),
-                       ("long", int(round(WITNESS_PERIOD_FACTOR * n_steps)))):
-        _log(f"(c) value_and_grad, design box, {steps} steps ({tag})")
-        J = make_objective(board, "design", f_t, n_steps=steps)
-        vg = jax.jit(jax.value_and_grad(J))
-        t0 = time.perf_counter()
-        v, g = vg(eps_bg)
-        g = np.asarray(g)
-        wall[f"grad_{tag}_first_call_s"] = time.perf_counter() - t0
-        info = {"n_steps": steps, "J": float(v), "finite": bool(np.all(np.isfinite(g))),
+
+    def _grad_info(g, v, steps, memory, how):
+        return {"n_steps": steps, "J": float(v), "finite": bool(np.all(np.isfinite(g))),
                 "n_nonzero": int(np.count_nonzero(g)), "sum": float(np.sum(g)),
-                "max_abs": float(np.max(np.abs(g))), "memory": _device_memory()}
-        grads[tag] = info
+                "max_abs": float(np.max(np.abs(g))), "memory": memory, "how": how}
+
+    def _save_grad(tag, g, v, steps):
         np.savez(out / f"gradient_{tag}.npz", grad=g, J=float(v), n_steps=steps, f_t_hz=f_t,
                  box_cells=np.asarray(board.boxes["design"]), dx_m=dx,
                  x_m=board.xs[board.boxes["design"][0][0]:board.boxes["design"][0][1] + 2],
                  y_m=board.ys[board.boxes["design"][1][0]:board.boxes["design"][1][1] + 2],
                  z_m=board.zs[board.boxes["design"][2][0]:board.boxes["design"][2][1] + 2])
-        _save_json(out / "gradient_summary.json", grads)
-        _log(f"    J {float(v):.6e}, finite {info['finite']}, nonzero {info['n_nonzero']}/{g.size}, "
-             f"sum {info['sum']:.4e}, peak {info['memory']['peak_bytes_in_use']/1e9:.2f} GB")
-        if tag == "short" and (not info["finite"] or info["n_nonzero"] == 0):
-            raise SystemExit("A1 failed on the short record: the gradient is "
-                             + ("not finite" if not info["finite"] else "all zero")
-                             + "; stopping before the full record.")
+
+    steps_short = SHORT_RECORD_STEPS if not SMOKE else 10
+    _log(f"(c) value_and_grad, design box, {steps_short} steps (short, A1)")
+    vg = jax.jit(jax.value_and_grad(make_objective(board, "design", f_t, n_steps=steps_short)))
+    t0 = time.perf_counter()
+    v, g = vg(eps_bg)
+    g = np.asarray(g)
+    wall["grad_short_first_call_s"] = time.perf_counter() - t0
+    grads["short"] = _grad_info(g, v, steps_short, _device_memory(), "jit(value_and_grad)")
+    _save_grad("short", g, v, steps_short)
+    _save_json(out / "gradient_summary.json", grads)
+    _log(f"    J {float(v):.6e}, finite {grads['short']['finite']}, nonzero "
+         f"{grads['short']['n_nonzero']}/{g.size}")
+    if not grads["short"]["finite"] or grads["short"]["n_nonzero"] == 0:
+        raise SystemExit("A1 failed on the short record: the gradient is "
+                         + ("not finite" if not grads["short"]["finite"] else "all zero")
+                         + "; stopping before the full record.")
+
+    # the base record and 1.5 x it, through rfx's own record-length witness
+    from rfx import gradient_record_length_witness
+    _log(f"(c) gradient_record_length_witness, design box, {n_steps} steps and "
+         f"{WITNESS_PERIOD_FACTOR} x (tol {WITNESS_TOL}, the helper's norm verdict)")
+
+    def witness_objective(p, n):
+        return make_objective(board, "design", f_t, n_steps=n)(p)
+
+    t0 = time.perf_counter()
+    w = gradient_record_length_witness(witness_objective, eps_bg, n_steps, tol=WITNESS_TOL,
+                                       factor=WITNESS_PERIOD_FACTOR)
+    wall["witness_both_arms_s"] = time.perf_counter() - t0
+    mem = _device_memory()
+    g_full = np.asarray(next(iter(w.grad.values())))[0]
+    g_long = np.asarray(next(iter(w.grad_long.values())))[0]
+    for tag, g, v, steps in (("full", g_full, w.value[0], w.n_steps),
+                             ("long", g_long, w.value_long[0], w.n_steps_long)):
+        grads[tag] = _grad_info(g, np.real(v), steps, mem,
+                                "gradient_record_length_witness (jax.vjp); memory is the "
+                                "process peak through both arms")
+        _save_grad(tag, g, np.real(v), steps)
+    _save_json(out / "gradient_summary.json", grads)
+    wit = {"helper": "rfx.gradient_record_length_witness", "tol": w.tol, "factor": w.factor,
+           "n_steps": w.n_steps, "n_steps_long": w.n_steps_long,
+           "norm_rel_change": float(w.worst), "cosine": float(w.cosine_by_bin[0]),
+           "helper_passed": bool(w.passed), "value": float(np.real(w.value[0])),
+           "value_long": float(np.real(w.value_long[0])),
+           "worst_value_rel_change": float(w.worst_value_rel_change),
+           "worst_elementwise_floored": float(w.worst_elementwise)}
+    _save_json(out / "record_length_witness.json", wit)
+    _log(f"    helper: ||g_1.5 - g_1.0|| / ||g_1.5|| = {wit['norm_rel_change']:.3e}, cosine "
+         f"{wit['cosine']:.8f}, J {wit['value']:.6e} -> {wit['value_long']:.6e}, "
+         f"peak {mem['peak_bytes_in_use']/1e9:.2f} GB")
     J_full = make_objective(board, "design", f_t, n_steps=n_steps)
-    g_full = np.load(out / "gradient_full.npz")["grad"]
-    g_long = np.load(out / "gradient_long.npz")["grad"]
 
     # ---- (d) block finite differences, float32
     _log("(d) block central differences (float32)")
@@ -390,6 +436,18 @@ def stage_main(out: Path) -> None:
     judged = _judge_blocks(fd)
     fd["judgement"] = judged
     _save_json(out / "fd_float32.json", fd)
+    wj = _judge_witness(fd, judged)
+    wit["blocks_float32_cutoff"] = wj
+    _save_json(out / "record_length_witness.json", wit)
+    _log("    record-length witness per block: " + ", ".join(
+        f"{n} {r['rel_change'] if r['rel_change'] is None else format(r['rel_change'], '.2e')}"
+        f"{' (judged)' if r['judged'] else ''}" for n, r in wj.items()))
+    failed = [n for n, r in wj.items() if r["judged"] and not r["passed"]]
+    if failed:
+        _save_json(out / "witness_failed.json", {"blocks": failed, "rows": wj})
+        _save_json(out / "wall_main.json", wall)
+        _log(f"record-length witness FAILED at {failed}: the case stops here (Amendment 1)")
+        raise SystemExit(3)
     if judged["roundoff_blocks"]:
         _save_json(out / "x64_needed.json", {
             "reason": "a judged block's ladder moves more between 0.1 and 0.05 than "
@@ -408,8 +466,9 @@ def stage_main(out: Path) -> None:
         sim_e.add_dft_plane_probe(axis="z", coordinate=z, component="ez",
                                   freqs=jnp.asarray([f_t, f_r]), name=f"ez_mid{n}")
     t0 = time.perf_counter()
+    flank_f = [f_t - FLANK_DF_HZ, f_t, f_t + FLANK_DF_HZ]
     res_e = sim_e.forward(num_periods=num_periods, skip_preflight=True, checkpoint=False,
-                          port_s11_freqs=jnp.asarray([f_t]))
+                          port_s11_freqs=jnp.asarray(flank_f))
     wall["dft_plane_forward_s"] = time.perf_counter() - t0
     planes = {k: np.asarray(v.accumulator) for k, v in res_e.dft_planes.items()}
     idx = {k: int(v.index) for k, v in res_e.dft_planes.items()}
@@ -426,7 +485,23 @@ def stage_main(out: Path) -> None:
                       "planes at the Ez edges 1.5 and 2.5 cells above the ground; "
                       "|Ez|^2 is their mean; Ez index (i, j) is compared with design "
                       "cell (i, j) of the z-summed gradient over the design box footprint",
-            "s11_at_f_t_from_this_forward": complex(np.asarray(res_e.s_params).reshape(-1)[0])}
+            "s11_at_f_t_from_this_forward": complex(np.asarray(res_e.s_params).reshape(-1)[1])}
+    s_fl = np.asarray(res_e.s_params, dtype=complex).reshape(-1)
+    j_fl = np.abs(s_fl) ** 2
+    j_run = np.abs(s11) ** 2
+    dj_run = np.gradient(j_run, freqs)
+    flank = {"freqs_hz": flank_f, "s11": s_fl, "J": j_fl,
+             "abs_s11_ft_db": float(20 * np.log10(np.abs(s_fl[1]))),
+             "dJ_df_forward_per_hz": float((j_fl[2] - j_fl[0]) / (2 * FLANK_DF_HZ)),
+             "dJ_df_forward_formula": "(|S11(f_t + 1 MHz)|^2 - |S11(f_t - 1 MHz)|^2) / 2 MHz, "
+                                      "forward(port_s11_freqs=...) on the board without a box",
+             "dJ_df_run_bins_per_hz": float(np.interp(f_t, freqs, dj_run)),
+             "dJ_df_run_bins_formula": "numpy.gradient of |S11|^2 over the 901 run() bins, "
+                                       "linearly interpolated at f_t",
+             "s11_min_hz": res_min["f"], "remax_f0_hz": res_remax["f0_hz"], "f_t_hz": f_t}
+    _save_json(out / "flank.json", flank)
+    _log(f"    |S11(f_t)| {flank['abs_s11_ft_db']:.3f} dB, d|S11|^2/df "
+         f"{flank['dJ_df_forward_per_hz']:.4e} /Hz (forward), {flank['dJ_df_run_bins_per_hz']:.4e} /Hz (run bins)")
     np.savez(out / "ez2_mid.npz", ez2_ft=ez2, ez2_fr=ez2_fr, gmap=gmap,
              planes_ft=np.stack([p[0] for p in planes.values()]),
              x_nodes_m=board.xs[ia:ib + 1], y_nodes_m=board.ys[ja:jb + 1])
@@ -434,6 +509,19 @@ def stage_main(out: Path) -> None:
     _log(f"    Pearson(z-summed grad, |Ez(f_t)|^2) = {corr['pearson_grad_vs_ez2_ft']:+.4f}")
     _save_json(out / "wall_main.json", wall)
     _log("main stage done")
+
+
+def _judge_witness(fd: dict, judgement: dict) -> dict:
+    """Amendment 1: |S_1.5 - S_1.0| / |S_1.5| per block, judged on the blocks
+    the FD check judges (the same 10 %-of-max cutoff)."""
+    rows = {}
+    for n, b in fd["blocks"].items():
+        s0, s1 = b["ad_sum_full"], b["ad_sum_long"]
+        rel = abs(s1 - s0) / abs(s1) if s1 else None
+        is_judged = n in judgement["judged"]
+        rows[n] = {"sum_1.0x": s0, "sum_1.5x": s1, "rel_change": rel, "judged": is_judged,
+                   "passed": (rel is not None and rel <= WITNESS_TOL) if is_judged else None}
+    return rows
 
 
 def _judge_blocks(fd: dict) -> dict:
@@ -594,12 +682,43 @@ def stage_finalize(out: Path, repo_dir: Path) -> None:
             claims.append(_record.claim(
                 f"|AD - FD| / |FD| at d eps_r = {FD_JUDGED_STEP}, block {name} (float32)",
                 r["rel"], "1", "fd_float32.json"))
-    for block in BLOCKS:
-        b = fd32["blocks"][block[0]]
-        claims.append(_record.claim(
-            f"record-length witness, block {block[0]}: AD sum at 1.5x record / at 1.0x",
-            b["ad_sum_long"] / b["ad_sum_full"] if b["ad_sum_full"] else None, "1",
-            "fd_float32.json"))
+    # Amendment 1: the record-length witness, judged per block on the blocks
+    # the FD check judges (cutoff from the precision the FD check was judged in)
+    rlw = _load_json(out / "record_length_witness.json")
+    wrows = _judge_witness(fd32, fd_judged["judgement"])
+    rlw["blocks_judged_cutoff"] = wrows
+    rlw["cutoff_precision"] = precision_judged
+    _save_json(out / "record_length_witness.json", rlw)
+    for name, r in wrows.items():
+        q = (f"record-length witness, block {name}: |S_1.5x - S_1.0x| / |S_1.5x| of the AD "
+             f"block sum ({rlw['n_steps']} vs {rlw['n_steps_long']} steps)")
+        if r["judged"]:
+            claims.append(_record.claim(q, r["rel_change"], "1", "record_length_witness.json",
+                                        threshold=WITNESS_TOL,
+                                        rule="Amendment 1 (lane leader): judged on the blocks "
+                                             "the FD check judges"))
+        else:
+            claims.append(_record.claim(q, r["rel_change"], "1", "record_length_witness.json",
+                                        note="block below the FD cutoff: reported"))
+    claims += [
+        _record.claim("record-length witness, helper norm ||g_1.5x - g_1.0x|| / ||g_1.5x|| "
+                      "over all design cells", rlw["norm_rel_change"], "1",
+                      "record_length_witness.json",
+                      note=f"gradient_record_length_witness(tol=0.05) passed: {rlw['helper_passed']}"),
+        _record.claim("record-length witness, helper cosine between the two gradients",
+                      rlw["cosine"], "1", "record_length_witness.json"),
+        _record.claim("Pearson r, z-summed dJ/deps_r maps at 1.0x vs 1.5x record",
+                      corr["pearson_gmap_full_vs_long"], "1", "correlation.json"),
+    ]
+    flank = _load_json(out / "flank.json")
+    claims += [
+        _record.claim("|S11(f_t)| from forward() on the board without a box",
+                      flank["abs_s11_ft_db"], "dB", "flank.json"),
+        _record.claim("d|S11|^2/df at f_t, central difference over f_t +- 1 MHz (forward)",
+                      flank["dJ_df_forward_per_hz"], "1/Hz", "flank.json"),
+        _record.claim("d|S11|^2/df at f_t, gradient over the 901 run() bins",
+                      flank["dJ_df_run_bins_per_hz"], "1/Hz", "flank.json"),
+    ]
     derived = []
     timing = {}
     for box in TIMING_BOXES:
@@ -644,6 +763,9 @@ def stage_finalize(out: Path, repo_dir: Path) -> None:
                 "timing_devices": sorted({t["device_kind"] for t in timing.values()})},
         "model": model,
         "claims": claims, "derived": derived,
+        "notes": ["timing box 'layer' is the substrate z-layer across the whole physical "
+                  "interior; it includes cells that are not laminate (model.boxes.layer."
+                  "n_laminate_cells / n_other_cells)"],
         "out_of_scope": [
             "the openEMS comparison of this board (tests/crossval/rt5880_patch judges it)",
             "mesh convergence of the gradient map: one rung, h/4",

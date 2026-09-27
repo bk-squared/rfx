@@ -224,7 +224,8 @@ def render_patch(d: Path, out: Path) -> list[Path]:
 
 # ------------------------------------------------------------------ timing
 def render_timing(d: Path, out: Path) -> list[Path]:
-    boxes = ("patch", "design", "laminate")
+    boxes = [b for b in ("patch", "design", "laminate", "layer")
+             if (d / f"timing_{b}_forward.json").is_file()]
     rows = []
     for b in boxes:
         tf = json.loads((d / f"timing_{b}_forward.json").read_text())

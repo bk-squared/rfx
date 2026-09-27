@@ -201,3 +201,41 @@ unchanged pytest ladder in its own job: `scripts/vessl_showcase_ladder_<case>.ya
 - It adds no page under `docs/public/`; the site pages are a later PR.
 - Interpretation of any number is the lane leader's, after the records are read. Records and PR
   carry facts and a "Conclusion: (leader)" placeholder.
+
+## Amendment 1: the lane leader's answers of 2026-09-27
+
+The lane leader answered the three open questions on 2026-09-27. The answers arrived after the first
+patch and AR runs had finished: patch 369367265539 and AR 369367265547, both archived as the first
+runs. This amendment was committed before the reruns it governs were submitted. Its one new
+threshold, 0.05 for the record-length witness, is the leader's. It is the value the public
+Gradient Behavior page uses with `gradient_record_length_witness`, and it was not taken from
+any run.
+
+**Q1, f_t (unchanged).** f_r stays the |S11| minimum from the module's `resonance()`, and f_t
+stays 1.01 × f_r. Added as REPORTED, from the baseline forward on the same board:
+- f0 (`refined_remax`) and the |S11| minimum;
+- |S11(f_t)| in dB;
+- d|S11|²/df at f_t, by central difference over f_t ± 1 MHz from one `forward(port_s11_freqs=…)`
+  run, and also over the 901 run() bins.
+
+No sentence interprets the sign.
+
+**Q2, the record-length witness (now JUDGED, tolerance 0.05).**
+- Patch: `gradient_record_length_witness(objective, eps_box, 9912, tol=0.05, factor=1.5)`
+  computes the design-box gradient at the base record and at 1.5 × it. For each of the six block
+  sums, the job computes |S_1.5 − S_1.0| / |S_1.5|. It is judged ≤ 0.05 on the blocks above the
+  same cutoff as §1.4 (|FD(0.1)| ≥ 0.1 × the largest of the six, from the precision the FD check
+  was judged in). The other blocks are reported. Also reported: the helper's own norm-level
+  verdict, ||g_1.5 − g_1.0|| / ||g_1.5|| over all box cells, with its cosine, and the Pearson
+  correlation of the two z-summed maps.
+- AR coating: the same helper, with objective(ε, n) = the example's cost from an n-step record,
+  both arms on one 8192-point FFT so that only the record length differs. It runs at N_STEPS and
+  1.5 × N_STEPS at the start point. Each of the three components is judged at
+  |g_1.5 − g_1.0| / |g_1.5| ≤ 0.05. The helper's norm verdict is reported.
+- If a witness fails, the case stops there and is reported. The record is not lengthened.
+
+**Q3, timing box 3.** Box 3 becomes the full substrate z-layer (k = 36 … 39) across the whole
+physical interior, kept out of the CPML: cells 24 … 119 along x and 24 … 135 along y,
+96 × 112 × 4 = 43 008 cells at h/4. It includes the vacuum cells beside the laminate; `result.json`
+records how many of its cells are laminate and how many are not. The `patch` and `design` boxes
+are unchanged. All three are re-timed in the rerun on the same pinned GPU model (RTX A6000).

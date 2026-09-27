@@ -52,6 +52,7 @@ FD_STEPS = (0.02, 0.01, 0.005)   # in eps_r, per component
 FD_JUDGED_STEP = 0.01
 FD_REL_BAR = 0.05
 WITNESS_FACTOR = 1.5             # record-length witness: 1.5 x the example's N_STEPS
+WITNESS_TOL = 0.05               # Amendment 1 (lane leader): judged per component
 # The example's gates (examples/inverse_design/multilayer_ar_coating.py, main()):
 GATE_TMM_RATIO = 1.2
 GATE_GEO_RATIO = 0.7
@@ -237,19 +238,55 @@ def main(argv=None) -> int:
         f"eps{r['component']+1}: AD {r['ad']:+.5e} FD {r['fd_judged_step']:+.5e} rel {r['rel']:.3e}"
         for r in fd["rows"]))
 
-    # ---- record-length witness: same FFT length, 1.0x and 1.5x records -------------
-    n_long = int(round(WITNESS_FACTOR * ex.N_STEPS))
+    # ---- record-length witness (Amendment 1): rfx's helper, both arms on one FFT ------
+    from rfx import gradient_record_length_witness
+    n_long = int(np.ceil(WITNESS_FACTOR * ex.N_STEPS))   # the helper's own ceil(factor * n)
     nfft_w = int(2 ** np.ceil(np.log2(n_long)))
-    wit = {"nfft": nfft_w, "n_steps": {}, "ad": {}}
-    for tag, n in (("1.0x", ex.N_STEPS), ("1.5x", n_long)):
-        p = Pipeline(ex, n, nfft=nfft_w)
-        g = np.asarray(jax.grad(lambda e, p=p: p.cost_and_R(e)[0])(eps0), dtype=float)
-        wit["n_steps"][tag] = n
-        wit["ad"][tag] = g
-    wit["ratio_1.5x_over_1.0x"] = (np.asarray(wit["ad"]["1.5x"]) / np.asarray(wit["ad"]["1.0x"])).tolist()
+    pipes = {n: Pipeline(ex, n, nfft=nfft_w) for n in (ex.N_STEPS, n_long)}
+
+    def witness_objective(e, n):
+        return pipes[n].cost_and_R(e)[0]
+
+    w = gradient_record_length_witness(witness_objective, eps0, ex.N_STEPS, tol=WITNESS_TOL,
+                                       factor=WITNESS_FACTOR)
+    g1 = np.asarray(next(iter(w.grad.values())))[0].astype(float)
+    g15 = np.asarray(next(iter(w.grad_long.values())))[0].astype(float)
+    rel = np.abs(g15 - g1) / np.abs(g15)
+    wit = {"helper": "rfx.gradient_record_length_witness", "nfft": nfft_w,
+           "n_steps": {"1.0x": w.n_steps, "1.5x": w.n_steps_long}, "tol": WITNESS_TOL,
+           "ad": {"1.0x": g1, "1.5x": g15}, "rel_change": rel.tolist(),
+           "passed": [bool(r <= WITNESS_TOL) for r in rel],
+           "helper_norm_rel_change": float(w.worst), "helper_cosine": float(w.cosine_by_bin[0]),
+           "helper_passed": bool(w.passed),
+           "cost": {"1.0x": float(np.real(w.value[0])), "1.5x": float(np.real(w.value_long[0]))},
+           "how": "objective(eps, n) = the example's cost from an n-step record, both arms "
+                  f"zero-padded to one {nfft_w}-point FFT so only the record length differs"}
     _save_json(out / "record_length_witness.json", wit)
-    _log(f"record-length witness (nfft {nfft_w}): AD 1.0x {np.asarray(wit['ad']['1.0x'])}, "
-         f"1.5x {np.asarray(wit['ad']['1.5x'])}")
+    _log(f"record-length witness (nfft {nfft_w}, {w.n_steps} vs {w.n_steps_long} steps): "
+         f"|g_1.5 - g_1.0| / |g_1.5| = {np.round(rel, 6)}, helper norm {w.worst:.3e}")
+    witness_claims = [
+        _record.claim(f"record-length witness: |g_1.5x - g_1.0x| / |g_1.5x|, d cost / d eps_r{i + 1}, "
+                      "start point", float(rel[i]), "1", "record_length_witness.json",
+                      threshold=WITNESS_TOL, rule="Amendment 1 (lane leader)")
+        for i in range(ex.N_LAYERS)]
+    witness_claims.append(_record.claim(
+        "record-length witness, helper norm ||g_1.5x - g_1.0x|| / ||g_1.5x||", float(w.worst), "1",
+        "record_length_witness.json", note=f"helper passed at tol 0.05: {bool(w.passed)}"))
+    if not all(wit["passed"]):
+        # Amendment 1: a failed witness stops the case; the record is not lengthened
+        fd_claims = [_record.claim(
+            f"|AD - FD| / |FD| at h = {FD_JUDGED_STEP}, d cost / d eps_r{r['component'] + 1}, start point",
+            r["rel"], "1", "fd_start.json", threshold=FD_REL_BAR,
+            rule="pre-declared: central differences at h = 0.01 in eps_r") for r in fd["rows"]]
+        _record.write_result(out, {
+            "schema": _record.SCHEMA, "id": CASE_ID, "question": QUESTION, "source": source,
+            "run": {"platform": "VESSL", "preset": os.environ.get("RFX_SHOWCASE_PRESET"),
+                    "run_id": None, "wall_s": wall},
+            "model": model, "claims": witness_claims + fd_claims, "derived": [],
+            "out_of_scope": ["the Adam descent: not run, the record-length witness failed"]},
+            _record.data_files(out))
+        _log("record-length witness FAILED: the case stops here (Amendment 1)")
+        return 3
 
     # ---- Adam, as the example runs it, every iterate recorded ----------------------
     p_geo = np.clip((geo - 1.0) / (ex.EPS_SUB - 1.0), 1e-3, 1.0 - 1e-3)
@@ -368,10 +405,7 @@ def main(argv=None) -> int:
             f"|AD - FD| / |FD| at h = {FD_JUDGED_STEP}, d cost / d eps_r{r['component'] + 1}, start point",
             r["rel"], "1", "fd_start.json", threshold=FD_REL_BAR,
             rule="pre-declared: central differences at h = 0.01 in eps_r"))
-    for i in range(ex.N_LAYERS):
-        claims.append(_record.claim(
-            f"record-length witness: AD d cost / d eps_r{i + 1}, 1.5x record / 1.0x record",
-            wit["ratio_1.5x_over_1.0x"][i], "1", "record_length_witness.json"))
+    claims += witness_claims
     if (out / "example_main.json").is_file():
         claims.append(_record.claim(
             "max relative cost difference, example main() vs this script, at its printed iterations",
