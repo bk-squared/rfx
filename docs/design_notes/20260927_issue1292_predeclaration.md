@@ -309,3 +309,53 @@ the T4 − T0 difference shrinks with refinement.
   `rfx/records/20260927-1292-<topic>/`.
 - Every VESSL run's provider log is saved before the run is deleted.
 - This repository gets no records.
+
+## Addendum 1 (2026-09-27, before any solve of this campaign)
+
+Written after build-only checks of every drawing; no field has been solved yet.
+
+**R2, record length.** The fixture's record is 6000 steps, 5.72 ns. It ends while the ring-down is
+still at 0.768 of its post-source peak (−2.3 dB; `ringdown_tail_to_peak` in
+`tests/data/v173a_aligned_composition.json`). Under this note's settling rule, a frequency read
+from that record is flagged and not used. So every R2 rung is solved for 84 ns: a mode near
+2 GHz with Q ≈ 105 falls about 40 dB in 77 ns. Two readings come from the same solve:
+
+- (i) the lock's reading, the harness's `_measure` on the first 5.72 ns (a prefix of the long
+  record); where the undecimated matrix pencil does not fit in memory (post-source prefix longer
+  than 6000 samples, that is dx < 0.25 mm), it uses harminv with decimation `"auto"`, and the
+  record says so;
+- (ii) the settled reading, harminv (decimation `"auto"`, 1.5–3.5 GHz, min_Q 5) on the whole
+  post-source record, together with its end-of-record level.
+
+The convergence estimate and the falsifier use (ii). The pair (i)/(ii) replaces the
+"twice the record length" control. Rungs 0.5, 0.25 and 1/6 mm run first. The 0.125 mm rung runs
+only if the measured wall time of the 1/6 mm rung puts it under 12 GPU-hours per tree; otherwise R2
+has three rungs. The CPU tree sweep runs the 84 ns record at 0.5 mm, which yields both readings.
+
+**R5, the realized sheet (correction to the Structure paragraph).** The sheet's realized mask
+counts nodes, not cells: 35 × 16 nodes is 34 × 15 cells, x 54u–88u = 4.572–7.451 mm, y 10u–25u
+(1.27 mm, centred on the trace), plane 6u. The trace realizes 7 cells (y nodes 14–21, 592.7 µm);
+the drawn width is 600 µm. The trace runs over x nodes 0–141 and stops one node short of the x_hi
+domain face. Probe 0 lies at x = 53u for port 1 and 89u for port 2, one cell outside each end of
+the sheet. The α_c illustration becomes Δα = 139 Np/m over 2.88 mm, a |S21| drop of about 0.33;
+this does not change the conclusion that the formula does not describe the structure.
+
+**R5, the redraw (replaces the ladder table).** The domain is 142 × 36 × 21 u. The trace is a
+node-plane sheet on x 0–141u, y 14u–21u. The sheet's nodes are x 54u–88u, y 10u–25u, on plane 6u.
+The ports sit at x 24u and 118u, y 17.5u, width 7u; probe offset and spacing are pinned to 29n and
+2n. The CPML is 8n. At n = 1 this redraw realizes the fixture's own node masks for the trace, the
+sheet and the probes (checked at build time on main). Whether its S equals the fixture's at n = 1
+is checked in the first job and recorded; the port source can realize differently, because the
+drawn position is 17.5u against 17.54u and the width 7u against 7.09u.
+
+**R3.** The whole-cell board's solver patch, read from the sheet footprint, is 42 × 50, 63 × 75,
+84 × 100 and 105 × 125 edges at N = 4, 6, 8 and 10: 8.2635 × 9.8375 mm at every rung, with
+N cells of ε_r 3.38 between the foil planes. The lock's `shape.mask` node count carries a ±1 at
+some rungs (for example 76 instead of 75 at N = 6), so the Balanis context value is computed from
+the sheet footprint: 9.5411 GHz at every rung, and for the fixture board 9.5411 GHz (the lock's
+own anchor is 9.3305 GHz, computed from node counts).
+
+**R4.** The generalized builder at r = 1 reproduces the fixture's grid (313 × 101 × 63, same dz,
+same dt). At r = 1.5, 2 and 3 the grids are 6.7, 15.7 and 52.7 M cells. Preflight on the refined
+rungs reports the trace sheet solved 0.35 cell wider at each free edge (for example 617.5 µm at
+r = 1.5). This is recorded, not acted on.
