@@ -260,52 +260,50 @@ LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor,
 # ------------------------------------------------------------- Leg B window --
 # f_TM010(fed) / f_TM010(unfed) - 1, in percent. The edge-feed loading term.
 #
-# Same construction on the measured fed/unfed PAIRS: h/4 base -6.905, h/4 +40/+40/+20
-# -6.660, h/5 base -6.011, h/3 base -5.518, h/3 +20/+20/+10 -5.313 -> midpoint -6.109,
-# half-range 0.796, plus the same 0.188 % extractor spread.
+# RE-DERIVED 2026-09-27 (issue 1292). The pull left the old window [-7.095, -5.123] %
+# in three steps, each bisected or measured on this fixture (CPU, h/4, 200 periods):
+#   #1178 (e7f7e027)  -7.067 -> -7.216 %  (its first parent 77f7094c reads -7.067 %)
+#   #1213 (76f68f9f)  -7.216 -> -7.492 %
+#   #1012 (f7b3270d)  -7.493 -> -7.635 %
+# #1178 continued the ground plane through the absorbers: on this grid its realized
+# footprint went from x 8..159 / y 8..100 (stopping at every absorber face) to x 0..168 /
+# y 0..109. The feed trace still ends at the -x absorber face (x 8..74 before and after).
 #
-#   MESH SENSITIVITY IS MEASURED, AND ITS WIDEST SAMPLE IS A FLAGGED CONFIGURATION.
-#   The h/3 pairs sit +1.39 pp from h/4 and are what sets this half-width, but h/3 is
-#   also the dirtiest port in the set: preflight counts are 8 advisories at h/3 against
-#   6 at h/4 and 3 at h/5, and only h/3 adds "MSL port 'msl_0': only 3 substrate cell(s)
-#   in z ... Z0 staircase error >5% expected" and "no compliant n_probe_offset exists on
-#   this feed length (interval empty)". (That first message is quoted AS PRINTED AT THE
-#   TIME; audit 2026-09-02 retired its ">5% expected" clause as a pre-#802 artefact, so
-#   current runs print the same advisory with the qualitative O(dx) wording instead —
-#   the advisory COUNT and which meshes raise it, which is all this argument uses, are
-#   unchanged.) The clean second mesh sample, h/5, is only
-#   +0.89 pp away. THE MEASUREMENT THAT WOULD TIGHTEN THIS: re-run the h/3 pair with a
-#   feed whose port clears the Z0-staircase advisory (wider W_MSL, or a substrate cell
-#   count that satisfies the port check). If the clean h/3 lands near h/5 the half-width
-#   drops by roughly a third. Until that run exists the width stays as measured — it is
-#   neither padded nor narrowed by discarding a sample for being inconvenient.
+# The window is centred on the current tree's value and its half-width follows the
+# construction documented below, re-measured on the current tree (fed/unfed pairs, each
+# configuration moved one axis at a time from the base build):
+#   h/4 base -7.6353 | h/4 +40/+40/+20 -7.6366 | h/5 base -6.6899 |
+#   h/3 base -6.7554 | h/3 +20/+20/+10 -6.7567      configuration half-range 0.4734
+#   single-probe extractor spread on this fixture's own unfed record 0.0132 %
+# Each term rounds UP (0.474 + 0.014), with no other slack: window [-8.123, -7.147] %.
+# The h/4 base sits at one end of the configuration range; the midpoint of the five
+# pairs is -7.163 %. Records: bk-squared/rfx-archive
+# rfx/records/20260927-1292-locked-results/ (R3 Leg B).
 #
-#   THIS LEG DOES NOT DISCRIMINATE #702 and is not meant to: pre-#702 measures -7.005 %,
-#   inside this window. The feed owns 0.100 pp of the 13.48 pp regression and Leg A owns
-#   the rest. Leg B locks the FEED MODEL, which on this fixture is (measured 2026-08-30)
-#   the reactive load of a 13.18 mm OPEN STUB: the feed trace ends at the absorber face,
-#   the MSL port sheet sits 5 mm inside that end, and the fed 8.16 GHz line is the
-#   stub-loaded TM010 (closed-form oracle 8.196 vs measured 8.177 GHz, +0.23 %). So
-#   FEED_LEN, PORT_MARGIN and DOM_X are part of the locked configuration: one node of
-#   stub length moves this leg by +0.85 pp, and the pull runs about -2.2 %/mm of stub.
-#   With the stub held fixed the pull SHRINKS with inset depth (-6.74 -> -3.63 % at
-#   2.4 mm) — an inset-intrinsic matching term exists but is not what this leg pins.
-# NOT re-pinned under #931, and the reason is the construction rather than the
-# result: this centre is the midpoint of FIVE measured fed/unfed pairs, and the
-# redrawn board has one (h/4 base). Re-centring a five-point midpoint on a
-# single point would be a different statistic wearing the same name. The
-# redrawn board measures -7.061 % (VESSL 369367259237), which PASSES — but it
-# sits 0.952 pp from this centre against a 0.986 pp half-width, i.e. at 97 % of
-# the window, so the next drift in either direction trips it. Re-deriving both
-# legs properly needs the ladder re-run on the redrawn board; that is the
-# follow-up named in Leg A's block above, and it owns this centre too.
-LEG_B_CENTRE_PCT = -6.109       # midpoint of the 5 measured pairs, NOT rounded toward
-#                                 zero: rounding the centre in would contradict the Leg A
-#                                 block's claim that rounding UP is the only slack here.
-LEG_B_HALF_PCT = 0.986          # = 0.796 configuration + 0.190 extractor
-#   configuration half-range (-6.904872 .. -5.313385) = 0.79574 -> 0.796;
-#   single-probe extractor spread measured on this fixture's own record 0.1881 -> 0.190.
-#   Both terms round UP, as in Leg A. Window [-7.095, -5.123] %.
+# History, the construction's first measurement (2026-08-30, before #931, #1178, #1213
+# and #1012; kept for its reasoning, its numbers superseded above):
+#   h/4 base -6.905, h/4 +40/+40/+20 -6.660, h/5 base -6.011, h/3 base -5.518, h/3
+#   +20/+20/+10 -5.313 -> midpoint -6.109, half-range 0.796, plus a 0.188 % extractor
+#   spread; window [-7.095, -5.123] %. Then the h/3 pairs sat +1.39 pp from h/4 and h/3
+#   was the port configuration with the most preflight advisories.
+#
+#   THIS LEG WAS NOT BUILT TO DISCRIMINATE #702: pre-#702 measured -7.005 %, inside the
+#   2026-08-30 window.
+#   Leg B locks the FEED MODEL. Measured 2026-08-30, it was the reactive load of a
+#   13.18 mm stub: the feed trace ends at the -x absorber face, the MSL port sheet sits
+#   5 mm inside that end, and the fed line was the stub-loaded TM010 (closed-form oracle
+#   8.196 vs measured 8.177 GHz, +0.23 %). At that time the ground plane also stopped at
+#   the absorber face; since #1178 it continues through the absorber under the stub's
+#   end. FEED_LEN, PORT_MARGIN and DOM_X are part of the locked configuration: one node
+#   of stub length moved this leg by +0.85 pp, and the pull ran about -2.2 %/mm of stub
+#   (2026-08-30). With the stub held fixed the pull SHRANK with inset depth (-6.74 ->
+#   -3.63 % at 2.4 mm) — an inset-intrinsic matching term exists but is not what this
+#   leg pins.
+LEG_B_CENTRE_PCT = -7.635       # the current tree's h/4 value, -7.635336 % (CPU)
+LEG_B_HALF_PCT = 0.488          # = 0.474 configuration + 0.014 extractor
+#   configuration half-range (-7.636614 .. -6.689898) = 0.47336 -> 0.474;
+#   single-probe extractor spread measured on this fixture's own unfed record
+#   0.01319 -> 0.014. Both terms round UP. Window [-8.123, -7.147] %.
 
 # --------------------------------------------------------------- Leg C ------
 PATCH_BAND_GHZ = (8.0, 10.5)   # physical patch radiating band (holds >1 mode: see above)
@@ -845,16 +843,16 @@ def test_leg_a_isolated_patch_discretization_bias(arms):
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1281: the edge feed pulls TM010 down by -7.2 to -7.6 % since 09-23, "
-           "below the measured [-7.095, -5.123] % window; cause not bisected")
 def test_leg_b_edge_feed_pull(arms):
     """Leg B — the edge-feed loading term, as the fed/unfed frequency ratio.
 
+    Window re-derived 2026-09-27 (issue 1292) around the current tree's value; the
+    three commits that moved it (#1178, #1213, #1012) are in the Leg B block above.
+
     Separated from Leg A on purpose: these two terms cancelled each other for the whole
-    life of the old +-0.8 GHz window. Leg B does NOT discriminate #702 (the pre-#702
-    tree measures -7.005 %, inside this window); it locks the FEED model.
+    life of the old +-0.8 GHz window. Leg B was not built to discriminate #702 (the
+    pre-#702 tree measured -7.005 %, inside the 2026-08-30 window); it locks the FEED
+    model.
     """
     f_fed = _tm010(arms["fed"])["f_ghz"]
     f_unfed = _tm010(arms["unfed"])["f_ghz"]
@@ -867,9 +865,11 @@ def test_leg_b_edge_feed_pull(arms):
         f"edge-feed pull {pull_pct:+.3f} % is outside the measured signed envelope "
         f"[{lo:+.3f}, {hi:+.3f}] % ({LEG_B_CENTRE_PCT} +- {LEG_B_HALF_PCT} pp, from "
         "measured fed/unfed pairs plus the measured extractor spread). The pull is "
-        "EXPECTED to be negative and about 6 %: the fixture's feed trace is a 13.18 mm "
-        "open stub (it ends at the absorber face; the port sheet sits 5 mm inside) whose "
-        "reactive load pulls TM010 DOWN — about -2.2 % per mm of stub, +0.85 pp per node. "
+        "EXPECTED to be negative, about 7.6 % on the 2026-09-27 tree: the fixture's feed "
+        "trace is a 13.18 mm stub that ends at the -x absorber face (the port sheet sits "
+        "5 mm inside; since #1178 the ground under its end continues through the "
+        "absorber), and its reactive load pulls TM010 DOWN — about -2.2 % per mm of stub, "
+        "+0.85 pp per node (measured 2026-08-30). "
         "A change here points at the feed model — FEED_LEN / PORT_MARGIN / DOM_X, the MSL "
         "port placement, the feed-trace rasterization — "
         f"not at the sheet-cell assembly Leg A locks. fed {f_fed:.5f} GHz (settling "
