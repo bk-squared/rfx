@@ -6,6 +6,7 @@
         "rfx/guide",
         "rfx/guide/installation",
         "rfx/guide/quickstart",
+        "rfx/guide/concepts",
         "rfx/guide/first-patch"
       ]
     },
@@ -18,6 +19,7 @@
         "rfx/guide/probes-sparams",
         "rfx/guide/memory-reduction",
         "rfx/guide/adi-solver",
+        "rfx/guide/nonuniform-mesh",
         "rfx/guide/waveguide-ports"
       ]
     },

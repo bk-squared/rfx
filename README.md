@@ -67,6 +67,7 @@ sim.add_source(
     (0.03, 0.03, 0.025),
     "ez",
     waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+    amplitude_kind="current",   # the waveform amplitude is a current in amperes
 )
 sim.add_probe((0.11, 0.03, 0.025), "ez")
 
@@ -103,24 +104,20 @@ finite-difference cross-checks live in
 
 ## Validation
 
-Every public cross-validation case is mapped to a named analytic or external
-reference with a reproduce command and acceptance gates. Start with
-[Cross-Validation and Accuracy](docs/public/guide/validation.mdx) for the
-support limits, then [Benchmarks](docs/public/guide/benchmarks.mdx) for the
-per-case numbers. The CPU-feasible subset runs locally:
-
-```bash
-PYTHONPATH=. python scripts/run_crossval_cpu.py
-```
-
-Exit codes: `0` all gates passed, `1` a gate failed, `2` a required external
-reference was unavailable (inconclusive, not silently green).
+Structures with a closed form are checked against it in `tests/oracle/`;
+comparisons with other solvers (openEMS, Palace, Meep) run against frozen
+reference records in `tests/crossval/`. Start with
+[Cross-Validation and Accuracy](docs/public/guide/validation.mdx) for what is
+checked and what you must check yourself, then
+[Benchmarks](docs/public/guide/benchmarks.mdx) for each comparison and how to
+run it.
 
 ## Documentation
 
 Full documentation: **[remilab.ai/rfx](https://remilab.ai/rfx/)**
 
-- Start here: [public landing page](docs/public/index.mdx) · [validation hub](docs/public/validation/index.mdx) · [examples hub](docs/public/examples/index.mdx)
+- Start here: [Quick Start](docs/public/guide/quickstart.mdx) · [Core Concepts](docs/public/guide/concepts.mdx) · [First Patch Antenna](docs/public/guide/first-patch.mdx) · [public landing page](docs/public/index.mdx)
+- Trust: [how results are validated](docs/public/guide/validation.mdx) · [support boundaries](docs/public/api/support-boundaries.mdx) · [known limitations](docs/guides/known_limitations.md)
 - Tutorials: [patch antenna](docs/public/guide/tutorial-patch-antenna.mdx) · [convergence study](docs/public/guide/tutorial-convergence.mdx) · ordered learning path in [`examples/tutorials/`](examples/README.md)
 - Guides: [migration from Meep/OpenEMS](docs/public/guide/migration.md) · [changelog](docs/public/guide/changelog.mdx) · [contributing](docs/public/guide/contributing.md)
 - **AI coding agents**: purpose-built docs in [`docs/agent/`](docs/agent/overview.mdx) — operating rules, [repo map](docs/agent/repo-map.mdx), [port selection](docs/agent/port-selection.mdx), and task recipes.

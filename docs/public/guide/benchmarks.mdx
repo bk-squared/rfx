@@ -1,99 +1,92 @@
 ---
 title: "Benchmarks"
-description: "Reference cases, pass criteria, required dependencies, and reproduce commands for rfx cross-validation."
+description: "The cross-solver comparisons that ship with rfx: what each one checks, against which reference, what it shows, and how to reproduce it."
 sidebar:
   order: 8
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-For validation scope and recommended engineering checks, read
+This page lists the comparisons between rfx and other solvers that ship with the
+repository. For each one it says what is compared, against which reference,
+what the committed run shows, and how to reproduce it. For how these fit with
+the analytic tests and your own checks, read
 [Cross-Validation and Accuracy](/rfx/guide/validation/).
 
-`validation/crossval/manifest.json` defines the case list, dependencies, exit
-codes, checks, and saved artifacts. Automated tests compare the table below
-with that manifest, so a case cannot be added or reclassified without a
-documentation update.
-
-<Aside type="note" title="Pass criteria are case-specific">
-  The metrics and tolerances below come from each script's docstring and check
-  block. A pass applies to the stated geometry, mesh, frequency range, and
-  reference only. It does not by itself validate other geometries, arbitrary
-  discretizations, or an entire port or component family.
+<Aside type="note" title="A pass covers its own setup">
+  Each case checks one geometry, mesh, band, port and observable. A pass says
+  rfx agrees with the reference there. It does not validate other geometries,
+  meshes or a whole port family.
 </Aside>
-
-<Aside type="caution" title="Conductor cases are recomputed at 2.0">
-  Release 2.0 changed how a conductor lands on the lattice: a PEC volume
-  realizes walls at both of its drawn faces, and foil is declared as a sheet on
-  one node plane
-  ([How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice)).
-  Every case below with a declared conductor body — `05`, `07`, `11`,
-  `15`, `18`, `19`, `20` — is re-solved from the drawn geometry, with the
-  compensations that used to sit in its oracle deleted rather than re-tuned;
-  a case that has not been re-solved does not ship in 2.0.
-  `validation/crossval/manifest.json` and each case's committed artifact are
-  the live source for a gate value; a number quoted in this table and not in
-  the manifest is documentation, not the gate.
-
-  Three groups of cases are controls and must come back unchanged: the
-  boundary-PEC cases (`09`, `10`, `14`, `24`), the dielectric-only cases
-  (`01`–`04`, `17`, `22`, `23`), and the σ-fill cases (`16`, `21`), whose metal
-  is a conductivity written into cells rather than a declared conductor and is
-  fenced out of the contract.
-</Aside>
-
-## Result codes
-
-Each script returns one of these exit codes:
-
-| Exit | Meaning |
-|------|---------|
-| `0` | Every self-check and numeric criterion passed, including each reference marked `required_for_script_pass` in the manifest. |
-| `1` | A required run, self-check, or numeric criterion failed. |
-| `2` | The rfx self-check completed, but a required external reference or optional dependency such as OpenEMS was unavailable. This result is inconclusive, not a pass. |
-
-Some manifest entries also define a failure-line sentinel. The CPU runner
-checks that sentinel after exit `0` and treats a contradictory failure message
-as a failure.
 
 ## Reference cases
 
-**Validated comparison** means that the listed command or commands check the
-references explicitly identified as gated in that row.
-**Diagnostic only** means that the script reports a comparison for the stated
-configuration or checks a specific regression condition; it must not be used
-as evidence for broader support.
+Each comparison is a test under `tests/crossval/`. It solves the structure in
+rfx and compares the result with a reference record frozen in the repository,
+so you do not need the other solver to re-check rfx. The records say which
+solver, version and mesh produced them.
 
-| Use | Case | Purpose | Reference | Pass criteria | Reproduce |
-|-----|------|---------|-----------|---------------|-----------|
+### Probe-fed patch on RT/Duroid 5880
 
-## Cases not included
+| | |
+|---|---|
+| Structure | A 39.7 × 49.25 mm patch on 3.175 mm RT/Duroid 5880 (εr 2.2, tan δ 0.001) over a 55.6 × 65.1 mm ground, fed by a 50 Ω probe 8.73 mm off centre. |
+| Reference | openEMS, the same board on three meshes, judged against its finest one. |
+| rfx meshes | a uniform ladder at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three rungs realize the same patch, and the test refuses a rung that does not. |
+| Judged | the TM010 resonance (where Re(Z_in) peaks) within 1 %, and the input resistance there within 2 %, on the finest rung; the last two rungs must agree within 1 % (mesh statement), and the record must ring down to −40 dB. |
+| Reported, not judged | the `\|S11\|` dip frequency and depth, the reactance at resonance and the −10 dB band edges. Neither solver declares a probe radius, so each feed cell sets the probe's series reactance, and that moves the dip. |
+| Result when it was added | resonance −0.10 % and input resistance −0.42 % from openEMS, on converged ladders ([bk-squared/rfx#1315](https://github.com/bk-squared/rfx/pull/1315)). |
+| Test | `tests/crossval/rt5880_patch/test_rt5880_patch.py` |
 
-Research-only subgrid scripts are under `validation/research/subgrid/`. They are
-not in the cross-validation manifest and are not documented as supported
-reference cases.
+The case judges the resonance and the input resistance, not the `|S11|`
+curve, because the two solvers' probe models differ. It says the cavity, its
+fringing and its radiation loss agree with openEMS on this board. It does not
+say a patch on a different board or mesh is within 1 %.
 
-## Reproduce the CPU subset
+## More comparisons
 
-Run the CPU-feasible cases with:
+The other comparisons under `tests/crossval/`. Most are long and marked `gpu`
+or `slow`.
+
+| Structure | Compared with | Test |
+|---|---|---|
+| Microstrip open-stub notch filter, `\|S21\|` | openEMS tutorial result and Palace FEM | `tests/crossval/msl_notch_filter/` |
+| Stepped-impedance microstrip low-pass filter, `\|S21\|` | openEMS, same box | `tests/crossval/sheen_lpf/` |
+| Probe-fed patch (openEMS Simple Patch Antenna geometry), far field | openEMS thirds-rule mesh | `tests/crossval/test_patch_canonical_farfield_e4.py` |
+| PEC cube, radar cross section | a boundary-element solver | `tests/crossval/test_rcs_cube_bem_gates.py` |
+| Rectangular waveguides across several bands, S-parameters | frozen Meep, openEMS and Palace records | `tests/crossval/test_waveguide_broad_e5.py` |
+
+On the notch filter, the notch frequency on a uniform mesh converges to within
+0.036 % of the openEMS tutorial result, and to within 0.03 % on a band-graded
+mesh with 6 cells across the substrate.
+
+Structures with a closed form are checked against that closed form, not
+against another solver. Those tests are in `tests/oracle/`.
+
+## Reproduce
+
+The comparisons are pytest tests. The long ladders are marked `gpu` and
+`slow`, so the pull-request suite never runs them. From a source checkout:
 
 ```bash
-PYTHONPATH=. python scripts/run_crossval_cpu.py
+# The fast checks: build each board, check what it realizes, read the records.
+pytest tests/crossval/rt5880_patch
+
+# The full ladder (a GPU; the h/12 rung is about 53 M cells).
+pytest tests/crossval/rt5880_patch -m gpu
 ```
 
-The runner starts each script in a fresh subprocess, applies a per-script
-timeout, and prints one of these results:
+`RFX_RT5880_PATCH_RUNGS=793.75e-6` runs only the coarsest rung. That is a
+diagnostic, not the case's verdict, because the mesh statement needs the
+ladder.
 
-| Result | Meaning |
-|--------|---------|
-| `PASS` | The script returned `0` and no failure sentinel was found. |
-| `SELF-CHECK-ONLY` | The script returned `2`; required external evidence is unavailable, so the result is inconclusive. |
-| `FAIL` | The script returned `1`, another unexpected exit code, or a contradictory failure sentinel. |
-| `ENV-SKIP` | An optional reference solver such as Meep is installed but cannot be imported. This is an environment or packaging problem, not an rfx result. |
-| `TIMEOUT` | The script exceeded its configured time limit. |
+## Limits
 
-The runner exits `0` only when no script ends in `FAIL` or `TIMEOUT`.
-
-Cases `03` and `04` require a Meep build compatible with the host NumPy ABI.
-If Meep cannot be imported, the runner reports `ENV-SKIP` instead of `FAIL`;
-case `04` still completes its rfx-side self-checks.
+- **One board is not every patch.** The patch case covers one board and one
+  probe feed. For your own patch, run a convergence study and compare with a
+  reference, as in [Your First Patch Antenna](/rfx/guide/first-patch/).
+- **Magnitude comparisons do not cover phase.** The two filter cases compare
+  `|S21|` only. On the notch filter, rfx also runs shorter feed lines than the
+  reference, which moves the phase but not the magnitude.
+- **Scripts under `validation/research/` are not reference cases.** They are
+  research checks for features outside the documented scope.

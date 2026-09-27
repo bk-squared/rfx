@@ -707,6 +707,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/guide/autodiff-adjoint.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/benchmarks.mdx": GATED,
     "docs/public/guide/changelog.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/concepts.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/first-patch.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/installation.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/materials-geometry.mdx": NO_ARTIFACT_REFERENCE,

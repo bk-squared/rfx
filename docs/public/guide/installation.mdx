@@ -1,58 +1,66 @@
 ---
 title: "Installation"
-description: "Python/JAX install, GPU notes, and development setup for rfx."
+description: "Install rfx on CPU or GPU, check the install, and set up a development checkout."
 sidebar:
   order: 0
 ---
 
-## Basic install
+## Install
+
+rfx needs Python 3.10 or newer. The PyPI package is `rfx-fdtd`, and the import
+name is `rfx`.
 
 ```bash
 pip install rfx-fdtd
 ```
 
-`rfx` requires Python 3.10+ and installs JAX, NumPy, SciPy, matplotlib, and
-h5py.
+This installs JAX (CPU), NumPy, SciPy, matplotlib and h5py.
 
-The package name on PyPI is `rfx-fdtd`, while the Python import remains:
+### GPU
 
-```python
-import rfx
+rfx runs on whatever device JAX finds. For an NVIDIA GPU, install the CUDA
+build of JAX:
+
+```bash
+pip install "jax[cuda12]" rfx-fdtd
+python -c "import jax; print(jax.devices())"   # should list a CUDA device
 ```
 
-## Verify your install
+See the [JAX installation guide](https://docs.jax.dev/en/latest/installation.html)
+for CUDA and driver requirements.
 
-After installing, confirm the environment can actually run a simulation.
+### Optional extras
 
-First run the bundled diagnostics command:
+| Extra | Adds | Needed for |
+|---|---|---|
+| `rfx-fdtd[optimization]` | optax | gradient-based optimizers in inverse design |
+| `rfx-fdtd[visualization]` | matplotlib, pillow | plots and field animations |
+| `rfx-fdtd[cad]` | trimesh, rtree, cascadio | importing STL/STEP geometry with `MeshShape` |
+| `rfx-fdtd[dashboard]` | streamlit, pandas | the `rfx-dashboard` browser UI |
+| `rfx-fdtd[all]` | everything above plus the dev tools | development |
+
+## Check the install
 
 ```bash
 rfx-diagnose
 ```
 
-It prints a PASS / WARN / FAIL report (Python and rfx versions, the JAX
-backend and devices, core dependencies, optional extras) and finishes with a
-tiny end-to-end FDTD run. It exits `0` only when every critical check
-passes; WARN lines (CPU-only backend, x64 disabled) are informational.
-An x64-disabled warning is harmless for the default `precision="float32"`
-workflow, but `precision="float64"` requires JAX x64 to be enabled before the
-simulation is constructed. Both `"float64"` and `"mixed"` are limited to the
-uniform single-device lane. Mixed precision works with CPML but raises the
-absorber residual floor, so use float32 for low-reflection and S-parameter
-work near that floor.
+This prints a PASS / WARN / FAIL line for Python, rfx, the JAX backend and
+devices, the core dependencies and the optional extras. It then runs a tiny
+FDTD simulation. It exits with code 0 when every critical check passes.
 
-The diagnostic's final short run is the installed-package execution check.
-Examples under `examples/` are available only from a source checkout; they are
-not installed as wheel data.
+Two warnings are normal:
 
-## GPU support
+- **CPU-only backend.** Everything works, but large 3-D runs are slow.
+- **x64 disabled.** This is harmless for the default `precision="float32"`.
 
-```bash
-pip install --upgrade "jax[cuda12]"
-python -c "import jax; print(jax.devices())"
+If you want `precision="float64"`, enable JAX 64-bit mode **before** you build
+the simulation:
+
+```python
+import jax
+jax.config.update("jax_enable_x64", True)
 ```
-
-See the official JAX installation guide for CUDA/cuDNN details.
 
 ## Development install
 
@@ -63,24 +71,21 @@ pip install -e ".[dev]"
 python examples/quickstart/hello_world.py
 ```
 
-The hello-world script builds a tiny box, injects one pulse, records one field
-probe, and prints a short finite-data summary.
+`hello_world.py` runs a 20 mm PEC box with one source and one probe. It
+finishes in seconds. The scripts in `examples/` come only with a source
+checkout; the PyPI wheel does not include them.
 
-The `dev` extra includes:
+To contribute, see [Contributing](/rfx/guide/contributing/).
 
-- `pytest`
-- `pytest-xdist`
-- `ruff`
+## Hardware
 
-## System requirements
+- Memory: 4 GB is enough for the examples. Use 16 GB or more for large 3-D
+  models. On a GPU, device memory is usually the limit, and gradients need
+  much more of it than a plain forward run; see
+  [Memory Reduction](/rfx/guide/memory-reduction/).
+- GPU: an NVIDIA card with CUDA 12 or newer. Absorbing boundaries cost more per
+  cell than PEC, so budget for them in open-boundary work.
 
-- Python: 3.10 / 3.11 / 3.12
-- CPU: modern x86_64
-- GPU: NVIDIA + CUDA 12+ for acceleration
-- RAM: 4 GB minimum, 16 GB+ recommended for larger 3D runs
+## Next
 
-## Next steps
-
-Run the [Quick Start](/rfx/guide/quickstart/). From a source checkout, the
-ordered tutorials in `examples/tutorials/` follow it; `examples/README.md` lists
-the sequence.
+Continue with the [Quick Start](/rfx/guide/quickstart/).

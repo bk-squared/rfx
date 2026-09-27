@@ -5,265 +5,362 @@ sidebar:
   order: 24
 ---
 
-rfx separates **sources** from **ports**:
-
-- sources inject fields without impedance loading
-- ports add an impedance model for S-parameter workflows
-
-`add_source()` and lumped/wire `add_port()` accept a `waveform=` object that
-sets the time-domain excitation. Waveguide and TFSF sources instead use their
-own pulse arguments. Worked examples are in the
-[Sources & Ports guide](/rfx/guide/sources-ports/).
+This page lists the excitation calls, the port families and the S-parameter
+calculator for each family. A **source** injects a field and has no
+impedance. A **port** also terminates the line in a known impedance, so rfx can
+compute S-parameters. Worked examples are in the
+[Sources and Ports guide](/rfx/guide/sources-ports/) and
+[Probes and S-Parameters](/rfx/guide/probes-sparams/).
 
 ## Waveforms
 
+`add_source()`, `add_polarized_source()`, `add_port()` and `add_msl_port()`
+take a `waveform=` object. Waveguide, TFSF and Floquet sources take their own
+pulse arguments instead.
+
 | Waveform | Signature | Use |
 |---|---|---|
-| `GaussianPulse` | `GaussianPulse(f0, bandwidth=0.5, amplitude=1.0)` | default wideband excitation |
-| `ModulatedGaussian` | `ModulatedGaussian(f0, bandwidth=0.5, amplitude=1.0, cutoff=5.0)` | resonance work with reduced DC content |
-| `CWSource` | `CWSource(f0, amplitude=1.0, ramp_steps=50)` | steady-state field visualization |
-| `CustomWaveform` | `CustomWaveform(func)` | JAX-compatible custom excitation |
+| `GaussianPulse` | `GaussianPulse(f0, bandwidth=0.5, amplitude=1.0, cutoff=3.0)` | default wideband pulse (differentiated Gaussian, almost no DC) |
+| `ModulatedGaussian` | `ModulatedGaussian(f0, bandwidth=0.5, amplitude=1.0, cutoff=5.0)` | band-pass pulse centred on `f0` |
+| `CWSource` | `CWSource(f0, amplitude=1.0, ramp_steps=50)` | single frequency with a ramped start, for steady-state fields |
+| `CustomWaveform` | `CustomWaveform(func)` | your own `func(t) -> amplitude`, with `t` in seconds |
+
+`bandwidth` is a fraction of `f0`. If you omit `waveform`, rfx uses a
+`GaussianPulse` at `freq_max / 2`.
 
 ## Sources
 
-Setup used by the snippets below:
-
 ```python
+import numpy as np
 from rfx import GaussianPulse, Simulation
 
-sim = Simulation(
-    freq_max=6e9,
-    domain=(0.04, 0.04, 0.02),
-    dx=2e-3,
-    boundary="cpml",
-    cpml_layers=6,
-)
-```
+sim = Simulation(freq_max=6e9, domain=(0.03, 0.03, 0.03), dx=1e-3,
+                 boundary="cpml", cpml_layers=8)
 
-```python
-sim.add_source((0.025, 0.025, 0.010), "ez", waveform=GaussianPulse(f0=3e9),
+sim.add_source((0.010, 0.015, 0.015), "ez",
+               waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
                amplitude_kind="current")
-sim.add_polarized_source((0.025, 0.025, 0.010), polarization="slant45",
+sim.add_polarized_source((0.010, 0.020, 0.015), polarization="slant45",
                          amplitude_kind="current")
 ```
 
-Use `add_source()` for ringdown and Harminv work when you do **not** want a load on the excited cell.
+| Method | Signature | Notes |
+|---|---|---|
+| `add_source` | `add_source(position, component="ez", *, waveform=None, amplitude_kind=None)` | soft point source in one cell; no load, so it suits resonance and Harminv work |
+| `add_polarized_source` | `add_polarized_source(position, *, polarization="ez", waveform=None, amplitude_kind=None)` | linear polarization: `"ex"`, `"ey"`, `"ez"`, `"slant45"` or a real `(Ex, Ey)` tuple |
+| `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform="differentiated_gaussian", method="bloch")` | plane wave travelling along x, for scattering; 3-D or 2-D (`mode="2d_tmz"`/`"2d_tez"`), with CPML |
+| `add_floquet_port` | see the [generated reference](/rfx/api/generated/) | experimental; no documented S-parameter API |
 
-The documented polarization scope is linear: `"ex"`, `"ey"`, `"ez"`,
-`"slant45"`, or a real `(Ex, Ey)` tuple, normalized internally. The method
-also accepts `"rhcp"`/`"circular"`, `"lhcp"`, and complex Jones tuples, but
-their time-domain quadrature has not been independently verified. Do not use
-those inputs to claim circular/elliptical polarization, axial ratio, or
-polarization sense.
+**`amplitude_kind`.** Always pass it. `"current"` means the waveform amplitude
+is a current in amperes, so the injected power does not depend on the cell
+size or the boundary. `"field"` adds the waveform directly to E each step.
+Leaving it as `None` keeps an older rule that differs between boundaries and
+is deprecated.
+
+`add_polarized_source` also accepts `"rhcp"`, `"lhcp"` and complex tuples, but
+circular polarization from this source has not been verified. Don't use it to
+report axial ratio or sense.
+
+For the plane wave on a graded mesh, only normal incidence along `+x` or `-x`
+is valid, and only when x itself is uniform. A graded x axis still runs, with
+a preflight warning. Far-field and RCS use is covered in
+[Far-Field and RCS](/rfx/guide/farfield-rcs/).
 
 ## Ports
 
-| Method | Public role |
-|---|---|
-| `add_port(...)` | recommended lumped/wire port path for many RF examples |
-| `add_waveguide_port(...)` | rectangular waveguide modal workflows |
-| `add_msl_port(...)` | specialized microstrip-line S-matrix workflow; Laplace/quasi-TEM directions `+x`, `-x`, `+y`, and `-y` (`mode="eigenmode"` remains x-only and outside the public support envelope) |
-| `add_coaxial_port(...)` | coaxial transmission-line reflection via `compute_coaxial_line_reflection(...)`; float32 precision; nonperiodic 3D second-order uniform Yee grid; CPML on all six boundary faces with positive thickness on both z faces; `cpml_axes="z"`; exactly one `face="top"` port |
-| `add_lumped_rlc(...)` | lumped network element at a cell |
+| Method | Port family | Calculator |
+|---|---|---|
+| `add_port(...)` | lumped (one cell) or wire (`extent=`) | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for S11 gradients |
+| `add_msl_port(...)` | microstrip line | `compute_msl_s_matrix()` |
+| `add_waveguide_port(...)` | rectangular waveguide | `compute_waveguide_s_matrix()` |
+| `add_coaxial_port(...)` | coaxial line | `compute_coaxial_line_reflection()` (one-port), `compute_coaxial_two_port()` |
 
-```python
-sim.add_port((0.01, 0.02, 0.01), "ez", impedance=50.0)
-sim.add_port((0.01, 0.02, 0.0), "ez", impedance=50.0, extent=0.0016)
-sim.add_coaxial_port((0.02, 0.02, 0.0016), face="top", impedance=50.0)
+### Lumped and wire ports
 
-# A waveguide port cannot share a Simulation with lumped ports, so it is
-# registered on its own guide here.
-wg_sim = Simulation(
-    freq_max=10e9,
-    domain=(0.12, 0.023, 0.010),
-    dx=2e-3,
-    boundary="cpml",
-    cpml_layers=8,
-)
-wg_sim.add_waveguide_port(x_position=0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010))
+```text
+add_port(position, component="ez", *, impedance=50.0, waveform=None,
+         extent=None, excite=True, direction=None,
+         reference_plane_cells=None, terminates=None) -> Simulation
 ```
 
-`extent` promotes the single-cell lumped port to a multi-cell wire port spanning `extent` metres from `position` along the `component` axis (here `+z`); omit it for a lumped port.
+- `impedance`: the port's reference impedance in ohms.
+- `extent`: omit for a one-cell lumped port. Set it (in metres) to make a wire
+  port spanning `extent` from `position` along the component axis.
+- `excite=False`: a matched load only, no source. Use it for ports that only
+  receive.
+- `direction`: outward normal of the port (`"+x"`, `"-x"`, `"+y"`, `"-y"`),
+  used to split V and I into incoming and outgoing waves. Detected from the
+  nearest face if omitted.
+- `terminates`: the conductor(s) this port ends, given as the shape or its
+  index in the geometry list. A line should end at its ports, not in the
+  absorber.
+- `reference_plane_cells=N`: opt-in reference planes for a wire port's
+  off-diagonal terms. See the [generated reference](/rfx/api/generated/).
+
+```python
+lp = Simulation(freq_max=6e9, domain=(0.03, 0.03, 0.03), dx=1e-3,
+                boundary="cpml", cpml_layers=8)
+lp.add_port((0.015, 0.015, 0.015), "ez", impedance=50.0,
+            waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
+lp.add_lumped_rlc((0.015, 0.015, 0.016), "ez", R=50.0, C=1e-12,
+                  topology="series")
+
+print(lp.s_matrix_lane())                                   # run(compute_s_params=True)
+print(lp.preflight_sparameters(calculator="run").ok)
+result = lp.run(n_steps=600, compute_s_params=True,
+                s_param_freqs=np.linspace(1e9, 5e9, 9))
+print(result.s_params.shape)                                # (n_ports, n_ports, n_freqs)
+```
+
+`result.s_params[i, j, k]` is the response at port `i` with port `j` driven, at
+frequency `result.freqs[k]`. `result.s11()` and `result.s_db(2, 1)` are
+shortcuts. The mesh here is coarse for speed. For a real one-port S11, use
+about 60 cells per wavelength at the highest frequency of interest.
+
+### Lumped R, L, C elements
+
+```text
+add_lumped_rlc(position, component="ez", *, R=0.0, L=0.0, C=0.0,
+               topology="series") -> Simulation
+```
+
+Puts an R, L and/or C in one cell, updated with the fields. `topology` is
+`"series"` or `"parallel"`. Set unused values to 0. A series element with only
+one non-zero value is folded into the cell's material, so give at least two
+to get the series circuit.
+
+`add_lumped_rlc` is **not** a port. It embeds a circuit element in the FDTD
+update, but it is not a reflection-referenced port: it fixes no reference
+impedance, so it gives no Z0-referenced S11. Read on its own, a one-cell
+element reports only its near-field self-interaction. To measure what a load
+does to a line, drive with `add_port(..., impedance=Z0)` and place the
+`add_lumped_rlc` element **a cell or more away from the port cell**, as in the
+example above. An element on the port cell sits in parallel with the source,
+and S11 does not see it.
+
+For gradients with respect to R, L or C, pass
+`forward(rlc_values_override={index: {"R": R, "L": L, "C": C}})` on the
+uniform single-device path. That changes the element; it still does not make
+it a port.
+
+### Microstrip ports
+
+```text
+add_msl_port(position, *, width, height, direction="+x", impedance=50.0,
+             waveform=None, excite=True, n_probe_offset=None,
+             n_probe_spacing=None, n_probes=5, name=None, mode="laplace",
+             eps_r_sub=None, terminates=None) -> Simulation
+```
+
+The port covers the full trace cross-section and fits the line's β and Z0 from
+a short probe array downstream of the feed.
+
+- `position = (feed, centre, z_substrate_bottom)`: the coordinate along
+  `direction` is the feed plane; the other in-plane coordinate is the trace
+  centre.
+- `direction`: `"+x"`, `"-x"`, `"+y"` or `"-y"`. The substrate normal is always
+  z.
+- `mode`: `"laplace"` (default, quasi-TEM). `"eigenmode"` is x-only and
+  outside the documented scope.
+- `n_probe_offset`, `n_probe_spacing`: in cells. When left at `None` on a
+  graded runway or auto mesh, rfx recounts them in the cells under the port at
+  run time.
+
+```python
+from rfx import Box
+
+h, w = 0.3e-3, 0.6e-3                     # 300 um substrate, 600 um trace
+msl = Simulation(freq_max=10e9, domain=(0.020, 0.008, 0.003), dx=100e-6,
+                 boundary="cpml", cpml_layers=8)
+msl.add_material("ro4350b", eps_r=3.66)
+msl.add(Box((0.0, 0.0, 0.0), (0.020, 0.008, h)), material="ro4350b")
+msl.add_thin_conductor(Box((0.0, 0.0, 0.0), (0.020, 0.008, 0.0)))            # ground
+msl.add_thin_conductor(Box((0.0, 0.004 - w / 2, h), (0.020, 0.004 + w / 2, h)))
+msl.add_msl_port((0.003, 0.004, 0.0), width=w, height=h, direction="+x")
+msl.add_msl_port((0.017, 0.004, 0.0), width=w, height=h, direction="-x",
+                 excite=False)
+print(msl.s_matrix_lane())                # compute_msl_s_matrix
+```
+
+A cell of 100 µm puts 3 cells across the 300 µm substrate, which is coarse
+for speed: preflight warns below 4. For microstrip, the substrate thickness
+sets the cell size, not the wavelength.
+
+### Waveguide ports
+
+```text
+add_waveguide_port(x_position, *, x_range=None, y_range=None, z_range=None,
+                   mode=(1, 0), mode_type="TE", direction="+x", freqs=None,
+                   n_freqs=50, f0=None, bandwidth=0.5, amplitude=1.0,
+                   probe_offset=10, ref_offset=3, calibration_preset=None,
+                   reference_plane=None, probe_plane=None, name=None,
+                   n_modes=1, waveform="modulated_gaussian",
+                   mode_profile="discrete") -> Simulation
+```
+
+`x_position` is the port plane's coordinate along the axis named by
+`direction` (for `direction="-y"` it is a y coordinate). The two `*_range`
+arguments across that axis give the guide aperture. Waveguide ports need
+`boundary="cpml"` and `mode="3d"`, and cannot share a simulation with lumped
+ports.
+
+```python
+wg = Simulation(freq_max=12e9, domain=(0.10, 0.023, 0.010), dx=1e-3,
+                boundary="cpml", cpml_layers=8)
+band = np.linspace(8.2e9, 12.4e9, 11)
+wg.add_waveguide_port(0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010),
+                      direction="+x", freqs=band, name="p1")
+wg.add_waveguide_port(0.09, y_range=(0.0, 0.023), z_range=(0.0, 0.010),
+                      direction="-x", freqs=band, name="p2")
+print(wg.s_matrix_lane())                 # compute_waveguide_s_matrix
+```
+
+The [Waveguide Ports guide](/rfx/guide/waveguide-ports/) covers calibration
+planes and `normalize`.
+
+### Coaxial ports
+
+```text
+add_coaxial_port(position, face="top", *, pin_length=0.005,
+                 pin_radius=0.000635, outer_radius=0.002055, impedance=50.0,
+                 waveform=None, terminates=None) -> Simulation
+```
+
+The coaxial calculators build their own line, TEM source, probe planes and
+termination. The port supplies only the x/y centre, `face`, the two radii and
+the waveform. See the complete example below.
 
 ## S-parameter calculators
 
-Use the calculator that matches the port family:
+| Calculator | Signature (key arguments) | Returns |
+|---|---|---|
+| lumped/wire | `run(..., compute_s_params=True, s_param_freqs=None, s_param_n_steps=None)` | `Result.s_params`, `Result.freqs` |
+| lumped/wire, differentiable | `forward(..., port_s11_freqs=freqs)` | `ForwardResult.s_params` (S11 vectors) |
+| microstrip | `compute_msl_s_matrix(*, n_steps=None, num_periods=40.0, freqs=None, n_freqs=100, enforce_passivity=False, eps_override=None, ...)` | `MSLSMatrixResult` |
+| waveguide | `compute_waveguide_s_matrix(*, n_steps=None, num_periods=20.0, normalize=False, eps_override=None, sigma_override=None, strict_passivity=False, ...)` | `WaveguideSMatrixResult` |
+| coax, one-port | `compute_coaxial_line_reflection(*, termination="short", n_steps=6000, freqs=None, n_freqs=11, cpml_axes="z", probe_count=12, probe_start_cells=8, probe_spacing_cells=4, feed_impedance=None, dut_impedance=None, eps_scale=None, ...)` | `CoaxialLineReflectionResult` |
+| coax, two-port | `compute_coaxial_two_port(*, n_steps=6000, freqs=None, n_freqs=11, cpml_axes="z", probe_count=12, feed_impedance=None, eps_scale=None, ...)` | `CoaxialTwoPortResult` |
 
-| Primitive | Calculator |
-|---|---|
-| lumped/wire `add_port(...)` | `run(compute_s_params=True)` |
-| lumped/wire `add_port(...)` in differentiable objectives | `forward(port_s11_freqs=...)` |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
-| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` with float32 precision, a nonperiodic 3D second-order uniform Yee grid, CPML on all six boundary faces with positive thickness on both z faces, `cpml_axes="z"`, and exactly one `face="top"` port |
+Result fields are listed on [Results & Observables](/rfx/api/results-observables/#s-parameter-results).
+`run(compute_s_params=True)` handles lumped and wire ports only. It does not
+dispatch to the other families.
 
-`run(compute_s_params=True)` is **not** a universal port dispatcher. MSL, waveguide, and coaxial-line workflows use specialized calculators.
+**Let rfx choose.** `sim.compute_s_matrix(lane=None, **kwargs)` reads the
+registered ports, calls the matching calculator and forwards your keyword
+arguments unchanged. `sim.s_matrix_lane()` returns that choice as a string and
+runs nothing. Two cases need you to decide:
 
-During normal Python execution outside JAX tracing,
-`compute_msl_s_matrix()` returns `MSLSMatrixResult.reliable`. If
-`reliable[p, k]` is `False`, exclude the whole frequency slice `S[:, :, k]` from
-physical interpretation (S is solved jointly across drives, #507); the mask
-covers every driven/port record the solve consumes (#522), and `True` is not an
-accuracy guarantee. During tracing,
-`.reliable` is `None`. See
-[Probes and S-Parameters](/rfx/guide/probes-sparams/#low-signal-msl-bins) for the
-threshold, array shape, and filtering example.
+- One coaxial port is ambiguous. Pass
+  `lane="compute_coaxial_line_reflection"` or `lane="compute_coaxial_two_port"`.
+- Lumped/wire-only models raise, naming `run(compute_s_params=True)`, because
+  that call needs your `n_steps`.
 
-`add_lumped_rlc(...)` has no S-parameter calculator, which is why it is absent from the table above. It embeds an R/L/C element in the FDTD update, but it is not a reflection-referenced port: it fixes no reference impedance, so it yields no `Z0`-referenced `S11`. Read on its own, a single-cell element reports its near-field self-interaction. To measure the reflection a load presents to a reference line, drive the structure with `add_port(..., impedance=Z0)`, place the `add_lumped_rlc` element **a cell or more away from the port cell** as the load, and read `run(compute_s_params=True)` or `forward(port_s11_freqs=...)`. An element placed *on* the port cell is in parallel with the source rather than in the network the driven port measures, so S11 does not see it: measured, a co-located element moves `max |S11|` by about `2e-07` and the gradient `dS11²/dR` by `-1.15e-10`, against `8.68e-03` and `-8.16e-05` one cell away.
+**Experimental cross-family calculators.** `compute_mixed_s_matrix()` (lumped
+or wire plus microstrip) and `compute_coax_msl_transition()` (coax plus
+microstrip) are diagnostics. Their magnitudes are not validated, and the
+coax-to-microstrip matrix is not passive, so by default the call raises
+`ValueError`. Measure each side with its own calculator instead.
 
-For differentiable component-value studies, the uniform single-device
-`forward(...)` calculation accepts
-`rlc_values_override={index: {"R": R, "L": L, "C": C}}` so a registered
-lumped element's scalar values can enter the AD tape. That override changes the
-circuit element inside the run; it still does not turn `add_lumped_rlc(...)`
-into a port.
+### Checking a calculator before the run
 
-Before launching a long run, call the S-parameter preflight for the calculator you intend to use:
-
-```python
-sim.preflight_sparameters(calculator="run")
-sim.preflight_sparameters(calculator="msl")
-sim.preflight_sparameters(calculator="waveguide")
-sim.preflight_sparameters(calculator="forward")
+```text
+preflight_sparameters(*, calculator="run", strict=False, normalize=None,
+                      include_general=False) -> PreflightReport
 ```
 
-A report with no error-severity issue (`report.ok`) means the selected calculator is valid for the registered port families; otherwise it lists coded issues to fix first. Pass `strict=True` to raise instead of returning them.
-
-`calculator="waveguide"` adds three setup audits, all reported in the units you
-entered.
-
-The first compares each port's record length with its far-boundary round trip.
-A record shorter than one round trip is an error,
-`record_shorter_than_far_boundary_round_trip`. When the lowest measured frequency
-sits at or below that port's own cutoff, no ratio is defined and the code is
-`record_far_boundary_band_below_cutoff` instead.
-
-The second checks the mirror covariance of every plane index an
-opposite-direction port pair uses, and reports `port_index_mirror_asymmetry` when
-they disagree.
-
-The third, `layout_measured_from_band_low_edge`, is informational and fires only
-when the band's lowest bin sits within 6 % of that port's own discrete cutoff,
-the regime it was measured in. It reports the guide wavelength at that lowest
-bin, how many of them the layout puts between the port and the far wall, and how
-many sit inside the absorber. It carries no threshold: a domain and a pad sized
-from the band's own guide wavelength serve that band's bottom bins worst, so the
-note says to size the layout from below the band and to confirm with the
-record-length check. Above 6 % it is silent.
-
-If the grid or the port modes cannot be built, the audits are skipped and say so
-with `waveguide_setup_audit_skipped`; none raises.
-
-A healthy two-port guide still carries the informational
-`port_index_mirror_known_e_plane_offset` note, so a nonempty report is not a
-failure. Readiness is `report.ok`. `strict=True` escalates error-severity
-findings only.
-
-After the solve, `compute_waveguide_s_matrix()` prints one more line and puts the
-same number on the result. `WaveguideSMatrixResult.s21_phase_residual_deg_rms` is
-the RMS over the measured bins of the S21 phase against `-beta*L`, in degrees:
-`beta` is the extractor's own discrete propagation constant at the port's cutoff
-and `L` the separation of the two reference planes the result reports. It is the
-port's discretization witness for an empty or matched guide between the two
-reference planes; unlike a near-cutoff reflection headline it does not pass
-through the absorber. A device between the planes adds its own transmission
-phase to the same number, so on a loaded two-port it reads the device against
-`-beta*L`, not the port. `s21_phase_residual_meta` carries `beta_convention`,
-`f_cutoff_hz`, `L_m`, `n_bins`, `masked_bins` and `normalize`. Nothing in the
-library compares either with a threshold. The field is `None` on a result that
-is not a single-mode two-port, on a traced run, when every bin fell below the
-weak-signal phase mask, or on a `normalize=True` lane, where the empty-guide
-reference's propagation phase has been divided out of S21 (`normalize="flux"`
-and `normalize=False` keep it).
-
-`preflight_sparameters()` covers the `run`, `forward`, `msl`, and
-`waveguide` calculators. Its `calculator="coaxial"` compatibility alias checks
-the deprecated `compute_coaxial_s_matrix()` path, not
-`compute_coaxial_line_reflection()`. The line-reflection method therefore
-checks the following requirements itself, before starting the FDTD run:
-
-- The simulation uses `precision="float32"`, `mode="3d"`, `solver="yee"`,
-  `stencil_order=2`, and a uniform grid. All six boundary-face tokens are
-  `cpml`, both z faces have positive CPML thickness, `cpml_axes="z"`, and no
-  axis is periodic.
-- Exactly one `face="top"` coaxial port is registered, with no other port
-  family. A pre-existing TFSF source and SBP-SAT refinement are unsupported.
-- The method constructs its own line, TEM source, DFT planes, and termination.
-  It rejects separately registered geometry, thin conductors, lumped RLC
-  elements, probes, DFT planes, flux monitors, NTFF boxes, and
-  `add_coaxial_*` termination helpers instead of ignoring them.
-- The port supplies x/y position, `face`, radii, and waveform. Its z position,
-  `pin_length`, and `impedance` do not set the method's internally derived
-  axial layout or loads. Set the feed with `feed_impedance`; use
-  `dut_impedance` only with `termination="matched"`.
-- `probe_count` must be an integer of at least three. Every requested probe
-  plane must fit between the DUT and source; otherwise increase the z domain
-  or reduce `probe_count`, `probe_start_cells`, or `probe_spacing_cells`.
-
-This is a self-contained one-port transmission-line calculation, not a general
-coaxial-network solver. Inspect `status`, `recurrence_residual`, `fit_residual`,
-and `s11`; the method does not run the shared S-matrix passivity guard.
-
-### Complete coaxial line-reflection example
-
-The constructor owns the grid, solver, precision, and boundary settings.
-`add_coaxial_port()` supplies the transverse center, face, radii, and waveform.
-`compute_coaxial_line_reflection()` owns `cpml_axes`, the termination and load,
-the frequency grid, the probe layout, and the run length:
+`calculator` is `"run"`, `"forward"`, `"msl"` or `"waveguide"`. It checks that
+the registered ports suit that calculator, without running FDTD. Read
+`report.ok`. `strict=True` raises on errors only.
 
 ```python
-import numpy as np
+print(msl.preflight_sparameters(calculator="msl").ok)
+report = wg.preflight_sparameters(calculator="waveguide")
+print(report.ok, [issue.code for issue in report])
+```
 
-from rfx import GaussianPulse, Simulation
+For waveguides it also audits the setup:
 
-sim = Simulation(
-    freq_max=40.0e9,
-    domain=(0.008, 0.008, 0.040),
-    boundary="cpml",       # sets all six BoundarySpec face tokens to CPML
-    cpml_layers=16,
-    mode="3d",
-    solver="yee",
-    precision="float32",
-    stencil_order=2,
-)
-sim.add_coaxial_port(
-    (0.004, 0.004, 0.020),  # x/y are used; this method derives z internally
+- `record_shorter_than_far_boundary_round_trip` (error): the record is shorter
+  than one round trip to the far boundary. Raise `num_periods`.
+  `record_far_boundary_band_below_cutoff` means the lowest frequency is below
+  the port's cutoff, so the check could not be made.
+- `port_index_mirror_asymmetry`: an opposite-facing port pair is not placed
+  symmetrically. A healthy two-port guide always shows the informational
+  `port_index_mirror_known_e_plane_offset` note, so a non-empty report is not a
+  failure.
+- `layout_measured_from_band_low_edge` (information): the band's lowest bin is
+  within 6 % of cutoff. Size the layout from below the band.
+
+The coaxial calculators check their own requirements when called.
+
+## Complete coaxial example
+
+`compute_coaxial_line_reflection()` needs a float32, 3-D, second-order uniform
+Yee grid with CPML on all six faces (positive thickness on both z faces),
+`cpml_axes="z"`, no periodic axis, and exactly one `face="top"` coaxial port.
+Nothing else may be registered: it rejects extra geometry, sheets, RLC
+elements, probes, monitors and NTFF boxes rather than ignoring them.
+
+```python
+coax = Simulation(freq_max=40e9, domain=(0.008, 0.008, 0.040), dx=0.35e-3,
+                  boundary="cpml", cpml_layers=16)
+coax.add_coaxial_port(
+    (0.004, 0.004, 0.020),          # x, y are used; z is derived internally
     face="top",
     pin_radius=0.635e-3,
     outer_radius=2.055e-3,
-    waveform=GaussianPulse(f0=8.0e9, bandwidth=1.2),
+    waveform=GaussianPulse(f0=8e9, bandwidth=1.2),
 )
-
-result = sim.compute_coaxial_line_reflection(
+refl = coax.compute_coaxial_line_reflection(
     termination="short",
-    feed_impedance=None,     # analytic TEM impedance; set feed ohms here if needed
-    cpml_axes="z",          # method argument, not a Simulation argument
     probe_count=12,
-    n_steps=5000,
-    freqs=np.linspace(4.0e9, 12.0e9, 5),
+    n_steps=4000,
+    freqs=np.linspace(4e9, 12e9, 5),
 )
-
-if result.status != "passed":
-    raise RuntimeError(
-        f"coaxial extraction status={result.status}; "
-        f"max recurrence residual={np.max(result.recurrence_residual):.3g}"
-    )
-print(result.freqs, result.s11)
+print(refl.status, f"{refl.annulus_cells:.2f} annulus cells")
+print(np.abs(refl.s11))
 ```
 
-This example is the documented transmission-line geometry. Do not add a cavity,
-launch transition, load geometry, or monitor to the same `Simulation`; use a
-different supported calculation for those structures. For a matched resistive
-DUT, set `termination="matched"` and `dut_impedance=...`. Do not pass
-`dut_impedance` for an open or short.
+- `termination`: `"short"` or `"matched"`. With `"matched"`,
+  `dut_impedance=R` makes the load a resistor R. Don't pass `dut_impedance`
+  otherwise.
+- `feed_impedance`: the feed resistor. `None` uses the line's analytic TEM
+  impedance.
+- `probe_count` must be at least 3, and every probe plane must fit between the
+  load and the source; otherwise the call raises before running. The probe
+  ladder is placed in cells, so refining the mesh shortens the span it covers.
+  Give it enough physical length.
+- `dx = 0.35 mm` puts about 4 cells across the 1.42 mm annulus. Keep at least
+  4. `status` reads `"under_resolved"` below about 3.5 and `"contaminated"`
+  when the field is not a clean single TEM mode at some frequency. Check that it reads `"passed"`.
+- The result does not pass through the shared passivity check. Inspect
+  `status`, `recurrence_residual` and `s11` yourself.
 
-## Public boundary rules
+## Limits
 
-The support scope is [Support Boundaries](/rfx/api/support-boundaries/). In practice:
-
-- Use sources for clean transient or resonance extraction.
-- Use ports when you need impedance-normalized outputs.
-- Use non-uniform workflows only with the relevant guide and validation checks.
-- Use coaxial line reflection only with the complete self-contained setup and
-  argument rules above.
-- Advanced mixed-port workflows require a documented support entry before they are used in public examples.
+- **Resolution.** Lumped and wire ports: about 60 cells per wavelength at the
+  highest frequency for one-port S11. At 60 cells per wavelength, `|S11|` on
+  resistive loads is within 0.54 dB of the closed form, and exact on a short
+  or open. At 30 cells per wavelength, magnitudes are within 1.1 dB and the
+  line's phase-crossing frequencies sit 1.7–2.9 % from the closed form (the
+  lumped/wire chain battery, measured through `forward(port_s11_freqs=...)`).
+  Coax: at least 4 cells across the annulus. Microstrip: at least 4 cells
+  through the substrate (preflight warns below that).
+- **Port reference plane.** A one-cell lumped or wire port reads V at its node
+  and I half a cell toward the line. A two-port S21 phase is therefore
+  referenced to the port separation less half a cell. Lumped and wire ports
+  return identical S11.
+- **End lines at their ports, not in the CPML.** CPML terminates a guided
+  line much less well than a plane wave. Let the ports terminate the line.
+- **Coax open termination is not supported.** `termination="open"` reads
+  `|Γ| > 1` on fine meshes. Track
+  [issue #1218](https://github.com/bk-squared/rfx/issues/1218).
+- **Graded meshes.** Lumped-port S-parameters and coaxial ports raise on a
+  graded mesh. Microstrip and waveguide calculators run there but are
+  experimental. See [Support Boundaries](/rfx/api/support-boundaries/).
+- **Microstrip bins.** Exclude every frequency bin where any entry of
+  `MSLSMatrixResult.reliable` is `False`: S is solved jointly across drives, so
+  the whole slice `S[:, :, k]` is affected. A `True` entry does not guarantee
+  accuracy.
+- **Sources, probes and monitors are not ports.** They have no reference
+  impedance, so they cannot produce S-parameters.
