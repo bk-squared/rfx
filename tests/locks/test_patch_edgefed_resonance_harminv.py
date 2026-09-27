@@ -185,77 +185,53 @@ N_PROBE_X = 5                   # probes along x (the parity line for TM010)
 N_PROBE_Y = 5                   # probes along y (the parity line for TM001)
 
 # ------------------------------------------------------------- Leg A window --
-# f_TM010(unfed) / Balanis(realized raster) - 1, in percent.
+# f_TM010(unfed) / Balanis(realized raster) - 1, in percent. The Balanis value is the
+# lock's anchor and CONTEXT ONLY, as the module docstring says; it is not the reference.
 #
-# The centre is the midpoint and the half-width the half-range of the MEASURED main-tree
-# spread, plus the MEASURED extractor spread. There is no safety factor in either term;
-# both are ends of sampled axes.
+# RE-DERIVED 2026-09-27 (issue 1292). Root cause of the move: #1213 (an E component on a
+# material interface takes the mean eps and sigma of its four cells). On this fixture the
+# isolated TM010 went 9.15024 -> 8.98854 GHz with #1213 (Leg A -1.932 -> -3.665 %) and to
+# 8.97072 GHz with #1012 (-3.856 %), all CPU.
 #
-#   configuration axes sampled on main, each moved one at a time from the base build:
-#     mesh          h/3, h/4 (this gate), h/5, h/6
-#     domain        +0, +20/+20/+10 cells, +40/+40/+20 cells
-#     unfed source  (0.31L, -0.27W) -> (0.68L, +0.19W)          0.003 pp
-#     cpml_layers   8 -> 12                                     0.072 pp
-#     threads       192 / 8 / 4      raw probe series BIT-IDENTICAL, max|diff| = 0.0
-#     x64 flag      JAX_ENABLE_X64=1                           <0.001 pp — COEFFICIENTS
-#                   only; the fields stayed float32, so this does NOT sample the field
-#                   carry dtype
-#   both SECOND steps are sub-linear (domain +20 -> -0.33 pp, a further +20 -> -0.19 pp;
-#   mesh h/4->h/5 -> +0.607 pp, h/5->h/6 -> +0.204 pp), so the sampled interval is a
-#   measured range, not an extrapolated one.
+# Witness: openEMS, on a whole-cell redraw of this board (patch 8.2635 x 9.8375 mm = the
+# solver patch here at h/4, the same h and eps_r) and its own five-rung ladder,
+# converges to 9.1185 GHz (fit 9.118496, band 9.1163-9.1199; bk-squared/rfx-archive
+# rfx/records/20260927-1292-openems-patch/, commit 512e71c). rfx on the same redraw
+# (rfx/records/20260927-1292-locked-results/, R3):
+#   N = h/dx        4        6        8        10       12       16
+#   current tree    8.970567 9.021659 9.046481 9.061211 9.070981 9.083055 GHz
+#     vs openEMS    -1.62    -1.06    -0.79    -0.63    -0.52    -0.39 %
+#   tree before     9.151977 9.155298 9.153505 9.150994 9.148786 9.144779 GHz
+#   #1213 (cd237692) +0.37   +0.40    +0.38    +0.36    +0.33    +0.29 %
+# The current tree converges to 9.116699 GHz (six-rung fit, first order, p = 1.06),
+# -0.020 % from the openEMS limit. The tree before #1213 reads 9.151-9.155 GHz at
+# N = 4-10, 0.36-0.40 % above it, and falls to 9.1448 GHz at N = 16. At this lock's
+# N = 4 the current tree reads 1.6 % below the external value.
 #
-#   measured endpoints: -7.09 % (h/3 mesh with domain +20/+20/+10) and -5.24 % (h/6
-#   mesh) -> midpoint -6.16, half-range 0.93. Single-probe extractor spread across the
-#   ten probes of this fixture's own unfed run: 0.188 % (the committed extractor is the
-#   multi-probe joint fit, whose own window/band freedom is ~0.03 pp; the single-probe
-#   figure is carried because it is the conservative end of a measured axis).
-#   The constants below round each of those two terms UP by 0.01 pp. That rounding is
-#   the only slack anywhere in this window.
+# The window is centred on the current tree's value, -3.856 % (CPU, -3.855632), and its
+# half-width follows the construction documented below, re-measured on the current tree
+# (unfed arm, each configuration moved one axis at a time from the base build):
+#   h/4 base -3.8556 | domain +20/+20/+10 -3.8536 | domain +40/+40/+20 -3.8515 |
+#   source (0.68L, +0.19W) -3.8554 | cpml_layers 12 -3.8514 | h/5 -3.8802 |
+#   h/6 -5.3949 | h/3 -5.4795 | h/3 with domain +20/+20/+10 -5.4771
+#   configuration half-range 0.81403 (h/3 against cpml 12); single-probe extractor
+#   spread on this fixture's own unfed record 0.0132 %.
+# Each term rounds UP (0.815 + 0.014), with no other slack: window [-4.685, -3.027] %.
+# The h/3 and h/6 samples sit 1.5-1.6 pp from h/4: the patch is off-lattice, so each
+# mesh rasterizes it differently, and the node-count Balanis anchor moves with it.
+# Threads and the x64 flag were not re-sampled (2026-08-30: bit-identical raw series,
+# < 0.001 pp). Configurations ran on GPU at 1d10ee45; the fixture value is CPU.
 #
-#   ONE MEASURED CONFIGURATION IS EXCLUDED, and named rather than dropped: the W x 1.06
-#   single-dimension identity witness settles to only -38.5 dB and so does not clear this
-#   file's own -40 dB bar. Its qualitative content survives — stretching only W moves
-#   TM001 by -4.89 % and TM010 by -0.24 %, a 20x separation, which is what makes the
-#   parity labels above independently checkable — but its frequency is not
-#   envelope-quotable, so it is not in the range that sets the width.
-#
-#   NOT sampled — the envelope is CPU-lane pinned: the GPU platform and the field carry
-#   dtype. ``scripts/vessl_gpu_suite.yaml`` is the run that would extend it.
-#
-# Discrimination: pre-#702 (6b1302b3) measures +7.430 % on identical geometry, mesh,
-# domain and extractor — only the tree differs.
-#
-# RE-PINNED 2026-09-07 for #931, from VESSL 369367259237 (this fixture, 200
-# periods, both arms settled at -58.3 dB). Centre -6.17 -> -1.886.
-#
-# WHY THE CENTRE MOVED, and why the WIDTH did not. The board this window was
-# built on reserved a vacuum CELL for the ground foil, and rfx's #702 re-sample
-# silently filled it with laminate, so the mesh cavity was 983.75 um while the
-# Balanis anchor was evaluated at the declared h = H_SUB = 787 um. Leg A was
-# measuring, among other things, that 25 % thickness disagreement. The
-# ownership contract deletes the re-sample, this fixture is redrawn with each
-# foil ON the laminate face it bounds, and the mesh cavity is now four cells of
-# laminate — 787.000 um, the declared value, asserted at build time. With the
-# mesh and the model finally agreeing on h, what is left is much closer to the
-# cavity MODEL's own error, which this module's refinement ladder already
-# plateaus near -4.4 %.
-#
-#   measured at 120 periods  -1.871 %   (record ended at -35.43 dB, under bar)
-#   measured at 200 periods  -1.886 %   (settled at -58.30 dB)  <- the pin
-#
-# The 0.015 pp between them is the whole effect of the longer record, so the
-# frequency was already converged and the settling fix did not move the physics.
-#
-# THE WIDTH IS CARRIED FORWARD, NOT RE-MEASURED, and that is a disclosure
-# rather than a claim: 0.935 pp of it is the mesh/domain/cpml ladder sampled on
-# the PRE-REDRAW board (h/3..h/6, +0/+20/+40 cells, cpml 8->12) and 0.190 pp is
-# the extractor spread. Nothing about the redraw makes that ladder wider — the
-# cavity is now exactly four cells at every refinement instead of four plus a
-# vacuum one — so carrying it is conservative. Re-measuring it on the redrawn
-# board is the follow-up, and it can only narrow this window.
-LEG_A_CENTRE_PCT = -1.886
-LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor,
-#                                 both measured on the pre-redraw board
+# History (2026-08-30 and the #931 re-pin of 2026-09-07; kept for its reasoning, its
+# numbers superseded above): centre -6.17 %, then -1.886 % after the #931 redraw put
+# both foils on the laminate faces (VESSL 369367259237, 200 periods); half-width 1.125 =
+# 0.935 configuration (h/3..h/6, +0/+20/+40 cells, cpml 8 -> 12, measured on the
+# pre-redraw board) + 0.190 extractor. Discrimination then: pre-#702 (6b1302b3)
+# measured +7.430 % on identical inputs.
+LEG_A_CENTRE_PCT = -3.856       # the current tree's value, -3.855632 % (CPU)
+LEG_A_HALF_PCT = 0.829          # = 0.815 configuration + 0.014 extractor
+#   configuration half-range (-5.479508 .. -3.851450) = 0.81403 -> 0.815;
+#   single-probe extractor spread 0.01319 -> 0.014. Window [-4.685, -3.027] %.
 
 # ------------------------------------------------------------- Leg B window --
 # f_TM010(fed) / f_TM010(unfed) - 1, in percent. The edge-feed loading term.
@@ -265,9 +241,10 @@ LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor,
 #   #1178 (e7f7e027)  -7.067 -> -7.216 %  (its first parent 77f7094c reads -7.067 %)
 #   #1213 (76f68f9f)  -7.216 -> -7.492 %
 #   #1012 (f7b3270d)  -7.493 -> -7.635 %
-# #1178 continued the ground plane through the absorbers: on this grid its realized
-# footprint went from x 8..159 / y 8..100 (stopping at every absorber face) to x 0..168 /
-# y 0..109. The feed trace still ends at the -x absorber face (x 8..74 before and after).
+# Since #1178 (e7f7e027) the ground plane under the stub continues through the absorbers
+# while the feed trace still ends at the −x absorber face; the pull moved −7.067 → −7.216 %,
+# then #1213 −0.276 pp and #1012 −0.142 pp. Realized footprints on this grid (pad 8): ground
+# x 0..168 / y 0..109, against x 8..159 / y 8..100 before #1178; feed trace x 8..74 on both.
 #
 # The window is centred on the current tree's value and its half-width follows the
 # construction documented below, re-measured on the current tree (fed/unfed pairs, each
@@ -289,16 +266,16 @@ LEG_A_HALF_PCT = 1.125          # = 0.935 configuration + 0.190 extractor,
 #
 #   THIS LEG WAS NOT BUILT TO DISCRIMINATE #702: pre-#702 measured -7.005 %, inside the
 #   2026-08-30 window.
-#   Leg B locks the FEED MODEL. Measured 2026-08-30, it was the reactive load of a
-#   13.18 mm stub: the feed trace ends at the -x absorber face, the MSL port sheet sits
-#   5 mm inside that end, and the fed line was the stub-loaded TM010 (closed-form oracle
-#   8.196 vs measured 8.177 GHz, +0.23 %). At that time the ground plane also stopped at
-#   the absorber face; since #1178 it continues through the absorber under the stub's
-#   end. FEED_LEN, PORT_MARGIN and DOM_X are part of the locked configuration: one node
-#   of stub length moved this leg by +0.85 pp, and the pull ran about -2.2 %/mm of stub
-#   (2026-08-30). With the stub held fixed the pull SHRANK with inset depth (-6.74 ->
-#   -3.63 % at 2.4 mm) — an inset-intrinsic matching term exists but is not what this
-#   leg pins.
+#   Leg B locks the FEED MODEL, which on this fixture is (measured 2026-08-30)
+#   the reactive load of a 13.18 mm OPEN STUB: the feed trace ends at the absorber face,
+#   the MSL port sheet sits 5 mm inside that end, and the fed 8.16 GHz line is the
+#   stub-loaded TM010 (closed-form oracle 8.196 vs measured 8.177 GHz, +0.23 %). So
+#   FEED_LEN, PORT_MARGIN and DOM_X are part of the locked configuration: one node of
+#   stub length moves this leg by +0.85 pp, and the pull runs about -2.2 %/mm of stub.
+#   With the stub held fixed the pull SHRINKS with inset depth (-6.74 -> -3.63 % at
+#   2.4 mm) — an inset-intrinsic matching term exists but is not what this leg pins.
+#   Since #1178 the ground plane continues through the absorbers (realized ground
+#   x 0..168 / y 0..109, against x 8..159 / y 8..100 before; feed trace x 8..74 on both).
 LEG_B_CENTRE_PCT = -7.635       # the current tree's h/4 value, -7.635336 % (CPU)
 LEG_B_HALF_PCT = 0.488          # = 0.474 configuration + 0.014 extractor
 #   configuration half-range (-7.636614 .. -6.689898) = 0.47336 -> 0.474;
@@ -810,15 +787,14 @@ def test_patch_mode_is_in_the_patch_band_and_dominates_the_feed_band(arms):
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1281: the isolated patch's TM010 fell to 8.97-8.99 GHz, -3.67 to -3.86 % from the "
-           "realized-raster Balanis 9.3305 GHz, below the measured [-3.011, -0.761] % window")
 def test_leg_a_isolated_patch_discretization_bias(arms):
     """Leg A — the SIGNED offset of the isolated (unfed) rfx patch from Balanis on its
-    own realized raster (mostly the cavity model's own error at this geometry, see the
-    module docstring). This is the leg that discriminates #702: the pre-#702 tree
-    measures +7.430 % on identical inputs, 12.5 pp outside this window."""
+    own realized raster. Balanis is context only; the reference for this patch's TM010 is
+    the openEMS ladder quoted in the Leg A block above (converged 9.1185 GHz).
+
+    Window re-derived 2026-09-27 (issue 1292) around the current tree's value; root cause
+    #1213. The tree before #1213 reads -1.932 % and the pre-#702 tree +7.430 %, both
+    outside it."""
     arm = arms["unfed"]
     f_ghz = _tm010(arm)["f_ghz"]
     bias_pct = 100.0 * (f_ghz / arm["anchor"] - 1.0)
@@ -830,14 +806,13 @@ def test_leg_a_isolated_patch_discretization_bias(arms):
     assert lo <= bias_pct <= hi, (
         f"isolated-patch discretization bias {bias_pct:+.3f} % is outside the measured "
         f"signed envelope [{lo:+.3f}, {hi:+.3f}] % ({LEG_A_CENTRE_PCT} +- "
-        f"{LEG_A_HALF_PCT} pp). This is a REGRESSION LOCK, not an accuracy claim: the "
-        "offset is EXPECTED to be negative and about 6 % (mostly Balanis's own error here, "
-        "~-2 pp of it mesh), and a positive value near "
-        "+7.4 % is the pre-#702 signature (the ground sheet's own cell assembled as "
-        "vacuum, diluting the cavity permittivity). Do not widen this window to turn a "
-        "red run green without a written root cause — its width is 0.935 pp of measured "
-        "configuration spread plus 0.190 pp of measured extractor spread, with no safety "
-        f"factor. TM010 {f_ghz:.5f} GHz, anchor {arm['anchor']:.4f} GHz, raster "
+        f"{LEG_A_HALF_PCT} pp). This is a REGRESSION LOCK against a node-count Balanis "
+        "anchor, not an accuracy claim: on the 2026-09-27 tree the offset is about -3.9 %, "
+        "about -1.9 % before #1213, and a positive value near +7.4 % is the pre-#702 "
+        "signature (the ground sheet's own cell assembled as vacuum). Do not widen this "
+        "window to turn a red run green without a written root cause — its width is "
+        "0.815 pp of measured configuration spread plus 0.014 pp of measured extractor "
+        f"spread, with no safety factor. TM010 {f_ghz:.5f} GHz, anchor {arm['anchor']:.4f} GHz, raster "
         f"{arm['raster']}, settling {arm['settling_db']:.2f} dB."
     )
 
@@ -866,10 +841,9 @@ def test_leg_b_edge_feed_pull(arms):
         f"[{lo:+.3f}, {hi:+.3f}] % ({LEG_B_CENTRE_PCT} +- {LEG_B_HALF_PCT} pp, from "
         "measured fed/unfed pairs plus the measured extractor spread). The pull is "
         "EXPECTED to be negative, about 7.6 % on the 2026-09-27 tree: the fixture's feed "
-        "trace is a 13.18 mm stub that ends at the -x absorber face (the port sheet sits "
-        "5 mm inside; since #1178 the ground under its end continues through the "
-        "absorber), and its reactive load pulls TM010 DOWN — about -2.2 % per mm of stub, "
-        "+0.85 pp per node (measured 2026-08-30). "
+        "trace is a 13.18 mm open stub (it ends at the absorber face; the port sheet sits "
+        "5 mm inside) whose reactive load pulls TM010 DOWN — about -2.2 % per mm of stub, "
+        "+0.85 pp per node. Since #1178 the ground plane continues through the absorbers. "
         "A change here points at the feed model — FEED_LEN / PORT_MARGIN / DOM_X, the MSL "
         "port placement, the feed-trace rasterization — "
         f"not at the sheet-cell assembly Leg A locks. fed {f_fed:.5f} GHz (settling "
