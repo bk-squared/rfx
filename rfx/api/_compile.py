@@ -29,6 +29,7 @@ from rfx.geometry.csg import Box, _grid_coords
 from rfx.geometry._pole_keying import _accumulate_pole_mask, _spec_from_pole_masks
 from rfx.geometry.rasterize_grid import (
     GridCoords,
+    _material_cell_mask,
     cell_sizes_from_uniform_grid,
     centres_from_uniform_grid,
     assert_declared_span_is_filled,
@@ -312,7 +313,7 @@ class _CompileMixin:
 
         for entry in self._geometry:
             mat = self._resolve_material(entry.material_name)
-            mask = entry.shape.mask(grid)
+            mask = _material_cell_mask(entry.shape, _coords, _centres, grid=grid)
 
             if mat.sigma >= self._PEC_SIGMA_THRESHOLD:
                 solved_shape = continued_conductor_shape(
@@ -368,7 +369,7 @@ class _CompileMixin:
             pole_mask = mask
             if mat.debye_poles or mat.lorentz_poles:
                 # Poles retain their declared occupancy, before continuation.
-                pole_mask = entry.shape.mask(grid)
+                pole_mask = _material_cell_mask(entry.shape, _coords, _centres, grid=grid)
                 if mat.sigma >= self._PEC_SIGMA_THRESHOLD and cells is not None:
                     from rfx.geometry.rasterize_grid import pec_volume_cell_mask
                     pole_mask = pec_volume_cell_mask(entry.shape, _centres)

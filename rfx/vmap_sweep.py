@@ -40,7 +40,10 @@ import numpy as np
 from rfx.core.yee import (MaterialArrays, cell_component_e_coeffs,
                           component_e_materials, init_state,
                           update_e, update_h, EPS_0)
-from rfx.geometry.rasterize_grid import extend_cpml_pad_materials
+from rfx.geometry.rasterize_grid import (
+    _material_cell_mask, centres_from_uniform_grid, coords_from_uniform_grid,
+    extend_cpml_pad_materials,
+)
 from rfx.materials.thin_conductor import apply_thin_conductor
 from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
 from rfx.simulation import (
@@ -376,9 +379,11 @@ def _build_batched_materials(
         # Build a mask for the specific material
         sim._resolve_material(mat_name)
         mask = jnp.zeros(grid.shape, dtype=jnp.bool_)
+        coords = coords_from_uniform_grid(grid)
+        centres = centres_from_uniform_grid(grid)
         for entry in sim._geometry:
             if entry.material_name == mat_name:
-                mask = mask | entry.shape.mask(grid)
+                mask = mask | _material_cell_mask(entry.shape, coords, centres, grid=grid)
 
         # For each batch: where mask, use param_values[b]; else keep base.
         # The two unswept fields still have to be broadcast to the batch

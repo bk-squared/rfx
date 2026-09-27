@@ -4,41 +4,44 @@ sidebar:
   order: 90
 ---
 
-This guide helps users coming from **Meep** or **OpenEMS** translate their
-workflows into rfx. rfx follows the same Yee-cell FDTD physics, so the core
-concepts are familiar -- the API is different. Before translating a production
-model, check the [Recommended Configuration](/rfx/validation/recommended-configuration/)
-and [Support Boundaries](/rfx/api/support-boundaries/) for the exact mesh,
-boundary, source or port, and observable restrictions.
+This page helps you move a model from **Meep** or **openEMS** to rfx. All
+three are Yee-cell FDTD solvers, so the physics is familiar; the API is
+different. It maps the concepts, translates three typical scripts and lists
+the differences that most often catch newcomers.
 
----
+Before you port a production model, check that its mesh, boundaries, ports
+and observables are inside the
+[Recommended Configuration](/rfx/validation/recommended-configuration/) and
+[Support Boundaries](/rfx/api/support-boundaries/).
 
-## Concept Mapping
+## Concept mapping
 
-| Concept | Meep | OpenEMS | rfx |
+| Concept | Meep | openEMS | rfx |
 |---------|------|---------|-----|
-| Grid setup | `Simulation(resolution=N)` | `InitCSX()` + `InitFDTD()` | `Simulation(freq_max=...)` or `Simulation.auto(...)` |
-| Cell size | `resolution` (cells/unit) | `SetDeltaUnit(1e-3)` | `dx=` in meters (auto-calculated from `freq_max`) |
-| Source | `EigenModeSource`, `Source` | `AddExcitation` | `add_port()`, `add_source()` |
-| S-parameters | `add_flux()` + post-processing | `CalcPort` | port-family-specific: lumped/wire `run(compute_s_params=True)`, MSL `compute_msl_s_matrix()`, waveguide `compute_waveguide_s_matrix()` |
-| Resonance finding | `harminv(...)` | Manual FFT | `result.find_resonances()` |
-| Auto-stop | `stop_when_fields_decayed` | `EndCriteria` | `run(until_decay=1e-3)` on the uniform and non-uniform CPML/UPML runners; use fixed `n_steps` for a closed PEC cavity |
-| Materials | `Medium(epsilon=...)` | `AddMaterial` | `sim.add(shape, material="fr4")` or `sim.add_material(...)` |
-| PEC | `PerfectElectricalConductor` | `AddMetal` | `sim.add(shape, material="pec")` for a **volume**; `sim.add_thin_conductor(...)` (or a zero-thickness `Box`) for a **sheet** — openEMS `AddMetal` on a zero-thickness primitive is a sheet, on a solid it is a volume |
-| PML / ABC | `PML(thickness)` | `AddPML` | `boundary="cpml"` |
+| Grid setup | `Simulation(resolution=N)` | `InitCSX()` + `InitFDTD()` | `Simulation(freq_max=..., domain=...)` or `Simulation.auto(...)` |
+| Cell size | `resolution` (cells per unit length) | `SetDeltaUnit(1e-3)` and mesh lines | `dx=` in metres; derived from `freq_max` if omitted |
+| Source | `Source`, `EigenModeSource` | `AddExcitation` | `add_source()` (no impedance), `add_port()` and the other port types |
+| S-parameters | `add_flux()` + post-processing | `CalcPort` | one calculator per port family: lumped/wire `run(compute_s_params=True)`, microstrip `compute_msl_s_matrix()`, waveguide `compute_waveguide_s_matrix()`, coax `compute_coaxial_line_reflection()` / `compute_coaxial_two_port()` |
+| Resonances | `harminv(...)` | manual FFT | `result.find_resonances()` |
+| Auto-stop | `stop_when_fields_decayed` | `EndCriteria` | `run(until_decay=1e-3)` for open problems; a fixed `n_steps` for a closed PEC cavity |
+| Materials | `Medium(epsilon=...)` | `AddMaterial` | `sim.add_material(...)`, or a library name such as `"fr4"` |
+| Metal | `perfect_electric_conductor` | `AddMetal` | `sim.add(shape, material="pec")` for a **volume**; `sim.add_thin_conductor(...)` or a zero-thickness `Box` for a **sheet** |
+| Absorber | `PML(thickness)` | `AddPML` | `boundary="cpml"`, `cpml_layers=` |
 | Dispersive media | `LorentzianSusceptibility` | `AddLorentzMaterial` | `DebyePole`, `LorentzPole`, `drude_pole()` |
-| Differentiable | adjoint-solver workflows for selected design-region objectives | not native | `jax.grad(loss_fn)(params)` on supported JAX-traced workflows |
-| Inverse design | `meep.adjoint` / `OptimizationProblem` | not native | `rfx.optimize(sim, design_region, objective)` |
-| Non-uniform mesh | Not native | `SmoothMeshLines` | limited graded-z `dz_profile` / `auto_configure()` workflows |
+| Gradients | adjoint solver for design-region objectives | not native | `jax.grad` through the solver |
+| Inverse design | `meep.adjoint.OptimizationProblem` | not native | `rfx.optimize(sim, region, objective)` |
+| Non-uniform mesh | not native | `SmoothMeshLines` | `dz_profile=` (and `dx_profile`/`dy_profile`) with the limits in [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) |
 
----
+An openEMS `AddMetal` box with one zero-length side is a sheet, and a solid box
+is a volume. rfx follows the same split: the declaration decides it. See
+[Core Concepts](/rfx/guide/concepts/).
 
-## Quick Translation
+## Translating scripts
 
-### Meep: Rectangular Cavity Resonance
+### Meep: cavity resonance
 
 ```text
-# Meep (for comparison only — not part of the rfx sequence)
+# Meep (for comparison only)
 import meep as mp
 
 sim = mp.Simulation(
@@ -51,8 +54,7 @@ sim.sources = [mp.Source(
     component=mp.Ez,
     center=mp.Vector3(0.03, 0.03, 0.02),
 )]
-sim.run(mp.at_beginning(mp.output_epsilon),
-        until_after_sources=mp.stop_when_fields_decayed(50, mp.Ez, mp.Vector3(), 1e-6))
+sim.run(until_after_sources=mp.stop_when_fields_decayed(50, mp.Ez, mp.Vector3(), 1e-6))
 ```
 
 ```python
@@ -61,82 +63,81 @@ from rfx import Simulation
 
 sim = Simulation(freq_max=5e9, domain=(0.1, 0.1, 0.05), boundary="pec")
 sim.add_source(position=(0.03, 0.03, 0.02), component="ez",
-                amplitude_kind="current")
+               amplitude_kind="current")
 sim.add_probe(position=(0.06, 0.06, 0.02), component="ez")
-result = sim.run(n_steps=20_000)
-modes = result.find_resonances()   # list of HarminvMode (fields: freq, decay, Q, ...)
+result = sim.run(n_steps=5000)
+modes = result.find_resonances()   # list of modes with .freq, .Q, ...
+print([f"{m.freq / 1e9:.3f} GHz" for m in modes[:3]])
 ```
 
-A closed PEC cavity has no boundary loss, so `until_decay` is not an
-appropriate stop condition. Its fallback monitor can cross a field null before
-the modal record is long enough. Choose a fixed window for the required
-frequency resolution, repeat with a longer window, and retain only modes that
-remain stable in frequency. The physical Q is infinite in this idealized model,
-so a finite-window Q is not meaningful. Add realistic material, conductor, or
-load loss—or use an open boundary where radiation loss is part of the model—
-before interpreting Q.
+Coordinates are in metres and `freq_max` in hertz; there are no normalized
+units. With no `dx`, rfx picks a cell size from `freq_max`, and with no
+waveform the source is a `GaussianPulse` centred at `freq_max / 2`.
 
-### OpenEMS: Waveguide S-Parameters
+A closed PEC box has no loss, so its field never decays and `until_decay` is
+the wrong stop. Choose a fixed record long enough for the frequency resolution
+you need, repeat with a longer one, and keep only the modes whose frequency
+does not move. The Q of a lossless cavity is infinite; add material or
+conductor loss before you read a Q.
+
+### openEMS: waveguide S-parameters
 
 ```matlab
-% OpenEMS (MATLAB)
+% openEMS (MATLAB, for comparison only)
 CSX = InitCSX();
 FDTD = InitFDTD('EndCriteria', 1e-5);
-CSX = AddMetal(CSX, 'PEC');
-CSX = AddBox(CSX, 'PEC', 10, [0 0 0], [40 20 10]);
 [CSX, port{1}] = AddRectWaveGuidePort(CSX, 0, 1, ...);
-RunOpenEMS(Sim_Path, Sim_CSX, '--engine=multithreaded');
+RunOpenEMS(Sim_Path, Sim_CSX);
 port = calcPort(port, Sim_Path, freq);
 s11 = port{1}.uf.ref ./ port{1}.uf.inc;
 ```
 
 ```python
-# rfx equivalent (waveguide modal-port family)
+# rfx equivalent
 import jax.numpy as jnp
 from rfx import Simulation
 
-# WR-90 rectangular guide. The guide walls are implied by the modal port
-# and the transverse (y, z) domain extents -- no explicit PEC fill is needed.
-freqs = jnp.linspace(8e9, 11.5e9, 8)   # above the ~6.56 GHz TE10 cutoff
+# WR-90: the transverse domain is the guide cross-section, and the waveguide
+# calculator bounds it with PEC walls, so no metal box is needed.
+freqs = jnp.linspace(8e9, 11.5e9, 8)   # above the 6.56 GHz TE10 cutoff
 sim = Simulation(freq_max=12e9, domain=(0.10, 0.02286, 0.01016),
-                 dx=2e-3, boundary="cpml", cpml_layers=8)
+                 dx=2e-3, boundary="cpml", cpml_layers=16)
 sim.add_waveguide_port(0.024, direction="+x", freqs=freqs, f0=9.75e9, name="in")
 sim.add_waveguide_port(0.076, direction="-x", freqs=freqs, f0=9.75e9, name="out")
 
-# Modal V/I decomposition (the default, normalize=False). For dispersion-
-# corrected transmission magnitude, pass normalize="flux".
-result = sim.compute_waveguide_s_matrix(num_periods=30, normalize=False)
-s11 = result.s_params[0, 0, :]   # s_params shape: (n_ports, n_ports, n_freqs)
+result = sim.compute_waveguide_s_matrix(num_periods=45)
+s11 = result.s_params[0, 0, :]   # shape (n_ports, n_ports, n_freqs)
 ```
 
-Use the waveguide calculation only for the rectangular-guide modes, frequency
-ranges, normalization, reference planes, and port placement listed in
-[Support Boundaries](/rfx/api/support-boundaries/) and the
-[S-parameter guide](/rfx/guide/probes-sparams/). Do not treat
-`run(compute_s_params=True)` as a universal OpenEMS `CalcPort` equivalent; it
-is the lumped/wire `add_port(...)` calculator only.
+The mesh here is coarse so the example runs quickly. The calculator's
+warnings name the absorber depth and record length it needs; 16 layers and 45
+periods satisfy them here. `normalize=False` (the default) is the modal V/I
+decomposition; `normalize="flux"` gives a power-normalized transmission
+magnitude. There is no single `CalcPort`
+equivalent: `run(compute_s_params=True)` is only for lumped and wire
+`add_port(...)` ports. See [Probes and S-Parameters](/rfx/guide/probes-sparams/).
 
-### Meep Adjoint Solver -> rfx Inverse Design
+### Meep adjoint: inverse design
 
 ```text
-# Meep (for comparison only — uses the meep.adjoint module)
+# Meep (for comparison only)
 opt = mpa.OptimizationProblem(...)
 opt.update_design([design_params])
 f, g = opt()  # forward + adjoint
 ```
 
 ```python
-# rfx: gradient-based inverse design (optimize() runs jax.grad through the
-# differentiable sim.forward() internally -- no adjoint code to hand-write)
+# rfx: optimize() runs jax.grad through the solver; no adjoint code to write
 import jax.numpy as jnp
 from rfx import Simulation, Box, DesignRegion, GaussianPulse
 from rfx.optimize import optimize
 from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
 
-sim = Simulation(freq_max=5e9, domain=(0.05, 0.05, 0.025), dx=2.5e-3, boundary="pec")
+sim = Simulation(freq_max=4e9, domain=(0.05, 0.05, 0.025), dx=2.5e-3,
+                 boundary="pec")
 sim.add_material("slab_init", eps_r=4.0)
 sim.add(Box((0.015, 0.015, 0.005), (0.035, 0.035, 0.020)), material="slab_init")
-sim.add_port((0.025, 0.025, 0.0125), "ez",
+sim.add_port((0.025, 0.025, 0.0025), "ez",   # in the air below the slab
              waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
 
 region = DesignRegion(
@@ -146,92 +147,59 @@ region = DesignRegion(
 )
 objective = minimize_s11_at_freq_wave_decomp(target_freq=3e9, port_idx=0)
 
-# port_s11_freqs is required by this objective (it accumulates per-port V/I
-# DFTs at those frequencies inside the JIT scan body).
-result = optimize(sim, region, objective,
-                  n_iters=50, lr=0.01,
-                  port_s11_freqs=jnp.asarray([3e9]))
-# result.eps_design (optimized permittivity), result.loss_history (per-iter)
+# This objective needs the port DFT at the target frequency.
+opt = optimize(sim, region, objective, n_iters=3, lr=0.01, n_steps=400,
+               port_s11_freqs=jnp.asarray([3e9]), verbose=False)
+print(opt.loss_history)   # opt.eps_design holds the optimized permittivity
 ```
 
----
+Three iterations on a coarse mesh keep the example short, and preflight warns
+that 2.5 mm cells are at the edge of phase accuracy in the slab. A real design
+needs a finer mesh, many more iterations and a converged forward run to check
+the final result. See
+[Inverse Design](/rfx/guide/inverse-design/).
 
-## What rfx Does Differently
+## What is different in rfx
 
-### JAX execution on CPU or GPU
+- **Everything runs in Python through JAX.** There is no solver binary and no
+  file exchange. The same script runs on CPU, or on an NVIDIA GPU with a
+  CUDA-enabled JAX build.
+- **Gradients come from the solver itself.** Supported workflows let
+  `jax.grad` differentiate through the time stepping, so an ordinary Python
+  loss function can drive an optimizer. Check the final design's RF result
+  with a converged run; the loss is only a proxy.
+- **One `Simulation` object holds the model.** Add materials, shapes, sources,
+  ports and observables to it, then call `run()` or a port calculator. `run()`
+  computes lumped and wire port S-parameters automatically; other port
+  families use their own calculators.
+- **Preflight checks the setup before you spend time on a solve.** Read
+  `sim.preflight()`. `run()` repeats it and prints the warnings.
+- **Snapshots.** `run(snapshot=SnapshotSpec(...))` records field frames on
+  the uniform grid, with a fixed `n_steps` or with `until_decay`. The frames
+  are `interval` steps apart (default 10); read their times from
+  `result.snapshot_axes`. A graded mesh, multi-device runs and the ADI solver
+  do not record snapshots and raise if you ask for them.
+- **A built-in material library.** `fr4`, `rogers4003c`, `rogers4350b`,
+  `rt_duroid_5880`, `alumina`, `ptfe`, `silicon`, `copper`, `aluminum`, `pec`,
+  `air`, `vacuum` and `water_20c` work by name. Their values are nominal: use
+  your laminate's data for a real design.
+- **Automatic defaults.** Without `dx`, the cell size comes from `freq_max`.
+  The CPML is 16 layers unless you set `cpml_layers`.
+  `Simulation.auto(freq_range=(f_min, f_max))` proposes a domain and mesh from
+  a band.
 
-rfx executes through JAX without a separate solver binary or file exchange with
-a C++ engine. The base installation uses the standard CPU JAX packages; install
-a CUDA-enabled JAX build to run supported calculations on an NVIDIA GPU. The
-standard fixed-step uniform runner uses a JIT-compiled `jax.lax.scan` for its
-main time-stepping loop. Decay-controlled and non-uniform runners use different
-loop structures. The README throughput number is a hardware-specific RTX 4090
-measurement, not a portable performance guarantee.
+## Common gotchas
 
-### JAX-Native Differentiation
-
-Supported rfx optimization workflows are written so `jax.grad` can propagate
-through the implemented discrete time-stepping, sources, probes, and objective
-post-processing. This enables gradient-based inverse design from ordinary Python
-loss functions. Validate the final reported RF observable with the applicable
-convergence study and analytic or independent reference.
-
-### Declarative Builder API
-
-rfx uses a single `Simulation` object that accumulates geometry, materials,
-sources, and probes. `run()` computes S-parameters automatically when
-lumped/wire `add_port(...)` entries exist (`compute_s_params` defaults to true
-for that family). `SnapshotSpec` records interval snapshots only on the standard
-fixed-step uniform runner. It is ignored by the `until_decay` Python loop, and
-non-uniform, distributed, or subgrid paths can warn that it was dropped; ADI
-rejects it. Check preflight and confirm `result.snapshots` before relying on an
-archive. Waveguide, MSL, and coaxial ports use their documented family-specific
-calculators; a Floquet port has no high-level S-parameter result. Resonances are
-extracted on demand from the returned `Result` with
-`result.find_resonances()`.
-
-### Built-in Material Library
-
-A built-in material library covers common RF substrates and conductors
-(`fr4`, `rogers4003c`, `rogers4350b`, `rt_duroid_5880`, `alumina`, `ptfe`,
-`silicon`, `copper`, `aluminum`, `pec`, `air`, `vacuum`, `water_20c`) by name,
-so you do not have to look up permittivity tables for standard materials.
-
-### Auto-Configuration
-
-When you do not pass `dx`, rfx derives the cell size from `freq_max` (and the
-time step from the CFL limit) at run time, and point sources default to a
-`GaussianPulse` centered at `freq_max/2`. CPML uses a 16-layer pad by
-default (`cpml_layers=16`). For most antenna and waveguide problems you only
-need `freq_max` and `domain`; `Simulation.auto(freq_range=(f_min, f_max))`
-additionally proposes a domain and mesh from a target band.
-
-### Limited Graded-Z Mesh for Thin Substrates
-
-For PCB and patch-style problems, graded z meshing via the `dz_profile=`
-constructor argument or `auto_configure()` can reduce cell count when the thin
-feature is primarily along z. Before using it, check the permitted source,
-port, and observable combinations in
-[Support Boundaries](/rfx/api/support-boundaries/), then compare the final
-observable with a uniform-grid refinement or independent RF reference as
-applicable. See [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) for the exact
-mesh restrictions.
-
----
-
-## Common Gotchas
-
-| Issue | Solution |
+| Gotcha | What to do |
 |-------|----------|
-| Coordinates are in meters, not mm or cell units | All positions use SI meters |
-| `freq_max` is in Hz, not normalized frequency | Use `freq_max=5e9` for 5 GHz |
-| PML is outside the domain you specify | `domain=` is the physical region; CPML pads are added automatically |
-| `run()` returns a `Result` object | Access fields via `result.s_params`, `result.time_series`, `result.find_resonances()` |
-| No mesh file export | rfx solves in-process; the solved `Grid` is on `result.grid`, and `rfx.plan_simulation_mesh(sim)` audits the mesh before a run |
+| Positions are in metres, not millimetres or cells | Write `0.012`, not `12` |
+| `freq_max` is in hertz, not normalized frequency | `freq_max=5e9` for 5 GHz |
+| The absorber cells are added outside `domain=` | `domain=` is the region you model. Geometry drawn to a face continues into the absorber, as a board running off the edge should |
+| `run()` returns a `Result`, not files | Read `result.time_series`, `result.s_params`, `result.find_resonances()` |
+| There is no mesh file | The solved grid is `result.grid`; `rfx.plan_simulation_mesh(sim)` inspects the mesh before a run |
+| An argument a path does not support raises | `run()` refuses, for example, `until_decay` on a closed graded mesh before the first step; the message says what to change |
 
----
+## Next
 
-## Further Reading
-
-[Quick Start](/rfx/guide/quickstart/) runs the first simulation with the current
-high-level API.
+[Quick Start](/rfx/guide/quickstart/) runs a first simulation, and
+[Core Concepts](/rfx/guide/concepts/) explains the model behind it.

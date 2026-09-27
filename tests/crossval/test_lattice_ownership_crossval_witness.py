@@ -169,19 +169,12 @@ _ALLOWED = {
     # --- prose only: each names the retired flag to say what it USED to do
     # and why the committed number moves. None imports or re-derives anything;
     # all read realized_pec_edge_masks / realized_wall_planes.
-    "validation/crossval/15_patch_antenna_rt5880.py":
-        "docstring history of the #740 ground patch (:65, :79, :112) and one "
-        "line at :264 recording that the PREVIOUS version OR'd the base "
-        "tangential_edge_masks with the extension; the live code calls neither",
     "tests/crossval/test_patch_canonical_farfield_e4.py":
         "one comment (:147) citing the #740 arm's -4.7% as the prediction the "
         "post-#931 measurement was checked against",
-    "tests/crossval/test_crossval_cv15_wall_planes.py":
-        "documents the #740 mechanism as superseded history and skips on a "
-        "tree that still exposes it",
-    "tests/crossval/test_patch_mode_identification.py":
-        "resolves two frozen #740 ring-down legs by role; the old key "
-        "spelling is the fallback",
+    # 2026-09-24: the RT/Duroid 5880 patch case's script and its two old tests
+    # (the wall-plane test and the mode-identification test) left with the
+    # case, rebuilt as tests/crossval/rt5880_patch/; their rows went with them.
 }
 
 
@@ -198,19 +191,6 @@ def _scan(root: Path):
     return hits
 
 
-def _tree_is_migrated() -> bool:
-    """False while a crossval script still imports a deleted pec helper.
-
-    The crossval-C migration of ``15_patch_antenna_rt5880.py`` is the last
-    holder; until it lands the script does not even import, so this guard
-    would fire on work that is already scheduled rather than on a regression.
-    """
-    cv15 = REPO_ROOT / "validation/crossval/15_patch_antenna_rt5880.py"
-    if not cv15.exists():
-        return True
-    return "two_plane_extension_masks" not in cv15.read_text(encoding="utf-8")
-
-
 def test_no_case_re_derives_the_realization_for_itself():
     """One realized-edge function, no per-case knobs (design note §1.7).
 
@@ -220,12 +200,6 @@ def test_no_case_re_derives_the_realization_for_itself():
     reasonable. So the retired mechanisms are named and forbidden, with an
     allowlist that has to state a reason.
     """
-    if not _tree_is_migrated():
-        pytest.skip(
-            "validation/crossval/15_patch_antenna_rt5880.py still imports the "
-            "deleted two_plane_extension_masks; the crossval-C migration "
-            "(VESSL rfx-931-post-cv15) lands before this guard can "
-            "distinguish scheduled work from a regression")
     hits = _scan(REPO_ROOT / "tests/crossval")
     hits += _scan(REPO_ROOT / "validation/crossval")
     assert not hits, (

@@ -1,38 +1,47 @@
 {
   "groups": [
     {
-      "label": "Getting Started",
+      "label": "Explore",
+      "items": [
+        "rfx",
+        "rfx/gallery",
+        "rfx/gallery/boundary-reflection",
+        "rfx/gallery/dielectric-interface",
+        "rfx/gallery/cavity-standing-wave",
+        "rfx/gallery/waveguide-taper",
+        "rfx/gallery/microstrip-notch",
+        "rfx/gallery/beam-steering"
+      ]
+    },
+    {
+      "label": "Learn",
       "items": [
         "rfx/guide",
+        "rfx/guide/visual-manual",
         "rfx/guide/installation",
+        "rfx/guide/first-run",
         "rfx/guide/quickstart",
+        "rfx/guide/concepts",
+        "rfx/examples",
         "rfx/guide/first-patch"
       ]
     },
     {
-      "label": "Modeling & Setup",
+      "label": "Model & measure",
       "items": [
-        "rfx/guide/api-reference",
         "rfx/guide/materials-geometry",
         "rfx/guide/sources-ports",
         "rfx/guide/probes-sparams",
-        "rfx/guide/memory-reduction",
-        "rfx/guide/adi-solver",
-        "rfx/guide/waveguide-ports"
-      ]
-    },
-    {
-      "label": "Analysis & Validation",
-      "items": [
-        "rfx/guide/validation",
-        "rfx/guide/benchmarks",
-        "rfx/guide/tutorial-convergence",
+        "rfx/guide/waveguide-ports",
+        "rfx/guide/nonuniform-mesh",
+        "rfx/guide/visualization-and-analysis",
         "rfx/guide/farfield-rcs",
-        "rfx/guide/visualization-and-analysis"
+        "rfx/guide/memory-reduction",
+        "rfx/guide/adi-solver"
       ]
     },
     {
-      "label": "Design & Optimization",
+      "label": "Design",
       "items": [
         "rfx/guide/autodiff-adjoint",
         "rfx/guide/inverse-design",
@@ -42,7 +51,36 @@
       ]
     },
     {
-      "label": "Project & Maintainer",
+      "label": "API",
+      "items": [
+        "rfx/api",
+        "rfx/api/simulation",
+        "rfx/api/geometry-materials",
+        "rfx/api/sources-ports",
+        "rfx/api/results-observables",
+        "rfx/api/automation",
+        "rfx/guide/api-reference",
+        "rfx/api/generated",
+        "rfx/api/machine-readable"
+      ]
+    },
+    {
+      "label": "Accuracy & limits",
+      "items": [
+        "rfx/validation",
+        "rfx/api/support-boundaries",
+        "rfx/validation/cross-solver",
+        "rfx/validation/recommended-configuration",
+        "rfx/guide/validation",
+        "rfx/guide/tutorial-convergence",
+        "rfx/guide/benchmarks",
+        "rfx/gallery/multilayer_fresnel",
+        "rfx/gallery/waveguide_wr90",
+        "rfx/gallery/patch_antenna"
+      ]
+    },
+    {
+      "label": "Project",
       "items": [
         "rfx/guide/migration",
         "rfx/guide/changelog",

@@ -66,7 +66,8 @@ run: |-
   # ${PIPESTATUS[0]} is a bashism and died with 'bad substitution' on
   # proof run 369367242339 — pytest itself completed fine).
   set +e
-  timeout 13800 python -m pytest -m gpu -q -ra -p no:cacheprovider \
+  # 20000 s: this selection took 13221 s of pytest on run 369367264767 (RTX 3090, 2026-09-25) against the old 13800.
+  timeout 20000 python -m pytest -m gpu -q -ra -p no:cacheprovider \
     > "$out/gpu_suite.log" 2>&1
   rc=$?
   set -e

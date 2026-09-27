@@ -37,6 +37,8 @@ cannot pass a "0 compiles" assertion.
 
 from __future__ import annotations
 
+import functools
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -239,6 +241,102 @@ def test_repeat_calls_of_the_jitted_gradient_do_not_compile():
     # The repeat calls ran the solve at the new design, not a cached answer.
     assert np.isfinite(float(v0)) and float(v1) != float(v0)
     assert float(jnp.max(jnp.abs(g0))) > 0.0
+
+
+#: The PI's rule for quantities summed over the record (2026-09-25, ledger
+#: archive 3feae81): port DFT accumulators and the S built from them pass at
+#: this fraction of each array's peak; per-step quantities keep MAX_ULP_AT_PEAK.
+MAX_REL_SUMMED = 1.0e-4
+
+
+def _rel_at_peak(plain, other):
+    """``max|plain - other| / max|plain|``."""
+    plain = np.asarray(plain).astype(np.complex128)
+    other = np.asarray(other).astype(np.complex128)
+    return float(np.max(np.abs(plain - other)) / np.max(np.abs(plain)))
+
+
+@functools.lru_cache(maxsize=None)
+def _realistic_record(lane):
+    """The ring-down box of ``test_ringdown_run.py`` (a 12 x 11 x 5 mm metal
+    box filled with eps_r 2.2, wire port, TM110 at 12.4 GHz) over 4000 steps,
+    no ``ringdown=``: ``jax.jit`` of ``forward()`` against the plain call.
+    Returns the probe series' ULP at the peak and the summed arrays' relative
+    differences (port DFT accumulators and S)."""
+    from tests.unit.sparams.test_ringdown_run import FREQS, _box
+
+    sim = _box(lane)
+    grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
+    eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
+    kw = {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+
+    def f(p):
+        r = sim.forward(n_steps=4000, skip_preflight=True, eps_override=eps * p, **kw)
+        return r.time_series, [tuple(a) for _meta, a in r.wire_port_sparams], r.s_params
+
+    p = jnp.float32(1.0)
+    ts, accs, s = f(p)
+    ts_j, accs_j, s_j = jax.jit(f)(p)
+    du_ts = _ulp_at_peak(ts, ts_j)
+    rel = {f"port{k}/acc{j}": _rel_at_peak(a, b)
+           for k, (pa, pb) in enumerate(zip(accs, accs_j))
+           for j, (a, b) in enumerate(zip(pa, pb)) if np.max(np.abs(np.asarray(a))) > 0}
+    rel["S"] = _rel_at_peak(s, s_j)
+    print(f"\n[{lane}, 4000 steps] jitted vs plain: probe series {du_ts:.1f} ULP at "
+          f"peak; summed arrays (relative) { {k: float(f'{v:.3g}') for k, v in rel.items()} }")
+    return du_ts, rel
+
+
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
+def test_a_realistic_record_jitted_sums_stay_within_1e_4_of_the_peak(lane):
+    """Sums over the record (the port DFT accumulators and S), which the
+    whole-program compile rounds differently: within 1e-4 of the peak (PI
+    2026-09-25). The 30-step boards above keep their 9-ULP gate."""
+    _du_ts, rel = _realistic_record(lane)
+    assert max(rel.values()) <= MAX_REL_SUMMED, rel
+
+
+@pytest.mark.parametrize("lane", [
+    "uniform",
+    pytest.param("graded", marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
+        "#1320: since ed3a3d9d (#1317, the graded drive's Cb built inside the "
+        "program) the jitted graded probe series reads 15-22 ULP at the peak "
+        "after 4000 steps (0.0 with that commit reverted)"))),
+])
+def test_a_realistic_record_jitted_probe_series_stay_within_9_ulp(lane):
+    """Per-step quantities (the probe series) of the jitted call: within 9
+    float32 ULP at the peak of the plain call's (PI 2026-09-23)."""
+    du_ts, _rel = _realistic_record(lane)
+    assert du_ts <= MAX_ULP_AT_PEAK, du_ts
+
+
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
+def test_repeat_calls_with_ringdown_do_not_compile(lane):
+    """The same with ``forward(ringdown=RingdownSpec())`` (#1254) on the
+    ring-down box, both lanes: the host identification is a callback inside
+    the compiled program. First call compiles; the next two, at new design
+    values, compile nothing and return new values and nonzero gradients."""
+    from rfx.ringdown import RingdownSpec
+    from tests.unit.sparams.test_ringdown_run import FREQS, _box
+
+    sim = _box(lane)
+    grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
+    eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
+    kw = {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+
+    def loss(p):
+        r = sim.forward(n_steps=600, skip_preflight=True, eps_override=eps * p,
+                        ringdown=RingdownSpec(), **kw)
+        return jnp.sum(jnp.abs(r.ringdown.s_params) ** 2)
+
+    step = jax.jit(jax.value_and_grad(loss))
+    (v0, g0), n0 = _compiles(step, jnp.float32(1.0))
+    assert n0 >= 1, "the compile counter saw no compile on the first call"
+    (v1, g1), n1 = _compiles(step, jnp.float32(1.001))
+    (v2, g2), n2 = _compiles(step, jnp.float32(1.002))
+    assert (n1, n2) == (0, 0), f"repeat calls compiled {n1} and {n2} times"
+    assert np.isfinite(float(v0)) and float(v1) != float(v0) != float(v2)
+    assert all(np.isfinite(float(g)) and float(g) != 0.0 for g in (g0, g1, g2))
 
 
 def _conductor_and_uniform_lumped_port():

@@ -577,6 +577,8 @@ def measure_normal_incident_spectrum(
     n_steps: int,
     freqs,
     dt: float,
+    *,
+    reference_index: int | None = None,
 ) -> np.ndarray:
     """Spectrum of the incident E the normal-incidence plane wave actually carries.
 
@@ -607,6 +609,14 @@ def measure_normal_incident_spectrum(
     anywhere in the total-field region; the phase reference is the auxiliary
     line's own, and only ``abs()`` of the result is meant for normalization.
 
+    For complex normalization, pass ``reference_index``: the padded 3-D x
+    index of an E-node plane inside the total-field slab. The auxiliary
+    sample then follows that plane and its E field is stamped at
+    ``(n + 1) * dt``, matching ``accumulate_ntff`` and the actual 3-D E
+    update. This preserves the incident phase, including source delay and
+    grid dispersion; it does not replace a record-length/mesh witness.
+    Omitting this argument retains the historical magnitude-only result.
+
     Normal-incidence ``TFSFConfig`` only; the oblique open-domain path has
     its own replay (``tfsf_oblique_open.measure_incident_spectrum``).
     """
@@ -628,6 +638,12 @@ def measure_normal_incident_spectrum(
         step=jnp.array(0, dtype=jnp.int32),
     )
     i_ref = int(cfg.i0)
+    if reference_index is not None:
+        if (not isinstance(reference_index, (int, np.integer))
+                or isinstance(reference_index, (bool, np.bool_))
+                or not cfg.x_lo <= reference_index <= cfg.x_hi):
+            raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
+        i_ref += int(reference_index) - int(cfg.x_lo)
 
     def _step(st, step_idx):
         # Same order and time argument as the run() scan body.
@@ -638,7 +654,7 @@ def measure_normal_incident_spectrum(
 
     _, rec = lax.scan(_step, zero, jnp.arange(n_steps, dtype=jnp.int32))
     rec = np.asarray(rec, dtype=np.float64)
-    times = np.arange(n_steps) * float(dt)
+    times = (np.arange(n_steps) + (reference_index is not None)) * float(dt)
     freqs = np.atleast_1d(np.asarray(freqs, dtype=np.float64))
     out = np.empty(len(freqs), dtype=np.complex128)
     for i, f in enumerate(freqs):

@@ -166,3 +166,5 @@ where they apply.
     annulus cells. Their narrowband doubling changes near 6.7-6.9 and 9.7-10.6 GHz are
     recorded in the fixture as the same closed-can footprint as the open's (issue 1218),
     not as a failure.
+
+Addendum (2026-09-25, leader): re-run after both coax lanes absorb on all three axes (issue 1218: the lateral PEC can held the field that leaves an unshielded conductor end). Board, rungs, drives and record lengths are the merged job specifications'. The open termination is judged again, like the short and the loads: magnitude within the bar, passivity 1.02, and record-length invariance (12 → 24 traversals, shift below 0.0259). The loads' closed-can footprint ruling of 2026-09-24 lapses with the fix. Column power on lossless records is recorded; the contract's 1e-3 condition is not applied (PI question open).

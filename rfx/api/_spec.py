@@ -1125,6 +1125,16 @@ class ForwardResult(NamedTuple):
     ``dt`` is the time step the solver advanced by, the spacing of
     ``time_series``. Read time and frequency with it, not with
     ``grid.dt``: ``stencil_order=4`` steps at ``0.857 * grid.dt``.
+
+    ``ringdown`` is a :class:`rfx.ringdown.RingdownForwardResult` when
+    ``forward(ringdown=RingdownSpec())`` was called (issue #1254): the
+    completed wire-port S-parameters, traced and differentiable, and a lazy
+    host report on the concrete result. ``None`` otherwise.
+
+    ``design_box_held_edges`` is the tuple of ``(axis, i, j, k)`` E edges a
+    permittivity design box held on the drawn materials' coefficients
+    (``forward(design_box_holds_ports=True)``; axis 0, 1, 2 for Ex, Ey, Ez):
+    ``()`` for a box that held none, ``None`` when no such box was given.
     """
     time_series: jnp.ndarray
     ntff_data: object = None
@@ -1137,6 +1147,8 @@ class ForwardResult(NamedTuple):
     dft_planes: object = None
     settling_probe_info: object = None
     dt: object = None
+    ringdown: object = None
+    design_box_held_edges: object = None
 
     @property
     def settling_db(self) -> float | None:

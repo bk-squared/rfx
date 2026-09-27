@@ -5,46 +5,58 @@ sidebar:
   order: 32
 ---
 
-A convergence study answers a simple question: does the reported metric stabilize as the Yee cell size decreases? Use it before making quantitative claims from a new geometry, mesh, or objective.
+An FDTD answer depends on the cell size. A convergence study shows how much:
+you solve the same problem on several meshes and check that the number you
+care about stops moving. Do one before you quote a number from a new
+geometry.
 
-## 1. Choose one scalar metric
+This tutorial runs a three-mesh study of a resonance in a loaded cavity. It
+takes about ten seconds on a laptop CPU.
 
-Pick a metric that matches the claim you want to make:
+## 1. Choose one number
 
-| Claim type | Example metric |
+A study tracks one scalar. Pick the one your claim is about:
+
+| Claim | Metric |
 |---|---|
-| resonance | first Harminv frequency in a target band |
-| S-parameter | `abs(S[receiver, driven, f_idx])` at a documented frequency |
-| field amplitude | peak or RMS probe value after source decay |
-| far field | directivity or normalized pattern value from a documented NTFF setup |
+| resonance | a Harminv frequency in a fixed band |
+| S-parameter | `abs(S[receiver, driven, k])` at one stated frequency |
+| field amplitude | a peak or RMS probe value |
+| far field | directivity, or the pattern at one angle |
 
-Do not mix several changing metrics in one convergence decision. Run separate studies if needed.
+Different quantities converge at different rates. If you need two, run two
+studies.
 
-## 2. Build a simulation factory
+## 2. Write a factory that builds the same problem at any cell size
 
-The factory should accept `dx` and return the same physical problem at that cell size.
+`convergence_study` calls your factory with each cell size. The factory must
+build the **same physical problem** every time, so choose cell sizes that put
+every face of your geometry on a grid plane. Otherwise the geometry itself
+changes from mesh to mesh as faces snap to different planes.
+
+Here the cavity is 80 × 64 × 40 mm with a 16 × 16 × 8 mm dielectric insert.
+Every dimension and position is a multiple of 8 mm, so cells of 2.0, 1.6 and
+1.0 mm all land on them exactly.
 
 ```python
-from rfx import Simulation, Box, GaussianPulse
+from rfx import Box, GaussianPulse, Simulation
 
 
 def make_case(dx: float) -> Simulation:
-    # Every face of the cavity and of the insert lands on a cell boundary at
-    # all three cell sizes below, so the rasterized structure is the same
-    # physical problem at each resolution.
-    sim = Simulation(
-        freq_max=4e9,
-        domain=(0.08, 0.064, 0.04),
-        boundary="pec",
-        dx=dx,
-    )
+    sim = Simulation(freq_max=4e9, domain=(0.080, 0.064, 0.040),
+                     boundary="pec", dx=dx)
     sim.add_material("insert", eps_r=4.0, sigma=0.01)
     sim.add(Box((0.032, 0.024, 0.016), (0.048, 0.040, 0.024)), material="insert")
-    sim.add_source((0.024, 0.032, 0.008), "ez", waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8),
+    sim.add_source((0.024, 0.032, 0.008), "ez",
+                   waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8),
                    amplitude_kind="current")
     sim.add_probe((0.056, 0.032, 0.008), "ez")
     return sim
 ```
+
+For geometry that can't be aligned at every size, run
+`make_case(dx).fidelity_report()` at each size to see where the faces landed,
+and include that snapping in what you report.
 
 ## 3. Run the study
 
@@ -55,54 +67,106 @@ from rfx import convergence_study
 def first_resonance(result) -> float:
     modes = result.find_resonances(freq_range=(2e9, 4e9))
     if not modes:
-        raise RuntimeError("no mode in the band — lengthen the run or widen freq_range")
-    return float(min(mode.freq for mode in modes))
+        raise RuntimeError("no mode in the band: lengthen the run or widen freq_range")
+    return float(min(m.freq for m in modes))   # the lowest mode, at every mesh
+
 
 study = convergence_study(
     sim_factory=make_case,
-    dx_values=[2.0e-3, 1.6e-3, 1.0e-3],
+    dx_values=[2.0e-3, 1.6e-3, 1.0e-3],        # coarse to fine
     metric_fn=first_resonance,
-    run_kwargs={"num_periods": 40},
+    run_kwargs={"num_periods": 40},            # the same record at every mesh
 )
-
 study.summary()
 ```
 
-That study prints:
+One CPU run printed the following. The last digits can differ slightly between
+versions and hardware.
 
 ```text
 Mesh Convergence Summary
 ==================================================
    dx (mm)          Metric    Rel. Error
 --------------------------------------------------
-    2.0000     2.92824e+09       0.0227%
-    1.6000     2.92846e+09       0.0150%
-    1.0000     2.92872e+09       0.0063%
+    2.0000     2.92606e+09       0.0998%
+    1.6000      2.9269e+09       0.0708%
+    1.0000     2.92797e+09       0.0344%
 --------------------------------------------------
-Extrapolated value : 2.9289e+09
-Convergence order  : 1.85
+Extrapolated value : 2.92898e+09
+Convergence order  : 1.54
 ```
 
-Use a short trial run first, then rerun the final study with the time window
-your observable needs. Hold geometry, source, probe and run duration fixed
-across the sweep — only `dx` changes. The example selects the lowest mode in a
-fixed band, so the same mode is tracked at every resolution, and it handles an
-empty `find_resonances(...)` result explicitly rather than indexing into it.
+`study.metrics`, `study.extrapolated`, `study.order` and `study.errors` hold
+the same numbers; `study.results` keeps each run's `Result`; `study.plot()`
+draws them.
 
-## 4. Interpret the result
+The metric function picks the lowest mode in a fixed band, so the study
+follows the same mode at every mesh. It raises when no mode is found instead
+of indexing an empty list.
 
-A useful convergence report should include:
+## 4. Check the record length separately
 
-- the tested `dx` values,
-- the scalar metric at each resolution,
-- the Richardson-extrapolated value and observed order,
-- the relative error of the finest point,
-- the exact command or notebook cell used to reproduce the study.
+A study that changes `dx` says nothing about whether the runs were long
+enough. Rerun the finest mesh with a longer record and compare:
 
-If the finest two points do not move monotonically or the observed order is implausible, treat the result as inconclusive and inspect the setup before tightening tolerances.
+```python
+longer = make_case(1.0e-3).run(num_periods=80)
+f_long = first_resonance(longer)
+f_study = float(study.metrics[-1])
+print(f"40 periods: {f_study / 1e9:.5f} GHz, 80 periods: {f_long / 1e9:.5f} GHz")
+```
 
-## 5. Archive the evidence
+Here the two agree to far better than the mesh-to-mesh change, so the record
+length is not what limits the answer. If they differed, you would need a
+longer record for every mesh in the study.
 
-A convergence plot or table is evidence for that exact observable, not for every feature in the simulation. Keep it with the support status, git SHA, run command, and any external reference used for the final claim.
+## 5. Read the result
 
-For broader validation context, see [Cross-Validation and Accuracy](/rfx/guide/validation/) and the [Benchmark Table](/rfx/guide/benchmarks/).
+- **The change between the two finest meshes** is the most direct measure of
+  the remaining mesh error. Here it is about 0.04 %.
+- **The extrapolated value** estimates the zero-cell-size answer, assuming
+  the error follows a power law in `dx`. `errors` are relative to it.
+- **The observed order** should be plausible. Standard Yee is second order;
+  staircased dielectric edges and conductors often pull it lower, as here
+  (1.54). An order near zero, a negative one, or metrics that don't move
+  monotonically mean the study is not in the converging range. Refine
+  further or look for a setup problem before trusting the extrapolation.
+
+When you report the result, give the cell sizes, the metric at each, the
+extrapolated value and order, and the script that produced them.
+
+A study covers the metric it tracked, on the geometry and settings it used.
+It is not evidence for other outputs of the same model. Accuracy against the
+real device also needs a comparison with a reference: another solver, an
+analytic result or a measurement. See
+[Cross-Validation and Accuracy](/rfx/guide/validation/) and the
+[Benchmark Table](/rfx/guide/benchmarks/).
+
+## Other kinds of refinement
+
+- **Graded meshes.** `convergence_study` passes one number to your factory,
+  so it can be a scale factor instead of a cell size: build `dx`,
+  `dz_profile` and so on from it. Refine the fine and coarse regions together,
+  and keep neighbouring cells within a ratio of about 1.3. See
+  [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/).
+- **Ports.** Lumped and wire port S11 needs about 60 cells per wavelength at
+  the top frequency. Microstrip is usually set by the substrate thickness.
+  Coax needs at least 4 cells across the annulus. See
+  [Probes and S-Parameters](/rfx/guide/probes-sparams/).
+- **Probe ladders are placed in cells.** A coaxial port's probes are spaced
+  in cells, so refining the mesh shortens the physical span they cover. Give
+  the probe array enough span at the finest mesh.
+- **Domain and absorber.** A fine mesh does not fix an absorber that is too
+  close. Vary the air margin and `cpml_layers` as a separate check.
+
+## Limits
+
+- **Metrics jump around between meshes** → the geometry probably snaps
+  differently at each size. Align faces to all cell sizes, or check
+  `fidelity_report()` at each one.
+- **A different mode is picked at each mesh** → select by a fixed band and
+  rule (as `first_resonance` does), or by field pattern.
+- **Finest mesh is too expensive** → use a graded mesh to refine only where
+  fields vary quickly, and refine it as a whole.
+- **The answer moves with record length** → lengthen every run in the study,
+  not only the finest.

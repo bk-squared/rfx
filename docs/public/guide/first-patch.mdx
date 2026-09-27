@@ -1,70 +1,77 @@
 ---
 title: "Your First Patch Antenna"
-description: "Build a 2.4 GHz rectangular patch model that passes preflight, then apply the checks required before reporting resonance or Q."
+description: "Build a 2.4 GHz rectangular patch on FR4 with a graded mesh, read what preflight tells you, and learn what a trustworthy resonance or return-loss result still needs."
 sidebar:
-  order: 2
+  order: 3
 ---
 
-This tutorial builds a finite-ground-plane patch model and runs a short setup
-check. Resonance, return loss and Q come later: each needs a mesh and
-time-window study plus an independent reference.
+This tutorial builds a real device: a 2.4 GHz rectangular patch on a finite FR4
+board. It teaches four things you will need for your own models:
 
-## 1. Calculate starting dimensions
+- sizing a starting design from closed-form formulas;
+- a **graded z mesh** that resolves a thin substrate without refining the whole
+  domain;
+- declaring copper as **sheets**;
+- reading preflight output, and knowing what a short run can and cannot tell
+  you.
 
-The usual transmission-line formulas provide starting dimensions, not a solver
-validation target:
+It ends with a quick execution check. Reporting a resonance, a return loss or a
+Q needs more than that, and the last section lists what.
+
+## 1. Starting dimensions
+
+The usual transmission-line model gives a first guess for the patch length L
+and width W:
 
 ```python
 import numpy as np
 
 C0 = 299_792_458.0
-f0 = 2.4e9
-eps_r = 4.4
-h = 1.5e-3
-tan_d = 0.02
+f0 = 2.4e9          # design frequency
+eps_r = 4.4         # nominal FR4
+h = 1.5e-3          # substrate thickness
+tan_d = 0.02        # nominal FR4 loss tangent
 
 W = C0 / (2 * f0) * np.sqrt(2 / (eps_r + 1))
 eps_eff = (eps_r + 1) / 2 + (eps_r - 1) / 2 * (1 + 12 * h / W) ** -0.5
-dL = 0.412 * h * (
-    (eps_eff + 0.3) * (W / h + 0.264)
-    / ((eps_eff - 0.258) * (W / h + 0.8))
-)
+dL = 0.412 * h * ((eps_eff + 0.3) * (W / h + 0.264)
+                  / ((eps_eff - 0.258) * (W / h + 0.8)))
 L = C0 / (2 * f0 * np.sqrt(eps_eff)) - 2 * dL
 
-# Constant-conductivity approximation to tan(delta) at f0 only.
+# A constant conductivity that matches tan(delta) at f0 only.
 sigma_fr4 = 2 * np.pi * f0 * 8.854_187_8128e-12 * eps_r * tan_d
-print(f"L={L * 1e3:.2f} mm, W={W * 1e3:.2f} mm")
+print(f"L = {L * 1e3:.2f} mm, W = {W * 1e3:.2f} mm")
 ```
 
-FR4 permittivity and loss vary by material system, frequency, copper roughness,
-and manufacturing process. Replace these nominal values with the data needed by
-the intended comparison.
+These formulas give a starting point, not a reference to validate the solver
+against. Real FR4 permittivity and loss depend on the laminate and the
+frequency, so use your material's data.
 
-## 2. Build a graded z mesh
+## 2. A graded z mesh
 
-The model keeps the structure outside eight CPML cells, uses six cells through
-the substrate, and grades between 1 mm air cells and 0.25 mm substrate cells
-with adjacent ratios below 1.3.
+The substrate is 1.5 mm thick. Resolving it with 6 cells needs 0.25 mm cells,
+but the air around the antenna is fine at 1 mm. A `dz_profile` lists the z cell
+sizes from bottom to top, so you can use fine cells only where you need them:
 
 ```python
 from rfx import Box, GaussianPulse, Simulation
 
-dx = 1.0e-3
-dz_sub = h / 6
+dx = 1.0e-3          # x and y cell size
+dz_sub = h / 6       # 6 cells through the substrate
 
-# 1.0 mm -> 0.25 mm transition; max adjacent ratio is below 1.3.
+# Grade 1.0 mm -> 0.25 mm with each neighbour ratio below 1.3.
 transition = np.array([1.000, 0.780, 0.610, 0.477, 0.373, 0.291, 0.250]) * 1e-3
 lower_air = np.concatenate([np.full(10, dx), transition[1:]])
 upper_air = np.concatenate([transition[-2::-1], np.full(24, dx)])
 dz_profile = np.concatenate([lower_air, np.full(6, dz_sub), upper_air])
 
-z_sub_lo = float(lower_air.sum())
-z_sub_hi = z_sub_lo + h
+z_sub_lo = float(lower_air.sum())     # substrate bottom
+z_sub_hi = z_sub_lo + h               # substrate top
 
 dom_x, dom_y = 0.100, 0.095
 sim = Simulation(
     freq_max=4e9,
-    domain=(dom_x, dom_y, 0.0),  # z extent is the sum of dz_profile
+    domain=(dom_x, dom_y, 0.0),   # z size comes from sum(dz_profile)
     dx=dx,
     dz_profile=dz_profile,
     boundary="cpml",
@@ -72,106 +79,109 @@ sim = Simulation(
 )
 ```
 
-Do not specify an independent nonzero z-domain length with a `dz_profile`; its
-sum defines the z extent. Preserve 1 mm first and last cells so the z-boundary
-cell size matches `dx`.
+Three rules for graded meshes:
 
-## 3. Register the stack, source, and probe
+- Keep neighbouring cell sizes within a ratio of about 1.3.
+- Start and end the profile with cells equal to `dx`, so the absorber sees the
+  same cell size on every face.
+- Put material interfaces exactly on cell boundaries. Here the substrate
+  starts at `sum(lower_air)` for that reason.
 
-The ground and patch are sheets: 35 µm of copper on a substrate meshed far
-coarser than that. A zero-thickness `Box` through `sim.add()` and
-`add_thin_conductor()` are the same sheet declaration — one node plane, no cell
-— and `add_thin_conductor()` is the explicit spelling, so this page uses it.
-See [How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
+[Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/) covers graded meshes in depth.
+
+## 3. Board, copper, source and probe
+
+The ground plane and the patch are copper foil, which rfx models as **sheets**
+of zero thickness on one grid plane (see [Core Concepts](/rfx/guide/concepts/)):
 
 ```python
 sim.add_material("fr4_design", eps_r=eps_r, sigma=sigma_fr4)
 
 gx_lo, gx_hi = 0.020, 0.080
 gy_lo, gy_hi = 0.020, 0.075
-sim.add(
-    Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)),
-    material="fr4_design",
-)
+sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)),
+        material="fr4_design")
 
-# Copper values at or above 1e6 S/m are routed to the PEC sheet mask.
-ground = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_lo))
-sim.add_thin_conductor(ground, sigma_bulk=5.8e7, thickness=35e-6)
+# Ground: zero thickness at the substrate bottom.
+sim.add_thin_conductor(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_lo)))
 
-px0 = dom_x / 2 - L / 2
-px1 = dom_x / 2 + L / 2
-py0 = dom_y / 2 - W / 2
-py1 = dom_y / 2 + W / 2
-patch = Box((px0, py0, z_sub_hi), (px1, py1, z_sub_hi))
-sim.add_thin_conductor(patch, sigma_bulk=5.8e7, thickness=35e-6)
+# Patch: zero thickness at the substrate top, centred on the board.
+px0, px1 = dom_x / 2 - L / 2, dom_x / 2 + L / 2
+py0, py1 = dom_y / 2 - W / 2, dom_y / 2 + W / 2
+sim.add_thin_conductor(Box((px0, py0, z_sub_hi), (px1, py1, z_sub_hi)))
 
+# A soft source under the patch, 8 mm in from the edge, and an offset probe.
 src_z = z_sub_lo + 2.5 * dz_sub
-feed = (px0 + 8e-3, dom_y / 2, src_z)
-probe = (dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, src_z)
-sim.add_source(feed, "ez", waveform=GaussianPulse(f0=f0, bandwidth=0.8),
-               amplitude_kind="current")   # required from 1.9
-sim.add_probe(probe, "ez")
+sim.add_source((px0 + 8e-3, dom_y / 2, src_z), "ez",
+               waveform=GaussianPulse(f0=f0, bandwidth=0.8),
+               amplitude_kind="current")
+sim.add_probe((dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, src_z), "ez")
 
 report = sim.preflight()
-print(report)
+print(report.format())
 ```
 
-Preflight is not silent here, and that is the point: its output is part of the
-result. This model draws one advisory, `conductor-Box design edge(s) sit
-off-lattice`, on the patch's `y` faces — the designed width `W = 38.01 mm` is
-not a whole number of `dx = 1 mm` cells, so each face lands 495 µm from where
-it was drawn. Read it, do not silence it. Rounding `L` and `W` to the lattice
-would remove the advisory by changing the antenna, which is the wrong trade for
-a resonator whose length sets `f_res`; refining `dx` is the right one, and the
-[benchmarks page](/rfx/guide/benchmarks/) shows what that costs. Reserve
-`preflight(strict=True)` for a model you expect to be advisory-free — it
-escalates every finding, informational ones included.
+### Reading what rfx tells you
 
-Both `add_thin_conductor` calls warn: `sigma_bulk=5.80e+07 S/m is at or above
-the 1e+06 S/m PEC threshold, so this is a LOSSLESS PEC sheet`. That is the
-model you get — skin depth, surface roughness and finite copper loss are
-absent, and `thickness` is not read on this path. Two routes put loss back.
+Each `add_thin_conductor` call warns that the sheet is a **lossless PEC
+sheet**, because copper's conductivity is above the 1e6 S/m PEC threshold.
+The patch therefore has no conductor loss. If conductor loss matters for your
+Q or efficiency, pass `surface_impedance_f0=f0`. The sheet is then modelled as
+a resistive sheet with copper's surface resistance at `f0`, on the same
+footprint, instead of as PEC.
 
-The documented one is
-`add_thin_conductor(shape, sigma_bulk=5.8e7, surface_impedance_f0=f0)`, a
-resistive sheet of sheet resistance `Rs0 = sqrt(pi*f0*mu0/sigma_bulk)` — the
-thick-conductor surface resistance at band centre `f0`
-{/* rfx/api/__init__.py:1379-1420 */}. Its scope, from the
-"Surface-impedance sheets" row of `docs/guides/support_matrix.md`: patterned
-shapes that are sheets — one node plane, no thicker than one local cell along
-their normal — on the documented uniform and graded-mesh lanes; not a general
-dispersive or multi-runner conductor model. One frequency, one node plane. The
-lossy sheet's footprint and edge set are the PEC sheet's, so `f0` changes the
-loss and never the geometry.
+Preflight then gives two warnings about the patch size:
 
-The cruder route is a finite sheet resistance through `sigma_bulk` alone, which
-needs an explicitly justified value below 1e6 S/m. At or above 1e6 S/m the
-sheet takes the PEC route and warns.
+- `off_lattice_design_edges`: L and W are not whole numbers of 1 mm cells, so
+  each patch edge lands on the nearest grid plane, up to half a cell (here
+  495 µm) from where you drew it.
+- `sheet_effective_size`: the size the solver effectively sees differs from
+  the drawn size by more than 1 %. For the patch length it reports 29.46 mm
+  drawn, 28 mm covered by grid nodes, and about 28.7 mm solved (−2.6 %). A
+  shorter patch resonates higher, so the solved resonance moves up from what
+  the drawn size implies.
 
-## 4. Check execution before interpreting RF results
+Don't round L and W to the grid to silence these warnings, because that changes
+the antenna. Refine `dx` so the error shrinks, and include it in your
+convergence study.
 
-A short run verifies execution and finite probe data only:
+Treat preflight warnings as part of your result. Use `preflight(strict=True)`
+only for models you expect to have no findings at all, because strict mode turns
+every finding into an error.
+
+## 4. A short execution check
 
 ```python
-import numpy as np
-
 short_run = sim.run(num_periods=2)
-assert short_run.time_series.size > 0
-assert np.isfinite(np.asarray(short_run.time_series)).all()
+ts = np.asarray(short_run.time_series)
+assert ts.size > 0 and np.isfinite(ts).all()
+print(f"{ts.shape[0]} steps, settling {short_run.settling_db:.1f} dB")
 ```
 
-It is too short to establish resonance or Q. For a resonance study, use a much
-longer fixed window, discard the driven portion, and handle the case where
-`find_resonances(...)` returns no modes. Repeat with finer x/y and z meshes,
-larger air margins, and longer windows. Report the movement of the selected
-mode, not just the finest result.
+This shows that the model runs and produces finite data. Two periods is far too
+short for the patch to ring down, so rfx warns that the ring-down is
+truncated. Nothing from this run is a result.
 
-The short run may emit the ring-down-truncated advisory: two periods is far too
-short for the tail to settle.
+## 5. From a model to a result
 
-The source above is a soft field source, not a 50-ohm feed. It cannot establish
-return loss. An impedance-referenced study must use the matching port family and
-calculator from [Sources and Ports](/rfx/guide/sources-ports/) and remain within
-its support limits.
+To report a resonance, Q or return loss for this patch:
 
-Continue with [Examples](/rfx/examples/) for the ordered learning sequence.
+1. **Run long enough.** Use `until_decay=` or a long fixed record, and check
+   `result.settling_db`. A patch has a moderately high Q, so it needs many
+   periods.
+2. **Extract the resonance** with `result.find_resonances(freq_range=(2e9, 3e9))`.
+   Pick the mode by its field pattern or far field, not by which peak is
+   biggest. Handle the case where no mode is found.
+3. **Refine the mesh** in x/y and z, and enlarge the air margin. Report how
+   much the frequency moves, not just the finest answer. See
+   [Convergence Study](/rfx/guide/tutorial-convergence/).
+4. **For return loss, use a port.** The soft source here has no impedance, so
+   it cannot give S11. Use a lumped or microstrip port and its calculator from
+   [Sources and Ports](/rfx/guide/sources-ports/).
+5. **Compare with a reference.** Use another solver or a measurement.
+   [Benchmarks](/rfx/guide/benchmarks/) shows how rfx's own patch case compares
+   with openEMS.
+
+`examples/tutorials/patch_antenna_demo.py` carries out this workflow end to end,
+including far-field mode identification. [Examples](/rfx/examples/) lists the
+full learning path.

@@ -65,10 +65,10 @@ dielectric fill used in the gradient demonstration below.
   mode; the right port (`direction="-x"`) acts as a matched load. Each port
   injects the discrete Yee-grid mode profile, so the launcher back-reflection is
   minimal.
-- **CPML on the propagation axis only (20 cells).** Twenty layers drive the
-  residual guided-mode reflection floor to essentially zero (`|S11| ≈ 0`);
-  thinning to the default 10–12 layers raises it toward ~0.09 (a known trap).
-  Only the two x faces absorb.
+- **CPML on the propagation axis only (20 cells).** Twenty layers keep the
+  absorber's residual reflection of the guided mode to essentially zero
+  (`|S11| ≈ 0`); a thinner absorber leaves a larger floor. Only the two x faces
+  absorb.
 - **PEC side walls.** The four y/z walls are PEC — that is what defines a
   rectangular guide and its cutoff.
 - **Uniform 1 mm mesh.** Ten cells span the narrow wall, about 23 the broad
@@ -76,10 +76,10 @@ dielectric fill used in the gradient demonstration below.
   resolve the TE10 half-sine across `a` and keep numerical dispersion small.
 
 <Aside type="note">
-With the thick 20-layer CPML the empty-guide |S11| sits at essentially zero. Drop
-the absorber to the default 10–12 layers and the floor rises toward about 0.09 —
-pure absorber back-reflection, not a solver error. Above cutoff the guide is
-nearly lossless, so any residual reflection is set by the CPML thickness.
+With the thick 20-layer CPML the empty-guide |S11| sits at essentially zero.
+With fewer layers the floor rises. That is absorber back-reflection, not a
+solver error: above cutoff the guide is nearly lossless, so any residual
+reflection is set by the CPML thickness.
 </Aside>
 
 ## Geometry check (before running)
@@ -172,9 +172,10 @@ Reference: analytic matched-load (`|S11| = 0`, `|S21| = 1` above cutoff),
 cross-checked against MEEP/OpenEMS/Palace.
 
 **Limit — absorber floor.** The residual `|S11|` is CPML back-reflection, not a
-solver error. The 20-layer absorber holds it at the `≈0` published here; thinning
-to the default 10–12 layers raises the floor toward about 0.09. That number
-tracks the absorber thickness, not the guide's reflection.
+solver error. The 20-layer absorber holds it at the `≈0` published here; a
+thinner absorber raises the floor. That floor tracks the absorber thickness,
+not the guide's reflection. These assets predate the 2.0 absorber correction,
+which lowered the CPML's reflection at every layer count.
 
 ## Autodiff
 
@@ -195,13 +196,10 @@ within 5% and a matching sign.
 
 The gradient agrees to 0.17% with matching sign, inside the 5% this check asks
 for. It checks the differentiation of this one computation, not the whole
-waveguide family. The chain battery closed at v1.8 for uniform single-mode S on
-the `normalize=False` and `normalize="flux"` lanes, with contract criteria 1
-(forward identity) and 3(a) (AD-vs-FD) read under `JAX_ENABLE_X64` on the flux
-lane; the forward default is still float32. The 0.17% above is a float32
-flux-lane gradient, and in float32 the forward identity sits at 1.08–1.76 of its
-allowance — outside that closure declaration. The support row stays **limited**
-{/* docs/guides/support_matrix.md, Rectangular-waveguide S-matrix */}.
+waveguide family. The waveguide S-matrix is **limited** in the
+[support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md):
+its gradient checks were closed with 64-bit JAX on the flux lane, and this
+0.17% is a float32 gradient, which sits outside that closure.
 
 ![Transmission sensitivity to the dielectric fill — AD gradient vs central finite differences](/rfx/gallery/assets/waveguide_wr90/autodiff.png)
 
@@ -230,4 +228,4 @@ differentiable chain: under `jax.grad`/`jax.jit`, a traced
   description="Reflection and transmission of a dielectric slab vs the exact transfer-matrix solution, with an exact-derivative autodiff check."
 />
 
-<p style="opacity:0.6;font-size:0.85em">Computed with rfx 1.6.5 · <code>1eb551b</code> · generated 2026-06-30T03:22:31Z {/* gallery/assets/waveguide_wr90/manifest.json: rfx_version, git_sha, generated_at */}</p>
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx 1.6.5 · <code>1eb551b</code> · generated 2026-06-30T03:22:31Z</p>

@@ -1035,15 +1035,11 @@ def test_a_sigma_fill_conductor_is_not_a_pec_body():
     future change routed sigma fills through ``realized_pec_edge_masks``,
     every RCS gate in the tree would move without a word.
 
-    Two independent differences, measured on the same 12 mm sphere at
-    dx = 2 mm, so the fence is checkable rather than asserted:
-
-    * the sigma path produces NO realized PEC edges at all (it owns no
-      edge, only cell conductivity);
-    * the two paths do not even select the same cells — ``rasterize``
-      samples a shape at NODES while a PEC volume is sampled at cell
-      CENTRES (§1.1), giving 910 vs 912 cells here. Equal counts would be
-      a coincidence, not a contract.
+    The two paths now select the same centre-sampled sphere cells (#1138),
+    but the sigma path produces finite conductivity and NO realized PEC
+    edges; the PEC path leaves conductivity zero and clamps its edges.
+    The former 910-vs-912 assertion pinned node-vs-centre displacement,
+    not the operator distinction this fence must protect.
 
     The threshold that separates the two is
     ``Simulation._PEC_SIGMA_THRESHOLD`` (1e6 S/m) applied in
@@ -1073,12 +1069,13 @@ def test_a_sigma_fill_conductor_is_not_a_pec_body():
             g2, pec_sheets=sheets, pec_wires=wires)
     volume_cells = np.asarray(pec, dtype=bool)
 
-    assert not np.array_equal(volume_cells, sigma_cells), (
-        "the sigma-fill and PEC-volume cell selections coincided; they are "
-        "sampled differently (nodes vs centres) and equating them would "
-        "hide the fence")
-    assert int(sigma_cells.sum()) == 910 and int(volume_cells.sum()) == 912, (
-        int(sigma_cells.sum()), int(volume_cells.sum()))
+    axes = [(np.arange(n) + 0.5) * dx - 0.03 for n in grid.shape]
+    expected = (axes[0][:, None, None]**2 + axes[1][None, :, None]**2
+                + axes[2][None, None, :]**2) <= 0.012**2
+    np.testing.assert_array_equal(sigma_cells, expected)
+    np.testing.assert_array_equal(volume_cells, expected)
+    assert np.isfinite(sigma).all() and np.asarray(sigma)[sigma_cells].min() == 1e7
+    assert not np.asarray(_m.sigma).any()
 
     # the sigma array alone realizes no PEC edge
     empty = realized_pec_edge_masks(jnp.zeros(g2.shape, dtype=bool))

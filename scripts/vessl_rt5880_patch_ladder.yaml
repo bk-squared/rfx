@@ -1,0 +1,63 @@
+name: rfx-rt5880-patch-ladder
+description: "RT/Duroid 5880 probe-fed patch antenna cross-validation: the gpu-marked mesh-ladder test of tests/crossval/rt5880_patch at the ref in RFX_GPU_SUITE_REF, exported with git archive (the Sheen low-pass filter ladder job's harness). rfx solves the board at dx = h/4, h/8 and h/12 and is judged against the openEMS record's stage_b_fine. The figure (rt5880_patch.png), the pytest log and its exit code go to research/rfx/.omx/rt5880-patch-ladder/<UTC>-<sha>/ on the lab share. Launched by the crossval lane leader."
+tags: [rfx, crossval, rt5880-patch, ladder, one-off]
+resources:
+  cluster: remilab-c0
+  preset: gpu-24gb
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_GPU_SUITE_REF: "origin/main"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh only: no arrays, no [[ ]], no pipefail, no heredocs (VESSL
+  # re-indents this block and a heredoc terminator then never closes).
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  cd "$primary"
+  git config --global --add safe.directory "$primary" || true
+  echo "=== RT5880 patch antenna ladder (one-off) ==="
+  git fetch -q origin
+  ref="${RFX_GPU_SUITE_REF:-origin/main}"
+  sha=$(git rev-parse "$ref")
+  short=$(git rev-parse --short "$ref")
+  echo "suite ref: $ref = $sha"
+  src="/tmp/rfx-rt5880-patch-$short"
+  rm -rf "$src" && mkdir -p "$src"
+  git archive --format=tar "$sha" | tar -xf - -C "$src"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  # The JAX the product is tested on (vessl-jobs rule, PI 2026-09-24), before
+  # the first import of jax.
+  python -m pip install -q "jax[cuda12]==0.6.2"
+  export RFX_REPO_ROOT="$src"
+  export PYTHONPATH="$RFX_REPO_ROOT:${PYTHONPATH:-}"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', getattr(rfx, '__version__', '?'))"
+  out="$primary/.omx/rt5880-patch-ladder/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  export RFX_CROSSVAL_FIG_DIR="$out"
+  echo "=== collect ==="
+  python -m pytest tests/crossval/rt5880_patch -m gpu --collect-only -q -p no:cacheprovider | tail -5
+  echo "=== run ==="
+  # pytest's status has to come out of the pipeline, and a bare rc=$? after
+  # "| tee" reads tee's. The brace group writes pytest's status to a file and
+  # its stdout still reaches tee (the pattern of scripts/vessl_msl_notch_graded.yaml).
+  set +e
+  { timeout 5400 python -m pytest tests/crossval/rt5880_patch -m gpu -s -q -ra -p no:cacheprovider 2>&1
+    echo "$?" > "$out/ladder.rc"
+  } | tee "$out/ladder.log"
+  set -e
+  rc=$(cat "$out/ladder.rc")
+  echo "=== summary ==="
+  tail -n 5 "$out/ladder.log"
+  ls -la "$out"
+  echo "ladder_rc=$rc"
+  echo "artifacts: $out"
+  exit "$rc"

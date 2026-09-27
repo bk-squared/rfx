@@ -1,8 +1,8 @@
 # .test_durations — provenance
 
 Regenerated 2026-09-21 on `main` (`150ed1d8`, assembled at `2bad0f51`) from `regen-durations` run
-[35613805791](https://github.com/bk-squared/rfx/actions/runs/35613805791). **8288 entries in the
-file**, of which **57 of them carried unchanged** from the 10625-entry file this replaces, plus three
+[35613805791](https://github.com/bk-squared/rfx/actions/runs/35613805791). **8289 entries in the
+file**, of which **57 of them carried unchanged** from the 10625-entry file this replaces, plus four
 entries set by hand (below). Nine of that run's ten jobs succeeded; `slow (3)` was killed by the runner
 twice — lost communication on the first try, exit 137 at 31 % on the rerun, in
 `tests/unit/geometry/test_mesh_import.py`, so it is memory, not time — as `slow (3)` was on
@@ -14,7 +14,7 @@ measured them and the replaced file had none either; pytest-split places them by
 unknown ids. The counts here are computed from the artifacts, the replaced file and those
 collection lists; the contract below checks the first two against the file.
 
-**Three entries are not measurements of this run.**
+**Four entries are not measurements of this run.**
 `tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
 is priced at 2247 s, read from the weekly lane's run 35599919970 (shard 2 of 4, 12:58:29 → 13:35:56
 on 2026-09-21). The file this replaces priced it at 202.2 s; that gap is what cut shard 2 at the
@@ -25,6 +25,10 @@ The two coaxial chain-battery drift locks, `tests/locks/test_coax_chain_battery_
 and `[thru]`, are priced at 179.59 s and 160.90 s: their call times on four VESSL CPU cores
 (pinned with `taskset`), run 369367264301 on 2026-09-24, added when the tests were. No runner has
 measured them; without an entry pytest-split would price each at the file's mean.
+
+The coaxial open-end check, `tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled`,
+is priced at 69.56 s, its call time on four VESSL CPU cores (pinned with `taskset`), run 369367264656
+on 2026-09-24, added when the test was, for the same reason.
 
 Every entry is a raw measurement. **No floor is added** — see below.
 

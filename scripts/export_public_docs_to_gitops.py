@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Export canonical public RFX docs from research/rfx into the gitops snapshot."""
-
+"""Export tracked public sources and a verified generated bundle into GitOps."""
 from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -13,81 +13,28 @@ DOC_EXTS = {".md", ".mdx"}
 SKIP_PUBLIC_ROOT_FILES = {"site_map.json"}
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--repo-root",
-        type=Path,
-        default=Path(__file__).resolve().parents[1],
-        help="Path to research/rfx.",
-    )
-    parser.add_argument(
-        "--gitops-root",
-        type=Path,
-        default=None,
-        help="Path to remilab-sites-gitops repo root.",
-    )
-    parser.add_argument("--check", action="store_true", help="Only verify source paths exist.")
-    return parser.parse_args()
-
-
 def default_gitops_root(repo_root: Path) -> Path:
-    """Resolve the remilab-sites-gitops checkout.
-
-    The original heuristic (``repo_root.parent.parent/infra/...``) is correct
-    only when run from ``…/byungkwan-workspace/research/rfx``. From other clones
-    (e.g. the gallery worktree under ``bk-workspace``) it resolves to a path that
-    does not exist, so prefer the first candidate that actually exists and fall
-    back to the heuristic for a clear error message.
-    """
-    candidates = [
-        repo_root.parent.parent / "infra" / "remilab-sites-gitops",
-        Path(__file__).resolve().parents[3] / "infra" / "remilab-sites-gitops",
-    ]
-    for cand in candidates:
-        if cand.exists():
-            return cand
-    return candidates[0]
+    return repo_root.parent.parent / "infra/remilab-sites-gitops"
 
 
 def get_tracked_files(repo_root: Path, *rel_dirs: str) -> frozenset[Path]:
-    """Return absolute paths of every git-tracked file under the given repo-relative dirs."""
-    result = subprocess.run(
-        ["git", "-C", str(repo_root), "ls-files", "--", *rel_dirs],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return frozenset(
-        repo_root / line
-        for line in result.stdout.splitlines()
-        if line
-    )
+    result = subprocess.run(["git", "-C", str(repo_root), "ls-files", "-z", "--", *rel_dirs],
+                            capture_output=True, text=True, check=True)
+    return frozenset(repo_root / name for name in result.stdout.split("\0") if name)
 
 
 def check_no_symlinks(root: Path) -> None:
-    """Raise SystemExit if root or any descendant path is a symlink."""
-    if root.is_symlink():
-        raise SystemExit(f"refusing to export symlink: {root}")
+    """Reject symlinks including a source/destination ancestor redirected elsewhere."""
+    for parent in (root, *root.parents):
+        if parent.is_symlink():
+            raise SystemExit(f"refusing to export symlink: {parent}")
     if not root.exists():
         return
     for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
-        base = Path(dirpath)
         for name in filenames + dirnames:
-            child = base / name
+            child = Path(dirpath) / name
             if child.is_symlink():
                 raise SystemExit(f"refusing to export symlink: {child}")
-
-
-def copy_tracked_tree(src: Path, dst: Path, tracked: frozenset[Path]) -> None:
-    """Copy only git-tracked files from src into dst, replacing dst entirely."""
-    if dst.exists():
-        shutil.rmtree(dst)
-    for src_file in sorted(f for f in tracked if f.is_relative_to(src) and f.is_file()):
-        rel = src_file.relative_to(src)
-        dst_file = dst / rel
-        dst_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_file, dst_file)
 
 
 def remove_tree(path: Path) -> None:
@@ -97,140 +44,108 @@ def remove_tree(path: Path) -> None:
         path.unlink()
 
 
-def sync_generated_api_assets(src: Path, dst: Path, tracked: frozenset[Path]) -> None:
-    """Sync generated API assets into a curated api/generated subtree.
-
-    Curated doc pages such as ``api/generated/index.mdx`` may already exist in
-    ``dst`` and must be preserved. Generated non-doc assets should, however, be
-    replaced exactly so stale HTML/JS files do not linger after regeneration.
-    """
-
-    dst.mkdir(parents=True, exist_ok=True)
-    source_files = sorted(f for f in tracked if f.is_relative_to(src) and f.is_file())
-    source_rel_files = {path.relative_to(src).as_posix() for path in source_files}
-
-    for path in sorted(dst.rglob("*"), reverse=True):
-        rel = path.relative_to(dst).as_posix()
-        if path.is_file():
-            if path.suffix in DOC_EXTS:
-                continue
-            if rel not in source_rel_files:
-                path.unlink()
-        elif path.is_dir():
-            try:
-                next(path.iterdir())
-            except StopIteration:
-                path.rmdir()
-
-    for src_file in source_files:
-        rel = src_file.relative_to(src)
-        dst_file = dst / rel
-        dst_file.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src_file, dst_file)
+def transformed_source(text: str, base_url: str, sha: str) -> str:
+    from build_public_docs_bundle import SOURCE_REPOSITORY
+    text = re.sub(r"https://github.com/bk-squared/rfx/(blob|tree)/(main|master)/",
+                  rf"{SOURCE_REPOSITORY}/\1/{sha}/", text)
+    text = re.sub(r"https://raw.githubusercontent.com/bk-squared/rfx/(main|master)/",
+                  f"https://raw.githubusercontent.com/bk-squared/rfx/{sha}/", text)
+    # Replace only URL occurrences, not arbitrary prose or code string fragments.
+    text = re.sub(r"https://remilab\.ai/rfx(?=[/#)\"'\s]|$)", base_url, text)
+    from urllib.parse import urlsplit
+    prefix = urlsplit(base_url).path
+    text = re.sub(r"(?<=[(\"'])/rfx(?=[/#)\"'])", prefix, text)
+    return text
 
 
-def iter_public_root_docs(public_root: Path, tracked: frozenset[Path]) -> list[Path]:
-    return sorted(
-        path
-        for path in public_root.iterdir()
-        if path.is_file()
-        and path.suffix in DOC_EXTS
-        and path.name not in SKIP_PUBLIC_ROOT_FILES
-        and path in tracked
-    )
+
+def contained_destination(parent: Path, site_prefix: str) -> Path:
+    """Resolve a validated RFX target beneath a fixed, caller-owned directory."""
+    from build_public_docs_bundle import validate_site_prefix
+    prefix = validate_site_prefix(site_prefix)
+    check_no_symlinks(parent)
+    parent = parent.resolve()
+    destination = (parent / prefix).resolve()
+    if destination == parent or not destination.is_relative_to(parent):
+        raise ValueError("public export destination escapes its parent")
+    return destination
 
 
-def discover_public_subtrees(public_root: Path) -> list[Path]:
-    return sorted(path for path in public_root.iterdir() if path.is_dir())
+def export_snapshot(repo_root: Path, dst_root: Path, bundle_dir: Path | None = None) -> dict | None:
+    from build_public_docs_bundle import safe_relative, validate_bundle, validate_public_identity
+    if ".." in dst_root.parts:
+        raise ValueError("public export destination contains traversal")
+    manifest = validate_bundle(bundle_dir, repo_root) if bundle_dir else None
+    public_root = repo_root / "docs/public"
+    check_no_symlinks(public_root)
+    check_no_symlinks(dst_root)
+    tracked = sorted(get_tracked_files(repo_root, "docs/public"))
+    # Validate every path before replacing any owned destination subtree.
+    for src in tracked:
+        if src.name != ".gitignore":
+            safe_relative(src.relative_to(public_root).as_posix())
+        if not src.is_file():
+            raise ValueError(f"tracked public source missing: {src}")
+    if manifest:
+        authored = {p.relative_to(public_root).as_posix() for p in tracked}
+        overlap = authored & (set(manifest["files"]) | {"docs-manifest.json"})
+        if overlap:
+            raise ValueError(f"generated bundle collides with authored source: {sorted(overlap)}")
+        prefix = validate_public_identity(manifest["base_url"], manifest["channel"])
+        if dst_root.parts[-len(prefix.parts):] != prefix.parts:
+            raise ValueError("bundle base URL and export site prefix disagree")
+    dst_root.mkdir(parents=True, exist_ok=True)
+    # Preserve immutable release snapshots and the infra-owned dev redirect.
+    # All other content in this RFX destination is owned by this exporter.
+    for child in dst_root.iterdir():
+        if child.name not in {"versions", "dev"}:
+            remove_tree(child)
+    for src in tracked:
+        rel = src.relative_to(public_root)
+        if rel.name == ".gitignore" or rel.as_posix() == "site_map.json":
+            continue
+        target = dst_root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if manifest and src.suffix in DOC_EXTS:
+            target.write_text(transformed_source(src.read_text(), manifest["base_url"], manifest["source_sha"]))
+        else:
+            shutil.copyfile(src, target)
+    if manifest:
+        for source in sorted((bundle_dir / "files").rglob("*")):
+            if source.is_file():
+                target = dst_root / source.relative_to(bundle_dir / "files")
+                if target.exists():
+                    raise ValueError(f"generated bundle collides with authored source: {target}")
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+    return manifest
 
 
 def main() -> int:
-    args = parse_args()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--gitops-root", type=Path)
+    parser.add_argument("--bundle-dir", type=Path, help="verified build_public_docs_bundle output")
+    parser.add_argument("--site-prefix", default="rfx", help="rfx or rfx/versions/<tag>")
+    parser.add_argument("--check", action="store_true")
+    args = parser.parse_args()
     repo_root = args.repo_root.resolve()
-    gitops_root = (args.gitops_root or default_gitops_root(repo_root)).resolve()
-
-    public_root = repo_root / "docs" / "public"
-    src_generated_api = repo_root / "docs" / "api"
-    has_generated_api = src_generated_api.exists()
-
-    # Collect git-tracked file set before any copy; needed for filtering
-    tracked_dirs = ["docs/public"]
-    if has_generated_api:
-        tracked_dirs.append("docs/api")
-    tracked = get_tracked_files(repo_root, *tracked_dirs)
-
-    # Refuse to export symlinks in any source tree
-    check_no_symlinks(public_root)
-    if has_generated_api:
-        check_no_symlinks(src_generated_api)
-
-    source_root_docs = iter_public_root_docs(public_root, tracked)
-    public_subtrees = discover_public_subtrees(public_root)
-
-    dst_root = (
-        gitops_root
-        / "deploy"
-        / "obsidian-stack"
-        / "astro-starlight-presets"
-        / "public"
-        / "seed-pages"
-        / "rfx"
+    gitops_root = args.gitops_root or default_gitops_root(repo_root)
+    dst = contained_destination(
+        gitops_root / "deploy/obsidian-stack/astro-starlight-presets/public/seed-pages", args.site_prefix
     )
-    dst_generated_api = dst_root / "api" / "generated"
-
-    required = [
-        public_root,
-        gitops_root,
-        *source_root_docs,
-        *public_subtrees,
-    ]
-    if has_generated_api:
-        required.append(src_generated_api)
-    missing = [str(path) for path in required if not path.exists()]
-    if missing:
-        raise SystemExit("missing required paths:\n" + "\n".join(missing))
-
     if args.check:
-        print("source paths verified")
-        print(f"public_root: {public_root}")
-        print(f"root_docs: {[path.name for path in source_root_docs]}")
-        print(f"public_subtrees: {[path.name for path in public_subtrees]}")
-        print("agent: excluded from public export")
-        if has_generated_api:
-            print(f"generated_api: {src_generated_api}")
-        else:
-            print("generated_api: absent (skipped)")
-        print(f"gitops: {gitops_root}")
+        check_no_symlinks(repo_root / "docs/public")
+        if args.bundle_dir:
+            from build_public_docs_bundle import validate_bundle
+            validate_bundle(args.bundle_dir, repo_root)
+        print("public sources and supplied bundle verified")
         return 0
-
-    dst_root.mkdir(parents=True, exist_ok=True)
-
-    managed_root_docs = {
-        path.name
-        for path in dst_root.iterdir()
-        if path.is_file() and path.suffix in DOC_EXTS and path.name not in SKIP_PUBLIC_ROOT_FILES
-    }
-    source_root_doc_names = {path.name for path in source_root_docs}
-    for stale_name in sorted(managed_root_docs - source_root_doc_names):
-        (dst_root / stale_name).unlink()
-    for src_doc in source_root_docs:
-        shutil.copy2(src_doc, dst_root / src_doc.name)
-
-    for subtree in public_subtrees:
-        copy_tracked_tree(subtree, dst_root / subtree.name, tracked)
-
-    remove_tree(dst_root / "agent")
-    if has_generated_api:
-        sync_generated_api_assets(src_generated_api, dst_generated_api, tracked)
-
-    print("exported public docs to gitops snapshot")
-    print(f"target: {dst_root}")
-    print(f"root_docs: {[path.name for path in source_root_docs]}")
-    print(f"public_subtrees: {[path.name for path in public_subtrees]}")
-    if has_generated_api:
-        print("generated_api_target: api/generated")
-    else:
-        print("generated_api_target: skipped (docs/api absent)")
+    if not gitops_root.is_dir():
+        raise ValueError(f"missing GitOps checkout: {gitops_root}")
+    manifest = export_snapshot(repo_root, dst, args.bundle_dir)
+    print(f"exported public docs: {dst}")
+    print(f"generated bundle: {manifest['source_sha'] if manifest else 'absent (source-only export)'}")
     return 0
 
 

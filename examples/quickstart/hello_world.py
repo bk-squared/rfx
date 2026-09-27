@@ -18,8 +18,7 @@ import time
 
 import numpy as np
 
-from rfx import Simulation
-from rfx.sources.sources import GaussianPulse
+from rfx import GaussianPulse, Simulation
 
 
 def build_simulation() -> Simulation:
@@ -79,8 +78,14 @@ def main() -> None:
     #    the PEC box, so the trace peak is distinct from its final value.
     #    `compute_s_params=False` because this run has no ports: raw field
     #    data only.
+    # docs-run-start
+    preflight = sim.preflight()
+    print(preflight.format())
+    preflight.raise_for_failure()
     n_steps = 120
     result = sim.run(n_steps=n_steps, compute_s_params=False)
+    print(result.time_series.shape)
+    # docs-run-end
 
     # 5. Look at the result.
     #    `result.time_series` has shape (n_steps, n_probes). We have one

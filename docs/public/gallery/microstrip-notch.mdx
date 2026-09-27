@@ -1,0 +1,75 @@
+---
+title: "Tune a microstrip notch"
+description: "Connect an open-stub length to a design trajectory and inspect its frequency-domain electric field."
+---
+
+A short open-ended branch attached to a microstrip line acts as a resonant stub.
+Changing its length changes the frequencies that pass through the line. It is a
+compact way to connect a geometric design variable, a frequency response and a
+local field pattern.
+
+<p data-rfx="note"><strong>Historical visualization.</strong> The design-path and field films use different stub lengths. They illustrate the same structure family, not one jointly reproduced result.</p>
+
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/showcase-20260927/notch_phase.jpg" aria-label="Normalized electric field phase replay around a microstrip open stub">
+    <source src="/rfx/gallery/assets/showcase-20260927/notch_phase.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/showcase-20260927/notch_phase.mp4">Download the field replay</a>.
+  </video>
+  <figcaption>The normalized real part of the complex electric field, E<sub>z</sub>, as its phase is advanced. The x/y axes are millimeters. This is a single-frequency DFT phasor replay: it shows relative phase and standing-wave structure, not pulse propagation or arrival time.</figcaption>
+</figure>
+
+## Read the model
+
+| Part | Meaning |
+|---|---|
+| Structure | A planar microstrip line with an open-ended side branch |
+| Materials | Conducting trace and ground with a dielectric substrate |
+| Design variable | The open-stub length |
+| Measured response | Transmission through the line, S21, over frequency |
+| Field panel | A normalized E<sub>z</sub> slice at one frequency |
+
+The field movie uses a 7.22 mm stub. The final spectrum associated with the
+archived design path uses 7.14 mm. The field panel therefore explains the local
+mechanism without certifying the final design-path spectrum.
+
+## Follow the design path
+
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/showcase-20260927/notch_path.jpg" aria-label="Microstrip stub-length design path with coarse interpolation and recorded fine iterations">
+    <source src="/rfx/gallery/assets/showcase-20260927/notch_path.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/showcase-20260927/notch_path.mp4">Download the design path</a>.
+  </video>
+  <figcaption>The coarse portion of this path is explanatory interpolation. Only the fine-stage sequence of 60 iterations comes from the recorded optimization history. Intermediate drawn positions do not imply additional electromagnetic solves.</figcaption>
+</figure>
+
+## Explore the related source
+
+The versioned [notch research example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/validation/tmtt_paper/msl_stub_notch_tuning.py)
+contains the model and design objective. It is a full multi-start research
+workload: unlike the taper example, it has no short `SMOKE=1` mode.
+Read its [run notes](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/validation/tmtt_paper/README.md)
+before executing it from a matching source checkout:
+
+```bash
+JAX_PLATFORMS=cpu PYTHONPATH=. python validation/tmtt_paper/msl_stub_notch_tuning.py
+```
+
+For a smaller first exercise, use
+[Ports and S-Parameters 101](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/ports_and_sparams_101.py).
+Keep the excitation, port calculator and reference planes with any new response.
+
+**Try changing:** the stub length. Track where the transmission minimum moves
+across the band, and inspect the full curve rather than a single frequency bin.
+
+## Evidence and provenance
+
+These original presentation clips have not been regenerated on the documentation
+revision. The exact simulation source revision and a complete raw data bundle are
+not available here. The current source link identifies a related model; running
+it does not promise byte-for-byte recreation of either film. No current notch-depth,
+gradient-accuracy or cross-solver agreement is claimed by this page.
+
+[Media catalog and SHA-256 hashes](/rfx/gallery/assets/showcase-20260927/media-catalog.json) ·
+[Sources & ports](/rfx/api/sources-ports/) ·
+[Support Boundaries](/rfx/api/support-boundaries/) ·
+[Visual manual](/rfx/guide/visual-manual/)

@@ -376,11 +376,8 @@ substitute for that step.
 
 ## Where the role fences live
 
-Machine-readable crossval roles and registration live in
-`validation/crossval/manifest.json`, contract-tested by
-`tests/contracts/test_crossval_manifest_contract.py`. Current support status belongs in
-the tracked support-matrix companions linked above, not in a private ledger.
-
-The manifest covers `validation/crossval/*.py` only. Work outside that
-directory is not a registered crossval lane; consult its tracked contract and
-tests before making a support claim.
+Cross-solver comparisons live in `tests/crossval/`, each against a frozen
+reference record; the old `validation/crossval/` scripts and their manifest were
+removed (#1315). Each case's docstring states what it judges and what it only
+reports. Current support status belongs in the tracked support-matrix
+companions linked above, not in a private ledger.

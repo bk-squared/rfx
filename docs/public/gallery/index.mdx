@@ -1,33 +1,108 @@
 ---
-title: "rfx Gallery"
-description: "Visual examples whose pages state the available RF evidence and explain any limits."
+title: "See what rfx can simulate"
+description: "Watch electromagnetic fields, explore RF components and follow differentiable design histories."
 sidebar:
   order: 35
 ---
 
-import { CardGrid, Card } from '@astrojs/starlight/components';
+Choose a physical question. Each example connects a model to the motion or
+response it produces, with its source and evidence scope alongside the picture.
+The site plays stored results; it does not run a solver in your browser.
 
-A visual tour of structures, fields, outputs, and differentiable calculations.
-The slab and waveguide cases each carry a reference comparison and a
-differentiable lane. The patch bundle is diagnostic: its stored port setup does
-not pass current preflight, so its plots and derivative are not RF validation.
+<div data-rfx="example-search">
+  <label for="rfx-example-search">Find a visual example</label>
+  <input id="rfx-example-search" type="search" data-rfx-filter="examples" placeholder="Try pulse, dielectric, filter or antenna" aria-controls="rfx-field-examples rfx-design-examples" aria-describedby="rfx-example-count" />
+  <p id="rfx-example-count" data-rfx-filter-count="examples" role="status" aria-live="polite">6 visual examples</p>
+  <noscript>All examples are shown. Use your browser's Find command to search this page.</noscript>
+</div>
 
-<CardGrid>
-  <Card title="Dielectric Slab">
-    <a href="/rfx/gallery/multilayer_fresnel/"><img src="/rfx/gallery/assets/multilayer_fresnel/rt_overlay.png" alt="Reflection and transmission of a dielectric slab vs the exact Fresnel curves" /></a>
+<section id="rfx-field-examples" data-rfx-example-group="fields">
 
-    A plane wave at normal incidence on a lossless dielectric slab. Reflection and transmission track the exact transfer-matrix curves to ~1%, and `jax.grad` returns `dT/dd` matching the closed-form derivative. [See it →](/rfx/gallery/multilayer_fresnel/)
-  </Card>
-  <Card title="Patch Antenna Diagnostics">
-    <a href="/rfx/gallery/patch_antenna/"><img src="/rfx/gallery/assets/patch_antenna/s11_db.png" alt="Patch-antenna S11 diagnostic from a setup that fails preflight" /></a>
+## Start with a field
 
-    File-format, plotting, and AD/FD artifacts from a port setup that does not pass current preflight. The plotted RF values are not validation evidence. [Read the limits →](/rfx/gallery/patch_antenna/)
-  </Card>
-  <Card title="Rectangular Waveguide">
-    <a href="/rfx/gallery/waveguide_wr90/"><img src="/rfx/gallery/assets/waveguide_wr90/field_te10.png" alt="TE10 mode propagating down a WR-90 rectangular waveguide" /></a>
+These teaching examples were generated for this documentation update using the
+public Simulation API. They show actual time-domain snapshots on a single mesh;
+they are not convergence or RF-accuracy benchmarks.
 
-    The TE10 dominant mode down a WR-90 X-band guide. |S11|/|S21| match the exact matched empty-guide answer at the CPML floor, and `jax.grad` differentiates the transmission through a dielectric fill. [See it →](/rfx/gallery/waveguide_wr90/)
-  </Card>
-</CardGrid>
+<div data-rfx="cards">
+  <section data-rfx="card" data-rfx-example="boundary reflection absorbing open CPML closed PEC pulse time domain electric field 2D TMz current teaching">
+    <a href="/rfx/gallery/boundary-reflection/"><img src="/rfx/gallery/assets/current-visuals/boundary-reflection.png" loading="lazy" alt="Electric pulse in open absorbing and closed reflecting domains" /></a>
+    <h3>Open space or reflecting walls?</h3>
+    <p>The same pulsed source with absorbing CPML boundaries and metal PEC walls.</p>
+    <a href="/rfx/gallery/boundary-reflection/">Compare the boundaries →</a>
+  </section>
+  <section data-rfx="card" data-rfx-example="dielectric interface material permittivity vacuum pulse time domain electric field 2D TMz current teaching">
+    <a href="/rfx/gallery/dielectric-interface/"><img src="/rfx/gallery/assets/current-visuals/dielectric-interface.png" loading="lazy" alt="Electric pulse encountering a dielectric interface, compared with vacuum" /></a>
+    <h3>Meet a dielectric interface</h3>
+    <p>Watch the field respond when the medium changes, with a vacuum comparison.</p>
+    <a href="/rfx/gallery/dielectric-interface/">Follow the pulse →</a>
+  </section>
+  <section data-rfx="card" data-rfx-example="cavity standing wave interference closed PEC pulse time domain electric field 2D TMz current teaching">
+    <a href="/rfx/gallery/cavity-standing-wave/"><img src="/rfx/gallery/assets/current-visuals/cavity-standing-wave.png" loading="lazy" alt="Electric field forming an interference pattern in a closed metal cavity" /></a>
+    <h3>Trap a field in a cavity</h3>
+    <p>See reflections and interference inside a closed conducting domain.</p>
+    <a href="/rfx/gallery/cavity-standing-wave/">Watch the cavity →</a>
+  </section>
+</div>
 
-<p style="opacity:0.6;font-size:0.85em">All three cases computed with rfx 1.6.5 · <code>1eb551b</code> {/* identical rfx_version and git_sha in each case manifest.json under gallery/assets */}</p>
+</section>
+
+<section id="rfx-design-examples" data-rfx-example-group="design">
+
+## Explore a design in motion
+
+These archived presentation films show more complex structures and optimization
+histories. Their original numbers are historical; the case pages distinguish
+phasor replay, real iterations and explanatory interpolation.
+
+<div data-rfx="cards">
+  <section data-rfx="card" data-rfx-example="waveguide dielectric taper matching reflection S11 gradient sensitivity inverse design optimization historical">
+    <a href="/rfx/gallery/waveguide-taper/"><img src="/rfx/gallery/assets/showcase-20260927/taper_traj.jpg" loading="lazy" alt="Dielectric taper profile, reflected spectrum and sensitivities" /></a>
+    <h3>Waveguide dielectric taper</h3>
+    <p>Connect a graded material profile to broadband reflection and its sensitivity.</p>
+    <a href="/rfx/gallery/waveguide-taper/">Watch the taper →</a>
+  </section>
+  <section data-rfx="card" data-rfx-example="microstrip notch filter stub transmission S21 electric field phasor interpolation inverse design optimization historical">
+    <a href="/rfx/gallery/microstrip-notch/"><img src="/rfx/gallery/assets/showcase-20260927/notch_phase.jpg" loading="lazy" alt="Normalized electric field around an open microstrip stub" /></a>
+    <h3>Microstrip notch filter</h3>
+    <p>Relate one geometric variable to a resonant branch and its local field.</p>
+    <a href="/rfx/gallery/microstrip-notch/">Watch the filter →</a>
+  </section>
+  <section data-rfx="card" data-rfx-example="antenna beam steering dielectric cover superstrate radiation pattern directivity latent gradient inverse design optimization historical">
+    <a href="/rfx/gallery/beam-steering/"><img src="/rfx/gallery/assets/showcase-20260927/steer_traj.jpg" loading="lazy" alt="Permittivity cover and angular radiation pattern during beam steering" /></a>
+    <h3>Dielectric beam steering</h3>
+    <p>Follow a spatial material pattern as the main radiation lobe changes direction.</p>
+    <a href="/rfx/gallery/beam-steering/">Watch the beam →</a>
+  </section>
+</div>
+
+</section>
+
+## Read a reference comparison
+
+The earlier [dielectric-slab gallery](/rfx/gallery/multilayer_fresnel/) and
+[empty rectangular-waveguide gallery](/rfx/gallery/waveguide_wr90/) retain their
+field, response and derivative artifacts. Both bundles were computed with
+rfx 1.6.5 at `1eb551b`. Conductor placement and absorber behavior have changed
+since that version, so their recorded results are not current-version benchmarks.
+Read each page's precise limits and measurement definitions.
+
+The [patch-antenna diagnostic archive](/rfx/gallery/patch_antenna/) is preserved
+for traceability. Its stored port setup does not pass current preflight; it is
+not a validated antenna showcase.
+
+## More visual experiments to build
+
+These are extensions to develop and validate, not additional films already
+published. Their source examples provide a starting point.
+
+| Physical question | A useful next visualization | Starting point |
+|---|---|---|
+| What does a dispersive material do to a pulse? | Synchronized field slices, probe traces and material response | [Materials example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/materials_and_dispersion.py) |
+| How does a radiator's near field become a far-field pattern? | Fixed-scale field movie beside the angular radiation cut | [Antenna pattern example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/antenna_farfield_pattern.py) |
+| Which field is actually scattered? | Total and incident-subtracted fields beside angular RCS | [Scattering example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/rcs_scattering.py) |
+| How do coating layers interfere? | Layer permittivities, a field slice and the full reflection band at the same iteration | [Coating example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/inverse_design/multilayer_ar_coating.py) |
+
+To build your own, follow the [visual manual](/rfx/guide/visual-manual/),
+choose a [runnable example](/rfx/examples/) and keep the model, arrays and plots
+together.

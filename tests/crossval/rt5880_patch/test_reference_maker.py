@@ -201,7 +201,9 @@ def _check_stand_in(m) -> None:
         assert b["stand_in"]["excite"] == (2.4e9, 1.2e9)
         assert b["stand_in"]["materials"]["sub"]["epsilon"] == 2.2
         port = b["stand_in"]["ports"][0]
-        assert port["start"] == [-9.0, 0.0, 0.0] and port["stop"] == [-9.0, 0.0, 3.175]
+        # The probe at -8.73125 mm, a node on every rfx rung (PI 2026-09-24,
+        # delta 9), not the retired -9.0 mm.
+        assert port["start"] == [-8.73125, 0.0, 0.0] and port["stop"] == [-8.73125, 0.0, 3.175]
         x = np.asarray(b["_lines"]["x"])
         pitch = float(np.median(np.diff(x[(x > -18.0) & (x < -10.0)])))
         assert pitch == pytest.approx(1.2 * f, rel=1e-9), (
@@ -267,7 +269,9 @@ def test_delta_list_says_what_changes():
         "DELTA 1 (boundaries)", "DELTA 2 (stop criteria)", "DELTA 3 (mesh rungs)",
         "DELTA 4 (frequency grid)", "DELTA 5 (resonance estimator)", "DELTA 6 (far field)",
         "DELTA 7 (how the solver runs)",
-        "DELTA 8 (the patch lines keep clear of the port and the edges)", "NOTHING ELSE"]
+        "DELTA 8 (the patch lines keep clear of the port and the edges)",
+        "DELTA 9 (probe position)", "DELTA 10 (the board on the rfx lattice)",
+        "NOTHING ELSE"]
     assert "['MUR'] * 6 becomes ['PML_8'] * 6" in d[0] and "OUTSIDE" in d[0]
     assert "EndCriteria = 1e-5" in d[1] and "1e-6" in d[1] and "openems.cpp:117" in d[1]
     assert "0.70711" in d[2] and "4, 6 and 8 cells" in d[2]
@@ -275,6 +279,23 @@ def test_delta_list_says_what_changes():
     assert "refined_extremum" in d[4] and "band_at_level" in d[4]
     assert "-6 dB" in d[5] and "Reported only" in d[5]
     assert "half a patch cell" in d[7] and "y = 0" in d[7]
+    assert "-9.0e-3 becomes -8.73125e-3" in d[8] and "-11, -22 and -33 cells" in d[8]
+    was, now, _ = m.DECLARED_CONSTANT_DEPARTURES["FEED_OFFSET_X"]
+    assert (was, now) == (-9.0e-3, -8.73125e-3) and m.FEED_OFFSET_X == now
+    assert m.RETIRED_CONSTANT_LINES["FEED_OFFSET_X"].startswith("FEED_OFFSET_X = -9.0e-3")
+    # The board on the rfx lattice (PI 2026-09-25): each edge just outside a
+    # node common to h/4, h/8, h/12, the box held at the retired faces.
+    assert "39.7 mm" in d[9] and "x +-88, y +-93" in d[9]
+    for name, was, now in (("L_PATCH", 40.0e-3, 39.7e-3), ("W_PATCH", 50.0e-3, 49.25e-3),
+                           ("GP_X", 56.0e-3, 55.6e-3), ("GP_Y", 66.0e-3, 65.1e-3)):
+        assert m.DECLARED_CONSTANT_DEPARTURES[name][:2] == (was, now), name
+        assert getattr(m, name) == now and m.RETIRED_BOARD[name] == was, name
+    q = m.H_SUB / 4
+    for half, k in ((m.L_PATCH / 2, 25), (m.W_PATCH / 2, 31), (m.GP_X / 2, 35), (m.GP_Y / 2, 41)):
+        assert 0.0 < half - k * q < 20e-6, (half, k)
+    assert m.B_BOX_FACES_MM == {"x": (-88.0, 88.0), "y": (-93.0, 93.0), "z": (-40.0, 90.0)}
+    assert m.F_TM010_BOARD_HZ == m.f_tm010_tl_model(m.EPS_R, m.H_SUB, m.L_PATCH, m.W_PATCH)[0]
+    assert m.B_RESONANCE_BAND_HZ == (0.8 * m.F_TM010_BOARD_HZ, 1.2 * m.F_TM010_BOARD_HZ)
     assert m.COMB_CLEARANCE_CELLS == 0.5
     assert m.RETIRED_NRTS_CAP == 30000 and m.RETIRED_END_CRITERIA_CAP == 1e-4
     assert m.OPENEMS_UNSET_END_CRITERIA == 1e-6
@@ -359,8 +380,9 @@ def test_the_line_check_catches_the_lost_probe_line_without_delta_8():
     line at y = 6.4e-14 mm, CSXCAD's rule deletes the lower line of the pair --
     the probe's y = 0 -- and the check must say so."""
     m = _load_maker()
-    bare = m._without_delta_8_realized(0.5)
-    check = m._line_check(bare["lines"], m._line_spec_b(0.5))
+    with m._retired_board():          # the retired 40 x 50 / 56 x 66 mm board
+        bare = m._without_delta_8_realized(0.5)
+        check = m._line_check(bare["lines"], m._line_spec_b(0.5))
     assert not check["passed"]
     assert any(f.startswith("probe port y: no realized y line at 0.0 mm") for f in check["failures"])
     assert m._csxcad_unique([0.0, 6.4e-14, 1.0, 2.0]).tolist() == [6.4e-14, 1.0, 2.0], (
@@ -447,8 +469,8 @@ def test_constants_and_frozen_slice_are_the_retired_scripts_own():
 
 def test_constants_check_reddens_when_a_constant_drifts():
     """Mutation (b): the substrate thickness drifts; the builder text is untouched."""
-    result = _self_check_on(("H_SUB = 3.175e-3            # 1/8 inch\nL_PATCH",
-                             "H_SUB = 3.2e-3            # 1/8 inch\nL_PATCH"))
+    result = _self_check_on(("H_SUB = 3.175e-3            # 1/8 inch\n",
+                             "H_SUB = 3.2e-3            # 1/8 inch\n"))
     assert result.returncode != 0
     assert "[FAIL] H_SUB equals the retired line" in result.stdout
 
