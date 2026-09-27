@@ -124,13 +124,16 @@ builds the public Markdown, LLM index, typed API inventory, unchanged support
 contracts, and pdoc reference from committed source inputs. The generator uses
 the existing API-surface checker and the private-mixin pdoc template. It does not
 create another hand-maintained symbol inventory or classify support by symbol.
-Install the documented build dependency with `pip install 'pdoc==16.0.0'`.
+Use Python 3.10.12 and install the pinned runtime/renderer dependency closure with
+`pip install -r scripts/requirements-public-docs.txt`. The generator imports the
+selected source tree directly; an editable installation is not needed.
 
 The bundle has a `files/` directory whose paths are relative to the public RFX URL.
 `files/docs-manifest.json` records source SHA, package version, channel, base URL,
 page-to-Markdown mapping, navigation, source-input hashes and artifact hashes.
 No build timestamp is emitted; reproduction uses the same Python/dependency
-versions. The manifest does not hash itself. GitOps pins the source SHA and keeps
+versions. The manifest records actual toolchain versions, generator and template
+hashes; a dependency mismatch fails before rendering. The manifest does not hash itself. GitOps pins the source SHA and keeps
 the manifest with the snapshot.
 
 ```bash
@@ -157,6 +160,9 @@ For a release, check out its actual tag into a clean worktree and run this gener
 with `--repo-root /path/to/release-worktree --channel release
 --base-url https://remilab.ai/rfx/versions/v1.8.0`. The selected source tree supplies
 both imports and docstrings; the generator can be newer than that historical tag.
+Rendering uses the generator checkout's versioned private-mixin template, because
+older tags predate that rendering fix. Its hash is recorded separately from source
+inputs; this does not add newer methods to the historical API.
 Export it with the same `--repo-root`, the release bundle, and
 `--site-prefix rfx/versions/v1.8.0`. Root exports preserve `versions/` and the
 infra-owned `dev/` entry. The root channel is development until a release-built

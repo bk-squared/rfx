@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import html
 import inspect
+import importlib.metadata
 import json
 import os
 import re
@@ -30,6 +31,19 @@ SOURCE_REPOSITORY = "https://github.com/bk-squared/rfx"
 SUPPORT_FILES = ("support_matrix.json", "sparameter_support_matrix.json")
 FORBIDDEN_PARTS = {"agent", "agent-memory", "agent_memory", "research_notes", ".env", ".omx", ".omc"}
 GENERATOR_VERSION = 1
+GENERATOR_ROOT = Path(__file__).resolve().parents[1]
+
+
+def toolchain() -> dict:
+    requirements = GENERATOR_ROOT / "scripts/requirements-public-docs.txt"
+    pins = dict(line.split("==", 1) for line in requirements.read_text().splitlines()
+                if line and not line.startswith("#"))
+    actual = {name: importlib.metadata.version(name) for name in pins}
+    if actual != pins:
+        changed = [name for name in pins if actual[name] != pins[name]]
+        raise ValueError(f"documentation dependency pins differ: {changed}; install {requirements}")
+    return {"python_version": sys.version.split()[0], "dependencies": actual}
+
 
 
 def git(root: Path, *args: str) -> str:
@@ -69,7 +83,7 @@ def allowed_artifact(name: str) -> bool:
 
 
 def source_inputs(root: Path) -> list[Path]:
-    tracked = get_tracked_files(root, "docs/public", "rfx", "docs/pdoc_templates", "docs/guides")
+    tracked = get_tracked_files(root, "docs/public", "rfx", "docs/pdoc_templates", "docs/guides", "pyproject.toml")
     result = []
     for path in sorted(tracked):
         rel = path.relative_to(root)
@@ -77,7 +91,7 @@ def source_inputs(root: Path) -> list[Path]:
             result.append(path)
         elif rel.parts[0] == "rfx" and path.suffix == ".py":
             result.append(path)
-        elif rel.as_posix() in {f"docs/guides/{name}" for name in SUPPORT_FILES}:
+        elif rel.as_posix() == "pyproject.toml" or rel.as_posix() in {f"docs/guides/{name}" for name in SUPPORT_FILES}:
             result.append(path)
     return result
 
@@ -91,6 +105,7 @@ def check_source(root: Path, source_sha: str | None = None) -> str:
         raise ValueError("commit source inputs before building a SHA-pinned bundle")
     for rel in ("docs/public", "rfx", "docs/pdoc_templates"):
         check_no_symlinks(root / rel)
+    check_no_symlinks(root / "pyproject.toml")
     for name in SUPPORT_FILES:
         check_no_symlinks(root / "docs/guides" / name)
     return sha
@@ -232,6 +247,7 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
     if not re.fullmatch(r"https://[a-zA-Z0-9.-]+/rfx(?:/[a-zA-Z0-9._/-]+)?", base_url):
         raise ValueError("base URL must be an HTTPS RFX documentation URL")
     safe_relative(urlsplit(base_url).path.lstrip("/"))
+    environment = toolchain()
     import pdoc
     inventory = api_inventory(root, sha, base_url, channel)
     inputs = source_inputs(root)
@@ -270,8 +286,12 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
             support.append({"url": f"{base_url}/api/support/{name}", "source_path": f"docs/guides/{name}",
                             "source_url": f"{SOURCE_REPOSITORY}/blob/{sha}/docs/guides/{name}", **digest(source)})
         generated = files / "api/generated"
+        # The historical source may predate the inherited-method rendering fix.
+        # A renderer changes presentation, not the selected API implementation.
+        templates = GENERATOR_ROOT / "docs/pdoc_templates"
+        check_no_symlinks(templates)
         env = {**os.environ, "PYTHONPATH": str(root), "JAX_PLATFORMS": "cpu", "PYTHONHASHSEED": "0"}
-        subprocess.run([sys.executable, "-m", "pdoc", "-t", str(root / "docs/pdoc_templates"),
+        subprocess.run([sys.executable, "-m", "pdoc", "-t", str(templates),
                         "--no-show-source", "--edit-url", f"rfx={SOURCE_REPOSITORY}/blob/{sha}/rfx/",
                         "--footer-text", f"{channel} | rfx {inventory['package_version']} | {sha[:12]}",
                         "-o", str(generated), "rfx", "!rfx.dashboard"],
@@ -305,7 +325,9 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
                 file.write_text(text)
         nav = json.loads((public / "site_map.json").read_text())
         for group in nav.get("groups", []):
-            group["items"] = [f"{base_url}/{slug.removeprefix('rfx/').rstrip('/')}/" for slug in group["items"]]
+            group["items"] = [base_url + "/" if slug == "rfx" else
+                              f"{base_url}/{slug.removeprefix('rfx/').rstrip('/')}/"
+                              for slug in group["items"]]
         llms = ["# rfx", "", "> JAX-native electromagnetic simulation: manuals, reproducible examples and generated API reference.", "",
                 f"Channel: {channel}. Package version: {inventory['package_version']}. Source commit: {sha}.",
                 "", "Read the support boundaries before proposing a configuration. Importability, a successful run,",
@@ -330,7 +352,12 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
         manifest = {"schema_version": 1, "source_sha": sha, "package_version": inventory["package_version"],
                     "channel": channel, "base_url": base_url, "source_repository": SOURCE_REPOSITORY,
                     "generator": {"name": "build_public_docs_bundle.py", "version": GENERATOR_VERSION,
-                                  "pdoc_version": pdoc.__version__},
+                                  "pdoc_version": pdoc.__version__,
+                                  "source_sha256": digest(Path(__file__))["sha256"],
+                                  "requirements_sha256": digest(GENERATOR_ROOT / "scripts/requirements-public-docs.txt")["sha256"],
+                                  "template_sha256": {p.relative_to(templates).as_posix(): digest(p)["sha256"]
+                                                      for p in sorted(templates.rglob("*")) if p.is_file()},
+                                  "toolchain": environment},
                     "pages": pages, "navigation": nav, "support": support, "files": hashes,
                     "source_inputs": {p.relative_to(root).as_posix(): digest(p) for p in inputs}}
         write_json(files / "docs-manifest.json", manifest)
