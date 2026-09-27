@@ -9,7 +9,7 @@ import pytest
 
 from rfx.api import Simulation
 from rfx.core.yee import EPS_0, MU_0, init_state
-from rfx.sources.sources import CustomWaveform
+from rfx.sources.sources import CustomWaveform, GaussianPulse
 from rfx.sources.tfsf import (
     apply_tfsf_e, apply_tfsf_h, init_tfsf, tfsf_injection_planes,
     update_tfsf_1d, measure_normal_incident_spectrum,
@@ -138,3 +138,231 @@ def test_closed_vacuum_replays_real_waveform_inside_and_cancels_all_faces(polari
     expected = measure_normal_incident_spectrum(cfg, aux, 128, freqs, grid.dt,
                                                 reference_index=centre[0])
     assert np.max(np.abs(spectrum - expected)) <= 1e-4 * np.max(np.abs(expected))
+
+
+@pytest.mark.parametrize("polarization,direction", [("ez", "+x"), ("ey", "-x")])
+def test_custom_gaussian_preserves_legacy_slab(polarization, direction):
+    pulse = GaussianPulse(f0=15e9, bandwidth=0.8)
+    records = []
+    for waveform in ("differentiated_gaussian", CustomWaveform(pulse)):
+        sim = _sim(polarization=polarization, direction=direction,
+                   closed_box=False, waveform=waveform)
+        sim.add_probe((0.009, 0.008, 0.007), component=polarization)
+        records.append(sim.run(n_steps=128))
+        assert set(sim.tfsf_box_indices()) == {"x"}
+    _peak_ulp(records[1].time_series, records[0].time_series)
+    for component in ("ex", "ey", "ez", "hx", "hy", "hz"):
+        a, b = (np.asarray(getattr(r.state, component)) for r in records)
+        if np.any(a):
+            _peak_ulp(b, a)
+        else:
+            np.testing.assert_array_equal(b, a)
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("waveform", [
+    CustomWaveform(lambda t: jnp.asarray(1j)),
+    CustomWaveform(lambda t: jnp.ones(2)),
+    CustomWaveform(lambda t: jnp.where(t > 3e-12, jnp.nan, 0.0)),
+])
+def test_invalid_custom_samples_refused_before_time_stepping(entry, waveform):
+    sim = _sim(waveform=waveform)
+    with pytest.raises(ValueError, match="CustomWaveform must return"):
+        getattr(sim, entry)(n_steps=8, skip_preflight=True)
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("kind", ("custom", "box"))
+@pytest.mark.parametrize("lane", ("nonuniform", "distributed", "distributed_nu", "subgridded"))
+def test_new_input_is_never_dropped_on_unsupported_lanes(entry, kind, lane):
+    params = dict(freq_max=30e9, domain=(0.018, 0.016, 0.014), dx=0.001,
+                  boundary="cpml", cpml_layers=4)
+    if lane in ("nonuniform", "distributed_nu"):
+        params["dz_profile"] = [0.001] * 14
+    sim = Simulation(**params)
+    sim.add_tfsf_source(closed_box=kind == "box", waveform=(
+        CustomWaveform(lambda t: jnp.sin(t * 1e11)) if kind == "custom"
+        else "differentiated_gaussian"))
+    if lane == "subgridded":
+        sim.add_refinement(z_range=(0.005, 0.009), ratio=2)
+    kwargs = dict(n_steps=2, skip_preflight=True)
+    if lane in ("distributed", "distributed_nu"):
+        if entry == "run":
+            kwargs["devices"] = [jax.devices()[0]] * 2
+        else:
+            kwargs["distributed"] = True
+    with pytest.raises(NotImplementedError, match="CustomWaveform and closed_box"):
+        getattr(sim, entry)(**kwargs)
+
+
+@pytest.mark.parametrize("angle", (1e-4, 25.0))
+@pytest.mark.parametrize("kind", ("custom", "box"))
+def test_new_inputs_refuse_every_nonzero_angle(angle, kind):
+    sim = Simulation(freq_max=30e9, domain=(0.018, 0.016, 0.014), dx=0.001,
+                     boundary="cpml", cpml_layers=4)
+    with pytest.raises(NotImplementedError, match="normal incidence"):
+        sim.add_tfsf_source(angle_deg=angle, closed_box=kind == "box", waveform=(
+            CustomWaveform(lambda t: t) if kind == "custom" else "differentiated_gaussian"))
+
+
+def test_custom_source_refuses_decay_without_source_off_contract():
+    sim = _sim()
+    with pytest.raises(NotImplementedError, match="source-off time"):
+        sim.run(until_decay=1e-4, n_steps=16, skip_preflight=True)
+
+
+@pytest.mark.parametrize("runner", ("nonuniform", "distributed", "subgridded"))
+def test_direct_runner_calls_cannot_bypass_source_admission(runner):
+    sim = _sim()
+    with pytest.raises(NotImplementedError, match="CustomWaveform and closed_box"):
+        if runner == "nonuniform":
+            from rfx.runners.nonuniform import run_nonuniform_path
+            run_nonuniform_path(sim, n_steps=2)
+        elif runner == "distributed":
+            from rfx.runners.distributed_v2 import run_distributed
+            run_distributed(sim, n_steps=2)
+        else:
+            from rfx.runners.subgridded import run_subgridded_path
+            run_subgridded_path(sim, None, None, None, 2)
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("material", ("dielectric", "pec"))
+@pytest.mark.parametrize("axis", (0, 1, 2))
+def test_every_box_face_requires_vacuum(entry, material, axis):
+    from rfx.geometry.csg import Box
+    sim = _sim()
+    lo = [0.008, 0.007, 0.006]
+    hi = [0.010, 0.009, 0.008]
+    # The low total-field node sits at 3 mm from the inner CPML edge.
+    lo[axis], hi[axis] = 0.002, 0.004
+    if material == "dielectric":
+        sim.add_material("target", eps_r=2.0)
+        name = "target"
+    else:
+        name = "pec"
+    sim.add(Box(tuple(lo), tuple(hi)), material=name)
+    with pytest.raises(ValueError, match="vacuum.*all six faces"):
+        getattr(sim, entry)(n_steps=4, skip_preflight=True)
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("operator", ("surface_sheet", "inductor", "series_rl"))
+@pytest.mark.parametrize("on_face", (False, True))
+def test_nonvolume_operator_footprint_cannot_cross_source(entry, operator, on_face):
+    from rfx.geometry.csg import Box
+    sim = _sim()
+    x = 0.003 if on_face else 0.009
+    if operator == "surface_sheet":
+        sim.add_thin_conductor(Box((x, 0.006, 0.005), (x, 0.010, 0.009)),
+                               surface_impedance_f0=15e9)
+    else:
+        sim.add_lumped_rlc((x, 0.008, 0.007), component="ez", L=1e-9,
+                           R=50.0 if operator == "series_rl" else 0.0,
+                           topology="series" if operator == "series_rl" else "parallel")
+    if on_face:
+        with pytest.raises(ValueError, match="vacuum.*all six faces"):
+            getattr(sim, entry)(n_steps=2, skip_preflight=True)
+    else:
+        getattr(sim, entry)(n_steps=2, skip_preflight=True)
+
+
+@pytest.mark.parametrize("kind", ("eps", "occupancy"))
+@pytest.mark.parametrize("form", ("whole_grid", "design_box"))
+@pytest.mark.parametrize("on_face", (False, True))
+def test_forward_design_inputs_cannot_cross_source(kind, form, on_face):
+    sim = _sim()
+    grid = sim._build_grid()
+    x = 0.003 if on_face else 0.008
+    corners = ((x, 0.006, 0.005), (x + 0.001, 0.009, 0.008))
+    lo, hi = map(grid.position_to_index, corners)
+    shape = tuple(b - a + 1 for a, b in zip(lo, hi))
+    values = jnp.full(shape, 2.0 if kind == "eps" else 0.5)
+    if form == "whole_grid":
+        window = tuple(slice(a, b + 1) for a, b in zip(lo, hi))
+        value = jnp.full(grid.shape, 1.0 if kind == "eps" else 0.0).at[window].set(values)
+        kwargs = {"eps_override" if kind == "eps" else "pec_occupancy_override": value}
+    else:
+        kwargs = {"design_box": corners, "design_" + kind + "_override": values}
+    if on_face:
+        with pytest.raises(ValueError, match="vacuum.*all six faces"):
+            sim.forward(n_steps=2, skip_preflight=True, **kwargs)
+    else:
+        sim.forward(n_steps=2, skip_preflight=True, **kwargs)
+
+
+@pytest.mark.parametrize("on_face", (False, True))
+def test_conformal_pec_operator_cannot_cross_source(on_face):
+    from rfx.geometry.csg import Box
+    sim = _sim()
+    x = 0.002 if on_face else 0.008
+    sim.add(Box((x, 0.006, 0.005), (x + 0.002, 0.009, 0.008)), material="pec")
+    if on_face:
+        with pytest.raises(ValueError, match="vacuum.*all six faces"):
+            sim.run(n_steps=2, conformal_pec=True, skip_preflight=True)
+    else:
+        sim.run(n_steps=2, conformal_pec=True, skip_preflight=True)
+
+
+def test_isolated_target_scatters_into_both_open_transverse_axes():
+    from rfx.geometry.csg import Box
+    fields = []
+    for target in (False, True):
+        sim = _sim()
+        if target:
+            sim.add_material("target", eps_r=3.0)
+            sim.add(Box((0.008, 0.007, 0.006), (0.010, 0.009, 0.008)), material="target")
+        cfg, _ = _aux(sim)
+        sim.add_probe((0.009, 0.002, 0.007), component="ez")
+        sim.add_probe((0.009, 0.008, 0.002), component="ez")
+        fields.append(np.asarray(sim.run(n_steps=160).time_series))
+        assert sim.boundary_model().requirements[1].admissible[0].value == "ABSORBER"
+        assert cfg.closed_box
+    # A source-only box has only rounding leakage. Both transverse
+    # directions must carry a target response beyond that algebra floor.
+    for axis in range(2):
+        assert np.max(np.abs(fields[1][:, axis])) > (
+            np.max(np.abs(fields[0][:, axis])) + 9 * np.spacing(np.float32(1.0)))
+
+
+def test_forward_run_and_remat_share_the_source_and_material_derivative():
+    from rfx.geometry.csg import Box
+    sim = _sim()
+    sim.add_material("target", eps_r=2.0)
+    sim.add(Box((0.008, 0.007, 0.006), (0.010, 0.009, 0.008)), material="target")
+    sim.add_probe((0.009, 0.002, 0.007), component="ez")
+    result = sim.run(n_steps=128)
+    fwd = sim.forward(n_steps=128, checkpoint=False, skip_preflight=True)
+    _peak_ulp(fwd.time_series, result.time_series)
+    grid = sim._build_grid()
+    materials = sim._assemble_materials(grid)[0]
+    region = jnp.asarray(materials.eps_r > 1.0)
+
+    def objective(eps, checkpoint):
+        eps_grid = jnp.where(region, eps, 1.0)
+        out = sim.forward(n_steps=128, eps_override=eps_grid,
+                          checkpoint=checkpoint,
+                          checkpoint_segments=4 if checkpoint else None,
+                          skip_preflight=True)
+        # Record-accumulated quantity: the cross-trace bar is 1e-4 peak.
+        return jnp.sum(out.time_series ** 2)
+
+    vals = []
+    for checkpoint in (False, True):
+        fn = lambda eps: objective(eps, checkpoint)
+        val, grad = jax.value_and_grad(fn)(2.0)
+        tangent = jax.jvp(fn, (2.0,), (1.0,))[1]
+        assert float(val) > 0
+        assert np.isfinite(float(grad)) and abs(float(grad)) > 0
+        np.testing.assert_allclose(grad, tangent, rtol=1e-4, atol=0)
+        vals.append(np.asarray([val, grad]))
+    np.testing.assert_allclose(vals[0], vals[1], rtol=1e-4, atol=0)
+
+
+@pytest.mark.parametrize("kind", ("custom", "box"))
+def test_outer_jit_refuses_unqualified_extended_tfsf_trace(kind):
+    sim = _sim(closed_box=kind == "box", waveform=(
+        "differentiated_gaussian" if kind == "box" else None))
+    compiled = jax.jit(lambda: sim.forward(n_steps=8, skip_preflight=True).time_series)
+    with pytest.raises(NotImplementedError, match="9-ULP cross-trace contract"):
+        compiled()

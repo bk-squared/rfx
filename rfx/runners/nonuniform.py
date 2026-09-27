@@ -779,6 +779,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     Result
     """
     # every single-device non-uniform solve (run AND forward) enters here
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
     sim._require_mode_the_nonuniform_lane_solves()
     # compute_waveguide_s_matrix's graded branch reaches this lane without
     # _dispatch_plan, so the lane refuses the refinement it drops (#1240).

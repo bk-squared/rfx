@@ -2203,6 +2203,9 @@ class Simulation(
             added to the auxiliary E node at ``t=n*dt``; it is not the
             launched E amplitude. Normal incidence only; use a fixed
             record length (``until_decay`` has no source-off contract).
+            These new source inputs support ordinary ``forward`` and its
+            internal checkpoints, but refuse an outer ``jax.jit`` because
+            its scattered-field trace does not meet the cross-trace bar.
         method : {"bloch", "methodB"}
             Oblique-incidence engine (ignored for ``angle_deg=0``, which always
             uses the normal 1D-aux path). ``"bloch"`` (default) is the narrowband

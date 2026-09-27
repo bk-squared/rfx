@@ -1640,8 +1640,6 @@ class _ExecuteMixin:
                 method=getattr(self._tfsf, "method", "bloch"),
                 closed_box=self._tfsf.closed_box,
             )
-            if self._tfsf.closed_box:
-                self._validate_tfsf_vacuum_boundary(materials, tfsf_run[0])
             # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
             # _auto_preflight on the concrete config; it is NOT re-run here because
             # `materials` may be a jax tracer under jax.grad (eps_override), and the
@@ -1652,7 +1650,9 @@ class _ExecuteMixin:
             if self._tfsf.closed_box:
                 periodic_bool = (False, False, False)
                 cpml_axes_run = "xyz"
-                pec_axes_run = ""
+                # Match run(): all six CPML exteriors retain their PEC
+                # backing. An empty string withholds those walls.
+                pec_axes_run = None
             elif _is_methodB_fwd(tfsf_run[0]):
                 periodic_bool = (False, False, True)
                 cpml_axes_run = "xy"
@@ -1680,6 +1680,31 @@ class _ExecuteMixin:
             pec_edge_masks_local = _rpem_fwd(
                 pec_mask, sheets=pec_sheets, wires=pec_wires,
                 periodic=periodic_bool)
+        if self._tfsf is not None and self._tfsf.closed_box:
+            nonvacuum = list(pec_edge_masks_local or ())
+            for spec in (debye_spec, lorentz_spec):
+                if spec is not None:
+                    nonvacuum.extend(spec[1])
+            if kerr_chi3 is not None:
+                nonvacuum.append(kerr_chi3)
+            if pec_occupancy is not None:
+                nonvacuum.append(pec_occupancy)
+            if sheet_impedance is not None:
+                nonvacuum.extend((sheet_impedance.mask_ex, sheet_impedance.mask_ey,
+                                  sheet_impedance.mask_ez))
+            if self._lumped_rlc:
+                mask = jnp.zeros(grid.shape, dtype=bool)
+                for spec in self._lumped_rlc:
+                    mask = mask.at[grid.position_to_index(spec.position)].set(True)
+                nonvacuum.append(mask)
+            for spec in (design_box, design_occupancy):
+                if spec is not None:
+                    b = spec.bounds
+                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                                   for d in range(3))
+                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+            self._validate_tfsf_vacuum_boundary(
+                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
@@ -4046,6 +4071,15 @@ class _ExecuteMixin:
 
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
+        if self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            if ((self._tfsf.closed_box or isinstance(self._tfsf.waveform, CustomWaveform))
+                    and _staged_by_an_outer_trace()):
+                raise NotImplementedError(
+                    "CustomWaveform and closed_box TFSF forward cannot be staged by an "
+                    "outer jax.jit/checkpoint/scan: the scattered-field trace exceeds "
+                    "the 9-ULP cross-trace contract. Use ordinary forward (grad/JVP "
+                    "and its internal checkpoint options are supported).")
         validate_exchange_interval(exchange_interval)
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_request

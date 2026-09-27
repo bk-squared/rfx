@@ -61,7 +61,8 @@ from rfx.grid import C0
 from rfx.preflight._common import PreflightWarning, _fmt_len
 
 
-def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
+def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
+                                  *, nonvacuum_masks=()) -> None:
     """Ensure the TFSF boundary planes remain vacuum.
 
     The TFSF correction assumes vacuum on and immediately adjacent to
@@ -96,13 +97,17 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
                 slices.append(tuple(sl))
                 names.append(f"{'xyz'[axis]}={index}")
         arrays = tuple(value[sl] for sl in slices
-                       for value in (materials.eps_r, materials.sigma, materials.mu_r))
+                       for value in (materials.eps_r, materials.sigma, materials.mu_r,
+                                     *nonvacuum_masks))
+        width = 3 + len(nonvacuum_masks)
 
         def check(*values):
             for idx, name in enumerate(names):
-                eps, sigma, mu = (np.asarray(v) for v in values[3 * idx:3 * idx + 3])
-                if not (np.allclose(eps, 1.0) and np.allclose(sigma, 0.0)
-                        and np.allclose(mu, 1.0)):
+                group = values[width * idx:width * (idx + 1)]
+                eps, sigma, mu = (np.asarray(v) for v in group[:3])
+                if not (np.all(eps == 1.0) and np.all(sigma == 0.0)
+                        and np.all(mu == 1.0)
+                        and all(not np.any(np.asarray(v)) for v in group[3:])):
                     raise ValueError(
                         "closed_box TFSF requires vacuum on and adjacent to all six "
                         f"faces; non-vacuum material found at {name}")

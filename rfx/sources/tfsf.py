@@ -193,6 +193,15 @@ def validate_custom_tfsf_waveform(waveform, dt: float, n_steps: int) -> None:
             raise ValueError("TFSF CustomWaveform must return finite samples throughout the requested record")
 
 
+def _refuse_extended_tfsf(entry, lane: str) -> None:
+    """Admission fence for runners that cannot carry either new source input."""
+    if entry is not None and (getattr(entry, "closed_box", False)
+                              or isinstance(entry.waveform, CustomWaveform)):
+        raise NotImplementedError(
+            f"CustomWaveform and closed_box TFSF are not supported on {lane}; "
+            "use the uniform single-device 3D second-order Yee run/forward")
+
+
 def init_tfsf(
     nx: int,
     dx: float,
