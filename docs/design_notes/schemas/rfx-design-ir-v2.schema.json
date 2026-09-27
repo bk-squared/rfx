@@ -1426,6 +1426,7 @@
             "box",
             "curved_patch",
             "cylinder",
+            "oriented_box",
             "polyline_wire",
             "sphere",
             "via"
@@ -1437,6 +1438,46 @@
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "oriented_box"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": [
+                  "center",
+                  "size",
+                  "rotation"
+                ],
+                "properties": {
+                  "center": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "size": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "rotation": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "$ref": "#/$defs/vec3"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         {
           "if": {
             "properties": {

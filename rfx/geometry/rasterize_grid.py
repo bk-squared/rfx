@@ -15,7 +15,7 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
-from rfx.geometry.csg import Cylinder, Sphere, declared_bounds
+from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
     _spec_from_pole_masks,
@@ -328,7 +328,7 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=
     the separate PEC volume/sheet/wire classifier. Other shapes retain their
     existing rules, including custom uniform shapes that implement only mask.
     """
-    if isinstance(shape, (Sphere, Cylinder)):
+    if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
         return shape.mask_on_coords(centres.x, centres.y, centres.z)
     if grid is not None:
         return shape.mask(grid)
@@ -476,6 +476,10 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     """
     from rfx.boundaries.pec import SheetSpec
     from rfx.materials.thin_conductor import sheet_bounds
+
+    if isinstance(shape, OrientedBox):
+        raise NotImplementedError(
+            "OrientedBox is a volume; axis-aligned sheet conversion is not implemented")
 
     if _is_traced_coords(coords):
         raise ValueError(

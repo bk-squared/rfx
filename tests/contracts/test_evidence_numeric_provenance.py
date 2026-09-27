@@ -1043,6 +1043,10 @@ CLASSIFICATION: dict[str, str] = {
     # recorded in open_closed_can_arms.json. Both records moved to rfx-archive
     # (rfx/records/20260924-coax-closed-can/) under the 2026-09-24 rule.
     "docs/design_notes/20260924_coax_open_closed_can_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # The showcase pre-declaration (issue 1332). No `::` span: it declares checks
+    # and thresholds before the runs, and the numbers they produced live in
+    # rfx-archive (rfx/records/20260927-showcase-*/), named in the PR, not here.
+    "docs/design_notes/20260927_showcase_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,

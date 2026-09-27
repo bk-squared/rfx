@@ -1,0 +1,52 @@
+name: rfx-showcase-forward-curves-msl-notch-filter
+description: "Issue 1332, showcase item 4. The MSL open-stub notch filter (|S21|, |S11|, h/6): tests/crossval/msl_notch_filter imported by path, its run_rung at LADDER_M[-1] (the rung the test compares with openEMS stage_b_fine), the rfx curves saved as arrays beside the reference records' curves with each record's path and sha256. Judges nothing; the verdict at the same commit is scripts/vessl_showcase_ladder_msl_notch_filter.yaml. Rules: docs/design_notes/20260927_showcase_predeclaration.md. Code is a shared clone of the pinned commit. Outputs: research/rfx/.omx/showcase/forward_curves_msl_notch_filter/<UTC>-<sha>/. Submit with scripts/vessl_submit.sh (it writes run_id.txt)."
+tags: [rfx, showcase, issue-1332, crossval-curves]
+resources:
+  cluster: remilab-c0
+  preset: gpu-8gb
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHOWCASE_REF: "b46a8220775b67f8720fb13c3e256c01cf7d6883"
+  RFX_SHOWCASE_PRESET: "gpu-8gb"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh only: no arrays, no [[ ]], no pipefail, no heredocs.
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory "$primary"
+  git config --global --add safe.directory "$primary/.git"
+  test "$RFX_SHOWCASE_REF" != "FILL_BEFORE_SUBMIT"
+  git -C "$primary" fetch -q origin
+  sha=$(git -C "$primary" rev-parse "$RFX_SHOWCASE_REF^{commit}")
+  short=$(echo "$sha" | cut -c1-8)
+  src="/tmp/rfx-showcase-$short"
+  rm -rf "$src"
+  git clone -q --no-checkout --shared "$primary" "$src"
+  git config --global --add safe.directory "$src"
+  git -C "$src" checkout -q --detach "$sha"
+  test "$(git -C "$src" rev-parse HEAD)" = "$sha"
+  out="$primary/.omx/showcase/forward_curves_msl_notch_filter/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  trap 'st=$?; { echo "exit=$st"; echo "commit=$sha"; for f in "$out"/*.rc; do [ -f "$f" ] && echo "$(basename "$f")=$(cat "$f")"; done; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  python -m pip install -q "jax[cuda12]==0.6.2"
+  python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
+  export PYTHONPATH="$src"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', rfx.__version__, rfx.__file__)" > "$out/probe.txt" 2>&1
+  cat "$out/probe.txt"
+  nvidia-smi > "$out/nvidia_smi.txt" 2>&1 || true
+  set +e
+  { timeout 5400 python scripts/showcase/forward_curves.py --case msl_notch_filter --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/forward_curves.rc"; } | tee "$out/forward_curves.log"
+  rc=$(cat "$out/forward_curves.rc")
+  set -e
+  echo "artifacts: $out"
+  exit "$rc"

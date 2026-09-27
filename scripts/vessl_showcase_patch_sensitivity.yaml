@@ -1,0 +1,70 @@
+name: rfx-showcase-patch-sensitivity
+description: "Issue 1332, showcase item 1 and 3. The RT/Duroid 5880 probe-fed patch of tests/crossval/rt5880_patch at dx = h/4: baseline S11 (run_rung), dJ/d eps_r of every substrate cell of a design box for J = |S11(f_t)|^2 at f_t = 1.01 f_r (one reverse-mode pass, plus a 600-step A1 check and a 1.5x-record witness), central differences on six pre-declared blocks (float64 repeat if the pre-declared round-off rule fires), |Ez(f_t)|^2 from DFT planes, then forward and value_and_grad wall time and peak device memory for three design boxes (patch footprint, design box, the substrate layer across the interior) on one pinned GPU model. The record-length witness is rfx's gradient_record_length_witness at 1.5x, judged per block at 0.05 (Amendment 1); a failed witness stops the case (exit 3) after writing the record. Rules: docs/design_notes/20260927_showcase_predeclaration.md. Code is a shared clone of the pinned commit, so git rev-parse HEAD in the job is the commit it ran. Outputs: research/rfx/.omx/showcase/patch_sensitivity/<UTC>-<sha>/. Submit with scripts/vessl_submit.sh (it writes run_id.txt)."
+tags: [rfx, showcase, issue-1332, autodiff]
+resources:
+  cluster: remilab-c0
+  preset: gpu-a6000-1
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHOWCASE_REF: "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"
+  RFX_SHOWCASE_PRESET: "gpu-a6000-1"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh only: no arrays, no [[ ]], no pipefail, no heredocs.
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory "$primary"
+  git config --global --add safe.directory "$primary/.git"
+  test "$RFX_SHOWCASE_REF" != "FILL_BEFORE_SUBMIT"
+  git -C "$primary" fetch -q origin
+  sha=$(git -C "$primary" rev-parse "$RFX_SHOWCASE_REF^{commit}")
+  short=$(echo "$sha" | cut -c1-8)
+  src="/tmp/rfx-showcase-$short"
+  rm -rf "$src"
+  git clone -q --no-checkout --shared "$primary" "$src"
+  git config --global --add safe.directory "$src"
+  git -C "$src" checkout -q --detach "$sha"
+  test "$(git -C "$src" rev-parse HEAD)" = "$sha"
+  out="$primary/.omx/showcase/patch_sensitivity/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  trap 'st=$?; { echo "exit=$st"; echo "commit=$sha"; for f in "$out"/*.rc; do [ -f "$f" ] && echo "$(basename "$f")=$(cat "$f")"; done; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  python -m pip install -q "jax[cuda12]==0.6.2"
+  python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
+  export PYTHONPATH="$src"
+  cd "$src"
+  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', rfx.__version__, rfx.__file__)" > "$out/probe.txt" 2>&1
+  cat "$out/probe.txt"
+  nvidia-smi > "$out/nvidia_smi.txt" 2>&1 || true
+  PS=scripts/showcase/patch_sensitivity.py
+  set +e
+  { timeout 10800 python "$PS" --stage main --out "$out" 2>&1; echo "$?" > "$out/main.rc"; } | tee "$out/main.log"
+  rc=$(cat "$out/main.rc")
+  if [ "$rc" = "0" ] && [ -f "$out/x64_needed.json" ]; then
+    { JAX_ENABLE_X64=1 timeout 10800 python "$PS" --stage x64fd --out "$out" 2>&1; echo "$?" > "$out/x64fd.rc"; } | tee "$out/x64fd.log"
+    # a failed float64 repeat stops the case: no timing, no finalize
+    rc=$(cat "$out/x64fd.rc")
+  fi
+  if [ "$rc" = "0" ]; then
+    for box in patch design layer; do
+      for mode in forward grad; do
+        { timeout 3600 python "$PS" --stage timing --box "$box" --mode "$mode" --out "$out" 2>&1; echo "$?" > "$out/timing_${box}_${mode}.rc"; } | tee "$out/timing_${box}_${mode}.log"
+      done
+    done
+    { timeout 600 python "$PS" --stage finalize --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/finalize.rc"; } | tee "$out/finalize.log"
+    rc=$(cat "$out/finalize.rc")
+  elif [ "$rc" = "3" ]; then
+    # the record-length witness failed: the case stops, the record is written
+    { timeout 600 python "$PS" --stage finalize --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/finalize.rc"; } | tee "$out/finalize.log"
+  fi
+  set -e
+  echo "artifacts: $out"
+  exit "$rc"
