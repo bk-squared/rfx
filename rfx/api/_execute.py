@@ -1622,6 +1622,8 @@ class _ExecuteMixin:
         tfsf_run = None
         if self._tfsf is not None:
             from rfx.sources.tfsf import init_tfsf as _init_tfsf_fwd
+            from rfx.sources.tfsf import validate_custom_tfsf_waveform
+            validate_custom_tfsf_waveform(self._tfsf.waveform, grid.dt, n_steps)
             tfsf_run = _init_tfsf_fwd(
                 grid.nx, grid.dx, grid.dt,
                 cpml_layers=grid.cpml_layers,
@@ -1636,7 +1638,10 @@ class _ExecuteMixin:
                 nz=grid.nz,
                 waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
                 method=getattr(self._tfsf, "method", "bloch"),
+                closed_box=self._tfsf.closed_box,
             )
+            if self._tfsf.closed_box:
+                self._validate_tfsf_vacuum_boundary(materials, tfsf_run[0])
             # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
             # _auto_preflight on the concrete config; it is NOT re-run here because
             # `materials` may be a jax tracer under jax.grad (eps_override), and the
@@ -1644,7 +1649,11 @@ class _ExecuteMixin:
             # Open-domain oblique Method B forces OPEN transverse y (CPML) with
             # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
             from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
-            if _is_methodB_fwd(tfsf_run[0]):
+            if self._tfsf.closed_box:
+                periodic_bool = (False, False, False)
+                cpml_axes_run = "xyz"
+                pec_axes_run = ""
+            elif _is_methodB_fwd(tfsf_run[0]):
                 periodic_bool = (False, False, True)
                 cpml_axes_run = "xy"
                 pec_axes_run = ""
@@ -3133,6 +3142,24 @@ class _ExecuteMixin:
         self._require_no_refinement_on_the_nonuniform_lane()
         is_nonuniform = self._uses_nonuniform_mesh
 
+        if self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            extended_tfsf = (self._tfsf.closed_box
+                             or isinstance(self._tfsf.waveform, CustomWaveform))
+            if extended_tfsf and (
+                is_nonuniform or distributed or (devices is not None and len(devices) > 1)
+                or self._refinement is not None or self._mode != "3d"
+                or self._solver != "yee" or self._stencil_order != 2
+            ):
+                raise NotImplementedError(
+                    "CustomWaveform and closed_box TFSF require a uniform, single-device, "
+                    "3D second-order Yee run/forward with no subgrids")
+            if self._tfsf.closed_box and any(
+                getattr(getattr(self._boundary_spec, axis), side) != "cpml"
+                for axis in "xyz" for side in ("lo", "hi")
+            ):
+                raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
+
         def _reject_lane_precision(lane: str) -> None:
             # Issue #630 follow-up: field_dtype is threaded ONLY on the
             # uniform-lane runner (rfx/runners/uniform.py). The non-uniform,
@@ -4564,6 +4591,11 @@ class _ExecuteMixin:
         """
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
+        if until_decay is not None and self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            if isinstance(self._tfsf.waveform, CustomWaveform):
+                raise NotImplementedError(
+                    "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
         if ringdown is not None:
             from rfx.ringdown import refuse_run_request
             refuse_run_request(self, ringdown, devices=devices,

@@ -80,6 +80,41 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg) -> None:
         validate_vacuum_boundary(materials, tfsf_cfg)
         return
 
+    if getattr(tfsf_cfg, "closed_box", False):
+        # Include the cell neighbours read by edge-averaged epsilon as
+        # well as the corrected Yee nodes. A face-only test misses the
+        # material immediately across a transverse edge or corner.
+        import jax
+        bounds = [(getattr(tfsf_cfg, a + "_lo"), getattr(tfsf_cfg, a + "_hi"))
+                  for a in "xyz"]
+        slices = []
+        names = []
+        for axis, (lo, hi) in enumerate(bounds):
+            for index in (lo - 1, lo, hi, hi + 1):
+                sl = [slice(a - 1, b + 2) for a, b in bounds]
+                sl[axis] = slice(index, index + 1)
+                slices.append(tuple(sl))
+                names.append(f"{'xyz'[axis]}={index}")
+        arrays = tuple(value[sl] for sl in slices
+                       for value in (materials.eps_r, materials.sigma, materials.mu_r))
+
+        def check(*values):
+            for idx, name in enumerate(names):
+                eps, sigma, mu = (np.asarray(v) for v in values[3 * idx:3 * idx + 3])
+                if not (np.allclose(eps, 1.0) and np.allclose(sigma, 0.0)
+                        and np.allclose(mu, 1.0)):
+                    raise ValueError(
+                        "closed_box TFSF requires vacuum on and adjacent to all six "
+                        f"faces; non-vacuum material found at {name}")
+
+        if any(isinstance(a, jax.core.Tracer) for a in arrays):
+            # A traced material override can change a source face too.
+            # Keep the refusal during jit/grad rather than dropping it.
+            jax.debug.callback(check, *arrays, ordered=True)
+        else:
+            check(*arrays)
+        return
+
     boundary_slices = (
         ("x_lo-1", slice(tfsf_cfg.x_lo - 1, tfsf_cfg.x_lo)),
         ("x_lo", slice(tfsf_cfg.x_lo, tfsf_cfg.x_lo + 1)),
