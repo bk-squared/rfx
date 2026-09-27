@@ -6,6 +6,12 @@ on:
       - main
     paths:
       - "docs/public/**"
+      - "README.md"
+      - "examples/quickstart/hello_world.py"
+      - "scripts/sync_intro_snippet.py"
+      - "scripts/build_public_docs_bundle.py"
+      - "tests/unit/docs/**"
+      - "docs/guides/*support_matrix.json"
       - "docs/agent/**"
       - "docs/guides/public_docs_architecture.md"
       - "scripts/check_public_docs_sync.py"
@@ -20,6 +26,12 @@ on:
   pull_request:
     paths:
       - "docs/public/**"
+      - "README.md"
+      - "examples/quickstart/hello_world.py"
+      - "scripts/sync_intro_snippet.py"
+      - "scripts/build_public_docs_bundle.py"
+      - "tests/unit/docs/**"
+      - "docs/guides/*support_matrix.json"
       - "docs/agent/**"
       - "docs/guides/public_docs_architecture.md"
       - "scripts/check_public_docs_sync.py"
@@ -55,7 +67,10 @@ jobs:
           python-version: "3.10"
 
       - name: Syntax-check public-doc scripts
-        run: python -m py_compile scripts/check_public_docs_sync.py scripts/check_public_docs_manifest.py scripts/export_public_docs_to_gitops.py
+        run: python -m py_compile scripts/check_public_docs_sync.py scripts/check_public_docs_manifest.py scripts/export_public_docs_to_gitops.py scripts/build_public_docs_bundle.py
+
+      - name: Verify the generated introductory code
+        run: python scripts/sync_intro_snippet.py --check
 
       - name: Verify site map resolves
         run: python scripts/check_public_docs_manifest.py
@@ -78,13 +93,16 @@ jobs:
         # extends pdoc's own default/module.html.jinja2 and overrides two of its macros
         # (issue #1019), so a major bump can change that contract underneath us. The
         # anchor gate below is the tripwire if it ever does.
-        run: pip install -e ".[dev]" "pdoc>=16,<17"
+        run: pip install -e ".[dev]" "pdoc==16.0.0"
 
-      - name: Regenerate API reference at HEAD
-        # rfx.dashboard needs the optional streamlit extra — excluded.
-        # -t docs/pdoc_templates: without it pdoc drops every Simulation method
-        # inherited from the private mixins (run/forward/preflight/compute_*, #1019).
-        run: python -m pdoc -t docs/pdoc_templates -o docs/api rfx '!rfx.dashboard'
+      - name: Check publication boundaries
+        run: pytest -q tests/unit/docs/test_public_docs_bundle.py
+
+      - name: Generate the pinned API and LLM documentation bundle
+        run: python scripts/build_public_docs_bundle.py --output-dir docs/_build/public-docs
+
+      - name: Verify source identity and artifact checksums
+        run: python scripts/build_public_docs_bundle.py --verify docs/_build/public-docs
 
       - name: Gate — symbol inventory drift + required symbols in rendered HTML
-        run: python scripts/check_api_reference.py --html-dir docs/api
+        run: python scripts/check_api_reference.py --html-dir docs/_build/public-docs/files/api/generated

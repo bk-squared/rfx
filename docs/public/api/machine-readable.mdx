@@ -1,0 +1,47 @@
+---
+title: Documentation for Agents and Scripts
+description: Versioned Markdown, signatures, support contracts and source provenance for programmatic readers.
+---
+
+Start with [llms.txt](/rfx/llms.txt). It links the same manuals and examples
+served on this site, as plain Markdown without navigation markup. Each Markdown
+page identifies its documentation channel, package version, source commit and
+human-readable URL.
+
+| Resource | Contents |
+|---|---|
+| [Documentation index](/rfx/llms.txt) | Task-oriented links to the public pages and API |
+| [Combined manual](/rfx/llms-full.txt) | Public page text and code in one document |
+| [Typed API inventory](/rfx/api/inventory.json) | Importable exports and public `Simulation` methods, generated from Python |
+| [Support contract](/rfx/api/support/support_matrix.json) | The source repository's unchanged configuration support data |
+| [S-parameter contract](/rfx/api/support/sparameter_support_matrix.json) | Port families, calculators, result conventions and restrictions |
+| [Build manifest](/rfx/docs-manifest.json) | Source identity, page URLs, source files and artifact hashes |
+| [Deep reference](/rfx/api/generated/rfx.html) | Rendered signatures and full docstrings |
+
+## Read the constraints with the signature
+
+A signature tells you what can be called. The support contracts and
+[support boundaries](/rfx/api/support-boundaries/) tell you which combinations
+have documented evidence. A successful preflight or a completed run does not
+establish accuracy. Historical gallery artifacts retain their original provenance;
+the documentation build commit is not a new simulation run.
+
+The inventory preserves annotations and docstrings as written. It does not invent
+missing units, shape constraints, support levels or validation claims. Use the
+parameter descriptions and result conventions alongside the signature, then
+follow the commit-pinned source link when more detail is needed.
+
+A useful request to a coding agent is:
+
+> Read this version's llms.txt, API inventory and support contracts. Select the
+> matching example and measurement API, state its units and configuration limits,
+> and cite the source commit. Do not turn a field probe into a port S-parameter
+> calculator or claim that an optimization movie verifies a gradient.
+
+## Match the installed version
+
+The documentation channel and source SHA appear on each page. Development docs
+may describe changes after the installed release. Use the corresponding release
+snapshot when available and compare its package version with `rfx.__version__`.
+The JSON `schema_version` identifies the file format; it is separate from the
+simulator's `package_version`.
