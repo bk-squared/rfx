@@ -138,6 +138,17 @@ def test_fine_region_coordinates_are_already_cell_centres():
     _assert_materials(mats, _world_inside(axes))
 
 
+def test_nonuniform_dual_average_uses_the_same_cell_centres():
+    from rfx.runners.nonuniform import assemble_interface_eps_nu
+    sim = _sim(dz_profile=np.full(50, DX), interface_eps="dual_average")
+    grid = sim._build_nonuniform_grid()
+    mats = sim._assemble_materials_nu(grid)[0]
+    centres = [(np.arange(n)-PAD+.5)*DX for n in grid.shape]
+    expected = np.where(_world_inside(centres), 3.25, 1.)
+    for got, want in zip(assemble_interface_eps_nu(sim, grid, mats), _edge_means(expected)):
+        np.testing.assert_array_equal(got, want)
+
+
 def test_parameters_are_immutable_and_bounds_enclose_all_eight_vertices():
     center, size, rotation = np.array([1., 2., 3.]), np.array(SIZE), Q.copy()
     shape = OrientedBox(center, size, rotation)
@@ -214,3 +225,16 @@ def test_geometric_conductor_continuation_is_explicitly_refused():
     sim.add(OrientedBox((0., .045, .05), SIZE, Q), material="pec")
     with pytest.raises(NotImplementedError, match="continuation"):
         sim._assemble_materials(sim._build_grid())
+
+
+@pytest.mark.parametrize("operator,graded", [("smooth", False), ("smooth", True),
+                                            ("inverse", False), ("conformal", False)])
+def test_public_runner_refuses_unimplemented_geometry_operator_before_stepping(operator, graded):
+    sim = _sim(**({"dz_profile": np.full(50, DX)} if graded else {}))
+    if operator == "conformal":
+        sim = Simulation(freq_max=6e9, domain=DOMAIN, dx=DX, cpml_layers=PAD)
+        sim.add(_shape(), material="pec")
+    options = ({"conformal_pec": True} if operator == "conformal" else
+               {"subpixel_smoothing": "kottke_pec" if operator == "inverse" else True})
+    with pytest.raises(NotImplementedError, match="OrientedBox"):
+        sim.run(n_steps=1, skip_preflight=True, **options)

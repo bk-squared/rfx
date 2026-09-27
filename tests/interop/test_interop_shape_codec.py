@@ -172,6 +172,7 @@ def test_mesh_shape_is_refused_until_explicitly_supported():
 
 
 def test_oriented_box_design_round_trip_preserves_material_cells():
+    from pathlib import Path
     import numpy as np
     from rfx import Simulation
     from rfx.interop import design_to_dict, simulation_from_design
@@ -180,6 +181,9 @@ def test_oriented_box_design_round_trip_preserves_material_cells():
     sim.add_material("body", eps_r=3.25, sigma=.125)
     sim.add(SHAPES["oriented_box"], material="body")
     payload = design_to_dict(sim)
+    schema_path = (Path(__file__).resolve().parents[2]
+                   / "docs/design_notes/schemas/rfx-design-ir-v2.schema.json")
+    pytest.importorskip("jsonschema").validate(payload, json.loads(schema_path.read_text()))
     restored = simulation_from_design(json.loads(json.dumps(payload)))
     assert design_to_dict(restored) == payload
     actual = sim._assemble_materials(sim._build_grid())[0]
