@@ -18,6 +18,12 @@ compare against a 1.x number.
 
 ### Breaking
 
+- **The coaxial calculators absorb on all three axes** (#1218).
+  `compute_coaxial_line_reflection` and `compute_coaxial_two_port` now use
+  `cpml_axes="xyz"`, the only accepted value; `cpml_axes="z"` raises. With
+  absorbers on z only the line sat in a closed metal can, so an open end read
+  |S11| above 1. Every coaxial S moves slightly, and a line whose outer wall
+  comes within one cell of a side absorber is refused.
 - **A conductor is a volume, a sheet or a wire, and your declaration says
   which.** `sim.add(shape, material="pec")` is a volume, with walls at both
   drawn faces, so its realized thickness equals its drawn thickness.
@@ -97,6 +103,16 @@ compare against a 1.x number.
 
 ### Added
 
+- **Phase-referenced complex scattering**: `compute_rcs(...,
+  phase_reference=(x, y, z), subtract_incident_reference=True)` returns a
+  `ScatteringResponse` with complex `F_theta` / `F_phi` in metres (#1327).
+  Normal +x incidence on a uniform 3-D grid with symmetric CPML for now;
+  existing calls still return `RCSResult`.
+- **A design box can contain its own feed port** with
+  `forward(design_box_holds_ports=True)` (#1319). The port's edges keep the
+  drawn materials and the 50 Ω load, their gradient is zero, and
+  `ForwardResult.design_box_held_edges` lists them. Without the option, a box
+  holding a lumped or wire port still raises.
 - **`run(..., ringdown=RingdownSpec())`** completes a wire port's
   S-parameters when the record ends while the structure still rings (#1254).
   `result.ringdown.report` holds the fitted poles and the witnesses; none of

@@ -235,7 +235,10 @@ print("box gradient shape:", g_box.shape)
 CPML or contain a source, port, lumped element or surface-impedance sheet, and
 it does not combine with dispersive (Debye/Lorentz) or Kerr materials,
 subpixel smoothing, UPML, `stencil_order=4`, or the other whole-grid overrides.
-Those cases raise an error; use `eps_override` for them.
+Those cases raise an error; use `eps_override` for them. The one exception is
+a lumped or wire feed port: pass `design_box_holds_ports=True` and the port's
+edges keep the drawn materials and load (their gradient is zero) while the
+rest of the box stays a design variable.
 
 **A design conductivity** goes in `design_sigma_override`, in one of two forms:
 
