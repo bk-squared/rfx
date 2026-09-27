@@ -218,3 +218,59 @@ def test_builder_uses_the_same_identity_validation_before_loading_runtime(tmp_pa
     with pytest.raises(ValueError):
         bundle.build(tmp_path, tmp_path / "output", "https://remilab.ai/rfx/../outside", "development", None)
     assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.parametrize("has_authored_index", [False, True])
+def test_generated_api_index_preserves_authoring_or_supplies_release_fallback(tmp_path, has_authored_index):
+    generated = tmp_path / "api/generated"
+    generated.mkdir(parents=True)
+    original_menu = b"<html><body><a href='rfx.html'>module</a></body></html>"
+    (generated / "index.html").write_bytes(original_menu)
+    base = "https://remilab.ai/rfx/versions/v1.8.0"
+    sha = "7" * 40
+    bundle.finish_generated_index(
+        generated, has_authored_index=has_authored_index, base_url=base,
+        channel="release", package_version="1.8.0", source_sha=sha,
+    )
+    assert (generated / "index-pdoc.html").read_bytes() == original_menu
+    assert (generated / "index.html").exists() is not has_authored_index
+    if not has_authored_index:
+        from html.parser import HTMLParser
+
+        class Links(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.links = []
+                self.refresh = None
+
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if "href" in attrs:
+                    self.links.append(attrs["href"])
+                if tag == "meta" and attrs.get("http-equiv") == "refresh":
+                    self.refresh = attrs["content"]
+
+        landing = (generated / "index.html").read_text()
+        parsed = Links()
+        parsed.feed(landing)
+        assert parsed.refresh == f"0; url={base}/api/generated/rfx.html"
+        assert f"{base}/api/generated/rfx.html" in parsed.links
+        assert f"https://github.com/bk-squared/rfx/tree/{sha}" in parsed.links
+        assert all(url.startswith(base + "/") or sha in url for url in parsed.links)
+        assert "1.8.0" in landing and sha in landing
+        assert bundle.allowed_artifact("api/generated/index.html")
+
+
+def test_clean_markdown_removes_jsx_snippet_markers_and_preserves_python():
+    source = """{/* intro-snippet:start */}
+```python
+print("hello")
+```
+{/* intro-snippet:end */}
+"""
+    _, markdown = bundle.clean_markdown(
+        source, route="guide/first-run", base_url="https://remilab.ai/rfx", source_sha="a" * 40,
+    )
+    assert "intro-snippet" not in markdown
+    assert '{/*' not in markdown and '*/}' not in markdown
+    assert '```python\nprint("hello")\n```' in markdown

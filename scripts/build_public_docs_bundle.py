@@ -261,6 +261,31 @@ def api_inventory(root: Path, sha: str, base_url: str, channel: str) -> dict:
             "symbols": symbols}
 
 
+
+def finish_generated_index(generated: Path, *, has_authored_index: bool, base_url: str,
+                           channel: str, package_version: str, source_sha: str) -> None:
+    """Keep pdoc's module menu and supply an entry point for older source trees."""
+    (generated / "index.html").rename(generated / "index-pdoc.html")
+    if has_authored_index:
+        return
+    target = html.escape(f"{base_url}/api/generated/rfx.html", quote=True)
+    source = html.escape(f"{SOURCE_REPOSITORY}/tree/{source_sha}", quote=True)
+    landing = (
+        '<!doctype html>\n<html lang="en"><head><meta charset="utf-8">\n'
+        '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f'<meta http-equiv="refresh" content="0; url={target}">\n'
+        f'<link rel="canonical" href="{target}">\n'
+        '<title>rfx generated API reference</title></head><body><main>\n'
+        '<h1>Generated API reference</h1>\n'
+        f'<p>{html.escape(channel.capitalize())} documentation · '
+        f'rfx {html.escape(package_version)} · '
+        f'<a href="{source}">{html.escape(source_sha)}</a></p>\n'
+        f'<p><a href="{target}">Open the complete Python API reference</a>.</p>\n'
+        '</main></body></html>\n'
+    )
+    (generated / "index.html").write_text(landing)
+
+
 def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str | None) -> dict:
     root = root.resolve()
     sha = check_source(root, source_sha)
@@ -319,7 +344,10 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
         errors = check_api_reference.check_html(generated, check_api_reference.build_inventory())
         if errors:
             raise ValueError("\n".join(errors))
-        (generated / "index.html").rename(generated / "index-pdoc.html")
+        finish_generated_index(
+            generated, has_authored_index=any(page["route"] == "api/generated" for page in pages),
+            base_url=base_url, channel=channel, package_version=inventory["package_version"], source_sha=sha,
+        )
         anchors = set(re.findall(r'id="([^"\n]+)"', (generated / "rfx.html").read_text()))
         for symbol in inventory["symbols"]:
             if symbol["name"].removeprefix("rfx.") not in anchors:
