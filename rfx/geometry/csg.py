@@ -366,6 +366,83 @@ class Box:
 
 
 @dataclass(frozen=True)
+class OrientedBox:
+    """A static solid box with explicitly oriented body axes.
+
+    ``center`` and positive ``size`` are in metres. The columns of the
+    proper orthogonal ``rotation`` matrix are the body axes in simulation
+    coordinates. Inputs are copied to immutable tuples; geometry and mesh
+    coordinates must be concrete. Rotation is checked in host float64 to
+    32 machine epsilons, without projecting an invalid matrix onto SO(3).
+
+    ``mask`` / ``mask_on_coords`` sample nodes, with half-open body bounds
+    ``-size/2 <= rotation.T @ (point-center) < size/2``. Material assembly
+    explicitly samples physical cell centres instead. This opt-in volume
+    does not change :class:`Box`'s sampling convention. Subpixel smoothing,
+    conformal weights and thin-conductor sheet conversion are unsupported.
+    """
+
+    center: tuple[float, float, float]
+    size: tuple[float, float, float]
+    rotation: tuple[tuple[float, float, float], ...] = (
+        (1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0))
+
+    def __post_init__(self):
+        arrays = {}
+        for name, shape in (("center", (3,)), ("size", (3,)), ("rotation", (3, 3))):
+            value = getattr(self, name)
+            if any(is_tracer(v) for v in jax.tree_util.tree_leaves(value)):
+                raise NotImplementedError("OrientedBox requires concrete geometry parameters")
+            raw = np.asarray(value)
+            if raw.shape != shape or raw.dtype.kind not in "iuf":
+                raise ValueError(f"OrientedBox {name} must be a real finite array of shape {shape}")
+            array = raw.astype(np.float64)
+            if not np.all(np.isfinite(array)):
+                raise ValueError(f"OrientedBox {name} must be finite")
+            arrays[name] = array
+        if np.any(arrays["size"] <= 0):
+            raise ValueError("OrientedBox size must be strictly positive; it is a volume, not a sheet")
+        rotation = arrays["rotation"]
+        if (not np.allclose(rotation.T @ rotation, np.eye(3), rtol=0,
+                            atol=32 * np.finfo(np.float64).eps)
+                or np.linalg.det(rotation) <= 0):
+            raise ValueError("OrientedBox rotation must be a proper orthogonal 3x3 matrix")
+        for name in ("center", "size"):
+            object.__setattr__(self, name, tuple(float(v) for v in arrays[name]))
+        object.__setattr__(self, "rotation", tuple(tuple(float(v) for v in row) for row in rotation))
+
+    def bounding_box(self):
+        half = np.abs(np.asarray(self.rotation)) @ (np.asarray(self.size) / 2)
+        center = np.asarray(self.center)
+        return tuple(center - half), tuple(center + half)
+
+    def min_feature_size(self) -> float:
+        return min(self.size)
+
+    def mask_on_coords(self, x, y, z):
+        if any(is_tracer(c) for c in (x, y, z)):
+            raise NotImplementedError("OrientedBox requires concrete mesh coordinates")
+        axes = [np.asarray(c, dtype=np.float64) for c in (x, y, z)]
+        if any(c.ndim != 1 or not np.all(np.isfinite(c)) for c in axes):
+            raise ValueError("OrientedBox coordinates must be finite one-dimensional arrays")
+        offsets = (axes[0][:, None, None] - self.center[0],
+                   axes[1][None, :, None] - self.center[1],
+                   axes[2][None, None, :] - self.center[2])
+        inside = np.ones(tuple(len(c) for c in axes), dtype=bool)
+        for body_axis, length in enumerate(self.size):
+            distance = sum(self.rotation[a][body_axis] * offsets[a] for a in range(3))
+            inside &= (distance >= -length / 2) & (distance < length / 2)
+        return jnp.asarray(inside)
+
+    def mask(self, grid: Grid) -> jnp.ndarray:
+        if hasattr(grid, "dx_arr"):
+            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+            coords = coords_from_nonuniform_grid(grid)
+            return self.mask_on_coords(*coords[:3])
+        return self.mask_on_coords(*_grid_coords(grid))
+
+
+@dataclass(frozen=True)
 class Cylinder:
     """Cylinder along a given axis."""
 

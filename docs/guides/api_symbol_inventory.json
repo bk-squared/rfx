@@ -172,6 +172,9 @@
     "OptimizeResult": {
       "kind": "class"
     },
+    "OrientedBox": {
+      "kind": "class"
+    },
     "PCBLayer": {
       "kind": "class"
     },

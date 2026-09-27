@@ -200,6 +200,9 @@ def compute_conformal_weights(
     w_ey = np.ones((nx, ny, nz), dtype=np.float32)
     w_ez = np.ones((nx, ny, nz), dtype=np.float32)
 
+    from rfx.geometry.csg import OrientedBox
+    if any(isinstance(shape, OrientedBox) for shape in pec_shapes):
+        raise NotImplementedError("OrientedBox conformal weights are not implemented")
     if not pec_shapes:
         return jnp.array(w_ex), jnp.array(w_ey), jnp.array(w_ez)
 

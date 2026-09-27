@@ -47,7 +47,7 @@ from rfx.jax_checks import (
     check_positive,
     checkify_invariants,
 )
-from rfx.geometry.csg import Box, Sphere, Cylinder, PolylineWire
+from rfx.geometry.csg import Box, OrientedBox, Sphere, Cylinder, PolylineWire
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.mesh_import import MeshShape
 from rfx.subgridding.validation import SubgridValidationIssue, SubgridValidationReport
@@ -280,7 +280,7 @@ __all__ = [
     "checkify_invariants", "check_finite", "check_positive",
     "check_bounds", "check_courant_number",
     # geometry
-    "Box", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
+    "Box", "OrientedBox", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
     "MeshShape",
     "PCBLayer", "Stackup",
     # microstrip closed-form synthesis / analysis
