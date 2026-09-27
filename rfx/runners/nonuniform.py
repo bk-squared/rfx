@@ -707,7 +707,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         decay_energy_consecutive: int = 2,
                         radiated_flux_box: tuple | None = None,
                         flux_env_checks: int = 4,
-                        design_box=None):
+                        design_box=None,
+                        lane: str = "run_nonuniform"):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -773,6 +774,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         (#1179); ``rfx.simulation._resolve_design_box``, called from
         ``_build_nu_scan``, carries the fences that need the resolved step
         context, and the ones below are this lane's own.
+    lane : str
+        The lane admission judges this run as: ``"run_nonuniform"`` (the
+        default, also a direct call) or ``"fwd_nonuniform"`` from
+        ``forward()``. A declared input the lane does not carry is refused
+        before the first step (``rfx.runners._admission``).
 
     Returns
     -------
@@ -1594,6 +1600,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 "not supported (#677 v1): the sheet operator assumes the "
                 "isotropic E update at its edges. Disable "
                 "subpixel_smoothing or drop the f0 sheet.")
+
+    # Every declared input this lane does not carry is refused here, after
+    # the specific refusals above and before the first step.
+    from rfx.runners._admission import admit
+    admit(sim, lane)
 
     _shared_run_kwargs = dict(
         design_box=design_box,

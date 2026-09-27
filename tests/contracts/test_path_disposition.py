@@ -6,6 +6,10 @@ attribute, a new lane of ``_dispatch_plan``, a new function that reaches a
 time-stepping kernel, or a new function that steps fields, fails here until
 someone decides and records how each path treats it. The cells' truth is
 checked by ``tests/unit/runners/test_path_disposition_cells.py``.
+
+It also checks that lane admission (``rfx/runners/_admission.py``) enforces
+this table: every input row has a detector, and a lane admits exactly the
+rows whose cell on it is ``carries`` or ``ignorable``.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ import warnings
 from pathlib import Path
 
 from rfx import Simulation
+from rfx.runners import _admission as A
 from tests.contracts import path_disposition as T
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -262,3 +267,35 @@ def test_every_function_that_reaches_a_kernel_is_registered():
 def test_every_function_that_steps_fields_is_registered():
     _check_registry(_scan(_calls_a_field_update), FIELD_STEPPERS,
                     "functions that call a field update")
+
+
+def _input_rows():
+    return {(attr, feature) for attr, features in T.TABLE.items()
+            if T.ROW_CLASS[attr] != T.BOOKKEEPING for feature in features}
+
+
+def test_every_input_row_has_a_detector():
+    """A row admission cannot see is an input every lane would drop again."""
+    rows = _input_rows()
+    assert set(A.DETECTORS) == rows, (
+        f"rows without a detector in rfx/runners/_admission.py: {sorted(rows - set(A.DETECTORS))}; "
+        f"detectors without a row here: {sorted(set(A.DETECTORS) - rows)}")
+    assert set(A.ROW_WORDS) == rows, sorted(set(A.ROW_WORDS) ^ rows)
+
+
+def test_admission_admits_exactly_the_carried_cells():
+    """One list of what a lane admits: ADMITS and the cell kinds agree."""
+    assert A.LANES == T.LANES
+    disagree = []
+    for attr, features in T.TABLE.items():
+        for feature, row in features.items():
+            key = (attr, feature)
+            for lane in T.LANES:
+                if T.ROW_CLASS[attr] == T.BOOKKEEPING:
+                    admitted = False   # bookkeeping is no input: no detector, no admission
+                else:
+                    admitted = row[lane].kind in (T.CARRIES, T.IGNORABLE)
+                if (key in A.ADMITS[lane]) != admitted:
+                    disagree.append(f"{attr}/{feature}/{lane}: table {T.cell(attr, feature, lane).kind}, "
+                                    f"ADMITS {'has' if key in A.ADMITS[lane] else 'lacks'} it")
+    assert not disagree, "\n".join(disagree)

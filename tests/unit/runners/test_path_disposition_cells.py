@@ -53,6 +53,7 @@ import pytest
 import rfx.adi
 from rfx import (Box, DebyePole, GaussianPulse, PolylineWire, Simulation,
                  Sphere, drude_pole, lorentz_pole)
+from rfx.runners import _admission as A
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from tests.contracts import path_disposition as T
 from tests.contracts.test_realized_boundary import measured as _boundary_departures
@@ -679,11 +680,16 @@ def test_relaxed_subgrid_validation_refuses_or_carries(mode, name):
     that model's fields, so it is run once, unvalidated)."""
     spec = Feature(lambda lane, on, ref=False: None)
     sim = _relaxed(mode, RELAXED_INPUTS[name])
+    c = T.cell(*_RELAXED, "run_subgridded")
     with _watch_kernel_scans() as started:
         try:
             declared = _probe(_run(sim, "run_subgridded", spec))
-        except (NotImplementedError, ValueError):
+        except (NotImplementedError, ValueError) as exc:
             assert not started, started
+            if c.kind == T.REFUSES and not c.wrong:
+                assert c.raises in str(exc), (
+                    f"validation={mode!r} with {name} was refused, but not by the refusal the "
+                    f"table names ({c.raises!r}): {str(exc)[:300]}")
             return
     eps_r = RELAXED_STATIC[name]
     key = ("relaxed", eps_r)
@@ -714,3 +720,87 @@ def test_thresholds_clear_float32_noise():
                 for lane in ("run_nonuniform", "fwd_uniform", "fwd_nonuniform", "fwd_adi"))
     assert noise < 3e-6, noise
     assert PARITY_TOL >= 30 * noise and EFFECT_FLOOR >= 10 * PARITY_TOL
+
+
+# ------------------------------------------------ what admission sees (J2b)
+# Lane admission (rfx/runners/_admission.py) refuses what a lane does not
+# carry only if a detector sees the input. A detector that never fires would
+# let every drop through again, and one that always fires would refuse every
+# model, so both directions are checked on the models the cells build.
+
+def _declared_models():
+    """Every cell above whose model can be built: a ``declared`` refusal
+    raises in the constructor, so it has no model to look at."""
+    for param in _executable():
+        attr, feature, lane = param.values
+        if not T.cell(attr, feature, lane).declared:
+            yield pytest.param(attr, feature, lane, id=param.id)
+
+
+@pytest.mark.parametrize("attr,feature,lane", list(_declared_models()))
+def test_the_rows_detector_fires_on_the_cells_model(attr, feature, lane):
+    sim = _build(FEATURES[attr, feature], lane, True)
+    assert A.DETECTORS[attr, feature](sim), (
+        f"{attr}/{feature} is declared on the {lane} cell's model, but its detector does not see it")
+
+
+@pytest.mark.parametrize("mode,name", [(m, n) for m, n in (p.values for p in _relaxed_params())])
+def test_the_relaxed_validation_detector_fires_on_its_models(mode, name):
+    assert A.DETECTORS[_RELAXED](_relaxed(mode, RELAXED_INPUTS[name]))
+
+
+# The rows the base model declares, written out per lane: every model has
+# freq_max and a domain, the base passes dx and adds an Ez source and an Ez
+# probe, and each lane's base carries the lane's own selector (a dx_profile on
+# the graded lanes, solver='adi' on the ADI lanes, a refinement on the
+# subgridded lane). Leader's ruling on J2b, 2026-09-27: exactly these fire.
+_EVERY_BASE = {("_freq_max", ""), ("_domain", ""), ("_dx", ""), ("_ports", "source"),
+               ("_probes", "probe")}
+BASE_ROWS = {
+    "run_uniform": _EVERY_BASE,
+    "run_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
+    "run_subgridded": _EVERY_BASE | {("_refinement", "slab")},
+    "run_adi": _EVERY_BASE | {("_solver", "")},
+    "run_distributed": _EVERY_BASE,
+    "fwd_uniform": _EVERY_BASE,
+    "fwd_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
+    "fwd_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
+    "fwd_adi": _EVERY_BASE | {("_solver", "")},
+}
+
+
+@pytest.mark.parametrize("lane", T.LANES)
+def test_on_the_base_model_only_its_declared_rows_fire(lane):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        fired = set(A.active(_base(lane)))
+    assert fired == BASE_ROWS[lane], (
+        f"on the {lane} base model, extra: {sorted(fired - BASE_ROWS[lane])}, "
+        f"missing: {sorted(BASE_ROWS[lane] - fired)}")
+
+
+def _bare(lane="run_uniform", **ctor):
+    """The base box with nothing added."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return _simulation(lane, (12, 12, 12), **ctor)
+
+
+_WITHOUT = {
+    ("_ports", "source"): lambda: _base("run_uniform", source=None),
+    ("_probes", "probe"): lambda: _bare(),
+    ("_dx", ""): lambda: _bare(dx=None),
+    # the lane selectors, on the uniform base
+    ("_dx_profile", "graded"): lambda: _base("run_uniform"),
+    ("_solver", ""): lambda: _base("run_uniform"),
+    ("_refinement", "slab"): lambda: _base("run_uniform"),
+}
+
+
+@pytest.mark.parametrize("row", list(_WITHOUT), ids=lambda row: "/".join(row).rstrip("/"))
+def test_a_base_row_does_not_fire_without_its_input(row):
+    model = _WITHOUT[row]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = model()
+    assert not A.DETECTORS[row](sim), f"{row} fires on a model that does not declare it"
