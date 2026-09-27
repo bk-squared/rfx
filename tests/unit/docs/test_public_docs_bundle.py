@@ -274,3 +274,79 @@ print("hello")
     assert "intro-snippet" not in markdown
     assert '{/*' not in markdown and '*/}' not in markdown
     assert '```python\nprint("hello")\n```' in markdown
+
+
+SHARE = "https://remilab.cnu.ac.kr/share/7c02ad43c580/"
+
+
+def showcase_catalog(*case_ids):
+    return {"schema": "rfx-showcase-catalog/1", "cases": [
+        {"id": case, "title": f"Case {case}", "sources": [
+            {"folder": folder, "result_json": f"{SHARE}{folder}/result.json"}
+            for folder in (f"{case}-a", f"{case}-b")]}
+        for case in case_ids]}
+
+
+def test_llms_showcase_section_lists_each_case_page_catalog_entry_and_records():
+    base = "https://remilab.ai/rfx"
+    pages = [{"route": route, "markdown_url": f"{base}/markdown/{route}.md"}
+             for route in ("showcase/one", "showcase/two", "guide/other")]
+    lines = bundle.showcase_index(showcase_catalog("one", "two"), pages, base)
+    assert lines[0] == "## Showcase results"
+    assert any(f"({base}/showcase/showcase.json)" in line for line in lines[:4])
+    for case in ("one", "two"):
+        [entry] = [line for line in lines if f"({base}/markdown/showcase/{case}.md)" in line]
+        assert f"`{case}`" in entry and f"({base}/showcase/showcase.json)" in entry
+        for folder in (f"{case}-a", f"{case}-b"):
+            assert f"({SHARE}{folder}/result.json)" in entry
+    assert not any("guide/other" in line for line in lines)
+
+
+@pytest.mark.parametrize("catalog", [
+    {**showcase_catalog("one"), "schema": "rfx-showcase-catalog/2"},
+    showcase_catalog("no-page"),
+])
+def test_llms_showcase_section_refuses_an_unknown_schema_or_a_case_without_a_page(catalog):
+    pages = [{"route": "showcase/one", "markdown_url": "https://remilab.ai/rfx/markdown/showcase/one.md"}]
+    with pytest.raises(ValueError):
+        bundle.showcase_index(catalog, pages, "https://remilab.ai/rfx")
+
+
+def test_the_showcase_catalog_is_the_one_publishable_authored_json():
+    assert bundle.allowed_artifact("showcase/showcase.json")
+    for name in ("showcase/other.json", "showcase.json", "showcase/showcase.json.bak"):
+        assert not bundle.allowed_artifact(name)
+
+
+def _public_repo(tmp_path):
+    repo = tmp_path / "repo"
+    public = repo / "docs/public"
+    (public / "showcase").mkdir(parents=True)
+    (public / "index.mdx").write_text("public")
+    (public / "site_map.json").write_text("{}")
+    (public / "showcase/showcase.json").write_text('{"authored": true}\n')
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    subprocess.run(["git", "-C", str(repo), "add", "docs/public"], check=True)
+    return repo
+
+
+def test_export_takes_the_showcase_catalog_from_the_bundle_when_one_is_given(tmp_path, monkeypatch):
+    repo = _public_repo(tmp_path)
+    root = fixture_bundle(tmp_path)
+    files = root / "files"
+    (files / "showcase").mkdir()
+    (files / "showcase/showcase.json").write_text('{"bundled": true}\n')
+    manifest = json.loads((files / "docs-manifest.json").read_text())
+    manifest["files"]["showcase/showcase.json"] = bundle.digest(files / "showcase/showcase.json")
+    bundle.write_json(files / "docs-manifest.json", manifest)
+    # The fixture repository has no commit to pin, so the source-identity half
+    # of validation is skipped; the bundle's own checksums are still verified.
+    manifest = bundle.validate_bundle(root)
+    monkeypatch.setattr(bundle, "validate_bundle", lambda *args: manifest)
+    destination = tmp_path / "snapshot/rfx"
+    export_snapshot(repo, destination, root)
+    assert (destination / "showcase/showcase.json").read_text() == '{"bundled": true}\n'
+    assert not (destination / "site_map.json").exists()
+    source_only = tmp_path / "source-only/rfx"
+    export_snapshot(repo, source_only)
+    assert (source_only / "showcase/showcase.json").read_text() == '{"authored": true}\n'

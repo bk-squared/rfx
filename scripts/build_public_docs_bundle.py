@@ -29,6 +29,9 @@ from export_public_docs_to_gitops import check_no_symlinks, get_tracked_files
 
 SOURCE_REPOSITORY = "https://github.com/bk-squared/rfx"
 SUPPORT_FILES = ("support_matrix.json", "sparameter_support_matrix.json")
+# The showcase catalog is authored under docs/public and published by the bundle
+# (hashed with the other generated files), which also indexes it in llms.txt.
+SHOWCASE_CATALOG = "showcase/showcase.json"
 FORBIDDEN_PARTS = {"agent", "agent-memory", "agent_memory", "research_notes", ".env", ".omx", ".omc"}
 GENERATOR_VERSION = 1
 GENERATOR_ROOT = Path(__file__).resolve().parents[1]
@@ -95,6 +98,8 @@ def allowed_artifact(name: str) -> bool:
     if name in {"llms.txt", "llms-full.txt", "api/inventory.json"}:
         return True
     if name in {f"api/support/{f}" for f in SUPPORT_FILES}:
+        return True
+    if name == SHOWCASE_CATALOG:
         return True
     if path.parts[0] == "markdown" and path.suffix == ".md":
         return True
@@ -262,6 +267,27 @@ def api_inventory(root: Path, sha: str, base_url: str, channel: str) -> dict:
 
 
 
+def showcase_index(catalog: dict, pages: list[dict], base_url: str) -> list[str]:
+    """The llms.txt section for the showcase catalog: per case its Markdown
+    page, its catalog entry and the result.json of each record it draws on."""
+    if catalog.get("schema") != "rfx-showcase-catalog/1":
+        raise ValueError(f"unsupported showcase catalog schema: {catalog.get('schema')!r}")
+    markdown = {page["route"]: page["markdown_url"] for page in pages}
+    catalog_url = f"{base_url}/{SHOWCASE_CATALOG}"
+    lines = ["## Showcase results", "",
+             f"- [Showcase catalog]({catalog_url}): schema {catalog['schema']}; per case its page, "
+             "the rfx commits, every file on the share host with its size and SHA-256, and each "
+             "printed number with its value, unit and source.", ""]
+    for case in catalog["cases"]:
+        route = f"showcase/{case['id']}"
+        if route not in markdown:
+            raise ValueError(f"showcase case without a public page: {case['id']}")
+        results = ", ".join(f"[{s['folder']}/result.json]({s['result_json']})" for s in case["sources"])
+        lines.append(f"- [{case['title']}]({markdown[route]}): catalog entry `{case['id']}` in "
+                     f"[showcase.json]({catalog_url}); {results}")
+    return lines + [""]
+
+
 def finish_generated_index(generated: Path, *, has_authored_index: bool, base_url: str,
                            channel: str, package_version: str, source_sha: str) -> None:
     """Keep pdoc's module menu and supply an entry point for older source trees."""
@@ -370,6 +396,13 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
                               f'<a href="{base_url}/api/inventory.json">Typed inventory</a></aside>')
                     text = text.replace('<main class="pdoc">', '<main class="pdoc">' + banner, 1)
                 file.write_text(text)
+        showcase = []
+        catalog_source = public / SHOWCASE_CATALOG
+        if catalog_source in inputs:
+            check_no_symlinks(catalog_source)
+            (files / SHOWCASE_CATALOG).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(catalog_source, files / SHOWCASE_CATALOG)
+            showcase = showcase_index(json.loads(catalog_source.read_text()), pages, base_url)
         nav = json.loads((public / "site_map.json").read_text())
         for group in nav.get("groups", []):
             group["items"] = [base_url + "/" if slug == "rfx" else
@@ -384,7 +417,7 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
                 f"- [Support boundaries]({base_url}/markdown/api/support-boundaries.md)",
                 *[f"- [{s['source_path']}]({s['url']})" for s in support],
                 f"- [Build manifest]({base_url}/docs-manifest.json): source SHA and file hashes.",
-                f"- [Combined manual]({base_url}/llms-full.txt)", "", "## Manual and examples", ""]
+                f"- [Combined manual]({base_url}/llms-full.txt)", "", *showcase, "## Manual and examples", ""]
         llms += [f"- [{p['title']}]({p['markdown_url']}): {p['description']}" for p in pages]
         (files / "llms.txt").write_text("\n".join(llms) + "\n")
         (files / "llms-full.txt").write_text("\n\n---\n\n".join(full))

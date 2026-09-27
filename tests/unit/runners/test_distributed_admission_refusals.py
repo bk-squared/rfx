@@ -202,70 +202,10 @@ def test_msl_port_is_refused(entry):
     _assert_refused(sim, entry, "add_msl_port()")
 
 
-# How the multi-device lanes (sim.run(devices=...), both runners) treat every
-# attribute a Simulation carries. Five silent drops were found one at a time
-# (Kerr #1214, lumped RLC #1239, subgridding, DFT planes on a direct call, MSL
-# ports); a new attribute fails the test below until someone decides whether
-# the lanes carry it, refuse it (refuse_unsupported_distributed_features or the
-# run() dispatch), fall back to one device, or can ignore it.
-DISPOSITION = {
-    "_adi_cfl_factor": "setting of solver='adi', which run() refuses with devices",
-    "_boundary": "carried: pec, cpml; upml refused by run() and the v2 runner",
-    "_boundary_model": "derived from the boundary spec; carried",
-    "_boundary_spec": "carried (per-face PEC/PMC/CPML); periodic refused",
-    "_coaxial_ports": "refused by run() before dispatch",
-    "_cpml_kappa_max": "carried",
-    "_cpml_layers": "carried",
-    "_current_moments": "refused by the v2 runner after its single-device fallbacks "
-                        "(rfx.current_moments.refuse_current_moment_monitor)",
-    "_dft_planes": "refused",
-    "_domain": "carried",
-    "_dt_min_cell": "carried through the built grid's dt",
-    "_dt_pin": "carried through the built grid's dt",
-    "_dx": "carried",
-    "_dx_profile": "carried (non-uniform lane)",
-    "_dy_profile": "carried (non-uniform lane)",
-    "_dz_profile": "carried (non-uniform lane)",
-    "_floquet_ports": "refused through the periodic axes they set",
-    "_flux_monitors": "refused",
-    "_freq_max": "setting",
-    "_geometry": "carried through material assembly; PEC sheets and wires refused",
-    "_interface_eps": "'sampled' carried; 'dual_average' refused by run()",
-    "_internal_probe_indices": "probe bookkeeping",
-    "_lumped_rlc": "refused",
-    "_materials": "carried: eps, sigma, mu, Debye, Lorentz; Kerr refused",
-    "_mode": "carried: 2-D modes match one device bit for bit",
-    "_msl_auto_offset_min": "MSL port data; MSL ports refused",
-    "_msl_auto_probe_spacing": "MSL port data; MSL ports refused",
-    "_msl_auto_probe_lengths": "MSL port data; MSL ports refused",
-    "_msl_ports": "refused",
-    "_ntff": "refused",
-    "_pec_faces": "carried",
-    "_periodic_axes": "refused",
-    "_pinned_sheets": "refused as PEC sheets",
-    "_ports": "carried: single-cell lumped ports; extended and passive refused",
-    "_precision": "float32 carried; other precisions refused by run()",
-    "_probes": "carried",
-    "_refinement": "refused",
-    "_solver": "yee carried; adi refused by run()",
-    "_stencil_order": "2 carried; 4 refused",
-    "_tfsf": "falls back to one device with a warning",
-    "_thin_conductors": "stamped into the materials; f0 sheets refused",
-    "_waveguide_ports": "falls back to one device with a warning",
-}
-
-
-def test_every_simulation_attribute_has_a_distributed_disposition():
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=1e-3)
-    new = sorted(set(vars(sim)) - set(DISPOSITION))
-    # Only a NEW attribute can be dropped silently; a removed one cannot, so a
-    # stale entry here is harmless and does not fail another lane's cleanup.
-    assert not new, (
-        f"Simulation gained {new}: decide how sim.run(devices=...) treats each "
-        "(carry it, refuse it in refuse_unsupported_distributed_features, or record "
-        "why the lanes can ignore it) and add it to DISPOSITION")
+# How the multi-device lane treats every Simulation attribute is the
+# run_distributed column of tests/contracts/path_disposition.py, which covers
+# every time-stepping path; its completeness test is
+# tests/contracts/test_path_disposition.py.
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
