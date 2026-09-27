@@ -47,14 +47,17 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--repo-root", type=Path, default=ROOT)
     args = parser.parse_args()
-    content = f"{START}\n```python\n{snippet(args.repo_root)}```\n{END}"
+    code = snippet(args.repo_root)
     changed = []
     for rel in ("README.md", "docs/public/guide/first-run.mdx"):
         path = args.repo_root / rel
+        start, end = (("{/* rfx-hello-world:start */}", "{/* rfx-hello-world:end */}")
+                      if path.suffix == ".mdx" else (START, END))
+        content = f"{start}\n\n```python\n{code}```\n\n{end}"
         original = path.read_text()
-        if original.count(START) != 1 or original.count(END) != 1:
+        if original.count(start) != 1 or original.count(end) != 1:
             raise SystemExit(f"Expected one generated snippet in {rel}")
-        updated = re.sub(re.escape(START) + r".*?" + re.escape(END),
+        updated = re.sub(re.escape(start) + r".*?" + re.escape(end),
                          lambda _: content, original, flags=re.S)
         if original != updated:
             changed.append(rel)

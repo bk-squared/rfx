@@ -41,6 +41,7 @@ This code is generated from [hello_world.py](examples/quickstart/hello_world.py)
 the same runnable example tested by CI.
 
 <!-- rfx-hello-world:start -->
+
 ```python
 from rfx import GaussianPulse, Simulation
 
@@ -65,6 +66,7 @@ n_steps = 120
 result = sim.run(n_steps=n_steps, compute_s_params=False)
 print(result.time_series.shape)
 ```
+
 <!-- rfx-hello-world:end -->
 
 All lengths are metres and frequencies are hertz. Read the preflight findings.
