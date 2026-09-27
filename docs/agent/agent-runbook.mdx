@@ -309,6 +309,8 @@ checkout's `.omx/gpu-suite/<utc>-<short sha>/` on the shared volume.
 counts in tracked release notes or a committed validation artifact suitable
 for the claim.
 
+**Before a release**, the `crossval-ladder` workflow (`.github/workflows/crossval-ladder.yml`: the `crossval_ladder` cases this suite excludes, monthly and on dispatch) must be green on the commit being released.
+
 One-off investigation YAMLs live in `scripts/archive/`. Do not resurrect them — write a
 new YAML off the gpu_suite template.
 

@@ -1256,8 +1256,9 @@ class _TFSFEntry:
     polarization: str
     direction: str
     angle_deg: float
-    waveform: str = "differentiated_gaussian"
+    waveform: object = "differentiated_gaussian"
     method: str = "bloch"
+    closed_box: bool = False
 
 
 @dataclass(frozen=True)

@@ -2587,7 +2587,8 @@
       "direction",
       "angle_deg",
       "waveform",
-      "method"
+      "method",
+      "closed_box"
     ],
     "add_thin_conductor": [
       "shape",
@@ -2856,6 +2857,7 @@
       "devices",
       "pad_value"
     ],
+    "tfsf_box_indices": [],
     "validate_subgrid": [
       "mode"
     ]

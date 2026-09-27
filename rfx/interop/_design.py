@@ -139,7 +139,7 @@ from rfx.interop._validate import check_number, check_text, check_vector
 from rfx.lumped import LumpedRLCSpec
 from rfx.materials.thin_conductor import PinnedSheet, ThinConductor
 from rfx.sources.coaxial_port import CoaxialPort
-from rfx.sources.sources import CWSource, GaussianPulse, ModulatedGaussian
+from rfx.sources.sources import CustomWaveform, CWSource, GaussianPulse, ModulatedGaussian
 
 __all__ = [
     "DESIGN_SCHEMA_VERSION",
@@ -625,6 +625,7 @@ _TFSF_FIELDS: dict[str, _F] = {
     # (transverse boundary = periodic vs absorbing), not hunt for another
     # solver's "method B".
     "method": _STR,
+    "closed_box": _BOOL,
 }
 
 _DFT_PLANE_FIELDS: dict[str, _F] = {
@@ -1469,6 +1470,11 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
 
     tfsf = None
     if sim._tfsf is not None:
+        if isinstance(sim._tfsf.waveform, CustomWaveform):
+            raise _refuse(
+                "_tfsf.waveform is a CustomWaveform wrapping a Python callable "
+                "and has no serialisable form; the design document records "
+                "TFSF waveform names only")
         tfsf = _dump_entry(sim._tfsf, _TFSF_FIELDS, _TFSFEntry, what="_tfsf")
 
     document: dict[str, Any] = {

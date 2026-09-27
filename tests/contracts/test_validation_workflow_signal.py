@@ -28,7 +28,9 @@ reddening anything:
    summary nobody reads — so it has to be visible on the run page.
 
 The tests parse the workflow instead of grepping it, so reformatting the file
-cannot fool them.
+cannot fool them. They run on every scheduled lane that carries this notifier:
+``validation.yml`` and, since the full-ladder cases moved out of it (2026-09-27),
+the monthly ``crossval-ladder.yml``.
 """
 
 from __future__ import annotations
@@ -36,15 +38,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "validation.yml"
+WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 NOTIFY_JOB = "notify"
+#: Each scheduled lane with the #717 notifier, and the one cron it declares.
+LANES = {"validation.yml": "0 6 * * 1", "crossval-ladder.yml": "0 12 1 * *"}
+lanes = pytest.mark.parametrize("name", sorted(LANES))
 
 
-def _workflow() -> dict[str, Any]:
-    return yaml.safe_load(WORKFLOW_PATH.read_text(encoding="utf-8"))
+def _workflow(name: str) -> dict[str, Any]:
+    return yaml.safe_load((WORKFLOWS_DIR / name).read_text(encoding="utf-8"))
 
 
 def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
@@ -56,7 +62,7 @@ def _triggers(workflow: dict[str, Any]) -> dict[str, Any]:
     for key in ("on", True):
         if key in workflow:
             return workflow[key]
-    raise AssertionError(f"{WORKFLOW_PATH} declares no triggers")
+    raise AssertionError("the workflow declares no triggers")
 
 
 def _crons(workflow: dict[str, Any]) -> list[str]:
@@ -66,7 +72,7 @@ def _crons(workflow: dict[str, Any]) -> list[str]:
 
 def _notify_steps(workflow: dict[str, Any]) -> dict[str, str]:
     jobs = workflow["jobs"]
-    assert NOTIFY_JOB in jobs, f"{WORKFLOW_PATH} lost its {NOTIFY_JOB} job"
+    assert NOTIFY_JOB in jobs, f"the workflow lost its {NOTIFY_JOB} job"
     steps = jobs[NOTIFY_JOB]["steps"]
     summary = next(step for step in steps if step.get("id") == "verdicts")
     issue = next(
@@ -77,22 +83,24 @@ def _notify_steps(workflow: dict[str, Any]) -> dict[str, str]:
     return {"summary": summary["run"], "issue": issue["with"]["script"]}
 
 
-def test_notify_watches_every_other_job_in_the_lane() -> None:
-    jobs = _workflow()["jobs"]
+@lanes
+def test_notify_watches_every_other_job_in_the_lane(name: str) -> None:
+    jobs = _workflow(name)["jobs"]
     watched = set(jobs[NOTIFY_JOB]["needs"])
     expected = set(jobs) - {NOTIFY_JOB}
     assert watched == expected, (
-        "notify.needs must list every other job in validation.yml; missing "
+        f"notify.needs must list every other job in {name}; missing "
         f"{sorted(expected - watched)}, stale {sorted(watched - expected)}. "
         "A job the notifier does not depend on cannot appear in its verdict, "
         "so its failures go unreported (issue #717)."
     )
 
 
-def test_no_job_gates_itself_on_a_copy_of_the_cron() -> None:
-    workflow = _workflow()
+@lanes
+def test_no_job_gates_itself_on_a_copy_of_the_cron(name: str) -> None:
+    workflow = _workflow(name)
     crons = _crons(workflow)
-    assert crons, "validation.yml must keep a cron schedule"
+    assert crons, f"{name} must keep a cron schedule"
     for name, job in workflow["jobs"].items():
         condition = str(job.get("if", ""))
         for cron in crons:
@@ -109,17 +117,19 @@ def test_no_job_gates_itself_on_a_copy_of_the_cron() -> None:
         )
 
 
-def test_validation_declares_exactly_one_cron() -> None:
-    crons = _crons(_workflow())
-    assert crons == ["0 6 * * 1"], (
-        f"validation.yml now declares {crons}. Every cron here runs the slow "
-        "suite and the weekly-a6000-lane holds a GPU seat. Re-read what a new "
-        "schedule starts before adding it, then update this test."
+@lanes
+def test_validation_declares_exactly_one_cron(name: str) -> None:
+    crons = _crons(_workflow(name))
+    assert crons == [LANES[name]], (
+        f"{name} now declares {crons}. Every cron here starts the whole lane, "
+        "and each of these lanes holds a GPU seat. Re-read what a new schedule "
+        "starts before adding it, then update LANES."
     )
 
 
-def test_notify_counts_a_skipped_job_as_not_green() -> None:
-    scripts = _notify_steps(_workflow())
+@lanes
+def test_notify_counts_a_skipped_job_as_not_green(name: str) -> None:
+    scripts = _notify_steps(_workflow(name))
     assert 'select(.value.result != "success")' in scripts["summary"], (
         "the notify summary's jq filter must treat anything that is not "
         "'success' as not green, skipped included (issue #717 review)."
@@ -138,8 +148,9 @@ def test_notify_counts_a_skipped_job_as_not_green() -> None:
     )
 
 
-def test_a_denied_issue_write_is_annotated_not_only_warned() -> None:
-    issue_script = _notify_steps(_workflow())["issue"]
+@lanes
+def test_a_denied_issue_write_is_annotated_not_only_warned(name: str) -> None:
+    issue_script = _notify_steps(_workflow(name))["issue"]
     assert "core.error(`could not file the tracking issue" in issue_script, (
         "a failure to file the tracking issue puts the lane back to the "
         "pre-#717 status quo (a job summary nobody reads), so it must annotate "

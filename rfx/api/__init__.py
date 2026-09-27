@@ -2163,8 +2163,9 @@ class Simulation(
         polarization: str = "ez",
         direction: str = "+x",
         angle_deg: float = 0.0,
-        waveform: str = "differentiated_gaussian",
+        waveform: object = "differentiated_gaussian",
         method: str = "bloch",
+        closed_box: bool = False,
     ) -> "Simulation":
         """Add a normal-incidence plane-wave TFSF source.
 
@@ -2175,6 +2176,11 @@ class Simulation(
 
         Parameters
         ----------
+        closed_box : bool
+            Use a finite six-face total-field box with CPML on all three
+            axes. Normal incidence, uniform 3D Yee only. The default keeps
+            the historical x slab with periodic y/z. Read the realized
+            inclusive node bounds with :meth:`tfsf_box_indices`.
         waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
             Pulse shape injected into the 1D auxiliary grid. (``continuous_wave``
             is only supported at normal incidence — ``angle_deg == 0``.)
@@ -2195,6 +2201,16 @@ class Simulation(
             Spectrum is a Gaussian centered at ``f0`` with 1/e
             half-width ``f0·bandwidth``. Use this for matched rfx-vs-Meep
             crossval comparisons.
+
+            A ``CustomWaveform`` may supply a fixed, JAX-compatible real
+            scalar function of time, multiplied by ``amplitude``. It is
+            added to the auxiliary E node at ``t=n*dt``; it is not the
+            launched E amplitude. Normal incidence only; use a fixed
+            record length (``until_decay`` has no source-off contract).
+            These new source inputs support ordinary ``forward`` and its
+            internal checkpoints. External JAX transformations, including
+            grad/value_and_grad/JVP/vmap/jit/checkpoint/scan, are refused:
+            transformed scattered-field traces do not meet the cross-trace bar.
         method : {"bloch", "methodB"}
             Oblique-incidence engine (ignored for ``angle_deg=0``, which always
             uses the normal 1D-aux path). ``"bloch"`` (default) is the narrowband
@@ -2237,11 +2253,17 @@ class Simulation(
                 "waveform='continuous_wave' is only supported at normal incidence "
                 f"(angle_deg=0); got angle_deg={angle_deg}"
             )
-        if waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
+        from rfx.sources.sources import CustomWaveform
+        custom = isinstance(waveform, CustomWaveform)
+        if not custom and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
             raise ValueError(
                 "waveform must be 'differentiated_gaussian', 'modulated_gaussian', "
-                f"or 'continuous_wave', got {waveform!r}"
+                f"'continuous_wave', or CustomWaveform, got {waveform!r}"
             )
+        if (custom or closed_box) and angle_deg != 0.0:
+            raise NotImplementedError("CustomWaveform and closed_box require normal incidence (angle_deg=0)")
+        if (custom or closed_box) and self._mode != "3d":
+            raise NotImplementedError("CustomWaveform and closed_box require mode='3d'")
         if method not in ("bloch", "methodB"):
             raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
         if method == "methodB":
@@ -2266,8 +2288,32 @@ class Simulation(
             angle_deg=angle_deg,
             waveform=waveform,
             method=method,
+            closed_box=closed_box,
         )
         return self
+
+    def tfsf_box_indices(self) -> dict[str, tuple[int, int]]:
+        """Realized inclusive total-field node bounds on the padded grid.
+
+        The normal slab returns x only; ``closed_box=True`` returns x/y/z.
+        NTFF cell-centre interpolation must clear these bounds, including
+        the adjacent Yee samples (the NTFF placement check enforces this).
+        """
+        if self._tfsf is None:
+            raise ValueError("No TFSF source registered")
+        from rfx.sources.tfsf import init_tfsf, tfsf_injection_planes
+        grid = self._build_grid()
+        entry = self._tfsf
+        cfg, _ = init_tfsf(
+            grid.nx, float(grid.cells("x")[0]), grid.dt, ny=grid.ny, nz=grid.nz,
+            cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
+            f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
+            bandwidth=entry.bandwidth, amplitude=entry.amplitude,
+            polarization=entry.polarization, direction=entry.direction,
+            angle_deg=entry.angle_deg, waveform=entry.waveform,
+            method=entry.method, closed_box=entry.closed_box,
+        )
+        return tfsf_injection_planes(cfg)
 
     def add_waveguide_port(
         self,

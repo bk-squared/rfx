@@ -1289,6 +1289,44 @@ def test_round_trip_preserves_the_tfsf_method_lane():
     assert restored._tfsf.angle_deg == 30.0
 
 
+@pytest.mark.parametrize("closed_box", (False, True))
+def test_round_trip_preserves_the_finite_tfsf_box(closed_box):
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_tfsf_source(closed_box=closed_box)
+    document = design_to_dict(sim)
+    assert document["excitations"]["tfsf"]["closed_box"] is closed_box
+    restored = simulation_from_design(document)
+    assert restored._tfsf.closed_box is closed_box
+    assert restored.tfsf_box_indices() == sim.tfsf_box_indices()
+
+
+def test_tfsf_document_requires_explicit_box_semantics():
+    # The IR is closed-world: like method, an omitted boundary selector is
+    # a missing field, including in a document exported before its addition.
+    document = design_to_dict(_tfsf_scatterer())
+    del document["excitations"]["tfsf"]["closed_box"]
+    with pytest.raises(UnsupportedDesignFeature, match="missing=.*closed_box"):
+        simulation_from_design(document)
+
+
+@pytest.mark.parametrize("value", (0, "false", None))
+def test_tfsf_box_selector_must_be_boolean(value):
+    document = design_to_dict(_tfsf_scatterer())
+    document["excitations"]["tfsf"]["closed_box"] = value
+    with pytest.raises(UnsupportedDesignFeature, match="closed_box"):
+        simulation_from_design(document)
+
+
+@pytest.mark.parametrize("closed_box", (False, True))
+def test_custom_tfsf_waveform_cannot_be_serialized(closed_box):
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_tfsf_source(closed_box=closed_box, waveform=CustomWaveform(lambda t: t))
+    with pytest.raises(UnsupportedDesignFeature, match="_tfsf.waveform.*CustomWaveform"):
+        design_to_dict(sim)
+
+
 def test_round_trip_preserves_soft_source_amplitude_kind():
     """``amplitude_kind`` is design state (issue #571): 'current' means the
     waveform amplitude is amperes with resolution-independent injected power;

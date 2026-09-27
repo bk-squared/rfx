@@ -175,6 +175,12 @@ jobs:
     # measured 2026-09-24) must outlast the lane's own pytest timeouts in
     # scripts/vessl_validation_lane_a6000.yaml (1800 + 18000 s plus ~200 s setup).
     timeout-minutes: 360
+    # One lane run at a time: a dispatch during a scheduled run (or the reverse) waits
+    # instead of submitting a second GPU job. GitHub keeps one pending run per group; a
+    # third arrival replaces it, and the replaced one ends cancelled.
+    concurrency:
+      group: weekly-a6000-lane-gpu
+      cancel-in-progress: false
     environment: vessl
     steps:
       - name: Check out repository

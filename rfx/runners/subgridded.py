@@ -44,6 +44,8 @@ def _run_subgridded_once(
     -------
     Result
     """
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the subgridded runner")
     from rfx.api import Result
     from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
     from rfx.subgridding.jit_runner import (

@@ -113,6 +113,38 @@ def _staged_by_an_outer_trace() -> bool:
     return is_tracer(jnp.zeros(()))
 
 
+def _under_external_jax_transform() -> bool:
+    """Read the public trace-state API across the supported JAX versions."""
+    try:
+        from jax.extend.core import get_opaque_trace_state, take_current_trace
+    except ImportError:
+        try:  # JAX 0.6, including the Python 3.10 CI environment.
+            from jax.core import get_opaque_trace_state, take_current_trace
+        except ImportError:  # The declared JAX 0.4.20 floor.
+            from jax.core import trace_state_clean
+            return not trace_state_clean()
+    caller = get_opaque_trace_state()
+    with take_current_trace():
+        eager = get_opaque_trace_state()
+    return caller != eager
+
+
+def _refuse_transformed_extended_tfsf(entry) -> None:
+    """Fence the new source inputs before any setup can hide caller tracing."""
+    if entry is None:
+        return
+    from rfx.sources.sources import CustomWaveform
+    if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
+        return
+    if _under_external_jax_transform():
+        raise NotImplementedError(
+            "CustomWaveform and closed_box TFSF cannot be called under external "
+            "JAX transformations (grad/value_and_grad/JVP/vmap/jit/checkpoint/scan): "
+            "transformed scattered-field traces exceed the 9-ULP cross-trace "
+            "contract. Use ordinary fixed-step run/forward; forward's internal "
+            "checkpoint and segmentation options remain available.")
+
+
 def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
     """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
 
@@ -1625,6 +1657,8 @@ class _ExecuteMixin:
         tfsf_run = None
         if self._tfsf is not None:
             from rfx.sources.tfsf import init_tfsf as _init_tfsf_fwd
+            from rfx.sources.tfsf import validate_custom_tfsf_waveform
+            validate_custom_tfsf_waveform(self._tfsf.waveform, grid.dt, n_steps)
             tfsf_run = _init_tfsf_fwd(
                 grid.nx, grid.dx, grid.dt,
                 cpml_layers=grid.cpml_layers,
@@ -1639,15 +1673,21 @@ class _ExecuteMixin:
                 nz=grid.nz,
                 waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
                 method=getattr(self._tfsf, "method", "bloch"),
+                closed_box=self._tfsf.closed_box,
             )
-            # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
-            # _auto_preflight on the concrete config; it is NOT re-run here because
-            # `materials` may be a jax tracer under jax.grad (eps_override), and the
-            # check concretizes.
+            # The legacy slab's concrete vacuum check runs via preflight.
+            # The closed box also checks the final realized operators below,
+            # after material overrides and port setup (including AD values).
             # Open-domain oblique Method B forces OPEN transverse y (CPML) with
             # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
             from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
-            if _is_methodB_fwd(tfsf_run[0]):
+            if self._tfsf.closed_box:
+                periodic_bool = (False, False, False)
+                cpml_axes_run = "xyz"
+                # Match run(): all six CPML exteriors retain their PEC
+                # backing. An empty string withholds those walls.
+                pec_axes_run = None
+            elif _is_methodB_fwd(tfsf_run[0]):
                 periodic_bool = (False, False, True)
                 cpml_axes_run = "xy"
                 pec_axes_run = ""
@@ -2299,6 +2339,37 @@ class _ExecuteMixin:
             # #1245: at most one element with its own solve per realized edge.
             from rfx.lumped import refuse_stacked_solved_elements
             refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
+
+        # Validate the operators handed to the scan, after every port fold
+        # and PEC clearing. A passive load can reach the source shell even
+        # when all of its conductor geometry is clear of that shell.
+        if self._tfsf is not None and self._tfsf.closed_box:
+            nonvacuum = list(pec_edge_masks_local or ())
+            for spec in (debye_spec, lorentz_spec):
+                if spec is not None:
+                    nonvacuum.extend(spec[1])
+            if kerr_chi3 is not None:
+                nonvacuum.append(kerr_chi3)
+            if pec_occupancy_local is not None:
+                nonvacuum.append(pec_occupancy_local)
+            if aniso_inv_eps_run is not None:
+                nonvacuum.extend(a != 1.0 for a in aniso_inv_eps_run)
+            if sheet_impedance is not None:
+                nonvacuum.extend((sheet_impedance.mask_ex, sheet_impedance.mask_ey,
+                                  sheet_impedance.mask_ez))
+            if self._lumped_rlc:
+                mask = jnp.zeros(grid.shape, dtype=bool)
+                for spec in self._lumped_rlc:
+                    mask = mask.at[grid.position_to_index(spec.position)].set(True)
+                nonvacuum.append(mask)
+            for spec in (design_box, design_occupancy):
+                if spec is not None:
+                    b = spec.bounds
+                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                                   for d in range(3))
+                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+            self._validate_tfsf_vacuum_boundary(
+                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
 
         result = _run(
             grid,
@@ -3160,6 +3231,24 @@ class _ExecuteMixin:
         # and forward(), has no subgrid and would drop a refinement (#1240).
         self._require_no_refinement_on_the_nonuniform_lane()
         is_nonuniform = self._uses_nonuniform_mesh
+
+        if self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            extended_tfsf = (self._tfsf.closed_box
+                             or isinstance(self._tfsf.waveform, CustomWaveform))
+            if extended_tfsf and (
+                is_nonuniform or distributed or (devices is not None and len(devices) > 1)
+                or self._refinement is not None or self._mode != "3d"
+                or self._solver != "yee" or self._stencil_order != 2
+            ):
+                raise NotImplementedError(
+                    "CustomWaveform and closed_box TFSF require a uniform, single-device, "
+                    "3D second-order Yee run/forward with no subgrids")
+            if self._tfsf.closed_box and any(
+                getattr(getattr(self._boundary_spec, axis), side) != "cpml"
+                for axis in "xyz" for side in ("lo", "hi")
+            ):
+                raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
         def _reject_lane_precision(lane: str) -> None:
             # Issue #630 follow-up: field_dtype is threaded ONLY on the
@@ -4023,6 +4112,7 @@ class _ExecuteMixin:
         float32 rounding, not necessarily bit for bit: XLA compiles the whole
         step as one program.
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         if _forward_needs_trace_time_setup(self, distributed=distributed):
             # #1225: evaluate the set-up now instead of recording it. Only
             # the operations that read a traced argument are recorded;
@@ -4596,8 +4686,14 @@ class _ExecuteMixin:
         -------
         Result
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
+        if until_decay is not None and self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            if isinstance(self._tfsf.waveform, CustomWaveform):
+                raise NotImplementedError(
+                    "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
         if ringdown is not None:
             from rfx.ringdown import refuse_run_request
             refuse_run_request(self, ringdown, devices=devices,

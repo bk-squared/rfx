@@ -59,6 +59,13 @@ A controlled repair on current main restores the old profiles and the
 0.72494 endpoint pin without changing the sheet operator or either gate.
 Evidence: docs/research_notes/2026-09-13_issue947_oracle_repair.md.
 
+Current record (2026-09-25): alpha_fit at 10 GHz is 0.74950 Np/m,
+the closed-form distance is 0.28945, and the guide sqrt-sigma ratio is
+0.5970. The free-standing transmission ratio is 0.5026. The guide leg
+retains xfail(strict=False) pending the fixture fix; its measured value
+has a separate regression lock. The dated records below retain the
+values and marker states they measured, not the current pins.
+
 Envelope provenance and R2-STOP record (measured 2026-08-19, this file's
 fixture, JAX CPU float32):
   Attempt 1 (both-ends-CPML fixture) never evaluated the sheet physics:
@@ -118,11 +125,11 @@ fixture, JAX CPU float32):
   the clean free-standing-sheet transmission oracle the x4 ratio is 0.5025
   — inside ``O4A_BAND`` [0.40, 0.60], and that leg is the green physics
   tooth. Read on THIS guide fixture the ratio is 0.6089 — outside the same
-  band, and it ships as ``test_sqrt_sigma_discriminator_o4a_guide_leg``,
-  xfail(strict=True) against the UNWIDENED band, with the measured 0.6089
-  regression-locked green in a third test so drift cannot hide under the
+  band, and it shipped as ``test_sqrt_sigma_discriminator_o4a_guide_leg``,
+  then xfail(strict=True) against the UNWIDENED band, with 0.6089
+  then regression-locked green in a third test so drift could not hide under the
   expected failure. The pre-#677 slab's 0.517 quoted in the R2-STOP block
-  above is the OLD realization's number and is not the current state.
+  above is the pre-#677 realization's number. See the current record above.
 
 Mesh-refinement falsifier — pre-declared, run 2026-08-19 (PRE-#677
   realization), gate untouched,
@@ -192,11 +199,11 @@ O3 MODEL RE-PAIR (#700, measured 2026-08-24, this fixture, JAX CPU
   The closed form STAYS in this file as the documented LIMIT ANCHOR, not
   as the gate: it is what the model's symmetric lossy supermode converges
   to as the stub term Rs/(2*eta0*g) vanishes (limit-reduction self-check,
-  rel err b/(2g), gated), and the measured f0 distance to it (0.33806)
-  stays pinned through MEASURED_ALPHA in the regression lock — a true
+  rel err b/(2g), gated), and the then-measured f0 distance to it (0.33806)
+  was pinned through MEASURED_ALPHA in the regression lock — a true
   statement about the fixture geometry, not about the sheet. The O4a
-  guide leg (0.6089, xfail) shares this mechanism qualitatively but is
-  NOT quantified by #700 and its gate is untouched.
+  guide leg (then 0.6089, xfail) shares this mechanism qualitatively but was
+  NOT quantified by #700, which left its gate untouched.
   MUTATION RECORD (2026-08-24; each mutation applied alone in a copy of
   this tree, the named tests re-run, then reverted — the committed state
   is the green direction, 12 passed + 1 xfailed):
@@ -261,20 +268,27 @@ ABSORBER_SIGMA_MAX = 2.0           # S/m, quadratic profile
 SRC_X = 0.010
 N_STEPS = 4000
 
-# ---- measured envelope (see module docstring: #677 RE-MEASURE) ----
-MEASURED_ALPHA = 0.69823           # Np/m at f0, node-thin operator (#677)
-MEASURED_ALPHA_TWO_PLANE = 0.72494  # original #677 endpoint-ratio record
-# Restored by #947's absorber-only comparison: 0.87333 -> 0.72494797,
+# ---- measured envelope (historical #677 record in the module docstring) ----
+# 2026-09-25 re-measure: #1178 continued these Box plates through the
+# source-side absorber (+6.74%, 0.69823 -> 0.74530 Np/m); #1012 placed
+# the absorber's magnetic profile at the Yee half cell (+0.56%, -> 0.74950).
+# #1231 does not change this fixture's Box plates. Its implementation is
+# checked separately by Box == non-Box tests. Record: VESSL 369367264763.
+# All pins below use that run's 1N record (4000 steps); witnesses at f0:
+# fit ln-RMS residual 0.00246, settling -69.0 dB, two-plane alpha 0.77540.
+MEASURED_ALPHA = 0.74950           # Np/m at f0, current Box-plate fixture
+MEASURED_ALPHA_TWO_PLANE = 0.77540  # Np/m, same run's endpoint-ratio record
+# Historical #947 absorber-only comparison: 0.87333 -> 0.72494797,
 # alpha_fit 0.71565 -> 0.69823741. The 2026-09-07 re-pin attributed the
 # change to sheet rims without isolating the malformed absorber. Current
 # sheet ownership is retained; correcting nine ramp cells recovers the
 # historical profile. The diagnostic tolerance remains 5%.
-MEASURED_ENVELOPE = 0.33806        # |alpha_fit/alpha_analytic - 1| — the
+MEASURED_ENVELOPE = 0.28945        # |alpha_fit/alpha_analytic - 1| — the
 #   closed-form pairing's envelope, kept as the documented LIMIT-ANCHOR
-#   record (#700): the fixture's alpha_fit is 34% below Rs/(eta0*b)
+#   record (#700): the fixture's alpha_fit is 29% below Rs/(eta0*b)
 #   because the closed form is not an eigenvalue of this 4-conductor
 #   fixture, not because the sheet under-dissipates.
-MEASURED_GUIDE_SQRT_RATIO = 0.6089  # alpha(4*sigma)/alpha(sigma), guide fit
+MEASURED_GUIDE_SQRT_RATIO = 0.5970  # alpha(4*sigma)/alpha(sigma), same run
 
 # ---- #700 re-pair: exact 4-conductor comparator (tests/_transverse_resonance_o3) ----
 O3_FREQS = (8e9, 9e9, 10e9, 11e9, 12e9)
@@ -297,8 +311,9 @@ O3_FIELD_FIT_RMS_GATE = 0.01
 # sigma_bulk halves the loss -> 0.50. A DC (thickness-fold) sheet would
 # predict 0.25. The [0.40, 0.60] window separates the two models and is
 # the HISTORICAL band — it is not widened here. See the two O4a tests: the
-# clean transmission oracle passes it (0.5025) and the guide fit does not
-# (0.6089), which is why the guide leg ships xfail(strict=True).
+# clean transmission oracle passes it (0.5026); the current guide fit (0.5970)
+# also lies inside, 0.0030 from its upper edge. Its unresolved fixture
+# marker remains xfail(strict=False), with a separate measured-value lock.
 O4A_BAND = (0.40, 0.60)
 # The closed-form pairing (|alpha/alpha_analytic - 1| vs a 0.15 cap,
 # xfail(strict=True) since the 2026-08-19 R2-STOP) is RETIRED as the
@@ -351,7 +366,7 @@ def _build_guide(sigma_bulk=SIGMA_BULK, *, f0_mode=True,
     # #700 model comparator instrumentation: full Hy(x, z) at the y
     # midplane. A DFT accumulator is a passive observer — adding it does
     # not perturb the time stepping (scout-verified: the instrumented run
-    # reproduces MEASURED_ALPHA = 0.69823 bit-for-bit at f0).
+    # reproduces the current MEASURED_ALPHA = 0.74950 Np/m pin at f0).
     sim.add_dft_plane_probe(axis="y", coordinate=0.001, component="hy",
                             freqs=jnp.asarray(freqs), name="yhy")
     sim.add_probe((0.060, 0.001, 3.0e-3), "ez")   # settling witness
@@ -614,18 +629,15 @@ def test_two_plane_comparator_recovers_synthetic_alpha():
     assert abs(a / ALPHA_ANALYTIC - 1.0) < 1e-9   # measured: exact
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1231: since #1178 continued the guide's sheet plates into the absorber, "
-           "the plates' attenuation reads 0.7453 Np/m against the recorded 0.69823 (+6.7 %)")
 def test_alpha_envelope_regression_lock():
     """DIAGNOSTIC pin (not a physics pass): the measured envelope itself.
     alpha at f0 stays within +-5% of the recorded MEASURED_ALPHA, and the
     run witnesses stay clean — so any regression OR improvement of the
     node-thin sheet realization surfaces instead of drifting silently
-    behind the xfail'd contract gate below. Provenance: 2026-08-19 #677
-    re-measure, fit ln-RMS resid 0.00245, settle -71.0 dB, two-plane
-    alpha 0.72494."""
+    behind the xfail'd contract gate below. Provenance: 2026-09-25 #1231,
+    VESSL 369367264763, continued plates and the #1012 Yee-half-cell
+    magnetic absorber profile; fit ln-RMS resid 0.00246, settle -69.0 dB,
+    two-plane alpha 0.77540 (same 1N record as MEASURED_ALPHA)."""
     out = _base()
     alpha = out["alpha"][_F0_IDX]
     a2 = _alpha_two_plane(out["xs"], out["profile"][_F0_IDX])
@@ -655,12 +667,12 @@ def test_alpha_envelope_regression_lock():
     assert abs(alpha / MEASURED_ALPHA - 1.0) <= 0.05, (
         f"measured alpha moved: {alpha:.5f} vs recorded {MEASURED_ALPHA}")
     # Endpoint ratio is a distinct extractor of the same record. The
-    # absorber-only A/B recovers the original pin; this is not a claim
+    # #1231 pin uses the same continued-plate record; this is not a claim
     # that a multimode guide has one exponential attenuation constant.
     assert abs(a2 / MEASURED_ALPHA_TWO_PLANE - 1.0) <= 0.05, a2
-    # forward-wave-purity witness (re-measure run: 0.00245 ln-RMS)
+    # forward-wave-purity witness (#1231 1N record: 0.00246 ln-RMS)
     assert out["resid"][_F0_IDX] < 0.02, out["resid"][_F0_IDX]
-    # ring-down settling witness (repo rule; re-measure run: -71.0 dB)
+    # ring-down settling witness (repo rule; #1231 1N record: -69.0 dB)
     assert out["settle_db"] < -40.0, out["settle_db"]
 
 
@@ -811,11 +823,11 @@ def test_sqrt_sigma_discriminator_o4a():
     here).
 
     #677 retarget: the discriminant reads the clean free-standing-sheet
-    transmission oracle, where the x4 ratio measured 0.5025. The guide-fit
-    ratio moved to 0.6089 under the node-thin operator, OUTSIDE the same
-    band, and is asserted against that same unwidened band in the
-    xfail(strict=True) sibling below rather than being folded into this
-    test's pass. Moving the tooth to the uncontaminated observable is a
+    transmission oracle, where the current x4 ratio is 0.5026. The guide-fit
+    ratio was 0.6089 under the node-thin operator and now reads 0.5970.
+    It is asserted against the same unwidened band in the
+    xfail(strict=False) sibling below, separately from this test's pass.
+    Moving the tooth to the uncontaminated observable is a
     retarget with a named root cause (the guide profile is
     non-exponential — see the #677 RE-MEASURE record and the O3 xfail
     reason); it is not a relaxation of the band, which is byte-identical
@@ -829,15 +841,17 @@ def test_sqrt_sigma_discriminator_o4a():
 
 @pytest.mark.xfail(
     strict=False, raises=AssertionError,
-    reason="#1231: since #1178 continued the plates into the absorber the guide-fit "
-           "ratio reads 0.599, just inside the band, so this XPASSes; non-strict until "
-           "#1231 decides whether continuation stays. History: "
+    reason="#1231 (2026-09-25): with the plates continued into the absorber "
+           "the guide-fit ratio reads 0.597, 0.003 inside the band's upper "
+           "edge; the free-standing sheet oracle gives 0.5026, so the "
+           "guide fixture's span-average contamination this marker describes "
+           "is unchanged and a pass at the band edge is not the fix it waits for. "
            "#677 re-measure (2026-08-19): the GUIDE-fit sqrt-law ratio is "
            "0.6089, outside the unwidened historical O4A_BAND "
-           "[0.40, 0.60] — RED, and kept red rather than accommodated. "
-           "Same attribution as the O3 xfail above: the independent "
+           "[0.40, 0.60] — historically RED without widening the band. "
+           "The independent "
            "free-standing-sheet transmission oracle reproduces the x4 "
-           "ratio at 0.5025 (test_sqrt_sigma_discriminator_o4a) and the "
+           "ratio at 0.5026 (test_sqrt_sigma_discriminator_o4a) and the "
            "closed form to 4.4% frequency-flat, so the excursion is the "
            "guide fixture's span-average contamination, not the sheet's "
            "sigma scaling. Fix the guide comparator/fixture before "
@@ -845,10 +859,10 @@ def test_sqrt_sigma_discriminator_o4a():
            "must remove this marker explicitly. The measured value itself "
            "is regression-locked GREEN in "
            "test_o4a_guide_ratio_regression_lock, so drift away from "
-           "0.6089 surfaces there rather than hiding under this xfail.",
+           "0.5970 surfaces there rather than hiding under this xfail.",
 )
 def test_sqrt_sigma_discriminator_o4a_guide_leg():
-    """O4a guide leg (contract band, currently RED — see xfail reason).
+    """O4a guide leg (inside the contract band; unresolved fixture marker).
 
     #700 scope note: the stub-supermode mechanism that the O3 re-pair
     quantified (see O3 MODEL RE-PAIR in the module docstring)
@@ -869,7 +883,7 @@ def test_o4a_guide_ratio_regression_lock():
     on this fixture's other measured quantities — a lock on what WAS
     measured, deliberately not a two-sided physics window centred anywhere
     convenient. It is GREEN on purpose: an assertion buried inside the
-    xfail(strict=True) sibling would be swallowed by the expected failure,
+    xfail(strict=False) sibling would be swallowed by the expected failure,
     so drift in either direction has to be checked from outside it."""
     ratio = _guide_sqrt_ratio()
     assert abs(ratio / MEASURED_GUIDE_SQRT_RATIO - 1.0) <= 0.05, (

@@ -661,7 +661,9 @@ def run_uniform(
             waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, n_steps))
 
     if sim._tfsf is not None:
-        from rfx.sources.tfsf import init_tfsf
+        from rfx.sources.tfsf import init_tfsf, validate_custom_tfsf_waveform
+
+        validate_custom_tfsf_waveform(sim._tfsf.waveform, grid.dt, n_steps)
 
         tfsf = init_tfsf(
             grid.nx,
@@ -679,13 +681,18 @@ def run_uniform(
             nz=grid.nz,
             waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
             method=getattr(sim._tfsf, 'method', 'bloch'),
+            closed_box=sim._tfsf.closed_box,
         )
-        sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
+        if not sim._tfsf.closed_box:
+            sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
         # Open-domain oblique Method B: k̂ in the xy-plane, so the transverse
         # y-axis must be OPEN (CPML) and z stays thin-periodic. Every other TFSF
         # (normal 1D-aux + Bloch 2D-aux) keeps the historical open-x / periodic-yz.
         from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_ru
-        if _is_methodB_ru(tfsf[0]):
+        if sim._tfsf.closed_box:
+            periodic = (False, False, False)
+            cpml_axes = "xyz"
+        elif _is_methodB_ru(tfsf[0]):
             periodic = (False, False, True)
             cpml_axes = "xy"
         else:
@@ -809,6 +816,28 @@ def run_uniform(
         sheet_specs,
         pec_edge_masks=pec_edge_masks,
         periodic=_pec_periodic)
+    if sim._tfsf is not None and sim._tfsf.closed_box:
+        nonvacuum = list(pec_edge_masks or ())
+        # These operators can replace the scalar material/PEC update.
+        # Check what they actually apply, including conformal PEC's path
+        # that deliberately removes pec_mask after building its weights.
+        for arrays in (aniso_eps, aniso_inv_eps, conformal_weights):
+            if arrays is not None:
+                nonvacuum.extend(value != 1.0 for value in arrays)
+        for spec in (debye_spec, lorentz_spec):
+            if spec is not None:
+                nonvacuum.extend(spec[1])
+        if kerr_chi3 is not None:
+            nonvacuum.append(kerr_chi3)
+        if sheet_ctx is not None:
+            nonvacuum.extend((sheet_ctx.mask_ex, sheet_ctx.mask_ey, sheet_ctx.mask_ez))
+        if rlc_metas:
+            mask = jnp.zeros(grid.shape, dtype=bool)
+            for meta in rlc_metas:
+                mask = mask.at[meta.i, meta.j, meta.k].set(True)
+            nonvacuum.append(mask)
+        sim._validate_tfsf_vacuum_boundary(
+            materials, tfsf[0], nonvacuum_masks=tuple(nonvacuum))
 
     # Main simulation
     if until_decay is not None:

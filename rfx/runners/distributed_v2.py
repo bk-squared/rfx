@@ -587,6 +587,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     Result
     """
     validate_exchange_interval(exchange_interval)
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     import warnings
