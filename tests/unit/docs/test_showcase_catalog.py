@@ -25,7 +25,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 PUBLIC = REPO / "docs" / "public"
 CATALOG = PUBLIC / "showcase" / "showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/16243f5edb1d/"
+SHARE = "https://remilab.cnu.ac.kr/share/7c02ad43c580/"
 SUPERSCRIPT = str.maketrans("⁻⁰¹²³⁴⁵⁶⁷⁸⁹", "-0123456789")
 #: A printed number: 20,592 / 0.097 / 2×10⁻⁵.  Not a digit inside a word
 #: (RTX A6000, float64, TM010) or a date.

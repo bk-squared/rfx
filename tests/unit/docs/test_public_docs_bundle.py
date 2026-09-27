@@ -276,7 +276,7 @@ print("hello")
     assert '```python\nprint("hello")\n```' in markdown
 
 
-SHARE = "https://remilab.cnu.ac.kr/share/16243f5edb1d/"
+SHARE = "https://remilab.cnu.ac.kr/share/7c02ad43c580/"
 
 
 def showcase_catalog(*case_ids):

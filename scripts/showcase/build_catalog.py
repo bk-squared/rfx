@@ -14,7 +14,7 @@ from.  Nothing in it is typed by hand:
   ``result.json`` records, and for the two forward comparisons the curves,
   through the same estimators the cross-validation tests judge with), then
   formatted.  A value that no longer rounds to what the page prints makes the
-  page and the catalog disagree, which ``tests/unit/docs/test_showcase_pages.py``
+  page and the catalog disagree, which ``tests/unit/docs/test_showcase_catalog.py``
   reports.
 
 Every file this script reads from the share host is checked against the
@@ -44,7 +44,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = REPO / "docs/public/showcase/showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/16243f5edb1d/"
+SHARE = "https://remilab.cnu.ac.kr/share/7c02ad43c580/"
 SCHEMA = "rfx-showcase-catalog/1"
 SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
@@ -285,7 +285,8 @@ def build(share: Share) -> dict:
     return {"schema": SCHEMA, "generator": "scripts/showcase/build_catalog.py",
             "share": {"base_url": SHARE, "manifest_url": SHARE + "manifest.json",
                       "manifest_sha256": share.manifest_sha256,
-                      "created": share.manifest["created"], "cite": share.manifest["cite"]},
+                      "created": share.manifest["created"], "cite": share.manifest["cite"],
+                      **({"supersedes": share.manifest["supersedes"]} if "supersedes" in share.manifest else {})},
             "cases": cases}
 
 
