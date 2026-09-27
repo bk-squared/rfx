@@ -474,8 +474,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_uniform=carries(),
         run_nonuniform=carries(),
         run_subgridded=refuses("today dropped although production validation passes", wrong="#1311"),
-        run_adi=refuses("every microstrip needs a trace, and ADI refuses interior PEC and thin "
-                        "conductors; a port declared with no trace is not checked"),
+        run_adi=refuses("a board with a PEC or thin-conductor trace is refused; today a port "
+                        "declared without a trace is dropped", wrong="#1308"),
         run_distributed=refuses("MSL ports refused (#1241)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),

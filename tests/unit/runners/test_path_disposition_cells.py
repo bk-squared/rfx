@@ -165,13 +165,15 @@ def _amplitude_kind(lane, on, ref=False):
 
 
 def _board(lane, on, ref=False):
-    """A microstrip: 1 mm εr 3.66 substrate, 2 mm PEC trace, the port the only drive."""
+    """A microstrip: 1 mm εr 3.66 substrate, 2 mm PEC trace, the port the only
+    drive. ADI refuses any trace, so its board has none: that is the #1308 case."""
     subgrid = lane == "run_subgridded" and not ref
     length = 24
     sim = _simulation(lane, (length, 12, 10 if subgrid else 6), ref=ref)
     sim.add_material("substrate", eps_r=3.66)
     sim.add(Box((0, 0, 0), mm(length, 12, 1)), material="substrate")
-    sim.add(Box(mm(1, 5, 1), mm(length - 1, 7, 2)), material="pec")
+    if lane != "run_adi":
+        sim.add(Box(mm(1, 5, 1), mm(length - 1, 7, 2)), material="pec")
     if on:
         sim.add_msl_port(position=mm(2, 6, 0), width=2e-3, height=1e-3, direction="+x",
                          impedance=50.0, waveform=GaussianPulse(f0=7e9, bandwidth=0.8))
