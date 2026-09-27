@@ -389,3 +389,25 @@ readings are marked as unsettled.
 **R2, fourth rung.** The 1/6 mm solve took 43 min at 84 ns, which puts 0.125 mm at 110 ns near
 3 GPU-hours per tree, under addendum 1's 12-hour limit. The 0.125 mm rung therefore runs on both
 trees.
+
+## Addendum 4 (2026-09-27, the leader's R5 ruling; written after the R5 runs)
+
+The leader withdrew the α_c = Rs/(Z0·W) reference for R5 and approved the substitute as it stands:
+(a) the ladder, (b) the Rs0 sweep as a diagnostic, and (c) the dispersion pin as a fraction of f.
+Two conditions came with it. The ruling arrived after the R5 jobs had run (addendum 1 fixed the
+redraw before them), so this addendum records how the completed runs meet the conditions. It does
+not claim they were written in advance.
+
+1. **Plate height and footprint fixed across rungs, on whole cells, at the fixture's realized
+   values.** The records show this holds at every rung and on both trees:
+   - fixture as drawn: 3.5 cells (296.3 µm) above the trace plane, x 4.5–7.5 mm (3.0 mm), width
+     1.4 mm;
+   - fixture as realized, on every tree: node plane 6, 254.0 µm (3 cells) above the trace plane;
+     nodes x 54–88 and y 10–25, i.e. 34 × 15 cells, x 4.572–7.451 mm, width 1.270 mm;
+   - redraw at n = 1, 2 and 3: 254.0 µm above the trace plane; 34 × 15, 68 × 30 and 102 × 45 cells;
+     the same x 4.572–7.451 mm and width 1.270 mm; probe-0 planes at 4.487 and 7.535 mm.
+2. **Optional perturbation estimate.** Skipped. The R5 runs record only S, β and Z0 from
+   `compute_msl_s_matrix`; no field monitor sits on the plate, so the estimate would need new
+   instrumentation and a new solve.
+
+The pass/fail framing of R5 stays with the leader.
