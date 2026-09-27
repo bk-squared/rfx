@@ -914,7 +914,8 @@
             "direction",
             "angle_deg",
             "waveform",
-            "method"
+            "method",
+            "closed_box"
           ],
           "properties": {
             "f0": {
@@ -951,6 +952,10 @@
               "type": "string",
               "minLength": 1,
               "description": "Transverse boundary-value-problem lane ('bloch' = laterally periodic infinite array, 'methodB' = open transverse boundary, compact isolated scatterer); the closed value set is a builder fence enforced on import, like polarization/direction/waveform. Required despite the builder default because the failure is asymmetric: defaulting an oblique isolated-scatterer document to 'bloch' would silently import it as an infinite periodic array."
+            },
+            "closed_box": {
+              "type": "boolean",
+              "description": "Normal-incidence finite six-face total-field box with CPML on all axes. False preserves the historical slab. Required, like method, so a missing boundary-value-problem selector is never silently inferred. Callable CustomWaveform sources cannot be serialized."
             }
           }
         },

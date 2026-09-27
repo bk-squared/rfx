@@ -113,6 +113,22 @@ def _staged_by_an_outer_trace() -> bool:
     return is_tracer(jnp.zeros(()))
 
 
+def _under_external_jax_transform() -> bool:
+    """Read the public trace-state API across the supported JAX versions."""
+    try:
+        from jax.extend.core import get_opaque_trace_state, take_current_trace
+    except ImportError:
+        try:  # JAX 0.6, including the Python 3.10 CI environment.
+            from jax.core import get_opaque_trace_state, take_current_trace
+        except ImportError:  # The declared JAX 0.4.20 floor.
+            from jax.core import trace_state_clean
+            return not trace_state_clean()
+    caller = get_opaque_trace_state()
+    with take_current_trace():
+        eager = get_opaque_trace_state()
+    return caller != eager
+
+
 def _refuse_transformed_extended_tfsf(entry) -> None:
     """Fence the new source inputs before any setup can hide caller tracing."""
     if entry is None:
@@ -120,16 +136,7 @@ def _refuse_transformed_extended_tfsf(entry) -> None:
     from rfx.sources.sources import CustomWaveform
     if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
         return
-    try:
-        from jax.extend.core import get_opaque_trace_state, take_current_trace
-    except ImportError:
-        raise NotImplementedError(
-            "CustomWaveform and closed_box TFSF require JAX's public "
-            "opaque trace-state and take_current_trace APIs") from None
-    caller = get_opaque_trace_state()
-    with take_current_trace():
-        eager = get_opaque_trace_state()
-    if caller != eager:
+    if _under_external_jax_transform():
         raise NotImplementedError(
             "CustomWaveform and closed_box TFSF cannot be called under external "
             "JAX transformations (grad/value_and_grad/JVP/vmap/jit/checkpoint/scan): "

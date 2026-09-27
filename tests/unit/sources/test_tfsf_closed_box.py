@@ -391,3 +391,65 @@ def test_external_transforms_refuse_extended_tfsf(kind, entry, dynamic_material,
     }
     with pytest.raises(NotImplementedError, match="9-ULP cross-trace contract"):
         calls[transform]()
+
+
+@pytest.mark.parametrize("public_api", ("core_opaque", "core_predicate"))
+def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
+    """0.6 exports the pair from core; the 0.4.20 floor exports a predicate."""
+    import sys
+    from types import ModuleType
+    from rfx.api._execute import _refuse_transformed_extended_tfsf
+
+    # Keep the real installed trace semantics while presenting each older
+    # public export layout. Actual 0.6 execution is a separate runtime gate.
+    try:
+        from jax.extend.core import get_opaque_trace_state as get_state
+        from jax.extend.core import take_current_trace as take_trace
+    except ImportError:
+        try:
+            from jax.core import get_opaque_trace_state as get_state
+            from jax.core import take_current_trace as take_trace
+        except ImportError:
+            from contextlib import contextmanager
+            from jax.core import trace_state_clean
+            in_eager_context = False
+
+            def get_state():
+                return in_eager_context or trace_state_clean()
+
+            @contextmanager
+            def take_trace():
+                nonlocal in_eager_context
+                in_eager_context = True
+                try:
+                    yield
+                finally:
+                    in_eager_context = False
+    old_extension = ModuleType("jax.extend.core")
+    old_core = ModuleType("jax.core")
+    old_core.__dict__.update(jax.core.__dict__)
+    old_core.__dict__.pop("__getattr__", None)
+    for name in ("get_opaque_trace_state", "take_current_trace"):
+        old_core.__dict__.pop(name, None)
+    if public_api == "core_opaque":
+        old_core.get_opaque_trace_state = get_state
+        old_core.take_current_trace = take_trace
+    else:
+        def clean():
+            caller = get_state()
+            with take_trace():
+                return caller == get_state()
+        old_core.trace_state_clean = clean
+    monkeypatch.setitem(sys.modules, "jax.extend.core", old_extension)
+    monkeypatch.setitem(sys.modules, "jax.core", old_core)
+    entry = _sim()._tfsf
+
+    def call(value):
+        _refuse_transformed_extended_tfsf(entry)
+        return value ** 2
+
+    assert call(2.0) == 4.0
+    for transformed, value in ((jax.grad(call), 2.0), (jax.jit(call), 2.0),
+                               (jax.vmap(call), jnp.ones(2))):
+        with pytest.raises(NotImplementedError, match="9-ULP cross-trace contract"):
+            transformed(value)
