@@ -3,7 +3,7 @@ description: "Issue 1332, showcase item 4. The RT/Duroid 5880 probe-fed patch an
 tags: [rfx, showcase, issue-1332, crossval-curves]
 resources:
   cluster: remilab-c0
-  preset: gpu-a6000-1
+  preset: gpu-24gb
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
   PYTHONUNBUFFERED: "1"
@@ -12,7 +12,7 @@ env:
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
   RFX_SHOWCASE_REF: "b46a8220775b67f8720fb13c3e256c01cf7d6883"
-  RFX_SHOWCASE_PRESET: "gpu-a6000-1"
+  RFX_SHOWCASE_PRESET: "gpu-24gb"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
