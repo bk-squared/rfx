@@ -411,3 +411,30 @@ not claim they were written in advance.
    instrumentation and a new solve.
 
 The pass/fail framing of R5 stays with the leader.
+
+## Addendum 5 (2026-09-27, phase 2, before the N = 12 and N = 16 Leg A solves)
+
+The leader asked for two finer rungs on R3 Leg A. They use the same whole-cell board and are run
+on T0 (cd237692) and on current origin/main, 1d10ee45, called T4′ here.
+
+**Ladder.** N = 12 and N = 16 (dx = 65.6 and 49.2 µm). Build-only checks: 40.3 M and 95.3 M
+cells; the solver patch is 126 × 150 and 168 × 200 edges (10.5h × 12.5h); the laminate has
+12 and 16 cells of ε_r 3.38. Unfed arm, 200 periods, the lock's census and parity extractor,
+settling reported.
+
+**Continuity of T4 across the two commits.** The rungs N = 4–10 ran on a55ec1e7. T4′ changes
+`rfx/` in the design box, NTFF surfaces, TFSF and `simulation.py`. So T4′ is run at N = 4 first:
+- if its TM010 differs from a55ec1e7's 8.97057 GHz by at most 1e-5 relative, the six-rung refit
+  mixes the two commits, and the report says so;
+- otherwise T4′ is also run at N = 6, 8 and 10, and the refit uses T4′ alone.
+
+**Sizing.** The peak device memory of an N = 10 solve is measured first, as `peak_bytes_in_use`
+from a short record on T4′. The N = 16 preset is chosen from that peak scaled by the cell count.
+
+**Expected (the leader's).** T0 leaves its 9.151–9.155 GHz plateau and moves toward T4's limit.
+T4's limit, refitted on six rungs (N = 4, 6, 8, 10, 12, 16), stays within 0.1 % of 9.1155 GHz.
+
+**Falsifier (the leader's).** T0 stays within 5 MHz of 9.153 GHz at N = 16 while T4's refitted
+limit sits 0.3 % or more below it.
+
+The numbers, the refit and a figure are reported; the verdict is the leader's.
