@@ -592,11 +592,16 @@ def rasterize(
     -------
     eps_r, sigma : jnp.ndarray
     """
+    from rfx.geometry.rasterize_grid import (
+        _material_cell_mask, centres_from_uniform_grid, coords_from_uniform_grid,
+    )
+    coords = coords_from_uniform_grid(grid)
+    centres = centres_from_uniform_grid(grid)
     eps_r = jnp.full(grid.shape, background_eps, dtype=jnp.float32)
     sigma = jnp.zeros(grid.shape, dtype=jnp.float32)
 
     for shape, er, sig in shapes:
-        m = shape.mask(grid)
+        m = _material_cell_mask(shape, coords, centres, grid=grid)
         eps_r = jnp.where(m, er, eps_r)
         sigma = jnp.where(m, sig, sigma)
 

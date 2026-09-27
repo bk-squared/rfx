@@ -15,7 +15,7 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
-from rfx.geometry.csg import declared_bounds
+from rfx.geometry.csg import Cylinder, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
     _spec_from_pole_masks,
@@ -317,6 +317,22 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
     if coords is None:
         coords = coords_from_nonuniform_grid(grid)
     return cell_centres_from_nodes(coords, cell_sizes_from_nonuniform_grid(grid))
+
+
+def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=None):
+    """Sample curved material volumes where their cell values live (#1138).
+
+    A node-symmetric Sphere/Cylinder stored as cell epsilon or sigma shifts
+    the material by half a cell. Use the supplied physical centres (already
+    centred on the fine subgrid), without changing Shape.mask's node API or
+    the separate PEC volume/sheet/wire classifier. Other shapes retain their
+    existing rules, including custom uniform shapes that implement only mask.
+    """
+    if isinstance(shape, (Sphere, Cylinder)):
+        return shape.mask_on_coords(centres.x, centres.y, centres.z)
+    if grid is not None:
+        return shape.mask(grid)
+    return shape.mask_on_coords(coords.x, coords.y, coords.z)
 
 
 def _local_cell(nodes, d, pos: float) -> float:
@@ -825,7 +841,7 @@ def rasterize_geometry(
 
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
-        mask = entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
+        mask = _material_cell_mask(entry.shape, coords, centres)
 
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
@@ -862,7 +878,7 @@ def rasterize_geometry(
         pole_mask = mask
         if pole_geometry_entries is not None and (mat.debye_poles or mat.lorentz_poles):
             declared = pole_geometry_entries[entry_index].shape
-            pole_mask = declared.mask_on_coords(coords.x, coords.y, coords.z)
+            pole_mask = _material_cell_mask(declared, coords, centres)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
                 pole_mask = pec_volume_cell_mask(declared, centres)
 
