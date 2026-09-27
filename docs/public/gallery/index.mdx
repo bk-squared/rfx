@@ -9,6 +9,16 @@ Choose a physical question. Each example connects a model to the motion or
 response it produces, with its source and evidence scope alongside the picture.
 The site plays stored results; it does not run a solver in your browser.
 
+<div data-rfx="example-search">
+  <label>Find a visual example
+    <input id="rfx-example-search" type="search" data-rfx-filter="examples" placeholder="Try pulse, dielectric, filter or antenna" aria-controls="rfx-field-examples rfx-design-examples" aria-describedby="rfx-example-count" />
+  </label>
+  <p id="rfx-example-count" data-rfx-filter-count="examples" role="status" aria-live="polite">6 visual examples</p>
+  <noscript>All examples are shown. Use your browser's Find command to search this page.</noscript>
+</div>
+
+<section id="rfx-field-examples" data-rfx-example-group="fields">
+
 ## Start with a field
 
 These teaching examples were generated for this documentation update using the
@@ -16,25 +26,29 @@ public Simulation API. They show actual time-domain snapshots on a single mesh;
 they are not convergence or RF-accuracy benchmarks.
 
 <div data-rfx="cards">
-  <section data-rfx="card">
+  <section data-rfx="card" data-rfx-example="boundary reflection absorbing open CPML closed PEC pulse time domain electric field 2D TMz current teaching">
     <a href="/rfx/gallery/boundary-reflection/"><img src="/rfx/gallery/assets/current-visuals/boundary-reflection.png" loading="lazy" alt="Electric pulse in open absorbing and closed reflecting domains" /></a>
     <h3>Open space or reflecting walls?</h3>
     <p>The same pulsed source with absorbing CPML boundaries and metal PEC walls.</p>
     <a href="/rfx/gallery/boundary-reflection/">Compare the boundaries →</a>
   </section>
-  <section data-rfx="card">
+  <section data-rfx="card" data-rfx-example="dielectric interface material permittivity vacuum pulse time domain electric field 2D TMz current teaching">
     <a href="/rfx/gallery/dielectric-interface/"><img src="/rfx/gallery/assets/current-visuals/dielectric-interface.png" loading="lazy" alt="Electric pulse encountering a dielectric interface, compared with vacuum" /></a>
     <h3>Meet a dielectric interface</h3>
     <p>Watch the field respond when the medium changes, with a vacuum comparison.</p>
     <a href="/rfx/gallery/dielectric-interface/">Follow the pulse →</a>
   </section>
-  <section data-rfx="card">
+  <section data-rfx="card" data-rfx-example="cavity standing wave interference closed PEC pulse time domain electric field 2D TMz current teaching">
     <a href="/rfx/gallery/cavity-standing-wave/"><img src="/rfx/gallery/assets/current-visuals/cavity-standing-wave.png" loading="lazy" alt="Electric field forming an interference pattern in a closed metal cavity" /></a>
     <h3>Trap a field in a cavity</h3>
     <p>See reflections and interference inside a closed conducting domain.</p>
     <a href="/rfx/gallery/cavity-standing-wave/">Watch the cavity →</a>
   </section>
 </div>
+
+</section>
+
+<section id="rfx-design-examples" data-rfx-example-group="design">
 
 ## Explore a design in motion
 
@@ -43,25 +57,27 @@ histories. Their original numbers are historical; the case pages distinguish
 phasor replay, real iterations and explanatory interpolation.
 
 <div data-rfx="cards">
-  <section data-rfx="card">
+  <section data-rfx="card" data-rfx-example="waveguide dielectric taper matching reflection S11 gradient sensitivity inverse design optimization historical">
     <a href="/rfx/gallery/waveguide-taper/"><img src="/rfx/gallery/assets/showcase-20260927/taper_traj.jpg" loading="lazy" alt="Dielectric taper profile, reflected spectrum and sensitivities" /></a>
     <h3>Waveguide dielectric taper</h3>
     <p>Connect a graded material profile to broadband reflection and its sensitivity.</p>
     <a href="/rfx/gallery/waveguide-taper/">Watch the taper →</a>
   </section>
-  <section data-rfx="card">
+  <section data-rfx="card" data-rfx-example="microstrip notch filter stub transmission S21 electric field phasor interpolation inverse design optimization historical">
     <a href="/rfx/gallery/microstrip-notch/"><img src="/rfx/gallery/assets/showcase-20260927/notch_phase.jpg" loading="lazy" alt="Normalized electric field around an open microstrip stub" /></a>
     <h3>Microstrip notch filter</h3>
     <p>Relate one geometric variable to a resonant branch and its local field.</p>
     <a href="/rfx/gallery/microstrip-notch/">Watch the filter →</a>
   </section>
-  <section data-rfx="card">
+  <section data-rfx="card" data-rfx-example="antenna beam steering dielectric cover superstrate radiation pattern directivity latent gradient inverse design optimization historical">
     <a href="/rfx/gallery/beam-steering/"><img src="/rfx/gallery/assets/showcase-20260927/steer_traj.jpg" loading="lazy" alt="Permittivity cover and angular radiation pattern during beam steering" /></a>
     <h3>Dielectric beam steering</h3>
     <p>Follow a spatial material pattern as the main radiation lobe changes direction.</p>
     <a href="/rfx/gallery/beam-steering/">Watch the beam →</a>
   </section>
 </div>
+
+</section>
 
 ## Read a reference comparison
 
