@@ -231,7 +231,8 @@ def render_timing(d: Path, out: Path) -> list[Path]:
         tf = json.loads((d / f"timing_{b}_forward.json").read_text())
         tg = json.loads((d / f"timing_{b}_grad.json").read_text())
         n = tf["box_desc"]["n_cells"]
-        rows.append({"box": b, "n": n, "fwd": tf["wall_s"], "grad": tg["wall_s"],
+        rows.append({"box": b, "n": n, "other": tf["box_desc"].get("n_other_cells", 0),
+                     "fwd": tf["wall_s"], "grad": tg["wall_s"],
                      "fd": 2 * n * tf["wall_s"], "mem_grad": tg["peak_bytes_in_use"],
                      "mem_fwd": tf["peak_bytes_in_use"], "device": tf["device_kind"]})
     made = []
@@ -251,7 +252,9 @@ def render_timing(d: Path, out: Path) -> list[Path]:
                 ax.annotate(t, (v, yy + off), xytext=(5, 0), textcoords="offset points",
                             va="center", fontsize=12, color=INK)
         ax.set_yticks(y)
-        ax.set_yticklabels([f"{r['box']}\n{r['n']:,} cells" for r in rows])
+        ax.set_yticklabels([f"{r['box']}\n{r['n']:,} cells"
+                            + (f"\n({r['other']:,} not laminate)" if r["other"] else "")
+                            for r in rows])
         ax.set_xscale("log")
         ax.set_xlim(min(r["fwd"] for r in rows) * 0.5, max(r["fd"] for r in rows) * 60)
         ax.set_xlabel(f"wall time on {rows[0]['device']} (s)")
