@@ -7,7 +7,9 @@ import json
 import tempfile
 from pathlib import Path
 
-from export_public_docs_to_gitops import check_no_symlinks, default_gitops_root, export_snapshot
+from export_public_docs_to_gitops import (
+    check_no_symlinks, contained_destination, default_gitops_root, export_snapshot,
+)
 
 
 def file_map(root: Path) -> dict[str, bytes]:
@@ -17,15 +19,14 @@ def file_map(root: Path) -> dict[str, bytes]:
 
 
 def make_report(repo_root: Path, deploy_root: Path, bundle_dir: Path | None = None) -> dict:
+    # Never derive a deletion-capable export destination from unvalidated JSON.
+    prefix = "rfx"
+    if bundle_dir:
+        from build_public_docs_bundle import validate_bundle, validate_public_identity
+        manifest = validate_bundle(bundle_dir, repo_root)
+        prefix = str(validate_public_identity(manifest["base_url"], manifest["channel"]))
     with tempfile.TemporaryDirectory(prefix="rfx-docs-sync-") as tmp:
-        # Preserve the site's prefix because the exporter verifies URL scope.
-        if bundle_dir:
-            from urllib.parse import urlsplit
-            manifest = json.loads((bundle_dir / "files/docs-manifest.json").read_text())
-            prefix = urlsplit(manifest["base_url"]).path.lstrip("/")
-        else:
-            prefix = "rfx"
-        expected_root = Path(tmp) / prefix
+        expected_root = contained_destination(Path(tmp) / "snapshot", prefix)
         export_snapshot(repo_root, expected_root, bundle_dir)
         source, deployed = file_map(expected_root), file_map(deploy_root)
     report = {"repo_root": str(repo_root), "deploy_root": str(deploy_root),

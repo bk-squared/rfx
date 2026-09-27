@@ -58,13 +58,28 @@ def transformed_source(text: str, base_url: str, sha: str) -> str:
     return text
 
 
+
+def contained_destination(parent: Path, site_prefix: str) -> Path:
+    """Resolve a validated RFX target beneath a fixed, caller-owned directory."""
+    from build_public_docs_bundle import validate_site_prefix
+    prefix = validate_site_prefix(site_prefix)
+    check_no_symlinks(parent)
+    parent = parent.resolve()
+    destination = (parent / prefix).resolve()
+    if destination == parent or not destination.is_relative_to(parent):
+        raise ValueError("public export destination escapes its parent")
+    return destination
+
+
 def export_snapshot(repo_root: Path, dst_root: Path, bundle_dir: Path | None = None) -> dict | None:
-    from build_public_docs_bundle import safe_relative, validate_bundle
+    from build_public_docs_bundle import safe_relative, validate_bundle, validate_public_identity
+    if ".." in dst_root.parts:
+        raise ValueError("public export destination contains traversal")
+    manifest = validate_bundle(bundle_dir, repo_root) if bundle_dir else None
     public_root = repo_root / "docs/public"
     check_no_symlinks(public_root)
     check_no_symlinks(dst_root)
     tracked = sorted(get_tracked_files(repo_root, "docs/public"))
-    manifest = validate_bundle(bundle_dir, repo_root) if bundle_dir else None
     # Validate every path before replacing any owned destination subtree.
     for src in tracked:
         if src.name != ".gitignore":
@@ -76,8 +91,8 @@ def export_snapshot(repo_root: Path, dst_root: Path, bundle_dir: Path | None = N
         overlap = authored & (set(manifest["files"]) | {"docs-manifest.json"})
         if overlap:
             raise ValueError(f"generated bundle collides with authored source: {sorted(overlap)}")
-        from urllib.parse import urlsplit
-        if not dst_root.as_posix().endswith(urlsplit(manifest["base_url"]).path):
+        prefix = validate_public_identity(manifest["base_url"], manifest["channel"])
+        if dst_root.parts[-len(prefix.parts):] != prefix.parts:
             raise ValueError("bundle base URL and export site prefix disagree")
     dst_root.mkdir(parents=True, exist_ok=True)
     # Preserve immutable release snapshots and the infra-owned dev redirect.
@@ -116,9 +131,9 @@ def main() -> int:
     args = parser.parse_args()
     repo_root = args.repo_root.resolve()
     gitops_root = args.gitops_root or default_gitops_root(repo_root)
-    if not re.fullmatch(r"rfx(?:/versions/[a-zA-Z0-9._-]+)?", args.site_prefix):
-        raise ValueError("invalid site prefix")
-    dst = gitops_root / "deploy/obsidian-stack/astro-starlight-presets/public/seed-pages" / args.site_prefix
+    dst = contained_destination(
+        gitops_root / "deploy/obsidian-stack/astro-starlight-presets/public/seed-pages", args.site_prefix
+    )
     if args.check:
         check_no_symlinks(repo_root / "docs/public")
         if args.bundle_dir:

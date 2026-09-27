@@ -10,7 +10,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts"))
 import build_public_docs_bundle as bundle
-from export_public_docs_to_gitops import export_snapshot, transformed_source
+import check_public_docs_sync as sync
+from export_public_docs_to_gitops import contained_destination, export_snapshot, transformed_source
 
 
 @pytest.mark.parametrize("path", ["../secret.md", "/etc/passwd", "markdown/../../.env",
@@ -56,6 +57,7 @@ def fixture_bundle(tmp_path):
     files.mkdir(parents=True)
     (files / "llms.txt").write_text("Public index")
     manifest = {"schema_version": 1, "source_sha": "a" * 40,
+                "base_url": "https://remilab.ai/rfx", "channel": "development",
                 "files": {"llms.txt": bundle.digest(files / "llms.txt")}}
     bundle.write_json(files / "docs-manifest.json", manifest)
     return root
@@ -124,3 +126,95 @@ def test_manifest_disallows_unsafe_path_even_with_valid_hash(tmp_path):
     bundle.write_json(files / "docs-manifest.json", manifest)
     with pytest.raises(ValueError, match="excluded publication path"):
         bundle.validate_bundle(root)
+
+
+@pytest.mark.parametrize("base_url,channel", [
+    ("https://remilab.ai/rfx/../../outside", "development"),
+    ("https://remilab.ai/rfx/versions/..", "release"),
+    ("https://remilab.ai/rfx/versions/%2e%2e", "release"),
+    ("https://remilab.ai/rfx//versions/v1.8.0", "release"),
+    ("https://evil.example/rfx", "development"),
+    ("https://remilab.ai.evil.example/rfx", "development"),
+    ("https://user@remilab.ai/rfx", "development"),
+    ("https://remilab.ai:443/rfx", "development"),
+    ("http://remilab.ai/rfx", "development"),
+    ("https://remilab.ai/other", "development"),
+    ("https://remilab.ai/rfx/agent", "development"),
+    ("https://remilab.ai/rfx?target=outside", "development"),
+    ("https://remilab.ai/rfx#outside", "development"),
+    ("https://remilab.ai/rfx", "unknown"),
+    ("https://remilab.ai/rfx", ["development"]),
+    (None, "development"),
+])
+def test_manifest_identity_is_rejected_before_export_or_temp_creation(tmp_path, monkeypatch, base_url, channel):
+    root = fixture_bundle(tmp_path)
+    manifest_path = root / "files/docs-manifest.json"
+    manifest = json.loads(manifest_path.read_text())
+    manifest.update(base_url=base_url, channel=channel)
+    bundle.write_json(manifest_path, manifest)
+    sentinel = tmp_path / "outside/keep.txt"
+    sentinel.parent.mkdir()
+    sentinel.write_text("owned by another task")
+
+    def must_not_call(*args, **kwargs):
+        raise AssertionError("invalid identity reached a temporary/export operation")
+
+    monkeypatch.setattr(sync.tempfile, "TemporaryDirectory", must_not_call)
+    monkeypatch.setattr(sync, "export_snapshot", must_not_call)
+    with pytest.raises(ValueError):
+        bundle.validate_bundle(root)
+    with pytest.raises(ValueError):
+        sync.make_report(tmp_path / "unused-source", sentinel.parent, root)
+    assert sentinel.read_text() == "owned by another task"
+
+
+@pytest.mark.parametrize("url,channel,prefix", [
+    ("https://remilab.ai/rfx", "development", "rfx"),
+    ("https://remilab.ai/rfx/versions/v1.8.0", "release", "rfx/versions/v1.8.0"),
+    ("https://remilab.ai/rfx/versions/v2.0.0-rc.1", "release", "rfx/versions/v2.0.0-rc.1"),
+])
+def test_valid_identity_resolves_within_fixed_parent(tmp_path, url, channel, prefix):
+    parsed = bundle.validate_public_identity(url, channel)
+    assert str(parsed) == prefix
+    parent = tmp_path / "fixed-snapshot"
+    destination = contained_destination(parent, str(parsed))
+    assert destination.is_relative_to(parent.resolve())
+    assert destination == parent / prefix
+
+
+@pytest.mark.parametrize("prefix", ["../rfx", "rfx/../../outside", "/rfx", "rfx/versions/..", "other"])
+def test_export_destination_cannot_escape_fixed_parent(tmp_path, prefix):
+    sentinel = tmp_path / "keep.txt"
+    sentinel.write_text("keep")
+    with pytest.raises(ValueError):
+        contained_destination(tmp_path / "fixed-snapshot", prefix)
+    assert sentinel.read_text() == "keep"
+
+
+def test_export_destination_rejects_containment_escape_through_symlink(tmp_path):
+    parent = tmp_path / "fixed-snapshot"
+    parent.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep")
+    (parent / "rfx").symlink_to(outside, target_is_directory=True)
+    with pytest.raises((SystemExit, ValueError)):
+        contained_destination(parent, "rfx")
+    assert (outside / "keep.txt").read_text() == "keep"
+
+
+def test_direct_export_rejects_traversal_before_reading_or_mutating(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "keep.txt").write_text("keep")
+    with pytest.raises(ValueError, match="traversal"):
+        export_snapshot(tmp_path / "unused-source", tmp_path / "rfx/../outside")
+    assert (outside / "keep.txt").read_text() == "keep"
+
+
+def test_builder_uses_the_same_identity_validation_before_loading_runtime(tmp_path, monkeypatch):
+    monkeypatch.setattr(bundle, "check_source", lambda *args: "a" * 40)
+    monkeypatch.setattr(bundle, "toolchain", lambda: pytest.fail("invalid identity reached runtime loading"))
+    with pytest.raises(ValueError):
+        bundle.build(tmp_path, tmp_path / "output", "https://remilab.ai/rfx/../outside", "development", None)
+    assert not (tmp_path / "output").exists()

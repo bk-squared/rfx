@@ -69,6 +69,27 @@ def safe_relative(name: str) -> PurePosixPath:
     return path
 
 
+
+def validate_site_prefix(prefix: str) -> PurePosixPath:
+    """Accept only the owned root or one named immutable release subtree."""
+    if not isinstance(prefix, str) or not re.fullmatch(r"rfx(?:/versions/[A-Za-z0-9][A-Za-z0-9._-]*)?", prefix):
+        raise ValueError("invalid public site prefix")
+    return safe_relative(prefix)
+
+
+def validate_public_identity(base_url: str, channel: str) -> PurePosixPath:
+    """Validate untrusted manifest identity before using it as a filesystem path."""
+    if not isinstance(channel, str) or channel not in {"development", "release"}:
+        raise ValueError("invalid documentation channel")
+    if not isinstance(base_url, str):
+        raise ValueError("invalid documentation base URL")
+    parsed = urlsplit(base_url)
+    if (parsed.scheme != "https" or parsed.netloc != "remilab.ai"
+            or parsed.query or parsed.fragment or base_url != "https://remilab.ai" + parsed.path):
+        raise ValueError("invalid documentation base URL origin or components")
+    return validate_site_prefix(parsed.path.removeprefix("/"))
+
+
 def allowed_artifact(name: str) -> bool:
     path = safe_relative(name)
     if name in {"llms.txt", "llms-full.txt", "api/inventory.json"}:
@@ -244,9 +265,7 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
     root = root.resolve()
     sha = check_source(root, source_sha)
     base_url = base_url.rstrip("/")
-    if not re.fullmatch(r"https://[a-zA-Z0-9.-]+/rfx(?:/[a-zA-Z0-9._/-]+)?", base_url):
-        raise ValueError("base URL must be an HTTPS RFX documentation URL")
-    safe_relative(urlsplit(base_url).path.lstrip("/"))
+    validate_public_identity(base_url, channel)
     environment = toolchain()
     import pdoc
     inventory = api_inventory(root, sha, base_url, channel)
@@ -372,6 +391,9 @@ def validate_bundle(bundle: Path, root: Path | None = None) -> dict:
     check_no_symlinks(bundle)
     files = bundle / "files"
     manifest = json.loads((files / "docs-manifest.json").read_text())
+    if not isinstance(manifest, dict):
+        raise ValueError("invalid docs manifest object")
+    validate_public_identity(manifest.get("base_url"), manifest.get("channel"))
     if manifest.get("schema_version") != 1 or not re.fullmatch(r"[0-9a-f]{40}", manifest.get("source_sha", "")):
         raise ValueError("invalid docs manifest identity")
     expected = manifest["files"]
