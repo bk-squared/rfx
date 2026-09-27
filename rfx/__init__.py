@@ -280,7 +280,7 @@ __all__ = [
     "checkify_invariants", "check_finite", "check_positive",
     "check_bounds", "check_courant_number",
     # geometry
-    "Box", "OrientedBox", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
+    "Box", "Sphere", "Cylinder", "PolylineWire", "CurvedPatch", "Via",
     "MeshShape",
     "PCBLayer", "Stackup",
     # microstrip closed-form synthesis / analysis
