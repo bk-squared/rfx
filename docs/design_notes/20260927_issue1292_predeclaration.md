@@ -359,3 +359,20 @@ own anchor is 9.3305 GHz, computed from node counts).
 same dt). At r = 1.5, 2 and 3 the grids are 6.7, 15.7 and 52.7 M cells. Preflight on the refined
 rungs reports the trace sheet solved 0.35 cell wider at each free edge (for example 617.5 µm at
 r = 1.5). This is recorded, not acted on.
+
+## Addendum 2 (2026-09-27, before the R3 N = 6 re-run)
+
+**R3, whole-cell board, rung N = 6: a defect in my drawing.** In the first attempt the laminate
+realized 7 cells instead of 6. Its upper face, 10·(h/2) + h, sits at 36.00000000000001 cells in
+floating point, so the laminate also took the cell above the patch plane. Preflight printed "PEC
+sheet … realizes on node plane 48 … the cells on BOTH sides of that plane carry the same
+dielectric … buried half a cell inside the dielectric" for that rung only; N = 4, 8 and 10, and the
+fixture board, have no such message. The first-attempt N = 6 value on main was 8.8200 GHz, and all
+three identified modes sat 1.6–2.2 % below the neighbouring rungs.
+
+The drawing now places both laminate faces 0.001 cell inside their node planes, and every record
+asserts the laminate's cell count in a column outside the patch (N cells). At N = 4, 8 and 10 the
+realized masks are unchanged, and their first-attempt records stand. N = 6 is re-run on T0 and
+T4. The first-attempt N = 6 records are kept and marked as defective; they are not used in the
+convergence estimate. R2 (3/6/9/12 cells) and the R5 redraw (3/6/9 cells) were checked the same
+way at build time and are correct.
