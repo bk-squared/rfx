@@ -239,22 +239,26 @@ def render_timing(d: Path, out: Path) -> list[Path]:
         y = np.arange(len(rows))[::-1]
         h = 0.24
         ax.barh(y + h, [r["fwd"] for r in rows], h * 0.85, color="#9A9A96", label="forward (measured)")
-        ax.barh(y, [r["grad"] for r in rows], h * 0.85, color=RFX, label="value and gradient (measured)")
+        ax.barh(y, [r["grad"] for r in rows], h * 0.85, color=RFX, label="value + gradient (measured)")
         ax.barh(y - h, [r["fd"] for r in rows], h * 0.85, color=SURFACE, ec=INK, hatch="///",
-                lw=1.0, label="central differences, 2N forwards (derived)")
+                lw=1.0, label="central differences: 2N forwards (derived)")
         for yy, r in zip(y, rows):
-            for off, v in ((h, r["fwd"]), (0.0, r["grad"]), (-h, r["fd"])):
-                ax.annotate(f"{v:.3g} s", (v, yy + off), xytext=(5, 0), textcoords="offset points",
+            texts = ((h, r["fwd"], f"{r['fwd']:.1f} s, peak {r['mem_fwd'] / 1e9:.2f} GB"),
+                     (0.0, r["grad"], f"{r['grad']:.1f} s, peak {r['mem_grad'] / 1e9:.2f} GB"),
+                     (-h, r["fd"], f"{r['fd']:.3g} s = {r['fd'] / 86400:.1f} days"))
+            for off, v, t in texts:
+                ax.annotate(t, (v, yy + off), xytext=(5, 0), textcoords="offset points",
                             va="center", fontsize=12, color=INK)
         ax.set_yticks(y)
         ax.set_yticklabels([f"{r['box']}\n{r['n']:,} cells" for r in rows])
         ax.set_xscale("log")
-        ax.set_xlim(min(r["fwd"] for r in rows) * 0.5, max(r["fd"] for r in rows) * 20)
+        ax.set_xlim(min(r["fwd"] for r in rows) * 0.5, max(r["fd"] for r in rows) * 60)
         ax.set_xlabel(f"wall time on {rows[0]['device']} (s)")
         ax.grid(axis="y", visible=False)
-        ax.legend(loc="lower right" if name == "site" else "upper center",
-                  bbox_to_anchor=None if name == "site" else (0.5, -0.12), frameon=False)
-        fig.tight_layout()
+        ncol = 2 if name == "site" else 1
+        fig.legend(*ax.get_legend_handles_labels(), loc="lower center", ncol=ncol,
+                   frameon=False, fontsize=12)
+        fig.tight_layout(rect=(0, 0.11 if name == "site" else 0.12, 1, 1))
         made.append(_save(fig, out / f"gradient_cost_{name}.png", spec))
     return made
 
@@ -339,6 +343,20 @@ _CASE_XLIM = {"rt5880_patch": (1.94669887, 2.92004831),
               "sheen_lpf": (2.0, 12.0)}
 
 
+def _ylim_to_window(ax, pad=0.06):
+    """y limits from the data inside the current x window only."""
+    lo, hi = ax.get_xlim()
+    ys = []
+    for ln in ax.get_lines():
+        x, y = np.asarray(ln.get_xdata(), float), np.asarray(ln.get_ydata(), float)
+        if x.size == y.size and x.size:
+            ys.append(y[(x >= lo) & (x <= hi) & np.isfinite(y)])
+    ys = np.concatenate([v for v in ys if v.size]) if ys else np.array([])
+    if ys.size:
+        span = max(ys.max() - ys.min(), 1e-9)
+        ax.set_ylim(ys.min() - pad * span, ys.max() + pad * span)
+
+
 def render_curves(d: Path, out: Path) -> list[Path]:
     rung = _load(d, "rung.json")
     case = rung["case"]
@@ -347,14 +365,17 @@ def render_curves(d: Path, out: Path) -> list[Path]:
     f = rc["freqs_hz"] / 1e9
     lab = f"rfx, dx = {rung['dx_m'] * 1e6:.1f} µm"
 
+    # the reference underneath, wider and lighter; rfx on top, so both stay
+    # visible where they overlap
     def ref_line(ax, key_f, key_y, color, label, db=True, marker=None, ls="-"):
         if key_f in ref.files and key_y in ref.files:
             y = ref[key_y]
-            ax.plot(ref[key_f] / 1e9, _db(y) if db else y, color=color, ls=ls, lw=1.8,
+            ax.plot(ref[key_f] / 1e9, _db(y) if db else y, color=color, ls=ls,
+                    lw=3.2 if not marker else 0, alpha=0.6 if not marker else 1.0, zorder=2,
                     marker=marker, ms=6.5 if marker else 0, mec=SURFACE, mew=0.8, label=label)
 
     def mag_axes(ax, sname):
-        ax.plot(f, _db(rc[sname]), color=RFX, label=lab)
+        ax.plot(f, _db(rc[sname]), color=RFX, lw=1.8, zorder=4, label=lab)
         ref_line(ax, "openems_stage_b_fine_freqs_hz", f"openems_stage_b_fine_{sname}_mag",
                  OPENEMS, "openEMS, finest mesh")
         for mesh, mk in (("coarse", "o"), ("mid", "s")):
@@ -363,11 +384,12 @@ def render_curves(d: Path, out: Path) -> list[Path]:
         ax.set_xlabel("frequency (GHz)")
         ax.set_ylabel(f"|{sname.upper()}| (dB)")
         ax.set_xlim(*_CASE_XLIM[case])
+        _ylim_to_window(ax)
 
     def zin_axes(ax):
         z = rc["zin_ohm"]
-        ax.plot(f, z.real, color=RFX, label=lab)
-        ax.plot(f, z.imag, color=RFX, ls="--", label="_nolegend_")
+        ax.plot(f, z.real, color=RFX, lw=1.8, zorder=4, label=lab)
+        ax.plot(f, z.imag, color=RFX, lw=1.8, zorder=4, ls="--", label="_nolegend_")
         ref_line(ax, "openems_stage_b_fine_freqs_hz", "openems_stage_b_fine_zin_re_ohm", OPENEMS,
                  "openEMS, finest mesh", db=False)
         ref_line(ax, "openems_stage_b_fine_freqs_hz", "openems_stage_b_fine_zin_im_ohm", OPENEMS,
