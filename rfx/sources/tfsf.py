@@ -617,8 +617,11 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     #       s = cos(2π·fcen·(t-t0)) · exp(-arg²)
     arg = (t - cfg.src_t0) / cfg.src_tau
     env = jnp.exp(-(arg ** 2))
-    if cfg.custom_waveform is not None:
-        src_val = cfg.src_amp * cfg.custom_waveform(t)
+    # MethodBConfig also uses this auxiliary kernel and keeps the original
+    # waveform fields; absent opt-in fields retain that legacy behavior.
+    custom_waveform = getattr(cfg, "custom_waveform", None)
+    if custom_waveform is not None:
+        src_val = cfg.src_amp * custom_waveform(t)
     elif cfg.src_waveform == "modulated_gaussian":
         carrier = jnp.cos(2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
         src_val = cfg.src_amp * env * carrier
@@ -740,7 +743,7 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_e
         return apply_tfsf_2d_e(state, cfg, tfsf_st, dx, dt)
-    if cfg.closed_box:
+    if getattr(cfg, "closed_box", False):
         return _apply_closed_box_e(state, cfg, tfsf_st, dx, dt)
     coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0
@@ -778,7 +781,7 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_h
         return apply_tfsf_2d_h(state, cfg, tfsf_st, dx, dt)
-    if cfg.closed_box:
+    if getattr(cfg, "closed_box", False):
         return _apply_closed_box_h(state, cfg, tfsf_st, dx, dt)
     coeff = dt / (MU_0 * dx)
     i0 = cfg.i0

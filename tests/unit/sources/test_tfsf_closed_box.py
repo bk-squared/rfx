@@ -12,7 +12,7 @@ from rfx.core.yee import EPS_0, MU_0, init_state
 from rfx.sources.sources import CustomWaveform, GaussianPulse
 from rfx.sources.tfsf import (
     apply_tfsf_e, apply_tfsf_h, init_tfsf, tfsf_injection_planes,
-    update_tfsf_1d, measure_normal_incident_spectrum,
+    update_tfsf_1d, update_tfsf_1d_e, measure_normal_incident_spectrum,
 )
 
 
@@ -157,6 +157,19 @@ def test_custom_gaussian_preserves_legacy_slab(polarization, direction):
             _peak_ulp(b, a)
         else:
             np.testing.assert_array_equal(b, a)
+
+
+@pytest.mark.parametrize("angle", (0.0, 20.0, 40.0))
+def test_methodb_auxiliary_keeps_its_original_waveform(angle):
+    from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
+    cfg, aux = init_tfsf_methodB(33, 31, 0.001, 1e-12, nz=3,
+                                cpml_layers=3, tfsf_margin=3, theta_deg=angle)
+    # Method B shares this E kernel, but has no new optional source fields.
+    # From zero fields its Gaussian peak is exactly the source amplitude.
+    out = update_tfsf_1d_e(cfg, aux, 0.001, 1e-12, cfg.src_t0)
+    expected = np.zeros_like(out.e1d)
+    expected[cfg.src_idx] = cfg.src_amp
+    np.testing.assert_array_equal(out.e1d, expected)
 
 
 @pytest.mark.parametrize("entry", ("run", "forward"))
