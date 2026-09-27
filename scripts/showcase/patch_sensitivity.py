@@ -640,6 +640,17 @@ def stage_finalize(out: Path, repo_dir: Path) -> None:
     fwdrun = _load_json(out / "forward_vs_run.json")
     fd32 = _load_json(out / "fd_float32.json")
     x64 = (out / "fd_float64.json").is_file()
+    if (out / "x64_needed.json").is_file():
+        # the pre-declared round-off rule fired: the judged FD is the float64
+        # one, and a record without it (or from a failed x64 stage) is refused
+        rc_path = out / "x64fd.rc"
+        rc = rc_path.read_text().strip() if rc_path.is_file() else None
+        if rc is not None and rc != "0":
+            raise SystemExit(f"x64_needed.json is present and the x64 stage exited {rc}; "
+                             "the float64 judgement is not a record, finalize refuses")
+        if not x64 or "judgement" not in _load_json(out / "fd_float64.json"):
+            raise SystemExit("x64_needed.json is present but fd_float64.json holds no "
+                             "judgement; finalize refuses to judge in float32")
     fd_judged = _load_json(out / "fd_float64.json") if x64 else fd32
     precision_judged = "float64" if x64 else "float32"
     claims = [

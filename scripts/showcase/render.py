@@ -155,7 +155,10 @@ def _gradient_axes(ax, pd: PatchData, data=None, colorbar=True, fig=None, orient
 
 def _ez_axes(ax, pd: PatchData, fig, orientation="vertical"):
     ez = pd.ez2 / pd.ez2.max()
-    im = ax.pcolormesh(pd.xe, pd.ye, ez.T, cmap=SEQUENTIAL, vmin=0, vmax=1,
+    # Ez lives on the in-plane NODES (i, j), not on the cells: each value is
+    # drawn over the cell-sized square centred on its node
+    h = 0.5 * pd.dx_mm
+    im = ax.pcolormesh(pd.xe - h, pd.ye - h, ez.T, cmap=SEQUENTIAL, vmin=0, vmax=1,
                        shading="flat", rasterized=True)
     _patch_overlay(ax, pd, blocks=False)
     cb = fig.colorbar(im, ax=ax, fraction=0.05, pad=0.04, orientation=orientation, shrink=0.9)

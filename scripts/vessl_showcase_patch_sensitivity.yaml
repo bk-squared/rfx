@@ -50,6 +50,8 @@ run: |-
   rc=$(cat "$out/main.rc")
   if [ "$rc" = "0" ] && [ -f "$out/x64_needed.json" ]; then
     { JAX_ENABLE_X64=1 timeout 10800 python "$PS" --stage x64fd --out "$out" 2>&1; echo "$?" > "$out/x64fd.rc"; } | tee "$out/x64fd.log"
+    # a failed float64 repeat stops the case: no timing, no finalize
+    rc=$(cat "$out/x64fd.rc")
   fi
   if [ "$rc" = "0" ]; then
     for box in patch design layer; do

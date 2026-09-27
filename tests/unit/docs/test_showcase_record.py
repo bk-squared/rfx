@@ -118,3 +118,58 @@ def test_the_run_id_comes_from_the_submitter_file(tmp_path):
     back = json.loads((tmp_path / "result.json").read_text())
     assert back["run"]["run_id"] == "369367265999"
     _record.validate(back, tmp_path)
+
+
+# A judged number that misses its bar must read as a miss, whatever the
+# operator, and a record that says otherwise must be refused.  Each row: the
+# operator, the bar, a value that fails it, a value that passes it (the
+# equality rows tell "<" from "<=" and ">" from ">=").
+_BARS = [
+    ("<=", 0.05, 0.1, 0.05),
+    ("<", 0.05, 0.05, 0.04),
+    (">=", 2.0, 1.0, 2.0),
+    (">", 2.0, 2.0, 3.0),
+    ("==", 2.0, 3.0, 2.0),
+]
+
+
+@pytest.mark.parametrize("op, bar, failing, passing", _BARS)
+def test_a_judged_claim_reads_its_own_verdict(op, bar, failing, passing):
+    miss = _record.claim("q", failing, "1", "curve.npz", threshold=bar, rule="r", op=op)
+    hit = _record.claim("q", passing, "1", "curve.npz", threshold=bar, rule="r", op=op)
+    assert miss["passed"] is False, (op, bar, failing)
+    assert hit["passed"] is True, (op, bar, passing)
+
+
+@pytest.mark.parametrize("op, bar, failing, passing", _BARS)
+def test_a_record_claiming_a_pass_it_did_not_earn_is_refused(tmp_path, op, bar, failing, passing):
+    rec, files = _good_record(tmp_path)
+    rec["claims"][1] = _record.claim("q", failing, "1", "curve.npz", threshold=bar,
+                                     rule="r", op=op)
+    path = _record.write_result(tmp_path, rec, files)   # an honest miss is a valid record
+    written = json.loads(path.read_text())
+    assert written["claims"][1]["passed"] is False
+    written["claims"][1]["passed"] = True                # the same miss, reported as a pass
+    with pytest.raises(ValueError, match="'passed' does not follow"):
+        _record.validate(written, tmp_path)
+
+
+def test_a_value_of_0_1_against_a_0_05_bar_fails(tmp_path):
+    c = _record.claim("|AD - FD| / |FD|", 0.1, "1", "curve.npz", threshold=0.05, rule="brief")
+    assert c["passed"] is False
+    rec, files = _good_record(tmp_path)
+    rec["claims"][1] = dict(c, passed=True)
+    with pytest.raises(ValueError, match="'passed' does not follow"):
+        _record.write_result(tmp_path, rec, files)
+
+
+def test_the_run_id_is_never_overwritten_with_another(tmp_path):
+    rec, files = _good_record(tmp_path)
+    _record.write_result(tmp_path, rec, files)
+    (tmp_path / "run_id.txt").write_text("369367265111\n")
+    _record.fill_run_id(tmp_path)
+    (tmp_path / "run_id.txt").write_text("369367265222\n")
+    with pytest.raises(ValueError, match="already names run 369367265111"):
+        _record.fill_run_id(tmp_path)
+    back = json.loads((tmp_path / "result.json").read_text())
+    assert back["run"]["run_id"] == "369367265111"
