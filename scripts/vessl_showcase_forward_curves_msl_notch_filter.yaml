@@ -11,7 +11,7 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_SHOWCASE_REF: "FILL_BEFORE_SUBMIT"
+  RFX_SHOWCASE_REF: "b46a8220775b67f8720fb13c3e256c01cf7d6883"
   RFX_SHOWCASE_PRESET: "gpu-8gb"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
