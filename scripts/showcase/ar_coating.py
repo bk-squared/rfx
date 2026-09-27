@@ -190,6 +190,12 @@ def main(argv=None) -> int:
     pipe = Pipeline(ex, ex.N_STEPS)
     wall["vacuum_reference_s"] = time.perf_counter() - t0
     freqs_band = pipe.freqs[pipe.band]
+    # the closed-form curves: the TMM optimum and the geometric ladder, on the
+    # FDTD's band bins and on the example's 51-point cost grid
+    np.savez(out / "tmm_curves.npz", freqs_band_hz=freqs_band, freqs_51_hz=fs_tmm51,
+             R_opt_band=ex.tmm_R(tmm_eps, freqs_band), R_geo_band=ex.tmm_R(geo, freqs_band),
+             R_opt_51=ex.tmm_R(tmm_eps, fs_tmm51), R_geo_51=ex.tmm_R(geo, fs_tmm51),
+             eps_opt=tmm_eps, eps_geo=geo)
     model["nfft"] = pipe.nfft
     model["n_band_bins"] = int(pipe.band.sum())
     _save_json(out / "model.json", model)
