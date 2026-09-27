@@ -3,7 +3,7 @@ description: "Issue 1332: the verdict behind the MSL open-stub notch filter forw
 tags: [rfx, showcase, issue-1332, crossval, ladder]
 resources:
   cluster: remilab-c0
-  preset: gpu-8gb
+  preset: gpu-24gb
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
   PYTHONUNBUFFERED: "1"
@@ -50,7 +50,7 @@ run: |-
   echo "=== run ==="
   # pytest's status comes out of the brace group; $? after "| tee" is tee's.
   set +e
-  { timeout 7200 python -m pytest tests/crossval/msl_notch_filter -m gpu -s -q -ra -p no:cacheprovider --timeout=6600 --timeout-method=thread 2>&1; echo "$?" > "$out/ladder.rc"; } | tee "$out/ladder.log"
+  { timeout 10800 python -m pytest tests/crossval/msl_notch_filter -m gpu -s -q -ra -p no:cacheprovider --timeout=10000 --timeout-method=thread 2>&1; echo "$?" > "$out/ladder.rc"; } | tee "$out/ladder.log"
   set -e
   rc=$(cat "$out/ladder.rc")
   echo "ladder_rc=$rc"
