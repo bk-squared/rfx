@@ -659,7 +659,8 @@ def stage_finalize(out: Path, repo_dir: Path) -> None:
                       "gradient_summary.json"),
         _record.claim("A1: short-record gradient finite and nonzero cells",
                       grads["short"]["n_nonzero"], "cells", "gradient_summary.json"),
-        _record.claim("peak device memory, value_and_grad over the design box, full record",
+        _record.claim("peak device memory of the main process through the witness's two arms "
+                      "(1.0x and 1.5x record, design box)",
                       grads["full"]["memory"]["peak_bytes_in_use"], "B", "gradient_summary.json"),
         _record.claim("Pearson r, z-summed dJ/deps_r map vs |Ez(f_t)|^2 over the design footprint",
                       corr["pearson_grad_vs_ez2_ft"], "1", "correlation.json"),
