@@ -8,8 +8,8 @@ record cut while the box still rings; the early stop ends the run at the first
 record T the completion can stand on: every source off over [T/4, T], the
 error witness WE (the completions from [T/2, T] and [T/4, T] against each
 other) within its 1e-3 bar at two checks in a row, and -- the PI's floor
-(2026-09-27) -- T at least half the decay time of the slowest identified pole,
-because a pair of modes that no window of a record separates is completed as
+(2026-09-27) -- T at least half the decay time of the slowest identified
+ringing pole (a static field, a pole at 0 Hz, left out), because a pair of modes that no window of a record separates is completed as
 one mode while every witness agrees (rfx #1254, R-i: 0.03 % apart, recorded
 for 7 % of their decay time, 8.8 % off).
 
@@ -24,6 +24,8 @@ What is pinned here, on both lanes:
 * on these boxes WE is within its bar at two checks in a row already at a
   third of the decay time: the floor holds the stop until the record passes
   half of it, and the decay time the floor reads is the settled record's own;
+* a static field under the ringing (a 0 Hz pole that does not decay) does not
+  hold the floor: the stop fires at half the ringing mode's decay time;
 * no check reads the record while a source is on over [T/4, T], and the same
   pulse delayed to end at 1.34 ns moves the first check past four times its end;
 * a maximum below the floor completes the whole record and the report says
@@ -223,6 +225,49 @@ def test_a_maximum_below_the_floor_completes_the_whole_record_and_says_why():
     _digest(r.ringdown._replace(stop=None), "ringdown", ra)
     _digest(fixed.ringdown, "ringdown", rb)
     assert ra == rb
+
+
+def test_a_static_field_does_not_hold_the_floor():
+    """A closed box can keep a static field after the pulse (the E4 Q 533
+    cavity did): the pencil identifies it as a pole at 0 Hz with |lambda|
+    within rounding of 1, a decay time without end. Here a 10 GHz Q 200 mode
+    (amplitude decay time 6.366 ns) rings on two channels on top of such a
+    constant. The floor must read the ringing mode, so the stop fires at the
+    first record past half its decay time -- 3250 steps of 1 ps, checked every
+    250 steps with the real check function and stop rule -- and the report
+    names the 10 GHz pole and the pole it left out."""
+    dt, f0, q = 1.0e-12, 10.0e9, 200.0
+    alpha = math.pi * f0 / q
+    t = np.arange(3250) * dt
+    ring = np.exp(-alpha * t)
+    Y = np.stack([ring * np.cos(2 * np.pi * f0 * t) + 0.5,
+                  ring * np.sin(2 * np.pi * f0 * t + 0.3) - 0.3], axis=1)
+    f_bins = np.linspace(5e9, 15e9, 41)
+    scale = float(np.max(np.abs(rd.plain_dft(Y - np.array([0.5, -0.3]),
+                                             dt, f_bins))))
+    spec = RingdownSpec()
+    run, stop_at, checks = 0, None, []
+    for T in range(2500, 3251, 250):
+        c = rd._judge_record(Y[:T], dt, f_bins, T, round(spec.window_start * T),
+                             spec, ref_hz=20e9, observable=lambda a: a / scale)
+        run, stop = rd._stop_decision(run, True, c["we_ok"], c["floor_ok"])
+        checks.append((T, c))
+        print(f"\n[static field] T {T}: WE {c['we']:.2e}, floor pole "
+              f"{rd._pole_text(c['floor_pole'])}, record {c['record_over_tau']:.3f} "
+              f"decay times, left out {[(p.f_hz, p.abs_lambda) for p in c['zero_frequency_poles']]}")
+        if stop:
+            stop_at = T
+            break
+    tau = 1.0 / alpha
+    assert stop_at == 3250, (stop_at, [(T, c["we"], c["record_over_tau"]) for T, c in checks])
+    assert stop_at * dt >= FLOOR * tau > (stop_at - 250) * dt
+    last = checks[-1][1]
+    assert abs(last["tau_slowest_s"] / tau - 1.0) < 1e-3
+    assert abs(abs(last["floor_pole"].f_hz) / f0 - 1.0) < 1e-4
+    left = last["zero_frequency_poles"]
+    assert left and all(abs(p.f_hz) < 1.0 / (stop_at * dt) for p in left)
+    # the pole left out would have held the floor: it does not decay
+    assert min(p.decay_per_s for p in left) < 1e-3 * alpha
 
 
 # ---------------------------------------------------------------------------

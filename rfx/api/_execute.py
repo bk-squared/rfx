@@ -4724,7 +4724,8 @@ class _ExecuteMixin:
             ``[T/4, T]``, the error witness ``WE`` is within ``witness_tol``
             there and at the check before, and the record is at least half
             the amplitude decay time ``Q / (pi f)`` of the slowest identified
-            pole. The result is the one ``run(n_steps=T, ringdown=...)``
+            ringing pole (a pole the record cannot tell from zero frequency,
+            such as a static field left in a closed box, is left out). The result is the one ``run(n_steps=T, ringdown=...)``
             returns for the stopping record ``T``, with the stop report
             (every check's record, ``WE``, decay time, the conditions and the
             check's wall time) in ``Result.ringdown.stop``. When no check
