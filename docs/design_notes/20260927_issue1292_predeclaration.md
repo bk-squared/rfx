@@ -376,3 +376,16 @@ realized masks are unchanged, and their first-attempt records stand. N = 6 is re
 T4. The first-attempt N = 6 records are kept and marked as defective; they are not used in the
 convergence estimate. R2 (3/6/9/12 cells) and the R5 redraw (3/6/9 cells) were checked the same
 way at build time and are correct.
+
+## Addendum 3 (2026-09-27, before the R2 re-run)
+
+**R2, record length.** The first 84 ns ladder solve, main at dx = 1/6 mm, ended with the ring-down
+at −35.0 dB of its post-source peak; its settled reading is flagged and not used (common rules).
+The envelope of that record falls at a steady 0.446 dB/ns, reaching −40 dB about 89 ns after the
+ring-down window opens. So every R2 rung is re-run at 110 ns, where the same slope puts the end
+near −48 dB. The 84 ns records are kept: their prefix readings (i) are valid, and their settled
+readings are marked as unsettled.
+
+**R2, fourth rung.** The 1/6 mm solve took 43 min at 84 ns, which puts 0.125 mm at 110 ns near
+3 GPU-hours per tree, under addendum 1's 12-hour limit. The 0.125 mm rung therefore runs on both
+trees.
