@@ -41,6 +41,7 @@ import numpy as np
 
 from rfx.boundaries.cpml import _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
+from rfx.sources.sources import CustomWaveform
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +121,9 @@ def tfsf_injection_planes(cfg) -> "dict[str, tuple[int, int]]":
         planes["x"] = (int(x_lo), int(x_hi))
     if is_tfsf_methodB(cfg):
         planes["y"] = (int(cfg.y_lo), int(cfg.y_hi))
+    elif getattr(cfg, "closed_box", False):
+        planes["y"] = (int(cfg.y_lo), int(cfg.y_hi))
+        planes["z"] = (int(cfg.z_lo), int(cfg.z_hi))
     return planes
 
 
@@ -162,6 +166,40 @@ class TFSFConfig(NamedTuple):
     grid_pad: int
     transverse_axis: str     # "y" for Ez, "z" for Ey
     dx_1d: float             # 1D auxiliary grid cell size (dx/cos(theta))
+    custom_waveform: object = None  # static JAX-compatible scalar callable
+    closed_box: bool = False
+    y_lo: int = 0
+    y_hi: int = 0
+    z_lo: int = 0
+    z_hi: int = 0
+
+
+def validate_custom_tfsf_waveform(waveform, dt: float, n_steps: int) -> None:
+    """Refuse complex, non-scalar or nonfinite drive samples before stepping.
+
+    The waveform is a fixed input, not a traced material parameter. Evaluate
+    its complete requested record at compile time so this check also holds
+    when the user wraps ``forward`` in ``jax.jit``.
+    """
+    if not isinstance(waveform, CustomWaveform):
+        return
+    import jax
+    with jax.ensure_compile_time_eval():
+        times = jnp.arange(n_steps, dtype=jnp.result_type(float)) * dt
+        values = jax.vmap(waveform)(times)
+        if values.shape != (n_steps,) or not jnp.issubdtype(values.dtype, jnp.floating):
+            raise ValueError("TFSF CustomWaveform must return real scalar floating-point samples")
+        if not np.all(np.isfinite(np.asarray(values))):
+            raise ValueError("TFSF CustomWaveform must return finite samples throughout the requested record")
+
+
+def _refuse_extended_tfsf(entry, lane: str) -> None:
+    """Admission fence for runners that cannot carry either new source input."""
+    if entry is not None and (getattr(entry, "closed_box", False)
+                              or isinstance(entry.waveform, CustomWaveform)):
+        raise NotImplementedError(
+            f"CustomWaveform and closed_box TFSF are not supported on {lane}; "
+            "use the uniform single-device 3D second-order Yee run/forward")
 
 
 def init_tfsf(
@@ -178,12 +216,13 @@ def init_tfsf(
     angle_deg: float = 0.0,
     ny: int | None = None,
     nz: int | None = None,
-    waveform: str = "differentiated_gaussian",
+    waveform: str | CustomWaveform = "differentiated_gaussian",
     method: str = "bloch",
     aux_n_cpml: int | None = None,
     aux_cpml_order: int | None = None,
     aux_cpml_kappa_max: float | None = None,
     aux_cpml_r_asymptotic: float | None = None,
+    closed_box: bool = False,
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -249,11 +288,19 @@ def init_tfsf(
     (TFSFConfig, TFSFState) for normal incidence, or
     (TFSF2DConfig, TFSF2DState) for oblique incidence (|angle_deg| > 0.01).
     """
-    if waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
+    custom = isinstance(waveform, CustomWaveform)
+    if not custom and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
         raise ValueError(
             f"waveform must be 'differentiated_gaussian', "
-            f"'modulated_gaussian', or 'continuous_wave', got {waveform!r}"
+            f"'modulated_gaussian', 'continuous_wave', or CustomWaveform, got {waveform!r}"
         )
+    if (custom or closed_box) and angle_deg != 0.0:
+        raise NotImplementedError("CustomWaveform and closed_box require normal incidence (angle_deg=0)")
+    if custom:
+        import jax
+        value = jax.eval_shape(waveform, jnp.asarray(0.0))
+        if value.shape != () or not jnp.issubdtype(value.dtype, jnp.floating):
+            raise ValueError("TFSF CustomWaveform must return a real scalar floating-point value")
     # continuous_wave lives only in the 1D-auxiliary (normal-incidence) injector; the 2D
     # oblique grid (init_tfsf_2d) has no waveform parameter, so reject it here rather than
     # silently drop it (fail-loud, not right-guard-mis-gated).
@@ -358,6 +405,16 @@ def init_tfsf(
             "TFSF margin/cpml_layers are too large for the grid: "
             f"nx={nx}, cpml_layers={cpml_layers}, tfsf_margin={tfsf_margin}"
         )
+    y_lo = y_hi = z_lo = z_hi = 0
+    if closed_box:
+        if ny is None or nz is None:
+            raise ValueError("closed_box=True requires ny and nz")
+        y_lo = z_lo = offset
+        y_hi, z_hi = ny - offset - 1, nz - offset - 1
+        if y_lo >= y_hi or z_lo >= z_hi:
+            raise ValueError(
+                "TFSF margin/cpml_layers are too large for the closed box: "
+                f"shape={(nx, ny, nz)}, cpml_layers={cpml_layers}, tfsf_margin={tfsf_margin}")
 
     # 1D auxiliary grid: spans x_lo..x_hi + margins for source + CPML
     n_cpml_1d = AUX_N_CPML_1D if aux_n_cpml is None else int(aux_n_cpml)
@@ -440,7 +497,7 @@ def init_tfsf(
         src_t0=float(t0),
         src_tau=float(tau),
         src_fcen=float(f0),
-        src_waveform=waveform,
+        src_waveform="custom" if custom else waveform,
         electric_component=electric_component,
         magnetic_component=magnetic_component,
         curl_sign=float(curl_sign),
@@ -452,6 +509,9 @@ def init_tfsf(
         grid_pad=cpml_layers,
         transverse_axis=transverse_axis,
         dx_1d=float(dx_1d),
+        custom_waveform=waveform if custom else None,
+        closed_box=closed_box,
+        y_lo=y_lo, y_hi=y_hi, z_lo=z_lo, z_hi=z_hi,
     )
 
     state = TFSFState(
@@ -557,7 +617,12 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     #       s = cos(2π·fcen·(t-t0)) · exp(-arg²)
     arg = (t - cfg.src_t0) / cfg.src_tau
     env = jnp.exp(-(arg ** 2))
-    if cfg.src_waveform == "modulated_gaussian":
+    # MethodBConfig also uses this auxiliary kernel and keeps the original
+    # waveform fields; absent opt-in fields retain that legacy behavior.
+    custom_waveform = getattr(cfg, "custom_waveform", None)
+    if custom_waveform is not None:
+        src_val = cfg.src_amp * custom_waveform(t)
+    elif cfg.src_waveform == "modulated_gaussian":
         carrier = jnp.cos(2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
         src_val = cfg.src_amp * env * carrier
     elif cfg.src_waveform == "continuous_wave":
@@ -678,6 +743,8 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_e
         return apply_tfsf_2d_e(state, cfg, tfsf_st, dx, dt)
+    if getattr(cfg, "closed_box", False):
+        return _apply_closed_box_e(state, cfg, tfsf_st, dx, dt)
     coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0
 
@@ -714,6 +781,8 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
     if is_tfsf_2d(cfg):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_h
         return apply_tfsf_2d_h(state, cfg, tfsf_st, dx, dt)
+    if getattr(cfg, "closed_box", False):
+        return _apply_closed_box_h(state, cfg, tfsf_st, dx, dt)
     coeff = dt / (MU_0 * dx)
     i0 = cfg.i0
 
@@ -730,3 +799,59 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
     h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff * e_inc_hi)
 
     return state._replace(**{cfg.magnetic_component: h_field})
+
+
+def _apply_closed_box_e(state, cfg, incident, dx, dt):
+    """Sparse form of M_E curl(Hinc) - curl(M_H Hinc).
+
+    The incident components use the inclusive index box for both E and H.
+    Yee's backward H differences put E corrections at lo and hi+1.
+    H is at n+1/2 here; the 1-D E source is advanced only after this call.
+    """
+    xs = slice(cfg.x_lo, cfg.x_hi + 1)
+    ys = slice(cfg.y_lo, cfg.y_hi + 1)
+    zs = slice(cfg.z_lo, cfg.z_hi + 1)
+    coeff = cfg.curl_sign * dt / (EPS_0 * dx)
+    h = incident.h1d
+    n = cfg.x_hi - cfg.x_lo + 1
+    e = getattr(state, cfg.electric_component)
+    e = e.at[cfg.x_lo, ys, zs].add(-coeff * h[cfg.i0 - 1])
+    e = e.at[cfg.x_hi + 1, ys, zs].add(coeff * h[cfg.i0 + n - 1])
+    # Hy varies across the z faces (Ez); Hz across the y faces (Ey).
+    # Their spurious curl points along x and must be cancelled too.
+    hx = coeff * h[cfg.i0:cfg.i0 + n, None]
+    ex = state.ex
+    if cfg.electric_component == "ez":
+        ex = ex.at[xs, ys, cfg.z_lo].add(hx)
+        ex = ex.at[xs, ys, cfg.z_hi + 1].add(-hx)
+    else:
+        ex = ex.at[xs, cfg.y_lo, zs].add(hx)
+        ex = ex.at[xs, cfg.y_hi + 1, zs].add(-hx)
+    return state._replace(ex=ex, **{cfg.electric_component: e})
+
+
+def _apply_closed_box_h(state, cfg, incident, dx, dt):
+    """Sparse form of -M_H curl(Einc) + curl(M_E Einc).
+
+    Yee's forward E differences put H corrections at lo-1 and hi.
+    The transverse face extents include the edge/corner samples exactly
+    once, as in the full mask-curl commutator.
+    """
+    xs = slice(cfg.x_lo, cfg.x_hi + 1)
+    ys = slice(cfg.y_lo, cfg.y_hi + 1)
+    zs = slice(cfg.z_lo, cfg.z_hi + 1)
+    coeff = cfg.curl_sign * dt / (MU_0 * dx)
+    e = incident.e1d
+    n = cfg.x_hi - cfg.x_lo + 1
+    h = getattr(state, cfg.magnetic_component)
+    h = h.at[cfg.x_lo - 1, ys, zs].add(-coeff * e[cfg.i0])
+    h = h.at[cfg.x_hi, ys, zs].add(coeff * e[cfg.i0 + n])
+    ex = coeff * e[cfg.i0:cfg.i0 + n, None]
+    hx = state.hx
+    if cfg.electric_component == "ez":
+        hx = hx.at[xs, cfg.y_lo - 1, zs].add(ex)
+        hx = hx.at[xs, cfg.y_hi, zs].add(-ex)
+    else:
+        hx = hx.at[xs, ys, cfg.z_lo - 1].add(ex)
+        hx = hx.at[xs, ys, cfg.z_hi].add(-ex)
+    return state._replace(hx=hx, **{cfg.magnetic_component: h})

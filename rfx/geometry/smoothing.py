@@ -123,6 +123,8 @@ def _sdf_cylinder(x, y, z, shape, xp=jnp):
 def _get_sdf_fn(shape: Shape):
     """Return the SDF function for a known shape type, or None."""
     from rfx.geometry.csg import Box, Sphere, Cylinder
+    if isinstance(shape, _ContinuedSheetShape):
+        return _continued_sheet_sdf if _get_sdf_fn(shape.declared) is not None else None
     if isinstance(shape, Sphere):
         return _sdf_sphere
     elif isinstance(shape, Box):
@@ -235,6 +237,8 @@ def _normal_cylinder(x, y, z, shape, xp=jnp):
 def _get_normal_fn(shape: Shape):
     """Return the analytic normal function for a known shape type."""
     from rfx.geometry.csg import Box, Sphere, Cylinder
+    if isinstance(shape, _ContinuedSheetShape):
+        return _continued_sheet_normal if _get_normal_fn(shape.declared) is not None else None
     if isinstance(shape, Sphere):
         return _normal_sphere
     elif isinstance(shape, Box):
@@ -632,12 +636,79 @@ def _conductor_reached_faces(sim, grid, shape, lattice, nodes):
     return reached
 
 
+class _ContinuedSheetShape(NamedTuple):
+    """A sheet's face-adjacent occupancy continued along its own plane.
+
+    Keep the declared sampler: its holes and disconnected strips must reach
+    the absorber unchanged. Index replication lives here so every assembler
+    and fidelity reader using ``continued_conductor_shape`` sees the same
+    footprint, including when the sheet sampler requests only its mid-plane.
+    """
+
+    declared: Shape
+    indices: tuple
+    bounds: tuple
+    extensions: tuple
+
+    def bounding_box(self):
+        return self.bounds
+
+    def mask_on_coords(self, x, y, z):
+        from rfx.core.jax_utils import is_tracer
+        mask = self.declared.mask_on_coords(x, y, z)
+        concrete = not is_tracer(mask)
+        if concrete:
+            mask = np.asarray(mask)
+        take = np.take if concrete else jnp.take
+        for axis, indices in enumerate(self.indices):
+            if indices is not None:
+                if mask.shape[axis] != len(indices):
+                    raise ValueError("continued sheet requires full in-plane node arrays")
+                mask = take(mask, indices, axis=axis)
+        return mask
+
+    def mask(self, grid):
+        from rfx.geometry.rasterize_grid import (
+            coords_from_nonuniform_grid, coords_from_uniform_grid)
+        coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+                  else coords_from_uniform_grid(grid))
+        return self.mask_on_coords(coords.x, coords.y, coords.z)
+
+
+def _continued_sheet_coords(x, y, z, shape, xp):
+    """Keep the declared SDF inside the domain; extrude it outside reached faces."""
+    coords = [x, y, z]
+    for axis, side, face in shape.extensions:
+        clip = xp.maximum if side == "lo" else xp.minimum
+        coords[axis] = clip(coords[axis], face)
+    return coords
+
+
+def _continued_sheet_sdf(x, y, z, shape, xp=jnp):
+    return _get_sdf_fn(shape.declared)(
+        *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp)
+
+
+def _continued_sheet_normal(x, y, z, shape, xp=jnp):
+    normals = list(_get_normal_fn(shape.declared)(
+        *_continued_sheet_coords(x, y, z, shape, xp), shape.declared, xp=xp))
+    outside = False
+    for axis, side, face in shape.extensions:
+        coord = (x, y, z)[axis]
+        beyond = coord < face if side == "lo" else coord > face
+        normals[axis] = xp.where(beyond, 0.0, normals[axis])
+        outside = outside | beyond
+    norm = xp.sqrt(sum(v * v for v in normals) + 1e-30)
+    return tuple(xp.where(outside, v / norm, v) for v in normals)
+
+
 def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None):
     """Return the conducting geometry solved through absorbing faces (C2/C5).
 
-    Reached declared faces and occupied outermost interior lattice layers
-    continue. Entries named by a port's ``terminates`` stay declared on
-    every reached face.
+    Box faces and occupied outermost interior layers continue. A non-Box
+    sheet must also reach the declared face with the same nonempty
+    cross-section on its last two interior layers. Entries named by a
+    port's ``terminates`` stay declared on every reached face.
     Port-generated structures do not call this function.
     """
     from rfx.core.jax_utils import is_tracer
@@ -681,12 +752,65 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
         [(shape, 1.0)], nodes, pads,
         declared_domain=sim._unresolved_domain, occupied_faces=occupied,
         skip_faces=held, conductor=True)
+    solved = pairs[0][0]
+    from rfx.geometry.csg import Box
+    if (not isinstance(shape, Box)
+            and any(tc.shape is shape and (tc.is_pec or tc.surface_impedance_f0 is not None)
+                    for tc in getattr(sim, "_thin_conductors", ()))):
+        lo, hi = declared_bounds(shape)
+        normal = min(range(3), key=lambda a: hi[a] - lo[a])
+        faces = {face for face in _conductor_reached_faces(sim, grid, shape, lattice, nodes)
+                 if face[0] != normal} - held
+        if not faces:
+            return shape
+        indices = [None] * 3
+        bounds = [list(lo), list(hi)]
+        accepted, extensions = set(), []
+        footprint = lattice[0][0]
+        for axis, side in sorted(faces):
+            n = len(nodes[axis])
+            first, last = int(pads[axis][0]), n - 1 - int(pads[axis][1])
+            edge = float(nodes[axis][first if side == "lo" else last])
+            cell = _axis_cells(nodes[axis])[side == "hi"]
+            if not _reaches_pad_face((lo, hi), axis, side, edge, cell, sim._unresolved_domain):
+                continue
+            # The rounded boundary node can lie outside the declaration.
+            # Read the last two layers INSIDE its extent, never search past
+            # an empty row inside the sheet for a different cross-section.
+            tol = _PAD_REACH_TOL_CELLS * cell
+            if side == "lo":
+                source = max(first, int(np.searchsorted(nodes[axis], lo[axis] - tol)))
+                neighbour = source + 1
+            else:
+                source = min(last, int(np.searchsorted(nodes[axis], hi[axis] + tol, side="right")) - 1)
+                neighbour = source - 1
+            if not (first <= source <= last and first <= neighbour <= last):
+                continue
+            cross = np.take(footprint, source, axis=axis)
+            inner = np.take(footprint, neighbour, axis=axis)
+            if not (cross.any() and np.array_equal(cross, inner)):
+                continue
+            accepted.add((axis, side))
+            if indices[axis] is None:
+                indices[axis] = np.arange(n)
+            if side == "lo":
+                indices[axis][:source] = source
+                bounds[0][axis] = float(nodes[axis][0]) - _PAD_CONTINUE_CELLS * _axis_cells(nodes[axis])[0]
+            else:
+                indices[axis][source+1:] = source
+                bounds[1][axis] = float(nodes[axis][-1]) + _PAD_CONTINUE_CELLS * _axis_cells(nodes[axis])[1]
+            domain = sim._unresolved_domain
+            face = (0.0 if side == "lo" else float(domain[axis])) if domain is not None else edge
+            extensions.append((axis, side, face))
+        findings = [u for u in findings if (u.axis, u.side) in faces - accepted]
+        solved = (_ContinuedSheetShape(shape, tuple(indices), tuple(tuple(b) for b in bounds),
+                                       tuple(extensions)) if accepted else shape)
     findings = [u._replace(shape=shape, conductor=True) for u in findings]
     if unextendable is None:
         warn_unextendable_shapes(findings)
     else:
         unextendable.extend(findings)
-    return pairs[0][0]
+    return solved
 
 
 def smoothed_shape_pairs(sim, grid):

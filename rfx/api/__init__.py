@@ -687,6 +687,10 @@ class Simulation(
         self._pinned_sheets: list = []
         self._coaxial_ports: list[CoaxialPort] = []
         self._ntff: tuple | None = None  # (corner_lo, corner_hi, freqs)
+        # (corner_lo, corner_hi, block_size, freqs, order, extra) — the
+        # declaration only; the slab and the block map are realized against
+        # the built grid in ``rfx.current_moments.monitor_for_simulation``.
+        self._current_moments: tuple | None = None
         self._tfsf: _TFSFEntry | None = None
         self._dft_planes: list[_DFTPlaneEntry] = []
         # ``_dft_plane_regions`` (runtime-only crop metadata for the internal
@@ -2159,8 +2163,9 @@ class Simulation(
         polarization: str = "ez",
         direction: str = "+x",
         angle_deg: float = 0.0,
-        waveform: str = "differentiated_gaussian",
+        waveform: object = "differentiated_gaussian",
         method: str = "bloch",
+        closed_box: bool = False,
     ) -> "Simulation":
         """Add a normal-incidence plane-wave TFSF source.
 
@@ -2171,6 +2176,11 @@ class Simulation(
 
         Parameters
         ----------
+        closed_box : bool
+            Use a finite six-face total-field box with CPML on all three
+            axes. Normal incidence, uniform 3D Yee only. The default keeps
+            the historical x slab with periodic y/z. Read the realized
+            inclusive node bounds with :meth:`tfsf_box_indices`.
         waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
             Pulse shape injected into the 1D auxiliary grid. (``continuous_wave``
             is only supported at normal incidence — ``angle_deg == 0``.)
@@ -2191,6 +2201,16 @@ class Simulation(
             Spectrum is a Gaussian centered at ``f0`` with 1/e
             half-width ``f0·bandwidth``. Use this for matched rfx-vs-Meep
             crossval comparisons.
+
+            A ``CustomWaveform`` may supply a fixed, JAX-compatible real
+            scalar function of time, multiplied by ``amplitude``. It is
+            added to the auxiliary E node at ``t=n*dt``; it is not the
+            launched E amplitude. Normal incidence only; use a fixed
+            record length (``until_decay`` has no source-off contract).
+            These new source inputs support ordinary ``forward`` and its
+            internal checkpoints. External JAX transformations, including
+            grad/value_and_grad/JVP/vmap/jit/checkpoint/scan, are refused:
+            transformed scattered-field traces do not meet the cross-trace bar.
         method : {"bloch", "methodB"}
             Oblique-incidence engine (ignored for ``angle_deg=0``, which always
             uses the normal 1D-aux path). ``"bloch"`` (default) is the narrowband
@@ -2233,11 +2253,17 @@ class Simulation(
                 "waveform='continuous_wave' is only supported at normal incidence "
                 f"(angle_deg=0); got angle_deg={angle_deg}"
             )
-        if waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
+        from rfx.sources.sources import CustomWaveform
+        custom = isinstance(waveform, CustomWaveform)
+        if not custom and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
             raise ValueError(
                 "waveform must be 'differentiated_gaussian', 'modulated_gaussian', "
-                f"or 'continuous_wave', got {waveform!r}"
+                f"'continuous_wave', or CustomWaveform, got {waveform!r}"
             )
+        if (custom or closed_box) and angle_deg != 0.0:
+            raise NotImplementedError("CustomWaveform and closed_box require normal incidence (angle_deg=0)")
+        if (custom or closed_box) and self._mode != "3d":
+            raise NotImplementedError("CustomWaveform and closed_box require mode='3d'")
         if method not in ("bloch", "methodB"):
             raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
         if method == "methodB":
@@ -2262,8 +2288,32 @@ class Simulation(
             angle_deg=angle_deg,
             waveform=waveform,
             method=method,
+            closed_box=closed_box,
         )
         return self
+
+    def tfsf_box_indices(self) -> dict[str, tuple[int, int]]:
+        """Realized inclusive total-field node bounds on the padded grid.
+
+        The normal slab returns x only; ``closed_box=True`` returns x/y/z.
+        NTFF cell-centre interpolation must clear these bounds, including
+        the adjacent Yee samples (the NTFF placement check enforces this).
+        """
+        if self._tfsf is None:
+            raise ValueError("No TFSF source registered")
+        from rfx.sources.tfsf import init_tfsf, tfsf_injection_planes
+        grid = self._build_grid()
+        entry = self._tfsf
+        cfg, _ = init_tfsf(
+            grid.nx, float(grid.cells("x")[0]), grid.dt, ny=grid.ny, nz=grid.nz,
+            cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
+            f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
+            bandwidth=entry.bandwidth, amplitude=entry.amplitude,
+            polarization=entry.polarization, direction=entry.direction,
+            angle_deg=entry.angle_deg, waveform=entry.waveform,
+            method=entry.method, closed_box=entry.closed_box,
+        )
+        return tfsf_injection_planes(cfg)
 
     def add_waveguide_port(
         self,
@@ -2909,6 +2959,89 @@ class Simulation(
         if freqs is None:
             freqs = jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs)
         self._ntff = (corner_lo, corner_hi, freqs)
+        return self
+
+    def add_current_moment_monitor(
+        self,
+        corner_lo: tuple[float, float, float],
+        corner_hi: tuple[float, float, float],
+        block_size: float,
+        freqs,
+        order: int = 2,
+        margin_cells=0,
+        off_cells: int = 0,
+    ) -> "Simulation":
+        """Accumulate the structure's own current as block moments, in-loop.
+
+        The radiation of a structure is what the current in it radiates. On
+        the Yee lattice that current is an identity the solver already
+        enforces — ``J = curl_h H - eps0 dE/dt`` at every electric-field edge
+        — so it can be read off the fields the step is holding, with nothing
+        modelled and nothing fitted. This monitor sums it over the slab
+        between ``corner_lo`` and ``corner_hi`` into a few numbers per
+        in-plane block (the total current moment and its first two spatial
+        moments about the block's own centre) and DFTs those, instead of
+        accumulating tangential E and H over a Huygens surface.
+
+        Parameters
+        ----------
+        corner_lo, corner_hi : (x, y, z) in metres
+            Opposite corners of the slab, in the same frame as
+            :meth:`add_ntff_box`. The z range picks the node planes; the
+            whole thickness goes into one block.
+        block_size : float
+            In-plane block side in metres, rounded to a whole number of
+            cells. The realized side is what the monitor reports.
+        freqs : array
+            Frequencies (Hz).
+        order : int
+            2 (the only accepted value) keeps P, Q and T — 30 numbers per
+            block. Lower orders are refused; the low-level
+            ``rfx.current_moments.build_current_moment_monitor`` keeps them.
+
+        Notes
+        -----
+        margin_cells : int or (mx, my, mz)
+            Extra cells around the declared corners.
+        off_cells : int
+            Shift of the in-plane partition origin, in cells. 0 and half a
+            block are the two the block rule was measured with.
+
+        Notes
+        -----
+        The slab must lie in the interior: inside the absorber the E update
+        is not Ampere's law, so a current read there is the absorber's
+        fiction. Periodic/Bloch axes, TFSF sources, ``stencil_order=4``, a
+        graded or dx != dy in-plane mesh, a traced mesh profile, and every
+        lane whose scan body does not accumulate the monitor are refused
+        rather than approximated. So is a model the pattern would silently
+        leave out: magnetic material (``mu_r != 1``), a PEC or PMC domain
+        face, a plane port, and any dielectric, conductor, dispersive cell,
+        port, lumped element or source that is not inside the slab (its
+        outermost edge layer counts as outside).
+
+        The named arguments here are the whole public surface. The low-level
+        builder additionally takes deliberately wrong metrics, centres, curl
+        signs and time stamps so the mutation harness can measure what the
+        declared checks catch; those never reach a user's declaration.
+        """
+        if not float(block_size) > 0.0:
+            raise ValueError(
+                f"add_current_moment_monitor(block_size={block_size}): the "
+                "block side must be positive.")
+        if int(order) != 2:
+            raise ValueError(
+                f"add_current_moment_monitor(order={order}): only order=2 is "
+                "supported. Each block is expanded about the mean position of "
+                "its edges, which sits half a Yee cell off the x-directed "
+                "edges' own centroid; the second moment T absorbs that offset, "
+                "while order 1 leaves a floor of about 0.5-0.9 % in the "
+                "pattern (measured on the tutorial patch) and order 0 drops "
+                "the first moment Q altogether.")
+        self._current_moments = (corner_lo, corner_hi, float(block_size),
+                                 freqs, int(order),
+                                 {"margin_cells": margin_cells,
+                                  "off_cells": int(off_cells)})
         return self
 
     # ---- build helpers ----

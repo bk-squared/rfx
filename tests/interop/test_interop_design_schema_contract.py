@@ -30,6 +30,7 @@ from rfx.interop._design import (
     DESIGN_SCHEMA_VERSION,
     _EXCITATION_KEYS,
     _OBSERVABLE_KEYS,
+    _OPTIONAL_OBSERVABLE_KEYS,
     _TOP_LEVEL_KEYS,
 )
 from rfx.interop._shapes import SUPPORTED_SHAPE_KINDS
@@ -114,7 +115,7 @@ def test_schema_excitation_keys_match_the_emitter(schema):
 def test_schema_observable_keys_match_the_emitter(schema):
     section = schema["properties"]["observables"]
     assert set(section["required"]) == _OBSERVABLE_KEYS
-    assert set(section["properties"]) == _OBSERVABLE_KEYS
+    assert set(section["properties"]) == _OBSERVABLE_KEYS | _OPTIONAL_OBSERVABLE_KEYS
     assert section["additionalProperties"] is False
 
 

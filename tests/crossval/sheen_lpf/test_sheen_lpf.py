@@ -1096,6 +1096,7 @@ def _print_record_length_witness(openems: dict) -> float:
 
 @pytest.mark.gpu
 @pytest.mark.slow
+@pytest.mark.crossval_ladder
 def test_sheen_lpf_matches_the_openems_tutorial_reference(tmp_path):
     """The mesh ladder, the convergence statement, then the comparison."""
     rungs = _rungs()

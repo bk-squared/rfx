@@ -227,7 +227,9 @@ def collect_requirements(sim, *, rcs: bool = False) -> tuple[Requirement, ...]:
         magnetic_axis = "y" if electric_axis == "z" else "z"
         oblique = tfsf.angle_deg != 0
         for axis, wall in ((electric_axis, Kind.PEC), (magnetic_axis, Kind.PMC)):
-            if oblique and tfsf.method == "methodB" and axis == magnetic_axis:
+            if getattr(tfsf, "closed_box", False):
+                kinds = (Kind.ABSORBER,)
+            elif oblique and tfsf.method == "methodB" and axis == magnetic_axis:
                 kinds = (Kind.ABSORBER,)
             elif oblique or tfsf.method == "methodB":
                 kinds = (Kind.PERIODIC,)

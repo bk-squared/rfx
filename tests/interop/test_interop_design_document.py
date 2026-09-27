@@ -403,6 +403,18 @@ def _pec_sheet_and_volume() -> Simulation:
     return sim
 
 
+def _current_moment_monitor_design() -> Simulation:
+    """A soft source and the in-loop block current-moment monitor around it."""
+    sim = Simulation(freq_max=12e9, domain=(0.024, 0.024, 0.024), dx=1e-3,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_source(position=(0.012, 0.012, 0.012), component="ez",
+                   amplitude_kind="current")
+    sim.add_current_moment_monitor(
+        (0.006, 0.006, 0.010), (0.018, 0.018, 0.014), block_size=4e-3,
+        freqs=[5e9, 7e9], margin_cells=(2, 1, 0), off_cells=2)
+    return sim
+
+
 DESIGN_BUILDERS = {
     "graded_microstrip": _graded_microstrip,
     "waveguide_dispersive": _waveguide_with_dispersive_slab,
@@ -420,6 +432,7 @@ DESIGN_BUILDERS = {
     "adi_mixed_precision": _adi_mixed_precision,
     "fourth_order_2d": _fourth_order_2d,
     "pec_sheet_and_volume": _pec_sheet_and_volume,
+    "current_moment_monitor": _current_moment_monitor_design,
 }
 
 
@@ -568,6 +581,7 @@ def test_every_builder_method_is_covered_by_the_document():
         "add_material",
         "add_msl_port",
         "add_ntff_box",
+        "add_current_moment_monitor",
         "add_pinned_sheet",
         "add_port",
         "add_probe",
@@ -810,6 +824,23 @@ def test_ntff_frequencies_are_emitted_in_full():
     assert freqs["container"] == "jax"
     assert freqs["values"] == list(np.asarray(sim._ntff[2]).tolist())
     assert len(freqs["values"]) == 5
+
+
+def test_current_moment_monitor_round_trips_and_is_absent_when_undeclared():
+    """The monitor declaration survives the document; a design without one
+    carries no ``observables.current_moments`` key at all, so documents
+    written before the monitor existed read back unchanged."""
+    from rfx.interop import simulation_from_design
+    sim = _current_moment_monitor_design()
+    document = design_to_dict(sim)
+    cm = document["observables"]["current_moments"]
+    assert cm["margin_cells"] == [2, 1, 0] and cm["off_cells"] == 2
+    assert cm["order"] == 2 and cm["block_size"] == 4e-3
+    assert "observables.current_moments" in [n["path"] for n in document["non_portable"]]
+    rebuilt = simulation_from_design(document)
+    assert rebuilt._current_moments is not None
+    assert design_to_dict(rebuilt) == document
+    assert "current_moments" not in design_to_dict(_coax_cavity())["observables"]
 
 
 def test_source_and_lumped_port_are_separate_sections():
@@ -1258,6 +1289,44 @@ def test_round_trip_preserves_the_tfsf_method_lane():
     assert restored._tfsf.angle_deg == 30.0
 
 
+@pytest.mark.parametrize("closed_box", (False, True))
+def test_round_trip_preserves_the_finite_tfsf_box(closed_box):
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_tfsf_source(closed_box=closed_box)
+    document = design_to_dict(sim)
+    assert document["excitations"]["tfsf"]["closed_box"] is closed_box
+    restored = simulation_from_design(document)
+    assert restored._tfsf.closed_box is closed_box
+    assert restored.tfsf_box_indices() == sim.tfsf_box_indices()
+
+
+def test_tfsf_document_requires_explicit_box_semantics():
+    # The IR is closed-world: like method, an omitted boundary selector is
+    # a missing field, including in a document exported before its addition.
+    document = design_to_dict(_tfsf_scatterer())
+    del document["excitations"]["tfsf"]["closed_box"]
+    with pytest.raises(UnsupportedDesignFeature, match="missing=.*closed_box"):
+        simulation_from_design(document)
+
+
+@pytest.mark.parametrize("value", (0, "false", None))
+def test_tfsf_box_selector_must_be_boolean(value):
+    document = design_to_dict(_tfsf_scatterer())
+    document["excitations"]["tfsf"]["closed_box"] = value
+    with pytest.raises(UnsupportedDesignFeature, match="closed_box"):
+        simulation_from_design(document)
+
+
+@pytest.mark.parametrize("closed_box", (False, True))
+def test_custom_tfsf_waveform_cannot_be_serialized(closed_box):
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_tfsf_source(closed_box=closed_box, waveform=CustomWaveform(lambda t: t))
+    with pytest.raises(UnsupportedDesignFeature, match="_tfsf.waveform.*CustomWaveform"):
+        design_to_dict(sim)
+
+
 def test_round_trip_preserves_soft_source_amplitude_kind():
     """``amplitude_kind`` is design state (issue #571): 'current' means the
     waveform amplitude is amperes with resolution-independent injected power;
@@ -1467,6 +1536,7 @@ _SCHEMA_ENTRY_REGISTRIES = [
     ("observables.dft_planes", "_DFT_PLANE_FIELDS"),
     ("observables.flux_monitors", "_FLUX_MONITOR_FIELDS"),
     ("observables.ntff", "_NTFF_FIELDS"),
+    ("observables.current_moments", "_CURRENT_MOMENT_FIELDS"),
     ("refinement", "_REFINEMENT_FIELDS"),
 ]
 

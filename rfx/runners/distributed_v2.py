@@ -587,6 +587,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     Result
     """
     validate_exchange_interval(exchange_interval)
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     import warnings
@@ -616,6 +618,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     refuse_unsupported_distributed_features(
         sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
+
+    # Only now, past the single-device fallbacks above: those return through
+    # ``sim.run()``, which DOES accumulate the monitor.
+    from rfx.current_moments import refuse_current_moment_monitor
+    refuse_current_moment_monitor(sim, "distributed (v2) runner")
 
     from rfx.api import Result
 

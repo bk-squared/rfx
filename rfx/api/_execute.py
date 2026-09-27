@@ -113,6 +113,38 @@ def _staged_by_an_outer_trace() -> bool:
     return is_tracer(jnp.zeros(()))
 
 
+def _under_external_jax_transform() -> bool:
+    """Read the public trace-state API across the supported JAX versions."""
+    try:
+        from jax.extend.core import get_opaque_trace_state, take_current_trace
+    except ImportError:
+        try:  # JAX 0.6, including the Python 3.10 CI environment.
+            from jax.core import get_opaque_trace_state, take_current_trace
+        except ImportError:  # The declared JAX 0.4.20 floor.
+            from jax.core import trace_state_clean
+            return not trace_state_clean()
+    caller = get_opaque_trace_state()
+    with take_current_trace():
+        eager = get_opaque_trace_state()
+    return caller != eager
+
+
+def _refuse_transformed_extended_tfsf(entry) -> None:
+    """Fence the new source inputs before any setup can hide caller tracing."""
+    if entry is None:
+        return
+    from rfx.sources.sources import CustomWaveform
+    if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
+        return
+    if _under_external_jax_transform():
+        raise NotImplementedError(
+            "CustomWaveform and closed_box TFSF cannot be called under external "
+            "JAX transformations (grad/value_and_grad/JVP/vmap/jit/checkpoint/scan): "
+            "transformed scattered-field traces exceed the 9-ULP cross-trace "
+            "contract. Use ordinary fixed-step run/forward; forward's internal "
+            "checkpoint and segmentation options remain available.")
+
+
 def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
     """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
 
@@ -1489,6 +1521,7 @@ class _ExecuteMixin:
         sheet_impedance: object | None = None,
         design_box: object | None = None,
         design_occupancy: object | None = None,
+        monitor_overrides: dict | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
 
@@ -1516,6 +1549,8 @@ class _ExecuteMixin:
         if self._solver == "adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI forward")
+            from rfx.current_moments import refuse_current_moment_monitor
+            refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
             if pec_occupancy is not None:
                 raise ValueError(
                     "solver='adi' does not support pec_occupancy_override; "
@@ -1622,6 +1657,8 @@ class _ExecuteMixin:
         tfsf_run = None
         if self._tfsf is not None:
             from rfx.sources.tfsf import init_tfsf as _init_tfsf_fwd
+            from rfx.sources.tfsf import validate_custom_tfsf_waveform
+            validate_custom_tfsf_waveform(self._tfsf.waveform, grid.dt, n_steps)
             tfsf_run = _init_tfsf_fwd(
                 grid.nx, grid.dx, grid.dt,
                 cpml_layers=grid.cpml_layers,
@@ -1636,15 +1673,21 @@ class _ExecuteMixin:
                 nz=grid.nz,
                 waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
                 method=getattr(self._tfsf, "method", "bloch"),
+                closed_box=self._tfsf.closed_box,
             )
-            # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
-            # _auto_preflight on the concrete config; it is NOT re-run here because
-            # `materials` may be a jax tracer under jax.grad (eps_override), and the
-            # check concretizes.
+            # The legacy slab's concrete vacuum check runs via preflight.
+            # The closed box also checks the final realized operators below,
+            # after material overrides and port setup (including AD values).
             # Open-domain oblique Method B forces OPEN transverse y (CPML) with
             # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
             from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
-            if _is_methodB_fwd(tfsf_run[0]):
+            if self._tfsf.closed_box:
+                periodic_bool = (False, False, False)
+                cpml_axes_run = "xyz"
+                # Match run(): all six CPML exteriors retain their PEC
+                # backing. An empty string withholds those walls.
+                pec_axes_run = None
+            elif _is_methodB_fwd(tfsf_run[0]):
                 periodic_bool = (False, False, True)
                 cpml_axes_run = "xy"
                 pec_axes_run = ""
@@ -2075,6 +2118,15 @@ class _ExecuteMixin:
             corner_lo, corner_hi, freqs = self._ntff
             ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+        # In-loop block current moments. Same monitor object the run() lane
+        # builds, so a forward()/value_and_grad call accumulates the same
+        # numbers the forward run does.
+        from rfx.current_moments import monitor_for_simulation as _cm_for_sim
+        current_moments_fwd = _cm_for_sim(
+            self, grid, periodic_bool,
+            overrides={**(monitor_overrides or {}), "design_box": design_box,
+                       "design_occupancy": design_occupancy})
+
         # Flux monitors — same configs the run() lane builds, so the
         # issue-#488 mixed-family magnitude channel can read Poynting
         # flux through this low-level lane too.
@@ -2223,6 +2275,9 @@ class _ExecuteMixin:
         pec_occupancy_for_run = pec_occupancy_local
         if (pec_occupancy_local is not None and
                 os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False")):
+            from rfx.current_moments import refuse_h_side_conductor
+            refuse_h_side_conductor(
+                self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
             inv_baseline = (
                 (1.0 / materials.eps_r).astype(jnp.float32),
@@ -2285,6 +2340,37 @@ class _ExecuteMixin:
             from rfx.lumped import refuse_stacked_solved_elements
             refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
 
+        # Validate the operators handed to the scan, after every port fold
+        # and PEC clearing. A passive load can reach the source shell even
+        # when all of its conductor geometry is clear of that shell.
+        if self._tfsf is not None and self._tfsf.closed_box:
+            nonvacuum = list(pec_edge_masks_local or ())
+            for spec in (debye_spec, lorentz_spec):
+                if spec is not None:
+                    nonvacuum.extend(spec[1])
+            if kerr_chi3 is not None:
+                nonvacuum.append(kerr_chi3)
+            if pec_occupancy_local is not None:
+                nonvacuum.append(pec_occupancy_local)
+            if aniso_inv_eps_run is not None:
+                nonvacuum.extend(a != 1.0 for a in aniso_inv_eps_run)
+            if sheet_impedance is not None:
+                nonvacuum.extend((sheet_impedance.mask_ex, sheet_impedance.mask_ey,
+                                  sheet_impedance.mask_ez))
+            if self._lumped_rlc:
+                mask = jnp.zeros(grid.shape, dtype=bool)
+                for spec in self._lumped_rlc:
+                    mask = mask.at[grid.position_to_index(spec.position)].set(True)
+                nonvacuum.append(mask)
+            for spec in (design_box, design_occupancy):
+                if spec is not None:
+                    b = spec.bounds
+                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                                   for d in range(3))
+                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+            self._validate_tfsf_vacuum_boundary(
+                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
+
         result = _run(
             grid,
             materials,
@@ -2300,6 +2386,7 @@ class _ExecuteMixin:
             probes=probes,
             waveguide_ports=waveguide_ports if waveguide_ports else None,
             ntff=ntff_box,
+            current_moments=current_moments_fwd,
             checkpoint=checkpoint,
             checkpoint_segments=checkpoint_segments,
             pec_mask=pec_mask_local,
@@ -2470,6 +2557,8 @@ class _ExecuteMixin:
             dft_planes=dft_planes_out,
             # The scan's own step: stencil_order=4 derates it below grid.dt.
             dt=result.dt,
+            current_moment_data=result.current_moment_data,
+            current_moment_monitor=current_moments_fwd,
         )
 
     @staticmethod
@@ -2484,6 +2573,8 @@ class _ExecuteMixin:
         dft_planes=None,
         wire_port_sparams=None,
         dt=None,
+        current_moment_data=None,
+        current_moment_monitor=None,
     ) -> ForwardResult:
         """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
 
@@ -2512,6 +2603,8 @@ class _ExecuteMixin:
             dft_planes=dft_planes,
             wire_port_sparams=wire_port_sparams,
             dt=dt,
+            current_moment_data=current_moment_data,
+            current_moment_monitor=current_moment_monitor,
         )
 
     def _forward_nonuniform_from_materials(
@@ -2594,6 +2687,9 @@ class _ExecuteMixin:
             dft_planes=getattr(result, "dft_planes", None),
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
             dt=getattr(result, "dt", None),
+            current_moment_data=getattr(result, "current_moment_data", None),
+            current_moment_monitor=getattr(
+                result, "current_moment_monitor", None),
         )
 
     def distributed_override_layout(self, devices=None):
@@ -2697,6 +2793,9 @@ class _ExecuteMixin:
                 "body does not accumulate DFT-plane fields. Drop DFT plane "
                 "probes or use the uniform lane."
             )
+        from rfx.current_moments import refuse_current_moment_monitor
+        refuse_current_moment_monitor(
+            self, "distributed non-uniform forward path")
         import warnings as _w
         from rfx.runners.distributed_nu import (
             build_sharded_nu_grid,
@@ -3132,6 +3231,24 @@ class _ExecuteMixin:
         # and forward(), has no subgrid and would drop a refinement (#1240).
         self._require_no_refinement_on_the_nonuniform_lane()
         is_nonuniform = self._uses_nonuniform_mesh
+
+        if self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            extended_tfsf = (self._tfsf.closed_box
+                             or isinstance(self._tfsf.waveform, CustomWaveform))
+            if extended_tfsf and (
+                is_nonuniform or distributed or (devices is not None and len(devices) > 1)
+                or self._refinement is not None or self._mode != "3d"
+                or self._solver != "yee" or self._stencil_order != 2
+            ):
+                raise NotImplementedError(
+                    "CustomWaveform and closed_box TFSF require a uniform, single-device, "
+                    "3D second-order Yee run/forward with no subgrids")
+            if self._tfsf.closed_box and any(
+                getattr(getattr(self._boundary_spec, axis), side) != "cpml"
+                for axis in "xyz" for side in ("lo", "hi")
+            ):
+                raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
         def _reject_lane_precision(lane: str) -> None:
             # Issue #630 follow-up: field_dtype is threaded ONLY on the
@@ -3995,6 +4112,7 @@ class _ExecuteMixin:
         float32 rounding, not necessarily bit for bit: XLA compiles the whole
         step as one program.
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         if _forward_needs_trace_time_setup(self, distributed=distributed):
             # #1225: evaluate the set-up now instead of recording it. Only
             # the operations that read a traced argument are recorded;
@@ -4376,6 +4494,10 @@ class _ExecuteMixin:
             sheet_impedance=_fwd_sheet_ctx,
             design_box=_design_spec,
             design_occupancy=_design_occ_spec,
+            monitor_overrides={"eps_r": eps_override, "sigma": sigma_override,
+                               "mu_r": mu_r_override,
+                               "pec_mask": pec_mask_override,
+                               "pec_occupancy": pec_occupancy_override},
         )
         if ringdown is None:
             _res = _fwd_call()
@@ -4386,6 +4508,8 @@ class _ExecuteMixin:
         if _design_spec is not None:
             _res = _res._replace(design_box_held_edges=_design_spec.held_edges)
         _warn_if_nonfinite_result(_res, context="forward")
+        from rfx.current_moments import require_accumulated_current_moments
+        require_accumulated_current_moments(self, _res, "forward")
         return self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods,
             context="forward")
@@ -4562,8 +4686,14 @@ class _ExecuteMixin:
         -------
         Result
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
+        if until_decay is not None and self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            if isinstance(self._tfsf.waveform, CustomWaveform):
+                raise NotImplementedError(
+                    "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
         if ringdown is not None:
             from rfx.ringdown import refuse_run_request
             refuse_run_request(self, ringdown, devices=devices,
@@ -4709,6 +4839,8 @@ class _ExecuteMixin:
                 exchange_interval=exchange_interval,
             )
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Non-uniform mesh lane ----
@@ -4795,6 +4927,8 @@ class _ExecuteMixin:
             _res = self._attach_run_settling_witness(
                 _res, n_steps=n_steps, num_periods=num_periods)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         grid = self._build_grid()
@@ -4808,6 +4942,8 @@ class _ExecuteMixin:
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI run()")
+            from rfx.current_moments import refuse_current_moment_monitor
+            refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
             self._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
@@ -4831,6 +4967,8 @@ class _ExecuteMixin:
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Subgridded lane ----
@@ -4876,6 +5014,8 @@ class _ExecuteMixin:
             _res = self._attach_run_settling_witness(
                 _res, n_steps=subgrid_n_steps)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Uniform path ----
@@ -4940,4 +5080,6 @@ class _ExecuteMixin:
         _res = self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods)
         _warn_if_nonfinite_result(_res, context="run")
+        from rfx.current_moments import require_accumulated_current_moments
+        require_accumulated_current_moments(self, _res, "run")
         return _res

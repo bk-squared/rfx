@@ -216,6 +216,8 @@ DISPOSITION = {
     "_coaxial_ports": "refused by run() before dispatch",
     "_cpml_kappa_max": "carried",
     "_cpml_layers": "carried",
+    "_current_moments": "refused by the v2 runner after its single-device fallbacks "
+                        "(rfx.current_moments.refuse_current_moment_monitor)",
     "_dft_planes": "refused",
     "_domain": "carried",
     "_dt_min_cell": "carried through the built grid's dt",

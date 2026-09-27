@@ -44,6 +44,8 @@ def _run_subgridded_once(
     -------
     Result
     """
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the subgridded runner")
     from rfx.api import Result
     from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
     from rfx.subgridding.jit_runner import (
@@ -741,6 +743,8 @@ def run_subgridded_path(
     subgrid S-parameter configurations are rejected by the public request and
     validation layers before this runner is reached.
     """
+    from rfx.current_moments import refuse_current_moment_monitor
+    refuse_current_moment_monitor(sim, "subgridded lane")
     main_result = _run_subgridded_once(
         sim,
         grid_coarse,

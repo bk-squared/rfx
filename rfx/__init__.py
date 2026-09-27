@@ -88,6 +88,9 @@ from rfx.farfield import (
     radiation_pattern, directivity,
     axial_ratio, axial_ratio_dB, polarization_tilt, polarization_sense,
 )
+# The block current-moment pattern: an explicit rfx import, outside the
+# curated star surface, like the NTFF surface interchange below.
+from rfx.current_moments import current_moment_far_field
 from rfx.rcs import compute_rcs, compute_rcs_jax, RCSResult, ScatteringResponse
 from rfx.antenna import (
     antenna_gain, antenna_gain_dB, antenna_efficiency,
