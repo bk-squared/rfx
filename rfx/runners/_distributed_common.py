@@ -1799,14 +1799,13 @@ def _apply_cpml_e_distributed(
     else:
         ce_xlo = ce_xhi = ce_ylo = ce_yhi = ce_zlo = ce_zhi = cpml_coeff_e_vacuum(dt)
 
-    from rfx.boundaries.cpml import CPMLAxisParams, _flip_profile
+    from rfx.boundaries.cpml import CPMLAxisParams
     if isinstance(cpml_params, CPMLAxisParams):
         px_lo, px_hi = cpml_params.x_lo, cpml_params.x_hi
         py_lo, py_hi = cpml_params.y_lo, cpml_params.y_hi
         pz_lo, pz_hi = cpml_params.z_lo, cpml_params.z_hi
     else:
-        px_lo = py_lo = pz_lo = cpml_params
-        px_hi = py_hi = pz_hi = _flip_profile(cpml_params)
+        raise TypeError("distributed CPML requires per-face CPMLAxisParams")
 
     ex = state.ex
     ey = state.ey
@@ -2080,15 +2079,14 @@ def _apply_cpml_h_distributed(
     else:
         ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = cpml_coeff_h_vacuum(dt)
 
-    from rfx.boundaries.cpml import CPMLAxisParams, _flip_profile
+    from rfx.boundaries.cpml import CPMLAxisParams
     if isinstance(cpml_params, CPMLAxisParams):
         profiles = cpml_params.magnetic if cpml_params.magnetic is not None else cpml_params
         px_lo, px_hi = profiles.x_lo, profiles.x_hi
         py_lo, py_hi = profiles.y_lo, profiles.y_hi
         pz_lo, pz_hi = profiles.z_lo, profiles.z_hi
     else:
-        px_lo = py_lo = pz_lo = cpml_params
-        px_hi = py_hi = pz_hi = _flip_profile(cpml_params)
+        raise TypeError("distributed CPML requires per-face CPMLAxisParams")
 
     hx = state.hx
     hy = state.hy

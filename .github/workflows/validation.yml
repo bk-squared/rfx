@@ -151,6 +151,16 @@ jobs:
           --ignore=tests/crossval/test_openems_crossval.py
           --ignore=tests/crossval/test_crossval_comprehensive.py
 
+      - name: Run three-device x-wall alignment cases
+        if: matrix.group == 1
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed_cpml_face_matrix.py
+          -k pad_3
+
   # The 7 `highmem`-marked tests, run SERIALLY in one job (no shard split, no
   # xdist) so only one multi-GB peak exists on the runner at a time -- see the
   # block comment on slow-tests above for the full OOM evidence this responds
