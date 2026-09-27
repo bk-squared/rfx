@@ -87,7 +87,8 @@ def test_oblique_reflection_at_45_degrees():
     (200, -84.0),
 ])
 @pytest.mark.parametrize("face", ("lo", "hi"))
-@pytest.mark.xfail(strict=True, reason="#1234: auxiliary H profile uses E nodes; 20/200 cells return -27/-84 dB at 2 GHz")
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="#1234: auxiliary H profile uses E nodes; 20/200 cells return -27/-84 dB at 2 GHz")
 def test_tfsf_auxiliary_reflection(layers, measured_db, face):
     with jax.default_device(jax.devices("cpu")[0]):
         measured = tfsf_auxiliary_reflection(layers, face, FREQUENCIES)
