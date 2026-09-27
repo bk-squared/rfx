@@ -732,6 +732,13 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/guide/tutorial-patch-antenna.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/validation.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/index.mdx": NO_ARTIFACT_REFERENCE,
+    # The showcase pages (#1345) print numbers from the share host's records;
+    # tests/unit/docs/test_showcase_catalog.py holds them to showcase.json.
+    "docs/public/showcase/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/sensitivity-map.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/gradient-cost.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/descent-to-optimum.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/forward-checks.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,

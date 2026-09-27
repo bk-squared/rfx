@@ -19,3 +19,15 @@ keywords:
   - differentiable simulation
   - RF engineering
   - microwave
+preferred-citation:
+  type: article
+  title: "rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave Engineering"
+  authors:
+    - family-names: "Kim"
+      given-names: "Byungkwan"
+      affiliation: "REMI Lab, Chungnam National University"
+  journal: "IEEE Transactions on Microwave Theory and Techniques"
+  year: 2026
+  start: 1
+  end: 15
+  doi: "10.1109/TMTT.2026.3729863"

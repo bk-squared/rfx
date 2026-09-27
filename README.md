@@ -12,7 +12,7 @@ The website identifies its source version; select the release matching your inst
 
 | You want to… | Start here |
 |---|---|
-| See fields and design iterations | [Visual gallery](https://remilab.ai/rfx/gallery/) |
+| See results computed with the current code | [Showcase](https://remilab.ai/rfx/showcase/) · [visual archive](https://remilab.ai/rfx/gallery/) |
 | Run a first model | [First run](https://remilab.ai/rfx/guide/first-run/) · [runnable examples](examples/README.md) |
 | Look up an argument or result | [API reference](https://remilab.ai/rfx/api/) |
 | Use rfx with a coding assistant | [Machine-readable documentation](https://remilab.ai/rfx/llms.txt) |
@@ -84,6 +84,19 @@ Contributor workflow and repository navigation live in
 Release changes are in [CHANGELOG.md](CHANGELOG.md).
 
 ## Citation
+
+```bibtex
+@article{kim_rfx_tmtt_2026,
+  author = {Byungkwan Kim},
+  title = {rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave Engineering},
+  journal = {IEEE Transactions on Microwave Theory and Techniques},
+  year = {2026},
+  pages = {1--15},
+  doi = {10.1109/TMTT.2026.3729863}
+}
+```
+
+The software itself:
 
 ```bibtex
 @software{kim_rfx_2026,
