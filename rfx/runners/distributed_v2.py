@@ -646,6 +646,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         if getattr(sim, "_boundary_spec", None) is not None
         else ()
     )
+    _pec_faces_frozen = frozenset(
+        sim._boundary_spec.pec_faces()
+        if getattr(sim, "_boundary_spec", None) is not None
+        else ()
+    )
 
     # One device runs the same shard_map path on a one-device mesh (#1296).
     # Until #1296 this call was handed to the pmap runner, which dropped the
@@ -1286,7 +1291,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         Stage order (#1041)::
 
             H -> CPML-H -> exch H -> PMC face -> E -> CPML-E
-              -> sources -> PEC mask -> exch E -> probes
+              -> sources -> PEC face -> PEC mask -> exch E -> probes
 
         The E ghost exchange is the LAST stage of the E half-step, so a
         ghost row is always a copy of the owner's FINISHED real row -- a
@@ -1338,9 +1343,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 6. Source injection
         st = _inject_sources_shmap(st, src_vals)
 
-        # 6b. Realized-PEC cell mask (#1053). Geometry PEC, as opposed to the
-        #     domain faces step_fn_pec applies -- this body has no domain-face
-        #     PEC at all, because its faces are CPML. Each rank realizes the
+        # A mixed wall/absorber box still enforces its declared electric walls.
+        st = _apply_pec_shmap(
+            st, mesh, n_devices, nx_local, pad_x=pad_x,
+            pec_faces=_pec_faces_frozen)
+
+        # 6b. Realized-PEC cell mask (#1053). Geometry PEC is distinct from
+        #     the declared domain faces above. Each rank realizes the
         #     per-component edge masks on its own slab by calling the one
         #     owner, rfx.boundaries.pec.realized_pec_edge_masks, and zeroes
         #     only its REAL cells; the ghost rows are forced False inside the
