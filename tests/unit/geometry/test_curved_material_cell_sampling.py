@@ -166,3 +166,82 @@ def test_legacy_box_and_uniform_custom_shape_masks_are_preserved():
     custom = _sim(UniformOnlyShape())
     np.testing.assert_array_equal(custom._assemble_materials(grid)[0].sigma, sigma)
     np.testing.assert_array_equal(rasterize(grid, [(UniformOnlyShape(), 4., 32.)])[1], sigma)
+
+
+@pytest.mark.parametrize('kind', KINDS)
+@pytest.mark.parametrize('field,values', [('eps_r', (4., 6.)), ('sigma', (32., 64.)),
+                                        ('mu_r', (1.5, 2.))])
+def test_named_material_sweep_uses_the_assembled_curved_cells(kind, field, values):
+    from rfx.vmap_sweep import _build_batched_materials
+
+    shape = _shape(kind)
+    sim = _sim(shape)
+    grid = sim._build_grid()
+    base = sim._assemble_materials(grid)[0]
+    batch = _build_batched_materials(sim, grid, base, f'dut.{field}', jnp.array(values))
+    centres = [(np.arange(n)-p+.5)*grid.dx for n, p in zip(grid.shape, grid.axis_pads)]
+    expected = _inside(shape, centres)
+    background = 0. if field == 'sigma' else 1.
+    for index, value in enumerate(values):
+        np.testing.assert_array_equal(getattr(batch, field)[index],
+                                      np.where(expected, value, background))
+    for name in ('eps_r', 'sigma', 'mu_r'):
+        np.testing.assert_array_equal(getattr(batch, name)[0], getattr(base, name))
+
+
+@pytest.mark.parametrize('kind', KINDS)
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('with_pec', [False, True])
+def test_dual_average_uses_supplied_centres_and_excludes_only_pec_cells(kind, graded, with_pec):
+    from rfx.runners.nonuniform import assemble_interface_eps_nu
+
+    profiles = [np.full(n, d) for n, d in ((30, .001), (25, .0012), (40, .00075))]
+    if graded:
+        profiles = [p*(1+.2*np.sin(np.linspace(0, 2*np.pi, len(p)))) for p in profiles]
+    grid = make_nonuniform_grid((.03, .03), profiles[2], .001, cpml_layers=4,
+                               dx_profile=profiles[0], dy_profile=profiles[1])
+    widths = [np.pad(p, (4, 5), mode='edge') for p in profiles]
+    axes = []
+    for p, d in zip(profiles, widths):
+        nodes = (np.r_[0., np.cumsum(d[:-1])] - 4*p[0] if graded
+                 else (np.arange(len(d))-4)*p[0])
+        centres = nodes + d/2
+        centres[-1] = centres[-2]  # the bounding node owns no outgoing cell
+        axes.append(centres)
+    shape = _shape(kind)
+    sim = Simulation(freq_max=3e9, domain=(.03,)*3, dx=.001, cpml_layers=4,
+                     interface_eps='dual_average')
+    sim.add_material('dut', eps_r=4.)
+    sim.add(shape, material='dut')
+    cell_eps = np.where(_inside(shape, axes), 4., 1.)
+    live = np.ones(grid.shape, dtype=bool)
+    if with_pec:
+        lo, hi = (.0155, .0111, .0111), (.0187, .0188, .0188)
+        sim.add(Box(lo, hi), material='pec')
+        xyz = np.meshgrid(*axes, indexing='ij')
+        live = ~np.logical_and.reduce([(x >= l) & (x < h) for x, l, h in zip(xyz, lo, hi)])
+    mats = sim._assemble_materials_nu(grid)[0]
+    got = assemble_interface_eps_nu(sim, grid, mats)
+    for c in range(3):
+        transverse = [a for a in range(3) if a != c]
+        num, den = np.zeros(grid.shape), np.zeros(grid.shape)
+        area = np.ones(grid.shape)
+        for a in transverse:
+            dims = [1, 1, 1]
+            dims[a] = grid.shape[a]
+            area *= widths[a].reshape(dims)
+        for d0 in (0, -1):
+            for d1 in (0, -1):
+                ix = [np.arange(n) for n in grid.shape]
+                for a, delta in zip(transverse, (d0, d1)):
+                    ix[a] = np.maximum(ix[a]+delta, 0)
+                index = np.ix_(*ix)
+                weights = (area*live)[index]
+                num += cell_eps[index]*weights
+                den += weights
+        # All-PEC fallback is separately pinned by the existing rule tests;
+        # every live edge here has an independently enumerated owner average.
+        expected = np.divide(num, den, out=np.ones_like(num), where=den > 0)
+        np.testing.assert_allclose(np.asarray(got[c])[den > 0], expected[den > 0],
+                                   rtol=2*np.finfo(np.float32).eps, atol=0)
+        assert np.isfinite(got[c]).all()
