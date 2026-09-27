@@ -745,6 +745,17 @@ def test_a_constant_axis_takes_the_closed_form_not_a_running_sum(name, axis):
     )
 
 
+def _ties_to_even(cells, nodes, x):
+    """The #1295 node rule, spelled here rather than imported: the quotient
+    ``round(x / cell)`` when every cell is equal, else the nearest node and,
+    of two at exactly the same distance, the even one."""
+    if np.all(cells == cells[0]):
+        return int(round(float(x) / float(cells[0])))
+    dist = np.abs(nodes - x)
+    tied = np.flatnonzero(dist == dist.min())
+    return int(tied[0] if tied.size == 1 else tied[tied % 2 == 0][0])
+
+
 def test_index_of_resolves_on_the_spine_not_on_the_float32_store():
     """Which array ``index_of`` measures against, made visible.
 
@@ -777,8 +788,8 @@ def test_index_of_resolves_on_the_spine_not_on_the_float32_store():
                 np.cumsum(interior_cells(store, pad_lo, pad_hi)), 0, 0.0)
             for k in range(from_spine.size - 1):
                 midpoint = 0.5 * (from_spine[k] + from_spine[k + 1])
-                spine_says = int(np.argmin(np.abs(from_spine - midpoint)))
-                store_says = int(np.argmin(np.abs(from_store - midpoint)))
+                spine_says = _ties_to_even(spine, from_spine, midpoint)
+                store_says = _ties_to_even(store, from_store, midpoint)
                 if spine_says == store_says:
                     continue
                 assert grid.index_of(axis, midpoint) == spine_says + pad_lo, (

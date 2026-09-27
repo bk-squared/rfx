@@ -203,6 +203,43 @@ def axis_name(axis) -> str:
     return AXES[normalize_axis(axis)]
 
 
+def nearest_node_index(nodes, x: float, *, cell: float | None = None) -> int:
+    """Index of the node nearest ``x`` -- the one tie rule (#1295).
+
+    ``nodes`` is an ascending node line whose first node is at 0 (the
+    interior edge list; add ``pad_lo`` for the padded index).
+
+    The rule: the NEAREST node; at an exact tie between two nodes, the one
+    with the EVEN index. That is round-half-to-even on the node index, the
+    rule ``rfx.grid.Grid`` applies through ``round(x/dx)``, so on equal cells
+    both lanes put a coordinate on the same node.
+
+    * Constant axis (``cell`` given): the closed form ``round(x / cell)``,
+      the same float operations as ``Grid.index_of``, so the answer equals
+      the uniform lane's bit for bit, float cases included:
+      ``0.1195 / 1e-3 == 119.49999999999999`` gives 119 there and here. An
+      edge search is not used: its cumulative sums round differently from
+      the quotient. Not clamped, and ``nodes`` is not read.
+    * Graded axis: the nearest node by float64 distance. Where the two
+      nearest distances are exactly equal the even index is taken; the plain
+      ``argmin`` this replaces took the first, lower one. Every coordinate
+      whose two nearest distances differ keeps the ``argmin`` answer. Always
+      a valid index: a coordinate outside the line gets the end node.
+
+    On equal cells the two branches are one rule, nearest node with ties to
+    even; they differ only in where float roundoff puts a coordinate that is
+    within roundoff of a midpoint.
+    """
+    if cell is not None:
+        return int(round(float(x) / float(cell)))
+    line = np.asarray(nodes, dtype=np.float64)
+    dist = np.abs(line - float(x))
+    k = int(np.argmin(dist))
+    if k % 2 == 1 and k + 1 < dist.size and dist[k + 1] == dist[k]:
+        k += 1
+    return k
+
+
 def dual_spacings_from_cells(cells: np.ndarray) -> np.ndarray:
     """``dual[0] = d[0]``, ``dual[k] = (d[k-1]+d[k])/2`` on the host.
 
