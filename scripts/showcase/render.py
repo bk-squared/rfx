@@ -425,6 +425,16 @@ def render_curves(d: Path, out: Path) -> list[Path]:
 
 
 # ------------------------------------------------------------------ main
+def _renderer_commit() -> str:
+    """The commit this renderer ran from, with ``+dirty`` when its own file differs."""
+    here = Path(__file__).resolve().parent
+    sha = subprocess.run(["git", "-C", str(here), "rev-parse", "HEAD"], capture_output=True,
+                         text=True, check=True).stdout.strip()
+    dirty = subprocess.run(["git", "-C", str(here), "status", "--porcelain", "--", Path(__file__).name],
+                           capture_output=True, text=True, check=True).stdout.strip()
+    return sha + ("+dirty" if dirty else "")
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("item", choices=["patch", "timing", "ar", "curves"])
@@ -445,6 +455,7 @@ def main(argv=None) -> int:
         "colours": {"rfx": RFX, "openEMS": OPENEMS, "Palace": PALACE, "closed form": INK,
                     "gradient": DIVERGING, "field": SEQUENTIAL},
         "renderer": "scripts/showcase/render.py",
+        "renderer_commit": _renderer_commit(),
     }
     manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")
     for p in made:
