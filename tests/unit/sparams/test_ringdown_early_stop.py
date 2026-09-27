@@ -578,13 +578,17 @@ def test_the_graded_loop_hook_is_a_continuation():
     plain = loop(200)
     _same(loop(200, stop_fn=never), plain)
     assert seen == [(50, 50), (100, 100), (150, 150), (200, 200)]
-    out = io.StringIO()
-    with contextlib.redirect_stdout(out):
-        stopped = loop(200, stop_fn=lambda s, p: s >= 100, report_every=80)
+    stopped = loop(200, stop_fn=lambda s, p: s >= 100)
     assert np.asarray(stopped.time_series).shape[0] == 100
     _same(stopped, loop(100))
-    last = out.getvalue().strip().splitlines()[-1].split()
-    assert last[1] == "100/200" and last[2] == "(cap)", last
+    # a stop between two progress lines (every 80 steps: 100, then 200) prints
+    # its own line at the stop
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        stopped = loop(200, stop_fn=lambda s, p: s >= 150, report_every=80)
+    assert np.asarray(stopped.time_series).shape[0] == 150
+    lines = [ln.split()[1:3] for ln in out.getvalue().strip().splitlines()]
+    assert lines == [["100/200", "(cap)"], ["150/200", "(cap)"]], lines
     seen.clear()
     loop(151, stop_fn=never)
     assert [s for s, _ in seen] == [50, 100, 151], "no one-step last chunk"
