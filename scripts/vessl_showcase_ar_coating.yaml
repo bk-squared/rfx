@@ -13,7 +13,7 @@ env:
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
   JAX_PLATFORMS: "cpu"
-  RFX_SHOWCASE_REF: "864fa175111870fb148fad20c9c80bd8ae4fc8b5"
+  RFX_SHOWCASE_REF: "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"
   RFX_SHOWCASE_PRESET: "cpu 4 / 8Gi (custom resources, no preset)"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
