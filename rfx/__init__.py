@@ -96,6 +96,9 @@ from rfx.antenna import (
     plot_antenna_summary,
 )
 from rfx.gpu import device_info, benchmark
+# Opt-in surface interchange: explicit rfx imports, outside the curated star
+# surface, like the snapshot persistence helpers below.
+from rfx.ntff_surface import NTFFSurface, export_ntff_surface
 from rfx.optimize import (
     DesignRegion,
     OptimizeResult,

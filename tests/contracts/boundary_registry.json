@@ -580,6 +580,16 @@
       "count": 6
     },
     {
+      "file": "rfx/ntff_surface.py",
+      "function": "NTFFSurface.__post_init__",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/ntff_surface.py",
+      "function": "NTFFSurface.__post_init__",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/preflight/mesh.py",
       "function": "_validate_cfg_graded_box_rasterization",
       "kind": "roll/diff"

@@ -163,6 +163,9 @@
     "NTFFData": {
       "kind": "class"
     },
+    "NTFFSurface": {
+      "kind": "class"
+    },
     "NonUniformGrid": {
       "kind": "class"
     },
@@ -872,6 +875,17 @@
       "params": [
         "sim",
         "resolution"
+      ]
+    },
+    "export_ntff_surface": {
+      "kind": "function",
+      "params": [
+        "data",
+        "box",
+        "grid",
+        "dt",
+        "n_steps",
+        "step_start"
       ]
     },
     "export_radiation_pattern": {
