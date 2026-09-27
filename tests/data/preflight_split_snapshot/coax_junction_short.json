@@ -18,7 +18,7 @@
       {
         "code": "uncoded",
         "loc": null,
-        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 48 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 52 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
         "severity": "warning",
         "source": null
       },
@@ -39,7 +39,7 @@
       {
         "code": "uncoded",
         "loc": null,
-        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 48 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 52 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
         "severity": "warning",
         "source": null
       },
@@ -60,7 +60,7 @@
       {
         "code": "uncoded",
         "loc": null,
-        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 48 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "message": "PEC sheet pec realizes on node plane 33 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 2.1) over 52 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
         "severity": "warning",
         "source": null
       },

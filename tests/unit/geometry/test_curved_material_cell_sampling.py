@@ -25,6 +25,26 @@ from tests._x64_compat import enable_x64
 KINDS = ['sphere', 'cylinder_x', 'cylinder_y', 'cylinder_z']
 
 
+def test_coax_clearance_uses_centred_disk_on_both_sides_of_ground():
+    """The warning's old 48-cell snapshot pinned displaced PTFE (#1138)."""
+    from tests.unit.geometry.test_fidelity_topology_findings import (
+        CLEAR_R, DX, EPS_COAX, JUNCTION_X, N_GND, Y_C, _junction_sim,
+    )
+
+    sim = _junction_sim(open_annulus=False)
+    grid = sim._build_grid()
+    # This oracle reads material cells only; collect and deliberately drop PEC.
+    mats = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    x = (np.arange(grid.shape[0]) - grid.pad_x_lo + .5) * DX - JUNCTION_X
+    y = (np.arange(grid.shape[1]) - grid.pad_y_lo + .5) * DX - Y_C
+    expected = x[:, None]**2 + y[None, :]**2 <= CLEAR_R**2
+    # Half-integer disk r=4: 2*(8+8+6+4), derived before updating the snapshot.
+    assert int(expected.sum()) == 52
+    for k in (grid.pad_z_lo + N_GND - 1, grid.pad_z_lo + N_GND):
+        np.testing.assert_array_equal(np.isclose(np.asarray(mats.eps_r)[:, :, k], EPS_COAX),
+                                      expected)
+
+
 def _shape(kind, centre=(.015, .015, .015)):
     if kind == 'sphere':
         return Sphere(centre, .0063)
