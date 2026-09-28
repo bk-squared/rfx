@@ -24,7 +24,8 @@ and `[thru]` 171.6 s and 170.6 s (were 179.59 s and 160.90 s from VESSL), and
 `tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` 57.1 s (was
 69.56 s from VESSL).
 
-Every entry is a raw measurement or, for `slow (5)`, a raw log-derived time. **No floor is added** — see below.
+Every entry is a raw measurement or, for `slow (5)` and one `slow (2)` entry, a raw log-derived time.
+**No floor is added** — see below.
 
 ## The 0.3 s floor, retired 2026-09-18
 
@@ -72,8 +73,9 @@ id measured twice; the fast maps went first, then `slow (1)`–`(4)`, then the `
 
 | source | entries |
 |---|---|
-| `slow (1)`–`(4)` artifacts | 10275 |
+| `slow (1)`–`(4)` artifacts | 10274 |
 | `slow (5)` job log, log-derived | 2361 |
+| `slow (2)` job log, log-derived (a setup over 600 s, below) | 1 |
 | `fast (1)`–`(6)` artifacts, for ids no slow source priced | 218 |
 | carried unchanged from the replaced file | 13 |
 
@@ -83,15 +85,24 @@ id measured twice; the fast maps went first, then `slow (1)`–`(4)`, then the `
   the test ends, and the job log stamps every line. An entry is the gap between a test's result
   line and the one before it; the first test is timed from the `collected` line. The gap holds
   setup, call, teardown and pytest's own work between tests. 2233 of the 2361 were also measured
-  by a fast shard: over those, the log-derived times sum to 4019.2 s and the fast artifacts to
-  4100.7 s (2.0 % lower).
+  by a fast shard. Over those the log-derived sum is the lower one: 4019.2 s against 4100.7 s
+  for the fast artifacts (-1.99 %).
+- **One `slow (2)` entry is log-derived too.** `--store-durations` does not store a setup or
+  teardown phase longer than 600 s (`STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD` in
+  pytest-split's plugin). The module fixture of
+  `tests/locks/test_patch_edgefed_resonance_harminv.py::test_ringdowns_are_settled` spends its
+  time in setup, so the artifact held 0.0012 s; the entry is the 1514.93 s between its result line
+  and the one before it in the `slow (2)` log (08:09:42.28 to 08:34:57.22). It was the only test in
+  the ten artifacts whose log time exceeds its artifact value by more than 600 s. Before the fix,
+  `slow (2)`'s artifact summed to 3590.9 s against a 5127.3 s pytest session; every other shard
+  summed to 97.1-99.5 % of its session, and `fast (1)`, the shortest, to 91.6 % (339 s of 370 s).
 - The 13 carried are the highmem-marked tests that also carry `slow` or `slow_physics`, so no
   GitHub selection runs them and no GitHub split uses their time. 12 are the a6000 measurements of
   2026-09-16 (VESSL run 369367259335, `-m "highmem and not gpu"`), carried from the file before.
   The 13th, `tests/unit/autodiff/test_coax_two_port_ad.py::test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent`,
   became highmem in pull request 1358; its 67.46 s is `slow (2)` of run 35613805791
   (2026-09-21), measured before that.
-- Recorded total: 27522.0 s (7.65 h), against 18804.0 s (5.22 h) for the file this replaces.
+- Recorded total: 29037.0 s (8.07 h), against 18804.0 s (5.22 h) for the file this replaces.
 
 ## The one highmem test the fast lane does run
 
@@ -109,7 +120,10 @@ other 13 carried. When regenerating, do not overwrite this one from the a6000 ma
    Later inputs win on a nodeid measured twice, so pass the fast maps first and the slow maps
    last; the two selections overlap and their measurements differ. A shard cut before the session
    ends uploads nothing; price what it finished from its job log as in Sources, pass that map
-   last, and say so in the header.
+   last, and say so in the header. Then compare each input's sum, which the script prints, with
+   the pytest session time in that shard's job log (the `= ... in Ns =` line). Look into any shard
+   more than about 5 % short, or short by more than a minute: a setup or teardown over 600 s is
+   dropped by `--store-durations` and is the known cause (see Sources).
 3. Take only the 13 GPU-only entries above (highmem and slow or slow_physics) from an a6000 run of
    the highmem selection. Leave the fast-lane highmem test on its runner value.
 4. **Do not add a floor.** Commit the raw measurements. The additive 0.3 s this step used to
@@ -138,11 +152,8 @@ Simulated at `cae7d6bf` with `pytest --collect-only --splits N --group k` (the p
 - fast (`--splits 6`), this file: 35.3 / 35.5 / 35.3 / 35.3 / 35.3 / 35.0 min, critical path 35.5.
   12686 tests collected.
 - slow (`--splits 5`, `-m "not gpu and not highmem and not docs_consistency"`), this file:
-  120.3 / 100.9 / 91.4 / 92.4 / 50.6 min, critical path 120.3 against the 180-minute job limit.
-  12929 tests collected. The per-shard target is 91.1 min; shard 1 runs over it because
-  `test_compute_msl_s_matrix_end_to_end_matches_historical_base` (2218 s) starts at 83 min into
-  that shard and `duration_based_chunks` keeps a test in the group it starts in, and shard 2
-  likewise with `test_fs4_supraconvergence_full` (1391 s) at 78 min. The file this replaces
+  96.2 / 96.2 / 96.3 / 96.3 / 96.0 min, critical path 96.3 against the 180-minute job limit.
+  12929 tests collected. The file this replaces
   simulates 106.2 / 108.6 / 106.9 / 107.6 / 101.7 min at the same commit; on 2026-09-28 (run
   36377113298, `a3490391`) its shards 4 and 5 ran past 120 min.
 

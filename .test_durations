@@ -3048,7 +3048,7 @@
     "tests/locks/test_patch_edgefed_resonance_harminv.py::test_patch_mode_is_in_the_patch_band_and_dominates_the_feed_band": 0.0021453090000704833,
     "tests/locks/test_patch_edgefed_resonance_harminv.py::test_realized_raster_agrees_with_the_public_fidelity_report": 0.13524802499995303,
     "tests/locks/test_patch_edgefed_resonance_harminv.py::test_realized_raster_is_the_board_this_gate_was_measured_on": 0.01530072200006316,
-    "tests/locks/test_patch_edgefed_resonance_harminv.py::test_ringdowns_are_settled": 0.0011677039999540284,
+    "tests/locks/test_patch_edgefed_resonance_harminv.py::test_ringdowns_are_settled": 1514.934755,
     "tests/locks/test_patch_edgefed_resonance_harminv.py::test_the_board_realizes_three_sheets_and_no_conductor_volume": 0.70773364300004,
     "tests/locks/test_patch_edgefed_resonance_harminv.py::test_the_cavity_between_the_two_foils_is_all_laminate": 0.17466940800011344,
     "tests/locks/test_patch_edgefed_s11_passivity.py::test_realized_raster_is_the_board_this_band_was_pinned_on": 0.005118259999790098,
