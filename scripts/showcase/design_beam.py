@@ -581,9 +581,20 @@ def stage_x64fd(out: Path, a) -> int:
     import jax.numpy as jnp
     if not jax.config.read("jax_enable_x64"):
         raise SystemExit("the x64 stage needs JAX_ENABLE_X64=1 in its environment")
+    import rfx.simulation as rsim
     mod = load_module()
     model = BeamModel(mod, 1, precision="float64")
     pattern = model.pattern_fn(model.n_steps(a.periods))
+    # forward() passes Simulation(precision="float64") on as field_dtype; the run
+    # entry is wrapped for this process to record the dtype of every field state
+    run_orig, seen = rsim.run, []
+
+    def run_recording(*args, **kw):
+        r = run_orig(*args, **kw)
+        seen.append(str(r.state.ex.dtype) if r.state is not None else "no state returned")
+        return r
+
+    rsim.run = run_recording
 
     def L_ctrl(e):
         return steering_loss(mod, pattern(cover_from_ctrl(e, model.shape)))
@@ -594,8 +605,14 @@ def stage_x64fd(out: Path, a) -> int:
     ladder = dc.fd_ladder(lambda e: L_j(jnp.asarray(e, dtype=jnp.float64)), e0, FD_CTRL, FD_STEPS)
     ad = {n: float(g0[ij]) for n, ij in FD_CTRL.items()}
     verdict = dc.judge_fd(ad, ladder, FD_STEPS, FD_JUDGED_STEP, FD_REL_BAR, FD_JUDGE_FRAC)
-    dc.save_json(out / "fd_float64.json", {"precision": "float64", "eps_ctrl0": e0, "L0": float(L_j(e0)),
-                                           "grad_eps_ctrl_all": g0, "ladder": ladder,
+    L0 = float(L_j(e0))
+    rsim.run = run_orig
+    dtypes = sorted(set(seen))
+    if dtypes != ["float64"]:
+        raise SystemExit(f"the float64 repeat saw field dtypes {dtypes}; it is not a float64 record")
+    dc.save_json(out / "fd_float64.json", {"precision": "float64", "eps_ctrl0": e0, "L0": L0,
+                                           "grad_eps_ctrl_all": g0, "field_dtypes_seen": dtypes,
+                                           "n_runs_seen": len(seen), "ladder": ladder,
                                            "judgement": verdict})
     dc.log("float64 AD vs FD: " + "; ".join(f"{n}: rel {r['rel']:.2e}" for n, r in verdict["rows"].items()))
     return 0

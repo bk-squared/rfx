@@ -122,6 +122,14 @@ section 1 (the vacuum end), section 16 (the middle) and section 30 (next to the 
   between h = 0.05 and 0.025 than between 0.1 and 0.05. If that happens for any judged section,
   a separate process repeats the AD and the whole ladder with `JAX_ENABLE_X64=1` and a float64
   `Simulation`. The float64 comparison is then the judged one, and the float32 one is reported.
+  *Amendment 1 (2026-09-28, after the timing runs and before either full run):*
+  `compute_waveguide_s_matrix` ignores `Simulation(precision=...)`. Its
+  `extract_waveguide_s_matrix` calls `rfx.simulation.run` without `field_dtype`, so the fields
+  stay float32 even with x64 enabled. The taper's float64 process therefore wraps
+  `rfx.simulation.run` for that process only, so that it passes `field_dtype=float64`. It records
+  the dtype of every field state returned and refuses to write the record unless all of them are
+  float64. The beam's forward lane does honour `precision`, and its float64 process records and
+  checks the field dtype the same way.
 
 ### 1.5 Record-length witness (judged)
 `rfx.gradient_record_length_witness` is taken at the start with factor 1.5, on the full 30-section

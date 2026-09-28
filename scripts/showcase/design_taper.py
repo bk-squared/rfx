@@ -589,10 +589,25 @@ def stage_x64fd(out: Path, a) -> int:
     import jax.numpy as jnp
     if not jax.config.read("jax_enable_x64"):
         raise SystemExit("the x64 stage needs JAX_ENABLE_X64=1 in its environment")
+    import rfx.simulation as rsim
     mod = load_module()
     model = TaperModel(mod, 1, precision="float64")
     n_steps, k = model.n_steps(a.periods or PERIODS[1], mod.CHECKPOINT_SEGMENTS)
     j_eps, _ = _objectives(model, n_steps, k)
+    # compute_waveguide_s_matrix calls rfx.simulation.run without field_dtype
+    # (rfx/sources/waveguide_port.py, extract_waveguide_s_matrix), so on this
+    # lane Simulation(precision="float64") leaves the fields float32. The run
+    # entry is wrapped for this process only: it asks for float64 fields and
+    # records the dtype of every field state it returns.
+    run_orig, seen = rsim.run, []
+
+    def run_float64(*args, **kw):
+        kw["field_dtype"] = jnp.float64
+        r = run_orig(*args, **kw)
+        seen.append(str(r.state.ex.dtype) if r.state is not None else "no state returned")
+        return r
+
+    rsim.run = run_float64
     J_only = jax.jit(lambda e: j_eps(e)[0])
     eps0 = np.full(30, START_EPS, dtype=np.float64)
     g0 = np.asarray(jax.jit(jax.grad(lambda e: j_eps(e)[0]))(jnp.asarray(eps0)), dtype=float)
@@ -600,8 +615,18 @@ def stage_x64fd(out: Path, a) -> int:
                           FD_SECTIONS, FD_STEPS)
     ad = {n: float(g0[i]) for n, i in FD_SECTIONS.items()}
     verdict = dc.judge_fd(ad, ladder, FD_STEPS, FD_JUDGED_STEP, FD_REL_BAR, FD_JUDGE_FRAC)
+    J0 = float(J_only(eps0))
+    rsim.run = run_orig
+    dtypes = sorted(set(seen))
+    if dtypes != ["float64"]:
+        raise SystemExit(f"the float64 repeat saw field dtypes {dtypes}; it is not a float64 record")
     dc.save_json(out / "fd_float64.json", {"precision": "float64", "eps0": eps0,
-                                           "J0": float(J_only(eps0)), "grad_eps_all": g0,
+                                           "J0": J0, "grad_eps_all": g0,
+                                           "field_dtypes_seen": dtypes, "n_run_traces_seen": len(seen),
+                                           "dtype_note": "recorded when rfx.simulation.run is traced; "
+                                                         "the jitted objectives reuse their trace",
+                                           "how": "rfx.simulation.run wrapped in this process to pass "
+                                                  "field_dtype=float64; JAX_ENABLE_X64=1",
                                            "ladder": ladder, "judgement": verdict})
     dc.log("float64 AD vs FD: " + "; ".join(f"{n}: rel {r['rel']:.2e}" for n, r in verdict["rows"].items()))
     return 0
