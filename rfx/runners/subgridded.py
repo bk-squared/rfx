@@ -145,6 +145,12 @@ def _run_subgridded_once(
         if validation_mode == "production":
             validation_report.raise_if_unsupported()
 
+    # Every declared input this lane does not carry is refused here, in
+    # every validation mode, after the production refusals above and before
+    # the first step.
+    from rfx.runners._admission import admit
+    admit(sim, "run_subgridded", grid=grid_coarse)
+
     topology = ref.get("topology", "overlap_z_slab")
     if topology != "overlap_z_slab":
         from rfx.runners.disjoint import run_disjoint_stage2_path

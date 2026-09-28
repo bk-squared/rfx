@@ -700,6 +700,17 @@ def wire_vertex_nodes(points, node_axes, cell_sizes):
     return nodes, d_min
 
 
+def wire_filament_nodes(points, radius, node_axes, cell_sizes):
+    """PolylineWire §1.4: the nearest lattice node of each vertex, when the
+    wire is a filament; ``None`` when it is a volume. A radius at least half
+    the smallest local cell at the vertices' nearest nodes is a volume.
+    ``classify_pec_entry`` realizes a wire by this rule, and lane admission
+    asks it which kind of conductor a declared wire becomes. The vertex snap
+    itself is ``wire_vertex_nodes``."""
+    nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes)
+    return nodes if float(radius) < 0.5 * d_min else None
+
+
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                        cell_sizes=None, *, name=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
@@ -747,8 +758,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # below that it is a filament on the axis-aligned lattice path
         # joining the nearest nodes of consecutive vertices.
-        nodes, d_min = wire_vertex_nodes(pts, node_axes, cell_sizes)
-        if float(radius) < 0.5 * d_min:
+        nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes)
+        if nodes is not None:
             edges = wire_path_edge_masks(nodes, coords.shape)
             return None, None, WireSpec(edges=edges, name=name)
     elif not traced:

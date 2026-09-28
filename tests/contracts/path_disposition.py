@@ -15,7 +15,8 @@ for every attribute and every path, which of these holds:
                    refused);
 ``falls back``     the path hands the model to another path (named);
 ``not reachable``  no model with the attribute reaches the path (why);
-``ignorable``      bookkeeping or a setting the path does not need (why);
+``ignorable``      bookkeeping, a setting the path does not need, or an
+                   observer a forward() lane returns no field for (why);
 ``not yet classified``  only on the calculator columns, see below.
 
 A cell whose behaviour today contradicts its disposition names the open issue
@@ -205,6 +206,50 @@ GRADED_REFINEMENT = refuses("refinement on a graded mesh refused (#1282)",
                             raises="asks for subgridding on a non-uniform mesh")
 
 
+# Lane admission (rfx/runners/_admission.py) refuses every declared input a
+# lane does not carry. The cells below solved the input as if it were absent
+# until admission refused it; ``before`` says how, and the issue that found
+# it. The input and lane words are retyped from the admission message, so a
+# changed message fails here instead of passing by construction.
+PREC = "a precision other than 'float32'"
+RUN_U, RUN_NU, RUN_SG, RUN_ADI = "uniform run()", "graded run()", "subgridded run()", "ADI run()"
+FWD_U, FWD_NU, FWD_DNU, FWD_ADI = ("uniform forward()", "graded forward()",
+                                   "forward(distributed=True)", "ADI forward()")
+
+
+def admission(what, lane, before):
+    return refuses(f"refused by lane admission; before it, {before}",
+                   raises=f"{what} is not carried by the {lane} lane")
+
+
+# A 2-D mode on a graded mesh: _dispatch_plan's own check refuses it on every
+# graded lane and names the remedy, a thin 3-D box. Until #1355 a 2d_tmz model
+# one cell thick between PEC walls ran there as that 3-D box, whose record
+# differs from run_uniform's 2-D solve by 0.34 of the probe peak (#1340).
+GRADED_2D = refuses("a 2-D mode is refused on the graded lanes, naming the thin 3-D box "
+                    "(mode='3d') as the remedy (#1340)",
+                    raises="Build the 2-D problem as a thin 3-D box")
+# forward() returns no flux field and does not build the monitors, by design:
+# a monitor declared for run() costs forward() nothing and drops no result.
+FWD_FLUX = ("forward() returns no flux field and does not build flux monitors, by design "
+            "(tests/unit/sparams/test_mixed_port_sparam.py::"
+            "test_forward_does_not_pay_for_flux_monitors); the monitor belongs to run()")
+
+
+# Lane gates: a cell whose lane admits the row for some declarations only,
+# decided by the lane's own check (rfx/runners/_admission.py LANE_GATES). The
+# cell keeps the disposition of the model the cells file builds for it; the
+# gate is listed here, and the contract test holds the two lists together.
+GUARDED_LID_NOTE = ("outside production validation's guarded envelope; a lid inside it, "
+                    "the absorbing_lid row, is admitted (LANE_GATES)")
+GUARDED_LID = ("rfx/subgridding/validation.py _guarded_boundary_production_allowed: a CPML lid "
+               "opposite the PEC z face the refined slab touches, closed PEC x/y faces; every "
+               "validation mode")
+LANE_GATES = {("run_subgridded", row): GUARDED_LID for row in (
+    ("_boundary", "cpml"), ("_pec_faces", "pec_face"), ("_cpml_layers", "layers"),
+    ("_cpml_kappa_max", "kappa"))}
+
+
 def _conformal(lane_words):
     return refuses("Boundary(conformal=True) is refused like conformal_pec=True: this lane has no "
                    "Dey-Mittra update (#1297)", raises=f"the {lane_words} does not implement")
@@ -288,13 +333,13 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                             "truncation warning"),
         run_nonuniform=refuses("non-float32 refused (#630)", raises="(issue #630)"),
         run_subgridded=refuses("non-float32 refused (#630)", raises="(issue #630)"),
-        run_adi=refuses("today 'mixed' and 'float64' run float32 without a word; with x64 on, "
-                        "'float64' dies in the ADI scan with a TypeError", wrong="#1308"),
+        run_adi=admission(PREC, RUN_ADI, "'mixed' and 'float64' ran float32 without a word; with "
+                          "x64 on, 'float64' died in the ADI scan with a TypeError (#1308)"),
         run_distributed=refuses("non-float32 refused (#630)", raises="(issue #630)"),
         fwd_uniform=carries("field dtype"),
         fwd_nonuniform=refuses("non-float32 refused (#630)", raises="(issue #630)"),
         fwd_distributed_nu=refuses("non-float32 refused (#630)", raises="(issue #630)"),
-        fwd_adi=refuses("today runs float32 without a word", wrong="#1308"),
+        fwd_adi=admission(PREC, FWD_ADI, "it ran float32 without a word (#1308)"),
     )},
     "_solver": {"": lanes(
         run_uniform=not_reachable("solver='adi' sends run() to run_adi"),
@@ -332,18 +377,15 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     # Run as a 2d_tmz model against the same box in 3d.
     "_mode": {"": lanes(
         run_uniform=carries("3d, 2d_tmz and 2d_tez"),
-        run_nonuniform=refuses(
-            "today dropped: 2d_tmz on one z cell between PEC walls is solved as that 3-D box "
-            "(the record equals mode='3d' bit for bit), which differs from run_uniform's 2-D solve "
-            "by 0.34 of the probe peak", wrong="#1340"),
+        run_nonuniform=GRADED_2D,
         run_subgridded=_subgrid("z_slab_requires_guarded_boundary",
                                 "a slab across a one-cell z domain is never one-sided"),
         run_adi=carries("3d and 2d_tmz; 2d_tez refused. A 3d box one z cell thick dies with an "
                         "IndexError (measured), so its model is three cells thick"),
         run_distributed=carries("2d_tmz matched one device bit for bit (measured)"),
         fwd_uniform=carries("3d, 2d_tmz and 2d_tez"),
-        fwd_nonuniform=refuses("today dropped, as run_nonuniform", wrong="#1340"),
-        fwd_distributed_nu=refuses("today dropped, as run_nonuniform", wrong="#1340"),
+        fwd_nonuniform=GRADED_2D,
+        fwd_distributed_nu=GRADED_2D,
         fwd_adi=carries("as run_adi"),
     )},
 
@@ -385,12 +427,12 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=carries(),
             run_nonuniform=carries(),
             run_subgridded=carries("inside the production envelope"),
-            run_adi=refuses("today dropped: the ADI kernel takes ε and σ only", wrong="#1308"),
+            run_adi=admission("a magnetic material (mu_r != 1)", RUN_ADI, "the ADI kernel took ε and σ only (#1308)"),
             run_distributed=carries(),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
-            fwd_adi=refuses("today dropped: the ADI kernel takes ε and σ only", wrong="#1308"),
+            fwd_adi=admission("a magnetic material (mu_r != 1)", FWD_ADI, "the ADI kernel took ε and σ only (#1308)"),
         ),
         **{pole: lanes(
             run_uniform=carries(),
@@ -407,18 +449,19 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         ) for pole in ("debye", "lorentz", "drude")},
         "kerr": lanes(
             run_uniform=carries(),
-            run_nonuniform=refuses("today dropped: the graded run() solves the material as linear", wrong="#1309"),
+            run_nonuniform=admission("a Kerr χ³ material (chi3 != 0)", RUN_NU, "the graded run() solved the material as "
+                                     "linear (#1309)"),
             run_subgridded=_subgrid("dispersive_or_nonlinear_material",
                                     "production validation; research/off drop it"),
-            run_adi=refuses("today dropped: the ADI kernel has no χ³ term", wrong="#1308"),
+            run_adi=admission("a Kerr χ³ material (chi3 != 0)", RUN_ADI, "the ADI kernel has no χ³ term (#1308)"),
             run_distributed=refuses("Kerr χ³ refused (#1214)", raises="Kerr chi3 (nonlinear) material(s)"),
             fwd_uniform=carries(),
             fwd_nonuniform=refuses("Kerr χ³ refused off the uniform forward lane",
                                    raises="forward() supports Kerr"),
             fwd_distributed_nu=refuses("Kerr χ³ refused off the uniform forward lane",
                                        raises="forward() supports Kerr"),
-            fwd_adi=refuses("today dropped: forward()'s Kerr guard lets fwd_uniform through and the "
-                            "ADI kernel has no χ³ term", wrong="#1308"),
+            fwd_adi=admission("a Kerr χ³ material (chi3 != 0)", FWD_ADI, "forward()'s Kerr guard let fwd_uniform through "
+                              "and the ADI kernel has no χ³ term (#1308)"),
         ),
     },
 
@@ -451,7 +494,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         "lossy_sheet": lanes(
             run_uniform=carries("folded into σ"),
             run_nonuniform=carries("folded into σ"),
-            run_subgridded=refuses("today dropped although production validation passes", wrong="#1311"),
+            run_subgridded=admission("a lossy thin conductor (add_thin_conductor)", RUN_SG,
+                                     "it was dropped although production validation passes (#1311)"),
             run_adi=ADI_THIN,
             run_distributed=carries("folded into σ, which each E edge takes from the cell that owns it", wrong="#1303"),
             fwd_uniform=carries("folded into σ"),
@@ -511,12 +555,14 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=carries("'current' and 'field' scale the waveform differently (#571)"),
             run_nonuniform=carries(),
             run_subgridded=carries(),
-            run_adi=refuses("today ignored: both kinds inject the same waveform", wrong="#1308"),
+            run_adi=admission("a soft source with amplitude_kind='current'", RUN_ADI, "both kinds injected the same waveform, a raw E "
+                              "increment (#1308)"),
             run_distributed=carries(),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
-            fwd_adi=refuses("today ignored: both kinds inject the same waveform", wrong="#1308"),
+            fwd_adi=admission("a soft source with amplitude_kind='current'", FWD_ADI, "both kinds injected the same waveform, a raw E "
+                              "increment (#1308)"),
         ),
         "lumped_port": lanes(
             run_uniform=carries("drive and 50 Ω load"),
@@ -555,14 +601,16 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_msl_ports": {"msl_port": lanes(
         run_uniform=carries(),
         run_nonuniform=carries(),
-        run_subgridded=refuses("today dropped although production validation passes", wrong="#1311"),
-        run_adi=refuses("a board with a PEC or thin-conductor trace is refused; today a port "
-                        "declared without a trace is dropped", wrong="#1308"),
+        run_subgridded=admission("a microstrip port (add_msl_port)", RUN_SG,
+                                 "it was dropped although production validation passes (#1311)"),
+        run_adi=admission("a microstrip port (add_msl_port)", RUN_ADI, "a board with a PEC or thin-conductor trace was refused "
+                          "and a port declared without a trace was dropped (#1308)"),
         run_distributed=refuses("MSL ports refused (#1241)", raises="add_msl_port() port(s)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("today the port launches nothing", wrong="#1285"),
-        fwd_adi=refuses("as run_adi: a port declared without a trace is dropped", wrong="#1308"),
+        fwd_distributed_nu=admission("a microstrip port (add_msl_port)", FWD_DNU, "the port launched nothing (#1285)"),
+        fwd_adi=admission("a microstrip port (add_msl_port)", FWD_ADI, "as on run_adi, a port declared without a trace was "
+                          "dropped (#1308)"),
     )},
     "_waveguide_ports": {"waveguide_port": lanes(
         run_uniform=carries(),
@@ -592,29 +640,33 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_floquet_ports": {
         "floquet_port": lanes(
             run_uniform=carries("at normal incidence"),
-            run_nonuniform=refuses("today launches nothing on a dx/dy profile; a dz profile is refused", wrong="#1312"),
+            run_nonuniform=admission("a Floquet port (add_floquet_port)", RUN_NU, "it launched nothing on a dx/dy profile; a "
+                                     "dz profile was refused (#1312)"),
             run_subgridded=_subgrid("subgrid_overlaps_absorber",
                                     "a Floquet cell absorbs on z, which production validation refuses"),
             run_adi=ADI_PORTS,
             run_distributed=refuses("the periodic axes it sets are refused (#1241)",
                                     raises="periodic / Bloch boundaries are not supported"),
             fwd_uniform=carries("at normal incidence"),
-            fwd_nonuniform=refuses("today launches nothing on a dx/dy profile", wrong="#1312"),
+            fwd_nonuniform=admission("a Floquet port (add_floquet_port)", FWD_NU, "it launched nothing on a dx/dy profile "
+                                     "(#1312)"),
             fwd_distributed_nu=refuses("the periodic axes it sets are refused (#1350)",
                                        raises="periodic / Bloch boundaries are not supported"),
             fwd_adi=ADI_PORTS,
         ),
         "scan_angle": lanes(
-            run_uniform=refuses("today dropped: 30° gives the record of 0°, the angle never "
-                                "reaches the fields", wrong="#1221"),
-            run_nonuniform=refuses("today the port launches nothing at any angle", wrong="#1312"),
+            run_uniform=admission("a Floquet port scanned off normal (scan_theta != 0)", RUN_U, "30° gave the record of 0°: the angle never "
+                                  "reached the fields (#1221)"),
+            run_nonuniform=admission("a Floquet port scanned off normal (scan_theta != 0)", RUN_NU, "the port launched nothing at any angle "
+                                     "(#1312)"),
             run_subgridded=_subgrid("subgrid_overlaps_absorber",
                                     "a Floquet cell absorbs on z, which production validation refuses"),
             run_adi=ADI_PORTS,
             run_distributed=refuses("the periodic axes it sets are refused (#1241)",
                                     raises="periodic / Bloch boundaries are not supported"),
-            fwd_uniform=refuses("today dropped: 30° gives the record of 0°", wrong="#1221"),
-            fwd_nonuniform=refuses("today the port launches nothing at any angle", wrong="#1312"),
+            fwd_uniform=admission("a Floquet port scanned off normal (scan_theta != 0)", FWD_U, "30° gave the record of 0° (#1221)"),
+            fwd_nonuniform=admission("a Floquet port scanned off normal (scan_theta != 0)", FWD_NU, "the port launched nothing at any angle "
+                                     "(#1312)"),
             fwd_distributed_nu=refuses("the periodic axes it sets are refused (#1350)",
                                        raises="periodic / Bloch boundaries are not supported"),
             fwd_adi=ADI_PORTS,
@@ -663,9 +715,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             **{lane: not_reachable("validation modes exist only on the subgridded lane; see 'slab'")
                for lane in ("run_uniform", "run_nonuniform", "run_adi", "run_distributed",
                             "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu", "fwd_adi")},
-            "run_subgridded": refuses(
-                "validation='research' and 'off' run the Debye, Lorentz and Drude poles, Kerr "
-                "χ³ and lumped RLC that production refuses, and drop them", wrong="#1286"),
+            "run_subgridded": admission(
+                "validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC "
+                "element", RUN_SG, "validation='research' and 'off' ran the Debye, Lorentz and "
+                "Drude poles, Kerr χ³ and lumped RLC that production refuses, and dropped them "
+                "(#1286)"),
         },
     },
 
@@ -674,7 +728,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         "cpml": lanes(
             run_uniform=carries(),
             run_nonuniform=carries(),
-            run_subgridded=_subgrid("subgrid_overlaps_absorber", "no CPML in the guarded envelope"),
+            run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
             run_adi=carries("a graded conductivity layer, not a CPML (test_realized_boundary.py "
                             "cpml--adi)", wrong="#1221"),
             run_distributed=carries(),
@@ -687,7 +741,9 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=carries(),
             run_nonuniform=refuses("the graded runner implements CPML only",
                                    raises="boundary='upml' does not support the non-uniform run() lane"),
-            run_subgridded=_subgrid("subgrid_overlaps_absorber", "no absorber in the guarded envelope"),
+            run_subgridded=_subgrid("subgrid_overlaps_absorber",
+                                    "no absorber on every face in the guarded envelope; a UPML lid "
+                                    "inside it runs as CPML (measured), so it is refused too"),
             run_adi=refuses("boundary='upml' refused", raises="solver='adi' does not support boundary='upml'",
                             declared=True),
             run_distributed=refuses("boundary='upml' refused",
@@ -705,7 +761,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_pec_faces": {"pec_face": lanes(
         run_uniform=carries(),
         run_nonuniform=carries(),
-        run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces"),
+        run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces: " + GUARDED_LID_NOTE),
         run_adi=ADI_PER_FACE,
         # #1235: the distributed absorber takes every face's profile from init_cpml, so the PEC wall
         # carries no absorber backing (test_realized_boundary.py pec-zlo--distributed departures gone).
@@ -721,38 +777,58 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=carries("the magnetic wall sits half a cell inside its face "
                                 "(test_realized_boundary.py pmc-pec--run)", wrong="#1221"),
             run_nonuniform=carries("half a cell inside (pmc-pec--nonuniform)", wrong="#1221"),
-            run_subgridded=refuses("today solved as electric walls although production validation "
-                                   "passes", wrong="#1311"),
-            run_adi=refuses("today solved as electric walls (pmc-pec--adi)", wrong="#1221"),
+            run_subgridded=admission("a PMC (magnetic wall) face", RUN_SG, "it was solved as electric walls although "
+                                     "production validation passes (#1311)"),
+            run_adi=admission("a PMC (magnetic wall) face", RUN_ADI, "it was solved as electric walls (pmc-pec--adi, "
+                              "#1221)"),
             run_distributed=carries("tangential E held at zero on the x faces "
                                     "(pmc-pec--distributed)", wrong="#1221"),
             fwd_uniform=carries("half a cell inside (pmc-pec--forward)", wrong="#1221"),
             fwd_nonuniform=carries("the kernel of run_nonuniform; test_realized_boundary.py does not "
                                    "run this entry"),
             fwd_distributed_nu=carries("test_realized_boundary.py does not run this entry"),
-            fwd_adi=refuses("today solved as electric walls, as run_adi", wrong="#1221"),
+            fwd_adi=admission("a PMC (magnetic wall) face", FWD_ADI, "it was solved as electric walls, as on run_adi "
+                              "(#1221)"),
         ),
         "conformal": lanes(
             run_uniform=carries("Dey-Mittra weights on every PEC shape"),
             **CONFORMAL,
         ),
         "conformal_s_matrix": lanes(
-            run_uniform=refuses("today dropped: the lumped-port S-matrix run() returns comes from "
-                                "_forward_from_materials, which staircases", wrong="#1299"),
+            run_uniform=admission("Boundary(conformal=True) with a lumped-port S-matrix", RUN_U,
+                                  "the lumped-port S-matrix run() returns came from "
+                                  "_forward_from_materials, which staircases (#1299)"),
             **CONFORMAL,
+        ),
+        # A closed PEC box with a CPML lid on z_hi, against the all-PEC box.
+        "absorbing_lid": lanes(
+            run_uniform=carries(),
+            run_nonuniform=carries(),
+            run_subgridded=carries(
+                "the refined slab touches the PEC floor: production validation's guarded envelope, "
+                "admitted in every validation mode through LANE_GATES. The lid moves the late field "
+                "(#1355 review); whether it absorbs as well as the uniform lane's is not measured "
+                "here. A UPML lid is refused by the upml row: this lane runs CPML in its place"),
+            run_adi=ADI_PER_FACE,
+            run_distributed=carries(),
+            fwd_uniform=carries(),
+            fwd_nonuniform=carries(),
+            fwd_distributed_nu=carries(),
+            fwd_adi=ADI_PER_FACE,
         ),
     },
     "_periodic_axes": {"periodic": lanes(
         run_uniform=carries("one cell longer than declared (test_realized_boundary.py "
                             "periodic-xy--run)", wrong="#1221"),
-        run_nonuniform=refuses("today solved as PEC walls (periodic-xy--nonuniform)", wrong="#1221"),
-        run_subgridded=refuses("today solved as PEC walls although production validation passes",
-                               wrong="#1311"),
+        run_nonuniform=admission("a periodic axis", RUN_NU, "it was solved as PEC walls "
+                                 "(periodic-xy--nonuniform, #1221)"),
+        run_subgridded=admission("a periodic axis", RUN_SG, "it was solved as PEC walls although "
+                                 "production validation passes (#1311)"),
         run_adi=_adi("periodic axes", "does not support manual periodic axes"),
         run_distributed=refuses("periodic axes refused (#1241)",
                                 raises="periodic / Bloch boundaries are not supported"),
         fwd_uniform=carries("one cell longer than declared (periodic-xy--forward)", wrong="#1221"),
-        fwd_nonuniform=refuses("today solved as PEC walls", wrong="#1221"),
+        fwd_nonuniform=admission("a periodic axis", FWD_NU, "it was solved as PEC walls (#1221)"),
         fwd_distributed_nu=refuses("periodic axes refused (#1350)",
                                    raises="periodic / Bloch boundaries are not supported"),
         fwd_adi=_adi("periodic axes", "does not support manual periodic axes"),
@@ -760,7 +836,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_cpml_layers": {"layers": lanes(
         run_uniform=carries(),
         run_nonuniform=carries(),
-        run_subgridded=_subgrid("subgrid_overlaps_absorber", "no CPML in the guarded envelope"),
+        run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
         run_adi=carries("the thickness of ADI's conductivity layer, checked in the σ handed to the kernel"),
         run_distributed=carries(),
         fwd_uniform=carries(),
@@ -770,29 +846,32 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     )},
     "_cpml_kappa_max": {"kappa": lanes(
         run_uniform=carries(),
-        run_nonuniform=refuses("today dropped: the graded grid build is never given it", wrong="#1310"),
-        run_subgridded=_subgrid("subgrid_overlaps_absorber", "no CPML in the guarded envelope"),
-        run_adi=refuses("today dropped: ADI's absorber is not a CPML (cpml--adi)", wrong="#1221"),
+        run_nonuniform=admission("cpml_kappa_max != 1", RUN_NU, "the graded grid build was never given it "
+                                 "(#1310)"),
+        run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
+        run_adi=admission("cpml_kappa_max != 1", RUN_ADI, "it was dropped: ADI's absorber is not a CPML "
+                          "(cpml--adi, #1221)"),
         run_distributed=carries(),
         fwd_uniform=carries(),
-        fwd_nonuniform=refuses("today dropped", wrong="#1310"),
-        fwd_distributed_nu=refuses("today dropped", wrong="#1310"),
-        fwd_adi=refuses("today dropped, as run_adi", wrong="#1221"),
+        fwd_nonuniform=admission("cpml_kappa_max != 1", FWD_NU, "it was dropped (#1310)"),
+        fwd_distributed_nu=admission("cpml_kappa_max != 1", FWD_DNU, "it was dropped (#1310)"),
+        fwd_adi=admission("cpml_kappa_max != 1", FWD_ADI, "it was dropped, as on run_adi (#1221)"),
     )},
     # An εr 4 block offset by half a cell, 'dual_average' against 'sampled'.
     "_interface_eps": {"dual_average": lanes(
-        run_uniform=refuses("today not read: the field is the 'sampled' one", wrong="#1339"),
+        run_uniform=admission("interface_eps='dual_average'", RUN_U, "it was not read: the field was the 'sampled' "
+                              "one (#1339)"),
         run_nonuniform=carries("read by the graded assembly (assemble_interface_eps_nu); no lane to "
                                "compare with"),
-        run_subgridded=refuses("today not read", wrong="#1339"),
-        run_adi=refuses("today not read", wrong="#1339"),
+        run_subgridded=admission("interface_eps='dual_average'", RUN_SG, "it was not read (#1339)"),
+        run_adi=admission("interface_eps='dual_average'", RUN_ADI, "it was not read (#1339)"),
         run_distributed=refuses("'dual_average' refused",
                                 raises="interface_eps='dual_average' is not supported on the distributed lane"),
-        fwd_uniform=refuses("today not read", wrong="#1339"),
+        fwd_uniform=admission("interface_eps='dual_average'", FWD_U, "it was not read (#1339)"),
         fwd_nonuniform=carries("read by the graded assembly"),
         fwd_distributed_nu=refuses("'dual_average' refused",
                                    raises="interface_eps='dual_average' cannot combine with"),
-        fwd_adi=refuses("today not read", wrong="#1339"),
+        fwd_adi=admission("interface_eps='dual_average'", FWD_ADI, "it was not read (#1339)"),
     )},
 
     # -------------------------------------------------------- mesh profiles
@@ -836,14 +915,14 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_flux_monitors": {"flux": lanes(
         run_uniform=carries(),
         run_nonuniform=carries(),
-        run_subgridded=refuses("today result.flux_monitors is None", wrong="#1313"),
-        run_adi=refuses("today result.flux_monitors is None", wrong="#1313"),
+        run_subgridded=admission("a flux monitor", RUN_SG, "result.flux_monitors came back None (#1313)"),
+        run_adi=admission("a flux monitor", RUN_ADI, "result.flux_monitors came back None (#1313)"),
         run_distributed=refuses("flux monitors refused (#1241)", raises="add_flux_monitor() (flux monitors)"),
-        fwd_uniform=refuses("today ForwardResult has no flux field", wrong="#1313"),
-        fwd_nonuniform=refuses("today ForwardResult has no flux field", wrong="#1313"),
+        fwd_uniform=ignorable(FWD_FLUX),
+        fwd_nonuniform=ignorable(FWD_FLUX),
         fwd_distributed_nu=refuses("flux monitors refused",
                                    raises="add_flux_monitor() is not supported on the distributed non-uniform"),
-        fwd_adi=refuses("today ForwardResult has no flux field", wrong="#1313"),
+        fwd_adi=ignorable(FWD_FLUX),
     )},
     "_ntff": {"ntff_box": lanes(
         run_uniform=carries(),
@@ -853,7 +932,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_distributed=refuses("NTFF refused (#1241)", raises="add_ntff_box() (NTFF box)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=refuses("today ntff_data is None", wrong="#1313"),
+        fwd_distributed_nu=admission("an NTFF box", FWD_DNU, "ntff_data came back None (#1313)"),
         fwd_adi=_adi("NTFF", "does not support NTFF accumulation"),
     )},
     # Checked in a CPML box: the monitor refuses PEC domain faces on every lane.

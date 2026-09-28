@@ -4335,189 +4335,12 @@
       "case": "pmc-pec",
       "entry": "adi",
       "steps": 2,
-      "base_commit": "cca8ee5bae9f43b93423962e1888c0829b21c8a3",
-      "status": "MEASURED",
-      "declared": {
-        "x_lo": "pmc",
-        "x_hi": "pmc",
-        "y_lo": "pec",
-        "y_hi": "pec",
-        "z_lo": "pec",
-        "z_hi": "pec"
-      },
-      "shape": [
-        25,
-        21,
-        17
-      ],
-      "faces": {
-        "x_lo": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.0,
-          "h_plane_m": 0.0005,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.0
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 0.240675687789917,
-          "constant_e_reference_max": 0.240675687789917,
-          "psi_decay_min": null,
-          "psi_decay_max": null,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "x_hi": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.024
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 0.24067451059818268,
-          "constant_e_reference_max": 0.24067451059818268,
-          "psi_decay_min": null,
-          "psi_decay_max": null,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "y_lo": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.0,
-          "h_plane_m": 0.0005,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.0
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 0.3541899025440216,
-          "constant_e_reference_max": 0.3541899025440216,
-          "psi_decay_min": null,
-          "psi_decay_max": null,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "y_hi": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.02
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 0.35418978333473206,
-          "constant_e_reference_max": 0.35418978333473206,
-          "psi_decay_min": null,
-          "psi_decay_max": null,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "z_lo": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.0,
-          "h_plane_m": 0.0005,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.0
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 0.3242495357990265,
-          "constant_e_reference_max": 0.3242495357990265,
-          "psi_decay_min": null,
-          "psi_decay_max": null,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "z_hi": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.016,
-          "h_plane_m": 0.0155,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.016
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 0.32415536046028137,
-          "constant_e_reference_max": 0.32415536046028137,
-          "psi_decay_min": null,
-          "psi_decay_max": null,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        }
-      },
-      "scan_records": [
-        {
-          "rank": -1,
-          "shape": [
-            12,
-            6,
-            25,
-            21,
-            17
-          ],
-          "layout": "full-grid"
-        },
-        {
-          "rank": -1,
-          "shape": [
-            12,
-            6,
-            25,
-            21,
-            17
-          ],
-          "layout": "full-grid"
-        }
-      ],
-      "departures": [
-        {
-          "face": "x_lo",
-          "code": "a",
-          "step": "B1.5",
-          "detail": "tangential E held at zero"
-        },
-        {
-          "face": "x_lo",
-          "code": "b1",
-          "step": "B1.5",
-          "detail": "face-node response to adjacent tangential H pulse is zero"
-        },
-        {
-          "face": "x_hi",
-          "code": "a",
-          "step": "B1.5",
-          "detail": "tangential E held at zero"
-        },
-        {
-          "face": "x_hi",
-          "code": "b1",
-          "step": "B1.5",
-          "detail": "face-node response to adjacent tangential H pulse is zero"
-        }
-      ],
-      "cpu_s": 4.600520369000002,
-      "wall_s": 4.324556034989655
+      "base_commit": "829bc17bd99e65e0e6e3e6b19968fac068423416",
+      "status": "REFUSED",
+      "exception": "NotImplementedError",
+      "message_prefix": "The ADI run() lane would solve this Simulation as if",
+      "cpu_s": 0.0027542119999992565,
+      "wall_s": 0.002710571978241205
     },
     {
       "case": "pmc-pec",
@@ -7483,178 +7306,12 @@
       "case": "periodic-xy",
       "entry": "nonuniform",
       "steps": 2,
-      "base_commit": "cca8ee5bae9f43b93423962e1888c0829b21c8a3",
-      "status": "MEASURED",
-      "declared": {
-        "x_lo": "periodic",
-        "x_hi": "periodic",
-        "y_lo": "periodic",
-        "y_hi": "periodic",
-        "z_lo": "cpml",
-        "z_hi": "cpml"
-      },
-      "shape": [
-        25,
-        21,
-        33
-      ],
-      "faces": {
-        "x_lo": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.0,
-          "h_plane_m": 0.0005,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.0
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 1.0,
-          "constant_e_reference_max": 1.0,
-          "psi_decay_min": 1.0,
-          "psi_decay_max": 1.0,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "x_hi": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.024
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 1.0,
-          "constant_e_reference_max": 1.0,
-          "psi_decay_min": 1.0,
-          "psi_decay_max": 1.0,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "y_lo": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.0,
-          "h_plane_m": 0.0005,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.0
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 1.0,
-          "constant_e_reference_max": 1.0,
-          "psi_decay_min": 1.0,
-          "psi_decay_max": 1.0,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "y_hi": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.02
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": false,
-          "constant_e_max": 1.0,
-          "constant_e_reference_max": 1.0,
-          "psi_decay_min": 1.0,
-          "psi_decay_max": 1.0,
-          "psi_field_response": 0.0,
-          "face_node_response": 0.0
-        },
-        "z_lo": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": -0.008,
-          "h_plane_m": -0.0075,
-          "coupled": false,
-          "e_zero_planes_m": [
-            -0.008
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": true,
-          "constant_e_max": 1.0,
-          "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
-          "face_node_response": 0.0
-        },
-        "z_hi": {
-          "e_zero": true,
-          "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
-          "coupled": false,
-          "e_zero_planes_m": [
-            0.024
-          ],
-          "h_zero_planes_m": [],
-          "period_m": null,
-          "absorbs": true,
-          "constant_e_max": 1.0,
-          "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.073165893554688,
-          "psi_field_response": 0.004103660583496094,
-          "face_node_response": 0.0
-        }
-      },
-      "scan_records": [
-        {
-          "rank": -1,
-          "shape": [
-            12,
-            6,
-            25,
-            21,
-            33
-          ],
-          "layout": "full-grid"
-        }
-      ],
-      "departures": [
-        {
-          "face": "x_lo",
-          "code": "d",
-          "step": "B1.5",
-          "detail": "periodic end response absent or a wall/absorber present"
-        },
-        {
-          "face": "x_hi",
-          "code": "d",
-          "step": "B1.5",
-          "detail": "periodic end response absent or a wall/absorber present"
-        },
-        {
-          "face": "y_lo",
-          "code": "d",
-          "step": "B1.5",
-          "detail": "periodic end response absent or a wall/absorber present"
-        },
-        {
-          "face": "y_hi",
-          "code": "d",
-          "step": "B1.5",
-          "detail": "periodic end response absent or a wall/absorber present"
-        }
-      ],
-      "cpu_s": 2.435917901,
-      "wall_s": 3.4227862890111282
+      "base_commit": "829bc17bd99e65e0e6e3e6b19968fac068423416",
+      "status": "REFUSED",
+      "exception": "NotImplementedError",
+      "message_prefix": "The graded run() lane would solve this Simulation as if",
+      "cpu_s": 0.06645336100000065,
+      "wall_s": 0.0659724969882518
     },
     {
       "case": "periodic-xy",
@@ -13415,6 +13072,13 @@
     },
     {
       "case": "pmc-pec",
+      "entry": "adi",
+      "changes": [
+        "MEASURED -> REFUSED"
+      ]
+    },
+    {
+      "case": "pmc-pec",
       "entry": "gpu-query",
       "changes": [
         "x_lo E -> H",
@@ -13458,6 +13122,13 @@
       "changes": [
         "x_lo EH -> H",
         "x_hi EH -> H"
+      ]
+    },
+    {
+      "case": "periodic-xy",
+      "entry": "nonuniform",
+      "changes": [
+        "MEASURED -> REFUSED"
       ]
     },
     {

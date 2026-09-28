@@ -758,6 +758,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "sim.run() without devices=, which realizes all three, or model "
             "the conductor as a sigma fill, which rides in the material "
             "arrays this lane does shard.")
+    # Every declared input this lane does not carry is refused here, after
+    # the single-device fallbacks (judged on the lane they fall back to) and
+    # the specific refusals above, and before the first step.
+    from rfx.runners._admission import admit
+    admit(sim, "run_distributed")
     materials = base_materials
 
     _distributed_boundary_layers(

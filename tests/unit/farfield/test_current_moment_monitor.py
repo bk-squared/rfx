@@ -1938,6 +1938,212 @@ def test_refuses_a_plane_port_and_accepts_a_lumped_port():
     assert _guard_runs(sim).current_moment_data is not None
 
 
+# ---------------------------------------------------------------------------
+# Microstrip ports
+# ---------------------------------------------------------------------------
+
+# A suspended microstrip for the refusal and realized-cell tests: 1 mm cells,
+# a 2 mm wide trace 2 mm above a ground strip of the same width, no
+# dielectric, fed at x = 8 mm. The port's launch and matched load sit on the
+# Ez edges of the feed plane between ground and trace, over the trace's three
+# width nodes (y = 11..13 mm) and two more on each side, the static-Laplace
+# profile's fringe window (one substrate height): y = 9..15 mm. With no
+# dielectric and a ground no wider than the trace, those fringe edges are
+# vacuum away from every conductor, so only the port's own check sees them.
+MSL_GUARD_FREQS = np.array([4e9, 5e9])
+# graded: 6 mm of 1 mm cells, the gap in three cells, then back up
+MSL_GUARD_DZ = np.array([1.0] * 6 + [0.8, 0.65, 0.55] + [0.75] + [1.0] * 4) * 1e-3
+
+
+def _msl_guard_sim(slab_y=(7e-3, 17e-3), *, lane="uniform", **port_kw):
+    from rfx import Box, Simulation
+    kw, lz = (({"dz_profile": MSL_GUARD_DZ}, float(MSL_GUARD_DZ.sum()))
+              if lane == "graded" else ({}, 14e-3))
+    sim = Simulation(freq_max=1.2e10, domain=(24e-3, 24e-3, lz), dx=1e-3,
+                     cpml_layers=6, boundary="cpml", **kw)
+    for z in (6e-3, 8e-3):
+        sim.add(Box((8e-3, 11e-3, z), (16e-3, 13e-3, z)), material="pec")
+    sim.add_msl_port((8e-3, 12e-3, 6e-3), width=2e-3, height=2e-3,
+                     direction="+x", **port_kw)
+    sim.add_current_moment_monitor(
+        corner_lo=(5e-3, slab_y[0], 5e-3), corner_hi=(19e-3, slab_y[1], 9e-3),
+        block_size=2e-3, freqs=MSL_GUARD_FREQS)
+    return sim
+
+
+@pytest.mark.parametrize("excite", [True, False], ids=["driven", "passive"])
+def test_accepts_an_msl_port_whose_launch_is_inside_the_slab(excite):
+    sim = _msl_guard_sim(excite=excite)
+    if not excite:
+        sim.add_source((12e-3, 12e-3, 7e-3), "ez", amplitude_kind="current")
+    assert _guard_runs(sim).current_moment_data is not None
+
+
+@pytest.mark.parametrize("slab_y", [(9e-3, 15e-3), (10e-3, 14e-3)],
+                         ids=["fringe on the outermost layer",
+                              "fringe outside"])
+def test_refuses_an_msl_port_whose_launch_leaves_the_slab_interior(slab_y):
+    """Trace and ground inside the slab's interior, the launch's fringe not.
+
+    The fringe carries the port's drive and part of its load current, so it
+    radiates; a check on the declared trace width alone would pass here.
+    The message names the port and where its first stray edge runs.
+    """
+    with pytest.raises(NotImplementedError,
+                       match=r"microstrip port 'msl_0' .*outside the slab's "
+                             r"interior") as exc:
+        _guard_runs(_msl_guard_sim(slab_y))
+    assert "from (8, 9, 6) mm to (8, 9, 7) mm" in str(exc.value)
+
+
+@pytest.mark.parametrize("lane, entry, mode", [
+    ("uniform", "run", "laplace"), ("uniform", "run", "uniform"),
+    ("graded", "run", "laplace"), ("graded", "run", "uniform"),
+    ("uniform", "forward", "laplace"), ("uniform", "forward", "uniform"),
+    ("graded", "forward", "laplace")])
+def test_the_checked_msl_edges_hold_every_edge_the_lane_stamps(
+        lane, entry, mode, monkeypatch):
+    """What the running lane stamps, recorded, against what the check reads.
+
+    The port's load conductivity and its drive are recorded as the runner
+    writes them. Every recorded edge must be in the checked set. On the
+    uniform lanes ``mode="uniform"`` drives the trace width only, a strict
+    subset; everywhere else the two sets are equal.
+    """
+    import rfx.sources.msl_port as msl
+    from rfx.current_moments import _msl_port_edges
+
+    stamped, driven = set(), set()
+    stamp, sources = msl._stamp_lumped_sigma, msl.make_msl_port_sources
+
+    def record_stamp(materials, cell, value, component):
+        stamped.add((component, tuple(int(v) for v in cell)))
+        return stamp(materials, cell, value, component)
+
+    def record_sources(*a, **k):
+        specs = sources(*a, **k)
+        driven.update((s.component, (s.i, s.j, s.k)) for s in specs)
+        return specs
+
+    monkeypatch.setattr(msl, "_stamp_lumped_sigma", record_stamp)
+    monkeypatch.setattr(msl, "make_msl_port_sources", record_sources)
+    sim = _msl_guard_sim(lane=lane, mode=mode)
+    getattr(sim, entry)(n_steps=2, skip_preflight=True)
+    grid = (sim._build_nonuniform_grid() if lane == "graded"
+            else sim._build_grid())
+    c, checked = _msl_port_edges(grid, sim._msl_ports[0], np.ones(grid.shape))
+    checked = {("e" + "xyz"[c], e) for e in checked}
+    assert stamped and driven == stamped
+    assert stamped <= checked
+    if lane == "uniform" and mode == "uniform":
+        assert len(stamped) < len(checked)
+    else:
+        assert stamped == checked
+
+
+# A generic edge-fed patch on a finite board, fed through a microstrip port:
+# eps_r 2.2, 1 mm substrate, a 10 x 12 mm patch on a 22 x 18 mm board, a 3 mm
+# trace from the port 7 mm to the patch edge, 0.5 mm cells in plane (graded
+# lane: 0.25 mm through the substrate). TM010 near 9.5 GHz. The port, the line
+# and the board lie inside the slab's interior and inside the Huygens box.
+# The bars are the tutorial patch's (#1301: peak directivity 0.011 dB,
+# radiated power 0.024 dB, any direction within 20 dB of the peak 0.14 dB).
+MSL_PATCH_FREQS = np.array([8.5e9, 9.5e9, 10.5e9])
+MSL_PATCH_DZ = np.array([0.5] * 4 + [0.4, 0.3, 0.3] + [0.25] * 4
+                        + [0.3, 0.4] + [0.5] * 6) * 1e-3
+MSL_PATCH_STEPS = {"uniform": 2000, "graded": 2800}
+MSL_PATCH_SHAPE_BAR_DB = 0.14
+MSL_PATCH_DIRECTIVITY_BAR_DB = 0.011
+MSL_PATCH_POWER_BAR_DB = 0.024
+
+
+def _msl_patch_run(lane):
+    from rfx import Box, GaussianPulse, Simulation
+    mm = 1e-3
+    kw, lz = (({"dz_profile": MSL_PATCH_DZ}, float(MSL_PATCH_DZ.sum()))
+              if lane == "graded" else ({}, 8 * mm))
+    sim = Simulation(freq_max=13e9, domain=(28 * mm, 24 * mm, lz), dx=0.5 * mm,
+                     boundary="cpml", cpml_layers=6, **kw)
+    sim.add_material("sub", eps_r=2.2)
+    sim.add(Box((3 * mm, 3 * mm, 3 * mm), (25 * mm, 21 * mm, 4 * mm)),
+            material="sub")
+    for lo, hi in (((3, 3, 3), (25, 21, 3)),          # ground
+                   ((12, 6, 4), (22, 18, 4)),         # patch
+                   ((5, 10.5, 4), (12, 13.5, 4))):    # trace
+        sim.add(Box(tuple(v * mm for v in lo), tuple(v * mm for v in hi)),
+                material="pec")
+    sim.add_msl_port((5 * mm, 12 * mm, 3 * mm), width=3 * mm, height=1 * mm,
+                     direction="+x",
+                     waveform=GaussianPulse(f0=9.5e9, bandwidth=0.7))
+    sim.add_ntff_box((1.5 * mm, 1.5 * mm, 1.5 * mm),
+                     (26.5 * mm, 22.5 * mm, 6.5 * mm), freqs=MSL_PATCH_FREQS)
+    sim.add_current_moment_monitor((2 * mm, 2 * mm, 2.5 * mm),
+                                   (26 * mm, 22 * mm, 4.5 * mm),
+                                   block_size=1.5 * mm, freqs=MSL_PATCH_FREQS)
+    sim.add_probe((20 * mm, 12 * mm, 3.5 * mm), "ez")      # under the patch
+    sim.add_probe((8 * mm, 5 * mm, 6.0 * mm), "ez")        # above the board
+    return sim.run(n_steps=MSL_PATCH_STEPS[lane], skip_preflight=True)
+
+
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
+def test_msl_fed_patch_far_field_matches_the_ntff_box(lane):
+    """The port's drive and load current are read like every other current.
+
+    The electric-only launch adds an E increment and a conductivity on the
+    feed plane's substrate-normal edges; both sit inside
+    ``J = curl_h H - eps0 dE/dt``, so the pattern from the block moments is
+    the Huygens box's on the same run. The record has rung down (both probes
+    below -60 dB of their peak by the end).
+    """
+    from rfx import compute_far_field, directivity, radiation_pattern
+    res = _msl_patch_run(lane)
+    for series in np.abs(np.asarray(res.time_series)).T:
+        tail = series[-len(series) // 20:].max()
+        assert 20.0 * np.log10(tail / series.max()) < -60.0
+    theta = np.linspace(0.0, np.pi, 37)
+    phi = np.linspace(0.0, 2.0 * np.pi, 36, endpoint=False)
+    box = compute_far_field(res.ntff_data, res.ntff_box, res.grid, theta, phi)
+    mon = current_moment_far_field(res, theta, phi)
+
+    def shape_db(ff):
+        a, b = radiation_pattern(ff), radiation_pattern(box)
+        return [float(np.max(np.abs(a[f] - b[f])[b[f] >= -20.0]))
+                for f in range(len(MSL_PATCH_FREQS))]
+
+    def radiated(ff):
+        power = np.abs(ff.E_theta) ** 2 + np.abs(ff.E_phi) ** 2
+        th, ph = np.asarray(ff.theta), np.asarray(ff.phi)
+        w = (np.sin(th) * np.gradient(th))[None, :, None] * np.gradient(ph)
+        return np.sum(power * w, axis=(1, 2))
+
+    shape = shape_db(mon)
+    assert max(shape) <= MSL_PATCH_SHAPE_BAR_DB, shape
+    d_db = np.abs(directivity(mon) - directivity(box))
+    assert d_db.max() <= MSL_PATCH_DIRECTIVITY_BAR_DB, d_db
+    p_db = np.abs(10.0 * np.log10(radiated(mon) / radiated(box)))
+    assert p_db.max() <= MSL_PATCH_POWER_BAR_DB, p_db
+
+    # Negative control on the same accumulator: the total moment P alone.
+    m = res.current_moment_monitor
+    p_only = res._replace(
+        current_moment_data=(np.asarray(res.current_moment_data[0])[..., :1],),
+        current_moment_monitor=m._replace(order=0))
+    control = shape_db(current_moment_far_field(p_only, theta, phi))
+    assert min(control) > MSL_PATCH_SHAPE_BAR_DB, control
+
+
+def test_refuses_an_eigenmode_msl_port():
+    """The eigenmode launch adds the M half of a J+M pair on the H edges of
+    its plane. ``run()`` stops earlier today, in the port's own setup (the
+    eigenmode solver is not wired in), so the monitor's refusal is asked
+    directly."""
+    from rfx.current_moments import monitor_for_simulation
+    sim = _msl_guard_sim(mode="eigenmode")
+    with pytest.raises(NotImplementedError,
+                       match=r"mode='eigenmode'.*magnetic source"):
+        monitor_for_simulation(sim, sim._build_grid())
+
+
 def _forward_with(sim, **kw):
     return sim.forward(n_steps=4, skip_preflight=True, **kw)
 

@@ -71,13 +71,17 @@ def test_tmz_on_more_than_one_z_cell_is_refused():
         _run(sim, "ez")
 
 
-def test_tmz_between_pec_walls_runs_and_equals_the_three_d_box():
+def test_tmz_on_a_graded_one_cell_pec_box_is_refused_and_its_three_d_box_runs():
+    """ONE z cell between PEC walls: the graded lane would solve it as that
+    3-D box, whose record differs from the uniform lane's 2-D solve of the
+    same declaration by 0.34 of the probe peak (#1340). It is refused, and
+    the message names the thin 3-D box to declare; that box runs."""
     kw = dict(freq_max=30e9, domain=(A, B, DX), dx=DX, boundary="pec",
               dy_profile=DY)
-    two_d = _run(Simulation(mode="2d_tmz", **kw), "ez")
+    with pytest.raises(ValueError, match="Build the 2-D problem as a thin 3-D box: mode='3d'"):
+        _run(Simulation(mode="2d_tmz", **kw), "ez")
     three_d = _run(Simulation(mode="3d", **kw), "ez")
-    assert np.max(np.abs(two_d)) > 0.0
-    np.testing.assert_array_equal(two_d, three_d)
+    assert np.max(np.abs(three_d)) > 0.0
 
 
 def test_the_way_out_named_in_the_message_carries_tez_fields():
