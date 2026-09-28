@@ -236,8 +236,9 @@ class _MeshMixin:
         """Refuse a port, source or probe that lands one cell off a wire
         vertex or PEC sheet declared at the same half-node coordinate.
 
-        Point features round a tie to the even node, wire vertices and sheet
-        planes to the lower one (#1295, #1342). The preflight finding
+        Wire vertices and sheet planes round a tie to the lower node, and so
+        do point features on the non-uniform lane; on the uniform lane point
+        features round it to the even node until #1342. The preflight finding
         ``half_node_split`` says the same thing; this is the refusal
         ``skip_preflight=True`` does not bypass, as for #1240. Features are
         paired on their DECLARED coordinates first, so a model with no port,

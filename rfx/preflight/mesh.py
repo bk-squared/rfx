@@ -896,9 +896,9 @@ def _graded_node_report(self, axis: int, coord: float):
     if d.size < 2:
         return None
     nodes = np.asarray(node_positions_from_profile(d), dtype=np.float64)
-    # The node the port is stamped on: the #1295 tie rule.
-    k = nearest_node_index(
-        nodes, coord, cell=float(d[0]) if np.all(d == d[0]) else None)
+    # The node the port is stamped on: the one tie rule (#1295, #1342).
+    from rfx.geometry.rasterize_grid import _local_cell
+    k = nearest_node_index(nodes, coord, _local_cell(nodes, d, coord))
     if k <= 0 or k >= d.size:
         return None
     d_below, d_above = float(d[k - 1]), float(d[k])

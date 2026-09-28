@@ -1,25 +1,25 @@
-"""A coordinate midway between two nodes lands on the same node in both lanes (#1295).
+"""One tie rule for points and conductors on the non-uniform lane (#1295, #1342).
 
-A source, probe or port declared exactly halfway between two grid nodes has
-two equally near nodes. The uniform ``Grid`` resolves it with
-``round(x / dx)``, round-half-to-even on the float quotient; the non-uniform
-grid took the first of the two in an ``argmin`` over its node line, i.e.
-always the lower node. On 1 mm cells a feed declared at y = 9.5 mm sat on
-node 10 in one lane and node 9 in the other, a 1 mm shift of the feed. In the
-kernel-timing record (rfx-archive ``records/20260925-nu-kernel-timing``) that
-put the 13.4 M-cell probe traces of the two lanes 8e-2 of the peak apart,
-against <= 1.4e-5 at the sizes with no half-node source.
+A source, probe or port declared exactly halfway between two grid nodes is
+equally near both. A PEC sheet or wire vertex declared there goes to the LOWER
+node (#931). The non-uniform lane now resolves a point feature with the same
+function, on the same node line the conductors are rasterized on, so a port
+declared on a sheet or a wire lands on it. Before this change the NU lane
+also took the lower node, but through its own float32 edge search, which put
+a coordinate within float32 roundoff of a half node on either node. The
+uniform lane rounds a point's tie to the EVEN node (``round(x/dx)``) until
+#1342; the two lanes agree off ties, and agreement at ties is a strict xfail
+against #1342 so it turns into an XPASS when #1342 lands.
 
 What is pinned here:
 
 * on equal cells, every NU lookup (``index_of``, ``position_to_index``,
-  ``pos_to_nu_index``) returns the uniform lane's index bit for bit, float
-  quotient cases included -- lane A against lane B, both grids built by
-  ``Simulation`` from the same declaration;
-* on a graded axis, an exact tie goes to the even node, and every coordinate
-  that is not an exact tie keeps the node the ``argmin`` gave;
-* end to end, the scaled-down kernel-timing box with its source on a half
-  node gives the same probe trace on both lanes.
+  ``pos_to_nu_index``) lands on the node the sheet snap gives the same
+  coordinate, and off ties on the uniform lane's node;
+* on a graded axis, a tie goes to the lower node and every other coordinate
+  keeps its nearest node;
+* the other sites that resolve through the rule: waveguide aperture ends,
+  preflight's model of the placement, the traced run-time check.
 """
 from __future__ import annotations
 
@@ -30,11 +30,14 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
-from rfx.nonuniform import interior_cells, make_nonuniform_grid, position_to_index
+from rfx.geometry.rasterize_grid import _nearest_plane, coords_from_nonuniform_grid
+from rfx.nonuniform import make_nonuniform_grid, position_to_index
 from rfx.runners.nonuniform import pos_to_nu_index
 
 DX = 1e-3
 AXES = ("x", "y", "z")
+ISSUE_1342 = ("#1342: the uniform lane rounds a point feature's tie to the even "
+              "node; the non-uniform lane and every conductor round it down")
 
 # (cells per axis, boundary). 239 cells is the kernel-timing 13M y axis whose
 # half-domain source exposed the split; the CPML case puts a pad in front of
@@ -75,46 +78,77 @@ def _sweep(n_cells, extent):
     return xs[(xs >= 0.0) & (xs <= extent)]
 
 
+def _tie_lower(line, x, cell):
+    """The tie rule spelled here: the nearest node on ``line``, and the lower
+    of two whose distances agree to 1e-9 of the cell. Returns (node, tie)."""
+    dist = np.abs(np.asarray(line, dtype=np.float64) - float(x))
+    k = int(np.argmin(dist))
+    if k >= 1 and abs(dist[k - 1] - dist[k]) <= 1e-9 * cell:
+        return k - 1, True
+    return k, bool(k + 1 < dist.size and abs(dist[k + 1] - dist[k]) <= 1e-9 * cell)
+
+
+def _nu_nodes(nu, ax, axis, x):
+    pos = [0.0, 0.0, 0.0]
+    pos[ax] = float(x)
+    return (nu.index_of(axis, float(x)), position_to_index(nu, tuple(pos))[ax],
+            pos_to_nu_index(nu, tuple(pos))[ax])
+
+
 @pytest.mark.parametrize("case", sorted(LANE_CASES))
-def test_both_lanes_put_every_coordinate_on_the_same_node(case):
+def test_a_point_lands_on_the_node_a_sheet_at_the_same_coordinate_takes(case):
+    """Lane B's point lookups against lane B's sheet snap, on the node line
+    the rasterizer uses; and off ties, against the uniform lane."""
     cells, boundary = LANE_CASES[case]
     uniform, nu, domain = _both_lanes(cells, boundary)
-    upper_half_ties = 0
+    coords = coords_from_nonuniform_grid(nu)
+    counts = dict(off_tie=0, tie=0, tie_lower_odd=0)
     for ax, axis in enumerate(AXES):
+        line = np.asarray(getattr(coords, axis), dtype=np.float64)
         for x in _sweep(cells[ax], domain[ax]):
-            pos = [0.0, 0.0, 0.0]
-            pos[ax] = float(x)
-            want = uniform.index_of(axis, float(x))
-            assert uniform.position_to_index(tuple(pos))[ax] == want
-            got = (nu.index_of(axis, float(x)),
-                   position_to_index(nu, tuple(pos))[ax],
-                   pos_to_nu_index(nu, tuple(pos))[ax])
-            assert got == (want, want, want), (
-                f"{case}/{axis} x={float(x)!r}: uniform lane node {want}, "
-                f"NU lane (index_of, position_to_index, pos_to_nu_index) {got}")
-            pad = (uniform.pad_x_lo, uniform.pad_y_lo, uniform.pad_z_lo)[ax]
-            q = float(x) / DX
-            if q - np.floor(q) == 0.5 and want - pad == np.floor(q) + 1:
-                upper_half_ties += 1
-    # The split only shows where the uniform lane rounds an exact half UP (odd
-    # lower node); a sweep without such a coordinate would pass on main.
-    assert upper_half_ties > 0
+            got = _nu_nodes(nu, ax, axis, x)
+            sheet = _nearest_plane(line, float(x), DX, axis=ax)
+            assert got == (sheet, sheet, sheet), (case, axis, float(x), got, sheet)
+            want, tie = _tie_lower(line, x, DX)
+            assert got[0] == want, (case, axis, float(x), got[0], want)
+            if tie:
+                counts["tie"] += 1
+                pad = (nu.pad_x_lo, nu.pad_y_lo, nu.pad_z_lo)[ax]
+                counts["tie_lower_odd"] += (want - pad) % 2 == 1
+            else:
+                counts["off_tie"] += 1
+                assert uniform.index_of(axis, float(x)) == got[0], (
+                    case, axis, float(x))
+    print(f"{case}: {counts}", file=sys.stderr)
+    # The rule only shows where the lower node of a tie is odd.
+    assert counts["off_tie"] and counts["tie_lower_odd"]
 
 
-def test_float_quotient_cases_match_the_uniform_lane():
-    """The cases the float quotient decides, with the uniform lane's own
-    answers: ``0.1195 / 1e-3 = 119.49999999999999`` goes to 119, while the
-    kernel-timing source at ``0.5 * (239 * 1e-3)`` gives
-    ``119.50000000000001`` and goes to 120. An exact 9.5 goes to the even
-    node 10, where the NU lane used to answer 9."""
+@pytest.mark.xfail(strict=True, reason=ISSUE_1342)
+def test_at_a_tie_both_lanes_put_a_point_on_the_same_node():
+    for case in sorted(LANE_CASES):
+        cells, boundary = LANE_CASES[case]
+        uniform, nu, domain = _both_lanes(cells, boundary)
+        for ax, axis in enumerate(AXES):
+            for x in _sweep(cells[ax], domain[ax]):
+                assert _nu_nodes(nu, ax, axis, x)[0] == uniform.index_of(
+                    axis, float(x)), (case, axis, float(x))
+
+
+def test_float_quotient_cases():
+    """``0.1195 / 1e-3 = 119.49999999999999`` is a tie on the node line, and
+    both lanes put it on 119. The kernel-timing source at ``0.5 * (239 *
+    1e-3)`` and a feed at 9.5 mm go to the lower node (119, 9) on the NU
+    lane, where a sheet at the same coordinate lands; the uniform lane puts
+    them on 120 and 10 until #1342."""
     uniform, nu, domain = _both_lanes((239, 12, 10), "pec")
-    for x, node in ((0.1195, 119), (0.5 * domain[0], 120), (0.0095, 10),
+    line = np.asarray(coords_from_nonuniform_grid(nu).x, dtype=np.float64)
+    for x, node in ((0.1195, 119), (0.5 * domain[0], 119), (0.0095, 9),
                     (0.0105, 10)):
-        pos = (x, 0.0, 0.0)
-        assert uniform.position_to_index(pos)[0] == node, x
-        assert nu.index_of("x", x) == node, x
-        assert position_to_index(nu, pos)[0] == node, x
-        assert pos_to_nu_index(nu, pos)[0] == node, x
+        assert _nu_nodes(nu, 0, "x", x) == (node, node, node), x
+        assert _nearest_plane(line, x, DX, axis=0) == node, x
+    assert uniform.position_to_index((0.1195, 0.0, 0.0))[0] == 119
+    assert uniform.position_to_index((0.0105, 0.0, 0.0))[0] == 10
 
 
 def _kernel_timing_graded(n_cells, t=4):
@@ -140,38 +174,39 @@ GRADED = {
 
 
 @pytest.mark.parametrize("name", sorted(GRADED))
-def test_graded_axis_ties_go_to_the_even_node_and_nothing_else_moves(name):
+def test_graded_axis_ties_go_to_the_lower_node_and_nothing_else_moves(name):
+    """On the node line the rasterizer uses, a tie goes to the lower node and
+    every other coordinate to its nearest node (the ``argmin`` main's
+    ``index_of`` took). A coordinate one float step above a midpoint is a
+    tie; the argmin put it on the upper node."""
     grid = GRADED[name]()
+    coords = coords_from_nonuniform_grid(grid)
     ties = moved = 0
     for ax, axis in enumerate(AXES):
         if grid.is_constant(axis):
             continue
         pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[ax]
         pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[ax]
-        nodes = np.insert(
-            np.cumsum(interior_cells(grid.cells(axis), pad_lo, pad_hi)), 0, 0.0)
+        line = np.asarray(getattr(coords, axis), dtype=np.float64)
+        cells = np.asarray(grid.cells(axis), dtype=np.float64)
+        nodes = line[pad_lo:line.size - pad_hi]
         mids = 0.5 * (nodes[:-1] + nodes[1:])
         xs = np.concatenate([
             nodes, mids, np.nextafter(mids, np.inf), np.nextafter(mids, -np.inf),
             mids + 1e-12, mids - 1e-12, mids + 1e-9, mids - 1e-9,
             np.random.default_rng(ax).uniform(nodes[0], nodes[-1], 400)])
         for x in xs[(xs >= nodes[0]) & (xs <= nodes[-1])]:
-            dist = np.abs(nodes - x)
-            before = int(np.argmin(dist))  # the lookup this change replaces
-            tied = np.flatnonzero(dist == dist[before])
-            want = before if tied.size == 1 else int(tied[tied % 2 == 0][0])
-            ties += tied.size > 1
+            k = int(np.clip(np.searchsorted(line, x, side="right") - 1,
+                            0, cells.size - 1))
+            want, tie = _tie_lower(line, x, cells[k])
+            before = int(np.argmin(np.abs(line - x)))
+            ties += tie
             moved += want != before
-            pos = [0.0, 0.0, 0.0]
-            pos[ax] = float(x)
-            got = grid.index_of(axis, float(x))
-            assert got == want + pad_lo, (
+            assert not (want != before and not tie), (name, axis, float(x))
+            got = _nu_nodes(grid, ax, axis, x)
+            assert got == (want, want, want), (
                 f"{name}/{axis} x={float(x)!r}: expected node {want} "
-                f"(argmin {before}, tied {tied.tolist()}), got {got - pad_lo}")
-            assert position_to_index(grid, tuple(pos))[ax] == got
-            assert pos_to_nu_index(grid, tuple(pos))[ax] == got
-    # Both kinds of tie occur: one the argmin already sent to the even node,
-    # and one it sent to the odd node, which is the one that moves.
+                f"(argmin {before}, tie {tie}), got {got}")
     assert ties > moved > 0
 
 
@@ -207,34 +242,49 @@ def _kernel_timing_box(nonuniform, cells=(20, 19, 17), steps=400):
 def _lane_gap(cells):
     a, grid_a, src = _kernel_timing_box(nonuniform=False, cells=cells)
     b, grid_b, _ = _kernel_timing_box(nonuniform=True, cells=cells)
-    assert pos_to_nu_index(grid_b, src) == grid_a.position_to_index(src)
     peak = float(np.max(np.abs(a)))
     assert peak > 0.0
-    return src, grid_a.position_to_index(src), float(np.max(np.abs(a - b))) / peak
+    gap = float(np.max(np.abs(a - b))) / peak
+    print(f"cells {cells}: source nodes uniform {grid_a.position_to_index(src)} "
+          f"NU {pos_to_nu_index(grid_b, src)}, trace gap / peak {gap:.3e}",
+          file=sys.stderr)
+    return src, grid_a.position_to_index(src), pos_to_nu_index(grid_b, src), gap
 
 
-def test_half_node_source_gives_the_same_trace_on_both_lanes():
-    """With 19 cells along y the source is on an exact half node that the
-    uniform lane rounds UP, the case the argmin rounded down; with 18 it is
-    on a node, the control. On main 057af7a7 the half-node box gave a trace
-    gap of 8.3e-2 of the peak, the one-cell feed shift, and the control
-    1.5e-5. The two kernels differ by float32 roundoff, so the half-node box
-    must come down to the control's level, not to zero."""
-    src, node, tie_gap = _lane_gap((20, 19, 17))
-    assert src[1] / DX == 9.5 and node[1] == 10
-    src, node, control_gap = _lane_gap((20, 18, 17))
-    assert src[1] / DX == 9.0 and node[1] == 9
-    print(f"trace gap / peak: half-node source {tie_gap:.3e}, "
-          f"node source {control_gap:.3e}", file=sys.stderr)
-    assert control_gap <= 3e-5
-    assert tie_gap <= 3e-5
+def test_a_source_on_a_node_gives_the_same_trace_on_both_lanes():
+    """Control: with 18 cells along y the source is on node 9 on both lanes
+    and the traces differ by the float32 difference between the kernels,
+    1.5e-5 of the peak."""
+    src, node_u, node_nu, gap = _lane_gap((20, 18, 17))
+    assert src[1] / DX == 9.0 and node_u == node_nu and node_nu[1] == 9
+    assert gap <= 3e-5
+
+
+def test_a_half_node_source_goes_to_the_lower_node_on_the_nu_lane():
+    """With 19 cells along y the source is at y = 9.5 mm, midway between
+    nodes 9 and 10. The NU lane puts it on 9, where a sheet at 9.5 mm lands;
+    the uniform lane on 10 (#1342)."""
+    uniform, nu, domain = _both_lanes((20, 19, 17), "pec")
+    src = (0.30 * domain[0], 0.50 * domain[1], 0.70 * domain[2])
+    assert src[1] / DX == 9.5
+    assert pos_to_nu_index(nu, src)[1] == 9
+    assert uniform.position_to_index(src)[1] == 10
+
+
+@pytest.mark.xfail(strict=True, reason=ISSUE_1342)
+def test_a_half_node_source_gives_the_same_trace_on_both_lanes():
+    """The kernel-timing box scaled down, with its source on the half node.
+    On main the gap was 8.3e-2 of the peak, the one-cell feed shift; it
+    comes down to the control's level when both lanes round a tie alike."""
+    _src, _nu, _u, gap = _lane_gap((20, 19, 17))
+    assert gap <= 3e-5
 
 
 # ---------------------------------------------------------------------------
 # The sites that resolve through the same rule besides the three lookups.
 # ---------------------------------------------------------------------------
 
-def _waveguide_cfg(lane, y_range, z_range, cells=(30, 23, 13)):
+def _waveguide_cfg(lane, y_range, z_range, cells=(30, 48, 13)):
     import jax.numpy as jnp
     domain = tuple(n * DX for n in cells)
     kw = dict(freq_max=20e9, domain=domain, dx=DX, boundary="cpml",
@@ -258,27 +308,41 @@ def _waveguide_cfg(lane, y_range, z_range, cells=(30, 23, 13)):
     return cfg, grid
 
 
-@pytest.mark.parametrize("y_range,z_range", [
-    ((2.5e-3, 12.5e-3), (1.5e-3, 6.5e-3)),    # every end on a half node
-    ((3.5e-3, 13.5e-3), (2.5e-3, 7.5e-3)),
-    ((2e-3, 12e-3), (1e-3, 6e-3)),            # control: every end on a node
+def _up(v):
+    return float(np.nextafter(v, np.inf))
+
+
+@pytest.mark.parametrize("y_range,z_range,y_on,z_on", [
+    # every end on a half node: the NU aperture takes the lower nodes
+    ((2.5e-3, 12.5e-3), (1.5e-3, 6.5e-3), (2e-3, 12e-3), (1e-3, 6e-3)),
+    # one float step above: still a tie, where an argmin takes the upper node
+    ((_up(3.5e-3), _up(13.5e-3)), (_up(2.5e-3), _up(7.5e-3)),
+     (3e-3, 13e-3), (2e-3, 7e-3)),
+    # above y = 33 mm main's float32 edge search put every half node on the
+    # UPPER node of a 1 mm axis (its cumulative sums drift past the tie)
+    ((35.5e-3, 45.5e-3), (1.5e-3, 6.5e-3), (35e-3, 45e-3), (1e-3, 6e-3)),
+    # control: every end on a node
+    ((2e-3, 12e-3), (1e-3, 6e-3), (2e-3, 12e-3), (1e-3, 6e-3)),
 ])
-def test_waveguide_aperture_ends_land_where_the_uniform_lane_puts_them(
-        y_range, z_range):
-    """A waveguide port's aperture ends are coordinates too. On main a
-    z_range of (1.5, 6.5) mm gave the NU aperture b = 5 mm against 4 mm on the
-    uniform lane. Compared on the interior index (the NU lane pads the
-    transverse faces, the uniform lane does not)."""
-    (cu, gu), (cn, gn) = (_waveguide_cfg(lane, y_range, z_range)
-                          for lane in ("uniform", "nu"))
-    for grid_u, grid_n, cfg_u, cfg_n in ((gu, gn, cu, cn),):
-        assert (cfg_u.u_lo - grid_u.pad_y_lo, cfg_u.u_hi - grid_u.pad_y_lo) == (
-            cfg_n.u_lo - grid_n.pad_y_lo, cfg_n.u_hi - grid_n.pad_y_lo)
-        assert (cfg_u.v_lo - grid_u.pad_z_lo, cfg_u.v_hi - grid_u.pad_z_lo) == (
-            cfg_n.v_lo - grid_n.pad_z_lo, cfg_n.v_hi - grid_n.pad_z_lo)
-    # The spans agree to the float32 store the NU lane still reads them from.
-    np.testing.assert_allclose(cn.a, cu.a, rtol=1e-6)
-    np.testing.assert_allclose(cn.b, cu.b, rtol=1e-6)
+def test_waveguide_aperture_ends_take_the_lower_node_at_a_tie(
+        y_range, z_range, y_on, z_on):
+    """A waveguide port's aperture ends are coordinates too: between two
+    sheet walls at the same half-node coordinates, the aperture must fill
+    the guide. The NU aperture declared on half nodes equals the uniform
+    lane's aperture declared on the lower nodes. Compared on the interior
+    index (the NU lane pads the transverse faces, the uniform lane does
+    not). On main a z_range of (1.5, 6.5) mm gave the NU aperture 5 mm
+    against the uniform lane's 4 mm; here both give 5 cells."""
+    cn, gn = _waveguide_cfg("nu", y_range, z_range)
+    cu, gu = _waveguide_cfg("uniform", y_on, z_on)
+    assert (cn.u_lo - gn.pad_y_lo, cn.u_hi - gn.pad_y_lo) == (
+        cu.u_lo - gu.pad_y_lo, cu.u_hi - gu.pad_y_lo)
+    assert (cn.v_lo - gn.pad_z_lo, cn.v_hi - gn.pad_z_lo) == (
+        cu.v_lo - gu.pad_z_lo, cu.v_hi - gu.pad_z_lo)
+    # The NU spans are still read from the float32 store, whose cumulative
+    # sums drift: 1.7e-6 relative on the aperture above y = 33 mm.
+    np.testing.assert_allclose(cn.a, cu.a, rtol=1e-5)
+    np.testing.assert_allclose(cn.b, cu.b, rtol=1e-5)
 
 
 PREFLIGHT_PROFILES = {
@@ -316,22 +380,27 @@ def test_preflight_puts_a_half_node_coordinate_on_the_grids_node(name):
     assert moved > 0
 
 
-def test_the_graded_node_report_reads_the_node_the_port_is_stamped_on():
-    """A port midway between node 3 (1 mm cells below) and node 4 (the step
-    to 0.5 mm cells) is stamped on node 4, the even one, so the report
-    names the step. Binary cell sizes make the midpoint an exact tie."""
+@pytest.mark.parametrize("step_above", [0.0, 1.0])
+def test_the_graded_node_report_reads_the_node_the_port_is_stamped_on(
+        step_above):
+    """Three 1 mm cells and then 0.5 mm cells (binary sizes, so the midpoint
+    is exact): node 3 is the step. A port midway between node 3 and node 4,
+    or one float step above that midpoint, is stamped on node 3, so the
+    report names the step. An argmin puts the second one on node 4, where
+    there is no step."""
     coarse, fine = 2.0 ** -10, 2.0 ** -11
-    dz = np.r_[np.full(4, coarse), np.full(8, fine)]
+    dz = np.r_[np.full(3, coarse), np.full(8, fine)]
     sim = Simulation(freq_max=10e9, domain=(8 * coarse, 8 * coarse, 0.0),
                      dx=coarse, dz_profile=dz, boundary="pec")
-    z = 3.5 * coarse
+    z = 3 * coarse + 0.5 * fine
+    if step_above:
+        z = float(np.nextafter(z, np.inf))
     grid = sim._build_nonuniform_grid()
-    k = position_to_index(grid, (0.0, 0.0, z))[2] - grid.pad_z_lo
-    assert k == 4
+    assert position_to_index(grid, (0.0, 0.0, z))[2] - grid.pad_z_lo == 3
     report = sim._graded_node_report(2, z)
     assert report is not None
     node_pos, d_below, d_above, _dual, ratio = report
-    assert (node_pos, d_below, d_above, ratio) == (4 * coarse, coarse, fine, 2.0)
+    assert (node_pos, d_below, d_above, ratio) == (3 * coarse, coarse, fine, 2.0)
 
 
 def _traced_half_nodes_refused(cell, n, profile=None):
@@ -343,8 +412,8 @@ def _traced_half_nodes_refused(cell, n, profile=None):
         profile = np.full(n, cell)
     profile = jnp.asarray(profile, dtype=jnp.float32)
     refused = 0
-    for k in range(n):
-        z = (k + 0.5) * cell
+    for z in [s for k in range(n) for s in ((k + 0.5) * cell,
+                                            k * cell + 0.5 * cell)]:
 
         def f(p, z=z):
             grid = make_nonuniform_grid((4 * cell, 4 * cell), p, cell,
@@ -361,14 +430,14 @@ def _traced_half_nodes_refused(cell, n, profile=None):
     return refused
 
 
-@pytest.mark.parametrize("cell,n", [(5e-4, 20), (0.254e-3, 30)])
+@pytest.mark.parametrize("cell,n", [(5e-4, 20), (0.3e-3, 24), (0.254e-3, 30)])
 def test_a_traced_axis_accepts_a_half_node_coordinate(cell, n):
     """On a traced profile equal to its nominal mesh, float32 cumulative
     sums put one of the two nodes of a half node a few ulp nearer, either
     one; the run-time check must not read that as the node having moved.
-    The PR review counted refusals at 4 of 40 and 51 of 60 lookups on main,
-    and at 19 of 40 and 30 of 60 on this PR's first head, on these columns
-    (two spellings of each half node)."""
+    The PR review counted refusals at 4 of 40, 28 of 48 and 51 of 60 lookups
+    on main, and at 19 of 40, 18 of 48 and 30 of 60 on this PR's first head,
+    on these columns (two spellings of each half node)."""
     assert _traced_half_nodes_refused(cell, n) == 0
 
 
@@ -378,4 +447,4 @@ def test_a_traced_axis_still_refuses_a_node_that_moved():
     cell, n = 5e-4, 20
     profile = np.r_[np.full(10, 1.3 * cell), np.full(10, cell)]
     profile[0] = cell       # the boundary cell stays the nominal one
-    assert _traced_half_nodes_refused(cell, n, profile) >= 8
+    assert _traced_half_nodes_refused(cell, n, profile) >= 16

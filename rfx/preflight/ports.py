@@ -793,21 +793,24 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
 def half_node_split_findings(sim, grid=None) -> list[str]:
     """Point features split from a conductor declared at the same coordinate.
 
-    A port, source or probe coordinate exactly midway between two nodes goes
-    to the EVEN node, on both lanes (``Grid.position_to_index``,
-    ``rfx._grid_metric.nearest_node_index``, #1295). A PolylineWire filament
-    vertex and a PEC sheet plane at a tie go to the LOWER node (#931;
-    ``wire_vertex_nodes``, ``_nearest_plane``). Where the lower node is odd,
-    a feed declared on a wire, or a port declared to end on a sheet, lands one
-    cell off the conductor it was drawn on: a gap-fed dipole whose port and
-    arms sit at y = 9.5 mm on 1 mm cells drives the Ez edge beside the gap
-    (gap field -23 dB). #1342 is the one-rule fix; until then this names it.
+    A PolylineWire filament vertex and a PEC sheet plane midway between two
+    nodes go to the LOWER node (#931; ``wire_vertex_nodes``,
+    ``_nearest_plane``). On the non-uniform lane a port, source or probe
+    there does too (``rfx._grid_metric.nearest_node_index``, #1295). The
+    uniform ``Grid`` still rounds a point feature's tie to the EVEN node
+    (``round(x/dx)``) until #1342, so where the lower node is odd a feed
+    declared on a wire, or a port declared to end on a sheet, lands one cell
+    off the conductor it was drawn on: a gap-fed dipole whose port and arms
+    sit at y = 9.5 mm on 1 mm cells drives the Ez edge beside the gap (gap
+    field -23 dB). On either lane, two coordinates a hair apart that
+    straddle a half node split the same way (a port end at float32(3.5 mm)
+    against a sheet at 3.5 mm).
 
     Compares, per axis, every port position (and a wire port's far end),
     source and probe with every sub-cell wire vertex and PEC sheet plane
-    declared at the same coordinate to float roundoff, and returns one
-    message per (feature, conductor, axis) that resolves to different nodes.
-    The pairing is on the DECLARED coordinates, so a model with no such pair
+    declared within 1e-6 of the local cell of it, and returns one message
+    per (feature, conductor, axis) that resolves to different nodes. The
+    pairing starts on the DECLARED coordinates, so a model with no such pair
     returns before any grid is built. ``grid`` is the grid the run builds
     (``sim._build_realized_grid()`` when omitted); its own point lookup and
     the conductor rules on its own node coordinates are compared, so a pair
@@ -819,10 +822,12 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     from rfx.geometry.rasterize_grid import _box_zero_axes
     from rfx.materials.thin_conductor import sheet_bounds
 
-    eps = float(np.finfo(np.float64).eps)
+    # Declared-coordinate prefilter, wider than the 1e-6-of-a-cell pairing
+    # applied once the grid (and so the local cell) is known.
+    scale = float(getattr(sim, "_dx", None) or 0.0)
 
     def _same(p, c):
-        return abs(p - c) <= 8.0 * eps * max(abs(p), abs(c))
+        return abs(p - c) <= 1e-6 * max(abs(p), abs(c), scale)
 
     # (key, label, position) per point feature; a wire port's two ends
     # share its key.
@@ -877,6 +882,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
 
     from rfx.geometry.rasterize_grid import (
         GridCoords,
+        _local_cell,
         cell_sizes_from_nonuniform_grid,
         cell_sizes_from_uniform_grid,
         centres_from_nonuniform_grid,
@@ -967,6 +973,8 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
         for ckey, clabel, a, c, node in conductors:
             if a not in axes or not _same(pos[a], c):
                 continue
+            if abs(pos[a] - c) > 1e-6 * _local_cell(node_axes[a], sizes[a], c):
+                continue
             if int(idx[a]) == node or (pkey, ckey, a) in seen:
                 continue
             seen.add((pkey, ckey, a))
@@ -977,13 +985,13 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                 f"different ones: the point feature on {ax} node "
                 f"{int(idx[a])} ({_mm(node_axes[a][int(idx[a])])}), the "
                 f"conductor on node {node} ({_mm(node_axes[a][node])}). A "
-                "port, source or probe at a half node goes to the even node; "
-                "a wire vertex or a sheet plane goes to the lower one (#1342), "
-                "so the feature sits one cell off the conductor it was drawn "
-                "on and does not drive or sample it. Move both off the half "
-                "node (a quarter cell is enough), or, if they are meant to be "
-                "one cell apart, declare them one float step apart so each "
-                "names its node.")
+                "wire vertex or a sheet plane at a half node goes to the "
+                "lower node. On the uniform lane a port, source or probe "
+                "there goes to the even node until #1342; on either lane two "
+                "coordinates a float step apart that straddle the half node "
+                "split the same way. The feature sits one cell off the "
+                "conductor it was drawn on and does not drive or sample it. "
+                "Move both off the half node (a quarter cell is enough).")
     return findings
 
 

@@ -745,15 +745,17 @@ def test_a_constant_axis_takes_the_closed_form_not_a_running_sum(name, axis):
     )
 
 
-def _ties_to_even(cells, nodes, x):
-    """The #1295 node rule, spelled here rather than imported: the quotient
-    ``round(x / cell)`` when every cell is equal, else the nearest node and,
-    of two at exactly the same distance, the even one."""
-    if np.all(cells == cells[0]):
-        return int(round(float(x) / float(cells[0])))
+def _ties_lower(cells, nodes, x):
+    """The node rule (#1295, #1342), spelled here rather than imported: the
+    nearest node, and the lower of two whose distances agree to 1e-9 of the
+    cell ``x`` lies in (``cells`` are the interior cells between ``nodes``)."""
     dist = np.abs(nodes - x)
-    tied = np.flatnonzero(dist == dist.min())
-    return int(tied[0] if tied.size == 1 else tied[tied % 2 == 0][0])
+    k = int(np.argmin(dist))
+    j = int(np.clip(np.searchsorted(nodes, x, side="right") - 1,
+                    0, cells.size - 1))
+    if k >= 1 and abs(dist[k - 1] - dist[k]) <= 1e-9 * cells[j]:
+        k -= 1
+    return k
 
 
 def test_index_of_resolves_on_the_spine_not_on_the_float32_store():
@@ -788,8 +790,10 @@ def test_index_of_resolves_on_the_spine_not_on_the_float32_store():
                 np.cumsum(interior_cells(store, pad_lo, pad_hi)), 0, 0.0)
             for k in range(from_spine.size - 1):
                 midpoint = 0.5 * (from_spine[k] + from_spine[k + 1])
-                spine_says = _ties_to_even(spine, from_spine, midpoint)
-                store_says = _ties_to_even(store, from_store, midpoint)
+                spine_says = _ties_lower(
+                    interior_cells(spine, pad_lo, pad_hi), from_spine, midpoint)
+                store_says = _ties_lower(
+                    interior_cells(store, pad_lo, pad_hi), from_store, midpoint)
                 if spine_says == store_says:
                     continue
                 assert grid.index_of(axis, midpoint) == spine_says + pad_lo, (

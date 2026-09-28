@@ -639,10 +639,15 @@ def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
 
 def _profile_node_index(cells, nodes, coord_m: float) -> int:
     """The node index the grid gives ``coord_m`` on a declared profile:
-    ``nearest_node_index`` (the #1295 tie rule, closed form on a constant
-    profile), clamped to the profile's nodes as the grid lookup clamps."""
-    cell = float(cells[0]) if np.all(cells == cells[0]) else None
-    k = nearest_node_index(nodes, coord_m, cell=cell)
+    ``nearest_node_index`` (the one tie rule, a tie to the lower node,
+    #1295/#1342) on the node line the grid builds from the profile
+    (``node_positions_from_profile``: the closed form on a constant
+    profile). ``nodes`` is the caller's line of the same length, whose entry
+    at the answer the caller reads."""
+    from rfx.geometry.rasterize_grid import _local_cell
+    from rfx.nonuniform import node_positions_from_profile
+    line = np.asarray(node_positions_from_profile(cells), dtype=np.float64)
+    k = nearest_node_index(line, coord_m, _local_cell(line, cells, coord_m))
     return min(max(k, 0), len(nodes) - 1)
 
 

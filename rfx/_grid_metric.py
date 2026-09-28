@@ -203,40 +203,37 @@ def axis_name(axis) -> str:
     return AXES[normalize_axis(axis)]
 
 
-def nearest_node_index(nodes, x: float, *, cell: float | None = None) -> int:
-    """Index of the node nearest ``x`` -- the one tie rule (#1295).
+#: Two node distances within this fraction of the local cell are a TIE. The
+#: sheet snap (``rfx.geometry.rasterize_grid._nearest_plane``) and the point
+#: lookups read the same constant through :func:`nearest_node_index`. Equal to
+#: ``rasterize_grid._REL_TOL``, its "on the lattice" tolerance.
+NODE_TIE_REL = 1e-9
 
-    ``nodes`` is an ascending node line whose first node is at 0 (the
-    interior edge list; add ``pad_lo`` for the padded index).
 
-    The rule: the NEAREST node; at an exact tie between two nodes, the one
-    with the EVEN index. That is round-half-to-even on the node index, the
-    rule ``rfx.grid.Grid`` applies through ``round(x/dx)``, so on equal cells
-    both lanes put a coordinate on the same node.
+def nearest_node_index(nodes, x: float, d_local: float) -> int:
+    """Index of the node nearest ``x`` -- the one tie rule (#1295, #1342).
 
-    * Constant axis (``cell`` given): the closed form ``round(x / cell)``,
-      the same float operations as ``Grid.index_of``, so the answer equals
-      the uniform lane's bit for bit, float cases included:
-      ``0.1195 / 1e-3 == 119.49999999999999`` gives 119 there and here. An
-      edge search is not used: its cumulative sums round differently from
-      the quotient. Not clamped, and ``nodes`` is not read.
-    * Graded axis: the nearest node by float64 distance. Where the two
-      nearest distances are exactly equal the even index is taken; the plain
-      ``argmin`` this replaces took the first, lower one. Every coordinate
-      whose two nearest distances differ keeps the ``argmin`` answer. Always
-      a valid index: a coordinate outside the line gets the end node.
+    ``nodes`` is an ascending node line (any origin); the answer indexes it.
+    ``d_local`` is the cell ``x`` lies in (``rasterize_grid._local_cell``).
 
-    On equal cells the two branches are one rule, nearest node with ties to
-    even; they differ only in where float roundoff puts a coordinate that is
-    within roundoff of a midpoint.
+    The rule: the NEAREST node by float64 distance; when the two nearest
+    distances agree to ``NODE_TIE_REL`` of the local cell, the LOWER node. It
+    is the sheet snap's rule (#931, ``_nearest_plane`` calls this function),
+    so a port, source or probe and a sheet declared at the same coordinate
+    land on the same node bit for bit, on a constant axis and a graded one.
+    A PolylineWire vertex (``wire_vertex_nodes``) takes ``argmin``, which is
+    the same node at an exact tie and differs only inside the 1e-9-cell band
+    around one. Always a valid index: a coordinate outside the line gets the
+    end node.
+
+    The uniform grid's point lookup rounds an exact tie to the EVEN node
+    (``round(x/dx)``) until #1342 moves it onto this rule.
     """
-    if cell is not None:
-        return int(round(float(x) / float(cell)))
     line = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(line - float(x))
     k = int(np.argmin(dist))
-    if k % 2 == 1 and k + 1 < dist.size and dist[k + 1] == dist[k]:
-        k += 1
+    if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= NODE_TIE_REL * float(d_local):
+        k -= 1
     return k
 
 

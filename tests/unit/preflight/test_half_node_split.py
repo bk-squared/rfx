@@ -1,20 +1,19 @@
-"""A port declared on a wire or sheet at a half node lands one cell off it (#1295, #1342).
+"""A port declared on a wire or sheet at a half node, and where it lands (#1295, #1342).
 
-A coordinate exactly midway between two nodes is equally near both. A port,
-source or probe there goes to the EVEN node, on both lanes (``round(x/dx)`` on
-the uniform grid, ``nearest_node_index`` on the non-uniform one, #1295). A
-PolylineWire filament vertex or a PEC sheet plane there goes to the LOWER
-node (#931). Where the lower node is odd the two land one cell apart. On
-1 mm cells, a gap-fed dipole whose arms and feed port are all declared at
-y = 9.5 mm has its arms on node 9 and its port on node 10: the port drives the
-Ez edge beside the gap, and the gap field drops 23 dB (review of PR #1341). A
-wire port from the ground up to a patch sheet at z = 3.5 mm drives one Ez edge
-above the patch.
-
-Until #1342 gives every feature one tie rule, such a model is refused with
-the reason, by preflight (error ``half_node_split``) and at run time, where
-``skip_preflight=True`` does not bypass it. The same models declared on a node
-run.
+A coordinate exactly midway between two nodes is equally near both. A
+PolylineWire filament vertex or a PEC sheet plane there goes to the LOWER node
+(#931), and on the non-uniform lane so does a port, source or probe (#1295):
+the model below lands its feed on its conductor there, as it did on main. The
+uniform lane still puts a point feature's tie on the EVEN node (``round(x/dx)``)
+until #1342, so where the lower node is odd the feed lands one cell off the
+conductor it was drawn on. On 1 mm cells, a gap-fed dipole whose arms and
+feed port are all declared at y = 9.5 mm has its arms on node 9 and its port
+on node 10: the port drives the Ez edge beside the gap, and the gap field
+drops 23 dB (review of PR #1341). Such a model is refused with the reason,
+by preflight (error ``half_node_split``) and at run time, where
+``skip_preflight=True`` does not bypass it. On either lane, a port end at
+float32(3.5 mm) against a sheet at 3.5 mm straddles the half node and is
+refused the same way.
 """
 from __future__ import annotations
 
@@ -87,20 +86,63 @@ def _split_findings(sim):
     return [i for i in report if getattr(i, "code", None) == "half_node_split"]
 
 
-@pytest.mark.parametrize("lane", ["uniform", "nu"])
-@pytest.mark.parametrize("case", sorted(HALF))
-def test_a_feature_one_cell_off_its_conductor_is_refused(case, lane):
-    sim = HALF[case](lane)
+def _run(sim, **kw):
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return sim.run(n_steps=2, **kw)
+
+
+def _refused(sim):
     found = _split_findings(sim)
     assert found and all(i.severity == "error" for i in found)
     text = str(found[0])
-    assert "#1342" in text and "even node" in text and "lower one" in text
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        with pytest.raises(ValueError, match="half_node_split|#1342"):
-            sim.run(n_steps=2)
-        with pytest.raises(ValueError, match="#1342"):
-            sim.run(n_steps=2, skip_preflight=True)
+    assert "#1342" in text and "lower node" in text
+    with pytest.raises(ValueError, match="half_node_split|#1342"):
+        _run(sim)
+    with pytest.raises(ValueError, match="#1342"):
+        _run(sim, skip_preflight=True)
+
+
+def _nodes(sim, lane):
+    """(point feature node, conductor node) along the axis the case is
+    about, read off what the run assembles."""
+    from rfx.nonuniform import position_to_index
+    grid = sim._build_nonuniform_grid() if lane == "nu" else sim._build_grid()
+    sheets, wires = [], []
+    assemble = (sim._assemble_materials_nu if lane == "nu"
+                else sim._assemble_materials)
+    assemble(grid, sheet_specs=[], pec_sheets=sheets, pec_wires=wires)
+
+    def lookup(pos):
+        return (position_to_index(grid, pos) if lane == "nu"
+                else grid.position_to_index(pos))
+    if wires:                               # dipole: y column of the arms
+        arms = {int(j) for w in wires
+                for j in np.nonzero(np.asarray(w.edges[2]))[1]}
+        return lookup(sim._ports[0].position)[1], arms
+    plane = {int(s.plane) for s in sheets}
+    if sim._probes:
+        return lookup(sim._probes[0].position)[2], plane
+    pe = sim._ports[0]
+    top = (pe.position[0], pe.position[1], pe.position[2] + pe.extent)
+    return lookup(top)[2], plane
+
+
+@pytest.mark.parametrize("case", sorted(HALF))
+def test_on_the_nu_lane_a_feature_at_a_half_node_lands_on_its_conductor(case):
+    sim = HALF[case]("nu")
+    point, conductor = _nodes(sim, "nu")
+    assert conductor == {point}
+    assert _split_findings(sim) == []
+    assert np.all(np.isfinite(np.asarray(_run(sim, skip_preflight=True).time_series)))
+
+
+@pytest.mark.parametrize("case", sorted(HALF))
+def test_on_the_uniform_lane_a_feature_one_cell_off_its_conductor_is_refused(case):
+    sim = HALF[case]("uniform")
+    point, conductor = _nodes(sim, "uniform")
+    assert conductor == {point - 1}          # even node against lower node
+    _refused(sim)
 
 
 @pytest.mark.parametrize("lane", ["uniform", "nu"])
@@ -108,14 +150,25 @@ def test_a_feature_one_cell_off_its_conductor_is_refused(case, lane):
 def test_the_same_model_on_a_node_runs(case, lane):
     sim = ON_NODE[case](lane)
     assert _split_findings(sim) == []
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        result = sim.run(n_steps=2, skip_preflight=True)
-    assert np.all(np.isfinite(np.asarray(result.time_series)))
+    assert np.all(np.isfinite(np.asarray(_run(sim, skip_preflight=True).time_series)))
+
+
+@pytest.mark.parametrize("lane", ["uniform", "nu"])
+def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_is_refused(lane):
+    """The port's far end is float32(3.5 mm) = 3.5 mm + 1.08e-10 m, 1e-7 of a
+    cell above the sheet at 3.5 mm: nearest node 4 against the sheet's 3."""
+    h32 = float(np.float32(3.5e-3))
+    assert 0 < h32 - 3.5e-3 < 1e-6 * DX
+    sim = _sim(lane)
+    sim.add(Box((5e-3, 5e-3, 3.5e-3), (15e-3, 14e-3, 3.5e-3)), material="pec")
+    sim.add_port((10e-3, 9e-3, 0.0), component="ez", extent=h32)
+    point, conductor = _nodes(sim, lane)
+    assert (point, conductor) == (4, {3})
+    _refused(sim)
 
 
 def test_the_message_names_both_features_and_both_nodes():
-    text = str(_split_findings(_dipole("nu", 9.5e-3))[0])
+    text = str(_split_findings(_dipole("uniform", 9.5e-3))[0])
     assert "add_port at (0.01, 0.0095, 0.008)" in text
     assert "PolylineWire 'pec'" in text
     assert "y = 9.5 mm" in text

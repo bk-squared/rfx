@@ -367,9 +367,10 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
             f"[{x[0]:.6g}, {x[-1]:.6g}] m, so it would be silently clamped "
             "onto an end plane. Move the declaration inside the domain or "
             "enlarge the domain.")
-    if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= _REL_TOL * d_local:
-        k = k - 1                  # exact half-cell tie resolves LOWER
-    return k
+    # An exact half-cell tie resolves LOWER. The one tie rule, shared with
+    # every point lookup (#1295, #1342).
+    from rfx._grid_metric import nearest_node_index
+    return nearest_node_index(x, pos, d_local)
 
 
 def _box_axis_volume(centres, lo: float, hi: float):
@@ -679,9 +680,11 @@ def wire_vertex_nodes(points, node_axes, cell_sizes):
     """Node of each PolylineWire vertex, and the smallest cell at them.
 
     Each coordinate goes to the nearest node, an exact tie to the FIRST
-    (lower) one (``argmin``, §1.4). Point features round a tie to the even
-    node instead (#1295); the preflight's half-node check reads this
-    function so it compares against the node the wire really takes (#1342).
+    (lower) one (``argmin``, §1.4). Point features and sheets take the lower
+    node too, and also treat distances that agree to 1e-9 of the cell as a
+    tie (``nearest_node_index``); the two differ only inside that band. The
+    preflight's half-node check reads this function so it compares against
+    the node the wire really takes (#1342).
     """
     nodes = []
     d_min = None
