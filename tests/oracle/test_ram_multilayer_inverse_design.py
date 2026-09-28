@@ -58,6 +58,8 @@ row becomes a re-measure.
 """
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -396,7 +398,7 @@ def test_ram_lossy_layer_matches_tmm_at_realized_thickness(ram_run):
     print(f"[RAM] realized layer {ram_run['xb'] - ram_run['xi']} cells = {d * 1e3:.3f} mm "
           f"(drawn {LAYER_D * 1e3:.2f} mm); max |dB| vs TMM(realized) over {v['n_live']} bins "
           f"= {v['max_db']:.3f} dB; null {v['null_fd'] / 1e9:.4f} GHz vs TMM "
-          f"{v['null_tmm'] / 1e9:.4f} GHz ({100 * v['null_err']:+.3f} %)")
+          f"{v['null_tmm'] / 1e9:.4f} GHz ({100 * v['null_err']:+.3f} %)", file=sys.stderr)
     assert v["max_db"] <= MAG_BAR_DB, (
         f"|Gamma| is {v['max_db']:.2f} dB from the TMM of the realized {d * 1e3:.3f} mm layer "
         f"(bar {MAG_BAR_DB} dB)")

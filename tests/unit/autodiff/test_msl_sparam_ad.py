@@ -640,10 +640,15 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     Jensen 1980 Z0 = 47.67 ohm; Kirschning-Jansen eps_eff = 2.8787 at 2.5 GHz) on this
     drawing at dx = 50 / 33.3 / 25 um, with Z_s and eps_eff inverted from the 2x2 S of
     the 4 mm line between the reference planes: eps_eff moved from -2.41 / -1.78 / -1.39 %
-    (tree before #1213) to +0.74 / +0.58 / +0.48 % (current tree, converging to +0.02 %),
-    and the electrical length from -1.25 % to +0.35 % at dx = 50 um. Z_s converges to
-    47.74 ohm on both trees. The difference between the two trees' S shrinks from 0.0114
-    to 0.0084 to 0.0067 on that ladder. Records: bk-squared/rfx-archive
+    (tree before #1213) to +0.74 / +0.58 / +0.48 % (current tree), and the electrical
+    length from -1.25 % to +0.35 % at dx = 50 um; both moved toward Kirschning-Jansen. At
+    the same lock mesh the line impedance moved away from its limit, Z_s 46.83 -> 46.13
+    ohm, and |S11|max rose from -37.2 to -32.4 dB. The limits (eps_eff +0.02 % from
+    Kirschning-Jansen on the current tree; Z_s 47.74 ohm on both trees) come from
+    three-point fits with a free order, which pass through all three rungs by
+    construction (zero residual) and so carry no check of their own. The difference
+    between the two trees' S shrinks from 0.0114 to 0.0084 to 0.0067 on that ladder.
+    Records: bk-squared/rfx-archive
     rfx/records/20260927-1292-locked-results/ (R4).
 
     Captured with scripts/capture_msl_e2e_golden.py --write-golden on VESSL CPU (run

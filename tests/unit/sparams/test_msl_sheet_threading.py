@@ -406,7 +406,13 @@ def test_o3_loss_ladder_strictly_decreasing():
     converges to about 1.1e-4 on the trees before and after #1213 (1.172e-4 and
     1.120e-4 at h/9; 2.322e-4 and 1.733e-4 at h/3), so the old bar was about twice the
     converged physics. The absorbed power peaks at 2-3 ohm/sq, so "more Rs, more loss"
-    is not a law across 1 -> 5 and a step size is not the invariant. Records:
+    is not a law across 1 -> 5 and a step size is not the invariant.
+
+    The sign holds here because this fixture's loss peak lies above sqrt(1 x 5) = 2.24
+    ohm/sq (a parabola in ln Rs0 through 1, 2, 3 and 5 ohm/sq puts it at 2.4 ohm/sq), so
+    the 5 ohm/sq sheet absorbs more of the in-band power than the 1 ohm/sq one (0.0065
+    against 0.0058 on the current tree). That is a property of this fixture, not a law;
+    the values themselves are held by test_o3_mean_s21_drift_lock. Records:
     bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R5).
     """
     ladder = ["rs_tiny", "rs1", "rs5"]
