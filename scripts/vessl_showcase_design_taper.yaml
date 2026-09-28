@@ -1,0 +1,86 @@
+name: rfx-showcase-design-taper
+description: "Issue 1359. The WR-90 dielectric-taper design loop of validation/tmtt_paper/waveguide_dielectric_taper.py (SMOKE=0, imported by path) at dx = a/36 = 0.635 mm: 30 sections, Adam lr 0.2 for 120 steps, every iterate recorded (section eps_r, S11 on 21 bins over 8.2-12.4 GHz, dJ/d eps_r, J). Klopfenstein baseline from the closed-form cascade, AD vs central differences on three sections (float64 repeat if the round-off rule fires), 1.5x record-length witness (a failed witness stops the case, exit 3), then the stored final design re-solved without the optimiser at a/36, a/72 and with the module's absorber and record. RFX_DESIGN_MODE=timing runs 2 iterations and a projection only. Rules: docs/design_notes/20260928_design_films_predeclaration.md. Code is a shared clone of the pinned commit. Outputs: research/rfx/.omx/showcase/design_taper/<UTC>-<sha>-<mode>/. Submit with scripts/vessl_submit.sh (it writes run_id.txt)."
+tags: [rfx, showcase, issue-1359, autodiff]
+resources:
+  cluster: remilab-c0
+  preset: gpu-8gb
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHOWCASE_REF: "f3c92cad5547c4325ee1ce618e36a0068d9d725c"
+  RFX_SHOWCASE_PRESET: "gpu-8gb"
+  RFX_DESIGN_MODE: "keyframes"
+  RFX_DESIGN_RECORD: "/root/workspace/byungkwan-workspace/research/rfx/.omx/showcase/design_taper/20260928T084708Z-7509337f-full"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh only: no arrays, no [[ ]], no pipefail, no heredocs.
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory "$primary"
+  git config --global --add safe.directory "$primary/.git"
+  test "$RFX_SHOWCASE_REF" != "FILL_BEFORE_SUBMIT"
+  git -C "$primary" fetch -q origin
+  sha=$(git -C "$primary" rev-parse "$RFX_SHOWCASE_REF^{commit}")
+  short=$(echo "$sha" | cut -c1-8)
+  src="/tmp/rfx-showcase-$short"
+  rm -rf "$src"
+  git clone -q --no-checkout --shared "$primary" "$src"
+  git config --global --add safe.directory "$src"
+  git -C "$src" checkout -q --detach "$sha"
+  test "$(git -C "$src" rev-parse HEAD)" = "$sha"
+  out="$primary/.omx/showcase/design_taper/$(date -u +%Y%m%dT%H%M%SZ)-$short-$RFX_DESIGN_MODE"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  trap 'st=$?; { echo "exit=$st"; echo "commit=$sha"; echo "mode=$RFX_DESIGN_MODE"; for f in "$out"/*.rc; do [ -f "$f" ] && echo "$(basename "$f")=$(cat "$f")"; done; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "optax==0.2.8"
+  python -m pip install -q "jax[cuda12]==0.6.2"
+  python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
+  export PYTHONPATH="$src"
+  cd "$src"
+  python -c "import jax, rfx, optax; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', rfx.__version__, rfx.__file__, '| optax', optax.__version__)" > "$out/probe.txt" 2>&1
+  cat "$out/probe.txt"
+  nvidia-smi > "$out/nvidia_smi.txt" 2>&1 || true
+  DT=scripts/showcase/design_taper.py
+  set +e
+  if [ "$RFX_DESIGN_MODE" = "keyframes" ]; then
+    # Amendment 3: extra solves of the stored designs of an existing record
+    test -f "$RFX_DESIGN_RECORD/iterations.npz"
+    echo "$RFX_DESIGN_RECORD" > "$out/record_dir.txt"
+    { timeout 14400 python "$DT" --stage keyframes --record "$RFX_DESIGN_RECORD" --out "$out" 2>&1; echo "$?" > "$out/keyframes.rc"; } | tee "$out/keyframes.log"
+    rc=$(cat "$out/keyframes.rc")
+  elif [ "$RFX_DESIGN_MODE" = "timing" ]; then
+    { timeout 7200 python "$DT" --stage timing --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/timing.rc"; } | tee "$out/timing.log"
+    rc=$(cat "$out/timing.rc")
+  else
+    { timeout 36000 python "$DT" --stage main --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/main.rc"; } | tee "$out/main.log"
+    rc=$(cat "$out/main.rc")
+    if [ "$rc" = "0" ] && [ -f "$out/x64_needed.json" ]; then
+      { JAX_ENABLE_X64=1 timeout 14400 python "$DT" --stage x64fd --out "$out" 2>&1; echo "$?" > "$out/x64fd.rc"; } | tee "$out/x64fd.log"
+      rc=$(cat "$out/x64fd.rc")
+    fi
+    if [ "$rc" = "0" ]; then
+      { timeout 14400 python "$DT" --stage resolve --out "$out" 2>&1; echo "$?" > "$out/resolve.rc"; } | tee "$out/resolve.log"
+      rc=$(cat "$out/resolve.rc")
+    fi
+    if [ "$rc" = "0" ]; then
+      # recorded for visualization, not judged (Amendment 3)
+      { timeout 14400 python "$DT" --stage keyframes --out "$out" 2>&1; echo "$?" > "$out/keyframes.rc"; } | tee "$out/keyframes.log"
+      rc=$(cat "$out/keyframes.rc")
+    fi
+    if [ "$rc" = "0" ] || [ "$rc" = "3" ] || [ "$rc" = "4" ]; then
+      # rc 3: the record-length witness failed; rc 4: the module-path comparison failed.
+      # The case stops and the record is written.
+      { timeout 600 python "$DT" --stage finalize --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/finalize.rc"; } | tee "$out/finalize.log"
+      frc=$(cat "$out/finalize.rc")
+      [ "$frc" = "0" ] || rc="$frc"
+    fi
+  fi
+  set -e
+  echo "artifacts: $out"
+  exit "$rc"

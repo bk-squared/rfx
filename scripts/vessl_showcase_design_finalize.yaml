@@ -1,0 +1,63 @@
+name: rfx-showcase-design-finalize
+description: "Issue 1359. Writes result.json into a finished design-film record (RFX_DESIGN_RECORD) with scripts/showcase/design_$RFX_DESIGN_CASE.py --stage finalize; for the beam it also brings in the judged module-path comparison from RFX_EQUIV_RECORD. Bookkeeping only: no solve. CPU."
+tags: [rfx, showcase, issue-1359, autodiff]
+resources:
+  cluster: remilab-c0
+  cpu: 2
+  memory: 8Gi
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHOWCASE_REF: "6a78e2c99d6c3ef9ad4591d22ef0fbaa914de02f"
+  RFX_SHOWCASE_PRESET: "cpu 2 / 8Gi (custom resources, no preset)"
+  RFX_DESIGN_CASE: "beam"
+  RFX_DESIGN_RECORD: "/root/workspace/byungkwan-workspace/research/rfx/.omx/showcase/design_beam/20260928T102911Z-6a78e2c9-full"
+  RFX_EQUIV_RECORD: "/root/workspace/byungkwan-workspace/research/rfx/.omx/showcase/design_beam/20260928T111745Z-d2217d9e-equivalence"
+  JAX_PLATFORMS: "cpu"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh only: no arrays, no [[ ]], no pipefail, no heredocs.
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory "$primary"
+  git config --global --add safe.directory "$primary/.git"
+  test "$RFX_SHOWCASE_REF" != "FILL_BEFORE_SUBMIT"
+  git -C "$primary" fetch -q origin
+  sha=$(git -C "$primary" rev-parse "$RFX_SHOWCASE_REF^{commit}")
+  short=$(echo "$sha" | cut -c1-8)
+  src="/tmp/rfx-showcase-$short"
+  rm -rf "$src"
+  git clone -q --no-checkout --shared "$primary" "$src"
+  git config --global --add safe.directory "$src"
+  git -C "$src" checkout -q --detach "$sha"
+  test "$(git -C "$src" rev-parse HEAD)" = "$sha"
+  out="$primary/.omx/showcase/design_$RFX_DESIGN_CASE/$(date -u +%Y%m%dT%H%M%SZ)-$short-finalize"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  trap 'st=$?; { echo "exit=$st"; echo "commit=$sha"; echo "mode=finalize $RFX_DESIGN_CASE"; for f in "$out"/*.rc; do [ -f "$f" ] && echo "$(basename "$f")=$(cat "$f")"; done; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
+  python -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  python -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "optax==0.2.8"
+  python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
+  export PYTHONPATH="$src"
+  cd "$src"
+  python -c "import jax, rfx, optax; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', rfx.__version__, rfx.__file__, '| optax', optax.__version__)" > "$out/probe.txt" 2>&1
+  cat "$out/probe.txt"
+  DT=scripts/showcase/design_$RFX_DESIGN_CASE.py
+  test -f "$RFX_DESIGN_RECORD/iterations.npz"
+  EQ=""
+  if [ "$RFX_EQUIV_RECORD" != "none" ]; then
+    test -f "$RFX_EQUIV_RECORD/pattern_equivalence.json"
+    EQ="--equivalence $RFX_EQUIV_RECORD"
+  fi
+  set +e
+  { timeout 1800 python "$DT" --stage finalize --out "$RFX_DESIGN_RECORD" --repo-dir "$src" $EQ 2>&1; echo "$?" > "$out/finalize.rc"; } | tee "$out/finalize.log"
+  rc=$(cat "$out/finalize.rc")
+  set -e
+  echo "record: $RFX_DESIGN_RECORD"
+  exit "$rc"

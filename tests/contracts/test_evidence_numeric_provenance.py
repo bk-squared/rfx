@@ -1054,6 +1054,10 @@ CLASSIFICATION: dict[str, str] = {
     # and thresholds before the runs, and the numbers they produced live in
     # rfx-archive (rfx/records/20260927-showcase-*/), named in the PR, not here.
     "docs/design_notes/20260927_showcase_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # The design-films pre-declaration (issue 1359). No `::` span: it declares
+    # checks, thresholds and settings before the runs; the numbers they produce
+    # live in rfx-archive (rfx/records/20260928-design-*/), named in the PR.
+    "docs/design_notes/20260928_design_films_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,
