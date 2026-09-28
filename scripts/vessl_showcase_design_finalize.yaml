@@ -12,11 +12,11 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_SHOWCASE_REF: "f3c92cad5547c4325ee1ce618e36a0068d9d725c"
+  RFX_SHOWCASE_REF: "6a78e2c99d6c3ef9ad4591d22ef0fbaa914de02f"
   RFX_SHOWCASE_PRESET: "cpu 2 / 8Gi (custom resources, no preset)"
   RFX_DESIGN_CASE: "beam"
-  RFX_DESIGN_RECORD: "FILL"
-  RFX_EQUIV_RECORD: "none"
+  RFX_DESIGN_RECORD: "/root/workspace/byungkwan-workspace/research/rfx/.omx/showcase/design_beam/20260928T102911Z-6a78e2c9-full"
+  RFX_EQUIV_RECORD: "/root/workspace/byungkwan-workspace/research/rfx/.omx/showcase/design_beam/20260928T111745Z-d2217d9e-equivalence"
   JAX_PLATFORMS: "cpu"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
