@@ -308,6 +308,51 @@
       ],
       "runs_solve": true,
       "outputs": []
+    },
+    {
+      "path": "examples/visualization/field_movies.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": ["variant"], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "field-movies/{case}.npz",
+          "format": "npz",
+          "written_by": "numpy.savez_compressed",
+          "contains": "per variant, the recorded Ez slice frames with their sample positions and frame times from Result.snapshot_axes, and the probe record; --output sets the directory (default field-movies/ under the working directory)",
+          "units": {"positions": "metre", "times": "second", "Ez": "V/m"}
+        },
+        {
+          "path": "field-movies/{case}.json",
+          "format": "json",
+          "written_by": "json.dumps",
+          "contains": "the run metadata: case, variants, core source commit, environment, preflight, display normalization, artifact hashes",
+          "units": {"normalization_V_per_m": "V/m", "poster_time_s": "second"}
+        },
+        {
+          "path": "field-movies/{case}.csv",
+          "format": "csv",
+          "written_by": "numpy.savetxt",
+          "contains": "every variant's probe record at every recorded time step: columns {variant}_time_s, {variant}_probe_ez_V_per_m",
+          "units": {"{variant}_time_s": "second", "{variant}_probe_ez_V_per_m": "V/m"}
+        },
+        {
+          "path": "field-movies/{case}.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "the poster frame of the case's Ez snapshots on a linear -1 to +1 scale of one shared normalization",
+          "units": {"colour": "Ez divided by the case's normalization_V_per_m"}
+        },
+        {
+          "path": "field-movies/{case}.mp4",
+          "format": "mp4",
+          "written_by": "matplotlib.animation.FFMpegWriter",
+          "contains": "the Ez snapshots as a 15 frame-per-second movie with the poster's normalization",
+          "units": {"colour": "Ez divided by the case's normalization_V_per_m"}
+        }
+      ]
     }
   ]
 }
