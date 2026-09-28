@@ -11,9 +11,9 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_SHOWCASE_REF: "8501a2ca9201ebd2f46f63365da122fd5c5fb7f4"
+  RFX_SHOWCASE_REF: "e511f417d8ba0b85265a8906f3334ab3f4f04484"
   RFX_SHOWCASE_PRESET: "gpu-8gb"
-  RFX_DESIGN_MODE: "timing"
+  RFX_DESIGN_MODE: "full"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
