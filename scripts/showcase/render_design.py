@@ -10,10 +10,11 @@ the record directory.
     python scripts/showcase/render_design.py taper RECORD_DIR OUT_DIR
     python scripts/showcase/render_design.py beam  RECORD_DIR OUT_DIR
 
-Per case: ``<case>_site.mp4`` (1920 x 1080, gradient on a scale fixed from the
-first iterations), ``<case>_site_normscale.mp4`` (the same, gradient normalized
-per frame with its norm printed), ``<case>_social.mp4`` (1080 x 1350, fixed
-scale), ``<case>_poster.png`` (the site film's last frame) and
+Per case: ``<case>_site.mp4`` (1920 x 1080) and ``<case>_social.mp4``
+(1080 x 1350), the gradient normalized per frame with its maximum printed (the
+lane leader's choice for publication); ``<case>_site_fixedscale.mp4`` (the site
+film with the gradient on a scale fixed from the first iterations, archive
+only); ``<case>_poster.png`` (the site film's last frame) and
 ``<case>_contact.png`` (rows: iterations 0, ~25 %, ~50 % and the final design;
 columns: design, result, gradient on the fixed scale, gradient normalized).
 H.264, yuv420p, no audio.  ``render_manifest_<case>.json`` lists inputs and
@@ -231,8 +232,8 @@ class TaperResult:
             _titles(ax, "Result")
             h, lab = td.legend(short=True)
             ax.legend(h, lab, loc="lower right", bbox_to_anchor=(1.0, 1.0), ncol=3, frameon=False,
-                      fontsize=PT["legend"], handlelength=1.1, columnspacing=0.7,
-                      handletextpad=0.35, borderaxespad=0.1)
+                      fontsize=PT["legend"] - 1, handlelength=0.8, columnspacing=0.35,
+                      handletextpad=0.25, borderaxespad=0.1, borderpad=0.1)
 
     def update(self, k: int):
         self.line.set_ydata(_db20(self.td.s11[k]))
@@ -294,11 +295,14 @@ class TaperGradient:
 
 
 def _last_step_title(panel, kk: int, k: int):
-    """The final design has no gradient of its own: its frame shows the last one."""
+    """The final design has no gradient of its own: its frame shows the last one.
+    Without a subtitle line (the social film), the per-frame maximum goes in the title."""
     if panel.sub is not None:
         panel.sub.set_text(panel.sub_text if kk == k else f"last step, from iteration {kk}")
     else:
         panel.title.set_text("Gradient" if kk == k else f"Gradient, iteration {kk}")
+        if getattr(panel, "side_text", None) is not None:
+            panel.side_text.set_text(f"max |∂L/∂εr|\n= {panel.max_text}")
 
 
 # =================================================================== beam
@@ -403,7 +407,7 @@ class BeamDesign:
         cb.set_label("εr")
         _titles(ax, "Design", "cover εr, mean of its 3 layers" if fmt != "social" else None)
         if fmt == "social":           # beside the colour bar: the space under the map is taken
-            ax.annotate("bar: dipole\ndashed: plate\nbelow the cover", (1.68, 0.5),
+            ax.annotate("bar: dipole\ndashed: plate\nbelow the cover", (1.85, 0.5),
                         xycoords="axes fraction", fontsize=PT["note"], color=INK_2, ha="left",
                         va="center", annotation_clip=False)
         elif fmt == "site":           # the contact sheet says it once, in its header
@@ -474,8 +478,13 @@ class BeamGradient:
         _cover_axes(ax, bd)
         cb = fig.colorbar(self.im, cax=self.cax)
         cb.set_label(label)
+        self.side_text = None
         if mode != "fixed":
             cb.set_ticks([-1, 0, 1])
+            if fmt == "social":           # no subtitle line on the social film
+                self.side_text = ax.annotate("", (1.85, 0.5), xycoords="axes fraction",
+                                             fontsize=PT["note"], color=INK, ha="left", va="center",
+                                             annotation_clip=False)
         self.sub_text = "per cell, sum of the 3 layers"
         self.title, self.sub = _titles(ax, "Gradient", self.sub_text if fmt != "social" else None)
 
@@ -488,6 +497,7 @@ class BeamGradient:
             m = float(np.max(np.abs(g)))
             v = g / m
             self.sub_text = f"sum over 3 layers · max {_sci(m)}"
+            self.max_text = _sci(m)
         self.im.set_array(v.T.ravel())
         _last_step_title(self, kk, k)
 
@@ -664,9 +674,9 @@ def render(case: str, d: Path, out: Path) -> list[Path]:
     data = Data(d)
     out.mkdir(parents=True, exist_ok=True)
     made = []
-    for fmt, mode, name in (("site", "fixed", f"{case}_site.mp4"),
-                            ("site", "norm", f"{case}_site_normscale.mp4"),
-                            ("social", "fixed", f"{case}_social.mp4")):
+    for fmt, mode, name in (("site", "norm", f"{case}_site.mp4"),
+                            ("social", "norm", f"{case}_social.mp4"),
+                            ("site", "fixed", f"{case}_site_fixedscale.mp4")):
         film = Film(case, data, fmt, mode)
         made.append(film.save(out / name))
         if name == f"{case}_site.mp4":
