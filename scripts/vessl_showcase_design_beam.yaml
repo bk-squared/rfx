@@ -3,7 +3,7 @@ description: "Issue 1359. The beam-steering dielectric-cover design loop of vali
 tags: [rfx, showcase, issue-1359, autodiff]
 resources:
   cluster: remilab-c0
-  preset: gpu-a6000-1
+  preset: gpu-24gb
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
   PYTHONUNBUFFERED: "1"
@@ -12,7 +12,7 @@ env:
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
   RFX_SHOWCASE_REF: "6a78e2c99d6c3ef9ad4591d22ef0fbaa914de02f"
-  RFX_SHOWCASE_PRESET: "gpu-a6000-1"
+  RFX_SHOWCASE_PRESET: "gpu-24gb"
   RFX_DESIGN_MODE: "full"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
