@@ -1,0 +1,37 @@
+---
+title: "What does a gradient cost?"
+description: "Wall time and memory of the value and gradient against a forward run, for design regions of 12,400 to 43,008 cells on one GPU."
+sidebar:
+  order: 3
+---
+
+The patch model above has 1.98 million cells and runs 9,912 time steps. On one
+RTX A6000 a forward run takes about 17 s. The value and the gradient with
+respect to every cell of the design region take about 24 s, whether the region
+holds 12,400, 20,592 or 43,008 cells.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_site.png" loading="lazy" alt="Bar chart of wall time on an RTX A6000 for a forward run, the value and gradient, and central differences, for the patch footprint, the design box and the whole substrate layer" />
+</figure>
+
+| Box | Cells | Forward (s) | Value + gradient (s) | Peak memory (GB) | Central differences (derived, days) |
+|---|---:|---:|---:|---:|---:|
+| patch footprint | 12,400 | 17.06 | 23.97 | 4.74 | 4.9 |
+| design box | 20,592 | 16.74 | 23.68 | 7.63 | 8.0 |
+| whole substrate layer (incl. 19,436 vacuum cells) | 43,008 | 16.91 | 24.31 | 15.49 | 16.8 |
+
+## What grows instead
+
+Memory. The reverse pass keeps a per-step record for the cells of the design
+box, so peak device memory rises from 0.44–0.45 GB for a forward run to 4.7,
+7.6 and 15.5 GB. For larger regions, [Reduce Memory Use](/rfx/guide/memory-reduction/)
+explains checkpointing, which trades recomputation for memory.
+
+<p data-rfx="note">The central-difference column is not measured: it is 2 × N × the measured forward time.</p>
+
+## Downloads
+
+<ul data-rfx="downloads">
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json">result.json (patch-sensitivity)</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_social.png">gradient_cost_social.png</a></li>
+</ul>

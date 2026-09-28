@@ -11,7 +11,8 @@ Figures carry axis labels with units and no claim sentences.
 
 Per item: ``<item>_site.png`` (16:9, 1920 x 1080), ``<item>_social.png``
 (1080 x 1350) and, where the item has a sequence, ``<item>.mp4`` (silent,
-H.264, yuv420p).  ``render_manifest.json`` lists the inputs and outputs with
+H.264, yuv420p); the patch loop also gets ``patch_sensitivity_poster.png``, its
+final frame at the loop's size.  ``render_manifest.json`` lists the inputs and outputs with
 their sha256.
 """
 
@@ -139,7 +140,8 @@ def _patch_overlay(ax, pd: PatchData, blocks=True):
     ax.grid(False)
 
 
-def _gradient_axes(ax, pd: PatchData, data=None, colorbar=True, fig=None, orientation="vertical"):
+def _gradient_axes(ax, pd: PatchData, data=None, colorbar=True, fig=None, orientation="vertical",
+                   cax=None):
     data = pd.gmap if data is None else data
     k = int(np.floor(np.log10(pd.vmax)))
     scale = 10.0 ** k
@@ -147,10 +149,23 @@ def _gradient_axes(ax, pd: PatchData, data=None, colorbar=True, fig=None, orient
                        vmax=pd.vmax / scale, shading="flat", rasterized=True)
     _patch_overlay(ax, pd)
     if colorbar:
-        cb = (fig or ax.figure).colorbar(im, ax=ax, fraction=0.05, pad=0.04,
-                                         orientation=orientation, shrink=0.9)
+        cb = ((fig or ax.figure).colorbar(im, cax=cax) if cax is not None else
+              (fig or ax.figure).colorbar(im, ax=ax, fraction=0.05, pad=0.04,
+                                          orientation=orientation, shrink=0.9))
         cb.set_label(f"∂J/∂εr per cell, summed over z (×10$^{{{k}}}$)")
     return im
+
+
+def _square_map(pd: PatchData, data):
+    """The 1:1 loop frame (720 x 720 at MOVIE_DPI). The equal-aspect map beside its colour
+    bar is wider than this square at full height, and tight_layout then leaves the y label
+    outside the frame (x0 = -16 px), so the map and its colour bar are placed explicitly."""
+    fig = plt.figure(figsize=(7.2, 7.2))
+    ax = fig.add_axes((0.15, 0.09, 0.60, 0.82))
+    cax = fig.add_axes((0.80, 0.17, 0.035, 0.66))
+    im = _gradient_axes(ax, pd, data=data, fig=fig, cax=cax)
+    ax.set_title("J = |S11(f_t)|², gradient per substrate cell", fontsize=14)
+    return fig, im
 
 
 def _ez_axes(ax, pd: PatchData, fig, orientation="vertical"):
@@ -209,10 +224,7 @@ def render_patch(d: Path, out: Path) -> list[Path]:
     n_reveal, n_hold = 48, 24
     idx = np.unique(np.geomspace(1, order.size, n_reveal).astype(int)) - 1
     thresholds = order[idx]
-    fig, ax = plt.subplots(figsize=(7.2, 7.2))
-    im = _gradient_axes(ax, pd, data=np.zeros_like(pd.gmap), fig=fig)
-    ax.set_title("J = |S11(f_t)|², gradient per substrate cell", fontsize=14)
-    fig.tight_layout()
+    fig, im = _square_map(pd, np.zeros_like(pd.gmap))
     scale = 10.0 ** int(np.floor(np.log10(pd.vmax)))
 
     def update(k):
@@ -222,6 +234,11 @@ def render_patch(d: Path, out: Path) -> list[Path]:
         return (im,)
 
     made.append(_movie(fig, update, thresholds.size + n_hold, out / "patch_sensitivity.mp4", 15))
+    # the loop's poster: its final frame (the last threshold is the smallest |gradient|, so
+    # every cell is shown), the same size as the loop
+    last = thresholds[-1]
+    fig, _ = _square_map(pd, np.where(np.abs(pd.gmap) >= last, pd.gmap, 0.0))
+    made.append(_save(fig, out / "patch_sensitivity_poster.png", dict(dpi=MOVIE_DPI)))
 
     # the 4:5 loop: full map first (a readable first frame), the reveal, the full map again
     fps = 15

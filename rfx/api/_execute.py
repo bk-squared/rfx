@@ -3114,6 +3114,7 @@ class _ExecuteMixin:
             cpml_params, cpml_state_sharded = init_cpml_for_sharded_nu(
                 sharded_grid, n_devices, mesh=mesh,
                 pec_faces=getattr(self, "_pec_faces", None),
+                pmc_faces=self._boundary_spec.pmc_faces(),
             )
 
         probes: list[ProbeSpec] = []

@@ -75,11 +75,20 @@ def test_mode_estimator_reads_ringdown_after_the_driven_transient():
 
 
 @pytest.mark.slow_physics
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1281: foil-on-FR4 dominant mode 1.95691 vs 1.98448 GHz (-1.39 %) since #1213")
 def test_v173a_baseline_bit_identity():
-    """Historical node ID retained; now an aligned synthetic composition lock."""
+    """Historical node ID retained; now an aligned synthetic composition lock.
+
+    RE-PINNED 2026-09-27 (issue 1292) to the current tree. #1213 (an E component on a
+    material interface takes the mean eps and sigma of its four cells) moved the dominant
+    mode 1.984480 -> 1.956913 GHz (-1.39 %), and #1012 (CPML magnetic half-cell grading)
+    moved it a further -2.0 MHz, to 1.954878 GHz. On a dx ladder of this drawing (0.5,
+    0.25, 1/6, 0.125 mm; 3 to 12 cells across the laminate; 110 ns records settled 45 dB
+    or more) both trees approach 1.975-1.979 GHz. The current tree converges at first
+    order to 1.9751 GHz: at this lock's 0.5 mm (3 cells across the laminate) it reads
+    1.0 % below that limit, and 0.5 % below it at 0.25 mm. The lock's short record reads
+    the same frequency as the settled record to within 4.2 kHz at every rung. Records:
+    bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R2).
+    """
     baseline = json.loads(BASELINE_PATH.read_text())
     actual, _trace = v173a.run_capture()
     assert actual["fixture"] == baseline["fixture"]

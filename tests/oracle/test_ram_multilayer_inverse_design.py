@@ -58,6 +58,8 @@ row becomes a re-measure.
 """
 from __future__ import annotations
 
+import sys
+
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -81,6 +83,12 @@ X_BACK = X_IFACE + LAYER_D
 PEC_D = 0.002
 PLATEAU = (0.020, 0.036)
 BAND = np.linspace(6e9, 10e9, 21)
+# The absorption null is read on a finer grid than BAND: 25 MHz bins over 7-10 GHz
+# hold the null of every thickness the fixture can realize near dx = 0.5 mm.
+NULL_BAND = np.linspace(7.0e9, 10.0e9, 121)
+MAG_BAR_DB = 2.0     # v2 accuracy bar, magnitude
+NULL_BAR = 0.01      # v2 accuracy bar, frequency
+DEEP_NULL_DB = -20.0  # PI ruling 2026-09-21: bins at or below it are judged by the null's frequency
 
 
 # --------------------------------------------------------------------------- #
@@ -259,10 +267,16 @@ def ram_run():
             jnp.asarray(tot), jnp.asarray(inc), f0=float(f), dt=dt,
             probe_distances=dists, n_gate=ns)) for f in BAND])
 
+    def null_band_gamma(tot):
+        return np.array([complex(fresnel_reflection_coefficient(
+            jnp.asarray(tot), jnp.asarray(inc), f0=float(f), dt=dt,
+            probe_distances=dists, n_gate=ns)) for f in NULL_BAND])
+
     return {
         "sim": sim, "shape": shape, "xi": xi, "xb": xb, "xpec": xpec, "dists": dists,
         "dt": dt, "ns": ns, "d_raster": d_raster, "inc": inc,
         "g_lossless": band_gamma(tot_lossless), "g_lossy": band_gamma(tot_lossy),
+        "g_lossy_null": null_band_gamma(tot_lossy),
         "settle_lossy": _settle_db(tot_lossy, ns), "settle_barepec": _settle_db(tot_barepec, ns),
         "gamma_barepec": complex(fresnel_reflection_coefficient(
             jnp.asarray(tot_barepec), jnp.asarray(inc), f0=F0, dt=dt,
@@ -335,17 +349,80 @@ def test_ram_magnitude_vs_tmm(ram_run):
     assert np.max(err) < 0.11, f"max dist to TMM thickness-band = {np.max(err):.3f} (band-edge dispersion)"
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1284: fixed |Γ|<0.15 bar at 8 GHz vs a layer rasterized 0.19 mm thin; "
-           "the TMM-band check passes")
-def test_ram_absorption_dip_at_design_frequency(ram_run):
-    """dB-resolved absorption null at the design frequency (both curves), not 'both small'.
-    Split from test_ram_magnitude_vs_tmm so the #1284 quarantine covers this bar only."""
-    g_fd, g_nom, g_ras = _lossy_vs_tmm(ram_run)
-    i0 = int(np.argmin(np.abs(BAND - F0)))
-    assert g_fd[i0] < 0.15 and min(g_nom[i0], g_ras[i0]) < 0.20, \
-        f"absorption dip: FDTD {20*np.log10(g_fd[i0]):.1f} dB, TMM {20*np.log10(g_nom[i0]):.1f} dB"
+def _null_frequency(freqs, g):
+    """|g| minimum, refined by the parabola through the three bins around it."""
+    a = np.abs(np.asarray(g))
+    i = int(np.argmin(a))
+    assert 0 < i < len(a) - 1, (
+        f"the |Gamma| minimum sits on the edge of the search band ({freqs[i] / 1e9:.3f} GHz)")
+    y0, y1, y2 = a[i - 1], a[i], a[i + 1]
+    return float(freqs[i] + 0.5 * (y0 - y2) / (y0 - 2 * y1 + y2) * (freqs[1] - freqs[0]))
+
+
+def _realized_tmm_comparison(g_band, g_null_band, d_realized):
+    """|Gamma| of the lossy layer against the TMM of the thickness the grid realized.
+
+    Magnitude: largest dB distance over the BAND bins where that TMM is above the
+    deep-null level. Frequency: the null on NULL_BAND against the TMM's own null."""
+    t_band = np.abs(_tmm_reflection(BAND, [(4.0, 1.4, d_realized)]))
+    live = 20 * np.log10(t_band) > DEEP_NULL_DB
+    db = np.abs(20 * np.log10(np.abs(g_band)) - 20 * np.log10(t_band))
+    fine = np.linspace(NULL_BAND[0], NULL_BAND[-1], 3001)
+    f_tmm = _null_frequency(fine, _tmm_reflection(fine, [(4.0, 1.4, d_realized)]))
+    f_fd = _null_frequency(NULL_BAND, g_null_band)
+    return dict(max_db=float(db[live].max()), n_live=int(live.sum()),
+                null_fd=f_fd, null_tmm=f_tmm, null_err=f_fd / f_tmm - 1.0)
+
+
+def test_ram_lossy_layer_matches_tmm_at_realized_thickness(ram_run):
+    """The lossy layer against the TMM of the thickness the grid realized: within 2 dB
+    over the band (bins above -20 dB) and its absorption null within 1 %.
+
+    RE-DERIVED 2026-09-27 (issue 1292), replacing a fixed |Gamma(8 GHz)| < 0.15 bar.
+    The layer is drawn 4.69 mm and realized as 9 cells, 4.50 mm, at dx = 0.5 mm; the
+    realized thickness is read from the grid below and quoted. Before #1213 the Ez nodes
+    on the layer's front plane took the layer's permittivity, so the layer was solved
+    about half a cell thick: TMM best-fit thickness +0.56 dx, absorption null 5.6 / 2.8
+    / 1.6 % low at dx = 0.5 / 0.25 / 0.125 mm. Since #1213 those nodes take the mean of
+    their four cells. With #1213 alone (76f68f9f) the fixture (dx = 0.5 mm) fits +0.076
+    dx, reads 0.59 dB from the TMM and its null -0.19 %; with #1012 (f7b3270d) as well
+    the layer is solved at its realized thickness: best fit within 0.013 dx, null within
+    0.16 % on the same ladder. The fixture's |Gamma(8 GHz)| = 0.153
+    is the TMM of the realized 4.50 mm layer (0.155). The old 0.131 matched the drawn
+    4.69 mm (TMM 0.132) only because the half-cell error (+0.28 mm) offset the 0.19 mm
+    rasterization shortfall. Records: bk-squared/rfx-archive
+    rfx/records/20260927-1292-locked-results/ (R1).
+    """
+    d = ram_run["d_raster"]
+    v = _realized_tmm_comparison(ram_run["g_lossy"], ram_run["g_lossy_null"], d)
+    print(f"[RAM] realized layer {ram_run['xb'] - ram_run['xi']} cells = {d * 1e3:.3f} mm "
+          f"(drawn {LAYER_D * 1e3:.2f} mm); max |dB| vs TMM(realized) over {v['n_live']} bins "
+          f"= {v['max_db']:.3f} dB; null {v['null_fd'] / 1e9:.4f} GHz vs TMM "
+          f"{v['null_tmm'] / 1e9:.4f} GHz ({100 * v['null_err']:+.3f} %)", file=sys.stderr)
+    assert v["max_db"] <= MAG_BAR_DB, (
+        f"|Gamma| is {v['max_db']:.2f} dB from the TMM of the realized {d * 1e3:.3f} mm layer "
+        f"(bar {MAG_BAR_DB} dB)")
+    assert abs(v["null_err"]) <= NULL_BAR, (
+        f"absorption null {v['null_fd'] / 1e9:.4f} GHz is {100 * v['null_err']:+.2f} % from the "
+        f"TMM null of the realized {d * 1e3:.3f} mm layer, {v['null_tmm'] / 1e9:.4f} GHz (bar 1 %)")
+
+
+def test_realized_tmm_comparison_rejects_a_layer_half_a_cell_thick():
+    """The comparison above must be able to see the pre-#1213 layer. That layer read as
+    the TMM of the realized thickness plus 0.56 dx (measured best fit, issue 1292): fed
+    through the same helper it fails on the null, while the realized-thickness TMM
+    itself passes. No solve."""
+    grid = Grid(freq_max=16e9, domain=DOMAIN, dx=DX, cpml_layers=10)
+    xi = grid.position_to_index((X_IFACE, 0.010, 0.00075))[0]
+    xb = grid.position_to_index((X_BACK, 0.010, 0.00075))[0]
+    d = (xb - xi) * DX
+    exact = _realized_tmm_comparison(_tmm_reflection(BAND, [(4.0, 1.4, d)]),
+                                     _tmm_reflection(NULL_BAND, [(4.0, 1.4, d)]), d)
+    assert exact["max_db"] < 1e-9 and abs(exact["null_err"]) < 1e-3, exact
+    thick = d + 0.56 * DX
+    old = _realized_tmm_comparison(_tmm_reflection(BAND, [(4.0, 1.4, thick)]),
+                                   _tmm_reflection(NULL_BAND, [(4.0, 1.4, thick)]), d)
+    assert abs(old["null_err"]) > NULL_BAR, old
 
 
 # highmem (issue #545): the [sigma-1.0] case was the test killed in shard 3

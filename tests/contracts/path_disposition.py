@@ -705,8 +705,9 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces"),
         run_adi=ADI_PER_FACE,
-        run_distributed=carries("the absorber backing differs from one device "
-                                "(test_realized_boundary.py pec-zlo--distributed)", wrong="#1221"),
+        # #1235: the distributed absorber takes every face's profile from init_cpml, so the PEC wall
+        # carries no absorber backing (test_realized_boundary.py pec-zlo--distributed departures gone).
+        run_distributed=carries(),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=carries(),

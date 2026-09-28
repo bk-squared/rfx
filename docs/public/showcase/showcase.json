@@ -1,0 +1,189 @@
+{
+  "schema": "rfx-showcase-catalog/1",
+  "generator": "scripts/showcase/build_catalog.py",
+  "share": {
+    "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/",
+    "manifest_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/manifest.json",
+    "manifest_sha256": "34b284ec637a99f1a2c4350c4b51b223db426b0595e5a1eceb912070c0c46661",
+    "created": "2026-09-28",
+    "cite": "B. Kim, \"rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave Engineering,\" IEEE Trans. Microw. Theory Techn., 2026, doi:10.1109/TMTT.2026.3729863",
+    "supersedes": {
+      "batch": "16243f5edb1d",
+      "replaced": ["patch-sensitivity/patch_sensitivity.mp4"],
+      "added": ["patch-sensitivity/patch_sensitivity_poster.png"],
+      "note": "the 720x720 loop re-rendered from the same record so its y label is inside the frame, and its final frame as a poster; every other file is byte-identical to 16243f5edb1d",
+      "renderer": "scripts/showcase/render.py at f1f7487a6840caf24d6854f14469c053939b37a3 (bk-squared/rfx#1348)"
+    }
+  },
+  "cases": [
+    {
+      "id": "sensitivity-map",
+      "title": "Which cells move a patch antenna's match?",
+      "question": "One reverse pass through a 3-D FDTD solve gives the derivative of |S11|² with respect to the permittivity of each of 20,592 substrate cells of a probe-fed patch.",
+      "route": "/rfx/showcase/sensitivity-map/",
+      "markdown": "/rfx/markdown/showcase/sensitivity-map.md",
+      "rfx_commits": ["655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"],
+      "sources": [
+        {
+          "folder": "patch-sensitivity",
+          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/",
+          "rfx_commit": "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277",
+          "question": "Which substrate cells of a probe-fed RT/Duroid 5880 patch move |S11(f_t)|^2 at f_t = 1.01 f_r, from one reverse-mode pass, checked against central finite differences on pre-declared cell blocks; and what the gradient costs in time and device memory.",
+          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json",
+          "files": [
+            {"name": "baseline_h4.s1p", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/baseline_h4.s1p", "bytes": 43984, "sha256": "ee85162836f34614034218ee037578f51c51981d34d91554f109e0502cc08745"},
+            {"name": "ez2_mid.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/ez2_mid.npz", "bytes": 458540, "sha256": "cf9475fe03bb87f97e50995f28d6e8117b41b7633666bf188324d4f3dcb66472"},
+            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/fd_float64.json", "bytes": 8133, "sha256": "230fa5961fc76c06073558eca584eec1980e6f48a7d9b28f798b3943f5526da1"},
+            {"name": "flank.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/flank.json", "bytes": 868, "sha256": "633464af841b4131c2834ccd5d0b9e5400e2733ea2882d4b8a005fb22b4f7523"},
+            {"name": "gradient_cost_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_site.png", "bytes": 172504, "sha256": "a2cdde7cd1c9fb3f1b7cc6747e665b44a96d97f905c436b1aea8e8b4cb3cc882"},
+            {"name": "gradient_cost_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_social.png", "bytes": 123623, "sha256": "824a73148fc99da57d1c9f0cf83c934c87f12b7bf4e5ffa155d96764d4889913"},
+            {"name": "gradient_full.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_full.npz", "bytes": 168214, "sha256": "de872252446273d532a8630da84ee116eecf67503b49c0a112c186b3e446e967"},
+            {"name": "patch_sensitivity.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity.mp4", "bytes": 111512, "sha256": "8235d1876a28125bdf701fb9ab542f4b48375e4356a44599797ff13b204899e2"},
+            {"name": "patch_sensitivity_poster.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_poster.png", "bytes": 51342, "sha256": "c119fc75820d04e0063ea0d488521e9aa21f124e160f229294b28cd9855c3f7b"},
+            {"name": "patch_sensitivity_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_site.png", "bytes": 180360, "sha256": "2ad86efe14ca0bd1e69206b1da3eb8c9652b03c69f306b915c083549c15f5bed"},
+            {"name": "patch_sensitivity_social.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.mp4", "bytes": 256551, "sha256": "bf6859117a8370358292f17c3f750c9c8989fe01c6558c82ba2f1d9e6f8c460f"},
+            {"name": "patch_sensitivity_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.png", "bytes": 115479, "sha256": "b3ebfe2f2d4afcc97bbfaaddfe3ed3113b420dc2bf0cba9bf8011927fdcdddd2"},
+            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/record_length_witness.json", "bytes": 2622, "sha256": "d8404d850dcee0ae360fb19a2632c2ca901a01dd610dc352c4567d9f5441c417"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json", "bytes": 23694, "sha256": "5481f97990977d896f26ece86b8f12e05b315005267db009a83020ec52d79285"}
+          ]
+        }
+      ],
+      "headlines": [
+        {"quantity": "design-box cells", "printed": "20,592", "value": 20592, "unit": "cells", "routes": ["/rfx/showcase/sensitivity-map/", "/rfx/", "/rfx/showcase/"], "from": "patch-sensitivity/result.json model.boxes.design.n_cells"},
+        {"quantity": "largest |AD - FD| / |FD| over the six blocks, float64", "printed": "2×10⁻⁵", "value": 1.9535713722725833e-05, "unit": "1", "routes": ["/rfx/showcase/sensitivity-map/", "/rfx/"], "from": "patch-sensitivity/result.json claims '|AD - FD| / |FD| ... (float64)', maximum of 6"},
+        {"quantity": "value and gradient wall time, design box", "printed": "24", "value": 23.676724473945796, "unit": "s", "routes": ["/rfx/showcase/sensitivity-map/"], "from": "patch-sensitivity/result.json claim 'value_and_grad wall time, box design'"},
+        {"quantity": "value and gradient / forward wall time, design box", "printed": "1.4", "value": 1.4142570964929, "unit": "1", "routes": ["/rfx/showcase/sensitivity-map/"], "from": "patch-sensitivity/result.json derived 'value_and_grad / forward wall-time ratio, box design'"}
+      ]
+    },
+    {
+      "id": "gradient-cost",
+      "title": "What does a gradient cost?",
+      "question": "Wall time and memory of the value and gradient against a forward run, for design regions of 12,400 to 43,008 cells on one GPU.",
+      "route": "/rfx/showcase/gradient-cost/",
+      "markdown": "/rfx/markdown/showcase/gradient-cost.md",
+      "rfx_commits": ["655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"],
+      "sources": [
+        {
+          "folder": "patch-sensitivity",
+          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/",
+          "rfx_commit": "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277",
+          "question": "Which substrate cells of a probe-fed RT/Duroid 5880 patch move |S11(f_t)|^2 at f_t = 1.01 f_r, from one reverse-mode pass, checked against central finite differences on pre-declared cell blocks; and what the gradient costs in time and device memory.",
+          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json",
+          "files": [
+            {"name": "baseline_h4.s1p", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/baseline_h4.s1p", "bytes": 43984, "sha256": "ee85162836f34614034218ee037578f51c51981d34d91554f109e0502cc08745"},
+            {"name": "ez2_mid.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/ez2_mid.npz", "bytes": 458540, "sha256": "cf9475fe03bb87f97e50995f28d6e8117b41b7633666bf188324d4f3dcb66472"},
+            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/fd_float64.json", "bytes": 8133, "sha256": "230fa5961fc76c06073558eca584eec1980e6f48a7d9b28f798b3943f5526da1"},
+            {"name": "flank.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/flank.json", "bytes": 868, "sha256": "633464af841b4131c2834ccd5d0b9e5400e2733ea2882d4b8a005fb22b4f7523"},
+            {"name": "gradient_cost_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_site.png", "bytes": 172504, "sha256": "a2cdde7cd1c9fb3f1b7cc6747e665b44a96d97f905c436b1aea8e8b4cb3cc882"},
+            {"name": "gradient_cost_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_social.png", "bytes": 123623, "sha256": "824a73148fc99da57d1c9f0cf83c934c87f12b7bf4e5ffa155d96764d4889913"},
+            {"name": "gradient_full.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_full.npz", "bytes": 168214, "sha256": "de872252446273d532a8630da84ee116eecf67503b49c0a112c186b3e446e967"},
+            {"name": "patch_sensitivity.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity.mp4", "bytes": 111512, "sha256": "8235d1876a28125bdf701fb9ab542f4b48375e4356a44599797ff13b204899e2"},
+            {"name": "patch_sensitivity_poster.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_poster.png", "bytes": 51342, "sha256": "c119fc75820d04e0063ea0d488521e9aa21f124e160f229294b28cd9855c3f7b"},
+            {"name": "patch_sensitivity_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_site.png", "bytes": 180360, "sha256": "2ad86efe14ca0bd1e69206b1da3eb8c9652b03c69f306b915c083549c15f5bed"},
+            {"name": "patch_sensitivity_social.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.mp4", "bytes": 256551, "sha256": "bf6859117a8370358292f17c3f750c9c8989fe01c6558c82ba2f1d9e6f8c460f"},
+            {"name": "patch_sensitivity_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.png", "bytes": 115479, "sha256": "b3ebfe2f2d4afcc97bbfaaddfe3ed3113b420dc2bf0cba9bf8011927fdcdddd2"},
+            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/record_length_witness.json", "bytes": 2622, "sha256": "d8404d850dcee0ae360fb19a2632c2ca901a01dd610dc352c4567d9f5441c417"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json", "bytes": 23694, "sha256": "5481f97990977d896f26ece86b8f12e05b315005267db009a83020ec52d79285"}
+          ]
+        }
+      ],
+      "headlines": [
+        {"quantity": "value and gradient / forward wall time, three boxes", "printed": "1.4", "value": [1.4052680474341037, 1.438117430950358], "unit": "1", "routes": ["/rfx/"], "from": "patch-sensitivity/result.json derived 'value_and_grad / forward wall-time ratio', min and max"},
+        {"quantity": "value and gradient wall time, three boxes", "printed": "24", "value": [23.676724473945796, 24.313634541933425], "unit": "s", "routes": ["/rfx/", "/rfx/showcase/"], "from": "patch-sensitivity/result.json claims 'value_and_grad wall time', min and max"},
+        {"quantity": "layer box: cells that are not laminate", "printed": "19,436", "value": 19436, "unit": "cells", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json model.boxes.layer.n_other_cells"},
+        {"quantity": "patch box cells", "printed": "12,400", "value": 12400, "unit": "cells", "routes": ["/rfx/showcase/gradient-cost/", "/rfx/"], "from": "patch-sensitivity/result.json model.boxes.patch.n_cells"},
+        {"quantity": "forward wall time, patch box", "printed": "17.06", "value": 17.057404963998124, "unit": "s", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'forward wall time, box patch'"},
+        {"quantity": "value and gradient wall time, patch box", "printed": "23.97", "value": 23.97022616805043, "unit": "s", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'value_and_grad wall time, box patch'"},
+        {"quantity": "value and gradient peak device memory, patch box", "printed": "4.74", "value": 4.739184896, "unit": "GB", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'value_and_grad peak device memory, box patch' / 1e9"},
+        {"quantity": "central differences for every cell, patch box (derived)", "printed": "4.9", "value": 4.896106980406869, "unit": "days", "routes": ["/rfx/showcase/gradient-cost/", "/rfx/", "/rfx/showcase/"], "from": "patch-sensitivity/result.json derived 'central finite-difference cost for every cell of box patch' / 86400"},
+        {"quantity": "design box cells", "printed": "20,592", "value": 20592, "unit": "cells", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json model.boxes.design.n_cells"},
+        {"quantity": "forward wall time, design box", "printed": "16.74", "value": 16.741457074997015, "unit": "s", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'forward wall time, box design'"},
+        {"quantity": "value and gradient wall time, design box", "printed": "23.68", "value": 23.676724473945796, "unit": "s", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'value_and_grad wall time, box design'"},
+        {"quantity": "value and gradient peak device memory, design box", "printed": "7.63", "value": 7.625625088, "unit": "GB", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'value_and_grad peak device memory, box design' / 1e9"},
+        {"quantity": "central differences for every cell, design box (derived)", "printed": "8.0", "value": 7.980094539081911, "unit": "days", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json derived 'central finite-difference cost for every cell of box design' / 86400"},
+        {"quantity": "layer box cells", "printed": "43,008", "value": 43008, "unit": "cells", "routes": ["/rfx/showcase/gradient-cost/", "/rfx/"], "from": "patch-sensitivity/result.json model.boxes.layer.n_cells"},
+        {"quantity": "forward wall time, layer box", "printed": "16.91", "value": 16.906571062048897, "unit": "s", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'forward wall time, box layer'"},
+        {"quantity": "value and gradient wall time, layer box", "printed": "24.31", "value": 24.313634541933425, "unit": "s", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'value_and_grad wall time, box layer'"},
+        {"quantity": "value and gradient peak device memory, layer box", "printed": "15.49", "value": 15.492379904, "unit": "GB", "routes": ["/rfx/showcase/gradient-cost/"], "from": "patch-sensitivity/result.json claim 'value_and_grad peak device memory, box layer' / 1e9"},
+        {"quantity": "central differences for every cell, layer box (derived)", "printed": "16.8", "value": 16.831430746217567, "unit": "days", "routes": ["/rfx/showcase/gradient-cost/", "/rfx/", "/rfx/showcase/"], "from": "patch-sensitivity/result.json derived 'central finite-difference cost for every cell of box layer' / 86400"}
+      ]
+    },
+    {
+      "id": "descent-to-optimum",
+      "title": "Descend through FDTD to a closed-form optimum",
+      "question": "Adam, driven by gradients through the FDTD solve, finds the layer permittivities of a three-layer anti-reflection coating within 1.1 % of the transfer-matrix optimum.",
+      "route": "/rfx/showcase/descent-to-optimum/",
+      "markdown": "/rfx/markdown/showcase/descent-to-optimum.md",
+      "rfx_commits": ["655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"],
+      "sources": [
+        {
+          "folder": "ar-coating",
+          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/",
+          "rfx_commit": "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277",
+          "question": "Does Adam through the differentiable FDTD solve reach the transfer-matrix optimum's X-band mean reflection for a three-layer coating on eps_r = 12, with the gradient checked against central differences?",
+          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/result.json",
+          "files": [
+            {"name": "ar_coating.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating.mp4", "bytes": 495402, "sha256": "4f4fdde1087ca7a0450e879a0031b6730ff764daffba9c43d439d7f86cfcedf1"},
+            {"name": "ar_coating_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_site.png", "bytes": 172823, "sha256": "84af71294b07643f7b52eeb0eca8c338ba2e2c4b75201df975e356c3208c0050"},
+            {"name": "ar_coating_social.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_social.mp4", "bytes": 498211, "sha256": "ac73488a7c48780b2a2730a127dc9852c91f59e3d25900245a8b16a4784d50b8"},
+            {"name": "ar_coating_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_social.png", "bytes": 121020, "sha256": "7602d4b8795b381e0e8437affea06d4478e8c74bb1720e0dd677987d4d8a174f"},
+            {"name": "fd_start.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/fd_start.json", "bytes": 2169, "sha256": "190bfc8d492d13d1073c35aab855c6a575a4f3f3c7903aa095a668f73fff8436"},
+            {"name": "gates.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/gates.json", "bytes": 481, "sha256": "5bc03716f9f986744e73bc7d7de6a78a8c4bdddc0db5d323e81af27a0e1c84bf"},
+            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/iterations.npz", "bytes": 24580, "sha256": "8966c1f73035fd67764679ce0fce2504dfe9894b1c525422b03512dd9260d142"},
+            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/record_length_witness.json", "bytes": 797, "sha256": "a471078c39b061287e7669793060c4c8647e4ef8ccbadf2807d68a10c5218884"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/result.json", "bytes": 8485, "sha256": "eb8c87fb975c612e2ac78205f7787c27277cc3cd04f9574b873be6b5fb6dc9a6"},
+            {"name": "tmm.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/tmm.json", "bytes": 1411, "sha256": "a5b18f875c833581597ccf635c86253fa39200afc632c68165b8c95fe1518415"},
+            {"name": "tmm_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/tmm_curves.npz", "bytes": 3658, "sha256": "8a92096760179ac83c0423248f3b884c78a7dd776f50a07fe2ea992a0423ea81"}
+          ]
+        }
+      ],
+      "headlines": [
+        {"quantity": "largest layer-permittivity gap to the transfer-matrix optimum", "printed": "1.1", "value": 1.074779795496239, "unit": "%", "routes": ["/rfx/showcase/descent-to-optimum/", "/rfx/", "/rfx/showcase/"], "from": "ar-coating/gates.json final_eps_r vs tmm.json optimum_eps_r"},
+        {"quantity": "transfer-matrix band-mean |R|^2 of the final design above the optimum", "printed": "0.1", "value": 0.11422161168317402, "unit": "%", "routes": ["/rfx/showcase/descent-to-optimum/"], "from": "ar-coating/iterations.npz tmm_cost51[-1] vs result.json claim 'TMM optimum X-band mean |R|^2'"},
+        {"quantity": "Adam steps", "printed": "60", "value": 60, "unit": "steps", "routes": ["/rfx/showcase/descent-to-optimum/"], "from": "ar-coating/result.json model.adam.iters"}
+      ]
+    },
+    {
+      "id": "forward-checks",
+      "title": "The forward model, next to openEMS",
+      "question": "The input impedance of the RT/Duroid 5880 patch and |S21| of a microstrip open-stub notch filter, solved by rfx and openEMS on the same boards.",
+      "route": "/rfx/showcase/forward-checks/",
+      "markdown": "/rfx/markdown/showcase/forward-checks.md",
+      "rfx_commits": ["b46a8220775b67f8720fb13c3e256c01cf7d6883"],
+      "sources": [
+        {
+          "folder": "forward-patch",
+          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/",
+          "rfx_commit": "b46a8220775b67f8720fb13c3e256c01cf7d6883",
+          "question": "The rfx curves of the RT/Duroid 5880 probe-fed patch antenna, one 50 ohm wire port at the rung its cross-validation test judges, beside the reference records it reads.",
+          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/result.json",
+          "files": [
+            {"name": "forward_curves_rt5880_patch_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_site.png", "bytes": 172912, "sha256": "1dbdc7e03cbf45bc87d21a9d9d9b7d578b293481151078fe530e4896d3731965"},
+            {"name": "forward_curves_rt5880_patch_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_social.png", "bytes": 140722, "sha256": "76c298ca842366ca841a0adaec07ddf723aa440524b44a466af7fa9633243c9d"},
+            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/reference_curves.npz", "bytes": 112514, "sha256": "2be9b4ff1263bc452ebf6c82551ad3d2ef47a68f98d62683ac8b88ab58e31968"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/result.json", "bytes": 4802, "sha256": "f9fb4e7d70262cc84701046566a75bfdb4b2444ce8001d7fbd27062a766d4113"},
+            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/rfx_curves.npz", "bytes": 36794, "sha256": "80f7190b7e0ecaf0ec57e1297f7539afa57f7c13a7e1d055d281cd21e4f355d5"}
+          ]
+        },
+        {
+          "folder": "forward-notch",
+          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/",
+          "rfx_commit": "b46a8220775b67f8720fb13c3e256c01cf7d6883",
+          "question": "The rfx curves of the microstrip open-stub notch filter, two MSL ports at the rung its cross-validation test judges, beside the reference records it reads.",
+          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/result.json",
+          "files": [
+            {"name": "forward_curves_msl_notch_filter_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/forward_curves_msl_notch_filter_site.png", "bytes": 132517, "sha256": "490723c1fe6e037851bde19fcdd07c4b0d5fb0ae1216cb8f38bd0b580de85939"},
+            {"name": "forward_curves_msl_notch_filter_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/forward_curves_msl_notch_filter_social.png", "bytes": 114321, "sha256": "12870e7025ba52baf4260b5e6c2df5f5d4bafc6688717b6f7c3f8eb1685df5b7"},
+            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/reference_curves.npz", "bytes": 201324, "sha256": "e3c89521fc9d778feb0d1c09417686c1e8d336f970af7abde2f813a54be44ad9"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/result.json", "bytes": 4651, "sha256": "7bbb01e9ecdbc47f1001dacd011c72f8a8758d3fa058177920182e1f5b2e207e"},
+            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/rfx_curves.npz", "bytes": 26854, "sha256": "f47c451b5799c3454c021a6c18dffb13ce97e81f9d4b692f6fd6d782d2b0b167"}
+          ]
+        }
+      ],
+      "headlines": [
+        {"quantity": "|f0 rfx - f0 openEMS| / f0 openEMS, patch Re(Z_in) peak", "printed": "0.097", "value": 0.0971627001005615, "unit": "%", "routes": ["/rfx/", "/rfx/showcase/"], "from": "forward-patch rfx_curves.npz and reference_curves.npz (openEMS stage_b_fine), refined_remax over the test's RESONANCE_BAND_HZ (tests/crossval/rt5880_patch)"},
+        {"quantity": "|f rfx - f openEMS| / f openEMS, notch", "printed": "0.090", "value": 0.08967473617409291, "unit": "%", "routes": ["/rfx/", "/rfx/showcase/"], "from": "forward-notch rfx_curves.npz and reference_curves.npz (openEMS stage_b_fine), the test's _compare (tests/crossval/msl_notch_filter)"}
+      ]
+    }
+  ]
+}
