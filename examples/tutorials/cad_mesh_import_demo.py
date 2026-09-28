@@ -27,7 +27,12 @@ def build_simulation():
     """
     try:
         import trimesh
-    except ImportError as exc:
+    except ModuleNotFoundError as exc:
+        # Only a trimesh that is not installed is "the CAD extra is missing". A
+        # trimesh that is installed but fails to import (a numpy ABI mismatch, a
+        # missing dependency of its own) is a real error and propagates.
+        if exc.name != "trimesh":
+            raise
         raise ModuleNotFoundError(CAD_EXTRA_MESSAGE, name="trimesh") from exc
 
     from rfx.api import Simulation
