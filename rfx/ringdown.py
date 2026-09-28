@@ -90,7 +90,7 @@ from __future__ import annotations
 import inspect
 import math
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 from importlib import import_module
 from typing import NamedTuple
 
@@ -1922,18 +1922,41 @@ def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
     return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
 
 
+def _on_nearest_bin(s, f_bins, record_s: float) -> np.ndarray:
+    """Each pole moved onto the nearest requested bin within ``1 / record_s``.
+
+    A record of length ``T`` places a pole's frequency only to about ``1/T``:
+    an unresolved pair is identified as one pole between its members, which
+    can sit far from every bin while the members sit on bins. For the floor a
+    pole is weighed as if it sat on the nearest bin it could be on; its decay
+    and residue are kept. A pole with no bin within ``1/T`` is left in place.
+    """
+    s = np.asarray(s, dtype=np.complex128)
+    fb = np.asarray(f_bins, dtype=np.float64)
+    if s.size == 0 or fb.size == 0 or not record_s > 0.0:
+        return s
+    f = s.imag / (2.0 * np.pi)
+    j = np.argmin(np.abs(fb[None, :] - f[:, None]), axis=1)
+    near = np.abs(fb[j] - f) <= 1.0 / float(record_s)
+    return np.where(near, s.real + 1j * 2.0 * np.pi * fb[j], s)
+
+
 def _tail_influence(model: RingdownModel, n_record: int, f_bins, spectra,
                     observable) -> tuple:
-    """``(influence (K,), peak)``: how far each pole's own tail moves the answer.
+    """``(influence (K,), peak)``: how far each pole's own tail can move the answer.
 
     ``influence[k] = max |obs(spectra) - obs(spectra - tail_k)|`` over every
     bin and entry, ``tail_k`` pole ``k``'s term of the completion's tail at
-    the requested bins, ``obs`` the observable (the lane's S assembly) and
-    ``peak = max |obs(spectra)|``. The observable is called once, on every
-    copy stacked along the bins, and must return the bins on its last axis
-    (the lanes' S) or its first (a map of the spectra themselves).
+    the requested bins with the pole moved onto the nearest bin within
+    ``1 / T`` (:func:`_on_nearest_bin`, ``T`` the record), ``obs`` the
+    observable (the lane's S assembly) and ``peak = max |obs(spectra)|``. The
+    observable is called once, on every copy stacked along the bins, and must
+    return the bins on its last axis (the lanes' S) or its first (a map of the
+    spectra themselves).
     """
-    tails = _pole_tails(model, int(n_record) - 1, f_bins)
+    record_s = int(n_record) * float(model.dt)
+    shifted = _dc_replace(model, s=_on_nearest_bin(model.s, f_bins, record_s))
+    tails = _pole_tails(shifted, int(n_record) - 1, f_bins)
     full = np.asarray(observable(spectra))
     peak = float(np.max(np.abs(full))) if full.size else 0.0
     nf, K, C = tails.shape

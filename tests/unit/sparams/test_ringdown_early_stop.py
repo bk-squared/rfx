@@ -441,6 +441,27 @@ def test_a_weakly_coupled_high_q_pair_holds_the_floor():
         assert abs(abs(p.f_hz) / 11.0e9 - 1.0) < 2e-3 and p.q > 5000, checks[k]
 
 
+def test_a_blended_pair_between_coarse_bins_holds_the_floor():
+    """The same kind of weak Q 50,000 pair, 0.37 % apart, seen on a common
+    100 MHz sweep (8-18 GHz, 101 bins): its members sit 0.5 MHz and 40.5 MHz
+    above the 11.0 GHz bin, and a short record identifies them as one blended
+    pole between bins. Measured at the bins, that pole's tail read below the
+    bar and the stop fired at 3000 steps with the completed S 2e-2 off (the
+    fresh-eyes recheck of #1254 PR 2). A pole is known only to about 1/T, so
+    the floor weighs it on the nearest bin within 1/T: the blend sets the
+    floor and nothing stops within 8000 steps."""
+    Y, settled, to_s, n_off = _one_port(
+        [(10.0e9, 40.0, 0.8), (11.0005e9, 50000.0, 0.1), (11.0405e9, 50000.0, 0.1)], 8000)
+    bins = np.linspace(8e9, 18e9, 101)
+    truth = settled(bins)
+    checks, outs = _synthetic_stop(Y, 1.0e-12, bins, to_s, 8000, ref_hz=20e9, n_off=n_off)
+    errs = [float(np.max(np.abs(o - truth))) for o in outs]
+    _print_checks("coarse-bin pair", checks, errs)
+    assert not any(c.stop for c in checks)
+    agreed = [k for k, c in enumerate(checks) if c.consecutive >= 2 and errs[k] > 1e-3]
+    assert agreed, "no check where WE agreed twice while the completion was off"
+
+
 def test_a_non_passive_completion_does_not_stop():
     """A single Q 40 mode whose feature (2.5) makes the settled |S| 1.5 at its
     resonance: WE agrees and the record passes the floor by 1750 steps, but the
