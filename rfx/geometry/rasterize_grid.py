@@ -367,9 +367,10 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
             f"[{x[0]:.6g}, {x[-1]:.6g}] m, so it would be silently clamped "
             "onto an end plane. Move the declaration inside the domain or "
             "enlarge the domain.")
-    if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= _REL_TOL * d_local:
-        k = k - 1                  # exact half-cell tie resolves LOWER
-    return k
+    # An exact half-cell tie resolves LOWER. The one tie rule, shared with
+    # every point lookup (#1295, #1342).
+    from rfx._grid_metric import nearest_node_index
+    return nearest_node_index(x, pos, d_local)
 
 
 def _box_axis_volume(centres, lo: float, hi: float):
@@ -675,12 +676,16 @@ def interior_lattice_mask(mask, grid, *, cell_axes=(False, False, False)):
     return out
 
 
-def wire_filament_nodes(points, radius, node_axes, cell_sizes):
-    """PolylineWire §1.4: the nearest lattice node of each vertex, when the
-    wire is a filament; ``None`` when it is a volume. A radius at least half
-    the smallest local cell at the vertices' nearest nodes is a volume.
-    ``classify_pec_entry`` realizes a wire by this rule, and lane admission
-    asks it which kind of conductor a declared wire becomes."""
+def wire_vertex_nodes(points, node_axes, cell_sizes):
+    """Node of each PolylineWire vertex, and the smallest cell at them.
+
+    Each coordinate goes to the nearest node, an exact tie to the FIRST
+    (lower) one (``argmin``, §1.4). Point features and sheets take the lower
+    node too, and also treat distances that agree to 1e-9 of the cell as a
+    tie (``nearest_node_index``); the two differ only inside that band. The
+    preflight's half-node check reads this function so it compares against
+    the node the wire really takes (#1342).
+    """
     nodes = []
     d_min = None
     for p in points:
@@ -692,6 +697,17 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes):
             d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
             d_min = d_here if d_min is None else min(d_min, d_here)
         nodes.append(tuple(idx))
+    return nodes, d_min
+
+
+def wire_filament_nodes(points, radius, node_axes, cell_sizes):
+    """PolylineWire §1.4: the nearest lattice node of each vertex, when the
+    wire is a filament; ``None`` when it is a volume. A radius at least half
+    the smallest local cell at the vertices' nearest nodes is a volume.
+    ``classify_pec_entry`` realizes a wire by this rule, and lane admission
+    asks it which kind of conductor a declared wire becomes. The vertex snap
+    itself is ``wire_vertex_nodes``."""
+    nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes)
     return nodes if float(radius) < 0.5 * d_min else None
 
 

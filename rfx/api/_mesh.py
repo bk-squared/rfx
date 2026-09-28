@@ -224,6 +224,24 @@ class _MeshMixin:
         if reason is not None:
             raise NotImplementedError(reason)
 
+    def _require_no_half_node_split(self):
+        """Refuse a port, source or probe that lands one cell off a wire
+        vertex or PEC sheet declared at the same half-node coordinate.
+
+        Wire vertices and sheet planes round a tie to the lower node, and so
+        do point features on the non-uniform lane; on the uniform lane point
+        features round it to the even node until #1342. The preflight finding
+        ``half_node_split`` says the same thing; this is the refusal
+        ``skip_preflight=True`` does not bypass, as for #1240. Features are
+        paired on their DECLARED coordinates first, so a model with no port,
+        source or probe at a conductor's coordinate returns without building
+        a grid.
+        """
+        from rfx.preflight.ports import half_node_split_findings
+        findings = half_node_split_findings(self)
+        if findings:
+            raise ValueError(" ".join(findings))
+
     def _require_no_refinement_without_a_subgrid(self, entry):
         """Refuse a refinement on an entry point with no subgridded lane.
 
