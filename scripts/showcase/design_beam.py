@@ -606,7 +606,14 @@ def stage_x64fd(out: Path, a) -> int:
 
     def run_recording(*args, **kw):
         r = run_orig(*args, **kw)
-        seen.append(str(r.state.ex.dtype) if r.state is not None else "no state returned")
+        req = kw.get("field_dtype")
+        if r.state is not None:
+            obs = str(r.state.ex.dtype)
+        elif getattr(r, "ntff_data", None) is not None:
+            obs = str(r.ntff_data.x_lo.dtype)       # the NTFF accumulators follow the fields
+        else:
+            obs = "nothing observable"
+        seen.append((str(jnp.dtype(req)) if req is not None else "None (float32)", obs))
         return r
 
     rsim.run = run_recording
@@ -623,11 +630,15 @@ def stage_x64fd(out: Path, a) -> int:
     L0 = float(L_j(e0))
     rsim.run = run_orig
     dtypes = sorted(set(seen))
-    if dtypes != ["float64"]:
-        raise SystemExit(f"the float64 repeat saw field dtypes {dtypes}; it is not a float64 record")
+    if not dtypes or any(r != "float64" or o not in ("float64", "complex128") for r, o in dtypes):
+        raise SystemExit(f"the float64 repeat saw (requested, observed) dtypes {dtypes}; "
+                         "it is not a float64 record")
     dc.save_json(out / "fd_float64.json", {"precision": "float64", "eps_ctrl0": e0, "L0": L0,
                                            "grad_eps_ctrl_all": g0, "field_dtypes_seen": dtypes,
-                                           "n_runs_seen": len(seen), "ladder": ladder,
+                                           "field_dtypes_seen_is": "(field_dtype requested of "
+                                           "rfx.simulation.run, dtype of the returned fields or, "
+                                           "when no state is returned, of the NTFF accumulators)",
+                                           "n_run_traces_seen": len(seen), "ladder": ladder,
                                            "judgement": verdict})
     dc.log("float64 AD vs FD: " + "; ".join(f"{n}: rel {r['rel']:.2e}" for n, r in verdict["rows"].items()))
     return 0
