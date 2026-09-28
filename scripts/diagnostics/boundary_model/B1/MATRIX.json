@@ -4,7 +4,7 @@
   "steps_per_seed": 2,
   "seed_variants": 12,
   "adi_sigma_zero_reference": true,
-  "cpu_seconds_cells": 188.0597954060001,
+  "cpu_seconds_cells": 195.02702610300008,
   "harness_sha256": {
     "tests/contracts/boundary_cases.py": "c281e22bb0e2823dc02a47572255b9a69e53ac6e6a912878cfeac5d8baa52e6b",
     "tests/contracts/boundary_fields.py": "a8a5c603ab51dc3fcae4d3eb2c589a2e722330675a458d9cbeb4233d0acb7498",
