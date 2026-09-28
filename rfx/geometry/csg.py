@@ -79,6 +79,49 @@ def _grid_coords(grid: Grid):
             _uniform_axis_nodes(nz, pad_z, dx))
 
 
+#: A Box face within ``_FACE_SNAP_REL`` of the local cell of a sample point
+#: is ON that sample (#1138) — the repo's "on the lattice" tolerance, the one
+#: the sheet footprint (``rasterize_grid._box_axis_closed``) and the node tie
+#: rule (``_grid_metric.NODE_TIE_REL``) read.
+_FACE_SNAP_REL = 1e-9
+#: ... or within ``_FACE_SNAP_EPS`` machine epsilons of the axis' largest
+#: ``|x|``. The traced node line is float32 and its cumulative-sum rounding
+#: grows with the axis extent (measured up to 5.4 eps * max|x|, i.e. up to
+#: 7e-3 of a cell on a 3000-cell graded axis); on a float64 line this term
+#: stays below the first one for any axis shorter than ~7e4 cells.
+_FACE_SNAP_EPS = 64
+
+
+def _local_spacing(coords, pos, xp):
+    """Local cell WIDTH of a sample line at ``pos``: the smaller of the two
+    spacings around the sample just below ``pos`` (the larger one at an end
+    of the line). ``coords`` has at least two samples."""
+    k_mid = xp.clip(xp.searchsorted(coords, pos) - 1, 0, coords.size - 2)
+    im1 = xp.clip(k_mid - 1, 0, coords.size - 1)
+    ip1 = xp.clip(k_mid + 1, 0, coords.size - 1)
+    s_left = coords[k_mid] - coords[im1]    # 0 at the lo end
+    s_right = coords[ip1] - coords[k_mid]   # 0 at the hi end
+    return xp.where((s_left > 0) & (s_right > 0),
+                    xp.minimum(s_left, s_right),
+                    xp.maximum(s_left, s_right))
+
+
+def _half_open_window(coords, lo, hi, d_local, xp):
+    """Half-open ``lo <= x < hi`` with a face that lies within the snap
+    tolerance of a sample treated as ON it (#1138): ``lo`` keeps that
+    sample and ``hi`` drops it, as for a face bitwise equal to it.
+
+    Without the snap, the same face spelled ``z0 + h`` instead of ``m*dx``
+    can land one ulp past its node and take or lose a whole cell (a 787 um
+    laminate at h/6 realized 7 cells). Traceable: ``coords`` may be a
+    tracer; ``lo``/``hi`` are concrete floats.
+    """
+    eps = xp.finfo(coords.dtype).eps
+    scale = xp.max(xp.abs(coords)) if coords.size else 0.0
+    tol = xp.maximum(_FACE_SNAP_REL * d_local, _FACE_SNAP_EPS * eps * scale)
+    return (coords >= lo - tol) & (coords < hi - tol)
+
+
 @dataclass(frozen=True)
 class Box:
     """Axis-aligned box defined by two corners (meters).
@@ -102,17 +145,17 @@ class Box:
        load-bearing one — see the facing-pair discussion below, where it
        cancels in one case and not the other.
 
-    2. **A corner exactly on a node plane is a knife edge — now a
-       float64-route one.** Since the exact-coordinate fix (#802), node
-       coordinates are host float64 ``(i - pad) * dx`` and comparisons run
-       in float64, independent of ``jax_enable_x64``. A corner whose f64
-       value equals the node's bitwise sits on the convention's exact
-       boundary and behaves predictably (``lo`` keeps it, ``hi`` drops it).
-       The residual hazard is the ROUTE: a corner computed as ``a - n*dx``
-       or ``a + b`` can land one f64 ulp off the algebraically identical
-       ``m*dx`` node value and flip a whole node plane. Spell
-       intended-on-lattice corners in lattice arithmetic (``m*dx``), or
-       use the midpoint recipe below, which is immune to both.
+    2. **A corner on a node plane is ON it, whatever route spelled it.**
+       Since the exact-coordinate fix (#802), node coordinates are host
+       float64 ``(i - pad) * dx`` and comparisons run in float64,
+       independent of ``jax_enable_x64``. A corner on a node behaves
+       predictably (``lo`` keeps it, ``hi`` drops it), and since #1138 that
+       includes a corner computed as ``a - n*dx`` or ``a + b`` that lands a
+       few ulp off the algebraically identical ``m*dx`` node: a face within
+       ``1e-9`` of the local cell of a node (on a traced float32 mesh,
+       within ``64 * eps * max|x|``) is treated as on it. Before #1138 such
+       a corner flipped a whole node plane (a 787 um laminate drawn at
+       ``z0 + h`` on h/6 realized 7 cells).
 
        Historical (pre-#802, kept because committed values were pinned to
        it): masks compared float32 coordinates, themselves double-rounded
@@ -308,16 +351,7 @@ class Box:
                 # grid's per-cell width array threaded through mask_on_coords.
                 # On a uniform axis s_left==s_right==dx so this is bit-identical
                 # to the legacy centre-spacing.
-                k_mid = xp.clip(
-                    xp.searchsorted(coords, mid) - 1, 0, coords.size - 2)
-                im1 = xp.clip(k_mid - 1, 0, coords.size - 1)
-                ip1 = xp.clip(k_mid + 1, 0, coords.size - 1)
-                s_left = coords[k_mid] - coords[im1]    # 0 at the lo end
-                s_right = coords[ip1] - coords[k_mid]   # 0 at the hi end
-                dc_local = xp.where(
-                    (s_left > 0) & (s_right > 0),
-                    xp.minimum(s_left, s_right),
-                    xp.maximum(s_left, s_right))
+                dc_local = _local_spacing(coords, mid, xp)
             # Thin sheet: the single cell whose centre is nearest ``mid``.
             # (#371) On the collocated scheme, apply_pec_mask zeros tangential
             # Ex/Ey at this cell's CENTRE, so nearest-centre = minimum realized-
@@ -331,8 +365,9 @@ class Box:
             else:
                 thin_mask = np.zeros(coords.shape, dtype=bool)
                 thin_mask[nearest_idx] = True
-            # Volume: half-open [lo, hi).
-            volume_mask = (coords >= lo) & (coords < hi)
+            # Volume: half-open [lo, hi), a face within the snap tolerance
+            # of a node ON that node (#1138).
+            volume_mask = _half_open_window(coords, lo, hi, dc_local, xp)
             # Thin-branch tie rule (#802 follow-up): a face-registered
             # one-cell box is an EXACT half-cell tie — mid sits midway
             # between two nodes — and argmin would resolve it by the last
@@ -344,10 +379,9 @@ class Box:
             # node out) and it is ulp-robust in exactly the way the volume
             # branch is. Zero nodes (a sub-cell box straddling no node) or
             # several (a graded-transition window) keep nearest-node
-            # argmin. A corner INTENDED on-lattice but computed through a
-            # different f64 route (a+b vs m*dx) can still miss its node by
-            # one ulp — that is the documented knife-edge class; spell such
-            # corners in lattice arithmetic (see the class docstring).
+            # argmin. The window snaps a face within tolerance of a node onto
+            # it (#1138), so a corner spelled ``a + b`` instead of ``m*dx``
+            # keeps the same node.
             n_vol = xp.sum(volume_mask)
             thin_mask = xp.where(n_vol == 1, volume_mask, thin_mask)
             # Thin sheet when the extent is within one local cell.

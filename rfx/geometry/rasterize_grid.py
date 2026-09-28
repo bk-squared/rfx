@@ -15,7 +15,10 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
-from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
+from rfx.geometry.csg import (
+    Cylinder, OrientedBox, Sphere, _half_open_window, _local_spacing,
+    declared_bounds,
+)
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
     _spec_from_pole_masks,
@@ -375,12 +378,16 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
 
 def _box_axis_volume(centres, lo: float, hi: float):
     """§1.1 half-open volume rule on CELL CENTRES: cell ``i`` occupied iff
-    ``lo <= c_i < hi``."""
+    ``lo <= c_i < hi``, a face within the snap tolerance of a centre ON
+    that centre (#1138, ``csg._half_open_window``)."""
     if is_tracer(centres):
-        c = jnp.asarray(centres)
-        return (c >= lo) & (c < hi)
-    c = np.asarray(centres, dtype=np.float64)
-    return (c >= lo) & (c < hi)
+        c, xp = jnp.asarray(centres), jnp
+    else:
+        c, xp = np.asarray(centres, dtype=np.float64), np
+    # A single centre has no spacing; only the rounding term applies.
+    d_local = (_local_spacing(c, 0.5 * (lo + hi), xp) if c.size > 1
+               else 0.0)
+    return _half_open_window(c, lo, hi, d_local, xp)
 
 
 def _box_axis_closed(nodes, lo: float, hi: float, d_local: float):
@@ -437,8 +444,7 @@ def _volume_is_empty(shape, centres: GridCoords, mask) -> bool | None:
     axes = (centres.x, centres.y, centres.z)
     if lo is not None and hi is not None and not any(is_tracer(c) for c in axes):
         for i in range(3):
-            c = np.asarray(axes[i], dtype=np.float64)
-            if not np.any((c >= float(lo[i])) & (c < float(hi[i]))):
+            if not np.any(_box_axis_volume(axes[i], float(lo[i]), float(hi[i]))):
                 return True
         return False
     if is_tracer(mask):
