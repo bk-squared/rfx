@@ -151,7 +151,9 @@ them with the same lane as the design, with no gradient and no checkpointing:
 - at **a/36 with the module's absorber and record** (24 layers, 120 periods): final and
   Klopfenstein.
 
-Each solve reports 20 log10(mean |S11|), max |S11| in dB, and J. Any run-time advisory is stored
+Every record length follows the module's rule, `num_timesteps` rounded up to a multiple of 120, so
+the a/36 solve has the same step count as the loop. Each solve reports 20 log10(mean |S11|),
+max |S11| in dB, and J. Any run-time advisory is stored
 with the solve.
 
 ## 2. Beam

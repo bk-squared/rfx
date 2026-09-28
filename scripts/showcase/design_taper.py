@@ -650,7 +650,9 @@ def stage_resolve(out: Path, a) -> int:
     res, arrays = {}, {}
     for tag, refine, cpml, periods, names in meshes:
         model = TaperModel(mod, refine, cpml_a36=cpml)
-        n_steps, _ = model.n_steps(a.periods or periods, None)
+        # the module's record rule (num_timesteps rounded up to a multiple of its
+        # checkpoint_segments), so the a/36 solve has the loop's own step count
+        n_steps, _ = model.n_steps(a.periods or periods, mod.CHECKPOINT_SEGMENTS)
         dc.save_json(out / f"preflight_{tag}.json", model.preflight())
         res[tag] = {"dx_m": model.dx, "grid_shape": model.grid.shape, "n_steps": n_steps,
                     "num_periods": a.periods or periods, "record_s": n_steps * float(model.grid.dt),
