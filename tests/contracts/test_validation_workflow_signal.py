@@ -29,6 +29,8 @@ reddening anything:
 6. ``validation.yml``'s ``slow-tests`` matrix keeps ``fail-fast: false``. GitHub's
    default is ``true``, under which one failing shard cancels the others and the
    lane loses their results.
+7. ``regen-durations.yml``'s ``slow`` job installs and selects what ``slow-tests``
+   does, so the prices it measures are for the tests those shards actually run.
 
 The tests parse the workflow instead of grepping it, so reformatting the file
 cannot fool them. They run on every scheduled lane that carries this notifier:
@@ -38,6 +40,7 @@ the monthly ``crossval-ladder.yml``.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -168,3 +171,15 @@ def test_one_failing_shard_does_not_cancel_the_others() -> None:
         "slow-tests must set fail-fast: false; the default (true) cancels every "
         "other shard when one fails, and their results are lost."
     )
+
+
+def _install_and_marker(job: dict[str, Any]) -> tuple[str, str]:
+    runs = [step["run"] for step in job["steps"] if "run" in step]
+    install = next(run for run in runs if run.startswith("pip install"))
+    return install, re.search(r'-m "([^"]*)"', next(run for run in runs if "--splits 5" in run))[1]
+
+
+def test_the_durations_regeneration_prices_what_the_slow_shards_run() -> None:
+    weekly = _install_and_marker(_workflow("validation.yml")["jobs"]["slow-tests"])
+    regen = _install_and_marker(_workflow("regen-durations.yml")["jobs"]["slow"])
+    assert regen == weekly, f"regen-durations slow {regen} != validation slow-tests {weekly}"
