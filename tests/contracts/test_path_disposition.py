@@ -300,3 +300,13 @@ def test_admission_admits_exactly_the_carried_cells():
                     disagree.append(f"{attr}/{feature}/{lane}: table {T.cell(attr, feature, lane).kind}, "
                                     f"ADMITS {'has' if key in A.ADMITS[lane] else 'lacks'} it")
     assert not disagree, "\n".join(disagree)
+
+
+def test_lane_gates_are_the_listed_ones():
+    """A lane gate admits a row the table marks refused for some declarations
+    only. Each one is listed in the table module, on a cell that is not
+    carried there: no gate the table does not name, and no named one missing."""
+    gated = {(lane, row) for lane, gates in A.LANE_GATES.items() for row in gates}
+    assert gated == set(T.LANE_GATES), sorted(gated ^ set(T.LANE_GATES))
+    for lane, (attr, feature) in gated:
+        assert T.cell(attr, feature, lane).kind == T.REFUSES, (lane, attr, feature)

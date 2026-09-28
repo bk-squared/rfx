@@ -149,7 +149,7 @@ def _run_subgridded_once(
     # every validation mode, after the production refusals above and before
     # the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_subgridded")
+    admit(sim, "run_subgridded", grid=grid_coarse)
 
     topology = ref.get("topology", "overlap_z_slab")
     if topology != "overlap_z_slab":

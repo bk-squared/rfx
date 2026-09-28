@@ -222,6 +222,20 @@ def admission(what, lane, before):
                    raises=f"{what} is not carried by the {lane} lane")
 
 
+# Lane gates: a cell whose lane admits the row for some declarations only,
+# decided by the lane's own check (rfx/runners/_admission.py LANE_GATES). The
+# cell keeps the disposition of the model the cells file builds for it; the
+# gate is listed here, and the contract test holds the two lists together.
+GUARDED_LID_NOTE = ("outside production validation's guarded envelope; a lid inside it, "
+                    "the absorbing_lid row, is admitted (LANE_GATES)")
+GUARDED_LID = ("rfx/subgridding/validation.py _guarded_boundary_production_allowed: a CPML lid "
+               "opposite the PEC z face the refined slab touches, closed PEC x/y faces; every "
+               "validation mode")
+LANE_GATES = {("run_subgridded", row): GUARDED_LID for row in (
+    ("_boundary", "cpml"), ("_pec_faces", "pec_face"), ("_cpml_layers", "layers"),
+    ("_cpml_kappa_max", "kappa"))}
+
+
 def _conformal(lane_words):
     return refuses("Boundary(conformal=True) is refused like conformal_pec=True: this lane has no "
                    "Dey-Mittra update (#1297)", raises=f"the {lane_words} does not implement")
@@ -703,7 +717,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         "cpml": lanes(
             run_uniform=carries(),
             run_nonuniform=carries(),
-            run_subgridded=_subgrid("subgrid_overlaps_absorber", "no CPML in the guarded envelope"),
+            run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
             run_adi=carries("a graded conductivity layer, not a CPML (test_realized_boundary.py "
                             "cpml--adi)", wrong="#1221"),
             run_distributed=carries(),
@@ -716,7 +730,9 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=carries(),
             run_nonuniform=refuses("the graded runner implements CPML only",
                                    raises="boundary='upml' does not support the non-uniform run() lane"),
-            run_subgridded=_subgrid("subgrid_overlaps_absorber", "no absorber in the guarded envelope"),
+            run_subgridded=_subgrid("subgrid_overlaps_absorber",
+                                    "no absorber on every face in the guarded envelope; a UPML lid "
+                                    "inside it runs as CPML (measured), so it is refused too"),
             run_adi=refuses("boundary='upml' refused", raises="solver='adi' does not support boundary='upml'",
                             declared=True),
             run_distributed=refuses("boundary='upml' refused",
@@ -734,7 +750,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_pec_faces": {"pec_face": lanes(
         run_uniform=carries(),
         run_nonuniform=carries(),
-        run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces"),
+        run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml", "CPML on the other faces: " + GUARDED_LID_NOTE),
         run_adi=ADI_PER_FACE,
         # #1235: the distributed absorber takes every face's profile from init_cpml, so the PEC wall
         # carries no absorber backing (test_realized_boundary.py pec-zlo--distributed departures gone).
@@ -773,6 +789,22 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                   "_forward_from_materials, which staircases (#1299)"),
             **CONFORMAL,
         ),
+        # A closed PEC box with a CPML lid on z_hi, against the all-PEC box.
+        "absorbing_lid": lanes(
+            run_uniform=carries(),
+            run_nonuniform=carries(),
+            run_subgridded=carries(
+                "the refined slab touches the PEC floor: production validation's guarded envelope, "
+                "admitted in every validation mode through LANE_GATES. The lid moves the late field "
+                "(#1355 review); whether it absorbs as well as the uniform lane's is not measured "
+                "here. A UPML lid is refused by the upml row: this lane runs CPML in its place"),
+            run_adi=ADI_PER_FACE,
+            run_distributed=carries(),
+            fwd_uniform=carries(),
+            fwd_nonuniform=carries(),
+            fwd_distributed_nu=carries(),
+            fwd_adi=ADI_PER_FACE,
+        ),
     },
     "_periodic_axes": {"periodic": lanes(
         run_uniform=carries("one cell longer than declared (test_realized_boundary.py "
@@ -792,7 +824,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_cpml_layers": {"layers": lanes(
         run_uniform=carries(),
         run_nonuniform=carries(),
-        run_subgridded=_subgrid("subgrid_overlaps_absorber", "no CPML in the guarded envelope"),
+        run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
         run_adi=carries("the thickness of ADI's conductivity layer, checked in the σ handed to the kernel"),
         run_distributed=carries(),
         fwd_uniform=carries(),
@@ -804,7 +836,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_uniform=carries(),
         run_nonuniform=admission("cpml_kappa_max != 1", RUN_NU, "the graded grid build was never given it "
                                  "(#1310)"),
-        run_subgridded=_subgrid("subgrid_overlaps_absorber", "no CPML in the guarded envelope"),
+        run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
         run_adi=admission("cpml_kappa_max != 1", RUN_ADI, "it was dropped: ADI's absorber is not a CPML "
                           "(cpml--adi, #1221)"),
         run_distributed=carries(),

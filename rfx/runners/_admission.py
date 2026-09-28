@@ -106,20 +106,22 @@ def _pec_shapes(sim):
             yield entry.shape
 
 
-def _smallest_cell(sim) -> float | None:
-    """The smallest cell of the resolved mesh, or None if it is traced."""
+def _largest_cell(sim) -> float | None:
+    """The largest cell of the resolved mesh, or None if it is traced."""
     mesh = sim._resolve_mesh()
     sizes = [mesh["_dx"]] + [mesh[name] for name in ("_dx_profile", "_dy_profile", "_dz_profile")]
     sizes = [s for s in sizes if s is not None]
     if not sizes or any(is_tracer(s) for s in sizes):
         return None
-    return float(min(np.min(np.asarray(s, dtype=np.float64)) for s in sizes))
+    return float(max(np.max(np.asarray(s, dtype=np.float64)) for s in sizes))
 
 
 def _pec_kind(shape, cell) -> str:
     """How the assembler realizes a PEC shape (``classify_pec_entry``): a
     Box with one zero-extent axis is a sheet, a PolylineWire thinner than
-    half a cell is a filament, anything else a volume."""
+    half a cell is a filament, anything else a volume. The assembler uses
+    the cell at the wire's own vertices; ``cell`` is the largest cell of the
+    mesh, so a wire that is a filament anywhere is counted as one."""
     lo, hi = getattr(shape, "corner_lo", None), getattr(shape, "corner_hi", None)
     if lo is not None and hi is not None:
         if not (is_tracer(lo) or is_tracer(hi)) and sum(
@@ -138,7 +140,7 @@ def _pec(kind: str) -> Callable:
         shapes = list(_pec_shapes(sim))
         if not shapes:
             return False
-        cell = _smallest_cell(sim)
+        cell = _largest_cell(sim)
         return any(_pec_kind(shape, cell) == kind for shape in shapes)
     return active
 
@@ -172,6 +174,34 @@ def _series_with_inductor(element) -> bool:
 
 def _absorber(sim) -> bool:
     return sim._cpml_layers > 0
+
+
+def _faces(sim) -> dict:
+    return {f"{axis}_{side}": token for axis, side, token in sim._boundary_spec.faces()}
+
+
+def _absorbing_lid(sim) -> bool:
+    """A closed PEC box whose one absorbing face is a z face, opposite a PEC z face."""
+    faces = _faces(sim)
+    z = {faces["z_lo"], faces["z_hi"]}
+    return (_absorber(sim) and all(faces[f] == "pec" for f in ("x_lo", "x_hi", "y_lo", "y_hi"))
+            and "pec" in z and len(z & {"cpml", "upml"}) == 1)
+
+
+def _guarded_lid(sim, grid) -> bool:
+    """Whether production subgrid validation accepts this box's absorber: the
+    refined slab touches a PEC z face, the opposite z face may absorb, and the
+    x/y faces are closed PEC. The validator's own check decides, from the
+    coarse grid the subgridded lane builds."""
+    refinement = sim._refinement
+    if refinement is None or sim._uses_nonuniform_mesh:
+        return False
+    from rfx.subgridding.validation import (
+        _guarded_boundary_production_allowed, _one_sided_physical_z_boundary)
+    grid = sim._build_grid() if grid is None else grid
+    return bool(_guarded_boundary_production_allowed(
+        sim, grid, _one_sided_physical_z_boundary(sim, None, grid),
+        refinement.get("xy_margin")))
 
 
 # Inputs that production subgrid validation refuses and 'research'/'off'
@@ -257,6 +287,7 @@ DETECTORS: dict[Row, Callable] = {
     ("_boundary_spec", "conformal"): lambda sim: bool(sim._boundary_spec.conformal_faces()),
     ("_boundary_spec", "conformal_s_matrix"): lambda sim: (
         bool(sim._boundary_spec.conformal_faces()) and _s_matrix_ports(sim)),
+    ("_boundary_spec", "absorbing_lid"): _absorbing_lid,
     ("_periodic_axes", "periodic"): lambda sim: bool(sim._periodic_axes),
     ("_cpml_layers", "layers"): _absorber,
     ("_cpml_kappa_max", "kappa"): lambda sim: _absorber(sim) and _differs(
@@ -323,6 +354,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_boundary_spec", "conformal"): "Boundary(conformal=True)",
     ("_boundary_spec", "conformal_s_matrix"): (
         "Boundary(conformal=True) with a lumped-port S-matrix"),
+    ("_boundary_spec", "absorbing_lid"): "an absorbing z lid on a closed PEC box",
     ("_periodic_axes", "periodic"): "a periodic axis",
     ("_cpml_layers", "layers"): "an absorber thickness (cpml_layers)",
     ("_cpml_kappa_max", "kappa"): "cpml_kappa_max != 1",
@@ -395,6 +427,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_boundary_spec", "pmc_face"): _ALL - _ADI - {"run_subgridded"},
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
+    ("_boundary_spec", "absorbing_lid"): _ALL - _ADI,
     ("_periodic_axes", "periodic"): _UNIFORM_YEE,
     ("_cpml_layers", "layers"): _ALL - {"run_subgridded"},
     ("_cpml_kappa_max", "kappa"): frozenset({"run_uniform", "run_distributed", "fwd_uniform"}),
@@ -419,11 +452,30 @@ ADMITS: dict[str, frozenset] = {
 # lumped/wire S-matrix, through a path with no conformal update (#1299), only
 # when compute_s_params is not False (rfx/runners/uniform.py); called with
 # compute_s_params=False it computes none, and the conformal walls it does
-# carry are all there is. The gate reads the call's static arguments, never a
-# traced value, and a call that passes none is judged as the default call.
+# carry are all there is. Called with conformal_pec=False, the override
+# run() documents, the fields are staircase as well as the S-matrix, so
+# nothing declared is dropped. The gate reads the call's static arguments,
+# never a traced value, and a call that passes none is judged as the default
+# call.
 CALL_GATES: dict[Row, Callable] = {
     ("_boundary_spec", "conformal_s_matrix"):
-        lambda run_args: run_args.get("compute_s_params") is not False,
+        lambda run_args: (run_args.get("compute_s_params") is not False
+                          and run_args.get("conformal_pec") is not False),
+}
+
+
+# Rows a lane admits for some declarations only, decided by that lane's own
+# check. The subgridded lane's production validation accepts one absorbing z
+# face, a lid opposite the PEC z face its refined slab touches, with closed
+# PEC x/y faces; there the lane reads a CPML absorber, its thickness and
+# kappa_max (#1355 review, measured). Every validation mode gets exactly that
+# envelope: 'research' and 'off' do not widen it. A UPML lid is not gated: the
+# lane runs CPML in its place, bit for bit (measured), so it stays refused.
+# tests/contracts/path_disposition.py lists the same gates as LANE_GATES.
+_LID_ROWS = (("_boundary", "cpml"), ("_pec_faces", "pec_face"),
+             ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"))
+LANE_GATES: dict[str, dict[Row, Callable]] = {
+    "run_subgridded": {row: _guarded_lid for row in _LID_ROWS},
 }
 
 
@@ -437,34 +489,46 @@ def active(sim, run_args=None) -> list[Row]:
             if on(sim) and (row not in CALL_GATES or CALL_GATES[row](run_args))]
 
 
-def refused(sim, lane: str, run_args=None) -> list[Row]:
-    """The declared inputs ``lane`` does not admit."""
-    admits = ADMITS[lane]
-    return [row for row in active(sim, run_args) if row not in admits]
+def refused(sim, lane: str, run_args=None, grid=None) -> list[Row]:
+    """The declared inputs ``lane`` does not admit. ``grid`` is the grid the
+    lane built, for its ``LANE_GATES``; without it a gate builds its own."""
+    admits, gates, decided = ADMITS[lane], LANE_GATES.get(lane, {}), {}
+    out = []
+    for row in active(sim, run_args):
+        if row in admits:
+            continue
+        gate = gates.get(row)
+        if gate is not None:
+            if gate not in decided:
+                decided[gate] = gate(sim, grid)
+            if decided[gate]:
+                continue
+        out.append(row)
+    return out
 
 
-def message(lane: str, rows) -> str:
-    """The refusal, derived from the same table: each input and the lanes
-    that carry it."""
-    lines = []
-    for row in rows:
-        carriers = [LANE_WORDS[other] for other in LANES if other in _ADMITTED_ON[row]]
-        where = ("it is carried by: " + ", ".join(carriers) if carriers
-                 else "no time-stepping lane carries it")
-        lines.append(f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} "
-                     f"lane; {where}.")
+def message(lane: str, rows, sim, run_args=None) -> str:
+    """The refusal, derived from the same table: each input the lane does not
+    carry, and the lanes that admit every input this model declares."""
+    lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
+             for row in rows]
+    carriers = [LANE_WORDS[other] for other in LANES
+                if other != lane and not refused(sim, other, run_args)]
+    where = ("Lanes that admit every input this model declares: " + ", ".join(carriers) + "."
+             if carriers else "No time-stepping lane admits every input this model declares.")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"
-            + "\n".join(lines)
+            + "\n".join(lines) + "\n" + where
             + "\nRemove the input, or declare the model so that a lane that "
             "carries it runs.")
 
 
-def admit(sim, lane: str, *, run_args=None) -> None:
+def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
-    the call's static arguments that ``CALL_GATES`` read."""
-    rows = refused(sim, lane, run_args)
+    the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
+    grid the lane built, for its ``LANE_GATES``."""
+    rows = refused(sim, lane, run_args, grid)
     if rows:
-        raise NotImplementedError(message(lane, rows))
+        raise NotImplementedError(message(lane, rows, sim, run_args))

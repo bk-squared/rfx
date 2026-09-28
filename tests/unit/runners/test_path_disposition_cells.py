@@ -313,6 +313,25 @@ def _mode(lane, on, ref=False):
     return sim
 
 
+def _lid(lane, on, ref=False, *, lid="cpml", validation="production"):
+    """A closed PEC box with an absorbing lid on z_hi (on) or a PEC one (off),
+    the base source and probe at z = 6 mm. On the subgridded lane the refined
+    slab covers z = 0-10 mm and touches the PEC floor, the guarded envelope
+    production subgrid validation accepts."""
+    spec = BoundarySpec(x=Boundary(lo="pec", hi="pec"), y=Boundary(lo="pec", hi="pec"),
+                        z=Boundary(lo="pec", hi=lid if on else "pec"))
+    sim = _simulation(lane, (12, 12, 16), ref=ref, boundary=spec)
+    sim.add_source(mm(4, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind="field")
+    sim.add_probe(mm(8, 6, 6), "ez")
+    if lane == "run_subgridded" and not ref:
+        sim.add_refinement(z_range=(0.0, 10e-3), ratio=2, validation=validation)
+    return sim
+
+
+# The lid is 10 mm above the source: enough steps for the wave to come back.
+LID_STEPS = 100
+
+
 _PMC_X = BoundarySpec(x=Boundary(lo="pmc", hi="pmc"), y=Boundary(lo="pec", hi="pec"),
                       z=Boundary(lo="pec", hi="pec"))
 _PERIODIC_Y = BoundarySpec(x=Boundary(lo="pec", hi="pec"), y="periodic", z=Boundary(lo="pec", hi="pec"))
@@ -373,6 +392,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
         _sphere(ports=True), read=_s_params,
         run_kwargs=lambda lane: (dict(compute_s_params=True, s_param_freqs=np.array([4e9, 5e9, 6e9]))
                                  if lane == "run_uniform" else {})),
+    ("_boundary_spec", "absorbing_lid"): Feature(_lid, steps=lambda lane: LID_STEPS),
     ("_periodic_axes", "periodic"): _boundary({"boundary": _PERIODIC_Y}, boundary={
         "run_uniform": ("periodic-xy", "run"), "fwd_uniform": ("periodic-xy", "forward")}),
     ("_cpml_layers", "layers"): _boundary({"boundary": "cpml", "cpml_layers": 8}, cpml_off=True,
@@ -719,21 +739,64 @@ def test_relaxed_subgrid_validation_refuses_an_absorbing_box(mode, absorber, wor
     assert f"{words} is not carried by the subgridded run() lane" in str(exc.value)
 
 
+@pytest.mark.parametrize("validation", ["production", "research", "off"])
+def test_the_guarded_lid_runs_in_every_validation_mode(validation):
+    """A CPML lid on a closed PEC box, the refined slab on the PEC floor:
+    production validation's guarded envelope. It runs in every validation
+    mode, and in each the lid moves the record against a PEC lid (production
+    runs the slab's boundary-terminated interface, research and off do not,
+    so the modes do not give the same record). A UPML lid, which this lane
+    runs as CPML, is refused in every mode."""
+    spec = Feature(lambda lane, on, ref=False: None, steps=lambda lane: LID_STEPS)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        lid, pec = (_probe(_run(_lid("run_subgridded", on, validation=validation), "run_subgridded", spec))
+                    for on in (True, False))
+    effect = relative(lid, pec)
+    assert effect > EFFECT_FLOOR, f"validation={validation!r}: the lid moved the record by {effect:.3e}"
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        upml = _lid("run_subgridded", True, lid="upml", validation=validation)
+    with _watch_kernel_scans() as started, pytest.raises(NotImplementedError) as exc:
+        _run(upml, "run_subgridded", spec)
+    assert not started, started
+    assert "a UPML absorber is not carried by the subgridded run() lane" in str(exc.value)
+
+
+def test_the_refusal_names_only_lanes_that_admit_the_whole_model():
+    """A graded CPML box with cpml_kappa_max = 5 on the graded run(). The
+    uniform lanes carry kappa but not the graded mesh, so they are not named;
+    the multi-device run() admits every input of this model and is."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = _build(FEATURES["_cpml_kappa_max", "kappa"], "run_nonuniform", True)
+        with pytest.raises(NotImplementedError) as exc:
+            _run(sim, "run_nonuniform", FEATURES["_cpml_kappa_max", "kappa"])
+    message = str(exc.value)
+    assert "cpml_kappa_max != 1 is not carried by the graded run() lane." in message
+    assert "Lanes that admit every input this model declares: multi-device run(devices=...)." in message
+
+
 _CONFORMAL_S = ("_boundary_spec", "conformal_s_matrix")
 
 
-@pytest.mark.parametrize("compute_s_params", [None, True, False])
-def test_conformal_s_matrix_is_refused_only_when_run_computes_it(compute_s_params):
+@pytest.mark.parametrize("call,refused", [
+    ({}, True),
+    ({"compute_s_params": True}, True),
+    ({"compute_s_params": False}, False),
+    ({"conformal_pec": False}, False),
+], ids=["default", "s_params", "no_s_params", "staircase_override"])
+def test_conformal_s_matrix_is_refused_only_when_run_computes_it(call, refused):
     """Conformal walls and lumped ports on the uniform run(). Its lumped-port
     S-matrix comes from a path with no conformal update (#1299), so a call
-    that computes it (the default with ports, or True) is refused. A call with
-    compute_s_params=False computes none: it runs, and its fields are the
-    ones the same call gives with admission switched off, bit for bit."""
-    kwargs = dict(n_steps=N_STEPS, skip_preflight=True)
-    if compute_s_params is not None:
-        kwargs["compute_s_params"] = compute_s_params
+    that computes it against conformal fields (the default with ports, or
+    compute_s_params=True) is refused. compute_s_params=False computes none,
+    and conformal_pec=False asks for staircase fields as well as a staircase
+    S-matrix: both run, and give what the same call gives with admission
+    switched off, bit for bit."""
+    kwargs = dict(n_steps=N_STEPS, skip_preflight=True, **call)
     sim = _build(FEATURES[_CONFORMAL_S], "run_uniform", True)
-    if compute_s_params is not False:
+    if refused:
         with pytest.raises(NotImplementedError) as exc, warnings.catch_warnings():
             warnings.simplefilter("ignore")
             sim.run(**kwargs)
@@ -748,6 +811,9 @@ def test_conformal_s_matrix_is_refused_only_when_run_computes_it(compute_s_param
     for name in ("ex", "ey", "ez", "hx", "hy", "hz"):
         np.testing.assert_array_equal(np.asarray(getattr(got.state, name)),
                                       np.asarray(getattr(unadmitted.state, name)))
+    assert (got.s_params is None) == (unadmitted.s_params is None)
+    if got.s_params is not None:
+        np.testing.assert_array_equal(np.asarray(got.s_params), np.asarray(unadmitted.s_params))
 
 
 # ------------------------------------------------------ the table's own terms
