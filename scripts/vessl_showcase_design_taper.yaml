@@ -14,6 +14,7 @@ env:
   RFX_SHOWCASE_REF: "7509337f28d3bb4258f228562ef26327a8694c8a"
   RFX_SHOWCASE_PRESET: "gpu-8gb"
   RFX_DESIGN_MODE: "full"
+  RFX_DESIGN_RECORD: "none"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -47,7 +48,13 @@ run: |-
   nvidia-smi > "$out/nvidia_smi.txt" 2>&1 || true
   DT=scripts/showcase/design_taper.py
   set +e
-  if [ "$RFX_DESIGN_MODE" = "timing" ]; then
+  if [ "$RFX_DESIGN_MODE" = "keyframes" ]; then
+    # Amendment 3: extra solves of the stored designs of an existing record
+    test -f "$RFX_DESIGN_RECORD/iterations.npz"
+    echo "$RFX_DESIGN_RECORD" > "$out/record_dir.txt"
+    { timeout 14400 python "$DT" --stage keyframes --record "$RFX_DESIGN_RECORD" --out "$out" 2>&1; echo "$?" > "$out/keyframes.rc"; } | tee "$out/keyframes.log"
+    rc=$(cat "$out/keyframes.rc")
+  elif [ "$RFX_DESIGN_MODE" = "timing" ]; then
     { timeout 7200 python "$DT" --stage timing --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/timing.rc"; } | tee "$out/timing.log"
     rc=$(cat "$out/timing.rc")
   else
@@ -61,8 +68,14 @@ run: |-
       { timeout 14400 python "$DT" --stage resolve --out "$out" 2>&1; echo "$?" > "$out/resolve.rc"; } | tee "$out/resolve.log"
       rc=$(cat "$out/resolve.rc")
     fi
-    if [ "$rc" = "0" ] || [ "$rc" = "3" ]; then
-      # rc 3: the record-length witness failed; the case stops and the record is written
+    if [ "$rc" = "0" ]; then
+      # recorded for visualization, not judged (Amendment 3)
+      { timeout 14400 python "$DT" --stage keyframes --out "$out" 2>&1; echo "$?" > "$out/keyframes.rc"; } | tee "$out/keyframes.log"
+      rc=$(cat "$out/keyframes.rc")
+    fi
+    if [ "$rc" = "0" ] || [ "$rc" = "3" ] || [ "$rc" = "4" ]; then
+      # rc 3: the record-length witness failed; rc 4: the module-path comparison failed.
+      # The case stops and the record is written.
       { timeout 600 python "$DT" --stage finalize --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/finalize.rc"; } | tee "$out/finalize.log"
       frc=$(cat "$out/finalize.rc")
       [ "$frc" = "0" ] || rc="$frc"

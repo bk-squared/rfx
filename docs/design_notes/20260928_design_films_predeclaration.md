@@ -262,6 +262,73 @@ but unit conversions and display normalization.
   columns for the three panels.
 - Nothing goes to the share host or to a public page until the lane leader approves the storyboard.
 
+## Amendment 3 (2026-09-28): the lane leader's decisions, before the beam rerun and any keyframe run
+
+The first beam full run (369367265782, 441 control points) stays in the archive, marked superseded.
+The taper's optimization record (369367265774) is kept as it is. None of the runs below has been
+submitted yet.
+
+**A3.1 The beam uses the module's own parameterization.** Every one of the 31 × 31 × 3 = 2883 cover
+cells is a design variable, with εr = 1 + 9 sigmoid(ψ) and the module's ramp start. No
+control-point layer is added.
+- The FD variables are three cells on the centre line y = 0, in the middle layer: (7, 15, 1),
+  (15, 15, 1) and (23, 15, 1), at x = −40, 0 and +40 mm. The steps, the judged step and the rule
+  are those of §2.
+- The witness runs over all 2883 cells.
+- Recorded at every iterate: the cells' εr, dL/dψ, dL/dεr per cell, and dL/dεr summed over the
+  3 layers (a 31 × 31 map).
+- The λ/40 re-solve writes each λ/20 cell's εr onto the 2 × 2 × 2 λ/40 cells nested in it. A
+  λ/20 εr index i covers [x_i, x_i+1). Every position is held.
+
+**A3.2 Amendment 2's condition, judged.** At the start cover and with the full record, the
+module's `make_pattern_fn` (per-step checkpoint, the `compute_far_field` dispatch, not jitted) is
+compared with this script's path (`checkpoint_segments`, `compute_far_field_jax`, jitted).
+- Judged: the largest pattern difference ÷ the pattern maximum ≤ 1e-4.
+- Judged: ||g_script − g_module|| / ||g_module|| ≤ 1e-4, for the gradient with respect to the 2883
+  cell εr.
+- If either fails, the case stops (exit 4) and the record is written. The module's per-step tape
+  needs about 27 GB, so the job runs on an RTX A6000.
+
+**A3.3 Float32 matmuls without TF32 for the beam.** Every beam stage sets
+`jax_default_matmul_precision = "highest"`. Measured on the superseded run, same commit:
+- The same float32 FD ladder scattered on the RTX A6000, by up to 0.36 relative, but was clean on
+  the RTX 2070 SUPER, where the judged rows were ≤ 1.05e-3.
+- The module-path comparison read 1.97e-4 on the A6000 and 1.3e-6 on the 2070 SUPER.
+
+The suspected cause is TF32, which Ampere cards use for float32 matmuls by default; it has not been
+verified. The setting keeps float32 matmuls in float32 on every card. The taper's recorded descent
+ran on an RTX 3080 without it (its float32 FD rows are in fd_start.json of run 369367265774) and is not re-run.
+
+**A3.4 Film labels.**
+- The baseline curve is labelled "Klopfenstein profile, A tuned for this band (closed form)", and
+  A and its closed-form J are recorded.
+- The taper header shows 10·log10 of the band-mean |S11|², in dB.
+- The beam header shows D(30°) in dBi and names the objective: "raise D(30°) while holding
+  broadside and back lobes down".
+- Gradient panels are in εr units. The beam's gradient map is the per-cell dL/dεr summed over the
+  3 layers. Its design map is the layer mean (all three layers are recorded).
+
+**A3.5 Recorded for visualization, not judged.** These are extra solves of stored designs; the
+optimization record is only read.
+- **Taper, keyframes 0, 6, 18, 42, 72 and 120** (0, 5, 15, 35, 60 and 100 % of 120):
+  - The complex Ez phasor on the longitudinal mid-plane z = b/2 (the x–y plane; the TE10 field lies
+    along z and does not vary along it). It is taken at 8.2, 10.3 and 12.4 GHz, and its centre line
+    y = a/2 is also saved.
+  - These come from a forward run driven from the left port alone, with the same mesh, absorber and
+    record as the loop. The right port is left out: the εr = 9 fill runs into the absorber, which
+    terminates it.
+  - At keyframes 0, 60 and 120, the complex Jacobian dS11(f)/dεr (21 bins × 30 sections), taken as
+    `jax.jit(jax.jacfwd(...))` without checkpointing. The first keyframe is timed; if three would
+    take more than 2 GPU-hours, the rest are not run and the projection is reported.
+  - Reported, not judged: dJ/dεr formed from the Jacobian, 2 mean(Re(S11* dS11/dεr)), against the
+    recorded reverse-mode gradient at the same keyframe.
+- **Beam, keyframes 0, 7, 21, 49, 84 and 140:**
+  - The complex Ex and Ez phasors at f0 on the plane y = cy, the E-plane through the dipole. The
+    plane spans the whole grid, so it covers the reflector, the cover and more than 1 λ above it.
+  - D(θ, φ) on a 2° grid over the whole sphere. The plate is finite and the objective holds the back
+    hemisphere down, so the back is kept.
+- Files are complex64 or float32, one npz per case (`keyframes.npz`, with `keyframes.json`).
+
 ## 5. What this batch does not do
 - It changes no solver code and no file under `validation/tmtt_paper/`.
 - It does not quote or reproduce the paper's numbers. Every number comes from these runs.

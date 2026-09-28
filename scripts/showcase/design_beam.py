@@ -2,27 +2,25 @@
 
 An x-directed dipole sits a quarter wavelength above a finite PEC reflector at
 3 GHz, under a dielectric cover 1.5 lambda square and lambda/10 thick.  The
-cover permittivity is the design: a 21 x 21 grid of control points, each
-eps_r = 1 + 9 sigmoid(psi), interpolated bilinearly onto the cover's 31 x 31
-mesh nodes and held uniform through its thickness.  Adam lowers the
-module's steering objective (directivity toward theta = 30 deg in the E-plane,
-with broadside and back-hemisphere penalties) through the FDTD solve and the
-near-to-far-field transform.  The structure, the objective, the record length,
-the start (the eps_r 2 -> 9 ramp along x) and the optimiser (Adam lr 0.08, 140
-steps) are those of ``validation/tmtt_paper/beam_steering_superstrate.py``
-with ``SMOKE=0``, imported by path and never edited.  The module itself
-optimizes every one of the 2883 cover cells; the 441-control-point
-parameterization is added here (the issue's and the paper's), and it gives
-a continuous cover map that a finer mesh can sample.
+cover permittivity is the design: every one of the cover's 31 x 31 x 3 = 2883
+cells, eps_r = 1 + 9 sigmoid(psi), as the module optimizes it.  Adam lowers the
+module's steering objective (raise the directivity toward theta = 30 deg in the
+E-plane while holding the broadside and back lobes down) through the FDTD solve
+and the near-to-far-field transform.  The structure, the objective, the record
+length, the start (the eps_r 2 -> 9 ramp along x) and the optimiser (Adam lr
+0.08, 140 steps) are those of ``validation/tmtt_paper/beam_steering_superstrate.py``
+with ``SMOKE=0``, imported by path and never edited.
 
 Rules: ``docs/design_notes/20260928_design_films_predeclaration.md``, section
-"Beam".  Stages, run in this order by ``scripts/vessl_showcase_design_beam.yaml``:
+"Beam" and Amendment 3.  Stages, run in this order by
+``scripts/vessl_showcase_design_beam.yaml``:
 
-    python scripts/showcase/design_beam.py --stage timing   --out DIR
-    python scripts/showcase/design_beam.py --stage main     --out DIR
+    python scripts/showcase/design_beam.py --stage timing    --out DIR
+    python scripts/showcase/design_beam.py --stage main      --out DIR
     JAX_ENABLE_X64=1 python scripts/showcase/design_beam.py --stage x64fd --out DIR  # if DIR/x64_needed.json
-    python scripts/showcase/design_beam.py --stage resolve  --out DIR
-    python scripts/showcase/design_beam.py --stage finalize --out DIR
+    python scripts/showcase/design_beam.py --stage resolve   --out DIR
+    python scripts/showcase/design_beam.py --stage keyframes --out DIR
+    python scripts/showcase/design_beam.py --stage finalize  --out DIR
 """
 
 from __future__ import annotations
@@ -46,28 +44,35 @@ import _record  # noqa: E402
 import _design_common as dc  # noqa: E402
 
 CASE_ID = "design-beam"
-QUESTION = ("How do the cover permittivity map, the E-plane directivity pattern and the "
+QUESTION = ("How do the cover permittivity, the E-plane directivity pattern and the "
             "gradient move together, iterate by iterate, when Adam steers a reflector-backed "
             "dipole's beam toward 30 degrees through the FDTD solve at lambda/20?")
 MODULE = REPO / "validation" / "tmtt_paper" / "beam_steering_superstrate.py"
 C0 = 299_792_458.0
 
 # ------------------------------------------------------------ pre-declared
-N_CTRL = 21                              # 21 x 21 = 441 control points
-FD_CTRL = {"ctrl_x5_y10": (5, 10), "ctrl_x10_y10": (10, 10), "ctrl_x15_y10": (15, 10)}
-FD_STEPS = (0.2, 0.1, 0.05)              # in control-point eps_r
+# cover cells (i, j, k) on the centre line y = 0, middle layer: x = -40, 0, +40 mm
+FD_CELLS = {"cell_x7_y15_z1": (7, 15, 1), "cell_x15_y15_z1": (15, 15, 1),
+            "cell_x23_y15_z1": (23, 15, 1)}
+FD_STEPS = (0.2, 0.1, 0.05)              # in eps_r
 FD_JUDGED_STEP = 0.1
 FD_REL_BAR = 0.05
 FD_JUDGE_FRAC = 0.1
 WITNESS_FACTOR = 1.5
 WITNESS_TOL = 0.05
+EQUIV_TOL = 1e-4                         # Amendment 2 condition: module path vs this script's
 UNIFORM_EPS = tuple(float(e) for e in range(1, 11))   # 1 = no cover
 FINE_REFINE = 2                          # the re-solve mesh: lambda/40
 SETTLING_BAR_DB = -40.0                  # the module's format_witness verdict
+MATMUL_PRECISION = "highest"             # Amendment 3: no TF32 in float32 matmuls
+KEYFRAMES = (0, 7, 21, 49, 84, 140)      # 0, 5, 15, 35, 60 and 100 % of 140
+SPHERE_STEP_DEG = 2.0                    # the far-field sphere for the 3-D pattern
 
 
 def load_module(name: str = "_showcase_beam_module"):
     """The T-MTT beam-steering module with its paper constants (``SMOKE=0``)."""
+    import jax
+    jax.config.update("jax_default_matmul_precision", MATMUL_PRECISION)
     if name in sys.modules:
         return sys.modules[name]
     os.environ["SMOKE"] = "0"
@@ -80,44 +85,14 @@ def load_module(name: str = "_showcase_beam_module"):
     return mod
 
 
-# --------------------------------------------------------- parameterization
-def interp_matrix(n_nodes: int, n_ctrl: int = N_CTRL) -> np.ndarray:
-    """Linear interpolation from ``n_ctrl`` evenly spaced control points to
-    ``n_nodes`` evenly spaced mesh nodes over the same span (end points
-    coincide).  Row i holds the two weights of node i."""
-    u = np.arange(n_nodes, dtype=float) * (n_ctrl - 1) / (n_nodes - 1)
-    k = np.minimum(np.floor(u + 1e-12).astype(int), n_ctrl - 2)
-    w = u - k
-    W = np.zeros((n_nodes, n_ctrl))
-    W[np.arange(n_nodes), k] = 1.0 - w
-    W[np.arange(n_nodes), k + 1] = w
-    return W
-
-
-def cover_from_ctrl(eps_ctrl, shape):
-    """The cover's eps_r on its (nx, ny, nz) mesh nodes: bilinear in x, y from
-    the control grid, uniform through the thickness."""
-    import jax.numpy as jnp
-    Wx = jnp.asarray(interp_matrix(shape[0]), dtype=eps_ctrl.dtype)
-    Wy = jnp.asarray(interp_matrix(shape[1]), dtype=eps_ctrl.dtype)
-    plane = Wx @ eps_ctrl @ Wy.T
-    return jnp.broadcast_to(plane[:, :, None], shape)
-
-
-def eps_of_psi(psi):
-    import jax
-    return 1.0 + 9.0 * jax.nn.sigmoid(psi)
-
-
-def ramp_ctrl() -> np.ndarray:
-    """The module's start (eps_r 2 -> 9 linear along x) at the control points;
-    linear interpolation reproduces it exactly on the cover nodes."""
-    return np.broadcast_to(np.linspace(2.0, 9.0, N_CTRL)[:, None], (N_CTRL, N_CTRL)).copy()
-
-
-def psi_of_eps(eps) -> np.ndarray:
-    frac = np.clip((np.asarray(eps, dtype=float) - 1.0) / 9.0, 1e-4, 1 - 1e-4)
-    return np.log(frac / (1.0 - frac))
+def module_start(shape) -> tuple[np.ndarray, np.ndarray]:
+    """The module's start, its ``main()`` lines: an eps_r 2 -> 9 ramp along x
+    over the cover cells, and its latent psi = logit((eps - 1) / 9)."""
+    nx = shape[0]
+    ramp = np.linspace(2.0, 9.0, nx, dtype=np.float32)
+    eps0 = np.broadcast_to(ramp[:, None, None], shape).astype(np.float32)
+    frac = np.clip((eps0 - 1.0) / 9.0, 1e-4, 1 - 1e-4)
+    return eps0, np.log(frac / (1.0 - frac)).astype(np.float32)
 
 
 # ------------------------------------------------------------------ problem
@@ -143,19 +118,29 @@ class BeamModel:
         self.sim, self.region, self.grid, self.plate, self.lam, self.f0 = sim, region, grid, plate, lam, f0
         self.lo, self.hi, self.shape = mod.resolve_design_indices(region, grid)
         self.dx = float(grid.dx)
+        if refine == 1:
+            self.start, self.block_shape = tuple(self.lo), tuple(self.shape)
+        else:
+            # the lambda/20 cover's cells, each written onto the refine^3 fine
+            # cells nested in it (the coarse eps_r index i covers [x_i, x_i+1))
+            _, c_region, c_grid, *_ = mod.build_problem()
+            c_lo, _, c_shape = mod.resolve_design_indices(c_region, c_grid)
+            self.start = nested_start(c_lo, c_grid.axis_pads, grid.axis_pads, refine)
+            self.block_shape = tuple(refine * n for n in c_shape)
 
     def n_steps(self, num_periods: float | None = None) -> int:
         return int(self.grid.num_timesteps(num_periods=num_periods or self.mod.NUM_PERIODS))
 
     def pattern_fn(self, n_steps: int, segments: int | None = "auto"):
-        """``pattern(eps_cover) -> |E|^2 (THETA, PHI)``: the module's
+        """``pattern(eps_block) -> |E|^2 (THETA, PHI)``: the module's
         ``make_pattern_fn`` line for line, with the forward's segmented
         checkpointing switched on (``segments``, default the largest divisor
-        of ``n_steps`` not above sqrt(n_steps)) and the float64 arrays of the
-        x64 stage.  ``segments=None`` is the module's per-step checkpoint."""
+        of ``n_steps`` not above sqrt(n_steps)), the JAX far-field transform
+        and the float64 arrays of the x64 stage.  ``eps_block`` has
+        ``block_shape`` and is written at ``start``."""
         if segments == "auto":
             segments = sqrt_segments(n_steps)
-        return _pattern_fn(self.mod, self.sim, self.grid, self.lo, self.hi, n_steps,
+        return _pattern_fn(self.mod, self.sim, self.grid, self.start, n_steps,
                            self.precision, segments)
 
     def module_pattern_fn(self, n_steps: int):
@@ -173,7 +158,9 @@ class BeamModel:
         g = self.grid
         return {"dx_m": self.dx, "lambda_over_dx": self.lam / self.dx, "grid_shape": g.shape,
                 "cpml_layers": g.pad_x_lo, "design_lo": self.lo, "design_hi": self.hi,
-                "design_shape": self.shape, "plate": {k: v for k, v in self.plate.items()},
+                "design_shape": self.shape, "eps_block_start": self.start,
+                "eps_block_shape": self.block_shape,
+                "plate": {k: v for k, v in self.plate.items()},
                 "region_corner_lo_m": self.region.corner_lo, "region_corner_hi_m": self.region.corner_hi,
                 "f0_hz": self.f0, "lambda_m": self.lam}
 
@@ -238,7 +225,20 @@ def sqrt_segments(n_steps: int) -> int:
     return 1
 
 
-def _pattern_fn(mod, sim, grid, lo, hi, n_steps, precision, segments):
+def nested_start(coarse_lo, coarse_pads, fine_pads, refine: int) -> tuple:
+    """Fine index of the first fine cell nested in coarse cell ``coarse_lo``."""
+    return tuple(int(fp + refine * (c - cp)) for c, cp, fp in zip(coarse_lo, coarse_pads, fine_pads))
+
+
+def nested_block(coarse, refine: int) -> np.ndarray:
+    """Each coarse cell's eps_r on the ``refine``^3 fine cells nested in it."""
+    b = np.asarray(coarse)
+    for ax in range(3):
+        b = np.repeat(b, refine, axis=ax)
+    return b
+
+
+def _pattern_fn(mod, sim, grid, start, n_steps, precision, segments):
     """``mod.make_pattern_fn`` with a dtype, ``checkpoint_segments`` and the JAX
     far-field transform on a box built from the declaration.
 
@@ -263,13 +263,13 @@ def _pattern_fn(mod, sim, grid, lo, hi, n_steps, precision, segments):
     corner_lo, corner_hi, freqs = sim._ntff
     box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
     box = box._replace(freqs=np.asarray(box.freqs))
-    si, sj, sk = lo
-    ei, ej, ek = hi
+    si, sj, sk = start
     witness: dict = {"settling": None}
     kw = {"checkpoint_segments": int(segments)} if segments else {}
 
     def pattern(eps_slab):
-        eps_override = base_eps_r.at[si:ei + 1, sj:ej + 1, sk:ek + 1].set(
+        nx, ny, nz = eps_slab.shape
+        eps_override = base_eps_r.at[si:si + nx, sj:sj + ny, sk:sk + nz].set(
             jnp.clip(jnp.asarray(eps_slab, dtype=dtype), 1.0, 10.0))
         res = sim.forward(eps_override=eps_override, n_steps=n_steps, checkpoint=True,
                           skip_preflight=True, **kw)
@@ -331,7 +331,25 @@ def settling_record(pattern) -> dict | None:
             "passed": bool(worst <= SETTLING_BAR_DB)}
 
 
+
+
 # ------------------------------------------------------------------ stages
+def check_refined_matches_module(mod) -> dict:
+    """``build_problem_refined(mod, 1)`` must build what ``mod.build_problem()``
+    builds (grid, design indices, plate plane), or the fine re-solve is not the
+    same structure."""
+    a = mod.build_problem()
+    b = build_problem_refined(mod, 1)
+    la, ha, sa = mod.resolve_design_indices(a[1], a[2])
+    lb, hb, sb = mod.resolve_design_indices(b[1], b[2])
+    same = {"grid_shape": a[2].shape == b[2].shape, "design": (la, ha, sa) == (lb, hb, sb),
+            "plate_planes": a[3]["realized"]["planes"] == b[3]["realized"]["planes"],
+            "dx": a[2].dx == b[2].dx}
+    if not all(same.values()):
+        raise RuntimeError(f"build_problem_refined(mod, 1) differs from the module: {same}")
+    return same
+
+
 def stage_timing(out: Path, a) -> int:
     import jax
     import jax.numpy as jnp
@@ -350,11 +368,11 @@ def stage_timing(out: Path, a) -> int:
         t[tag] = time.perf_counter() - t0
 
     def loss(psi):
-        p = pattern(cover_from_ctrl(eps_of_psi(psi), model.shape))
+        p = pattern(mod.eps_of_psi(psi))
         return steering_loss(mod, p), p
 
     vg = jax.jit(jax.value_and_grad(loss, has_aux=True))
-    psi = jnp.asarray(psi_of_eps(ramp_ctrl()), dtype=jnp.float32)
+    psi = jnp.asarray(module_start(model.shape)[1])
     opt = optax.adam(mod.LR)
     state = opt.init(psi)
     t["grad_s"] = []
@@ -372,41 +390,44 @@ def stage_timing(out: Path, a) -> int:
     n_fine = fine.n_steps(a.periods)
     pf = fine.pattern_fn(n_fine)
     t0 = time.perf_counter()
-    jax.block_until_ready(pf(np.ones(fine.shape, dtype=np.float32)))
+    jax.block_until_ready(pf(np.ones(fine.block_shape, dtype=np.float32)))
     t["forward_fine_first_s"] = time.perf_counter() - t0
     t["memory_end"] = dc.device_memory()
     g_s, f_s = t["grad_s"][-1], t["forward_second_s"]
-    proj = {"main_s": (len(UNIFORM_EPS) + 18 + 2) * f_s + (mod.N_ITERS + 1 + 1.5) * g_s
+    proj = {"main_s": (len(UNIFORM_EPS) + 18 + 4) * f_s + (mod.N_ITERS + 1 + 1.5 + 2) * g_s
             + t["forward_first_s"] + t["grad_s"][0],
-            "resolve_s": 3 * f_s + t["forward_first_s"] + 3 * t["forward_fine_first_s"]}
-    proj["total_gpu_h"] = (proj["main_s"] + proj["resolve_s"]) / 3600.0
-    proj["x64fd_note"] = "not included: runs only if the round-off rule fires"
+            "resolve_s": 3 * f_s + t["forward_first_s"] + 3 * t["forward_fine_first_s"],
+            "keyframes_s": len(KEYFRAMES) * (f_s + 30.0)}
+    proj["total_gpu_h"] = sum(v for v in proj.values()) / 3600.0
     dc.save_json(out / "timing.json", {
         "grid_l20": model.grid.shape, "grid_l40": fine.grid.shape, "design_shape_l20": model.shape,
-        "design_shape_l40": fine.shape, "n_steps_l20": n_steps, "n_steps_l40": n_fine,
+        "block_shape_l40": fine.block_shape, "n_steps_l20": n_steps, "n_steps_l40": n_fine,
         "iters_timed": a.iters, "timings": t, "projection": proj, "device": str(jax.devices()[0]),
         "refined_builder_check": check,
-        "formula": "main = 30 forwards + (N_ITERS + 2.5) gradients at steady state + first-call "
-                   "extras; resolve = 4 lambda/20 forwards + 3 first-call lambda/40 forwards"})
-    dc.log(f"projection: main {proj['main_s'] / 60:.1f} min, resolve {proj['resolve_s'] / 60:.1f} min, "
-           f"total {proj['total_gpu_h']:.2f} GPU-h")
+        "formula": "main = 32 forwards + (N_ITERS + 4.5) gradients at steady state + first-call "
+                   "extras (the module-path equivalence gradient counted as two); resolve = 4 "
+                   "lambda/20 forwards + 3 first-call lambda/40 forwards; keyframes = one forward "
+                   "and a far-field sphere (30 s allowance) per keyframe"})
+    dc.log(f"projection: {proj}")
     return 0
 
 
-def check_refined_matches_module(mod) -> dict:
-    """``build_problem_refined(mod, 1)`` must build what ``mod.build_problem()``
-    builds (grid, design indices, plate plane), or the fine re-solve is not the
-    same structure."""
-    a = mod.build_problem()
-    b = build_problem_refined(mod, 1)
-    la, ha, sa = mod.resolve_design_indices(a[1], a[2])
-    lb, hb, sb = mod.resolve_design_indices(b[1], b[2])
-    same = {"grid_shape": a[2].shape == b[2].shape, "design": (la, ha, sa) == (lb, hb, sb),
-            "plate_planes": a[3]["realized"]["planes"] == b[3]["realized"]["planes"],
-            "dx": a[2].dx == b[2].dx}
-    if not all(same.values()):
-        raise RuntimeError(f"build_problem_refined(mod, 1) differs from the module: {same}")
-    return same
+def _row(mod, psi, p, g=None):
+    """One iterate: the cells, the pattern, and (when taken) the gradient."""
+    psi = np.asarray(psi, dtype=float)
+    sg = 1.0 / (1.0 + np.exp(-psi))
+    eps = 1.0 + 9.0 * sg
+    s = pattern_summary(mod, p)
+    r = dict(psi=psi.astype(np.float32), eps=eps.astype(np.float32),
+             D=directivity(mod, p).astype(np.float32), D30_dbi=s["D30_dbi"],
+             D_broadside_dbi=s["D_broadside_dbi"], e_plane_peak_theta_deg=s["e_plane_peak_theta_deg"],
+             e_plane_peak_dbi=s["e_plane_peak_dbi"])
+    if g is not None:
+        g = np.asarray(g, dtype=float)
+        ge = g / (9.0 * sg * (1.0 - sg))
+        r.update(grad_psi=g.astype(np.float32), grad_eps=ge.astype(np.float32),
+                 grad_eps_map=ge.sum(axis=2).astype(np.float32))
+    return r
 
 
 def stage_main(out: Path, a) -> int:
@@ -422,7 +443,6 @@ def stage_main(out: Path, a) -> int:
     n_iters = a.iters if a.iters is not None else mod.N_ITERS
     shape = model.shape
     dc.save_json(out / "preflight_l20.json", model.preflight())
-    Wx = interp_matrix(shape[0])
     dc.save_json(out / "model.json", {
         "structure": "x-directed dipole lambda/4 above a finite PEC plate (a sheet), a dielectric "
                      "cover above it, NTFF box, CPML (validation/tmtt_paper/"
@@ -433,37 +453,47 @@ def stage_main(out: Path, a) -> int:
         "i_theta0": mod.I_T0, "i_phi0": mod.I_P0, "i_back": mod.I_BACK,
         "objective": "the module's L = -log U(30,0)/P + 0.3 log mean U(0,phi)/P + 0.5 log "
                      "mean_{theta>90} U/P, on its 73 x 73 (theta, phi) grid",
-        "parameterization": {"n_ctrl": N_CTRL, "map": "eps_ctrl = 1 + 9 sigmoid(psi); cover = "
-                             "W_x eps_ctrl W_y^T on the 31 x 31 cover nodes (linear, end points "
-                             "coincide), uniform over the 3 node layers",
-                             "ctrl_spacing_cells": (shape[0] - 1) / (N_CTRL - 1)},
+        "parameterization": "the module's: every cover cell, eps_r = 1 + 9 sigmoid(psi), "
+                            f"{shape[0]} x {shape[1]} x {shape[2]} = {int(np.prod(shape))} cells",
         "adam": {"lr": mod.LR, "iters": n_iters, "optax": "optax.adam(lr) defaults",
-                 "start": "the module's eps_r 2 -> 9 ramp along x, at the control points"},
-        "refined_builder_check": check,
-        "checkpoint_segments": sqrt_segments(n_steps),
+                 "start": "the module's eps_r 2 -> 9 ramp along x"},
+        "refined_builder_check": check, "checkpoint_segments": sqrt_segments(n_steps),
+        "matmul_precision": MATMUL_PRECISION, "keyframes": KEYFRAMES,
         "jit": "jax.jit(jax.value_and_grad(L(psi), has_aux=True)); the module does not jit",
         "far_field_path": "rfx.farfield.compute_far_field_jax on every call, on a box from "
                           "make_ntff_box(grid, *sim._ntff) with numpy frequencies (the module's "
                           "compute_far_field dispatches to numpy on eager calls)"})
     pattern = model.pattern_fn(n_steps)
+    eps0, psi0 = module_start(shape)
 
-    # ---- the start must be the module's ramp -------------------------------
-    cover0 = np.asarray(cover_from_ctrl(jnp.asarray(ramp_ctrl()), shape))
-    module_ramp = np.broadcast_to(np.linspace(2.0, 9.0, shape[0])[:, None, None], shape)
-    if not np.allclose(cover0, module_ramp, atol=1e-12):
-        raise RuntimeError("the control-point ramp does not reproduce the module's ramp")
+    def L_cells(eps, pat=pattern):
+        return steering_loss(mod, pat(eps))
 
-    # ---- this script's pattern against the module's, one eager forward each --
-    pm = np.asarray(model.module_pattern_fn(n_steps)(cover0.astype(np.float32)))
-    ps = np.asarray(pattern(cover0.astype(np.float32)))
-    dc.save_json(out / "pattern_equivalence.json", {
-        "what": "eager forward at the start cover: the module's make_pattern_fn (per-step "
-                "checkpoint, numpy far field on an eager call) against this script's "
-                "(checkpoint_segments, compute_far_field_jax)",
-        "segments": pattern.segments, "n_steps": n_steps,
-        "max_abs_diff_over_max": float(np.max(np.abs(pm - ps)) / np.max(np.abs(pm))),
-        "D30_dbi_module": pattern_summary(mod, pm)["D30_dbi"],
-        "D30_dbi_script": pattern_summary(mod, ps)["D30_dbi"]})
+    # ---- judged: this script's path against the module's, pattern and gradient ----
+    pm_fn = model.module_pattern_fn(n_steps)
+    t0 = time.perf_counter()
+    pm = np.asarray(pm_fn(eps0))
+    ps = np.asarray(pattern(eps0))
+    g_mod = np.asarray(jax.grad(lambda e: steering_loss(mod, pm_fn(e)))(jnp.asarray(eps0)), dtype=float)
+    wall["equivalence_s"] = time.perf_counter() - t0
+    g_scr = np.asarray(jax.jit(jax.grad(L_cells))(jnp.asarray(eps0)), dtype=float)
+    eq = {"what": "at the start cover, full record: the module's make_pattern_fn (per-step "
+                  "checkpoint, compute_far_field dispatch, value_and_grad not jitted) against this "
+                  "script's (checkpoint_segments, compute_far_field_jax, jitted)",
+          "segments": pattern.segments, "n_steps": n_steps, "tol": EQUIV_TOL,
+          "pattern_max_abs_diff_over_max": float(np.max(np.abs(pm - ps)) / np.max(np.abs(pm))),
+          "grad_norm_rel_diff": float(np.linalg.norm(g_scr - g_mod) / np.linalg.norm(g_mod)),
+          "D30_dbi_module": pattern_summary(mod, pm)["D30_dbi"],
+          "D30_dbi_script": pattern_summary(mod, ps)["D30_dbi"],
+          "memory": dc.device_memory()}
+    eq["passed"] = bool(eq["pattern_max_abs_diff_over_max"] <= EQUIV_TOL
+                        and eq["grad_norm_rel_diff"] <= EQUIV_TOL)
+    dc.save_json(out / "pattern_equivalence.json", eq)
+    dc.log(f"module path vs script path: pattern {eq['pattern_max_abs_diff_over_max']:.2e}, gradient "
+           f"{eq['grad_norm_rel_diff']:.2e} -> passed {eq['passed']}")
+    if not eq["passed"] and not a.smoke:
+        dc.log("the module-path comparison FAILED: the case stops (Amendment 2 condition)")
+        return 4
 
     # ---- baselines: no cover, and uniform covers ---------------------------
     base, maps = {}, {}
@@ -481,21 +511,14 @@ def stage_main(out: Path, a) -> int:
     dc.save_json(out / "baselines_l20.json", base)
     dc.save_npz(out / "baselines_l20.npz", uniform_eps=np.asarray(UNIFORM_EPS), **maps)
 
-    def L_ctrl(eps_ctrl, pat=pattern):
-        p = pat(cover_from_ctrl(eps_ctrl, shape))
-        return steering_loss(mod, p)
-
     # ---- AD against central differences at the start ----------------------
-    e0 = ramp_ctrl().astype(np.float32)
-    L_j = jax.jit(L_ctrl)
-    t0 = time.perf_counter()
-    g0 = np.asarray(jax.jit(jax.grad(L_ctrl))(jnp.asarray(e0)), dtype=float)
-    wall["grad_ctrl_start_s"] = time.perf_counter() - t0
-    ladder = dc.fd_ladder(lambda e: L_j(jnp.asarray(e, dtype=jnp.float32)), e0, FD_CTRL, FD_STEPS)
-    ad = {n: float(g0[ij]) for n, ij in FD_CTRL.items()}
+    L_j = jax.jit(L_cells)
+    g0 = g_scr                           # the jitted start gradient of the comparison above
+    ladder = dc.fd_ladder(lambda e: L_j(jnp.asarray(e, dtype=jnp.float32)), eps0, FD_CELLS, FD_STEPS)
+    ad = {n: float(g0[ijk]) for n, ijk in FD_CELLS.items()}
     verdict = dc.judge_fd(ad, ladder, FD_STEPS, FD_JUDGED_STEP, FD_REL_BAR, FD_JUDGE_FRAC)
-    dc.save_json(out / "fd_start.json", {"precision": "float32", "eps_ctrl0": e0, "L0": float(L_j(e0)),
-                                         "variables": FD_CTRL, "grad_eps_ctrl_all": g0,
+    dc.save_json(out / "fd_start.json", {"precision": "float32", "eps0": eps0, "L0": float(L_j(eps0)),
+                                         "variables": FD_CELLS, "grad_eps_all": g0,
                                          "ladder": ladder, "judgement": verdict})
     dc.log("AD vs FD at the start: " + "; ".join(
         f"{n}: AD {r['ad']:+.5e} FD {r['fd']:+.5e} rel {r['rel']:.2e}{' judged' if r['judged'] else ''}"
@@ -512,16 +535,16 @@ def stage_main(out: Path, a) -> int:
     def witness_objective(e, n):
         if n not in pats:
             pats[n] = model.pattern_fn(n)
-        return L_ctrl(e, pats[n])
+        return L_cells(e, pats[n])
 
     t0 = time.perf_counter()
-    w = gradient_record_length_witness(witness_objective, jnp.asarray(e0), n_steps,
+    w = gradient_record_length_witness(witness_objective, jnp.asarray(eps0), n_steps,
                                        tol=WITNESS_TOL, factor=WITNESS_FACTOR)
     wall["witness_s"] = time.perf_counter() - t0
     g1 = np.asarray(next(iter(w.grad.values())))[0].astype(float)
     g15 = np.asarray(next(iter(w.grad_long.values())))[0].astype(float)
-    per_var = {n: (float(abs(g15[ij] - g1[ij]) / abs(g15[ij])) if g15[ij] else None)
-               for n, ij in FD_CTRL.items()}
+    per_var = {n: (float(abs(g15[ijk] - g1[ijk]) / abs(g15[ijk])) if g15[ijk] else None)
+               for n, ijk in FD_CELLS.items()}
     wit = {"helper": "rfx.gradient_record_length_witness", "factor": WITNESS_FACTOR, "tol": WITNESS_TOL,
            "n_steps": {"1.0x": w.n_steps, "1.5x": w.n_steps_long},
            "grad": {"1.0x": g1, "1.5x": g15}, "norm_rel_change": float(w.worst),
@@ -529,10 +552,13 @@ def stage_main(out: Path, a) -> int:
            "per_variable_rel_change": per_var, "judged_variables": verdict["judged"],
            "L": {"1.0x": float(np.real(w.value[0])), "1.5x": float(np.real(w.value_long[0]))}}
     wit["passed"] = bool(w.worst <= WITNESS_TOL
-                         and all(per_var[n] is not None and per_var[n] <= WITNESS_TOL for n in verdict["judged"]))
+                         and all(per_var[n] is not None and per_var[n] <= WITNESS_TOL
+                                 for n in verdict["judged"]))
     dc.save_json(out / "record_length_witness.json", wit)
     dc.log(f"record-length witness: norm {w.worst:.3e}, per variable "
-           + ", ".join(f"{n} {v if v is None else f'{v:.3e}'}" for n, v in per_var.items()) + f" -> passed {wit['passed']}")
+           + ", ".join(f"{n} {v if v is None else f'{v:.3e}'}" for n, v in per_var.items())
+           + f" -> passed {wit['passed']}")
+    pats.clear()
     if not wit["passed"]:
         dc.save_json(out / "witness_failed.json", wit)
         if not a.smoke:
@@ -542,37 +568,22 @@ def stage_main(out: Path, a) -> int:
 
     # ---- Adam, every iterate ------------------------------------------------
     def loss(psi):
-        p = pattern(cover_from_ctrl(eps_of_psi(psi), shape))
+        p = pattern(mod.eps_of_psi(psi))
         return steering_loss(mod, p), p
 
     vg = jax.jit(jax.value_and_grad(loss, has_aux=True))
-    psi = jnp.asarray(psi_of_eps(ramp_ctrl()), dtype=jnp.float32)
+    psi = jnp.asarray(psi0)
     opt = optax.adam(mod.LR)
     state = opt.init(psi)
     store = dc.IterateStore(out / "iterations.npz", static={
-        "theta_deg": np.degrees(np.asarray(mod.THETA)), "phi_deg": np.degrees(np.asarray(mod.PHI)),
-        "interp_x": Wx, "interp_y": interp_matrix(shape[1])})
-
-    def row(psi_now, p):
-        e = np.asarray(eps_of_psi(jnp.asarray(psi_now)), dtype=float)
-        summ = pattern_summary(mod, p)
-        return dict(psi=np.asarray(psi_now, dtype=float), eps_ctrl=e,
-                    eps_cover=(Wx @ e @ interp_matrix(shape[1]).T),
-                    D=directivity(mod, p).astype(np.float32),
-                    D30_dbi=summ["D30_dbi"], D_broadside_dbi=summ["D_broadside_dbi"],
-                    e_plane_peak_theta_deg=summ["e_plane_peak_theta_deg"],
-                    e_plane_peak_dbi=summ["e_plane_peak_dbi"])
-
+        "theta_deg": np.degrees(np.asarray(mod.THETA)), "phi_deg": np.degrees(np.asarray(mod.PHI))})
     for it in range(n_iters):
         t0 = time.perf_counter()
         (v, p), g = vg(psi)
         jax.block_until_ready(g)
         dt = time.perf_counter() - t0
-        g = np.asarray(g, dtype=float)
-        sg = 1.0 / (1.0 + np.exp(-np.asarray(psi, dtype=float)))
-        store.append(**row(psi, p), L=float(v), grad_psi=g, grad_eps_ctrl=g / (9.0 * sg * (1.0 - sg)),
-                     wall_s=dt)
-        updates, state = opt.update(jnp.asarray(g, dtype=jnp.float32), state)
+        store.append(**_row(mod, psi, p, g), L=float(v), wall_s=dt)
+        updates, state = opt.update(g, state)
         psi = optax.apply_updates(psi, updates)
         store.persist()
         dc.save_npz(out / "adam_state.npz", iterate_next=it + 1, psi_next=np.asarray(psi),
@@ -580,9 +591,9 @@ def stage_main(out: Path, a) -> int:
         if it % 5 == 0 or it == n_iters - 1:
             dc.log(f"iter {it:3d} L {float(v):+.4f} D30 {store.rows['D30_dbi'][-1]:+.2f} dBi ({dt:.1f} s)")
     t0 = time.perf_counter()
-    p = np.asarray(pattern(cover_from_ctrl(eps_of_psi(psi), shape)))
+    p = np.asarray(pattern(mod.eps_of_psi(psi)))
     Lf = float(steering_loss(mod, jnp.asarray(p)))
-    store.append(**row(psi, p), L=Lf, wall_s=time.perf_counter() - t0)
+    store.append(**_row(mod, psi, p), L=Lf, wall_s=time.perf_counter() - t0)
     store.persist()
     dc.save_json(out / "final_settling_l20.json", settling_record(pattern))
     wall["adam_total_s"] = float(np.nansum(np.stack(store.rows["wall_s"])))
@@ -594,9 +605,9 @@ def stage_main(out: Path, a) -> int:
 def stage_x64fd(out: Path, a) -> int:
     import jax
     import jax.numpy as jnp
+    import rfx.simulation as rsim
     if not jax.config.read("jax_enable_x64"):
         raise SystemExit("the x64 stage needs JAX_ENABLE_X64=1 in its environment")
-    import rfx.simulation as rsim
     mod = load_module()
     model = BeamModel(mod, 1, precision="float64")
     pattern = model.pattern_fn(model.n_steps(a.periods))
@@ -618,14 +629,14 @@ def stage_x64fd(out: Path, a) -> int:
 
     rsim.run = run_recording
 
-    def L_ctrl(e):
-        return steering_loss(mod, pattern(cover_from_ctrl(e, model.shape)))
+    def L_cells(e):
+        return steering_loss(mod, pattern(e))
 
-    e0 = ramp_ctrl().astype(np.float64)
-    L_j = jax.jit(L_ctrl)
-    g0 = np.asarray(jax.jit(jax.grad(L_ctrl))(jnp.asarray(e0)), dtype=float)
-    ladder = dc.fd_ladder(lambda e: L_j(jnp.asarray(e, dtype=jnp.float64)), e0, FD_CTRL, FD_STEPS)
-    ad = {n: float(g0[ij]) for n, ij in FD_CTRL.items()}
+    e0 = module_start(model.shape)[0].astype(np.float64)
+    L_j = jax.jit(L_cells)
+    g0 = np.asarray(jax.jit(jax.grad(L_cells))(jnp.asarray(e0)), dtype=float)
+    ladder = dc.fd_ladder(lambda e: L_j(jnp.asarray(e, dtype=jnp.float64)), e0, FD_CELLS, FD_STEPS)
+    ad = {n: float(g0[ijk]) for n, ijk in FD_CELLS.items()}
     verdict = dc.judge_fd(ad, ladder, FD_STEPS, FD_JUDGED_STEP, FD_REL_BAR, FD_JUDGE_FRAC)
     L0 = float(L_j(e0))
     rsim.run = run_orig
@@ -633,8 +644,8 @@ def stage_x64fd(out: Path, a) -> int:
     if not dtypes or any(r != "float64" or o not in ("float64", "complex128") for r, o in dtypes):
         raise SystemExit(f"the float64 repeat saw (requested, observed) dtypes {dtypes}; "
                          "it is not a float64 record")
-    dc.save_json(out / "fd_float64.json", {"precision": "float64", "eps_ctrl0": e0, "L0": L0,
-                                           "grad_eps_ctrl_all": g0, "field_dtypes_seen": dtypes,
+    dc.save_json(out / "fd_float64.json", {"precision": "float64", "eps0": e0, "L0": L0,
+                                           "grad_eps_all": g0, "field_dtypes_seen": dtypes,
                                            "field_dtypes_seen_is": "(field_dtype requested of "
                                            "rfx.simulation.run, dtype of the returned fields or, "
                                            "when no state is returned, of the NTFF accumulators)",
@@ -646,13 +657,14 @@ def stage_x64fd(out: Path, a) -> int:
 
 def stage_resolve(out: Path, a) -> int:
     """The final cover, no cover and the best uniform cover, read back from the
-    record and solved without the optimiser at lambda/20 and lambda/40."""
+    record and solved without the optimiser at lambda/20 and lambda/40 (each
+    lambda/20 cell written onto its 2 x 2 x 2 nested lambda/40 cells)."""
     import jax.numpy as jnp
     mod = load_module()
     it = np.load(out / "iterations.npz")
-    e_final = np.asarray(it["eps_ctrl"][-1], dtype=float)
-    best = dc.load_json(out / "baselines_l20.json")["best_uniform"]
-    e_best = float(dc.load_json(out / "baselines_l20.json")[best]["eps_r"])
+    e_final = np.asarray(it["eps"][-1], dtype=np.float32)
+    bj = dc.load_json(out / "baselines_l20.json")
+    e_best = float(bj[bj["best_uniform"]]["eps_r"])
     res, maps = {}, {}
     for refine in (1, FINE_REFINE):
         tag = f"l{20 * refine}"
@@ -660,20 +672,9 @@ def stage_resolve(out: Path, a) -> int:
         n_steps = model.n_steps(a.periods)
         dc.save_json(out / f"preflight_{tag}.json", model.preflight())
         pattern = model.pattern_fn(n_steps)
-        covers = {"final": np.asarray(cover_from_ctrl(jnp.asarray(e_final), model.shape)),
-                  "no_cover": np.ones(model.shape),
-                  "best_uniform": np.full(model.shape, e_best)}
-        if refine == 1:
-            rec = np.asarray(it["eps_cover"][-1])
-            if not np.allclose(covers["final"][:, :, 0], rec, atol=1e-9):
-                raise RuntimeError("the lambda/20 cover rebuilt from eps_ctrl differs from the record")
-        else:
-            # coarse nodes are every other fine node: the fine cover must hold the
-            # coarse cover there exactly (the same continuous map, sampled finer)
-            coarse = np.asarray(it["eps_cover"][-1])
-            if not np.allclose(covers["final"][::refine, ::refine, 0], coarse, atol=1e-9):
-                raise RuntimeError("the lambda/40 cover does not hold the lambda/20 values on the "
-                                   "shared nodes")
+        covers = {"final": nested_block(e_final, refine),
+                  "no_cover": np.ones(model.block_shape, dtype=np.float32),
+                  "best_uniform": np.full(model.block_shape, e_best, dtype=np.float32)}
         res[tag] = {**model.describe(), "n_steps": n_steps, "designs": {}}
         for name, cov in covers.items():
             t0 = time.perf_counter()
@@ -684,10 +685,87 @@ def stage_resolve(out: Path, a) -> int:
             maps[f"D_{tag}_{name}"] = directivity(mod, p)
             dc.log(f"resolve {tag} {name}: D30 {res[tag]['designs'][name]['D30_dbi']:+.2f} dBi, "
                    f"settling {res[tag]['designs'][name]['settling'].get('worst_db')}")
-        maps[f"cover_{tag}_final"] = covers["final"][:, :, 0]
     res["best_uniform_eps_r"] = e_best
     dc.save_json(out / "resolve.json", res)
     dc.save_npz(out / "resolve.npz", **maps)
+    return 0
+
+
+def stage_keyframes(out: Path, a) -> int:
+    """Recorded for visualization, not judged: at the declared keyframes, the
+    E-plane near field (Ex and Ez phasors at f0 on the plane y = cy through
+    the dipole) and D(theta, phi) over the whole sphere on a 2-degree grid,
+    from one extra forward of each stored design. The optimization record is
+    only read."""
+    import jax.numpy as jnp
+    from rfx.farfield import compute_far_field_jax
+    mod = load_module()
+    it = np.load(out / "iterations.npz")
+    n_last = len(it["L"]) - 1
+    keys = [k for k in KEYFRAMES if k <= n_last]
+    model = BeamModel(mod, 1)
+    sim, grid = model.sim, model.grid
+    cy = model.plate["cy"]
+    for comp in ("ex", "ez"):
+        sim.add_dft_plane_probe(axis="y", coordinate=cy, component=comp,
+                                freqs=jnp.asarray([model.f0], dtype=jnp.float32), name=f"{comp}_eplane")
+    n_steps = model.n_steps(a.periods)
+    _sheets: list = []
+    _wires: list = []
+    base = jnp.asarray(sim._assemble_materials(grid, pec_sheets=_sheets, pec_wires=_wires)[0].eps_r)
+    corner_lo, corner_hi, freqs = sim._ntff
+    from rfx.farfield import make_ntff_box
+    box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
+    box = box._replace(freqs=np.asarray(box.freqs))
+    th = np.radians(np.arange(0.0, 180.0 + 1e-9, SPHERE_STEP_DEG))
+    ph = np.radians(np.arange(0.0, 360.0 - 1e-9, SPHERE_STEP_DEG))
+    si, sj, sk = model.start
+    nx, ny, nz = model.block_shape
+    rec = {"keyframes": np.asarray(keys), "sphere_theta_deg": np.degrees(th),
+           "sphere_phi_deg": np.degrees(ph)}
+    meta = {"keyframes": keys, "f0_hz": model.f0, "plane": "y = cy (the E-plane through the dipole)",
+            "components": ["ex", "ez"], "sphere": f"{SPHERE_STEP_DEG:g} deg in theta 0..180 and phi "
+            "0..358: the whole sphere, because the plate is finite and the objective holds the back "
+            "hemisphere down", "judged": False, "per_keyframe": {}}
+    planes = {c: [] for c in ("ex", "ez")}
+    sphere = []
+    for k in keys:
+        t0 = time.perf_counter()
+        eps = jnp.asarray(it["eps"][k], dtype=jnp.float32)
+        eo = base.at[si:si + nx, sj:sj + ny, sk:sk + nz].set(jnp.clip(eps, 1.0, 10.0))
+        res = sim.forward(eps_override=eo, n_steps=n_steps, checkpoint=False, skip_preflight=True)
+        by_name = {c: res.dft_planes[f"{c}_eplane"] for c in ("ex", "ez")}
+        for c in ("ex", "ez"):
+            planes[c].append(np.asarray(by_name[c].accumulator[0]).astype(np.complex64))
+        ff = compute_far_field_jax(res.ntff_data, box, grid, jnp.asarray(th), jnp.asarray(ph))
+        pw = np.asarray(jnp.abs(ff.E_theta[0]) ** 2 + jnp.abs(ff.E_phi[0]) ** 2, dtype=float)
+        w = np.sin(th)[:, None] * np.radians(SPHERE_STEP_DEG) ** 2
+        D = 4.0 * np.pi * pw / np.sum(pw * w)
+        sphere.append(D.astype(np.float32))
+        sw = res.settling_witness or {}
+        meta["per_keyframe"][str(k)] = {
+            "wall_s": time.perf_counter() - t0,
+            "D30_dbi_sphere": float(10 * np.log10(D[int(round(30 / SPHERE_STEP_DEG)), 0])),
+            "D30_dbi_recorded": float(it["D30_dbi"][k]),
+            "plane_index_y": int(by_name["ex"].index),
+            "settling_worst_db": (float(sw["per_record_db"][sw["worst_record"]])
+                                  if sw.get("status") == "measured" else None)}
+        dc.log(f"keyframe {k}: D30 sphere {meta['per_keyframe'][str(k)]['D30_dbi_sphere']:+.2f} dBi, "
+               f"recorded {it['D30_dbi'][k]:+.2f} ({time.perf_counter() - t0:.1f} s)")
+    pads = grid.axis_pads
+    rec.update(ex_eplane=np.stack(planes["ex"]), ez_eplane=np.stack(planes["ez"]),
+               D_sphere=np.stack(sphere),
+               x_mm=(np.arange(planes["ex"][0].shape[0]) - pads[0]) * model.dx * 1e3,
+               z_mm=(np.arange(planes["ex"][0].shape[1]) - pads[2]) * model.dx * 1e3)
+    meta["geometry_mm"] = {"plate_z": model.plate["z"] * 1e3, "cx": model.plate["cx"] * 1e3,
+                           "half": model.plate["half"] * 1e3,
+                           "cover_z": [float(model.region.corner_lo[2] * 1e3),
+                                       float(model.region.corner_hi[2] * 1e3)],
+                           "dipole_z": (model.plate["z"] + model.lam / 4) * 1e3}
+    meta["note"] = ("phasors are the raw DFT accumulators of the modulated-Gaussian drive; normalize "
+                    "for display. Planes span the padded grid, x_mm/z_mm give the node coordinates.")
+    dc.save_npz(out / "keyframes.npz", **rec)
+    dc.save_json(out / "keyframes.json", meta)
     return 0
 
 
@@ -697,43 +775,54 @@ def stage_finalize(out: Path, a) -> int:
         " (the start-point FD check repeated in float64)" if x64 else ""))
     model = dc.load_json(out / "model.json")
     claims, derived = [], []
-    fd32 = dc.load_json(out / "fd_start.json")
-    if (out / "x64_needed.json").is_file() and not x64:
-        raise SystemExit("x64_needed.json is present but fd_float64.json is absent: "
-                         "the float64 judgement is not a record, finalize refuses")
-    fd = dc.load_json(out / "fd_float64.json") if x64 else fd32
-    fd_file = "fd_float64.json" if x64 else "fd_start.json"
-    for n, r in fd["judgement"]["rows"].items():
-        q = (f"|AD - FD| / |FD| at h = {FD_JUDGED_STEP} in eps_r, dL/d eps_ctrl at {n}, start "
-             f"({fd['precision']})")
-        if r["judged"]:
-            claims.append(_record.claim(q, r["rel"], "1", fd_file, threshold=FD_REL_BAR,
-                                        rule="pre-declared: judged when |FD| >= 0.1 max |FD|"))
-        else:
-            claims.append(_record.claim(q, r["rel"], "1", fd_file,
-                                        note="reported: |FD| < 0.1 of the largest"))
-    if x64:
-        for n, r in fd32["judgement"]["rows"].items():
-            claims.append(_record.claim(f"|AD - FD| / |FD| at h = {FD_JUDGED_STEP}, {n}, start "
-                                        "(float32, reported)", r["rel"], "1", "fd_start.json"))
-    wit = dc.load_json(out / "record_length_witness.json")
-    claims.append(_record.claim("record-length witness ||g_1.5x - g_1.0x|| / ||g_1.5x|| over the "
-                                "441 control points, start", wit["norm_rel_change"], "1",
-                                "record_length_witness.json", threshold=WITNESS_TOL,
-                                rule="pre-declared: factor 1.5, tol 0.05"))
-    for n, v in wit["per_variable_rel_change"].items():
-        kw = ({"threshold": WITNESS_TOL, "rule": "pre-declared: per FD-judged variable"}
-              if n in wit["judged_variables"] and v is not None else {})
-        claims.append(_record.claim(f"record-length witness |g_1.5x - g_1.0x| / |g_1.5x|, {n}", v, "1",
-                                    "record_length_witness.json", **kw))
-    base = dc.load_json(out / "baselines_l20.json")
-    for name in (f"uniform_eps{e:g}" for e in UNIFORM_EPS):
-        claims.append(_record.claim(f"{name} at lambda/20: D(30 deg)", base[name]["D30_dbi"], "dBi",
-                                    "baselines_l20.json"))
-        s = base[name]["settling"]
-        if s.get("status") == "measured":
-            claims.append(_record.claim(f"{name} at lambda/20: worst probe settling", s["worst_db"], "dB",
+    eq = dc.load_json(out / "pattern_equivalence.json")
+    claims += [
+        _record.claim("module path vs this script, start cover: max abs pattern difference / max",
+                      eq["pattern_max_abs_diff_over_max"], "1", "pattern_equivalence.json",
+                      threshold=EQUIV_TOL, rule="Amendment 2 condition (lane leader)"),
+        _record.claim("module path vs this script, start cover: ||g_script - g_module|| / ||g_module||",
+                      eq["grad_norm_rel_diff"], "1", "pattern_equivalence.json",
+                      threshold=EQUIV_TOL, rule="Amendment 2 condition (lane leader)")]
+    if (out / "fd_start.json").is_file():
+        fd32 = dc.load_json(out / "fd_start.json")
+        if (out / "x64_needed.json").is_file() and not x64:
+            raise SystemExit("x64_needed.json is present but fd_float64.json is absent: "
+                             "the float64 judgement is not a record, finalize refuses")
+        fd = dc.load_json(out / "fd_float64.json") if x64 else fd32
+        fd_file = "fd_float64.json" if x64 else "fd_start.json"
+        for n, r in fd["judgement"]["rows"].items():
+            q = (f"|AD - FD| / |FD| at h = {FD_JUDGED_STEP} in eps_r, dL/d eps_r of {n}, start "
+                 f"({fd['precision']})")
+            if r["judged"]:
+                claims.append(_record.claim(q, r["rel"], "1", fd_file, threshold=FD_REL_BAR,
+                                            rule="pre-declared: judged when |FD| >= 0.1 max |FD|"))
+            else:
+                claims.append(_record.claim(q, r["rel"], "1", fd_file,
+                                            note="reported: |FD| < 0.1 of the largest"))
+        if x64:
+            for n, r in fd32["judgement"]["rows"].items():
+                claims.append(_record.claim(f"|AD - FD| / |FD| at h = {FD_JUDGED_STEP}, {n}, start "
+                                            "(float32, reported)", r["rel"], "1", "fd_start.json"))
+    if (out / "record_length_witness.json").is_file():
+        wit = dc.load_json(out / "record_length_witness.json")
+        claims.append(_record.claim("record-length witness ||g_1.5x - g_1.0x|| / ||g_1.5x|| over the "
+                                    "2883 cover cells, start", wit["norm_rel_change"], "1",
+                                    "record_length_witness.json", threshold=WITNESS_TOL,
+                                    rule="pre-declared: factor 1.5, tol 0.05"))
+        for n, v in wit["per_variable_rel_change"].items():
+            kw = ({"threshold": WITNESS_TOL, "rule": "pre-declared: per FD-judged variable"}
+                  if n in wit["judged_variables"] and v is not None else {})
+            claims.append(_record.claim(f"record-length witness |g_1.5x - g_1.0x| / |g_1.5x|, {n}", v,
+                                        "1", "record_length_witness.json", **kw))
+    if (out / "baselines_l20.json").is_file():
+        base = dc.load_json(out / "baselines_l20.json")
+        for name in (f"uniform_eps{e:g}" for e in UNIFORM_EPS):
+            claims.append(_record.claim(f"{name} at lambda/20: D(30 deg)", base[name]["D30_dbi"], "dBi",
                                         "baselines_l20.json"))
+            s = base[name]["settling"]
+            if s.get("status") == "measured":
+                claims.append(_record.claim(f"{name} at lambda/20: worst probe settling", s["worst_db"],
+                                            "dB", "baselines_l20.json"))
     if (out / "iterations.npz").is_file():
         it = np.load(out / "iterations.npz")
         n = len(it["L"]) - 1
@@ -774,9 +863,10 @@ def stage_finalize(out: Path, a) -> int:
         run["wall_s"] = dc.load_json(out / "main_wall.json")
     result = {"schema": _record.SCHEMA, "id": CASE_ID, "question": QUESTION, "source": source,
               "run": run, "model": model, "claims": claims, "derived": derived,
-              "out_of_scope": ["the paper's 2883-cell parameterization and its lambda/40 numbers",
+              "out_of_scope": ["the paper's lambda/40 numbers and its 441-latent variant",
                                "realized gain and radiation efficiency (directivity only)",
-                               "an external solver", "frequencies other than 3 GHz"]}
+                               "an external solver", "frequencies other than 3 GHz",
+                               "keyframes.npz: recorded for visualization, not judged"]}
     path = _record.write_result(out, result, _record.data_files(out))
     dc.log(f"wrote {path}")
     return 0
@@ -785,20 +875,21 @@ def stage_finalize(out: Path, a) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--stage", required=True,
-                    choices=("timing", "main", "x64fd", "resolve", "finalize"))
+                    choices=("timing", "main", "x64fd", "resolve", "keyframes", "finalize"))
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--repo-dir", type=Path, default=REPO)
     ap.add_argument("--iters", type=int, default=None,
                     help="Adam iterations (default: the module's N_ITERS; timing default 2)")
     ap.add_argument("--periods", type=float, default=None, help="local smoke runs only")
     ap.add_argument("--smoke", action="store_true",
-                    help="local smoke runs only: continue past a failed witness")
+                    help="local smoke runs only: continue past a failed witness or comparison")
     a = ap.parse_args(argv)
     a.out.mkdir(parents=True, exist_ok=True)
     if a.stage == "timing" and a.iters is None:
         a.iters = 2
     stage = {"timing": stage_timing, "main": stage_main, "x64fd": stage_x64fd,
-             "resolve": stage_resolve, "finalize": stage_finalize}[a.stage]
+             "resolve": stage_resolve, "keyframes": stage_keyframes,
+             "finalize": stage_finalize}[a.stage]
     if a.stage in ("main", "timing"):
         dc.save_json(a.out / f"source_{a.stage}.json",
                      _record.source_block(a.repo_dir, precision="float32"))

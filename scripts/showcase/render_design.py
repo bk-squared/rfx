@@ -130,27 +130,29 @@ class TaperData:
         allc = np.concatenate([_db20(self.s11).ravel(), _db20(self.s11_klop)])
         self.ylo = float(np.floor((allc.min() - 3.0) / 10.0) * 10.0)
         self.goal = "Match WR-90 to a dielectric load with 30 graded sections"
+        self.subgoal = None
         self.x_lo, self.x_hi = self.edges[0] - 14.0, self.fill_mm + 24.0
 
     def objective(self, k: int, short: bool = False) -> str:
         v = _num(_db10(self.J[k]))
-        return f"mean |S11|² = {v} dB" if short else f"mean |S11|² over 8.2–12.4 GHz = {v} dB"
+        return f"band-mean |S11|² = {v} dB" if short else f"band-mean |S11|², 8.2–12.4 GHz = {v} dB"
 
     def strip(self, short: bool = False) -> str:
         a, b, c = (_num(_db10(x)) for x in (self.J[0], self.J[-1], self.J_klop))
         if short:
-            return (f"mean |S11|²: start {a} dB → final {b} dB\n"
-                    f"Klopfenstein taper, same length: {c} dB")
-        return (f"mean |S11|² over the band:  start {a} dB  →  final {b} dB"
-                f"      Klopfenstein taper, same length: {c} dB")
+            return (f"band-mean |S11|²: start {a} dB → final {b} dB\n"
+                    f"Klopfenstein profile, A tuned for this band: {c} dB")
+        return (f"band-mean |S11|²:  start {a} dB  →  final {b} dB"
+                f"      Klopfenstein profile, A tuned for this band: {c} dB")
 
     def legend(self, short: bool = False):
         h = [plt.Line2D([], [], color=RFX, lw=3.5, marker="o", ms=6),
              plt.Line2D([], [], color=REF, lw=2.5, ls="--"),
              plt.Line2D([], [], color=MUTED, lw=2.5, ls=":")]
         if short:
-            return h, ["this iteration", "Klopfenstein", "start"]
-        return h, ["this iteration", "Klopfenstein taper, same length", "start (εr = 5 in every section)"]
+            return h, ["this iteration", "Klopfenstein (A tuned)", "start"]
+        return h, ["this iteration", "Klopfenstein profile, A tuned for this band (closed form)",
+                   "start (εr = 5 in every section)"]
 
 
 class TaperDesign:
@@ -267,7 +269,7 @@ class TaperGradient:
         ax.text(0.5 * (td.fill_mm + td.x_hi), 0, "load", ha="center", va="center",
                 rotation=90, fontsize=PT["note"], color=INK_2)
         self.fmt = fmt
-        self.sub_text = "J = mean |S11|²; red raises J"
+        self.sub_text = "J = band-mean |S11|²; red raises J"
         self.title, self.sub = _titles(ax, "Gradient", self.sub_text if fmt != "social" else None)
         self.cmap = plt.get_cmap(GRAD_CMAP)
 
@@ -305,10 +307,10 @@ class BeamData:
 
     def __init__(self, d: Path):
         it = np.load(d / "iterations.npz")
-        self.cover = it["eps_cover"]
+        self.cover = it["eps"].mean(axis=3)                # plan view: the mean of the 3 layers
         self.D = it["D"]
         self.D30 = it["D30_dbi"]
-        self.grad = it["grad_eps_ctrl"]
+        self.grad = it["grad_eps_map"]                     # dL/d eps_r per cell, summed over the layers
         th = np.asarray(it["theta_deg"], dtype=float)
         self.theta_e = np.concatenate([-th[::-1], th[1:]])
         m = json.loads((d / "model.json").read_text())
@@ -316,7 +318,6 @@ class BeamData:
         self.half_mm = float(m["plate"]["half"]) * 1e3
         self.lam_mm = float(m["lambda_m"]) * 1e3
         self.n_nodes = self.cover.shape[1]
-        self.n_ctrl = self.grad.shape[1]
         b = np.load(d / "baselines_l20.npz")
         bj = json.loads((d / "baselines_l20.json").read_text())
         self.D_bare = b["D_uniform_eps1"]
@@ -330,6 +331,7 @@ class BeamData:
         cuts = np.array([self.e_plane(self.D[k]) for k in range(len(self.D))])
         self.ymax = float(np.ceil((max(cuts.max(), self.e_plane(self.D_bare).max()) + 2) / 5) * 5)
         self.goal = "Turn a dipole's beam to 30° with a dielectric cover"
+        self.subgoal = "objective: raise D(30°) while holding broadside and back lobes down"
 
     @staticmethod
     def e_plane(D):
@@ -399,7 +401,7 @@ class BeamDesign:
         cb = fig.colorbar(self.im, cax=self.cax)
         cb.set_ticks([1, 5, 10])
         cb.set_label("εr")
-        _titles(ax, "Design", "cover εr, plan view" if fmt != "social" else None)
+        _titles(ax, "Design", "cover εr, mean of its 3 layers" if fmt != "social" else None)
         if fmt == "social":           # beside the colour bar: the space under the map is taken
             ax.annotate("bar: dipole\ndashed: plate\nbelow the cover", (1.68, 0.5),
                         xycoords="axes fraction", fontsize=PT["note"], color=INK_2, ha="left",
@@ -458,9 +460,8 @@ class BeamGradient:
         self.bd, self.mode, self.fmt = bd, mode, fmt
         ax, self.cax = _map_axes(fig, rect)
         self.ax = ax
-        n = bd.n_ctrl
-        step = 2 * bd.half_mm / (n - 1)
-        e = (np.arange(n + 1) - n / 2) * step
+        n = bd.n_nodes
+        e = (np.arange(n + 1) - n / 2) * bd.dx_mm
         if mode == "fixed":
             e10 = int(np.floor(np.log10(bd.gfix)))
             self.scale = 10.0 ** e10
@@ -475,7 +476,7 @@ class BeamGradient:
         cb.set_label(label)
         if mode != "fixed":
             cb.set_ticks([-1, 0, 1])
-        self.sub_text = "L = steering cost; 21 × 21 points"
+        self.sub_text = "per cell, sum of the 3 layers"
         self.title, self.sub = _titles(ax, "Gradient", self.sub_text if fmt != "social" else None)
 
     def update(self, k: int):
@@ -486,7 +487,7 @@ class BeamGradient:
         else:
             m = float(np.max(np.abs(g)))
             v = g / m
-            self.sub_text = f"L: steering cost · max {_sci(m)}"
+            self.sub_text = f"sum over 3 layers · max {_sci(m)}"
         self.im.set_array(v.T.ravel())
         _last_step_title(self, kk, k)
 
@@ -521,20 +522,30 @@ class Film:
         self.fig = plt.figure(figsize=spec["size"], dpi=MOVIE_DPI)
         L = _layout(fmt)
         if fmt == "social" and case == "beam":
-            L["panels"] = [(0.10, 0.64, 0.84, 0.175), (0.17, 0.415, 0.78, 0.12),
-                           (0.10, 0.135, 0.84, 0.175)]
+            L["panels"] = [(0.10, 0.61, 0.84, 0.16), (0.17, 0.39, 0.78, 0.115),
+                           (0.10, 0.135, 0.84, 0.155)]
             L["hint"] = None
+            L["subgoal_y"] = 0.897
+            L["iter"], L["obj"] = (0.04, 0.838), (0.96, 0.838)
+        if fmt == "site" and case == "beam":
+            L["panels"] = [(x, 0.18, w, 0.53) for x, _, w, _ in L["panels"]]
+            L["subgoal_y"] = 0.905
+            L["iter"], L["obj"] = (0.03, 0.852), (0.97, 0.852)
         short = fmt == "social"
         goal = data.goal.replace(" with ", "\nwith ") if short else data.goal
         self.fig.text(*L["goal"], goal, fontsize=PT["header"], weight="bold", va="top",
                       linespacing=1.15)
+        if data.subgoal:
+            sub = data.subgoal.replace(" holding ", " holding\n") if short else data.subgoal
+            self.fig.text(L["goal"][0], L["subgoal_y"], sub, fontsize=PT["sub"] - (6 if short else 3),
+                          va="top", color=INK_2, linespacing=1.1)
         self.t_iter = self.fig.text(*L["iter"], "", fontsize=PT["sub"], va="top", color=INK_2)
         self.t_obj = self.fig.text(*L["obj"], "", fontsize=PT["sub"], va="top", ha="right",
                                    color=INK, weight="bold")
         self.t_hint = None
         if L.get("hint") is not None:
             sym = "J" if case == "taper" else "L"
-            what = "J = mean |S11|²" if case == "taper" else "L = steering cost"
+            what = "J = band-mean |S11|²" if case == "taper" else "L = steering cost"
             self.t_hint = self.fig.text(*L["hint"], f"{what}; red: more εr raises {sym}, blue lowers it",
                                         ha="center", va="bottom",
                                         fontsize=PT["note"], color=INK_2)
@@ -610,6 +621,8 @@ def contact_sheet(case: str, data, path: Path) -> Path:
     fig = plt.figure(figsize=(32.0, 30.0), dpi=MOVIE_DPI)
     fig.text(0.015, 0.992, f"{data.goal}: storyboard", fontsize=PT["header"] + 4, weight="bold",
              va="top")
+    if data.subgoal:
+        fig.text(0.40, 0.975, data.subgoal, fontsize=PT["sub"], va="top", color=INK_2)
     col_x = [0.10, 0.335, 0.565, 0.79]
     heads = ["Design", "Result", "Gradient, fixed scale", "Gradient, per-frame scale"]
     for c, hname in enumerate(heads):

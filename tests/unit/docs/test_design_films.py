@@ -2,9 +2,8 @@
 
 ``scripts/showcase/design_taper.py`` builds its Klopfenstein baseline in closed
 form and picks the profile's free parameter with a TE10 section cascade;
-``scripts/showcase/design_beam.py`` maps 21 x 21 control-point permittivities
-onto the cover's mesh nodes and samples the same map on a mesh twice as fine
-for the re-solve; ``scripts/showcase/_design_common.py`` judges the gradient
+``scripts/showcase/design_beam.py`` writes each cover cell onto the cells nested
+in it on a mesh twice as fine for the re-solve; ``scripts/showcase/_design_common.py`` judges the gradient
 against central differences and writes every iterate as it goes.  Each test
 holds one of those against an independent statement of the same physics or
 rule, so a slip in the code cannot be matched by the same slip in the test.
@@ -96,30 +95,31 @@ def test_taper_sections_keep_their_length_on_the_fine_mesh():
     np.testing.assert_array_equal(e2 * 0.3175e-3, e1 * 0.635e-3)
 
 
-@pytest.mark.parametrize("n_nodes", [31, 61])
-def test_the_cover_map_is_linear_interpolation_of_the_control_grid(n_nodes):
-    W = design_beam.interp_matrix(n_nodes)
-    np.testing.assert_allclose(W.sum(axis=1), 1.0, atol=1e-15)
-    # a linear function of position is reproduced exactly
-    xc = np.linspace(-75.0, 75.0, design_beam.N_CTRL)
-    xn = np.linspace(-75.0, 75.0, n_nodes)
-    np.testing.assert_allclose(W @ (2.0 + 0.03 * xc), 2.0 + 0.03 * xn, atol=1e-12)
-    # and each node's value comes from its two neighbouring control points
-    for i, x in enumerate(xn):
-        nz = np.flatnonzero(W[i])
-        assert np.all(np.abs(xc[nz] - x) <= (xc[1] - xc[0]) + 1e-9)
-
-
-def test_the_fine_cover_holds_the_coarse_cover_on_the_shared_nodes():
+def test_the_fine_cover_nests_each_coarse_cell_in_place():
+    # a lambda/20 eps_r index i covers [x_i, x_i+1); on the lambda/40 mesh that is
+    # fine indices 2i and 2i+1, starting at the same physical position
     rng = np.random.default_rng(1359)
-    ctrl = rng.uniform(1.0, 10.0, (design_beam.N_CTRL, design_beam.N_CTRL))
-    coarse = design_beam.interp_matrix(31) @ ctrl @ design_beam.interp_matrix(31).T
-    fine = design_beam.interp_matrix(61) @ ctrl @ design_beam.interp_matrix(61).T
-    np.testing.assert_allclose(fine[::2, ::2], coarse, atol=1e-12)
-    # the start ramp is the module's linspace(2, 9, 31) along x, exactly
-    ramp = design_beam.interp_matrix(31) @ design_beam.ramp_ctrl() @ design_beam.interp_matrix(31).T
-    np.testing.assert_allclose(ramp, np.broadcast_to(np.linspace(2, 9, 31)[:, None], (31, 31)),
-                               atol=1e-12)
+    coarse = rng.uniform(1.0, 10.0, (31, 31, 3))
+    fine = design_beam.nested_block(coarse, 2)
+    assert fine.shape == (62, 62, 6)
+    for (i, j, k) in ((0, 0, 0), (30, 30, 2), (7, 15, 1), (23, 4, 0)):
+        np.testing.assert_array_equal(fine[2 * i:2 * i + 2, 2 * j:2 * j + 2, 2 * k:2 * k + 2],
+                                      coarse[i, j, k])
+    # the block starts at the same physical node: coarse index lo on a grid with
+    # 10 pad cells of dx sits where fine index start sits with 20 pads of dx / 2
+    lo, pads_c, pads_f = (31, 31, 48), (10, 10, 10), (20, 20, 20)
+    start = design_beam.nested_start(lo, pads_c, pads_f, 2)
+    dx = 4.9965
+    for c, pc, f, pf in zip(lo, pads_c, start, pads_f):
+        assert (c - pc) * dx == (f - pf) * dx / 2
+        assert (c + 1 - pc) * dx == (f + 2 - pf) * dx / 2      # the cell's far face, too
+
+
+def test_the_beam_start_is_the_modules_ramp():
+    eps0, psi0 = design_beam.module_start((31, 31, 3))
+    np.testing.assert_allclose(eps0[:, 5, 1], np.linspace(2.0, 9.0, 31), atol=1e-6)
+    assert np.all(eps0 == eps0[:, :1, :1])                        # uniform in y and z
+    np.testing.assert_allclose(1.0 + 9.0 / (1.0 + np.exp(-psi0)), eps0, atol=1e-5)
 
 
 def _ladder(values):

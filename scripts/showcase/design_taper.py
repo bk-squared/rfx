@@ -80,6 +80,13 @@ START_EPS = 5.0                 # the module's start: theta = 0, 1 + 8 * sigmoid
 KLOP_A_STEP = 0.25              # grid over A before the bounded refinement
 KLOP_N_ELEC = 8001              # samples of the continuous profile along electrical length
 
+# Amendment 3, recorded for visualization, not judged: fields and a Jacobian at
+# keyframes of the stored descent (0, 5, 15, 35, 60, 100 % of 120 iterations)
+KEYFRAMES = (0, 6, 18, 42, 72, 120)
+JACOBIAN_KEYFRAMES = (0, 60, 120)
+FIELD_BINS = (0, 10, 20)        # 8.2, 10.3 and 12.4 GHz: band low, centre, high
+JACOBIAN_BUDGET_S = 7200.0      # report before running if the projection exceeds this
+
 _GEOMETRY_GLOBALS = ("DX_M", "CPML_LAYERS", "DOMAIN_X", "PORT_OFFSET", "REF_OFFSET",
                      "TAPER_X0", "FILL_X", "A_WG_REALIZED", "B_WG_REALIZED",
                      "F_CUTOFF_TE10", "Simulation")
@@ -674,6 +681,119 @@ def stage_resolve(out: Path, a) -> int:
     return 0
 
 
+def build_field_sim(mod, model: TaperModel):
+    """The model's guide driven from the left port only, with an Ez DFT plane on
+    the longitudinal mid-plane z = b/2 (the TE10 field lies along z and is
+    uniform in it). The right port is left out: the eps_r = 9 fill runs into the
+    absorber, which terminates it."""
+    import jax.numpy as jnp
+    from rfx import Simulation
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    dx = model.dx
+    sim = Simulation(freq_max=float(mod.FREQS_HZ[-1]) * 1.05,
+                     domain=(CELLS_A36["domain"] * dx, mod.A_WG, mod.B_WG), dx=dx,
+                     boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
+                                           y=Boundary(lo="pec", hi="pec"),
+                                           z=Boundary(lo="pec", hi="pec")),
+                     cpml_layers=model.cpml_layers)
+    sim.add_waveguide_port(CELLS_A36["port_offset"] * dx, direction="+x",
+                           freqs=jnp.asarray(mod.FREQS_HZ), f0=mod.F0_HZ, bandwidth=mod.BANDWIDTH_REL,
+                           waveform="modulated_gaussian", reference_plane=CELLS_A36["ref_offset"] * dx,
+                           name="left")
+    f3 = np.asarray(mod.FREQS_HZ)[list(FIELD_BINS)]
+    sim.add_dft_plane_probe(axis="z", coordinate=mod.B_WG / 2.0, component="ez",
+                            freqs=jnp.asarray(f3, dtype=jnp.float32), name="ez_mid")
+    # ring-down records for the settling witness: mid-taper and inside the load
+    for cells in ((CELLS_A36["taper_x0"] + CELLS_A36["fill_x"]) // 2, CELLS_A36["fill_x"] + 16):
+        sim.add_probe((cells * dx, mod.A_WG / 2.0, mod.B_WG / 2.0), "ez")
+    if sim._build_grid().shape != model.grid.shape:
+        raise RuntimeError("the field simulation's grid differs from the design model's")
+    return sim, f3
+
+
+def stage_keyframes(out: Path, a) -> int:
+    """Recorded for visualization, not judged: at the declared keyframes of the
+    stored descent, the Ez phasor on the mid-plane at three frequencies, and at
+    three of them the forward-mode Jacobian dS11(f)/d eps_r. Extra solves of
+    stored designs; the optimization record is only read."""
+    import jax
+    import jax.numpy as jnp
+    mod = load_module()
+    rec_dir = a.record or out
+    it = np.load(rec_dir / "iterations.npz")
+    n_last = len(it["J"]) - 1
+    keys = [k for k in KEYFRAMES if k <= n_last]
+    jkeys = [k for k in JACOBIAN_KEYFRAMES if k <= n_last]
+    model = TaperModel(mod, 1)
+    n_steps, _ = model.n_steps(a.periods or PERIODS[1], mod.CHECKPOINT_SEGMENTS)
+    fsim, f3 = build_field_sim(mod, model)
+    meta = {"record": str(rec_dir), "keyframes": keys, "jacobian_keyframes": jkeys,
+            "field_freqs_hz": f3, "n_steps": n_steps, "judged": False,
+            "field": "Ez DFT on the plane z = b/2, left port driven alone (the right port left out; "
+                     "the eps_r 9 fill runs into the absorber)",
+            "jacobian": "jax.jit(jax.jacfwd(S11 on the 21 bins w.r.t. the 30 section eps_r)), "
+                        "compute_waveguide_s_matrix normalize=False, no checkpointing",
+            "per_keyframe": {}}
+    fields = []
+    for k in keys:
+        t0 = time.perf_counter()
+        res = fsim.forward(eps_override=model.eps_grid(jnp.asarray(it["eps_sec"][k], dtype=jnp.float32)),
+                           n_steps=n_steps, checkpoint=False, skip_preflight=True)
+        plane = res.dft_planes["ez_mid"]
+        acc = np.asarray(plane.accumulator).astype(np.complex64)
+        fields.append(acc)
+        sw = res.settling_witness or {}
+        meta["per_keyframe"][str(k)] = {"field_wall_s": time.perf_counter() - t0,
+                                        "plane_index_z": int(plane.index),
+                                        "settling_worst_db": (float(sw["per_record_db"][sw["worst_record"]])
+                                                              if sw.get("status") == "measured" else None)}
+        dc.log(f"keyframe {k}: field {acc.shape} ({time.perf_counter() - t0:.1f} s)")
+    g = model.grid
+    rec = {"keyframes": np.asarray(keys), "field_freqs_hz": f3,
+           "ez_mid": np.stack(fields),
+           "x_mm": (np.arange(g.shape[0]) - g.pad_x_lo) * model.dx * 1e3,
+           "y_mm": np.arange(g.shape[1]) * model.dx * 1e3,
+           "section_edges_mm": model.section_edges_mm(),
+           "fill_mm": (model.i_fill - model.pad) * model.dx * 1e3}
+    rec["ez_centre_line"] = rec["ez_mid"][:, :, :, g.shape[1] // 2]
+    dc.save_npz(out / "keyframes.npz", **rec)
+    dc.save_json(out / "keyframes.json", meta)
+
+    jac_fn = jax.jit(jax.jacfwd(lambda e: model.s11(e, n_steps, None)))
+    s11_fn = jax.jit(lambda e: model.s11(e, n_steps, None))
+    jacs, s11s = [], []
+    for i, k in enumerate(jkeys):
+        t0 = time.perf_counter()
+        e = jnp.asarray(it["eps_sec"][k], dtype=jnp.float32)
+        jac = np.asarray(jax.block_until_ready(jac_fn(e))).astype(np.complex64)   # (21, 30)
+        dt = time.perf_counter() - t0
+        s = np.asarray(s11_fn(e))
+        jacs.append(jac)
+        s11s.append(s.astype(np.complex64))
+        # the recorded reverse-mode gradient of J = mean |S11|^2, read back through the Jacobian
+        dJ = np.mean(2.0 * np.real(np.conj(s)[:, None] * jac), axis=0)
+        rg = it["grad_eps"][k]
+        entry = {"jacobian_wall_s": dt}
+        if np.all(np.isfinite(rg)):
+            entry["dJ_from_jacobian_vs_recorded_rel"] = float(np.linalg.norm(dJ - rg) / np.linalg.norm(rg))
+        meta["per_keyframe"].setdefault(str(k), {}).update(entry)
+        dc.log(f"keyframe {k}: Jacobian {jac.shape} ({dt:.1f} s) "
+               + (f"dJ vs recorded {entry.get('dJ_from_jacobian_vs_recorded_rel'):.2e}"
+                  if "dJ_from_jacobian_vs_recorded_rel" in entry else ""))
+        if i == 0:
+            proj = dt * len(jkeys)
+            meta["jacobian_projection_s"] = proj
+            if proj > JACOBIAN_BUDGET_S:
+                meta["jacobian_stopped"] = f"projected {proj:.0f} s > {JACOBIAN_BUDGET_S:.0f} s"
+                dc.log(meta["jacobian_stopped"] + ": the other keyframes are not run")
+                break
+    rec.update(jacobian_keyframes=np.asarray(jkeys[:len(jacs)]), jacobian_s11_eps=np.stack(jacs),
+               s11_at_jacobian_keyframes=np.stack(s11s), freqs_hz=model.freqs)
+    dc.save_npz(out / "keyframes.npz", **rec)
+    dc.save_json(out / "keyframes.json", meta)
+    return 0
+
+
 def stage_finalize(out: Path, a) -> int:
     x64 = (out / "fd_float64.json").is_file()
     source = _record.source_block(a.repo_dir, precision="float32" + (
@@ -769,7 +889,9 @@ def stage_finalize(out: Path, a) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--stage", required=True,
-                    choices=("timing", "main", "x64fd", "resolve", "finalize"))
+                    choices=("timing", "main", "x64fd", "resolve", "keyframes", "finalize"))
+    ap.add_argument("--record", type=Path, default=None,
+                    help="keyframes stage: the record whose iterations.npz is read (default --out)")
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--repo-dir", type=Path, default=REPO)
     ap.add_argument("--iters", type=int, default=None,
@@ -782,7 +904,8 @@ def main(argv=None) -> int:
     if a.stage == "timing" and a.iters is None:
         a.iters = 2
     stage = {"timing": stage_timing, "main": stage_main, "x64fd": stage_x64fd,
-             "resolve": stage_resolve, "finalize": stage_finalize}[a.stage]
+             "resolve": stage_resolve, "keyframes": stage_keyframes,
+             "finalize": stage_finalize}[a.stage]
     if a.stage in ("main", "timing"):
         dc.save_json(a.out / f"source_{a.stage}.json",
                      _record.source_block(a.repo_dir, precision="float32"))

@@ -61,8 +61,14 @@ run: |-
       { timeout 14400 python "$DT" --stage resolve --out "$out" 2>&1; echo "$?" > "$out/resolve.rc"; } | tee "$out/resolve.log"
       rc=$(cat "$out/resolve.rc")
     fi
-    if [ "$rc" = "0" ] || [ "$rc" = "3" ]; then
-      # rc 3: the record-length witness failed; the case stops and the record is written
+    if [ "$rc" = "0" ]; then
+      # recorded for visualization, not judged (Amendment 3)
+      { timeout 14400 python "$DT" --stage keyframes --out "$out" 2>&1; echo "$?" > "$out/keyframes.rc"; } | tee "$out/keyframes.log"
+      rc=$(cat "$out/keyframes.rc")
+    fi
+    if [ "$rc" = "0" ] || [ "$rc" = "3" ] || [ "$rc" = "4" ]; then
+      # rc 3: the record-length witness failed; rc 4: the module-path comparison failed.
+      # The case stops and the record is written.
       { timeout 600 python "$DT" --stage finalize --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/finalize.rc"; } | tee "$out/finalize.log"
       frc=$(cat "$out/finalize.rc")
       [ "$frc" = "0" ] || rc="$frc"
