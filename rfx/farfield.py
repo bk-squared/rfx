@@ -330,8 +330,10 @@ def make_ntff_box(
     The box is built for face-centre collocation (the second-order layout);
     pass ``collocation="node"`` for the pre-second-order geometry.
     """
-    lo = grid.position_to_index(corner_lo)
-    hi = grid.position_to_index(corner_hi)
+    from rfx._periodic import interval_indices
+    lo, hi = interval_indices(grid, corner_lo, corner_hi)
+    if any(hi[a] == grid.shape[a] for a in range(3)):
+        raise ValueError("NTFF box requires an interior plane with a sampling margin; move its high face inside the period")
     box = NTFFBox(
         i_lo=lo[0], i_hi=hi[0],
         j_lo=lo[1], j_hi=hi[1],

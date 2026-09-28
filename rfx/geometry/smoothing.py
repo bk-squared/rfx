@@ -592,15 +592,19 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
             if thin.is_pec or thin.surface_impedance_f0 is not None:
                 name = f"thin_conductor[{sim._thin_conductors.index(thin)}]"
                 sheet = sheet_spec_from_shape(
-                    shape, coords, sizes, name=name, refuse_thick=True)
+                    shape, coords, sizes, name=name, refuse_thick=True, grid=grid)
                 return [(np.asarray(sheet.footprint), (False, False, False))]
+            if getattr(grid, 'periodic_axes', ''):
+                from rfx.materials.thin_conductor import _thin_conductor_cell_mask
+                return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),
+                         (False, False, False))]
             return [(np.asarray(shape.mask_on_coords(coords.x, coords.y, coords.z)),
                      (False, False, False))]
         centres = cell_centres_from_nodes(coords, sizes)
         name = next((e.material_name for e in getattr(sim, "_geometry", ())
                      if e.shape is shape), None)
         cells, sheet, wire = classify_pec_entry(
-            shape, coords, centres, sizes, name=name)
+            shape, coords, centres, sizes, name=name, grid=grid)
         if cells is not None:
             return [(np.asarray(cells), (True, True, True))]
         if sheet is not None:

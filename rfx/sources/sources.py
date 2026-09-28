@@ -479,8 +479,8 @@ def _wire_port_cells(grid, port):
         raise ValueError("WirePort start and end must be axis-aligned")
     axis = int(np.argmax(nonzero))
 
-    idx_s = grid.position_to_index(tuple(s))
-    idx_e = grid.position_to_index(tuple(e))
+    from rfx._periodic import interval_indices
+    idx_s, idx_e = interval_indices(grid, tuple(s), tuple(e))
 
     lo = min(idx_s[axis], idx_e[axis])
     hi = max(idx_s[axis], idx_e[axis])
@@ -532,6 +532,8 @@ def _axis_node_position(grid, axis: int, index: int) -> float:
     from rfx.nonuniform import NonUniformGrid
     import numpy as np
 
+    if 'xyz'[axis] in getattr(grid, 'periodic_axes', '') and index == grid.shape[axis]:
+        return float(grid.domain[axis])
     coords = (coords_from_nonuniform_grid(grid)
               if isinstance(grid, NonUniformGrid)
               else coords_from_uniform_grid(grid))

@@ -362,7 +362,8 @@ class Box:
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        from rfx._periodic import periodic_shape
+        return periodic_shape(grid, self).mask_on_coords(x, y, z)
 
 
 @dataclass(frozen=True)
@@ -439,7 +440,8 @@ class OrientedBox:
             from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
             coords = coords_from_nonuniform_grid(grid)
             return self.mask_on_coords(*coords[:3])
-        return self.mask_on_coords(*_grid_coords(grid))
+        from rfx._periodic import periodic_shape
+        return periodic_shape(grid, self).mask_on_coords(*_grid_coords(grid))
 
 
 @dataclass(frozen=True)
@@ -495,7 +497,8 @@ class Cylinder:
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        from rfx._periodic import periodic_shape
+        return periodic_shape(grid, self).mask_on_coords(x, y, z)
 
 
 @dataclass(frozen=True)
@@ -525,7 +528,8 @@ class Sphere:
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        from rfx._periodic import periodic_shape
+        return periodic_shape(grid, self).mask_on_coords(x, y, z)
 
 
 @dataclass(frozen=True)
@@ -626,7 +630,8 @@ class PolylineWire:
 
     def mask(self, grid: Grid) -> jnp.ndarray:
         x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        from rfx._periodic import periodic_shape
+        return periodic_shape(grid, self).mask_on_coords(x, y, z)
 
 
 def union(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:

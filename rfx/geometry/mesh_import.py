@@ -297,5 +297,7 @@ class MeshShape:
         return result
 
     def mask(self, grid) -> jnp.ndarray:
+        from rfx._periodic import periodic_shape
+        periodic_shape(grid, self)
         x, y, z = _grid_coords(grid)
         return self.mask_on_coords(x, y, z)

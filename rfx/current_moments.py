@@ -499,7 +499,8 @@ def current_moment_monitor_from_grid(
 
     Refuses what it has not been shown to be right on.
     """
-    if periodic is not None and any(bool(p) for p in periodic):
+    if (getattr(grid, 'periodic_axes', '')
+            or periodic is not None and any(bool(p) for p in periodic)):
         raise NotImplementedError(
             "the current-moment monitor reads Ampere's law at the slab's own "
             "edges; on a periodic or Bloch axis the curl stencil wraps and "
@@ -1276,7 +1277,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         if getattr(pe, "extent", None) is not None:
             end = list(pe.position)
             end[c] = end[c] + float(pe.extent)
-            stop = _index(grid, tuple(end))
+            from rfx._periodic import interval_indices
+            start, stop = interval_indices(grid, tuple(pe.position), tuple(end))
         idx = list(start)
         for n in range(start[c], max(stop[c], start[c] + 1)):
             idx[c] = n

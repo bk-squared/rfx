@@ -79,6 +79,12 @@ def compute_thin_wire_correction(
     hi = max(s[axis], e[axis])
     lo_idx = int(round(lo / dx)) + int(pad[axis])
     hi_idx = int(round(hi / dx)) + int(pad[axis])
+    if getattr(grid, 'periodic_axes', ''):
+        start_idx, end_idx = grid.interval_to_indices(tuple(s), tuple(e))
+        t0_idx, t1_idx = (start_idx[t] for t in trans_axes)
+        lo_idx, hi_idx = sorted((start_idx[axis], end_idx[axis]))
+        if 'xyz'[axis] in grid.periodic_axes:
+            hi_idx = min(hi_idx, grid.shape[axis] - 1)
 
     # Holland correction factors
     # Effective relative permittivity: eps_r_eff = 2*pi / ln(dx/(2*r))

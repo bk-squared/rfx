@@ -145,7 +145,7 @@ def _pec_kind(sim, shape, lattice) -> str:
     solved = continued_conductor_shape(sim, grid, shape, unextendable=[])
     if getattr(solved, "points", None) is None or getattr(solved, "radius", None) is None:
         return "pec_volume"   # continued into a shape the assembler takes as a volume
-    filament = wire_filament_nodes(solved.points, solved.radius, axes, sizes)
+    filament = wire_filament_nodes(solved.points, solved.radius, axes, sizes, grid=grid)
     return "pec_wire" if filament is not None else "pec_volume"
 
 

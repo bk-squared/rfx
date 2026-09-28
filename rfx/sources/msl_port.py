@@ -284,6 +284,10 @@ def _msl_normal_bounds(grid, port):
         raise ValueError("MSL port requires finite ground/trace planes on a resolved normal axis")
     if port.z_hi <= port.z_lo:
         raise ValueError("MSL port trace plane must be above its ground plane")
+    from rfx._periodic import interval_coordinates
+    interval_coordinates(grid, 2, port.z_lo, port.z_hi)
+    if 'z' in getattr(grid, 'periodic_axes', ''):
+        nodes = np.append(nodes, float(grid.domain[2]))
     indices = []
     for label, position in (("ground", port.z_lo), ("trace", port.z_hi)):
         local = _local_cell(nodes, sizes[2], position)
@@ -347,6 +351,8 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
                     "zeros its substrate-normal E component. Move the port off that wall.")
 
     def along_trace(w, k):
+        if 'z' in getattr(grid, 'periodic_axes', ''):
+            k %= grid.shape[2]
         if k in domain_planes:
             return True
         idx = list(msl_cell(port.direction, p, w, k))
@@ -368,7 +374,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
                 locations = [float(nodes[2][j]) for j in alternatives]
                 raise ValueError(
                     f"{label}: declared {role} at z={declared:.9g} m maps to node "
-                    f"{k} (z={nodes[2][k]:.9g} m), but no longitudinal conductor "
+                    f"{k} (z={nodes[2][k % len(nodes[2])]:.9g} m), but no longitudinal conductor "
                     f"edge meets it at width node {w}. Observed conductor planes "
                     f"on this column are {locations} m. Make the port ground/trace "
                     "declarations agree with the realized conductor surfaces.")
@@ -470,14 +476,14 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     iw = _MSL_AXIS_INDEX[width]
     inr = _MSL_AXIS_INDEX[normal]
 
-    lo_idx = _msl_position_to_index(
-        grid, msl_physical_point(port.direction, port.feed_x, port.y_lo, port.z_lo)
-    )
-    hi_idx = _msl_position_to_index(
-        grid, msl_physical_point(port.direction, port.feed_x, port.y_hi, port.z_hi)
-    )
+    from rfx._periodic import interval_indices
+    lo_idx, hi_idx = interval_indices(
+        grid, msl_physical_point(port.direction, port.feed_x, port.y_lo, port.z_lo),
+        msl_physical_point(port.direction, port.feed_x, port.y_hi, port.z_hi))
     i_feed = int(lo_idx[ip])
     w_a, w_b = sorted((int(lo_idx[iw]), int(hi_idx[iw])))
+    if width in getattr(grid, 'periodic_axes', ''):
+        w_b = min(w_b, grid.shape[iw] - 1)
     n_a, n_b = _msl_normal_bounds(grid, port)
 
     if n_b <= n_a:
@@ -1390,6 +1396,8 @@ def _msl_coord_for_index(grid, axis: str, target_i: int) -> float:
     """
     n_axis = int(getattr(grid, {"x": "nx", "y": "ny", "z": "nz"}[axis]))
     pad = int(getattr(grid, f"pad_{axis}_lo", 0))
+    if axis in getattr(grid, 'periodic_axes', ''):
+        return grid.node_of(axis, grid.index_of(axis, int(target_i) * float(grid.cells(axis)[0])))
     clamped = max(0, min(int(target_i), n_axis - 1))
     u = clamped - pad  # user-domain (non-CPML) interior index
     arr_attr = {"x": "dx_arr", "y": "dy_arr", "z": "dz"}[axis]
@@ -1470,17 +1478,23 @@ def msl_h_plane_stencil(grid, port: MSLPort, e_plane_coordinate: float) -> dict:
         centres = centres_from_uniform_grid(grid)
     nodes = np.asarray(getattr(coords, axis), dtype=float)
     h_coords = np.asarray(getattr(centres, axis), dtype=float)
-    if not nodes[0] <= coordinate <= nodes[-1]:
+    declared_periodic = axis in getattr(grid, 'periodic_axes', '')
+    if declared_periodic:
+        from rfx._periodic import plane_coordinate
+        coordinate = plane_coordinate(grid, axis_index, coordinate)
+    if not declared_periodic and not nodes[0] <= coordinate <= nodes[-1]:
         raise ValueError("MSL voltage plane must lie inside the grid")
     point = msl_physical_point(port.direction, coordinate, port.y_lo, port.z_lo)
     index = int(_msl_position_to_index(grid, point)[axis_index])
-    if not 0 < index < len(nodes) - 1:
+    if not declared_periodic and not 0 < index < len(nodes) - 1:
         raise ValueError(
             "MSL current needs two H planes bracketing the voltage plane; "
             "move the first probe inside the grid")
-    indices = (index - 1, index)
+    indices = ((index - 1) % len(nodes), index) if declared_periodic else (index - 1, index)
     registration = tuple(float(nodes[i]) for i in indices)
     samples = tuple(float(h_coords[i]) for i in indices)
+    if declared_periodic and index == 0:
+        samples = (samples[0] - float(grid.domain[axis_index]), samples[1])
     target = float(nodes[index])
     if not (np.isfinite(samples).all() and samples[0] < target < samples[1]):
         raise ValueError("MSL H samples do not bracket the voltage E-node")
@@ -1538,6 +1552,10 @@ def msl_probe_x_coords(
     i1 = i_feed + sign * n_offset_cells
     i2 = i1 + sign * n_spacing_cells
     i3 = i2 + sign * n_spacing_cells
+    if prop in getattr(grid, 'periodic_axes', ''):
+        from rfx._periodic import interval_coordinates
+        width = float(grid.cells(prop)[0])
+        interval_coordinates(grid, _MSL_AXIS_INDEX[prop], i_feed * width, i3 * width)
     return (
         _msl_coord_for_index(grid, prop, i1),
         _msl_coord_for_index(grid, prop, i2),
@@ -1568,6 +1586,11 @@ def msl_probe_x_coords_n(
     )
     i_feed = int(idx[_MSL_AXIS_INDEX[prop]])
     sign = int(sign_f)
+    if prop in getattr(grid, 'periodic_axes', ''):
+        from rfx._periodic import interval_coordinates
+        end = i_feed + sign * (n_offset_cells + (n_probes - 1) * n_spacing_cells)
+        width = float(grid.cells(prop)[0])
+        interval_coordinates(grid, _MSL_AXIS_INDEX[prop], i_feed * width, end * width)
     return tuple(
         _msl_coord_for_index(
             grid, prop, i_feed + sign * (n_offset_cells + n * n_spacing_cells)

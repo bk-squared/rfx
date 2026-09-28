@@ -212,6 +212,11 @@
     },
     {
       "file": "rfx/boundaries/pec.py",
+      "function": "_unwrapped_sheet_edge_masks",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
       "function": "_volume_edge_masks",
       "kind": "neighbour"
     },

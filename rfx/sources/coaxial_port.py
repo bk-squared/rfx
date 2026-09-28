@@ -585,6 +585,13 @@ def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
         pz + pin_tip_offsets[2],
     )
 
+    from rfx._periodic import interval_coordinates
+    for a in range(3):
+        if a == axis_idx:
+            interval_coordinates(grid, a, port.position[a], pin_tip[a])
+        else:
+            interval_coordinates(grid, a, port.position[a] - port.outer_radius,
+                                 port.position[a] + port.outer_radius)
     gap_index = grid.position_to_index(port.position)
     return axis, direction, component, pin_center, pin_tip, gap_index
 

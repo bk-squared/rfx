@@ -154,7 +154,8 @@ def default_msl_terminates(sim, grid, *, position, width, height, direction):
     indices[span["prop_idx"]] = span["i_feed"]
     indices[span["width_idx"]] = span["w_lo"]
     indices[span["normal_idx"]] = span["n_hi"]
-    lower = [float(nodes[axis][index]) for axis, index in enumerate(indices)]
+    lower = [float(nodes[axis][index % len(nodes[axis])])
+             for axis, index in enumerate(indices)]
     upper = lower.copy()
     transverse = span["width_idx"]
     upper[transverse] = float(nodes[transverse][span["w_hi"]])
@@ -192,6 +193,8 @@ def port_terminal_points(collection, port, grid, nodes):
         start = tuple(float(nodes[a][index[a]]) for a in range(3))
         end = list(start)
         end[axis] = float(nodes[axis][min(index[axis]+1, len(nodes[axis])-1)])
+        if 'xyz'[axis] in getattr(grid, 'periodic_axes', '') and index[axis] == grid.shape[axis]-1:
+            end[axis] = float(grid.domain[axis])
     else:
         start = tuple(port.position)
         end = list(start)

@@ -75,6 +75,11 @@ class Via:
         return result
 
     def mask(self, grid):
+        if getattr(grid, 'periodic_axes', ''):
+            result = jnp.zeros(grid.shape, dtype=jnp.bool_)
+            for box, _ in self.to_shapes():
+                result = result | box.mask(grid)
+            return result
         from rfx.geometry.csg import _grid_coords
         x, y, z = _grid_coords(grid)
         return self.mask_on_coords(x, y, z)

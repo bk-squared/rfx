@@ -333,7 +333,7 @@ class _CompileMixin:
                 # vacuum values either way.
                 cells, sheet, wire = classify_pec_entry(
                     solved_shape, _coords, _centres, _cell_sizes,
-                    name=entry.material_name)
+                    name=entry.material_name, grid=grid)
                 if cells is not None:
                     pec_mask = pec_mask | cells
                     has_pec_cells = True

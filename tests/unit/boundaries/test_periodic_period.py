@@ -39,7 +39,9 @@ def _check_index(g, axis):
     assert getattr(g, f'pad_{axis}_lo') == getattr(g, f'pad_{axis}_hi') == 0
     assert g.index_of(axis, length) == 0
     assert 0 <= g.index_of(axis, length - .0005) < g.shape[n]
-    assert g.index_of(axis, -.001) == g.shape[n] - 1
+    assert g.index_of(axis, -.0005) == 0
+    with pytest.raises(ValueError, match='outside this axis'):
+        g.index_of(axis, -.001)
     position = [0., 0., 0.]
     position[n] = length
     assert g.position_to_index(position)[n] == 0

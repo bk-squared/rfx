@@ -330,10 +330,41 @@ class Grid:
             )
         return (i, j, k)
 
-    def _rounded_index(self, axis: int, ratio) -> int:
+    def _rounded_index(self, axis: int, ratio, *, wrap=True) -> int:
         """Round the caller's quotient without changing its scalar dtype."""
         idx = int(round(ratio)) + self.axis_pads[axis]
-        return idx % self.shape[axis] if _axis_name(axis) in self.periodic_axes else idx
+        if wrap and _axis_name(axis) in self.periodic_axes:
+            if ratio < -0.5 or ratio >= self.shape[axis] + 0.5:
+                # Let each public API issue its historical out-of-grid message.
+                return idx
+            return idx % self.shape[axis]
+        return idx
+
+    def interval_to_indices(self, start, end):
+        """Map a cell/edge extent without wrapping its exclusive high endpoint.
+
+        A constant coordinate denotes a plane and uses the point lookup.
+        Non-periodic axes retain position_to_index's input-dtype division.
+        """
+        from rfx._periodic import interval_coordinates
+        corners = [list(start), list(end)]
+        spanning = [start[a] != end[a] for a in range(3)]
+        for a in range(3):
+            if spanning[a]:
+                corners[0][a], corners[1][a] = interval_coordinates(
+                    self, a, start[a], end[a])
+        indices = []
+        for pos in corners:
+            idx = tuple(0 if a == 2 and self.is_2d else self._rounded_index(
+                a, pos[a] / self.dx, wrap=not spanning[a]) for a in range(3))
+            if not all(0 <= idx[a] < self.shape[a] + int(
+                    spanning[a] and 'xyz'[a] in self.periodic_axes) for a in range(3)):
+                raise ValueError(
+                    f"position {tuple(pos)} maps to grid index {idx}, "
+                    f"outside the grid shape {self.shape}. Check the "
+                    "position lies inside the simulation domain.")
+            indices.append(idx)
+        return tuple(indices)
 
     # ------------------------------------------------------------------
     # Grid metric interface (step 0a, design note

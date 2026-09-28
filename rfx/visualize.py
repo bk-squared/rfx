@@ -317,6 +317,8 @@ def _axis_edges(grid, axis, nodes):
     synthesizes one.
     """
     n = np.asarray(nodes, dtype=float)
+    if 'xyz'[axis] in getattr(grid, 'periodic_axes', ''):
+        return np.append(n, float(grid.domain[axis]))
     if n.size == 0:
         return np.array([0.0, 1.0])
     if n.size == 1:
@@ -533,8 +535,10 @@ def plot_rasterized_slice(
             index = int(np.argmax(per_plane)) if per_plane.max() else n_along // 2
         else:
             pos = float(position)
+            from rfx._periodic import plane_coordinate
+            pos = plane_coordinate(grid, axis, pos)
             lo_c, hi_c = float(coords[axis].min()), float(coords[axis].max())
-            if not (lo_c - 1e-9 <= pos <= hi_c + 1e-9):
+            if 'xyz'[axis] not in getattr(grid, 'periodic_axes', '') and not (lo_c - 1e-9 <= pos <= hi_c + 1e-9):
                 raise ValueError(
                     f"position={pos:g} m is outside axis {names_of(axis)} "
                     f"[{lo_c:g}, {hi_c:g}] m. Clamping it would have drawn a "
@@ -850,8 +854,9 @@ def plot_stack_profile(
             auto_note = (" (no conductor in this model; column chosen by "
                          "\u03b5 structure)")
     else:
-        i0 = int(np.argmin(np.abs(coords[keep[0]] - float(at[0]))))
-        i1 = int(np.argmin(np.abs(coords[keep[1]] - float(at[1]))))
+        from rfx._periodic import plane_coordinate
+        i0 = int(np.argmin(np.abs(coords[keep[0]] - plane_coordinate(grid, keep[0], float(at[0])))))
+        i1 = int(np.argmin(np.abs(coords[keep[1]] - plane_coordinate(grid, keep[1], float(at[1])))))
     take = [0, 0, 0]
     take[keep[0]], take[keep[1]], take[axis] = i0, i1, slice(None)
     eps_col = eps[tuple(take)]

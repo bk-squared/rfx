@@ -429,8 +429,8 @@ def optimize(
         _n_steps_auto = int(np.ceil(num_periods * period / float(grid.dt)))
     else:
         grid = sim._build_grid()
-        lo_idx = list(grid.position_to_index(region.corner_lo))
-        hi_idx = list(grid.position_to_index(region.corner_hi))
+        from rfx._periodic import interval_indices
+        lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "optimize() design")
         # Bookkeeping assembly — see the non-uniform branch above.
@@ -795,8 +795,8 @@ def progressive_optimize(
             lo_idx = list(_nu_pos_to_idx(grid, region.corner_lo))
             hi_idx = list(_nu_pos_to_idx(grid, region.corner_hi))
         else:
-            lo_idx = list(grid.position_to_index(region.corner_lo))
-            hi_idx = list(grid.position_to_index(region.corner_hi))
+            from rfx._periodic import interval_indices
+            lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
 
         pads_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)
         pads_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)

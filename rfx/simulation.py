@@ -3811,8 +3811,8 @@ def run_until_decay(
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
     use_flux_stop = radiated_flux_box is not None and use_absorbing
     if use_flux_stop:
-        _flo = grid.position_to_index(radiated_flux_box[0])
-        _fhi = grid.position_to_index(radiated_flux_box[1])
+        from rfx._periodic import interval_indices
+        _flo, _fhi = interval_indices(grid, *radiated_flux_box)
         _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
                min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
                min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
@@ -3826,6 +3826,10 @@ def run_until_decay(
         il, ih, jl, jh, kl, kh = _bl
         jj, kk = slice(jl, jh), slice(kl, kh)
         ii = slice(il, ih)
+        # Normal planes wrap; the tangential cell slices keep endpoint N.
+        il, ih = il % grid.nx, ih % grid.nx
+        jl, jh = jl % grid.ny, jh % grid.ny
+        kl, kh = kl % grid.nz, kh % grid.nz
         # +x/-x faces: S_x = Ey·Hz - Ez·Hy
         p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
         p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])

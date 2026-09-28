@@ -199,7 +199,7 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
         sheet = sheet_spec_from_shape(
             continued_conductor_shape(sim, grid, entry.shape, entry=entry), coords, sizes, normal_axis=normal,
             name=getattr(entry, "material_name", kind_src),
-            refuse_thick=(kind_src == "thin_conductor"))
+            refuse_thick=(kind_src == "thin_conductor"), grid=grid)
         return replace(sheet, footprint=jnp.asarray(
             interior_lattice_mask(sheet.footprint, grid)))
     except ValueError:
@@ -223,7 +223,7 @@ def _contract_refusals(sim, grid, nonuniform):
             # Continuation first classifies the declaration too; refusal is
             # owned by this entry, before any port-partner lookup.
             classify_pec_entry(entry.shape, coords, centres, sizes,
-                               name=entry.material_name)
+                               name=entry.material_name, grid=grid)
         except ValueError as exc:
             out[i] = str(exc)
     return out
@@ -940,6 +940,8 @@ def fidelity_report(sim, print_report: bool = True):
             z_k = float(nodes[a][k])
             n_nodes = int(np.asarray(sheet_spec.footprint).sum())
             mid = 0.5 * (item["declared_lo"][a] + item["declared_hi"][a])
+            from rfx._periodic import plane_coordinate
+            matched_mid = plane_coordinate(grid, a, mid)
             item["realization"] = (
                 f"PEC sheet on node plane {_axis_names()[a]} = "
                 f"{z_k * 1e6:.2f} um ({n_nodes} nodes, closed footprint, "
@@ -948,7 +950,7 @@ def fidelity_report(sim, print_report: bool = True):
             item["realized_plane"] = dict(axis=_axis_names()[a], index=int(k),
                                           coordinate=z_k,
                                           declared_midplane=float(mid),
-                                          offset_um=(z_k - mid) * 1e6)
+                                          offset_um=(z_k - matched_mid) * 1e6)
             report.append(item)
             continue
         pec_frac_self = float(np.mean(pec_mask[mask]))

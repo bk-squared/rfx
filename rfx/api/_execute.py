@@ -3678,8 +3678,11 @@ class _ExecuteMixin:
             if getattr(_pe, "extent", None) is not None:
                 _end = list(_pe.position)
                 _end[_axis] += _pe.extent
-                _n_end = self._design_box_index_of(grid, _end)[_axis]
-                _n0, _n1 = sorted((_lo[_axis], _n_end))
+                from rfx._periodic import interval_indices
+                _start_idx, _end_idx = interval_indices(
+                    grid, tuple(float(v) for v in _pe.position),
+                    tuple(float(v) for v in _end))
+                _n0, _n1 = sorted((_start_idx[_axis], _end_idx[_axis]))
                 _cell_lo[_axis], _cell_hi[_axis] = wire_port_edge_span(
                     grid, _axis, _n0, _n1, _pe.position[_axis], _end[_axis])
             if holds_ports:
@@ -3746,11 +3749,14 @@ class _ExecuteMixin:
                     "pair of (x, y, z) positions in metres, or an object "
                     "carrying corner_lo/corner_hi (DesignRegion, "
                     f"TopologyDesignRegion). Got {design_box!r}.") from None
-        lo_idx = self._design_box_index_of(grid, corner_lo)
-        hi_idx = self._design_box_index_of(grid, corner_hi)
+        from rfx._periodic import interval_indices
+        lo_idx, hi_idx = interval_indices(
+            grid, tuple(float(v) for v in corner_lo), tuple(float(v) for v in corner_hi))
         return tuple(
             v for axis in range(3)
-            for v in (int(lo_idx[axis]), int(hi_idx[axis]) + 1)
+            for v in (int(lo_idx[axis]), int(hi_idx[axis]) + int(
+                not ('xyz'[axis] in getattr(grid, 'periodic_axes', '')
+                     and hi_idx[axis] == grid.shape[axis])))
         )
 
     def forward(

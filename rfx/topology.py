@@ -404,8 +404,8 @@ def topology_optimize(
 
     # Build grid and compute design region indices
     grid = sim._build_grid()
-    lo_idx = list(grid.position_to_index(design_region.corner_lo))
-    hi_idx = list(grid.position_to_index(design_region.corner_hi))
+    from rfx._periodic import interval_indices
+    lo_idx, hi_idx = map(list, interval_indices(grid, design_region.corner_lo, design_region.corner_hi))
 
     # Clamp indices to the interior region (exclude CPML padding).
     # Without this, a design region at the domain edge can overlap
