@@ -79,6 +79,7 @@ from rfx.runners._distributed_common import (
     _update_h_local,
     _update_e_local_with_dispersion,
     _init_cpml_distributed,
+    _distributed_boundary_layers,
     _apply_cpml_e_distributed,
     _apply_cpml_h_distributed,
 )
@@ -759,6 +760,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "arrays this lane does shard.")
     materials = base_materials
 
+    _distributed_boundary_layers(
+        grid, n_devices,
+        pec_faces=(_pec_faces_frozen if sim._boundary == "cpml" else
+                   {f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")}),
+        pmc_faces=_pmc_faces_frozen,
+        cpml_layers=grid.cpml_layers if sim._boundary == "cpml" else 0,
+    )
     nx, ny, nz = grid.shape
     # Pad nx to nearest multiple of n_devices (PEC-filled padding cells)
     pad_x = 0

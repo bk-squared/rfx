@@ -78,6 +78,8 @@ __all__ = [
     "_update_e_lorentz_local",
     "_update_e_local_with_dispersion",
     "_init_cpml_distributed",
+    "_distributed_cpml_state",
+    "_distributed_boundary_layers",
     "_apply_cpml_e_distributed",
     "_apply_cpml_h_distributed",
 ]
@@ -1694,6 +1696,53 @@ def _init_cpml_distributed(grid, nx_local, n_devices):
     return _distributed_cpml_state(grid, params, nx_local, n_devices)
 
 
+def _distributed_boundary_layers(grid, n_devices, *, pec_faces=None,
+                                 pmc_faces=None, cpml_layers=None):
+    """Keep absorbers and walls on owned rows, including boxes without CPML.
+
+    PEC writes the end E row: one owned row. PMC-hi writes H one row
+    inside it: two owned rows, otherwise the next H exchange replaces it.
+    Two rows also keep PMC-lo away from the H row sent before the uniform
+    runner applies the wall. An L-layer absorber needs L owned rows and
+    the exchanged curl neighbour. Return the active depths for sizing.
+    """
+    pec_faces = set(getattr(grid, "pec_faces", None) or ()) if pec_faces is None else set(pec_faces)
+    pmc_faces = set(getattr(grid, "pmc_faces", None) or ()) if pmc_faces is None else set(pmc_faces)
+    walls = pec_faces | pmc_faces
+    budget = grid.cpml_layers if cpml_layers is None else cpml_layers
+    face_layers = getattr(grid, "face_layers", None) or {}
+    layers = {
+        f"{axis}_{side}": (0 if f"{axis}_{side}" in walls else
+                          int(face_layers.get(f"{axis}_{side}", budget)))
+        for axis in "xyz" for side in ("lo", "hi")
+    }
+    pad_x = (-grid.nx) % n_devices
+    nx_per = (grid.nx + pad_x) // n_devices
+    for face, rank, width in (("x_lo", 0, nx_per),
+                              ("x_hi", n_devices - 1, max(0, nx_per - pad_x))):
+        depth = layers[face]
+        required = 2 if face in pmc_faces else 1
+        if depth > 0 and width < depth:
+            raise ValueError(
+                f"distributed CPML face {face}: boundary rank {rank} has "
+                f"{width} physical x cells, but {depth} absorber layers require "
+                f"at least {depth} physical x cells plus 1 exchanged ghost cell "
+                f"(nx={grid.nx}, devices={n_devices}, pad_x={pad_x}). "
+                "Reduce devices or cpml_layers (or that face's "
+                "lo_thickness/hi_thickness), or enlarge the x domain."
+            )
+        elif width < required:
+            kind = "PMC" if face in pmc_faces else "PEC" if face in pec_faces else "boundary"
+            raise ValueError(
+                f"distributed {kind} face {face}: boundary rank {rank} has "
+                f"{width} physical x cells, but {kind} requires at least "
+                f"{required} physical x cells "
+                f"(nx={grid.nx}, devices={n_devices}, pad_x={pad_x}). "
+                "Reduce devices or enlarge the x domain."
+            )
+    return layers
+
+
 def _distributed_cpml_state(grid, params, nx_local, n_devices, *, mesh=None):
     """Keep each absorber on its owning device, with one exchanged curl neighbour.
 
@@ -1706,28 +1755,7 @@ def _distributed_cpml_state(grid, params, nx_local, n_devices, *, mesh=None):
     from rfx.boundaries.cpml import CPMLState
     from jax.sharding import NamedSharding
 
-    walls = set(getattr(grid, "pec_faces", None) or ()) | set(
-        getattr(grid, "pmc_faces", None) or ())
-    face_layers = getattr(grid, "face_layers", None) or {}
-    layers = {
-        f"{axis}_{side}": (0 if f"{axis}_{side}" in walls else
-                          int(face_layers.get(f"{axis}_{side}", grid.cpml_layers)))
-        for axis in "xyz" for side in ("lo", "hi")
-    }
-    pad_x = (-grid.nx) % n_devices
-    nx_per = (grid.nx + pad_x) // n_devices
-    for face, rank, width in (("x_lo", 0, nx_per),
-                              ("x_hi", n_devices - 1, nx_per - pad_x)):
-        depth = layers[face]
-        if depth > 0 and width < depth:
-            raise ValueError(
-                f"distributed CPML face {face}: boundary rank {rank} has "
-                f"{width} physical x cells, but {depth} absorber layers require "
-                f"at least {depth} physical x cells plus 1 exchanged ghost cell "
-                f"(nx={grid.nx}, devices={n_devices}, pad_x={pad_x}). "
-                "Reduce devices or cpml_layers (or that face's "
-                "lo_thickness/hi_thickness), or enlarge the x domain."
-            )
+    layers = _distributed_boundary_layers(grid, n_devices)
 
     depths = {face: max(1, depth) for face, depth in layers.items()}
 

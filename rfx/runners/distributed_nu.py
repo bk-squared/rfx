@@ -80,6 +80,7 @@ from rfx.runners._distributed_common import (
     update_e_nu_shmap,
     update_h_nu_shmap,
     _distributed_cpml_state,
+    _distributed_boundary_layers,
 )
 
 
@@ -2139,6 +2140,13 @@ def run_nonuniform_distributed_pec(
         lorentz_state_init = None
     use_dispersion = use_debye or use_lorentz
     use_cpml = cpml_params is not None
+    if not use_cpml:
+        # The all-wall scan never initializes CPML; it still owns both ends.
+        _distributed_boundary_layers(
+            sharded_grid, n_devices, cpml_layers=0,
+            pec_faces={f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")},
+            pmc_faces=pmc_faces,
+        )
     if use_cpml and cpml_state is None:
         raise ValueError(
             "cpml_params was provided but cpml_state is None; pass the "
