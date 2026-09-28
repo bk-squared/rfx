@@ -109,6 +109,10 @@ CPML sigma / kappa         ``boundaries.cpml._grid_spacings`` and     x and y: t
 waveguide-port injection   ``nonuniform``                            PRIMAL at the H plane, DUAL at
                            ``._waveguide_port_axis_metrics``, used    the E plane, on the port's own
                            by ``run_nonuniform``'s H/E apply steps    propagation axis
+periodic uniform axis      ``grid.Grid``; ``core.yee`` roll           N=L/dx cells, no pads or duplicate
+                                                                      endpoint; PRIMAL=DUAL=dx, including
+                                                                      the seam. Full-period sums count N;
+                                                                      index_of wraps modulo N (L -> 0).
 =========================  =========================================  ==================================
 
 The CPML row is the one open defect left in this table; it is listed as what

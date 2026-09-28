@@ -72,6 +72,24 @@ def test_regeneration_rejects_face_class_change_without_departure_change():
         validate_class_changes(dict(cells=[old]), [current])
 
 
+@pytest.mark.parametrize("entry", ["run", "forward", "sweep", "gpu-query"])
+@pytest.mark.parametrize("case", ["periodic-xy", "floquet"])
+def test_regeneration_accepts_only_the_declared_period(case, entry):
+    current = deepcopy(next(c for c in BASELINE["cells"]
+                            if (c["case"], c["entry"]) == (case, entry)))
+    old = deepcopy(current)
+    for axis in "xy":
+        for side in ("lo", "hi"):
+            face = f"{axis}_{side}"
+            if case == "periodic-xy":
+                old["departures"].append(dict(face=face, code="e"))
+            old["faces"][face]["period_m"] += .001
+    validate_class_changes(dict(cells=[old]), [current])
+    current["faces"]["x_lo"]["period_m"] += .0001
+    with pytest.raises(AssertionError, match="STOP.*period_m"):
+        validate_class_changes(dict(cells=[old]), [current])
+
+
 def test_baseline_rewrite_keeps_both_leader_conclusions(tmp_path):
     baseline = deepcopy(BASELINE)
     baseline["conclusion"] = "Leader's JSON text.\nKeep punctuation and spacing."
@@ -105,4 +123,3 @@ def test_regeneration_rejects_a_moved_value(quantity, after):
     with pytest.raises(AssertionError, match=f"STOP.*{quantity}"):
         validate_class_changes(dict(cells=[old]), [current])
     validate_class_changes(dict(cells=[old]), [deepcopy(old)])
-

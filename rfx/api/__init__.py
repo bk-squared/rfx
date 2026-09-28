@@ -2230,8 +2230,13 @@ class Simulation(
             raise ValueError(
                 f"TFSF plane-wave source requires mode='3d', '2d_tmz', or '2d_tez', got {self._mode!r}"
             )
-        if self._periodic_axes:
-            raise ValueError("TFSF plane-wave source is not supported with manual periodic-axis overrides")
+        transverse = "" if closed_box else (
+            "z" if method == "methodB" and abs(angle_deg) > .01 else "yz")
+        if any(axis not in transverse for axis in self._periodic_axes):
+            raise ValueError(
+                "TFSF plane-wave source conflicts with periodic-axis overrides "
+                f"{self._periodic_axes!r}; this source permits declared periodic "
+                f"axes only in {transverse!r}")
         if self._ports:
             raise ValueError(
                 "TFSF plane-wave source is not supported together with lumped ports"

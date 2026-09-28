@@ -818,8 +818,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         ),
     },
     "_periodic_axes": {"periodic": lanes(
-        run_uniform=carries("one cell longer than declared (test_realized_boundary.py "
-                            "periodic-xy--run)", wrong="#1221"),
+        run_uniform=carries("declared period and wrapped index (#1221 B2)"),
         run_nonuniform=admission("a periodic axis", RUN_NU, "it was solved as PEC walls "
                                  "(periodic-xy--nonuniform, #1221)"),
         run_subgridded=admission("a periodic axis", RUN_SG, "it was solved as PEC walls although "
@@ -827,7 +826,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_adi=_adi("periodic axes", "does not support manual periodic axes"),
         run_distributed=refuses("periodic axes refused (#1241)",
                                 raises="periodic / Bloch boundaries are not supported"),
-        fwd_uniform=carries("one cell longer than declared (periodic-xy--forward)", wrong="#1221"),
+        fwd_uniform=carries("declared period and wrapped index (#1221 B2)"),
         fwd_nonuniform=admission("a periodic axis", FWD_NU, "it was solved as PEC walls (#1221)"),
         fwd_distributed_nu=refuses("periodic axes refused (#1350)",
                                    raises="periodic / Bloch boundaries are not supported"),

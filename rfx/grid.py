@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import numpy as np
+import warnings
+from fractions import Fraction
+from math import lcm
 
 from rfx._grid_metric import (
     axis_name as _axis_name,
@@ -33,6 +36,50 @@ C0 = 299_792_458.0
 #: coarser than an ULP for a million-cell domain and finer than one for a
 #: domain of a few cells -- which is why this is relative.
 CELL_COUNT_ULP_BUDGET = 8
+
+
+def _divides_period(length: float, dx: float) -> bool:
+    ratio = length / dx
+    return round(ratio) >= 1 and abs(ratio - round(ratio)) <= (
+        CELL_COUNT_ULP_BUDGET * np.finfo(float).eps * max(1.0, abs(ratio)))
+
+
+def _nearest_period_dx(length: float, dx: float) -> float:
+    ratio = length / dx
+    counts = {max(1, int(np.floor(ratio))), max(1, int(np.ceil(ratio)))}
+    return min((length / n for n in counts), key=lambda candidate: abs(candidate - dx))
+
+
+def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool) -> float:
+    if not axes:
+        return dx
+    lengths = [float(domain['xyz'.index(a)]) for a in axes]
+    if any(not np.isfinite(length) or length <= 0 for length in lengths):
+        raise ValueError(f"periodic axes {axes!r} require positive finite lengths; L={lengths} m")
+    if all(_divides_period(length, dx) for length in lengths):
+        return dx
+    candidate = min(length / cells_spanning(length, dx) for length in lengths) if automatic else dx
+    if all(_divides_period(length, candidate) for length in lengths):
+        if automatic and candidate != dx:
+            warnings.warn(
+                f"Periodic axes {axes!r}, L={lengths} m: automatic dx={dx:.12g} m "
+                f"snapped to dx={candidate:.12g} m to divide every period.",
+                UserWarning, stacklevel=3)
+        return candidate
+    # Rationally related periods may require a smaller common cell. This is
+    # a suggestion only: never silently refine two axes by an unbounded factor.
+    ratios = [Fraction(length / lengths[0]).limit_denominator(10000) for length in lengths]
+    common_length = lengths[0] / lcm(*(r.denominator for r in ratios))
+    suggestion = _nearest_period_dx(common_length, dx)
+    if not all(_divides_period(length, suggestion) for length in lengths):
+        advice = "choose commensurate lengths and an explicit dx that divides every period"
+    else:
+        advice = f"nearest common dividing dx={suggestion:.12g} m"
+    details = "; ".join(
+        f"axis {axis}: L={length:.12g} m, dx={dx:.12g} m, "
+        f"nearest dividing dx={_nearest_period_dx(length, dx):.12g} m"
+        for axis, length in zip(axes, lengths))
+    raise ValueError(f"Periodic grid requires a common dx dividing each L ({details}); {advice}.")
 
 
 def cells_spanning(length: float, dx: float, *,
@@ -108,6 +155,7 @@ class Grid:
         pmc_faces: set[str] | None = None,
         face_layers: dict | None = None,
         conformal_faces: set[str] | None = None,
+        periodic_axes: str = "",
     ):
         if mode not in ("3d", "2d_tmz", "2d_tez"):
             raise ValueError(f"mode must be '3d', '2d_tmz', or '2d_tez', got {mode!r}")
@@ -147,10 +195,16 @@ class Grid:
         self.cpml_axes = "".join(axis for axis in "xyz" if axis in cpml_axes)
         self.mode = mode
         self.is_2d = mode.startswith("2d")
+        invalid_periodic = sorted(set(periodic_axes) - set("xyz"))
+        if invalid_periodic:
+            raise ValueError(f"periodic_axes must be drawn from 'xyz', got {invalid_periodic}")
+        self.periodic_axes = "".join(a for a in "xyz" if a in periodic_axes and not (a == "z" and self.is_2d))
+        self.cpml_axes = "".join(a for a in self.cpml_axes if a not in self.periodic_axes)
 
         # Auto-resolution: λ_min / 20
         lambda_min = C0 / freq_max
-        self.dx = dx if dx is not None else lambda_min / 20.0
+        requested_dx = dx if dx is not None else lambda_min / 20.0
+        self.dx = _periodic_resolution(domain, self.periodic_axes, requested_dx, automatic=dx is None)
 
         # Courant-stable timestep: √2 for 2D, √3 for 3D
         ndim = 2 if self.is_2d else 3
@@ -215,15 +269,15 @@ class Grid:
         # ``cells_spanning`` rather than a bare ``ceil`` (#1070): a declared
         # length is an arithmetic expression, and one ULP of float dust in
         # ``domain/dx`` used to buy a whole cell that no declared Box reaches.
-        self.nx = (cells_spanning(domain[0], self.dx) + 1
+        self.nx = (cells_spanning(domain[0], self.dx) + ("x" not in self.periodic_axes)
                    + self.pad_x_lo + self.pad_x_hi)
-        self.ny = (cells_spanning(domain[1], self.dx) + 1
+        self.ny = (cells_spanning(domain[1], self.dx) + ("y" not in self.periodic_axes)
                    + self.pad_y_lo + self.pad_y_hi)
 
         if self.is_2d:
             self.nz = 1  # single cell in z, use periodic z BC
         else:
-            self.nz = (cells_spanning(domain[2], self.dx) + 1
+            self.nz = (cells_spanning(domain[2], self.dx) + ("z" not in self.periodic_axes)
                        + self.pad_z_lo + self.pad_z_hi)
 
         self.shape = (self.nx, self.ny, self.nz)
@@ -263,9 +317,10 @@ class Grid:
             returned an out-of-range index silently, which then indexed
             the wrong cell (or wrapped negatively) downstream.
         """
-        i = int(round(pos[0] / self.dx)) + self.pad_x_lo
-        j = int(round(pos[1] / self.dx)) + self.pad_y_lo
-        k = 0 if self.is_2d else int(round(pos[2] / self.dx)) + self.pad_z_lo
+        # Preserve this API's input-dtype division, including half-node ties.
+        i = self._rounded_index(0, pos[0] / self.dx)
+        j = self._rounded_index(1, pos[1] / self.dx)
+        k = 0 if self.is_2d else self._rounded_index(2, pos[2] / self.dx)
         nx, ny, nz = self.shape
         if not (0 <= i < nx and 0 <= j < ny and 0 <= k < nz):
             raise ValueError(
@@ -274,6 +329,11 @@ class Grid:
                 f"position lies inside the simulation domain."
             )
         return (i, j, k)
+
+    def _rounded_index(self, axis: int, ratio) -> int:
+        """Round the caller's quotient without changing its scalar dtype."""
+        idx = int(round(ratio)) + self.axis_pads[axis]
+        return idx % self.shape[axis] if _axis_name(axis) in self.periodic_axes else idx
 
     # ------------------------------------------------------------------
     # Grid metric interface (step 0a, design note
@@ -321,16 +381,17 @@ class Grid:
     def index_of(self, axis, x: float) -> int:
         """Padded index of the node nearest physical coordinate ``x``.
 
-        Same arithmetic as the ``axis`` component of ``position_to_index``:
-        ``round(x/dx) + pad_lo``, with the same out-of-grid refusal. In 2-D
+        Retains the historical ``round(float(x)/dx) + pad_lo`` arithmetic;
+        ``position_to_index`` instead divides in the input scalar's dtype.
+        Declared periodic axes wrap modulo their node count. In 2-D
         mode the z axis holds one cell and the answer is always 0, which is
         what ``position_to_index`` returns there.
         """
         ax = _normalize_axis(axis)
-        n, pad_lo = self._axis_extent(ax)
+        n, _ = self._axis_extent(ax)
         if ax == 2 and self.is_2d:
             return 0
-        idx = int(round(float(x) / self.dx)) + pad_lo
+        idx = self._rounded_index(ax, float(x) / self.dx)
         if not (0 <= idx < n):
             raise ValueError(
                 f"position {float(x)} on axis {_axis_name(ax)!r} maps to "

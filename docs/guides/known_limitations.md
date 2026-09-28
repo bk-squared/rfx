@@ -109,6 +109,14 @@ both.
 
 ## Absorbing boundaries
 
+**A magnetic symmetry wall lies half a cell inside its declared face.**
+On the single-device Yee paths, the nearest tangential magnetic-field sample
+is zeroed half a cell inside the face. A source on the face's electric node
+does not reach the interior, and a symmetry half-model is half a cell narrower
+than declared. For a 24 mm separation between two magnetic faces, the realized
+separation is 23 mm at dx = 1 mm. The on-face image rule is pending in B3.
+→ [#1221](https://github.com/bk-squared/rfx/issues/1221)
+
 **On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**
 A face declared `pmc` is solved as a magnetic wall only on a single-device Yee run. On `run(devices=...)` and
 `forward(distributed=True)` with no absorbing face the plane is shorted (tangential E held at zero); with absorbing

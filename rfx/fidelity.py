@@ -427,6 +427,10 @@ def fidelity_report(sim, print_report: bool = True):
         # into a silent wrap; it has no test because it has no reachable
         # input.
         i_hi = max(len(sizes[a]) - p_hi - 1, i_lo)
+        # A declared periodic span includes the seam cell after its last
+        # stored node. Its endpoint is the appended far edge, not a wall.
+        if axis_name in getattr(grid, "periodic_axes", ""):
+            i_hi += 1
         n_int = max(i_hi - i_lo, 0)
         # mesh_extent is the NODE-to-NODE span (unchanged from before this
         # change) -- the commensurability finding below stays keyed on it,
