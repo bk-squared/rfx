@@ -61,12 +61,28 @@ def _s11_mag2(deps):
 def test_coax_reflection_grad_finite_and_fd_consistent():
     """Gate: the full-method reflection is differentiable w.r.t. the dielectric and
     the AD gradient matches a finite difference (the AD moat for coaxial_port)."""
+    try:
+        from jax import enable_x64
+    except ImportError:  # older JAX (< ~0.4.31)
+        from tests._x64_compat import enable_x64
+
     val, g = jax.value_and_grad(_s11_mag2)(0.0)
     assert np.isfinite(float(val)), f"|S11|^2 is not finite: {val}"
     assert np.isfinite(float(g)), f"gradient is not finite: {g}"
 
-    h = 0.02  # small enough that the matrix-pencil stays well-conditioned
-    fd = (float(_s11_mag2(h)) - float(_s11_mag2(-h))) / (2 * h)
+    # #1356: on this lossless short the physical d|S11|^2/d(eps) is zero; what AD and FD
+    # compare is a numerical residual. The extractor returns the attenuation as |alpha|, and
+    # since #1314 the fitted alpha sits at ~0.0004 Np/m, so a step of h >= ~0.004 flips its sign
+    # at one FD endpoint and the FD straddles the |alpha| corner (82 % off AD at the old h=0.02).
+    # Measured at a3490391, 1500 steps, float64 extraction: FD within 0.3 % of AD for
+    # h in {0.000625, 0.00125, 0.0025}, 6.7 % at 0.005 (rfx-archive
+    # rfx/records/20260928-coax-reflection-gradient-1356). The FD runs with float64
+    # extraction (scoped x64; fields and eps_scale stay float32), so AD is unchanged.
+    h = 0.00125
+    with enable_x64():
+        fp, fm = _s11_mag2(h), _s11_mag2(-h)
+        assert fp.dtype == jnp.float64 and fm.dtype == jnp.float64, f"FD not float64: {fp.dtype}"
+        fd = (float(fp) - float(fm)) / (2 * h)
     assert np.isfinite(fd) and fd != 0.0, "FD slope not finite/nonzero — rebuild fixture"
     rel = abs(float(g) - fd) / max(abs(fd), 1e-12)
     assert rel <= 0.05, f"AD={float(g):+.6e} vs FD={fd:+.6e} (rel diff {rel:.3f} > 5%)"
