@@ -808,7 +808,8 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
 
     Compares, per axis, every port position (and a wire port's far end),
     source and probe with every sub-cell wire vertex and PEC sheet plane
-    declared within 1e-6 of the local cell of it, and returns one message
+    declared within 1e-6 of the local cell of it (or one float32 step of the
+    coordinate, whichever is wider), and returns one message
     per (feature, conductor, axis) that resolves to different nodes. The
     pairing starts on the DECLARED coordinates, so a model with no such pair
     returns before any grid is built. ``grid`` is the grid the run builds
@@ -973,7 +974,13 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
         for ckey, clabel, a, c, node in conductors:
             if a not in axes or not _same(pos[a], c):
                 continue
-            if abs(pos[a] - c) > 1e-6 * _local_cell(node_axes[a], sizes[a], c):
+            # 1e-6 of the local cell, or a float32 step of the coordinate,
+            # whichever is wider: a coordinate that came through float32 is
+            # up to half a float32 step off its float64 twin at any distance
+            # from the origin.
+            if abs(pos[a] - c) > max(
+                    1e-6 * _local_cell(node_axes[a], sizes[a], c),
+                    2.0 ** -23 * max(abs(pos[a]), abs(c))):
                 continue
             if int(idx[a]) == node or (pkey, ckey, a) in seen:
                 continue

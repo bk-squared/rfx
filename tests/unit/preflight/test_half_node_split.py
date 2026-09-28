@@ -28,11 +28,11 @@ DX = 1e-3
 DOM = (20e-3, 19e-3, 17e-3)      # 19 cells in y: 9.5 mm is a half node, 9 odd
 
 
-def _sim(lane):
-    kw = dict(freq_max=10e9, domain=DOM, dx=DX, boundary="pec")
+def _sim(lane, dom=DOM):
+    kw = dict(freq_max=10e9, domain=dom, dx=DX, boundary="pec")
     if lane == "nu":
-        kw.update(dx_profile=np.full(20, DX), dy_profile=np.full(19, DX),
-                  dz_profile=np.full(17, DX))
+        kw.update(**{f"d{a}_profile": np.full(int(round(d / DX)), DX)
+                     for a, d in zip("xyz", dom)})
     return Simulation(**kw)
 
 
@@ -153,17 +153,22 @@ def test_the_same_model_on_a_node_runs(case, lane):
     assert np.all(np.isfinite(np.asarray(_run(sim, skip_preflight=True).time_series)))
 
 
+@pytest.mark.parametrize("h", [3.5e-3, 50.5e-3])
 @pytest.mark.parametrize("lane", ["uniform", "nu"])
-def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_is_refused(lane):
-    """The port's far end is float32(3.5 mm) = 3.5 mm + 1.08e-10 m, 1e-7 of a
-    cell above the sheet at 3.5 mm: nearest node 4 against the sheet's 3."""
-    h32 = float(np.float32(3.5e-3))
-    assert 0 < h32 - 3.5e-3 < 1e-6 * DX
-    sim = _sim(lane)
-    sim.add(Box((5e-3, 5e-3, 3.5e-3), (15e-3, 14e-3, 3.5e-3)), material="pec")
+def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_is_refused(
+        lane, h):
+    """The port's far end is float32(h), half a float32 step or less above
+    the sheet at h: nearest node above the half node against the sheet's
+    lower node. At 3.5 mm that is 1.08e-10 m, 1e-7 of a cell; at 50.5 mm it is
+    1.76e-6 of a cell, outside a window of 1e-6 of a cell alone."""
+    h32 = float(np.float32(h))
+    assert 0 < h32 - h <= 2.0 ** -24 * h
+    n = int(round(h / DX + 0.5))                 # the node above the tie
+    sim = _sim(lane, dom=(20e-3, 19e-3, (n + 9) * DX))
+    sim.add(Box((5e-3, 5e-3, h), (15e-3, 14e-3, h)), material="pec")
     sim.add_port((10e-3, 9e-3, 0.0), component="ez", extent=h32)
     point, conductor = _nodes(sim, lane)
-    assert (point, conductor) == (4, {3})
+    assert (point, conductor) == (n, {n - 1})
     _refused(sim)
 
 
