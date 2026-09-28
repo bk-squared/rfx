@@ -79,16 +79,13 @@ def test_four_cell_weights_and_pec():
         return np.asarray(nu.assemble_interface_eps_nu(sim, grid, sim._assemble_materials_nu(grid)[0])[0])
     expected = (2*2*3 + 4*2*5 + 8*4*3 + 16*4*5)/(6*8)
     assert ex()[0,1,1] == np.float32(expected)
-    # PEC. Under the lattice ownership contract (#931) a Box is a VOLUME that
-    # owns every node in its drawn range, so the shared corner node (1, 1) is
-    # a PEC node whichever of the four cells the Box fills, and the rule's
-    # all-PEC-edge branch applies: the node keeps its SAMPLED eps as a finite
-    # fallback (the PEC mask enforces its fields). The Box goes in the large
-    # (y1, z1) cell because §1.5 measures "sub-cell" against the mean of the
-    # two cells at the nearest node, which reads the exact small (y0, z0)
-    # cell (0.002 beside 0.004; 0.003 beside 0.005) as thinner than one cell.
+    # Only the large (y1,z1) owner cell is PEC. Exclude its area from the
+    # constitutive average; the separate PEC edge mask clamps the field.
+    # The former value 16 pinned a caller bug: centres were shifted again,
+    # spuriously classifying all four owners as PEC and taking the fallback.
     sim.add(Box((0, .002, .003), (.004, .006, .008)), material="pec")
-    assert ex()[0,1,1] == np.float32(16)   # sampled fallback: the (y1, z1) cell's eps
+    live_mean = (2*2*3 + 4*2*5 + 8*4*3)/(2*3 + 2*5 + 4*3)
+    assert ex()[0,1,1] == np.float32(live_mean)
     assert np.all(np.isfinite(ex()))
 
 

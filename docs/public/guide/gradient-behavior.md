@@ -1,247 +1,174 @@
 ---
 title: "Gradient Behavior in rfx"
+description: "Where rfx gradients are reliable, where they are noisy or meaningless, and three checks to run before you optimize: finite differences, loss magnitude, and record length."
 sidebar:
   order: 14
 ---
 
-rfx gradient workflows use JAX reverse-mode automatic differentiation through
-the implemented discrete FDTD calculation. This guide documents where gradients
-are usually well behaved, where they are numerically stiff or noisy, and how to
-check them before using them for RF design decisions. For the conceptual
-background, see [Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/).
+An rfx gradient is the exact derivative of the discrete simulation you set up.
+Whether it is *useful* depends on the design variable, the objective and the
+run length. This page lists the cases that behave well, the ones that don't, and
+three checks to run before you trust a gradient. For the background, see
+[Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/).
 
-## How it works
+## Three checks before you optimize
 
-JAX traces the supported FDTD time-stepping and objective path as a computation
-graph. Per-step `jax.checkpoint` (the `checkpoint=True` default) or the
-segmented checkpoint knobs — `checkpoint_segments` on uniform grids,
-`checkpoint_every` on non-uniform grids — reduce reverse-mode memory by
-recomputing forward states during backpropagation. See the
-[Memory-Reduction Path](/rfx/guide/memory-reduction/) for how to size and pick
-these knobs.
-
-Setup used by the snippets below:
-
-```python
-import jax.numpy as jnp
-from rfx import Box, GaussianPulse, Simulation
-
-sim = Simulation(
-    freq_max=5e9,
-    domain=(0.04, 0.03, 0.02),
-    dx=2e-3,
-    boundary="cpml",
-    cpml_layers=6,
-)
-sim.add_material("slab", eps_r=4.0, sigma=0.01)
-sim.add(Box((0.014, 0.010, 0.006), (0.026, 0.020, 0.014)), material="slab")
-sim.add_port(
-    (0.008, 0.015, 0.010),
-    "ez",
-    impedance=50.0,
-    waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
-)
-sim.add_probe((0.032, 0.015, 0.010), "ez")
-
-# Values the later snippets read. 600 steps only gives those snippets array
-# shapes to work on; it is far too short to be a settled S11.
-s11 = sim.run(n_steps=600, compute_s_params=True).s_params[0, 0, :]
-eps_min, eps_max = 1.0, 12.0
-latent = jnp.zeros((8, 8, 4))
-```
+The examples share one small model: a lossy dielectric slab between a soft
+source and a probe in open space, on a coarse 2 mm mesh so each check runs in
+seconds.
 
 ```python
 import jax
 import jax.numpy as jnp
+from rfx import Box, GaussianPulse, Simulation, gradient_record_length_witness
 
-# sim is an already configured Simulation with sources/probes/ports.
-# Discover the permittivity-array shape from a quick run, then build the
-# starting array (result.grid is populated after every run() call):
-eps0 = jnp.ones(sim.run(n_steps=1).grid.shape, dtype=jnp.float32)
+sim = Simulation(freq_max=4e9, domain=(0.06, 0.05, 0.04), dx=2e-3,
+                 boundary="cpml", cpml_layers=6)
+sim.add_material("slab", eps_r=4.0, sigma=0.01)
+sim.add(Box((0.024, 0.019, 0.014), (0.036, 0.031, 0.026)), material="slab")
+sim.add_source((0.018, 0.025, 0.020), "ez",
+               waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+               amplitude_kind="current")
+sim.add_probe((0.042, 0.025, 0.020), "ez")
 
-def objective(eps_r):
-    result = sim.forward(eps_override=eps_r, n_steps=400, checkpoint=True)
-    return jnp.sum(result.time_series ** 2)
+grid = sim.run(n_steps=1).grid
+eps0 = jnp.full(grid.shape, 4.0, dtype=jnp.float32)
+slab_cell = grid.position_to_index((0.030, 0.025, 0.020))
 
-grad = jax.grad(objective)(eps0)  # discrete reverse-mode AD gradient
+
+def objective(eps_r, n_steps=200):
+    out = sim.forward(eps_override=eps_r, n_steps=n_steps)
+    return jnp.sum(out.time_series ** 2)
 ```
 
-The gradient is a sensitivity of this discrete objective. It is not, by itself,
-a calibrated S-parameter, far-field, or resonance validation result.
+### 1. Autodiff against finite differences
 
-## Where gradients are usually well behaved
-
-### Smooth dielectric variables
-
-Continuous changes in `eps_r` inside a fixed design region are the safest first
-case. Use bounded parameterizations, such as a sigmoid or projection from latent
-variables, so the optimizer cannot leave the material range you intend to test.
+Compare the autodiff gradient with a central difference at a few cells:
 
 ```python
-# Example bounded dielectric parameterization.
-eps_design = eps_min + (eps_max - eps_min) * jax.nn.sigmoid(latent)
-```
-
-### Broadband or averaged objectives
-
-Objectives averaged over a band are often less sensitive to a single noisy
-frequency point:
-
-```python
-loss = jnp.mean(jnp.abs(s11) ** 2)
-```
-
-This does not remove the need for a final port-family validation run. It only
-makes the optimization objective less dominated by one sample.
-
-### Documented differentiable port paths
-
-Some port paths carry a differentiable |S| channel: the lumped/wire path via
-`forward(port_s11_freqs=...)`, and the `compute_waveguide_s_matrix` /
-`compute_msl_s_matrix` calculators via their `eps_override` argument. The uniform
-`forward(...)` lane can also differentiate scalar R/L/C values through
-`rlc_values_override` for elements registered with `add_lumped_rlc(...)`. Each is
-differentiable only where its own support entry says so. Treat the AD path as a
-contract for the sensitivity calculation; the physical claim still follows the
-port-family evidence envelope. See [Inverse Design](/rfx/guide/inverse-design/)
-for end-to-end optimization loops built on these paths.
-
-## Where gradients are noisy or problematic
-
-### Moving PEC and topology boundaries
-
-Stairstepping creates discontinuities when a geometry parameter moves a PEC edge
-across a Yee cell boundary. The gradient can be large, change sign abruptly, or
-represent the rasterized discretization more than the intended CAD motion.
-
-**Mitigation:** keep topology fixed during a gradient run, use smooth dielectric
-or relaxed occupancy variables where the workflow documents them, apply filters
-or minimum-feature constraints, and re-run a final discrete geometry validation.
-Do not rely on a larger learning rate to repair a discontinuous objective.
-
-### Long time windows
-
-Long simulations can have weak gradient signal, large dynamic range, or more
-roundoff sensitivity. Checkpointing preserves the mathematical reverse-mode
-program for the chosen computation, but recomputation still occurs in finite
-precision.
-
-**Mitigation:** use the minimum run length that captures the observable, record
-the time-window choice, and compare gradients against finite differences on a
-small set of cells or scalar parameters.
-
-### Near-cutoff and high-Q cases
-
-Near waveguide cutoff, beta changes rapidly with frequency and geometry. High-Q
-resonances can also make a single frequency sample highly sensitive to small
-mesh, material, or run-length changes.
-
-**Mitigation:** keep optimization bands away from cutoffs unless that is the
-actual design target; use broadband or mode-tracking objectives; and verify the
-final design with a convergence or cross-reference check.
-
-### Float32 finite-difference checks
-
-rfx runs these workflows in `precision="float32"` by default (complex64 field
-and DFT buffers). The uniform single-device lane can use
-`precision="float64"` after JAX x64 is enabled, or `precision="mixed"` for
-float16 field storage with float32 accumulators. Enabling x64 alone does not
-select float64 field storage. Mixed precision with CPML has a higher absorber
-residual floor and is not suitable for low-reflection or S-parameter
-observables near that floor. Non-uniform, distributed, and subgridded lanes
-reject both non-default precision modes instead of silently running float32.
-If the finite-difference step is too small, cancellation can make the
-finite-difference witness look worse than the AD path.
-
-**Mitigation:** start finite-difference checks with a step that is meaningful for
-the variable scale, often around `h = 1e-2` for permittivity-like variables, then
-adjust based on the loss magnitude and local sensitivity.
-
-## What is not differentiable
-
-### CPML absorber cells
-
-Gradients with respect to physical material variables inside CPML are not useful
-for RF design. CPML is an artificial absorber, not a device material. Exclude
-CPML cells from design regions.
-
-### Integer and topology choices
-
-Grid dimensions, CPML layer count, timestep count, and shape insertion/removal
-are discrete choices. Use them as fixed setup parameters, or run an outer design
-search that launches separate differentiable problems with fixed topology.
-
-### Subpixel smoothing
-
-Subpixel averaging of material properties at geometry boundaries is precomputed
-once at setup and is not part of the JAX computation graph. Gradients do not
-flow through the subpixel weights — the material boundary is treated as fixed
-during reverse-mode differentiation. Exclude geometry boundary positions from
-design variables when subpixel smoothing is active.
-
-### Unsupported physics combinations
-
-If a source, port, mesh, or monitor combination is outside the documented support
-scope, finite AD output is not validation evidence. The correct outcome for an
-unsupported combination is an explicit support error or a clearly scoped local
-engineering check, not a public claim.
-
-## Validating gradients
-
-Always check a new objective against finite differences at a few representative
-cells or scalar design parameters before trusting a full optimization run:
-
-```python
-def fd_check(objective, eps_r, cell=(10, 5, 5), h=1e-2):
-    """Finite-difference gradient witness for one cell."""
-    eps_p = eps_r.at[cell].add(h)
-    eps_m = eps_r.at[cell].add(-h)
-    fd = (objective(eps_p) - objective(eps_m)) / (2 * h)
+def fd_check(objective, eps_r, cell, h=1e-1):
+    """Relative error between AD and a central finite difference at one cell."""
+    fd = (objective(eps_r.at[cell].add(h))
+          - objective(eps_r.at[cell].add(-h))) / (2 * h)
     ad = jax.grad(objective)(eps_r)[cell]
     rel_err = abs(ad - fd) / max(abs(fd), 1e-30)
-    print(f"AD={ad:.6e}, FD={fd:.6e}, err={rel_err:.2%}")
+    print(f"cell {cell}: AD={float(ad):.4e}  FD={float(fd):.4e}  "
+          f"rel err={float(rel_err):.2e}")
     return rel_err
+
+
+cell = tuple(int(i) for i in slab_cell)
+fd_check(objective, eps0, cell, h=1e-2)
+fd_check(objective, eps0, cell, h=1e-1)
 ```
 
-Use the result as a witness, not as a universal tolerance. If the witness fails,
-inspect the objective scale, perturbation size, run length, monitor placement,
-and support envelope before changing optimizer settings.
+rfx runs in float32 by default, which resolves a loss to about `1e-7` of its
+value. Choose `h` so that the loss change, about `2 h |dL/dp|`, is well above
+that. Here the loss is large and `h = 1e-2` leaves an error of a few percent,
+while `h = 1e-1` agrees to about 0.2 %. For permittivity-like variables, start
+between `1e-2` and `1e-1`. If the check still fails, look at the loss scale, the
+run length and the monitor placement before touching optimizer settings.
 
-A *passing* witness is also not sufficient on its own. Finite differences and AD
-differentiate the same objective through the same observation window, so both
-agree even when that window is empty — an objective that never sees the physics it
-is supposed to (reflection that never reaches the probe, a monitor inside an
-absorber) produces a self-consistent gradient of numerical noise. Guard against
-this by checking the loss **magnitude** against a physical expectation, not only
-the AD-vs-FD relative error: a reflected-energy proxy on a meaningfully reflecting
-design lands near `1e-2`–`1e-1`, so a value like `~1e-7` signals an empty window,
-not a matched design.
+### 2. The loss magnitude
 
-## Best practices
+A passing finite-difference *witness is also not sufficient*. Finite
+differences and autodiff differentiate the same loss over the same observation
+window. If the window is empty (the reflection never reaches the probe during
+the run, or the monitor sits in the absorber), both agree on a gradient of
+numerical noise.
 
-1. **Start with a small, supported setup** before scaling the grid or objective.
-2. **Use bounded continuous variables** for dielectric or occupancy design.
-3. **Exclude CPML and fixed metal from the design region** unless the guide for
-   that workflow explicitly documents a relaxed variable.
-4. **Check AD against finite differences** on a small set of cells or scalar
-   parameters.
-5. **Prefer broadband or averaged losses** when a single frequency point is
-   noisy or near a resonance null.
-6. **Use the segmented checkpoint knobs** (`checkpoint_segments` on uniform
-   grids, `checkpoint_every` on non-uniform grids) when reverse-mode memory is
-   the limiting factor.
-7. **Validate the final RF observable** through the relevant port, resonance,
-   far-field, or convergence workflow.
+So compare the loss **magnitude** with a physical expectation, not only the
+relative error. A reflected-energy proxy on a design that reflects a meaningful
+fraction of the pulse lands near `1e-2` to `1e-1`. A value like `~1e-7`
+signals an empty window, not a matched design. See the split-window rule in
+[Inverse Design](/rfx/guide/inverse-design/).
 
-## Gradient-path framing
+### 3. The record length
 
-| Path | Gradient-path framing | RF evidence reminder |
+A resonance that is still ringing when the record ends barely changes the loss
+value, but it can change the gradient a lot. `gradient_record_length_witness`
+differentiates your objective at `n_steps` and at `factor * n_steps` (default
+2x) and reports how much the gradient vector moved:
+
+```python
+for n in (100, 200):
+    w = gradient_record_length_witness(objective, eps0, n, tol=0.05)
+    print(f"n_steps={n}: passed={w.passed}, "
+          f"gradient change={w.worst:.3f}, value change={w.worst_value_rel_change:.3f}")
+```
+
+Here 100 steps fails, because the pulse has not finished passing the probe, and
+200 steps passes.
+
+The objective must take `(params, n_steps)`. You choose `tol`; there is no
+default because the right bar depends on the structure's Q and on what the
+gradient is for. A few percent is a reasonable start. `w.cosine_by_bin` tells
+you whether the direction changed or only the step length. A failed witness
+means the record is too short for this gradient: lengthen the run and check
+again. The witness costs about `1 + factor` differentiated runs, so use it
+once per new setup, not every iteration. Pair it with the settling check in
+[Probes and S-Parameters](/rfx/guide/probes-sparams/); it does not replace it.
+
+## What behaves well
+
+- **Smooth dielectric variables.** Continuous `eps_r` in a fixed design region
+  is the safest case. Use a bounded parameterization so the optimizer stays in
+  the material range you mean:
+
+  ```text
+  eps_design = eps_min + (eps_max - eps_min) * jax.nn.sigmoid(latent)
+  ```
+
+  `optimize()` does this for you through `DesignRegion(eps_range=...)`.
+- **Band-averaged objectives.** A mean over a band, such as
+  `jnp.mean(jnp.abs(s11) ** 2)`, is less dominated by a single noisy frequency
+  point than one sample.
+- **The differentiable port paths.** Lumped and wire ports through
+  `forward(port_s11_freqs=...)`, lumped R/L/C values through
+  `forward(rlc_values_override=...)`, and the waveguide and microstrip
+  S-matrix calculators where they accept `eps_override`. Each is
+  differentiable only within its own support entry; see the
+  [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).
+
+## What is noisy or stiff
+
+| Case | Symptom | What to do |
 |---|---|---|
-| Yee E/H update | differentiable inside supported runners | validate the observable, not just the tape |
-| CPML absorber | may be on the AD tape | exclude from physical design variables |
-| Lumped/wire `forward(port_s11_freqs=...)` | differentiable S11-vector path on the uniform single-device runner | inherits the lumped/wire support envelope |
-| `forward(rlc_values_override=...)` for `add_lumped_rlc(...)` | differentiable scalar R/L/C component values on the uniform single-device runner | circuit-element sensitivity, not a reference-impedance port claim |
-| MSL or waveguide S-matrix AD paths | differentiable only where the calculator documents `eps_override` support | use the matching calculator and support entry |
-| DFT probes / time series | useful proxy-objective signals | not an impedance-defined port by themselves |
-| Dispersive or lossy materials | case-dependent AD path | verify with finite differences and physics evidence |
-| S-parameter post-processing helpers | reporting/objective utilities | do not promote an undocumented port workflow |
+| A PEC edge or topology boundary that moves | stair-stepping: the gradient jumps or flips sign when an edge crosses a cell | keep topology fixed in a gradient run; use relaxed occupancy or dielectric variables with filters and a minimum feature size; verify the final discrete geometry |
+| Long records | weak signal, large dynamic range, round-off | use the shortest run that still captures the observable, and run the record-length witness |
+| Near cutoff or a high-Q resonance | one frequency sample is very sensitive to mesh, material and run length | keep the band away from cutoff unless that is the target; use broadband objectives; verify with a convergence study |
+| Float32 finite differences | FD disagrees with AD by a few percent | use a larger `h` (see above) |
+
+**Precision.** The default is `precision="float32"` (complex64 DFT buffers).
+The uniform single-device lane also accepts `precision="float64"` once JAX x64
+is enabled (enabling x64 alone does not switch the fields to float64), and
+`precision="mixed"` (float16 field storage, float32 accumulators). Mixed
+precision with CPML has a higher absorber residual, so do not use it for
+low-reflection or S-parameter observables near that floor. The non-uniform,
+distributed and subgridded lanes refuse both non-default modes.
+
+## What is not a design variable
+
+- **CPML cells.** The absorber is artificial. A gradient there says nothing
+  about a device. Keep design regions out of the CPML.
+- **Integer and topology choices.** Grid size, CPML layer count, number of
+  steps, inserting or removing a shape. Fix them per run, or search over them
+  in an outer loop of separate differentiable problems.
+- **Subpixel smoothing.** It is a `run()` option and is not part of the
+  differentiable `forward()` path, so gradients see the staircased
+  permittivity. Don't use an interface position as a design variable and
+  expect subpixel-accurate sensitivity.
+- **Unsupported combinations.** A finite gradient from a source, port or mesh
+  combination outside the support matrix is not evidence of anything. rfx
+  raises on the combinations it knows are unsupported.
+
+## Limits
+
+- **AD and FD agree but the loss is tiny**: the observation window is empty.
+  Fix the run length or monitor placement.
+- **The gradient changes a lot when you double the run**: the record is too
+  short. Lengthen it until the record-length witness passes.
+- **The gradient flips sign as a metal edge moves**: stair-stepping. Use relaxed
+  or dielectric variables and verify the final geometry.
+- **A gradient-optimized proxy is not a validated result**: re-run the final
+  design through the port, resonance or far-field workflow on a converged mesh.

@@ -21,7 +21,7 @@ from rfx.core.yee import (
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
     e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, _shift_bwd,
-    map_lumped,
+    map_lumped, lumped_components, lumped_total,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -197,10 +197,28 @@ class DesignBoxSpec(NamedTuple):
         in-plane edges, so a design variable per in-plane edge must not
         also load the edge through the sheet. ``(s, s, s)`` reproduces the
         single-array result bit for bit.
+    held_edges : tuple of ``(axis, i, j, k)``, default ``()``
+        E edges in the box's update window that KEEP the coefficients the
+        run's own ``materials`` give them: a port's edges, whose load and
+        drive were built from those materials before the time loop. ``axis``
+        is the edge's component (0, 1, 2 for Ex, Ey, Ez), ``(i, j, k)`` its
+        cell. The design values do not reach a held edge — its derivative
+        with respect to them is exactly zero — so the port keeps the DRAWN
+        material in its own feed gap: the modelled structure differs from
+        the same design written as a whole-grid ``eps_override`` by exactly
+        that gap. At any cell carrying a lumped load a cell design value is
+        the cell's VOLUME material, the load staying on its own edge.
+        Listing an edge is the opt-in: a port or source cell in the box that
+        is not on a listed edge is refused, and so is a per-edge design
+        conductivity over an unlisted load.
+        ``Simulation.forward(design_box_holds_ports=True)`` lists every
+        edge of every lumped and wire port in the window, passive ports
+        included.
     """
     bounds: tuple
     eps_r: Any
     sigma: Any = None
+    held_edges: tuple = ()
 
 
 class _DesignBoxCoeffs(NamedTuple):
@@ -286,6 +304,12 @@ class SimResult(NamedTuple):
         by ``_ORDER4_CFL_FACTOR``; the time series and every frame are
         sampled at this step, so time and frequency must be read with it,
         not with ``grid.dt``.
+    current_moment_data : (accumulator, kahan) or None
+        Block current moments accumulated inside the time loop
+        (``rfx.current_moments``). The accumulator is
+        ``(n_freqs, n_blocks, 3, n_weights)``.
+    current_moment_monitor : CurrentMomentMonitor or None
+        The slab, block map and centres those moments belong to.
     """
     state: FDTDState | None
     time_series: jnp.ndarray
@@ -301,6 +325,8 @@ class SimResult(NamedTuple):
     wire_refplane_sparams: tuple | None = None
     snapshot_axes: dict | None = None
     dt: float | None = None
+    current_moment_data: object = None
+    current_moment_monitor: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -867,7 +893,23 @@ def _design_box_window(bounds, shape):
     return write_bounds, win, inner, box_local
 
 
-def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
+def _held_edge_masks(held_edges, write_bounds):
+    """One boolean array per E component over the write window, True on a
+    held edge; ``None`` for a component with no held edge."""
+    import numpy as np
+    shape = tuple(write_bounds[2 * d + 1] - write_bounds[2 * d]
+                  for d in range(3))
+    masks = [None, None, None]
+    for axis, i, j, k in held_edges:
+        if masks[axis] is None:
+            masks[axis] = np.zeros(shape, dtype=bool)
+        masks[axis][i - write_bounds[0], j - write_bounds[2],
+                    k - write_bounds[4]] = True
+    return masks
+
+
+def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
+                            held_edges=()):
     """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
 
     The box works in EDGE (per-E-component) values, and what it is handed
@@ -889,28 +931,61 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
       value. A box-shaped edge array cannot address the plus-face edge layer
       a cell array reaches, which is why a single array ``s`` and the tuple of
       its own averages agree on the box's edges and not on that layer.
+
+    ``sigma_box=None`` keeps the window's own conductivity.
+
+    ``held_edges`` (``(axis, i, j, k)`` tuples, all inside the write window)
+    are a port's edges held out of the design (:class:`DesignBoxSpec`). Each
+    one gets the coefficient ``materials`` itself gives it — the same
+    arithmetic over the same window with no design value in it, which is the
+    grid-wide ``update_e`` coefficient bit for bit, the port's own load
+    included — so the drive built from ``materials`` before the time loop
+    meets the update it was built for, and the design values' derivative
+    through that edge is exactly zero.
+
+    At a box cell carrying a lumped load -- a held port's, or a passive
+    termination's (an MSL port with ``excite=False``) -- a CELL design value
+    is that cell's volume material: the load is added back on top of it, so
+    the average that removes every stamp before it spreads the cell over its
+    edges finds the design value there and not the design value less the
+    load (which was a negative conductance, and NaN, before). That is what a
+    whole-grid ``eps_override`` / ``sigma_override`` does, since the ports
+    stamp their loads on top of the override. A per-edge conductivity has no
+    such reading and is refused over an unheld load
+    (:func:`_resolve_design_box`).
     """
+    held = tuple(held_edges or ())
     write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
+
+    def _cell_value(box_value, record):
+        # A lumped load lives on its own edge; keep it off the cell volume.
+        total = lumped_total(record)
+        if total is None:
+            return box_value
+        return box_value + jnp.asarray(total)[win][box_local]
+
     eps_box = jnp.asarray(eps_r_box)
     eps = jnp.asarray(materials.eps_r)[win]
     # Promote the BACKGROUND to the design dtype, never the other way: a
     # traced float64 design permittivity cast down to the float32 background
     # would silently lose the precision the x64 AD lanes run for (#646).
     eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
-    eps = eps.at[box_local].set(eps_box)
+    eps = eps.at[box_local].set(_cell_value(
+        eps_box, getattr(materials, "eps_r_lumped", None)))
 
     per_edge = isinstance(sigma_box, (tuple, list))
     sig = jnp.asarray(materials.sigma)[win]
-    if not per_edge:
+    if not per_edge and sigma_box is not None:
         sig_box = jnp.asarray(sigma_box)
         sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
-        sig = sig.at[box_local].set(sig_box)
+        sig = sig.at[box_local].set(_cell_value(
+            sig_box, getattr(materials, "sigma_lumped", None)))
 
     # A lumped stamp in the window's context layer is edge-owned, not a cell
     # volume, so it is removed before the average and added back at its cell,
     # on its own component — the same rule ``component_e_materials`` applies
     # grid-wide (#1210, #1236). The design box itself is fenced off port and
-    # source cells.
+    # source cells, except a port's own edges on explicit opt-in (held).
     win_mats = MaterialArrays(
         eps_r=eps, sigma=sig, mu_r=None,
         eps_r_lumped=map_lumped(
@@ -930,9 +1005,26 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape):
         sig_c = tuple(_put(bg, v) for bg, v in zip(sig_c, sigma_box))
 
     pairs = [e_update_coeffs(e, s_, dt) for e, s_ in zip(eps_c, sig_c)]
-    return (write_bounds,
-            tuple(p[0][inner] for p in pairs),
-            tuple(p[1][inner] for p in pairs))
+    ca = tuple(p[0][inner] for p in pairs)
+    cb = tuple(p[1][inner] for p in pairs)
+    if held:
+        bg_mats = MaterialArrays(
+            eps_r=jnp.asarray(materials.eps_r)[win],
+            sigma=jnp.asarray(materials.sigma)[win], mu_r=None,
+            eps_r_lumped=map_lumped(
+                getattr(materials, "eps_r_lumped", None),
+                lambda a: jnp.asarray(a)[win]),
+            sigma_lumped=map_lumped(
+                getattr(materials, "sigma_lumped", None),
+                lambda a: jnp.asarray(a)[win]))
+        bg = [e_update_coeffs(e, s_, dt) for e, s_ in
+              zip(*component_e_materials(bg_mats, (False, False, False)))]
+        masks = _held_edge_masks(held, write_bounds)
+        ca = tuple(a if m is None else jnp.where(m, b[0][inner], a)
+                   for a, b, m in zip(ca, bg, masks))
+        cb = tuple(c if m is None else jnp.where(m, b[1][inner], c)
+                   for c, b, m in zip(cb, bg, masks))
+    return write_bounds, ca, cb
 
 
 def _resolve_design_box(
@@ -969,7 +1061,12 @@ def _resolve_design_box(
     Raises for: UPML, Debye/Lorentz dispersion, anisotropic / subpixel
     permittivity, Kerr, ``stencil_order=4``, the oblique-periodic Bloch path,
     a box that reaches into the CPML absorber, and a box holding a source,
-    port, RLC element or surface-impedance sheet edge.
+    port, RLC element or surface-impedance sheet edge -- except a lumped or
+    wire port's own edges listed in ``spec.held_edges``, which keep their
+    ``materials`` coefficients (:func:`_design_box_edge_coeffs`).
+
+    ``cell_metas`` entries are ``(i, j, k)`` or ``(i, j, k, component)``; a
+    source or port cell is accepted only with its component, on a held edge.
     """
     unsupported = []
     if use_upml:
@@ -1084,24 +1181,100 @@ def _resolve_design_box(
                     f"Move the box into cells [{pad_lo}, {n - pad_hi - 1}).")
 
     def _in_box(cell) -> bool:
-        i, j, k = (int(v) for v in cell)
+        i, j, k = (int(v) for v in cell[:3])
         return (w_i0 <= i < w_i1) and (w_j0 <= j < w_j1) and (w_k0 <= k < w_k1)
+
+    # Held edges: a port's own edges, kept on the coefficients ``materials``
+    # gives them (DesignBoxSpec.held_edges). Each must be an E edge in the
+    # window -- one outside it holds nothing, and is a caller error.
+    held = set()
+    for edge in (getattr(spec, "held_edges", ()) or ()):
+        edge = tuple(int(v) for v in edge)
+        if len(edge) != 4 or edge[0] not in (0, 1, 2) or not _in_box(edge[1:]):
+            raise ValueError(
+                f"DesignBoxSpec.held_edges entry {edge} is not an (axis, i, "
+                f"j, k) E edge inside the design box's update window "
+                f"{_write_bounds} (axis 0, 1, 2 for Ex, Ey, Ez).")
+        held.add(edge)
+    held = tuple(sorted(held))
+    _held_kinds = ("source", "lumped port", "wire port")
+    _axis_of = {"ex": 0, "ey": 1, "ez": 2}
+
+    def _on_held_edge(kind, cell) -> bool:
+        if kind not in _held_kinds or len(cell) != 4:
+            return False
+        axis = _axis_of.get(str(cell[3]).lower())
+        return axis is not None and (axis, *(int(v) for v in cell[:3])) in held
 
     # A source or port cell reads the material AT SETUP to turn a current
     # into a field increment (``_source_cell_cb``) or to fold an impedance
     # into sigma. Those reads see the background array, so a design cell
-    # under one of them would drive with the wrong permittivity.
+    # under one of them would drive with the wrong permittivity -- unless its
+    # edge is held, and then the update there reads the background too.
     for kind, cells in cell_metas:
-        hits = [tuple(int(v) for v in c) for c in cells if _in_box(c)]
+        hits = [tuple(int(v) for v in c[:3]) for c in cells
+                if _in_box(c) and not _on_held_edge(kind, c)]
         if hits:
+            how = (" A lumped or wire port may stay inside: "
+                   "Simulation.forward(design_box_holds_ports=True) keeps "
+                   "the port's own edges on the coefficients the drawn "
+                   "materials give them (DesignBoxSpec.held_edges on this "
+                   "entry)")
+            if kind == "source":
+                how += ("; a soft source cannot be held -- a port's drive is "
+                        "accepted only on the port's held edges.")
+            elif kind not in _held_kinds:
+                how = (f" Only a lumped or wire port's own edges can be held "
+                       f"(forward(design_box_holds_ports=True)); a {kind} "
+                       f"cannot.")
+            else:
+                how += "."
             raise ValueError(
                 f"the design box {bounds} holds {kind} cell(s) {hits}. "
                 f"That cell's drive/load coefficient is built from the "
                 f"background permittivity before the time loop starts, so "
                 f"the design permittivity would not reach it. Move the box "
-                f"off the {kind} cells, or use eps_override.")
+                f"off the {kind} cells, or use eps_override." + how)
 
     sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
+
+    # A per-edge design conductivity laid over a lumped load (a port's
+    # termination, an RLC element's R) that is not on a held edge. The tuple
+    # REPLACES the edge's conductivity at the box indices (#1216), load
+    # included, so the load would silently vanish. A cell design value keeps
+    # it -- the lay-in in ``_design_box_edge_coeffs`` puts the stamp back on
+    # top of the cell's volume material -- so only this form is refused. A
+    # passive termination that registers no accumulator leaves no cell in
+    # ``cell_metas``, so the stamps are read from ``materials`` itself, and
+    # only when they are concrete (a traced R or a traced mesh keeps the cell
+    # checks above).
+    if isinstance(spec.sigma, (tuple, list)):
+        import numpy as np
+        from rfx.core.jax_utils import is_tracer
+        for axis, part in enumerate(lumped_components(
+                getattr(materials, "sigma_lumped", None))):
+            if part is None or is_tracer(part):
+                continue
+            nz = np.argwhere(np.asarray(jnp.asarray(part)[sl]) != 0)
+            loose = [(int(a) + i0, int(b) + j0, int(c) + k0)
+                     for a, b, c in nz
+                     if (axis, int(a) + i0, int(b) + j0, int(c) + k0)
+                     not in held]
+            if loose:
+                raise ValueError(
+                    f"the design box {bounds} lays a per-edge design "
+                    f"conductivity over a lumped load on the "
+                    f"{'xyz'[axis]} edge at cell(s) {loose} (a port's "
+                    f"termination or an RLC element). A per-edge "
+                    f"conductivity REPLACES the edge's conductivity, load "
+                    f"included, so the load would be removed. Give the "
+                    f"design conductivity as one cell array instead (the "
+                    f"load then stays on its own edge and the design value "
+                    f"is the cell's volume material), or move the box off "
+                    f"the load. A lumped or wire port inside a permittivity "
+                    f"box can instead be held with "
+                    f"forward(design_box_holds_ports=True); an MSL port's "
+                    f"termination cannot be held.")
     w_sl = (slice(w_i0, w_i1), slice(w_j0, w_j1), slice(w_k0, w_k1))
     if sheet_impedance is not None:
         for mask in (sheet_impedance.mask_ex, sheet_impedance.mask_ey,
@@ -1141,7 +1314,7 @@ def _resolve_design_box(
         # over the window (#1210). See _design_box_edge_coeffs.
         write_bounds, ca, cb = _design_box_edge_coeffs(
             bounds, eps_r, tuple(jnp.asarray(s) for s in sigma), materials,
-            dt, tuple(grid.shape))
+            dt, tuple(grid.shape), held_edges=held)
         return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
     sigma = jnp.asarray(sigma)
     if tuple(jnp.shape(sigma)) != box_shape:
@@ -1151,8 +1324,12 @@ def _resolve_design_box(
     # #1210: per-component coefficients over the write window, the design
     # values laid into a copy of the background so the box-edge cells average
     # with the constant background exactly as the grid-wide update would.
+    # ``sigma=None`` hands the window its own conductivity: the slice read
+    # above is the cell TOTAL, a held port's load included, and laying it
+    # back as a design (volume) value would count that load twice.
     write_bounds, ca, cb = _design_box_edge_coeffs(
-        bounds, eps_r, sigma, materials, dt, tuple(grid.shape))
+        bounds, eps_r, None if spec.sigma is None else sigma, materials, dt,
+        tuple(grid.shape), held_edges=held)
     return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
 
 
@@ -1193,6 +1370,7 @@ def _build_step_setup(
     sheet_impedance: "object | None" = None,
     design_box: "DesignBoxSpec | None" = None,
     design_occupancy: "DesignOccupancySpec | None" = None,
+    current_moments: "object | None" = None,
 ) -> "_SimSetup":
     """Build the shared setup artefacts used by both ``run`` and ``run_until_decay``.
 
@@ -1236,6 +1414,7 @@ def _build_step_setup(
     use_lorentz = lorentz is not None
     use_tfsf = tfsf is not None
     use_ntff = ntff is not None
+    use_current_moments = current_moments is not None
     use_dft_planes = len(dft_planes) > 0
     use_flux_monitors = len(flux_monitors) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
@@ -1457,6 +1636,19 @@ def _build_step_setup(
         # closes under jax_enable_x64 instead of raising a dtype mismatch.
         carry_init["ntff"] = _init_ntff_data(ntff, field_dtype=_field_dtype)
 
+    accumulate_current_moments_fn = None
+    if use_current_moments:
+        from rfx.current_moments import (
+            accumulate_current_moments as _accumulate_cm,
+            init_current_moment_data as _init_cm,
+        )
+        accumulate_current_moments_fn = _accumulate_cm
+        # Same dtype policy as the NTFF carry (#646): the accumulator follows
+        # the field dtype with a complex64 floor so the scan carry closes
+        # under jax_enable_x64.
+        carry_init["current_moments"] = _init_cm(
+            current_moments, field_dtype=_field_dtype)
+
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
 
@@ -1605,11 +1797,12 @@ def _build_step_setup(
             bloch=_bloch,
             sheet_impedance=sheet_impedance,
             cell_metas=(
-                ("source", [(s.i, s.j, s.k) for s in sources]),
+                ("source", [(s.i, s.j, s.k, s.component) for s in sources]),
                 ("magnetic source", [(s.i, s.j, s.k) for s in mag_sources]),
-                ("lumped port", [(p.i, p.j, p.k) for p in lumped_sparam_meta]),
+                ("lumped port", [(p.i, p.j, p.k, p.component)
+                                 for p in lumped_sparam_meta]),
                 ("wire port", [
-                    cell
+                    (*cell, p.component)
                     for p in wire_sparam_meta
                     for cell in (tuple(p.live_cells)
                                  or ((p.mid_i, p.mid_j, p.mid_k),))
@@ -1646,6 +1839,8 @@ def _build_step_setup(
         use_debye=use_debye,
         use_lorentz=use_lorentz,
         use_ntff=use_ntff,
+        use_current_moments=use_current_moments,
+        current_moments=current_moments,
         use_dft_planes=use_dft_planes,
         use_flux_monitors=use_flux_monitors,
         use_waveguide_ports=use_waveguide_ports,
@@ -1707,6 +1902,7 @@ def _build_step_setup(
         update_tfsf_2d_e=update_tfsf_2d_e if _tfsf_is_2d else None,
         init_ntff_data=init_ntff_data_fn,
         accumulate_ntff=accumulate_ntff_fn,
+        accumulate_current_moments=accumulate_current_moments_fn,
         apply_kerr_ade=apply_kerr_ade if use_kerr else None,
         update_rlc_element=update_rlc_element if use_lumped_rlc else None,
     )
@@ -1828,6 +2024,10 @@ class _StepContext:
     conformal_weights: Any = None
     kerr_chi3: Any = None
     ntff: Any = None
+    # In-loop block current moments (rfx.current_moments). Default OFF so
+    # every existing caller's context is unchanged.
+    use_current_moments: bool = False
+    current_moments: Any = None
     pec_faces_frozen: Any = frozenset()
     pmc_faces_frozen: Any = frozenset()
 
@@ -1875,6 +2075,7 @@ class _StepContext:
     update_tfsf_2d_e: Callable | None = None
     init_ntff_data: Callable | None = None
     accumulate_ntff: Callable | None = None
+    accumulate_current_moments: Callable | None = None
     apply_kerr_ade: Callable | None = None
     update_rlc_element: Callable | None = None
 
@@ -1935,6 +2136,9 @@ def make_core_step(ctx: _StepContext):
         _sheet_coeffs = _sheet_update_coeffs(
             ctx.sheet_impedance.sigma_sheet, materials, dt)
 
+    if ctx.use_current_moments:
+        from rfx.current_moments import slab_e_snapshot as _slab_e_snapshot
+
     def core_step(carry, step_idx, src_vals, mag_src_vals):
         st = carry["fdtd"]
         tfsf_h_state = None
@@ -1945,6 +2149,15 @@ def make_core_step(ctx: _StepContext):
             tuple(getattr(st, m.component)[m.i, m.j, m.k]
                   for m in ctx.rlc_meta)
             if ctx.use_lumped_rlc else ())
+
+        # E^n on the slab, taken before anything in this step writes E. The
+        # H update below does not touch E, so this is the same array the
+        # E update is about to consume — and the difference against the
+        # post-update field is exactly one timestep, which is what makes
+        # ``J = curl_h H - eps0 dE/dt`` the lattice's own current.
+        # Slab-sized: the reverse-mode tape carries the slab, not the domain.
+        if ctx.use_current_moments:
+            e_prev_slab = _slab_e_snapshot(st, ctx.current_moments)
 
         if ctx.use_fast_he:
             # Fast path: combined H+E update with PEC baked into
@@ -2420,6 +2633,14 @@ def make_core_step(ctx: _StepContext):
             ntff_new = ctx.accumulate_ntff(
                 carry["ntff"], st, ctx.ntff, dt, step_idx)
 
+        # Block current moments — same slot as the NTFF box, so the state
+        # holds E at (n+1)*dt and H at (n+1/2)*dt, and the soft-source loop
+        # above has already put the feed current into E.
+        if ctx.use_current_moments:
+            cm_new = ctx.accumulate_current_moments(
+                carry["current_moments"], st, e_prev_slab,
+                ctx.current_moments, dt, step_idx)
+
         if ctx.use_dft_planes:
             t_plane = st.step * dt
             new_dft_planes = []
@@ -2524,6 +2745,8 @@ def make_core_step(ctx: _StepContext):
             new_carry["tfsf"] = tfsf_new
         if ctx.use_ntff:
             new_carry["ntff"] = ntff_new
+        if ctx.use_current_moments:
+            new_carry["current_moments"] = cm_new
         if ctx.use_dft_planes:
             new_carry["dft_planes"] = tuple(new_dft_planes)
         if ctx.use_flux_monitors:
@@ -2562,6 +2785,7 @@ def run(
     flux_monitors: list | None = None,
     waveguide_ports: list | None = None,
     ntff: object | None = None,
+    current_moments: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
     checkpoint_segments: int | None = None,
@@ -2744,6 +2968,7 @@ def run(
         flux_monitors=flux_monitors,
         waveguide_ports=waveguide_ports,
         ntff=ntff,
+        current_moments=current_moments,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
@@ -3191,6 +3416,8 @@ def run(
         wire_refplane_sparams=final_wire_refplanes,
         snapshot_axes=snap_axes,
         dt=dt,
+        current_moment_data=final_carry.get("current_moments"),
+        current_moment_monitor=current_moments,
     )
 
 
@@ -3277,6 +3504,7 @@ def run_until_decay(
     flux_monitors: list | None = None,
     waveguide_ports: list | None = None,
     ntff: object | None = None,
+    current_moments: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
     aniso_eps: tuple | None = None,
@@ -3450,6 +3678,7 @@ def run_until_decay(
         flux_monitors=flux_monitors,
         waveguide_ports=waveguide_ports,
         ntff=ntff,
+        current_moments=current_moments,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps,
         aniso_inv_eps_smooth=aniso_inv_eps_smooth,
@@ -3807,4 +4036,6 @@ def run_until_decay(
         grid=grid,
         snapshot_axes=snap_axes,
         dt=_setup.dt,
+        current_moment_data=carry.get("current_moments"),
+        current_moment_monitor=current_moments,
     )

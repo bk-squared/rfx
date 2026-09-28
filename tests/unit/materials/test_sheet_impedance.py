@@ -2178,10 +2178,6 @@ def test_alpha_invariance_transfers_to_a_nonbox_sheet(case, control,
         f"[{lo}, {hi}]")
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1231: since #1178 a Box sheet continues into the absorber and a non-Box "
-           "sheet stops at its face, so the same cells give alpha 0.762 vs 0.711")
 @pytest.mark.parametrize("case,control,dual_over_primal",
                          [pytest.param(*c, id=c[0]) for c in INVARIANCE_CASES])
 def test_nonbox_sheet_alpha_equals_the_box_sheet_alpha(case, control, dual_over_primal):

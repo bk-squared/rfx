@@ -780,6 +780,10 @@ class Result(NamedTuple):
     #: ``state`` holds E at ``state.step * dt`` and H at
     #: ``(state.step - 1/2) * dt``.
     snapshot_axes: dict | None = None
+    # In-loop block current moments (rfx.current_moments): the accumulator
+    # (n_freqs, n_blocks, 3, n_weights) and the slab/block map it belongs to.
+    current_moment_data: object = None
+    current_moment_monitor: object = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
@@ -1130,6 +1134,11 @@ class ForwardResult(NamedTuple):
     ``forward(ringdown=RingdownSpec())`` was called (issue #1254): the
     completed wire-port S-parameters, traced and differentiable, and a lazy
     host report on the concrete result. ``None`` otherwise.
+
+    ``design_box_held_edges`` is the tuple of ``(axis, i, j, k)`` E edges a
+    permittivity design box held on the drawn materials' coefficients
+    (``forward(design_box_holds_ports=True)``; axis 0, 1, 2 for Ex, Ey, Ez):
+    ``()`` for a box that held none, ``None`` when no such box was given.
     """
     time_series: jnp.ndarray
     ntff_data: object = None
@@ -1143,6 +1152,9 @@ class ForwardResult(NamedTuple):
     settling_probe_info: object = None
     dt: object = None
     ringdown: object = None
+    design_box_held_edges: object = None
+    current_moment_data: object = None
+    current_moment_monitor: object = None
 
     @property
     def settling_db(self) -> float | None:
@@ -1244,8 +1256,9 @@ class _TFSFEntry:
     polarization: str
     direction: str
     angle_deg: float
-    waveform: str = "differentiated_gaussian"
+    waveform: object = "differentiated_gaussian"
     method: str = "bloch"
+    closed_box: bool = False
 
 
 @dataclass(frozen=True)

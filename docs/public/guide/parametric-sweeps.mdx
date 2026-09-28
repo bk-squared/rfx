@@ -1,239 +1,207 @@
 ---
 title: "Parametric Sweeps"
-description: "Sequential sweeps, batch result collection, and vmap-oriented design-space exploration in rfx."
+description: "Sweep geometry and material parameters in rfx: one-parameter sweeps, Cartesian grids, batched material sweeps with jax.vmap, and resumable sweeps with a manifest."
 sidebar:
   order: 26
 ---
 
-import { Aside } from '@astrojs/starlight/components';
+A sweep runs the same model over a set of parameter values and compares a
+metric. It is the simplest way to explore a small design space, and a good
+check before you start a gradient optimization. This page shows the four sweep
+tools and when to use each.
 
-Parametric sweeps are the safest way to explore a small RF design space before
-committing to a long optimization run. Start with a sequential sweep that you can
-inspect, then move to vectorized or accelerator-heavy evaluation only after the
-metric is stable.
+| Tool | Use it for |
+|---|---|
+| `rfx.parametric_sweep(factory, name, values)` | one parameter, any change (geometry, mesh, sources) |
+| `rfx.batch.ParameterSweep` + `run_batch` | a Cartesian grid of several parameters |
+| `rfx.vmap_material_sweep(sim, "material.eps_r", values)` | material values only, run as one batched simulation |
+| `rfx.batch.run_batch_with_manifest` | long sweeps you want to resume and reproduce |
 
-<Aside type="caution" title="Support boundary">
-  A sweep multiplies the assumptions of the underlying simulation. If a single
-  run uses a limited or unsupported combination, repeating it in a sweep does
-  not make the result more reliable. Check every source, port, mesh, and
-  observable against the relevant support matrix.
-</Aside>
+The examples use a coarse 2 mm mesh and a few hundred steps so the page runs
+quickly. A real sweep needs a converged mesh and a run long enough for the
+metric you compare.
 
-## 1. Define the parameter grid
+## A model factory
 
-`rfx.batch.ParameterSweep` stores a Cartesian product of scalar parameter
-values. It is intentionally small and explicit so every case can be inspected.
+Every sweep tool except `vmap_material_sweep` calls a factory that builds a
+fresh `Simulation` from the parameters. Keep the factory pure: everything that
+defines a case comes from its arguments.
 
-```python
-from rfx.batch import ParameterSweep
-
-sweep = ParameterSweep(
-    insert_width=[0.008, 0.012, 0.016],
-    eps_r=[3.8, 4.2],
-)
-
-print(sweep.keys)   # ['insert_width', 'eps_r']
-print(sweep.total)  # 6
-
-for params in sweep.combinations():
-    print(params)
-```
-
-## 2. Build a simulation factory
-
-Keep the factory pure: all parameters needed to construct the case should come
-from the `params` dictionary. Store generated plots, Touchstone files, and HDF5
-snapshots outside git unless they are curated docs assets.
-
-```python
-from rfx import Simulation, Box, GaussianPulse
-
-
-def make_inclusion_sim(insert_width: float, eps_r: float) -> Simulation:
-    sim = Simulation(
-        freq_max=4e9,
-        domain=(0.08, 0.06, 0.04),
-        boundary="cpml",
-        cpml_layers=8,
-        dx=2e-3,
-    )
-    sim.add_material("insert", eps_r=eps_r, sigma=0.01)
-    y0 = 0.030 - insert_width / 2
-    y1 = 0.030 + insert_width / 2
-    sim.add(Box((0.032, y0, 0.018), (0.048, y1, 0.022)), material="insert")
-    sim.add_source((0.024, 0.030, 0.020), "ez", waveform=GaussianPulse(2.4e9, 0.8),
-                   amplitude_kind="current")
-    sim.add_probe((0.056, 0.030, 0.020), "ez")
-    return sim
-```
-
-## 3. Run a sequential batch
-
-`run_batch(...)` calls `sim_factory(**params)` for each parameter combination and
-returns a list of `(params, result)` tuples.
-
-```python
-from rfx.batch import run_batch
-
-results = run_batch(
-    make_inclusion_sim,
-    sweep,
-    run_kwargs={"n_steps": 500},  # short trial; increase for the final study
-)
-
-for params, result in results:
-    print(params, result.time_series.shape)
-```
-
-For long runs, include a case identifier in your output path and write a manifest
-with the input parameters, command line, git SHA, support status, and metric used
-to rank the case. That manifest is what lets reviewers reproduce a plotted sweep.
-
-## 4. Aggregate metrics into a dataset
-
-`SimulationDataset.from_results(...)` converts batch outputs into rectangular
-arrays; it is a `rfx.batch` helper rather than part of the documented
-star-import API surface. The `output_fn` should return a one-dimensional
-numeric feature vector.
+This model is a dielectric insert between a soft source and a probe:
 
 ```python
 import numpy as np
-from rfx.batch import SimulationDataset
+from rfx import Box, GaussianPulse, Simulation
 
 
-def output_fn(result):
-    # Example diagnostic metric: peak absolute probe signal.
-    probe = np.asarray(result.time_series[:, 0])
-    return np.array([np.max(np.abs(probe))])
+def make_insert_sim(insert_width=0.012, eps_r=4.0):
+    sim = Simulation(freq_max=4e9, domain=(0.06, 0.04, 0.03), dx=2e-3,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_material("insert", eps_r=eps_r, sigma=0.01)
+    y0, y1 = 0.020 - insert_width / 2, 0.020 + insert_width / 2
+    sim.add(Box((0.024, y0, 0.012), (0.036, y1, 0.018)), material="insert")
+    sim.add_source((0.014, 0.020, 0.015), "ez",
+                   waveform=GaussianPulse(f0=2.4e9, bandwidth=0.8),
+                   amplitude_kind="current")
+    sim.add_probe((0.046, 0.020, 0.015), "ez")
+    return sim
 
 
+def peak_probe(result):
+    """Example metric: peak absolute probe signal."""
+    return float(np.max(np.abs(np.asarray(result.time_series[:, 0]))))
+```
+
+## One parameter
+
+`parametric_sweep` calls `factory(value)` for each value, runs it, and returns
+a `SweepResult` with `.results`, `.param_values` and `.param_name`:
+
+```python
+from rfx import parametric_sweep
+
+widths = [0.008, 0.012, 0.016]
+sweep1 = parametric_sweep(lambda w: make_insert_sim(insert_width=w),
+                          "insert_width", widths, n_steps=300)
+
+for w, result in zip(sweep1.param_values, sweep1.results):
+    print(f"width {w * 1e3:.0f} mm: peak probe {peak_probe(result):.3e}")
+```
+
+`n_steps=` and `until_decay=` go to each `run()`; anything else goes in
+`run_kwargs=`. `rfx.plot_sweep(sweep1, metric=peak_probe)` plots a metric
+against the parameter. It also accepts the built-in names `"s11_min_db"` (for
+runs with S-parameters) and `"peak_field"`.
+
+## A grid of parameters
+
+`ParameterSweep` holds the Cartesian product of several parameter lists.
+`run_batch` calls `factory(**params)` for each combination and returns a list of
+`(params, result)` pairs:
+
+```python
+from rfx.batch import ParameterSweep, SimulationDataset, run_batch
+
+grid = ParameterSweep(insert_width=[0.008, 0.016], eps_r=[3.0, 6.0])
+print(grid.keys, grid.total)      # ['insert_width', 'eps_r'] 4
+
+results = run_batch(make_insert_sim, grid, run_kwargs={"n_steps": 300})
+for params, result in results:
+    print(params, f"{peak_probe(result):.3e}")
+```
+
+`SimulationDataset` turns the pairs into arrays or a CSV file, for plotting or a
+surrogate model. `output_fn` returns a 1-D feature vector per case:
+
+```python
 dataset = SimulationDataset.from_results(
     results,
     input_keys=["insert_width", "eps_r"],
-    output_fn=output_fn,
+    output_fn=lambda r: np.array([peak_probe(r)]),
 )
-
-X, y = dataset.to_numpy()
+X, y = dataset.to_numpy()          # X: (4, 2) inputs, y: (4, 1) outputs
 dataset.to_csv("sweep_metrics.csv")
 ```
 
-## 5. S-parameter and Touchstone sweeps
+## Material values in one batched run
 
-If the sweep uses a documented S-parameter calculator, keep the port family and
-its applicable configuration limits with the output files.
-
-```python
-from pathlib import Path
-from rfx import write_touchstone
-
-out_dir = Path("outputs/sweep")
-out_dir.mkdir(parents=True, exist_ok=True)
-
-for i, (params, result) in enumerate(results):
-    if result.s_params is None:
-        continue
-    path = out_dir / f"case_{i:03d}.s2p"
-    write_touchstone(path, result.s_params, result.freqs, z0=50.0)
-```
-
-Touchstone export is an interoperability format, not validation by itself. Link
-any S-parameter claims to the current port-family evidence in
-`docs/guides/sparameter_support_matrix.md`.
-
-## 6. When to use `jax.vmap`
-
-Use `jax.vmap` when the computation is already a pure array function, such as a
-surrogate model, a closed-form RF approximation, or a differentiable objective
-that has been written without Python-side side effects. Most full `Simulation`
-object construction is easier to inspect and debug with explicit Python loops.
+When only material values change, the grid is the same for every case, and
+`vmap_material_sweep` runs all of them as one batched simulation with
+`jax.vmap`. On a GPU this is much faster than a loop. Name the parameter as
+`"<material>.<property>"`, or just `"eps_r"`, `"sigma"` or `"mu_r"`:
 
 ```python
-import jax
-import jax.numpy as jnp
+from rfx import vmap_material_sweep
 
-
-def quarter_wave_freq(length_m, eps_eff):
-    c0 = 299_792_458.0
-    return c0 / (4.0 * length_m * jnp.sqrt(eps_eff))
-
-lengths = jnp.array([0.026, 0.028, 0.030])
-eps_eff = jnp.array([3.0, 3.2, 3.4])
-freqs = jax.vmap(quarter_wave_freq)(lengths, eps_eff)
+base = make_insert_sim()
+vsweep = vmap_material_sweep(base, "insert.eps_r",
+                             np.array([2.0, 4.0, 6.0]), n_steps=300)
+print(vsweep.time_series.shape)    # (n_values, n_steps, n_probes)
 ```
 
-## Manifest-backed sweeps
+The fast path supports PEC and CPML boundaries, soft sources, point probes and
+DFT plane probes. A model with ports, TFSF, dispersion, flux monitors or an NTFF
+box falls back to running the cases one by one. Memory grows with the batch
+size, because each case keeps its own fields. Geometry and incidence-angle
+sweeps belong in `parametric_sweep`.
 
-For validated or long-running sweeps, prefer `run_batch_with_manifest()`.
-It writes `manifest.json` under the output directory with:
+## Resumable sweeps with a manifest
 
-- schema version
-- sweep keys and total case count
-- stable case IDs derived from parameter values
-- per-case status, timing, metrics, parameter digest, and artifact paths
-- artifact file size/hash metadata for resume integrity
-- summary counts, last-run status, and lightweight Python/platform metadata
-- resume-safe completed-case records
+For long sweeps, `run_batch_with_manifest` writes a `manifest.json` in the
+output directory. It records a stable case ID, the parameters, status, timing,
+metrics, and the size and hash of every artifact each case wrote.
 
 ```python
 import json
 from pathlib import Path
-import numpy as np
 
-from rfx.batch import (
-    run_batch_with_manifest,
-    summarize_batch_manifest,
-)
-
-# The factory and the sweep from sections 2 and 1 are reused unchanged.
+from rfx.batch import run_batch_with_manifest, summarize_batch_manifest
 
 
 def metric_fn(result):
-    state = result.state
-    peak_ez = float(np.max(np.abs(np.asarray(state.ez))))
-    return {"peak_ez": peak_ez}
+    return {"peak_probe": peak_probe(result)}
 
 
 def artifact_fn(case_dir: Path, params, result):
-    path = case_dir / "metric.json"
-    path.write_text(json.dumps(metric_fn(result), sort_keys=True))
-    # Case-local paths are normalized into output-root-relative manifest paths.
-    return {"metric": "metric.json"}
+    (case_dir / "metric.json").write_text(json.dumps(metric_fn(result)))
+    return {"metric": "metric.json"}      # paths relative to case_dir
+
 
 records = run_batch_with_manifest(
-    make_inclusion_sim,
-    sweep,
-    "runs/inclusion-sweep",
+    make_insert_sim, grid, "runs/insert-sweep",
     run_kwargs={"n_steps": 200},
     metric_fn=metric_fn,
     artifact_fn=artifact_fn,
     resume=True,
 )
-
-summary = summarize_batch_manifest("runs/inclusion-sweep/manifest.json")
-print(summary["status_counts"])
+print(summarize_batch_manifest("runs/insert-sweep/manifest.json")["status_counts"])
 ```
 
-`resume=True` skips only records that are marked `completed`, match the current
-case parameters, include at least one metric, and still have all declared
-artifact files on disk with matching size/hash metadata. Missing or modified
-artifacts, empty metrics, interrupted `running` cases, and previous failures are
-not silently treated as valid completed runs.
+How resume decides what to skip:
 
-`run_kwargs` are fingerprinted into each case record. Reusing the same output
-directory with a different run budget, such as a changed `n_steps`, forces a
-rerun instead of returning outdated cases. If the simulation factory, metric
-definition, mesh source, or any external input changes while `run_kwargs` stay
-the same, pass a new `run_fingerprint="..."` value to invalidate old cases.
+- A case is skipped only if its record is `completed`, has at least one metric,
+  matches the current parameters and run settings, and every artifact it
+  declared is still on disk with the recorded size and hash. Anything else
+  (failed, interrupted, modified or missing files) runs again.
+- `run_kwargs` are fingerprinted, so changing `n_steps` reruns every case. If
+  you change something the runner cannot see (the factory, the metric, an input
+  file), pass a new `run_fingerprint="..."`.
+- The runner stops at the first failure. Pass `continue_on_error=True` to record
+  failed cases with `status="failed"` and carry on.
 
-By default the manifest-backed runner is fail-fast. For exploratory grids where
-later cases are still useful after one case fails, pass
-`continue_on_error=True`; failed cases are recorded with `status="failed"`.
+## Exporting S-parameters
 
-## Checklist before scaling up
+If each case computes S-parameters (for example
+`run_kwargs={"compute_s_params": True}` on a model with ports), write one
+Touchstone file per case:
 
-- Did a single case run and produce physically plausible fields/probes?
-- Is the selected source/port family documented for the claimed metric?
-- Are generated files outside git or intentionally curated docs assets?
-- Does every case record parameters, git SHA, command, support status, and metric?
-- If results are public-facing, do they cite the support matrix rather than only
-  saying that tests passed?
+```python
+from rfx import write_touchstone
+
+out_dir = Path("outputs/sweep")
+out_dir.mkdir(parents=True, exist_ok=True)
+for i, (params, result) in enumerate(results):
+    if result.s_params is None:       # this example model has no ports
+        continue
+    write_touchstone(out_dir / f"case_{i:03d}.s2p", result.s_params,
+                     result.freqs, z0=50.0)
+```
+
+A Touchstone file is an exchange format, not a validation. Check the port type
+in the
+[S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md)
+before you rely on the numbers.
+
+## Limits
+
+- **A sweep repeats one model's assumptions.** If a single case uses an
+  unsupported source, port or mesh combination, the sweep inherits it. Run and
+  inspect one case before sweeping.
+- **Comparisons across geometry need the same accuracy everywhere.** A feature
+  that snaps to the grid differently in each case adds a staircase error that
+  looks like a trend. Check `sim.preflight()` for off-lattice warnings, and
+  refine the mesh if the metric moves by less than a cell's worth.
+- **`vmap_material_sweep` holds every case in memory.** Reduce the batch or
+  the number of DFT-plane frequencies if it runs out of memory.
+- **A short `n_steps` ranks cases by an unfinished response.** Use a run length
+  that lets each case settle before you compare metrics.

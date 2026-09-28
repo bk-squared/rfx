@@ -690,6 +690,17 @@ SYMBOL_SPAN_PARSER_SCOPE = "symbol-span-parser-scope"
 CLASSIFIED_DOC_DIRS = ("docs/public/**/*.mdx", "docs/design_notes/*.md")
 
 CLASSIFICATION: dict[str, str] = {
+    "docs/public/api/generated/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/api/machine-readable.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/waveguide-taper.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/microstrip-notch.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/beam-steering.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/boundary-reflection.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/cavity-standing-wave.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/gallery/dielectric-interface.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/visual-manual.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/first-run.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20260927_public_docs_manual_examples_api_plan.md": NO_ARTIFACT_REFERENCE,
     "docs/public/api/automation.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/api/geometry-materials.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/api/index.mdx": NO_ARTIFACT_REFERENCE,
@@ -707,6 +718,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/guide/autodiff-adjoint.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/benchmarks.mdx": GATED,
     "docs/public/guide/changelog.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/guide/concepts.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/first-patch.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/installation.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/materials-geometry.mdx": NO_ARTIFACT_REFERENCE,
@@ -720,6 +732,13 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/guide/tutorial-patch-antenna.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/guide/validation.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/index.mdx": NO_ARTIFACT_REFERENCE,
+    # The showcase pages (#1345) print numbers from the share host's records;
+    # tests/unit/docs/test_showcase_catalog.py holds them to showcase.json.
+    "docs/public/showcase/index.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/sensitivity-map.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/gradient-cost.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/descent-to-optimum.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/forward-checks.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
@@ -1025,6 +1044,16 @@ CLASSIFICATION: dict[str, str] = {
     # tests/unit/nonuniform/test_msl_notch_fz_replay.py; its own results will
     # come from results/msl_notch_graded_fz_after_1213.json.
     "docs/design_notes/20260923_msl_notch_fz_after_1213_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # The coax open closed-can pre-declaration (issue 1218). No `::` span: its
+    # numbers are read from open_absorber_diagnostic.json and the coax battery's
+    # fixture.json, each named where it is quoted; the arms it declares are
+    # recorded in open_closed_can_arms.json. Both records moved to rfx-archive
+    # (rfx/records/20260924-coax-closed-can/) under the 2026-09-24 rule.
+    "docs/design_notes/20260924_coax_open_closed_can_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    # The showcase pre-declaration (issue 1332). No `::` span: it declares checks
+    # and thresholds before the runs, and the numbers they produced live in
+    # rfx-archive (rfx/records/20260927-showcase-*/), named in the PR, not here.
+    "docs/design_notes/20260927_showcase_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/waveguide_vi_envelope_sweep_results.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/wp4e_lumped_component_value_ad_spike.md": NO_ARTIFACT_REFERENCE,

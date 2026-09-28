@@ -67,7 +67,8 @@ run: |-
   # proof run 369367242339 — pytest itself completed fine).
   set +e
   # 20000 s: this selection took 13221 s of pytest on run 369367264767 (RTX 3090, 2026-09-25) against the old 13800.
-  timeout 20000 python -m pytest -m gpu -q -ra -p no:cacheprovider \
+  # crossval_ladder cases run in scripts/vessl_crossval_ladder.yaml; a release needs that lane green too.
+  timeout 20000 python -m pytest -m "gpu and not crossval_ladder" -q -ra -p no:cacheprovider \
     > "$out/gpu_suite.log" 2>&1
   rc=$?
   set -e

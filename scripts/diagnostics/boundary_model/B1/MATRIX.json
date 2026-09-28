@@ -5447,7 +5447,7 @@
       "case": "pmc-cpml",
       "entry": "distributed",
       "steps": 2,
-      "base_commit": "cca8ee5bae9f43b93423962e1888c0829b21c8a3",
+      "base_commit": "b306190932df03f263398e96b958031d70f994ba",
       "status": "MEASURED",
       "declared": {
         "x_lo": "pmc",
@@ -5474,12 +5474,12 @@
             0.0005
           ],
           "period_m": null,
-          "absorbs": true,
+          "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -41.54815673828125,
-          "psi_decay_max": 41.523075103759766,
-          "psi_field_response": 0.0041103363037109375,
+          "psi_decay_min": 1.0,
+          "psi_decay_max": 1.0,
+          "psi_field_response": 0.0043163299560546875,
           "face_node_response": 0.0
         },
         "x_hi": {
@@ -5493,12 +5493,12 @@
             0.0235
           ],
           "period_m": null,
-          "absorbs": true,
+          "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787826538085938,
-          "psi_decay_max": 30.11627197265625,
-          "psi_field_response": 0.004103183746337891,
+          "psi_decay_min": 1.0,
+          "psi_decay_max": 1.0,
+          "psi_field_response": 0.0043163299560546875,
           "face_node_response": 0.0
         },
         "y_lo": {
@@ -5513,10 +5513,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -24.79095458984375,
-          "psi_decay_max": 24.818038940429688,
-          "psi_field_response": 0.004110932350158691,
-          "face_node_response": 0.004137363284826279
+          "psi_decay_min": -23.590087890625,
+          "psi_decay_max": 23.649978637695312,
+          "psi_field_response": 0.004105925559997559,
+          "face_node_response": 0.004136481322348118
         },
         "y_hi": {
           "e_zero": false,
@@ -5530,10 +5530,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -209.97314453125,
-          "psi_decay_max": 210.009765625,
-          "psi_field_response": 0.004103660583496094,
-          "face_node_response": 0.0041346619836986065
+          "psi_decay_min": -209.9609375,
+          "psi_decay_max": 212.6953125,
+          "psi_field_response": 0.004105567932128906,
+          "face_node_response": 0.0041364342905581
         },
         "z_lo": {
           "e_zero": false,
@@ -5547,10 +5547,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -24.8138427734375,
-          "psi_decay_max": 24.772262573242188,
-          "psi_field_response": 0.004111051559448242,
-          "face_node_response": 0.004137363284826279
+          "psi_decay_min": -23.590469360351562,
+          "psi_decay_max": 23.552703857421875,
+          "psi_field_response": 0.004105806350708008,
+          "face_node_response": 0.004136481322348118
         },
         "z_hi": {
           "e_zero": false,
@@ -5564,10 +5564,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -209.9853515625,
-          "psi_decay_max": 1.2379705905914307,
-          "psi_field_response": 0.004103660583496094,
-          "face_node_response": 0.0041346619836986065
+          "psi_decay_min": -212.3046875,
+          "psi_decay_max": 1.8285751342773438,
+          "psi_field_response": 0.004105329513549805,
+          "face_node_response": 0.0041364342905581
         }
       },
       "scan_records": [
@@ -5597,12 +5597,6 @@
           "detail": "H zero at 0.0005 m; declared 0 m"
         },
         {
-          "face": "x_lo",
-          "code": "g",
-          "step": "B1.5",
-          "detail": "absorber response on reflecting face"
-        },
-        {
           "face": "x_hi",
           "code": "b1",
           "step": "B1.5",
@@ -5613,12 +5607,6 @@
           "code": "h",
           "step": "B1.5",
           "detail": "H zero at 0.0235 m; declared 0.024 m"
-        },
-        {
-          "face": "x_hi",
-          "code": "g",
-          "step": "B1.5",
-          "detail": "absorber response on reflecting face"
         },
         {
           "face": "y_lo",
@@ -5645,8 +5633,8 @@
           "detail": "electric backing required at 0.024 m"
         }
       ],
-      "cpu_s": 4.879484032000001,
-      "wall_s": 5.025435880990699
+      "cpu_s": 11.282355925999997,
+      "wall_s": 4.953719830024056
     },
     {
       "case": "pmc-cpml",
@@ -6633,7 +6621,7 @@
       "case": "pec-zlo",
       "entry": "distributed",
       "steps": 2,
-      "base_commit": "cca8ee5bae9f43b93423962e1888c0829b21c8a3",
+      "base_commit": "b306190932df03f263398e96b958031d70f994ba",
       "status": "MEASURED",
       "declared": {
         "x_lo": "cpml",
@@ -6661,10 +6649,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -41.54815673828125,
-          "psi_decay_max": 41.522979736328125,
-          "psi_field_response": 0.004109859466552734,
-          "face_node_response": 0.0041277408599853516
+          "psi_decay_min": -36.273193359375,
+          "psi_decay_max": 36.417388916015625,
+          "psi_field_response": 0.004106044769287109,
+          "face_node_response": 0.004126846790313721
         },
         "x_hi": {
           "e_zero": false,
@@ -6678,10 +6666,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787826538085938,
-          "psi_decay_max": 30.11608123779297,
-          "psi_field_response": 0.004103183746337891,
-          "face_node_response": 0.004134654998779297
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.417579650878906,
+          "psi_field_response": 0.004105567932128906,
+          "face_node_response": 0.004136443138122559
         },
         "y_lo": {
           "e_zero": false,
@@ -6695,10 +6683,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -24.779510498046875,
-          "psi_decay_max": 24.817657470703125,
-          "psi_field_response": 0.004110455513000488,
-          "face_node_response": 0.004137363284826279
+          "psi_decay_min": -23.557662963867188,
+          "psi_decay_max": 23.650360107421875,
+          "psi_field_response": 0.004105925559997559,
+          "face_node_response": 0.004136481322348118
         },
         "y_hi": {
           "e_zero": false,
@@ -6712,27 +6700,29 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -209.9609375,
-          "psi_decay_max": 210.009765625,
-          "psi_field_response": 0.004103660583496094,
-          "face_node_response": 0.0041346619836986065
+          "psi_decay_min": -212.255859375,
+          "psi_decay_max": 209.9609375,
+          "psi_field_response": 0.004105567932128906,
+          "face_node_response": 0.0041364342905581
         },
         "z_lo": {
-          "e_zero": false,
+          "e_zero": true,
           "h_zero": false,
           "e_plane_m": 0.0,
           "h_plane_m": 0.0005,
           "coupled": false,
-          "e_zero_planes_m": [],
+          "e_zero_planes_m": [
+            0.0
+          ],
           "h_zero_planes_m": [],
           "period_m": null,
-          "absorbs": true,
+          "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -24.791336059570312,
-          "psi_decay_max": 24.772262573242188,
-          "psi_field_response": 0.004110574722290039,
-          "face_node_response": 0.004137363284826279
+          "psi_decay_min": 1.0,
+          "psi_decay_max": 1.0,
+          "psi_field_response": 0.004306793212890625,
+          "face_node_response": 0.0
         },
         "z_hi": {
           "e_zero": false,
@@ -6747,9 +6737,9 @@
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
           "psi_decay_min": -1.55029296875,
-          "psi_decay_max": 1.5869140625,
-          "psi_field_response": 0.004103899002075195,
-          "face_node_response": 0.0041346619836986065
+          "psi_decay_max": 1.8297195434570312,
+          "psi_field_response": 0.004105329513549805,
+          "face_node_response": 0.0041364342905581
         }
       },
       "scan_records": [
@@ -6791,26 +6781,14 @@
           "detail": "electric backing required at 0.028 m"
         },
         {
-          "face": "z_lo",
-          "code": "c",
-          "step": "B1.5",
-          "detail": "absorber response on electric face"
-        },
-        {
-          "face": "z_lo",
-          "code": "PEC",
-          "step": "B1.5",
-          "detail": "tangential E not held at zero"
-        },
-        {
           "face": "z_hi",
           "code": "f",
           "step": "B1.5",
           "detail": "electric backing required at 0.024 m"
         }
       ],
-      "cpu_s": 4.793580595999998,
-      "wall_s": 3.118824262986891
+      "cpu_s": 9.814817498,
+      "wall_s": 4.581086345948279
     },
     {
       "case": "pec-zlo",

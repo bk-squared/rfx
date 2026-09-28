@@ -890,7 +890,10 @@ _SHARED_HELPER_BINDINGS = (
     # two face-parallel extents (inventory §2.3(b)). Both callers are
     # setup-time, so this row guards a de-duplication with no jaxpr exposure.
     ("zeros_psi_stacked", "rfx.runners.distributed", "zeros_psi_stacked"),
-    ("zeros_psi_stacked", "rfx.runners.distributed_nu", "zeros_psi_stacked"),
+    # #1350/#1351: NU now imports the complete per-face sizing routine.
+    ("_distributed_cpml_state", "rfx.runners.distributed_nu", "_distributed_cpml_state"),
+    ("_distributed_boundary_layers", "rfx.runners.distributed_v2", "_distributed_boundary_layers"),
+    ("_distributed_boundary_layers", "rfx.runners.distributed_nu", "_distributed_boundary_layers"),
     # #1038 leg 2 -- the x-slab primitives. Not a de-duplication: these were
     # single definitions in distributed.py that had to move BELOW the shared
     # module so that shared bodies calling them (leg 2b's unstack_and_gather,

@@ -7,6 +7,12 @@ sidebar:
 
 import { Aside, LinkCard } from '@astrojs/starlight/components';
 
+This page preserves a historical rfx 1.6.5 calculation. For a complete current
+workflow, use [the runnable flux-monitor example](https://github.com/bk-squared/rfx/blob/main/examples/tutorials/slab_rt_flux_monitor.py)
+and [the reflection/transmission guide](/rfx/guide/probes-sparams/).
+They use a reference run and field subtraction; the abbreviated low-level
+loop below is background for the archived figures.
+
 ## What this is
 
 A single lossless dielectric slab (εr = 4, refractive index n = 2) of finite
@@ -150,7 +156,7 @@ electrically thinner or thicker than a half-wave.
 <LinkCard
   title="S-parameter data (Touchstone .s2p)"
   href="/rfx/gallery/assets/multilayer_fresnel/sparams.s2p"
-  description="Reflection (S11) and transmission (S21) vs frequency, two-port Touchstone."
+  description="Two-port Touchstone of the slab. The magnitudes are the rfx R and T; the phases are taken from the exact transfer matrix."
 />
 
 ## Validation & limits
@@ -237,4 +243,4 @@ input to the solver.
   description="Plotting and AD/FD artifacts from a port setup that fails current preflight, with the RF limitations stated explicitly."
 />
 
-<p style="opacity:0.6;font-size:0.85em">Computed with rfx 1.6.5 · <code>1eb551b</code> · generated 2026-06-30T03:19:53Z {/* gallery/assets/multilayer_fresnel/manifest.json: rfx_version, git_sha, generated_at */}</p>
+<p style="opacity:0.6;font-size:0.85em">Computed with rfx 1.6.5 · <code>1eb551b</code> · generated 2026-06-30T03:19:53Z</p>

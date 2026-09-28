@@ -914,7 +914,8 @@
             "direction",
             "angle_deg",
             "waveform",
-            "method"
+            "method",
+            "closed_box"
           ],
           "properties": {
             "f0": {
@@ -951,6 +952,10 @@
               "type": "string",
               "minLength": 1,
               "description": "Transverse boundary-value-problem lane ('bloch' = laterally periodic infinite array, 'methodB' = open transverse boundary, compact isolated scatterer); the closed value set is a builder fence enforced on import, like polarization/direction/waveform. Required despite the builder default because the failure is asymmetric: defaulting an oblique isolated-scatterer document to 'bloch' would silently import it as an infinite periodic array."
+            },
+            "closed_box": {
+              "type": "boolean",
+              "description": "Normal-incidence finite six-face total-field box with CPML on all axes. False preserves the historical slab. Required, like method, so a missing boundary-value-problem selector is never silently inferred. Callable CustomWaveform sources cannot be serialized."
             }
           }
         },
@@ -1137,6 +1142,48 @@
             },
             "freqs": {
               "$ref": "#/$defs/array_payload"
+            }
+          }
+        },
+        "current_moments": {
+          "type": "object",
+          "description": "Present only when add_current_moment_monitor was declared. rfx-only (see non_portable); margin_cells is the triple the declaration means.",
+          "additionalProperties": false,
+          "required": [
+            "corner_lo",
+            "corner_hi",
+            "block_size",
+            "freqs",
+            "order",
+            "margin_cells",
+            "off_cells"
+          ],
+          "properties": {
+            "corner_lo": {
+              "$ref": "#/$defs/vec3"
+            },
+            "corner_hi": {
+              "$ref": "#/$defs/vec3"
+            },
+            "block_size": {
+              "type": "number"
+            },
+            "freqs": {
+              "$ref": "#/$defs/array_payload"
+            },
+            "order": {
+              "type": "integer"
+            },
+            "margin_cells": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "off_cells": {
+              "type": "integer"
             }
           }
         }
@@ -1379,6 +1426,7 @@
             "box",
             "curved_patch",
             "cylinder",
+            "oriented_box",
             "polyline_wire",
             "sphere",
             "via"
@@ -1390,6 +1438,46 @@
         }
       },
       "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "oriented_box"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "params": {
+                "additionalProperties": false,
+                "required": [
+                  "center",
+                  "size",
+                  "rotation"
+                ],
+                "properties": {
+                  "center": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "size": {
+                    "$ref": "#/$defs/vec3"
+                  },
+                  "rotation": {
+                    "type": "array",
+                    "minItems": 3,
+                    "maxItems": 3,
+                    "items": {
+                      "$ref": "#/$defs/vec3"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
         {
           "if": {
             "properties": {

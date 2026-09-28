@@ -19,7 +19,8 @@ PIN = 'python -m pip install -q "jax[cuda12]==0.6.2"'
 CHECK = "python -c \"import jax; assert jax.__version__ == '0.6.2', jax.__version__\""
 JOBS = ["scripts/vessl_gpu_suite.yaml",                 # per release and after GPU-touching merges
         "scripts/ops/render_gpu_suite_shards.py",       # weekly sharded suite (template)
-        "scripts/vessl_validation_lane_a6000.yaml"]     # weekly A6000 lane (validation.yml cron)
+        "scripts/vessl_validation_lane_a6000.yaml",     # weekly A6000 lane (validation.yml cron)
+        "scripts/vessl_crossval_ladder.yaml"]           # monthly crossval-ladder lane (crossval-ladder.yml cron)
 
 
 def _commands(text):

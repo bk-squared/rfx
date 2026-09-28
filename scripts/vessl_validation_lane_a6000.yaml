@@ -50,7 +50,8 @@ run: |-
   RC1=$?
   echo "highmem rc=$RC1"; tail -3 "$OUT/highmem.log"
   echo "=== gpu-marked suite ==="
-  timeout 18000 python -m pytest -q -ra -s -p no:cacheprovider -m gpu $IGN > "$OUT/gpu_suite.log" 2>&1
+  # crossval_ladder (the two full-ladder cases, 9691 s of 14830 s on 2026-09-24) runs in scripts/vessl_crossval_ladder.yaml.
+  timeout 18000 python -m pytest -q -ra -s -p no:cacheprovider -m "gpu and not crossval_ladder" $IGN > "$OUT/gpu_suite.log" 2>&1
   RC2=$?
   set -e
   echo "gpu suite rc=$RC2"; tail -3 "$OUT/gpu_suite.log"

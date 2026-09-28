@@ -113,6 +113,38 @@ def _staged_by_an_outer_trace() -> bool:
     return is_tracer(jnp.zeros(()))
 
 
+def _under_external_jax_transform() -> bool:
+    """Read the public trace-state API across the supported JAX versions."""
+    try:
+        from jax.extend.core import get_opaque_trace_state, take_current_trace
+    except ImportError:
+        try:  # JAX 0.6, including the Python 3.10 CI environment.
+            from jax.core import get_opaque_trace_state, take_current_trace
+        except ImportError:  # The declared JAX 0.4.20 floor.
+            from jax.core import trace_state_clean
+            return not trace_state_clean()
+    caller = get_opaque_trace_state()
+    with take_current_trace():
+        eager = get_opaque_trace_state()
+    return caller != eager
+
+
+def _refuse_transformed_extended_tfsf(entry) -> None:
+    """Fence the new source inputs before any setup can hide caller tracing."""
+    if entry is None:
+        return
+    from rfx.sources.sources import CustomWaveform
+    if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
+        return
+    if _under_external_jax_transform():
+        raise NotImplementedError(
+            "CustomWaveform and closed_box TFSF cannot be called under external "
+            "JAX transformations (grad/value_and_grad/JVP/vmap/jit/checkpoint/scan): "
+            "transformed scattered-field traces exceed the 9-ULP cross-trace "
+            "contract. Use ordinary fixed-step run/forward; forward's internal "
+            "checkpoint and segmentation options remain available.")
+
+
 def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
     """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
 
@@ -1489,6 +1521,7 @@ class _ExecuteMixin:
         sheet_impedance: object | None = None,
         design_box: object | None = None,
         design_occupancy: object | None = None,
+        monitor_overrides: dict | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
 
@@ -1516,6 +1549,8 @@ class _ExecuteMixin:
         if self._solver == "adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI forward")
+            from rfx.current_moments import refuse_current_moment_monitor
+            refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
             if pec_occupancy is not None:
                 raise ValueError(
                     "solver='adi' does not support pec_occupancy_override; "
@@ -1622,6 +1657,8 @@ class _ExecuteMixin:
         tfsf_run = None
         if self._tfsf is not None:
             from rfx.sources.tfsf import init_tfsf as _init_tfsf_fwd
+            from rfx.sources.tfsf import validate_custom_tfsf_waveform
+            validate_custom_tfsf_waveform(self._tfsf.waveform, grid.dt, n_steps)
             tfsf_run = _init_tfsf_fwd(
                 grid.nx, grid.dx, grid.dt,
                 cpml_layers=grid.cpml_layers,
@@ -1636,15 +1673,21 @@ class _ExecuteMixin:
                 nz=grid.nz,
                 waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
                 method=getattr(self._tfsf, "method", "bloch"),
+                closed_box=self._tfsf.closed_box,
             )
-            # NOTE: the TFSF vacuum-boundary check runs at forward() entry via
-            # _auto_preflight on the concrete config; it is NOT re-run here because
-            # `materials` may be a jax tracer under jax.grad (eps_override), and the
-            # check concretizes.
+            # The legacy slab's concrete vacuum check runs via preflight.
+            # The closed box also checks the final realized operators below,
+            # after material overrides and port setup (including AD values).
             # Open-domain oblique Method B forces OPEN transverse y (CPML) with
             # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
             from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
-            if _is_methodB_fwd(tfsf_run[0]):
+            if self._tfsf.closed_box:
+                periodic_bool = (False, False, False)
+                cpml_axes_run = "xyz"
+                # Match run(): all six CPML exteriors retain their PEC
+                # backing. An empty string withholds those walls.
+                pec_axes_run = None
+            elif _is_methodB_fwd(tfsf_run[0]):
                 periodic_bool = (False, False, True)
                 cpml_axes_run = "xy"
                 pec_axes_run = ""
@@ -2075,6 +2118,15 @@ class _ExecuteMixin:
             corner_lo, corner_hi, freqs = self._ntff
             ntff_box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
 
+        # In-loop block current moments. Same monitor object the run() lane
+        # builds, so a forward()/value_and_grad call accumulates the same
+        # numbers the forward run does.
+        from rfx.current_moments import monitor_for_simulation as _cm_for_sim
+        current_moments_fwd = _cm_for_sim(
+            self, grid, periodic_bool,
+            overrides={**(monitor_overrides or {}), "design_box": design_box,
+                       "design_occupancy": design_occupancy})
+
         # Flux monitors — same configs the run() lane builds, so the
         # issue-#488 mixed-family magnitude channel can read Poynting
         # flux through this low-level lane too.
@@ -2223,6 +2275,9 @@ class _ExecuteMixin:
         pec_occupancy_for_run = pec_occupancy_local
         if (pec_occupancy_local is not None and
                 os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False")):
+            from rfx.current_moments import refuse_h_side_conductor
+            refuse_h_side_conductor(
+                self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
             inv_baseline = (
                 (1.0 / materials.eps_r).astype(jnp.float32),
@@ -2285,6 +2340,37 @@ class _ExecuteMixin:
             from rfx.lumped import refuse_stacked_solved_elements
             refuse_stacked_solved_elements(self._lumped_rlc, rlc_metas)
 
+        # Validate the operators handed to the scan, after every port fold
+        # and PEC clearing. A passive load can reach the source shell even
+        # when all of its conductor geometry is clear of that shell.
+        if self._tfsf is not None and self._tfsf.closed_box:
+            nonvacuum = list(pec_edge_masks_local or ())
+            for spec in (debye_spec, lorentz_spec):
+                if spec is not None:
+                    nonvacuum.extend(spec[1])
+            if kerr_chi3 is not None:
+                nonvacuum.append(kerr_chi3)
+            if pec_occupancy_local is not None:
+                nonvacuum.append(pec_occupancy_local)
+            if aniso_inv_eps_run is not None:
+                nonvacuum.extend(a != 1.0 for a in aniso_inv_eps_run)
+            if sheet_impedance is not None:
+                nonvacuum.extend((sheet_impedance.mask_ex, sheet_impedance.mask_ey,
+                                  sheet_impedance.mask_ez))
+            if self._lumped_rlc:
+                mask = jnp.zeros(grid.shape, dtype=bool)
+                for spec in self._lumped_rlc:
+                    mask = mask.at[grid.position_to_index(spec.position)].set(True)
+                nonvacuum.append(mask)
+            for spec in (design_box, design_occupancy):
+                if spec is not None:
+                    b = spec.bounds
+                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                                   for d in range(3))
+                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+            self._validate_tfsf_vacuum_boundary(
+                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
+
         result = _run(
             grid,
             materials,
@@ -2300,6 +2386,7 @@ class _ExecuteMixin:
             probes=probes,
             waveguide_ports=waveguide_ports if waveguide_ports else None,
             ntff=ntff_box,
+            current_moments=current_moments_fwd,
             checkpoint=checkpoint,
             checkpoint_segments=checkpoint_segments,
             pec_mask=pec_mask_local,
@@ -2470,6 +2557,8 @@ class _ExecuteMixin:
             dft_planes=dft_planes_out,
             # The scan's own step: stencil_order=4 derates it below grid.dt.
             dt=result.dt,
+            current_moment_data=result.current_moment_data,
+            current_moment_monitor=current_moments_fwd,
         )
 
     @staticmethod
@@ -2484,6 +2573,8 @@ class _ExecuteMixin:
         dft_planes=None,
         wire_port_sparams=None,
         dt=None,
+        current_moment_data=None,
+        current_moment_monitor=None,
     ) -> ForwardResult:
         """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
 
@@ -2512,6 +2603,8 @@ class _ExecuteMixin:
             dft_planes=dft_planes,
             wire_port_sparams=wire_port_sparams,
             dt=dt,
+            current_moment_data=current_moment_data,
+            current_moment_monitor=current_moment_monitor,
         )
 
     def _forward_nonuniform_from_materials(
@@ -2594,6 +2687,9 @@ class _ExecuteMixin:
             dft_planes=getattr(result, "dft_planes", None),
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
             dt=getattr(result, "dt", None),
+            current_moment_data=getattr(result, "current_moment_data", None),
+            current_moment_monitor=getattr(
+                result, "current_moment_monitor", None),
         )
 
     def distributed_override_layout(self, devices=None):
@@ -2677,6 +2773,8 @@ class _ExecuteMixin:
 
         See :meth:`forward` for the public-facing kwarg semantics.
         """
+        from rfx.runners.distributed_v2 import refuse_distributed_periodic
+        refuse_distributed_periodic(self, lane="distributed non-uniform forward()")
         if self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed NU lane")
         # Defense-in-depth: the distributed-NU runner does not honour
@@ -2697,6 +2795,9 @@ class _ExecuteMixin:
                 "body does not accumulate DFT-plane fields. Drop DFT plane "
                 "probes or use the uniform lane."
             )
+        from rfx.current_moments import refuse_current_moment_monitor
+        refuse_current_moment_monitor(
+            self, "distributed non-uniform forward path")
         import warnings as _w
         from rfx.runners.distributed_nu import (
             build_sharded_nu_grid,
@@ -2804,19 +2905,8 @@ class _ExecuteMixin:
                         "reduce exchange_interval or increase nx."
                     )
 
-            # Check 4 — CPML vs local slab on outer boundary ranks.
-            cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
-            if self._boundary == "cpml" and cpml_layers > 0:
-                for rank in (0, n_devices - 1):
-                    nx_local_real = nx_per_rank
-                    if cpml_layers * 2 >= nx_local_real:
-                        raise ValueError(
-                            f"cpml_layers*2={cpml_layers * 2} >= "
-                            f"nx_local={nx_local_real} on boundary rank "
-                            f"{rank}; reduce cpml_layers (or set per-face "
-                            f"lo_thickness/hi_thickness on the x Boundary) "
-                            f"or increase nx."
-                        )
+            # CPML width is an unconditional admission check in the shared
+            # initializer, using each active face and the last rank's padding.
 
             # Check 5 — segmented remat overhead warning.
             if (
@@ -3015,6 +3105,7 @@ class _ExecuteMixin:
             cpml_params, cpml_state_sharded = init_cpml_for_sharded_nu(
                 sharded_grid, n_devices, mesh=mesh,
                 pec_faces=getattr(self, "_pec_faces", None),
+                pmc_faces=self._boundary_spec.pmc_faces(),
             )
 
         probes: list[ProbeSpec] = []
@@ -3132,6 +3223,24 @@ class _ExecuteMixin:
         # and forward(), has no subgrid and would drop a refinement (#1240).
         self._require_no_refinement_on_the_nonuniform_lane()
         is_nonuniform = self._uses_nonuniform_mesh
+
+        if self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            extended_tfsf = (self._tfsf.closed_box
+                             or isinstance(self._tfsf.waveform, CustomWaveform))
+            if extended_tfsf and (
+                is_nonuniform or distributed or (devices is not None and len(devices) > 1)
+                or self._refinement is not None or self._mode != "3d"
+                or self._solver != "yee" or self._stencil_order != 2
+            ):
+                raise NotImplementedError(
+                    "CustomWaveform and closed_box TFSF require a uniform, single-device, "
+                    "3D second-order Yee run/forward with no subgrids")
+            if self._tfsf.closed_box and any(
+                getattr(getattr(self._boundary_spec, axis), side) != "cpml"
+                for axis in "xyz" for side in ("lo", "hi")
+            ):
+                raise NotImplementedError("closed_box TFSF requires CPML on all six domain faces")
 
         def _reject_lane_precision(lane: str) -> None:
             # Issue #630 follow-up: field_dtype is threaded ONLY on the
@@ -3368,6 +3477,7 @@ class _ExecuteMixin:
         debye_spec,
         lorentz_spec,
         kerr_chi3,
+        holds_ports=False,
     ):
         """Turn the ``forward(design_box=...)`` arguments into specs (#1179/#1183).
 
@@ -3382,11 +3492,27 @@ class _ExecuteMixin:
         Returns ``(box spec or None, occupancy spec or None)``: one design
         box, and the design variable it carries — a permittivity (#1179) or
         a PEC occupancy (#1183).
+
+        ``holds_ports`` (``forward(design_box_holds_ports=True)``) lets the
+        permittivity box contain lumped and wire ports: every edge a port
+        drives or loads that lies in the box's update window is listed in
+        ``DesignBoxSpec.held_edges`` and keeps the coefficients the drawn
+        materials give it.
         """
-        from rfx.simulation import DesignBoxSpec, DesignOccupancySpec
+        from rfx.simulation import (
+            DesignBoxSpec, DesignOccupancySpec, _design_box_window,
+        )
 
         _want_eps = design_eps_override is not None
         _want_occ = design_occupancy_override is not None
+        if holds_ports and not _want_eps:
+            raise ValueError(
+                "forward(design_box_holds_ports=True) lets a PERMITTIVITY "
+                "design box (design_box with design_eps_override) contain "
+                "lumped and wire ports. It has no meaning without one, and "
+                "an occupancy box (design_occupancy_override) does not carry "
+                "it: the port setup clears the occupancy around its cell, "
+                "which the box would overwrite.")
         if design_box is None or not (_want_eps or _want_occ):
             raise ValueError(
                 "forward(design_box=...) and one of "
@@ -3479,22 +3605,54 @@ class _ExecuteMixin:
         # step-level fence (``rfx.simulation._resolve_design_box``) reads the
         # port's ``live_cells`` on the uniform lane and, on the graded lane,
         # the mid cell plus the excited edges through its ``sources`` entry.
+        #
+        # With ``holds_ports`` a port may be inside: every one of its edges in
+        # the box's update window (the box plus one cell on each plus side,
+        # where the design material also reaches) is HELD -- it keeps the
+        # coefficient the drawn materials give it, the one its load and drive
+        # were built with. The step-level resolver checks every port, source
+        # and lumped stamp it can see against this list.
         from rfx.sources.sources import wire_port_edge_span
         _axis_of = {"ex": 0, "ey": 1, "ez": 2}
+        _w = _design_box_window(bounds, tuple(grid.shape))[0]
+        _held = set()
+
+        def _in_window(cell):
+            return all(_w[2 * d] <= cell[d] < _w[2 * d + 1] for d in range(3))
+
         for _pe in self._ports:
             if _pe.impedance == 0.0:
-                continue  # a plain soft source; caught as a source cell
+                # A plain soft source: caught as a source cell at the step --
+                # except on a held port edge, where a port's drive is
+                # accepted, so it is refused here whatever it sits on.
+                _src = self._design_box_index_of(grid, _pe.position)
+                if holds_ports and _in_window(_src):
+                    raise ValueError(
+                        f"the design box (cells {bounds}) holds a soft "
+                        f"source (component {_pe.component!r} at "
+                        f"{_pe.position}). design_box_holds_ports holds a "
+                        f"lumped or wire port's edges; a soft source cannot "
+                        f"be held. Move the box off the source, or use "
+                        f"eps_override.")
+                continue
+            _axis = _axis_of[_pe.component]
             _lo = list(self._design_box_index_of(grid, _pe.position))
             _cell_lo = list(_lo)
             _cell_hi = list(_lo)
             if getattr(_pe, "extent", None) is not None:
-                _axis = _axis_of[_pe.component]
                 _end = list(_pe.position)
                 _end[_axis] += _pe.extent
                 _n_end = self._design_box_index_of(grid, _end)[_axis]
                 _n0, _n1 = sorted((_lo[_axis], _n_end))
                 _cell_lo[_axis], _cell_hi[_axis] = wire_port_edge_span(
                     grid, _axis, _n0, _n1, _pe.position[_axis], _end[_axis])
+            if holds_ports:
+                for _a in range(_cell_lo[_axis], _cell_hi[_axis] + 1):
+                    _edge = list(_lo)
+                    _edge[_axis] = _a
+                    if _in_window(_edge):
+                        _held.add((_axis, *(int(v) for v in _edge)))
+                continue
             if all(bounds[2 * d] <= _cell_hi[d]
                    and _cell_lo[d] < bounds[2 * d + 1]
                    for d in range(3)):
@@ -3504,13 +3662,16 @@ class _ExecuteMixin:
                     f"port's impedance fold and its drive coefficient are "
                     f"built from the background permittivity before the time "
                     f"loop starts, so the design permittivity would not reach "
-                    f"them (#1179). Move the box off the port, or use "
-                    f"eps_override.")
+                    f"them (#1179). Move the box off the port, pass "
+                    f"design_box_holds_ports=True to keep the port inside on "
+                    f"its own drawn coefficients (its edges then take no "
+                    f"design value), or use eps_override.")
 
         return DesignBoxSpec(
             bounds=bounds,
             eps_r=design_eps_override,
             sigma=design_sigma_override,
+            held_edges=tuple(sorted(_held)),
         ), None
 
     @staticmethod
@@ -3566,6 +3727,7 @@ class _ExecuteMixin:
         design_eps_override: jnp.ndarray | None = None,
         design_sigma_override: jnp.ndarray | None = None,
         design_occupancy_override: jnp.ndarray | None = None,
+        design_box_holds_ports: bool = False,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
@@ -3658,7 +3820,8 @@ class _ExecuteMixin:
             Bloch path, combining with ``eps_override`` / ``sigma_override``
             / ``mu_r_override``, a box that reaches into the CPML absorber,
             and a box holding a source, port, lumped-RLC or
-            surface-impedance-sheet cell all RAISE. Each of those either
+            surface-impedance-sheet cell all RAISE (a lumped or wire port
+            may stay inside with *design_box_holds_ports*). Each of those either
             computes E by some other rule inside the box or reads the
             background permittivity at a box cell, and a silently dropped
             design variable is a zero gradient that reads like convergence.
@@ -3709,6 +3872,26 @@ class _ExecuteMixin:
             (``RFX_PEC_OCC_KOTTKE=1``), where the occupancy becomes an
             inverse-eps tensor inside the E update that the box's values
             never reach.
+        design_box_holds_ports : bool
+            Let a permittivity *design_box* contain lumped and wire ports
+            (default ``False``: a box holding a port raises). A port is a
+            device on its edges — a 50 ohm load and a drive built from the
+            drawn materials before the time loop — so each edge a port drives
+            or loads inside the box's update window keeps the coefficients
+            the drawn materials give it, for the update and the drive alike:
+            the design values do not reach it, their derivative through it is
+            exactly zero, and a box holding a port with the background
+            written into it gives the run without the box. Holding keeps the
+            DRAWN material in the port's feed gap, so the modelled structure
+            differs from the same design written as a whole-grid
+            ``eps_override`` by that gap. Passive ports (``excite=False``)
+            are held too. The other edges of the port's cells stay design
+            variables; at a port's cell a design value is the cell's volume
+            material. The held edges come back as
+            ``ForwardResult.design_box_held_edges``, ``(axis, i, j, k)`` with
+            axis 0, 1, 2 for Ex, Ey, Ez. A soft source (even on a port's
+            edge), a magnetic source and a lumped RLC element in the box
+            still raise; an MSL port's termination is not held.
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
         pec_occupancy_override : jnp.ndarray or None
@@ -3921,6 +4104,7 @@ class _ExecuteMixin:
         float32 rounding, not necessarily bit for bit: XLA compiles the whole
         step as one program.
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         if _forward_needs_trace_time_setup(self, distributed=distributed):
             # #1225: evaluate the set-up now instead of recording it. Only
             # the operations that read a traced argument are recorded;
@@ -4076,7 +4260,8 @@ class _ExecuteMixin:
         _design_requested = (design_box is not None
                              or design_eps_override is not None
                              or design_sigma_override is not None
-                             or design_occupancy_override is not None)
+                             or design_occupancy_override is not None
+                             or bool(design_box_holds_ports))
         if _design_requested:
             _design_lanes = (("fwd_uniform", "fwd_nonuniform")
                              if design_occupancy_override is None
@@ -4140,6 +4325,7 @@ class _ExecuteMixin:
                     debye_spec=None,
                     lorentz_spec=None,
                     kerr_chi3=None,
+                    holds_ports=design_box_holds_ports,
                 )
             _nu_fwd_call = functools.partial(
                 self._forward_nonuniform_from_materials,
@@ -4161,6 +4347,9 @@ class _ExecuteMixin:
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
                     grid=self._build_nonuniform_grid()).run(_nu_fwd_call)
+            if _nu_design_spec is not None:
+                result = result._replace(
+                    design_box_held_edges=_nu_design_spec.held_edges)
             return self._attach_run_settling_witness(
                 result, n_steps=plan.n_steps, num_periods=num_periods,
                 context="forward")
@@ -4260,6 +4449,7 @@ class _ExecuteMixin:
                 debye_spec=debye_spec,
                 lorentz_spec=lorentz_spec,
                 kerr_chi3=kerr_chi3,
+                holds_ports=design_box_holds_ports,
             )
         if _design_spec is not None:
             # The design permittivity sets the precision of the material
@@ -4296,6 +4486,10 @@ class _ExecuteMixin:
             sheet_impedance=_fwd_sheet_ctx,
             design_box=_design_spec,
             design_occupancy=_design_occ_spec,
+            monitor_overrides={"eps_r": eps_override, "sigma": sigma_override,
+                               "mu_r": mu_r_override,
+                               "pec_mask": pec_mask_override,
+                               "pec_occupancy": pec_occupancy_override},
         )
         if ringdown is None:
             _res = _fwd_call()
@@ -4303,7 +4497,11 @@ class _ExecuteMixin:
             from rfx.ringdown import RingdownForward
             _res = RingdownForward(self, ringdown, lane="uniform", n_steps=n_steps,
                                    grid=grid, bins=port_s11_freqs).run(_fwd_call)
+        if _design_spec is not None:
+            _res = _res._replace(design_box_held_edges=_design_spec.held_edges)
         _warn_if_nonfinite_result(_res, context="forward")
+        from rfx.current_moments import require_accumulated_current_moments
+        require_accumulated_current_moments(self, _res, "forward")
         return self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods,
             context="forward")
@@ -4480,8 +4678,14 @@ class _ExecuteMixin:
         -------
         Result
         """
+        _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
+        if until_decay is not None and self._tfsf is not None:
+            from rfx.sources.sources import CustomWaveform
+            if isinstance(self._tfsf.waveform, CustomWaveform):
+                raise NotImplementedError(
+                    "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
         if ringdown is not None:
             from rfx.ringdown import refuse_run_request
             refuse_run_request(self, ringdown, devices=devices,
@@ -4627,6 +4831,8 @@ class _ExecuteMixin:
                 exchange_interval=exchange_interval,
             )
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Non-uniform mesh lane ----
@@ -4713,6 +4919,8 @@ class _ExecuteMixin:
             _res = self._attach_run_settling_witness(
                 _res, n_steps=n_steps, num_periods=num_periods)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         grid = self._build_grid()
@@ -4726,6 +4934,8 @@ class _ExecuteMixin:
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI run()")
+            from rfx.current_moments import refuse_current_moment_monitor
+            refuse_current_moment_monitor(self, "ADI lane (solver='adi')")
             self._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
@@ -4749,6 +4959,8 @@ class _ExecuteMixin:
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Subgridded lane ----
@@ -4794,6 +5006,8 @@ class _ExecuteMixin:
             _res = self._attach_run_settling_witness(
                 _res, n_steps=subgrid_n_steps)
             _warn_if_nonfinite_result(_res, context="run")
+            from rfx.current_moments import require_accumulated_current_moments
+            require_accumulated_current_moments(self, _res, "run")
             return _res
 
         # ---- Uniform path ----
@@ -4858,4 +5072,6 @@ class _ExecuteMixin:
         _res = self._attach_run_settling_witness(
             _res, n_steps=n_steps, num_periods=num_periods)
         _warn_if_nonfinite_result(_res, context="run")
+        from rfx.current_moments import require_accumulated_current_moments
+        require_accumulated_current_moments(self, _res, "run")
         return _res

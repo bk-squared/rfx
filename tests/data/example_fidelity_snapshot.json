@@ -3224,6 +3224,541 @@
         }
       ]
     },
+    "examples/visualization/field_movies.py::build_simulation::cavity": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 80000.0,
+              "declared_um": [
+                0.0,
+                80000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 80000.0,
+              "n_cells": 80,
+              "realized_extent_um": 80000.0,
+              "realized_um": [
+                0.0,
+                80000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                0.0,
+                60000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 60000.0,
+              "n_cells": 60,
+              "realized_extent_um": 60000.0,
+              "realized_um": [
+                0.0,
+                60000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                0.0,
+                1000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                1000.0
+              ],
+              "mesh_extent_um": 0.0,
+              "n_cells": 0,
+              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                0.0,
+                0.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "examples/visualization/field_movies.py::build_simulation::cpml": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 80000.0,
+              "declared_um": [
+                0.0,
+                80000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 80000.0,
+              "n_cells": 80,
+              "realized_extent_um": 80000.0,
+              "realized_um": [
+                0.0,
+                80000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                0.0,
+                60000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 60000.0,
+              "n_cells": 60,
+              "realized_extent_um": 60000.0,
+              "realized_um": [
+                0.0,
+                60000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                0.0,
+                1000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                1000.0
+              ],
+              "mesh_extent_um": 0.0,
+              "n_cells": 0,
+              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                0.0,
+                0.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "examples/visualization/field_movies.py::build_simulation::dielectric": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 80000.0,
+              "declared_um": [
+                0.0,
+                80000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 80000.0,
+              "n_cells": 80,
+              "realized_extent_um": 80000.0,
+              "realized_um": [
+                0.0,
+                80000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                0.0,
+                60000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 60000.0,
+              "n_cells": 60,
+              "realized_extent_um": 60000.0,
+              "realized_um": [
+                0.0,
+                60000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                0.0,
+                1000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                1000.0
+              ],
+              "mesh_extent_um": 0.0,
+              "n_cells": 0,
+              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                0.0,
+                0.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "geometry|dielectric|40000.000,-1000000.000,-1000000.000um->1000000.000,1000000.000,1000000.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 40000.0,
+              "declared_um": [
+                40000.0,
+                80000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                17000.0
+              ],
+              "realized_extent_um": 57000.0,
+              "realized_um": [
+                40000.0,
+                97000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                0.0,
+                60000.0
+              ],
+              "face_residual_um": [
+                16000.0,
+                17000.0
+              ],
+              "realized_extent_um": 93000.0,
+              "realized_um": [
+                -16000.0,
+                77000.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 1000.0,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                0.0,
+                1000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 1000.0,
+              "realized_um": [
+                0.0,
+                1000.0
+              ],
+              "sub_cell": false
+            }
+          },
+          "findings": [
+            {
+              "axis": "x,y",
+              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
+              "kind": "inside-absorber",
+              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+            },
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 17000.0 um (42.50% of the declared 40000.0 um extent); SIZE 57000.0 um (+17000.0 um, +42.50%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 17000.0 um (28.33% of the declared 60000.0 um extent); SIZE 93000.0 um (+33000.0 um, +55.00%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "x,y,z",
+              "detail": "declared past the domain on x,y,z; the rasterizer clips it, so the residuals above are measured against the CLIPPED declaration (this is a common deliberate idiom, not necessarily a defect)",
+              "kind": "clipped-by-domain",
+              "remedy": "none if the overhang is intentional; otherwise draw the body to its physical bounds"
+            }
+          ],
+          "material": {
+            "eps_r": 4.0,
+            "kind": "dielectric",
+            "n_debye": 0,
+            "n_lorentz": 0,
+            "name": "dielectric",
+            "sigma": 0.0
+          },
+          "n_cells": 5301,
+          "realization": null
+        }
+      },
+      "preflight": [
+        {
+          "code": "geometry_in_absorber",
+          "loc": "geometry[#0 hi 920mm]",
+          "message": "Material 'dielectric' (geometry entry #0, Box) extends into CPML region along x-axis: bbox hi face at 1m is 920mm past the x-hi absorber boundary at 80mm. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).",
+          "severity": "warning",
+          "source": "_validate_cfg_geometry_in_cpml"
+        },
+        {
+          "code": "lossless_q",
+          "loc": null,
+          "message": "all dielectric(s) ['dielectric'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+          "severity": "warning",
+          "source": "_validate_cfg_lossless_resonator_in_absorber"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on x: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on y: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "mesh_resolution",
+          "loc": null,
+          "message": "dielectric 'dielectric' on z: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
+        }
+      ]
+    },
+    "examples/visualization/field_movies.py::build_simulation::pec": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 80000.0,
+              "declared_um": [
+                0.0,
+                80000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 80000.0,
+              "n_cells": 80,
+              "realized_extent_um": 80000.0,
+              "realized_um": [
+                0.0,
+                80000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                0.0,
+                60000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 60000.0,
+              "n_cells": 60,
+              "realized_extent_um": 60000.0,
+              "realized_um": [
+                0.0,
+                60000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                0.0,
+                1000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                1000.0
+              ],
+              "mesh_extent_um": 0.0,
+              "n_cells": 0,
+              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                0.0,
+                0.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
+    "examples/visualization/field_movies.py::build_simulation::vacuum": {
+      "fidelity": {
+        "NOT AUDITED by this report": {
+          "axes": {},
+          "findings": [
+            {
+              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
+              "kind": "out-of-scope",
+              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
+            }
+          ],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        },
+        "domain": {
+          "axes": {
+            "x": {
+              "declared_extent_um": 80000.0,
+              "declared_um": [
+                0.0,
+                80000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 80000.0,
+              "n_cells": 80,
+              "realized_extent_um": 80000.0,
+              "realized_um": [
+                0.0,
+                80000.0
+              ]
+            },
+            "y": {
+              "declared_extent_um": 60000.0,
+              "declared_um": [
+                0.0,
+                60000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "mesh_extent_um": 60000.0,
+              "n_cells": 60,
+              "realized_extent_um": 60000.0,
+              "realized_um": [
+                0.0,
+                60000.0
+              ]
+            },
+            "z": {
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                0.0,
+                1000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                1000.0
+              ],
+              "mesh_extent_um": 0.0,
+              "n_cells": 0,
+              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                0.0,
+                0.0
+              ]
+            }
+          },
+          "findings": [],
+          "material": null,
+          "n_cells": null,
+          "realization": null
+        }
+      },
+      "preflight": []
+    },
     "validation/research/convergence_floor/fixture.py::build_sim::multiband_s1.0": {
       "fidelity": {
         "NOT AUDITED by this report": {

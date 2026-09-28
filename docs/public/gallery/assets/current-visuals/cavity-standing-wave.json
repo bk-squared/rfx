@@ -1,0 +1,119 @@
+{
+  "schema_version": 1,
+  "case": "cavity-standing-wave",
+  "title": "A pulse leaves a standing wave in a closed cavity",
+  "media_kind": "time-domain-fdtd-snapshots",
+  "core_source_commit": "a9054338616b91bb1364699882c2530fa29a0048",
+  "generator": "examples/visualization/field_movies.py",
+  "generator_sha256": "6fb84e6c675540b332e9f65ba367e8c21295957c776741fe8058953df8a2c293",
+  "environment": {
+    "python": "3.10.12",
+    "jax": "0.6.2",
+    "numpy": "1.26.4",
+    "backend": "cpu"
+  },
+  "evidence_status": "qualitative single-mesh teaching example",
+  "limits": [
+    "No mesh-refinement or run-length accuracy claim",
+    "No measured reflection, transmission, absorption, resonance frequency, or Q",
+    "2D TMz model; this is not a finite-height 3D device",
+    "CPML is a finite numerical absorber and may reflect residual fields"
+  ],
+  "runs": [
+    {
+      "variant": "cavity",
+      "boundary": "pec",
+      "domain_m": [
+        0.08,
+        0.06,
+        0.001
+      ],
+      "realized_display_span_m": {
+        "x": [
+          0.0,
+          0.08
+        ],
+        "y": [
+          0.0,
+          0.06
+        ]
+      },
+      "mode": "2d_tmz",
+      "dx_m": 0.001,
+      "dt_s": 2.335067793382187e-12,
+      "allocated_grid_shape": [
+        81,
+        61,
+        1
+      ],
+      "n_steps": 1600,
+      "snapshot_interval": 8,
+      "source": {
+        "position_m": [
+          0.04,
+          0.03,
+          0.0
+        ],
+        "component": "ez",
+        "waveform": "ModulatedGaussian",
+        "f0_Hz": 3122838104.1666665,
+        "bandwidth": 0.35,
+        "cutoff": 3.0,
+        "amplitude_A": 1e-08,
+        "amplitude_kind": "current"
+      },
+      "probe_position_m": [
+        0.055,
+        0.03,
+        0.0
+      ],
+      "snapshot_slice_coord_m": 0.0005,
+      "snapshot_dims": [
+        "frame",
+        "x",
+        "y"
+      ],
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_codes": []
+    }
+  ],
+  "display": {
+    "component": "ez",
+    "normalization_V_per_m": 0.23965290188789368,
+    "scale": "linear -1 to +1 shared across all frames and variants",
+    "normalization_excludes_source_radius_m": 0.004,
+    "source_pixels_may_saturate": true,
+    "fps": 15,
+    "frame_count": 200,
+    "poster_frame_index": 140,
+    "poster_time_s": 2.633956470935107e-09,
+    "frame_interpolation": false
+  },
+  "artifacts": [
+    {
+      "file": "cavity-standing-wave.mp4",
+      "sha256": "1b74580de2f14a62f67dc5e861ac14232e7b58b748480a4c194a0a8127b691b8",
+      "bytes": 874249
+    },
+    {
+      "file": "cavity-standing-wave.png",
+      "sha256": "3bd2b52fdf7b18f6dd1398f3397196d37a9339cc79f5cffabe1aefde41920ba5",
+      "bytes": 124946
+    },
+    {
+      "file": "cavity-standing-wave.csv",
+      "sha256": "a31a5cbd158cd12b328f928b524282d5ef1dc44b5baced31c8a34102af06d027",
+      "bytes": 80809
+    },
+    {
+      "file": "cavity-standing-wave.npz",
+      "sha256": "be92015527e243ebc7fcbc9df0fadfd6f5e8d905edf738e9165b8a7a754f7c96",
+      "bytes": 93549
+    }
+  ],
+  "download": {
+    "snapshot_frame_stride": 16,
+    "description": "Every 16th actual movie frame, full spatial resolution; all probe samples",
+    "full_arrays": "Regenerate with the script; full arrays remain in --output"
+  }
+}

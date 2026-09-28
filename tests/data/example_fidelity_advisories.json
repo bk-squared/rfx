@@ -393,6 +393,30 @@
    "ref": "validation/research/metal_edge/m6_wire_port_ad.py:139-174,203-205",
    "rows": 1,
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "geometry_in_absorber",
+   "disposition": "intended",
+   "reason": "The interface example deliberately extends the dielectric half-space through the absorbing layers, avoiding an unintended rear slab face. The displayed physical domain stops before those layers; absorber-region fields are not interpreted as material physics.",
+   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "rows": 1,
+   "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "The example intentionally uses an ideal nondispersive dielectric to show a finite pulse meeting an interface. It does not extract Q, resonance lifetime, or loss and names this scope explicitly.",
+   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "rows": 1,
+   "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "The 1 mm grid is a qualitative teaching mesh, not a phase-accuracy calculation: at the declared 12 GHz band edge the dielectric has only 12.5 cells per wavelength. The example retains this advisory and makes no convergence or phase-velocity error claim.",
+   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "rows": 3,
+   "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   }
  ]
 }

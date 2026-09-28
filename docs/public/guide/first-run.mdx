@@ -1,0 +1,74 @@
+---
+title: Your first run
+description: Send a pulse into a small closed box and read one field probe using the repository's install check.
+sidebar:
+  order: 1
+---
+
+A small closed metal box is a useful installation check. A short electric-current
+pulse excites the field, the walls reflect it, and a probe records `Ez` over time.
+There is no port or absorbing boundary in this model.
+
+## Install and run
+
+```bash
+pip install rfx-fdtd
+```
+
+Select the documentation version matching your installation using the version
+links above. For this development documentation, install the source revision
+identified there if you need its exact API.
+
+Copy the following into a Python file and run it. This block is generated from
+the repository's `examples/quickstart/hello_world.py`; its builder and execution
+are checked by the existing example tests.
+
+{/* rfx-hello-world:start */}
+
+```python
+from rfx import GaussianPulse, Simulation
+
+sim = Simulation(
+    freq_max=10e9,
+    domain=(0.02, 0.02, 0.02),
+    dx=2e-3,
+    boundary="pec",
+)
+sim.add_source(
+    (0.01, 0.01, 0.01),
+    "ez",
+    waveform=GaussianPulse(f0=5e9, bandwidth=0.8),
+    amplitude_kind="current",
+)
+sim.add_probe((0.014, 0.01, 0.01), "ez")
+
+preflight = sim.preflight()
+print(preflight.format())
+preflight.raise_for_failure()
+n_steps = 120
+result = sim.run(n_steps=n_steps, compute_s_params=False)
+print(result.time_series.shape)
+```
+
+{/* rfx-hello-world:end */}
+
+## Read the result
+
+The model is a 20 mm vacuum cube with perfectly conducting (PEC) walls and 2 mm
+cells. Positions and dimensions are in metres. The waveform's centre frequency
+is in hertz, and `amplitude_kind="current"` makes the excitation a current in amperes.
+
+`result.time_series` has shape `(120, 1)`: one row per time step, one column per
+probe. The probe is two cells away from the source. `result.dt` is the time
+between rows. The pulse reflects in the lossless closed box, so continued
+oscillation is expected; this is not an absorption or decay demonstration.
+
+Preflight findings describe the model before it runs. Read warnings as well as
+errors. Completing these 120 steps checks the installation and API use; it does
+not establish an accurate resonance, Q, or a mesh-converged electromagnetic result.
+
+## See what comes next
+
+- [Visual manual](/rfx/guide/visual-manual/): connect structures, field movies and measurements.
+- [Quick start](/rfx/guide/quickstart/): add a material and absorbing boundaries, then record two probes.
+- [Examples](/rfx/examples/): choose a runnable model for your application.

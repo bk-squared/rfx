@@ -163,10 +163,16 @@
     "NTFFData": {
       "kind": "class"
     },
+    "NTFFSurface": {
+      "kind": "class"
+    },
     "NonUniformGrid": {
       "kind": "class"
     },
     "OptimizeResult": {
+      "kind": "class"
+    },
+    "OrientedBox": {
       "kind": "class"
     },
     "PCBLayer": {
@@ -224,6 +230,9 @@
       "kind": "class"
     },
     "Result": {
+      "kind": "class"
+    },
+    "ScatteringResponse": {
       "kind": "class"
     },
     "SheetSpec": {
@@ -700,7 +709,8 @@
         "cpml_layers",
         "tfsf_margin",
         "ntff_offset",
-        "subtract_incident_reference"
+        "subtract_incident_reference",
+        "phase_reference"
       ]
     },
     "compute_rcs_jax": {
@@ -724,6 +734,14 @@
         "until_decay",
         "run_kwargs",
         "expected_order"
+      ]
+    },
+    "current_moment_far_field": {
+      "kind": "function",
+      "params": [
+        "result",
+        "theta",
+        "phi"
       ]
     },
     "deembed_port_extension": {
@@ -872,6 +890,17 @@
       "params": [
         "sim",
         "resolution"
+      ]
+    },
+    "export_ntff_surface": {
+      "kind": "function",
+      "params": [
+        "data",
+        "box",
+        "grid",
+        "dt",
+        "n_steps",
+        "step_start"
       ]
     },
     "export_radiation_pattern": {
@@ -1821,6 +1850,7 @@
         "flux_monitors",
         "waveguide_ports",
         "ntff",
+        "current_moments",
         "snapshot",
         "checkpoint",
         "checkpoint_segments",
@@ -1937,6 +1967,7 @@
         "rlc_states",
         "ntff_box",
         "ntff_data",
+        "current_moments",
         "waveguide_ports",
         "tfsf",
         "flux_monitors",
@@ -1976,6 +2007,7 @@
         "flux_monitors",
         "waveguide_ports",
         "ntff",
+        "current_moments",
         "snapshot",
         "checkpoint",
         "aniso_eps",
@@ -2422,6 +2454,15 @@
       "waveform",
       "terminates"
     ],
+    "add_current_moment_monitor": [
+      "corner_lo",
+      "corner_hi",
+      "block_size",
+      "freqs",
+      "order",
+      "margin_cells",
+      "off_cells"
+    ],
     "add_dft_plane_probe": [
       "axis",
       "coordinate",
@@ -2549,7 +2590,8 @@
       "direction",
       "angle_deg",
       "waveform",
-      "method"
+      "method",
+      "closed_box"
     ],
     "add_thin_conductor": [
       "shape",
@@ -2723,6 +2765,7 @@
       "design_eps_override",
       "design_sigma_override",
       "design_occupancy_override",
+      "design_box_holds_ports",
       "pec_mask_override",
       "pec_occupancy_override",
       "n_steps",
@@ -2817,6 +2860,7 @@
       "devices",
       "pad_value"
     ],
+    "tfsf_box_indices": [],
     "validate_subgrid": [
       "mode"
     ]

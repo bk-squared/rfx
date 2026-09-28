@@ -1,0 +1,50 @@
+---
+title: "The forward model, next to openEMS"
+description: "The input impedance of the RT/Duroid 5880 patch and |S21| of a microstrip open-stub notch filter, solved by rfx and openEMS on the same boards."
+sidebar:
+  order: 5
+---
+
+A gradient is only as useful as the simulation it differentiates. These two
+boards are solved by rfx and by openEMS; each comparison is a test in the
+repository that judges it on a converged mesh ladder, and the curves here were
+computed at the same commit and on the same mesh as the tests' judged rung.
+
+## Probe-fed patch on RT/Duroid 5880
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_site.png" loading="lazy" alt="Real and imaginary parts of the input impedance of the RT/Duroid 5880 probe-fed patch from rfx and from openEMS on its finest mesh, 2.0 to 2.9 GHz" />
+</figure>
+
+On a mesh of 12 cells through the substrate (52.7 M cells), the peak of
+Re(Z_in) sits at 2.3172 GHz against openEMS's 2.3195 GHz (−0.097 %), and the
+resistance there is 73.15 Ω against 73.46 Ω (−0.42 %); the test's bars are 1 %
+and 2 %. The reactance is about 7 Ω higher in rfx (+50.3 against +43.0 Ω at
+resonance) because neither model declares a probe radius, so each feed cell
+sets the probe's series reactance. That offset makes the rfx |S11| minimum 5 dB
+shallower (−15.4 against −20.6 dB) while its frequency differs by only 0.12 %.
+
+<ul data-rfx="downloads">
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/rfx_curves.npz">rfx_curves.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/reference_curves.npz">reference_curves.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/result.json">result.json</a></li>
+</ul>
+
+## Microstrip open-stub notch filter
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/forward_curves_msl_notch_filter_site.png" loading="lazy" alt="|S21| and |S11| of the microstrip open-stub notch filter from rfx and from openEMS on its finest mesh, 2 to 7 GHz" />
+</figure>
+
+A 12 mm open stub on a 50 Ω microstrip line (254 µm, εr 3.66) is a quarter wave
+near 3.7 GHz, where it shorts the line. On a mesh of 6 cells through the
+substrate the notch is 0.090 % from the openEMS tutorial's finest mesh, and |S21|
+agrees within 0.23 dB once the notches are aligned (bar 2 dB).
+
+<ul data-rfx="downloads">
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/rfx_curves.npz">rfx_curves.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/reference_curves.npz">reference_curves.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/result.json">result.json</a></li>
+</ul>
+
+<p data-rfx="note">Each comparison holds for its board, mesh, band and observable. The stepped-impedance low-pass filter in the repository is not shown: its uniform-mesh ladder has not converged yet.</p>

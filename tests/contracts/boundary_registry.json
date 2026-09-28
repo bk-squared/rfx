@@ -463,6 +463,11 @@
       "count": 12
     },
     {
+      "file": "rfx/current_moments.py",
+      "function": "slab_curl_h",
+      "kind": "difference"
+    },
+    {
       "file": "rfx/fidelity.py",
       "function": "_max_run_length",
       "kind": "roll/diff"
@@ -580,6 +585,16 @@
       "count": 6
     },
     {
+      "file": "rfx/ntff_surface.py",
+      "function": "NTFFSurface.__post_init__",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/ntff_surface.py",
+      "function": "NTFFSurface.__post_init__",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/preflight/mesh.py",
       "function": "_validate_cfg_graded_box_rasterization",
       "kind": "roll/diff"
@@ -634,6 +649,11 @@
       "file": "rfx/runners/_distributed_common.py",
       "function": "_apply_cpml_h_distributed",
       "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_init_cpml_distributed",
+      "kind": "boundary"
     },
     {
       "file": "rfx/runners/_distributed_common.py",
