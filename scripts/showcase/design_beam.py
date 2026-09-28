@@ -17,10 +17,11 @@ Rules: ``docs/design_notes/20260928_design_films_predeclaration.md``, section
 
     python scripts/showcase/design_beam.py --stage timing    --out DIR
     python scripts/showcase/design_beam.py --stage main      --out DIR
+    python scripts/showcase/design_beam.py --stage equivalence --out DIR2   # its own job (63 GB)
     JAX_ENABLE_X64=1 python scripts/showcase/design_beam.py --stage x64fd --out DIR  # if DIR/x64_needed.json
     python scripts/showcase/design_beam.py --stage resolve   --out DIR
     python scripts/showcase/design_beam.py --stage keyframes --out DIR
-    python scripts/showcase/design_beam.py --stage finalize  --out DIR
+    python scripts/showcase/design_beam.py --stage finalize  --out DIR --equivalence DIR2
 """
 
 from __future__ import annotations
@@ -469,31 +470,8 @@ def stage_main(out: Path, a) -> int:
     def L_cells(eps, pat=pattern):
         return steering_loss(mod, pat(eps))
 
-    # ---- judged: this script's path against the module's, pattern and gradient ----
-    pm_fn = model.module_pattern_fn(n_steps)
-    t0 = time.perf_counter()
-    pm = np.asarray(pm_fn(eps0))
-    ps = np.asarray(pattern(eps0))
-    g_mod = np.asarray(jax.grad(lambda e: steering_loss(mod, pm_fn(e)))(jnp.asarray(eps0)), dtype=float)
-    wall["equivalence_s"] = time.perf_counter() - t0
+    # the module-path comparison (A3.2) runs as its own job: stage "equivalence"
     g_scr = np.asarray(jax.jit(jax.grad(L_cells))(jnp.asarray(eps0)), dtype=float)
-    eq = {"what": "at the start cover, full record: the module's make_pattern_fn (per-step "
-                  "checkpoint, compute_far_field dispatch, value_and_grad not jitted) against this "
-                  "script's (checkpoint_segments, compute_far_field_jax, jitted)",
-          "segments": pattern.segments, "n_steps": n_steps, "tol": EQUIV_TOL,
-          "pattern_max_abs_diff_over_max": float(np.max(np.abs(pm - ps)) / np.max(np.abs(pm))),
-          "grad_norm_rel_diff": float(np.linalg.norm(g_scr - g_mod) / np.linalg.norm(g_mod)),
-          "D30_dbi_module": pattern_summary(mod, pm)["D30_dbi"],
-          "D30_dbi_script": pattern_summary(mod, ps)["D30_dbi"],
-          "memory": dc.device_memory()}
-    eq["passed"] = bool(eq["pattern_max_abs_diff_over_max"] <= EQUIV_TOL
-                        and eq["grad_norm_rel_diff"] <= EQUIV_TOL)
-    dc.save_json(out / "pattern_equivalence.json", eq)
-    dc.log(f"module path vs script path: pattern {eq['pattern_max_abs_diff_over_max']:.2e}, gradient "
-           f"{eq['grad_norm_rel_diff']:.2e} -> passed {eq['passed']}")
-    if not eq["passed"] and not a.smoke:
-        dc.log("the module-path comparison FAILED: the case stops (Amendment 2 condition)")
-        return 4
 
     # ---- baselines: no cover, and uniform covers ---------------------------
     base, maps = {}, {}
@@ -600,6 +578,46 @@ def stage_main(out: Path, a) -> int:
     dc.save_json(out / "main_wall.json", {**wall, "memory": dc.device_memory()})
     dc.log(f"final iterate {n_iters}: L {Lf:+.4f}, D30 {store.rows['D30_dbi'][-1]:+.2f} dBi")
     return 0
+
+
+def stage_equivalence(out: Path, a) -> int:
+    """Judged (A3.2): at the start cover and the full record, the module's
+    make_pattern_fn (per-step checkpoint, compute_far_field dispatch, not
+    jitted) against this script's path (checkpoint_segments,
+    compute_far_field_jax, jitted), pattern and gradient. Its own job: the
+    module path's per-step tape measured 63 GB."""
+    import jax
+    import jax.numpy as jnp
+    mod = load_module()
+    model = BeamModel(mod, 1)
+    n_steps = model.n_steps(a.periods)
+    pattern = model.pattern_fn(n_steps)
+    eps0, _ = module_start(model.shape)
+    pm_fn = model.module_pattern_fn(n_steps)
+    t0 = time.perf_counter()
+    pm = np.asarray(pm_fn(eps0))
+    ps = np.asarray(pattern(eps0))
+    g_mod = np.asarray(jax.grad(lambda e: steering_loss(mod, pm_fn(e)))(jnp.asarray(eps0)), dtype=float)
+    mem_module = dc.device_memory()
+    g_scr = np.asarray(jax.jit(jax.grad(lambda e: steering_loss(mod, pattern(e))))(jnp.asarray(eps0)),
+                       dtype=float)
+    eq = {"what": "at the start cover, full record: the module's make_pattern_fn (per-step "
+                  "checkpoint, compute_far_field dispatch, value_and_grad not jitted) against this "
+                  "script's (checkpoint_segments, compute_far_field_jax, jitted)",
+          "segments": pattern.segments, "n_steps": n_steps, "tol": EQUIV_TOL,
+          "matmul_precision": MATMUL_PRECISION,
+          "pattern_max_abs_diff_over_max": float(np.max(np.abs(pm - ps)) / np.max(np.abs(pm))),
+          "grad_norm_rel_diff": float(np.linalg.norm(g_scr - g_mod) / np.linalg.norm(g_mod)),
+          "D30_dbi_module": pattern_summary(mod, pm)["D30_dbi"],
+          "D30_dbi_script": pattern_summary(mod, ps)["D30_dbi"],
+          "wall_s": time.perf_counter() - t0, "memory_after_module_grad": mem_module}
+    eq["passed"] = bool(eq["pattern_max_abs_diff_over_max"] <= EQUIV_TOL
+                        and eq["grad_norm_rel_diff"] <= EQUIV_TOL)
+    dc.save_json(out / "pattern_equivalence.json", eq)
+    dc.save_npz(out / "equivalence_grads.npz", g_module=g_mod, g_script=g_scr)
+    dc.log(f"module path vs script path: pattern {eq['pattern_max_abs_diff_over_max']:.2e}, gradient "
+           f"{eq['grad_norm_rel_diff']:.2e} -> passed {eq['passed']}")
+    return 0 if eq["passed"] else 4
 
 
 def stage_x64fd(out: Path, a) -> int:
@@ -771,10 +789,31 @@ def stage_keyframes(out: Path, a) -> int:
 
 def stage_finalize(out: Path, a) -> int:
     x64 = (out / "fd_float64.json").is_file()
-    source = _record.source_block(a.repo_dir, precision="float32" + (
-        " (the start-point FD check repeated in float64)" if x64 else ""))
+    precision = "float32" + (" (the start-point FD check repeated in float64)" if x64 else "")
+    here = _record.source_block(a.repo_dir, precision=precision)
+    if (out / "source_main.json").is_file():
+        # the job that produced the numbers; finalize may run elsewhere (A3.2)
+        source = {**dc.load_json(out / "source_main.json"), "precision": precision,
+                  "finalize_source": here}
+        if source["repo_sha"] != here["repo_sha"]:
+            raise SystemExit(f"finalize at {here['repo_sha']} but the record was made at "
+                             f"{source['repo_sha']}")
+    else:
+        source = here
     model = dc.load_json(out / "model.json")
     claims, derived = [], []
+    if a.equivalence is not None:
+        import shutil
+        eq_src = dc.load_json(a.equivalence / "pattern_equivalence.json")
+        rid = (a.equivalence / "run_id.txt").read_text().strip() \
+            if (a.equivalence / "run_id.txt").is_file() else None
+        eq_src["job"] = {"dir": str(a.equivalence), "vessl_run_id": rid,
+                         "commit": (a.equivalence / "commit.txt").read_text().strip()}
+        dc.save_json(out / "pattern_equivalence.json", eq_src)
+        shutil.copy2(a.equivalence / "equivalence_grads.npz", out / "equivalence_grads.npz")
+    if not (out / "pattern_equivalence.json").is_file():
+        raise SystemExit("pattern_equivalence.json is absent: the judged module-path comparison "
+                         "(A3.2) is part of this record; pass --equivalence DIR")
     eq = dc.load_json(out / "pattern_equivalence.json")
     claims += [
         _record.claim("module path vs this script, start cover: max abs pattern difference / max",
@@ -875,7 +914,10 @@ def stage_finalize(out: Path, a) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--stage", required=True,
-                    choices=("timing", "main", "x64fd", "resolve", "keyframes", "finalize"))
+                    choices=("timing", "main", "equivalence", "x64fd", "resolve", "keyframes",
+                             "finalize"))
+    ap.add_argument("--equivalence", type=Path, default=None,
+                    help="finalize: the equivalence job's output directory")
     ap.add_argument("--out", required=True, type=Path)
     ap.add_argument("--repo-dir", type=Path, default=REPO)
     ap.add_argument("--iters", type=int, default=None,
@@ -887,10 +929,11 @@ def main(argv=None) -> int:
     a.out.mkdir(parents=True, exist_ok=True)
     if a.stage == "timing" and a.iters is None:
         a.iters = 2
-    stage = {"timing": stage_timing, "main": stage_main, "x64fd": stage_x64fd,
+    stage = {"timing": stage_timing, "main": stage_main, "equivalence": stage_equivalence,
+             "x64fd": stage_x64fd,
              "resolve": stage_resolve, "keyframes": stage_keyframes,
              "finalize": stage_finalize}[a.stage]
-    if a.stage in ("main", "timing"):
+    if a.stage in ("main", "timing", "equivalence"):
         dc.save_json(a.out / f"source_{a.stage}.json",
                      _record.source_block(a.repo_dir, precision="float32"))
     return stage(a.out, a)

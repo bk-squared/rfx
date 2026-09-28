@@ -288,6 +288,15 @@ compared with this script's path (`checkpoint_segments`, `compute_far_field_jax`
   cell εr.
 - If either fails, the case stops (exit 4) and the record is written. The module's per-step tape
   needs about 27 GB, so the job runs on an RTX A6000.
+- *Amendment 3a (after run 369367265797, before any other beam submission).* That run ran out of
+  memory in this comparison on the 48 GB A6000; XLA reported 63.2 GB for the module path's
+  gradient. The comparison therefore runs as its own job on the H200
+  (`scripts/vessl_showcase_design_beam_equivalence.yaml`, stage `equivalence`), with the same
+  commit, start cover, record and threshold. The design loop runs in parallel on the A6000
+  without it.
+- Finalize (`scripts/vessl_showcase_design_finalize.yaml`) copies the comparison into the beam
+  record and refuses to write `result.json` without it. If the comparison fails, the beam record
+  is withdrawn as a result: it is kept, marked as failed, and not rendered for the pages.
 
 **A3.3 Float32 matmuls without TF32 for the beam.** Every beam stage sets
 `jax_default_matmul_precision = "highest"`. Measured on the superseded run, same commit:

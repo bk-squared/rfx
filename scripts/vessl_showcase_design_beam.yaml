@@ -66,13 +66,8 @@ run: |-
       { timeout 14400 python "$DT" --stage keyframes --out "$out" 2>&1; echo "$?" > "$out/keyframes.rc"; } | tee "$out/keyframes.log"
       rc=$(cat "$out/keyframes.rc")
     fi
-    if [ "$rc" = "0" ] || [ "$rc" = "3" ] || [ "$rc" = "4" ]; then
-      # rc 3: the record-length witness failed; rc 4: the module-path comparison failed.
-      # The case stops and the record is written.
-      { timeout 600 python "$DT" --stage finalize --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/finalize.rc"; } | tee "$out/finalize.log"
-      frc=$(cat "$out/finalize.rc")
-      [ "$frc" = "0" ] || rc="$frc"
-    fi
+    # finalize runs as its own job once the module-path comparison (A3.2, its own job on the
+    # H200: vessl_showcase_design_beam_equivalence.yaml) has written its record
   fi
   set -e
   echo "artifacts: $out"
