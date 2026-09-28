@@ -131,6 +131,7 @@ def test_admitted_faces_match_one_device(lane, case, count, record_property):
     pytest.param(8, 41, "pec", True, 0, 6, id="all_pec_empty_8"),
     pytest.param(8, 41, "pec", "legacy", 0, 6, id="legacy_pec_empty_8"),
     pytest.param(8, 12, "pmc", False, 0, 3, id="last_slab_all_padding_8"),
+    pytest.param(2, 2, "pmc", True, 1, 1, id="all_walls_pmc_one_row_2"),  # no absorber: CI's 2 devices reach the wall-only check
 ])
 def test_wall_must_fit_owned_slab(lane, count, x_cells, hi, all_walls, width, pad):
     devices = _devices(count)
