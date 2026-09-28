@@ -1153,18 +1153,37 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
             f"slab; a PEC domain face ({', '.join(sorted(spec.pec_faces()))}) "
             "is a conductor outside it whose current is never read. Use "
             "absorbing boundaries while this monitor is on.")
-    plane_ports = [name for name, attr in (
-        ("waveguide", "_waveguide_ports"), ("microstrip", "_msl_ports"),
-        ("coaxial", "_coaxial_ports"), ("Floquet", "_floquet_ports"))
-        if getattr(sim, attr, None)]
-    if plane_ports:
-        raise NotImplementedError(
-            f"the current-moment monitor is not supported with a "
-            f"{plane_ports[0]} port: a plane port drives and terminates a "
-            "whole cross-section of a line that leaves the radiator (and a "
-            "microstrip port's modal launch includes a magnetic source), so "
-            "the slab cannot hold all of its current. Feed the structure "
-            "with add_port() or add_source() inside the slab.")
+    for attr, what, unseen in (
+            ("_waveguide_ports", "waveguide",
+             "its mode launch corrects H across the port plane, a magnetic "
+             "current"),
+            ("_coaxial_ports", "coaxial",
+             "its TEM launch adds a magnetic source on the H edges of its "
+             "plane"),
+            ("_floquet_ports", "Floquet",
+             "it makes its two transverse axes periodic, so the radiator is "
+             "one cell of an infinite array, whose current no finite slab "
+             "holds")):
+        if getattr(sim, attr, None):
+            raise NotImplementedError(
+                f"the current-moment monitor is not supported with a {what} "
+                f"port: {unseen}, and the monitor reads only the electric "
+                "current J = curl_h H - eps0 dE/dt inside its slab. Feed the "
+                "structure with add_port(), add_source() or "
+                "add_msl_port(mode='laplace') inside the slab.")
+    for pe in list(getattr(sim, "_msl_ports", ()) or ()):
+        # The laplace and uniform launches add an E increment and a
+        # conductivity on the substrate-normal edges of the feed plane and
+        # write no H; both sit inside J = curl_h H - eps0 dE/dt. The
+        # eigenmode launch adds the M half of a J+M pair on H.
+        if getattr(pe, "mode", "laplace") == "eigenmode":
+            raise NotImplementedError(
+                f"the current-moment monitor is not supported with the "
+                f"microstrip port {pe.name!r} in mode='eigenmode': that "
+                "launch adds a magnetic source on the H edges of its plane, "
+                "which J = curl_h H - eps0 dE/dt does not contain. "
+                "mode='laplace' (the default) drives E only and is "
+                "supported.")
 
     nonuniform = getattr(grid, "dx_arr", None) is not None
     periodic = sim._periodic_flags()
@@ -1266,6 +1285,69 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         c = "xyz".index(str(spec_rlc.component)[-1])
         fed[c][tuple(_index(grid, tuple(spec_rlc.position)))] = True
     check(fed, "a source, port or lumped element")
+
+    for pe in list(getattr(sim, "_msl_ports", ()) or ()):
+        c, edges = _msl_port_edges(grid, pe, materials.eps_r)
+        bad = [e for e in edges if not interior[c][e]]
+        if bad:
+            lo, hi = _edge_ends_mm(grid, c, bad[0])
+            raise _outside_slab_refusal(
+                monitor, grid,
+                f"microstrip port {pe.name!r} (its feed-plane source and "
+                f"matched load, {len(bad)} of its {len(edges)} edges; the "
+                f"first runs from ({lo[0]:.4g}, {lo[1]:.4g}, {lo[2]:.4g}) mm "
+                f"to ({hi[0]:.4g}, {hi[1]:.4g}, {hi[2]:.4g}) mm)", c, bad[0])
+
+
+def _msl_port_edges(grid, pe, eps_r):
+    """Every E edge a microstrip port's launch and matched load sit on.
+
+    The runners stamp the port's termination conductivity and, when it is
+    excited, its source increment on the substrate-normal edges of the feed
+    plane: wherever the static-Laplace profile is non-zero, over a window one
+    substrate height wider than the trace on each side (``mode="laplace"``
+    everywhere, and ``"uniform"`` on the graded runner), or over the trace
+    width alone (``mode="uniform"`` on the uniform runners). The union of
+    the two is returned, so the answer does not depend on the lane. The
+    profile is solved here as the runners solve it, with the permittivity
+    they read: the port's ``eps_r_sub``, else ``eps_r`` (the assembled
+    permittivity) at the feed's centre edge.
+    """
+    from rfx.sources.msl_port import (
+        _msl_yz_cells, compute_msl_mode_profile, msl_cell,
+        msl_cross_section_span, msl_normal_component, msl_port_from_entry)
+    port = msl_port_from_entry(pe)
+    c = "xyz".index(msl_normal_component(port)[-1])
+    edges = {tuple(int(v) for v in e) for e in _msl_yz_cells(grid, port)}
+    if pe.eps_r_sub is not None:
+        eps_r_sub = float(pe.eps_r_sub)
+    else:
+        span = msl_cross_section_span(grid, port)
+        centre = msl_cell(pe.direction, span["i_feed"], span["w_centre"],
+                          (span["n_lo"] + span["n_hi"]) // 2)
+        eps_r_sub = float(np.asarray(eps_r)[centre])
+    prof = compute_msl_mode_profile(grid, port, eps_r_sub)
+    ez = np.asarray(prof["ez_profile"])
+    iw, inr = int(prof["width_idx"]), int(prof["normal_idx"])
+    for cell in prof["cell_indices"]:
+        jl = int(cell[iw]) - int(prof["j_grid_lo"])
+        kl = int(cell[inr]) - int(prof["k_grid_lo"])
+        if (0 <= kl < int(prof["n_z_sub"]) and 0 <= jl < ez.shape[0]
+                and float(ez[jl, kl]) != 0.0):
+            edges.add(tuple(int(v) for v in cell))
+    return c, sorted(edges)
+
+
+def _edge_ends_mm(grid, component, index):
+    """The two nodes an E edge joins, in mm, in the ``add_ntff_box`` frame."""
+    lo, hi = [], []
+    for axis in range(3):
+        nodes = _axis_arrays(grid, axis)[0]
+        n = int(index[axis])
+        lo.append(float(nodes[n]) * 1e3)
+        hi.append(float(nodes[min(n + 1, nodes.size - 1)] if axis == component
+                        else nodes[n]) * 1e3)
+    return lo, hi
 
 
 # Lanes whose scan body accumulates the monitor. Every other entry point has
