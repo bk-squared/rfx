@@ -173,13 +173,25 @@ def test_one_failing_shard_does_not_cancel_the_others() -> None:
     )
 
 
-def _install_and_marker(job: dict[str, Any]) -> tuple[str, str]:
+def _slow_shards(job: dict[str, Any]) -> dict[str, Any]:
+    """What a slow job installs, which tests it selects, and how it splits them."""
     runs = [step["run"] for step in job["steps"] if "run" in step]
-    install = next(run for run in runs if run.startswith("pip install"))
-    return install, re.search(r'-m "([^"]*)"', next(run for run in runs if "--splits 5" in run))[1]
+    installs = [run for run in runs if run.startswith("pip install")]
+    splits = [run for run in runs if "--splits" in run]
+    assert len(installs) == 1 and len(splits) == 1, f"expected one install and one split pytest run: {runs}"
+    run = splits[0]
+    marker = re.search(r"""-m (["'])(.*?)\1""", run)
+    n = re.search(r"--splits (\d+)", run)
+    assert marker and n, f"no -m or --splits N in: {run}"
+    return {"install": installs[0], "-m": marker[2], "ignores": sorted(re.findall(r"--ignore=(\S+)", run)),
+            "splits": int(n[1]), "groups": job["strategy"]["matrix"]["group"],
+            "-k": bool(re.search(r"(?:^|\s)-k(?:\s|=|$)", run))}
 
 
 def test_the_durations_regeneration_prices_what_the_slow_shards_run() -> None:
-    weekly = _install_and_marker(_workflow("validation.yml")["jobs"]["slow-tests"])
-    regen = _install_and_marker(_workflow("regen-durations.yml")["jobs"]["slow"])
+    weekly = _slow_shards(_workflow("validation.yml")["jobs"]["slow-tests"])
+    regen = _slow_shards(_workflow("regen-durations.yml")["jobs"]["slow"])
+    assert not regen["-k"], "regen-durations slow narrows its selection with -k"
+    for name, lane in (("validation slow-tests", weekly), ("regen-durations slow", regen)):
+        assert lane["splits"] == len(lane["groups"]), f"{name}: --splits {lane['splits']} but groups {lane['groups']}"
     assert regen == weekly, f"regen-durations slow {regen} != validation slow-tests {weekly}"
