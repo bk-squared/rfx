@@ -702,6 +702,23 @@ def test_relaxed_subgrid_validation_refuses_or_carries(mode, name):
         f"validation={mode!r}: the {name} input moved the record by {effect:.3e} of its peak")
 
 
+@pytest.mark.parametrize("mode", ["research", "off"])
+@pytest.mark.parametrize("absorber,words", [("cpml", "a CPML absorber"), ("upml", "a UPML absorber")])
+def test_relaxed_subgrid_validation_refuses_an_absorbing_box(mode, absorber, words):
+    """validation='research' and 'off' ran a subgridded model in an absorbing
+    box, unvalidated. What the lane carries there has not been measured, so
+    lane admission refuses the absorber in every validation mode, before any
+    step, as production validation does."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = _base("run_subgridded", refine=False, boundary=absorber)
+        sim.add_refinement(z_range=(0.0, 14e-3), ratio=2, validation=mode)
+    with _watch_kernel_scans() as started, pytest.raises(NotImplementedError) as exc:
+        _run(sim, "run_subgridded", Feature(lambda lane, on, ref=False: None))
+    assert not started, started
+    assert f"{words} is not carried by the subgridded run() lane" in str(exc.value)
+
+
 # ------------------------------------------------------ the table's own terms
 
 def test_every_executable_row_has_a_builder():
