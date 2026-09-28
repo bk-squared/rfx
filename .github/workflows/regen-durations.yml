@@ -44,7 +44,10 @@ jobs:
 
   slow:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    # 360, the hosted maximum, was 180. With no durations file this job splits by test count, so one
+    # shard can hold most of the expensive tests: on run 36394962310 slow (5) was cut at 180 min with
+    # 2,361 of its 2,567 tests done, and pytest-split writes its file only when the session ends.
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
