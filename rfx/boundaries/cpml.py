@@ -113,6 +113,8 @@ def _cpml_profile(
     kappa_max: float = 1.0,
     R_asymptotic: float = 1e-15,
     sample_offset: float = 0.0,
+    *,
+    sigma_max: float | None = None,
 ) -> CPMLParams:
     """Compute graded CPML profile using polynomial grading.
 
@@ -139,6 +141,11 @@ def _cpml_profile(
         low faces and -0.5 before high-face reversal. Zero preserves the
         original E profile exactly. Single-sample legacy profiles are
         unchanged because they have no resolved grading interval.
+    sigma_max : float, optional
+        Peak conductivity in S/m, including any kappa scaling. If supplied,
+        use it directly instead of deriving it from R_asymptotic. This keeps
+        finite conductivities representable even when the implied reflection
+        target is below the floating-point range.
     """
 
     # Stay in-trace when dt/dx are JAX tracers (mesh-as-design-variable
@@ -148,7 +155,7 @@ def _cpml_profile(
     # float32 only at the CPMLParams boundary) so the returned profile
     # is bit-identical to the pre-#45 release.  The traced path stays
     # at float32 to match the default JAX dtype policy.
-    traced = is_tracer(dt) or is_tracer(dx)
+    traced = is_tracer(dt) or is_tracer(dx) or is_tracer(sigma_max)
     xp = jnp if traced else np
     work_dtype = jnp.float32 if traced else np.float64
 
@@ -157,9 +164,10 @@ def _cpml_profile(
     # σ_max from target reflection (Meep formula):
     #   R = exp(-2 * σ_max * d / ((m+1) * η))
     #   => σ_max = -ln(R) * (m+1) / (2 * η * d)
-    sigma_max = -float(np.log(R_asymptotic)) * (order + 1) / (2.0 * eta * d)
-    # For CFS-CPML (κ>1), scale σ_max by κ_max (Gedney recommendation).
-    sigma_max = sigma_max * kappa_max
+    if sigma_max is None:
+        sigma_max = -float(np.log(R_asymptotic)) * (order + 1) / (2.0 * eta * d)
+        # For CFS-CPML (κ>1), scale σ_max by κ_max (Gedney recommendation).
+        sigma_max = sigma_max * kappa_max
 
     # Graded profiles: polynomial from max at outer boundary (index 0)
     # to 0 at interior edge (index n-1) for the lo face.

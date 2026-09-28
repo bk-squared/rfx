@@ -343,3 +343,49 @@ def adi_cpml_reflection(n_layers, axis, freqs, *, factor=0.01, absorber=True):
         _reflection_db(trace(30 + far, distance)[:, face], reference[:, face], dt, freqs)
         for face, distance in enumerate((30, far))
     ])
+
+
+def tfsf_methodb_auxiliary_reflection(theta_deg, face, freqs, *,
+                                      far=403, reference_distance=901):
+    """Return the open-domain Method-B absorber's per-face |R(f)| in dB.
+
+    A differentiated Gaussian excites the real Method-B initializer's line
+    at 1 mm main-grid spacing. Its angle-dependent auxiliary spacing and
+    shipped conductivity profiles feed the production split H/E updates.
+    Extend only zero field arrays and move the source: the near face is
+    30 cells away, while the opposite and reference faces cannot return
+    within the record. Subtract the distant reference at the source plane
+    and divide by its incident spectrum, without a near-field peak scale.
+    This measures the auxiliary return before injection into a main domain.
+    """
+    from rfx.sources.tfsf import update_tfsf_1d_e, update_tfsf_1d_h
+    from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
+
+    if face not in ("lo", "hi"):
+        raise ValueError("face must be 'lo' or 'hi'")
+    dx = 1e-3
+    dt = float(0.99 / np.sqrt(3) * dx / C0)
+    config, zero_state = init_tfsf_methodB(
+        151, 93, dx, dt, nz=3, theta_deg=theta_deg, f0=10e9)
+    spacing, depth = config.dx_1d, config.n_cpml
+    steps = int(0.9 * 2 * far * spacing / C0 / dt)
+    if not 30 < far < reference_distance or steps * dt <= 120e-12 + 2 * (30 + depth) * spacing / C0:
+        raise ValueError("increase far/reference_distance to isolate the complete near-face echo")
+
+    def trace(interior, distance):
+        source = depth + distance
+        cfg = config._replace(src_idx=source, src_t0=60e-12, src_tau=12e-12,
+                              src_amp=0.5, src_waveform="differentiated_gaussian")
+        zero = jnp.zeros(interior + 2 * depth + 1, dtype=jnp.float32)
+        state = zero_state._replace(e1d=zero, h1d=zero)
+
+        def step(state, t):
+            state = update_tfsf_1d_h(cfg, state, spacing, dt)
+            state = update_tfsf_1d_e(cfg, state, spacing, dt, t)
+            return state, state.e1d[source]
+
+        return jax.lax.scan(step, state, jnp.arange(steps) * dt)[1]
+
+    short = trace(30 + far, 30 if face == "lo" else far)
+    reference = trace(2 * reference_distance, reference_distance)
+    return _reflection_db(short, reference, dt, freqs)

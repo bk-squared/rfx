@@ -419,18 +419,21 @@ def init_adi_cpml_2d(n_cpml: int, dt: float, dx: float, dy: float,
     """
     import numpy as np
 
-    # Preserve ADI's existing sigma_max = 0.8*(m+1)/(eta*ds)*kappa_max.
-    # Express it through the shared reflection-target law, without another
-    # polynomial grading implementation.
-    options = dict(kappa_max=kappa_max, R_asymptotic=np.exp(-1.6 * n_cpml))
-    px = _cpml_profile(n_cpml, dt, dx, **options)
-    py = _cpml_profile(n_cpml, dt, dy, **options)
+    # ADI fixes conductivity rather than a depth-dependent reflection target.
+    # Passing it directly avoids exp(-1.6*n_cpml) underflow at 466 layers.
+    eta = float(np.sqrt(MU_0 / EPS_0))
+
+    def profile(spacing, offset=0.0):
+        return _cpml_profile(
+            n_cpml, dt, spacing, kappa_max=kappa_max, sample_offset=offset,
+            sigma_max=0.8 * 4 / (eta * spacing) * kappa_max,
+        )
+
+    px, py = profile(dx), profile(dy)
     params = ADICPMLParams2D(
         n_cpml=n_cpml, bx=px.b, cx=px.c, by=py.b, cy=py.c,
-        magnetic_xlo=_cpml_profile(n_cpml, dt, dx, sample_offset=0.5, **options),
-        magnetic_xhi=_cpml_profile(n_cpml, dt, dx, sample_offset=-0.5, **options),
-        magnetic_ylo=_cpml_profile(n_cpml, dt, dy, sample_offset=0.5, **options),
-        magnetic_yhi=_cpml_profile(n_cpml, dt, dy, sample_offset=-0.5, **options),
+        magnetic_xlo=profile(dx, 0.5), magnetic_xhi=profile(dx, -0.5),
+        magnetic_ylo=profile(dy, 0.5), magnetic_yhi=profile(dy, -0.5),
     )
 
     state = ADICPMLState2D(
