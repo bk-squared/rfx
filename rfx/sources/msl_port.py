@@ -338,10 +338,17 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     # beneath the intentional lateral fringing part of a Laplace source.
     width_nodes = nodes[iw]
     local = _local_cell(width_nodes, sizes[iw], .5*(port.y_lo+port.y_hi))
+    if span["width_axis"] in getattr(grid, "periodic_axes", ""):
+        width_nodes = np.append(width_nodes, float(grid.domain[iw]))
     widths = np.flatnonzero(_box_axis_closed(width_nodes, port.y_lo, port.y_hi, local))
     if not len(widths):
         raise ValueError(f"{label}: the declared width contains no grid node")
-    widths = sorted(set(map(int, widths)) | {span["w_centre"]})
+    widths = sorted({int(w) % len(nodes[iw]) for w in widths} | {span["w_centre"]})
+    if (span["width_axis"] in getattr(grid, "periodic_axes", "")
+            and 0 in span["width_nodes"]):
+        # A rounded endpoint can select the seam node even just below L.
+        # That selected image needs a conductor too.
+        widths = sorted(set(widths) | {0})
     for axis, indices in ((ip, [p]), (iw, widths)):
         for side, boundary_node in (("lo", 0), ("hi", grid.shape[axis]-1)):
             face = f"{'xyz'[axis]}_{side}"
@@ -482,8 +489,12 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
         msl_physical_point(port.direction, port.feed_x, port.y_hi, port.z_hi))
     i_feed = int(lo_idx[ip])
     w_a, w_b = sorted((int(lo_idx[iw]), int(hi_idx[iw])))
+    # Width owns both endpoint nodes; height owns the edges between nodes.
+    # The endpoint at L is node zero's image, included only once even for
+    # a full-period width. Keep the interval helper's bounds admission.
+    widths = list(range(w_a, w_b + 1))
     if width in getattr(grid, 'periodic_axes', ''):
-        w_b = min(w_b, grid.shape[iw] - 1)
+        widths = list(dict.fromkeys(w % grid.shape[iw] for w in widths))
     n_a, n_b = _msl_normal_bounds(grid, port)
 
     if n_b <= n_a:
@@ -492,7 +503,7 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
             "trace planes; resolve the substrate on the mesh."
         )
     cells = []
-    for w in range(w_a, w_b + 1):
+    for w in widths:
         # E_normal[n] lives on [node n, node n+1]. The trace-plane node
         # is the EXCLUSIVE edge bound; including it injects/loads above
         # the trace. Width coordinates of E_normal remain nodal/inclusive.
@@ -505,7 +516,7 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     return cells
 
 
-def msl_cross_section_span(grid, port: MSLPort) -> dict:
+def msl_cross_section_span(grid, port: MSLPort, *, require_contiguous_width=False) -> dict:
     """Feed index, width nodes and normal bounding planes of the cross-section.
 
     Returns a dict with ``i_feed``, ``w_lo``/``w_hi``, ``w_centre``,
@@ -514,6 +525,9 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
     ``c[2]`` from :func:`_msl_yz_cells` should read this instead, so the
     axis projection lives in one place.
 
+    ``width_nodes`` lists unique node images in interval order; ``w_lo`` /
+    ``w_hi`` bound that sequence before wrapping. Consumers requiring a
+    contiguous mode/current window must request ``require_contiguous_width``.
     Width nodes are inclusive. Normal E edges use ``n_lo <= k < n_hi``;
     ``n_hi`` is the upper bounding NODE (trace plane), as extraction and
     trace searches require. ``cells`` contains edges, not that upper node.
@@ -523,7 +537,15 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
     iw = _MSL_AXIS_INDEX[width]
     inr = _MSL_AXIS_INDEX[normal]
     cells = _msl_yz_cells(grid, port)
-    ws = sorted({c[iw] for c in cells})
+    ws = list(dict.fromkeys(c[iw] for c in cells))
+    if (require_contiguous_width and width in getattr(grid, "periodic_axes", "")
+            and 0 in ws):
+        raise ValueError(
+            f"MSL mode/current aperture on periodic axis {width!r}: node-inclusive "
+            f"width [{port.y_lo}, {port.y_hi}] m touches the seam of period "
+            f"L={grid.domain[iw]} m; this operation requires a contiguous "
+            "aperture with a sampling margin. Uniform run/forward loading "
+            "supports the seam.")
     ns = sorted({c[inr] for c in cells})
     centre = _msl_position_to_index(grid, msl_physical_point(
         port.direction, port.feed_x, .5*(port.y_lo+port.y_hi), port.z_lo))[iw]
@@ -531,7 +553,8 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
         prop_axis=prop, width_axis=width, normal_axis=normal, sign=sign,
         prop_idx=ip, width_idx=iw, normal_idx=inr,
         i_feed=int(cells[0][ip]),
-        w_lo=int(ws[0]), w_hi=int(ws[-1]),
+        w_lo=int(ws[0]), w_hi=int(ws[0] + len(ws) - 1),
+        width_nodes=tuple(ws),
         w_centre=int(centre),
         n_lo=int(ns[0]), n_hi=int(ns[-1]) + 1,
         cells=cells,
@@ -762,7 +785,7 @@ def compute_msl_mode_profile(
     # (width, normal) cross-section problem -- measured independent of the
     # propagation axis beyond ``i_feed`` (identical ez_profile/z0_static/
     # eps_eff across two feed planes and opposite directions).
-    span = msl_cross_section_span(grid, port)
+    span = msl_cross_section_span(grid, port, require_contiguous_width=True)
     width_axis = span["width_axis"]
     normal_axis = span["normal_axis"]
     j_trace_lo = span["w_lo"]
@@ -796,6 +819,12 @@ def compute_msl_mode_profile(
 
     # FDTD-grid cells that will receive an Ez source (clamped into the
     # available grid). Capture the maximum y-padding the grid allows.
+    if (width_axis in getattr(grid, "periodic_axes", "")
+            and (j_trace_lo - pad_y_cells < 0
+                 or j_trace_hi + pad_y_cells >= grid.shape[span["width_idx"]])):
+        raise ValueError(
+            f"MSL Laplace aperture on periodic axis {width_axis!r} crosses "
+            "the seam; its fringing profile requires a contiguous width window.")
     j_grid_lo = max(0, j_trace_lo - pad_y_cells)
     j_grid_hi = min(grid.shape[span["width_idx"]] - 1, j_trace_hi + pad_y_cells)
     k_grid_lo = k_sub_lo  # ground at bottom of substrate
@@ -1001,7 +1030,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         cells = span["cells"]
         if not cells:
             return materials
-        n_y = span["w_hi"] - span["w_lo"] + 1
+        n_y = len(span["width_nodes"])
         n_z = span["n_hi"] - span["n_lo"]
         # Issue #661: these three cell sizes are the PROPAGATION, WIDTH
         # and NORMAL cell sizes -- not literally dx/dy/dz. sigma scales as

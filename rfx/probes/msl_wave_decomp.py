@@ -303,7 +303,7 @@ def register_msl_plane_probes(
 
     # Cross-section index metadata, identical to compute_msl_s_matrix's
     # per-port meta (rfx/api/_sparams.py:2961-2980).
-    span = msl_cross_section_span(grid, mp)
+    span = msl_cross_section_span(grid, mp, require_contiguous_width=True)
     j_centre = span["w_centre"]
     j_lo, j_hi = span["w_lo"], span["w_hi"]     # trace-conductor width span
     k_lo = span["n_lo"]                          # ground plane proxy

@@ -549,6 +549,20 @@ def _validate_coaxial_tem_geometry(
         raise ValueError(f"mu_r must be positive, got {mu_r}")
 
 
+def _require_coaxial_aperture(grid, axes, center, radius):
+    """A radial node aperture needs both rims; periodic images are unsupported."""
+    from rfx._periodic import interval_coordinates
+    for axis, coordinate in zip(axes, center):
+        if "xyz"[axis] not in getattr(grid, "periodic_axes", ""):
+            continue
+        lo, hi = interval_coordinates(grid, axis, coordinate-radius, coordinate+radius)
+        if lo <= 0 or hi >= float(grid.domain[axis]):
+            raise ValueError(
+                f"Coaxial node-inclusive aperture on periodic axis {'xyz'[axis]!r}: "
+                f"interval [{lo}, {hi}] m touches the seam of period "
+                f"L={grid.domain[axis]} m; radial sampling requires an interior aperture.")
+
+
 def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
     """Compute center-pin and outer-conductor geometry for the given port.
 
@@ -590,8 +604,7 @@ def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
         if a == axis_idx:
             interval_coordinates(grid, a, port.position[a], pin_tip[a])
         else:
-            interval_coordinates(grid, a, port.position[a] - port.outer_radius,
-                                 port.position[a] + port.outer_radius)
+            _require_coaxial_aperture(grid, (a,), (port.position[a],), port.outer_radius)
     gap_index = grid.position_to_index(port.position)
     return axis, direction, component, pin_center, pin_tip, gap_index
 
@@ -813,6 +826,7 @@ def build_coaxial_tem_plane_source_specs(
     if shell_inner_radius is None:
         shell_inner_radius = float(port.outer_radius)
     shell_inner_radius = float(shell_inner_radius)
+    _require_coaxial_aperture(grid, (0, 1), port.position[:2], shell_inner_radius)
 
     # Time-series amplitude scales (cell-independent factors lifted out).
     h_factor = jnp.float32(h_sign) * coeff_h * jnp.float32(field_scale) * e_inc_table
@@ -1041,6 +1055,7 @@ def coaxial_line_plane_voltage(
     axes of ``ex_dft``/``ey_dft`` (for example frequency) are preserved.
     """
 
+    _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius)
     u = (np.arange(grid.nx, dtype=np.float64) - grid.pad_x_lo) * grid.dx
     v = (np.arange(grid.ny, dtype=np.float64) - grid.pad_y_lo) * grid.dx
     ex = np.asarray(ex_dft, dtype=np.complex128)
@@ -1078,6 +1093,7 @@ def coaxial_line_plane_voltage_jnp(
     leading axes (e.g. frequency); they are preserved and the integral is over
     the trailing radial axis.
     """
+    _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius)
     u = (np.arange(grid.nx, dtype=np.float64) - grid.pad_x_lo) * grid.dx
     v = (np.arange(grid.ny, dtype=np.float64) - grid.pad_y_lo) * grid.dx
     cu, cv = float(center_xy[0]), float(center_xy[1])
@@ -1554,6 +1570,7 @@ def stamp_coaxial_line(
     :func:`stamp_coaxial_annular_resistor`.
     """
 
+    _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius + shell_thickness_m)
     dz = float(grid.dx)
     z_lo = (int(z_lo_index) - grid.pad_z_lo) * dz
     z_hi = (int(z_hi_index) - grid.pad_z_lo) * dz
@@ -1687,6 +1704,7 @@ def stamp_coaxial_short_plane(
     to vacuum and is otherwise unchanged.
     """
 
+    _require_coaxial_aperture(grid, (0, 1), center_xy, outer_radius)
     eps = np.array(materials.eps_r)
     cx, cy = float(center_xy[0]), float(center_xy[1])
     z = int(z_index)
@@ -1732,6 +1750,8 @@ def stamp_coaxial_annular_resistor(
     Returns updated materials.
     """
 
+    _require_coaxial_aperture(grid, (0, 1), center_xy,
+                             outer_radius if shell_inner_radius is None else shell_inner_radius)
     if not np.isfinite(target_impedance) or target_impedance <= 0.0:
         raise ValueError(f"target_impedance must be positive finite, got {target_impedance}")
     dz = float(grid.dx)

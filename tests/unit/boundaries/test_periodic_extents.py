@@ -87,7 +87,9 @@ def test_microstrip_plane_and_substrate_endpoint_at_period():
     def port(feed):
         return MSLPort(feed_x=feed, y_lo=.004, y_hi=.006, z_lo=.003,
                        z_hi=.004, direction='+x', impedance=50.)
-    assert _msl_yz_cells(grid, port(.010)) == _msl_yz_cells(grid, port(0.)) == [(0, 4, 3), (0, 5, 3)]
+    # Width includes both nodes: 4, 5, 6 mm with 6 mm identified with zero.
+    # The 3--4 mm substrate height contains one E edge, not two nodes.
+    assert _msl_yz_cells(grid, port(.010)) == _msl_yz_cells(grid, port(0.)) == [(0, 4, 3), (0, 5, 3), (0, 0, 3)]
     assert msl_h_plane_stencil(grid, port(.010), .010) == msl_h_plane_stencil(grid, port(0.), 0.)
 
 
