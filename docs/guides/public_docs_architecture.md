@@ -89,7 +89,8 @@ If a feature is outside the documented public support scope but still exists in 
 4. In gitops, build and validate the Starlight site.
 5. Commit and push source repo changes and gitops snapshot changes separately.
    GitHub is the source-of-truth transport; do not edit the deploy host.
-6. On r02, verify checkout cleanliness, pull, recreate `starlight-public`, and smoke-test the live routes.
+6. On r02, follow the current infrastructure candidate-build and atomic-activation
+   runbook, then verify the live routes and artifact hashes.
 
 ## CI guardrails
 
@@ -112,4 +113,68 @@ This split avoids blocking source-repo authoring on cross-repo drift before the 
 - `docs/public/index.mdx`, `docs/public/guide/`, `docs/public/examples/`, `docs/public/validation/`, and `docs/public/api/` are the **canonical public sources**.
 - `docs/agent/**` is GitHub-only guidance for external LLM agents: do not add it to `remilab.ai` navigation, export it, deploy it, or include it in gitops snapshots.
 - `docs/guide/` is intentionally reduced to a single redirect-style entrypoint and should not receive new content.
-- `docs/api/` remains generated-only and optional; when present it should be exported as a subordinate deep-reference surface, not treated as the primary authored API contract.
+- `docs/_build/` contains disposable generated bundles. The verified bundle, including
+  the subordinate pdoc reference, is an explicit input to a complete public deployment.
+  Legacy `docs/api/` output remains ignored and is not implicitly exported.
+
+## Generated delivery bundle
+
+`python scripts/build_public_docs_bundle.py --output-dir docs/_build/public-docs`
+builds the public Markdown, LLM index, typed API inventory, unchanged support
+contracts, and pdoc reference from committed source inputs. The generator uses
+the existing API-surface checker and the private-mixin pdoc template. It does not
+create another hand-maintained symbol inventory or classify support by symbol.
+Use Python 3.10.12 and install the pinned runtime/renderer dependency closure with
+`pip install -r scripts/requirements-public-docs.txt`. The generator imports the
+selected source tree directly; an editable installation is not needed.
+
+The bundle has a `files/` directory whose paths are relative to the public RFX URL.
+`files/docs-manifest.json` records source SHA, package version, channel, base URL,
+page-to-Markdown mapping, navigation, source-input hashes and artifact hashes.
+No build timestamp is emitted; reproduction uses the same Python/dependency
+versions. The manifest records actual toolchain versions, generator and template
+hashes; a dependency mismatch fails before rendering. The manifest does not hash itself. GitOps pins the source SHA and keeps
+the manifest with the snapshot.
+
+```bash
+python scripts/build_public_docs_bundle.py --output-dir docs/_build/public-docs
+python scripts/build_public_docs_bundle.py --verify docs/_build/public-docs
+python scripts/export_public_docs_to_gitops.py \
+  --gitops-root /path/to/remilab-sites-gitops \
+  --bundle-dir docs/_build/public-docs
+python scripts/check_public_docs_sync.py \
+  --deploy-root /path/to/remilab-sites-gitops/deploy/obsidian-stack/astro-starlight-presets/public/seed-pages/rfx \
+  --bundle-dir docs/_build/public-docs --strict
+```
+
+The generator refuses modified tracked source inputs and an existing output
+directory. Choose a new output directory for a new build. The exporter rejects
+symlinks, path traversal, unlisted bundle files and hash mismatches before changing
+the snapshot. Public authoring inputs remain git-tracked files under `docs/public`;
+the only additional generated publication roots are `markdown/`, `api/generated/`,
+`api/support/`, `api/inventory.json`, the two LLM text files and the manifest.
+The deployment layer must copy `markdown/**/*.md` as static files, rather than
+interpreting them as another set of authored Astro pages.
+
+For a release, check out its actual tag into a clean worktree and run this generator
+with `--repo-root /path/to/release-worktree --channel release
+--base-url https://remilab.ai/rfx/versions/v1.8.0`. The selected source tree supplies
+both imports and docstrings; the generator can be newer than that historical tag.
+Rendering uses the generator checkout's versioned private-mixin template, because
+older tags predate that rendering fix. Its hash is recorded separately from source
+inputs; this does not add newer methods to the historical API.
+Export it with the same `--repo-root`, the release bundle, and
+`--site-prefix rfx/versions/v1.8.0`. Root exports preserve `versions/` and the
+infra-owned `dev/` entry. The root channel is development until a release-built
+bundle is explicitly selected; a package version alone is not a stable-channel
+claim.
+
+The source workflow checks page routes, generated introductory snippets, the API
+surface and actual generated anchors. Publication tests exercise tampering,
+symlink/private-path rejection, versioned links and release preservation.
+These are documentation-delivery checks, not simulator accuracy validation.
+
+Deployment uses the infrastructure repository's current candidate build and atomic
+activation runbook. Its final renderer must preserve static Markdown, JSON, media
+and pdoc files; a container restart alone is not a document build. Verify hashes,
+MIME types, version metadata and links on the activated public site.

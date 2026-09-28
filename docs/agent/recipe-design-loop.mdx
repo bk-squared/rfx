@@ -24,8 +24,7 @@ goes to the end and identifies paths that are not ready for closed-loop design.
      `compute_coaxial_line_reflection`. The end-to-end AD/finite-difference
      check is
      `tests/unit/autodiff/test_coax_end_to_end_ad.py::test_coax_reflection_grad_finite_and_fd_consistent`.
-     This does not extend the result to arbitrary coaxial geometry parameters
-     or the deprecated `compute_coaxial_s_matrix` API.
+     This does not extend the result to arbitrary coaxial geometry parameters.
    - Waveguide `yes` covers BOTH the default extraction
      (`normalize=False`) and the power-flux extraction
      (`normalize='flux'`), which is AD-traceable

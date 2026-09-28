@@ -79,6 +79,7 @@ from rfx.runners._distributed_common import (
     _update_h_local,
     _update_e_local_with_dispersion,
     _init_cpml_distributed,
+    _distributed_boundary_layers,
     _apply_cpml_e_distributed,
     _apply_cpml_h_distributed,
 )
@@ -441,6 +442,35 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
 # Public runner
 # ---------------------------------------------------------------------------
 
+def refuse_distributed_periodic(sim, *, lane, bloch=None):
+    """Periodic faces cannot be replaced by a wall or an interior absorber."""
+    if lane == "distributed non-uniform forward()":
+        reason = "periodic faces would be treated as walls or absorbers."
+        remedy = "Remove the periodic axes / Bloch phase; non-uniform periodic execution is not implemented."
+    else:
+        reason = ("the lane would use the declared non-periodic wall instead "
+                  "(rfx.runners.distributed._update_h_local / _update_e_local).")
+        single_device_hint = (
+            "omit devices=... (use a single-device run() instead)"
+            if lane == "distributed multi-device run()"
+            else "call sim.run(...) without devices= instead of calling this runner"
+        )
+        remedy = f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
+    periodic_axes = getattr(sim, "_periodic_axes", "") or ""
+    if bloch is None:
+        bloch = getattr(sim, "_bloch", None)
+    if periodic_axes or bloch is not None:
+        features = []
+        if periodic_axes:
+            features.append("periodic axes " + ", ".join(repr(a) for a in periodic_axes))
+        if bloch is not None:
+            features.append("a Bloch phase")
+        raise NotImplementedError(
+            f"{' and '.join(features)}: periodic / Bloch boundaries are not "
+            f"supported on the {lane} path; {reason} {remedy}"
+        )
+
+
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
@@ -457,22 +487,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
         if lane == "distributed multi-device run()"
         else "call sim.run(...) without devices= instead of calling this runner"
     )
-    periodic_axes = getattr(sim, "_periodic_axes", "") or ""
-    if bloch is None:
-        bloch = getattr(sim, "_bloch", None)
-    if periodic_axes or bloch is not None:
-        features = []
-        if periodic_axes:
-            features.append("periodic axes " + ", ".join(repr(a) for a in periodic_axes))
-        if bloch is not None:
-            features.append("a Bloch phase")
-        raise NotImplementedError(
-            f"{' and '.join(features)}: periodic / Bloch boundaries are not "
-            f"supported on the {lane} path; the lane would use the declared "
-            "non-periodic wall instead "
-            "(rfx.runners.distributed._update_h_local / _update_e_local). "
-            f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
-        )
+    refuse_distributed_periodic(sim, lane=lane, bloch=bloch)
 
     ports = getattr(sim, "_ports", ()) or ()
     if any(pe.impedance > 0.0 and pe.extent is not None for pe in ports):
@@ -587,6 +602,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     Result
     """
     validate_exchange_interval(exchange_interval)
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
     import warnings
@@ -617,6 +634,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     refuse_unsupported_distributed_features(
         sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
 
+    # Only now, past the single-device fallbacks above: those return through
+    # ``sim.run()``, which DOES accumulate the monitor.
+    from rfx.current_moments import refuse_current_moment_monitor
+    refuse_current_moment_monitor(sim, "distributed (v2) runner")
+
     from rfx.api import Result
 
     if devices is None:
@@ -636,6 +658,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # bodies below.
     _pmc_faces_frozen = frozenset(
         sim._boundary_spec.pmc_faces()
+        if getattr(sim, "_boundary_spec", None) is not None
+        else ()
+    )
+    _pec_faces_frozen = frozenset(
+        sim._boundary_spec.pec_faces()
         if getattr(sim, "_boundary_spec", None) is not None
         else ()
     )
@@ -731,8 +758,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "sim.run() without devices=, which realizes all three, or model "
             "the conductor as a sigma fill, which rides in the material "
             "arrays this lane does shard.")
+    # Every declared input this lane does not carry is refused here, after
+    # the single-device fallbacks (judged on the lane they fall back to) and
+    # the specific refusals above, and before the first step.
+    from rfx.runners._admission import admit
+    admit(sim, "run_distributed")
     materials = base_materials
 
+    _distributed_boundary_layers(
+        grid, n_devices,
+        pec_faces=(_pec_faces_frozen if sim._boundary == "cpml" else
+                   {f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")}),
+        pmc_faces=_pmc_faces_frozen,
+        cpml_layers=grid.cpml_layers if sim._boundary == "cpml" else 0,
+    )
     nx, ny, nz = grid.shape
     # Pad nx to nearest multiple of n_devices (PEC-filled padding cells)
     pad_x = 0
@@ -1279,7 +1318,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         Stage order (#1041)::
 
             H -> CPML-H -> exch H -> PMC face -> E -> CPML-E
-              -> sources -> PEC mask -> exch E -> probes
+              -> sources -> PEC face -> PEC mask -> exch E -> probes
 
         The E ghost exchange is the LAST stage of the E half-step, so a
         ghost row is always a copy of the owner's FINISHED real row -- a
@@ -1331,9 +1370,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 6. Source injection
         st = _inject_sources_shmap(st, src_vals)
 
-        # 6b. Realized-PEC cell mask (#1053). Geometry PEC, as opposed to the
-        #     domain faces step_fn_pec applies -- this body has no domain-face
-        #     PEC at all, because its faces are CPML. Each rank realizes the
+        # A mixed wall/absorber box still enforces its declared electric walls.
+        st = _apply_pec_shmap(
+            st, mesh, n_devices, nx_local, pad_x=pad_x,
+            pec_faces=_pec_faces_frozen)
+
+        # 6b. Realized-PEC cell mask (#1053). Geometry PEC is distinct from
+        #     the declared domain faces above. Each rank realizes the
         #     per-component edge masks on its own slab by calling the one
         #     owner, rfx.boundaries.pec.realized_pec_edge_masks, and zeroes
         #     only its REAL cells; the ghost rows are forced False inside the

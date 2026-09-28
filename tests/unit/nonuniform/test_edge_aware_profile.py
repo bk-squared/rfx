@@ -204,8 +204,13 @@ def _fin_resonance(dy_profile):
     from rfx.harminv import harminv
     a, b, dx = 0.020, 0.010, 1e-3
     kw = {} if dy_profile is None else {"dy_profile": dy_profile}
+    # The graded lane refuses mode="2d_tmz" and names the one-cell 3-D box
+    # between PEC walls, which is what it ran before, bit for bit (#1340). The
+    # uniform arm keeps the uniform lane's own 2-D update: the 3-D box there
+    # resonates 22 MHz lower (1.90 % against 1.79 % below the reference).
+    mode = "2d_tmz" if dy_profile is None else "3d"
     sim = Simulation(freq_max=30e9, domain=(a, b, dx), boundary="pec", dx=dx,
-                     mode="2d_tmz", **kw)
+                     mode=mode, **kw)
     sim.add(Box((a / 2, 0.0, 0.0), (a / 2, FIN_M, dx)), material="pec")
     sim.add_source((0.0063, 0.0031, 0.0), component="ez")
     sim.add_probe((0.0137, 0.0069, 0.0), component="ez")

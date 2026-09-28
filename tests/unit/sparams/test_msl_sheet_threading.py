@@ -311,12 +311,17 @@ def test_o3_loss_monotonic_dispersion_static_passive():
     decreasing; the f0 realization's dispersion pinned to the PEC
     realization's; every sheet-on S passive.
 
-    Measured on the change commit (settled runs, 3.0-4.5 GHz gate band):
+    Measured 2026-09-27 on the current tree (issue 1292; settled runs, 3.0-4.5 GHz
+    gate band, VESSL CPU, JAX 0.6.2):
 
-        mean|S21|: off 0.997046 | Rs 1e-6 0.998284 | Rs 1 0.994244 |
-                   Rs 5 0.992916 | Rs 25 0.996560
-        absorbed 1-|S11|^2-|S21|^2: 2.2e-4 | 2.2e-4 | 8.1e-3 | 9.7e-3 |
-                   2.1e-3
+        mean|S21|: off 0.999608 | Rs 1e-6 0.999207 | Rs 1 0.996432 |
+                   Rs 5 0.996240 | Rs 25 0.998650
+        absorbed 1-|S11|^2-|S21|^2: 1.8e-4 | 1.9e-4 | 5.8e-3 | 6.5e-3 |
+                   1.8e-3
+
+    (At the change commit these read 0.997046 / 0.998284 / 0.994244 / 0.992916 /
+    0.996560; the tree before #1213, cd237692, reads 1.000100 / 0.999843 / 0.997062
+    / 0.996813 / 0.999193.)
 
     The ladder is gated on the LOW-Rs branch {1e-6, 1, 5} only: sheet
     absorption is NON-monotonic in Rs0 over the full range — a shunt
@@ -325,9 +330,13 @@ def test_o3_loss_monotonic_dispersion_static_passive():
     transparent), and Rs0=25 measured PAST the peak (absorbed 2.1e-3 <
     Rs5's 9.7e-3). Rs25 is still run here for the passivity witness and
     to keep that measured peak documented; gating it into a monotonic
-    chain would be wrong physics, not a tolerance issue. Monotonicity
-    margin: measured gaps 4.04e-3 (1e-6 -> 1) and 1.33e-3 (1 -> 5); the
-    2e-4 required margin is ~6x under the smallest.
+    chain would be wrong physics, not a tolerance issue. The peak itself sits
+    between 2 and 3 ohm/sq on every tree measured (7.8e-3 absorbed at both on the
+    current tree), so across the 1 -> 5 step the loss is near its maximum and the
+    |S21| step is small: 2.78e-3 (1e-6 -> 1) and 1.92e-4 (1 -> 5) on the current
+    tree. The ladder is therefore gated as a sign
+    (test_o3_loss_ladder_strictly_decreasing) and its values as a drift lock
+    (test_o3_mean_s21_drift_lock), not as a fixed step size.
 
     Dispersion gate — this thru fixture has no in-band resonance (any
     half-wave feature of the 12 mm board sits far above the 5 GHz
@@ -337,8 +346,11 @@ def test_o3_loss_monotonic_dispersion_static_passive():
     |f * (beta_f0(1e-6) - beta_pec)/beta_pec| must stay under 50 MHz per
     gate bin — the same 'the realization did not move the structure'
     claim the #677 cavity gate makes (its measured envelope was
-    0.58/0.63 MHz; 50 MHz is the generous #679 gate). Measured:
-    0.0499 MHz gate-band max, 0.145 MHz full-band max. The Rs LADDER
+    0.58/0.63 MHz; 50 MHz is the generous #679 gate). Measured 2026-09-27
+    (issue 1292): 2.71 MHz gate-band max on the current tree (6.2e-4 of f); 6.07 MHz
+    on the tree before #1213 (cd237692), 2.48 MHz after it (76f68f9f), 3.92 MHz
+    before #1012 (c0b83539). The 0.0499 MHz recorded at the change commit is
+    reproduced on none of them. The Rs LADDER
     itself is deliberately NOT beta-gated: a lossy near-field sheet loads
     the line reactively as well, and the ladder's extracted-beta spread
     measured 47-91 MHz equivalent between rungs (quoted below per run) —
@@ -379,24 +391,69 @@ def test_o3_loss_monotonic_dispersion_static_passive():
     assert worst < 50e6, (
         f"f0 realization's dispersion moved {worst/1e6:.2f} MHz vs the PEC "
         f"realization of the same mask — the sheet operator must change "
-        f"loss, not the structure (#677 tooth; measured envelope 0.05 MHz)")
+        f"loss, not the structure (#677 tooth; measured 2.71 MHz on the 2026-09-27 tree)")
 
 
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1292: MSL thru with a Leontovich strip, |S21| drop Rs0 1->5 ohm/sq is 1.97e-4 "
-           "against the 2e-4 bar since #1213 (2.49e-4 before)")
 def test_o3_loss_ladder_strictly_decreasing():
     """O3's loss ladder (see test_o3_loss_monotonic_dispersion_static_passive):
-    in-band mean |S21| falls by more than 2e-4 per step of Rs0 = 1e-6, 1, 5 ohm/sq.
-    Reuses the memoized settled runs."""
+    in-band mean |S21| strictly decreasing over Rs0 = 1e-6, 1, 5 ohm/sq.
+    Reuses the memoized settled runs.
+
+    RE-DERIVED 2026-09-27 (issue 1292): the fixed "drop > 2e-4 per step" threshold is
+    removed and the sign kept. On a whole-cell ladder of this board (plate 254 um above
+    the trace, 34 x 15 cells at h/3, held on whole cells at h/6 and h/9) the 1 -> 5 drop
+    converges to about 1.1e-4 on the trees before and after #1213 (1.172e-4 and
+    1.120e-4 at h/9; 2.322e-4 and 1.733e-4 at h/3), so the old bar was about twice the
+    converged physics. The absorbed power peaks at 2-3 ohm/sq, so "more Rs, more loss"
+    is not a law across 1 -> 5 and a step size is not the invariant.
+
+    The sign holds here because this fixture's loss peak lies above sqrt(1 x 5) = 2.24
+    ohm/sq (a parabola in ln Rs0 through 1, 2, 3 and 5 ohm/sq puts it at 2.4 ohm/sq), so
+    the 5 ohm/sq sheet absorbs more of the in-band power than the 1 ohm/sq one (0.0065
+    against 0.0058 on the current tree). That is a property of this fixture, not a law;
+    the values themselves are held by test_o3_mean_s21_drift_lock. Records:
+    bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R5).
+    """
     ladder = ["rs_tiny", "rs1", "rs5"]
     s21 = {t: float(np.mean(np.abs(np.asarray(_settled(t)[0].S)[1, 0, GATE]))) for t in ladder}
     for a, b in zip(ladder, ladder[1:]):
-        assert s21[a] - s21[b] > 2e-4, (
+        assert s21[a] > s21[b], (
             f"in-band |S21| not decreasing from Rs0[{a}] to Rs0[{b}]: "
-            f"{s21[a]:.6f} -> {s21[b]:.6f} (need > 2e-4 drop)")
+            f"{s21[a]:.6f} -> {s21[b]:.6f}")
+
+
+#: Drift lock (issue 1292): in-band mean |S21| of this fixture on the tree of
+#: 2026-09-27 (a55ec1e7 and 1d10ee45 give the same digits), VESSL CPU, JAX 0.6.2,
+#: float32. The tolerance is the largest difference measured between runs of the
+#: same tree under different run conditions, see test_o3_mean_s21_drift_lock.
+O3_MEAN_S21 = {"rs_tiny": 0.999206511, "rs1": 0.996431813, "rs5": 0.996240028}
+O3_DRIFT_TOL = 4e-7
+
+
+@pytest.mark.slow
+def test_o3_mean_s21_drift_lock():
+    """The O3 ladder's values, locked. A code change that moves the in-band mean |S21|
+    of this board at Rs0 = 1e-6, 1 or 5 ohm/sq by more than O3_DRIFT_TOL turns this red.
+
+    Tolerance: the largest difference measured between runs of this fixture on one tree
+    (1d10ee45, 2026-09-27) across run conditions, rounded up to one significant figure.
+    CPU at 8 and 4 threads and with XLA's CPU ISA capped at AVX2 gave the same values to
+    4e-10; OPENBLAS_CORETYPE=Haswell moved them by up to 3.2e-8; a CPU pytest run of
+    this file by up to 8.7e-8 (Rs0 = 1e-6). Two GPU runs, both on an RTX 2070 SUPER
+    (JAX 0.6.2, CUDA 12), differ from the CPU values by up to 3.66e-7 (Rs0 = 5): a
+    GPU-versus-CPU offset; the two GPU runs agree with each other to 5.5e-8. Hence 4e-7.
+    For scale: the tree before #1213 (cd237692) reads 0.999843 / 0.997062 / 0.996813,
+    6.3e-4 / 6.3e-4 / 5.7e-4 away. Records: bk-squared/rfx-archive
+    rfx/records/20260927-1292-locked-results/ (R5).
+    """
+    for tag, want in O3_MEAN_S21.items():
+        got = float(np.mean(np.abs(np.asarray(_settled(tag)[0].S)[1, 0, GATE])))
+        print(f"[O3 drift] {tag}: mean|S21|(gate) = {got:.9f} (locked {want:.9f}, "
+              f"diff {got - want:+.2e}, tol {O3_DRIFT_TOL:.1e})")
+        assert abs(got - want) <= O3_DRIFT_TOL, (
+            f"{tag}: in-band mean |S21| {got:.9f} moved {got - want:+.3e} from the locked "
+            f"{want:.9f} (tolerance {O3_DRIFT_TOL:.1e}, the measured run-to-run spread)")
 
 
 # --------------------------------------------------------------------------

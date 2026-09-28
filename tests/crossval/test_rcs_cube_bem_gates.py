@@ -179,9 +179,10 @@ def test_the_sigma_fill_and_the_pec_contract_are_not_the_same_object():
               SAME COUNT, DIFFERENT CELLS — the cube's faces sit 0.012 of a
               cell off the node lattice, so the two samplers pick different
               blocks of eighteen.
-      sphere  node-sampled 3023 cells, centre-sampled 3082 cells — 59 rim
-              cells apart, because a curved surface has no registration to
-              share.
+    Curved materials now use cell centres (#1138), so the sphere has the
+    same occupied cells on both paths. The operator fence is finite sigma
+    versus clamped PEC edges, tested in test_lattice_ownership_contract;
+    a geometric displacement must not be required to keep them distinct.
 
     The equality a reader might assume ("PEC is PEC") is therefore false, and
     that is the point: cv16 and this cube measure a conductivity fill, not the
@@ -221,7 +222,10 @@ def test_the_sigma_fill_and_the_pec_contract_are_not_the_same_object():
     _e2, s2 = rasterize(grid, [(sphere, 1.0, m.PEC_SIGMA)])
     filled_s = _np.asarray(s2) > 0
     owned_s = _np.asarray(pec_volume_cell_mask(sphere, centres), dtype=bool)
-    assert int(filled_s.sum()) != int(owned_s.sum()), (
-        "node- and centre-sampling now agree on a curved body; the cv16 / "
-        "rcs_scattering split between the audited sphere and the measured "
-        "sphere has closed and both should be re-read")
+    axes = [(np.arange(n) - pad + .5) * dx - c
+            for n, pad in zip(grid.shape, grid.axis_pads)]
+    expected = (axes[0][:, None, None]**2 + axes[1][None, :, None]**2
+                + axes[2][None, None, :]**2) <= sphere.radius**2
+    _np.testing.assert_array_equal(filled_s, expected)
+    _np.testing.assert_array_equal(owned_s, expected)
+    _np.testing.assert_array_equal(s2, _np.where(expected, m.PEC_SIGMA, 0.0))

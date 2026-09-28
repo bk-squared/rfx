@@ -1,0 +1,62 @@
+name: rfx-crossval-ladder
+description: "Monthly crossval-ladder lane: the full mesh-ladder cross-validation cases (-m crossval_ladder: the Sheen low-pass filter and the MSL notch filter against their openEMS tutorial records), at a pinned SHA cloned from the NFS checkout. A release needs this lane green."
+tags: [rfx, monthly, crossval-ladder]
+resources:
+  cluster: remilab-c0
+  # Any 24 GB card fits: both cases ran on an RTX 3090 (run 369367264767) and the whole gpu suite
+  # there peaked at 17.8 GB (provider sample, preallocation off). 8 GB cards are unmeasured.
+  preset: gpu-24gb
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHA: "origin/main"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  SRC=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory '*'
+  git -C "$SRC" fetch -q origin main
+  git -C "$SRC" cat-file -e "$RFX_SHA^{commit}" 2>/dev/null || git -C "$SRC" fetch -q origin "$RFX_SHA"
+  SHA=$(git -C "$SRC" rev-parse --short "$RFX_SHA")
+  OUT=/root/workspace/byungkwan-workspace/opt/rfx-vessl-tests/crossval_ladder_${SHA}_$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  WORK=/tmp/rfx-crossval-ladder-$SHA
+  rm -rf "$WORK"
+  git clone -q --no-checkout --shared "$SRC" "$WORK"
+  cd "$WORK"
+  git checkout -q --detach "$SHA"
+  echo "checked out $(git rev-parse HEAD): $(git ls-files | wc -l) tracked files"
+  # Python 3.11 + JAX 0.10.2 in a uv venv (PI 2026-09-25); see the a6000 lane. Everything below
+  # runs "$PY", never the image's python 3.10.
+  python -m pip install -q "uv==0.12.19"
+  uv venv -q --python 3.11.16 /tmp/venv-py311
+  PY=/tmp/venv-py311/bin/python
+  uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0"
+  # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
+  "$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; assert jax.__version__ == '0.10.2', jax.__version__; assert jax.default_backend() == 'gpu', jax.default_backend()"
+  uv pip freeze --python "$PY" > "$OUT/pip_freeze.txt"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('jax', jax.__version__, jax.devices(), 'rfx', rfx.__version__)"
+  IGN="--ignore=tests/crossval/test_meep_crossval.py --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py --ignore=tests/crossval/test_openems_crossval.py --ignore=tests/crossval/test_crossval_comprehensive.py"
+  echo "=== crossval_ladder selection ==="
+  # 9691 s on an A6000 (2026-09-24), 7938 s on an RTX 3090 (run 369367264767). 14400 s plus ~200 s
+  # of setup leaves ~100 min of queue inside the workflow's ~348 min poll (360 min job limit).
+  # Tee, so `vessl run logs` shows progress; the exit code goes through a file because a pipe hides it.
+  set +e
+  { timeout 14400 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m crossval_ladder $IGN; echo "$?" > "$OUT/rc.txt"; } 2>&1 | tee "$OUT/crossval_ladder.log"
+  RC=$(cat "$OUT/rc.txt")
+  set -e
+  # The pytest result line, not `tail -1`: VESSL traces the block, so the log ends in "+ echo <rc>".
+  LAST=$(grep -E ' in [0-9.]+s( \(|$| =)' "$OUT/crossval_ladder.log" | tail -1 || true)
+  echo "crossval_ladder rc=$RC"; echo "$LAST"
+  grep -E '^(FAILED|ERROR|XFAIL|XPASS)' "$OUT/crossval_ladder.log" | head -20 || true
+  printf 'sha=%s rc=%s\nlast=%s\n' "$SHA" "$RC" "$LAST" > "$OUT/summary.txt"
+  cat "$OUT/summary.txt"
+  echo "=== done: $OUT ==="
+  [ "$RC" -eq 0 ]

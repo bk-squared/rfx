@@ -886,6 +886,7 @@ def _graded_node_report(self, axis: int, coord: float):
     review F2, #568). ``k == 0`` and ``k >= d.size`` are matched by
     construction and never report.
     """
+    from rfx._grid_metric import nearest_node_index
     from rfx.nonuniform import node_positions_from_profile
 
     prof = (self._dx_profile, self._dy_profile, self._dz_profile)[axis]
@@ -895,8 +896,10 @@ def _graded_node_report(self, axis: int, coord: float):
     if d.size < 2:
         return None
     nodes = np.asarray(node_positions_from_profile(d), dtype=np.float64)
-    k = int(np.argmin(np.abs(nodes - float(coord))))
-    if k == 0 or k >= d.size:
+    # The node the port is stamped on: the one tie rule (#1295, #1342).
+    from rfx.geometry.rasterize_grid import _local_cell
+    k = nearest_node_index(nodes, coord, _local_cell(nodes, d, coord))
+    if k <= 0 or k >= d.size:
         return None
     d_below, d_above = float(d[k - 1]), float(d[k])
     small, large = sorted((d_below, d_above))

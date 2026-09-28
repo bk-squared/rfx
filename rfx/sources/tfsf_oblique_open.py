@@ -47,6 +47,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
 from rfx.sources.tfsf import TFSFState, update_tfsf_1d_h, update_tfsf_1d_e
 
@@ -61,7 +62,7 @@ class MethodBConfig(NamedTuple):
     """Static Method-B configuration (compile-time constants for JIT/scan).
 
     Box indices are plain Python ``int`` (compile-time slice bounds); projection
-    scalars are Python ``float`` baked at trace time; only ``b_cpml``/``c_cpml``
+    scalars are Python ``float`` baked at trace time; the CPML profiles
     and the 24 gather-table arrays are ``jnp`` (built once at init).
     """
     # --- static TFSF box indices (Python int -> compile-time slice bounds) ---
@@ -88,6 +89,8 @@ class MethodBConfig(NamedTuple):
     n_cpml: int
     b_cpml: jnp.ndarray
     c_cpml: jnp.ndarray
+    magnetic_lo: CPMLParams
+    magnetic_hi: CPMLParams
     src_idx: int
     src_amp: float
     src_t0: float
@@ -223,7 +226,6 @@ def init_tfsf_methodB(
     ct = float(np.cos(theta))
     st = float(np.sin(theta))
     omega = 2.0 * np.pi * f0
-    eta = float(np.sqrt(MU_0 / EPS_0))
 
     # --- TFSF box (prototype: xl,xh = off, nx-off ; yl,yh = off, ny-off) ---
     off = int(cpml_layers + tfsf_margin)
@@ -247,14 +249,14 @@ def init_tfsf_methodB(
     n_aux = int(d_max / d_aux) + 2 * n_src_pad + 4
     src_off = n_src_pad                  # 1D index mapping projection d = 0
 
-    # --- 1D CPML profile (verbatim from prototype / rfx init_tfsf, cell=d_aux) ---
-    rho = 1.0 - np.arange(n_cpml_1d, dtype=np.float64) / max(n_cpml_1d - 1, 1)
-    sigma_max = 0.8 * 4.0 / (eta * d_aux)
-    sigma_prof = sigma_max * rho ** 3
-    alpha_prof = 0.05 * (1.0 - rho)
-    denom = sigma_prof + alpha_prof
-    b_prof = np.exp(-(sigma_prof + alpha_prof) * dt / EPS_0)
-    c_prof = np.where(denom > 1e-30, sigma_prof * (b_prof - 1.0) / denom, 0.0)
+    # Keep the existing sigma_max = 0.8*4/(eta*d_aux), expressed through
+    # the shared grading law. H samples lie half a cell from the E nodes.
+    profile_options = dict(R_asymptotic=np.exp(-1.6 * n_cpml_1d))
+    electric = _cpml_profile(n_cpml_1d, dt, d_aux, **profile_options)
+    magnetic_lo = _cpml_profile(
+        n_cpml_1d, dt, d_aux, sample_offset=0.5, **profile_options)
+    magnetic_hi = _cpml_profile(
+        n_cpml_1d, dt, d_aux, sample_offset=-0.5, **profile_options)
 
     # --- source params: reproduce the prototype (t0=40·dt, w=12·dt, carrier f0) ---
     src_t0 = 40.0 * dt
@@ -295,8 +297,9 @@ def init_tfsf_methodB(
         d_aux=d_aux, dx_1d=d_aux, dt=float(dt),
         angle_deg=float(theta_deg), transverse_axis="y",
         n_cpml=n_cpml_1d,
-        b_cpml=jnp.asarray(b_prof, dtype=fdtype),
-        c_cpml=jnp.asarray(c_prof, dtype=fdtype),
+        b_cpml=jnp.asarray(electric.b, dtype=fdtype),
+        c_cpml=jnp.asarray(electric.c, dtype=fdtype),
+        magnetic_lo=magnetic_lo, magnetic_hi=magnetic_hi,
         src_idx=int(src_off),
         src_amp=float(amplitude),
         src_t0=float(src_t0),

@@ -44,6 +44,8 @@ def _run_subgridded_once(
     -------
     Result
     """
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the subgridded runner")
     from rfx.api import Result
     from rfx.subgridding.sbp_sat_3d import SubgridConfig3D
     from rfx.subgridding.jit_runner import (
@@ -142,6 +144,12 @@ def _run_subgridded_once(
         )
         if validation_mode == "production":
             validation_report.raise_if_unsupported()
+
+    # Every declared input this lane does not carry is refused here, in
+    # every validation mode, after the production refusals above and before
+    # the first step.
+    from rfx.runners._admission import admit
+    admit(sim, "run_subgridded", grid=grid_coarse)
 
     topology = ref.get("topology", "overlap_z_slab")
     if topology != "overlap_z_slab":
@@ -741,6 +749,8 @@ def run_subgridded_path(
     subgrid S-parameter configurations are rejected by the public request and
     validation layers before this runner is reached.
     """
+    from rfx.current_moments import refuse_current_moment_monitor
+    refuse_current_moment_monitor(sim, "subgridded lane")
     main_result = _run_subgridded_once(
         sim,
         grid_coarse,

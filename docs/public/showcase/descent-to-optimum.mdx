@@ -1,0 +1,65 @@
+---
+title: "Descend through FDTD to a closed-form optimum"
+description: "Adam, driven by gradients through the FDTD solve, finds the layer permittivities of a three-layer anti-reflection coating within 1.1 % of the transfer-matrix optimum."
+sidebar:
+  order: 4
+---
+
+A three-layer coating matches free space to a substrate of εr = 12 over
+8–12 GHz. Each layer is 5.5 mm (11 cells) thick; the three permittivities are
+the design variables and the objective is the band-mean power reflection. The
+transfer-matrix method gives the exact optimum, so the question is whether
+gradient descent through a time-domain solve lands there.
+
+<figure data-rfx="media">
+  <video data-rfx="loop" autoplay muted loop playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_site.png" aria-label="Layer permittivities and reflection of a three-layer anti-reflection coating over the Adam iterations">
+    <source src="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating.mp4" type="video/mp4" />
+    <a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating.mp4">Download the loop (MP4)</a>.
+  </video>
+</figure>
+
+<div data-rfx="tiles">
+  <div><strong>1.1 %</strong> <span>largest layer-permittivity gap to the optimum</span></div>
+  <div><strong>0.1 %</strong> <span>closed-form reflection above the optimum</span></div>
+  <div><strong>60</strong> <span>Adam steps</span></div>
+</div>
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_site.png" loading="lazy" alt="Reflection of the coating from rfx FDTD and the transfer matrix, the three layer permittivities over the Adam iterations, and the band-mean reflection against the transfer-matrix optimum" />
+</figure>
+
+## What happened
+
+From the geometric-ladder start (1.861 / 3.464 / 6.447) the layer permittivities
+settle at 1.922 / 4.670 / 4.707 against the optimum 1.943 / 4.652 / 4.720,
+although the closed-form optimizer started from a different point. Evaluated
+with the transfer matrix, the design's band-mean |R|² is 0.03434 against the
+optimum's 0.03430, −14.6 dB, 3.0 dB below the start. FDTD and
+transfer-matrix |R|² of the final design differ by at most 1.5×10⁻³ over the 15
+frequencies the cost uses (8.20–11.78 GHz).
+
+## How the gradient was checked
+
+Against central differences at the start to 5.5×10⁻⁴, and against a 1.5× longer
+record to 4.8×10⁻⁴.
+
+<p data-rfx="note">A one-dimensional stack at normal incidence; it shows the optimizer and the gradient work together, not the accuracy of a 3-D radome.</p>
+
+## Downloads
+
+<ul data-rfx="downloads">
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/iterations.npz">iterations.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/tmm_curves.npz">tmm_curves.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/result.json">result.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_social.mp4">ar_coating_social.mp4</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_social.png">ar_coating_social.png</a></li>
+</ul>
+
+## Run it
+
+```bash
+python examples/inverse_design/multilayer_ar_coating.py
+```
+
+CPU, minutes; the showcase script `scripts/showcase/ar_coating.py` records every
+iterate.

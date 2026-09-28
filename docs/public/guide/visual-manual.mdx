@@ -1,0 +1,114 @@
+---
+title: "The visual manual"
+description: "Read electromagnetic simulations through their geometry, field evolution and measured response."
+---
+
+A useful simulation has three views: **the model you built, the fields it produces,
+and the quantity you want to measure**. Keep those views together as you learn rfx.
+
+## 1. Build the physical model
+
+Choose a structure, material and excitation. Open radiation problems use absorbing
+boundaries; a closed conducting cavity uses reflecting metal walls. The boundary
+changes the physical problem, not just how a plot ends.
+
+Begin with [Quick Start](/rfx/guide/quickstart/), [Core Concepts](/rfx/guide/concepts/)
+and [Materials & geometry](/rfx/guide/materials-geometry/). Run preflight before the
+simulation and inspect the realized mesh: a drawn dimension need not land exactly
+on a grid plane.
+
+## 2. Watch the fields
+
+Read the field component, axes and color scale before reading the motion. A field
+slice shows one component on one plane; it is not the entire three-dimensional
+solution. Keep the color scale fixed when comparing times or designs.
+
+| Animation type | What moves | What it can explain |
+|---|---|---|
+| Time-domain snapshots | Recorded fields at successive simulation times | Propagation, reflection, transient decay and interference |
+| Phasor replay | The phase of a single-frequency complex field | Standing-wave structure and relative phase; it does not show pulse arrival |
+| Design history | The geometry or material and response at each optimization step | How a design changes; interpolated frames do not add simulation samples |
+| Stored parameter sweep | A selection of precomputed parameter values | Trends across sampled settings; the browser does not rerun FDTD |
+
+All new video players start on a still image. Press play when you want motion;
+pause or use the timeline to compare frames. The captions describe the important
+features without requiring animation.
+
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/current-visuals/boundary-reflection.png" aria-label="Actual electric-field snapshots comparing absorbing and reflecting boundaries">
+    <source src="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4">Download the boundary comparison</a>.
+  </video>
+  <figcaption>The source and probe stay in the same positions. Absorbing boundaries let the pulse leave; metal walls reflect it and the probe continues to see returning fields. A current-run, single-mesh 2D TMz teaching example. <a href="/rfx/gallery/boundary-reflection/">Read the model, data and limits →</a></figcaption>
+</figure>
+
+## 3. Measure the quantity you need
+
+A bright field is not by itself a power, efficiency or gain measurement.
+Use [flux monitors](/rfx/guide/probes-sparams/) for reflected/transmitted power,
+the [matching port calculator](/rfx/api/sources-ports/) for S-parameters,
+and [near-to-far-field analysis](/rfx/guide/farfield-rcs/) for radiation or scattering.
+Keep the reference run, normalization and measurement planes with the result.
+
+## Waves and materials
+
+Follow a pulse through a [dielectric interface](/rfx/gallery/dielectric-interface/)
+or watch interference in a [closed cavity](/rfx/gallery/cavity-standing-wave/).
+Both provide actual time-domain snapshots and downloadable arrays generated from
+their public source. They teach field behavior on one mesh, not numerical accuracy.
+
+Then read the [dielectric slab](/rfx/gallery/multilayer_fresnel/): see how the two
+interfaces create reflection and transmission, then run the
+[flux-monitor tutorial](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/slab_rt_flux_monitor.py).
+The linked legacy gallery records an older calculation; use its stated version
+when reading the comparison.
+
+**Try changing:** slab permittivity or thickness, one at a time. Plot the full
+frequency response and compare with a lossless slab's energy balance or its
+analytic reference, using the same model and reference planes.
+
+## Guided waves and filters
+
+Compare the [empty rectangular guide](/rfx/gallery/waveguide_wr90/) with the
+[dielectric taper](/rfx/gallery/waveguide-taper/). The first introduces a guided
+mode; the second adds a material transition and a reflected-wave objective.
+The [microstrip notch](/rfx/gallery/microstrip-notch/) makes a compact next step:
+one length controls a resonant branch.
+
+**Try changing:** the taper's material profile or the stub length. Keep the port
+definition and normalization fixed so the curves answer the same question.
+
+## Radiation and scattering
+
+The [beam-steering film](/rfx/gallery/beam-steering/) connects a dielectric cover
+to a far-field pattern. Then use the runnable
+[antenna pattern example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/antenna_farfield_pattern.py)
+or [scattering example](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/rcs_scattering.py)
+from the source checkout.
+
+**Try changing:** the source orientation before adding structural complexity.
+Check the collection surface, clearance and incident-reference subtraction.
+Directivity, realized gain and efficiency are different quantities.
+
+## Differentiable design
+
+Read each optimization frame from left to right: parameter field, measured
+response, then sensitivity. A derivative refers to a particular parameterization
+and objective. The [beam-steering film](/rfx/gallery/beam-steering/) differentiates
+latent variables; the [taper film](/rfx/gallery/waveguide-taper/) displays section
+permittivity sensitivities.
+
+Before using a gradient to support a design claim, check both finite-difference
+agreement and stability with a longer time record. See
+[Gradient behavior](/rfx/guide/gradient-behavior/) and the
+[inverse-design guide](/rfx/guide/inverse-design/).
+
+## 4. Make the result reproducible
+
+Record the source revision, inputs, realized geometry and mesh, preflight output,
+measurement definition, and raw arrays. Put the plot, movie and response curve
+under the same model identity. If two panels came from different runs, say so.
+
+The [Examples hub](/rfx/examples/) leads to runnable scripts. The
+[API reference](/rfx/api/) describes the calls; [Support Boundaries](/rfx/api/support-boundaries/)
+and [Validation](/rfx/validation/) explain the scope of a result.

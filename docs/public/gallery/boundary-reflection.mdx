@@ -1,0 +1,93 @@
+---
+title: "Let a pulse leave, or reflect it back"
+description: "Actual field snapshots compare a pulsed open CPML domain with a closed PEC box, using the same source and a shared color scale."
+sidebar:
+  order: 31
+---
+
+**Current-run teaching example · actual FDTD snapshots · 2D TMz · single mesh**
+
+An absorbing boundary represents an open environment. A conducting wall sends
+waves back into the model. Start the movie and watch the same pulse in both:
+the open box becomes quiet while reflections keep crossing the closed box.
+
+<video controls playsinline preload="none" poster="/rfx/gallery/assets/current-visuals/boundary-reflection.png" aria-label="A pulsed electric field leaves an open CPML domain on the left and reflects inside a PEC box on the right" style="width:100%;height:auto;">
+  <source src="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4" type="video/mp4" />
+  <a href="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4">Download the field movie</a>
+</video>
+
+The lower plot is the electric field at the green probe. The vertical cursor
+marks the exact simulation time of the frame above. It follows stored field
+samples; playback does not run a simulation in your browser.
+
+## Read the model
+
+| Model detail | Value |
+|---|---|
+| Cross-section | 80 × 60 mm vacuum domain |
+| Solver | Uniform Yee, 2D TMz, 1 mm cells |
+| Source | Differentiated Gaussian current pulse at (20, 30) mm; `f0=6 GHz`, `bandwidth=0.8` |
+| Probe | `Ez` at (55, 30) mm |
+| Left boundary | CPML on the outer edges, 16 absorber layers outside the displayed domain |
+| Right boundary | PEC on the outer edges |
+| Recording | 640 steps, one actual snapshot every 4 steps |
+
+The colors show signed `Ez / Eref`, with one fixed linear scale for both models
+and all frames. `Eref` is the largest absolute recorded interior field outside
+a 4 mm radius around the current source. Source pixels can saturate; the raw
+values remain in the download. This is a 2D field cross-section, not a finite
+3D antenna or cavity.
+
+## Run this example
+
+Download the [complete generator](/rfx/gallery/assets/current-visuals/field_movies.py).
+It uses `Simulation`, `SnapshotSpec`, and the physical coordinates and frame
+times in `Result.snapshot_axes`. It also generates the
+[dielectric interface](/rfx/gallery/dielectric-interface/) and
+[cavity standing wave](/rfx/gallery/cavity-standing-wave/).
+
+For the solver version used here:
+
+```bash
+git clone https://github.com/bk-squared/rfx.git
+cd rfx
+git checkout a9054338616b91bb1364699882c2530fa29a0048
+python -m pip install -e .
+curl -fLO https://remilab.ai/rfx/gallery/assets/current-visuals/field_movies.py
+# Install ffmpeg using your operating system's package manager.
+JAX_PLATFORMS=cpu PYTHONPATH=. python field_movies.py \
+  --case boundary-reflection --output field-movies
+```
+
+The local output contains the full field arrays, probe CSV, poster, MP4 and
+manifest. `--render-only` redraws these saved arrays without solving again.
+The script prints preflight findings before each run and refuses preflight
+errors. These two vacuum models returned no preflight findings.
+
+## Download and explore
+
+- [Probe CSV, in seconds and V/m](/rfx/gallery/assets/current-visuals/boundary-reflection.csv)
+- [Selected field arrays and all probe samples, NPZ](/rfx/gallery/assets/current-visuals/boundary-reflection.npz)
+- [Model, normalization, preflight and checksums, JSON](/rfx/gallery/assets/current-visuals/boundary-reflection.json)
+
+The small NPZ contains every 16th movie frame at full spatial resolution,
+with its actual coordinate arrays, step numbers and time stamps. Re-running
+the generator retains every movie frame locally. Load with
+`numpy.load(path, allow_pickle=False)`; fields end in `_ez_V_per_m`, coordinates
+in `_x_m`/`_y_m`, and times in `_frame_times_s`.
+
+Try moving the source or changing the domain size, then rerun. Compare when the
+first reflected wave reaches the same probe. CPML is a finite numerical
+absorber and can produce residual reflections; this example does not measure
+its reflection coefficient or an absorption percentage.
+
+## Evidence and limits
+
+Generated on the CPU with RFX solver source `a9054338`. The manifest records
+the full source commit, generator hash and environment. The checks confirm
+finite fields, recorded frame steps and realized display coordinates. No mesh
+refinement or accuracy convergence was performed, and no S-parameter, decay
+rate, or performance claim follows from the movie.
+
+Continue with [boundary choices](/rfx/api/support-boundaries/) or the
+[API reference](/rfx/api/).

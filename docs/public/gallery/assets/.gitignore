@@ -27,3 +27,6 @@
 !**/*.s2p
 !**/*.s3p
 !**/*.s4p
+
+# Reviewed public clips, checksum-pinned in the accompanying media-catalog.json.
+!showcase-20260927/*.mp4

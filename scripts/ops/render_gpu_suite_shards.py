@@ -48,17 +48,19 @@ run: |-
   OUT=/root/workspace/claude-workspace/rfx/runs/gpu-suite/{stamp}/shard-{i}
   mkdir -p "$OUT"
   echo "shard {i}/{k}  main@{sha}" | tee "$OUT/meta.txt"
-  # JAX 0.6.2, the version CI's Python 3.10 lane resolves (PI 2026-09-24). The image's own
-  # 0.4.33 ships an XLA whose fusion cost model aborts on
-  # CHECK_LE(common_utilization, producer_output_utilization); forward(distributed=True) hit it (#1252).
-  python -m pip install -q "jax[cuda12]==0.6.2"
-  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  # Python 3.11 + JAX 0.10.2 in a uv venv (PI 2026-09-25); see scripts/vessl_validation_lane_a6000.yaml.
+  # Everything below runs "$PY", never the image's python 3.10 (JAX 0.4.33, #1252).
+  python -m pip install -q "uv==0.12.19"
+  uv venv -q --python 3.11.16 /tmp/venv-py311
+  PY=/tmp/venv-py311/bin/python
+  uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0"
   # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
-  python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
+  "$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; assert jax.__version__ == '0.10.2', jax.__version__; assert jax.default_backend() == 'gpu', jax.default_backend()"
+  uv pip freeze --python "$PY" > "$OUT/pip_freeze.txt"
   export PYTHONPATH="$ROOT"
-  python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices())" | tee -a "$OUT/meta.txt"
+  "$PY" -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices())" | tee -a "$OUT/meta.txt"
   set +e
-  timeout 10800 python -m pytest -o addopts="" -m gpu -q -ra -p no:cacheprovider \\
+  timeout 10800 "$PY" -m pytest -o addopts="" -m gpu -q -ra -p no:cacheprovider \\
       --junitxml "$OUT/junit.xml" \\
       {files} \\
       > "$OUT/pytest.log" 2>&1

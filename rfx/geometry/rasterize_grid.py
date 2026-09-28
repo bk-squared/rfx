@@ -15,7 +15,7 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays
-from rfx.geometry.csg import declared_bounds
+from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
     _spec_from_pole_masks,
@@ -319,6 +319,22 @@ def centres_from_nonuniform_grid(grid, coords: GridCoords | None = None) -> Grid
     return cell_centres_from_nodes(coords, cell_sizes_from_nonuniform_grid(grid))
 
 
+def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=None):
+    """Sample curved material volumes where their cell values live (#1138).
+
+    A node-symmetric Sphere/Cylinder stored as cell epsilon or sigma shifts
+    the material by half a cell. Use the supplied physical centres (already
+    centred on the fine subgrid), without changing Shape.mask's node API or
+    the separate PEC volume/sheet/wire classifier. Other shapes retain their
+    existing rules, including custom uniform shapes that implement only mask.
+    """
+    if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
+        return shape.mask_on_coords(centres.x, centres.y, centres.z)
+    if grid is not None:
+        return shape.mask(grid)
+    return shape.mask_on_coords(coords.x, coords.y, coords.z)
+
+
 def _local_cell(nodes, d, pos: float) -> float:
     """Size of the cell containing (or nearest to) physical position ``pos``."""
     x = np.asarray(nodes, dtype=np.float64)
@@ -351,9 +367,10 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
             f"[{x[0]:.6g}, {x[-1]:.6g}] m, so it would be silently clamped "
             "onto an end plane. Move the declaration inside the domain or "
             "enlarge the domain.")
-    if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= _REL_TOL * d_local:
-        k = k - 1                  # exact half-cell tie resolves LOWER
-    return k
+    # An exact half-cell tie resolves LOWER. The one tie rule, shared with
+    # every point lookup (#1295, #1342).
+    from rfx._grid_metric import nearest_node_index
+    return nearest_node_index(x, pos, d_local)
 
 
 def _box_axis_volume(centres, lo: float, hi: float):
@@ -460,6 +477,10 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     """
     from rfx.boundaries.pec import SheetSpec
     from rfx.materials.thin_conductor import sheet_bounds
+
+    if isinstance(shape, OrientedBox):
+        raise NotImplementedError(
+            "OrientedBox is a volume; axis-aligned sheet conversion is not implemented")
 
     if _is_traced_coords(coords):
         raise ValueError(
@@ -655,6 +676,41 @@ def interior_lattice_mask(mask, grid, *, cell_axes=(False, False, False)):
     return out
 
 
+def wire_vertex_nodes(points, node_axes, cell_sizes):
+    """Node of each PolylineWire vertex, and the smallest cell at them.
+
+    Each coordinate goes to the nearest node, an exact tie to the FIRST
+    (lower) one (``argmin``, §1.4). Point features and sheets take the lower
+    node too, and also treat distances that agree to 1e-9 of the cell as a
+    tie (``nearest_node_index``); the two differ only inside that band. The
+    preflight's half-node check reads this function so it compares against
+    the node the wire really takes (#1342).
+    """
+    nodes = []
+    d_min = None
+    for p in points:
+        idx = []
+        for t in range(3):
+            x = np.asarray(node_axes[t], dtype=np.float64)
+            k = int(np.argmin(np.abs(x - float(p[t]))))
+            idx.append(k)
+            d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
+            d_min = d_here if d_min is None else min(d_min, d_here)
+        nodes.append(tuple(idx))
+    return nodes, d_min
+
+
+def wire_filament_nodes(points, radius, node_axes, cell_sizes):
+    """PolylineWire §1.4: the nearest lattice node of each vertex, when the
+    wire is a filament; ``None`` when it is a volume. A radius at least half
+    the smallest local cell at the vertices' nearest nodes is a volume.
+    ``classify_pec_entry`` realizes a wire by this rule, and lane admission
+    asks it which kind of conductor a declared wire becomes. The vertex snap
+    itself is ``wire_vertex_nodes``."""
+    nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes)
+    return nodes if float(radius) < 0.5 * d_min else None
+
+
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                        cell_sizes=None, *, name=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
@@ -702,18 +758,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # below that it is a filament on the axis-aligned lattice path
         # joining the nearest nodes of consecutive vertices.
-        nodes = []
-        d_min = None
-        for p in pts:
-            idx = []
-            for t in range(3):
-                x = np.asarray(node_axes[t], dtype=np.float64)
-                k = int(np.argmin(np.abs(x - float(p[t]))))
-                idx.append(k)
-                d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
-                d_min = d_here if d_min is None else min(d_min, d_here)
-            nodes.append(tuple(idx))
-        if float(radius) < 0.5 * d_min:
+        nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes)
+        if nodes is not None:
             edges = wire_path_edge_masks(nodes, coords.shape)
             return None, None, WireSpec(edges=edges, name=name)
     elif not traced:
@@ -825,7 +871,7 @@ def rasterize_geometry(
 
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
-        mask = entry.shape.mask_on_coords(coords.x, coords.y, coords.z)
+        mask = _material_cell_mask(entry.shape, coords, centres)
 
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
@@ -862,7 +908,7 @@ def rasterize_geometry(
         pole_mask = mask
         if pole_geometry_entries is not None and (mat.debye_poles or mat.lorentz_poles):
             declared = pole_geometry_entries[entry_index].shape
-            pole_mask = declared.mask_on_coords(coords.x, coords.y, coords.z)
+            pole_mask = _material_cell_mask(declared, coords, centres)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
                 pole_mask = pec_volume_cell_mask(declared, centres)
 

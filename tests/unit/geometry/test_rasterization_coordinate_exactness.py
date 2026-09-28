@@ -40,7 +40,7 @@ from rfx.geometry import csg as csg_mod
 from rfx.geometry import curved as curved_mod
 from rfx.geometry import mesh_import as mesh_import_mod
 from rfx.geometry import via as via_mod
-from rfx.geometry.csg import Box, Cylinder, PolylineWire, Sphere, _grid_coords
+from rfx.geometry.csg import Box, Cylinder, OrientedBox, PolylineWire, Sphere, _grid_coords
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.rasterize_grid import (
     _uniform_axis_nodes,
@@ -89,6 +89,9 @@ def _mesh_shape():
 # Node-aligned faces are the point — they are the case the f32 coordinates
 # realized wrongly.
 _SHAPE_CASES = {
+    "oriented_box_three_axis": lambda: OrientedBox(
+        (1.5e-3, 1.5e-3, 1.0e-3), (1.3e-3, 0.9e-3, 0.7e-3),
+        np.array([[1., 2., 2.], [2., 1., -2.], [-2., 2., -1.]]) / 3),
     "box_volume_node_aligned": lambda: Box((0.5e-3, 0.5e-3, 0.4e-3),
                                            (2.5e-3, 2.5e-3, 1.2e-3)),
     # One cell thick on z. The name said "sheet" until #931; a one-cell PEC
@@ -144,11 +147,20 @@ def _census():
 
 def test_shape_class_census_is_covered():
     """A new shape class must be added to the parametrized cases."""
-    covered = {"Box", "Cylinder", "Sphere", "PolylineWire", "Via",
+    covered = {"Box", "OrientedBox", "Cylinder", "Sphere", "PolylineWire", "Via",
                "CurvedPatch", "MeshShape"}
     assert _census() == covered, (
         "shape-class census changed; add the new class to _SHAPE_CASES in "
         "this file so the exactness contract covers it")
+
+
+def test_oriented_box_census_fixture_exercises_rotation():
+    shape = _shape_for("oriented_box_three_axis")
+    grid = _grid()
+    rotated = np.asarray(shape.mask(grid))
+    unrotated = np.asarray(OrientedBox(shape.center, shape.size).mask(grid))
+    assert rotated.any(), "the rotated fixture must occupy nodes"
+    assert not np.array_equal(rotated, unrotated), "the fixture must exercise rotation"
 
 
 def test_the_one_uniform_node_formula_is_exact_f64():

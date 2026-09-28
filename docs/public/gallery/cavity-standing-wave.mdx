@@ -1,0 +1,76 @@
+---
+title: "A pulse leaves a standing wave"
+description: "Watch real time-domain electric-field samples ring inside a closed rectangular PEC cavity after the drive ends."
+sidebar:
+  order: 32
+---
+
+**Current-run teaching example · actual FDTD snapshots · 2D TMz · single mesh**
+
+A closed conducting boundary traps the field. A carrier-centered pulse excites
+the rectangle; after the drive becomes quiet, its field pattern continues to
+change sign with nearly fixed nodal lines. Watch the entire domain, then follow
+the green probe in the trace below.
+
+<video controls playsinline preload="none" poster="/rfx/gallery/assets/current-visuals/cavity-standing-wave.png" aria-label="The electric field changes sign in a closed rectangular PEC cavity while the standing-wave pattern remains in place" style="width:100%;height:auto;">
+  <source src="/rfx/gallery/assets/current-visuals/cavity-standing-wave.mp4" type="video/mp4" />
+  <a href="/rfx/gallery/assets/current-visuals/cavity-standing-wave.mp4">Download the cavity movie</a>
+</video>
+
+## From geometry to field
+
+| Model detail | Value |
+|---|---|
+| Cross-section | 80 × 60 mm vacuum rectangle with PEC walls |
+| Solver | Uniform Yee, 2D TMz, 1 mm cells |
+| Excitation | `ModulatedGaussian` current source at the center, bandwidth 0.35 |
+| Carrier choice | Analytic lowest TMz cavity mode: `c/2 × sqrt(1/a² + 1/b²)` |
+| Probe | `Ez` at (55, 30) mm |
+| Recording | 1,600 steps, one actual snapshot every 8 steps |
+
+The analytic expression chooses the source carrier; it is **not a resonance
+frequency extracted from this run**. A point source may excite other modes.
+This movie does not prove a pure mode or measure a frequency error.
+
+The color scale is fixed through the movie: signed `Ez / Eref`, where `Eref`
+is the largest absolute recorded field outside a 4 mm source neighborhood.
+Source pixels can saturate. Coordinates and frame times come directly from
+`Result.snapshot_axes`; these are time-stepped fields, not a harmonic phasor
+animated afterward.
+
+## Reproduce and change it
+
+Use the pinned solver installation and generator download in
+[the boundary example](/rfx/gallery/boundary-reflection/#run-this-example), then:
+
+```bash
+JAX_PLATFORMS=cpu PYTHONPATH=. python field_movies.py \
+  --case cavity-standing-wave --output field-movies
+```
+
+Change the rectangle's aspect ratio to change its field pattern and source
+carrier together. Moving the source away from the center changes which modes
+it excites. Recalculate the model after either edit.
+
+For a follow-up calculation that actually extracts modal frequencies, read
+[the resonance tutorial](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/resonance_harminv.py). Do not estimate a physical Q from
+the finite window here: vacuum and PEC are lossless, so this is not a lossy
+ring-down measurement.
+
+## Data and scope
+
+- [Probe CSV, seconds and V/m](/rfx/gallery/assets/current-visuals/cavity-standing-wave.csv)
+- [Selected field frames and all probe samples, NPZ](/rfx/gallery/assets/current-visuals/cavity-standing-wave.npz)
+- [Preflight, source settings, normalization and checksums, JSON](/rfx/gallery/assets/current-visuals/cavity-standing-wave.json)
+- [Complete runnable generator](/rfx/gallery/assets/current-visuals/field_movies.py)
+
+The download retains every 16th actual movie frame with its native spatial
+coordinates and time stamps. Local regeneration retains all frames. Preflight
+reported no findings for this vacuum model. Solver source: `a9054338`; full SHA,
+generator hash and CPU environment are in the manifest.
+
+This is an introductory 2D illustration with one mesh and one record length.
+Finite output and correct snapshot axes were checked. Mesh convergence, modal
+frequency accuracy and physical Q were not measured. For the distinction
+between open and closed boundaries, compare
+[the pulse reflection example](/rfx/gallery/boundary-reflection/).

@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "case": "dielectric-interface",
+  "title": "Watch a pulse meet a dielectric interface",
+  "media_kind": "time-domain-fdtd-snapshots",
+  "core_source_commit": "a9054338616b91bb1364699882c2530fa29a0048",
+  "generator": "examples/visualization/field_movies.py",
+  "generator_sha256": "6fb84e6c675540b332e9f65ba367e8c21295957c776741fe8058953df8a2c293",
+  "environment": {
+    "python": "3.10.12",
+    "jax": "0.6.2",
+    "numpy": "1.26.4",
+    "backend": "cpu"
+  },
+  "evidence_status": "qualitative single-mesh teaching example",
+  "limits": [
+    "No mesh-refinement or run-length accuracy claim",
+    "No measured reflection, transmission, absorption, resonance frequency, or Q",
+    "2D TMz model; this is not a finite-height 3D device",
+    "CPML is a finite numerical absorber and may reflect residual fields"
+  ],
+  "runs": [
+    {
+      "variant": "vacuum",
+      "boundary": "cpml",
+      "domain_m": [
+        0.08,
+        0.06,
+        0.001
+      ],
+      "realized_display_span_m": {
+        "x": [
+          0.0,
+          0.08
+        ],
+        "y": [
+          0.0,
+          0.06
+        ]
+      },
+      "mode": "2d_tmz",
+      "dx_m": 0.001,
+      "dt_s": 2.335067793382187e-12,
+      "allocated_grid_shape": [
+        113,
+        93,
+        1
+      ],
+      "n_steps": 640,
+      "snapshot_interval": 4,
+      "source": {
+        "position_m": [
+          0.02,
+          0.03,
+          0.0
+        ],
+        "component": "ez",
+        "f0_Hz": 6000000000.0,
+        "bandwidth": 0.8,
+        "amplitude_A": 1e-08,
+        "amplitude_kind": "current",
+        "waveform": "GaussianPulse",
+        "cutoff": 3.0
+      },
+      "probe_position_m": [
+        0.055,
+        0.03,
+        0.0
+      ],
+      "snapshot_slice_coord_m": 0.0005,
+      "snapshot_dims": [
+        "frame",
+        "x",
+        "y"
+      ],
+      "preflight_stdout": "  [PREFLIGHT] All checks passed.\n",
+      "preflight_codes": []
+    },
+    {
+      "variant": "dielectric",
+      "boundary": "cpml",
+      "domain_m": [
+        0.08,
+        0.06,
+        0.001
+      ],
+      "realized_display_span_m": {
+        "x": [
+          0.0,
+          0.08
+        ],
+        "y": [
+          0.0,
+          0.06
+        ]
+      },
+      "mode": "2d_tmz",
+      "dx_m": 0.001,
+      "dt_s": 2.335067793382187e-12,
+      "allocated_grid_shape": [
+        113,
+        93,
+        1
+      ],
+      "n_steps": 640,
+      "snapshot_interval": 4,
+      "source": {
+        "position_m": [
+          0.02,
+          0.03,
+          0.0
+        ],
+        "component": "ez",
+        "f0_Hz": 6000000000.0,
+        "bandwidth": 0.8,
+        "amplitude_A": 1e-08,
+        "amplitude_kind": "current",
+        "waveform": "GaussianPulse",
+        "cutoff": 3.0
+      },
+      "probe_position_m": [
+        0.055,
+        0.03,
+        0.0
+      ],
+      "snapshot_slice_coord_m": 0.0005,
+      "snapshot_dims": [
+        "frame",
+        "x",
+        "y"
+      ],
+      "preflight_stdout": "  [PREFLIGHT] dielectric 'dielectric' on x: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'dielectric' on y: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] dielectric 'dielectric' on z: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.\n  [PREFLIGHT] Material 'dielectric' (geometry entry #0, Box) extends into CPML region along x-axis: bbox hi face at 1m is 920mm past the x-hi absorber boundary at 80mm. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).\n  [PREFLIGHT] all dielectric(s) ['dielectric'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)\n",
+      "preflight_codes": [
+        "mesh_resolution",
+        "mesh_resolution",
+        "mesh_resolution",
+        "geometry_in_absorber",
+        "lossless_q"
+      ]
+    }
+  ],
+  "display": {
+    "component": "ez",
+    "normalization_V_per_m": 0.11038941890001297,
+    "scale": "linear -1 to +1 shared across all frames and variants",
+    "normalization_excludes_source_radius_m": 0.004,
+    "source_pixels_may_saturate": true,
+    "fps": 15,
+    "frame_count": 160,
+    "poster_frame_index": 32,
+    "poster_time_s": 3.082289487264487e-10,
+    "frame_interpolation": false
+  },
+  "artifacts": [
+    {
+      "file": "dielectric-interface.mp4",
+      "sha256": "15aaab8cedfb31109e335f6c275d18ed1b08f9253c70b522afd5056f61366561",
+      "bytes": 311529
+    },
+    {
+      "file": "dielectric-interface.png",
+      "sha256": "9a8f93163764a3a7a6085e058a1855199e217ad9127222f9eb6fbd885780a5da",
+      "bytes": 127274
+    },
+    {
+      "file": "dielectric-interface.csv",
+      "sha256": "07acd9a7fa51bf03124dbc3ff6af167f7f7eba19701cb5ca14bc35dd6bd33a53",
+      "bytes": 64175
+    },
+    {
+      "file": "dielectric-interface.npz",
+      "sha256": "7dfdf1b83ebe1a29780f77f720a9278fd936d8e1de85bf933bda330f66b8710c",
+      "bytes": 241280
+    }
+  ],
+  "download": {
+    "snapshot_frame_stride": 16,
+    "description": "Every 16th actual movie frame, full spatial resolution; all probe samples",
+    "full_arrays": "Regenerate with the script; full arrays remain in --output"
+  }
+}
