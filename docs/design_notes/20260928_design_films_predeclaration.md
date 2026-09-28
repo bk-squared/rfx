@@ -298,6 +298,16 @@ compared with this script's path (`checkpoint_segments`, `compute_far_field_jax`
   record and refuses to write `result.json` without it. If the comparison fails, the beam record
   is withdrawn as a result: it is kept, marked as failed, and not rendered for the pages.
 
+- *Amendment 3b (the lane leader, 2026-09-28, before any other comparison job was submitted).*
+  The comparison tests the far-field call, not the module's per-step remat memory. The H200 job
+  369367265802, still queued, was terminated after its log was saved. Both paths now use the same
+  forward with the same `checkpoint_segments` (35). Path A is the module's far-field call:
+  `compute_far_field` on the forward's own box, the numpy transform on an eager call and the JAX
+  one under a gradient, `value_and_grad` not jitted. Path B is this script's: `compute_far_field_jax`
+  on a box built from the declaration, jitted. Same start cover, full record and thresholds
+  (pattern and gradient, each ≤ 1e-4). The job runs on a 24 GB-class card or an A6000. Finalize
+  waits for it as before.
+
 **A3.3 Float32 matmuls without TF32 for the beam.** Every beam stage sets
 `jax_default_matmul_precision = "highest"`. Measured on the superseded run, same commit:
 - The same float32 FD ladder scattered on the RTX A6000, by up to 0.36 relative, but was clean on

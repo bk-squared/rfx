@@ -17,7 +17,7 @@ Rules: ``docs/design_notes/20260928_design_films_predeclaration.md``, section
 
     python scripts/showcase/design_beam.py --stage timing    --out DIR
     python scripts/showcase/design_beam.py --stage main      --out DIR
-    python scripts/showcase/design_beam.py --stage equivalence --out DIR2   # its own job (63 GB)
+    python scripts/showcase/design_beam.py --stage equivalence --out DIR2   # its own job (A3a, A3b)
     JAX_ENABLE_X64=1 python scripts/showcase/design_beam.py --stage x64fd --out DIR  # if DIR/x64_needed.json
     python scripts/showcase/design_beam.py --stage resolve   --out DIR
     python scripts/showcase/design_beam.py --stage keyframes --out DIR
@@ -144,6 +144,13 @@ class BeamModel:
         return _pattern_fn(self.mod, self.sim, self.grid, self.start, n_steps,
                            self.precision, segments)
 
+    def module_far_field_pattern_fn(self, n_steps: int, segments: int):
+        """The module's far-field call (``compute_far_field`` on the forward's own
+        box) with the same forward and ``checkpoint_segments`` as ``pattern_fn``
+        (Amendment 3b)."""
+        return _pattern_fn(self.mod, self.sim, self.grid, self.start, n_steps, self.precision,
+                           segments, far_field="module")
+
     def module_pattern_fn(self, n_steps: int):
         """The module's own ``make_pattern_fn`` (float32, per-step checkpoint)."""
         p, _ = self.mod.make_pattern_fn(self.sim, self.grid, self.plate, self.lo, self.hi, n_steps)
@@ -239,7 +246,7 @@ def nested_block(coarse, refine: int) -> np.ndarray:
     return b
 
 
-def _pattern_fn(mod, sim, grid, start, n_steps, precision, segments):
+def _pattern_fn(mod, sim, grid, start, n_steps, precision, segments, far_field: str = "jax"):
     """``mod.make_pattern_fn`` with a dtype, ``checkpoint_segments`` and the JAX
     far-field transform on a box built from the declaration.
 
@@ -276,7 +283,11 @@ def _pattern_fn(mod, sim, grid, start, n_steps, precision, segments):
                           skip_preflight=True, **kw)
         if not is_tracer(res.ntff_data.x_lo):
             witness["settling"] = res.settling_witness
-        ff = compute_far_field_jax(res.ntff_data, box, grid, mod.THETA, mod.PHI)
+        if far_field == "module":
+            # the module's call: compute_far_field dispatches on whether it is traced
+            ff = mod.compute_far_field(res.ntff_data, res.ntff_box, res.grid, mod.THETA, mod.PHI)
+        else:
+            ff = compute_far_field_jax(res.ntff_data, box, grid, mod.THETA, mod.PHI)
         power = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2
         return power[0] * 1e27
 
@@ -581,42 +592,44 @@ def stage_main(out: Path, a) -> int:
 
 
 def stage_equivalence(out: Path, a) -> int:
-    """Judged (A3.2): at the start cover and the full record, the module's
-    make_pattern_fn (per-step checkpoint, compute_far_field dispatch, not
-    jitted) against this script's path (checkpoint_segments,
-    compute_far_field_jax, jitted), pattern and gradient. Its own job: the
-    module path's per-step tape measured 63 GB."""
+    """Judged (A3.2, as amended by A3b): at the start cover and the full
+    record, with the same forward and the same ``checkpoint_segments``, the
+    module's far-field call (``compute_far_field``, the numpy transform on an
+    eager call and the JAX one under a gradient, value_and_grad not jitted)
+    against this script's (``compute_far_field_jax`` on a box built from the
+    declaration, jitted): pattern and gradient, each at ``EQUIV_TOL``."""
     import jax
     import jax.numpy as jnp
     mod = load_module()
     model = BeamModel(mod, 1)
     n_steps = model.n_steps(a.periods)
     pattern = model.pattern_fn(n_steps)
+    pm_fn = model.module_far_field_pattern_fn(n_steps, pattern.segments)
     eps0, _ = module_start(model.shape)
-    pm_fn = model.module_pattern_fn(n_steps)
     t0 = time.perf_counter()
     pm = np.asarray(pm_fn(eps0))
     ps = np.asarray(pattern(eps0))
     g_mod = np.asarray(jax.grad(lambda e: steering_loss(mod, pm_fn(e)))(jnp.asarray(eps0)), dtype=float)
-    mem_module = dc.device_memory()
     g_scr = np.asarray(jax.jit(jax.grad(lambda e: steering_loss(mod, pattern(e))))(jnp.asarray(eps0)),
                        dtype=float)
-    eq = {"what": "at the start cover, full record: the module's make_pattern_fn (per-step "
-                  "checkpoint, compute_far_field dispatch, value_and_grad not jitted) against this "
-                  "script's (checkpoint_segments, compute_far_field_jax, jitted)",
+    eq = {"what": "at the start cover, full record, both with checkpoint_segments "
+                  f"{pattern.segments}: the module's far-field call (compute_far_field on the "
+                  "forward's box, value_and_grad not jitted) against this script's "
+                  "(compute_far_field_jax on a box from the declaration, jitted)",
+          "amendment": "3b: the module's per-step remat is not part of the comparison",
           "segments": pattern.segments, "n_steps": n_steps, "tol": EQUIV_TOL,
           "matmul_precision": MATMUL_PRECISION,
           "pattern_max_abs_diff_over_max": float(np.max(np.abs(pm - ps)) / np.max(np.abs(pm))),
           "grad_norm_rel_diff": float(np.linalg.norm(g_scr - g_mod) / np.linalg.norm(g_mod)),
           "D30_dbi_module": pattern_summary(mod, pm)["D30_dbi"],
           "D30_dbi_script": pattern_summary(mod, ps)["D30_dbi"],
-          "wall_s": time.perf_counter() - t0, "memory_after_module_grad": mem_module}
+          "wall_s": time.perf_counter() - t0, "memory": dc.device_memory()}
     eq["passed"] = bool(eq["pattern_max_abs_diff_over_max"] <= EQUIV_TOL
                         and eq["grad_norm_rel_diff"] <= EQUIV_TOL)
     dc.save_json(out / "pattern_equivalence.json", eq)
     dc.save_npz(out / "equivalence_grads.npz", g_module=g_mod, g_script=g_scr)
-    dc.log(f"module path vs script path: pattern {eq['pattern_max_abs_diff_over_max']:.2e}, gradient "
-           f"{eq['grad_norm_rel_diff']:.2e} -> passed {eq['passed']}")
+    dc.log(f"module far-field path vs script path: pattern {eq['pattern_max_abs_diff_over_max']:.2e}, "
+           f"gradient {eq['grad_norm_rel_diff']:.2e} -> passed {eq['passed']}")
     return 0 if eq["passed"] else 4
 
 
@@ -816,12 +829,14 @@ def stage_finalize(out: Path, a) -> int:
                          "(A3.2) is part of this record; pass --equivalence DIR")
     eq = dc.load_json(out / "pattern_equivalence.json")
     claims += [
-        _record.claim("module path vs this script, start cover: max abs pattern difference / max",
-                      eq["pattern_max_abs_diff_over_max"], "1", "pattern_equivalence.json",
-                      threshold=EQUIV_TOL, rule="Amendment 2 condition (lane leader)"),
-        _record.claim("module path vs this script, start cover: ||g_script - g_module|| / ||g_module||",
-                      eq["grad_norm_rel_diff"], "1", "pattern_equivalence.json",
-                      threshold=EQUIV_TOL, rule="Amendment 2 condition (lane leader)")]
+        _record.claim("module far-field call vs this script's, start cover: max abs pattern "
+                      "difference / max", eq["pattern_max_abs_diff_over_max"], "1",
+                      "pattern_equivalence.json", threshold=EQUIV_TOL,
+                      rule="Amendment 2 condition (lane leader), as amended by 3b"),
+        _record.claim("module far-field call vs this script's, start cover: "
+                      "||g_script - g_module|| / ||g_module||", eq["grad_norm_rel_diff"], "1",
+                      "pattern_equivalence.json", threshold=EQUIV_TOL,
+                      rule="Amendment 2 condition (lane leader), as amended by 3b")]
     if (out / "fd_start.json").is_file():
         fd32 = dc.load_json(out / "fd_start.json")
         if (out / "x64_needed.json").is_file() and not x64:

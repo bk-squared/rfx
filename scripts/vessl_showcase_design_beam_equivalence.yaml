@@ -1,9 +1,9 @@
 name: rfx-showcase-design-beam-equivalence
-description: "Issue 1359, Amendment 3 (A3.2). The judged module-path comparison for the beam-steering cover: at the start cover and the full lambda/20 record, the module's make_pattern_fn (per-step checkpoint, not jitted) against design_beam.py's path (checkpoint_segments, compute_far_field_jax, jitted), pattern and gradient, each at 1e-4. Its own job because the module path's per-step tape measured 63 GB (run 369367265797 ran out of memory on a 48 GB A6000). Exit 4 if it fails. Outputs: research/rfx/.omx/showcase/design_beam/<UTC>-<sha>-equivalence/. Submit with scripts/vessl_submit.sh."
+description: "Issue 1359, Amendment 3 (A3.2) as amended by 3b. The judged far-field-path comparison for the beam-steering cover: at the start cover and the full lambda/20 record, with the same forward and checkpoint_segments (35), the module's far-field call (compute_far_field on the forward's box, not jitted) against design_beam.py's (compute_far_field_jax on a box built from the declaration, jitted), pattern and gradient, each at 1e-4. Exit 4 if it fails. Outputs: research/rfx/.omx/showcase/design_beam/<UTC>-<sha>-equivalence/. Submit with scripts/vessl_submit.sh."
 tags: [rfx, showcase, issue-1359, autodiff]
 resources:
   cluster: remilab-c0
-  preset: gpu-h200-hi-mem
+  preset: gpu-24gb
 image: nvcr.io/nvidia/jax:24.10-py3
 env:
   PYTHONUNBUFFERED: "1"
@@ -12,7 +12,7 @@ env:
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
   RFX_SHOWCASE_REF: "6a78e2c99d6c3ef9ad4591d22ef0fbaa914de02f"
-  RFX_SHOWCASE_PRESET: "gpu-h200-hi-mem"
+  RFX_SHOWCASE_PRESET: "gpu-24gb"
   RFX_DESIGN_MODE: "equivalence"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
