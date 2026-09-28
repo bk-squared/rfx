@@ -175,8 +175,9 @@ def test_actual_accumulator_keeps_yee_clock_and_raw_integral_units():
 def test_subgrid_result_without_global_origin_is_refused():
     # A real caller path: a local fine grid would export z planes 6 mm low.
     # Eight steps test admission/dataflow only, not settled radiation accuracy.
-    sim = Simulation(freq_max=5e9, domain=(0.03,) * 3, dx=3e-3,
-                     boundary="cpml", cpml_layers=4)
+    # A PEC box: the subgridded lane refuses an absorber in every validation
+    # mode (lane admission), and the refusal below does not depend on one.
+    sim = Simulation(freq_max=5e9, domain=(0.03,) * 3, dx=3e-3, boundary="pec")
     sim.add_source((0.015,) * 3, "ez", amplitude_kind="field")
     sim.add_refinement(z_range=(0.006, 0.024), ratio=2, validation="research")
     sim.add_ntff_box(corner_lo=(0.009, 0.009, 0.012),

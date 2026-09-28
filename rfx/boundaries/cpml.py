@@ -506,18 +506,18 @@ def init_cpml(grid, *, kappa_max: float | None = None,
 
     def _lo_face_profile(is_noop: bool, cell_size, face_name: str,
                          sample_offset: float = 0.0) -> CPMLParams:
-        if is_noop:
-            return noop
         n_active = int(face_layers.get(face_name, n))
+        if is_noop or n_active == 0:
+            return noop
         p = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
                           sample_offset=sample_offset)
         return _pad_profile_at_end(p, n_active, n)
 
     def _hi_face_profile(is_noop: bool, cell_size, face_name: str,
                          sample_offset: float = 0.0) -> CPMLParams:
-        if is_noop:
-            return noop
         n_active = int(face_layers.get(face_name, n))
+        if is_noop or n_active == 0:
+            return noop
         base = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
                              sample_offset=sample_offset)
         return _pad_profile_at_start(_flip_profile(base), n_active, n)

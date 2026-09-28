@@ -3016,7 +3016,8 @@ class Simulation(
         lane whose scan body does not accumulate the monitor are refused
         rather than approximated. So is a model the pattern would silently
         leave out: magnetic material (``mu_r != 1``), a PEC or PMC domain
-        face, a plane port, and any dielectric, conductor, dispersive cell,
+        face, a waveguide, coaxial or Floquet port, a microstrip port with
+        ``mode="eigenmode"``, and any dielectric, conductor, dispersive cell,
         port, lumped element or source that is not inside the slab (its
         outermost edge layer counts as outside).
 

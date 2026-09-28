@@ -1332,6 +1332,7 @@ class _ExecuteMixin:
         pec_sheets: object = (),
         pec_wires: object = (),
         return_state: bool = True,
+        lane: str,
     ):
         """Run the integrated ADI solver path (2D TMz or 3D).
 
@@ -1339,6 +1340,11 @@ class _ExecuteMixin:
         every other lane instead of zeroing E at the occupied cell
         indices.  In 2-D it applies the ``Mz`` plane to Ez; in 3-D the
         three masks componentwise.
+
+        ``lane`` is ``"run_adi"`` from ``run()`` and ``"fwd_adi"`` from the
+        ADI route of ``_forward_from_materials``; a declared input that lane
+        does not carry is refused before the first step
+        (``rfx.runners._admission``).
         """
         import copy
 
@@ -1361,6 +1367,11 @@ class _ExecuteMixin:
         # Refuse after realization: a sheet/wire must reach this lane even
         # though it owns no volume cell. This is independent of preflight.
         self._validate_adi_interior_pec(pec_edge_masks)
+
+        # Every declared input this lane does not carry is refused here,
+        # after the specific refusals above and before the first step.
+        from rfx.runners._admission import admit
+        admit(self, lane)
 
         dt = float(grid.dt * self._adi_cfl_factor)
         times = jnp.arange(n_steps, dtype=jnp.float32) * dt
@@ -1522,8 +1533,17 @@ class _ExecuteMixin:
         design_box: object | None = None,
         design_occupancy: object | None = None,
         monitor_overrides: dict | None = None,
+        lane: str | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
+
+        ``lane`` is ``"fwd_uniform"`` when ``forward()`` calls: a declared
+        input that lane does not carry is refused before the first step
+        (``rfx.runners._admission``). The calculators that also enter here
+        (``run()``'s lumped/wire S-matrix scan, ``compute_mixed_s_matrix``,
+        ``topology_optimize``) leave it ``None``: their columns of the
+        path-disposition table are not classified yet. The ADI route below
+        is always judged as ``fwd_adi``.
 
         Internal multi-drive S-matrix hook (item-5 Stage 1, 2026-06-22)
         --------------------------------------------------------------
@@ -1572,6 +1592,7 @@ class _ExecuteMixin:
                 pec_sheets=tuple(pec_sheets or ()),
                 pec_wires=tuple(pec_wires or ()),
                 return_state=False,
+                lane="fwd_adi",
             )
 
         # The uniform forward lane has no subgrid (#1240). forward() (and
@@ -2371,6 +2392,12 @@ class _ExecuteMixin:
             self._validate_tfsf_vacuum_boundary(
                 materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
 
+        # Every declared input this lane does not carry is refused here,
+        # after the specific refusals above and before the first step.
+        if lane is not None:
+            from rfx.runners._admission import admit
+            admit(self, lane)
+
         result = _run(
             grid,
             materials,
@@ -2676,6 +2703,7 @@ class _ExecuteMixin:
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
+            lane="fwd_nonuniform",
         )
         return self._pack_nu_forward_result(
             time_series=result.time_series,
@@ -2773,6 +2801,8 @@ class _ExecuteMixin:
 
         See :meth:`forward` for the public-facing kwarg semantics.
         """
+        from rfx.runners.distributed_v2 import refuse_distributed_periodic
+        refuse_distributed_periodic(self, lane="distributed non-uniform forward()")
         if self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed NU lane")
         # Defense-in-depth: the distributed-NU runner does not honour
@@ -2903,19 +2933,8 @@ class _ExecuteMixin:
                         "reduce exchange_interval or increase nx."
                     )
 
-            # Check 4 — CPML vs local slab on outer boundary ranks.
-            cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
-            if self._boundary == "cpml" and cpml_layers > 0:
-                for rank in (0, n_devices - 1):
-                    nx_local_real = nx_per_rank
-                    if cpml_layers * 2 >= nx_local_real:
-                        raise ValueError(
-                            f"cpml_layers*2={cpml_layers * 2} >= "
-                            f"nx_local={nx_local_real} on boundary rank "
-                            f"{rank}; reduce cpml_layers (or set per-face "
-                            f"lo_thickness/hi_thickness on the x Boundary) "
-                            f"or increase nx."
-                        )
+            # CPML width is an unconditional admission check in the shared
+            # initializer, using each active face and the last rank's padding.
 
             # Check 5 — segmented remat overhead warning.
             if (
@@ -3035,6 +3054,11 @@ class _ExecuteMixin:
                 component=sc, waveform=jnp.asarray(wf),
             ))
             material_drive.append(None)
+
+        # Every declared input this lane does not carry is refused here,
+        # after the specific refusals above and before the first step.
+        from rfx.runners._admission import admit
+        admit(self, "fwd_distributed_nu")
 
         if eps_override is not None or sigma_override is not None:
             materials = materials._replace(
@@ -4499,6 +4523,7 @@ class _ExecuteMixin:
                                "mu_r": mu_r_override,
                                "pec_mask": pec_mask_override,
                                "pec_occupancy": pec_occupancy_override},
+            lane="fwd_uniform",
         )
         if ringdown is None:
             _res = _fwd_call()
@@ -4965,6 +4990,7 @@ class _ExecuteMixin:
                 pec_sheets=tuple(_run_pec_sheets),
                 pec_wires=tuple(_run_pec_wires),
                 return_state=True,
+                lane="run_adi",
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
             _warn_if_nonfinite_result(_res, context="run")

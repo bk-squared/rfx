@@ -839,6 +839,12 @@ def run_uniform(
         sim._validate_tfsf_vacuum_boundary(
             materials, tfsf[0], nonvacuum_masks=tuple(nonvacuum))
 
+    # Every declared input this lane does not carry is refused here, after
+    # the specific refusals above and before the first step.
+    from rfx.runners._admission import admit
+    admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
+                                        "conformal_pec": conformal_pec})
+
     # Main simulation
     if until_decay is not None:
         sim_result = _simulation.run_until_decay(

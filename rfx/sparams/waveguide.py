@@ -1233,6 +1233,7 @@ def _compute_waveguide_s_matrix_nu(
         self._dz_profile,
         dx_profile=self._dx_profile,
         dy_profile=self._dy_profile,
+        face_layers=self._resolve_face_layers(),
         pec_faces=pec_set or None,
         pmc_faces=pmc_set or None,
         cpml_axes=cpml_axes,

@@ -486,6 +486,23 @@ def _guarded_boundary_production_allowed(
     return all(pads[face] == 0 for face in ("z_lo", "z_hi") if face != opposite)
 
 
+def _slab_overlaps_absorber(sim, region: SubgridRegion, grid) -> bool:
+    """Return whether a refined slab's z interface reaches a CPML/UPML pad.
+
+    The fine slab has no absorber of its own, so a slab that reaches the
+    padded region would put the coarse absorber under it.  Production
+    validation refuses that (``subgrid_overlaps_absorber``); lane admission
+    asks the same question before it admits an absorber on this lane.
+    """
+    pad_z_lo = int(getattr(grid, "pad_z_lo", grid.cpml_layers))
+    pad_z_hi = int(getattr(grid, "pad_z_hi", grid.cpml_layers))
+    if sim._boundary not in ("cpml", "upml") or not (pad_z_lo > 0 or pad_z_hi > 0):
+        return False
+    overlaps_zlo_absorber = pad_z_lo > 0 and region.fk_lo <= pad_z_lo
+    overlaps_zhi_absorber = pad_z_hi > 0 and region.fk_hi >= grid.nz - pad_z_hi
+    return overlaps_zlo_absorber or overlaps_zhi_absorber
+
+
 def _artificial_interface_margin_fraction(pos, sim, physical_boundary: str) -> float:
     """Return distance from the remaining artificial z interface as slab fraction."""
     z_lo, z_hi = sim._refinement["z_range"]
@@ -709,8 +726,6 @@ def validate_subgrid_setup(
     physical_z_boundary = None
     guarded_boundary_allowed = False
     if region is not None:
-        pad_z_lo = int(getattr(grid, "pad_z_lo", grid.cpml_layers))
-        pad_z_hi = int(getattr(grid, "pad_z_hi", grid.cpml_layers))
         physical_z_boundary = _one_sided_physical_z_boundary(sim, region, grid)
         guarded_boundary_allowed = _guarded_boundary_production_allowed(
             sim,
@@ -719,18 +734,15 @@ def validate_subgrid_setup(
             xy_margin,
         )
         boundary_margin_min_fraction = 0.30
-        if sim._boundary in ("cpml", "upml") and (pad_z_lo > 0 or pad_z_hi > 0):
-            overlaps_zlo_absorber = pad_z_lo > 0 and region.fk_lo <= pad_z_lo
-            overlaps_zhi_absorber = pad_z_hi > 0 and region.fk_hi >= grid.nz - pad_z_hi
-            if overlaps_zlo_absorber or overlaps_zhi_absorber:
-                sev = "error" if mode == "production" else "warning"
-                issues.append(
-                    _issue(
-                        sev,
-                        "subgrid_overlaps_absorber",
-                        "production subgrid z interfaces must stay outside CPML/UPML",
-                    )
+        if _slab_overlaps_absorber(sim, region, grid):
+            sev = "error" if mode == "production" else "warning"
+            issues.append(
+                _issue(
+                    sev,
+                    "subgrid_overlaps_absorber",
+                    "production subgrid z interfaces must stay outside CPML/UPML",
                 )
+            )
 
         if mode == "production" and not is_stage2_disjoint_topology:
             if physical_z_boundary is None:

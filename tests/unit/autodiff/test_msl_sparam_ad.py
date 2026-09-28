@@ -630,12 +630,36 @@ def test_compute_msl_s_matrix_ad_smoke_has_finite_gradient():
 # ---------------------------------------------------------------------------
 
 @pytest.mark.slow
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1292: MSL S vs historical base, 26/40 elements outside rtol 0.005/atol 0.002 "
-           "(max abs 0.0113) since #1213")
 def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     """End-to-end drift lock: full FDTD + assembly vs the committed golden.
+
+    RE-FROZEN 2026-09-27 (issue 1292) on the current tree. #1213 (an E component on a
+    material interface takes the mean eps and sigma of its four cells) moved this board's
+    S: against the 2026-09-12 golden, 26 of 40 elements left rtol 5e-3 / atol 2e-3 (max
+    abs 0.0113; #1012 then 0.0114). Measured against the closed-form line (Hammerstad-
+    Jensen 1980 Z0 = 47.67 ohm; Kirschning-Jansen eps_eff = 2.8787 at 2.5 GHz) on this
+    drawing at dx = 50 / 33.3 / 25 um, with Z_s and eps_eff inverted from the 2x2 S of
+    the 4 mm line between the reference planes: eps_eff moved from -2.41 / -1.78 / -1.39 %
+    (tree before #1213) to +0.74 / +0.58 / +0.48 % (current tree), and the electrical
+    length from -1.25 % to +0.35 % at dx = 50 um; both moved toward Kirschning-Jansen. At
+    the same lock mesh the line impedance moved away from its limit, Z_s 46.83 -> 46.13
+    ohm, and |S11|max rose from -37.2 to -32.4 dB. The limits (eps_eff +0.02 % from
+    Kirschning-Jansen on the current tree; Z_s 47.74 ohm on both trees) come from
+    three-point fits with a free order, which pass through all three rungs by
+    construction (zero residual) and so carry no check of their own. The difference
+    between the two trees' S shrinks from 0.0114 to 0.0084 to 0.0067 on that ladder.
+    Records: bk-squared/rfx-archive
+    rfx/records/20260927-1292-locked-results/ (R4).
+
+    Captured with scripts/capture_msl_e2e_golden.py --write-golden on VESSL CPU (run
+    369367265506; JAX 0.6.2, numpy 2.2.6, float32 fields): base 1292-msl-base-
+    20260927T094725Z, independent same-mesh confirmation (bit-identical to the base) and
+    2x refinement (max |S_raw difference| 0.01118 against the unchanged 0.02 budget); all
+    three qualify, and every drive settles at -100.5 dB (base) and -100.9 dB (refined).
+    The new golden differs from the 2026-09-12 one by at most 0.011427, and the tree
+    before #1213 (cd237692) differs from the new golden by 0.011427 with 26 of 40
+    elements outside tolerance. The script saves complex128; the values are the base
+    run's complex64 S. Capture reports: the archive record above.
 
     RE-PINNED 2026-09-12 (#726): the authorized H interpolation puts the
     current on the existing voltage E-node plane. The board, source/load,

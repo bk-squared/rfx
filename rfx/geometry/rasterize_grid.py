@@ -675,6 +675,26 @@ def interior_lattice_mask(mask, grid, *, cell_axes=(False, False, False)):
     return out
 
 
+def wire_filament_nodes(points, radius, node_axes, cell_sizes):
+    """PolylineWire §1.4: the nearest lattice node of each vertex, when the
+    wire is a filament; ``None`` when it is a volume. A radius at least half
+    the smallest local cell at the vertices' nearest nodes is a volume.
+    ``classify_pec_entry`` realizes a wire by this rule, and lane admission
+    asks it which kind of conductor a declared wire becomes."""
+    nodes = []
+    d_min = None
+    for p in points:
+        idx = []
+        for t in range(3):
+            x = np.asarray(node_axes[t], dtype=np.float64)
+            k = int(np.argmin(np.abs(x - float(p[t]))))
+            idx.append(k)
+            d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
+            d_min = d_here if d_min is None else min(d_min, d_here)
+        nodes.append(tuple(idx))
+    return nodes if float(radius) < 0.5 * d_min else None
+
+
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                        cell_sizes=None, *, name=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
@@ -722,18 +742,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # below that it is a filament on the axis-aligned lattice path
         # joining the nearest nodes of consecutive vertices.
-        nodes = []
-        d_min = None
-        for p in pts:
-            idx = []
-            for t in range(3):
-                x = np.asarray(node_axes[t], dtype=np.float64)
-                k = int(np.argmin(np.abs(x - float(p[t]))))
-                idx.append(k)
-                d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
-                d_min = d_here if d_min is None else min(d_min, d_here)
-            nodes.append(tuple(idx))
-        if float(radius) < 0.5 * d_min:
+        nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes)
+        if nodes is not None:
             edges = wire_path_edge_masks(nodes, coords.shape)
             return None, None, WireSpec(edges=edges, name=name)
     elif not traced:
