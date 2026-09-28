@@ -41,6 +41,7 @@ from rfx._grid_metric import (
     DECLARED_SPAN_TOL_M,
     axis_name as _axis_name,
     dual_spacings_from_cells as _dual_spacings_from_cells,
+    nearest_node_index,
     normalize_axis as _normalize_axis,
 )
 
@@ -257,9 +258,17 @@ class NonUniformGrid(NamedTuple):
         0a because consumers still call it; 0b retires it as each consumer
         moves onto this accessor.
 
-        On a concrete axis this is the arithmetic ``_axis_position_to_index``
-        already performs -- cumulative interior cell edges, nearest edge,
-        plus ``pad_lo`` -- evaluated on the float64 spine.
+        Which node (#1295, #1342): the nearest one by float64 distance, and
+        at a tie (two distances agreeing to 1e-9 of the local cell) the
+        LOWER one -- ``nearest_node_index``, the function the sheet snap
+        itself calls, on the node line the conductors are rasterized on
+        (``_axis_node_positions`` of the float64 spine: the closed form
+        ``(i - pad_lo) * cell`` on a constant axis, the cumulative sum on a
+        graded one). A port, source or probe and a sheet declared at the
+        same coordinate therefore land on the same node, bit for bit.
+        ``position_to_index`` and ``pos_to_nu_index`` resolve through the
+        same function. The uniform ``Grid`` still rounds an exact tie to the
+        even node until #1342.
 
         A coordinate outside the interior span is REFUSED, as on the uniform
         grid. ``_axis_position_to_index`` clamps instead: ``argmin`` over the
@@ -300,18 +309,30 @@ class NonUniformGrid(NamedTuple):
                 "Resolve structural positions before tracing the mesh, or "
                 "pass the index directly."
             )
-        d = self.cells(ax)
-        interior = interior_cells(d, pad_lo, pad_hi)
-        edges = np.insert(np.cumsum(interior), 0, 0.0)
+        nodes, cells = self._node_line(ax)
         pos = float(x)
-        lo, hi = float(edges[0]), float(edges[-1])
+        lo, hi = float(nodes[0]), float(nodes[-1])
         if not (lo - DECLARED_SPAN_TOL_M <= pos <= hi + DECLARED_SPAN_TOL_M):
             raise ValueError(
                 f"position {pos} on axis {_axis_name(ax)!r} lies outside "
                 f"this axis's interior span [{lo}, {hi}] m. Check the "
                 f"coordinate lies inside the simulation domain."
             )
-        return int(np.argmin(np.abs(edges - pos))) + pad_lo
+        return _nearest_on_line(nodes, cells, pos) + pad_lo
+
+    def _node_line(self, axis):
+        """``(nodes, cells)`` a coordinate on a CONCRETE ``axis`` resolves on.
+
+        ``nodes`` are the INTERIOR entries of ``_axis_node_positions`` on the
+        float64 spine -- the node coordinates ``coords_from_nonuniform_grid``
+        gives the rasterizer, first interior node at 0 -- and ``cells`` the
+        interior cells between them.
+        """
+        from rfx.geometry.rasterize_grid import _axis_node_positions
+        ax, n, pad_lo, pad_hi = self._axis_layout(axis)
+        d = self.cells(ax)
+        nodes = _axis_node_positions(d, pad_lo)[pad_lo:n - pad_hi]
+        return nodes, interior_cells(d, pad_lo, pad_hi)
 
     def node_of(self, axis, i: int):
         """Physical coordinate of the E node at padded index ``i``.
@@ -1041,58 +1062,6 @@ def make_nonuniform_grid(
     )
 
 
-def _interior_line_positions(
-    d_arr_np: np.ndarray, pad_lo: int, pad_hi: int | None = None,
-) -> np.ndarray:
-    """Return cell-edge positions (0 at first interior face) for a padded
-    cell-size array. Length = n_interior + 1.
-
-    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation, 2026-04).
-    Back-compat: a single-argument call treats the value as symmetric.
-    """
-    if pad_hi is None:
-        pad_hi = pad_lo
-    interior = interior_cells(d_arr_np, pad_lo, pad_hi)
-    edges = np.insert(np.cumsum(interior), 0, 0.0)
-    return edges
-
-
-def _nominal_edges_or_actual(
-    d_arr, total_pad: int,
-    *, pad_lo: int | None = None,
-    fallback_dx: float | None = None,
-) -> np.ndarray:
-    """Return concrete cell-edge positions for index lookup.
-
-    ``total_pad`` is ``pad_lo + pad_hi`` — the cells removed when
-    slicing to the interior. ``pad_lo`` (defaulting to ``total_pad/2``
-    for the legacy symmetric case) is needed by the tracer path
-    to reconstruct ``n_interior`` and by the concrete path to pick
-    the right interior slice.
-
-    When ``d_arr`` is a JAX tracer (mesh-as-design-variable path), we
-    fall back to a uniform ``fallback_dx`` reference mesh so that
-    physical-coordinate lookup of source / probe / port positions still
-    yields a concrete integer index. The traced cell sizes drive the
-    FDTD physics downstream; only the structural index is resolved
-    from the nominal mesh.
-    """
-    if pad_lo is None:
-        pad_lo = total_pad // 2
-    pad_hi = total_pad - pad_lo
-    if is_tracer(d_arr):
-        if fallback_dx is None or fallback_dx <= 0:
-            raise ValueError(
-                "tracer-valued cell-size profile requires a concrete "
-                "fallback_dx for position->index resolution."
-            )
-        n_total = int(d_arr.shape[0])
-        n_interior = n_total - total_pad
-        interior = np.full(n_interior, float(fallback_dx), dtype=np.float64)
-        return np.insert(np.cumsum(interior), 0, 0.0)
-    return _interior_line_positions(np.asarray(d_arr), pad_lo, pad_hi)
-
-
 def _assert_traced_index_matches_realized(
     d_arr, total_pad: int, pad_lo: int, pos: float, nominal_idx: int,
     axis: str,
@@ -1114,6 +1083,16 @@ def _assert_traced_index_matches_realized(
     refuses when the two disagree, naming both. Nothing is raised while the
     two agree, which is the case a deformation that keeps its outer node
     lines fixed (the mesh-as-design-variable pattern) is in.
+
+    A coordinate midway between two nodes is equally near both. The nominal
+    index takes the lower one (``nearest_node_index``, #1295), but the
+    realized edges are cumulative sums in the traced dtype, so one neighbour
+    comes out a few ulp nearer, either one (at most 5 float32 ulp of the
+    coordinate measured on constant 0.127 to 1 mm columns of up to 400
+    cells). The nominal index is therefore accepted when it is the realized
+    nearest node, or its neighbour at a realized distance within 16 ulp of
+    the coordinate of the nearest one. That is under 1e-3 of a cell on
+    those columns; a deformation that moves a node line moves it by far more.
     """
     n_total = int(d_arr.shape[0])
     pad_hi = total_pad - pad_lo
@@ -1122,11 +1101,18 @@ def _assert_traced_index_matches_realized(
     interior = jnp.asarray(d_arr)[pad_lo:n_total - pad_hi]
     edges = jnp.concatenate(
         [jnp.zeros((1,), dtype=interior.dtype), jnp.cumsum(interior)])
-    realized_idx = jnp.argmin(jnp.abs(edges - float(pos)))
+    dist = jnp.abs(edges - float(pos))
+    nearest = jnp.argmin(dist)
+    nominal = min(int(nominal_idx), int(dist.shape[0]) - 1)
+    tol = 16 * jnp.finfo(dist.dtype).eps * jnp.maximum(
+        abs(float(pos)), edges[nearest])
+    agrees = (nearest == nominal) | (
+        (jnp.abs(nearest - nominal) == 1)
+        & (dist[nominal] - dist[nearest] <= tol))
 
-    def _check(realized):
+    def _check(realized, agrees):
         realized = int(realized)
-        if realized != int(nominal_idx):
+        if not bool(agrees):
             raise ValueError(
                 f"position {pos:.9g} m on the traced {axis} axis resolves to "
                 f"interior node {nominal_idx} on the nominal uniform mesh "
@@ -1138,63 +1124,83 @@ def _assert_traced_index_matches_realized(
                 "or give the position by node index."
             )
 
-    jax.debug.callback(_check, realized_idx)
+    jax.debug.callback(_check, nearest, agrees)
 
 
 def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
     """Convert physical z-coordinate to (cpml-offset) grid index."""
-    edges = _nominal_edges_or_actual(
-        grid.dz, grid.pad_z_lo + grid.pad_z_hi,
-        pad_lo=grid.pad_z_lo, fallback_dx=float(grid.dx),
-    )
-    idx = int(np.argmin(np.abs(edges - float(z_phys))))
-    if is_tracer(grid.dz):
-        _assert_traced_index_matches_realized(
-            grid.dz, grid.pad_z_lo + grid.pad_z_hi, grid.pad_z_lo,
-            float(z_phys), idx, "z")
-    return idx + grid.pad_z_lo
+    return _axis_position_to_index(grid, "z", z_phys,
+                                   fallback_dx=float(grid.dx))
 
 
 def _axis_position_to_index(
-    d_arr: jnp.ndarray,
-    pad_lo: int,
-    pad_hi: int,
+    grid: NonUniformGrid,
+    axis,
     pos: float,
     fallback_dx: float | None = None,
-    axis: str = "this",
 ) -> int:
-    """Generic non-uniform axis lookup.
+    """Padded index of the node nearest ``pos`` on ``axis``, clamped.
 
-    Uses cell-edge positions (same convention as z_position_to_index):
-    position 0 is the first interior face, position ``sum(interior)`` is
-    the last interior face.
+    The node is the one ``index_of`` names: ``nearest_node_index`` on the
+    node line the conductors are rasterized on, a tie to the lower node
+    (#1295, #1342). Two legacy behaviours stay here and not in ``index_of``:
+    a coordinate outside the interior CLAMPS to the end node, and a traced
+    axis answers from a nominal mesh.
+
+    When the axis's cell widths are a JAX tracer (mesh-as-design-variable
+    path) there is no host node line, so the index is resolved on a uniform
+    reference mesh of ``fallback_dx`` cells and checked against the realized
+    mesh at run time (``_assert_traced_index_matches_realized``). The traced
+    cell sizes drive the FDTD physics downstream; only the structural index
+    is resolved from the nominal mesh, with the same rule on its closed-form
+    node line.
     """
-    edges = _nominal_edges_or_actual(
-        d_arr, pad_lo + pad_hi, pad_lo=pad_lo, fallback_dx=fallback_dx,
-    )
-    idx = int(np.argmin(np.abs(edges - float(pos))))
-    if is_tracer(d_arr):
+    ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
+    store = grid._axis_store(ax)
+    if is_tracer(store):
+        if fallback_dx is None or fallback_dx <= 0:
+            raise ValueError(
+                "tracer-valued cell-size profile requires a concrete "
+                "fallback_dx for position->index resolution."
+            )
+        last = n - pad_lo - pad_hi
+        from rfx.geometry.rasterize_grid import _uniform_axis_nodes
+        nominal = _uniform_axis_nodes(last + 1, 0, float(fallback_dx))
+        idx = _nearest_on_line(nominal, np.full(last, float(fallback_dx)),
+                               pos)
         _assert_traced_index_matches_realized(
-            d_arr, pad_lo + pad_hi, pad_lo, float(pos), idx, axis)
-    return idx + pad_lo
+            store, pad_lo + pad_hi, pad_lo, float(pos), idx,
+            _axis_name(ax))
+        return idx + pad_lo
+    nodes, cells = grid._node_line(ax)
+    return _nearest_on_line(nodes, cells, pos) + pad_lo
+
+
+def _nearest_on_line(nodes, cells, pos) -> int:
+    """``nearest_node_index`` on a node line, with the local cell the sheet
+    snap uses (``_local_cell``). A coordinate outside the line gets its end
+    node, which is the legacy clamp of ``position_to_index``."""
+    from rfx.geometry.rasterize_grid import _local_cell
+    return nearest_node_index(nodes, float(pos),
+                              _local_cell(nodes, cells, float(pos)))
 
 
 def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> tuple[int, int, int]:
     """Convert physical (x, y, z) to grid indices for NonUniformGrid.
 
     Accounts for per-face CPML padding (``pad_{axis}_lo`` leading offset).
-    All three axes use cumulative cell-size lookup. In the uniform-xy
-    case (``dx_arr`` constant) this reduces to the legacy
-    ``round(pos[0]/dx) + pad_{axis}_lo`` behaviour within one cell.
+    Each axis resolves through ``_axis_position_to_index``: the node
+    ``index_of`` names, clamped into the interior. On a constant axis, for a
+    coordinate inside the interior that is not a tie, that is the uniform
+    ``Grid``'s ``round(pos/cell) + pad_{axis}_lo``. At a tie this takes the
+    lower node and the uniform grid the even one, until #1342. Outside the
+    interior this clamps to the end node, while the uniform grid returns a
+    pad index or refuses.
     """
-    i = _axis_position_to_index(
-        grid.dx_arr, grid.pad_x_lo, grid.pad_x_hi, pos[0],
-        fallback_dx=float(grid.dx), axis="x",
-    )
-    j = _axis_position_to_index(
-        grid.dy_arr, grid.pad_y_lo, grid.pad_y_hi, pos[1],
-        fallback_dx=float(grid.dy), axis="y",
-    )
+    i = _axis_position_to_index(grid, "x", pos[0],
+                                fallback_dx=float(grid.dx))
+    j = _axis_position_to_index(grid, "y", pos[1],
+                                fallback_dx=float(grid.dy))
     k = z_position_to_index(grid, pos[2])
     return (i, j, k)
 

@@ -3255,6 +3255,9 @@ class _ExecuteMixin:
         # Every non-uniform lane below, single-device and distributed, run()
         # and forward(), has no subgrid and would drop a refinement (#1240).
         self._require_no_refinement_on_the_nonuniform_lane()
+        # A point feature one cell off a conductor drawn at the same half
+        # node (#1295, #1342); run() and forward(), both lanes.
+        self._require_no_half_node_split()
         is_nonuniform = self._uses_nonuniform_mesh
 
         if self._tfsf is not None:
