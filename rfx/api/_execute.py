@@ -2773,6 +2773,8 @@ class _ExecuteMixin:
 
         See :meth:`forward` for the public-facing kwarg semantics.
         """
+        from rfx.runners.distributed_v2 import refuse_distributed_periodic
+        refuse_distributed_periodic(self, lane="distributed non-uniform forward()")
         if self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed NU lane")
         # Defense-in-depth: the distributed-NU runner does not honour
@@ -2903,19 +2905,8 @@ class _ExecuteMixin:
                         "reduce exchange_interval or increase nx."
                     )
 
-            # Check 4 — CPML vs local slab on outer boundary ranks.
-            cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
-            if self._boundary == "cpml" and cpml_layers > 0:
-                for rank in (0, n_devices - 1):
-                    nx_local_real = nx_per_rank
-                    if cpml_layers * 2 >= nx_local_real:
-                        raise ValueError(
-                            f"cpml_layers*2={cpml_layers * 2} >= "
-                            f"nx_local={nx_local_real} on boundary rank "
-                            f"{rank}; reduce cpml_layers (or set per-face "
-                            f"lo_thickness/hi_thickness on the x Boundary) "
-                            f"or increase nx."
-                        )
+            # CPML width is an unconditional admission check in the shared
+            # initializer, using each active face and the last rank's padding.
 
             # Check 5 — segmented remat overhead warning.
             if (

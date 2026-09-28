@@ -441,6 +441,35 @@ def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
 # Public runner
 # ---------------------------------------------------------------------------
 
+def refuse_distributed_periodic(sim, *, lane, bloch=None):
+    """Periodic faces cannot be replaced by a wall or an interior absorber."""
+    if lane == "distributed non-uniform forward()":
+        reason = "periodic faces would be treated as walls or absorbers."
+        remedy = "Remove the periodic axes / Bloch phase; non-uniform periodic execution is not implemented."
+    else:
+        reason = ("the lane would use the declared non-periodic wall instead "
+                  "(rfx.runners.distributed._update_h_local / _update_e_local).")
+        single_device_hint = (
+            "omit devices=... (use a single-device run() instead)"
+            if lane == "distributed multi-device run()"
+            else "call sim.run(...) without devices= instead of calling this runner"
+        )
+        remedy = f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
+    periodic_axes = getattr(sim, "_periodic_axes", "") or ""
+    if bloch is None:
+        bloch = getattr(sim, "_bloch", None)
+    if periodic_axes or bloch is not None:
+        features = []
+        if periodic_axes:
+            features.append("periodic axes " + ", ".join(repr(a) for a in periodic_axes))
+        if bloch is not None:
+            features.append("a Bloch phase")
+        raise NotImplementedError(
+            f"{' and '.join(features)}: periodic / Bloch boundaries are not "
+            f"supported on the {lane} path; {reason} {remedy}"
+        )
+
+
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
@@ -457,22 +486,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
         if lane == "distributed multi-device run()"
         else "call sim.run(...) without devices= instead of calling this runner"
     )
-    periodic_axes = getattr(sim, "_periodic_axes", "") or ""
-    if bloch is None:
-        bloch = getattr(sim, "_bloch", None)
-    if periodic_axes or bloch is not None:
-        features = []
-        if periodic_axes:
-            features.append("periodic axes " + ", ".join(repr(a) for a in periodic_axes))
-        if bloch is not None:
-            features.append("a Bloch phase")
-        raise NotImplementedError(
-            f"{' and '.join(features)}: periodic / Bloch boundaries are not "
-            f"supported on the {lane} path; the lane would use the declared "
-            "non-periodic wall instead "
-            "(rfx.runners.distributed._update_h_local / _update_e_local). "
-            f"Remove the periodic axes / Bloch phase, or {single_device_hint}."
-        )
+    refuse_distributed_periodic(sim, lane=lane, bloch=bloch)
 
     ports = getattr(sim, "_ports", ()) or ()
     if any(pe.impedance > 0.0 and pe.extent is not None for pe in ports):

@@ -902,30 +902,21 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
 
 
 # ---------------------------------------------------------------------------
-# Bundle C.1 (2026-04) — distributed-CPML preflight error text names per-face
-# thickness alternative. Users hitting `cpml_layers*2 >= nx_local` may now
-# mitigate via `Boundary(lo_thickness=..., hi_thickness=...)` on the axis,
-# not only by reducing the global `cpml_layers` scalar or growing nx.
+# The refusal names the actual face and both global/per-face remedies.
 # ---------------------------------------------------------------------------
 
 def test_distributed_cpml_preflight_error_names_per_face_thickness():
-    """Bundle C.1: preflight ValueError for CPML*2 >= nx_local on a boundary
-    rank must name both ``cpml_layers`` and the per-face
-    ``lo_thickness``/``hi_thickness`` alternative on ``Boundary``."""
+    """A high-x absorber with seven owned rows cannot hold eight layers."""
     devices = _require_two_devices()
-
     from rfx import Simulation
-
-    # Build a CPML NU sim small enough that cpml_layers*2 dominates nx_local.
-    # nx=16 with n_devices=2 → nx_per_rank=8; default cpml_layers=8 → 16 >= 8.
-    sim = _make_nu_sim_small(nx=16, boundary="cpml", add_source=False)
-
-    with pytest.raises(ValueError) as excinfo:
-        sim.forward(n_steps=4, distributed=True, devices=devices)
-
-    msg = str(excinfo.value)
-    assert "cpml_layers" in msg, f"missing cpml_layers mitigation mention: {msg!r}"
-    assert ("lo_thickness" in msg) or ("hi_thickness" in msg), (
-        f"error text must name the per-face Boundary "
-        f"lo_thickness/hi_thickness alternative (Bundle C.1): {msg!r}"
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    sim = Simulation(
+        freq_max=15e9, domain=(6e-3, 12e-3, 12e-3), dx=1e-3,
+        dx_profile=np.full(6, 1e-3), cpml_layers=8,
+        boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"), y="cpml", z="cpml"),
     )
+    with pytest.raises(ValueError, match="face x_hi.*7 physical x cells.*8 absorber layers") as excinfo:
+        sim.forward(n_steps=4, distributed=True, devices=devices)
+    msg = str(excinfo.value)
+    assert "cpml_layers" in msg
+    assert "lo_thickness/hi_thickness" in msg
