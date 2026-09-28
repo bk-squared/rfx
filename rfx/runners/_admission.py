@@ -66,13 +66,12 @@ class NotCarriedError(NotImplementedError):
 
 # ----------------------------------------------------------------- helpers
 
-def _defaults(sim) -> dict:
-    return _constructor_defaults(type(sim))
-
-
 @functools.lru_cache(maxsize=None)
-def _constructor_defaults(cls) -> dict:
-    return {name: p.default for name, p in inspect.signature(cls.__init__).parameters.items()
+def _defaults() -> dict:
+    """The defaults of rfx's own ``Simulation`` constructor, read once. Not
+    ``type(sim)``'s: a subclass may take ``**kwargs``."""
+    from rfx.api import Simulation
+    return {name: p.default for name, p in inspect.signature(Simulation.__init__).parameters.items()
             if p.default is not inspect.Parameter.empty}
 
 
@@ -89,7 +88,7 @@ def _differs(value, default) -> bool:
 
 def _setting(attr: str, arg: str) -> Callable:
     def active(sim) -> bool:
-        return _differs(getattr(sim, attr), _defaults(sim)[arg])
+        return _differs(getattr(sim, attr), _defaults()[arg])
     return active
 
 
@@ -265,7 +264,7 @@ DETECTORS: dict[Row, Callable] = {
     ("_periodic_axes", "periodic"): lambda sim: bool(sim._periodic_axes),
     ("_cpml_layers", "layers"): _absorber,
     ("_cpml_kappa_max", "kappa"): lambda sim: _absorber(sim) and _differs(
-        sim._cpml_kappa_max, _defaults(sim)["cpml_kappa_max"]),
+        sim._cpml_kappa_max, _defaults()["cpml_kappa_max"]),
     ("_interface_eps", "dual_average"): _setting("_interface_eps", "interface_eps"),
     # mesh profiles, as declared
     ("_dx_profile", "graded"): lambda sim: sim._dx_profile is not None,
