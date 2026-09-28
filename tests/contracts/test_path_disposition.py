@@ -221,8 +221,12 @@ def test_every_cell_says_what_it_needs_to():
                     assert re.fullmatch(r"#\d+", c.wrong), where
                     assert c.kind in (T.CARRIES, T.REFUSES), where
                     assert c.note, f"{where}: say what happens today"
-                if T.ROW_CLASS[attr] in (T.PHYSICS, T.OBSERVER):
+                if T.ROW_CLASS[attr] == T.PHYSICS:
                     assert c.kind != T.IGNORABLE, f"{where}: a physics input is never ignorable"
+                if T.ROW_CLASS[attr] == T.OBSERVER and c.kind == T.IGNORABLE:
+                    assert path.startswith("fwd_"), (
+                        f"{where}: an observer is ignorable only on a forward() lane, which "
+                        "returns no field for it")
                 if c.declared:
                     assert c.kind == T.REFUSES, where
                 if T.executable(attr) and c.kind == T.REFUSES and not c.wrong:

@@ -15,7 +15,8 @@ for every attribute and every path, which of these holds:
                    refused);
 ``falls back``     the path hands the model to another path (named);
 ``not reachable``  no model with the attribute reaches the path (why);
-``ignorable``      bookkeeping or a setting the path does not need (why);
+``ignorable``      bookkeeping, a setting the path does not need, or an
+                   observer a forward() lane returns no field for (why);
 ``not yet classified``  only on the calculator columns, see below.
 
 A cell whose behaviour today contradicts its disposition names the open issue
@@ -211,7 +212,6 @@ GRADED_REFINEMENT = refuses("refinement on a graded mesh refused (#1282)",
 # it. The input and lane words are retyped from the admission message, so a
 # changed message fails here instead of passing by construction.
 PREC = "a precision other than 'float32'"
-MODE = "a 2-D mode (mode='2d_tmz' or '2d_tez')"
 RUN_U, RUN_NU, RUN_SG, RUN_ADI = "uniform run()", "graded run()", "subgridded run()", "ADI run()"
 FWD_U, FWD_NU, FWD_DNU, FWD_ADI = ("uniform forward()", "graded forward()",
                                    "forward(distributed=True)", "ADI forward()")
@@ -220,6 +220,20 @@ FWD_U, FWD_NU, FWD_DNU, FWD_ADI = ("uniform forward()", "graded forward()",
 def admission(what, lane, before):
     return refuses(f"refused by lane admission; before it, {before}",
                    raises=f"{what} is not carried by the {lane} lane")
+
+
+# A 2-D mode on a graded mesh: _dispatch_plan's own check refuses it on every
+# graded lane and names the remedy, a thin 3-D box. Until #1355 a 2d_tmz model
+# one cell thick between PEC walls ran there as that 3-D box, whose record
+# differs from run_uniform's 2-D solve by 0.34 of the probe peak (#1340).
+GRADED_2D = refuses("a 2-D mode is refused on the graded lanes, naming the thin 3-D box "
+                    "(mode='3d') as the remedy (#1340)",
+                    raises="Build the 2-D problem as a thin 3-D box")
+# forward() returns no flux field and does not build the monitors, by design:
+# a monitor declared for run() costs forward() nothing and drops no result.
+FWD_FLUX = ("forward() returns no flux field and does not build flux monitors, by design "
+            "(tests/unit/sparams/test_mixed_port_sparam.py::"
+            "test_forward_does_not_pay_for_flux_monitors); the monitor belongs to run()")
 
 
 # Lane gates: a cell whose lane admits the row for some declarations only,
@@ -363,18 +377,15 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     # Run as a 2d_tmz model against the same box in 3d.
     "_mode": {"": lanes(
         run_uniform=carries("3d, 2d_tmz and 2d_tez"),
-        run_nonuniform=admission(
-            MODE, RUN_NU, "2d_tmz on one z cell between PEC walls was solved as that 3-D box "
-            "(the record equals mode='3d' bit for bit), which differs from run_uniform's 2-D solve "
-            "by 0.34 of the probe peak (#1340)"),
+        run_nonuniform=GRADED_2D,
         run_subgridded=_subgrid("z_slab_requires_guarded_boundary",
                                 "a slab across a one-cell z domain is never one-sided"),
         run_adi=carries("3d and 2d_tmz; 2d_tez refused. A 3d box one z cell thick dies with an "
                         "IndexError (measured), so its model is three cells thick"),
         run_distributed=carries("2d_tmz matched one device bit for bit (measured)"),
         fwd_uniform=carries("3d, 2d_tmz and 2d_tez"),
-        fwd_nonuniform=admission(MODE, FWD_NU, "it was dropped, as on run_nonuniform (#1340)"),
-        fwd_distributed_nu=admission(MODE, FWD_DNU, "it was dropped, as on run_nonuniform (#1340)"),
+        fwd_nonuniform=GRADED_2D,
+        fwd_distributed_nu=GRADED_2D,
         fwd_adi=carries("as run_adi"),
     )},
 
@@ -907,11 +918,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=admission("a flux monitor", RUN_SG, "result.flux_monitors came back None (#1313)"),
         run_adi=admission("a flux monitor", RUN_ADI, "result.flux_monitors came back None (#1313)"),
         run_distributed=refuses("flux monitors refused (#1241)", raises="add_flux_monitor() (flux monitors)"),
-        fwd_uniform=admission("a flux monitor", FWD_U, "ForwardResult has no flux field (#1313)"),
-        fwd_nonuniform=admission("a flux monitor", FWD_NU, "ForwardResult has no flux field (#1313)"),
+        fwd_uniform=ignorable(FWD_FLUX),
+        fwd_nonuniform=ignorable(FWD_FLUX),
         fwd_distributed_nu=refuses("flux monitors refused",
                                    raises="add_flux_monitor() is not supported on the distributed non-uniform"),
-        fwd_adi=admission("a flux monitor", FWD_ADI, "ForwardResult has no flux field (#1313)"),
+        fwd_adi=ignorable(FWD_FLUX),
     )},
     "_ntff": {"ntff_box": lanes(
         run_uniform=carries(),
