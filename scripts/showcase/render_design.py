@@ -262,7 +262,7 @@ class TaperGradient:
             ax.set_ylim(-1.08, 1.08)
             ax.set_yticks([-1, 0, 1])
             ax.set_ylabel("∂J/∂εr ÷ its max")
-            self.norm_text = ax.text(0.02, 0.97, "", transform=ax.transAxes, ha="left", va="top",
+            self.norm_text = ax.text(0.98, 0.97, "", transform=ax.transAxes, ha="right", va="top",
                                      fontsize=PT["note"], color=INK)
         ax.text(0.5 * (td.fill_mm + td.x_hi), 0, "load", ha="center", va="center",
                 rotation=90, fontsize=PT["note"], color=INK_2)
@@ -561,7 +561,7 @@ class Film:
         self.design.set_visible(show[0])
         self.result.set_visible(show[1])
         self.grad.set_visible(show[2])
-        tail = ("  (final design)" if self.fmt == "site" else "  (final)") if final else ""
+        tail = "  (final design)" if final and self.fmt == "site" else ""
         self.t_iter.set_text(f"iteration {k} / {d.N}{tail}")
         self.t_obj.set_text(d.objective(k, short=self.fmt == "social"))
         if self.leg is not None:
