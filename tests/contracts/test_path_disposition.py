@@ -281,6 +281,7 @@ def test_every_input_row_has_a_detector():
         f"rows without a detector in rfx/runners/_admission.py: {sorted(rows - set(A.DETECTORS))}; "
         f"detectors without a row here: {sorted(set(A.DETECTORS) - rows)}")
     assert set(A.ROW_WORDS) == rows, sorted(set(A.ROW_WORDS) ^ rows)
+    assert set(A.CALL_GATES) <= rows, sorted(set(A.CALL_GATES) - rows)
 
 
 def test_admission_admits_exactly_the_carried_cells():

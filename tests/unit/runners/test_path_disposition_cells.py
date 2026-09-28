@@ -719,6 +719,37 @@ def test_relaxed_subgrid_validation_refuses_an_absorbing_box(mode, absorber, wor
     assert f"{words} is not carried by the subgridded run() lane" in str(exc.value)
 
 
+_CONFORMAL_S = ("_boundary_spec", "conformal_s_matrix")
+
+
+@pytest.mark.parametrize("compute_s_params", [None, True, False])
+def test_conformal_s_matrix_is_refused_only_when_run_computes_it(compute_s_params):
+    """Conformal walls and lumped ports on the uniform run(). Its lumped-port
+    S-matrix comes from a path with no conformal update (#1299), so a call
+    that computes it (the default with ports, or True) is refused. A call with
+    compute_s_params=False computes none: it runs, and its fields are the
+    ones the same call gives with admission switched off, bit for bit."""
+    kwargs = dict(n_steps=N_STEPS, skip_preflight=True)
+    if compute_s_params is not None:
+        kwargs["compute_s_params"] = compute_s_params
+    sim = _build(FEATURES[_CONFORMAL_S], "run_uniform", True)
+    if compute_s_params is not False:
+        with pytest.raises(NotImplementedError) as exc, warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim.run(**kwargs)
+        assert T.cell(*_CONFORMAL_S, "run_uniform").raises in str(exc.value)
+        return
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        got = sim.run(**kwargs)
+        with patch.object(A, "admit", lambda *args, **kw: None):
+            unadmitted = _build(FEATURES[_CONFORMAL_S], "run_uniform", True).run(**kwargs)
+    np.testing.assert_array_equal(_probe(got), _probe(unadmitted))
+    for name in ("ex", "ey", "ez", "hx", "hy", "hz"):
+        np.testing.assert_array_equal(np.asarray(getattr(got.state, name)),
+                                      np.asarray(getattr(unadmitted.state, name)))
+
+
 # ------------------------------------------------------ the table's own terms
 
 def test_every_executable_row_has_a_builder():

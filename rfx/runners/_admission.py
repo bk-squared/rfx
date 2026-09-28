@@ -415,17 +415,32 @@ ADMITS: dict[str, frozenset] = {
 }
 
 
+# A row the call decides as well as the declaration. run() computes the
+# lumped/wire S-matrix, through a path with no conformal update (#1299), only
+# when compute_s_params is not False (rfx/runners/uniform.py); called with
+# compute_s_params=False it computes none, and the conformal walls it does
+# carry are all there is. The gate reads the call's static arguments, never a
+# traced value, and a call that passes none is judged as the default call.
+CALL_GATES: dict[Row, Callable] = {
+    ("_boundary_spec", "conformal_s_matrix"):
+        lambda run_args: run_args.get("compute_s_params") is not False,
+}
+
+
 # ---------------------------------------------------------------- admission
 
-def active(sim) -> list[Row]:
-    """The input rows this declaration switches on, in table order."""
-    return [row for row, on in DETECTORS.items() if on(sim)]
+def active(sim, run_args=None) -> list[Row]:
+    """The input rows this declaration switches on, in table order, for a
+    call with ``run_args``."""
+    run_args = run_args or {}
+    return [row for row, on in DETECTORS.items()
+            if on(sim) and (row not in CALL_GATES or CALL_GATES[row](run_args))]
 
 
-def refused(sim, lane: str) -> list[Row]:
+def refused(sim, lane: str, run_args=None) -> list[Row]:
     """The declared inputs ``lane`` does not admit."""
     admits = ADMITS[lane]
-    return [row for row in active(sim) if row not in admits]
+    return [row for row in active(sim, run_args) if row not in admits]
 
 
 def message(lane: str, rows) -> str:
@@ -446,9 +461,10 @@ def message(lane: str, rows) -> str:
             "carries it runs.")
 
 
-def admit(sim, lane: str) -> None:
+def admit(sim, lane: str, *, run_args=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
-    ``lane`` does not carry every input ``sim`` declares."""
-    rows = refused(sim, lane)
+    ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
+    the call's static arguments that ``CALL_GATES`` read."""
+    rows = refused(sim, lane, run_args)
     if rows:
         raise NotImplementedError(message(lane, rows))

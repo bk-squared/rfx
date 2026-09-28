@@ -842,7 +842,7 @@ def run_uniform(
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_uniform")
+    admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params})
 
     # Main simulation
     if until_decay is not None:
