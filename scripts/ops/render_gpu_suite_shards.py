@@ -52,13 +52,16 @@ run: |-
   # 0.4.33 ships an XLA whose fusion cost model aborts on
   # CHECK_LE(common_utilization, producer_output_utilization); forward(distributed=True) hit it (#1252).
   python -m pip install -q "jax[cuda12]==0.6.2"
-  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7"
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" "pytest>=7" pytest-timeout
   # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
   python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
   export PYTHONPATH="$ROOT"
   python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices())" | tee -a "$OUT/meta.txt"
   set +e
-  timeout 10800 python -m pytest -o addopts="" -m gpu -q -ra -p no:cacheprovider \\
+  # "not crossval_ladder": the two full-ladder cases run in scripts/vessl_crossval_ladder.yaml
+  # (PI 2026-09-27, #1335). -v and --timeout: a stalled test is named and its stacks dumped.
+  timeout 10800 python -m pytest -o addopts="" -m "gpu and not crossval_ladder" -v -ra -p no:cacheprovider \\
+      --durations=40 --timeout=5400 --timeout-method=thread \\
       --junitxml "$OUT/junit.xml" \\
       {files} \\
       > "$OUT/pytest.log" 2>&1

@@ -41,7 +41,7 @@ run: |-
   # 0.4.33 ships an XLA whose fusion cost model aborts on
   # CHECK_LE(common_utilization, producer_output_utilization); forward(distributed=True) hit it (#1252).
   python -m pip install -q "jax[cuda12]==0.6.2"
-  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest
+  python -m pip install -q "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7" pytest pytest-timeout
   # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
   python -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
   export RFX_REPO_ROOT="$src"
@@ -68,7 +68,12 @@ run: |-
   set +e
   # 20000 s: this selection took 13221 s of pytest on run 369367264767 (RTX 3090, 2026-09-25) against the old 13800.
   # crossval_ladder cases run in scripts/vessl_crossval_ladder.yaml; a release needs that lane green too.
-  timeout 20000 python -m pytest -m "gpu and not crossval_ladder" -q -ra -p no:cacheprovider \
+  # -v names each test as it starts, so a run cut by the outer timeout still says which
+  # test it was in; run 369367265464 (a9054338, RTX 4090) printed only ".." in 5.6 h under -q.
+  # --timeout (pytest-timeout, thread method) ends the run 5400 s into any one test and
+  # dumps every thread's stack; the slowest non-ladder test took ~21 min on a 4090.
+  timeout 20000 python -m pytest -m "gpu and not crossval_ladder" -v -ra -p no:cacheprovider \
+    --durations=40 --timeout=5400 --timeout-method=thread \
     > "$out/gpu_suite.log" 2>&1
   rc=$?
   set -e

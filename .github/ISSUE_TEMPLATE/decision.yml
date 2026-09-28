@@ -58,5 +58,6 @@ body:
         - "lane:ci-infra"
         - "lane:examples-docs"
         - "lane:plan"
+        - "lane:research"
     validations:
       required: true
