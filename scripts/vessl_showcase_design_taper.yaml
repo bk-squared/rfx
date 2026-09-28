@@ -11,10 +11,10 @@ env:
   HDF5_USE_FILE_LOCKING: "FALSE"
   LANG: "C.UTF-8"
   MPLBACKEND: "Agg"
-  RFX_SHOWCASE_REF: "7509337f28d3bb4258f228562ef26327a8694c8a"
+  RFX_SHOWCASE_REF: "f3c92cad5547c4325ee1ce618e36a0068d9d725c"
   RFX_SHOWCASE_PRESET: "gpu-8gb"
-  RFX_DESIGN_MODE: "full"
-  RFX_DESIGN_RECORD: "none"
+  RFX_DESIGN_MODE: "keyframes"
+  RFX_DESIGN_RECORD: "/root/workspace/byungkwan-workspace/research/rfx/.omx/showcase/design_taper/20260928T084708Z-7509337f-full"
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
