@@ -18,6 +18,14 @@
   "tail_to_peak": 0.0003290091117378324,
   "ringdown_tail_to_peak": 0.8595053553581238,
   "sha": "b9a387b0d6d3715692fd3f94911b3bef7bd00504",
+  "sha_note": "b9a387b0 is the capture commit on the PR branch before its rebase onto 715b1f24; it is not reachable from the PR head, and its rfx/ tree differs from the PR's.",
+  "reproduced_at": {
+    "commit": "90c20337",
+    "vessl_run_id": "369367265654",
+    "result": "tests/unit/misc/test_v173a_physics_equivalence_slow.py on VESSL CPU (JAX 0.6.2, numpy 2.2.6) at 5db5aad6, whose tree is identical to 90c20337: dominant_probe_mode_hz 1954877968.4835823, bit-identical to this baseline",
+    "log": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_tests2-20260927T202436Z/r2_file_cpu.log",
+    "capture": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_v173a-20260927T084253Z/"
+  },
   "harness_sha256": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
   "rfx_import": "/tmp/pr-b9a387b0d6d3715692fd3f94911b3bef7bd00504/rfx/__init__.py",
   "jax_version": "0.6.2",

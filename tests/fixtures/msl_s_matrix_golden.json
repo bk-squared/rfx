@@ -2,6 +2,13 @@
   "run_name": "1292-msl-base-20260927T094725Z",
   "fixture_id": "931-msl-254um-600um-aligned-v2",
   "source_sha": "b9a387b0d6d3715692fd3f94911b3bef7bd00504",
+  "source_sha_note": "b9a387b0 is the capture commit on the PR branch before its rebase onto 715b1f24; it is not reachable from the PR head, and its rfx/ tree differs from the PR's.",
+  "reproduced_at": {
+    "commit": "90c20337",
+    "vessl_run_id": "369367265654",
+    "result": "tests/unit/autodiff/test_msl_sparam_ad.py on VESSL CPU (JAX 0.6.2, numpy 2.2.6) at 5db5aad6, whose tree is identical to 90c20337: the live S equals this golden bit-identically (max |S - golden| = 0.0)",
+    "log": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_tests2-20260927T202436Z/r4_file_cpu.log"
+  },
   "source_hashes": {
     "tests/unit/autodiff/test_msl_sparam_ad.py": "64640050765357b83faf7d01840ed523a2338934def83873a2d39f6e4547c92b",
     "tests/_msl_fixture_qualification.py": "0000ff0cfe676b44b1f80fb0e62ef75ff591c9b3de02ab4e789f0f237ac44b9a",
@@ -28,6 +35,8 @@
   "backend": "cpu",
   "x64_enabled": false,
   "dtype": "complex64",
+  "npy_dtype": "complex128",
+  "dtype_note": "'dtype' is the solve's S dtype (float32 fields), which the capture script cross-checks against both qualification reports; the .npy stores the same values upcast to complex128, each exactly representable in complex64.",
   "refinement": 1,
   "num_periods": 12,
   "geometry": {
@@ -770,7 +779,8 @@
   ],
   "old_golden_max_abs_delta": 0.011427236434856165,
   "qualification_reports": [
-    "/root/workspace/claude-workspace/rfx/runs/1292-c_capture_msl-20260927T094725Z/msl_refinement.json",
-    "/root/workspace/claude-workspace/rfx/runs/1292-c_capture_msl-20260927T094725Z/msl_confirmation.json"
-  ]
+    "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_msl-20260927T094725Z/msl_refinement.json",
+    "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_msl-20260927T094725Z/msl_confirmation.json"
+  ],
+  "base_report": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_msl-20260927T094725Z/msl_base.json"
 }

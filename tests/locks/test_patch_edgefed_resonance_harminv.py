@@ -115,12 +115,15 @@ from __future__ import annotations
 
 LOCK_PROVENANCE = {
     "fixture": "none",
-    "generator": "hand-derived (2026-08-30 configuration sweep on the CPU lane; script not in tree)",
-    "commit": "a8c3d52",
-    "date": "2026-08-30",
-    "run_id": "local",
-    "host": "cpu lane (os / jax version not recorded in #784)",
-    "pinned_until": "2027-02-26",
+    "generator": ("configuration sweep, bk-squared/rfx-archive "
+                  "rfx/records/20260927-1292-locked-results/scripts/r3_legb_config.py; "
+                  "windows by the midpoint / half-range + extractor-spread construction"),
+    "commit": "1d10ee45 (configurations); 97358d13 (fixture values on CPU)",
+    "date": "2026-09-27",
+    "run_id": "369367265498 (Leg B pairs), 369367265659 (Leg A axes), 369367265660 (CPU)",
+    "host": ("VESSL gpu-8gb RTX 2070 SUPER, jax 0.6.2 cuda, float32 (configurations); "
+             "VESSL CPU python:3.10-slim, jax 0.6.2, numpy 2.2.6 (fixture values)"),
+    "pinned_until": "2027-03-27",
 }
 
 import math
@@ -208,15 +211,21 @@ N_PROBE_Y = 5                   # probes along y (the parity line for TM001)
 # N = 4-10, 0.36-0.40 % above it, and falls to 9.1448 GHz at N = 16. At this lock's
 # N = 4 the current tree reads 1.6 % below the external value.
 #
-# The window is centred on the current tree's value, -3.856 % (CPU, -3.855632), and its
-# half-width follows the construction documented below, re-measured on the current tree
-# (unfed arm, each configuration moved one axis at a time from the base build):
+# The window is the lock's own construction (History below): centre = midpoint of the
+# configuration range, half-width = configuration half-range + extractor spread, no
+# safety factor. Re-measured on the current tree (unfed arm, each configuration moved one
+# axis at a time from the base build):
 #   h/4 base -3.8556 | domain +20/+20/+10 -3.8536 | domain +40/+40/+20 -3.8515 |
 #   source (0.68L, +0.19W) -3.8554 | cpml_layers 12 -3.8514 | h/5 -3.8802 |
 #   h/6 -5.3949 | h/3 -5.4795 | h/3 with domain +20/+20/+10 -5.4771
-#   configuration half-range 0.81403 (h/3 against cpml 12); single-probe extractor
-#   spread on this fixture's own unfed record 0.0132 %.
-# Each term rounds UP (0.815 + 0.014), with no other slack: window [-4.685, -3.027] %.
+#   range -5.479515 (h/3) .. -3.851448 (cpml 12): midpoint -4.665482, half-range
+#   0.814034; single-probe extractor spread on this fixture's own unfed record 0.013190 %.
+# Each term rounds UP (0.815 + 0.014), with no other slack; centre -4.6655:
+# window [-5.4945, -3.8365] %.
+# The fixture (h/4 base, CPU -3.855632 %) is at the family's upper end: only cpml 12 and
+# the +40 domain read above it, by 0.004 pp. It therefore sits about one extractor
+# spread inside the upper edge: margin 0.019 pp (0.0042 to the top member + 0.0132
+# extractor spread + 0.0018 rounding). Its distance to the lower edge is 1.639 pp.
 # The h/3 and h/6 samples sit 1.5-1.6 pp from h/4: the patch is off-lattice, so each
 # mesh rasterizes it differently, and the node-count Balanis anchor moves with it.
 # Threads and the x64 flag were not re-sampled (2026-08-30: bit-identical raw series,
@@ -228,10 +237,10 @@ N_PROBE_Y = 5                   # probes along y (the parity line for TM001)
 # 0.935 configuration (h/3..h/6, +0/+20/+40 cells, cpml 8 -> 12, measured on the
 # pre-redraw board) + 0.190 extractor. Discrimination then: pre-#702 (6b1302b3)
 # measured +7.430 % on identical inputs.
-LEG_A_CENTRE_PCT = -3.856       # the current tree's value, -3.855632 % (CPU)
+LEG_A_CENTRE_PCT = -4.6655      # midpoint of the configuration range, -4.665482 %
 LEG_A_HALF_PCT = 0.829          # = 0.815 configuration + 0.014 extractor
-#   configuration half-range (-5.479508 .. -3.851450) = 0.81403 -> 0.815;
-#   single-probe extractor spread 0.01319 -> 0.014. Window [-4.685, -3.027] %.
+#   configuration half-range (-5.479515 .. -3.851448) = 0.814034 -> 0.815;
+#   single-probe extractor spread 0.013190 -> 0.014. Window [-5.4945, -3.8365] %.
 
 # ------------------------------------------------------------- Leg B window --
 # f_TM010(fed) / f_TM010(unfed) - 1, in percent. The edge-feed loading term.
@@ -246,15 +255,24 @@ LEG_A_HALF_PCT = 0.829          # = 0.815 configuration + 0.014 extractor
 # then #1213 −0.276 pp and #1012 −0.142 pp. Realized footprints on this grid (pad 8): ground
 # x 0..168 / y 0..109, against x 8..159 / y 8..100 before #1178; feed trace x 8..74 on both.
 #
-# The window is centred on the current tree's value and its half-width follows the
-# construction documented below, re-measured on the current tree (fed/unfed pairs, each
-# configuration moved one axis at a time from the base build):
+# The window is the lock's own construction, as in its first measurement (History
+# below): centre = midpoint of the configuration range, half-width = configuration
+# half-range + extractor spread, no safety factor. Re-measured on the current tree
+# (fed/unfed pairs, each configuration moved one axis at a time from the base build):
 #   h/4 base -7.6353 | h/4 +40/+40/+20 -7.6366 | h/5 base -6.6899 |
-#   h/3 base -6.7554 | h/3 +20/+20/+10 -6.7567      configuration half-range 0.4734
-#   single-probe extractor spread on this fixture's own unfed record 0.0132 %
-# Each term rounds UP (0.474 + 0.014), with no other slack: window [-8.123, -7.147] %.
-# The h/4 base sits at one end of the configuration range; the midpoint of the five
-# pairs is -7.163 %. Records: bk-squared/rfx-archive
+#   h/3 base -6.7554 | h/3 +20/+20/+10 -6.7567
+#   range -7.636614 (h/4 +40) .. -6.689898 (h/5): midpoint -7.163256, half-range
+#   0.473358; single-probe extractor spread on this fixture's own unfed record 0.013190 %.
+# Each term rounds UP (0.474 + 0.014), with no other slack; centre -7.1633:
+# window [-7.6513, -6.6753] %.
+# The fixture (h/4 base, CPU -7.635336 %) is at the family's lower end: only the +40
+# domain reads below it, by 0.001 pp. It therefore sits about one extractor spread
+# inside the lower edge: margin 0.016 pp (0.0013 to the bottom member + 0.0132 extractor
+# spread + 0.0015 rounding).
+# Resolution: the pre-#1178 value (-7.067 %) is inside this envelope. The lock's
+# resolution, a 0.95 pp configuration spread, is wider than #1178's 0.15 pp move, so it
+# cannot see it; nor #1213's -0.28 pp or #1012's -0.14 pp (-7.216 and -7.493 % before
+# them are inside too). Records: bk-squared/rfx-archive
 # rfx/records/20260927-1292-locked-results/ (R3 Leg B).
 #
 # History, the construction's first measurement (2026-08-30, before #931, #1178, #1213
@@ -276,11 +294,11 @@ LEG_A_HALF_PCT = 0.829          # = 0.815 configuration + 0.014 extractor
 #   2.4 mm) — an inset-intrinsic matching term exists but is not what this leg pins.
 #   Since #1178 the ground plane continues through the absorbers (realized ground
 #   x 0..168 / y 0..109, against x 8..159 / y 8..100 before; feed trace x 8..74 on both).
-LEG_B_CENTRE_PCT = -7.635       # the current tree's h/4 value, -7.635336 % (CPU)
+LEG_B_CENTRE_PCT = -7.1633      # midpoint of the configuration range, -7.163256 %
 LEG_B_HALF_PCT = 0.488          # = 0.474 configuration + 0.014 extractor
-#   configuration half-range (-7.636614 .. -6.689898) = 0.47336 -> 0.474;
+#   configuration half-range (-7.636614 .. -6.689898) = 0.473358 -> 0.474;
 #   single-probe extractor spread measured on this fixture's own unfed record
-#   0.01319 -> 0.014. Both terms round UP. Window [-8.123, -7.147] %.
+#   0.013190 -> 0.014. Both terms round UP. Window [-7.6513, -6.6753] %.
 
 # --------------------------------------------------------------- Leg C ------
 PATCH_BAND_GHZ = (8.0, 10.5)   # physical patch radiating band (holds >1 mode: see above)
@@ -792,9 +810,10 @@ def test_leg_a_isolated_patch_discretization_bias(arms):
     own realized raster. Balanis is context only; the reference for this patch's TM010 is
     the openEMS ladder quoted in the Leg A block above (converged 9.1185 GHz).
 
-    Window re-derived 2026-09-27 (issue 1292) around the current tree's value; root cause
-    #1213. The tree before #1213 reads -1.932 % and the pre-#702 tree +7.430 %, both
-    outside it."""
+    Window re-derived 2026-09-27 (issue 1292) by the lock's own construction (midpoint of
+    the configuration range, half-range plus extractor spread) on the current tree; root
+    cause #1213. The tree before #1213 reads -1.932 %, the tree before #1012 -3.665 % and
+    the pre-#702 tree +7.430 %, all outside it."""
     arm = arms["unfed"]
     f_ghz = _tm010(arm)["f_ghz"]
     bias_pct = 100.0 * (f_ghz / arm["anchor"] - 1.0)
@@ -821,8 +840,10 @@ def test_leg_a_isolated_patch_discretization_bias(arms):
 def test_leg_b_edge_feed_pull(arms):
     """Leg B — the edge-feed loading term, as the fed/unfed frequency ratio.
 
-    Window re-derived 2026-09-27 (issue 1292) around the current tree's value; the
-    three commits that moved it (#1178, #1213, #1012) are in the Leg B block above.
+    Window re-derived 2026-09-27 (issue 1292) by the lock's own construction (midpoint of
+    the configuration range, half-range plus extractor spread) on the current tree. The
+    three commits that moved the pull (#1178, #1213, #1012) are in the Leg B block above;
+    the values before each of them lie inside this window.
 
     Separated from Leg A on purpose: these two terms cancelled each other for the whole
     life of the old +-0.8 GHz window. Leg B was not built to discriminate #702 (the

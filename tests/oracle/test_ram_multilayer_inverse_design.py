@@ -382,8 +382,10 @@ def test_ram_lossy_layer_matches_tmm_at_realized_thickness(ram_run):
     on the layer's front plane took the layer's permittivity, so the layer was solved
     about half a cell thick: TMM best-fit thickness +0.56 dx, absorption null 5.6 / 2.8
     / 1.6 % low at dx = 0.5 / 0.25 / 0.125 mm. Since #1213 those nodes take the mean of
-    their four cells, and the layer is solved at its realized thickness: best fit within
-    0.013 dx, null within 0.16 % on the same ladder. The fixture's |Gamma(8 GHz)| = 0.153
+    their four cells. With #1213 alone (76f68f9f) the fixture (dx = 0.5 mm) fits +0.076
+    dx, reads 0.59 dB from the TMM and its null -0.19 %; with #1012 (f7b3270d) as well
+    the layer is solved at its realized thickness: best fit within 0.013 dx, null within
+    0.16 % on the same ladder. The fixture's |Gamma(8 GHz)| = 0.153
     is the TMM of the realized 4.50 mm layer (0.155). The old 0.131 matched the drawn
     4.69 mm (TMM 0.132) only because the half-cell error (+0.28 mm) offset the 0.19 mm
     rasterization shortfall. Records: bk-squared/rfx-archive

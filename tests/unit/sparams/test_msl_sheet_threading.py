@@ -434,8 +434,9 @@ def test_o3_mean_s21_drift_lock():
     (1d10ee45, 2026-09-27) across run conditions, rounded up to one significant figure.
     CPU at 8 and 4 threads and with XLA's CPU ISA capped at AVX2 gave the same values to
     4e-10; OPENBLAS_CORETYPE=Haswell moved them by up to 3.2e-8; a CPU pytest run of
-    this file by up to 8.7e-8 (Rs0 = 1e-6); two GPU runs on different cards (JAX 0.6.2,
-    CUDA 12) by up to 3.66e-7 (Rs0 = 5). Hence 4e-7.
+    this file by up to 8.7e-8 (Rs0 = 1e-6). Two GPU runs, both on an RTX 2070 SUPER
+    (JAX 0.6.2, CUDA 12), differ from the CPU values by up to 3.66e-7 (Rs0 = 5): a
+    GPU-versus-CPU offset; the two GPU runs agree with each other to 5.5e-8. Hence 4e-7.
     For scale: the tree before #1213 (cd237692) reads 0.999843 / 0.997062 / 0.996813,
     6.3e-4 / 6.3e-4 / 5.7e-4 away. Records: bk-squared/rfx-archive
     rfx/records/20260927-1292-locked-results/ (R5).
