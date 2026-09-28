@@ -9,6 +9,8 @@ on:
       - "README.md"
       - "examples/quickstart/hello_world.py"
       - "scripts/sync_intro_snippet.py"
+      - "scripts/sync_showcase_snippet.py"
+      - "scripts/showcase/patch_sensitivity.py"
       - "scripts/build_public_docs_bundle.py"
       - "scripts/requirements-public-docs.txt"
       - "tests/unit/docs/**"
@@ -30,6 +32,8 @@ on:
       - "README.md"
       - "examples/quickstart/hello_world.py"
       - "scripts/sync_intro_snippet.py"
+      - "scripts/sync_showcase_snippet.py"
+      - "scripts/showcase/patch_sensitivity.py"
       - "scripts/build_public_docs_bundle.py"
       - "scripts/requirements-public-docs.txt"
       - "tests/unit/docs/**"
@@ -69,10 +73,13 @@ jobs:
           python-version: "3.10.12"
 
       - name: Syntax-check public-doc scripts
-        run: python -m py_compile scripts/check_public_docs_sync.py scripts/check_public_docs_manifest.py scripts/export_public_docs_to_gitops.py scripts/build_public_docs_bundle.py
+        run: python -m py_compile scripts/check_public_docs_sync.py scripts/check_public_docs_manifest.py scripts/export_public_docs_to_gitops.py scripts/build_public_docs_bundle.py scripts/sync_showcase_snippet.py
 
       - name: Verify the generated introductory code
         run: python scripts/sync_intro_snippet.py --check
+
+      - name: Verify the showcase objective excerpt against its script
+        run: python scripts/sync_showcase_snippet.py --check
 
       - name: Verify site map resolves
         run: python scripts/check_public_docs_manifest.py

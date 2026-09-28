@@ -1,16 +1,14 @@
 {
   "groups": [
     {
-      "label": "Explore",
+      "label": "Showcase",
       "items": [
         "rfx",
-        "rfx/gallery",
-        "rfx/gallery/boundary-reflection",
-        "rfx/gallery/dielectric-interface",
-        "rfx/gallery/cavity-standing-wave",
-        "rfx/gallery/waveguide-taper",
-        "rfx/gallery/microstrip-notch",
-        "rfx/gallery/beam-steering"
+        "rfx/showcase",
+        "rfx/showcase/sensitivity-map",
+        "rfx/showcase/gradient-cost",
+        "rfx/showcase/descent-to-optimum",
+        "rfx/showcase/forward-checks"
       ]
     },
     {
@@ -23,7 +21,10 @@
         "rfx/guide/quickstart",
         "rfx/guide/concepts",
         "rfx/examples",
-        "rfx/guide/first-patch"
+        "rfx/guide/first-patch",
+        "rfx/gallery/boundary-reflection",
+        "rfx/gallery/dielectric-interface",
+        "rfx/gallery/cavity-standing-wave"
       ]
     },
     {
@@ -65,7 +66,7 @@
       ]
     },
     {
-      "label": "Accuracy & limits",
+      "label": "Evidence",
       "items": [
         "rfx/validation",
         "rfx/api/support-boundaries",
@@ -73,7 +74,16 @@
         "rfx/validation/recommended-configuration",
         "rfx/guide/validation",
         "rfx/guide/tutorial-convergence",
-        "rfx/guide/benchmarks",
+        "rfx/guide/benchmarks"
+      ]
+    },
+    {
+      "label": "Archive",
+      "items": [
+        "rfx/gallery",
+        "rfx/gallery/waveguide-taper",
+        "rfx/gallery/microstrip-notch",
+        "rfx/gallery/beam-steering",
         "rfx/gallery/multilayer_fresnel",
         "rfx/gallery/waveguide_wr90",
         "rfx/gallery/patch_antenna"

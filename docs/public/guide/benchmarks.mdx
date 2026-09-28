@@ -35,13 +35,18 @@ solver, version and mesh produced them.
 | rfx meshes | a uniform ladder at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three rungs realize the same patch, and the test refuses a rung that does not. |
 | Judged | the TM010 resonance (where Re(Z_in) peaks) within 1 %, and the input resistance there within 2 %, on the finest rung; the last two rungs must agree within 1 % (mesh statement), and the record must ring down to −40 dB. |
 | Reported, not judged | the `\|S11\|` dip frequency and depth, the reactance at resonance and the −10 dB band edges. Neither solver declares a probe radius, so each feed cell sets the probe's series reactance, and that moves the dip. |
-| Result when it was added | resonance −0.10 % and input resistance −0.42 % from openEMS, on converged ladders ([bk-squared/rfx#1315](https://github.com/bk-squared/rfx/pull/1315)). |
+| Result | resonance −0.097 % and input resistance −0.42 % from openEMS, on converged ladders (current run, `b46a8220`; the case was added in [bk-squared/rfx#1315](https://github.com/bk-squared/rfx/pull/1315)). |
 | Test | `tests/crossval/rt5880_patch/test_rt5880_patch.py` |
 
 The case judges the resonance and the input resistance, not the `|S11|`
 curve, because the two solvers' probe models differ. It says the cavity, its
 fringing and its radiation loss agree with openEMS on this board. It does not
 say a patch on a different board or mesh is within 1 %.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_site.png" loading="lazy" alt="Real and imaginary parts of the input impedance of the RT/Duroid 5880 probe-fed patch from rfx and from openEMS on its finest mesh, 2.0 to 2.9 GHz" />
+  <figcaption>Input impedance of the RT/Duroid 5880 patch, rfx and openEMS on the same board. <a href="/rfx/showcase/forward-checks/">The forward model, next to openEMS →</a></figcaption>
+</figure>
 
 ## More comparisons
 
@@ -57,8 +62,13 @@ or `slow`.
 | Rectangular waveguides across several bands, S-parameters | frozen Meep, openEMS and Palace records | `tests/crossval/test_waveguide_broad_e5.py` |
 
 On the notch filter, the notch frequency on a uniform mesh converges to within
-0.036 % of the openEMS tutorial result, and to within 0.03 % on a band-graded
+0.090 % of the openEMS tutorial result, and to within 0.03 % on a band-graded
 mesh with 6 cells across the substrate.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/forward_curves_msl_notch_filter_site.png" loading="lazy" alt="|S21| and |S11| of the microstrip open-stub notch filter from rfx and from openEMS on its finest mesh, 2 to 7 GHz" />
+  <figcaption>|S21| and |S11| of the microstrip open-stub notch filter, rfx and openEMS on the same board. <a href="/rfx/showcase/forward-checks/">The forward model, next to openEMS →</a></figcaption>
+</figure>
 
 Structures with a closed form are checked against that closed form, not
 against another solver. Those tests are in `tests/oracle/`.

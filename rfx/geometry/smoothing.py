@@ -122,9 +122,13 @@ def _sdf_cylinder(x, y, z, shape, xp=jnp):
 
 def _get_sdf_fn(shape: Shape):
     """Return the SDF function for a known shape type, or None."""
-    from rfx.geometry.csg import Box, Sphere, Cylinder
+    from rfx.geometry.csg import Box, Sphere, Cylinder, OrientedBox
     if isinstance(shape, _ContinuedSheetShape):
         return _continued_sheet_sdf if _get_sdf_fn(shape.declared) is not None else None
+    if isinstance(shape, OrientedBox):
+        raise NotImplementedError(
+            "OrientedBox subpixel smoothing and conformal weights are not implemented; "
+            "use its cell-centred volume rasterization")
     if isinstance(shape, Sphere):
         return _sdf_sphere
     elif isinstance(shape, Box):
@@ -501,7 +505,7 @@ def extend_shapes_into_cpml_pad(
         caller surfaces them.
     """
     from rfx.core.jax_utils import is_tracer
-    from rfx.geometry.csg import Box, Cylinder, declared_bounds
+    from rfx.geometry.csg import Box, Cylinder, OrientedBox, declared_bounds
 
     out: list[tuple[Shape, float]] = []
     unextendable: list[UnextendableShape] = []
@@ -548,6 +552,10 @@ def extend_shapes_into_cpml_pad(
                                            declared_domain, occupied_faces)
                 if not reaches:
                     continue
+                if isinstance(current, OrientedBox):
+                    raise NotImplementedError(
+                        "OrientedBox geometric continuation into CPML is not implemented; "
+                        "keep the volume clear of the domain faces")
                 if isinstance(current, Box):
                     current = _continue_box(current, axis, side, target)
                 elif isinstance(current, Cylinder):

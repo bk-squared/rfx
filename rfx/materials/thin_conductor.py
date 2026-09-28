@@ -209,6 +209,12 @@ class ThinConductor:
     eps_r: float = 1.0
     surface_impedance_f0: float | jnp.ndarray | None = None
 
+    def __post_init__(self):
+        from rfx.geometry.csg import OrientedBox
+        if isinstance(self.shape, OrientedBox):
+            raise NotImplementedError(
+                "OrientedBox is a volume; axis-aligned thin-conductor sheets are not implemented")
+
     @property
     def is_pec(self) -> bool:
         """Whether this thin conductor should be treated as PEC.

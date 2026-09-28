@@ -366,7 +366,10 @@ def _band_mean_s21_sq(eps_scale):
     return coax_band_mean_s21_sq(res.s_params)
 
 
+# highmem (issue #545): measured +7.3 GB RSS high-water delta (process peak 14.9 GB) in weekly
+# run 36024266641; in run 36377113298 the process reached 14.7 GB here and the runner killed it (exit 137).
 @pytest.mark.slow_physics
+@pytest.mark.highmem
 def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent():
     """Gate: ``compute_coaxial_two_port`` is differentiable end to end w.r.t.
     ``eps_scale`` and the float32 AD gradient (as shipped) matches a central

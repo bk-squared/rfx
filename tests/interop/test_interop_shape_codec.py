@@ -18,7 +18,7 @@ import json
 
 import pytest
 
-from rfx.geometry.csg import Box, Cylinder, PolylineWire, Sphere
+from rfx.geometry.csg import Box, Cylinder, OrientedBox, PolylineWire, Sphere
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.via import Via
 from rfx.interop import (
@@ -32,6 +32,8 @@ from rfx.interop._shapes import _CODECS, constructor_parameter_names
 
 
 SHAPES = {
+    "oriented_box": OrientedBox((.03, .04, .05), (.021, .017, .013),
+                               ((0., -1., 0.), (1., 0., 0.), (0., 0., 1.))),
     "box": Box(corner_lo=(0.0, 0.0, 0.0), corner_hi=(0.02, 0.012, 0.0015)),
     "cylinder": Cylinder(
         center=(0.010, 0.006, 0.0008), radius=3e-4, height=1.5e-3, axis="z"),
@@ -167,6 +169,38 @@ def test_mesh_shape_is_refused_until_explicitly_supported():
     mesh = trimesh.creation.box(extents=(1e-3, 1e-3, 1e-3))
     with pytest.raises(UnsupportedDesignFeature, match="MeshShape"):
         shape_to_dict(MeshShape(mesh))
+
+
+def test_oriented_box_design_round_trip_preserves_material_cells():
+    from pathlib import Path
+    import numpy as np
+    from rfx import Simulation
+    from rfx.interop import design_to_dict, simulation_from_design
+
+    sim = Simulation(freq_max=6e9, domain=(.08, .09, .10), dx=.002, cpml_layers=4)
+    sim.add_material("body", eps_r=3.25, sigma=.125)
+    sim.add(SHAPES["oriented_box"], material="body")
+    payload = design_to_dict(sim)
+    schema_path = (Path(__file__).resolve().parents[2]
+                   / "docs/design_notes/schemas/rfx-design-ir-v2.schema.json")
+    pytest.importorskip("jsonschema").validate(payload, json.loads(schema_path.read_text()))
+    restored = simulation_from_design(json.loads(json.dumps(payload)))
+    assert design_to_dict(restored) == payload
+    actual = sim._assemble_materials(sim._build_grid())[0]
+    replay = restored._assemble_materials(restored._build_grid())[0]
+    np.testing.assert_array_equal(actual.eps_r, replay.eps_r)
+    np.testing.assert_array_equal(actual.sigma, replay.sigma)
+
+
+@pytest.mark.parametrize("rotation", [
+    [[1., 0., 0.], [0., 1., 0.]],
+    [[1., 0., 0.], [0., 1., 0.], [0., 0., -1.]],
+])
+def test_oriented_box_import_rejects_invalid_frame(rotation):
+    payload = shape_to_dict(SHAPES["oriented_box"])
+    payload["params"]["rotation"] = rotation
+    with pytest.raises(UnsupportedDesignFeature, match="oriented_box"):
+        shape_from_dict(payload)
 
 
 def test_subclass_of_supported_shape_is_refused():

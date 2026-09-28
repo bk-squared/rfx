@@ -47,7 +47,7 @@ from rfx.jax_checks import (
     check_positive,
     checkify_invariants,
 )
-from rfx.geometry.csg import Box, Sphere, Cylinder, PolylineWire
+from rfx.geometry.csg import Box, OrientedBox, Sphere, Cylinder, PolylineWire
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.mesh_import import MeshShape
 from rfx.subgridding.validation import SubgridValidationIssue, SubgridValidationReport

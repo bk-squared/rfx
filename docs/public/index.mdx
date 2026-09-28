@@ -1,112 +1,116 @@
 ---
 title: "rfx"
-description: "Explore electromagnetic waves, RF components and differentiable design with the JAX-based FDTD simulator."
+description: "An open-source 3-D FDTD simulator for RF and microwave engineering, written in JAX, that returns the gradient of S-parameters, radiation patterns and fields with respect to every cell of a design region."
 sidebar:
   order: 1
 ---
 
 <section data-rfx="hero">
-  <p data-rfx="eyebrow">Electromagnetic simulation · Python · JAX</p>
-  <h2>See the fields. Shape the response.</h2>
-  <p>Follow a pulse, tune a filter, or reshape a radiation pattern. rfx is a three-dimensional finite-difference time-domain (FDTD) simulator that connects electromagnetic models, measurable responses and differentiable design.</p>
-  <p data-rfx="actions"><a href="/rfx/guide/visual-manual/">Start the visual manual →</a> <a href="/rfx/examples/">Find an example</a> <a href="/rfx/api/">Open the API</a></p>
+  <p data-rfx="eyebrow">Open source · JAX · 3-D FDTD for RF and microwave</p>
+  <h2>The RF simulator that returns gradients.</h2>
+  <p>Write a loss on S-parameters, a radiation pattern or a field. rfx gives its derivative with respect to the permittivity of every cell in your design region from one forward and one reverse pass. On the patch antenna below, the value and gradient over 43,008 design cells take 1.4 times as long as the simulation alone.</p>
+  <p data-rfx="actions"><code>pip install rfx-fdtd</code> <a href="/rfx/showcase/">See the showcase →</a> <a href="https://github.com/bk-squared/rfx">GitHub</a></p>
 </section>
 
 <figure data-rfx="media">
-  <video controls preload="none" playsInline poster="/rfx/gallery/assets/current-visuals/boundary-reflection.png" aria-label="The same electric pulse with open absorbing boundaries and reflecting metal walls">
-    <source src="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4" type="video/mp4" />
-    <a href="/rfx/gallery/assets/current-visuals/boundary-reflection.mp4">Download the field movie</a>.
+  <video data-rfx="loop" autoplay muted loop playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_poster.png" aria-label="Sensitivity of |S11| to the permittivity of each substrate cell of a patch antenna">
+    <source src="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity.mp4" type="video/mp4" />
+    <a href="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity.mp4">Download the loop (MP4)</a>.
   </video>
-  <figcaption><strong>Let a pulse leave, or reflect it back.</strong> The same source in an open domain and a closed metal cavity. Actual FDTD time-domain snapshots, generated for this manual: 2D TMz, one teaching mesh. <a href="/rfx/gallery/boundary-reflection/">Watch, inspect the data and run it →</a></figcaption>
+  <figcaption>One reverse pass through a 2.3 GHz patch antenna on RT/Duroid 5880: how much each of 20,592 substrate cells moves |S11| at 2.356 GHz. The map is strongest under the two radiating edges and nearly zero along the centre line, the field pattern of the TM010 mode. <a href="/rfx/showcase/sensitivity-map/">Read the case →</a></figcaption>
 </figure>
 
-## What would you like to simulate?
+<div data-rfx="proof">
+  <div>
+    <strong>1.4×</strong>
+    <p>Value and gradient over 12,400 to 43,008 design cells, compared with one forward run on the same RTX A6000. Central differences would take 4.9 to 16.8 days.</p>
+    <a href="/rfx/showcase/gradient-cost/">What a gradient costs →</a>
+  </div>
+  <div>
+    <strong>2×10⁻⁵</strong>
+    <p>Largest relative difference between the reverse-mode gradient and central finite differences on the patch (float64).</p>
+    <a href="/rfx/showcase/sensitivity-map/">How the gradient was checked →</a>
+  </div>
+  <div>
+    <strong>0.097 %</strong>
+    <p>Patch resonance next to openEMS on the same board; a microstrip notch filter agrees to 0.090 %.</p>
+    <a href="/rfx/showcase/forward-checks/">The forward model next to openEMS →</a>
+  </div>
+</div>
+
+## See the gradient at work
 
 <div data-rfx="cards">
   <section data-rfx="card">
-    <p data-rfx="eyebrow">Waves &amp; materials</p>
-    <h3>Watch reflection and propagation</h3>
-    <p>Follow electric fields through space, compare open and reflecting boundaries, and measure how a dielectric slab reflects and transmits power.</p>
-    <a href="/rfx/guide/visual-manual/#waves-and-materials">Explore wave simulations →</a>
+    <a href="/rfx/showcase/sensitivity-map/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_site.png" loading="lazy" alt="Map of the derivative of |S11|² with respect to the permittivity of each substrate cell under a patch antenna, beside its |S11| curve and its |E_z|² map" /></a>
+    <h3>Which cells move the match?</h3>
+    <p>One reverse pass maps the sensitivity of a patch antenna's |S11| to every substrate cell.</p>
+    <p><small>20,592 cells, one pass</small></p>
+    <a href="/rfx/showcase/sensitivity-map/">Read the case →</a>
   </section>
   <section data-rfx="card">
-    <p data-rfx="eyebrow">Transmission lines &amp; filters</p>
-    <h3>Connect a structure to its spectrum</h3>
-    <p>Excite a guided mode, measure port responses, and see how a matching taper or an open stub changes a frequency response.</p>
-    <a href="/rfx/gallery/waveguide-taper/">Explore guided waves →</a>
+    <a href="/rfx/showcase/gradient-cost/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_site.png" loading="lazy" alt="Bar chart of wall time on an RTX A6000 for a forward run, the value and gradient, and central differences, for three design regions" /></a>
+    <h3>What a gradient costs</h3>
+    <p>Time and memory for the value and gradient against a forward run, as the design region grows.</p>
+    <p><small>24 s vs 4.9–16.8 days</small></p>
+    <a href="/rfx/showcase/gradient-cost/">Read the case →</a>
   </section>
   <section data-rfx="card">
-    <p data-rfx="eyebrow">Antennas &amp; scattering</p>
-    <h3>From near fields to radiation patterns</h3>
-    <p>Examine radiation direction, dielectric beam shaping and incident-subtracted scattering with the matching far-field workflow.</p>
-    <a href="/rfx/gallery/beam-steering/">Explore beam steering →</a>
+    <a href="/rfx/showcase/descent-to-optimum/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_site.png" loading="lazy" alt="Reflection of a three-layer anti-reflection coating, its layer permittivities over the Adam iterations, and the band-mean reflection against the transfer-matrix optimum" /></a>
+    <h3>Descend to the closed-form optimum</h3>
+    <p>Adam through the FDTD solve finds the three layer permittivities of a broadband anti-reflection coating.</p>
+    <p><small>within 1.1 % of the transfer-matrix optimum</small></p>
+    <a href="/rfx/showcase/descent-to-optimum/">Read the case →</a>
   </section>
   <section data-rfx="card">
-    <p data-rfx="eyebrow">Differentiation &amp; design</p>
-    <h3>See which change moves the response</h3>
-    <p>Link material parameters to an objective with JAX gradients, then inspect the design and its full response as the parameters change.</p>
-    <a href="/rfx/guide/inverse-design/">Explore design workflows →</a>
+    <a href="/rfx/showcase/forward-checks/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_site.png" loading="lazy" alt="Input impedance of the RT/Duroid 5880 probe-fed patch from rfx and from openEMS" /></a>
+    <h3>The forward model next to openEMS</h3>
+    <p>Input impedance of the patch and |S21| of a microstrip notch filter, on the same boards as openEMS.</p>
+    <p><small>0.097 % and 0.090 %</small></p>
+    <a href="/rfx/showcase/forward-checks/">Read the case →</a>
   </section>
 </div>
 
-Continue with [a dielectric interface](/rfx/gallery/dielectric-interface/) or
-[a standing field in a cavity](/rfx/gallery/cavity-standing-wave/). These short
-teaching examples include their generating source, arrays and probe traces.
+## What the code looks like
 
-## Three structures, three design stories
+The objective is an ordinary Python function of the permittivity in a design
+box. JAX differentiates the whole time-stepping loop.
 
-<div data-rfx="cards">
-  <section data-rfx="card">
-    <a href="/rfx/gallery/waveguide-taper/"><img src="/rfx/gallery/assets/showcase-20260927/taper_traj.jpg" loading="lazy" alt="Dielectric taper, reflection spectrum and sensitivity plotted side by side" /></a>
-    <h3>Match a waveguide to a dielectric load</h3>
-    <p>Watch the material profile, reflection curve and sensitivity move together through a recorded design history.</p>
-    <p><small>Historical optimization visualization</small></p>
-    <a href="/rfx/gallery/waveguide-taper/">Watch the taper →</a>
-  </section>
-  <section data-rfx="card">
-    <a href="/rfx/gallery/microstrip-notch/"><img src="/rfx/gallery/assets/showcase-20260927/notch_path.jpg" loading="lazy" alt="Open-stub geometry and design trajectory for a microstrip notch filter" /></a>
-    <h3>Move a notch with one design variable</h3>
-    <p>Relate stub length to the design objective, then inspect the local electric field at a selected frequency.</p>
-    <p><small>Historical trajectory and phasor replay</small></p>
-    <a href="/rfx/gallery/microstrip-notch/">Watch the filter →</a>
-  </section>
-  <section data-rfx="card">
-    <a href="/rfx/gallery/beam-steering/"><img src="/rfx/gallery/assets/showcase-20260927/steer_traj.jpg" loading="lazy" alt="A patterned dielectric cover, its directional radiation pattern and design-variable sensitivities" /></a>
-    <h3>Turn a beam with a dielectric cover</h3>
-    <p>Connect a spatial permittivity pattern to the direction in which a dipole radiates.</p>
-    <p><small>Historical latent-variable optimization</small></p>
-    <a href="/rfx/gallery/beam-steering/">Watch the beam →</a>
-  </section>
-</div>
+{/* rfx-showcase-objective:start */}
 
-The films preserve their original presentation results. Each case identifies the
-animation type, source and limitations; these are not new accuracy measurements
-on the documentation build. [See all visual examples](/rfx/gallery/).
+```python
+def J(eps_box):
+    res = board.sim.forward(
+        design_box=corners, design_eps_override=eps_box,
+        design_box_holds_ports=True, n_steps=n_steps, checkpoint=False,
+        checkpoint_segments=checkpoint_segments,
+        port_s11_freqs=freqs, skip_preflight=True)
+    s = res.s_params
+    s = s if s.ndim == 1 else s[0]
+    return jnp.real(s[0]) ** 2 + jnp.imag(s[0]) ** 2
 
-## Make your first simulation
-
-Start with [installation](/rfx/guide/installation/) and the
-[first runnable model](/rfx/guide/first-run/), then follow the
-[visual manual](/rfx/guide/visual-manual/) from model to field to measurement.
-The [Examples hub](/rfx/examples/) links to runnable source and a learning path.
-
-```bash
-pip install rfx-fdtd
+v, g = jax.jit(jax.value_and_grad(J))(eps_bg)
 ```
 
-The published package and these development documents may describe different
-revisions. Match your installed version to the source/version shown by the site,
-and read [migration notes](/rfx/guide/migration/) before adapting an older example.
+{/* rfx-showcase-objective:end */}
 
-## Choose a supported model
+The full script builds the board, runs preflight once on it, and checks the
+gradient against finite differences before anything is plotted.
+[Full script →](https://github.com/bk-squared/rfx/blob/main/scripts/showcase/patch_sensitivity.py)
 
-Uniform Cartesian Yee FDTD on one device is the starting point for the manual.
-Port calculators, graded meshes, dispersive materials and differentiable objectives
-each have specific supported combinations. Use
-[Support Boundaries](/rfx/api/support-boundaries/) before combining them and
-[Accuracy & validation](/rfx/validation/) before reporting an RF result.
-See also the versioned [known limitations](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/docs/guides/known_limitations.md).
+## Start here
 
-Looking up a call? Start at the [API](/rfx/api/). Working with an assistant?
-Use the [machine-readable documentation index](/rfx/llms.txt), generated from the
-same documentation snapshot.
+- Install and run a first model: [Installation](/rfx/guide/installation/) · [Your first run](/rfx/guide/first-run/)
+- Watch fields move before measuring them: [The visual manual](/rfx/guide/visual-manual/) (the teaching films)
+- Design with gradients: [Autodiff and adjoint](/rfx/guide/autodiff-adjoint/) · [Inverse design](/rfx/guide/inverse-design/) · [Gradient behavior](/rfx/guide/gradient-behavior/)
+- Look up a call: [API reference](/rfx/api/)
+
+## Before you trust a number
+
+A result holds for the structure, mesh and observable it was checked on. Read
+[Support Boundaries](/rfx/api/support-boundaries/) before combining features and
+[Evidence](/rfx/validation/) before reporting an RF result.
+
+<aside data-rfx="note">
+  <p><strong>Working with a coding assistant?</strong> Point it at <a href="/rfx/llms.txt">/rfx/llms.txt</a>. Every page has a Markdown version, and every showcase case has a result.json with its numbers, units, conditions and limits.</p>
+</aside>

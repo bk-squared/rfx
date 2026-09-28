@@ -8,7 +8,8 @@ import json
 import re
 from pathlib import Path
 
-PRIMARY_ROUTE_PREFIXES = ("rfx/guide", "rfx/gallery", "rfx/examples", "rfx/api", "rfx/validation")
+PRIMARY_ROUTE_PREFIXES = ("rfx/showcase", "rfx/guide", "rfx/gallery", "rfx/examples", "rfx/api",
+                          "rfx/validation")
 LEGACY_GUIDE_QUARANTINE = {
     "documentation_architecture.md": "legacy docs/guide architecture note kept outside the public route manifest",
     "inverse_design_cookbook.md": "legacy cookbook retained until examples hub lands",

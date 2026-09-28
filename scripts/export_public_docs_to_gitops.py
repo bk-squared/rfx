@@ -11,6 +11,8 @@ from pathlib import Path
 
 DOC_EXTS = {".md", ".mdx"}
 SKIP_PUBLIC_ROOT_FILES = {"site_map.json"}
+# Authored inputs that a supplied bundle publishes itself, hashed in its manifest.
+BUNDLE_PUBLISHED_SOURCES = {"showcase/showcase.json"}
 
 
 def default_gitops_root(repo_root: Path) -> Path:
@@ -86,8 +88,9 @@ def export_snapshot(repo_root: Path, dst_root: Path, bundle_dir: Path | None = N
             safe_relative(src.relative_to(public_root).as_posix())
         if not src.is_file():
             raise ValueError(f"tracked public source missing: {src}")
+    bundled = BUNDLE_PUBLISHED_SOURCES if manifest else set()
     if manifest:
-        authored = {p.relative_to(public_root).as_posix() for p in tracked}
+        authored = {p.relative_to(public_root).as_posix() for p in tracked} - bundled
         overlap = authored & (set(manifest["files"]) | {"docs-manifest.json"})
         if overlap:
             raise ValueError(f"generated bundle collides with authored source: {sorted(overlap)}")
@@ -102,7 +105,7 @@ def export_snapshot(repo_root: Path, dst_root: Path, bundle_dir: Path | None = N
             remove_tree(child)
     for src in tracked:
         rel = src.relative_to(public_root)
-        if rel.name == ".gitignore" or rel.as_posix() == "site_map.json":
+        if rel.name == ".gitignore" or rel.as_posix() in SKIP_PUBLIC_ROOT_FILES | bundled:
             continue
         target = dst_root / rel
         target.parent.mkdir(parents=True, exist_ok=True)
