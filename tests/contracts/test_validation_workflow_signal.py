@@ -26,6 +26,9 @@ reddening anything:
 5. A denied ``issues: write`` is annotated (``core.error``), not only warned.
    That branch degrades the notifier back to the pre-#717 status quo — a job
    summary nobody reads — so it has to be visible on the run page.
+6. ``validation.yml``'s ``slow-tests`` matrix keeps ``fail-fast: false``. GitHub's
+   default is ``true``, under which one failing shard cancels the others and the
+   lane loses their results.
 
 The tests parse the workflow instead of grepping it, so reformatting the file
 cannot fool them. They run on every scheduled lane that carries this notifier:
@@ -156,4 +159,12 @@ def test_a_denied_issue_write_is_annotated_not_only_warned(name: str) -> None:
         "pre-#717 status quo (a job summary nobody reads), so it must annotate "
         "the run with core.error rather than only core.warning (issue #717 "
         "review)."
+    )
+
+
+def test_one_failing_shard_does_not_cancel_the_others() -> None:
+    strategy = _workflow("validation.yml")["jobs"]["slow-tests"]["strategy"]
+    assert strategy.get("fail-fast") is False, (
+        "slow-tests must set fail-fast: false; the default (true) cancels every "
+        "other shard when one fails, and their results are lost."
     )

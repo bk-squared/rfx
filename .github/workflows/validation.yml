@@ -67,7 +67,12 @@ jobs:
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
     # suite grows weekly; the 60-min ceiling left <15% headroom.
-    timeout-minutes: 120  # 2026-09-07: shard 3 hit 95 min against 90 on the 08-31 run; durations regenerated the same day
+    # 2026-09-28: 180, was 120 (120 since 2026-09-07, when shard 3 hit 95 min against 90). On run
+    # 36377113298 shards 4 and 5 were cut at 120 min with about 2,030 of 2,588 and 1,470 of 1,476 of
+    # their tests started; .test_durations had no entry for 701 and 356 of the tests they reached,
+    # so pytest-split's ~106-min estimates were low. At shard 4's pace (~2,030 tests in 119 min) its
+    # 2,588 need about 152 min. 180 stays inside GitHub's 360-min limit for a hosted job.
+    timeout-minutes: 180
     # 2026-09-21: five shards, was four. On the scheduled run of that day shard 2 of 4
     # passed 2,888 tests, failed none and was cut at the 120-minute limit. The cause
     # was ONE mispriced test: .test_durations priced
