@@ -2903,18 +2903,19 @@ class _ExecuteMixin:
                         "reduce exchange_interval or increase nx."
                     )
 
-            # Check 4 — CPML vs local slab on outer boundary ranks.
-            cpml_layers = int(getattr(self, "_cpml_layers", 0) or 0)
-            if self._boundary == "cpml" and cpml_layers > 0:
-                for rank in (0, n_devices - 1):
-                    nx_local_real = nx_per_rank
-                    if cpml_layers * 2 >= nx_local_real:
+            # A face's active absorber must fit on its owning boundary
+            # rank. Unused scalar budget entries are absent from its window.
+            if self._boundary == "cpml" and grid.cpml_layers > 0:
+                for face, rank in (("x_lo", 0), ("x_hi", n_devices - 1)):
+                    depth = int(grid.face_layers[face])
+                    owned = min(nx_per_rank, nx - rank * nx_per_rank)
+                    if depth > owned:
                         raise ValueError(
-                            f"cpml_layers*2={cpml_layers * 2} >= "
-                            f"nx_local={nx_local_real} on boundary rank "
-                            f"{rank}; reduce cpml_layers (or set per-face "
-                            f"lo_thickness/hi_thickness on the x Boundary) "
-                            f"or increase nx."
+                            f"{face} requested absorber depth={depth} exceeds "
+                            f"the {owned} real nodes on boundary rank {rank} "
+                            f"(cpml_layers budget={grid.cpml_layers}); reduce "
+                            f"{face.split('_')[1]}_thickness on the x Boundary "
+                            "or use fewer devices."
                         )
 
             # Check 5 — segmented remat overhead warning.

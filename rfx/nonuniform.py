@@ -112,6 +112,7 @@ class NonUniformGrid(NamedTuple):
     dx_arr_f64: np.ndarray | None = None
     dy_arr_f64: np.ndarray | None = None
     dz_f64: np.ndarray | None = None
+    face_layers: dict[str, int] | None = None
 
     @property
     def shape(self):
@@ -840,6 +841,7 @@ def make_nonuniform_grid(
     pec_faces: set[str] | None = None,
     pmc_faces: set[str] | None = None,
     cpml_axes: str = "xyz",
+    face_layers: dict[str, int] | None = None,
     dt: float | None = None,
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
@@ -894,6 +896,7 @@ def make_nonuniform_grid(
     """
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
+    requested_layers = face_layers or {}
 
     def _face_pad(axis: str, side: str) -> int:
         face = f"{axis}_{side}"
@@ -901,7 +904,13 @@ def make_nonuniform_grid(
             return 0
         if axis not in cpml_axes:
             return 0
-        return int(cpml_layers)
+        depth = requested_layers.get(face, cpml_layers)
+        if int(depth) != depth or not 0 <= depth <= cpml_layers:
+            raise ValueError(
+                f"face_layers[{face!r}]={depth} must be an integer between "
+                f"0 and cpml_layers={cpml_layers} (the allocation budget)."
+            )
+        return int(depth)
 
     pad_x_lo = _face_pad("x", "lo")
     pad_x_hi = _face_pad("x", "hi")
@@ -1026,6 +1035,9 @@ def make_nonuniform_grid(
         pad_y_lo=pad_y_lo, pad_y_hi=pad_y_hi,
         pad_z_lo=pad_z_lo, pad_z_hi=pad_z_hi,
         dx_arr_f64=dx_arr_f64, dy_arr_f64=dy_arr_f64, dz_f64=dz_f64,
+        face_layers=dict(x_lo=pad_x_lo, x_hi=pad_x_hi,
+                         y_lo=pad_y_lo, y_hi=pad_y_hi,
+                         z_lo=pad_z_lo, z_hi=pad_z_hi),
     )
 
 

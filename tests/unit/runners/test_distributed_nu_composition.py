@@ -902,28 +902,31 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
 
 
 # ---------------------------------------------------------------------------
-# Bundle C.1 (2026-04) — distributed-CPML preflight error text names per-face
-# thickness alternative. Users hitting `cpml_layers*2 >= nx_local` may now
-# mitigate via `Boundary(lo_thickness=..., hi_thickness=...)` on the axis,
-# not only by reducing the global `cpml_layers` scalar or growing nx.
+# A face's absorber must fit on the rank that owns that physical face.
+# The scalar allocation budget alone is not a reason to refuse a thin face.
 # ---------------------------------------------------------------------------
 
 def test_distributed_cpml_preflight_error_names_per_face_thickness():
-    """Bundle C.1: preflight ValueError for CPML*2 >= nx_local on a boundary
-    rank must name both ``cpml_layers`` and the per-face
-    ``lo_thickness``/``hi_thickness`` alternative on ``Boundary``."""
+    """Twelve low-x layers cannot fit on nine owned boundary nodes."""
     devices = _require_two_devices()
-
     from rfx import Simulation
+    from rfx.boundaries.spec import Boundary, BoundarySpec
 
-    # Build a CPML NU sim small enough that cpml_layers*2 dominates nx_local.
-    # nx=16 with n_devices=2 → nx_per_rank=8; default cpml_layers=8 → 16 >= 8.
-    sim = _make_nu_sim_small(nx=16, boundary="cpml", add_source=False)
+    sim = Simulation(
+        freq_max=5e9, domain=(.020, .060, .060), dx=.005,
+        dx_profile=np.full(4, .005), cpml_layers=12,
+        boundary=BoundarySpec(
+            x=Boundary(lo="cpml", hi="cpml", lo_thickness=12, hi_thickness=1),
+            y="cpml", z="cpml"),
+    )
+    grid = sim._build_nonuniform_grid()
+    assert grid.nx == 18 and grid.pad_x_lo == 12 and grid.pad_x_hi == 1
 
     with pytest.raises(ValueError) as excinfo:
         sim.forward(n_steps=4, distributed=True, devices=devices)
 
     msg = str(excinfo.value)
+    assert "x_lo" in msg and "depth=12" in msg and "9 real nodes" in msg
     assert "cpml_layers" in msg, f"missing cpml_layers mitigation mention: {msg!r}"
     assert ("lo_thickness" in msg) or ("hi_thickness" in msg), (
         f"error text must name the per-face Boundary "

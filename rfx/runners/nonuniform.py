@@ -113,6 +113,7 @@ def build_nonuniform_grid(
     pec_faces: set[str] | None = None,
     pmc_faces: set[str] | None = None,
     cpml_axes: str = "xyz",
+    face_layers: dict[str, int] | None = None,
     dt: float | None = None,
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
@@ -148,6 +149,7 @@ def build_nonuniform_grid(
             domain_xy, dz_profile, dx, cpml_layers,
             dx_profile=dx_profile, dy_profile=dy_profile,
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
+            face_layers=face_layers,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
         )
 
@@ -867,6 +869,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     grid = build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
         dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
+        face_layers=sim._resolve_face_layers(),
         pec_faces=sim._boundary_spec.pec_faces()
             if sim._boundary_spec is not None else None,
         pmc_faces=sim._boundary_spec.pmc_faces()

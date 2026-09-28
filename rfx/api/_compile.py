@@ -878,6 +878,7 @@ class _CompileMixin:
             self._dz_profile,
             dx_profile=self._dx_profile,
             dy_profile=self._dy_profile,
+            face_layers=self._resolve_face_layers(),
             pec_faces=self._boundary_spec.pec_faces()
                 if self._boundary_spec is not None else None,
             pmc_faces=self._boundary_spec.pmc_faces()

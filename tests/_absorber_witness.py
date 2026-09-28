@@ -13,10 +13,28 @@ from rfx.grid import C0, Grid
 
 
 @lru_cache(maxsize=16)
-def _line(n_layers, kappa_max, interior, dx, transverse_phase=None):
+def _line(n_layers, kappa_max, interior, dx, transverse_phase=None,
+          nonuniform=False, face_layers=None, axis="x"):
     """Cache compilation only; each call starts with new fields and profiles."""
-    grid = Grid(freq_max=30e9, domain=(interior * dx, 2 * dx, 2 * dx),
-                dx=dx, cpml_layers=n_layers, cpml_axes="x", kappa_max=kappa_max)
+    normal = "xyz".index(axis)
+    electric = "xyz"[(normal + 2) % 3]
+    magnetic = "xyz"[(normal + 1) % 3]
+    cells = [2, 2, 2]
+    cells[normal] = interior
+    domain = tuple(n * dx for n in cells)
+    depths = None if face_layers is None else dict(zip((f"{axis}_lo", f"{axis}_hi"), face_layers))
+    if nonuniform:
+        from rfx.nonuniform import make_nonuniform_grid
+        from rfx.core.yee import update_e_nu, update_h_nu
+        from rfx.boundaries.pmc import apply_pmc_faces
+        grid = make_nonuniform_grid(
+            domain[:2], np.full(cells[2], dx), dx,
+            cpml_layers=n_layers, cpml_axes=axis, face_layers=depths,
+        )
+    else:
+        grid = Grid(freq_max=30e9, domain=domain,
+                    dx=dx, cpml_layers=n_layers, cpml_axes=axis, kappa_max=kappa_max,
+                    face_layers=depths)
     dt = float(grid.dt)
 
     @jax.jit
@@ -31,13 +49,27 @@ def _line(n_layers, kappa_max, interior, dx, transverse_phase=None):
 
         def step(carry, value):
             state, auxiliary = carry
-            state = update_h(state, materials, dt, dx, periodic=(False, True, True), bloch=bloch)
-            state, auxiliary = cpml.apply_cpml_h(state, params, auxiliary, grid, axes="x")
-            state = update_e(state, materials, dt, dx, periodic=(False, True, True), bloch=bloch)
-            state, auxiliary = cpml.apply_cpml_e(state, params, auxiliary, grid, axes="x")
-            state = apply_pec_faces(state, {"x_lo", "x_hi"})
-            state = state._replace(ez=state.ez.at[source_index, :, :].add(value))
-            return (state, auxiliary), state.ez[source_index, 1, 1]
+            if nonuniform:
+                state = update_h_nu(state, materials, dt, grid.inv_dx_h,
+                                    grid.inv_dy_h, grid.inv_dz_h)
+                state = apply_pmc_faces(state, {f"{magnetic}_lo", f"{magnetic}_hi"})
+            else:
+                state = update_h(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch)
+            state, auxiliary = cpml.apply_cpml_h(state, params, auxiliary, grid, axes=axis)
+            if nonuniform:
+                state = update_e_nu(state, materials, dt, grid.inv_dx,
+                                    grid.inv_dy, grid.inv_dz)
+                state = apply_pec_faces(state, {f"{electric}_lo", f"{electric}_hi"})
+            else:
+                state = update_e(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch)
+            state, auxiliary = cpml.apply_cpml_e(state, params, auxiliary, grid, axes=axis)
+            state = apply_pec_faces(state, {f"{axis}_lo", f"{axis}_hi"})
+            sheet = [slice(None)] * 3
+            probe = [1] * 3
+            sheet[normal] = probe[normal] = source_index
+            field = getattr(state, f"e{electric}").at[tuple(sheet)].add(value)
+            state = state._replace(**{f"e{electric}": field})
+            return (state, auxiliary), field[tuple(probe)]
 
         return jax.lax.scan(step, (state, auxiliary), waveform)[1]
 
@@ -59,7 +91,8 @@ def _reflection_db(short, reference, dt, freqs):
 
 
 def plane_wave_reflection(n_layers, kappa_max, face, freqs, *,
-                          near=30, far=400, reference_distance=900, dx=1e-3):
+                          near=30, far=400, reference_distance=900, dx=1e-3,
+                          nonuniform=False, face_layers=None, axis="x"):
     """Return 20 log10 |R(f)| for one vacuum x face, frequencies in Hz.
 
     An Ez sheet on a periodic 3 by 3 transverse grid launches a TEM pulse.
@@ -72,13 +105,22 @@ def plane_wave_reflection(n_layers, kappa_max, face, freqs, *,
     Defaults reproduce the normal-incidence rig used in the #1012 review:
     1 mm cells, a 12 ps differentiated Gaussian centred at 60 ps, float32.
     This measures this discrete absorber, not a continuum or mesh error.
+
+    The NU operators have no transverse periodic option. ``nonuniform=True``
+    uses y magnetic walls and z electric walls around the same uniform TEM
+    sheet, with the production NU curls and CPML. This invariant polarization
+    has Ez/Hy constant across the cross section and zero transverse curls.
+    ``face_layers=(lo, hi)`` allows unequal depths within ``n_layers``' budget.
     """
     freqs = np.asarray(freqs, dtype=float)
     if face not in ("lo", "hi"):
         raise ValueError("face must be 'lo' or 'hi'")
+    if axis not in ("x", "y", "z"):
+        raise ValueError("axis must be 'x', 'y' or 'z'")
     if n_layers < 2 or not 0 < near < far < reference_distance or dx <= 0:
         raise ValueError("require layers >= 2 and 0 < near < far < reference_distance")
-    grid, propagate = _line(n_layers, kappa_max, near + far, dx)
+    grid, propagate = _line(n_layers, kappa_max, near + far, dx,
+                            nonuniform=nonuniform, face_layers=face_layers, axis=axis)
     dt = float(grid.dt)
     if freqs.ndim != 1 or not len(freqs) or np.any(~np.isfinite(freqs)) or np.any(
         (freqs <= 0) | (freqs >= 0.5 / dt)
@@ -90,12 +132,13 @@ def plane_wave_reflection(n_layers, kappa_max, face, freqs, *,
     t = np.arange(n_steps) * dt
     arg = (t - 60e-12) / 12e-12
     waveform = jnp.asarray(-arg * np.exp(-arg**2), dtype=jnp.float32)
-    source_index = n_layers + (near if face == "lo" else far)
-    params, auxiliary = cpml.init_cpml(grid)
+    source_index = getattr(grid, f"pad_{axis}_lo") + (near if face == "lo" else far)
+    params, auxiliary = cpml.init_cpml(grid, kappa_max=kappa_max)
     short = propagate(params, auxiliary, source_index, waveform)
-    ref_grid, ref_propagate = _line(n_layers, kappa_max, 2 * reference_distance, dx)
-    params, auxiliary = cpml.init_cpml(ref_grid)
-    reference = ref_propagate(params, auxiliary, n_layers + reference_distance, waveform)
+    ref_grid, ref_propagate = _line(n_layers, kappa_max, 2 * reference_distance, dx,
+                                    nonuniform=nonuniform, face_layers=face_layers, axis=axis)
+    params, auxiliary = cpml.init_cpml(ref_grid, kappa_max=kappa_max)
+    reference = ref_propagate(params, auxiliary, getattr(ref_grid, f"pad_{axis}_lo") + reference_distance, waveform)
     return _reflection_db(short, reference, dt, freqs)
 
 
