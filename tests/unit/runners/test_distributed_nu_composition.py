@@ -902,33 +902,21 @@ def test_forward_distributed_nan_propagates_via_ghost_exchange():
 
 
 # ---------------------------------------------------------------------------
-# A face's absorber must fit on the rank that owns that physical face.
-# The scalar allocation budget alone is not a reason to refuse a thin face.
+# The refusal names the actual face and both global/per-face remedies.
 # ---------------------------------------------------------------------------
 
 def test_distributed_cpml_preflight_error_names_per_face_thickness():
-    """Twelve low-x layers cannot fit on nine owned boundary nodes."""
+    """A high-x absorber with seven owned rows cannot hold eight layers."""
     devices = _require_two_devices()
     from rfx import Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
-
     sim = Simulation(
-        freq_max=5e9, domain=(.020, .060, .060), dx=.005,
-        dx_profile=np.full(4, .005), cpml_layers=12,
-        boundary=BoundarySpec(
-            x=Boundary(lo="cpml", hi="cpml", lo_thickness=12, hi_thickness=1),
-            y="cpml", z="cpml"),
+        freq_max=15e9, domain=(6e-3, 12e-3, 12e-3), dx=1e-3,
+        dx_profile=np.full(6, 1e-3), cpml_layers=8,
+        boundary=BoundarySpec(x=Boundary(lo="pec", hi="cpml"), y="cpml", z="cpml"),
     )
-    grid = sim._build_nonuniform_grid()
-    assert grid.nx == 18 and grid.pad_x_lo == 12 and grid.pad_x_hi == 1
-
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(ValueError, match="face x_hi.*7 physical x cells.*8 absorber layers") as excinfo:
         sim.forward(n_steps=4, distributed=True, devices=devices)
-
     msg = str(excinfo.value)
-    assert "x_lo" in msg and "depth=12" in msg and "9 real nodes" in msg
-    assert "cpml_layers" in msg, f"missing cpml_layers mitigation mention: {msg!r}"
-    assert ("lo_thickness" in msg) or ("hi_thickness" in msg), (
-        f"error text must name the per-face Boundary "
-        f"lo_thickness/hi_thickness alternative (Bundle C.1): {msg!r}"
-    )
+    assert "cpml_layers" in msg
+    assert "lo_thickness/hi_thickness" in msg

@@ -79,7 +79,8 @@ from rfx.runners._distributed_common import (
     unstack_and_gather,
     update_e_nu_shmap,
     update_h_nu_shmap,
-    zeros_psi_stacked,
+    _distributed_cpml_state,
+    _distributed_boundary_layers,
 )
 
 
@@ -730,12 +731,10 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
     cpml_params : CPMLAxisParams
         Per-axis CPML profile + boundary cell sizes (Python floats).
     cpml_state_stacked : CPMLState
-        Per-rank CPML state with arrays of shape ``(n_devices, depth, d1, d2)``;
+        Per-rank CPML state with arrays of shape ``(n_devices, n_cpml, d1, d2)``;
         with ``mesh`` given, the same zeros already merged and placed as
-        ``(n_devices * depth, d1, d2)`` arrays sharded ``P("x")``. Each face
-        uses its active depth, with one identity entry for a closed face;
-        grids without per-face metadata retain the scalar budget depth.
-        x-face psi arrays use ``(n_devices, depth, ny, nz)`` (or transposed)
+        ``(n_devices * n_cpml, d1, d2)`` arrays sharded ``P("x")``.
+        x-face psi arrays use ``(n_devices, n_cpml, ny, nz)`` (or transposed)
         and start at zero on every rank; only rank 0 / rank N-1 actually
         update them inside the scan body.  y-/z-face psi arrays use
         ``nx_local`` for their x-extent dimension so each rank owns its
@@ -796,81 +795,20 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         pmc_faces=pmc_faces,
     )
 
-    # Build per-rank stacked CPMLState arrays.  Shapes follow the single-
-    # device convention from rfx/boundaries/cpml.py:init_cpml, but with
-    # per-rank ``nx_local`` substituted for ``nx`` on y-/z-face psi.
-    n = sharded_grid.cpml_layers
-    nx_local = sharded_grid.nx_local
-    if n <= 0:
-        # Caller selected pec boundary; build a degenerate state.  Returning
-        # ``None`` forces the runner to take the PEC-only path.
+    if sharded_grid.cpml_layers <= 0:
         return cpml_params, None
-
-    from rfx.boundaries.cpml import CPMLState
-
-    # The scalar is a budget, not the thickness of every distributed
-    # window. Keep only each face's active entries (one identity entry for
-    # a wall), so thin faces also fit a narrow transverse axis or x slab.
-    face_layers = sharded_grid.face_layers
-    if face_layers is not None:
-        def _trim(params):
-            faces = {}
-            for face, active in face_layers.items():
-                depth = max(1, int(active))
-                sl = slice(None, depth) if face.endswith("lo") else slice(-depth, None)
-                faces[face] = jax.tree.map(lambda a: a[sl], getattr(params, face))
-            return params._replace(
-                **faces, magnetic=None if params.magnetic is None else _trim(params.magnetic))
-        cpml_params = _trim(cpml_params)
-
-    def _zeros(d1, d2, face):
-        depth = getattr(cpml_params, face).b.shape[0]
-        if mesh is not None:
-            from jax.sharding import NamedSharding
-            return jnp.zeros((n_devices * depth, d1, d2), dtype=jnp.float32,
-                             device=NamedSharding(mesh, P("x")))
-        return zeros_psi_stacked(n_devices, depth, d1, d2)
-
-    cpml_state_stacked = CPMLState(
-        # E-field psi arrays
-        psi_ex_ylo=_zeros(nx_local, nz, "y_lo"),
-        psi_ex_yhi=_zeros(nx_local, nz, "y_hi"),
-        psi_ex_zlo=_zeros(nx_local, ny, "z_lo"),
-        psi_ex_zhi=_zeros(nx_local, ny, "z_hi"),
-        psi_ey_xlo=_zeros(ny, nz, "x_lo"),
-        psi_ey_xhi=_zeros(ny, nz, "x_hi"),
-        psi_ey_zlo=_zeros(ny, nx_local, "z_lo"),
-        psi_ey_zhi=_zeros(ny, nx_local, "z_hi"),
-        psi_ez_xlo=_zeros(nz, ny, "x_lo"),
-        psi_ez_xhi=_zeros(nz, ny, "x_hi"),
-        psi_ez_ylo=_zeros(nz, nx_local, "y_lo"),
-        psi_ez_yhi=_zeros(nz, nx_local, "y_hi"),
-        # H-field psi arrays
-        psi_hx_ylo=_zeros(nx_local, nz, "y_lo"),
-        psi_hx_yhi=_zeros(nx_local, nz, "y_hi"),
-        psi_hx_zlo=_zeros(nx_local, ny, "z_lo"),
-        psi_hx_zhi=_zeros(nx_local, ny, "z_hi"),
-        psi_hy_xlo=_zeros(ny, nz, "x_lo"),
-        psi_hy_xhi=_zeros(ny, nz, "x_hi"),
-        psi_hy_zlo=_zeros(ny, nx_local, "z_lo"),
-        psi_hy_zhi=_zeros(ny, nx_local, "z_hi"),
-        psi_hz_xlo=_zeros(nz, ny, "x_lo"),
-        psi_hz_xhi=_zeros(nz, ny, "x_hi"),
-        psi_hz_ylo=_zeros(nz, nx_local, "y_lo"),
-        psi_hz_yhi=_zeros(nz, nx_local, "y_hi"),
-    )
-    return cpml_params, cpml_state_stacked
+    return _distributed_cpml_state(
+        grid_view, cpml_params, sharded_grid.nx_local, n_devices, mesh=mesh)
 
 
 def shard_cpml_state_x_slab(cpml_state_stacked, sharded_grid: ShardedNUGrid,
                             mesh):
     """Shard a stacked CPMLState across the x-axis mesh.
 
-    Each ``psi_*`` array has stacked shape ``(n_devices, depth, d1, d2)``;
+    Each ``psi_*`` array has stacked shape ``(n_devices, n_cpml, d1, d2)``;
     we merge the leading two dims into one (shape
-    ``(n_devices*depth, d1, d2)``) and place it onto the mesh with
-    ``P("x")`` so each device owns ``(depth, d1, d2)``. The depth may
-    differ between faces.
+    ``(n_devices*n_cpml, d1, d2)``) and place it onto the mesh with
+    ``P("x")`` so each device owns ``(n_cpml, d1, d2)``.
 
     For x-face psi (``psi_*_xlo`` / ``psi_*_xhi``), ``d1`` / ``d2`` are
     the global ``(ny, nz)`` (or transposed) extents; every rank holds a
@@ -1426,17 +1364,17 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     c_zh = pz_hi.c[:, None, None]
     k_zh = pz_hi.kappa[:, None, None]
 
-    n_x_lo, n_x_hi = px.b.shape[0], px_hi.b.shape[0]
-    n_y_lo, n_y_hi = py.b.shape[0], py_hi.b.shape[0]
-    n_z_lo, n_z_hi = pz_lo.b.shape[0], pz_hi.b.shape[0]
+    n_xlo, n_xhi = cpml_state.psi_ey_xlo.shape[0], cpml_state.psi_ey_xhi.shape[0]
+    n_ylo, n_yhi = cpml_state.psi_ex_ylo.shape[0], cpml_state.psi_ex_yhi.shape[0]
+    n_zlo, n_zhi = cpml_state.psi_ex_zlo.shape[0], cpml_state.psi_ex_zhi.shape[0]
     g = ghost
-    xlo = slice(g, g + n_x_lo)
+    xlo = slice(g, g + n_xlo)
     # #622: on the last rank, pad_x inert alignment cells sit past the
     # real x-hi face (global node nx-1) — shift the window left by
     # pad_x so it covers the physical face, matching single-device
     # cpml.py's [nx-n, nx) (a no-op on other ranks / when pad_x==0).
     x_hi_edge = g + pad_x
-    xhi = slice(-(x_hi_edge + n_x_hi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_x_hi, None)
+    xhi = slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_xhi, None)
 
     # Per-face E-coefficient (material-aware when eps_r is supplied, #205).
     # Each face slice broadcasts element-wise against its correction array:
@@ -1447,10 +1385,10 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
         _ce = dt / (eps_r * EPS_0)  # (nx_local + 2*ghost, ny, nz)
         ce_xlo = _ce[xlo, :, :]
         ce_xhi = _ce[xhi, :, :]
-        ce_ylo = _ce[:, :n_y_lo, :]
-        ce_yhi = _ce[:, -n_y_hi:, :]
-        ce_zlo = _ce[:, :, :n_z_lo]
-        ce_zhi = _ce[:, :, -n_z_hi:]
+        ce_ylo = _ce[:, :n_ylo, :]
+        ce_yhi = _ce[:, -n_yhi:, :]
+        ce_zlo = _ce[:, :, :n_zlo]
+        ce_zhi = _ce[:, :, -n_zhi:]
     else:
         ce_xlo = ce_xhi = ce_ylo = ce_yhi = ce_zlo = ce_zhi = cpml_coeff_e_vacuum(dt)
 
@@ -1529,95 +1467,95 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     # Y-axis CPML — every rank, sliced over local x extent.
     # =========================================================
     # --- Y-lo: Ex from dHz/dy ---
-    hz_ylo = state.hz[:, :n_y_lo, :]
-    hz_shifted_ylo = _shift_bwd(state.hz, 1)[:, :n_y_lo, :]
+    hz_ylo = state.hz[:, :n_ylo, :]
+    hz_shifted_ylo = _shift_bwd(state.hz, 1)[:, :n_ylo, :]
     curl_hz_dy_ylo = (hz_ylo - hz_shifted_ylo) / dx_y
     curl_hz_dy_ylo_t = jnp.transpose(curl_hz_dy_ylo, (1, 0, 2))
     new_psi_ex_ylo = b_y * cpml_state.psi_ex_ylo + c_y * curl_hz_dy_ylo_t
     correction_ex_ylo = jnp.transpose(new_psi_ex_ylo, (1, 0, 2))
-    ex = ex.at[:, :n_y_lo, :].add(ce_ylo * correction_ex_ylo)
+    ex = ex.at[:, :n_ylo, :].add(ce_ylo * correction_ex_ylo)
     kappa_corr_ylo = jnp.transpose((1.0 / k_y - 1.0) * curl_hz_dy_ylo_t, (1, 0, 2))
-    ex = ex.at[:, :n_y_lo, :].add(ce_ylo * kappa_corr_ylo)
+    ex = ex.at[:, :n_ylo, :].add(ce_ylo * kappa_corr_ylo)
 
     # --- Y-hi: Ex from dHz/dy ---
-    hz_yhi = state.hz[:, -n_y_hi:, :]
-    hz_shifted_yhi = _shift_bwd(state.hz, 1)[:, -n_y_hi:, :]
+    hz_yhi = state.hz[:, -n_yhi:, :]
+    hz_shifted_yhi = _shift_bwd(state.hz, 1)[:, -n_yhi:, :]
     curl_hz_dy_yhi = (hz_yhi - hz_shifted_yhi) / dx_y
     curl_hz_dy_yhi_t = jnp.transpose(curl_hz_dy_yhi, (1, 0, 2))
     new_psi_ex_yhi = b_yr * cpml_state.psi_ex_yhi + c_yr * curl_hz_dy_yhi_t
     correction_ex_yhi = jnp.transpose(new_psi_ex_yhi, (1, 0, 2))
-    ex = ex.at[:, -n_y_hi:, :].add(ce_yhi * correction_ex_yhi)
+    ex = ex.at[:, -n_yhi:, :].add(ce_yhi * correction_ex_yhi)
     kappa_corr_yhi = jnp.transpose((1.0 / k_yr - 1.0) * curl_hz_dy_yhi_t, (1, 0, 2))
-    ex = ex.at[:, -n_y_hi:, :].add(ce_yhi * kappa_corr_yhi)
+    ex = ex.at[:, -n_yhi:, :].add(ce_yhi * kappa_corr_yhi)
 
     # --- Y-lo: Ez from dHx/dy ---
-    hx_ylo = state.hx[:, :n_y_lo, :]
-    hx_shifted_ylo = _shift_bwd(state.hx, 1)[:, :n_y_lo, :]
+    hx_ylo = state.hx[:, :n_ylo, :]
+    hx_shifted_ylo = _shift_bwd(state.hx, 1)[:, :n_ylo, :]
     curl_hx_dy_ylo = (hx_ylo - hx_shifted_ylo) / dx_y
     curl_hx_dy_ylo_t = jnp.transpose(curl_hx_dy_ylo, (1, 2, 0))
     new_psi_ez_ylo = b_y * cpml_state.psi_ez_ylo + c_y * curl_hx_dy_ylo_t
     correction_ez_ylo = jnp.transpose(new_psi_ez_ylo, (2, 0, 1))
-    ez = ez.at[:, :n_y_lo, :].add(-ce_ylo * correction_ez_ylo)
+    ez = ez.at[:, :n_ylo, :].add(-ce_ylo * correction_ez_ylo)
     kappa_corr_ez_ylo = jnp.transpose((1.0 / k_y - 1.0) * curl_hx_dy_ylo_t, (2, 0, 1))
-    ez = ez.at[:, :n_y_lo, :].add(-ce_ylo * kappa_corr_ez_ylo)
+    ez = ez.at[:, :n_ylo, :].add(-ce_ylo * kappa_corr_ez_ylo)
 
     # --- Y-hi: Ez from dHx/dy ---
-    hx_yhi = state.hx[:, -n_y_hi:, :]
-    hx_shifted_yhi = _shift_bwd(state.hx, 1)[:, -n_y_hi:, :]
+    hx_yhi = state.hx[:, -n_yhi:, :]
+    hx_shifted_yhi = _shift_bwd(state.hx, 1)[:, -n_yhi:, :]
     curl_hx_dy_yhi = (hx_yhi - hx_shifted_yhi) / dx_y
     curl_hx_dy_yhi_t = jnp.transpose(curl_hx_dy_yhi, (1, 2, 0))
     new_psi_ez_yhi = b_yr * cpml_state.psi_ez_yhi + c_yr * curl_hx_dy_yhi_t
     correction_ez_yhi = jnp.transpose(new_psi_ez_yhi, (2, 0, 1))
-    ez = ez.at[:, -n_y_hi:, :].add(-ce_yhi * correction_ez_yhi)
+    ez = ez.at[:, -n_yhi:, :].add(-ce_yhi * correction_ez_yhi)
     kappa_corr_ez_yhi = jnp.transpose((1.0 / k_yr - 1.0) * curl_hx_dy_yhi_t, (2, 0, 1))
-    ez = ez.at[:, -n_y_hi:, :].add(-ce_yhi * kappa_corr_ez_yhi)
+    ez = ez.at[:, -n_yhi:, :].add(-ce_yhi * kappa_corr_ez_yhi)
 
     # =========================================================
     # Z-axis CPML — every rank, sliced over local x extent.
     # =========================================================
     # --- Z-lo: Ex from dHy/dz ---
-    hy_zlo = state.hy[:, :, :n_z_lo]
-    hy_shifted_zlo = _shift_bwd(state.hy, 2)[:, :, :n_z_lo]
+    hy_zlo = state.hy[:, :, :n_zlo]
+    hy_shifted_zlo = _shift_bwd(state.hy, 2)[:, :, :n_zlo]
     curl_hy_dz_zlo = (hy_zlo - hy_shifted_zlo) / dz_lo
     curl_hy_dz_zlo_t = jnp.transpose(curl_hy_dz_zlo, (2, 0, 1))
     new_psi_ex_zlo = b_zl * cpml_state.psi_ex_zlo + c_zl * curl_hy_dz_zlo_t
     correction_ex_zlo = jnp.transpose(new_psi_ex_zlo, (1, 2, 0))
-    ex = ex.at[:, :, :n_z_lo].add(-ce_zlo * correction_ex_zlo)
+    ex = ex.at[:, :, :n_zlo].add(-ce_zlo * correction_ex_zlo)
     kappa_corr_ex_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_hy_dz_zlo_t, (1, 2, 0))
-    ex = ex.at[:, :, :n_z_lo].add(-ce_zlo * kappa_corr_ex_zlo)
+    ex = ex.at[:, :, :n_zlo].add(-ce_zlo * kappa_corr_ex_zlo)
 
     # --- Z-hi: Ex from dHy/dz ---
-    hy_zhi = state.hy[:, :, -n_z_hi:]
-    hy_shifted_zhi = _shift_bwd(state.hy, 2)[:, :, -n_z_hi:]
+    hy_zhi = state.hy[:, :, -n_zhi:]
+    hy_shifted_zhi = _shift_bwd(state.hy, 2)[:, :, -n_zhi:]
     curl_hy_dz_zhi = (hy_zhi - hy_shifted_zhi) / dz_hi
     curl_hy_dz_zhi_t = jnp.transpose(curl_hy_dz_zhi, (2, 0, 1))
     new_psi_ex_zhi = b_zh * cpml_state.psi_ex_zhi + c_zh * curl_hy_dz_zhi_t
     correction_ex_zhi = jnp.transpose(new_psi_ex_zhi, (1, 2, 0))
-    ex = ex.at[:, :, -n_z_hi:].add(-ce_zhi * correction_ex_zhi)
+    ex = ex.at[:, :, -n_zhi:].add(-ce_zhi * correction_ex_zhi)
     kappa_corr_ex_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_hy_dz_zhi_t, (1, 2, 0))
-    ex = ex.at[:, :, -n_z_hi:].add(-ce_zhi * kappa_corr_ex_zhi)
+    ex = ex.at[:, :, -n_zhi:].add(-ce_zhi * kappa_corr_ex_zhi)
 
     # --- Z-lo: Ey from dHx/dz ---
-    hx_zlo = state.hx[:, :, :n_z_lo]
-    hx_shifted_zlo = _shift_bwd(state.hx, 2)[:, :, :n_z_lo]
+    hx_zlo = state.hx[:, :, :n_zlo]
+    hx_shifted_zlo = _shift_bwd(state.hx, 2)[:, :, :n_zlo]
     curl_hx_dz_zlo = (hx_zlo - hx_shifted_zlo) / dz_lo
     curl_hx_dz_zlo_t = jnp.transpose(curl_hx_dz_zlo, (2, 1, 0))
     new_psi_ey_zlo = b_zl * cpml_state.psi_ey_zlo + c_zl * curl_hx_dz_zlo_t
     correction_ey_zlo = jnp.transpose(new_psi_ey_zlo, (2, 1, 0))
-    ey = ey.at[:, :, :n_z_lo].add(ce_zlo * correction_ey_zlo)
+    ey = ey.at[:, :, :n_zlo].add(ce_zlo * correction_ey_zlo)
     kappa_corr_ey_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_hx_dz_zlo_t, (2, 1, 0))
-    ey = ey.at[:, :, :n_z_lo].add(ce_zlo * kappa_corr_ey_zlo)
+    ey = ey.at[:, :, :n_zlo].add(ce_zlo * kappa_corr_ey_zlo)
 
     # --- Z-hi: Ey from dHx/dz ---
-    hx_zhi = state.hx[:, :, -n_z_hi:]
-    hx_shifted_zhi = _shift_bwd(state.hx, 2)[:, :, -n_z_hi:]
+    hx_zhi = state.hx[:, :, -n_zhi:]
+    hx_shifted_zhi = _shift_bwd(state.hx, 2)[:, :, -n_zhi:]
     curl_hx_dz_zhi = (hx_zhi - hx_shifted_zhi) / dz_hi
     curl_hx_dz_zhi_t = jnp.transpose(curl_hx_dz_zhi, (2, 1, 0))
     new_psi_ey_zhi = b_zh * cpml_state.psi_ey_zhi + c_zh * curl_hx_dz_zhi_t
     correction_ey_zhi = jnp.transpose(new_psi_ey_zhi, (2, 1, 0))
-    ey = ey.at[:, :, -n_z_hi:].add(ce_zhi * correction_ey_zhi)
+    ey = ey.at[:, :, -n_zhi:].add(ce_zhi * correction_ey_zhi)
     kappa_corr_ey_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_hx_dz_zhi_t, (2, 1, 0))
-    ey = ey.at[:, :, -n_z_hi:].add(ce_zhi * kappa_corr_ey_zhi)
+    ey = ey.at[:, :, -n_zhi:].add(ce_zhi * kappa_corr_ey_zhi)
 
     new_state = state._replace(ex=ex, ey=ey, ez=ez)
     new_cpml = cpml_state._replace(
@@ -1686,14 +1624,14 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     c_zh = pz_hi.c[:, None, None]
     k_zh = pz_hi.kappa[:, None, None]
 
-    n_x_lo, n_x_hi = px.b.shape[0], px_hi.b.shape[0]
-    n_y_lo, n_y_hi = py.b.shape[0], py_hi.b.shape[0]
-    n_z_lo, n_z_hi = pz_lo.b.shape[0], pz_hi.b.shape[0]
+    n_xlo, n_xhi = cpml_state.psi_hy_xlo.shape[0], cpml_state.psi_hy_xhi.shape[0]
+    n_ylo, n_yhi = cpml_state.psi_hx_ylo.shape[0], cpml_state.psi_hx_yhi.shape[0]
+    n_zlo, n_zhi = cpml_state.psi_hx_zlo.shape[0], cpml_state.psi_hx_zhi.shape[0]
     g = ghost
-    xlo = slice(g, g + n_x_lo)
+    xlo = slice(g, g + n_xlo)
     # #622: same alignment-pad shift as the E-field CPML applier above.
     x_hi_edge = g + pad_x
-    xhi = slice(-(x_hi_edge + n_x_hi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_x_hi, None)
+    xhi = slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_xhi, None)
 
     # Per-face H-coefficient (material-aware when mu_r is supplied, #205).
     # Same per-face slicing as the E kernel; vacuum scalar dt/mu_0 when
@@ -1702,10 +1640,10 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
         _ch = dt / (mu_r * MU_0)  # (nx_local + 2*ghost, ny, nz)
         ch_xlo = _ch[xlo, :, :]
         ch_xhi = _ch[xhi, :, :]
-        ch_ylo = _ch[:, :n_y_lo, :]
-        ch_yhi = _ch[:, -n_y_hi:, :]
-        ch_zlo = _ch[:, :, :n_z_lo]
-        ch_zhi = _ch[:, :, -n_z_hi:]
+        ch_ylo = _ch[:, :n_ylo, :]
+        ch_yhi = _ch[:, -n_yhi:, :]
+        ch_zlo = _ch[:, :, :n_zlo]
+        ch_zhi = _ch[:, :, -n_zhi:]
     else:
         ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = cpml_coeff_h_vacuum(dt)
 
@@ -1776,93 +1714,93 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
 
     # Y-axis (every rank)
     # --- Y-lo: Hx from dEz/dy ---
-    ez_ylo = state.ez[:, :n_y_lo, :]
-    ez_shifted_ylo = _shift_fwd(state.ez, 1)[:, :n_y_lo, :]
+    ez_ylo = state.ez[:, :n_ylo, :]
+    ez_shifted_ylo = _shift_fwd(state.ez, 1)[:, :n_ylo, :]
     curl_ez_dy_ylo = (ez_shifted_ylo - ez_ylo) / dx_y
     curl_ez_dy_ylo_t = jnp.transpose(curl_ez_dy_ylo, (1, 0, 2))
     new_psi_hx_ylo = b_y * cpml_state.psi_hx_ylo + c_y * curl_ez_dy_ylo_t
     correction_hx_ylo = jnp.transpose(new_psi_hx_ylo, (1, 0, 2))
-    hx = hx.at[:, :n_y_lo, :].add(-ch_ylo * correction_hx_ylo)
+    hx = hx.at[:, :n_ylo, :].add(-ch_ylo * correction_hx_ylo)
     kappa_corr_hx_ylo = jnp.transpose((1.0 / k_y - 1.0) * curl_ez_dy_ylo_t, (1, 0, 2))
-    hx = hx.at[:, :n_y_lo, :].add(-ch_ylo * kappa_corr_hx_ylo)
+    hx = hx.at[:, :n_ylo, :].add(-ch_ylo * kappa_corr_hx_ylo)
 
     # --- Y-hi: Hx from dEz/dy ---
-    ez_yhi = state.ez[:, -n_y_hi:, :]
-    ez_shifted_yhi = _shift_fwd(state.ez, 1)[:, -n_y_hi:, :]
+    ez_yhi = state.ez[:, -n_yhi:, :]
+    ez_shifted_yhi = _shift_fwd(state.ez, 1)[:, -n_yhi:, :]
     curl_ez_dy_yhi = (ez_shifted_yhi - ez_yhi) / dx_y
     curl_ez_dy_yhi_t = jnp.transpose(curl_ez_dy_yhi, (1, 0, 2))
     new_psi_hx_yhi = b_yr * cpml_state.psi_hx_yhi + c_yr * curl_ez_dy_yhi_t
     correction_hx_yhi = jnp.transpose(new_psi_hx_yhi, (1, 0, 2))
-    hx = hx.at[:, -n_y_hi:, :].add(-ch_yhi * correction_hx_yhi)
+    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi * correction_hx_yhi)
     kappa_corr_hx_yhi = jnp.transpose((1.0 / k_yr - 1.0) * curl_ez_dy_yhi_t, (1, 0, 2))
-    hx = hx.at[:, -n_y_hi:, :].add(-ch_yhi * kappa_corr_hx_yhi)
+    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi * kappa_corr_hx_yhi)
 
     # --- Y-lo: Hz from dEx/dy ---
-    ex_ylo = state.ex[:, :n_y_lo, :]
-    ex_shifted_ylo = _shift_fwd(state.ex, 1)[:, :n_y_lo, :]
+    ex_ylo = state.ex[:, :n_ylo, :]
+    ex_shifted_ylo = _shift_fwd(state.ex, 1)[:, :n_ylo, :]
     curl_ex_dy_ylo = (ex_shifted_ylo - ex_ylo) / dx_y
     curl_ex_dy_ylo_t = jnp.transpose(curl_ex_dy_ylo, (1, 2, 0))
     new_psi_hz_ylo = b_y * cpml_state.psi_hz_ylo + c_y * curl_ex_dy_ylo_t
     correction_hz_ylo = jnp.transpose(new_psi_hz_ylo, (2, 0, 1))
-    hz = hz.at[:, :n_y_lo, :].add(ch_ylo * correction_hz_ylo)
+    hz = hz.at[:, :n_ylo, :].add(ch_ylo * correction_hz_ylo)
     kappa_corr_hz_ylo = jnp.transpose((1.0 / k_y - 1.0) * curl_ex_dy_ylo_t, (2, 0, 1))
-    hz = hz.at[:, :n_y_lo, :].add(ch_ylo * kappa_corr_hz_ylo)
+    hz = hz.at[:, :n_ylo, :].add(ch_ylo * kappa_corr_hz_ylo)
 
     # --- Y-hi: Hz from dEx/dy ---
-    ex_yhi = state.ex[:, -n_y_hi:, :]
-    ex_shifted_yhi = _shift_fwd(state.ex, 1)[:, -n_y_hi:, :]
+    ex_yhi = state.ex[:, -n_yhi:, :]
+    ex_shifted_yhi = _shift_fwd(state.ex, 1)[:, -n_yhi:, :]
     curl_ex_dy_yhi = (ex_shifted_yhi - ex_yhi) / dx_y
     curl_ex_dy_yhi_t = jnp.transpose(curl_ex_dy_yhi, (1, 2, 0))
     new_psi_hz_yhi = b_yr * cpml_state.psi_hz_yhi + c_yr * curl_ex_dy_yhi_t
     correction_hz_yhi = jnp.transpose(new_psi_hz_yhi, (2, 0, 1))
-    hz = hz.at[:, -n_y_hi:, :].add(ch_yhi * correction_hz_yhi)
+    hz = hz.at[:, -n_yhi:, :].add(ch_yhi * correction_hz_yhi)
     kappa_corr_hz_yhi = jnp.transpose((1.0 / k_yr - 1.0) * curl_ex_dy_yhi_t, (2, 0, 1))
-    hz = hz.at[:, -n_y_hi:, :].add(ch_yhi * kappa_corr_hz_yhi)
+    hz = hz.at[:, -n_yhi:, :].add(ch_yhi * kappa_corr_hz_yhi)
 
     # Z-axis (every rank)
     # --- Z-lo: Hx from dEy/dz ---
-    ey_zlo = state.ey[:, :, :n_z_lo]
-    ey_shifted_zlo = _shift_fwd(state.ey, 2)[:, :, :n_z_lo]
+    ey_zlo = state.ey[:, :, :n_zlo]
+    ey_shifted_zlo = _shift_fwd(state.ey, 2)[:, :, :n_zlo]
     curl_ey_dz_zlo = (ey_shifted_zlo - ey_zlo) / dz_lo
     curl_ey_dz_zlo_t = jnp.transpose(curl_ey_dz_zlo, (2, 0, 1))
     new_psi_hx_zlo = b_zl * cpml_state.psi_hx_zlo + c_zl * curl_ey_dz_zlo_t
     correction_hx_zlo = jnp.transpose(new_psi_hx_zlo, (1, 2, 0))
-    hx = hx.at[:, :, :n_z_lo].add(ch_zlo * correction_hx_zlo)
+    hx = hx.at[:, :, :n_zlo].add(ch_zlo * correction_hx_zlo)
     kappa_corr_hx_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_ey_dz_zlo_t, (1, 2, 0))
-    hx = hx.at[:, :, :n_z_lo].add(ch_zlo * kappa_corr_hx_zlo)
+    hx = hx.at[:, :, :n_zlo].add(ch_zlo * kappa_corr_hx_zlo)
 
     # --- Z-hi: Hx from dEy/dz ---
-    ey_zhi = state.ey[:, :, -n_z_hi:]
-    ey_shifted_zhi = _shift_fwd(state.ey, 2)[:, :, -n_z_hi:]
+    ey_zhi = state.ey[:, :, -n_zhi:]
+    ey_shifted_zhi = _shift_fwd(state.ey, 2)[:, :, -n_zhi:]
     curl_ey_dz_zhi = (ey_shifted_zhi - ey_zhi) / dz_hi
     curl_ey_dz_zhi_t = jnp.transpose(curl_ey_dz_zhi, (2, 0, 1))
     new_psi_hx_zhi = b_zh * cpml_state.psi_hx_zhi + c_zh * curl_ey_dz_zhi_t
     correction_hx_zhi = jnp.transpose(new_psi_hx_zhi, (1, 2, 0))
-    hx = hx.at[:, :, -n_z_hi:].add(ch_zhi * correction_hx_zhi)
+    hx = hx.at[:, :, -n_zhi:].add(ch_zhi * correction_hx_zhi)
     kappa_corr_hx_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_ey_dz_zhi_t, (1, 2, 0))
-    hx = hx.at[:, :, -n_z_hi:].add(ch_zhi * kappa_corr_hx_zhi)
+    hx = hx.at[:, :, -n_zhi:].add(ch_zhi * kappa_corr_hx_zhi)
 
     # --- Z-lo: Hy from dEx/dz ---
-    ex_zlo = state.ex[:, :, :n_z_lo]
-    ex_shifted_zlo = _shift_fwd(state.ex, 2)[:, :, :n_z_lo]
+    ex_zlo = state.ex[:, :, :n_zlo]
+    ex_shifted_zlo = _shift_fwd(state.ex, 2)[:, :, :n_zlo]
     curl_ex_dz_zlo = (ex_shifted_zlo - ex_zlo) / dz_lo
     curl_ex_dz_zlo_t = jnp.transpose(curl_ex_dz_zlo, (2, 1, 0))
     new_psi_hy_zlo = b_zl * cpml_state.psi_hy_zlo + c_zl * curl_ex_dz_zlo_t
     correction_hy_zlo = jnp.transpose(new_psi_hy_zlo, (2, 1, 0))
-    hy = hy.at[:, :, :n_z_lo].add(-ch_zlo * correction_hy_zlo)
+    hy = hy.at[:, :, :n_zlo].add(-ch_zlo * correction_hy_zlo)
     kappa_corr_hy_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_ex_dz_zlo_t, (2, 1, 0))
-    hy = hy.at[:, :, :n_z_lo].add(-ch_zlo * kappa_corr_hy_zlo)
+    hy = hy.at[:, :, :n_zlo].add(-ch_zlo * kappa_corr_hy_zlo)
 
     # --- Z-hi: Hy from dEx/dz ---
-    ex_zhi = state.ex[:, :, -n_z_hi:]
-    ex_shifted_zhi = _shift_fwd(state.ex, 2)[:, :, -n_z_hi:]
+    ex_zhi = state.ex[:, :, -n_zhi:]
+    ex_shifted_zhi = _shift_fwd(state.ex, 2)[:, :, -n_zhi:]
     curl_ex_dz_zhi = (ex_shifted_zhi - ex_zhi) / dz_hi
     curl_ex_dz_zhi_t = jnp.transpose(curl_ex_dz_zhi, (2, 1, 0))
     new_psi_hy_zhi = b_zh * cpml_state.psi_hy_zhi + c_zh * curl_ex_dz_zhi_t
     correction_hy_zhi = jnp.transpose(new_psi_hy_zhi, (2, 1, 0))
-    hy = hy.at[:, :, -n_z_hi:].add(-ch_zhi * correction_hy_zhi)
+    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi * correction_hy_zhi)
     kappa_corr_hy_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_ex_dz_zhi_t, (2, 1, 0))
-    hy = hy.at[:, :, -n_z_hi:].add(-ch_zhi * kappa_corr_hy_zhi)
+    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi * kappa_corr_hy_zhi)
 
     new_state = state._replace(hx=hx, hy=hy, hz=hz)
     new_cpml = cpml_state._replace(
@@ -2205,6 +2143,13 @@ def run_nonuniform_distributed_pec(
         lorentz_state_init = None
     use_dispersion = use_debye or use_lorentz
     use_cpml = cpml_params is not None
+    if not use_cpml:
+        # The all-wall scan never initializes CPML; it still owns both ends.
+        _distributed_boundary_layers(
+            sharded_grid, n_devices, cpml_layers=0,
+            pec_faces={f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")},
+            pmc_faces=pmc_faces,
+        )
     if use_cpml and cpml_state is None:
         raise ValueError(
             "cpml_params was provided but cpml_state is None; pass the "

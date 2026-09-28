@@ -2773,6 +2773,8 @@ class _ExecuteMixin:
 
         See :meth:`forward` for the public-facing kwarg semantics.
         """
+        from rfx.runners.distributed_v2 import refuse_distributed_periodic
+        refuse_distributed_periodic(self, lane="distributed non-uniform forward()")
         if self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed NU lane")
         # Defense-in-depth: the distributed-NU runner does not honour
@@ -2903,20 +2905,8 @@ class _ExecuteMixin:
                         "reduce exchange_interval or increase nx."
                     )
 
-            # A face's active absorber must fit on its owning boundary
-            # rank. Unused scalar budget entries are absent from its window.
-            if self._boundary == "cpml" and grid.cpml_layers > 0:
-                for face, rank in (("x_lo", 0), ("x_hi", n_devices - 1)):
-                    depth = int(grid.face_layers[face])
-                    owned = min(nx_per_rank, nx - rank * nx_per_rank)
-                    if depth > owned:
-                        raise ValueError(
-                            f"{face} requested absorber depth={depth} exceeds "
-                            f"the {owned} real nodes on boundary rank {rank} "
-                            f"(cpml_layers budget={grid.cpml_layers}); reduce "
-                            f"{face.split('_')[1]}_thickness on the x Boundary "
-                            "or use fewer devices."
-                        )
+            # CPML width is an unconditional admission check in the shared
+            # initializer, using each active face and the last rank's padding.
 
             # Check 5 — segmented remat overhead warning.
             if (
