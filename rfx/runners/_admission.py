@@ -60,10 +60,6 @@ LANE_WORDS = {
 _PEC_SIGMA = 1e6   # Simulation._PEC_SIGMA_THRESHOLD
 
 
-class NotCarriedError(NotImplementedError):
-    """A declared input the lane that would run does not solve."""
-
-
 # ----------------------------------------------------------------- helpers
 
 @functools.lru_cache(maxsize=None)
@@ -451,8 +447,8 @@ def message(lane: str, rows) -> str:
 
 
 def admit(sim, lane: str) -> None:
-    """Raise :class:`NotCarriedError` if ``lane`` does not carry every
-    input ``sim`` declares."""
+    """Raise ``NotImplementedError``, as the lanes' own refusals do, if
+    ``lane`` does not carry every input ``sim`` declares."""
     rows = refused(sim, lane)
     if rows:
-        raise NotCarriedError(message(lane, rows))
+        raise NotImplementedError(message(lane, rows))
