@@ -401,7 +401,7 @@ class BeamDesign:
         cb.set_label("εr")
         _titles(ax, "Design", "cover εr, plan view" if fmt != "social" else None)
         if fmt == "social":           # beside the colour bar: the space under the map is taken
-            ax.annotate("bar: dipole\ndashed: plate\nbelow the cover", (1.55, 0.5),
+            ax.annotate("bar: dipole\ndashed: plate\nbelow the cover", (1.68, 0.5),
                         xycoords="axes fraction", fontsize=PT["note"], color=INK_2, ha="left",
                         va="center", annotation_clip=False)
         elif fmt == "site":           # the contact sheet says it once, in its header
