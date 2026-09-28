@@ -119,9 +119,10 @@ LOCK_PROVENANCE = {
                   "rfx/records/20260927-1292-locked-results/scripts/r3_legb_config.py (v2: "
                   "board checked before each solve); windows by the midpoint / half-range + "
                   "extractor-spread construction"),
-    "commit": "673b7083 (configurations and fixture values; rfx/ as on this branch)",
+    "commit": "673b7083",
     "date": "2026-09-28",
-    "run_id": "369367265693, 369367265694 (configurations), 369367265675 (CPU fixture values)",
+    "run_id": ("369367265693, 369367265694 (configurations), 369367265675 (CPU fixture values); "
+               "both on the tree of 673b7083, rfx/ as on this branch"),
     "host": ("VESSL gpu-8gb RTX 2070 SUPER and RTX 3080, jax 0.6.2 cuda, float32 "
              "(configurations); VESSL CPU python:3.10-slim, jax 0.6.2, numpy 2.2.6 (fixture values)"),
     "pinned_until": "2027-03-28",
