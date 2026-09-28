@@ -622,7 +622,7 @@ def contact_sheet(case: str, data, path: Path) -> Path:
     fig.text(0.015, 0.992, f"{data.goal}: storyboard", fontsize=PT["header"] + 4, weight="bold",
              va="top")
     if data.subgoal:
-        fig.text(0.40, 0.975, data.subgoal, fontsize=PT["sub"], va="top", color=INK_2)
+        fig.text(0.985, 0.990, data.subgoal, fontsize=PT["sub"], va="top", ha="right", color=INK_2)
     col_x = [0.10, 0.335, 0.565, 0.79]
     heads = ["Design", "Result", "Gradient, fixed scale", "Gradient, per-frame scale"]
     for c, hname in enumerate(heads):
