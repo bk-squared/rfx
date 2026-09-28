@@ -639,8 +639,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             fwd_uniform=carries("at normal incidence"),
             fwd_nonuniform=admission("a Floquet port (add_floquet_port)", FWD_NU, "it launched nothing on a dx/dy profile "
                                      "(#1312)"),
-            fwd_distributed_nu=admission("a Floquet port (add_floquet_port)", FWD_DNU, "it launched nothing on a dx/dy profile "
-                                         "(#1312)"),
+            fwd_distributed_nu=refuses("the periodic axes it sets are refused (#1350)",
+                                       raises="periodic / Bloch boundaries are not supported"),
             fwd_adi=ADI_PORTS,
         ),
         "scan_angle": lanes(
@@ -656,8 +656,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             fwd_uniform=admission("a Floquet port scanned off normal (scan_theta != 0)", FWD_U, "30° gave the record of 0° (#1221)"),
             fwd_nonuniform=admission("a Floquet port scanned off normal (scan_theta != 0)", FWD_NU, "the port launched nothing at any angle "
                                      "(#1312)"),
-            fwd_distributed_nu=admission("a Floquet port scanned off normal (scan_theta != 0)", FWD_DNU, "the port launched nothing at any "
-                                         "angle (#1312)"),
+            fwd_distributed_nu=refuses("the periodic axes it sets are refused (#1350)",
+                                       raises="periodic / Bloch boundaries are not supported"),
             fwd_adi=ADI_PORTS,
         ),
     },
@@ -818,7 +818,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                 raises="periodic / Bloch boundaries are not supported"),
         fwd_uniform=carries("one cell longer than declared (periodic-xy--forward)", wrong="#1221"),
         fwd_nonuniform=admission("a periodic axis", FWD_NU, "it was solved as PEC walls (#1221)"),
-        fwd_distributed_nu=admission("a periodic axis", FWD_DNU, "it was solved as PEC walls (#1221)"),
+        fwd_distributed_nu=refuses("periodic axes refused (#1350)",
+                                   raises="periodic / Bloch boundaries are not supported"),
         fwd_adi=_adi("periodic axes", "does not support manual periodic axes"),
     )},
     "_cpml_layers": {"layers": lanes(
