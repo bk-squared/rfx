@@ -106,22 +106,29 @@ def _pec_shapes(sim):
             yield entry.shape
 
 
-def _largest_cell(sim) -> float | None:
-    """The largest cell of the resolved mesh, or None if it is traced."""
-    mesh = sim._resolve_mesh()
-    sizes = [mesh["_dx"]] + [mesh[name] for name in ("_dx_profile", "_dy_profile", "_dz_profile")]
-    sizes = [s for s in sizes if s is not None]
-    if not sizes or any(is_tracer(s) for s in sizes):
+def _wire_lattice(sim):
+    """The grid the lanes build, with the node axes and cell sizes the
+    assembler classifies a wire against, or None when the mesh is traced."""
+    from rfx.geometry.rasterize_grid import (
+        cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+        coords_from_nonuniform_grid, coords_from_uniform_grid)
+    grid = sim._build_realized_grid()
+    if hasattr(grid, "dx_arr"):
+        coords, sizes = coords_from_nonuniform_grid(grid), cell_sizes_from_nonuniform_grid(grid)
+    else:
+        coords, sizes = coords_from_uniform_grid(grid), cell_sizes_from_uniform_grid(grid)
+    axes = (coords.x, coords.y, coords.z)
+    if any(is_tracer(a) for a in (*axes, *sizes)):
         return None
-    return float(max(np.max(np.asarray(s, dtype=np.float64)) for s in sizes))
+    return grid, axes, sizes
 
 
-def _pec_kind(shape, cell) -> str:
+def _pec_kind(sim, shape, lattice) -> str:
     """How the assembler realizes a PEC shape (``classify_pec_entry``): a
-    Box with one zero-extent axis is a sheet, a PolylineWire thinner than
-    half a cell is a filament, anything else a volume. The assembler uses
-    the cell at the wire's own vertices; ``cell`` is the largest cell of the
-    mesh, so a wire that is a filament anywhere is counted as one."""
+    Box with one zero-extent axis is a sheet, anything else but a wire a
+    volume. A PolylineWire is judged by the assembler's own rule,
+    ``wire_filament_nodes``, after the same conductor continuation, on the
+    grid the lanes build."""
     lo, hi = getattr(shape, "corner_lo", None), getattr(shape, "corner_hi", None)
     if lo is not None and hi is not None:
         if not (is_tracer(lo) or is_tracer(hi)) and sum(
@@ -129,10 +136,17 @@ def _pec_kind(shape, cell) -> str:
             return "pec_sheet"
         return "pec_volume"
     radius = getattr(shape, "radius", None)
-    if getattr(shape, "points", None) is not None and radius is not None:
-        if cell is not None and not is_tracer(radius) and float(radius) < 0.5 * cell:
-            return "pec_wire"
-    return "pec_volume"
+    if (getattr(shape, "points", None) is None or radius is None or is_tracer(radius)
+            or lattice is None):
+        return "pec_volume"
+    from rfx.geometry.rasterize_grid import wire_filament_nodes
+    from rfx.geometry.smoothing import continued_conductor_shape
+    grid, axes, sizes = lattice
+    solved = continued_conductor_shape(sim, grid, shape, unextendable=[])
+    if getattr(solved, "points", None) is None or getattr(solved, "radius", None) is None:
+        return "pec_volume"   # continued into a shape the assembler takes as a volume
+    filament = wire_filament_nodes(solved.points, solved.radius, axes, sizes)
+    return "pec_wire" if filament is not None else "pec_volume"
 
 
 def _pec(kind: str) -> Callable:
@@ -140,8 +154,9 @@ def _pec(kind: str) -> Callable:
         shapes = list(_pec_shapes(sim))
         if not shapes:
             return False
-        cell = _largest_cell(sim)
-        return any(_pec_kind(shape, cell) == kind for shape in shapes)
+        wires = any(getattr(shape, "points", None) is not None for shape in shapes)
+        lattice = _wire_lattice(sim) if wires else None
+        return any(_pec_kind(sim, shape, lattice) == kind for shape in shapes)
     return active
 
 
@@ -190,18 +205,24 @@ def _absorbing_lid(sim) -> bool:
 
 def _guarded_lid(sim, grid) -> bool:
     """Whether production subgrid validation accepts this box's absorber: the
-    refined slab touches a PEC z face, the opposite z face may absorb, and the
-    x/y faces are closed PEC. The validator's own check decides, from the
-    coarse grid the subgridded lane builds."""
+    refined slab touches a PEC z face, the opposite z face may absorb, the
+    x/y faces are closed PEC, and the slab stays clear of the absorber. The
+    validator's own checks decide, from the coarse grid the subgridded lane
+    builds."""
     refinement = sim._refinement
     if refinement is None or sim._uses_nonuniform_mesh:
         return False
     from rfx.subgridding.validation import (
-        _guarded_boundary_production_allowed, _one_sided_physical_z_boundary)
+        _guarded_boundary_production_allowed, _one_sided_physical_z_boundary,
+        _slab_overlaps_absorber, build_subgrid_region)
     grid = sim._build_grid() if grid is None else grid
-    return bool(_guarded_boundary_production_allowed(
-        sim, grid, _one_sided_physical_z_boundary(sim, None, grid),
-        refinement.get("xy_margin")))
+    region = build_subgrid_region(sim, grid)
+    if region is None:
+        return False
+    return (bool(_guarded_boundary_production_allowed(
+                sim, grid, _one_sided_physical_z_boundary(sim, region, grid),
+                refinement.get("xy_margin")))
+            and not _slab_overlaps_absorber(sim, region, grid))
 
 
 # Inputs that production subgrid validation refuses and 'research'/'off'
@@ -507,15 +528,25 @@ def refused(sim, lane: str, run_args=None, grid=None) -> list[Row]:
     return out
 
 
+# The rows that choose the lane: each is admitted only by its own family, so
+# a lane that carries everything else is still named as an alternative.
+LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_profile", "graded"),
+                            ("_dz_profile", "graded"), ("_refinement", "slab"), ("_dt_pin", ""),
+                            ("_dt_min_cell", "")})
+
+
 def message(lane: str, rows, sim, run_args=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
-    carry, and the lanes that admit every input this model declares."""
+    carry, and the lanes that carry every other input of this model."""
     lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
              for row in rows]
-    carriers = [LANE_WORDS[other] for other in LANES
-                if other != lane and not refused(sim, other, run_args)]
-    where = ("Lanes that admit every input this model declares: " + ", ".join(carriers) + "."
-             if carriers else "No time-stepping lane admits every input this model declares.")
+    carriers = [LANE_WORDS[other] for other in LANES if other != lane
+                and not set(refused(sim, other, run_args)) - LANE_SELECTORS]
+    where = ("Lanes that carry every input of this model apart from the ones that choose the "
+             "lane (solver, mesh profiles, refinement): " + ", ".join(carriers) + "."
+             if carriers else
+             "No time-stepping lane carries every input of this model apart from the ones that "
+             "choose the lane (solver, mesh profiles, refinement).")
     return (f"The {LANE_WORDS[lane]} lane would solve this Simulation as if "
             f"{'these inputs were' if len(lines) > 1 else 'this input was'} not "
             "declared, so it is refused before the first time step:\n"

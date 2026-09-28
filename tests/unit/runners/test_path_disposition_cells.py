@@ -313,18 +313,19 @@ def _mode(lane, on, ref=False):
     return sim
 
 
-def _lid(lane, on, ref=False, *, lid="cpml", validation="production"):
-    """A closed PEC box with an absorbing lid on z_hi (on) or a PEC one (off),
-    the base source and probe at z = 6 mm. On the subgridded lane the refined
-    slab covers z = 0-10 mm and touches the PEC floor, the guarded envelope
-    production subgrid validation accepts."""
+def _lid(lane, on, ref=False, *, lid="cpml", validation="production", z_top=10.0, kappa=1.0):
+    """A closed 12 x 12 x 16 mm PEC box with an absorbing lid on z_hi (on) or
+    a PEC one (off), the base source and probe at z = 6 mm. On the subgridded
+    lane the refined slab covers z = 0 to ``z_top`` mm and touches the PEC
+    floor: at 10 mm, the guarded envelope production subgrid validation
+    accepts."""
     spec = BoundarySpec(x=Boundary(lo="pec", hi="pec"), y=Boundary(lo="pec", hi="pec"),
                         z=Boundary(lo="pec", hi=lid if on else "pec"))
-    sim = _simulation(lane, (12, 12, 16), ref=ref, boundary=spec)
+    sim = _simulation(lane, (12, 12, 16), ref=ref, boundary=spec, cpml_kappa_max=kappa)
     sim.add_source(mm(4, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind="field")
     sim.add_probe(mm(8, 6, 6), "ez")
     if lane == "run_subgridded" and not ref:
-        sim.add_refinement(z_range=(0.0, 10e-3), ratio=2, validation=validation)
+        sim.add_refinement(z_range=(0.0, z_top * 1e-3), ratio=2, validation=validation)
     return sim
 
 
@@ -754,6 +755,12 @@ def test_the_guarded_lid_runs_in_every_validation_mode(validation):
                     for on in (True, False))
     effect = relative(lid, pec)
     assert effect > EFFECT_FLOOR, f"validation={validation!r}: the lid moved the record by {effect:.3e}"
+    # kappa_max on the lid is read by this lane (measured), and gated with it.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        stretched = _probe(_run(_lid("run_subgridded", True, validation=validation, kappa=5.0),
+                                "run_subgridded", spec))
+    assert np.all(np.isfinite(stretched)) and stretched.shape == lid.shape
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         upml = _lid("run_subgridded", True, lid="upml", validation=validation)
@@ -763,18 +770,88 @@ def test_the_guarded_lid_runs_in_every_validation_mode(validation):
     assert "a UPML absorber is not carried by the subgridded run() lane" in str(exc.value)
 
 
-def test_the_refusal_names_only_lanes_that_admit_the_whole_model():
-    """A graded CPML box with cpml_kappa_max = 5 on the graded run(). The
-    uniform lanes carry kappa but not the graded mesh, so they are not named;
-    the multi-device run() admits every input of this model and is."""
+@pytest.mark.parametrize("validation", ["production", "research", "off"])
+def test_a_slab_reaching_the_lid_is_refused_in_every_validation_mode(validation):
+    """The guarded box, its refined slab carried up to 0.01 mm under the CPML
+    lid: the fine slab would overlap the absorber, which production
+    validation refuses (subgrid_overlaps_absorber). research and off do not
+    widen that envelope: lane admission refuses the absorber. The slab to
+    10 mm, the guarded case, runs."""
+    spec = Feature(lambda lane, on, ref=False: None, steps=lambda lane: LID_STEPS)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sim = _build(FEATURES["_cpml_kappa_max", "kappa"], "run_nonuniform", True)
+        reaching = _lid("run_subgridded", True, validation=validation, z_top=15.99)
+        guarded = _probe(_run(_lid("run_subgridded", True, validation=validation), "run_subgridded", spec))
+    assert np.all(np.isfinite(guarded)) and np.max(np.abs(guarded)) > 0
+    with _watch_kernel_scans() as started, pytest.raises((NotImplementedError, ValueError)) as exc:
+        _run(reaching, "run_subgridded", spec)
+    assert not started, started
+    expected = ("[subgrid_overlaps_absorber]" if validation == "production"
+                else "a CPML absorber is not carried by the subgridded run() lane")
+    assert expected in str(exc.value), str(exc.value)[:400]
+
+
+def _band_wire(lane, x_mm):
+    """A graded x mesh of 1 mm cells with a 0.25 mm band over x = 3-4 mm, and
+    a PEC PolylineWire of radius 0.3 mm along z at ``x_mm``: a filament in the
+    1 mm cells (0.3 < 0.5), a volume in the band (0.3 >= 0.125)."""
+    profile = np.array([1e-3] * 3 + [0.25e-3] * 4 + [1e-3] * 8)
+    sim = _simulation(lane, (12, 12, 12), dx_profile=profile)
+    sim.add(PolylineWire((mm(x_mm, 6.5, 3), mm(x_mm, 6.5, 9)), radius=0.3e-3), material="pec")
+    sim.add_source(mm(8, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind="field")
+    sim.add_probe(mm(6, 6, 6), "ez")
+    return sim
+
+
+@pytest.mark.parametrize("x_mm,kind", [(9.5, "pec_wire"), (3.5, "pec_volume")],
+                         ids=["filament_in_1mm_cells", "volume_in_the_band"])
+def test_a_wire_is_judged_by_the_cells_at_its_own_vertices(x_mm, kind):
+    """The assembler decides filament or volume from the cells at the wire's
+    own vertices; the detector asks the same rule. The volume in the band is
+    carried by both graded multi-device lanes, and gives what the same call
+    gives with admission switched off, bit for bit."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = _band_wire("run_nonuniform", x_mm)
+        grid = sim._build_nonuniform_grid()
+        sheets, wires = [], []
+        sim._assemble_materials_nu(grid, pec_sheets=sheets, pec_wires=wires)
+    assert len(wires) == (1 if kind == "pec_wire" else 0)
+    assert A.DETECTORS["_geometry", kind](sim)
+    other = "pec_volume" if kind == "pec_wire" else "pec_wire"
+    assert not A.DETECTORS["_geometry", other](sim)
+    if kind == "pec_wire":
+        return
+    for entry in ("run_distributed", "fwd_distributed_nu"):
+        feature = Feature(lambda lane, on, ref=False: None)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            got = _probe(_run(_band_wire(entry, x_mm), entry, feature))
+            with patch.object(A, "admit", lambda *args, **kw: None):
+                unadmitted = _probe(_run(_band_wire(entry, x_mm), entry, feature))
+        np.testing.assert_array_equal(got, unadmitted)
+
+
+@pytest.mark.parametrize("attr,feature,lane,named", [
+    ("_materials", "mu", "run_adi", "uniform run()"),
+    ("_cpml_kappa_max", "kappa", "run_nonuniform", "multi-device run(devices=...)"),
+])
+def test_the_refusal_names_lanes_that_carry_the_rest_of_the_model(attr, feature, lane, named):
+    """The message names, as alternatives, the lanes that carry every input
+    of the model apart from the rows that choose the lane (solver, mesh
+    profiles, refinement). ADI with a magnetic block names the Yee lanes; a
+    graded CPML box with kappa names the multi-device run(), whose own Phase B
+    refusal of a graded CPML box is not admission's."""
+    spec = FEATURES[attr, feature]
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        sim = _build(spec, lane, True)
         with pytest.raises(NotImplementedError) as exc:
-            _run(sim, "run_nonuniform", FEATURES["_cpml_kappa_max", "kappa"])
+            _run(sim, lane, spec)
     message = str(exc.value)
-    assert "cpml_kappa_max != 1 is not carried by the graded run() lane." in message
-    assert "Lanes that admit every input this model declares: multi-device run(devices=...)." in message
+    assert T.cell(attr, feature, lane).raises + "." in message
+    carriers = message.split("apart from the ones that choose the lane (solver, mesh profiles, refinement): ")[1]
+    assert named in carriers.split(".\n")[0], message
 
 
 _CONFORMAL_S = ("_boundary_spec", "conformal_s_matrix")
