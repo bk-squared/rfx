@@ -239,18 +239,30 @@ def sqrt_segments(n_steps: int) -> int:
 
 
 def _pattern_fn(mod, sim, grid, lo, hi, n_steps, precision, segments):
-    """``mod.make_pattern_fn`` with a dtype and ``checkpoint_segments``.
+    """``mod.make_pattern_fn`` with a dtype, ``checkpoint_segments`` and the JAX
+    far-field transform on a box built from the declaration.
 
     Segmented checkpointing changes what reverse mode stores, not what it
     computes: the module's per-step ``checkpoint=True`` keeps the six field
     arrays of every step (1575 x 17.4 MB at lambda/20), the segmented path
-    about 2 sqrt(n_steps) of them."""
+    about 2 sqrt(n_steps) of them.  ``compute_far_field`` in the module picks
+    the numpy transform on an eager call and the JAX one under a gradient;
+    here the JAX one (``compute_far_field_jax``) is used on every call, with
+    the NTFF box built once by ``make_ntff_box`` from ``sim._ntff`` (the call
+    ``forward`` makes) and its frequencies held as numpy, so the gradient step
+    can be jitted: under ``jax.jit`` the forward's own box carries traced
+    frequencies that the transform reads with numpy."""
     import jax.numpy as jnp
+    from rfx.core.jax_utils import is_tracer
+    from rfx.farfield import compute_far_field_jax, make_ntff_box
     dtype = jnp.float64 if precision == "float64" else jnp.float32
     _sheets: list = []
     _wires: list = []
     base_materials, *_ = sim._assemble_materials(grid, pec_sheets=_sheets, pec_wires=_wires)
     base_eps_r = jnp.asarray(base_materials.eps_r, dtype=dtype)
+    corner_lo, corner_hi, freqs = sim._ntff
+    box = make_ntff_box(grid, corner_lo, corner_hi, freqs)
+    box = box._replace(freqs=np.asarray(box.freqs))
     si, sj, sk = lo
     ei, ej, ek = hi
     witness: dict = {"settling": None}
@@ -261,13 +273,15 @@ def _pattern_fn(mod, sim, grid, lo, hi, n_steps, precision, segments):
             jnp.clip(jnp.asarray(eps_slab, dtype=dtype), 1.0, 10.0))
         res = sim.forward(eps_override=eps_override, n_steps=n_steps, checkpoint=True,
                           skip_preflight=True, **kw)
-        witness["settling"] = res.settling_witness
-        ff = mod.compute_far_field(res.ntff_data, res.ntff_box, res.grid, mod.THETA, mod.PHI)
+        if not is_tracer(res.ntff_data.x_lo):
+            witness["settling"] = res.settling_witness
+        ff = compute_far_field_jax(res.ntff_data, box, grid, mod.THETA, mod.PHI)
         power = jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2
         return power[0] * 1e27
 
     pattern.witness = witness
     pattern.segments = segments
+    pattern.box = box
     return pattern
 
 
@@ -339,7 +353,7 @@ def stage_timing(out: Path, a) -> int:
         p = pattern(cover_from_ctrl(eps_of_psi(psi), model.shape))
         return steering_loss(mod, p), p
 
-    vg = jax.value_and_grad(loss, has_aux=True)
+    vg = jax.jit(jax.value_and_grad(loss, has_aux=True))
     psi = jnp.asarray(psi_of_eps(ramp_ctrl()), dtype=jnp.float32)
     opt = optax.adam(mod.LR)
     state = opt.init(psi)
@@ -427,10 +441,10 @@ def stage_main(out: Path, a) -> int:
                  "start": "the module's eps_r 2 -> 9 ramp along x, at the control points"},
         "refined_builder_check": check,
         "checkpoint_segments": sqrt_segments(n_steps),
-        "jit": "none: jax.value_and_grad(L(psi), has_aux=True) as the module calls it (under jax.jit the "
-               "far-field transform converts the traced NTFF box frequencies to numpy and stops)",
-        "far_field_path": "rfx.farfield.compute_far_field dispatch, as the module: the JAX transform "
-                          "under a gradient, the numpy transform on an eager forward"})
+        "jit": "jax.jit(jax.value_and_grad(L(psi), has_aux=True)); the module does not jit",
+        "far_field_path": "rfx.farfield.compute_far_field_jax on every call, on a box from "
+                          "make_ntff_box(grid, *sim._ntff) with numpy frequencies (the module's "
+                          "compute_far_field dispatches to numpy on eager calls)"})
     pattern = model.pattern_fn(n_steps)
 
     # ---- the start must be the module's ramp -------------------------------
@@ -444,7 +458,8 @@ def stage_main(out: Path, a) -> int:
     ps = np.asarray(pattern(cover0.astype(np.float32)))
     dc.save_json(out / "pattern_equivalence.json", {
         "what": "eager forward at the start cover: the module's make_pattern_fn (per-step "
-                "checkpoint) against this script's (checkpoint_segments)",
+                "checkpoint, numpy far field on an eager call) against this script's "
+                "(checkpoint_segments, compute_far_field_jax)",
         "segments": pattern.segments, "n_steps": n_steps,
         "max_abs_diff_over_max": float(np.max(np.abs(pm - ps)) / np.max(np.abs(pm))),
         "D30_dbi_module": pattern_summary(mod, pm)["D30_dbi"],
@@ -472,9 +487,9 @@ def stage_main(out: Path, a) -> int:
 
     # ---- AD against central differences at the start ----------------------
     e0 = ramp_ctrl().astype(np.float32)
-    L_j = L_ctrl
+    L_j = jax.jit(L_ctrl)
     t0 = time.perf_counter()
-    g0 = np.asarray(jax.grad(L_ctrl)(jnp.asarray(e0)), dtype=float)
+    g0 = np.asarray(jax.jit(jax.grad(L_ctrl))(jnp.asarray(e0)), dtype=float)
     wall["grad_ctrl_start_s"] = time.perf_counter() - t0
     ladder = dc.fd_ladder(lambda e: L_j(jnp.asarray(e, dtype=jnp.float32)), e0, FD_CTRL, FD_STEPS)
     ad = {n: float(g0[ij]) for n, ij in FD_CTRL.items()}
@@ -530,7 +545,7 @@ def stage_main(out: Path, a) -> int:
         p = pattern(cover_from_ctrl(eps_of_psi(psi), shape))
         return steering_loss(mod, p), p
 
-    vg = jax.value_and_grad(loss, has_aux=True)
+    vg = jax.jit(jax.value_and_grad(loss, has_aux=True))
     psi = jnp.asarray(psi_of_eps(ramp_ctrl()), dtype=jnp.float32)
     opt = optax.adam(mod.LR)
     state = opt.init(psi)
@@ -600,8 +615,8 @@ def stage_x64fd(out: Path, a) -> int:
         return steering_loss(mod, pattern(cover_from_ctrl(e, model.shape)))
 
     e0 = ramp_ctrl().astype(np.float64)
-    L_j = L_ctrl
-    g0 = np.asarray(jax.grad(L_ctrl)(jnp.asarray(e0)), dtype=float)
+    L_j = jax.jit(L_ctrl)
+    g0 = np.asarray(jax.jit(jax.grad(L_ctrl))(jnp.asarray(e0)), dtype=float)
     ladder = dc.fd_ladder(lambda e: L_j(jnp.asarray(e, dtype=jnp.float64)), e0, FD_CTRL, FD_STEPS)
     ad = {n: float(g0[ij]) for n, ij in FD_CTRL.items()}
     verdict = dc.judge_fd(ad, ladder, FD_STEPS, FD_JUDGED_STEP, FD_REL_BAR, FD_JUDGE_FRAC)
@@ -719,7 +734,7 @@ def stage_finalize(out: Path, a) -> int:
             _record.claim(f"D(30 deg) at iterate {n}", float(it["D30_dbi"][-1]), "dBi", "iterations.npz"),
             _record.claim(f"E-plane peak angle at iterate {n}", float(it["e_plane_peak_theta_deg"][-1]),
                           "deg", "iterations.npz"),
-            _record.claim("median wall time per Adam iteration (value_and_grad, not jitted)",
+            _record.claim("median wall time per Adam iteration (jitted value_and_grad)",
                           float(np.median(it["wall_s"][1:-1])), "s", "iterations.npz"),
         ]
         derived.append(_record.derived("D(30 deg) gain, iterate 0 to final",

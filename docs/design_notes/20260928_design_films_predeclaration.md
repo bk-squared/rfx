@@ -179,16 +179,24 @@ interpolation reproduces it exactly on the cover nodes, and the script checks th
 - L = −log U(30°, 0)/P + 0.3 log mean U(0, φ)/P + 0.5 log mean_{θ>90°} U/P, evaluated on its
   73 × 73 (θ, φ) grid.
 - Adam (lr 0.08), 140 steps, float32.
-- `value_and_grad` is not jitted, the same as in the module: under `jax.jit` the far-field
-  transform converts the traced NTFF box frequencies to numpy and stops.
-- **One departure, memory only.** The forward runs with `checkpoint_segments` = the largest
+- **Departure (Amendment 2, after the timing runs and before the beam's full run): the far-field
+  call.** The module calls `compute_far_field`, which uses the numpy transform on an eager call and
+  the JAX transform (`compute_far_field_jax`) under a gradient. Under `jax.jit` it fails, because
+  the forward's own NTFF box carries traced frequencies that the transform reads with numpy. The
+  unjitted gradient took 82 s per iteration on the timing run (RTX 2070 SUPER). Here
+  `compute_far_field_jax` is used on every call, on a box built once by `make_ntff_box` from the
+  simulation's NTFF declaration (the call `forward` makes) with its frequencies held as numpy, and
+  the gradient step is jitted. On CPU at 300 steps and the start cover, the two paths differ by
+  7.2e-7 of the pattern maximum and 8.8e-7 in gradient norm. The job records the module-path
+  against script-path difference at the full record length (`pattern_equivalence.json`, reported).
+- **Departure, memory only.** The forward runs with `checkpoint_segments` = the largest
   divisor of the step count not above its square root (35 for 1575 steps), in place of the
   module's per-step `checkpoint=True`. Per-step remat keeps the six field arrays of every step,
   1575 × 17.4 MB ≈ 27 GB at lambda/20, and the 1.5× witness arm needs half as much again.
-  Segmenting changes what reverse mode stores, not what it computes. The pattern function is the
-  module's `make_pattern_fn`, line for line, with that keyword and a dtype added. At the start
-  cover the job records one eager forward of each function and their largest pattern difference
-  (reported, `pattern_equivalence.json`).
+  Segmenting changes what reverse mode stores, not what it computes. On CPU at 300 steps (15
+  segments against per-step), the patterns are identical and the gradients differ by 1.3e-7 in
+  norm. Apart from these two departures and a dtype, the pattern function is the module's
+  `make_pattern_fn`, line for line.
 
 **Recorded at every iterate (0 ... 140):** psi; the control-point eps_r; the cover eps_r on its
 31 × 31 nodes; the directivity D(θ, φ) on 73 × 73 (so the E-plane and H-plane cuts are both
