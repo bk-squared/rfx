@@ -42,19 +42,21 @@ What this tutorial teaches, in order:
 
 Error budget at this deliberately coarse resolution (dx = 2 mm):
 
-- The resonance reads HIGH against openEMS-with-thirds: +3.5 % at dx = 2 mm,
-  2.5072 GHz here against 2.4221 GHz (VESSL 369367259175).  Both numbers are
-  the 32 mm feed-axis design mode; the 40 mm cross mode is a separate entry in
-  the printed mode list (2.0345 GHz here).  (Mode pairing repinned 2026-08-27,
-  #693.)  Before the ownership contract this board read +11.3 % (2.6953 GHz,
+- The resonance reads HIGH against openEMS-with-thirds: +1.0 % at dx = 2 mm,
+  2.4460 GHz here against 2.4221 GHz (VESSL 369367265975).  Both numbers are
+  the 32 mm feed-axis design mode.  The feed sits on the patch's y centre
+  line, as in openEMS, and the 40 mm cross mode is absent from the printed
+  mode list.  (Mode pairing repinned 2026-08-27, #693.)
+  Until #1375 the x/y lattice was uniform with every edge mid-cell: the patch
+  was solved 31.4 x 39.4 mm, the feed sat 1 mm off in x and y, and the board
+  read +3.5 % (2.5072 GHz, cross mode 2.0345 GHz — VESSL 369367259175).
+  Before the ownership contract that board read +11.3 % (2.6953 GHz,
   cross mode 2.2157 GHz — VESSL 369367259020, which reproduces the numbers
   this docstring used to carry).  The committed lock
-  ``tests/crossval/test_patch_canonical_farfield_e4.py`` gated a
-  [+6 %, +16 %] magnitude envelope, but that window was measured on the board
-  with a vacuum ground cell, which no longer exists; the lock SKIPS its gated
-  legs until crossval-A re-derives the envelope from the cv05 re-solve.  Do
-  not read +3.5 % as passing a live gate — it is a measurement waiting for
-  one.  It did move the way issue #740's A/B predicted: that study's arm with
+  ``tests/crossval/test_patch_canonical_farfield_e4.py`` solves its own copy
+  of the pre-#1375 board (#1382), so it does not gate this number: +1.0 % is
+  a measurement, not a pass.  On the pre-#1375 board the ownership contract
+  moved the resonance the way issue #740's A/B predicted: that study's arm with
   a wall on BOTH faces of the ground's cell — the closest thing then available
   to a cavity with no vacuum in it — measured -4.7 % at dx = 2.  The board
   moved -7.8 points and landed at +3.5 %, not -4.7 %.  The direction is
@@ -75,37 +77,41 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   the realized cavity is the declared one and the run asserts it at build
   time.
 - The far field is the observable that agrees.  This configuration prints
-  D = 6.72 dBi at its radiating bin against openEMS 6.79 dBi, -0.07 dB, well
-  inside the 1.0 dB the lock's ``D_ABS_TOL_DB`` carries — though that leg
-  skips with the rest of the file, so this too is a measurement rather than a
-  pass.  The pre-contract board printed 7.39 dBi, +0.60 dB.  The demo trims the air above
+  D = 6.60 dBi at its radiating bin (2.4 GHz) against openEMS 6.79 dBi,
+  -0.19 dB (VESSL 369367265975), inside the 1.0 dB the lock's
+  ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
+  too is a measurement rather than a pass.  The pre-#1375 board printed
+  6.72 dBi (-0.07 dB), the pre-contract board 7.39 dBi (+0.60 dB).  The demo trims the air above
   the patch to 84 mm with ``num_periods = 125``; the research frame behind the
   reference numbers used 95 mm and ``num_periods = 250``.
 - Read the per-bin radiated-power trace, not just the headline.  The mode is
   identified by the peak of that spectrum, and on the pre-contract board the
   peak sat on 2.8 GHz — the LAST monitored bin, with the spectrum still rising
   into it, so the selector was pinned at the edge of its own frequency list.
-  On the corrected board the spectrum peaks at 2.5 GHz with 2.4 GHz at
-  -11.4 dB below it and 2.8 GHz at -19.4 dB: an interior maximum, which is
-  what the mode-identification rule assumes it is looking at.
+  On this board the spectrum peaks at the 2.4 GHz bin with 2.5 GHz at
+  -1.0 dB, 2.3 GHz at -8.8 dB and 2.8 GHz at -15.6 dB (369367265975): an
+  interior maximum, which is what the mode-identification rule assumes it is
+  looking at.
 
 Run as::
 
     python examples/tutorials/patch_antenna_demo.py
 
 Runtime measured 2026-09-05 on a 64-core CPU run alone: 1345 s (22 min); the
-same script on the VESSL CPU lane is 587 s of FDTD in 600 s wall
+pre-#1375 script on the VESSL CPU lane was 587 s of FDTD in 600 s wall
 (369367259175), and the pre-contract board was 535 s / 543 s there
 (369367259020) — the shared pod, not the migration, is what the 22 min was
-measuring.
+measuring.  This board on an 8-CPU VESSL CPU pod: 968 s of FDTD in 989 s
+(369367265975).
 ``NUM_PERIODS = 125`` is sized from measurement on the PRE-contract board:
 90 periods gave -36.5 dB and 204 periods gave -52.6 dB, which put the -40 dB
 settling bar near 115 on the average slope, and the multi-mode tail beats
 rather than decaying smoothly.  The corrected board's cavity is thinner and
 its modes are higher-Q, so that ladder is not transferable; what is measured
-on it is the endpoint, -45.4 dB at 125 periods (369367259175), SETTLED with
-5.4 dB of margin against -50.9 dB before.  The witness below re-measures the
-end-of-run envelope every run — trust it over this paragraph.
+on it is the endpoint, -48.2 dB at 125 periods (369367265975), SETTLED with
+8.2 dB of margin (-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
+the pre-contract one).  The witness below re-measures the end-of-run envelope
+every run — trust it over this paragraph.
 """
 
 from __future__ import annotations
@@ -131,6 +137,7 @@ from rfx import (
     realized_wall_planes,
     smooth_grading,
 )
+from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 
 C0 = 2.998e8
 EPS0 = 8.8541878e-12
@@ -162,9 +169,10 @@ AIR_BELOW = 30.0e-3
 # openEMS reference numbers used 95 mm of air and num_periods = 250.
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture past the -40 dB bar: measured -50.9 dB,
-# SETTLED (2026-09-05).  Endpoints -36.5 dB at 90 periods and -52.6 dB at 204
-# put the bar near 115 on the average slope, but the multi-mode tail beats
+# 125 periods settles this fixture past the -40 dB bar: measured -48.2 dB,
+# SETTLED (VESSL 369367265975).  On the pre-contract board, endpoints
+# -36.5 dB at 90 periods and -52.6 dB at 204 put the bar near 115 on the
+# average slope, but the multi-mode tail beats
 # rather than decaying smoothly, so trust the printed witness over slope
 # extrapolation.  (The research run of this geometry recorded f_res =
 # 2.2147 GHz and D = 6.71 dBi at the 40 mm cross mode, not at the design mode
@@ -209,8 +217,52 @@ def realized_z_wall_planes(sim):
     return z_nodes, sheets, realized_wall_planes(edges, 2)
 
 
+def realized_in_plane(sim, planes, feed):
+    """In-plane extents THIS run realizes, in metres.  Build only.
+
+    For each z-node plane in ``planes``: the node span its PEC edges cover
+    (x from the Ex edges, y from the Ey edges, the same realization as
+    ``realized_z_wall_planes``) and the SOLVED extent, that span plus
+    ``EDGE_OFFSET`` of the cell beyond each end -- preflight's
+    ``sheet_effective_size`` model of where a sheet's edge is solved.  Also
+    the span of the substrate cells (eps_r > 1) and the node the run puts
+    the point source on (``position_to_index``, the non-uniform runner's
+    own lookup).
+    """
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+    from rfx.nonuniform import position_to_index
+
+    grid = sim._build_nonuniform_grid()
+    sheets: list = []
+    materials, _debye, _lorentz, pec_mask = sim._assemble_materials_nu(
+        grid, pec_sheets=sheets)
+    ex, ey, _ez = (np.asarray(m) for m in realized_pec_edge_masks(
+        pec_mask, sheets=sheets, periodic=sim._periodic_flags()))
+    coords = coords_from_nonuniform_grid(grid)
+    x = np.asarray(coords.x, dtype=float)
+    y = np.asarray(coords.y, dtype=float)
+
+    def solved(nodes, a0, a1):
+        return (nodes[a0] - EDGE_OFFSET * (nodes[a0] - nodes[a0 - 1]),
+                nodes[a1] + EDGE_OFFSET * (nodes[a1 + 1] - nodes[a1]))
+
+    nodes_span, solved_span = {}, {}
+    for k in planes:
+        i = np.flatnonzero(ex[:, :, k].any(axis=1))
+        j = np.flatnonzero(ey[:, :, k].any(axis=0))
+        i0, i1, j0, j1 = i[0], i[-1] + 1, j[0], j[-1] + 1
+        nodes_span[k] = (x[i0], x[i1], y[j0], y[j1])
+        solved_span[k] = solved(x, i0, i1) + solved(y, j0, j1)
+    cells = np.argwhere(np.asarray(materials.eps_r) > 1.0)
+    lo, hi = cells.min(axis=0), cells.max(axis=0)
+    substrate = (x[lo[0]], x[hi[0] + 1], y[lo[1]], y[hi[1] + 1])
+    i_f, j_f, _k = position_to_index(grid, feed)
+    return nodes_span, solved_span, substrate, (x[i_f], y[j_f])
+
+
 def build_simulation():
-    """Build the patch on a graded z-mesh, registering the stack to the mesh."""
+    """Build the patch on a graded z-mesh and an edge-aware x/y mesh,
+    registering the stack to the mesh."""
     n_below = int(math.ceil(AIR_BELOW / DX))
     n_above = int(math.ceil(AIR_ABOVE / DX))
     dom_x = GP_SIZE + 2 * MARGIN_XY
@@ -267,20 +319,44 @@ def build_simulation():
             "stack is mis-registered to the graded mesh"
         )
 
+    gx_lo, gx_hi = cx - GP_SIZE / 2, cx + GP_SIZE / 2
+    gy_lo, gy_hi = cy - GP_SIZE / 2, cy + GP_SIZE / 2
+    px_lo, px_hi = cx - PATCH_W / 2, cx + PATCH_W / 2
+    py_lo, py_hi = cy - PATCH_L / 2, cy + PATCH_L / 2
+    ground = Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd))
+    substrate = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi))
+    patch = Box((px_lo, py_lo, z_patch), (px_hi, py_hi, z_patch))
+    feed_x, feed_y = cx + FEED_OFFSET_X, cy
+    probe_x, probe_y = feed_x + 4e-3, feed_y + 4e-3
+    pad = (N_CPML + 3) * DX
+
+    # In-plane mesh (#1375).  A PEC sheet's edge is solved EDGE_OFFSET = 0.35
+    # of a cell beyond its last node (measured; preflight's
+    # sheet_effective_size uses the same number), so a uniform 2 mm lattice
+    # cannot hold this 32 x 40 mm patch: edges mid-cell (this domain) solved
+    # 31.4 x 39.4 mm, edges on nodes would solve 33.4 x 41.4 mm.
+    # edge_aware_profiles grades x and y (1.86-2 mm) so a node sits 0.35 cell
+    # inside every sheet edge, and puts the feed, the probe and the NTFF faces
+    # on nodes.  The check after the build asserts the result.
+    profiles = edge_aware_profiles(
+        (dom_x, dom_y, z_total), DX,
+        sheets=[ground, patch], solids=[substrate],
+        faces={"x": [feed_x, probe_x, pad, dom_x - pad],
+               "y": [feed_y, probe_y, pad, dom_y - pad]},
+        axes="xy",
+    )
+
     sim = Simulation(
         freq_max=4e9,
         domain=(dom_x, dom_y, 0),
         dx=DX,
         dz_profile=dz_profile,
+        **profiles,
         boundary="cpml",
         cpml_layers=N_CPML,
     )
     sim.add_material("sub", eps_r=SUB_EPS_R, sigma=SIGMA_SUB)
 
-    gx_lo, gx_hi = cx - GP_SIZE / 2, cx + GP_SIZE / 2
-    gy_lo, gy_hi = cy - GP_SIZE / 2, cy + GP_SIZE / 2
-    px_lo, px_hi = cx - PATCH_W / 2, cx + PATCH_W / 2
-    py_lo, py_hi = cy - PATCH_L / 2, cy + PATCH_L / 2
     # Ground plane and patch are FOIL: 35 um of copper on a 1524 um board is
     # below any cell this model can afford, and the openEMS reference draws
     # them as zero-thickness metal too.  Declare them as SHEETS
@@ -295,13 +371,12 @@ def build_simulation():
     # realizes walls on BOTH its faces with the cell between them shorted —
     # correct for a plate, wrong for foil, and it would put 381 um of metal
     # into a 1524 um board.
-    sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd)))
-    sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)), material="sub")
-    sim.add_thin_conductor(Box((px_lo, py_lo, z_patch), (px_hi, py_hi, z_patch)))
+    sim.add_thin_conductor(ground)
+    sim.add(substrate, material="sub")
+    sim.add_thin_conductor(patch)
 
     # Soft Ez source through the substrate at the feed point; once the patch
     # resonates, the radiated field is patch-dominated, not feed-dominated.
-    feed_x, feed_y = cx + FEED_OFFSET_X, cy
     src_z = z_sub_lo + DZ_SUB * 1.5
     sim.add_source(
         position=(feed_x, feed_y, src_z),
@@ -309,7 +384,7 @@ def build_simulation():
         waveform=GaussianPulse(f0=F_DESIGN, bandwidth=1.2),
         amplitude_kind="current",
     )
-    sim.add_probe(position=(feed_x + 4e-3, feed_y + 4e-3, src_z), component="ez")
+    sim.add_probe(position=(probe_x, probe_y, src_z), component="ez")
 
     # NTFF box.  Side and top faces keep >= lambda/2-class clearance.  The
     # bottom face cannot: the domain holds only 30 mm of air below the ground
@@ -319,7 +394,6 @@ def build_simulation():
     # at the design-mode bin: |D_rfx - D_openEMS| = 0.0659 dB on the
     # committed #931 sheet-board measurement, inside the committed
     # 1.0 dB envelope lock.
-    pad = (N_CPML + 3) * DX
     box_lo = (pad, pad, max(pad, z_gnd - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)
@@ -350,6 +424,35 @@ def build_simulation():
             f"{float(z_nodes[k_patch] - z_nodes[k_gnd]) * 1e3:.4f} mm != "
             f"declared {SUB_THICK * 1e3:.4f} mm"
         )
+
+    # The same check in-plane (#1375): the patch and the ground are SOLVED at
+    # their drawn size, and the feed edge is at its drawn point.  The
+    # substrate cells cannot also start on the ground's edge -- the node
+    # there is the sheet's -- so they are checked to within one cell.
+    nodes_span, solved_span, sub_span, feed_node = realized_in_plane(
+        sim, (k_gnd, k_patch), (feed_x, feed_y, src_z))
+    checks = {
+        "patch solved": ((px_lo, px_hi, py_lo, py_hi), solved_span[k_patch], 1e-6 * DX),
+        "ground solved": ((gx_lo, gx_hi, gy_lo, gy_hi), solved_span[k_gnd], 1e-6 * DX),
+        "feed Ez edge": ((feed_x, feed_y), feed_node, 1e-6 * DX),
+        "substrate cells": ((gx_lo, gx_hi, gy_lo, gy_hi), sub_span, DX),
+    }
+
+    def _mm(v):
+        return "(" + ", ".join(f"{float(c) * 1e3:.2f}" for c in v) + ")"
+
+    print(
+        "realized in-plane (x lo, x hi, y lo, y hi) mm: patch nodes "
+        f"{_mm(nodes_span[k_patch])}, ground nodes {_mm(nodes_span[k_gnd])} | "
+        + " | ".join(f"{name} {_mm(got)}"
+                     for name, (_want, got, _tol) in checks.items()))
+    off = [f"{name}: drawn {_mm(want)}, realized {_mm(got)} mm"
+           for name, (want, got, tol) in checks.items()
+           if not np.allclose(want, got, rtol=0.0, atol=tol)]
+    if off:
+        raise RuntimeError(
+            "the board is not solved where it is drawn in-plane — "
+            + "; ".join(off))
 
     lam_design = C0 / F_DESIGN
     lam_fmax = C0 / float(NTFF_FREQS.max())
@@ -429,8 +532,10 @@ def main():
     #     f_max, so edge diffraction shapes the pattern) — expected physics,
     #     shared with the openEMS reference, not a solver defect;
     #   * the off-lattice conductor-face residual on the patch and ground
-    #     outlines (1 mm on a 2 mm cell).
-    #   Measured 2026-09-07: four advisories, and both of the last two fire.
+    #     outlines (0.7 mm: the graded x/y mesh puts the last node 0.35 cell
+    #     inside every sheet edge on purpose, #1375).
+    #   Measured 2026-09-29 (VESSL 369367265975): three advisories -- the
+    #   NTFF face, the small ground plane and the off-lattice residual.
     #   An earlier revision of this comment said preflight could not see a
     #   sheet and that those two went silent; that was true only of the branch
     #   state before the collectors were threaded.
@@ -542,10 +647,9 @@ def main():
         f"  f_res {radiating.freq / 1e9:.4f} GHz vs openEMS "
         f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.1f}% — the design mode "
         "reads HIGH at dx = 2 mm. The committed lock "
-        "(tests/crossval/test_patch_canonical_farfield_e4.py) gated a "
-        "[+6%, +16%] envelope measured on the pre-#931 board, whose vacuum "
-        "ground cell is gone; its gated legs SKIP until that envelope is "
-        "re-derived, so this number is not currently checked against one. "
+        "(tests/crossval/test_patch_canonical_farfield_e4.py) solves its "
+        "own copy of the pre-#1375 board, so this number is not checked "
+        "against a gate. "
         "Two coarse-grid mechanisms compete here (substrate under-resolved "
         "in z reads high, staircased patch edge reads low) and are not "
         "separated, so finer dx is not a predictable direction."

@@ -43,12 +43,6 @@ CASES = {
                        "palace": "tests/crossval/msl_notch_filter/reference/palace_fem.json"},
         "structure": "microstrip open-stub notch filter, two MSL ports",
     },
-    "sheen_lpf": {
-        "module": "tests/crossval/sheen_lpf/test_sheen_lpf.py",
-        "references": {"openems": "tests/crossval/sheen_lpf/reference/openems_sheen.json",
-                       "palace": "tests/crossval/sheen_lpf/reference/palace_fem.json"},
-        "structure": "Sheen stepped-impedance microstrip low-pass filter, two MSL ports",
-    },
 }
 # The reference arrays copied beside the rfx curves, per record kind: which
 # stages or meshes, and which fields.

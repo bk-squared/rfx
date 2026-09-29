@@ -109,7 +109,6 @@ ALLOWLIST: Tuple[Tuple[str, str], ...] = (
     ("docs/design_notes/schemas/*.schema.json", "design IR schema tests/interop reads (5 PRs, 161 lines)"),
     ("docs/public/site_map.json", "public docs map scripts/check_public_docs_manifest.py reads (1 PR, 1 line)"),
     ("docs/public/gallery/assets/**", "gallery precompute outputs (1 PR, 1 line)"),
-    ("scripts/ops/gpu_suite_shards.json", "rendered GPU shard list (2 PRs, 1 line)"),
     ("tests/contracts/boundary_registry.json", "registry tests/contracts reads (1 PR, 1,041 lines)"),
     ("tests/fixtures/**", "frozen reference data, rule 3 applies (34 PRs, 324,083 lines)"),
     ("tests/data/**", "frozen snapshots, rule 3 applies (34 PRs, 8,094 lines)"),

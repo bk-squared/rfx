@@ -2329,10 +2329,12 @@ class _ExecuteMixin:
             refuse_h_side_conductor(
                 self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
+            from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
+            volume_eps = permittivity_without_lumped(materials)
             inv_baseline = (
-                (1.0 / materials.eps_r).astype(jnp.float32),
-                (1.0 / materials.eps_r).astype(jnp.float32),
-                (1.0 / materials.eps_r).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
             )
             aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
                 grid,
@@ -2340,6 +2342,10 @@ class _ExecuteMixin:
                 aniso_inv_eps_baseline=inv_baseline,
                 periodic=periodic_bool,
             )
+            # Occupancy acts on the volume; the capacitor stays on its
+            # declared edge, added once after that correction (#1263).
+            aniso_inv_eps_run = add_lumped_eps(
+                aniso_inv_eps_run, materials.eps_r_lumped, inverse=True)
             pec_occupancy_for_run = None
             if design_occupancy is not None:
                 raise NotImplementedError(
@@ -4776,6 +4782,10 @@ class _ExecuteMixin:
         -------
         Result
         """
+        # The caller's arguments as given, before anything below resolves them:
+        # a devices= model that runs on one device is re-run with all of them.
+        _call_args = dict(locals())
+        del _call_args["self"]
         _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
@@ -4875,6 +4885,25 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane == "run_distributed" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
+        if plan.lane == "run_distributed" and (
+                self._tfsf is not None or self._waveguide_ports):
+            # TFSF sources and waveguide ports need the whole domain on one
+            # device. Re-run with every argument the caller gave, minus devices=;
+            # the runner's own fallback re-ran with n_steps alone and dropped
+            # the rest (#1305: an explicit conformal_pec=False came back as the
+            # declared conformal walls).
+            import warnings
+            warnings.warn(
+                "Distributed runner does not yet support "
+                + ("TFSF plane-wave sources" if self._tfsf is not None
+                   else "waveguide ports")
+                + ". Falling back to single-device execution with the same "
+                "arguments.",
+                stacklevel=2,
+            )
+            return self.run(**{**_call_args, "devices": None,
+                               "exchange_interval": 1,
+                               "skip_preflight": True})
         if plan.lane == "run_distributed":
             if self._dft_planes:
                 raise NotImplementedError(
@@ -4886,18 +4915,12 @@ class _ExecuteMixin:
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
                 )
-            # Leave TFSF and waveguide models to the runner's single-device fallbacks.
-            if self._tfsf is None and not self._waveguide_ports:
-                from rfx.runners.distributed_v2 import (
-                    refuse_unsupported_distributed_features,
-                )
-                refuse_unsupported_distributed_features(
-                    self, lane="distributed multi-device run()")
-            # The single-device fallback carries the resolved conformal setting,
-            # including an explicit False on a conformal declaration.
+            from rfx.runners.distributed_v2 import (
+                refuse_unsupported_distributed_features,
+            )
+            refuse_unsupported_distributed_features(
+                self, lane="distributed multi-device run()")
             _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
-            if self._tfsf is not None or self._waveguide_ports:
-                _dist_conformal = False
             # One device on a graded mesh is the non-uniform lane, which
             # carries neither snapshot nor conformal_pec, nor until_decay on
             # closed boundaries.
