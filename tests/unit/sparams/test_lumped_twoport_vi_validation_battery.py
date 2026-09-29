@@ -603,13 +603,22 @@ def test_thru_preflight_code_set_is_the_contract_set():
     solved 5.35 mm wide (+7.00 %) -- ``sheet_effective_size``.  The fixture
     is a referee for the V/I extraction, not a width-accurate line, and is
     left as drawn; the lock now names both codes.
+
+    2026-09-29 (#1375), a third code for the same fact face by face: the
+    off-lattice census measures a sheet's in-plane faces at the solved
+    edge, so each on-node trace face reads 0.35 cell = 175 um off
+    (0.5 mm cells in y) -- ``off_lattice_design_edges``.
     """
     report = _build_thru().preflight()
     codes = sorted(getattr(i, "code", None) for i in report)
-    assert codes == ["pec_faces_finite_pec", "sheet_effective_size"], codes
+    assert codes == ["off_lattice_design_edges", "pec_faces_finite_pec",
+                     "sheet_effective_size"], codes
     size = [str(i) for i in report
             if getattr(i, "code", None) == "sheet_effective_size"]
     assert "y: drawn 5mm, nodes cover 5mm, solved as 5.35mm" in size[0]
+    census = [str(i) for i in report
+              if getattr(i, "code", None) == "off_lattice_design_edges"]
+    assert "(sheet) y: extent 5mm, worst face residual 175µm" in census[0]
 
 
 # ===========================================================================

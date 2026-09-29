@@ -245,10 +245,6 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
         ),
         tests=(
             "tests/unit/boundaries/test_crossval_migration_smoke.py",
-            "tests/crossval/test_crossval_comprehensive.py",
-            "tests/crossval/test_meep_crossval.py",
-            "tests/crossval/test_meep_crossval_dielectric_cavity.py",
-            "tests/crossval/test_openems_crossval.py",
         ),
         claim_level="E0",
         coverage_scope="not_claims_bearing",
@@ -304,28 +300,6 @@ GATE_GROUPS: tuple[GateGroup, ...] = (
                 "claim": "slow boundary absorber regression gate",
                 "evidence_level": "E1",
                 "artifact": "slow_boundary_absorber result JSON",
-            },
-        ),
-    ),
-    GateGroup(
-        group_id="slow_external_crossval",
-        description=(
-            "Slow Meep/OpenEMS cross-validation tests. Missing external "
-            "solver binaries must be reported by pytest as skip/error rather "
-            "than hidden by the gate runner."
-        ),
-        tests=(
-            "tests/crossval/test_meep_crossval.py",
-            "tests/crossval/test_openems_crossval.py",
-        ),
-        pytest_args=("-m", "slow"),
-        claim_level="E4",
-        requires_external_reference=True,
-        blocked_claims=(
-            {
-                "claim": "slow external full-wave cross-validation",
-                "evidence_level": "E4",
-                "reason": "Meep/openEMS/CSXCAD must be importable or equivalent reference artifacts must be present",
             },
         ),
     ),

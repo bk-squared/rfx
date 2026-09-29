@@ -251,7 +251,14 @@ def test_default_pec_model_matches_native(source):
 
 
 def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
-    """TFSF or waveguide excitation with surface monitors uses the native fallback."""
+    """TFSF or waveguide excitation with surface monitors uses the native fallback.
+
+    Through ``run(devices=...)`` the one-device run gets every argument the
+    caller gave (#1305: the runner's own fallback passed n_steps alone, so an
+    explicit conformal_pec=False came back as the declared conformal walls, and
+    conformal_min_weight and compute_s_params were dropped the same way). The
+    runner entry called directly has no other arguments to pass.
+    """
     for kind in ("tfsf", "waveguide"):
         for entry in ENTRIES:
             sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
@@ -275,8 +282,23 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
                 return sentinel
 
             monkeypatch.setattr(sim, "run", native_run)
+            explicit = {"conformal_pec": False, "conformal_min_weight": 0.3,
+                        "compute_s_params": False}
             with pytest.warns(UserWarning, match="Falling back to single-device"):
-                result = (public_run(n_steps=N_STEPS, devices=_devices(), skip_preflight=True)
+                result = (public_run(n_steps=N_STEPS, devices=_devices(),
+                                     skip_preflight=True, **explicit)
                           if entry == "api" else _run(sim, entry))
             assert result is sentinel
-            assert calls == [{"n_steps": N_STEPS}]
+            assert len(calls) == 1
+            if entry == "api":
+                # Every run() parameter arrives: the caller's values, the
+                # defaults for the rest, and one device.
+                import inspect
+                expected = {name: p.default for name, p in
+                            inspect.signature(Simulation.run).parameters.items()
+                            if name != "self"}
+                expected.update(n_steps=N_STEPS, **explicit, devices=None,
+                                exchange_interval=1, skip_preflight=True)
+                assert calls[0] == expected
+            else:
+                assert calls == [{"n_steps": N_STEPS}]

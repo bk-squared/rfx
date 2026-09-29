@@ -75,7 +75,6 @@ _QUANTIZED_GATE_FILES = [
     # `abs` key to 100. So the multiplier-mutation coverage here rests on the
     # test file's own derived-not-pinned tolerances, which is weaker than the
     # discovered lanes' from-outside check.
-    REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e4_comparison_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e4_comparison.py"),
     # #574 promotion. Same shape and the same coverage gap as the E4 pair above:
@@ -86,7 +85,6 @@ _QUANTIZED_GATE_FILES = [
     # which re-derives MAX_TOL through gate_from_envelope AND caps the measured
     # envelope with a literal pinned outside the artifact (blind below 1.203x,
     # measured in that file).
-    REPO / "tests" / "crossval" / "test_waveguide_nu_broad_e5_envelope_gates.py",
     (REPO / "scripts" / "diagnostics"
      / "build_waveguide_wr90_nu_flux_broad_e5_envelope.py"),
     # v1.8 WP3 unitarity gate on the five uniform broad-E5 envelopes. Same
@@ -99,7 +97,6 @@ _QUANTIZED_GATE_FILES = [
     # envelope with a literal pinned outside the artifacts. The unitarity
     # block lives in the consolidated crossval module (tier-3b reorg), which
     # also appears in _MARGIN_CEIL_FILES below: one file, two gate shapes.
-    REPO / "tests" / "crossval" / "test_waveguide_broad_e5.py",
     # #888 / #280, PR #1005 review finding 4. Two lanes with the same coverage
     # shape as the flat-JSON ones above -- neither keeps a `gates` dict in a
     # `tests/fixtures/**/fixture.json`, so the _REAL_CASES glob does not reach
@@ -141,7 +138,6 @@ _QUANTIZED_GATE_FILES = [
 # (see tests/_gate_policy.py docstring), so these import the multiplier
 # directly rather than calling gate_from_envelope.
 _MARGIN_CEIL_FILES = [
-    REPO / "tests" / "crossval" / "test_waveguide_broad_e5.py",
     REPO / "tests" / "oracle" / "test_waveguide_group_delay_tolerance_envelope.py",
 ]
 

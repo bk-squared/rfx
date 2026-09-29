@@ -149,15 +149,43 @@ def _dataset_from_arrays(module, freqs_hz, s_params):
     )
 
 
-def test_required_external_solver_skip_blocks_full_coverage():
+@pytest.fixture
+def external_reference_group(monkeypatch):
+    group = run_gate.GateGroup(
+        group_id="slow_external_reference_fixture",
+        description=(
+            "Slow Meep/OpenEMS cross-validation tests. Missing external "
+            "solver binaries must be reported by pytest as skip/error rather "
+            "than hidden by the gate runner."
+        ),
+        tests=(
+            "test_meep_reference_fixture.py",
+            "test_openems_reference_fixture.py",
+        ),
+        pytest_args=("-m", "slow"),
+        claim_level="E4",
+        requires_external_reference=True,
+        blocked_claims=(
+            {
+                "claim": "slow external full-wave cross-validation",
+                "evidence_level": "E4",
+                "reason": "Meep/openEMS/CSXCAD must be importable or equivalent reference artifacts must be present",
+            },
+        ),
+    )
+    monkeypatch.setattr(run_gate, "GATE_GROUPS", (*run_gate.GATE_GROUPS, group))
+    return group
+
+
+def test_required_external_solver_skip_blocks_full_coverage(external_reference_group):
     stdout = """
 =========================== short test summary info ============================
-SKIPPED [1] tests/crossval/test_meep_crossval.py:142: Meep is required.
-SKIPPED [1] tests/crossval/test_meep_crossval.py:174: Meep is required.
-SKIPPED [1] tests/crossval/test_openems_crossval.py:161: CSXCAD/openEMS is required.
+SKIPPED [1] test_meep_reference_fixture.py:142: Meep is required.
+SKIPPED [1] test_meep_reference_fixture.py:174: Meep is required.
+SKIPPED [1] test_openems_reference_fixture.py:161: CSXCAD/openEMS is required.
 3 skipped in 0.93s
 """
-    group = run_gate.gate_groups_by_id()["slow_external_crossval"]
+    group = external_reference_group
 
     metadata = run_gate.coverage_metadata(
         group,
@@ -199,21 +227,21 @@ XFAIL tests/unit/sparams/test_msl_port_integration.py::test_msl_thru_line_eigenm
     )
 
 
-def test_aggregate_refuses_required_skip_as_full_claim(tmp_path: Path):
-    stdout_path = tmp_path / "slow_external_crossval.stdout.txt"
+def test_aggregate_refuses_required_skip_as_full_claim(tmp_path: Path, external_reference_group):
+    stdout_path = tmp_path / "slow_external_reference_fixture.stdout.txt"
     stdout_path.write_text(
         "\n".join(
             [
                 "=========================== short test summary info ============================",
-                "SKIPPED [1] tests/crossval/test_meep_crossval.py:142: Meep is required.",
-                "SKIPPED [1] tests/crossval/test_meep_crossval.py:174: Meep is required.",
-                "SKIPPED [1] tests/crossval/test_openems_crossval.py:161: CSXCAD/openEMS is required.",
+                "SKIPPED [1] test_meep_reference_fixture.py:142: Meep is required.",
+                "SKIPPED [1] test_meep_reference_fixture.py:174: Meep is required.",
+                "SKIPPED [1] test_openems_reference_fixture.py:161: CSXCAD/openEMS is required.",
                 "3 skipped in 0.93s",
             ]
         ),
         encoding="utf-8",
     )
-    stderr_path = tmp_path / "slow_external_crossval.stderr.txt"
+    stderr_path = tmp_path / "slow_external_reference_fixture.stderr.txt"
     stderr_path.write_text("", encoding="utf-8")
     result_json = tmp_path / "physics_gate_results.json"
     result_json.write_text(
@@ -222,9 +250,9 @@ def test_aggregate_refuses_required_skip_as_full_claim(tmp_path: Path):
                 "status": "passed",
                 "results": [
                     {
-                        "group_id": "slow_external_crossval",
+                        "group_id": "slow_external_reference_fixture",
                         "description": "external solver gate",
-                        "tests": ["tests/crossval/test_meep_crossval.py"],
+                        "tests": ["test_meep_reference_fixture.py"],
                         "command": ["python", "-m", "pytest"],
                         "status": "passed",
                         "returncode": 0,
@@ -427,26 +455,26 @@ def test_coaxial_tem_oracle_report_covers_geometry_sweep():
     assert {"sma_ptfe_default", "compact_high_eps"} <= case_names
 
 
-def test_vessl_shard_checker_can_require_full_coverage(tmp_path: Path):
-    yaml_path = tmp_path / "slow_external_crossval.yaml"
+def test_vessl_shard_checker_can_require_full_coverage(tmp_path: Path, external_reference_group):
+    yaml_path = tmp_path / "slow_external_reference_fixture.yaml"
     yaml_path.write_text(
         "\n".join(
             [
                 "run: |-",
                 "  python scripts/diagnostics/run_physics_gate.py",
-                "  --group slow_external_crossval",
+                "  --group slow_external_reference_fixture",
                 "  RFX_PHYSICS_GATE_OUTPUT_ROOT=.omx/physics-gate/tmp",
-                "  --vessl-run-id slow_external_crossval=unit-test",
+                "  --vessl-run-id slow_external_reference_fixture=unit-test",
             ]
         ),
         encoding="utf-8",
     )
-    stdout_path = tmp_path / "slow_external_crossval.stdout.txt"
+    stdout_path = tmp_path / "slow_external_reference_fixture.stdout.txt"
     stdout_path.write_text(
         "\n".join(
             [
                 "=========================== short test summary info ============================",
-                "SKIPPED [1] tests/crossval/test_meep_crossval.py:142: Meep is required for this external cross-validation gate.",
+                "SKIPPED [1] test_meep_reference_fixture.py:142: Meep is required for this external cross-validation gate.",
                 "1 skipped in 0.93s",
             ]
         ),
@@ -458,7 +486,7 @@ def test_vessl_shard_checker_can_require_full_coverage(tmp_path: Path):
             {
                 "results": [
                     {
-                        "group_id": "slow_external_crossval",
+                        "group_id": "slow_external_reference_fixture",
                         "status": "passed",
                         "stdout_path": str(stdout_path),
                         "stderr_path": str(tmp_path / "stderr.txt"),
@@ -474,7 +502,7 @@ def test_vessl_shard_checker_can_require_full_coverage(tmp_path: Path):
             {
                 "shards": [
                     {
-                        "group_id": "slow_external_crossval",
+                        "group_id": "slow_external_reference_fixture",
                         "yaml_path": str(yaml_path),
                         "result_json": str(result_path),
                         "last_verified_run_id": "unit-test",

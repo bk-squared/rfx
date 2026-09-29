@@ -30,10 +30,6 @@ jobs:
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider
           --splits 6 --group ${{ matrix.group }}
-          --ignore=tests/crossval/test_meep_crossval.py
-          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
-          --ignore=tests/crossval/test_openems_crossval.py
-          --ignore=tests/crossval/test_crossval_comprehensive.py
           --store-durations --durations-path durations/fast_${{ matrix.group }}.json
           || true
       - uses: actions/upload-artifact@v4
@@ -69,10 +65,6 @@ jobs:
           pytest -v -ra -p no:cacheprovider
           -m "not gpu and not highmem and not docs_consistency"
           --splits 5 --group ${{ matrix.group }}
-          --ignore=tests/crossval/test_meep_crossval.py
-          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
-          --ignore=tests/crossval/test_openems_crossval.py
-          --ignore=tests/crossval/test_crossval_comprehensive.py
           --store-durations --durations-path durations/slow_${{ matrix.group }}.json
           || true
       - uses: actions/upload-artifact@v4

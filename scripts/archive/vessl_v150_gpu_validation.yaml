@@ -25,10 +25,7 @@ run: |-
   echo ""
   echo "=== 1. GPU-marked tests (pytest -m gpu) ==="
   pytest tests/ -m gpu --tb=short -q \
-    --ignore=tests/crossval/test_meep_crossval.py \
     --ignore=tests/test_meep_crossval_patch.py \
-    --ignore=tests/crossval/test_openems_crossval.py \
-    --ignore=tests/crossval/test_crossval_comprehensive.py \
     --ignore=tests/unit/runners/test_distributed.py \
     -k "not slow" || true
 

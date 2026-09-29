@@ -25,18 +25,6 @@
       "notes": "Completed as a slow VESSL shard in the 2026-05-09 recheck."
     },
     {
-      "group_id": "slow_external_crossval",
-      "role": "Slow Meep/openEMS external cross-solver gate",
-      "yaml_path": "scripts/vessl_physics_gate_slow-external-crossval.yaml",
-      "output_dir": ".omx/physics-gate/vessl-2026-05-09/slow_external_crossval",
-      "result_json": ".omx/physics-gate/vessl-2026-05-09/slow_external_crossval/physics_gate_results.json",
-      "last_verified_run_id": "369367237813",
-      "m1_schema_proof_run_id": "369367237818",
-      "m1_schema_proof_result_json": ".omx/physics-gate/vessl-2026-05-09-m1/slow_external_crossval/physics_gate_results.json",
-      "required_for_release_gate": true,
-      "notes": "Currently blocked for E4 coverage because Meep/openEMS/CSXCAD are skipped in the tested image."
-    },
-    {
       "group_id": "slow_nonuniform_subgrid_subpixel",
       "role": "Slow nonuniform, subgrid, and subpixel checks",
       "yaml_path": "scripts/vessl_physics_gate_slow-nonuniform-subgrid-subpixel.yaml",

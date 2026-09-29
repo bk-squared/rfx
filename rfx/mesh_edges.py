@@ -420,3 +420,69 @@ def edge_aware_profiles(
             boundary_cell=pin, edge_offset=edge_offset)
         out[f"d{a}_profile"] = prof.cells
     return out
+
+
+class SolvedSheetSpan(NamedTuple):
+    """Where a PEC sheet's in-plane ends are SOLVED along one axis."""
+
+    #: first and last footprint node index along the axis
+    i0: int
+    i1: int
+    #: solved end coordinates (m): the end node, moved ``edge_offset`` of the
+    #: adjacent OUTSIDE cell outward at a free edge
+    lo: float
+    hi: float
+    #: whether each end is a free edge (not on the domain wall, not a seam)
+    free_lo: bool
+    free_hi: bool
+
+
+def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
+                      declared_hi: float, domain_hi: float, *, union=None,
+                      edge_offset: float = EDGE_OFFSET):
+    """The solved extent of a PEC sheet along one of its in-plane axes.
+
+    The one place the solved-edge model is written. Three reports read it:
+    preflight's ``sheet_effective_size`` (solved size against drawn size),
+    preflight's ``off_lattice_design_edges`` and
+    ``rfx.fidelity.fidelity_report`` (each face as |solved edge - drawn
+    edge|, so the two print the same face residual). A free edge is solved
+    ``edge_offset`` of the OUTSIDE cell beyond its last covered node (see the
+    module docstring). An end that is not a free edge adds nothing: an end drawn at
+    or past the domain boundary (a wall, or a continuation into the absorber
+    pad), and an end whose whole row continues into other sheet metal in
+    ``union`` (a seam inside one conductor).
+
+    ``footprint`` is the sheet's node mask restricted to the domain interior
+    (``interior_lattice_mask``), ``nodes`` the axis node coordinates in domain
+    metres, indexed like the mask (extra trailing entries are ignored).
+    Returns ``None`` when the footprint is empty.
+    """
+    fp = np.asarray(footprint, dtype=bool)
+    other = tuple(i for i in range(fp.ndim) if i != axis)
+    idx = np.flatnonzero(fp.any(axis=other))
+    if idx.size == 0:
+        return None
+    nodes = np.asarray(nodes, dtype=float)[:fp.shape[axis]]
+    i0, i1 = int(idx[0]), int(idx[-1])
+    tol = 1e-9 * max(float(domain_hi), 1e-12)
+
+    def _continues(i_end, i_next):
+        if union is None:
+            return False
+        end = np.take(fp, i_end, axis=axis)
+        return bool(end.any()) and bool(
+            np.take(np.asarray(union, dtype=bool), i_next, axis=axis)[end].all())
+
+    free_lo = bool(i0 > 0 and float(declared_lo) > tol
+                   and not _continues(i0, i0 - 1))
+    free_hi = bool(i1 + 1 < nodes.size
+                   and float(declared_hi) < float(domain_hi) - tol
+                   and not _continues(i1, i1 + 1))
+    lo = float(nodes[i0])
+    hi = float(nodes[i1])
+    if free_lo:
+        lo -= edge_offset * float(nodes[i0] - nodes[i0 - 1])
+    if free_hi:
+        hi += edge_offset * float(nodes[i1 + 1] - nodes[i1])
+    return SolvedSheetSpan(i0, i1, lo, hi, free_lo, free_hi)
