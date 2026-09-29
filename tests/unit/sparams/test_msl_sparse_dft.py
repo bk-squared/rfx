@@ -539,7 +539,7 @@ def test_cropped_extractor_reproduces_full_plane_s_end_to_end(monkeypatch, lane,
     #   jax 0.10.2 / numpy 2.4.6, arm64: max |dS| = 1.49e-07 (uniform-x,
     #     the number in the issue), 1.34e-07 (uniform-y), 1.20e-07
     #     (nonuniform-x)
-    #   jax 0.6.2 / numpy 2.2.6 (CI's versions), arm64: 3.04e-07
+    #   jax 0.6.2 / numpy 2.2.6 (CI's versions then), arm64: 3.04e-07
     #     (uniform-x), 2.39e-07 (uniform-y), 3.69e-07 (nonuniform-x)
     # i.e. 13x to 41x inside the budget, on both JAX versions.
     #

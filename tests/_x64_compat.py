@@ -2,11 +2,11 @@
 
 ``jax.experimental.enable_x64`` (the scoped context manager this repo's
 AD/referee tests use per the "never flip x64 at module level" rule) was
-removed in newer JAX releases. CI (python 3.10) still resolves a JAX that
-exports it; a drifted local environment (python 3.11, newer JAX) fails at
-COLLECTION on the bare import, aborting whole-tree ``-k`` runs before a
-single test executes. This shim keeps the upstream context manager when
-it exists and otherwise provides the same semantics the sanctioned way:
+removed in newer JAX releases. The push-only Python 3.10 compatibility lane
+resolves JAX 0.6.2, which exports it; required CI uses Python 3.11 and JAX
+0.10.2, where the bare import fails at COLLECTION, aborting whole-tree
+``-k`` runs before a single test executes. This shim keeps the upstream
+context manager when it exists and otherwise provides the same semantics the sanctioned way:
 a per-scope flip of ``jax_enable_x64`` with guaranteed restore — exactly
 the "scope x64 per-test (fixture/context)" pattern the repo rule
 prescribes, never a module-level flip.
