@@ -1,7 +1,7 @@
 # .test_durations — provenance
 
 Regenerated 2026-09-28 on `main` (`58ac0d16`, assembled at `cae7d6bf`) from `regen-durations` run
-[36394962310](https://github.com/bk-squared/rfx/actions/runs/36394962310). **12867 entries in the
+[36394962310](https://github.com/bk-squared/rfx/actions/runs/36394962310). **12865 entries in the
 file**, of which **13 of them carried unchanged** from the 8289-entry file this replaces. Ten of that
 run's eleven jobs succeeded. `slow (5)` was cut at its 180-minute job limit with 2361 of its 2567
 tests finished; pytest-split writes its durations file only when the session ends, so that shard
