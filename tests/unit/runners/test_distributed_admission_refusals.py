@@ -291,8 +291,14 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
             assert result is sentinel
             assert len(calls) == 1
             if entry == "api":
-                assert calls[0]["devices"] is None
-                assert calls[0]["n_steps"] == N_STEPS
-                assert {k: calls[0][k] for k in explicit} == explicit
+                # Every run() parameter arrives: the caller's values, the
+                # defaults for the rest, and one device.
+                import inspect
+                expected = {name: p.default for name, p in
+                            inspect.signature(Simulation.run).parameters.items()
+                            if name != "self"}
+                expected.update(n_steps=N_STEPS, **explicit, devices=None,
+                                exchange_interval=1, skip_preflight=True)
+                assert calls[0] == expected
             else:
                 assert calls == [{"n_steps": N_STEPS}]
