@@ -463,7 +463,7 @@ def test_a_blended_pair_between_coarse_bins_holds_the_floor():
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "known limitation (PI 2026-09-27, #1254): a weak high-Q pair that no window "
+    "known limitation (PI 2026-09-27, #1381): a weak high-Q pair that no window "
     "of the record separates beats, the short record reads the beat as fast "
     "decay (apparent Q 619 for a true 50,000), and the blended pole's tail then "
     "weighs below the bar, so the stop can fire before the pair is resolved"))
