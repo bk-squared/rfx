@@ -1,0 +1,90 @@
+---
+title: "Watch a pulse meet a dielectric"
+description: "A vacuum reference and a dielectric half-space reveal how a real pulsed electric field changes at a material interface."
+sidebar:
+  order: 33
+---
+
+**Current-run teaching example · actual FDTD snapshots · 2D TMz · single mesh**
+
+Place a dielectric on the right side of the same open domain. The pulse reaches
+the interface, produces a reflected part, and propagates differently inside
+the material. The vacuum reference on the left makes the changed field and
+probe arrival easier to see.
+
+<video controls playsinline preload="none" poster="/rfx/gallery/assets/current-visuals/dielectric-interface.png" aria-label="A pulse propagates through vacuum on the left and encounters an epsilon-r-four dielectric at x equals 40 millimeters on the right" style="width:100%;height:auto;">
+  <source src="/rfx/gallery/assets/current-visuals/dielectric-interface.mp4" type="video/mp4" />
+  <a href="/rfx/gallery/assets/current-visuals/dielectric-interface.mp4">Download the interface movie</a>
+</video>
+
+**Teaching mesh:** preflight reports resolution advisories for the dielectric
+at the declared band edge. This movie is qualitative; it does not establish
+phase-velocity accuracy or reflection/transmission coefficients.
+
+## The model
+
+| Model detail | Value |
+|---|---|
+| Cross-section | 80 × 60 mm; uniform Yee 2D TMz with 1 mm cells |
+| Left panel | Vacuum reference |
+| Right panel | Vacuum for `x < 40 mm`, ideal nondispersive dielectric `εr = 4` for `x ≥ 40 mm` |
+| Boundary | 16 CPML layers outside the physical domain |
+| Source | Same differentiated Gaussian current pulse in both models at (20, 30) mm |
+| Probe | `Ez` at (55, 30) mm |
+| Recording | 640 steps, actual field snapshot every 4 steps |
+
+The dielectric extends through the right absorber and the transverse edges;
+there is no second material interface in the simulated interior. The dashed
+line is the declared interface on the 40 mm grid plane. The source is a point
+in this 2D model, so the wavefront is curved; this is not a normally incident
+infinite plane wave.
+
+Both panels use the same fixed signed `Ez / Eref` scale. `Eref` is the largest
+absolute recorded field outside a 4 mm source neighborhood across both models.
+The source pixels can saturate, and all unmodified values remain in the data.
+The green-probe trace and cursor share the movie's actual simulation time.
+
+## Run and explore
+
+Follow the pinned installation and generator download in
+[the boundary example](/rfx/gallery/boundary-reflection/#run-this-example), then:
+
+```bash
+JAX_PLATFORMS=cpu PYTHONPATH=. python field_movies.py \
+  --case dielectric-interface --output field-movies
+```
+
+Try a different permittivity or move the interface. Rerun preflight and the
+simulation; a higher permittivity shortens the material wavelength and may
+require a finer mesh. For a quantitative slab spectrum, continue with the
+[slab reflection/transmission tutorial](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/slab_rt_flux_monitor.py),
+which uses flux monitors and reference subtraction.
+
+## Preflight is part of the result
+
+The manifest preserves the complete preflight output. Five advisories were
+reported and retained:
+
+- Three resolution findings: the dielectric has 12.5 cells per effective
+  wavelength at the declared 12 GHz band edge, below the 15-cell recommendation.
+- Geometry reaches into CPML because this example models a continuing
+  half-space. Absorber-region fields are excluded from the plotted interior.
+- The material is perfectly lossless in an open domain. This example does not
+  extract Q, material loss or an absorption fraction.
+
+No advisory was suppressed to make a clean banner. No mesh refinement or
+record-length convergence claim is made.
+
+## Download the actual samples
+
+- [Probe traces, CSV in seconds and V/m](/rfx/gallery/assets/current-visuals/dielectric-interface.csv)
+- [Selected field arrays and all probe samples, NPZ](/rfx/gallery/assets/current-visuals/dielectric-interface.npz)
+- [Model, preflight output, normalization and checksums, JSON](/rfx/gallery/assets/current-visuals/dielectric-interface.json)
+- [Complete generator](/rfx/gallery/assets/current-visuals/field_movies.py)
+
+The NPZ contains every 16th movie frame at full spatial resolution. Its
+`*_frame_times_s`, `*_frame_steps`, `*_x_m` and `*_y_m` arrays describe the exact
+samples. Local regeneration retains every frame. Fields were checked for
+finite values; displayed coordinates and time steps were checked against
+`Result.snapshot_axes`. The solver source is `a9054338`; the manifest records
+the full SHA, generator hash and CPU environment.

@@ -1,0 +1,74 @@
+---
+title: "Steer a beam with a dielectric cover"
+description: "Watch a dielectric pattern and its directional radiation response change during a recorded design history."
+---
+
+A dipole radiates above a metal reflector. A patterned dielectric cover changes
+the phase of the outgoing field across the aperture. This example connects that
+material pattern to the direction of the main radiation lobe.
+
+<p data-rfx="note"><strong>Historical design visualization.</strong> This is the 441-latent-variable trajectory on a wavelength/20 mesh. The plotted response is directivity; it does not establish realized gain, efficiency or broadband performance.</p>
+
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/showcase-20260927/steer_traj.jpg" aria-label="Dielectric pattern, directivity cut and latent-variable gradients during beam steering">
+    <source src="/rfx/gallery/assets/showcase-20260927/steer_traj.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/showcase-20260927/steer_traj.mp4">Download the trajectory</a>.
+  </video>
+  <figcaption>Left: the dielectric cover's relative permittivity. Center: a directional radiation cut. Right: objective sensitivities to latent design variables, ∂L/∂latent, not to physical permittivity ∂L/∂ε<sub>r</sub>. Each frame is a design iteration, not a field time step.</figcaption>
+</figure>
+
+## Read the model
+
+| Part | Meaning |
+|---|---|
+| Radiator | An electric dipole above a metal reflector |
+| Design region | A dielectric cover above the source |
+| Parameterization | A latent grid mapped into a spatial permittivity field |
+| Measurement | A near-to-far-field transform and an angular directivity cut |
+| Objective | Concentrate radiation toward the selected direction while penalizing other directions |
+
+A radiation cut shows how intensity varies with angle. Directivity compares
+directional intensity with total radiated power; it does not include every loss
+or mismatch that would enter realized gain.
+
+## Follow the descent
+
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/showcase-20260927/steer_descent.jpg" aria-label="Historical beam-steering descent and material evolution">
+    <source src="/rfx/gallery/assets/showcase-20260927/steer_descent.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/showcase-20260927/steer_descent.mp4">Download the descent view</a>.
+  </video>
+  <figcaption>A complementary historical optimization view. Keep its drawn values with its own mesh and parameterization; the presentation's finer-mesh summary and full-cell design are separate results.</figcaption>
+</figure>
+
+## Run the related example
+
+The versioned [beam-steering source](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/validation/tmtt_paper/beam_steering_superstrate.py)
+provides a short CPU setup. Run it from a matching source checkout with the example
+dependencies installed:
+
+```bash
+python -m pip install -e ".[optimization]"
+SMOKE=1 JAX_PLATFORMS=cpu PYTHONPATH=. python validation/tmtt_paper/beam_steering_superstrate.py
+```
+
+The short setup uses a coarse mesh and a few optimizer steps. It exercises the
+source workflow and produces a pattern figure; it does not reproduce the archived
+latent-variable movie or validate its numerical values.
+
+**Try changing:** the initial cover profile or target direction. Check the whole
+pattern, total-power normalization and collection-surface placement. See
+[Far-field & RCS](/rfx/guide/farfield-rcs/) for the measurement and
+[Gradient behavior](/rfx/guide/gradient-behavior/) for differentiation limits.
+
+## Evidence and provenance
+
+The exact simulation source revision is not established by the public media
+bundle. The clips preserve presentation-era results; no new mesh, time-record
+or independent-solver validation accompanies them. Raw latent histories and
+field arrays are not included. In particular, a falling objective alone does
+not establish the accuracy of the final RF design.
+
+[Media catalog and SHA-256 hashes](/rfx/gallery/assets/showcase-20260927/media-catalog.json) ·
+[Support Boundaries](/rfx/api/support-boundaries/) ·
+[Visual manual](/rfx/guide/visual-manual/)

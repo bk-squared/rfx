@@ -37,7 +37,7 @@ import dataclasses
 import inspect
 from typing import Any, Callable, NamedTuple
 
-from rfx.geometry.csg import Box, Cylinder, PolylineWire, Sphere
+from rfx.geometry.csg import Box, Cylinder, OrientedBox, PolylineWire, Sphere
 from rfx.geometry.curved import CurvedPatch
 from rfx.geometry.via import Via
 from rfx.interop._errors import UnsupportedDesignFeature
@@ -123,6 +123,11 @@ _CODECS: dict[str, _ShapeCodec] = {
     "box": _ShapeCodec(Box, {
         "corner_lo": _vec(3, what="box.corner_lo"),
         "corner_hi": _vec(3, what="box.corner_hi"),
+    }),
+    "oriented_box": _ShapeCodec(OrientedBox, {
+        "center": _vec(3, what="oriented_box.center"),
+        "size": _vec(3, what="oriented_box.size"),
+        "rotation": _vec_seq(3, what="oriented_box.rotation", container=tuple, min_length=3),
     }),
     "cylinder": _ShapeCodec(Cylinder, {
         "center": _vec(3, what="cylinder.center"),

@@ -840,6 +840,7 @@ def _assert_arm_length_witness(out: dict) -> None:
 
 @pytest.mark.gpu
 @pytest.mark.slow
+@pytest.mark.crossval_ladder
 def test_msl_notch_filter_matches_the_openems_tutorial(tmp_path):
     """The mesh ladder, the convergence statement, then the comparison."""
     rungs = _rungs()

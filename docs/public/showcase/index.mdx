@@ -1,0 +1,47 @@
+---
+title: "Showcase"
+description: "Results computed with the current rfx code, each with an independent check: a patch antenna's sensitivity map, the cost of a gradient, gradient descent to a closed-form optimum, and the forward model next to openEMS."
+sidebar:
+  order: 1
+---
+
+Each case below was computed with the current rfx code on the lab's VESSL
+cluster and checked by something other than the gradient itself: finite
+differences, a closed-form optimum, or another solver on the same board. The
+figures, loops and data are downloadable, and each case has a machine-readable
+result.json.
+
+<div data-rfx="cards">
+  <section data-rfx="card">
+    <a href="/rfx/showcase/sensitivity-map/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_site.png" loading="lazy" alt="Map of the derivative of |S11|² with respect to the permittivity of each substrate cell under a patch antenna, beside its |S11| curve and its |E_z|² map" /></a>
+    <h3>Which cells move the match?</h3>
+    <p>One reverse pass maps the sensitivity of a patch antenna's |S11| to every substrate cell.</p>
+    <p><small>20,592 cells, one pass</small></p>
+    <a href="/rfx/showcase/sensitivity-map/">Read the case →</a>
+  </section>
+  <section data-rfx="card">
+    <a href="/rfx/showcase/gradient-cost/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_site.png" loading="lazy" alt="Bar chart of wall time on an RTX A6000 for a forward run, the value and gradient, and central differences, for three design regions" /></a>
+    <h3>What a gradient costs</h3>
+    <p>Time and memory for the value and gradient against a forward run, as the design region grows.</p>
+    <p><small>24 s vs 4.9–16.8 days</small></p>
+    <a href="/rfx/showcase/gradient-cost/">Read the case →</a>
+  </section>
+  <section data-rfx="card">
+    <a href="/rfx/showcase/descent-to-optimum/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_site.png" loading="lazy" alt="Reflection of a three-layer anti-reflection coating, its layer permittivities over the Adam iterations, and the band-mean reflection against the transfer-matrix optimum" /></a>
+    <h3>Descend to the closed-form optimum</h3>
+    <p>Adam through the FDTD solve finds the three layer permittivities of a broadband anti-reflection coating.</p>
+    <p><small>within 1.1 % of the transfer-matrix optimum</small></p>
+    <a href="/rfx/showcase/descent-to-optimum/">Read the case →</a>
+  </section>
+  <section data-rfx="card">
+    <a href="/rfx/showcase/forward-checks/"><img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_site.png" loading="lazy" alt="Input impedance of the RT/Duroid 5880 probe-fed patch from rfx and from openEMS" /></a>
+    <h3>The forward model next to openEMS</h3>
+    <p>Input impedance of the patch and |S21| of a microstrip notch filter, on the same boards as openEMS.</p>
+    <p><small>0.097 % and 0.090 %</small></p>
+    <a href="/rfx/showcase/forward-checks/">Read the case →</a>
+  </section>
+</div>
+
+More cases are being recomputed with the current code: the waveguide dielectric
+taper and the beam-steering dielectric cover from the 2026 paper. Their original
+films are kept in [the archive](/rfx/gallery/) until then.

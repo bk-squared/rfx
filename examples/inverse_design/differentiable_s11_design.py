@@ -53,12 +53,17 @@ _WR90_LX = 0.10       # domain length (m)
 # f0 is set explicitly at band center — a source centered at/below cutoff
 # launches an evanescent crawl whose extracted S grows with n_steps
 # (issue #150; preflight code "port_source_below_cutoff" now guards this).
-_WR90_FREQS = jnp.linspace(8e9, 11.5e9, 8)
+WR90_FREQS = jnp.linspace(8e9, 11.5e9, 8)
 _WR90_F0 = 9.75e9
 
 
-def _build_sim() -> Simulation:
-    """Two-port WR-90 rectangular waveguide sim (CPU-fast, above-cutoff)."""
+def build_simulation() -> Simulation:
+    """Two-port WR-90 rectangular waveguide sim (CPU-fast, above-cutoff).
+
+    Returns the Simulation without solving it. Both ports sample the design
+    band ``WR90_FREQS`` (8.0-11.5 GHz, 8 points, all above the TE10 cutoff
+    and below 0.90 x the TE20 cutoff); ``sim.preflight()`` inspects it.
+    """
     sim = Simulation(
         freq_max=12e9,
         domain=(_WR90_LX, _WR90_A, _WR90_B),
@@ -72,7 +77,7 @@ def _build_sim() -> Simulation:
         y_range=(0.0, _WR90_A),
         z_range=(0.0, _WR90_B),
         n_modes=1,
-        freqs=_WR90_FREQS,
+        freqs=WR90_FREQS,
         f0=_WR90_F0,
     )
     sim.add_waveguide_port(
@@ -81,7 +86,7 @@ def _build_sim() -> Simulation:
         y_range=(0.0, _WR90_A),
         z_range=(0.0, _WR90_B),
         n_modes=1,
-        freqs=_WR90_FREQS,
+        freqs=WR90_FREQS,
         f0=_WR90_F0,
     )
     return sim
@@ -118,13 +123,16 @@ if __name__ == "__main__":
     print("Differentiable S11 Design — end-to-end AD through rfx S-param API")
     print("=" * 70)
 
-    sim = _build_sim()
+    sim = build_simulation()
     # Preflight runs VISIBLY (never optimize against a setup you have not
     # preflighted — issues #149/#150 both hid behind suppressed warnings).
     issues = sim.preflight()
     if len(issues):   # PreflightReport refuses bool() (#980)
         raise SystemExit(f"preflight reported {len(issues)} issue(s) — fix the setup first")
-    grid = sim._build_grid()
+    # freeze_mesh() is the public call that returns the built grid, whose
+    # shape eps_override must have. Both ports are registered by now, so the
+    # padding it fixes is final.
+    grid = sim.freeze_mesh()
     eps_base = jnp.ones(grid.shape, dtype=jnp.float32)
     alpha0 = jnp.float32(1.0)
 

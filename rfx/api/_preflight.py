@@ -1871,6 +1871,9 @@ class _PreflightMixin:
         _validate_cfg_port_inside_pec,
         _wire_port_cell_centers,
         _validate_cfg_floating_single_cell_port,
+        # #1295 / #1342: not a moved body -- written in the family module and
+        # bound here like the three above, so it carries their qualname pin.
+        _validate_cfg_half_node_split,
     )
 
     # ------------------------------------------------------------------

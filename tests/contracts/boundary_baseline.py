@@ -38,6 +38,10 @@ REFUSAL_PREFIXES = (
     "periodic axes",
     "Lumped ports are not supported together with the TFSF",
     "Floquet ports do not support non-uniform z mesh",
+    # Lane admission (rfx/runners/_admission.py): a declared input the lane
+    # does not carry, named with the lane.
+    "The ADI run() lane would solve this Simulation as if",
+    "The graded run() lane would solve this Simulation as if",
 )
 
 

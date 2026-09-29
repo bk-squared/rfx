@@ -383,6 +383,13 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_port_conductor_continues",
                 lambda sim, c: sim._validate_cfg_port_conductor_continues(c.warn),
                 "absorber"),
+    # #1295 / #1342, appended under the rule above: a port, source or probe
+    # and a wire vertex or PEC sheet declared at one half-node coordinate land
+    # one cell apart. An ERROR; _dispatch_plan refuses the same pairs at run
+    # time through the same function.
+    ConfigCheck("_validate_cfg_half_node_split",
+                lambda sim, c: sim._validate_cfg_half_node_split(c.warn),
+                "ports"),
 )
 
 

@@ -27,3 +27,6 @@
 # remilab.ai navigation, export, deployment snapshots, and gitops. Keep it trackable.
 !/agent/
 !/agent/**
+
+# Reproducible public API/Markdown bundles are build output, not authored sources.
+/_build/

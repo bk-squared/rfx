@@ -1,25 +1,33 @@
 {
-  "dominant_probe_mode_hz": 1984479720.2163157,
-  "probe_spectrum_min_db": 190.48059426681422,
+  "dominant_probe_mode_hz": 1954877968.4835823,
+  "probe_spectrum_min_db": 190.48052031612175,
   "probe_spectrum_min_f_hz": 3496671844.996355,
   "modes": [
     {
-      "freq": 1984479720.2163157,
-      "decay": 59621658.67129965,
-      "Q": 104.5664788462284,
-      "amplitude": 826392.478242935,
-      "phase": -2.3778484365581036,
-      "error": 5.683496288355627e-05
+      "freq": 1954877968.4835823,
+      "decay": 51304391.46943172,
+      "Q": 119.70574230690876,
+      "amplitude": 838466.1725607003,
+      "phase": -2.597314316181717,
+      "error": 4.890663576762044e-05
     }
   ],
   "ringdown_start_s": 1.7904931097838228e-09,
   "ringdown_start_sample": 1879,
   "source_tail_bound_A": 2.7834273962922828e-15,
-  "tail_to_peak": 0.0003252121096011251,
-  "ringdown_tail_to_peak": 0.768401026725769,
-  "sha": "949e1845b84b26826d4e5309363bea4c2ffa5920",
+  "tail_to_peak": 0.0003290091117378324,
+  "ringdown_tail_to_peak": 0.8595053553581238,
+  "sha": "b9a387b0d6d3715692fd3f94911b3bef7bd00504",
+  "sha_note": "b9a387b0 is the capture commit on the PR branch before its rebase onto 715b1f24; it is not reachable from the PR head, and its rfx/ tree differs from the PR's.",
+  "reproduced_at": {
+    "commit": "90c20337",
+    "vessl_run_id": "369367265654",
+    "result": "tests/unit/misc/test_v173a_physics_equivalence_slow.py on VESSL CPU (JAX 0.6.2, numpy 2.2.6) at 5db5aad6, whose tree is identical to 90c20337: dominant_probe_mode_hz 1954877968.4835823, bit-identical to this baseline",
+    "log": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_tests2-20260927T202436Z/r2_file_cpu.log",
+    "capture": "bk-squared/rfx-archive@11bb06f8ed302739af9f81711120d2ca64b64bd4:rfx/records/20260927-1292-locked-results/records/1292-c_capture_v173a-20260927T084253Z/"
+  },
   "harness_sha256": "d881da9b5cbd249b77bf23e1fc88e00fa16e207805a028a8cc69065d44321240",
-  "rfx_import": "/root/workspace/byungkwan-workspace/research/rfx-931-fastlane-reds/rfx/__init__.py",
+  "rfx_import": "/tmp/pr-b9a387b0d6d3715692fd3f94911b3bef7bd00504/rfx/__init__.py",
   "jax_version": "0.6.2",
   "backend": "cpu",
   "x64": false,
@@ -59,9 +67,7 @@
       "amplitude_A": 1.0
     }
   },
-  "replayed_trace": "outputs/931-fixture-repair/v173a-instrument-repair/result.npz",
-  "replayed_trace_sha256": "b0d3bf17ab221f35d4d31c8a0a8cec829fa15c1ee54f3c1fc407109206b1b09e",
-  "run_name": "local-931-v173a-source-free-reanalysis-20260908",
-  "_scope": "Aligned synthetic composition drift sentinel. The mode is amplitude-ranked, not spatially identified; FFT minimum is not S11. No physical accuracy, matching, convergence or Q claim. Capture was offline source-free analysis of the named saved FDTD record; independent full FDTD confirmation passed in local-931-fixture-repair-final-selection-20260908 and is recorded in the repair note.",
-  "replayed_trace_archive": "docs/design_notes/931_migration/fixture-repair-evidence/v173a-source-record.npz"
+  "run_name": "1292-v173a-rebaseline-20260927T084253Z",
+  "_scope": "Aligned synthetic composition drift sentinel. The mode is amplitude-ranked, not spatially identified; FFT minimum is not S11. No physical accuracy, matching, convergence or Q claim. Captured 2026-09-27 (issue 1292) by the harness itself: a full FDTD solve on VESSL CPU (run 369367265505, JAX 0.6.2, numpy 2.2.6) at the commit named in 'sha'. The dx ladder behind the re-pin is in bk-squared/rfx-archive rfx/records/20260927-1292-locked-results/ (R2).",
+  "vessl_run_id": "369367265505"
 }

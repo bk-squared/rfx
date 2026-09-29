@@ -57,6 +57,12 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
                                 pytest.mark.xfail(strict=True, raises=BoundaryDeparture,
                                                   reason=f"{departure['code']}; {departure['detail']}; fixed in {departure['step']}")])
             for cell in CELLS if cell["status"] == "MEASURED" for departure in cell["departures"]]
+# The distributed PMC x faces no longer absorb (#1235). Keep both comparisons
+# after removing their departures from the baseline, without expected-failure marks.
+EXPECTED += [pytest.param("pmc-cpml", "distributed", face, "g",
+                          id=f"pmc-cpml--distributed--{face}--g",
+                          marks=pytest.mark.xdist_group("pmc-cpml--distributed"))
+             for face in ("x_lo", "x_hi")]
 
 
 @pytest.mark.parametrize("case,entry,face,code", EXPECTED)

@@ -7,6 +7,10 @@ Every input is a {nodeid: seconds} map written by ``pytest --store-durations``.
 The output holds exactly the union of the measured nodeids (later inputs win on
 duplicates), sorted, so the committed file lists what the lanes actually run
 and nothing that no longer exists.
+
+It prints each input's test count and summed seconds. Compare each shard's sum with the pytest
+session time its job log reports (the ``= ... in Ns =`` line): a shard well short of it has lost
+a phase, most often a setup or teardown over 600 s, which ``--store-durations`` does not store.
 """
 import json
 import sys
@@ -24,6 +28,7 @@ def main(argv: list[str]) -> int:
         if not isinstance(part, dict):
             raise SystemExit(f"{path}: not a nodeid->seconds map")
         merged.update({k: float(v) for k, v in part.items()})
+        print(f"{path}: {len(part)} tests, {sum(part.values()):.1f} s")
     with open(out, "w") as f:
         json.dump(dict(sorted(merged.items())), f, indent=4, sort_keys=True)
         f.write("\n")

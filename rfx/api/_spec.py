@@ -780,6 +780,10 @@ class Result(NamedTuple):
     #: ``state`` holds E at ``state.step * dt`` and H at
     #: ``(state.step - 1/2) * dt``.
     snapshot_axes: dict | None = None
+    # In-loop block current moments (rfx.current_moments): the accumulator
+    # (n_freqs, n_blocks, 3, n_weights) and the slab/block map it belongs to.
+    current_moment_data: object = None
+    current_moment_monitor: object = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
@@ -1149,6 +1153,8 @@ class ForwardResult(NamedTuple):
     dt: object = None
     ringdown: object = None
     design_box_held_edges: object = None
+    current_moment_data: object = None
+    current_moment_monitor: object = None
 
     @property
     def settling_db(self) -> float | None:
@@ -1250,8 +1256,9 @@ class _TFSFEntry:
     polarization: str
     direction: str
     angle_deg: float
-    waveform: str = "differentiated_gaussian"
+    waveform: object = "differentiated_gaussian"
     method: str = "bloch"
+    closed_box: bool = False
 
 
 @dataclass(frozen=True)

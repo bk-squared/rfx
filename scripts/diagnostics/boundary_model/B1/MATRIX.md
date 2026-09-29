@@ -13,10 +13,10 @@ Codes: a magnetic→electric; b1 dead face node; b2 shorted face node; c electri
 | pec | pass | pass | pass | pass | pass | REFUSED | pass | pass | pass |
 | cpml | pass | pass | f | pass | pass | REFUSED | f | absorber_type | pass |
 | upml | pass | pass | f | pass | REFUSED | REFUSED | REFUSED | REFUSED | pass |
-| pmc-pec | b1,h | b1,h | b1,h | REFUSED | b1,h | REFUSED | b1,b2,h | a,b1 | b1,h |
+| pmc-pec | b1,h | b1,h | b1,h | REFUSED | b1,h | REFUSED | b1,b2,h | REFUSED | b1,h |
 | pmc-cpml | b1,h | b1,h | b1,f,h | REFUSED | b1,h | REFUSED | b1,f,g,h | REFUSED | b1,h |
 | pec-zlo | pass | pass | f | pass | pass | REFUSED | PEC,c,f | REFUSED | pass |
-| periodic-xy | e | REFUSED | e,f | e | d | REFUSED | REFUSED | REFUSED | e |
+| periodic-xy | e | REFUSED | e,f | e | REFUSED | REFUSED | REFUSED | REFUSED | e |
 | tfsf | f,feature | REFUSED | f,feature | f,feature | pass | REFUSED | f,feature | REFUSED | f,feature |
 | waveguide-cpml | f,feature | REFUSED | f,feature | f,feature | pass | REFUSED | f,feature | REFUSED | f,feature |
 | waveguide-pmc | b1,f,h | REFUSED | b1,f,h | b1,f,h | b1,h | REFUSED | b1,f,h | REFUSED | b1,f,h |
@@ -32,12 +32,14 @@ Codes: a magnetic→electric; b1 dead face node; b2 shorted face node; c electri
 - pmc-pec / sweep: MEASURED -> REFUSED.
 - pmc-pec / nonuniform: x_lo EH -> H; x_hi EH -> H.
 - pmc-pec / subgridded: MEASURED -> REFUSED; harness change: B0 refinement z=(0,12) mm; B1 z=(6,10) mm; not a change on main.
+- pmc-pec / adi: MEASURED -> REFUSED.
 - pmc-pec / gpu-query: x_lo E -> H; x_hi E -> H.
 - pmc-cpml / run: x_lo EH -> H; x_hi EH -> H.
 - pmc-cpml / wire-fast: x_lo EH -> H; x_hi EH -> H.
 - pmc-cpml / sweep: MEASURED -> REFUSED.
 - pmc-cpml / nonuniform: x_lo EH -> H; x_hi EH -> H.
 - pmc-cpml / gpu-query: x_lo EH -> H; x_hi EH -> H.
+- periodic-xy / nonuniform: MEASURED -> REFUSED.
 - tfsf / distributed: HARNESS CORRECTION (Addendum 4): use the recorded full grid without slab stripping; B1 x_lo/x_hi E backings absent -> present; (x_lo,f)/(x_hi,f) removed; not a change on main.
 - waveguide-pmc / run: y_lo EH -> H; y_hi EH -> H; z_lo EH -> H; z_hi EH -> H.
 - waveguide-pmc / forward: y_lo EH -> H; y_hi EH -> H; z_lo EH -> H; z_hi EH -> H.

@@ -467,8 +467,11 @@ def test_build_sharded_nu_grid_position_to_index_deterministic():
     # Use a position in the second half so it lands on rank 1.
     # nx_physical=16, nx_per_rank=8; cell 10 → rank 1, local 10-8=2 (+ghost=1 → local_i=3)
     target_global_i = 10
+    # A quarter cell past node 10, not half: a half cell is a tie between
+    # nodes 10 and 11, which the lookup breaks to the even node (#1295), and
+    # the float32 sum here lands 7e-10 m above it, nearer 11.
     pos_x = (float(np.asarray(grid.dx_arr[:target_global_i]).sum())
-              + 0.5 * float(np.asarray(grid.dx_arr)[target_global_i]))
+              + 0.25 * float(np.asarray(grid.dx_arr)[target_global_i]))
     pos_y = 0.5 * dx0
     pos_z = 0.5 * dx0
     i_global, j_global, k_global = position_to_index(grid, (pos_x, pos_y, pos_z))

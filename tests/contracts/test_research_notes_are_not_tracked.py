@@ -179,6 +179,8 @@ SEGMENTS = ("research_notes", "agent-memory", "agent_memory")
 # file below fails this gate until someone bumps the number and extends the
 # reason.
 REVIEWED = {
+    "scripts/build_public_docs_bundle.py":
+        (3, "three forbidden path segments used only to reject private paths from public bundles; no file reads"),
     # Assertion / warning text that happens to cite a note. No path resolution.
     "tests/unit/api/test_api.py":
         (1, "prose inside an assertion message"),

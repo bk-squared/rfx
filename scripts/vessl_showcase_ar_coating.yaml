@@ -1,0 +1,55 @@
+name: rfx-showcase-ar-coating
+description: "Issue 1332, showcase item 2. Three-layer anti-reflection coating on eps_r = 12 over 8-12 GHz (examples/inverse_design/multilayer_ar_coating.py imported by path): 60 Adam iterations through the differentiable 1-D-equivalent FDTD with every iterate recorded beside TMM R(f), the example's three gates, AD vs central differences at the start point, the 1.5x-record witness, and the example's own main() run once for comparison. Rules: docs/design_notes/20260927_showcase_predeclaration.md. CPU only. Code is a shared clone of the pinned commit. Outputs: research/rfx/.omx/showcase/ar_coating/<UTC>-<sha>/. Submit with scripts/vessl_submit.sh (it writes run_id.txt)."
+tags: [rfx, showcase, issue-1332, autodiff, cpu]
+resources:
+  cluster: remilab-c0
+  cpu: 4
+  memory: 8Gi
+image: ghcr.io/bk-squared/rfx-openems:5b423bdfe0c8
+env:
+  DEBIAN_FRONTEND: noninteractive
+  PYTHONUNBUFFERED: "1"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  JAX_PLATFORMS: "cpu"
+  RFX_SHOWCASE_REF: "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277"
+  RFX_SHOWCASE_PRESET: "cpu 4 / 8Gi (custom resources, no preset)"
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # POSIX sh only: no arrays, no [[ ]], no pipefail, no heredocs.
+  PY=python
+  command -v "$PY" >/dev/null 2>&1 || PY=/opt/conda/bin/python
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  primary=/root/workspace/byungkwan-workspace/research/rfx
+  git config --global --add safe.directory "$primary"
+  git config --global --add safe.directory "$primary/.git"
+  test "$RFX_SHOWCASE_REF" != "FILL_BEFORE_SUBMIT"
+  git -C "$primary" fetch -q origin
+  sha=$(git -C "$primary" rev-parse "$RFX_SHOWCASE_REF^{commit}")
+  short=$(echo "$sha" | cut -c1-8)
+  src="/tmp/rfx-showcase-$short"
+  rm -rf "$src"
+  git clone -q --no-checkout --shared "$primary" "$src"
+  git config --global --add safe.directory "$src"
+  git -C "$src" checkout -q --detach "$sha"
+  test "$(git -C "$src" rev-parse HEAD)" = "$sha"
+  out="$primary/.omx/showcase/ar_coating/$(date -u +%Y%m%dT%H%M%SZ)-$short"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  trap 'st=$?; { echo "exit=$st"; echo "commit=$sha"; for f in "$out"/*.rc; do [ -f "$f" ] && echo "$(basename "$f")=$(cat "$f")"; done; ls -la "$out"; } > "$out/summary.txt" 2>&1; cat "$out/summary.txt"' EXIT INT TERM
+  "$PY" -m pip uninstall -y -q jax-cuda12-plugin jax-cuda12-pjrt 2>/dev/null || true
+  "$PY" -m pip install -q "jax[cpu]==0.6.2" "numpy<2" "scipy>=1.11" "h5py>=3.8" "matplotlib>=3.7"
+  "$PY" -c "import jax; assert jax.__version__ == '0.6.2', jax.__version__"
+  export PYTHONPATH="$src"
+  cd "$src"
+  "$PY" -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices(), '| rfx', rfx.__version__, rfx.__file__)" > "$out/probe.txt" 2>&1
+  cat "$out/probe.txt"
+  set +e
+  { timeout 7200 "$PY" scripts/showcase/ar_coating.py --out "$out" --repo-dir "$src" 2>&1; echo "$?" > "$out/ar_coating.rc"; } | tee "$out/ar_coating.log"
+  rc=$(cat "$out/ar_coating.rc")
+  set -e
+  echo "artifacts: $out"
+  exit "$rc"

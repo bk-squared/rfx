@@ -18,6 +18,14 @@
    "variant": "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default"
   },
   {
+   "code": "mesh_import_underresolved",
+   "disposition": "intended",
+   "reason": "The tutorial exists to show this advisory. Its docstring says the workflow is to read the resolution advisory that fires on the plate's 1.5 mm thickness (1.5 cells at dx = 1 mm, under the 2-cell floor), step 1 draws that thickness on purpose so the advisory fires, and step 3 explains what it warns about: the plate is solved 2.0 mm thick against 1.5 mm drawn, which the snapshot's fidelity row for the same plate also reads. main() prints the preflight report verbatim before the run.",
+   "ref": "examples/tutorials/cad_mesh_import_demo.py:1-6,36-38,61-67,86-95",
+   "rows": 1,
+   "variant": "examples/tutorials/cad_mesh_import_demo.py::build_simulation::default"
+  },
+  {
    "code": "no_sources",
    "disposition": "intended",
    "reason": "make_sim() is the shared EMPTY domain factory -- 'Build the small open domain shared by every material example'. The script always follows it with add_sample(), which adds the source and probe. The advisory therefore describes the half-built simulation this build-only gate audits, not anything the example runs: the six end-to-end solves in main() all go through add_sample() first. It is a statement about the audited entry point, not about the example's physics.",
@@ -393,6 +401,30 @@
    "ref": "validation/research/metal_edge/m6_wire_port_ad.py:139-174,203-205",
    "rows": 1,
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "geometry_in_absorber",
+   "disposition": "intended",
+   "reason": "The interface example deliberately extends the dielectric half-space through the absorbing layers, avoiding an unintended rear slab face. The displayed physical domain stops before those layers; absorber-region fields are not interpreted as material physics.",
+   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "rows": 1,
+   "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
+  },
+  {
+   "code": "lossless_q",
+   "disposition": "intended",
+   "reason": "The example intentionally uses an ideal nondispersive dielectric to show a finite pulse meeting an interface. It does not extract Q, resonance lifetime, or loss and names this scope explicitly.",
+   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "rows": 1,
+   "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
+  },
+  {
+   "code": "mesh_resolution",
+   "disposition": "intended",
+   "reason": "The 1 mm grid is a qualitative teaching mesh, not a phase-accuracy calculation: at the declared 12 GHz band edge the dielectric has only 12.5 cells per wavelength. The example retains this advisory and makes no convergence or phase-velocity error claim.",
+   "ref": "examples/visualization/field_movies.py:5-10,62-72",
+   "rows": 3,
+   "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
   }
  ]
 }

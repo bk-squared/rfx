@@ -26,7 +26,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.grid import Grid
+from rfx.grid import C0, Grid
 from rfx.core.yee import MaterialArrays
 from rfx.farfield import (
     FarFieldResult, NTFFBox, compute_far_field, compute_far_field_jax,
@@ -69,6 +69,25 @@ class RCSResult(NamedTuple):
     rcs_dbsm: np.ndarray
     rcs_linear: np.ndarray
     monostatic_rcs: np.ndarray
+
+
+class ScatteringResponse(NamedTuple):
+    """One incident-polarization column of a phase-referenced scattering matrix.
+
+    With the ``exp(+j omega t)`` convention, the outgoing field at
+    ``reference_position + R * s_hat`` is ``exp(-jkR) / R`` times
+    ``(F_theta, F_phi) * E_inc(reference_position)``. F has units of metres,
+    shape ``(n_freqs, n_theta, n_phi)``, and uses the spherical output basis
+    of ``rcs.theta``/``rcs.phi``. Run both ``ey`` and ``ez`` for two columns.
+    ``incident_spectrum`` is the actual E-field DFT at that reference, not
+    the source waveform. Grid/record convergence still bounds accuracy.
+    """
+    rcs: RCSResult
+    F_theta: np.ndarray
+    F_phi: np.ndarray
+    incident_spectrum: np.ndarray
+    reference_position: np.ndarray
+    polarization: str
 
 
 def _incident_spectrum_amplitude(
@@ -182,7 +201,8 @@ def compute_rcs(
     tfsf_margin: int = 3,
     ntff_offset: int = 1,
     subtract_incident_reference: bool = False,
-) -> RCSResult:
+    phase_reference: tuple[float, float, float] | None = None,
+) -> RCSResult | ScatteringResponse:
     """Compute radar cross section of the scatterer defined in materials.
 
     Parameters
@@ -266,10 +286,20 @@ def compute_rcs(
         integrates into a spurious forward-oblique lobe (issue #280).
         Doubles the solve cost. Default False keeps the validated
         monostatic path byte-identical; opt in for the bistatic pattern.
-        Note: ``monostatic_rcs`` is always computed from the raw (unsubtracted)
-        run regardless of this flag -- the leakage nulls at backscatter (~90 dB
+        Without ``phase_reference``, ``monostatic_rcs`` is computed from the raw
+        (unsubtracted) run regardless of this flag -- the leakage nulls at backscatter (~90 dB
         down), so subtraction would change it by <0.02 dB, and keeping the
         validated monostatic extraction untouched is intentional.
+    phase_reference : (x, y, z) in metres, optional
+        Opt in to a ``ScatteringResponse`` with complex scattering amplitudes
+        referenced to this physical point. Requires normal +x incidence, a
+        uniform 3-D grid with symmetric CPML, and
+        ``subtract_incident_reference=True``. The x coordinate must be on an
+        E-node plane inside the total-field slab; it is never silently
+        snapped. The normal incident wave is uniform in y/z. Only finite,
+        positive frequencies with a nonzero incident spectrum are admitted;
+        the caller must additionally check adequate source bandwidth and
+        record/mesh convergence. Without this option the return is unchanged.
 
     Returns
     -------
@@ -279,6 +309,9 @@ def compute_rcs(
         direction — for +x incidence that is (theta=pi/2, phi=pi) under
         the farfield r_hat convention; it does not depend on
         theta_obs/phi_obs).
+        With ``phase_reference`` set, ``ScatteringResponse.rcs`` holds the
+        RCS normalized by the incident measured at that reference, consistent
+        with its complex F components. Frequencies are the realized NTFF bins.
 
     Bistatic pattern caveat
     -----------------------
@@ -326,7 +359,10 @@ def compute_rcs(
     else:
         freqs_arr = np.asarray(freqs, dtype=np.float64)
 
-    len(freqs_arr)
+    if phase_reference is not None:
+        # NTFF accumulates at float32 bins. Normalize and de-embed at those
+        # same realized frequencies, not at a subtly different requested bin.
+        freqs_arr = freqs_arr.astype(np.float32).astype(np.float64)
     dx = grid.dx
     dt = grid.dt
 
@@ -360,6 +396,35 @@ def compute_rcs(
     # for combos Method B does not support: non-ez polarization and
     # non-uniform / distributed grids.
     _oblique = abs(float(theta_inc)) > 1e-6
+    reference_index = None
+    reference_position = None
+    if phase_reference is not None:
+        if (_oblique or float(theta_inc) != 0.0 or float(phi_inc) != 0.0
+                or not isinstance(grid, Grid) or grid.is_2d or boundary != "cpml"
+                or cpml_layers <= 0
+                or any(v != cpml_layers for v in grid.face_layers.values())
+                or any(getattr(grid, f"pad_{axis}_{side}") != cpml_layers
+                       for axis in "xyz" for side in ("lo", "hi"))):
+            raise NotImplementedError(
+                "phase_reference requires normal +x incidence on a uniform 3-D "
+                "grid with symmetric CPML matching cpml_layers"
+            )
+        if not subtract_incident_reference:
+            raise ValueError("phase_reference requires subtract_incident_reference=True")
+        reference_position = np.asarray(phase_reference, dtype=np.float64)
+        if (reference_position.shape != (3,) or not np.all(np.isfinite(reference_position))
+                or np.any(reference_position < 0)
+                or np.any(reference_position > np.asarray(grid.domain))):
+            raise ValueError("phase_reference must be a finite physical point inside grid.domain")
+        reference_index = grid.index_of("x", float(reference_position[0]))
+        if not np.isclose(grid.node_of("x", reference_index), reference_position[0],
+                          rtol=0.0, atol=8 * np.finfo(float).eps
+                          * max(abs(reference_position[0]), float(dx))):
+            raise ValueError("phase_reference.x must lie on an E-node plane; it is not snapped")
+        if (n_steps <= 0 or freqs_arr.ndim != 1 or freqs_arr.size == 0
+                or not np.all(np.isfinite(freqs_arr)) or np.any(freqs_arr <= 0)
+                or np.any(freqs_arr >= 0.5 / float(dt))):
+            raise ValueError("phase_reference needs positive n_steps and frequencies below Nyquist")
     if _oblique:
         if polarization != "ez":
             raise NotImplementedError(
@@ -412,6 +477,8 @@ def compute_rcs(
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
     )
+    if reference_index is not None and not tfsf_cfg.x_lo <= reference_index <= tfsf_cfg.x_hi:
+        raise ValueError("phase_reference.x must lie inside the total-field slab")
 
     if _oblique:
         # #471 F5: compute_rcs never ran the preflight vacuum validator. Run
@@ -546,6 +613,12 @@ def compute_rcs(
             sigma=jnp.zeros(grid.shape, dtype=jnp.float32),
             mu_r=jnp.ones(grid.shape, dtype=jnp.float32),
         )
+        if reference_position is not None:
+            # Complex subtraction requires the same numerical precision in
+            # both solves, including when the caller supplies float64 media.
+            vacuum = MaterialArrays(jnp.ones_like(materials.eps_r),
+                                    jnp.zeros_like(materials.sigma),
+                                    jnp.ones_like(materials.mu_r))
         ref_result = run(grid, vacuum, n_steps, **_run_kw)
         ff_ref = compute_far_field(
             ref_result.ntff_data, ntff_box, grid, theta_obs, phi_obs,
@@ -580,7 +653,11 @@ def compute_rcs(
         # the same auxiliary line and normalize by what it carries.
         E_inc_spectrum = measure_normal_incident_spectrum(
             tfsf_cfg, tfsf_st, n_steps, freqs_arr, dt,
+            **({"reference_index": reference_index} if reference_index is not None else {}),
         )
+    if reference_index is not None and (
+            not np.all(np.isfinite(E_inc_spectrum)) or np.any(np.abs(E_inc_spectrum) == 0)):
+        raise ValueError("phase_reference cannot normalize a zero or non-finite incident spectrum")
 
     # --- 6. Compute RCS ---
     # RCS = 4*pi * |E_far|^2 / |E_inc|^2
@@ -650,17 +727,41 @@ def compute_rcs(
         np.array([theta_back]),
         np.array([phi_back]),
     )
+    if reference_index is not None:
+        ff_back_ref = compute_far_field(
+            ref_result.ntff_data, ntff_box, grid,
+            np.array([theta_back]), np.array([phi_back]),
+        )
+        ff_back = ff_back._replace(
+            E_theta=ff_back.E_theta - ff_back_ref.E_theta,
+            E_phi=ff_back.E_phi - ff_back_ref.E_phi,
+        )
     Eb_theta = np.asarray(ff_back.E_theta, dtype=np.complex128)[:, 0, 0]
     Eb_phi = np.asarray(ff_back.E_phi, dtype=np.complex128)[:, 0, 0]
     power_back = np.abs(Eb_theta) ** 2 + np.abs(Eb_phi) ** 2  # (nf,)
     mono_linear = 4.0 * np.pi * power_back / safe_power_inc
     monostatic_rcs = 10.0 * np.log10(np.maximum(mono_linear, 1e-30))
 
-    return RCSResult(
+    rcs = RCSResult(
         freqs=freqs_arr,
         theta=theta_obs,
         phi=phi_obs,
         rcs_dbsm=rcs_dbsm,
         rcs_linear=rcs_linear,
         monostatic_rcs=monostatic_rcs,
+    )
+    if reference_index is None:
+        return rcs
+
+    incident = E_inc_spectrum
+    th, ph = np.meshgrid(theta_obs, phi_obs, indexing="ij")
+    s_hat = np.stack((np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)), axis=-1)
+    # NTFF uses global physical positions: remove the outgoing origin phase.
+    phase = np.exp(-2j * np.pi * freqs_arr[:, None, None] / C0
+                   * (s_hat @ reference_position)[None, :, :])
+    factor = phase / incident[:, None, None]
+    return ScatteringResponse(
+        rcs=rcs, F_theta=E_theta * factor, F_phi=E_phi * factor,
+        incident_spectrum=incident, reference_position=reference_position,
+        polarization=polarization,
     )

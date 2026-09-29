@@ -203,6 +203,40 @@ def axis_name(axis) -> str:
     return AXES[normalize_axis(axis)]
 
 
+#: Two node distances within this fraction of the local cell are a TIE. The
+#: sheet snap (``rfx.geometry.rasterize_grid._nearest_plane``) and the point
+#: lookups read the same constant through :func:`nearest_node_index`. Equal to
+#: ``rasterize_grid._REL_TOL``, its "on the lattice" tolerance.
+NODE_TIE_REL = 1e-9
+
+
+def nearest_node_index(nodes, x: float, d_local: float) -> int:
+    """Index of the node nearest ``x`` -- the one tie rule (#1295, #1342).
+
+    ``nodes`` is an ascending node line (any origin); the answer indexes it.
+    ``d_local`` is the cell ``x`` lies in (``rasterize_grid._local_cell``).
+
+    The rule: the NEAREST node by float64 distance; when the two nearest
+    distances agree to ``NODE_TIE_REL`` of the local cell, the LOWER node. It
+    is the sheet snap's rule (#931, ``_nearest_plane`` calls this function),
+    so a port, source or probe and a sheet declared at the same coordinate
+    land on the same node bit for bit, on a constant axis and a graded one.
+    A PolylineWire vertex (``wire_vertex_nodes``) takes ``argmin``, which is
+    the same node at an exact tie and differs only inside the 1e-9-cell band
+    around one. Always a valid index: a coordinate outside the line gets the
+    end node.
+
+    The uniform grid's point lookup rounds an exact tie to the EVEN node
+    (``round(x/dx)``) until #1342 moves it onto this rule.
+    """
+    line = np.asarray(nodes, dtype=np.float64)
+    dist = np.abs(line - float(x))
+    k = int(np.argmin(dist))
+    if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= NODE_TIE_REL * float(d_local):
+        k -= 1
+    return k
+
+
 def dual_spacings_from_cells(cells: np.ndarray) -> np.ndarray:
     """``dual[0] = d[0]``, ``dual[k] = (d[k-1]+d[k])/2`` on the host.
 

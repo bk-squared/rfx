@@ -61,12 +61,31 @@ def _s11_mag2(deps):
 def test_coax_reflection_grad_finite_and_fd_consistent():
     """Gate: the full-method reflection is differentiable w.r.t. the dielectric and
     the AD gradient matches a finite difference (the AD moat for coaxial_port)."""
+    try:
+        from jax import enable_x64
+    except ImportError:  # older JAX (< ~0.4.31)
+        from tests._x64_compat import enable_x64
+
     val, g = jax.value_and_grad(_s11_mag2)(0.0)
     assert np.isfinite(float(val)), f"|S11|^2 is not finite: {val}"
     assert np.isfinite(float(g)), f"gradient is not finite: {g}"
 
-    h = 0.02  # small enough that the matrix-pencil stays well-conditioned
-    fd = (float(_s11_mag2(h)) - float(_s11_mag2(-h))) / (2 * h)
+    # Why the step is small (#1356): on this lossless short the physical d|S11|^2/d(eps) is
+    # zero, so AD and FD compare a numerical residual. The extractor makes beta > 0 by
+    # conjugating gamma (rfx/sources/coaxial_port.py:1122), so the attenuation it returns is
+    # |alpha|, with a corner at alpha = 0. Since #1314 the fitted alpha sits at ~0.0004 Np/m:
+    # the + endpoint's Im p is +1.7e-7 at h=0.0025 and crosses zero near h=0.004, and the old
+    # h=0.02 read 82 % off AD. h=0.00125 keeps ~3x margin to that corner. Measured at a3490391,
+    # 1500 steps, float64 extraction: FD within 0.3 % of AD for h in {0.000625, 0.00125, 0.0025},
+    # 6.7 % at 0.005 (rfx-archive rfx/records/20260928-coax-reflection-gradient-1356). Float64
+    # extraction is required: in float32 the pair spans only 80-296 ULP of the loss at these
+    # steps (3.9-11.7 % off AD). The scoped x64 below gives float64 DFT and extraction while the
+    # fields and eps_scale stay float32, so what AD differentiates is unchanged.
+    h = 0.00125
+    with enable_x64():
+        fp, fm = _s11_mag2(h), _s11_mag2(-h)
+        assert fp.dtype == jnp.float64 and fm.dtype == jnp.float64, f"FD not float64: {fp.dtype}"
+        fd = (float(fp) - float(fm)) / (2 * h)
     assert np.isfinite(fd) and fd != 0.0, "FD slope not finite/nonzero — rebuild fixture"
     rel = abs(float(g) - fd) / max(abs(fd), 1e-12)
     assert rel <= 0.05, f"AD={float(g):+.6e} vs FD={fd:+.6e} (rel diff {rel:.3f} > 5%)"

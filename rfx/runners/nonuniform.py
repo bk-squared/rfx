@@ -74,9 +74,10 @@ def assemble_interface_eps_nu(sim, grid, materials):
                     sim, grid, entry.shape, entry=entry, unextendable=[]))
                 if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
                 else entry for entry in sim._geometry]
+    cell_coords = GridCoords(*centres, grid.shape)
     cell, debye, lorentz, pec, *_ = rasterize_geometry(
-        geometry, sim._resolve_material, GridCoords(*centres, grid.shape),
-        pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
+        geometry, sim._resolve_material, cell_coords,
+        centres=cell_coords, pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD)
     if debye is not None or lorentz is not None:
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     eps = np.asarray(cell.eps_r, dtype=np.float64)
@@ -112,6 +113,7 @@ def build_nonuniform_grid(
     pec_faces: set[str] | None = None,
     pmc_faces: set[str] | None = None,
     cpml_axes: str = "xyz",
+    face_layers: dict[str, int] | None = None,
     dt: float | None = None,
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
@@ -147,6 +149,7 @@ def build_nonuniform_grid(
             domain_xy, dz_profile, dx, cpml_layers,
             dx_profile=dx_profile, dy_profile=dy_profile,
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
+            face_layers=face_layers,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
         )
 
@@ -499,7 +502,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         "z": (grid.pad_z_lo, grid.pad_z_hi),
     }
 
-    def _range_to_slice_nu(value_range, d_arr_jnp, n_axis, pad_lo, pad_hi):
+    def _range_to_slice_nu(value_range, d_arr_jnp, n_axis, pad_lo, pad_hi,
+                           axis):
         d_np = np.asarray(d_arr_jnp)
         # Cell-edge positions in physical coords (interior only, edge=0 at first
         # interior face). Length = n_interior + 1.
@@ -508,8 +512,11 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         if value_range is None:
             return (pad_lo, n_axis - pad_hi), float(edges[-1])
         lo, hi = value_range
-        lo_local = int(np.argmin(np.abs(edges - float(lo))))
-        hi_local = int(np.argmin(np.abs(edges - float(hi))))
+        # Each end on the node pos_to_nu_index names (the #1295 tie rule),
+        # as the uniform builder puts it on round(lo/dx).
+        from rfx.nonuniform import _axis_position_to_index
+        lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
+        hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
         if hi_local <= lo_local:
             raise ValueError(
                 f"range {value_range!r} does not resolve to a valid aperture on the NU grid"
@@ -524,14 +531,14 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         return (lo_idx, hi_idx), actual_span
 
     if normal_axis == "x":
-        u_slice, a_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"])
-        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"])
+        u_slice, a_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"], "y")
+        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"], "z")
     elif normal_axis == "y":
-        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"])
-        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"])
+        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"], "x")
+        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"], "z")
     else:
-        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"])
-        v_slice, b_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"])
+        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"], "x")
+        v_slice, b_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"], "y")
 
     # NODE span -> CELL span, same conversion and same reason as the uniform
     # builder (issue #868): ``_range_to_slice_nu`` reports the aperture as
@@ -706,7 +713,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         decay_energy_consecutive: int = 2,
                         radiated_flux_box: tuple | None = None,
                         flux_env_checks: int = 4,
-                        design_box=None):
+                        design_box=None,
+                        lane: str = "run_nonuniform",
+                        stop_fn=None,
+                        stop_interval: int = 250):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -737,6 +747,15 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     decay_energy_consecutive :
         Threaded to :func:`run_nonuniform_until_decay` (same semantics
         as ``Simulation.run``'s ``decay_*`` kwargs).
+    stop_fn, stop_interval :
+        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        ``n_steps`` record runs as :func:`run_nonuniform_until_decay`'s
+        chunked loop (chunks of ``stop_interval`` steps, energy stop off,
+        the #667 progress route's settings) and ``stop_fn(steps_done,
+        peek)`` decides after each chunk whether it ends there; ``peek()``
+        gives the record so far (``time_series``, ``wire_port_sparams``,
+        ``freqs``, ``grid``, ``dt`` as this function reports them).
+        ``None`` (default) is the unchanged path.
     compute_s_params : bool or None
     s_param_freqs : array or None
     eps_override, sigma_override : jnp.ndarray or None
@@ -772,12 +791,19 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         (#1179); ``rfx.simulation._resolve_design_box``, called from
         ``_build_nu_scan``, carries the fences that need the resolved step
         context, and the ones below are this lane's own.
+    lane : str
+        The lane admission judges this run as: ``"run_nonuniform"`` (the
+        default, also a direct call) or ``"fwd_nonuniform"`` from
+        ``forward()``. A declared input the lane does not carry is refused
+        before the first step (``rfx.runners._admission``).
 
     Returns
     -------
     Result
     """
     # every single-device non-uniform solve (run AND forward) enters here
+    from rfx.sources.tfsf import _refuse_extended_tfsf
+    _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
     sim._require_mode_the_nonuniform_lane_solves()
     # compute_waveguide_s_matrix's graded branch reaches this lane without
     # _dispatch_plan, so the lane refuses the refinement it drops (#1240).
@@ -864,6 +890,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     grid = build_nonuniform_grid(
         sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
         dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
+        face_layers=sim._resolve_face_layers(),
         pec_faces=sim._boundary_spec.pec_faces()
             if sim._boundary_spec is not None else None,
         pmc_faces=sim._boundary_spec.pmc_faces()
@@ -1546,6 +1573,26 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_box = with_face_centre_collocation(ntff_box, grid)
         ntff_data_init = init_ntff_data(ntff_box)
 
+    # In-loop block current moments (rfx.current_moments), realized against
+    # the grid the solve actually builds.
+    #
+    # The DECLARED axes are handed over, not this lane's effective ones. The
+    # NU stepper installs no periodic boundary at all (the assembler above
+    # passes ``periodic=(False, False, False)`` unconditionally), so passing
+    # the effective flags would make the monitor's periodic refusal dead code
+    # here and a user who called ``set_periodic_axes()`` would get a monitor
+    # built for a wrap the solve does not have. Refusing the declaration is
+    # the honest answer on this lane.
+    from rfx.current_moments import monitor_for_simulation as _cm_for_sim
+    _declared_periodic = tuple(
+        axis in getattr(sim, "_periodic_axes", "") for axis in "xyz")
+    current_moments = _cm_for_sim(
+        sim, grid, periodic=_declared_periodic,
+        overrides={"eps_r": eps_override, "sigma": sigma_override,
+                   "pec_mask": pec_mask_override,
+                   "pec_occupancy": pec_occupancy_override,
+                   "design_box": design_box})
+
     # #677: assemble the surface-impedance sheet ctx from the specs the
     # assembler emitted, against the FINAL realized PEC edges of this run
     # (PEC wins on overlapping edges). Crossing-normal refusal lives in the
@@ -1571,6 +1618,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 "not supported (#677 v1): the sheet operator assumes the "
                 "isotropic E update at its edges. Disable "
                 "subpixel_smoothing or drop the f0 sheet.")
+
+    # Every declared input this lane does not carry is refused here, after
+    # the specific refusals above and before the first step.
+    from rfx.runners._admission import admit
+    admit(sim, lane)
 
     _shared_run_kwargs = dict(
         design_box=design_box,
@@ -1598,11 +1650,47 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         rlc_states=rlc_states_init,
         ntff_box=ntff_box,
         ntff_data=ntff_data_init,
+        current_moments=current_moments,
         waveguide_ports=waveguide_port_cfgs if waveguide_port_cfgs else None,
         tfsf=tfsf_pair,
         emit_time_series=emit_time_series,
     )
-    if until_decay is not None:
+    if stop_fn is not None:
+        # #1254: the chunked loop of the #667 progress route (energy stop
+        # off, min_steps past the end) with the caller's stop check.
+        if until_decay is not None or checkpoint_every is not None or n_warmup:
+            raise NotImplementedError(
+                "run_nonuniform_path(stop_fn=...) does not combine with "
+                "until_decay, checkpoint_every or n_warmup (issue #1254).")
+        from types import SimpleNamespace as _NS
+
+        from rfx.progress import validate_report_every
+        _re_stop = (None if report_every is None
+                    else validate_report_every(report_every, n_steps=n_steps))
+
+        def _stop_with_result(steps_done, peek):
+            def partial():
+                d = peek()
+                raw = d.get("wire_sparams_raw")
+                wps = (None if raw is None else
+                       tuple(zip(d.get("wire_sparams_meta", ()), raw)))
+                return _NS(time_series=d["time_series"], wire_port_sparams=wps,
+                           freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt)
+            return stop_fn(steps_done, partial)
+
+        r = run_nonuniform_until_decay(
+            grid, materials,
+            decay_by=0.0,
+            check_interval=int(stop_interval),
+            min_steps=n_steps + 1,
+            max_steps=n_steps,
+            decay_energy_consecutive=1,
+            report_every=_re_stop,
+            report_label=report_label,
+            stop_fn=_stop_with_result,
+            **_shared_run_kwargs,
+        )
+    elif until_decay is not None:
         # #383: chunked host loop with the interior-energy stop. The
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored
@@ -1787,6 +1875,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         freqs=freqs_out,
         ntff_data=r.get("ntff_data"),
         ntff_box=ntff_box,
+        current_moment_data=r.get("current_moment_data"),
+        current_moment_monitor=current_moments,
         dft_planes=dft_planes_dict,
         wire_port_sparams=wire_port_sparams_result,
         flux_monitors=flux_monitors_dict,

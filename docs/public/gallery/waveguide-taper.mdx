@@ -1,0 +1,77 @@
+---
+title: "A dielectric taper for a guided wave"
+description: "Watch a material profile, reflection spectrum and sensitivity change together during a recorded optimization."
+---
+
+A guided wave meets a higher-permittivity dielectric load. A transition made of
+short dielectric sections gives the wave a gradual change of environment. This
+example asks how the section permittivities change the reflected-wave spectrum.
+
+<p data-rfx="note"><strong>Historical design visualization.</strong> These films preserve a presentation-era run. They have not been regenerated with the documentation source revision and do not establish current RF accuracy.</p>
+
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/showcase-20260927/taper_traj.jpg" aria-label="Dielectric taper optimization: material profile, reflection and sensitivity">
+    <source src="/rfx/gallery/assets/showcase-20260927/taper_traj.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/showcase-20260927/taper_traj.mp4">Download the trajectory</a>.
+  </video>
+  <figcaption>Read left to right: relative permittivity along the guide, reflection magnitude across frequency, and the objective's sensitivity to each section's permittivity. The movie advances through optimization iterations, not physical time.</figcaption>
+</figure>
+
+## Read the model
+
+| Part | Meaning |
+|---|---|
+| Guide | A rectangular metal-walled guide with absorbing ends along propagation |
+| Load | A dielectric-filled continuation of the guide |
+| Design | A sequence of dielectric sections ahead of the load |
+| Excitation and measurement | The guided mode and its reflected port response |
+| Objective | Band-averaged reflected power |
+
+The current [research source](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/validation/tmtt_paper/waveguide_dielectric_taper.py)
+distinguishes its geometries: the short CPU setup realizes WR-90 dimensions,
+while the paper meshes realize a 23 mm broad wall rather than the nominal
+22.86 mm. Its reported paper responses belong to those realized guides.
+The legacy [empty-guide example](/rfx/gallery/waveguide_wr90/) is a different model.
+
+## Watch the objective evolve
+
+<figure data-rfx="media">
+  <video controls preload="none" playsInline poster="/rfx/gallery/assets/showcase-20260927/taper_descent.jpg" aria-label="Recorded descent and dielectric taper design evolution">
+    <source src="/rfx/gallery/assets/showcase-20260927/taper_descent.mp4" type="video/mp4" />
+    <a href="/rfx/gallery/assets/showcase-20260927/taper_descent.mp4">Download the descent view</a>.
+  </video>
+  <figcaption>A complementary view of the recorded design history. The comparison curve is part of the historical figure; this page makes no claim of superiority over a classical taper.</figcaption>
+</figure>
+
+## Run the related example
+
+In a source checkout matching the linked revision, install the project's example
+dependencies and run its documented CPU setup:
+
+```bash
+python -m pip install -e ".[optimization]"
+SMOKE=1 JAX_PLATFORMS=cpu PYTHONPATH=. python validation/tmtt_paper/waveguide_dielectric_taper.py
+```
+
+This short run produces an initial/optimized response and material-profile figure.
+It exercises the workflow; it does not reproduce these archived movies or the
+full-resolution paper result. Read its preflight output and realized dimensions.
+
+**Try changing:** the initial permittivity profile or number of sections. Compare
+the complete reflection curve and keep the guide, ports and frequency band fixed.
+See [Waveguide Ports](/rfx/guide/waveguide-ports/) and
+[Inverse Design](/rfx/guide/inverse-design/) for the API path.
+
+## Evidence and provenance
+
+The videos show a recorded optimization and retain the numbers drawn in their
+original frames. Their exact simulation source revision is unavailable in the
+public media bundle. The linked source is a related, versioned example, not a
+reproduction certificate for these assets. Raw iteration arrays are not included.
+Current accuracy and differentiation support follow
+[Support Boundaries](/rfx/api/support-boundaries/), including mesh and time-record
+checks before making a new numerical claim.
+
+[Download the media catalog and SHA-256 hashes](/rfx/gallery/assets/showcase-20260927/media-catalog.json).
+Next: [tune a microstrip notch](/rfx/gallery/microstrip-notch/) or
+[read the visual manual](/rfx/guide/visual-manual/).
