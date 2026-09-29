@@ -25,6 +25,10 @@ at ``2**0``, 552 at ``2**20``, 2710 at ``2**40``, and 2712 on
 of 3.2e-3, so about 1 after scaling), 4251 at ``2**30``, 7942 at ``2**60``.
 The #1357 fixture has 16 at cotangent 1.
 
+Finite and scale-exact is not the same as right, so each builder's float32
+tangent is also compared with its SI spelling's derivative in float64
+(``test_builder_tangent_is_the_si_derivative``).
+
 Rows that still overflow are strict xfails naming #1357 and #1325: the
 Debye/Lorentz ADE builders and the mixed Debye+Lorentz update are rewritten
 by open PR #1325, and are routed through the helper after it merges. The
@@ -76,6 +80,11 @@ DEFERRED_1325 = pytest.mark.xfail(
     reason="#1357: this lane/material still divides by SI eps in the reverse "
            "pass; its builders are rewritten by open PR #1325 and are routed "
            "through si_value_eps_r_grad after it merges")
+# The deferred behaviour rows run in the slow lane (about 15 s on CPU). The
+# always-on signal for them is the contract's DEFERRED rows
+# (tests/contracts/test_eps_r_unit_coefficient_builders.py), which XPASS, and
+# so fail, the moment #1325's builders are routed.
+DEFERRED_1325_SLOW = [DEFERRED_1325, pytest.mark.slow]
 
 
 def _model(lane, material):
@@ -182,10 +191,10 @@ def test_issue_1357_fixture_gradient_is_finite():
     ("adi_2d", "sigma"),
     ("adi_3d", "sigma"),
     ("distributed_nu", "sigma"),
-    pytest.param("uniform", "debye", marks=DEFERRED_1325),
-    pytest.param("uniform", "lorentz", marks=DEFERRED_1325),
-    pytest.param("uniform", "debye+lorentz", marks=DEFERRED_1325),
-    pytest.param("nu", "debye+lorentz", marks=DEFERRED_1325),
+    pytest.param("uniform", "debye", marks=DEFERRED_1325_SLOW),
+    pytest.param("uniform", "lorentz", marks=DEFERRED_1325_SLOW),
+    pytest.param("uniform", "debye+lorentz", marks=DEFERRED_1325_SLOW),
+    pytest.param("nu", "debye+lorentz", marks=DEFERRED_1325_SLOW),
 ])
 def test_gradient_is_scale_invariant(lane, material, request):
     kw = {}
@@ -302,8 +311,14 @@ def _si_only(si_fn, eps_r_fn, *args):
     return si_fn(*args)
 
 
-@pytest.mark.parametrize("lane", ["uniform", "upml", "nu", "distributed_nu",
-                                  "adi_2d", "adi_3d"])
+# Always on: 3-D ADI, the lane where a value-level combination was measured to
+# move the bits. The other lanes (about 35 s on CPU together) run in the slow
+# lane; test_helper_returns_si_bits_and_the_eps_r_derivative pins the value
+# bitwise at the helper itself on every run.
+@pytest.mark.parametrize("lane", [
+    *(pytest.param(lane, marks=pytest.mark.slow)
+      for lane in ("uniform", "upml", "nu", "distributed_nu", "adi_2d")),
+    "adi_3d"])
 def test_forward_bits_are_the_si_spelling(lane, monkeypatch, request):
     """A forward run is bit-identical to the same run with the helper replaced
     by its SI function: the helper adds nothing to the forward graph. On the
@@ -362,3 +377,181 @@ def test_helper_returns_si_bits_and_the_eps_r_derivative():
     assert np.isfinite(float(v))
     host = si_value_eps_r_grad(si, r, np.float64(2.0), 0.5, dt)
     assert isinstance(host, float) and host == si(np.float64(2.0), 0.5, dt)
+
+
+# --- the tangent is the SI derivative -------------------------------------
+
+# Rows above pin that each builder's eps gradient is finite and scales
+# exactly; neither says it is the RIGHT derivative. A wrong eps_r spelling
+# (a term dropped from UPML's Cb denominator, ADI's ce written over eps_r
+# instead of eps_plus_r) keeps the forward bits and a finite, scale-exact
+# gradient, and was green in every gate. Here each builder's float32 JVP,
+# which goes through the eps_r spelling, is compared with the JVP of the same
+# builder with the helper replaced by its SI function (``_si_only``) and run
+# in float64 on the same float32-rounded inputs, where the SI spelling's
+# derivative is exact to ~1e-16 and cannot overflow.
+#
+# Tolerance: 9 float32 ULP of the tangent's peak (per output leaf), the
+# repo's cross-trace budget. A tangent is a short chain of float32 ops
+# (a division, a sum or two), each rounded to 0.5 ULP of its own value, so
+# the error is a few ULP of the peak: measured at most 5.4 ULP (3-D ADI, through
+# its tridiagonal solves), 2.6 on every other row.
+#
+# The sheet row's inputs are chosen well-conditioned. Its B =
+# -expm1(-x2)/sigma_tot, x2 = sigma_tot*dt/(EPS_0*eps_r), has
+# dB/dsigma = (dt/EPS_0/eps_r) * (exp(-x2) - (1 - exp(-x2))/x2) / sigma_tot,
+# a difference that cancels as x2 -> 0: its float32 error relative to the
+# peak grows like 1/x2 in EITHER spelling (over 40 draws with background
+# sigma in [0, 20] S/m: up to 423 ULP for both the eps_r and the float32 SI
+# spelling). So the row's lossy background cells carry sigma in [10, 40] S/m
+# (x2 >= 0.36; at most 3.4 ULP over 40 draws) and the sheet cells 4e4 S/m.
+JVP_TOL_ULP = 9.0
+
+
+def _jvp_cases(dtype):
+    """``name -> (fn(eps_r, sigma), eps_r, sigma)``, every array in ``dtype``
+    built from one float32 draw, so the float32 and float64 rows see the same
+    numbers."""
+    rng = np.random.default_rng(13570)
+
+    def arr(a):
+        return jnp.asarray(np.asarray(a, np.float32), dtype)
+
+    def mats(shape):
+        return MaterialArrays(
+            eps_r=arr(rng.uniform(1.0, 6.0, shape)),
+            sigma=arr(np.where(rng.uniform(size=shape) > 0.5,
+                               rng.uniform(0.0, 20.0, shape), 0.0)),
+            mu_r=arr(np.ones(shape)))
+
+    def fields(shape):
+        st = init_state(shape, field_dtype=dtype)
+        return st._replace(**{c: arr(rng.standard_normal(shape))
+                              for c in ("ex", "ey", "ez", "hx", "hy", "hz")})
+
+    dt, dx = 1.9e-12, DX
+    shape = (5, 6, 7)
+    m, st = mats(shape), fields(shape)
+    m2 = mats((12, 12, 1))
+    f2 = [arr(rng.standard_normal((12, 12))) for _ in range(3)]
+    params_2d, cpml_2d = rfx.adi.init_adi_cpml_2d(3, dt, dx, dx, 12, 12)
+    cpml_2d = jax.tree.map(lambda a: arr(rng.standard_normal(a.shape)), cpml_2d)
+    sheet = arr(np.where(rng.uniform(size=shape) > 0.5, 4e4, 0.0))
+    sheet_sigma = arr(np.where(rng.uniform(size=shape) > 0.5,
+                               rng.uniform(10.0, 40.0, shape), 0.0))
+    upml_grid = Simulation(freq_max=15e9, domain=(3e-3, 3e-3, 3e-3), dx=DX,
+                           boundary="upml", cpml_layers=3)._build_grid()
+    mu = mats(upml_grid.shape)
+    cpml_grid = Simulation(freq_max=15e9, domain=(4e-3, 4e-3, 4e-3), dx=DX,
+                           cpml_layers=3)._build_grid()
+    mc, stc = mats(cpml_grid.shape), fields(cpml_grid.shape)
+    cparams, cstate = rfx.boundaries.cpml.init_cpml(cpml_grid)
+    cstate = jax.tree.map(lambda a: arr(rng.standard_normal(a.shape)), cstate)
+    yee = rfx.core.yee
+    return {
+        "e_update_coeffs": (
+            lambda e, s: yee.e_update_coeffs(e, s, dt), m.eps_r, m.sigma),
+        "precompute_coeffs": (
+            lambda e, s: yee.precompute_coeffs(m._replace(eps_r=e, sigma=s), dt, dx),
+            m.eps_r, m.sigma),
+        "update_e_aniso": (
+            lambda e, s: yee.update_e_aniso(st, m._replace(sigma=s), e, 0.5 * e + 1.0,
+                                            2.0 * e, dt, dx)[:3],
+            m.eps_r, m.sigma),
+        "update_e_aniso_inv": (
+            lambda e, s: yee.update_e_aniso_inv(st, m._replace(sigma=s), 1.0 / e,
+                                                0.5 / e, 1.0 / (e + 1.0), dt, dx)[:3],
+            m.eps_r, m.sigma),
+        "adi_step_2d": (
+            lambda e, s: rfx.adi.adi_step_2d(*f2, e, s, 5 * dt, dx, dx),
+            m2.eps_r[:, :, 0], m2.sigma[:, :, 0]),
+        "adi_step_3d": (
+            lambda e, s: rfx.adi.adi_step_3d(st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
+                                             e, s, 5 * dt, dx, dx, dx),
+            m.eps_r, m.sigma),
+        "apply_adi_cpml_2d": (
+            lambda e, s: rfx.adi.apply_adi_cpml_2d(*f2, params_2d, cpml_2d, e, dt,
+                                                   dx, dx)[:3],
+            m2.eps_r[:, :, 0], m2.sigma[:, :, 0]),
+        "apply_cpml_e": (
+            lambda e, s: rfx.boundaries.cpml.apply_cpml_e(
+                stc, cparams, cstate, cpml_grid,
+                materials=mc._replace(eps_r=e, sigma=s))[0][:3],
+            mc.eps_r, mc.sigma),
+        "apply_cpml_e[inv_eps_r_update]": (
+            lambda e, s: rfx.boundaries.cpml.apply_cpml_e(
+                stc, cparams, cstate, cpml_grid, materials=mc._replace(sigma=s),
+                inv_eps_r_update=(1.0 / e, 0.5 / e, 1.0 / (e + 1.0)))[0][:3],
+            mc.eps_r, mc.sigma),
+        "sheet_update_coeffs": (
+            lambda e, s: rfx.materials.thin_conductor.sheet_update_coeffs(
+                sheet, m._replace(eps_r=e, sigma=s), dt), m.eps_r, sheet_sigma),
+        "edge_update_denominator": (
+            lambda e, s: rfx.lumped.edge_update_denominator(
+                m._replace(eps_r=e, sigma=s), (2, 3, 3), "ez", dt),
+            m.eps_r, m.sigma),
+        "init_upml": (
+            lambda e, s: rfx.boundaries.upml.init_upml(
+                upml_grid, mu._replace(eps_r=e, sigma=s))[:6], mu.eps_r, mu.sigma),
+    }
+
+
+def _jvp(name, dtype):
+    fn, eps, sigma = _jvp_cases(dtype)[name]
+    rng = np.random.default_rng(1)
+    t_e = jnp.asarray(rng.standard_normal(eps.shape).astype(np.float32), dtype)
+    t_s = jnp.asarray(rng.standard_normal(sigma.shape).astype(np.float32), dtype)
+    # Jitted: the ADI rows' eager tridiagonal solves cost seconds op by op.
+    t = jax.jit(lambda *p: jax.jvp(fn, p[:2], p[2:])[1])(eps, sigma, t_e, t_s)
+    return [np.asarray(leaf, np.float64) for leaf in jax.tree.leaves(t)]
+
+
+# The builders above that are jax.jit functions themselves.
+_JITTED_BUILDERS = (rfx.core.yee.update_e_aniso_inv,)
+
+
+@pytest.fixture
+def si_float64_jvp(monkeypatch):
+    """``name -> [leaves]``: the builder's JVP through its SI spelling, in
+    float64 (x64 scoped to the call, never the module)."""
+    from tests._x64_compat import enable_x64
+
+    def clear():
+        # The jitted builders' traces: none made with the helper may serve
+        # the SI row, and none made with ``_si_only`` may outlive it. (A
+        # process-wide jax.clear_caches() here cost ~30 s over the rows.)
+        for fn in _JITTED_BUILDERS:
+            fn.clear_cache()
+
+    def run(name):
+        with monkeypatch.context() as mp, enable_x64():
+            for module in _IMPORTERS:
+                mp.setattr(module, "si_value_eps_r_grad", _si_only)
+            clear()
+            try:
+                return _jvp(name, jnp.float64)
+            finally:
+                clear()
+    return run
+
+
+@pytest.mark.parametrize("name", [
+    "e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv",
+    "adi_step_2d", "adi_step_3d", "apply_adi_cpml_2d", "apply_cpml_e",
+    "apply_cpml_e[inv_eps_r_update]", "sheet_update_coeffs",
+    "edge_update_denominator", "init_upml"])
+def test_builder_tangent_is_the_si_derivative(name, si_float64_jvp):
+    """float32 JVP (eps_r spelling) == float64 JVP of the SI spelling, to
+    9 float32 ULP of each output's tangent peak."""
+    got = _jvp(name, jnp.float32)
+    want = si_float64_jvp(name)
+    assert len(got) == len(want)
+    assert any(np.any(w != 0.0) for w in want), f"{name}: the SI tangent is zero"
+    for i, (g, w) in enumerate(zip(got, want)):
+        assert np.all(np.isfinite(g)), f"{name}[{i}]: non-finite tangent"
+        peak = float(np.max(np.abs(w)))
+        if peak == 0.0:  # an output eps does not reach (an H coefficient)
+            assert not np.any(g), f"{name}[{i}]: tangent where SI has none"
+            continue
+        ulp = float(np.max(np.abs(g - w))) / (peak * 2.0 ** -23)
+        assert ulp <= JVP_TOL_ULP, f"{name}[{i}]: {ulp:.1f} float32 ULP of peak"
