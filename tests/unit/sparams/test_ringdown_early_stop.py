@@ -462,7 +462,7 @@ def test_a_blended_pair_between_coarse_bins_holds_the_floor():
     assert agreed, "no check where WE agreed twice while the completion was off"
 
 
-@pytest.mark.xfail(strict=True, reason=(
+@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
     "known limitation (PI 2026-09-27, #1254): a weak high-Q pair that no window "
     "of the record separates beats, the short record reads the beat as fast "
     "decay (apparent Q 619 for a true 50,000), and the blended pole's tail then "
