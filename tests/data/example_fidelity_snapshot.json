@@ -1702,7 +1702,7 @@
                 0.0
               ],
               "mesh_extent_um": 230000.0,
-              "n_cells": 115,
+              "n_cells": 116,
               "realized_extent_um": 230000.0,
               "realized_um": [
                 0.0,
@@ -1720,7 +1720,7 @@
                 0.0
               ],
               "mesh_extent_um": 230000.0,
-              "n_cells": 115,
+              "n_cells": 116,
               "realized_extent_um": 230000.0,
               "realized_um": [
                 0.0,
@@ -1754,38 +1754,38 @@
         "geometry|sub|85000.000,85000.000,35285.492um->145000.000,145000.000,36809.492um": {
           "axes": {
             "x": {
-              "cell_um": 2000.0,
+              "cell_um": 1954.83870968,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
                 145000.0
               ],
               "face_residual_um": [
-                1000.0,
-                1000.0
+                700.0,
+                1300.0
               ],
-              "realized_extent_um": 60000.0,
+              "realized_extent_um": 60600.0,
               "realized_um": [
-                86000.0,
-                146000.0
+                85700.0,
+                146300.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 2000.0,
+              "cell_um": 1954.83870968,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
                 145000.0
               ],
               "face_residual_um": [
-                1000.0,
-                1000.0
+                700.0,
+                1300.0
               ],
-              "realized_extent_um": 60000.0,
+              "realized_extent_um": 60600.0,
               "realized_um": [
-                86000.0,
-                146000.0
+                85700.0,
+                146300.0
               ],
               "sub_cell": false
             },
@@ -1811,13 +1811,13 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE preserved",
+              "detail": "PLACEMENT off by 1300.0 um (2.17% of the declared 60000.0 um extent); SIZE 60600.0 um (+600.0 um, +1.00%)",
               "kind": "off-lattice-face",
               "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE preserved",
+              "detail": "PLACEMENT off by 1300.0 um (2.17% of the declared 60000.0 um extent); SIZE 60600.0 um (+600.0 um, +1.00%)",
               "kind": "off-lattice-face",
               "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
             }
@@ -1830,44 +1830,44 @@
             "name": "sub",
             "sigma": 0.000460692754792
           },
-          "n_cells": 3600,
+          "n_cells": 3844,
           "realization": null
         },
         "thin_conductor|pec|85000.000,85000.000,35285.492um->145000.000,145000.000,35285.492um": {
           "axes": {
             "x": {
-              "cell_um": 2000.0,
+              "cell_um": 1954.83870968,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
                 145000.0
               ],
               "face_residual_um": [
-                1000.0,
-                1000.0
+                700.0,
+                700.0
               ],
-              "realized_extent_um": 58000.0,
+              "realized_extent_um": 58600.0,
               "realized_um": [
-                86000.0,
-                144000.0
+                85700.0,
+                144300.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 2000.0,
+              "cell_um": 1954.83870968,
               "declared_extent_um": 60000.0,
               "declared_um": [
                 85000.0,
                 145000.0
               ],
               "face_residual_um": [
-                1000.0,
-                1000.0
+                700.0,
+                700.0
               ],
-              "realized_extent_um": 58000.0,
+              "realized_extent_um": 58600.0,
               "realized_um": [
-                86000.0,
-                144000.0
+                85700.0,
+                144300.0
               ],
               "sub_cell": false
             },
@@ -1893,13 +1893,13 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE 58000.0 um (-2000.0 um, -3.33%)",
+              "detail": "PLACEMENT off by 700.0 um (1.17% of the declared 60000.0 um extent); SIZE 58600.0 um (-1400.0 um, -2.33%)",
               "kind": "off-lattice-face",
               "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 1000.0 um (1.67% of the declared 60000.0 um extent); SIZE 58000.0 um (-2000.0 um, -3.33%)",
+              "detail": "PLACEMENT off by 700.0 um (1.17% of the declared 60000.0 um extent); SIZE 58600.0 um (-1400.0 um, -2.33%)",
               "kind": "off-lattice-face",
               "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
@@ -1908,43 +1908,43 @@
             "kind": "pec"
           },
           "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 35285.49 um (900 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "realization": "PEC sheet on node plane z = 35285.49 um (961 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         },
         "thin_conductor|pec|99000.000,95000.000,36809.492um->131000.000,135000.000,36809.492um": {
           "axes": {
             "x": {
-              "cell_um": 2000.0,
+              "cell_um": 1917.64705882,
               "declared_extent_um": 32000.0,
               "declared_um": [
                 99000.0,
                 131000.0
               ],
               "face_residual_um": [
-                1000.0,
-                1000.0
+                700.0,
+                700.0
               ],
-              "realized_extent_um": 30000.0,
+              "realized_extent_um": 30600.0,
               "realized_um": [
-                100000.0,
-                130000.0
+                99700.0,
+                130300.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 2000.0,
+              "cell_um": 1933.33333333,
               "declared_extent_um": 40000.0,
               "declared_um": [
                 95000.0,
                 135000.0
               ],
               "face_residual_um": [
-                1000.0,
-                1000.0
+                700.0,
+                700.0
               ],
-              "realized_extent_um": 38000.0,
+              "realized_extent_um": 38600.0,
               "realized_um": [
-                96000.0,
-                134000.0
+                95700.0,
+                134300.0
               ],
               "sub_cell": false
             },
@@ -1970,13 +1970,13 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 1000.0 um (3.13% of the declared 32000.0 um extent); SIZE 30000.0 um (-2000.0 um, -6.25%)",
+              "detail": "PLACEMENT off by 700.0 um (2.19% of the declared 32000.0 um extent); SIZE 30600.0 um (-1400.0 um, -4.38%)",
               "kind": "off-lattice-face",
               "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 1000.0 um (2.50% of the declared 40000.0 um extent); SIZE 38000.0 um (-2000.0 um, -5.00%)",
+              "detail": "PLACEMENT off by 700.0 um (1.75% of the declared 40000.0 um extent); SIZE 38600.0 um (-1400.0 um, -3.50%)",
               "kind": "off-lattice-face",
               "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
             }
@@ -1985,7 +1985,7 @@
             "kind": "pec"
           },
           "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 36809.49 um (320 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "realization": "PEC sheet on node plane z = 36809.49 um (357 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         }
       },
       "preflight": [
@@ -2006,14 +2006,7 @@
         {
           "code": "off_lattice_design_edges",
           "loc": null,
-          "message": "4 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 32mm, worst face residual 1mm (3.13% of the extent); thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 40mm, worst face residual 1mm (2.50% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) x: extent 60mm, worst face residual 1mm (1.67% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 60mm, worst face residual 1mm (1.67% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
-        },
-        {
-          "code": "sheet_effective_size",
-          "loc": null,
-          "message": "4 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' x: drawn 32mm, nodes cover 30mm, solved as 31.4mm (-1.88%); thin_conductor[1] 'thin_conductor[1]' y: drawn 40mm, nodes cover 38mm, solved as 39.4mm (-1.50%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 58mm, solved as 59.4mm (-1.00%); thin_conductor[0] 'thin_conductor[0]' y: drawn 60mm, nodes cover 58mm, solved as 59.4mm (-1.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "4 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 4 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 32mm, worst face residual 700\u00b5m (2.19% of the extent); thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 40mm, worst face residual 700\u00b5m (1.75% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) x: extent 60mm, worst face residual 700\u00b5m (1.17% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 60mm, worst face residual 700\u00b5m (1.17% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the nonuniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
