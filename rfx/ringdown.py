@@ -1937,7 +1937,10 @@ def _on_nearest_bin(s, f_bins, record_s: float) -> np.ndarray:
         return s
     f = s.imag / (2.0 * np.pi)
     j = np.argmin(np.abs(fb[None, :] - f[:, None]), axis=1)
-    near = np.abs(fb[j] - f) <= 1.0 / float(record_s)
+    # a pole the record cannot tell from DC stays where it is: moved onto a
+    # low bin, a slowly relaxing static field would weigh like a mode there
+    near = ((np.abs(fb[j] - f) <= 1.0 / float(record_s))
+            & (np.abs(f) >= 1.0 / float(record_s)))
     return np.where(near, s.real + 1j * 2.0 * np.pi * fb[j], s)
 
 
@@ -2227,6 +2230,17 @@ def refuse_until_identified(sim, spec, until_identified, *, until_decay,
                 "run (the DFT window and its step count), and the early stop ends "
                 "the record at a length chosen during it. Use run(n_steps=..., "
                 "ringdown=...) with a fixed record.")
+    for attr, what in (("_ntff", "an NTFF box (add_ntff_box)"),
+                       ("_current_moments",
+                        "a current-moment monitor (add_current_moment_monitor)")):
+        if getattr(sim, attr, None):
+            raise NotImplementedError(
+                f"run(until_identified=True) is not supported with {what}: the "
+                "early stop chooses the record from the wire-port S-parameters "
+                "alone and completes only those, so the far field would come "
+                "from a record cut while the structure still rings. Use "
+                "run(n_steps=..., ringdown=...) with a record long enough for "
+                "the far field.")
     return True
 
 

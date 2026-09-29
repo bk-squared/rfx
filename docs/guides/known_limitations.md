@@ -107,6 +107,31 @@ both.
 → [#1260](https://github.com/bk-squared/rfx/issues/1260)
 → [#1257](https://github.com/bk-squared/rfx/issues/1257)
 
+## Ring-down completion and the early stop
+
+**A pair of modes that no window of the record separates is completed as one
+mode, and every witness agrees.** `run(ringdown=...)` and
+`forward(ringdown=...)` identify the ringing's poles on the record's second
+half. Two resonances closer than the record can resolve come back as one
+blended pole, and the completion from any window of that record makes the same
+blend. The error witness WE then agrees while the completed S can be several
+percent off near the pair. What to do: record longer. In the measured case, a
+pair 0.03 % apart was resolved at about a fifth of its decay time. Tracker:
+#1254.
+
+**The early stop can end the run before a weak unresolved high-Q pair is
+resolved.** The rule is `run(..., until_identified=True)`: stop once WE agrees
+twice and the record is half the decay time of the slowest mode that moves S.
+A weakly coupled pair of very high-Q modes (Q about 5e4, each feature 0.02–0.03
+in |S|, 40–60 MHz apart) beats inside a short record. The record reads the beat
+as fast decay, the blended pole's weight falls below the bar, and the floor
+does not hold. Measured on a synthetic one-port: the stop fires at 2250 steps
+with the completed S up to 3e-2 off at the pair while WE reads about 1e-4.
+Stronger or single weak modes do hold the stop. What to do: where weak high-Q
+features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
+enough to resolve them. Pinned as a strict xfail in
+`tests/unit/sparams/test_ringdown_early_stop.py`. Tracker: #1254.
+
 ## Absorbing boundaries
 
 **On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**

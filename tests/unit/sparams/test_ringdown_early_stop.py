@@ -462,6 +462,44 @@ def test_a_blended_pair_between_coarse_bins_holds_the_floor():
     assert agreed, "no check where WE agreed twice while the completion was off"
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "known limitation (PI 2026-09-27, #1254): a weak high-Q pair that no window "
+    "of the record separates beats, the short record reads the beat as fast "
+    "decay (apparent Q 619 for a true 50,000), and the blended pole's tail then "
+    "weighs below the bar, so the stop can fire before the pair is resolved"))
+def test_a_weak_pair_whose_beat_reads_as_decay_holds_the_floor():
+    """A Q 40 mode at 10 GHz and a weak pair of Q 50,000 modes at 11.000 and
+    11.060 GHz (feature 0.03 each) on a 100 MHz sweep: the stop fires at 2250
+    steps with the completed S 3e-2 off at the 11.000 GHz bin while WE reads
+    about 1e-4 (the fresh-eyes review of the 1/T rule). Stated in
+    docs/guides/known_limitations.md; a floor rule that sees this case would
+    turn this test XPASS."""
+    Y, settled, to_s, n_off = _one_port(
+        [(10.0e9, 40.0, 0.8), (11.0e9, 50000.0, 0.03), (11.06e9, 50000.0, 0.03)], 8000)
+    bins = np.linspace(8e9, 18e9, 101)
+    truth = settled(bins)
+    checks, outs = _synthetic_stop(Y, 1.0e-12, bins, to_s, 8000, ref_hz=20e9, n_off=n_off)
+    errs = [float(np.max(np.abs(o - truth))) for o in outs]
+    _print_checks("beating weak pair", checks, errs)
+    assert not any(c.stop and e > 1e-3 for c, e in zip(checks, errs))
+
+
+def test_a_pole_the_record_cannot_tell_from_dc_is_not_moved_onto_a_bin():
+    """For the floor a pole is weighed on the nearest bin within 1/T, but a
+    pole within 1/T of DC stays where it is: moved onto a low bin, a slowly
+    relaxing static field would weigh like a resonance there (the fresh-eyes
+    review of the 1/T rule). T = 2.25 ns, 1/T = 444 MHz: the 0.2 GHz bin is
+    within 1/T of the DC pole, which stays; the 10 GHz pole moves onto the
+    10.01 GHz bin."""
+    T = 2.25e-9
+    s = np.array([-5.0e6 + 0.0j, -1.0e8 + 2j * np.pi * 10.0e9, -1.0e8 - 2j * np.pi * 10.0e9])
+    bins = np.array([0.2e9, 5.0e9, 10.01e9])
+    out = rd._on_nearest_bin(s, bins, T)
+    assert out[0] == s[0]
+    assert out[1] == s[1].real + 2j * np.pi * 10.01e9
+    assert out[2] == s[2]          # no positive bin within 1/T of -10 GHz
+
+
 def test_a_non_passive_completion_does_not_stop():
     """A single Q 40 mode whose feature (2.5) makes the settled |S| 1.5 at its
     resonance: WE agrees and the record passes the floor by 1750 steps, but the
@@ -631,12 +669,26 @@ def _with_flux(sim):
     return sim
 
 
+def _with_ntff(sim):
+    sim.add_ntff_box((2.0e-3, 2.0e-3, 1.0e-3), (10.0e-3, 9.0e-3, 4.0e-3),
+                     freqs=np.array([12e9]))
+    return sim
+
+
+def _with_moments(sim):
+    sim.add_current_moment_monitor((2.0e-3, 2.0e-3, 1.0e-3), (10.0e-3, 9.0e-3, 4.0e-3),
+                                   block_size=2.0e-3, freqs=np.array([12e9]))
+    return sim
+
+
 @pytest.mark.parametrize("kwargs, extra, exc, match", [
     ({"until_identified": 1}, None, TypeError, "True or False"),
     ({"until_decay": 1e-3}, None, ValueError, "two rules"),
     ({"snapshot": "SNAP"}, None, NotImplementedError, "snapshot"),
     ({}, _with_plane, NotImplementedError, "DFT plane"),
     ({}, _with_flux, NotImplementedError, "flux monitor"),
+    ({}, _with_ntff, NotImplementedError, "NTFF box"),
+    ({}, _with_moments, NotImplementedError, "current-moment monitor"),
 ])
 def test_refusals(kwargs, extra, exc, match):
     from rfx.simulation import SnapshotSpec
