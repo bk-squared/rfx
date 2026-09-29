@@ -129,7 +129,9 @@ def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property,
 
     Yee fields and snapshots use the lock's E/H curl-coupled component floors.
     Each other floating array uses its own compared magnitudes, through the
-    lock's scalar-observable helper. Metadata and empty arrays stay exact.
+    lock's scalar-observable helper. Kahan pairs compare both the accumulator
+    and acc + comp at the accumulator's floor, never compensation alone.
+    Metadata and empty arrays stay exact.
     """
     assert left.keys() == right.keys()
     for name, b in right.items():
@@ -148,11 +150,30 @@ def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property,
     measured, failures = {}, {}
     for name, b in right.items():
         a = left[name]
+        scale = [a, b]
+        # Product structure: NTFFData's c_* partners (rfx/farfield.py:123-146)
+        # and (acc, comp) current moments (rfx/current_moments.py:580-592).
+        accumulator = None
+        if name.startswith(".ntff_data.c_"):
+            accumulator = name.replace(".ntff_data.c_", ".ntff_data.", 1)
+        elif name == ".current_moment_data[1]":
+            accumulator = ".current_moment_data[0]"
+        if accumulator is not None:
+            acc_a, acc_b = left[accumulator], right[accumulator]
+            assert a.shape == acc_a.shape and b.shape == acc_b.shape, name
+            assert a.dtype == acc_a.dtype and b.dtype == acc_b.dtype, name
+            scale = [acc_a, acc_b]
+            # rfx reads acc alone (farfield.py:1063-1074;
+            # current_moments.py:938-941). Keep that check and additionally
+            # compare acc + comp in the accumulator dtype, without promotion.
+            a = np.add(acc_a, a, dtype=acc_a.dtype)
+            b = np.add(acc_b, b, dtype=acc_b.dtype)
+            name = f"{accumulator} + {name}"
         if (b.dtype.kind not in "fc" or not b.size or name in (".dt", "api.dt")
                 or name.startswith(".snapshot_axes")):
             np.testing.assert_array_equal(a, b, err_msg=name)
             continue
-        atol = atols[name] if name in atols else _reassoc_atol([a, b], n_steps)
+        atol = atols[name] if name in atols else _reassoc_atol(scale, n_steps)
         passed = bool(np.allclose(a, b, rtol=_RTOL, atol=atol))
         delta = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128))))
         measured[name] = dict(atol=atol, rtol=_RTOL, max_abs_difference=delta, passed=passed)
@@ -174,7 +195,7 @@ def _assert_contract(got, ref, record_property):
                     comparison="old_loop_api")
     record_property("assertion_bar", "exact stop; existing A/B-lock derived floors and _RTOL")
 
-    # Every low-level leaf includes the accumulators and Kahan compensation.
+    # Low-level checks include accumulators and their acc + comp pairs.
     # API S and derived flux spectra are additional observable outputs.
     a, b = dict(_arrays(got[1])), dict(_arrays(ref[1]))
     api_a, api_b = _observables(got[0]), _observables(ref[0])
