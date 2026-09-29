@@ -226,3 +226,166 @@ def tfsf_auxiliary_reflection(n_layers, face, freqs, *, far=400, reference_dista
     short = trace(30 + far, 30 if face == "lo" else far)
     reference = trace(2 * reference_distance, reference_distance)
     return _reflection_db(short, reference, dt, freqs)
+
+
+def tfsf_oblique_auxiliary_reflection(n_layers=30, *, polarization="ez", direction="+x",
+                                     steps=2500):
+    """Return backward/forward plane-wave amplitude at 30 degrees, near 10 GHz.
+
+    Propagate the shipped 2-D auxiliary updates and fit both numerical Yee
+    modes to 96 spatial samples. The source is between the low absorber and
+    the samples for +x, and beyond the samples for -x. This measures the
+    auxiliary return, separately from cancellation at an empty TF/SF box.
+    """
+    from rfx.sources.tfsf_2d import init_tfsf_2d, update_tfsf_2d_e, update_tfsf_2d_h
+    from tests._aux_absorber_reflection import _yee_kx, bandwidth_for
+
+    dx, frequency = 1e-3, 10e9
+    dt = float(0.99 / np.sqrt(2) * dx / C0)
+    bandwidth = bandwidth_for(30)
+    cfg, state = init_tfsf_2d(
+        150, 4, dx, dt, nz=4, cpml_layers=20, tfsf_margin=5,
+        f0=frequency, bandwidth=bandwidth, theta_deg=30,
+        polarization=polarization, direction=direction,
+        aux_n_cpml=n_layers, aux_cpml_r_asymptotic=1e-15,
+    )
+    left, right = cfg.src_x + 40, cfg.n2x - n_layers - 40
+    if direction == "-x":
+        left, right = n_layers + 40, cfg.src_x - 40
+    indices = np.unique(np.linspace(left, right, 96).astype(int))
+    sample_indices = jnp.asarray(indices)
+
+    def step(state, t):
+        state = update_tfsf_2d_h(cfg, state, dx, dt)
+        state = update_tfsf_2d_e(cfg, state, dx, dt, t)
+        return state, state.ez_2d[sample_indices, 0]
+
+    record = np.asarray(jax.lax.scan(step, state, jnp.arange(steps) * dt)[1])
+    spectrum = np.fft.fft(np.conj(record), axis=0)
+    frequencies = np.fft.fftfreq(steps, dt)
+    band = (frequencies > 0) & (
+        np.exp(-((frequencies - frequency) / (frequency * bandwidth))**2) >= 0.1
+    )
+    kx = _yee_kx(frequencies[band], abs(cfg.k_transverse), dx, dt)
+    x = (indices - indices[0]) * dx * cfg.direction_sign
+    ratios, residuals = [], []
+    for k, values in zip(kx, spectrum[band]):
+        modes = np.stack([np.exp(-1j * k * x), np.exp(1j * k * x)], axis=1)
+        amplitudes, *_ = np.linalg.lstsq(modes, values, rcond=None)
+        ratios.append(abs(amplitudes[1]) / max(abs(amplitudes[0]), 1e-30))
+        residuals.append(max(abs(modes @ amplitudes - values)) / max(max(abs(values)), 1e-30))
+    return 20 * np.log10(np.maximum(ratios, 1e-30)), float(max(residuals))
+
+
+def adi_cpml_reflection(n_layers, axis, freqs, *, factor=0.01, absorber=True):
+    """Return low/high-face TMz reflection in a 330 mm transverse PEC guide.
+
+    Excite its fundamental sine mode and probe at transverse node 8 of 25,
+    11 cells behind the low-face source or 13 ahead of the high-face source.
+    The reference moves both ends away; the window excludes the opposite
+    face's echo. The vector line injection precedes the production ADI and
+    CPML calls in the same order as ``run_adi_2d``.
+
+    This witness uses one percent of the explicit CFL timestep. It does
+    not establish stability of the optional CPML at larger ADI timesteps.
+    """
+    from rfx.adi import adi_step_2d, apply_adi_cpml_2d, init_adi_cpml_2d
+
+    if axis not in ("x", "y"):
+        raise ValueError("axis must be 'x' or 'y'")
+    dx, dy, ny = 1e-3, 0.33 / 24, 25
+    d1, d2 = (dx, dy) if axis == "x" else (dy, dx)
+    dt = float(factor * 0.99 / (C0 * np.sqrt(1 / dx**2 + 1 / dy**2)))
+    far, reference_distance = 180, 420
+    n_steps = int(0.8 * 2 * far * dx / C0 / dt)
+    t = np.arange(n_steps) * dt
+    waveform = jnp.asarray(-(t - 60e-12) / 12e-12 * np.exp(-((t - 60e-12) / 12e-12)**2), dtype=jnp.float32)
+    modal = jnp.sin(jnp.pi * jnp.arange(ny) / (ny - 1)).at[0].set(0).at[-1].set(0)
+
+    def trace(interior, source):
+        longitudinal_nodes = interior + 2 * n_layers + 1
+        shape = (longitudinal_nodes, ny) if axis == "x" else (ny, longitudinal_nodes)
+        zero = jnp.zeros(shape, dtype=jnp.float32)
+        eps = jnp.ones_like(zero)
+        params, memory = init_adi_cpml_2d(n_layers, dt, d1, d2, *shape)
+        transverse = "y" if axis == "x" else "x"
+        params = params._replace(**{
+            "b" + transverse: jnp.ones_like(getattr(params, "b" + transverse)),
+            "c" + transverse: jnp.zeros_like(getattr(params, "c" + transverse)),
+        })
+        if hasattr(params, "magnetic_xlo"):
+            names = ("magnetic_" + transverse + face for face in ("lo", "hi"))
+            params = params._replace(**{
+                name: getattr(params, name)._replace(
+                    b=jnp.ones_like(getattr(params, name).b),
+                    c=jnp.zeros_like(getattr(params, name).c)) for name in names
+            })
+        source += n_layers
+
+        def step(carry, value):
+            electric, hx, hy, memory = carry
+            if axis == "x":
+                electric = electric.at[source, :].add(value * modal)
+            else:
+                electric = electric.at[:, source].add(value * modal)
+            electric, hx, hy = adi_step_2d(electric, hx, hy, eps, zero, dt, d1, d2)
+            if absorber:
+                electric, hx, hy, memory = apply_adi_cpml_2d(
+                    electric, hx, hy, params, memory, eps, dt, d1, d2)
+            probes = (electric[source - 11, 8], electric[source + 13, 8]) if axis == "x" else (
+                electric[8, source - 11], electric[8, source + 13])
+            return (electric, hx, hy, memory), jnp.stack(probes)
+
+        return np.asarray(jax.lax.scan(step, (zero, zero, zero, memory), waveform)[1])
+
+    reference = trace(2 * reference_distance, reference_distance)
+    return np.stack([
+        _reflection_db(trace(30 + far, distance)[:, face], reference[:, face], dt, freqs)
+        for face, distance in enumerate((30, far))
+    ])
+
+
+def tfsf_methodb_auxiliary_reflection(theta_deg, face, freqs, *,
+                                      far=403, reference_distance=901):
+    """Return the open-domain Method-B absorber's per-face |R(f)| in dB.
+
+    A differentiated Gaussian excites the real Method-B initializer's line
+    at 1 mm main-grid spacing. Its angle-dependent auxiliary spacing and
+    shipped conductivity profiles feed the production split H/E updates.
+    Extend only zero field arrays and move the source: the near face is
+    30 cells away, while the opposite and reference faces cannot return
+    within the record. Subtract the distant reference at the source plane
+    and divide by its incident spectrum, without a near-field peak scale.
+    This measures the auxiliary return before injection into a main domain.
+    """
+    from rfx.sources.tfsf import update_tfsf_1d_e, update_tfsf_1d_h
+    from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
+
+    if face not in ("lo", "hi"):
+        raise ValueError("face must be 'lo' or 'hi'")
+    dx = 1e-3
+    dt = float(0.99 / np.sqrt(3) * dx / C0)
+    config, zero_state = init_tfsf_methodB(
+        151, 93, dx, dt, nz=3, theta_deg=theta_deg, f0=10e9)
+    spacing, depth = config.dx_1d, config.n_cpml
+    steps = int(0.9 * 2 * far * spacing / C0 / dt)
+    if not 30 < far < reference_distance or steps * dt <= 120e-12 + 2 * (30 + depth) * spacing / C0:
+        raise ValueError("increase far/reference_distance to isolate the complete near-face echo")
+
+    def trace(interior, distance):
+        source = depth + distance
+        cfg = config._replace(src_idx=source, src_t0=60e-12, src_tau=12e-12,
+                              src_amp=0.5, src_waveform="differentiated_gaussian")
+        zero = jnp.zeros(interior + 2 * depth + 1, dtype=jnp.float32)
+        state = zero_state._replace(e1d=zero, h1d=zero)
+
+        def step(state, t):
+            state = update_tfsf_1d_h(cfg, state, spacing, dt)
+            state = update_tfsf_1d_e(cfg, state, spacing, dt, t)
+            return state, state.e1d[source]
+
+        return jax.lax.scan(step, state, jnp.arange(steps) * dt)[1]
+
+    short = trace(30 + far, 30 if face == "lo" else far)
+    reference = trace(2 * reference_distance, reference_distance)
+    return _reflection_db(short, reference, dt, freqs)

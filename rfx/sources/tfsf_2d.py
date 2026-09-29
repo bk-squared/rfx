@@ -48,7 +48,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.boundaries.cpml import _cpml_profile
+from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
 
 
@@ -160,6 +160,8 @@ class TFSF2DConfig(NamedTuple):
     angle_deg: float
     dx_1d: float
     mode: str         # "TMz" or "TEz"
+    magnetic_lo: CPMLParams
+    magnetic_hi: CPMLParams
 
 
 # ---------------------------------------------------------------------------
@@ -258,13 +260,17 @@ def init_tfsf_2d(
     # reflection through the same law the 3-D absorber uses
     # (rfx/boundaries/cpml.py::_cpml_profile), never from a standalone
     # heuristic -- see AUX_CPML_* above and #888.
-    prof = _cpml_profile(
-        n_cpml_2d, dt, dx,
+    profile_options = dict(
         order=AUX_CPML_ORDER if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=AUX_CPML_KAPPA_MAX if aux_cpml_kappa_max is None else float(aux_cpml_kappa_max),
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
+    prof = _cpml_profile(n_cpml_2d, dt, dx, **profile_options)
+    magnetic_lo = _cpml_profile(
+        n_cpml_2d, dt, dx, sample_offset=0.5, **profile_options)
+    magnetic_hi = _cpml_profile(
+        n_cpml_2d, dt, dx, sample_offset=-0.5, **profile_options)
     b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
     # Source waveform
@@ -319,6 +325,8 @@ def init_tfsf_2d(
         angle_deg=float(theta_deg),
         dx_1d=float(dx),
         mode=mode,
+        magnetic_lo=magnetic_lo,
+        magnetic_hi=magnetic_hi,
     )
 
     # Aux-grid fields are COMPLEX (Bloch field-transformation, #404). The
@@ -346,17 +354,17 @@ def _apply_cpml_h(cfg, st, dez_dx, hy, coeff_h):
     """Apply CFS-CPML corrections to the x-derivative H component."""
     n = cfg.n_cpml
 
-    b_lo = cfg.b_cpml[:, None]
-    c_lo = cfg.c_cpml[:, None]
-    k_lo = cfg.kappa_cpml[:, None]
+    b_lo = cfg.magnetic_lo.b[:, None]
+    c_lo = cfg.magnetic_lo.c[:, None]
+    k_lo = cfg.magnetic_lo.kappa[:, None]
 
     psi_hy_xlo = b_lo * st.psi_hy_xlo + c_lo * dez_dx[:n, :]
     hy = hy.at[:n, :].add(coeff_h * psi_hy_xlo)
     hy = hy.at[:n, :].add(coeff_h * (1.0 / k_lo - 1.0) * dez_dx[:n, :])
 
-    b_hi = jnp.flip(cfg.b_cpml)[:, None]
-    c_hi = jnp.flip(cfg.c_cpml)[:, None]
-    k_hi = jnp.flip(cfg.kappa_cpml)[:, None]
+    b_hi = jnp.flip(cfg.magnetic_hi.b)[:, None]
+    c_hi = jnp.flip(cfg.magnetic_hi.c)[:, None]
+    k_hi = jnp.flip(cfg.magnetic_hi.kappa)[:, None]
 
     psi_hy_xhi = b_hi * st.psi_hy_xhi + c_hi * dez_dx[-n:, :]
     hy = hy.at[-n:, :].add(coeff_h * psi_hy_xhi)
