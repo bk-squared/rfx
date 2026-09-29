@@ -42,14 +42,6 @@
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
   {
-   "code": "nu_grading_reaches_absorber",
-   "disposition": "intended",
-   "reason": "The demo retains its 10 mm x/y air margins and eight CPML layers while registering the ground, patch, feed and probe with edge_aware_profiles. The x/y profiles therefore grade within the eight interior cells adjacent to each absorber face: max adjacent cell-ratio deviation 0.0686 at x_lo/y_lo and 0.0737 at x_hi/y_hi. The builder documents this retained-domain condition and main() prints all four advisories before the solve; the advisory is not suppressed or evidence that the absorber error has been measured.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:231-244",
-   "rows": 4,
-   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
-  },
-  {
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin (|D_rfx - D_openEMS| = 0.0659 dB).",

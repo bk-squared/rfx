@@ -121,8 +121,8 @@ n_buf  = 8                      # uniform-fine buffer cells on EACH side of the
 n_below = int(math.ceil(air_below / dx))
 n_above = int(math.ceil(air_above / dx))
 
-dom_x = gx + 2 * 10e-3
-dom_y = gy + 2 * 10e-3
+dom_x = gx + 2 * 12e-3
+dom_y = gy + 2 * 12e-3
 
 gx_lo = (dom_x - gx) / 2;  gx_hi = gx_lo + gx
 gy_lo = (dom_y - gy) / 2;  gy_hi = gy_lo + gy
@@ -231,13 +231,13 @@ def build_simulation(dz_profile=None) -> Simulation:
     # Register x/y to the solved sheet edges (#1383), as in the patch tutorial.
     # A free edge is solved 0.35 of the outside cell beyond its last PEC node.
     # Keep the z profile and its layer-registration lesson unchanged.
-    # With the retained 10 mm margins, x/y grading reaches the eight-cell
-    # absorber runways. Preflight prints nu_grading_reaches_absorber for
-    # these four faces before the solve; the domain and CPML are unchanged.
+    # Nodes pinned at n_cpml*dx from each x/y face keep the 8 interior cells
+    # beside the absorber uniform (the absorber is padded from the outermost cell).
     profiles = edge_aware_profiles(
         (dom_x, dom_y, float(np.sum(dz_profile))), dx,
         sheets=[ground, patch], solids=[substrate],
-        faces={"x": [feed_x, probe_x], "y": [feed_y, probe_y]},
+        faces={"x": [feed_x, probe_x, n_cpml * dx, dom_x - n_cpml * dx],
+               "y": [feed_y, probe_y, n_cpml * dx, dom_y - n_cpml * dx]},
         axes="xy",
     )
 

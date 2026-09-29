@@ -80,9 +80,9 @@ def test_the_uniform_lattice_is_refused_at_build():
     with pytest.raises(RuntimeError, match="not solved where it is drawn") as exc:
         _build(mod)
     msg = str(exc.value)
-    assert ("patch solved: drawn (25.25, 54.75, 18.50, 56.50), "
-            "realized (25.65, 54.35, 18.65, 56.35) mm") in msg, msg
-    assert ("ground solved: drawn (10.00, 70.00, 10.00, 65.00), "
-            "realized (9.65, 70.35, 9.65, 65.35) mm") in msg, msg
-    assert ("feed Ez edge: drawn (33.25, 37.50), "
-            "realized (33.00, 37.00) mm") in msg, msg
+    assert ("patch solved: drawn (27.25, 56.75, 20.50, 58.50), "
+            "realized (27.65, 56.35, 20.65, 58.35) mm") in msg, msg
+    assert ("ground solved: drawn (12.00, 72.00, 12.00, 67.00), "
+            "realized (11.65, 72.35, 11.65, 67.35) mm") in msg, msg
+    assert ("feed Ez edge: drawn (35.25, 39.50), "
+            "realized (35.00, 39.00) mm") in msg, msg
