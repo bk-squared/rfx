@@ -416,20 +416,18 @@ def _pec_sheet_spec(conductor, grid, *, lane: str):
 def _thin_conductor_cell_mask(shape, grid):
     """DC sheet sampling with the periodic normal plane identified first."""
     if getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import interval_coordinates, plane_coordinate
+        from rfx._periodic import periodic_mask, plane_coordinate
         from rfx.geometry.csg import _grid_coords
         lo, hi = sheet_bounds(shape)
         normal = None if lo is None or hi is None else min(range(3), key=lambda a: hi[a] - lo[a])
         if normal is not None and hi[normal] - lo[normal] <= float(grid.cells(normal)[0]):
             mid = .5 * (lo[normal] + hi[normal])
-            for a in range(3):
-                if a != normal:
-                    interval_coordinates(grid, a, lo[a], hi[a])
             sample = list(_grid_coords(grid))
             shift = mid - plane_coordinate(grid, normal, mid)
             if shift:
                 sample[normal] = sample[normal] + shift
-            mask = shape.mask_on_coords(*sample)
+            mask = periodic_mask(grid, shape, sample,
+                                 axes=tuple(a for a in range(3) if a != normal))
         else:
             mask = shape.mask(grid)
     else:

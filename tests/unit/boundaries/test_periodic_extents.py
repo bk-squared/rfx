@@ -205,7 +205,7 @@ def test_box_ending_at_period_keeps_last_cell():
     _check_box(_box_material())
 
 
-def test_traced_volume_bounds_preserve_sampling_and_refuse_seam_crossing():
+def test_traced_volume_bounds_preserve_sampling_and_refuse_distant_images():
     import jax
     import jax.numpy as jnp
     from rfx import Sphere
@@ -216,8 +216,11 @@ def test_traced_volume_bounds_preserve_sampling_and_refuse_seam_crossing():
         return sim._assemble_materials(sim._build_grid())[0].eps_r
     radius = jnp.float32(.0013)
     np.testing.assert_array_equal(jax.jit(material)(radius), material(radius))
-    with pytest.raises(Exception, match="axis 'x'.*interval.*L=0.01"):
-        jax.jit(material)(jnp.float32(.006)).block_until_ready()
+    # A fill can cross the seam; traced bounds use the fixed [-L,2L] window.
+    np.testing.assert_array_equal(jax.jit(material)(jnp.float32(.006)),
+                                  material(jnp.float32(.006)))
+    with pytest.raises(Exception, match="axis 'x'.*bounds.*L=0.01"):
+        jax.jit(material)(jnp.float32(.016)).block_until_ready()
 
 
 def test_forward_design_box_resolves_before_existing_seam_refusal():
@@ -235,15 +238,13 @@ def test_forward_design_box_resolves_before_existing_seam_refusal():
                     design_eps_override=jnp.full((1, 3, 2), 4.), skip_preflight=True)
 
 
-@pytest.mark.parametrize('kind', ['wire', 'box', 'flux'])
+@pytest.mark.parametrize('kind', ['wire', 'flux'])
 @pytest.mark.parametrize('lo,hi', [(.009, .011), (-.001, .001)])
 def test_crossing_interval_is_refused(kind, lo, hi):
     sim = model()
     if kind == 'wire':
         sim.add_port((lo, .003, .002), component='ex', extent=hi-lo,
                      impedance=50., excite=False)
-    elif kind == 'box':
-        sim.add(Box((lo, .001, .001), (hi, .005, .003)), material='pec')
     else:
         sim.add_flux_monitor(axis='y', coordinate=.003, freqs=np.array([10e9]),
                              size=(hi-lo, .002), center=((hi+lo)/2, .002))

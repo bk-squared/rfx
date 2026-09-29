@@ -328,10 +328,12 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=
     the separate PEC volume/sheet/wire classifier. Other shapes retain their
     existing rules, including custom uniform shapes that implement only mask.
     """
-    from rfx._periodic import periodic_shape
+    from rfx._periodic import periodic_mask, periodic_shape
     shape = periodic_shape(grid, shape)
     if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
-        return shape.mask_on_coords(centres.x, centres.y, centres.z)
+        return periodic_mask(grid, shape, centres[:3])
+    if getattr(grid, 'periodic_axes', ''):
+        return periodic_mask(grid, shape, coords[:3])
     if grid is not None:
         return shape.mask(grid)
     return shape.mask_on_coords(coords.x, coords.y, coords.z)
@@ -401,7 +403,7 @@ def _is_traced_coords(coords) -> bool:
     return any(is_tracer(c) for c in (coords.x, coords.y, coords.z))
 
 
-def pec_volume_cell_mask(shape, centres: GridCoords):
+def pec_volume_cell_mask(shape, centres: GridCoords, *, grid=None):
     """CELL occupancy of a PEC VOLUME (§1.1): centre-sampled.
 
     Box: half-open ``lo <= c < hi`` per axis, spelled here directly — the
@@ -409,6 +411,11 @@ def pec_volume_cell_mask(shape, centres: GridCoords):
     decide a PEC volume.  Sphere / Cylinder / any other shape: the centre
     lies inside the shape (``mask_on_coords`` on the centre coordinates).
     """
+    if getattr(grid, 'periodic_axes', ''):
+        from rfx._periodic import periodic_mask
+        def sample(x, y, z):
+            return pec_volume_cell_mask(shape, GridCoords(x, y, z, (len(x), len(y), len(z))))
+        return periodic_mask(grid, shape, centres[:3], sample=sample)
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     if lo is not None and hi is not None:
@@ -419,7 +426,7 @@ def pec_volume_cell_mask(shape, centres: GridCoords):
     return jnp.asarray(shape.mask_on_coords(centres.x, centres.y, centres.z))
 
 
-def _volume_is_empty(shape, centres: GridCoords, mask) -> bool | None:
+def _volume_is_empty(shape, centres: GridCoords, mask, *, grid=None) -> bool | None:
     """Zero-cell test that never converts a jnp mask to bool (§1.5 refusal).
 
     Inside an outer ``jax.jit`` the grid coordinates are still concrete host
@@ -437,7 +444,8 @@ def _volume_is_empty(shape, centres: GridCoords, mask) -> bool | None:
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     axes = (centres.x, centres.y, centres.z)
-    if lo is not None and hi is not None and not any(is_tracer(c) for c in axes):
+    if (lo is not None and hi is not None and not getattr(grid, 'periodic_axes', '')
+            and not any(is_tracer(c) for c in axes)):
         for i in range(3):
             c = np.asarray(axes[i], dtype=np.float64)
             if not np.any((c >= float(lo[i])) & (c < float(hi[i]))):
@@ -506,10 +514,7 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     if cell_sizes is None:
         cell_sizes = tuple(axis_cell_sizes(n) for n in node_axes)
     mid = 0.5 * (lo[a] + hi[a])
-    from rfx._periodic import interval_coordinates, plane_coordinate
-    for t in range(3):
-        if t != a:
-            interval_coordinates(grid, t, lo[t], hi[t])
+    from rfx._periodic import periodic_mask, plane_coordinate
     requested_mid = mid
     mid = plane_coordinate(grid, a, mid)
     d_local = _local_cell(node_axes[a], cell_sizes[a], mid)
@@ -530,21 +535,26 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     shape_3 = tuple(len(line) for line in node_axes)
     is_box = getattr(shape, "corner_lo", None) is not None
     if is_box:
-        axes = []
-        for t in range(3):
-            if t == a:
-                m = np.zeros((shape_3[t],), dtype=bool)
-                m[plane] = True
-                axes.append(m)
-            else:
-                d_t = _local_cell(node_axes[t], cell_sizes[t],
-                                  0.5 * (lo[t] + hi[t]))
-                axes.append(np.asarray(_box_axis_closed(node_axes[t], lo[t], hi[t], d_t)))
-        fp = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+        def sample(x, y, z):
+            masks = []
+            for t, line in enumerate((x, y, z)):
+                if t == a:
+                    m = np.zeros((len(line),), dtype=bool)
+                    m[plane] = True
+                    masks.append(m)
+                else:
+                    d_t = _local_cell(node_axes[t], cell_sizes[t],
+                                      0.5 * (lo[t] + hi[t]))
+                    masks.append(np.asarray(_box_axis_closed(line, lo[t], hi[t], d_t)))
+            return masks[0][:, None, None] & masks[1][None, :, None] & masks[2][None, None, :]
+        fp = periodic_mask(grid, shape, node_axes, sample=sample,
+                           axes=tuple(t for t in range(3) if t != a), closed_footprint=True)
     else:
         sample = [np.asarray(n, dtype=np.float64) for n in node_axes]
         sample[a] = np.asarray([requested_mid], dtype=np.float64)
-        cross = np.asarray(shape.mask_on_coords(*sample), dtype=bool)
+        cross = np.asarray(periodic_mask(
+            grid, shape, sample, axes=tuple(t for t in range(3) if t != a),
+            closed_footprint=True), dtype=bool)
         fp = np.zeros(shape_3, dtype=bool)
         idx = [slice(None)] * 3
         idx[a] = slice(plane, plane + 1)
@@ -731,6 +741,11 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes, *, grid=None):
     ``classify_pec_entry`` realizes a wire by this rule, and lane admission
     asks it which kind of conductor a declared wire becomes. The vertex snap
     itself is ``wire_vertex_nodes``."""
+    # A declared periodic uniform grid has constant cells. Decide that a
+    # wire is a volume before admitting its vertices as a directed path.
+    if getattr(grid, 'periodic_axes', '') and float(radius) >= .5 * min(
+            float(np.asarray(d)[0]) for d in cell_sizes):
+        return None
     nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes, grid=grid)
     return nodes if float(radius) < 0.5 * d_min else None
 
@@ -774,8 +789,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             subcell = _subcell_axes(lo, hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)
-        mask = pec_volume_cell_mask(shape, centres)
-        if not traced and _volume_is_empty(shape, centres, mask):
+        mask = pec_volume_cell_mask(shape, centres, grid=grid)
+        if not traced and _volume_is_empty(shape, centres, mask, grid=grid):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
     pts = getattr(shape, "points", None)
@@ -823,8 +838,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             subcell = _subcell_axes(bb_lo, bb_hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)
-    mask = pec_volume_cell_mask(shape, centres)
-    if not traced and _volume_is_empty(shape, centres, mask):
+    mask = pec_volume_cell_mask(shape, centres, grid=grid)
+    if not traced and _volume_is_empty(shape, centres, mask, grid=grid):
         _refuse_zero_cells(shape, name, "PEC volume")
     return mask, None, None
 
@@ -958,7 +973,7 @@ def rasterize_geometry(
             pole_mask = _material_cell_mask(declared, coords, centres,
                                             grid=grid if getattr(grid, 'periodic_axes', '') else None)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
-                pole_mask = pec_volume_cell_mask(declared, centres)
+                pole_mask = pec_volume_cell_mask(declared, centres, grid=grid)
 
         if mat.debye_poles:
             for pole in mat.debye_poles:
