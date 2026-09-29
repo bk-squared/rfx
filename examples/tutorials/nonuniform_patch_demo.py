@@ -481,11 +481,12 @@ def main() -> None:
     # 120 periods settled the PRE-#931 board (-53.8 dB, 2026-09-05). It does not
     # settle this one: with the vacuum cells gone from the cavity the modes are
     # higher-Q, and the #931 re-solve (VESSL 369367259177) measured -30.9 dB at
-    # 120 — UNDER-SETTLED by the script's own witness. The binding mode is TM01
-    # on the 38 mm width (1.9037 GHz, Q = 99.9), the slowest decayer in the set.
+    # 120 — UNDER-SETTLED by the script's own witness. On that board the
+    # binding mode was TM01 on the 38 mm width (1.9037 GHz, Q = 99.9).
     #
-    # After x/y registration, 200 periods measured -42.5 dB (VESSL
-    # 369367266090).
+    # After x/y registration the feed sits on the y centre line and TM01 is not
+    # excited; the slowest decayer left is TM02 (3.7062 GHz, Q = 115.1), and
+    # 200 periods measured -42.5 dB (VESSL 369367266090).
     # Before x/y registration, 200 periods measured -41.4 dB (VESSL
     # 369367259280). That cleared the -40 dB
     # bar, but by 1.4 dB, which is less margin than the number below was chosen
