@@ -3,7 +3,7 @@
 Decision 1 of the v1.8 chain-closure plan
 (``docs/design_notes/v18_waveguide_s_chain_plan.md``, Appendix B) removed
 the uniform flux lane's complex64 cast. This test pins complex64 with x64
-off and complex128 with x64 on, for ``False`` and ``"flux"`` alike,
+off and complex128 with x64 on, for ``False``, ``True``, and ``"flux"`` alike,
 including float32 fields under x64. The frequency precision must survive
 regardless of the requested field precision.
 
@@ -69,7 +69,7 @@ def _wr90_sim(precision):
     (False, "float64", "complex64"),
     (True, "float64", "complex128"),
 ])
-@pytest.mark.parametrize("normalize", [False, "flux"])
+@pytest.mark.parametrize("normalize", [False, True, "flux"])
 def test_waveguide_s_dtype_follows_x64(normalize, x64, precision, expected):
     with _enable_x64(x64):
         with warnings.catch_warnings():

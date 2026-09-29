@@ -2109,12 +2109,14 @@ def settling_db_from_port_records(final_cfgs, *, return_detail: bool = False):
 
 
 def _s_matrix_dtypes(field_dtype, port_cfgs):
-    """Promote field, existing record, and frequency precision for extraction."""
+    """Promote field, record, frequency, and JAX default float precision."""
     # Preserve the frequency-based records from init_waveguide_port, widening
-    # for field storage when needed. Mixed fields accumulate at least at f32.
+    # for field storage and the JAX default so extraction is never narrower
+    # than main, including explicit float32 frequencies with x64 enabled.
     record_dtype = jnp.result_type(
         jnp.float32 if field_dtype is None else field_dtype,
         jnp.float32,
+        jnp.result_type(float),
         *(cfg.v_probe_t.dtype for cfg in port_cfgs),
         *(cfg.freqs.dtype for cfg in port_cfgs),
     )
@@ -2122,9 +2124,11 @@ def _s_matrix_dtypes(field_dtype, port_cfgs):
 
 
 def _s_matrix_port_waves(cfg, *, ref_shift):
-    """Store modal amplitudes at the promoted record/frequency precision."""
+    """Store modal amplitudes with the JAX default float precision floor."""
     waves = extract_waveguide_port_waves(cfg, ref_shift=ref_shift)
-    complex_dtype = jnp.result_type(cfg.v_ref_t.dtype, cfg.freqs.dtype, 1j)
+    complex_dtype = jnp.result_type(
+        cfg.v_ref_t.dtype, cfg.freqs.dtype, jnp.result_type(float), 1j,
+    )
     return tuple(wave.astype(complex_dtype) for wave in waves)
 
 

@@ -130,11 +130,10 @@ def compute_waveguide_s_matrix(
         ``normalize=True`` diagonal formula.  Costs 2 × N_ports
         FDTD runs (same as ``normalize=True``).  On the
         differentiable chain like ``False``. On the uniform lane the
-        result promotes field and frequency precision, like ``False``.
-        With default frequencies this gives complex64 with x64 off and
-        complex128 with x64 on; explicitly float32 frequencies and fields
-        retain complex64 even with x64 on.
-        Modal records retain at least the frequency precision.
+        result promotes field, frequency, and JAX default float precision,
+        like ``False``: complex64 with x64 off and at least complex128 with
+        x64 on, including explicit float32 frequencies and float32/mixed fields.
+        Modal records retain at least the frequency and default float precision.
         The non-uniform lane's result follows the ``freqs`` precision:
         complex64 by default, complex128 under ``JAX_ENABLE_X64``.
 
