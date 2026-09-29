@@ -854,12 +854,14 @@ def test_subgridded_runner_hands_back_a_face_centre_box():
 
     The subgridded lane is an EXPERIMENTAL prototype (3D SBP-SAT falsified,
     PR #90), so this is a wiring assertion only — no accuracy claim is made
-    for its far field here.
+    for its far field here. A PEC box: the subgridded lane refuses an
+    absorber in every validation mode (lane admission), and the box's
+    collocation does not depend on one.
     """
     from rfx import Simulation
 
     sim = Simulation(freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=3.0e-3,
-                     boundary="cpml", cpml_layers=4)
+                     boundary="pec")
     sim.add_source((0.03, 0.03, 0.012), "ez")
     sim.add_refinement(z_range=(0.0, 0.024), ratio=2, validation="research")
     sim.add_ntff_box(corner_lo=(0.021, 0.021, 0.006),

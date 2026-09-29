@@ -39,7 +39,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.boundaries.cpml import _cpml_profile
+from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
 from rfx.sources.sources import CustomWaveform
 
@@ -50,17 +50,14 @@ from rfx.sources.sources import CustomWaveform
 # See rfx/sources/tfsf_2d.py for the finding.  The 1-D grid is the normal-
 # incidence path (cv04's); it shipped at 20 cells with
 # sigma_max = 0.8 * 4 / (eta dx_1d) and reflected |B/A| ~ 4e-02.  The 1-D CPML
-# update carries no kappa (TFSFConfig has b and c only), so kappa_max stays 1
+# update applies b and c but no kappa stretching, so kappa_max stays 1
 # and an override to anything else is refused rather than silently ignored.
-# Read off the measured depth law in
-# docs/design_notes/20260904_aux_absorber_depth_derivation.md section 2, on cv04's
-# own rig and band.  This path is normal incidence only (oblique dispatches to the
-# 2-D grid), so its worst declared angle is 0 deg and the target that minimises the
-# echo there is 1e-6 -- TIGHTENING it makes the echo worse at every depth, because a
-# tighter target steepens sigma and the absorber reflects off its own grading.
-# Measured echo/inc on cv04's band: 4.427e-02 as shipped (n = 20), 9.355e-05 at
-# n = 140, 9.430e-06 here.
-AUX_N_CPML_1D = 200         # was 20
+# With H sampled at its Yee half cell (#1234), 20 cells return at most
+# -111.8 dB over the measured 2--30 GHz band and both faces at dx = 1 mm.
+# Ten cells return -87.4 dB; the auxiliary requirement is -105 dB.
+# Keep the normal-incidence target R = 1e-6 and restore the 20-cell depth.
+# The dated #888 design note retains its measurements of the older profile.
+AUX_N_CPML_1D = 20
 AUX_CPML_ORDER_1D = 3       # rfx/boundaries/cpml.py _cpml_profile default
 AUX_CPML_KAPPA_MAX_1D = 1.0
 AUX_CPML_R_ASYMPTOTIC_1D = 1e-6
@@ -166,6 +163,8 @@ class TFSFConfig(NamedTuple):
     grid_pad: int
     transverse_axis: str     # "y" for Ez, "z" for Ey
     dx_1d: float             # 1D auxiliary grid cell size (dx/cos(theta))
+    magnetic_lo: CPMLParams
+    magnetic_hi: CPMLParams
     custom_waveform: object = None  # static JAX-compatible scalar callable
     closed_box: bool = False
     y_lo: int = 0
@@ -440,16 +439,20 @@ def init_tfsf(
                  else float(aux_cpml_kappa_max))
     if _kappa_1d != 1.0:
         raise ValueError(
-            "the 1-D auxiliary CPML update carries no kappa (TFSFConfig has b and c "
+            "the 1-D auxiliary CPML update carries no kappa (the split updates use b and c "
             f"only), so kappa_max must stay 1.0; got {_kappa_1d}"
         )
-    _prof = _cpml_profile(
-        n_cpml_1d, dt, dx_1d,
+    profile_options = dict(
         order=AUX_CPML_ORDER_1D if aux_cpml_order is None else int(aux_cpml_order),
         kappa_max=_kappa_1d,
         R_asymptotic=(AUX_CPML_R_ASYMPTOTIC_1D if aux_cpml_r_asymptotic is None
                       else float(aux_cpml_r_asymptotic)),
     )
+    _prof = _cpml_profile(n_cpml_1d, dt, dx_1d, **profile_options)
+    magnetic_lo = _cpml_profile(
+        n_cpml_1d, dt, dx_1d, sample_offset=0.5, **profile_options)
+    magnetic_hi = _cpml_profile(
+        n_cpml_1d, dt, dx_1d, sample_offset=-0.5, **profile_options)
     b_prof, c_prof = _prof.b, _prof.c
 
     # Source waveform parameters.
@@ -509,6 +512,8 @@ def init_tfsf(
         grid_pad=cpml_layers,
         transverse_axis=transverse_axis,
         dx_1d=float(dx_1d),
+        magnetic_lo=magnetic_lo,
+        magnetic_hi=magnetic_hi,
         custom_waveform=waveform if custom else None,
         closed_box=closed_box,
         y_lo=y_lo, y_hi=y_hi, z_lo=z_lo, z_hi=z_hi,
@@ -570,12 +575,12 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     h1d = h1d + cfg.curl_sign * (dt / MU_0) * de
 
     # H CPML lo end
-    psi_h_lo = cfg.b_cpml * st.psi_h_lo + cfg.c_cpml * de[:n]
+    psi_h_lo = cfg.magnetic_lo.b * st.psi_h_lo + cfg.magnetic_lo.c * de[:n]
     h1d = h1d.at[:n].add(cfg.curl_sign * (dt / MU_0) * psi_h_lo)
 
     # H CPML hi end
-    b_hi = jnp.flip(cfg.b_cpml)
-    c_hi = jnp.flip(cfg.c_cpml)
+    b_hi = jnp.flip(cfg.magnetic_hi.b)
+    c_hi = jnp.flip(cfg.magnetic_hi.c)
     psi_h_hi = b_hi * st.psi_h_hi + c_hi * de[-n:]
     h1d = h1d.at[-n:].add(cfg.curl_sign * (dt / MU_0) * psi_h_hi)
 

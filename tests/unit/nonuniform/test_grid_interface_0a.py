@@ -745,6 +745,19 @@ def test_a_constant_axis_takes_the_closed_form_not_a_running_sum(name, axis):
     )
 
 
+def _ties_lower(cells, nodes, x):
+    """The node rule (#1295, #1342), spelled here rather than imported: the
+    nearest node, and the lower of two whose distances agree to 1e-9 of the
+    cell ``x`` lies in (``cells`` are the interior cells between ``nodes``)."""
+    dist = np.abs(nodes - x)
+    k = int(np.argmin(dist))
+    j = int(np.clip(np.searchsorted(nodes, x, side="right") - 1,
+                    0, cells.size - 1))
+    if k >= 1 and abs(dist[k - 1] - dist[k]) <= 1e-9 * cells[j]:
+        k -= 1
+    return k
+
+
 def test_index_of_resolves_on_the_spine_not_on_the_float32_store():
     """Which array ``index_of`` measures against, made visible.
 
@@ -777,8 +790,10 @@ def test_index_of_resolves_on_the_spine_not_on_the_float32_store():
                 np.cumsum(interior_cells(store, pad_lo, pad_hi)), 0, 0.0)
             for k in range(from_spine.size - 1):
                 midpoint = 0.5 * (from_spine[k] + from_spine[k + 1])
-                spine_says = int(np.argmin(np.abs(from_spine - midpoint)))
-                store_says = int(np.argmin(np.abs(from_store - midpoint)))
+                spine_says = _ties_lower(
+                    interior_cells(spine, pad_lo, pad_hi), from_spine, midpoint)
+                store_says = _ties_lower(
+                    interior_cells(store, pad_lo, pad_hi), from_store, midpoint)
                 if spine_says == store_says:
                     continue
                 assert grid.index_of(axis, midpoint) == spine_says + pad_lo, (

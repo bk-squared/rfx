@@ -428,7 +428,12 @@ def _enumerate_emission_sites():
 # word. An error finding emitted rather than raised, so the checks after it
 # still report; run() and forward() stop on it, and the lane refuses it again
 # at dispatch when preflight is skipped.
-_FROZEN_TOTAL_SITES = 121
+# 121 -> 122, 2026-09-28 (#1295/#1342): one ``PreflightErrorWarning`` in
+# ``_validate_cfg_half_node_split`` (``rfx/preflight/ports.py``), new code
+# ``half_node_split`` -- a port, source or probe that lands one cell off a
+# wire vertex or PEC sheet declared at the same half-node coordinate. run()
+# and forward() refuse the same pairs at dispatch when preflight is skipped.
+_FROZEN_TOTAL_SITES = 122
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -444,7 +449,9 @@ _FROZEN_TOTAL_SITES = 121
 # the note on _FROZEN_TOTAL_SITES above.
 # 76 -> 77, 2026-09-24 (#1240): ``nonuniform_refinement`` -- see the note on
 # _FROZEN_TOTAL_SITES above.
-_FROZEN_LITERAL_CODE_COUNT = 77
+# 77 -> 78, 2026-09-28 (#1295/#1342): ``half_node_split`` -- see the note on
+# _FROZEN_TOTAL_SITES above.
+_FROZEN_LITERAL_CODE_COUNT = 78
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

@@ -98,8 +98,6 @@ def test_admitted_faces_match_one_device(lane, case, count, record_property):
     elif case == "wall_on_short_last_slab":
         kw.update(x_cells=6, x=Boundary(lo="cpml", hi="pec"))
     else:
-        if lane == "nu":
-            pytest.skip("#1346: NU does not realize unequal face depths")
         kw.update(x_cells=18, x=Boundary(lo="cpml", hi="cpml", lo_thickness=8, hi_thickness=2))
     with jax.default_device(devices[0]):
         one = np.asarray(_run(_box(lane, **kw), lane).time_series)

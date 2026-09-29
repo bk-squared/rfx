@@ -45,7 +45,7 @@ import json
 import numpy as np
 
 from rfx._grid_metric import (
-    NODE_TOUCH_REL, cells_crossed, is_one_cell_size,
+    NODE_TOUCH_REL, cells_crossed, is_one_cell_size, nearest_node_index,
 )
 from rfx.core.jax_utils import is_tracer
 
@@ -637,6 +637,20 @@ def profile_boundary_cell(scalar_dx: float, profile, side: str) -> float:
     return float(a[0] if side == "lo" else a[-1])
 
 
+def _profile_node_index(cells, nodes, coord_m: float) -> int:
+    """The node index the grid gives ``coord_m`` on a declared profile:
+    ``nearest_node_index`` (the one tie rule, a tie to the lower node,
+    #1295/#1342) on the node line the grid builds from the profile
+    (``node_positions_from_profile``: the closed form on a constant
+    profile). ``nodes`` is the caller's line of the same length, whose entry
+    at the answer the caller reads."""
+    from rfx.geometry.rasterize_grid import _local_cell
+    from rfx.nonuniform import node_positions_from_profile
+    line = np.asarray(node_positions_from_profile(cells), dtype=np.float64)
+    k = nearest_node_index(line, coord_m, _local_cell(line, cells, coord_m))
+    return min(max(k, 0), len(nodes) - 1)
+
+
 def profile_node_at(scalar_dx: float, profile, coord_m: float) -> float:
     """The node the grid puts ``coord_m`` on: the nearest one, the rule
     ``index_of`` and ``position_to_index`` both apply.
@@ -653,7 +667,7 @@ def profile_node_at(scalar_dx: float, profile, coord_m: float) -> float:
             return float(coord_m)
         return float(round(float(coord_m) / float(scalar_dx)) * float(scalar_dx))
     edges = np.concatenate([[0.0], np.cumsum(a)])
-    return float(edges[int(np.argmin(np.abs(edges - float(coord_m))))])
+    return float(edges[_profile_node_index(a, edges, coord_m)])
 
 
 def profile_cell_at(scalar_dx: float, profile, coord_m: float,
@@ -680,7 +694,7 @@ def profile_cell_at(scalar_dx: float, profile, coord_m: float,
     if a.size == 0:
         return float(scalar_dx)
     edges = np.concatenate([[0.0], np.cumsum(a)])
-    node = int(np.argmin(np.abs(edges - float(coord_m))))
+    node = _profile_node_index(a, edges, coord_m)
     idx = node if toward == "hi" else node - 1
     return float(a[max(0, min(idx, a.size - 1))])
 
