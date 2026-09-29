@@ -187,9 +187,6 @@ def compute_mixed_s_matrix(
     -------
     MixedSMatrixResult
     """
-    self._refuse_conformal_boundary(
-        "compute_mixed_s_matrix", entry="compute_mixed_s_matrix()",
-        instead="use run(compute_s_params=False) on a uniform mesh for conformal fields")
     import dataclasses as _dc
 
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff

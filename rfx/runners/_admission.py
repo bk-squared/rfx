@@ -372,7 +372,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_boundary", "upml"): "a UPML absorber",
     ("_pec_faces", "pec_face"): "PEC faces on an absorbing box",
     ("_boundary_spec", "pmc_face"): "a PMC (magnetic wall) face",
-    ("_boundary_spec", "conformal"): "Boundary(conformal=True)",
+    ("_boundary_spec", "conformal"): "Boundary(conformal=True) or conformal_pec=True",
     ("_boundary_spec", "conformal_s_matrix"): (
         "Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix"),
     ("_boundary_spec", "absorbing_lid"): "an absorbing z lid on a closed PEC box",
@@ -478,12 +478,13 @@ ADMITS: dict[str, frozenset] = {
 # run() documents, the fields are staircase as well as the S-matrix, so
 # nothing declared is dropped. The gate reads the call's static arguments,
 # never a traced value, and a call that passes none is judged as the default
-# call.
+# call. An explicit conformal_pec=True on a model with no PEC to conform is a
+# no-op on every lane (Simulation._has_pec_to_conform), so it asks for nothing.
 def _conformal_requested(sim, run_args) -> bool:
     conformal = run_args.get("conformal_pec")
     if conformal is None:
-        conformal = bool(sim._boundary_spec.conformal_faces())
-    return bool(conformal)
+        return bool(sim._boundary_spec.conformal_faces())
+    return bool(conformal) and sim._has_pec_to_conform()
 
 
 def _conformal_s_matrix_requested(sim, run_args) -> bool:

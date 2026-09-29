@@ -1074,6 +1074,7 @@ def run_uniform(
         )
         s_params, _ = compute_lumped_wire_s_matrix_via_scan(
             sim, s_param_freqs, n_steps=sp_n_steps,
+            conformal_pec=conformal_pec,
         )
 
     waveguide_ports_result = (

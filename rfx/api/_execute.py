@@ -1543,6 +1543,7 @@ class _ExecuteMixin:
         design_occupancy: object | None = None,
         monitor_overrides: dict | None = None,
         lane: str | None = None,
+        conformal_pec: bool | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
 
@@ -1574,7 +1575,26 @@ class _ExecuteMixin:
           ``(v_dft, i_dft)`` accumulators) instead of the diagonal
           ``ForwardResult``.  When ``False``, the normal ``ForwardResult`` is
           returned unchanged.
+
+        ``conformal_pec`` resolves as in ``run()``: ``None`` reads
+        ``Boundary(conformal=True)``. Neither route here has a Dey-Mittra
+        update, so a conformal request on a model with PEC to conform is
+        refused before the first step; an explicit ``False`` asks for
+        staircase PEC and passes (#1299).
         """
+        _conformal = (bool(self._boundary_spec.conformal_faces())
+                      if conformal_pec is None else bool(conformal_pec))
+        if _conformal and self._has_pec_to_conform():
+            raise NotImplementedError(
+                "Conformal PEC (Boundary(conformal=True) or conformal_pec=True) "
+                "is not carried by the uniform forward scan that forward(), "
+                "optimize(), topology_optimize(), compute_mixed_s_matrix(), "
+                "compute_lumped_wire_s_matrix_via_scan() and run()'s lumped/wire "
+                "S-matrix step: it has no Dey-Mittra update, so the walls and PEC "
+                "shapes would be staircased. It is refused before the first time "
+                "step. Pass conformal_pec=False (or drop Boundary(conformal=True)) "
+                "for staircase walls, or use run(compute_s_params=False) on a "
+                "uniform mesh for conformal fields.")
         if self._solver == "adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI forward")

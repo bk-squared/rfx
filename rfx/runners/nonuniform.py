@@ -1623,7 +1623,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, lane, run_args={"conformal_pec": conformal_pec})
+    admit(sim, lane, run_args={"conformal_pec": conformal_pec,
+                               "compute_s_params": compute_s_params})
 
     _shared_run_kwargs = dict(
         design_box=design_box,
