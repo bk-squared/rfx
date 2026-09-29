@@ -46,18 +46,17 @@ run: |-
   uv pip freeze --python "$PY" > "$OUT/pip_freeze.txt"
   export PYTHONPATH="$WORK"
   "$PY" -c "import jax, rfx; print('jax', jax.__version__, jax.devices(), 'rfx', rfx.__version__)"
-  IGN="--ignore=tests/crossval/test_meep_crossval.py --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py --ignore=tests/crossval/test_openems_crossval.py --ignore=tests/crossval/test_crossval_comprehensive.py"
   echo "=== highmem selection (serial) ==="
   # Timeouts: 2026-09-24 (run 36024266641) took 350 s highmem and 13298 s gpu, 500 s under the
   # old 13800. With ~200 s of setup, 1800 + 18000 fits the workflow's ~348 min poll inside its
   # 360 min job limit (the GitHub-hosted maximum); this YAML sets no VESSL run limit.
   set +e
-  timeout 1800 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m "highmem and not gpu" $IGN > "$OUT/highmem.log" 2>&1
+  timeout 1800 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m "highmem and not gpu" > "$OUT/highmem.log" 2>&1
   RC1=$?
   echo "highmem rc=$RC1"; tail -3 "$OUT/highmem.log"
   echo "=== gpu-marked suite ==="
   # crossval_ladder (the two full-ladder cases, 9691 s of 14830 s on 2026-09-24) runs in scripts/vessl_crossval_ladder.yaml.
-  timeout 18000 "$PY" -m pytest -q -ra -s -p no:cacheprovider -m "gpu and not crossval_ladder" $IGN > "$OUT/gpu_suite.log" 2>&1
+  timeout 18000 "$PY" -m pytest -q -ra -s -p no:cacheprovider -m "gpu and not crossval_ladder" > "$OUT/gpu_suite.log" 2>&1
   RC2=$?
   set -e
   echo "gpu suite rc=$RC2"; tail -3 "$OUT/gpu_suite.log"

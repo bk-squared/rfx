@@ -50,13 +50,6 @@ _ABSORBED = {
         "tests/unit/subgrid/test_sbp_sat_alpha.py",
         "tests/unit/subgrid/test_sbp_sat_jit.py",
     ],
-    "tests/crossval/test_waveguide_broad_e5.py": [
-        "tests/crossval/test_waveguide_broad_e5_envelope_gates.py",
-        "tests/crossval/test_waveguide_broad_e5_live_anchor.py",
-        "tests/crossval/test_waveguide_broad_e5_phase_gates.py",
-        "tests/crossval/test_waveguide_broad_e5_phase_tolerance_envelope.py",
-        "tests/crossval/test_waveguide_broad_e5_tolerance_envelope.py",
-    ],
     "tests/unit/sparams/test_coax_two_port_smatrix.py": [
         "tests/unit/sparams/test_coax_two_port_fdtd.py",
         "tests/unit/sparams/test_coax_two_port_solve.py",
@@ -102,10 +95,10 @@ _GP = ("tests/contracts/test_gate_policy_is_shared.py::"
        "test_margin_ceil_case_imports_shared_multiplier_not_a_local_literal")
 # The one node-id rewrite that is not a plain path substitution: the contract
 # case parametrised over _MARGIN_CEIL_FILES follows the merged file.
-NODE_MAP = {f"{_GP}[test_waveguide_broad_e5_tolerance_envelope.py]": f"{_GP}[test_waveguide_broad_e5.py]"}
+NODE_MAP = {}
 # The one BEFORE id that collapsed into an AFTER id already claimed above
 # (same function, same file after the merge) — counted as D.
-COLLAPSED = {f"{_GP}[test_waveguide_broad_e5_phase_tolerance_envelope.py]": f"{_GP}[test_waveguide_broad_e5.py]"}
+COLLAPSED = {}
 
 ASSERT_RX = re.compile(r"^\s*assert\b|pytest\.raises\(|pytest\.warns\(|np\.testing\.assert_|npt\.assert_")
 

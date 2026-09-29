@@ -105,11 +105,6 @@ GROUPS = [
      'tests/unit/autodiff/test_coax_end_to_end_ad.py '
      'tests/unit/autodiff/test_ad_surface_contract.py',
      "the AD gates; the one-port leg is the memory-heavy one"),
-    ("crossval", "cpu-32-mem-64",
-     f'{PYTEST} tests/crossval/test_coax_broad_e4_comparison_gates.py '
-     'tests/crossval/test_coax_broad_e5_envelope_gates.py '
-     'tests/crossval/test_coax_two_port_referee_header.py',
-     "the committed coax envelope replays and the referee header"),
     ("contracts", "cpu-32-mem-64",
      f'{PYTEST} tests/contracts/test_lattice_ownership_contract.py '
      'tests/contracts/test_example_fidelity_contract.py '

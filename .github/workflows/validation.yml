@@ -151,10 +151,6 @@ jobs:
           pytest -v -ra -s
           -m "not gpu and not highmem and not docs_consistency"
           --splits 5 --group ${{ matrix.group }}
-          --ignore=tests/crossval/test_meep_crossval.py
-          --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
-          --ignore=tests/crossval/test_openems_crossval.py
-          --ignore=tests/crossval/test_crossval_comprehensive.py
 
       - name: Run three-device x-wall alignment cases
         if: matrix.group == 1
