@@ -47,6 +47,10 @@ def test_default_bit_identity():
 @pytest.mark.parametrize("arm", ["uc", "mb", "az"])
 @pytest.mark.parametrize("scale", [0.5, 1, 2])
 def test_columns_and_default_table(arm, scale):
+    """Half-open layers assign nodes 14/16/30 mm to eps 3.0/4.3/1.0.
+
+    #1138 removes the mb/az float-dust ownership differences in sampled mode.
+    """
     sim, prof = fixture(arm, scale, interface_eps="dual_average")
     grid = sim._build_nonuniform_grid()
     mats = sim._assemble_materials_nu(grid)[0]
