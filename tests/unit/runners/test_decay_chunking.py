@@ -2,8 +2,9 @@
 
 The reference is the pre-change loop, frozen on 4725b748 in
 _until_decay_reference.py. These are driver contracts, not accuracy claims.
-Per-step arrays use the PI's 9-float32-ULP-at-peak rule; record sums use
-1e-4 of their own peak. Neither rule changes the exact stop-step contract.
+The PI's 2026-09-29 decision uses the existing A/B lock's derived floors
+for outputs against both the old loop and forced-N run(). Stop steps remain
+exact, and report on/off remains bit-exact. ULP values are measurements only.
 """
 
 from __future__ import annotations
@@ -19,11 +20,12 @@ import pytest
 from rfx import SnapshotSpec
 from rfx import simulation
 from rfx.probes.probes import flux_spectrum
-from tests.unit.autodiff.test_forward_jit_compile_once import (
-    MAX_REL_SUMMED,
-    MAX_ULP_AT_PEAK,
-    _rel_at_peak,
-    _ulp_at_peak,
+from tests.locks.test_run_until_decay_ab_identity import (
+    _E_COMPS,
+    _H_COMPS,
+    _RTOL,
+    _field_reassoc_atols,
+    _reassoc_atol,
 )
 from tests.unit.runners._until_decay_reference import run_until_decay_reference
 from tests.unit.runners.test_snapshot_interval_and_axes import _loaded_sim, _observables
@@ -98,6 +100,7 @@ def _run(
     captured = {}
 
     def capture(*args, **kwargs):
+        captured["grid"], captured["materials"] = args[:2]
         captured["low"] = driver(*args, **kwargs)
         return captured["low"]
 
@@ -118,7 +121,45 @@ def _run(
             compute_s_params=True,
             skip_preflight=True,
         )
-    return result, captured["low"]
+    return result, captured["low"], captured["grid"], captured["materials"]
+
+
+def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property, *, comparison):
+    """Reuse the lock's floors; no independently calibrated output tolerance.
+
+    Yee fields and snapshots use the lock's E/H curl-coupled component floors.
+    Each other floating array uses its own compared magnitudes, through the
+    lock's scalar-observable helper. Metadata and empty arrays stay exact.
+    """
+    assert left.keys() == right.keys()
+    for name, b in right.items():
+        assert left[name].shape == b.shape, name
+        assert left[name].dtype == b.dtype, name
+
+    atols = {}
+    for pattern in (".state.{}", ".snapshots[{!r}]", "api.state.{}"):
+        names = {c: pattern.format(c) for c in _E_COMPS + _H_COMPS}
+        arrays = {c: [left[name], right[name]] for c, name in names.items()
+                  if name in right and right[name].size}
+        if arrays:
+            floors, _, _ = _field_reassoc_atols(arrays, n_steps, grid, materials)
+            atols.update({names[c]: floor for c, floor in floors.items()})
+
+    measured, failures = {}, {}
+    for name, b in right.items():
+        a = left[name]
+        if (b.dtype.kind not in "fc" or not b.size or name in (".dt", "api.dt")
+                or name.startswith(".snapshot_axes")):
+            np.testing.assert_array_equal(a, b, err_msg=name)
+            continue
+        atol = atols[name] if name in atols else _reassoc_atol([a, b], n_steps)
+        passed = bool(np.allclose(a, b, rtol=_RTOL, atol=atol))
+        delta = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128))))
+        measured[name] = dict(atol=atol, rtol=_RTOL, max_abs_difference=delta, passed=passed)
+        if not passed:
+            failures[name] = measured[name]
+    record_property(f"reassociation_floors_{comparison}", json.dumps(measured, sort_keys=True))
+    assert not failures, failures
 
 
 def _assert_contract(got, ref, record_property):
@@ -131,63 +172,22 @@ def _assert_contract(got, ref, record_property):
     _record_metrics(got[1], ref[1], record_property, comparison="old_loop")
     _record_metrics(_observables(got[0]), _observables(ref[0]), record_property,
                     comparison="old_loop_api")
-    record_property("assertion_bar", "exact stop; per-step <=9 ULP at peak; sums <=1e-4 of peak")
+    record_property("assertion_bar", "exact stop; existing A/B-lock derived floors and _RTOL")
 
-    # The API S and dt plus every low-level accumulator (including Kahan
-    # compensation) are observable separately from the final six fields.
-    a, b = _observables(got[0]), _observables(ref[0])
-    a["dt"], b["dt"] = np.asarray(got[0].dt), np.asarray(ref[0].dt)
+    # Every low-level leaf includes the accumulators and Kahan compensation.
+    # API S and derived flux spectra are additional observable outputs.
+    a, b = dict(_arrays(got[1])), dict(_arrays(ref[1]))
+    api_a, api_b = _observables(got[0]), _observables(ref[0])
+    api_a["dt"], api_b["dt"] = np.asarray(got[0].dt), np.asarray(ref[0].dt)
     for name in ref[0].flux_monitors:
-        a[f"flux_spectrum[{name}]"] = np.asarray(flux_spectrum(got[0].flux_monitors[name]))
-        b[f"flux_spectrum[{name}]"] = np.asarray(flux_spectrum(ref[0].flux_monitors[name]))
-    for name in (
-        "ntff_data",
-        "current_moment_data",
-        "wire_port_sparams",
-        "snapshots",
-        "snapshot_axes",
-    ):
-        left, structure = jax.tree_util.tree_flatten_with_path(getattr(got[1], name))
-        right = jax.tree_util.tree_leaves(getattr(ref[1], name))
-        assert structure == jax.tree_util.tree_structure(getattr(ref[1], name)), name
-        assert len(left) == len(right), name
-        for (path, x), y in zip(left, right):
-            if hasattr(x, "__dataclass_fields__"):
-                for key in x.__dataclass_fields__:
-                    xx, yy = getattr(x, key), getattr(y, key)
-                    if isinstance(xx, dict):
-                        assert xx.keys() == yy.keys()
-                        for k in xx:
-                            np.testing.assert_array_equal(xx[k], yy[k], err_msg=f"{name}.{key}.{k}")
-                    else:
-                        np.testing.assert_array_equal(xx, yy, err_msg=f"{name}.{key}")
-            else:
-                key = f"{name}{jax.tree_util.keystr(path)}"
-                a[key], b[key] = np.asarray(x), np.asarray(y)
-    assert got[0].time_series.shape == ref[0].time_series.shape
-    ulps, summed = {}, {}
-    for name in a:
-        assert a[name].shape == b[name].shape, name
-        assert a[name].dtype == b[name].dtype, name
-        if name == "dt" or b[name].dtype.kind not in "fc":
-            np.testing.assert_array_equal(a[name], b[name], err_msg=name)
-        elif name == "time_series" or name.startswith(("state.", "snapshots[")):
-            # Equal/empty arrays need no reduction (some caps record no frames).
-            ulps[name] = 0.0 if np.array_equal(a[name], b[name]) else _ulp_at_peak(b[name], a[name])
-        else:
-            summed[name] = 0.0 if np.array_equal(a[name], b[name]) else _rel_at_peak(b[name], a[name])
-    record_property("ulp_at_peak_by_array", json.dumps(ulps, sort_keys=True))
-    record_property("rel_summed_by_array", json.dumps(summed, sort_keys=True))
-    record_property("max_ulp_at_peak", max(ulps.values()))
-    record_property("max_rel_summed", max(summed.values()))
-    failures = {name: f"{value} ULP > {MAX_ULP_AT_PEAK}"
-                for name, value in ulps.items() if not value <= MAX_ULP_AT_PEAK}
-    failures.update({name: f"{value} of peak > {MAX_REL_SUMMED}"
-                     for name, value in summed.items() if not value <= MAX_REL_SUMMED})
-    assert not failures, failures
-    if ref[0].time_series.shape[0] > 1:
+        api_a[f"flux_spectrum[{name}]"] = np.asarray(flux_spectrum(got[0].flux_monitors[name]))
+        api_b[f"flux_spectrum[{name}]"] = np.asarray(flux_spectrum(ref[0].flux_monitors[name]))
+    a.update({f"api.{name}": value for name, value in api_a.items()})
+    b.update({f"api.{name}": value for name, value in api_b.items()})
+    _assert_floor_arrays(a, b, ref_steps, got[2], got[3], record_property, comparison="old_loop")
+    if ref_steps > 1:
         for name in ("time_series", "s_params", "dft[pz]", "flux[fx].e1_dft", "state.ez"):
-            assert np.max(np.abs(b[name])) > 0, name
+            assert np.max(np.abs(api_b[name])) > 0, name
 
 
 @pytest.mark.parametrize("branch", ["point", "energy", "flux", "min-cap", "zero-cap"])
@@ -286,7 +286,7 @@ def test_until_decay_with_probes_costs_less_than_ten_fixed_scans(record_property
 
 
 def test_decay_without_stop_matches_run_scan(record_property):
-    """The A/B lock's forced-N trajectory, under the 9-ULP-at-peak bar."""
+    """Forced N agrees with run() AND the frozen loop under the A/B floors."""
     from tests.locks.test_run_until_decay_ab_identity import _build
 
     grid, materials, n, sources, probes = _build()
@@ -305,12 +305,9 @@ def test_decay_without_stop_matches_run_scan(record_property):
     )
     assert int(old.state.step) == n
     _record_metrics(got, old, record_property, comparison="old_loop_forced_n")
-    record_property("assertion_bar", "exact stop; vs run() per-step <=9 ULP at peak")
-    arrays = {"time_series": (ref.time_series, got.time_series)}
-    arrays.update({name: (getattr(ref.state, name), getattr(got.state, name))
-                   for name in ("ex", "ey", "ez", "hx", "hy", "hz")})
-    ulps = {name: _ulp_at_peak(a, b) for name, (a, b) in arrays.items()}
-    record_property("ulp_at_peak_by_array", json.dumps(ulps, sort_keys=True))
-    record_property("max_ulp_at_peak", max(ulps.values()))
-    record_property("array_equal", all(np.array_equal(a, b) for a, b in arrays.values()))
-    assert max(ulps.values()) <= MAX_ULP_AT_PEAK, ulps
+    record_property("assertion_bar", "exact stop; existing A/B-lock derived floors and _RTOL")
+    for comparison, reference in (("run_forced_n", ref), ("old_loop_forced_n", old)):
+        _assert_floor_arrays(
+            dict(_arrays(got)), dict(_arrays(reference)), n, grid, materials,
+            record_property, comparison=comparison,
+        )
