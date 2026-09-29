@@ -323,6 +323,44 @@ def test_the_adi_time_stepping_is_recorded_not_run_while_tracing():
     assert _ulp_at_peak(ts, ts_j) <= MAX_ULP_AT_PEAK, _ulp_at_peak(ts, ts_j)
 
 
+def _msl_direct_call(graded):
+    """The MSL board's solve through the shared entry ``forward()`` calls,
+    called directly, as ``compute_mixed_s_matrix`` and the S-matrix driver
+    do (they call it without an outer trace)."""
+    sim, *_ = _model(f"msl port/{'graded' if graded else 'uniform'}")
+    if graded:
+        def solve():
+            return sim._forward_nonuniform_from_materials(
+                n_steps=N_STEPS, checkpoint=False).time_series
+        return solve
+    grid = sim._build_grid()
+    sheets, wires = [], []
+    materials, debye, lorentz, pec_mask, *_ = sim._assemble_materials(
+        grid, pec_sheets=sheets, pec_wires=wires)
+
+    def solve():
+        return sim._forward_from_materials(
+            grid, materials, debye, lorentz, n_steps=N_STEPS,
+            checkpoint=False, pec_mask=pec_mask, pec_sheets=tuple(sheets),
+            pec_wires=tuple(wires)).time_series
+    return solve
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_a_staged_direct_call_of_the_shared_entry_obeys_the_rule(graded):
+    """The rule sits on the entries ``forward()`` shares with the calculators
+    (``_forward_from_materials``, ``_forward_nonuniform_from_materials``), not
+    only on ``forward()``: staged directly under ``jax.jit``, the MSL board's
+    host read of its PEC edge mask is concrete, the scan is recorded, and
+    the record equals the plain call's. (The calculators themselves run it
+    without an outer trace, so for them the rule is inactive.)"""
+    solve = _msl_direct_call(graded)
+    assert N_STEPS in _scan_lengths(jax.make_jaxpr(solve)())
+    ts = solve()
+    ts_j = jax.jit(solve)()
+    assert _ulp_at_peak(ts, ts_j) <= MAX_ULP_AT_PEAK, _ulp_at_peak(ts, ts_j)
+
+
 # ---------------------------------------------------------------------------
 # The helper's mechanisms (rfx.core.jax_utils)
 # ---------------------------------------------------------------------------

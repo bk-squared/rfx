@@ -170,10 +170,15 @@ def _declaration_setup_at_trace_time(entry):
     """Give a shared forward entry the set-up / time-stepping boundary.
 
     ``forward()`` and the entries its single-device lanes share with the
-    calculators (``_forward_from_materials``, which ``topology_optimize``,
-    ``compute_mixed_s_matrix`` and the S-matrix driver call directly, and
-    ``_forward_nonuniform_from_materials``) carry it. When
-    :func:`_setup_evaluated_at_trace_time` holds, the entry runs inside
+    calculators (``_forward_from_materials``,
+    ``_forward_nonuniform_from_materials``) carry it, so the rule holds
+    wherever one of them is staged. The calculators that call
+    ``_forward_from_materials`` directly (``topology_optimize``,
+    ``compute_mixed_s_matrix``, the S-matrix driver) run it without an outer
+    trace, where the rule is inactive: ``topology_optimize`` differentiates
+    with an un-jitted ``jax.value_and_grad`` and still compiles the solve on
+    every iteration. When :func:`_setup_evaluated_at_trace_time` holds, the
+    entry runs inside
     ``rfx.core.jax_utils.declaration_setup()``; a nested entry then sees no
     staging and runs its body directly. The time-stepping scans inside leave
     that region through ``rfx.core.jax_utils.recorded_scan``.
@@ -4155,9 +4160,14 @@ class _ExecuteMixin:
         device), the set-up built from the model alone is evaluated while
         tracing and the time stepping is compiled into the caller's program
         (#1367, #1354), so a function with no traced input compiles too. The
-        jitted value and gradient agree with a plain call to float32
-        rounding, not necessarily bit for bit: XLA compiles the whole step
-        as one program.
+        set-up's arrays become constants of that program: the first call
+        costs a plain call's set-up on top of the compile, and the compiled
+        program holds those arrays for as long as JAX caches it. The loop
+        compiles over operands XLA cannot read, as in a plain call; what is
+        computed from a traced input before the loop (a port's drive from a
+        traced permittivity, #1320) is compiled with the caller's program,
+        so the jitted value and gradient agree with a plain call to float32
+        rounding, not necessarily bit for bit.
         """
         _refuse_transformed_extended_tfsf(self._tfsf)
         if _removed_kwargs:
