@@ -43,7 +43,7 @@ What this tutorial teaches, in order:
 Error budget at this deliberately coarse resolution (dx = 2 mm):
 
 - The resonance reads HIGH against openEMS-with-thirds: +1.0 % at dx = 2 mm,
-  2.4460 GHz here against 2.4221 GHz (VESSL 369367265968).  Both numbers are
+  2.4460 GHz here against 2.4221 GHz (VESSL 369367265975).  Both numbers are
   the 32 mm feed-axis design mode.  The feed sits on the patch's y centre
   line, as in openEMS, and the 40 mm cross mode is absent from the printed
   mode list.  (Mode pairing repinned 2026-08-27, #693.)
@@ -78,7 +78,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   time.
 - The far field is the observable that agrees.  This configuration prints
   D = 6.60 dBi at its radiating bin (2.4 GHz) against openEMS 6.79 dBi,
-  -0.19 dB (VESSL 369367265968), inside the 1.0 dB the lock's
+  -0.19 dB (VESSL 369367265975), inside the 1.0 dB the lock's
   ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
   too is a measurement rather than a pass.  The pre-#1375 board printed
   6.72 dBi (-0.07 dB), the pre-contract board 7.39 dBi (+0.60 dB).  The demo trims the air above
@@ -89,7 +89,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   peak sat on 2.8 GHz — the LAST monitored bin, with the spectrum still rising
   into it, so the selector was pinned at the edge of its own frequency list.
   On this board the spectrum peaks at the 2.4 GHz bin with 2.5 GHz at
-  -1.0 dB, 2.3 GHz at -8.8 dB and 2.8 GHz at -15.6 dB (369367265968): an
+  -1.0 dB, 2.3 GHz at -8.8 dB and 2.8 GHz at -15.6 dB (369367265975): an
   interior maximum, which is what the mode-identification rule assumes it is
   looking at.
 
@@ -101,14 +101,14 @@ Runtime measured 2026-09-05 on a 64-core CPU run alone: 1345 s (22 min); the
 pre-#1375 script on the VESSL CPU lane was 587 s of FDTD in 600 s wall
 (369367259175), and the pre-contract board was 535 s / 543 s there
 (369367259020) — the shared pod, not the migration, is what the 22 min was
-measuring.  This board on an 8-CPU VESSL CPU pod: 968 s of FDTD in 986 s
-(369367265968).
+measuring.  This board on an 8-CPU VESSL CPU pod: 968 s of FDTD in 989 s
+(369367265975).
 ``NUM_PERIODS = 125`` is sized from measurement on the PRE-contract board:
 90 periods gave -36.5 dB and 204 periods gave -52.6 dB, which put the -40 dB
 settling bar near 115 on the average slope, and the multi-mode tail beats
 rather than decaying smoothly.  The corrected board's cavity is thinner and
 its modes are higher-Q, so that ladder is not transferable; what is measured
-on it is the endpoint, -48.2 dB at 125 periods (369367265968), SETTLED with
+on it is the endpoint, -48.2 dB at 125 periods (369367265975), SETTLED with
 8.2 dB of margin (-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
 the pre-contract one).  The witness below re-measures the end-of-run envelope
 every run — trust it over this paragraph.
@@ -170,7 +170,7 @@ AIR_BELOW = 30.0e-3
 AIR_ABOVE = 84.0e-3
 
 # 125 periods settles this fixture past the -40 dB bar: measured -48.2 dB,
-# SETTLED (VESSL 369367265968).  On the pre-contract board, endpoints
+# SETTLED (VESSL 369367265975).  On the pre-contract board, endpoints
 # -36.5 dB at 90 periods and -52.6 dB at 204 put the bar near 115 on the
 # average slope, but the multi-mode tail beats
 # rather than decaying smoothly, so trust the printed witness over slope
@@ -534,7 +534,7 @@ def main():
     #   * the off-lattice conductor-face residual on the patch and ground
     #     outlines (0.7 mm: the graded x/y mesh puts the last node 0.35 cell
     #     inside every sheet edge on purpose, #1375).
-    #   Measured 2026-09-29 (VESSL 369367265968): three advisories -- the
+    #   Measured 2026-09-29 (VESSL 369367265975): three advisories -- the
     #   NTFF face, the small ground plane and the off-lattice residual.
     #   An earlier revision of this comment said preflight could not see a
     #   sheet and that those two went silent; that was true only of the branch
