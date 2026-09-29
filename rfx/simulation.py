@@ -3975,15 +3975,9 @@ def run_until_decay(
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)
 
-    # XLA otherwise hoists coefficient arithmetic out of the scan and can
-    # round it differently from the historical standalone JIT step (the
-    # 48 mm PEC-box identity contract catches this on CPU). Scope the option
-    # to these CPU executables; GPU compilation/fast-HE selection is unchanged.
     # Full chunks reuse one executable; a first or final partial chunk,
     # or a progress split, compiles once per length.
     compiled_chunks = {}
-    compile_options = ({"xla_disable_hlo_passes": "while-loop-invariant-code-motion"}
-                       if jax.default_backend() == "cpu" else {})
     while actual_steps < max_steps:
         # The old loop checked step % interval == 0 AFTER stepping: completed
         # steps 1, interval + 1, ... . In particular, the first chunk has one
@@ -3997,8 +3991,7 @@ def run_until_decay(
               mag_src_waveforms[lo:hi])
         chunk_size = hi - lo
         if chunk_size not in compiled_chunks:
-            compiled_chunks[chunk_size] = _run_chunk.lower(carry, xs).compile(
-                compiler_options=compile_options)
+            compiled_chunks[chunk_size] = _run_chunk.lower(carry, xs).compile()
         (carry, (probe_out, monitor_vals)), frames = compiled_chunks[chunk_size](carry, xs)
         probe_chunks.append(probe_out)
         actual_steps = hi
