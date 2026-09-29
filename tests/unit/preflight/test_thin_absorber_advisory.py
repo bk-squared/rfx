@@ -15,8 +15,12 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
 def _vacuum(*, graded, token="cpml", depths=(4, 16, 0, 8), z="pec"):
+    # A declared periodic axis must be a whole number of cells (#1221 B2
+    # refuses an explicit dx that does not divide its period); the other
+    # axes stay non-integral on purpose.
+    lz = 0.009 if z == "periodic" else 0.0091
     return Simulation(
-        freq_max=3e9, domain=(0.0123, 0.0107, 0.0091), dx=1e-3,
+        freq_max=3e9, domain=(0.0123, 0.0107, lz), dx=1e-3,
         dz_profile=np.linspace(0.0007, 0.00132, 9) if graded else None,
         cpml_layers=16,
         boundary=BoundarySpec(
@@ -132,7 +136,9 @@ def _assert_thin_faces(sim, expected):
 def test_floquet_periodic_faces_are_not_absorbers(thin):
     boundary = (BoundarySpec(x="cpml", y="cpml", z=Boundary("cpml", "cpml", 4, 16))
                 if thin else "cpml")
-    sim = Simulation(freq_max=10e9, domain=(0.0103, 0.0117, 0.0301),
+    # The Floquet axes x/y are periodic: whole numbers of cells (11 and 13,
+    # unequal on purpose), as #1221 B2 requires for an explicit dx.
+    sim = Simulation(freq_max=10e9, domain=(0.011, 0.013, 0.0301),
                      dx=1e-3, boundary=boundary)
     sim.add_floquet_port(position=0.005, axis="z", f0=5e9)
     grid = sim._build_realized_grid()
