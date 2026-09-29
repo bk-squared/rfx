@@ -96,8 +96,13 @@ class _CompileMixin:
         periodic_axes = "".join(a for a, yes in zip("xyz", self._periodic_flags()) if yes)
         dx = self._dx
         if dx is not None and self._declared_mesh["_dx"] is None:
+            from rfx.grid import _wall_closed_axes
             physical_axes = periodic_axes.replace("z", "") if self._mode.startswith("2d") else periodic_axes
-            dx = _periodic_resolution(self._domain, physical_axes, dx, automatic=True)
+            dx = _periodic_resolution(
+                self._domain, physical_axes, dx, automatic=True,
+                wall_axes=_wall_closed_axes(
+                    self._boundary_spec.pec_faces(), self._boundary_spec.pmc_faces(),
+                    is_2d=self._mode.startswith("2d")))
         # Remove periodic axes from CPML allocation — CPML on a periodic
         # axis fights the wrap-around and corrupts the physics
         # (issue #68). Default is "xyz"; the waveguide-port path overrides

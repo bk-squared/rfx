@@ -37,6 +37,9 @@ C0 = 299_792_458.0
 #: domain of a few cells -- which is why this is relative.
 CELL_COUNT_ULP_BUDGET = 8
 
+# Bound automatic common-spacing refinement, including closed PEC/PMC walls.
+PERIODIC_AUTO_REFINEMENT = 16
+
 
 def _divides_period(length: float, dx: float) -> bool:
     ratio = length / dx
@@ -50,20 +53,62 @@ def _nearest_period_dx(length: float, dx: float) -> float:
     return min((length / n for n in counts), key=lambda candidate: abs(candidate - dx))
 
 
-def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool) -> float:
+def _wall_closed_axes(pec_faces, pmc_faces, *, is_2d=False):
+    walls = set(pec_faces) | set(pmc_faces)
+    return ''.join(a for a in 'xyz' if not (is_2d and a == 'z')
+                   and all(f'{a}_{side}' in walls for side in ('lo', 'hi')))
+
+
+def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
+                         wall_axes: str = '') -> float:
+    """Automatic spacing preserves periods and closed walls within dx/16..dx.
+
+    If that bounded common search fails, retain the periodic-only snap and
+    report every displaced wall. Explicit spacing and non-periodic grids
+    keep their existing admission and arithmetic.
+    """
     if not axes:
         return dx
     lengths = [float(domain['xyz'.index(a)]) for a in axes]
     if any(not np.isfinite(length) or length <= 0 for length in lengths):
         raise ValueError(f"periodic axes {axes!r} require positive finite lengths; L={lengths} m")
+    walls = {a: float(domain['xyz'.index(a)]) for a in wall_axes
+             if a not in axes and float(domain['xyz'.index(a)]) > 0}
+    if automatic:
+        constrained = lengths + list(walls.values())
+        if all(_divides_period(length, dx) for length in constrained):
+            return dx
+        minimum = dx / PERIODIC_AUTO_REFINEMENT
+        anchor = min(constrained)
+        # Every common spacing divides this length. Increasing the integer
+        # cell count enumerates candidates from largest to smallest.
+        for count in range(cells_spanning(anchor, dx), cells_spanning(anchor, minimum) + 1):
+            candidate = min(dx, max(minimum, anchor / count))
+            if all(_divides_period(length, candidate) for length in constrained):
+                warnings.warn(
+                    f"Periodic axes {axes!r}, L={lengths} m: automatic dx={dx:.12g} m "
+                    f"snapped to dx={candidate:.12g} m to divide every period"
+                    + (f" and wall-closed axes {''.join(walls)!r}" if walls else '')
+                    + f" (search bound: requested dx/{PERIODIC_AUTO_REFINEMENT}).",
+                    UserWarning, stacklevel=3)
+                return candidate
     if all(_divides_period(length, dx) for length in lengths):
-        return dx
-    candidate = min(length / cells_spanning(length, dx) for length in lengths) if automatic else dx
+        candidate = dx
+    else:
+        candidate = min(length / cells_spanning(length, dx) for length in lengths) if automatic else dx
     if all(_divides_period(length, candidate) for length in lengths):
-        if automatic and candidate != dx:
+        moved = [
+            f"wall-closed axis {axis!r}: declared {length * 1e3:.12g} mm, "
+            f"realized {cells_spanning(length, candidate) * candidate * 1e3:.12g} mm"
+            for axis, length in walls.items() if not _divides_period(length, candidate)]
+        if automatic and (candidate != dx or moved):
             warnings.warn(
                 f"Periodic axes {axes!r}, L={lengths} m: automatic dx={dx:.12g} m "
-                f"snapped to dx={candidate:.12g} m to divide every period.",
+                + (f"snapped to dx={candidate:.12g} m" if candidate != dx
+                   else f"kept at dx={candidate:.12g} m")
+                + " to divide every period."
+                + (f" No common spacing within requested dx/{PERIODIC_AUTO_REFINEMENT} "
+                   f"through requested dx; {'; '.join(moved)}." if moved else ''),
                 UserWarning, stacklevel=3)
         return candidate
     # Rationally related periods may require a smaller common cell. This is
@@ -204,7 +249,9 @@ class Grid:
         # Auto-resolution: λ_min / 20
         lambda_min = C0 / freq_max
         requested_dx = dx if dx is not None else lambda_min / 20.0
-        self.dx = _periodic_resolution(domain, self.periodic_axes, requested_dx, automatic=dx is None)
+        self.dx = _periodic_resolution(
+            domain, self.periodic_axes, requested_dx, automatic=dx is None,
+            wall_axes=_wall_closed_axes(self.pec_faces, self.pmc_faces, is_2d=self.is_2d))
 
         # Courant-stable timestep: √2 for 2D, √3 for 3D
         ndim = 2 if self.is_2d else 3

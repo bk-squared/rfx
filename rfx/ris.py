@@ -266,33 +266,7 @@ class RISUnitCell:
         for elem in self._elements:
             sim.add(elem.shape, material=elem.material)
 
-        # Varactors as substrate permittivity modulation.
-        #
-        # In a real RIS, the varactor changes the effective capacitance
-        # of the unit cell, which shifts the resonant frequency and
-        # thus the reflection phase.  In FDTD this is modelled by
-        # varying the substrate permittivity.  The mapping is:
-        #
-        #     eps_eff = eps_substrate + C / (eps_0 * h_sub)
-        #
-        # where the added capacitance per unit area augments the
-        # substrate's effective permittivity. This produces the desired
-        # resonance shift without requiring lumped-element placement
-        # that could collide with PEC cells.
-        if self._varactors:
-            from rfx.core.yee import EPS_0
-            C = capacitance_override if capacitance_override is not None else self._varactors[0].capacitance_range[0]
-            eps_base = _substrate_eps(self._substrate_material)
-            dx_est = sim._dx or (c0 / freq_max / 20.0)
-            # Capacitance contribution to substrate permittivity
-            eps_add = C / (EPS_0 * dx_est)
-            eps_loaded = eps_base + eps_add
-            # Re-register the substrate material with the loaded value
-            sim._materials["substrate"] = sim._materials["substrate"].__class__(
-                eps_r=eps_loaded
-            )
-
-        # Floquet port above the structure
+        # Register the periodic port before reading its realized cell size.
         port_z = h_sub + (z_total - h_sub) * 0.4
         f_center = (self._freq_range[0] + self._freq_range[1]) / 2.0
         sim.add_floquet_port(
@@ -304,6 +278,35 @@ class RISUnitCell:
             n_freqs=self._n_freqs,
             f0=f_center,
         )
+
+        # Varactors as substrate permittivity modulation.
+        #
+        # In a real RIS, the varactor changes the effective capacitance
+        # of the unit cell, which shifts the resonant frequency and
+        # thus the reflection phase.  In FDTD this is modelled by
+        # varying the substrate permittivity.  The mapping is:
+        #
+        #     eps_eff = eps_substrate + C / (eps_0 * cell_size)
+        #
+        # where the added capacitance per unit area augments the
+        # substrate's effective permittivity. This produces the desired
+        # resonance shift without requiring lumped-element placement
+        # that could collide with PEC cells.
+        if self._varactors:
+            from rfx.core.yee import EPS_0
+            C = capacitance_override if capacitance_override is not None else self._varactors[0].capacitance_range[0]
+            eps_base = _substrate_eps(self._substrate_material)
+            # Loading changes eps_r, which otherwise re-plans an automatic
+            # mesh after the load was calculated. Hold the registered grid.
+            grid = sim.freeze_mesh()
+            cell_size = float(grid.cells(0)[0])
+            # Capacitance contribution to substrate permittivity
+            eps_add = C / (EPS_0 * cell_size)
+            eps_loaded = eps_base + eps_add
+            # Re-register the substrate material with the loaded value
+            sim._materials["substrate"] = sim._materials["substrate"].__class__(
+                eps_r=eps_loaded
+            )
 
         # Probe above the patch
         probe_z = h_sub + (z_total - h_sub) * 0.3

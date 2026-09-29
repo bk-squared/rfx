@@ -139,8 +139,9 @@ def test_period_snap_and_explicit_refusal():
         Grid(20e9, (.0103, .008, .006), dx=.001, periodic_axes='x')
     with pytest.raises(ValueError, match='common.*axis x.*axis y.*nearest common dividing dx=0.0001 m'):
         Grid(20e9, (.0103, .008, .006), dx=.001, periodic_axes='xy')
-    with pytest.raises(ValueError, match='common'):
-        Grid(299792458.0 / .020, (.0103, .008, .006), periodic_axes='xy')
+    with pytest.warns(UserWarning, match='snapped'):
+        automatic_common = Grid(299792458.0 / .020, (.0103, .008, .006), periodic_axes='xy')
+    assert automatic_common.dx == pytest.approx(.0001)
     common = Grid(20e9, (.0103, .008, .006), dx=.0001, periodic_axes='xy')
     assert common.shape[:2] == (103, 80)
 
