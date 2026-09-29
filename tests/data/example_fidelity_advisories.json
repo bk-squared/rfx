@@ -468,14 +468,6 @@
   {
    "code": "thin_absorber",
    "disposition": "intended",
-   "reason": "The built grid has these declared absorbing faces and realized layer counts: y_lo=0, y_hi=0, z_lo=0, z_hi=0. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
-   "ref": "examples/inverse_design/differentiable_s11_design.py:60-72 | https://github.com/bk-squared/rfx/issues/1272",
-   "rows": 1,
-   "variant": "examples/inverse_design/differentiable_s11_design.py::_build_sim::default"
-  },
-  {
-   "code": "thin_absorber",
-   "disposition": "intended",
    "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
    "ref": "examples/inverse_design/progressive_demo.py:98-110 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,

@@ -28,17 +28,10 @@
         "message": "Waveguide port 'right': max measurement frequency 9.000 GHz exceeds 0.90 \u00d7 fc_next=6.745 GHz on the REALIZED guide (40.0000 mm (y, aperture) x 20.0000 mm (z, aperture)) (fc_TE10=3.747 GHz, fc_TE01=7.495 GHz). Evanescent TE01 contamination may exceed 1 % and registers as |S11| < 1 in a lossless structure. Restrict measurement freqs below 6.745 GHz or increase port-to-obstacle distance.",
         "severity": "warning",
         "source": "_check_waveguide_port_evanescent"
-      },
-      {
-        "code": "thin_absorber",
-        "loc": "y_lo, y_hi, z_lo, z_hi",
-        "message": "face y_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face y_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-        "severity": "warning",
-        "source": "_validate_cfg_thin_absorber"
       }
     ],
     "n_errors": 0,
-    "n_issues": 5,
+    "n_issues": 4,
     "ok": true
   }
 }

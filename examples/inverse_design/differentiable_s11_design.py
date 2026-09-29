@@ -127,9 +127,7 @@ if __name__ == "__main__":
     # Preflight runs VISIBLY (never optimize against a setup you have not
     # preflighted — issues #149/#150 both hid behind suppressed warnings).
     issues = sim.preflight()
-    # Waveguide walls remove the transverse pads; preflight reports their
-    # realized zero depth while the eight-layer longitudinal pads stay silent.
-    if any(issue.code != "thin_absorber" for issue in issues):
+    if len(issues):   # PreflightReport refuses bool() (#980)
         raise SystemExit(f"preflight reported {len(issues)} issue(s) — fix the setup first")
     # freeze_mesh() is the public call that returns the built grid, whose
     # shape eps_override must have. Both ports are registered by now, so the

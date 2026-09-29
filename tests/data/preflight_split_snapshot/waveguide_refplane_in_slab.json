@@ -35,17 +35,10 @@
         "message": "waveguide_port reference plane at 20.3 mm intersects geometry 'diel' (bounds 15.2\u201325.4 mm on x). Modal decomposition assumes a uniform cross-section at the port plane; reported S-params will mix modes. Move the reference plane into the empty-guide region.",
         "severity": "warning",
         "source": "_validate_cfg_waveguide_reference_plane"
-      },
-      {
-        "code": "thin_absorber",
-        "loc": "y_lo, y_hi, z_lo, z_hi",
-        "message": "face y_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face y_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-        "severity": "warning",
-        "source": "_validate_cfg_thin_absorber"
       }
     ],
     "n_errors": 0,
-    "n_issues": 6,
+    "n_issues": 5,
     "ok": true
   }
 }

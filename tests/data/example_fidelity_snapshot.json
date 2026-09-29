@@ -79,15 +79,7 @@
           "realization": null
         }
       },
-      "preflight": [
-        {
-          "code": "thin_absorber",
-          "loc": "y_lo, y_hi, z_lo, z_hi",
-          "message": "face y_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face y_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
-        }
-      ]
+      "preflight": []
     },
     "examples/inverse_design/field_observable_shielding.py::_build_sim::default": {
       "fidelity": {

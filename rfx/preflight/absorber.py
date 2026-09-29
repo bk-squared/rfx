@@ -1398,13 +1398,35 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
 
     try:
         grid = self._build_realized_grid()
-    except (ValueError, TypeError, IndexError, NotImplementedError):
+        periodic = self._periodic_flags()
+        if self._uses_nonuniform_mesh:
+            # The NU runner builds all non-periodic axes. It has neither
+            # uniform waveguide axis selection nor the TF/SF override.
+            cpml_axes = "".join(ax for ax in "xyz" if ax not in (self._periodic_axes or ""))
+        else:
+            cpml_axes = grid.cpml_axes
+            if self._tfsf is not None:
+                from rfx.sources.tfsf import init_tfsf, tfsf_boundary_flags
+                entry = self._tfsf
+                cfg, _ = init_tfsf(
+                    grid.nx, float(grid.cells("x")[0]), grid.dt,
+                    ny=grid.ny, nz=grid.nz, cpml_layers=grid.cpml_layers,
+                    tfsf_margin=entry.margin,
+                    f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
+                    bandwidth=entry.bandwidth, amplitude=entry.amplitude,
+                    polarization=entry.polarization, direction=entry.direction,
+                    angle_deg=entry.angle_deg, waveform=entry.waveform,
+                    method=entry.method, closed_box=entry.closed_box,
+                )
+                periodic, _ = tfsf_boundary_flags(cfg)
+    except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError):
         # An unavailable grid has no realized depth to report. Keep the
         # existing configuration diagnostics; do not guess from declarations.
         return
-    # Pads include axis suppression as well as per-face allocation. In
-    # particular Grid.face_layers alone can still name a waveguide's unused
-    # transverse absorber allocation; pad_* is what was actually built.
+    absorbing = {face: token for face, token in absorbing.items()
+                 if face[0] in cpml_axes and not periodic["xyz".index(face[0])]}
+    # Report pads only on faces that absorb in this lane. A suppressed
+    # waveguide axis is a guide wall, not an absorber with missing layers.
     thin = {face: int(getattr(grid, f"pad_{face}"))
             for face in absorbing if int(getattr(grid, f"pad_{face}")) < 8}
     if not thin:

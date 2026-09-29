@@ -1703,23 +1703,11 @@ class _ExecuteMixin:
             # The legacy slab's concrete vacuum check runs via preflight.
             # The closed box also checks the final realized operators below,
             # after material overrides and port setup (including AD values).
-            # Open-domain oblique Method B forces OPEN transverse y (CPML) with
-            # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
-            from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
-            if self._tfsf.closed_box:
-                periodic_bool = (False, False, False)
-                cpml_axes_run = "xyz"
-                # Match run(): all six CPML exteriors retain their PEC
-                # backing. An empty string withholds those walls.
-                pec_axes_run = None
-            elif _is_methodB_fwd(tfsf_run[0]):
-                periodic_bool = (False, False, True)
-                cpml_axes_run = "xy"
-                pec_axes_run = ""
-            else:
-                periodic_bool = (False, True, True)
-                cpml_axes_run = "x"
-                pec_axes_run = ""
+            from rfx.sources.tfsf import tfsf_boundary_flags
+            periodic_bool, cpml_axes_run = tfsf_boundary_flags(tfsf_run[0])
+            # Match run(): closed-box CPML exteriors retain their PEC
+            # backing. An empty string withholds those walls.
+            pec_axes_run = None if self._tfsf.closed_box else ""
 
 
         # #931 §1.7: realize (Mx, My, Mz) ONCE, here, from the volume cells
