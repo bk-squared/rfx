@@ -148,3 +148,74 @@ def test_port_on_pec_edge_is_refused_before_fdtd(monkeypatch, conductor):
         differentiable_material_fit(
             factory, np.zeros((1, 1, 3), complex), np.array([2e9, 3e9, 4e9]),
             n_iterations=1, verbose=False)
+
+
+class _FDTDReached(RuntimeError):
+    pass
+
+
+def _fit_to_scan(monkeypatch, factory):
+    def reached(*args, **kwargs):
+        raise _FDTDReached("material fit reached FDTD")
+
+    monkeypatch.setattr("rfx.simulation.run", reached)
+    # NotImplementedError is also a RuntimeError: retain the exception so
+    # the test's own assertion distinguishes refusal from reaching the scan.
+    with pytest.raises(RuntimeError) as caught:
+        differentiable_material_fit(
+            factory, np.zeros((1, 1, 3), complex), np.array([2e9, 3e9, 4e9]),
+            n_iterations=1, verbose=False)
+    return caught.value
+
+
+def _acceptance_fixture(eps_inf, debye_poles, lorentz_poles, *,
+                        position=(.002, .004, .002), **kwargs):
+    sim = Simulation(freq_max=5e9, domain=(.012, .010, .008), dx=.002, **kwargs)
+    sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles,
+                     lorentz_poles=lorentz_poles)
+    sim.add(Box((.008, .006, .004), (.010, .008, .006)), material="dut")
+    sim.add_port(position, "ez", waveform=GaussianPulse(f0=3e9, bandwidth=.5))
+    sim.add_probe((.008, .006, .004), "ez")
+    return sim
+
+
+def test_2d_z_periodic_fixture_reaches_fdtd(monkeypatch):
+    def factory(eps_inf, debye_poles, lorentz_poles):
+        return _acceptance_fixture(
+            eps_inf, debye_poles, lorentz_poles, mode="2d_tmz",
+            boundary=BoundarySpec(x="pec", y="pec", z="periodic"))
+
+    error = _fit_to_scan(monkeypatch, factory)
+    assert isinstance(error, _FDTDReached), f"2D z-periodic fixture was refused: {error}"
+
+
+def test_ez_port_on_z_normal_pec_sheet_reaches_fdtd(monkeypatch):
+    """Ez starts at z = 2 mm on a PEC sheet spanning the x-y plane."""
+    def factory(eps_inf, debye_poles, lorentz_poles):
+        sim = _acceptance_fixture(eps_inf, debye_poles, lorentz_poles, boundary="pec")
+        sim.add_thin_conductor(Box((.0, .002, .002), (.006, .008, .002)))
+        return sim
+
+    error = _fit_to_scan(monkeypatch, factory)
+    assert isinstance(error, _FDTDReached), f"normal Ez port was refused: {error}"
+
+
+@pytest.mark.parametrize("x,refused", [(.0076, False), (.0036, True)],
+                         ids=["rounded_clear", "rounded_pec"])
+def test_off_node_port_next_to_pec_block(monkeypatch, x, refused):
+    """2 mm cells; the PEC block spans x = 4–6 mm, with two CPML pad cells."""
+    def factory(eps_inf, debye_poles, lorentz_poles):
+        sim = _acceptance_fixture(
+            eps_inf, debye_poles, lorentz_poles, position=(x, .0044, .0024),
+            boundary="cpml", cpml_layers=2)
+        sim.add(Box((.004, .002, .002), (.006, .008, .006)), material="pec")
+        return sim
+
+    # 7.6 mm rounds to x = 8 mm; 3.6 mm rounds to x = 4 mm.
+    # Flooring would instead select x = 6 mm and x = 2 mm, respectively.
+    error = _fit_to_scan(monkeypatch, factory)
+    if refused:
+        assert isinstance(error, NotImplementedError), f"PEC port was accepted: {error}"
+        assert re.search(r"add_port\(\).*PEC edge.*#1290.*Move", str(error))
+    else:
+        assert isinstance(error, _FDTDReached), f"clear off-node port was refused: {error}"
