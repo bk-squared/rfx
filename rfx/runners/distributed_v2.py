@@ -42,6 +42,8 @@ from functools import partial
 
 from rfx.runners._exchange_interval import validate_exchange_interval
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 from jax import lax
@@ -948,6 +950,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         prb_device_ids.append(dev_id)
         prb_local_specs.append((local_i, p.j, p.k, p.component))
 
+    if _realized.ACTIVE is not None:
+        _realized.sources(grid, materials, sources, "distributed.sources")
     # Precompute source waveforms: (n_steps, n_sources)
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)

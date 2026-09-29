@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 
@@ -809,6 +811,12 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     ex, ey, ez, hx, hy, hz : updated fields
     """
     _validate_interior_pec(pec_edge_masks)
+    if _realized.ACTIVE is not None:
+        from rfx.core.yee import MaterialArrays
+        observed = _realized.scalar_electric(
+            MaterialArrays(eps_r, sigma, jnp.ones_like(eps_r)), "adi.E")
+        eps_r, sigma = observed.eps_r, observed.sigma
+        _realized.magnetic(observed, "adi.H")
     eps = eps_r * EPS_0
     half_dt = dt / 2.0
 

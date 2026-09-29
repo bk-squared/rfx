@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from functools import partial
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 from jax import lax
@@ -1105,7 +1107,10 @@ def _update_h_local_nu(state, materials, dt,
     y/z spacings are replicated (full-axis).
     """
     ex, ey, ez = state.ex, state.ey, state.ez
-    mu = materials.mu_r * MU_0
+    mu_r = materials.mu_r
+    if _realized.ACTIVE is not None:
+        mu_r = _realized.magnetic(materials, "yee.H")
+    mu = mu_r * MU_0
 
     curl_x = (
         (_shift_fwd(ez, 1) - ez) * inv_dy_h_full[None, :, None]
@@ -1134,6 +1139,8 @@ def _update_e_local_nu(state, materials, dt,
     Mirrors ``rfx/core/yee.py::update_e_nu``.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    if _realized.ACTIVE is not None:
+        materials = _realized.scalar_electric(materials, "distributed_nu.E")
     eps = materials.eps_r * EPS_0
     sigma = materials.sigma
 
@@ -1451,7 +1458,10 @@ def _update_h_local(state, materials, dt, dx):
     non-periodic (ghost cells handle inter-device coupling).
     """
     ex, ey, ez = state.ex, state.ey, state.ez
-    mu = materials.mu_r * MU_0
+    mu_r = materials.mu_r
+    if _realized.ACTIVE is not None:
+        mu_r = _realized.magnetic(materials, "yee.H")
+    mu = mu_r * MU_0
 
     curl_x = (
         (_shift_fwd(ez, 1) - ez) / dx
@@ -1493,6 +1503,9 @@ def _update_e_local(state, materials, dt, dx):
         for part in lumped_components(rec))
     if has_lumped:
         eps_c, sig_c = cell_owned_component_materials(materials)
+        if _realized.ACTIVE is not None:
+            eps_c, sig_c = _realized.electric(
+                materials, eps_c, sig_c, "distributed.E")
 
         def _coeffs(eps_r, sigma):
             eps = eps_r * EPS_0
@@ -1503,6 +1516,8 @@ def _update_e_local(state, materials, dt, dx):
         (ca_x, cb_x), (ca_y, cb_y), (ca_z, cb_z) = (
             _coeffs(e, s_) for e, s_ in zip(eps_c, sig_c))
     else:
+        if _realized.ACTIVE is not None:
+            materials = _realized.scalar_electric(materials, "distributed.E")
         eps = materials.eps_r * EPS_0
         sigma = materials.sigma
 

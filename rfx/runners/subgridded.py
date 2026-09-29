@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 import numpy as np
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 
@@ -558,6 +560,10 @@ def _run_subgridded_once(
                 ),
             )
 
+    if _realized.ACTIVE is not None:
+        from types import SimpleNamespace
+        _realized.sources(SimpleNamespace(dx=dx_f, dt=dt),
+                          mats_f, sources_f, "subgrid.sources")
     sg_opts = SubgridRunOptions(
         pec_mask_c=pec_mask_coarse,
         pec_mask_f=pec_mask_f if has_pec_f else None,

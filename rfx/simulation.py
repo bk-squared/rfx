@@ -12,6 +12,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 
@@ -3086,6 +3088,8 @@ def run(
     snap_in_body = use_snapshot and snap_interval == 1
     snap_by_block = use_snapshot and snap_interval > 1
 
+    if _realized.ACTIVE is not None:
+        _realized.sources(grid, materials, sources, "uniform.sources")
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)

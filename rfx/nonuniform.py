@@ -22,6 +22,8 @@ from types import SimpleNamespace
 
 from typing import NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -2540,6 +2542,8 @@ def _build_nu_scan(
     table length when sources are present.
     """
     sources = sources or []
+    if _realized.ACTIVE is not None:
+        _realized.sources(grid, materials, sources, "graded.sources")
     probes = probes or []
     wire_ports = wire_ports or []
     dft_planes = dft_planes or []

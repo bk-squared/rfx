@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from functools import partial
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -2919,6 +2921,8 @@ def run_nonuniform_distributed_pec(
             materials = invariants[0]
             scales = material_drive_scales(
                 materials.eps_r, materials.sigma, mesh, drives, dt)
+            if _realized.ACTIVE is not None:
+                scales = _realized.runtime_drive(scales, tuple(drive_columns))
             if warmup_xs is not None:
                 warmup_xs = _drive_xs(warmup_xs, scales)
             opt_xs = _drive_xs(opt_xs, scales)
