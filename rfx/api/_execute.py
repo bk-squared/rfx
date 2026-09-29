@@ -485,6 +485,7 @@ class _ExecuteMixin:
         compute_s_params=None,
         s_param_freqs=None,
         s_param_n_steps=None,
+        conformal_pec=None,
     ):
         """Run simulation using SBP-SAT subgridding (JIT-compiled)."""
         self._reject_refplane_ports_off_uniform_lane("subgridded (SBP-SAT)",
@@ -499,6 +500,7 @@ class _ExecuteMixin:
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
             s_param_n_steps=s_param_n_steps,
+            conformal_pec=conformal_pec,
         )
 
     # ---- non-uniform mesh run path ----
@@ -518,7 +520,8 @@ class _ExecuteMixin:
                         report_every: int | None = None,
                         report_label: str = "",
                         stop_fn=None,
-                        stop_interval: int = 250):
+                        stop_interval: int = 250,
+                        conformal_pec=None):
         """Run simulation on non-uniform grid with graded dz.
 
         ``until_decay`` (issue #383) is threaded through to
@@ -563,6 +566,7 @@ class _ExecuteMixin:
             flux_env_checks=flux_env_checks,
             **({} if stop_fn is None else
                {"stop_fn": stop_fn, "stop_interval": stop_interval}),
+            conformal_pec=conformal_pec,
         )
 
     @staticmethod
@@ -1337,6 +1341,7 @@ class _ExecuteMixin:
         pec_wires: object = (),
         return_state: bool = True,
         lane: str,
+        conformal_pec=None,
     ):
         """Run the integrated ADI solver path (2D TMz or 3D).
 
@@ -1375,7 +1380,7 @@ class _ExecuteMixin:
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
         from rfx.runners._admission import admit
-        admit(self, lane)
+        admit(self, lane, run_args={"conformal_pec": conformal_pec})
 
         dt = float(grid.dt * self._adi_cfl_factor)
         times = jnp.arange(n_steps, dtype=jnp.float32) * dt
@@ -1538,6 +1543,7 @@ class _ExecuteMixin:
         design_occupancy: object | None = None,
         monitor_overrides: dict | None = None,
         lane: str | None = None,
+        conformal_pec: bool | None = None,
     ) -> ForwardResult | dict:
         """Run a minimal differentiable forward path from explicit materials.
 
@@ -1569,7 +1575,26 @@ class _ExecuteMixin:
           ``(v_dft, i_dft)`` accumulators) instead of the diagonal
           ``ForwardResult``.  When ``False``, the normal ``ForwardResult`` is
           returned unchanged.
+
+        ``conformal_pec`` resolves as in ``run()``: ``None`` reads
+        ``Boundary(conformal=True)``. Neither route here has a Dey-Mittra
+        update, so a conformal request on a model with PEC to conform is
+        refused before the first step; an explicit ``False`` asks for
+        staircase PEC and passes (#1299).
         """
+        _conformal = (bool(self._boundary_spec.conformal_faces())
+                      if conformal_pec is None else bool(conformal_pec))
+        if _conformal and self._has_pec_to_conform():
+            raise NotImplementedError(
+                "Conformal PEC (Boundary(conformal=True) or conformal_pec=True) "
+                "is not carried by the uniform forward scan that forward(), "
+                "optimize(), topology_optimize(), compute_mixed_s_matrix(), "
+                "compute_lumped_wire_s_matrix_via_scan() and run()'s lumped/wire "
+                "S-matrix step: it has no Dey-Mittra update, so the walls and PEC "
+                "shapes would be staircased. It is refused before the first time "
+                "step. Pass conformal_pec=False (or drop Boundary(conformal=True)) "
+                "for staircase walls, or use run(compute_s_params=False) on a "
+                "uniform mesh for conformal fields.")
         if self._solver == "adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "ADI forward")
@@ -1703,23 +1728,11 @@ class _ExecuteMixin:
             # The legacy slab's concrete vacuum check runs via preflight.
             # The closed box also checks the final realized operators below,
             # after material overrides and port setup (including AD values).
-            # Open-domain oblique Method B forces OPEN transverse y (CPML) with
-            # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
-            from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
-            if self._tfsf.closed_box:
-                periodic_bool = (False, False, False)
-                cpml_axes_run = "xyz"
-                # Match run(): all six CPML exteriors retain their PEC
-                # backing. An empty string withholds those walls.
-                pec_axes_run = None
-            elif _is_methodB_fwd(tfsf_run[0]):
-                periodic_bool = (False, False, True)
-                cpml_axes_run = "xy"
-                pec_axes_run = ""
-            else:
-                periodic_bool = (False, True, True)
-                cpml_axes_run = "x"
-                pec_axes_run = ""
+            from rfx.sources.tfsf import tfsf_boundary_flags
+            periodic_bool, cpml_axes_run = tfsf_boundary_flags(tfsf_run[0])
+            # Match run(): closed-box CPML exteriors retain their PEC
+            # backing. An empty string withholds those walls.
+            pec_axes_run = None if self._tfsf.closed_box else ""
 
 
         # #931 §1.7: realize (Mx, My, Mz) ONCE, here, from the volume cells
@@ -2135,6 +2148,7 @@ class _ExecuteMixin:
 
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
+            periodic=periodic_bool,
         )
 
         ntff_box = None
@@ -2304,10 +2318,12 @@ class _ExecuteMixin:
             refuse_h_side_conductor(
                 self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
+            from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
+            volume_eps = permittivity_without_lumped(materials)
             inv_baseline = (
-                (1.0 / materials.eps_r).astype(jnp.float32),
-                (1.0 / materials.eps_r).astype(jnp.float32),
-                (1.0 / materials.eps_r).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
             )
             aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
                 grid,
@@ -2315,6 +2331,10 @@ class _ExecuteMixin:
                 aniso_inv_eps_baseline=inv_baseline,
                 periodic=periodic_bool,
             )
+            # Occupancy acts on the volume; the capacitor stays on its
+            # declared edge, added once after that correction (#1263).
+            aniso_inv_eps_run = add_lumped_eps(
+                aniso_inv_eps_run, materials.eps_r_lumped, inverse=True)
             pec_occupancy_for_run = None
             if design_occupancy is not None:
                 raise NotImplementedError(
@@ -3682,8 +3702,11 @@ class _ExecuteMixin:
             if getattr(_pe, "extent", None) is not None:
                 _end = list(_pe.position)
                 _end[_axis] += _pe.extent
-                _n_end = self._design_box_index_of(grid, _end)[_axis]
-                _n0, _n1 = sorted((_lo[_axis], _n_end))
+                from rfx._periodic import interval_indices
+                _start_idx, _end_idx = interval_indices(
+                    grid, tuple(float(v) for v in _pe.position),
+                    tuple(float(v) for v in _end))
+                _n0, _n1 = sorted((_start_idx[_axis], _end_idx[_axis]))
                 _cell_lo[_axis], _cell_hi[_axis] = wire_port_edge_span(
                     grid, _axis, _n0, _n1, _pe.position[_axis], _end[_axis])
             if holds_ports:
@@ -3750,11 +3773,14 @@ class _ExecuteMixin:
                     "pair of (x, y, z) positions in metres, or an object "
                     "carrying corner_lo/corner_hi (DesignRegion, "
                     f"TopologyDesignRegion). Got {design_box!r}.") from None
-        lo_idx = self._design_box_index_of(grid, corner_lo)
-        hi_idx = self._design_box_index_of(grid, corner_hi)
+        from rfx._periodic import interval_indices
+        lo_idx, hi_idx = interval_indices(
+            grid, tuple(float(v) for v in corner_lo), tuple(float(v) for v in corner_hi))
         return tuple(
             v for axis in range(3)
-            for v in (int(lo_idx[axis]), int(hi_idx[axis]) + 1)
+            for v in (int(lo_idx[axis]), int(hi_idx[axis]) + int(
+                not ('xyz'[axis] in getattr(grid, 'periodic_axes', '')
+                     and hi_idx[axis] == grid.shape[axis])))
         )
 
     def forward(
@@ -4287,6 +4313,12 @@ class _ExecuteMixin:
         # mu_r_override is wired only on the uniform lane; the NU/distributed
         # material-override paths do not thread it, so fail loud instead of
         # silently dropping it to a zero-gradient no-op.
+        if mu_r_override is not None and self._solver == "adi":
+            raise NotImplementedError(
+                "forward(mu_r_override=...) is not supported with solver='adi': "
+                "the ADI update does not read the permeability override. "
+                "Use solver='yee' on a uniform single-device mesh, or omit mu_r_override."
+            )
         if mu_r_override is not None and plan.lane != "fwd_uniform":
             raise NotImplementedError(
                 "mu_r_override (differentiable permeability) is supported only on "
@@ -4914,6 +4946,7 @@ class _ExecuteMixin:
             _res = run_distributed(
                 self, n_steps=n_steps, devices=devices,
                 exchange_interval=exchange_interval,
+                conformal_pec=conformal_pec,
             )
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
@@ -4974,6 +5007,7 @@ class _ExecuteMixin:
             _nu_call = functools.partial(
                 self._run_nonuniform,
                 n_steps=n_steps,
+                conformal_pec=conformal_pec,
                 report_every=report_every,
                 report_label=report_label,
                 compute_s_params=compute_s_params,
@@ -5048,6 +5082,7 @@ class _ExecuteMixin:
                 pec_wires=tuple(_run_pec_wires),
                 return_state=True,
                 lane="run_adi",
+                conformal_pec=conformal_pec,
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
             _warn_if_nonfinite_result(_res, context="run")
@@ -5091,6 +5126,7 @@ class _ExecuteMixin:
             _res = self._run_subgridded(
                 grid, base_materials, pec_mask,
                 n_steps=subgrid_n_steps,
+                conformal_pec=conformal_pec,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 s_param_n_steps=s_param_n_steps,

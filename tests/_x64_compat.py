@@ -13,18 +13,21 @@ prescribes, never a module-level flip.
 """
 from __future__ import annotations
 
-try:  # JAX still ships the scoped context manager
+try:  # JAX <= 0.7 ships the scoped context manager here
     from jax.experimental import enable_x64  # noqa: F401
-except ImportError:  # newer JAX removed it — same semantics, scoped + restored
-    import contextlib
+except ImportError:
+    try:  # JAX >= 0.8 moved it to the top level, same signature: enable_x64(new_val=True)
+        from jax import enable_x64  # noqa: F401
+    except ImportError:  # neither: same semantics, scoped + restored
+        import contextlib
 
-    import jax
+        import jax
 
-    @contextlib.contextmanager
-    def enable_x64():
-        prev = bool(jax.config.read("jax_enable_x64"))
-        jax.config.update("jax_enable_x64", True)
-        try:
-            yield
-        finally:
-            jax.config.update("jax_enable_x64", prev)
+        @contextlib.contextmanager
+        def enable_x64(new_val=True):
+            prev = bool(jax.config.read("jax_enable_x64"))
+            jax.config.update("jax_enable_x64", bool(new_val))
+            try:
+                yield
+            finally:
+                jax.config.update("jax_enable_x64", prev)

@@ -44,6 +44,8 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 
+from rfx._precision import HIGHEST
+
 
 # ---------------------------------------------------------------------------
 # TopologyDesignRegion
@@ -145,12 +147,12 @@ def apply_density_filter(rho: jnp.ndarray, radius_cells: float) -> jnp.ndarray:
         kernel_4d = kernel[None, None, :, :]  # (1, 1, kx, ky)
         numerator = jax.lax.conv(rho_4d, kernel_4d,
                                  window_strides=(1, 1),
-                                 padding="SAME")
+                                 padding="SAME", precision=HIGHEST)
         # Local weight sum: convolve ones with the same kernel
         ones_4d = jnp.ones_like(rho_4d)
         denominator = jax.lax.conv(ones_4d, kernel_4d,
                                    window_strides=(1, 1),
-                                   padding="SAME")
+                                   padding="SAME", precision=HIGHEST)
         return (numerator / denominator)[0, 0]
     elif ndim == 3:
         ax = jnp.arange(-r_int, r_int + 1, dtype=jnp.float32)
@@ -166,13 +168,13 @@ def apply_density_filter(rho: jnp.ndarray, radius_cells: float) -> jnp.ndarray:
             rho_5d, kernel_5d,
             window_strides=(1, 1, 1),
             padding="SAME",
-            dimension_numbers=dn)
+            dimension_numbers=dn, precision=HIGHEST)
         ones_5d = jnp.ones_like(rho_5d)
         denominator = jax.lax.conv_general_dilated(
             ones_5d, kernel_5d,
             window_strides=(1, 1, 1),
             padding="SAME",
-            dimension_numbers=dn)
+            dimension_numbers=dn, precision=HIGHEST)
         return (numerator / denominator)[0, 0]
     else:
         raise ValueError(f"Density field must be 2D or 3D, got ndim={ndim}")
@@ -387,6 +389,9 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    sim._refuse_conformal_boundary(
+        "topology_optimize", entry="topology_optimize()",
+        instead="use run() on a uniform mesh for conformal fields")
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # #677 lane fence, deliberately ABOVE the optional-dependency import:
@@ -404,8 +409,8 @@ def topology_optimize(
 
     # Build grid and compute design region indices
     grid = sim._build_grid()
-    lo_idx = list(grid.position_to_index(design_region.corner_lo))
-    hi_idx = list(grid.position_to_index(design_region.corner_hi))
+    from rfx._periodic import interval_indices
+    lo_idx, hi_idx = map(list, interval_indices(grid, design_region.corner_lo, design_region.corner_hi))
 
     # Clamp indices to the interior region (exclude CPML padding).
     # Without this, a design region at the domain edge can overlap

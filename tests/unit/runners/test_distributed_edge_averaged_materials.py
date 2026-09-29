@@ -46,9 +46,8 @@ c. Vacuum and homogeneous models (vacuum, and eps_r 4.4 / sigma 0.02 filling
    a CPML box, both lanes): bitwise the records of the same kernels fed the
    cell values, i.e. main's rule. main itself, run out of process on the same
    host, gave the same bytes (measured when this change was made).
-d. A Debye block: the multi-device lanes take the single-device switch -- the
-   whole grid on the cell-owned dispersive update, and the CPML on the cell
-   permittivity -- and agree within the same gate.
+d. A Debye block: both lanes take per-component epsilon/sigma and pole-mask
+   edge means. CPML reads the same component epsilon as the E update.
 e. The permittivity gradient of forward(distributed=True) through a traced
    eps_override, eps_r 4 block: within ``GRAD_RTOL`` of the single-device
    gradient's peak (8.7e-7 PEC, 4.4e-7 CPML; 2.8 / 3.0 before).
@@ -81,7 +80,7 @@ from jax import lax  # noqa: E402
 import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
-from rfx import Box, DebyePole, GaussianPulse, Simulation  # noqa: E402
+from rfx import Box, DebyePole, GaussianPulse, LorentzPole, Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.core.yee import (  # noqa: E402
     MaterialArrays, cell_owned_component_materials, component_e_materials,
@@ -93,6 +92,7 @@ from rfx.runners._distributed_common import (  # noqa: E402
     _split_materials, slab_e_component_materials,
 )
 from rfx.sources.sources import stamp_lumped_eps, stamp_lumped_sigma  # noqa: E402
+from rfx.materials.lorentz import lorentz_pole  # noqa: E402
 
 pytestmark = pytest.mark.distributed
 SCRIPT = Path(__file__).resolve()
@@ -554,6 +554,10 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
     keeps the four-cell mean (#1043's mismatch, restored): the dielectric that
     runs through the x-face absorber reads 1.5e-3 of the record peak."""
     _devices(2)
+    # The low-level NU mutation below supplies this model's cell array.
+    # Measure the vacuum reference before installing it, so the reference
+    # cannot accidentally receive the dielectric model's permittivity.
+    floors = {lane: _floor("cpml", lane, "vacuum", 2) for lane in ("run", "fwd")}
 
     def cell(materials, nx_per, nx, rank=None):
         slab_e_component_materials(materials, nx_per, nx, rank)   # the call is kept
@@ -563,13 +567,23 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
     # its E update reads _distributed_common's, which keeps the real helper.
     monkeypatch.setattr(distributed_v2, "slab_e_component_materials", cell)
     # The forward lane hands its CPML the means built before the loop; the
-    # switch that picks them is kept, and answers with the cell array.
-    real_switch = distributed_nu._psi_permittivity
-    monkeypatch.setattr(distributed_nu, "_psi_permittivity",
-                        lambda cell_eps, edge_eps: real_switch(cell_eps, None))
+    # correction is given the cell array; all mean-builder calls stay in place.
+    sim = _box("cpml", "fwd", "faces", 2)
+    grid = sim._build_nonuniform_grid()
+    slabs, _ = _staged(sim._assemble_materials_nu(grid)[0], 2)
+    eps_cells = jnp.stack([m.eps_r for m in slabs])
+    real_cpml = distributed_nu._apply_cpml_e_local_nu
+
+    def cell_cpml(*args, **kwargs):
+        # Keep every material helper call and replace only CPML's eps read.
+        kwargs["eps_r"] = lax.dynamic_index_in_dim(
+            eps_cells, lax.axis_index("x"), axis=0, keepdims=False)
+        return real_cpml(*args, **kwargs)
+
+    monkeypatch.setattr(distributed_nu, "_apply_cpml_e_local_nu", cell_cpml)
     for lane in ("run", "fwd"):
-        got, floor = _parity("cpml", lane, "faces", 2)
-        gate = _gate(floor)
+        got, _ = _parity("cpml", lane, "faces", 2)
+        gate = _gate(floors[lane])
         print(f"[mutation psi cpml/faces/{lane}] {['%.2e' % g for g in got]}")
         assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, (lane, got, gate)
 
@@ -629,12 +643,17 @@ def test_vacuum_and_homogeneous_models_keep_mains_bits(monkeypatch, lane, eps_r,
 
 
 # --------------------------------------------------------------------------
-# d. a dispersive model takes the single-device switch
+# d. dispersive models share the component material rule
 # --------------------------------------------------------------------------
 
-def _debye_box(boundary, lane):
-    sim = _box(boundary, lane, "vacuum", 2)
-    sim.add_material("d", eps_r=3.0, debye_poles=[DebyePole(delta_eps=1.0, tau=1e-11)])
+def _debye_box(boundary, lane, kind="debye", waveform=WAVEFORM):
+    sim = _box(boundary, lane, "vacuum", 2, waveform=waveform)
+    poles = {}
+    if kind in ("debye", "mixed"):
+        poles["debye_poles"] = [DebyePole(delta_eps=1.0, tau=1e-11)]
+    if kind in ("lorentz", "mixed"):
+        poles["lorentz_poles"] = [lorentz_pole(1.0, 2 * np.pi * 3e9, 1e9)]
+    sim.add_material("d", eps_r=3.0, **poles)
     # into the x-lo absorber on the CPML box, so the psi coefficient is read there
     lo = -1.0 if boundary == "cpml" else 5e-3
     sim.add(Box((lo, 3e-3, 3e-3), (7e-3, 9e-3, 9e-3)), material="d")
@@ -644,26 +663,123 @@ def _debye_box(boundary, lane):
 
 
 @pytest.mark.parametrize("boundary,lane", [
-    ("pec", "run"), pytest.param("pec", "fwd", marks=pytest.mark.slow), ("cpml", "fwd")])
-def test_a_dispersive_model_matches_one_device(boundary, lane):
-    """Debye and a lossy dielectric in one model: the dispersive update is
-    cell-owned over the whole grid on one device (#1260), and must be here.
-    (run(devices=) is not asked for a Debye model in a CPML box: #1302.)"""
+    ("pec", "run"), pytest.param("pec", "fwd", marks=pytest.mark.slow),
+    ("cpml", "fwd"), ("cpml", "run")])
+@pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
+def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
+    """All ADE models share edge means and PEC-backed CPML faces with one device."""
     devices = _devices(2)
     n = STEPS[boundary]
 
     def record(dev):
-        sim = _debye_box(boundary, lane)
+        sim = _debye_box(boundary, lane, kind)
         if lane == "run":
-            return np.asarray(sim.run(n_steps=n, skip_preflight=True, devices=dev).time_series,
-                              np.float64)
+            out = sim.run(n_steps=n, skip_preflight=True, devices=dev)
+            if boundary == "cpml":
+                # The old mixed slab body left a live outer plane (Ez read
+                # 4.8e4 V/m at x-lo in the 80-step cross-lane measurement).
+                for c, name in enumerate(("ex", "ey", "ez")):
+                    field = np.asarray(getattr(out.state, name))
+                    for axis in range(3):
+                        if axis != c:
+                            assert not np.any(np.take(field, [0, -1], axis=axis)), (kind, name, axis)
+            return np.asarray(out.time_series, np.float64)
         kw = {} if dev is None else dict(distributed=True, devices=dev)
         return np.asarray(sim.forward(n_steps=n, skip_preflight=True, checkpoint=False,
                                       **kw).time_series, np.float64)
 
-    got = _rel(record(devices), record(None))
+    actual, expected = record(devices), record(None)
+    if lane == "run" and boundary == "cpml":
+        peak_ulp = _peak_ulp(actual, expected)
+        print(f"[{kind}/cpml/run] peak_ulp={peak_ulp:.3f}")
+        assert peak_ulp <= 9, (kind, peak_ulp)
+    got = _rel(actual, expected)
     floor = _rel(_record(boundary, lane, "vacuum", 2, devices), _single(boundary, lane, "vacuum", 2))
-    _check(f"debye/{boundary}/{lane}", got, floor)
+    _check(f"{kind}/{boundary}/{lane}", got, floor)
+
+
+@pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
+def test_a_large_dispersive_objective_has_finite_gradients(kind):
+    """The raw squared-field objective exercises the coefficient reverse pass."""
+    devices = _devices(2)
+    sim = _debye_box("cpml", "fwd", kind, waveform=lambda t: 32.0 * WAVEFORM(t))
+    grid = sim._build_nonuniform_grid()
+    mats = sim._assemble_materials_nu(grid)[0]
+    eps, sigma = jnp.asarray(mats.eps_r), jnp.asarray(mats.sigma)
+
+    def evaluate(**kw):
+        def objective(e, s):
+            ts = sim.forward(eps_override=e, sigma_override=s, n_steps=60,
+                             skip_preflight=True, checkpoint=False, **kw).time_series
+            return jnp.sum(ts ** 2)
+        return jax.value_and_grad(objective, argnums=(0, 1))(eps, sigma)
+
+    single, dist = evaluate(), evaluate(distributed=True, devices=devices)
+    assert float(single[0]) > 1e15, float(single[0])
+    for name, actual, expected in zip(("loss", "eps", "sigma"),
+                                      (dist[0], *dist[1]), (single[0], *single[1])):
+        a, b = np.asarray(actual), np.asarray(expected)
+        assert np.isfinite(a).all() and np.isfinite(b).all(), (kind, name)
+        relative = float(np.max(np.abs(a.astype(np.float64) - b)) / np.max(np.abs(b)))
+        print(f"[large-dispersive/{kind}/{name}] objective={float(single[0]):.9e} relative={relative:.9e}")
+        assert relative <= 1e-4, (kind, name, relative)
+
+
+#: a graded x profile for the #1302 box: uniform 1 mm next to both absorbers,
+#: 0.9-1.1 mm cells between (24 mm in all)
+GRADED_1302 = np.array([1.0] * 7 + [0.9, 1.1, 0.95, 1.05, 0.9, 1.1, 1.05, 0.95, 1.1, 0.9]
+                       + [1.0] * 7) * 1e-3
+
+
+def _cpml_1302_box(kind, lane):
+    """The #1302 box: a pulse in a 24 x 12 x 12 mm CPML box (6 layers) on an
+    eps_inf = 4 block carrying one Debye or Lorentz pole, 800 steps."""
+    kw = {} if lane == "run" else {
+        "dx_profile": np.full(24, 1e-3) if lane == "fwd" else GRADED_1302}
+    sim = Simulation(freq_max=10e9, domain=(24e-3, 12e-3, 12e-3), dx=1e-3,
+                     boundary="cpml", cpml_layers=6, **kw)
+    sim.add_source(_mm(6, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind="current")
+    sim.add_probe(_mm(19, 6, 6), "ez")
+    poles = {"vacuum": {},
+             "debye": {"debye_poles": [DebyePole(delta_eps=1.0, tau=1e-11)]},
+             "lorentz": {"lorentz_poles": [LorentzPole(
+                 omega_0=2 * np.pi * 8e9, delta=2 * np.pi * 1e9,
+                 kappa=(2 * np.pi * 8e9) ** 2)]}}[kind]
+    sim.add_material("m", eps_r=4.0, **poles)
+    sim.add(Box(_mm(10, 3, 3), _mm(16, 9, 9)), material="m")
+    return sim
+
+
+def _cpml_1302_record(kind, lane, devices=None):
+    sim = _cpml_1302_box(kind, lane)
+    if lane == "run":
+        out = sim.run(n_steps=800, skip_preflight=True, devices=devices)
+    else:
+        kw = {} if devices is None else dict(distributed=True, devices=devices)
+        out = sim.forward(n_steps=800, skip_preflight=True, checkpoint=False, **kw)
+    return np.asarray(out.time_series, np.float64)
+
+
+@pytest.mark.parametrize("lane", ["run", "fwd", "fwd_graded"])
+def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane):
+    """#1302: two devices, a Debye or Lorentz block in a CPML box. On main
+    4725b748 the two-device run() grew without bound (probe non-finite from
+    step 418; the one-device run is finite). Rows outside the domain now take
+    the vacuum-cell ADE coefficients and dispersive runs keep the one-device
+    PEC backing of the absorber's outer node planes. Bar: finite, and within
+    FLOOR_FACTOR x the same box's vacuum two-vs-one-device agreement,
+    measured here. (Graded run(devices=) refuses CPML with poles; the graded
+    lane is forward(distributed=True).)"""
+    devices = _devices(2)
+    floor = _rel(_cpml_1302_record("vacuum", lane, devices),
+                 _cpml_1302_record("vacuum", lane))
+    for kind in ("debye", "lorentz"):
+        two = _cpml_1302_record(kind, lane, devices)
+        one = _cpml_1302_record(kind, lane)
+        assert np.isfinite(one).all(), (kind, lane, "one device")
+        bad = np.flatnonzero(~np.isfinite(two).all(axis=1))
+        assert bad.size == 0, (kind, lane, f"two devices non-finite from step {bad[:1] + 1}")
+        _check(f"cpml1302/{kind}/{lane}", _rel(two, one), floor)
 
 
 # --------------------------------------------------------------------------

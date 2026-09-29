@@ -252,7 +252,8 @@ LANE_GATES = {("run_subgridded", row): GUARDED_LID for row in (
 
 def _conformal(lane_words):
     return refuses("Boundary(conformal=True) is refused like conformal_pec=True: this lane has no "
-                   "Dey-Mittra update (#1297)", raises=f"the {lane_words} does not implement")
+                   "Dey-Mittra update (#1297); run(conformal_pec=False) explicitly requests staircase PEC",
+                   raises=f"the {lane_words} does not implement")
 
 
 CONFORMAL = dict(
@@ -441,7 +442,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                     "production validation; research/off drop it, see _refinement "
                                     "'relaxed_validation'"),
             run_adi=ADI_DISPERSIVE,
-            run_distributed=carries("in a CPML box the two-device field grows without bound", wrong="#1302"),
+            run_distributed=carries(),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
@@ -791,11 +792,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                               "(#1221)"),
         ),
         "conformal": lanes(
-            run_uniform=carries("Dey-Mittra weights on every PEC shape"),
+            run_uniform=carries("Dey-Mittra weights on every PEC shape, including direct run_uniform() by default; conformal_pec=False requests staircase PEC"),
             **CONFORMAL,
         ),
         "conformal_s_matrix": lanes(
-            run_uniform=admission("Boundary(conformal=True) with a lumped-port S-matrix", RUN_U,
+            run_uniform=admission("Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix", RUN_U,
                                   "the lumped-port S-matrix run() returns came from "
                                   "_forward_from_materials, which staircases (#1299)"),
             **CONFORMAL,
@@ -818,8 +819,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         ),
     },
     "_periodic_axes": {"periodic": lanes(
-        run_uniform=carries("one cell longer than declared (test_realized_boundary.py "
-                            "periodic-xy--run)", wrong="#1221"),
+        run_uniform=carries("declared period and wrapped index (#1221 B2)"),
         run_nonuniform=admission("a periodic axis", RUN_NU, "it was solved as PEC walls "
                                  "(periodic-xy--nonuniform, #1221)"),
         run_subgridded=admission("a periodic axis", RUN_SG, "it was solved as PEC walls although "
@@ -827,7 +827,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_adi=_adi("periodic axes", "does not support manual periodic axes"),
         run_distributed=refuses("periodic axes refused (#1241)",
                                 raises="periodic / Bloch boundaries are not supported"),
-        fwd_uniform=carries("one cell longer than declared (periodic-xy--forward)", wrong="#1221"),
+        fwd_uniform=carries("declared period and wrapped index (#1221 B2)"),
         fwd_nonuniform=admission("a periodic axis", FWD_NU, "it was solved as PEC walls (#1221)"),
         fwd_distributed_nu=refuses("periodic axes refused (#1350)",
                                    raises="periodic / Bloch boundaries are not supported"),
@@ -845,14 +845,14 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         fwd_adi=carries("as run_adi"),
     )},
     "_cpml_kappa_max": {"kappa": lanes(
-        run_uniform=carries(),
+        run_uniform=carries("CPML carries kappa; UPML refuses cpml_kappa_max != 1 before stepping"),
         run_nonuniform=admission("cpml_kappa_max != 1", RUN_NU, "the graded grid build was never given it "
                                  "(#1310)"),
         run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
         run_adi=admission("cpml_kappa_max != 1", RUN_ADI, "it was dropped: ADI's absorber is not a CPML "
                           "(cpml--adi, #1221)"),
         run_distributed=carries(),
-        fwd_uniform=carries(),
+        fwd_uniform=carries("CPML carries kappa; UPML refuses cpml_kappa_max != 1 before stepping"),
         fwd_nonuniform=admission("cpml_kappa_max != 1", FWD_NU, "it was dropped (#1310)"),
         fwd_distributed_nu=admission("cpml_kappa_max != 1", FWD_DNU, "it was dropped (#1310)"),
         fwd_adi=admission("cpml_kappa_max != 1", FWD_ADI, "it was dropped, as on run_adi (#1221)"),
@@ -990,9 +990,9 @@ def executable(attr: str) -> bool:
 # reads TFSF, waveguide or Floquet ports, per-face boundaries, the solver or
 # stencil_order. Known issues on these columns are named in their cells.
 CALCULATOR_NOTES: dict[tuple[str, str], str] = {
-    ("_boundary_spec", "s_matrix_scan"): "#1299: conformal walls staircased",
-    ("_boundary_spec", "mixed_s_matrix"): "#1299: conformal walls staircased",
-    ("_boundary_spec", "topology_optimize"): "#1299: conformal walls staircased",
+    ("_boundary_spec", "s_matrix_scan"): "#1299: conformal walls refused before stepping",
+    ("_boundary_spec", "mixed_s_matrix"): "#1299: conformal walls refused before stepping",
+    ("_boundary_spec", "topology_optimize"): "#1299: conformal walls refused before stepping",
     ("_solver", "waveguide_s_matrix"): "#1300: solver='adi' runs Yee",
     ("_dx", "vmap_sweep_batched"): "#1293: on an auto mesh each value runs its own dt for one step count (sequential path)",
     ("_ports", "material_fit"): "#1290: a wire port's extent and plain sources are dropped",

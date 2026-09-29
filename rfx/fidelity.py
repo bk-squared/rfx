@@ -120,7 +120,7 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
             cell_centres_from_nodes, pec_volume_cell_mask)
         coords, sizes = _contract_coords(sim, grid, nonuniform)
         centres = cell_centres_from_nodes(coords, sizes)
-        return interior_lattice_mask(pec_volume_cell_mask(shape, centres), grid,
+        return interior_lattice_mask(pec_volume_cell_mask(shape, centres, grid=grid), grid,
                                      cell_axes=(True, True, True))
     if nonuniform:
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
@@ -199,7 +199,7 @@ def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
         sheet = sheet_spec_from_shape(
             continued_conductor_shape(sim, grid, entry.shape, entry=entry), coords, sizes, normal_axis=normal,
             name=getattr(entry, "material_name", kind_src),
-            refuse_thick=(kind_src == "thin_conductor"))
+            refuse_thick=(kind_src == "thin_conductor"), grid=grid)
         return replace(sheet, footprint=jnp.asarray(
             interior_lattice_mask(sheet.footprint, grid)))
     except ValueError:
@@ -223,7 +223,7 @@ def _contract_refusals(sim, grid, nonuniform):
             # Continuation first classifies the declaration too; refusal is
             # owned by this entry, before any port-partner lookup.
             classify_pec_entry(entry.shape, coords, centres, sizes,
-                               name=entry.material_name)
+                               name=entry.material_name, grid=grid)
         except ValueError as exc:
             out[i] = str(exc)
     return out
@@ -427,6 +427,10 @@ def fidelity_report(sim, print_report: bool = True):
         # into a silent wrap; it has no test because it has no reachable
         # input.
         i_hi = max(len(sizes[a]) - p_hi - 1, i_lo)
+        # A declared periodic span includes the seam cell after its last
+        # stored node. Its endpoint is the appended far edge, not a wall.
+        if axis_name in getattr(grid, "periodic_axes", ""):
+            i_hi += 1
         n_int = max(i_hi - i_lo, 0)
         # mesh_extent is the NODE-to-NODE span (unchanged from before this
         # change) -- the commensurability finding below stays keyed on it,
@@ -822,7 +826,8 @@ def fidelity_report(sim, print_report: bool = True):
                     from rfx.mesh_edges import solved_sheet_span
                     span = solved_sheet_span(
                         sheet_fp, a, nodes[a], float(lo[a]), float(hi[a]),
-                        float(domain[a]), union=sheet_union)
+                        float(domain[a]), union=sheet_union,
+                        periodic='xyz'[a] in getattr(grid, 'periodic_axes', ''))
                     if span is not None:
                         r_lo, r_hi = span.lo, span.hi
             else:
@@ -963,6 +968,8 @@ def fidelity_report(sim, print_report: bool = True):
             z_k = float(nodes[a][k])
             n_nodes = int(np.asarray(sheet_spec.footprint).sum())
             mid = 0.5 * (item["declared_lo"][a] + item["declared_hi"][a])
+            from rfx._periodic import plane_coordinate
+            matched_mid = plane_coordinate(grid, a, mid)
             item["realization"] = (
                 f"PEC sheet on node plane {_axis_names()[a]} = "
                 f"{z_k * 1e6:.2f} um ({n_nodes} nodes, closed footprint, "
@@ -971,7 +978,7 @@ def fidelity_report(sim, print_report: bool = True):
             item["realized_plane"] = dict(axis=_axis_names()[a], index=int(k),
                                           coordinate=z_k,
                                           declared_midplane=float(mid),
-                                          offset_um=(z_k - mid) * 1e6)
+                                          offset_um=(z_k - matched_mid) * 1e6)
             report.append(item)
             continue
         pec_frac_self = float(np.mean(pec_mask[mask]))

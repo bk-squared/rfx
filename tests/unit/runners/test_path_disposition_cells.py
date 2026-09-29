@@ -594,6 +594,11 @@ def _carried(name, feature, lane, *, parity, first_only=False):
         return problems
     if lane in feature.boundary:
         departures = _boundary_departures(*feature.boundary[lane])
+        if name == "_periodic_axes/periodic":
+            # The periodic row judges the periodic faces. The forward lane's
+            # absorber backing on z remains independently held by the B1
+            # face contract (B3); it is not a periodic-period departure.
+            departures = [d for d in departures if d["code"] in ("d", "e")]
         if departures:
             problems.append(f"test_realized_boundary.py {feature.boundary[lane]} departs: "
                             + "; ".join(f"{d['face']} {d['code']}" for d in departures))

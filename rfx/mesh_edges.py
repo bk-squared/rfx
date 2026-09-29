@@ -425,7 +425,7 @@ def edge_aware_profiles(
 class SolvedSheetSpan(NamedTuple):
     """Where a PEC sheet's in-plane ends are SOLVED along one axis."""
 
-    #: first and last footprint node index along the axis
+    #: first and last unwrapped footprint node index (period endpoint may be N)
     i0: int
     i1: int
     #: solved end coordinates (m): the end node, moved ``edge_offset`` of the
@@ -439,7 +439,7 @@ class SolvedSheetSpan(NamedTuple):
 
 def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
                       declared_hi: float, domain_hi: float, *, union=None,
-                      edge_offset: float = EDGE_OFFSET):
+                      edge_offset: float = EDGE_OFFSET, periodic: bool = False):
     """The solved extent of a PEC sheet along one of its in-plane axes.
 
     The one place the solved-edge model is written. Three reports read it:
@@ -456,6 +456,8 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     ``footprint`` is the sheet's node mask restricted to the domain interior
     (``interior_lattice_mask``), ``nodes`` the axis node coordinates in domain
     metres, indexed like the mask (extra trailing entries are ignored).
+    On a periodic axis, an interval ending at L keeps the endpoint at index
+    N even though the closed footprint stores that node at index 0.
     Returns ``None`` when the footprint is empty.
     """
     fp = np.asarray(footprint, dtype=bool)
@@ -464,12 +466,20 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     if idx.size == 0:
         return None
     nodes = np.asarray(nodes, dtype=float)[:fp.shape[axis]]
-    i0, i1 = int(idx[0]), int(idx[-1])
     tol = 1e-9 * max(float(domain_hi), 1e-12)
+    if (periodic and abs(float(declared_hi) - float(domain_hi)) <= tol
+            and float(declared_lo) >= -tol and idx[0] == 0):
+        # Lift the closing node out of the stored [0, N) footprint. For a
+        # full-period sheet it represents both ends of the directed span.
+        idx = np.append(idx[1:] if float(declared_lo) > tol else idx, fp.shape[axis])
+        nodes = np.append(nodes, float(domain_hi))
+    i0, i1 = int(idx[0]), int(idx[-1])
 
     def _continues(i_end, i_next):
         if union is None:
             return False
+        if periodic:
+            i_end, i_next = i_end % fp.shape[axis], i_next % fp.shape[axis]
         end = np.take(fp, i_end, axis=axis)
         return bool(end.any()) and bool(
             np.take(np.asarray(union, dtype=bool), i_next, axis=axis)[end].all())

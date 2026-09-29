@@ -675,6 +675,8 @@ def _wire_port_cell_centers(self, pe):
             return None
         nodes = [np.asarray(line, dtype=float)
                  for line in (coords.x, coords.y, coords.z)]
+        if 'xyz'[axis] in getattr(grid, 'periodic_axes', ''):
+            nodes[axis] = np.append(nodes[axis], float(grid.domain[axis]))
         centers = []
         for cell in cells:
             # An E edge is at its node on the transverse axes and at
@@ -928,7 +930,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
         try:
             if kind == "thin":
                 sheet = sheet_spec_from_shape(entry.shape, coords, sizes,
-                                              name="thin_conductor")
+                                              name="thin_conductor", grid=grid)
                 lo, hi = sheet_bounds(entry.shape)
                 conductors.append((
                     ("thin", id(entry)), "the add_thin_conductor sheet",
@@ -939,7 +941,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
             if is_tracer(sigma) or float(sigma) < threshold:
                 continue
             _cells, sheet, wire = classify_pec_entry(
-                entry.shape, coords, centres, sizes, name=entry.material_name)
+                entry.shape, coords, centres, sizes, name=entry.material_name, grid=grid)
         except (KeyError, ValueError):
             continue      # refused, or undefined, on its own account elsewhere
         shape = entry.shape
@@ -951,7 +953,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                 f"{tuple(hi)})", int(sheet.normal_axis),
                 0.5 * (float(lo[a]) + float(hi[a])), int(sheet.plane)))
         elif wire is not None:
-            nodes, _d = wire_vertex_nodes(shape.points, node_axes, sizes)
+            nodes, _d = wire_vertex_nodes(shape.points, node_axes, sizes, grid=grid)
             for p, node in zip(shape.points, nodes):
                 for t in axes:
                     conductors.append((

@@ -79,6 +79,12 @@ def _grid_coords(grid: Grid):
             _uniform_axis_nodes(nz, pad_z, dx))
 
 
+def _periodic_grid_mask(shape, grid):
+    from rfx._periodic import periodic_mask, periodic_shape
+    shape = periodic_shape(grid, shape)
+    return periodic_mask(grid, shape, _grid_coords(grid))
+
+
 @dataclass(frozen=True)
 class Box:
     """Axis-aligned box defined by two corners (meters).
@@ -254,7 +260,7 @@ class Box:
     def bounding_box(self):
         return (self.corner_lo, self.corner_hi)
 
-    def mask_on_coords(self, x, y, z):
+    def _axis_masks_on_coords(self, x, y, z):
         """Occupancy on explicit node coordinates.
 
         Volume branch is half-open ``[lo, hi)`` per axis, so the ``hi`` face
@@ -290,7 +296,7 @@ class Box:
             coords = (jnp.asarray(coords) if traced
                       else np.asarray(coords, dtype=np.float64))
             mid = (lo + hi) * 0.5
-            extent = float(hi - lo)          # lo/hi are concrete Box corners
+            extent = float(hi - lo)  # staircase corners must be concrete
             if coords.size <= 1:             # static (shape, not values)
                 dc_local = 1e-3
             else:
@@ -357,12 +363,15 @@ class Box:
         mx = _axis_mask(x, self.corner_lo[0], self.corner_hi[0])
         my = _axis_mask(y, self.corner_lo[1], self.corner_hi[1])
         mz = _axis_mask(z, self.corner_lo[2], self.corner_hi[2])
+        return mx, my, mz
+
+    def mask_on_coords(self, x, y, z):
+        mx, my, mz = self._axis_masks_on_coords(x, y, z)
         return jnp.asarray(
             mx[:, None, None] & my[None, :, None] & mz[None, None, :])
 
     def mask(self, grid: Grid) -> jnp.ndarray:
-        x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        return _periodic_grid_mask(self, grid)
 
 
 @dataclass(frozen=True)
@@ -439,7 +448,7 @@ class OrientedBox:
             from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
             coords = coords_from_nonuniform_grid(grid)
             return self.mask_on_coords(*coords[:3])
-        return self.mask_on_coords(*_grid_coords(grid))
+        return _periodic_grid_mask(self, grid)
 
 
 @dataclass(frozen=True)
@@ -494,8 +503,7 @@ class Cylinder:
             (r2 <= self.radius**2) & (xp.abs(h) <= self.height / 2))
 
     def mask(self, grid: Grid) -> jnp.ndarray:
-        x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        return _periodic_grid_mask(self, grid)
 
 
 @dataclass(frozen=True)
@@ -524,8 +532,7 @@ class Sphere:
         return jnp.asarray(r2 <= self.radius**2)
 
     def mask(self, grid: Grid) -> jnp.ndarray:
-        x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        return _periodic_grid_mask(self, grid)
 
 
 @dataclass(frozen=True)
@@ -625,8 +632,7 @@ class PolylineWire:
         return mask
 
     def mask(self, grid: Grid) -> jnp.ndarray:
-        x, y, z = _grid_coords(grid)
-        return self.mask_on_coords(x, y, z)
+        return _periodic_grid_mask(self, grid)
 
 
 def union(a: Shape, b: Shape, grid: Grid) -> jnp.ndarray:

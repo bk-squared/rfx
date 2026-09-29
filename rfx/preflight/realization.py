@@ -272,7 +272,7 @@ class _EntryRealization:
             if self.kind == "volume":
                 centres = cell_centres_from_nodes(coords, ctx.cell_sizes)
                 cells = interior_lattice_mask(
-                    pec_volume_cell_mask(self.solved_shape, centres), ctx.grid,
+                    pec_volume_cell_mask(self.solved_shape, centres, grid=ctx.grid), ctx.grid,
                     cell_axes=(True, True, True))
                 if not cells.any():
                     return None
@@ -280,7 +280,7 @@ class _EntryRealization:
             elif self.kind == "sheet":
                 sp = sheet_spec_from_shape(
                     self.solved_shape, coords, ctx.cell_sizes,
-                    normal_axis=int(self.sheet.normal_axis), name=self.name)
+                    normal_axis=int(self.sheet.normal_axis), name=self.name, grid=ctx.grid)
                 sp = replace(sp, footprint=interior_lattice_mask(sp.footprint, ctx.grid))
                 edges = _realized_edges_np(None, [sp], (), ctx.periodic, shape)
             else:
@@ -459,6 +459,8 @@ class _CampaignStaticsContext:
                 return None, None
             a = int(sheet.normal_axis)
             mid = 0.5 * (float(lo[a]) + float(hi[a]))
+            from rfx._periodic import plane_coordinate
+            mid = plane_coordinate(self.grid, a, mid)
             nodes = self.nodes[a]
             d_local = _rasterize_local_cell(nodes, self.cell_sizes[a], mid)
             k = int(sheet.plane)
@@ -483,7 +485,7 @@ class _CampaignStaticsContext:
                 cells, sheet, wire = classify_pec_entry(
                     solved,
                     self.coords, self.centres, self.cell_sizes,
-                    name=entry.material_name)
+                    name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 # A shape that cannot be rasterized is a FINDING, not a
                 # crash: preflight's job is to report. One unplaceable
@@ -525,7 +527,7 @@ class _CampaignStaticsContext:
                 sheet = sheet_spec_from_shape(
                     solved,
                     self.coords, self.cell_sizes, name=label,
-                    lane=self.lane or "", refuse_thick=True)
+                    lane=self.lane or "", refuse_thick=True, grid=self.grid)
             except ValueError as exc:
                 out.append(_EntryRealization(
                     label=label, name=label, shape=tc.shape, kind="refused",

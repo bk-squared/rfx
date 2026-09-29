@@ -134,6 +134,26 @@ def test_registered_sheet_reports_its_drawn_size():
     _assert_census_is_the_fidelity_residual(issues, items)
 
 
+def test_sheet_continued_into_cpml_reports_only_the_free_end_residual():
+    """The -1 mm end continues into CPML; compare it with the 0 mm domain face.
+
+    The free end covers node 8 mm and is solved at 8.35 mm, 50 um beyond
+    its drawn 8.3 mm end. Removing the census's domain clamp reads 1 mm.
+    """
+    sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml",
+                     cpml_layers=4)
+    sim.add_thin_conductor(Box((-1 * MM, Y_LO, Z), (8.3 * MM, Y_HI, Z)))
+    issues, items = _reports(sim)
+    (item,) = items
+    axis = _axes(item)["x"]
+    assert np.allclose(axis["declared_um"], (0.0, 8300.0), rtol=0.0, atol=TOL_UM)
+    assert np.allclose(axis["realized_um"], (0.0, 8350.0), rtol=0.0, atol=TOL_UM)
+    assert np.allclose(axis["face_residual_um"], (0.0, 50.0), rtol=0.0, atol=TOL_UM)
+    rows = _census_rows(issues)
+    assert rows[("thin_conductor[0]", "x")] == pytest.approx(50.0, rel=1e-3), rows
+    _assert_census_is_the_fidelity_residual(issues, items)
+
+
 def test_on_node_sheet_reports_the_solved_overhang():
     issues, items = _reports(_board(dict(dx_profile=ON_NODE_X,
                                          dy_profile=ON_NODE_Y)))

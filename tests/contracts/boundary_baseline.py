@@ -140,7 +140,7 @@ def write_baseline(baseline, old_markdown, target):
 
 
 def validate_class_changes(previous, cells):
-    """Permit only the leader's two TFSF backing corrections from Addendum 4."""
+    """Permit the TFSF backing correction and the declared B2 periods."""
     old_lookup = {(r["case"], r["entry"]): r for r in previous["cells"]}
     for row in cells:
         cell = row["case"], row["entry"]
@@ -154,7 +154,10 @@ def validate_class_changes(previous, cells):
         after = {(d["face"], d["code"]) for d in row["departures"]}
         correction = cell == ("tfsf", "distributed")
         accepted = correction and before - after == {("x_lo", "f"), ("x_hi", "f")} and not after - before
-        assert before == after or accepted, (
+        periodic = cell[0] == "periodic-xy" and cell[1] in ("run", "forward", "sweep", "gpu-query")
+        floquet = cell[0] == "floquet" and cell[1] in ("run", "forward", "sweep", "gpu-query")
+        period_fixed = periodic and before - after == {(f"{a}_{s}", "e") for a in "xy" for s in ("lo", "hi")} and not after - before
+        assert before == after or accepted or period_fixed, (
             f"STOP {cell}: classification changed: removed {sorted(before - after)}; added {sorted(after - before)}")
         for face, values in row["faces"].items():
             prior_face = old["faces"][face]
@@ -171,6 +174,9 @@ def validate_class_changes(previous, cells):
                     continue
                 prior, current = prior_face[kind], values[kind]
                 allowed = accepted and face in ("x_lo", "x_hi") and kind.startswith("e_")
+                if (period_fixed or floquet) and face[0] in "xy" and kind == "period_m":
+                    declared = .024 if face[0] == "x" else .020
+                    allowed = current is not None and abs(current - declared) <= 1e-10
                 same = (prior is None) == (current is None) and (
                     prior is None or np.allclose(np.atleast_1d(prior), np.atleast_1d(current), rtol=0, atol=1e-10)
                     if np.size(prior) == np.size(current) else False)

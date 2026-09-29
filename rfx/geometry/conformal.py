@@ -110,9 +110,10 @@ def compute_conformal_weights_sdf(
             # Vectorized SDF evaluation at Yee-offset positions
             # SDF convention: negative inside shape, positive outside
             # Weight = fraction outside PEC = clip(0.5 + sdf/dx, 0, 1)
-            sdf_ex = sdf_fn(X + half, Y, Z, shape)  # Ex at (i+0.5, j, k)
-            sdf_ey = sdf_fn(X, Y + half, Z, shape)  # Ey at (i, j+0.5, k)
-            sdf_ez = sdf_fn(X, Y, Z + half, shape)  # Ez at (i, j, k+0.5)
+            from rfx._periodic import periodic_sdf
+            sdf_ex = periodic_sdf(grid, shape, (X + half, Y, Z), sdf_fn, xp=jnp)
+            sdf_ey = periodic_sdf(grid, shape, (X, Y + half, Z), sdf_fn, xp=jnp)
+            sdf_ez = periodic_sdf(grid, shape, (X, Y, Z + half), sdf_fn, xp=jnp)
 
             w_ex_shape = jnp.clip(0.5 + sdf_ex / dx, 0.0, 1.0)
             w_ey_shape = jnp.clip(0.5 + sdf_ey / dx, 0.0, 1.0)

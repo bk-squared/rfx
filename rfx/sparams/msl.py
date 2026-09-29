@@ -397,7 +397,7 @@ def compute_msl_s_matrix(
     # planes directly without a per-direction branch.
     port_idx_meta = []
     for mp in msl_ports:
-        span = msl_cross_section_span(grid, mp)
+        span = msl_cross_section_span(grid, mp, require_contiguous_width=True)
         a_ax, b_ax = msl_ampere_pair(mp.direction)
         port_idx_meta.append(dict(
             j_lo=span["w_lo"], j_hi=span["w_hi"],

@@ -30,6 +30,13 @@
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
+        "code": "thin_absorber",
+        "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_absorber"
+      },
+      {
         "code": "ntff_near_field",
         "loc": null,
         "message": "NTFF face x_lo is 28.00mm from geometry 'pec' \u2014 below \u03bb/4 = 31.23mm at f_max=2.40GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
@@ -80,7 +87,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 11,
+    "n_issues": 12,
     "ok": true
   }
 }
