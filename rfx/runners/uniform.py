@@ -145,7 +145,7 @@ def run_uniform(
     s_param_n_steps=None,
     snapshot=None,
     subpixel_smoothing: bool | str = False,
-    conformal_pec: bool = False,
+    conformal_pec: bool | None = None,
     conformal_min_weight: float = 0.1,
     pec_shapes=None,
     # pre-built grid and materials passed in from Simulation.run()
@@ -184,8 +184,9 @@ def run_uniform(
         PEC sheets (#931 §1.3) and sub-cell wires (§1.4) collected by the
         assembler; they own no cell, so they reach the stepper only
         through the realized edge masks built here.
-    conformal_pec : bool
-        Enable Dey-Mittra conformal PEC (default False).
+    conformal_pec : bool or None
+        Enable Dey-Mittra conformal PEC. None reads Boundary(conformal=True);
+        an explicit False requests staircase PEC.
     conformal_min_weight : float
         Minimum conformal weight for CFL stability (default 0.1).
     pec_shapes : list or None
@@ -209,6 +210,9 @@ def run_uniform(
     Result
     """
     from rfx.api import Result, WaveguideSParamResult
+
+    if conformal_pec is None:
+        conformal_pec = bool(sim._boundary_spec.conformal_faces())
 
     # run() sends a refined model to the subgridded lane; a direct call must
     # not solve it here without the refinement (#1240).

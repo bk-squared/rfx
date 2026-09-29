@@ -24,6 +24,7 @@ def _run_subgridded_once(
     *,
     diagnostic_lumped_sparam_freqs_override=None,
     diagnostic_lumped_sparam_driven_index_override=None,
+    conformal_pec=None,
 ):
     """Run one SBP-SAT subgrid simulation, optionally collecting one S-column.
 
@@ -149,7 +150,7 @@ def _run_subgridded_once(
     # every validation mode, after the production refusals above and before
     # the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_subgridded", grid=grid_coarse)
+    admit(sim, "run_subgridded", run_args={"conformal_pec": conformal_pec}, grid=grid_coarse)
 
     topology = ref.get("topology", "overlap_z_slab")
     if topology != "overlap_z_slab":
@@ -740,6 +741,7 @@ def run_subgridded_path(
     compute_s_params=None,
     s_param_freqs=None,
     s_param_n_steps=None,
+    conformal_pec=None,
 ):
     """Run simulation using SBP-SAT subgridding (JIT-compiled).
 
@@ -757,6 +759,7 @@ def run_subgridded_path(
         base_materials_coarse,
         pec_mask_coarse,
         n_steps,
+        conformal_pec=conformal_pec,
     )
 
     requested_sparams = (
@@ -813,6 +816,7 @@ def run_subgridded_path(
                 sp_n_steps,
                 diagnostic_lumped_sparam_freqs_override=freqs,
                 diagnostic_lumped_sparam_driven_index_override=driven,
+                conformal_pec=conformal_pec,
             )
             if column_result.s_params is None:
                 raise RuntimeError(

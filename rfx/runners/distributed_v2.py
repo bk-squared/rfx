@@ -636,7 +636,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "sources. Falling back to single-device execution.",
             stacklevel=2,
         )
-        return sim.run(n_steps=n_steps)
+        return sim.run(n_steps=n_steps, conformal_pec=kwargs.get("conformal_pec"))
 
     if sim._waveguide_ports:
         warnings.warn(
@@ -644,7 +644,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "Falling back to single-device execution.",
             stacklevel=2,
         )
-        return sim.run(n_steps=n_steps)
+        return sim.run(n_steps=n_steps, conformal_pec=kwargs.get("conformal_pec"))
 
     refuse_unsupported_distributed_features(
         sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
@@ -777,7 +777,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # the single-device fallbacks (judged on the lane they fall back to) and
     # the specific refusals above, and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_distributed")
+    admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
     materials = base_materials
 
     _distributed_boundary_layers(

@@ -485,6 +485,7 @@ class _ExecuteMixin:
         compute_s_params=None,
         s_param_freqs=None,
         s_param_n_steps=None,
+        conformal_pec=None,
     ):
         """Run simulation using SBP-SAT subgridding (JIT-compiled)."""
         self._reject_refplane_ports_off_uniform_lane("subgridded (SBP-SAT)",
@@ -499,6 +500,7 @@ class _ExecuteMixin:
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
             s_param_n_steps=s_param_n_steps,
+            conformal_pec=conformal_pec,
         )
 
     # ---- non-uniform mesh run path ----
@@ -518,7 +520,8 @@ class _ExecuteMixin:
                         report_every: int | None = None,
                         report_label: str = "",
                         stop_fn=None,
-                        stop_interval: int = 250):
+                        stop_interval: int = 250,
+                        conformal_pec=None):
         """Run simulation on non-uniform grid with graded dz.
 
         ``until_decay`` (issue #383) is threaded through to
@@ -563,6 +566,7 @@ class _ExecuteMixin:
             flux_env_checks=flux_env_checks,
             **({} if stop_fn is None else
                {"stop_fn": stop_fn, "stop_interval": stop_interval}),
+            conformal_pec=conformal_pec,
         )
 
     @staticmethod
@@ -1337,6 +1341,7 @@ class _ExecuteMixin:
         pec_wires: object = (),
         return_state: bool = True,
         lane: str,
+        conformal_pec=None,
     ):
         """Run the integrated ADI solver path (2D TMz or 3D).
 
@@ -1375,7 +1380,7 @@ class _ExecuteMixin:
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
         from rfx.runners._admission import admit
-        admit(self, lane)
+        admit(self, lane, run_args={"conformal_pec": conformal_pec})
 
         dt = float(grid.dt * self._adi_cfl_factor)
         times = jnp.arange(n_steps, dtype=jnp.float32) * dt
@@ -4287,6 +4292,12 @@ class _ExecuteMixin:
         # mu_r_override is wired only on the uniform lane; the NU/distributed
         # material-override paths do not thread it, so fail loud instead of
         # silently dropping it to a zero-gradient no-op.
+        if mu_r_override is not None and self._solver == "adi":
+            raise NotImplementedError(
+                "forward(mu_r_override=...) is not supported with solver='adi': "
+                "the ADI update does not read the permeability override. "
+                "Use solver='yee' on a uniform single-device mesh, or omit mu_r_override."
+            )
         if mu_r_override is not None and plan.lane != "fwd_uniform":
             raise NotImplementedError(
                 "mu_r_override (differentiable permeability) is supported only on "
@@ -4862,14 +4873,10 @@ class _ExecuteMixin:
                 )
                 refuse_unsupported_distributed_features(
                     self, lane="distributed multi-device run()")
-            # TFSF and waveguide-port models take the runner's single-device
-            # fallback, ``sim.run(n_steps=n_steps)``. It drops every explicit
-            # argument, but it re-derives conformal_pec from the declared
-            # Boundary(conformal=True), so that request is carried there.
+            # The single-device fallback carries the resolved conformal setting,
+            # including an explicit False on a conformal declaration.
             _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
-            if ((self._tfsf is not None or self._waveguide_ports)
-                    and conformal_pec == bool(
-                        self._boundary_spec.conformal_faces())):
+            if self._tfsf is not None or self._waveguide_ports:
                 _dist_conformal = False
             # One device on a graded mesh is the non-uniform lane, which
             # carries neither snapshot nor conformal_pec, nor until_decay on
@@ -4901,6 +4908,7 @@ class _ExecuteMixin:
             _res = run_distributed(
                 self, n_steps=n_steps, devices=devices,
                 exchange_interval=exchange_interval,
+                conformal_pec=conformal_pec,
             )
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
@@ -4961,6 +4969,7 @@ class _ExecuteMixin:
             _nu_call = functools.partial(
                 self._run_nonuniform,
                 n_steps=n_steps,
+                conformal_pec=conformal_pec,
                 report_every=report_every,
                 report_label=report_label,
                 compute_s_params=compute_s_params,
@@ -5035,6 +5044,7 @@ class _ExecuteMixin:
                 pec_wires=tuple(_run_pec_wires),
                 return_state=True,
                 lane="run_adi",
+                conformal_pec=conformal_pec,
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
             _warn_if_nonfinite_result(_res, context="run")
@@ -5078,6 +5088,7 @@ class _ExecuteMixin:
             _res = self._run_subgridded(
                 grid, base_materials, pec_mask,
                 n_steps=subgrid_n_steps,
+                conformal_pec=conformal_pec,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
                 s_param_n_steps=s_param_n_steps,

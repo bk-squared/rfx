@@ -716,7 +716,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         design_box=None,
                         lane: str = "run_nonuniform",
                         stop_fn=None,
-                        stop_interval: int = 250):
+                        stop_interval: int = 250,
+                        conformal_pec=None):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -1622,7 +1623,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, lane)
+    admit(sim, lane, run_args={"conformal_pec": conformal_pec})
 
     _shared_run_kwargs = dict(
         design_box=design_box,
