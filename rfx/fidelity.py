@@ -120,7 +120,7 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
             cell_centres_from_nodes, pec_volume_cell_mask)
         coords, sizes = _contract_coords(sim, grid, nonuniform)
         centres = cell_centres_from_nodes(coords, sizes)
-        return interior_lattice_mask(pec_volume_cell_mask(shape, centres, grid=grid), grid,
+        return interior_lattice_mask(pec_volume_cell_mask(shape, centres, sizes, grid=grid), grid,
                                      cell_axes=(True, True, True))
     if nonuniform:
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid

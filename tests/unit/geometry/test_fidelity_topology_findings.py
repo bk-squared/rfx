@@ -440,11 +440,12 @@ def test_rule_i_lists_every_earlier_conductor_and_sums_the_union():
     # give the same count, so a node-sampled oracle here would not
     # discriminate.
     from rfx.geometry.rasterize_grid import (
-        centres_from_uniform_grid, pec_volume_cell_mask)
+        centres_from_uniform_grid, cell_sizes_from_uniform_grid, pec_volume_cell_mask)
     grid = sim._build_grid()
     centres = centres_from_uniform_grid(grid)
-    m0 = np.asarray(pec_volume_cell_mask(sim._geometry[0].shape, centres), bool)
-    m1 = np.asarray(pec_volume_cell_mask(sim._geometry[1].shape, centres), bool)
+    sizes = cell_sizes_from_uniform_grid(grid)
+    m0 = np.asarray(pec_volume_cell_mask(sim._geometry[0].shape, centres, sizes), bool)
+    m1 = np.asarray(pec_volume_cell_mask(sim._geometry[1].shape, centres, sizes), bool)
     m2 = np.asarray(sim._geometry[2].shape.mask(grid), bool)
     assert f["overlap_cells"] == int(((m0 | m1) & m2).sum())
     # and the discrimination the comment claims, measured here
