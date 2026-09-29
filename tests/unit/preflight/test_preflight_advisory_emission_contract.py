@@ -433,7 +433,8 @@ def _enumerate_emission_sites():
 # ``half_node_split`` -- a port, source or probe that lands one cell off a
 # wire vertex or PEC sheet declared at the same half-node coordinate. run()
 # and forward() refuse the same pairs at dispatch when preflight is skipped.
-_FROZEN_TOTAL_SITES = 122
+# 122 -> 123 (#1272): one aggregated realized-depth absorber warning.
+_FROZEN_TOTAL_SITES = 123
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -451,7 +452,8 @@ _FROZEN_TOTAL_SITES = 122
 # _FROZEN_TOTAL_SITES above.
 # 77 -> 78, 2026-09-28 (#1295/#1342): ``half_node_split`` -- see the note on
 # _FROZEN_TOTAL_SITES above.
-_FROZEN_LITERAL_CODE_COUNT = 78
+# 78 -> 79 (#1272): thin_absorber, including vacuum and graded meshes.
+_FROZEN_LITERAL_CODE_COUNT = 79
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

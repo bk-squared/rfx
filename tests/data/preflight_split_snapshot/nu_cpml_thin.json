@@ -14,10 +14,17 @@
         "message": "dz_profile max adjacent cell ratio 5.000 exceeds the validated multi-band grading cap 1.4 (docs/guides/support_matrix.md, 'Multi-band graded mesh'). WHY: stability is unaffected (dt is the global min-cell CFL, sufficient on any tensor grid), but per-transition accuracy is witnessed only along z and only up to ratio 1.4 \u2014 the -54 dB reflection class at 30 cells/wavelength (it scales as (dz/lambda)^2), against -44 dB measured at ratio 2.0. COST: an unquantified reflection and grading-dispersion error at that transition. REMEDY: split it into ratio<=1.4 steps (e.g. rfx.smooth_grading) to stay inside the validated envelope, or accept it and say so in the report. STALE-IF: the support-matrix row raises the cap.",
         "severity": "warning",
         "source": "_validate_cfg_multiband_grading"
+      },
+      {
+        "code": "thin_absorber",
+        "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_absorber"
       }
     ],
     "n_errors": 0,
-    "n_issues": 2,
+    "n_issues": 3,
     "ok": true
   }
 }

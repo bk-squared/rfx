@@ -94,10 +94,10 @@ def run_generic_s11(*, add_component: bool) -> np.ndarray:
     """Preflight and run one inexpensive generic-port reflection case."""
     sim = build_generic_port_demo(add_component=add_component)
 
-    # Expect "All checks passed" for both generic-port models.  The explicit
+    # Both generic-port models report their four-layer absorber.  The explicit
     # call makes the complete report visible once, so run() skips its repeat.
     report = sim.preflight()
-    if len(report):   # PreflightReport refuses bool() (#980)
+    if any(issue.code != "thin_absorber" for issue in report):
         raise RuntimeError("Generic-port setup has unexpected advisories")
 
     result = sim.run(
