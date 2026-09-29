@@ -8,8 +8,9 @@ bar of the ring-down tests; with ``HIGHEST`` the same tests agree to 1e-6
 (rfx #1364; records ``rfx-archive`` ``rfx/records/20260929-tf32-ab/``).
 CPUs and older GPUs compute the same thing either way.
 
-Every ``jnp.einsum`` / ``jnp.matmul`` / ``jnp.dot`` in rfx passes
-``precision=HIGHEST``. ``tests/contracts/test_matmul_precision.py`` lowers the
+Every ``jnp.einsum`` / ``jnp.matmul`` / ``jnp.dot`` / ``lax.conv*`` in rfx passes
+``precision=HIGHEST``; a library routine whose derivative issues its own
+products (``jnp.linalg.qr``) is called under ``jax.default_matmul_precision("highest")``. ``tests/contracts/test_matmul_precision.py`` lowers the
 entry points that reach them and requires every ``stablehlo.dot_general`` to
 carry ``HIGHEST``, so a new contraction without it turns that test red on CPU.
 """

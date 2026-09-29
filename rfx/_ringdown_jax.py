@@ -83,7 +83,6 @@ def working_dtypes():
     """``(real, complex)`` dtypes of the map: float64 only if the caller enabled x64."""
     import jax
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
     if bool(jax.config.read("jax_enable_x64")):
         return jnp.float64, jnp.complex128
     return jnp.float32, jnp.complex64
@@ -119,7 +118,6 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     """
     import jax
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     K = int(k_max)
@@ -233,7 +231,6 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
 def _basis(s, M, dt):
     """``B[m, k] = exp(s_k m dt)``, ``m = 0..M-1`` (the window's first sample is m = 0)."""
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
     rdt, _cdt = working_dtypes()
     t = jnp.arange(int(M), dtype=rdt) * float(dt)
     return jnp.exp(t[:, None] * s[None, :]), t
@@ -248,14 +245,16 @@ def _qr_masked(A, mask):
     """
     import jax
     import jax.numpy as jnp
-    from rfx._precision import HIGHEST
     mask = jnp.real(mask)
     A = A * mask.astype(A.dtype)[None, :]
     norms = jnp.sqrt(jnp.sum(jnp.abs(A) ** 2, axis=0))
     norms = jax.lax.stop_gradient(jnp.where(mask > 0, norms, 1.0))
     aug = jnp.diag((1.0 - mask).astype(A.dtype))
     A_aug = jnp.concatenate([A / norms.astype(A.dtype)[None, :], aug], axis=0)
-    Q, R = jnp.linalg.qr(A_aug, mode="reduced")
+    # The derivative rule of QR issues its own matrix products, which a
+    # precision= argument cannot reach; the context sets them to HIGHEST too.
+    with jax.default_matmul_precision("highest"):
+        Q, R = jnp.linalg.qr(A_aug, mode="reduced")
     return Q, R, norms
 
 

@@ -41,8 +41,13 @@ RFX = pathlib.Path(__file__).resolve().parents[2] / "rfx"
 _CONTRACTIONS = {
     ("jnp", "einsum"), ("jnp", "matmul"), ("jnp", "dot"), ("jnp", "tensordot"),
     ("jnp", "inner"), ("jnp", "vdot"), ("lax", "dot"), ("lax", "dot_general"),
+    ("lax", "conv"), ("lax", "conv_general_dilated"),
+    ("lax", "conv_with_general_padding"),
 }
 _DOT = re.compile(r"stablehlo\.dot_general\b[^\n]*")
+_CONV = re.compile(r"stablehlo\.convolution\b[^\n]*")
+_CONV_HIGHEST = ("precision_config = [#stablehlo<precision HIGHEST>, "
+                 "#stablehlo<precision HIGHEST>]")
 
 
 def _unprecise_calls(source: str) -> list[int]:
@@ -51,23 +56,25 @@ def _unprecise_calls(source: str) -> list[int]:
         if not isinstance(node, ast.Call):
             continue
         f = node.func
-        if not (isinstance(f, ast.Attribute) and isinstance(f.value, ast.Name)):
+        if not isinstance(f, ast.Attribute):
             continue
-        if (f.value.id, f.attr) in _CONTRACTIONS and not any(
+        # The last two names: jnp.einsum, lax.conv and jax.lax.conv alike.
+        owner = (f.value.id if isinstance(f.value, ast.Name)
+                 else f.value.attr if isinstance(f.value, ast.Attribute) else None)
+        if (owner, f.attr) in _CONTRACTIONS and not any(
                 k.arg == "precision" for k in node.keywords):
             lines.append(node.lineno)
     return lines
 
 
-def _dots(text: str) -> list[str]:
-    return _DOT.findall(text)
-
-
 def _assert_all_highest(text: str, what: str) -> int:
-    dots = _dots(text)
-    loose = [d for d in dots if "precision = [HIGHEST, HIGHEST]" not in d]
-    assert not loose, f"{what}: {len(loose)} of {len(dots)} products below HIGHEST: {loose[:3]}"
-    return len(dots)
+    """Every product and every convolution in ``text`` at HIGHEST; returns their number."""
+    dots, convs = _DOT.findall(text), _CONV.findall(text)
+    loose = ([d for d in dots if "precision = [HIGHEST, HIGHEST]" not in d]
+             + [c for c in convs if _CONV_HIGHEST not in c])
+    n = len(dots) + len(convs)
+    assert not loose, f"{what}: {len(loose)} of {n} products below HIGHEST: {loose[:3]}"
+    return n
 
 
 def test_every_named_jax_contraction_passes_a_precision():
@@ -84,6 +91,7 @@ def test_the_scan_sees_a_contraction_without_precision():
     assert _unprecise_calls("import jax.numpy as jnp\nx = jnp.einsum('i,i', a, b)\n") == [2]
     assert _unprecise_calls(
         "x = jnp.matmul(a, b, precision=HIGHEST)\ny = np.matmul(a, b)\n") == []
+    assert _unprecise_calls("y = jax.lax.conv(a, k, (1, 1), 'SAME')\n") == [1]
 
 
 def test_the_lowered_check_reads_the_precision():
@@ -188,3 +196,38 @@ def test_port_extraction_cores():
     v6 = jnp.ones((6,), jnp.complex64)
     text = jax.jit(lambda v: _lstsq_alpha_gamma(v, x, jnp.float32(100.0))).lower(v6)
     assert _assert_all_highest(text.as_text(), "MSL two-wave fit") >= 1
+
+
+def test_ring_down_completion_gradient():
+    """The gradient through the completion: QR's own derivative rule issues
+    products that a ``precision=`` argument cannot reach (the Opus review of
+    this change measured three at DEFAULT before the fix)."""
+    from rfx.ringdown import RingdownSpec
+    from tests.unit.sparams.test_ringdown_run import FREQS, _box
+    sim = _box("uniform")
+    shape = tuple(sim._build_grid().shape)
+
+    def loss(e):
+        r = sim.forward(n_steps=300, skip_preflight=True, eps_override=e,
+                        port_s11_freqs=FREQS, ringdown=RingdownSpec())
+        return jnp.sum(jnp.abs(r.ringdown.s_params) ** 2)
+
+    text = jax.jit(jax.grad(loss)).lower(jnp.full(shape, 2.2, jnp.float32)).as_text()
+    assert _assert_all_highest(text, "grad of forward(ringdown=)") >= 10
+
+
+@pytest.mark.parametrize("shape", [(8, 8), (6, 6, 6)])
+def test_topology_density_filter(shape):
+    """The density filter's convolutions feed the permittivity of a design."""
+    from rfx.topology import apply_density_filter
+
+    def filt(r):
+        # The filter turns its radius into an int with jnp.ceil: keep that
+        # constant arithmetic concrete so the filter can be staged at all.
+        with jax.ensure_compile_time_eval():
+            return apply_density_filter(r, 2.0)
+
+    text = jax.jit(filt).lower(jnp.ones(shape, jnp.float32)).as_text()
+    # The normalising convolution of a constant is evaluated while staging;
+    # the one on the density stays in the program.
+    assert _assert_all_highest(text, f"density filter {len(shape)}-D") >= 1
