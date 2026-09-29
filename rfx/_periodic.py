@@ -73,8 +73,8 @@ def periodic_shape(grid, shape):
     return shape
 
 
-def _fill_image_range(grid, shape, axis, *, closed_footprint=False):
-    """Static images, including the previous image of a closed endpoint L."""
+def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
+    """Static image indices whose declared bounds meet the base period."""
     from rfx.core.jax_utils import is_tracer
     from rfx.geometry.csg import Box, declared_bounds
     bounds = declared_bounds(shape)
@@ -100,6 +100,7 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False):
                     f"must lie inside [-L, 2L] for traced bounds; L={length} m")
         jax.debug.callback(validate, lo, hi, ordered=True)
         return (-1, 0, 1)
+    lo, hi = float(lo) - padding, float(hi) + padding
     if closed_footprint:
         # Keep the two sheet rims distinct until E edges are enumerated.
         # An image touching [0,L] at only one rim contributes that endpoint
@@ -112,7 +113,7 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False):
             return nearest if abs(q - nearest) <= 8 * math.ulp(max(1., abs(q))) else q
         return range(math.floor(period_quotient(lo)),
                      math.ceil(period_quotient(hi)))
-    return range(math.floor(float(lo) / length) - 1,
+    return range(math.floor(float(lo) / length),
                  math.floor(float(hi) / length) + 1)
 
 
@@ -120,34 +121,98 @@ def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
                   closed_footprint=False):
     """Union a fill's images using its existing coordinate sampler.
 
-    Image coordinates are evaluated together, then OR-folded. In particular,
-    a thin Box's nearest-sample convention must choose on the whole image
-    lattice, not snap to an unrelated endpoint once per image. Node, centre,
-    half-open volume and closed sheet-footprint samplers stay with callers.
-    Non-periodic coordinate arrays pass through unchanged.
+    Separable axis masks are folded before their Cartesian product is built,
+    retaining a thin Box's nearest sample on the complete image lattice.
+    Composites retain that convention for each child. Other containment
+    samplers stream and fold one image axis at a time.
+    No array has the product of two image counts. Non-periodic calls retain
+    their original sampler and coordinates.
     """
     from rfx.core.jax_utils import is_tracer
     import jax.numpy as jnp
     import numpy as np
-    sample = shape.mask_on_coords if sample is None else sample
+    components = getattr(shape, '_mask_components', None) if sample is None else None
+    separable = getattr(shape, '_axis_masks_on_coords', None) if sample is None else None
+    if sample is None:
+        sample = getattr(shape, 'mask_on_coords', None)
+        if sample is None:
+            raise NotImplementedError(
+                f"periodic fill for {type(shape).__name__} requires "
+                "mask_on_coords(x, y, z); implement that coordinate sampler "
+                "instead of only mask(grid).")
     periodic = getattr(grid, 'periodic_axes', '')
     if not periodic:
         return sample(*coords)
+    if components is not None:
+        result = jnp.zeros(tuple(len(c) for c in coords), dtype=bool)
+        for part in components(grid.cells(0)[0]):
+            result = result | periodic_mask(
+                grid, periodic_shape(grid, part), coords, axes=axes,
+                closed_footprint=closed_footprint)
+        return result
     images = []
-    expanded = []
     for a, line in enumerate(coords):
         if 'xyz'[a] in periodic and (axes is None or a in axes):
             ks = _fill_image_range(grid, shape, a, closed_footprint=closed_footprint)
-            xp = jnp if is_tracer(line) else np
-            expanded.append(xp.concatenate([line + k * float(grid.domain[a]) for k in ks]))
-            images.append(len(ks))
         else:
-            expanded.append(line)
-            images.append(1)
-    mask = sample(*expanded)
-    for a, count in enumerate(images):
-        if count != 1:
-            shape_out = list(mask.shape)
-            shape_out[a:a + 1] = [count, len(coords[a])]
-            mask = mask.reshape(shape_out).any(axis=a)
-    return mask
+            ks = (0,)
+        images.append(ks)
+    if separable is not None:
+        expanded = []
+        for a, (line, ks) in enumerate(zip(coords, images)):
+            xp = jnp if is_tracer(line) else np
+            expanded.append(xp.concatenate([line if k == 0 else line + k * float(grid.domain[a])
+                                            for k in ks]))
+        masks = [m.reshape(len(ks), len(line)).any(axis=0)
+                 for m, ks, line in zip(separable(*expanded), images, coords)]
+        return jnp.asarray(masks[0][:, None, None] & masks[1][None, :, None]
+                           & masks[2][None, None, :])
+
+    def fold(axis, lines):
+        if axis == 3:
+            return sample(*lines)
+        result = None
+        for k in images[axis]:
+            shifted = list(lines)
+            if k:
+                shifted[axis] = coords[axis] + k * float(grid.domain[axis])
+            part = fold(axis + 1, shifted)
+            result = part if result is None else result | part
+        return result
+    return fold(0, coords)
+
+
+def periodic_sdf(grid, shape, coords, sdf_fn, *, xp, normal_fn=None):
+    """Minimum signed distance over fill images, with the winning normal.
+
+    Images are reduced one axis at a time; only base-grid arrays are held.
+    SDF weights sample a half-cell transition outside a body's bounds, so
+    the shared image selector includes that support as well as its interior.
+    The non-periodic call is exactly the original SDF/normal evaluation.
+    """
+    periodic = getattr(grid, 'periodic_axes', '')
+    images = [_fill_image_range(grid, shape, a, padding=.5 * float(grid.cells(a)[0]))
+              if 'xyz'[a] in periodic else (0,)
+              for a in range(3)]
+
+    def fold(axis, values):
+        if axis == 3:
+            distance = sdf_fn(*values, shape, xp=xp)
+            normal = None if normal_fn is None else normal_fn(*values, shape, xp=xp)
+            return distance, normal
+        best = normal = None
+        for k in images[axis]:
+            shifted = list(values)
+            if k:
+                shifted[axis] = coords[axis] + k * float(grid.domain[axis])
+            distance, candidate = fold(axis + 1, shifted)
+            if best is None:
+                best, normal = distance, candidate
+            else:
+                if normal_fn is not None:
+                    normal = tuple(xp.where(distance < best, n, old)
+                                   for n, old in zip(candidate, normal))
+                best = xp.minimum(best, distance)
+        return best, normal
+    distance, normal = fold(0, coords)
+    return distance if normal_fn is None else (distance, normal)

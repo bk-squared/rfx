@@ -67,6 +67,10 @@ class Via:
         z_max = max(z for _, z in self.layers)
         return ((x - r, y - r, z_min), (x + r, y + r, z_max))
 
+    def _mask_components(self, dx):
+        """Expose child masks for the shared periodic image fold."""
+        return [box for box, _ in self.to_shapes()]
+
     def mask_on_coords(self, x, y, z):
         """Evaluate via occupancy — union of decomposed Box shapes."""
         result = jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)

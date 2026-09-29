@@ -52,6 +52,10 @@ class CurvedPatch:
         else:
             return ((cx - hw, cy - hl, cz), (cx + hw, cy + hl, cz + z_arc))
 
+    def _mask_components(self, dx):
+        """Expose child masks for the shared periodic image fold."""
+        return self.to_staircase(dx)
+
     def mask_on_coords(self, x, y, z):
         """Evaluate curved patch occupancy via staircase decomposition."""
         dx_est = float(x[1] - x[0]) if len(x) > 1 else 1e-3

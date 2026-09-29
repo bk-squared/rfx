@@ -1082,7 +1082,7 @@ def _fallback_masks(shapes, mask_fn) -> dict:
     return {id(s): mask_fn(s) for s in shapes if not _has_sdf(s)}
 
 
-def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks):
+def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
 
     This is the ONE smoothing body; the uniform and non-uniform public
@@ -1141,8 +1141,10 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks):
             best_nx = best_ny = best_nz = None
 
             for shape in sdf_shapes:
-                s = _get_sdf_fn(shape)(Xc, Yc, Zc, shape, xp=xp)
-                n_x, n_y, n_z = _get_normal_fn(shape)(Xc, Yc, Zc, shape, xp=xp)
+                from rfx._periodic import periodic_sdf
+                s, (n_x, n_y, n_z) = periodic_sdf(
+                    grid, shape, (Xc, Yc, Zc), _get_sdf_fn(shape), xp=xp,
+                    normal_fn=_get_normal_fn(shape))
 
                 if sdf_union is None:
                     sdf_union = s
@@ -1193,6 +1195,7 @@ def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks):
     eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
     return _kottke_smooth(
         xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps, masks,
+        grid=grid,
     )
 
 
@@ -1525,8 +1528,10 @@ def compute_inv_eps_tensor_diag(
         promoted = True
         for i, comp in enumerate(("ex", "ey", "ez")):
             Xc, Yc, Zc = sample[comp]
-            sdf = _get_sdf_fn(pec_shape)(Xc, Yc, Zc, pec_shape, xp=xp)
-            n_x, n_y, n_z = _get_normal_fn(pec_shape)(Xc, Yc, Zc, pec_shape, xp=xp)
+            from rfx._periodic import periodic_sdf
+            sdf, (n_x, n_y, n_z) = periodic_sdf(
+                grid, pec_shape, (Xc, Yc, Zc), _get_sdf_fn(pec_shape), xp=xp,
+                normal_fn=_get_normal_fn(pec_shape))
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
             inv_c = _kottke_inv_eps_diag(

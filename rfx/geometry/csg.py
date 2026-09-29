@@ -260,7 +260,7 @@ class Box:
     def bounding_box(self):
         return (self.corner_lo, self.corner_hi)
 
-    def mask_on_coords(self, x, y, z):
+    def _axis_masks_on_coords(self, x, y, z):
         """Occupancy on explicit node coordinates.
 
         Volume branch is half-open ``[lo, hi)`` per axis, so the ``hi`` face
@@ -291,12 +291,12 @@ class Box:
             # flag-independent now, but still one f64 ulp of ``mid`` away
             # from the tie, so registered sheets should sit ON a node plane
             # when the exact plane matters.
-            traced = is_tracer(coords) or is_tracer(lo) or is_tracer(hi)
+            traced = is_tracer(coords)
             xp = jnp if traced else np
             coords = (jnp.asarray(coords) if traced
                       else np.asarray(coords, dtype=np.float64))
             mid = (lo + hi) * 0.5
-            extent = hi - lo if traced else float(hi - lo)
+            extent = float(hi - lo)  # staircase corners must be concrete
             if coords.size <= 1:             # static (shape, not values)
                 dc_local = 1e-3
             else:
@@ -363,6 +363,10 @@ class Box:
         mx = _axis_mask(x, self.corner_lo[0], self.corner_hi[0])
         my = _axis_mask(y, self.corner_lo[1], self.corner_hi[1])
         mz = _axis_mask(z, self.corner_lo[2], self.corner_hi[2])
+        return mx, my, mz
+
+    def mask_on_coords(self, x, y, z):
+        mx, my, mz = self._axis_masks_on_coords(x, y, z)
         return jnp.asarray(
             mx[:, None, None] & my[None, :, None] & mz[None, None, :])
 

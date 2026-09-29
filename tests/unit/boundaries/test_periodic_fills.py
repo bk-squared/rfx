@@ -102,19 +102,22 @@ def test_wire_across_seam_is_still_a_directed_interval():
         sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
 
 
-@pytest.mark.parametrize('outside', ['low', 'high'])
-def test_traced_box_fill_checks_runtime_image_bounds(outside):
-    def material(lo, hi):
-        sim = model()
-        sim.add_material('dielectric', eps_r=3.7)
-        sim.add(box(lo, hi), material='dielectric')
-        return sim._build_materials(sim._build_grid())[0].eps_r
-    compiled = jax.jit(material)
-    lo, hi = jnp.float32(L - 3.2 * DX), jnp.float32(L + 2.4 * DX)
-    np.testing.assert_array_equal(compiled(lo, hi), material(lo, hi))
-    with pytest.raises(Exception, match="axis 'x'.*bounds.*L=0.0137"):
-        compiled(jnp.float32(-1.3 * L) if outside == 'low' else lo,
-                 jnp.float32(2.3 * L) if outside == 'high' else hi).block_until_ready()
+@pytest.mark.parametrize('kind', ['via', 'curved_patch'])
+@pytest.mark.parametrize('material', ['dielectric', 'pec'])
+def test_composite_thin_boxes_translate_without_extra_endpoint_cells(kind, material):
+    from rfx.geometry.curved import CurvedPatch
+    from rfx.geometry.via import Via
+    def arrays(shift):
+        x = L + .2 * DX - shift * DX
+        shape = (Via(center=(x, 3.1 * DX), drill_radius=.2 * DX,
+                     pad_radius=1.6 * DX, layers=[(1.2 * DX, 4.4 * DX)])
+                 if kind == 'via' else
+                 CurvedPatch(center=(x, 3.1 * DX, 1.2 * DX), length=4.6 * DX,
+                             width=3.2 * DX, radius=2.7 * DX))
+        return realized([shape], material)
+    # A composite's sub-cell Boxes must choose their nearest node on the
+    # complete image lattice, as a directly declared thin Box does.
+    same_fill(tuple(np.roll(a, -8, axis=0) for a in arrays(0)), arrays(8))
 
 
 def test_shape_without_bounds_uses_adjacent_images():
@@ -147,7 +150,6 @@ def test_traced_zero_thickness_box_keeps_plane_admission():
         sim.add_material('dielectric', eps_r=3.7)
         sim.add(box(x, x), material='dielectric')
         return sim._build_materials(sim._build_grid())[0].eps_r
-    # A plane needs a concrete coordinate for the nearest-plane admission;
-    # sharing the same traced bound does not turn it into a volume fill.
-    with pytest.raises(Exception, match="axis 'x'.*plane.*concrete"):
+    # Staircase bounds, including a plane, must remain concrete.
+    with pytest.raises(jax.errors.ConcretizationTypeError):
         jax.jit(material)(jnp.float32(1.5 * L)).block_until_ready()

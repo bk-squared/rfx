@@ -326,7 +326,8 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=
     the material by half a cell. Use the supplied physical centres (already
     centred on the fine subgrid), without changing Shape.mask's node API or
     the separate PEC volume/sheet/wire classifier. Other shapes retain their
-    existing rules, including custom uniform shapes that implement only mask.
+    existing rules. Custom shapes need mask_on_coords on a periodic grid;
+    non-periodic uniform shapes may implement only mask(grid).
     """
     from rfx._periodic import periodic_mask, periodic_shape
     shape = periodic_shape(grid, shape)
@@ -413,6 +414,8 @@ def pec_volume_cell_mask(shape, centres: GridCoords, *, grid=None):
     """
     if getattr(grid, 'periodic_axes', ''):
         from rfx._periodic import periodic_mask
+        if getattr(shape, 'corner_lo', None) is None or getattr(shape, 'corner_hi', None) is None:
+            return periodic_mask(grid, shape, centres[:3])
         def sample(x, y, z):
             return pec_volume_cell_mask(shape, GridCoords(x, y, z, (len(x), len(y), len(z))))
         return periodic_mask(grid, shape, centres[:3], sample=sample)
