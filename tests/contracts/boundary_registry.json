@@ -922,11 +922,6 @@
       "kind": "roll/diff"
     },
     {
-      "file": "rfx/sources/wire_radius.py",
-      "function": "prepare_pec_wire_radii",
-      "kind": "difference"
-    },
-    {
       "file": "rfx/subgridding/disjoint_3d.py",
       "function": "_apply_fine_pec_axes",
       "kind": "boundary"

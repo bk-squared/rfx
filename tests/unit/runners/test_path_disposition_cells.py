@@ -794,7 +794,7 @@ def test_a_slab_reaching_the_lid_is_refused_in_every_validation_mode(validation)
 def _band_wire(lane, x_mm):
     """A graded x mesh of 1 mm cells with a 0.25 mm band over x = 3-4 mm, and
     a PEC PolylineWire of radius 0.3 mm along z at ``x_mm``: in the refused
-    filament band in 1 mm cells (0.2 < 0.3 < 0.5), a volume in the fine
+    filament band in 1 mm cells (0 < 0.3 < 0.5), a volume in the fine
     band (0.3 >= 0.125)."""
     profile = np.array([1e-3] * 3 + [0.25e-3] * 4 + [1e-3] * 8)
     sim = _simulation(lane, (12, 12, 12), dx_profile=profile)
@@ -817,7 +817,7 @@ def test_a_wire_is_judged_by_the_cells_at_its_own_vertices(x_mm, kind):
         grid = sim._build_nonuniform_grid()
         sheets, wires = [], []
         if kind == "pec_wire":
-            with pytest.raises(ValueError, match="refine.*volume.*coarsen"):
+            with pytest.raises(ValueError, match="resolve the wire as a volume"):
                 sim._assemble_materials_nu(grid, pec_sheets=sheets, pec_wires=wires)
             return
         sim._assemble_materials_nu(grid, pec_sheets=sheets, pec_wires=wires)

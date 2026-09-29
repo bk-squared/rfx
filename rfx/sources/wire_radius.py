@@ -81,7 +81,7 @@ def require_radius_update(materials, *, lane, unsupported=False):
     """Defense for low-level runners taking already-stamped materials."""
     if getattr(materials, "mu_r_wire", None) is not None and unsupported:
         raise NotImplementedError(
-            f"wire/PEC-filament radius material records are not implemented on {lane}; "
+            f"wire-port radius material records are not implemented on {lane}; "
             "resolve the pin geometrically (for example a coax feed or a volume wire).")
 
 
@@ -116,7 +116,7 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
         widths = [grid.cells(t) for t in range(3)]
 
     # The measured model excludes absorber intersections. Keep every
-    # modified H edge outside its pads, including along the filament axis.
+    # modified H edge outside its pads, including along the port axis.
     pad_lo = getattr(grid, f"pad_{'xyz'[axis]}_lo", 0)
     pad_hi = getattr(grid, f"pad_{'xyz'[axis]}_hi", 0)
     if any(c[axis] < pad_lo or c[axis] >= grid.shape[axis]-pad_hi-1 for c in cells):
@@ -165,39 +165,3 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
                 e_cell[t] += offset
                 materials = stamp_lumped_eps(materials, tuple(e_cell), eps_c / 4, component)
     return materials._replace(mu_r_wire=tuple(h_parts))
-
-
-def prepare_pec_wire_radii(grid, materials, wires):
-    """Apply the same self-field stamps to the realized PEC filament edges.
-
-    Static nodes survive an outer JIT; no material array or traced mask is
-    inspected on the host. The returned WireSpecs mark the declarations as
-    consumed so a high-level source setup and the low-level step setup cannot
-    stamp them twice. Call after overrides and before constructing drives.
-    Zero-radius legacy filaments have no radius declaration here.
-    """
-    from dataclasses import replace
-
-    prepared = []
-    for wire in wires or ():
-        if wire.radius is None or wire.radius_stamped:
-            prepared.append(wire)
-            continue
-        if not wire.nodes:
-            raise ValueError("a radius PEC WireSpec needs its static lattice nodes")
-        cells = [set(), set(), set()]
-        for a, b in zip(wire.nodes[:-1], wire.nodes[1:]):
-            moving = [i for i in range(3) if a[i] != b[i]]
-            if len(moving) != 1:
-                raise ValueError("a radius PEC filament requires axis-aligned lattice segments")
-            axis = moving[0]
-            for k in range(min(a[axis], b[axis]), max(a[axis], b[axis])):
-                cell = list(a)
-                cell[axis] = k
-                cells[axis].add(tuple(cell))
-        for axis, part in enumerate(cells):
-            if part:
-                materials = stamp_wire_radius(
-                    grid, materials, ("ex", "ey", "ez")[axis], wire.radius, sorted(part))
-        prepared.append(replace(wire, radius_stamped=True))
-    return materials, tuple(prepared)

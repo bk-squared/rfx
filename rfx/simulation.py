@@ -1356,8 +1356,7 @@ def _build_step_setup(
     with its own driver-specific ``_StepContext`` fields before constructing
     the context.
     """
-    from rfx.sources.wire_radius import prepare_pec_wire_radii, require_radius_update
-    materials, pec_wires = prepare_pec_wire_radii(grid, materials, pec_wires)
+    from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="uniform Yee with dispersion/UPML/tensor or design-box updates",
         unsupported=(debye is not None or lorentz is not None or boundary == "upml"

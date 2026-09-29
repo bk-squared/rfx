@@ -451,8 +451,9 @@ def _refuse_zero_cells(shape, name, what: str):
         f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells "
         "on this grid: no primal-cell centre lies inside it, so it would "
         "silently vanish (the #369 vaporized-metal class, now an error). A "
-        "filament (a via or post thinner than a cell) is a PolylineWire, "
-        "not a volume; a volume needs a radius of at least ~0.87 of the "
+        "legacy radius=0 filament is a PolylineWire. A positive PEC wire "
+        "radius must be resolved as a volume, a >= 0.5*d; a volume needs "
+        "a radius of at least ~0.87 of the "
         "local cell (half the cell diagonal) to be sure of one centre — "
         "resolve the mesh or redraw the body.")
 
@@ -706,16 +707,17 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes):
     the smallest local cell at the vertices' nearest nodes is a volume.
     ``classify_pec_entry`` realizes a wire by this rule, and lane admission
     asks it which kind of conductor a declared wire becomes. The vertex snap
-    itself is ``wire_vertex_nodes``. Positive filament radii above 0.2 times
-    that cell size refuse: they exceed the self-field model's admitted range.
+    itself is ``wire_vertex_nodes``. Every positive subcell radius refuses:
+    the filament self-field correction failed its independent main-grid
+    witness. Only the legacy zero-radius filament has no declared radius.
     """
     nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes)
     a = float(radius)
-    if 0.2 * d_min * (1 + 1e-7) < a < 0.5 * d_min:
+    if 0 < a < 0.5 * d_min:
         raise ValueError(
-            "PEC PolylineWire filament radius is in the unsupported band "
-            "0.2*d < a < 0.5*d; refine the mesh so the wire is a volume, "
-            "a >= 0.5*d, or coarsen so a <= 0.2*d.")
+            "PEC PolylineWire filament radius is not supported for "
+            "0 < a < 0.5*d_min; resolve the wire as a volume, a >= 0.5*d "
+            "(refine the mesh to resolve the declared radius).")
     return nodes if a < 0.5 * d_min else None
 
 
@@ -731,6 +733,7 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     * Box with ``0 < extent < one local cell`` along any axis — a Box is a
       volume; declare a sheet (a zero-thickness Box or add_thin_conductor)
       or resolve the thickness;
+    * PolylineWire with ``0 < radius < half the smallest local cell``;
     * any shape whose centre-sampled volume is empty (concrete only).
     """
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
@@ -770,14 +773,12 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                 "geometry is not implemented for this radius model.")
     if pts is not None and radius is not None and not traced:
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
-        # below that it is a filament on the axis-aligned lattice path
-        # joining the nearest nodes of consecutive vertices.
+        # positive subcell radii refuse. A legacy radius=0 filament takes
+        # the axis-aligned path joining the vertices' nearest nodes.
         nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes)
         if nodes is not None:
             edges = wire_path_edge_masks(nodes, coords.shape)
-            return None, None, WireSpec(edges=edges, name=name,
-                                        radius=float(radius) if radius > 0 else None,
-                                        nodes=tuple(nodes))
+            return None, None, WireSpec(edges=edges, name=name)
     elif not traced:
         # §1.5 for every OTHER shape with an axis-aligned bounding box —
         # a Cylinder via pad, a thin Sphere, an imported outline.  The

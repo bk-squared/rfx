@@ -36,19 +36,18 @@ nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
 Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
 
-**PEC filament radius and a localized feed.** PEC `PolylineWire` filaments
-with `0 < a <= 0.20 * d_min` receive the same component magnetic self-field
-record (`mu_r_wire`) and neighbouring electric storage correction. Filaments
-with `0.20 * d_min < a < 0.50 * d_min` refuse: refine until the wire is a
-volume (`a >= 0.50 * d_min`) or coarsen until `a <= 0.20 * d_min`. The
-existing volume-wire rule and zero-radius filament ownership are unchanged.
-The local square-mesh, uniform axial-spacing, boundary clearance and solver
-restrictions above apply to the radius model. A one-edge port feeding a PEC
-filament between 1.5 mm parallel plates does **not** meet the full-height
-port's 2% Hankel-impedance target in the measured 8–14 GHz fixture
-(a=0.05 mm, dx=0.5/0.25 mm). Its longitudinal current is not uniform;
-the full-height distributed-drive oracle does not establish that feed's
-accuracy. The corresponding acceptance tests retain the 2% target.
+**Positive subcell PEC filament radii are unsupported.** A PEC `PolylineWire`
+with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
+volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
+cell at its vertices. The existing volume-wire rule and legacy `radius=0`
+filament ownership remain; zero does not declare a physical wire radius.
+The attempted filament correction failed its independent uncorrected-main
+reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
+8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
+11.3 GHz was 2.58 Ω (limits 2% and 1 Ω). The correction is removed.
+That one-edge feed has nonuniform longitudinal current, so the full-height
+wire-port Hankel oracle does not establish its accuracy. The port radius
+model and its full-height oracle remain separate.
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the

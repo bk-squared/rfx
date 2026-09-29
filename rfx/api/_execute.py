@@ -1722,8 +1722,6 @@ class _ExecuteMixin:
         )
         pec_sheets = tuple(pec_sheets or ())
         pec_wires = tuple(pec_wires or ())
-        from rfx.sources.wire_radius import prepare_pec_wire_radii
-        materials, pec_wires = prepare_pec_wire_radii(grid, materials, pec_wires)
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
         pec_edge_masks_local = None

@@ -35,7 +35,7 @@ N_CPML = 10
 N_STEPS = 300
 
 
-def _dipole(boundary="cpml", *, radius_ratio=0.1):
+def _dipole(boundary="cpml", *, radius_ratio=0.):
     dx = L_DIP / N_CELLS
     n_arm = (N_CELLS - 1) // 2
     nz = 2 * N_LAT + N_CELLS
@@ -90,12 +90,11 @@ def _assert_realized(sim, n_arm):
 # (rfx/boundaries/upml.py::init_upml), so it is a separate lane for the port's
 # load and gets its own row: before the UPML half of #1236 it still pinned the
 # loaded side to 0.088 of its mirror.
-@pytest.mark.parametrize("boundary,radius_ratio", [("cpml", 0.1), ("cpml", 0.), ("upml", 0.)])
-def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(
-        boundary, radius_ratio):
-    # UPML still exercises the load-owner regression with legacy filaments;
-    # a positive declared radius has a separate admission witness below.
-    sim, names, n_arm = _dipole(boundary, radius_ratio=radius_ratio)
+@pytest.mark.parametrize("boundary", ["cpml", "upml"])
+def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(boundary):
+    # Exercise the load-owner regression with legacy radius=0 filaments.
+    # Positive subcell radii have a separate refusal witness below.
+    sim, names, n_arm = _dipole(boundary)
     _assert_realized(sim, n_arm)
     res = sim.run(n_steps=N_STEPS, skip_preflight=True, compute_s_params=False)
     ts = dict(zip(names, np.asarray(res.time_series).T))
@@ -117,10 +116,11 @@ def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(
             f"the gap (#1236: that edge was pinned to ~0.09 of its mirror).")
 
 
-def test_upml_refuses_the_same_dipole_with_a_declared_filament_radius(monkeypatch):
+@pytest.mark.parametrize("boundary", ["cpml", "upml"])
+def test_the_same_dipole_refuses_a_declared_filament_radius(boundary, monkeypatch):
     import jax
 
-    sim, _, _ = _dipole("upml")
+    sim, _, _ = _dipole(boundary, radius_ratio=.1)
     monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped"))
-    with pytest.raises(NotImplementedError, match="radius"):
+    with pytest.raises(ValueError, match="resolve the wire as a volume"):
         sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)

@@ -2,9 +2,9 @@
 
 SCOPE UNDER #931 (lattice ownership contract). ``ThinWire`` is NOT one of
 the contract's three declarations. §1.4's wire is ``PolylineWire``, which a
-PEC declaration classifies into a filament (radius below half the local
-cell: the E edges of the axis-aligned lattice path) or a volume
-(centre-sampled tube). ``ThinWire`` is a different object: a subcell
+PEC declaration classifies into a legacy radius=0 filament (the E edges
+of the axis-aligned lattice path) or a resolved volume (centre-sampled
+tube); positive subcell radii refuse. ``ThinWire`` is a different object: a subcell
 MATERIAL model that returns eps/sigma corrections along the path and never
 forms an edge set, so ``realized_pec_edge_masks`` never sees it and no
 wall is realized for it.
@@ -20,6 +20,7 @@ rather than by zeroing edges. A model that wants a PEC filament declares
 
 import numpy as np
 import jax.numpy as jnp
+import pytest
 
 from rfx.grid import Grid
 from rfx.geometry.thin_wire import ThinWire, compute_thin_wire_correction
@@ -77,11 +78,10 @@ def test_thin_wire_preserves_bulk():
 def test_thin_wire_is_not_a_pec_declaration():
     """The fence in the module docstring, measured (#931 §1.4).
 
-    Same physical filament, two declarations. ``PolylineWire`` with a
-    sub-cell radius is classified as a WIRE and realizes exactly the Ex
-    edges of its lattice path; ``ThinWire`` realizes no PEC edge at all and
-    instead returns eps/sigma corrections on the cells it crosses. Neither
-    is wrong; they are different models, and a change that quietly routed
+    Same path, distinct declarations. A positive subcell PEC radius refuses.
+    A legacy radius=0 ``PolylineWire`` realizes exactly the Ex edges of its
+    lattice path; ``ThinWire`` realizes no PEC edge at all and instead returns
+    eps/sigma corrections on the cells it crosses. A change that quietly routed
     ``ThinWire`` through the edge rule would have to red this test.
     """
     from rfx.boundaries.pec import realized_pec_edge_masks, WireSpec
@@ -95,8 +95,11 @@ def test_thin_wire_is_not_a_pec_declaration():
     start, end, radius = (0.01, 0.01, 0.01), (0.04, 0.01, 0.01), 0.0001
 
     co = coords_from_uniform_grid(grid)
+    with pytest.raises(ValueError, match="resolve the wire as a volume"):
+        classify_pec_entry(PolylineWire((start, end), radius=radius), co,
+                           cell_centres_from_nodes(co), name="positive radius")
     cells, sheet, wire = classify_pec_entry(
-        PolylineWire((start, end), radius=radius), co,
+        PolylineWire((start, end), radius=0.), co,
         cell_centres_from_nodes(co), name="filament")
     assert cells is None and sheet is None
     assert isinstance(wire, WireSpec)
@@ -105,7 +108,7 @@ def test_thin_wire_is_not_a_pec_declaration():
     assert int(ex.sum()) == 15, int(ex.sum())      # 30 mm / 2 mm cells
     assert not np.asarray(edges[1]).any() and not np.asarray(edges[2]).any()
 
-    # the Holland model on the same filament: material corrections, no edges
+    # The separate utility on the same path: material corrections, no edges.
     eps_corr, sigma_corr = compute_thin_wire_correction(
         grid, ThinWire(start=start, end=end, radius=radius))
     assert float(jnp.max(eps_corr)) > 0 and float(jnp.max(sigma_corr)) > 0

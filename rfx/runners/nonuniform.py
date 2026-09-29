@@ -1018,9 +1018,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     )
     _pec_sheets = tuple(_pec_sheets)
     _pec_wires = tuple(_pec_wires)
-    from rfx.sources.wire_radius import prepare_pec_wire_radii
-    materials_drive, _ = prepare_pec_wire_radii(grid, materials_drive, _pec_wires)
-    materials, _pec_wires = prepare_pec_wire_radii(grid, materials, _pec_wires)
     pec_edge_masks = None
     if pec_mask is not None or _pec_sheets or _pec_wires:
         pec_edge_masks = _rpem(pec_mask, sheets=_pec_sheets,

@@ -417,8 +417,6 @@ def run_uniform(
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
-    from rfx.sources.wire_radius import prepare_pec_wire_radii
-    materials, pec_wires = prepare_pec_wire_radii(grid, materials, pec_wires)
     pec_edge_masks = None
     if pec_mask is not None or pec_sheets or pec_wires:
         pec_edge_masks = _rpem(pec_mask, sheets=pec_sheets, wires=pec_wires,

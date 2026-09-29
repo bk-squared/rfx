@@ -189,6 +189,9 @@ def test_curved_patch_segments_are_sheets_on_their_own_planes():
 def test_thin_polyline_wire_is_a_filament_and_a_thick_one_is_a_volume():
     thin = PolylineWire(((0.006, 0.010, 0.010), (0.014, 0.010, 0.010)),
                         radius=0.2e-3)
+    with pytest.raises(ValueError, match="resolve the wire as a volume"):
+        _realize(thin, "positive subcell radius")
+    thin = PolylineWire(thin.points, radius=0.)  # legacy filament ownership
     kind, masks, cells, _ = _realize(thin, "thin")
     assert kind == "wire" and cells is None
     ex = np.asarray(masks[0])
