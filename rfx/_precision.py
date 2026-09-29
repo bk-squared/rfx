@@ -9,10 +9,12 @@ bar of the ring-down tests; with ``HIGHEST`` the same tests agree to 1e-6
 CPUs and older GPUs compute the same thing either way.
 
 Every ``jnp.einsum`` / ``jnp.matmul`` / ``jnp.dot`` / ``lax.conv*`` in rfx passes
-``precision=HIGHEST``; a library routine whose derivative issues its own
-products (``jnp.linalg.qr``) is called under ``jax.default_matmul_precision("highest")``. ``tests/contracts/test_matmul_precision.py`` lowers the
-entry points that reach them and requires every ``stablehlo.dot_general`` to
-carry ``HIGHEST``, so a new contraction without it turns that test red on CPU.
+``precision=HIGHEST``. A library routine whose derivative issues its own
+products (``jnp.linalg.qr``) is called under
+``jax.default_matmul_precision("highest")``. ``tests/contracts/test_matmul_precision.py``
+lowers the entry points that reach them, including a gradient program, and
+requires every ``stablehlo.dot_general`` and ``stablehlo.convolution`` to carry
+``HIGHEST``, so a new contraction without it turns that test red on CPU.
 """
 
 from __future__ import annotations
