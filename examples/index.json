@@ -1,0 +1,358 @@
+{
+  "schema": "rfx-example-index/1",
+  "about": "Machine-readable index of the official examples under examples/: for each, the public function that builds its Simulation without solving it, whether running it solves, and the files it leaves behind. Paths are relative to the repository root. tests/contracts/test_example_index.py holds this file to the scripts and to tests/_example_fidelity_lib.py::CLASSIFICATION.",
+  "fields": {
+    "path": "the example file, relative to the repository root",
+    "kind": "'script' (run with python <path>) or 'config' (a YAML file for the rfx command-line interface)",
+    "builders": "public functions that return the model without solving it: name, the arguments that have no default, and what the call returns. Empty when there is none, and then no_builder_reason says why",
+    "runs_solve": "true when running the example time-steps a model",
+    "solve_via": "present when the solve is not a Simulation method call in the example's own source",
+    "outputs": "files that remain after the example finishes (printed output is not listed): path pattern ({name} marks a part chosen at run time), format, the call that writes it, what it contains, and units"
+  },
+  "examples": [
+    {
+      "path": "examples/config/microstrip_thru.yaml",
+      "kind": "config",
+      "builders": [
+        {"name": "rfx.config.simulation_from_yaml", "required_args": ["path"], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "solve_via": "rfx run examples/config/microstrip_thru.yaml --output {output} (the CLI calls rfx.config.run_and_save)",
+      "outputs": [
+        {
+          "path": "{output}",
+          "format": "hdf5",
+          "written_by": "rfx.io.save_simulation_dataset",
+          "named_by": "the --output argument of rfx run (the file's own header uses thru.h5)",
+          "contains": "group input: the Simulation settings (freq_max, domain, boundary, dx, grid shape, dt); group output: the probe time series, and s_params with freqs when S-parameters were computed (the execution block asks for 81 points from 2 to 10 GHz)",
+          "units": {"freq_max, freqs": "Hz", "domain, dx": "m", "dt": "s", "s_params": "dimensionless (complex)", "time_series": "the probe's E-field component, V/m, level set by the port drive"}
+        }
+      ]
+    },
+    {
+      "path": "examples/inverse_design/differentiable_s11_design.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/inverse_design/field_observable_shielding.py",
+      "kind": "script",
+      "builders": [],
+      "no_builder_reason": "only a private builder, _build_sim(), exists; it is not a public entry point",
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "examples/inverse_design/field_observable_shielding.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "three panels: the soft-max worst-case leaked |Ez|^2 objective per iteration (log scale); the permittivity of each layer per iteration; the final design's Ez at the leak_near probe against time",
+          "units": {"objective": "arbitrary (follows the source drive)", "permittivity": "relative, dimensionless", "time": "ns", "Ez": "arbitrary (follows the source drive)"}
+        }
+      ]
+    },
+    {
+      "path": "examples/inverse_design/multilayer_ar_coating.py",
+      "kind": "script",
+      "builders": [],
+      "no_builder_reason": "only a private builder, _build_simulation(), exists; it is not a public entry point",
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "examples/inverse_design/multilayer_ar_coating.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "three panels: reflected power |R(f)|^2 over the X band for the initial and optimized rfx designs and the transfer-matrix curves (log scale); the band-mean |R|^2 per iteration; each layer's permittivity per iteration against the transfer-matrix optimum",
+          "units": {"frequency": "GHz", "|R|^2": "dimensionless power ratio", "permittivity": "relative, dimensionless"}
+        }
+      ]
+    },
+    {
+      "path": "examples/inverse_design/progressive_demo.py",
+      "kind": "script",
+      "builders": [
+        {"name": "sim_factory", "required_args": ["dx"], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "examples/08_progressive_inverse_design.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "the loss per iteration with the stage boundaries dashed (loss = minus the integrated |E|^2 at the probe), and the design permittivity on the middle xy slice of the first (dx = 1.0 mm) and last (dx = 0.5 mm) stage",
+          "units": {"loss": "arbitrary (follows the source drive)", "slice axes": "cell index", "permittivity": "relative, dimensionless (colour scale 1 to 8)"}
+        }
+      ]
+    },
+    {
+      "path": "examples/quickstart/hello_world.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/adi_solver_demo.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_cavity", "required_args": ["solver", "adi_cfl_factor"], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/antenna_farfield_pattern.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "examples/tutorials/output/short_dipole_e_plane.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "the short dipole's phi = 0 cut at 8 GHz: 20*log10(|E_theta| / max|E_theta|) against the polar angle, floored at -40 dB",
+          "units": {"theta": "degree", "|E_theta|": "dB relative to the cut's peak"}
+        },
+        {
+          "path": "examples/tutorials/output/short_dipole_e_plane.csv",
+          "format": "csv",
+          "written_by": "rfx.export_radiation_pattern",
+          "contains": "the same cut's 73 samples, one row per polar angle from 0.57 to 179.43 degrees, phi = 0 on every row; columns theta_deg, phi_deg, E_theta_mag, E_theta_phase_deg, E_phi_mag, E_phi_phase_deg, gain_dBi",
+          "units": {
+            "theta_deg, phi_deg": "degree",
+            "E_theta_mag, E_phi_mag": "far-field magnitude as rfx.compute_far_field returns it, 1/r factor omitted; the level follows the source drive, so read it relative to the peak",
+            "E_theta_phase_deg, E_phi_phase_deg": "degree",
+            "gain_dBi": "dB relative to the peak of |E_theta|^2 + |E_phi|^2 over this cut (0 dB at the peak, no floor); not an absolute gain, despite the column name"
+          }
+        }
+      ]
+    },
+    {
+      "path": "examples/tutorials/artifact_report_demo.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_demo_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": false,
+      "outputs": [
+        {
+          "path": "{output}/report.json",
+          "format": "json",
+          "written_by": "Simulation.export_artifact_bundle",
+          "named_by": "rfx.artifacts.export_artifact_bundle",
+          "contains": "the runtime report: scene, mesh and preflight metadata, and the bundle's file list. {output} is --output, else a new temporary directory named rfx-artifact-demo-*",
+          "units": {"lengths": "m", "frequencies": "Hz"}
+        },
+        {
+          "path": "{output}/scene.json",
+          "format": "json",
+          "written_by": "Simulation.export_artifact_bundle",
+          "named_by": "rfx.artifacts.export_artifact_bundle",
+          "contains": "the native rfx scene description: domain, cell size, materials, geometry bounding boxes, ports, probes and sources",
+          "units": {"lengths": "m", "frequencies": "Hz", "sigma": "S/m", "impedance": "ohm"}
+        },
+        {
+          "path": "{output}/geometry.json",
+          "format": "json",
+          "written_by": "Simulation.export_artifact_bundle",
+          "named_by": "rfx.artifacts.export_artifact_bundle",
+          "contains": "the legacy geometry index (rfx.export_geometry_json): bounding boxes and scalar material constants; it cannot be read back into a model",
+          "units": {"lengths": "m", "freq_max": "Hz", "sigma": "S/m"}
+        },
+        {
+          "path": "{output}/report.md",
+          "format": "markdown",
+          "written_by": "Simulation.export_artifact_bundle",
+          "named_by": "rfx.artifacts.export_artifact_bundle",
+          "contains": "the runtime report rendered for people",
+          "units": {}
+        },
+        {
+          "path": "{output}/manifest.json",
+          "format": "json",
+          "written_by": "Simulation.export_artifact_bundle",
+          "named_by": "rfx.artifacts.export_artifact_bundle",
+          "contains": "each bundle file's path, role, size and SHA-256",
+          "units": {"size_bytes": "byte"}
+        }
+      ]
+    },
+    {
+      "path": "examples/tutorials/boundary_spec_demo.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": ["spec"], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/cad_mesh_import_demo.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/materials_and_dispersion.py",
+      "kind": "script",
+      "builders": [
+        {"name": "make_sim", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/nonuniform_patch_demo.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "examples/tutorials/nonuniform_patch_demo/probe_ez_timeseries.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "the probe's Ez against time, with the Harminv window start marked",
+          "units": {"time": "ns", "Ez": "arbitrary (follows the source drive)"}
+        },
+        {
+          "path": "examples/tutorials/nonuniform_patch_demo/dz_mesh_profile.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "the built z cell sizes against z, with the substrate shaded where it was realized",
+          "units": {"z": "mm", "dz": "mm"}
+        }
+      ]
+    },
+    {
+      "path": "examples/tutorials/patch_antenna_demo.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "examples/tutorials/output/patch_antenna_cuts.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "the x-z and y-z far-field cuts at the radiating mode's frequency: power normalized to each cut's peak, floored at -40 dB, plotted from -90 to 90 degrees",
+          "units": {"angle": "degree from broadside", "power": "dB relative to the cut's peak"}
+        }
+      ]
+    },
+    {
+      "path": "examples/tutorials/ports_and_sparams_101.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_generic_port_demo", "required_args": ["add_component"], "returns": "Simulation"},
+        {"name": "build_microstrip_ports", "required_args": [], "returns": "Simulation"},
+        {"name": "build_waveguide_ports", "required_args": [], "returns": "Simulation"},
+        {"name": "build_coaxial_port", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/rcs_scattering.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_preflight_model", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "solve_via": "rfx.compute_rcs, called on the Grid and material arrays from build_rcs_inputs(); the Simulation the builder returns is the model preflight checks",
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/resonance_harminv.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_cavity", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/tutorials/run_control_and_fields.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "examples/tutorials/output/run_control_ez_slice.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "|Ez| of the final field on the middle z plane",
+          "units": {"x, y": "cell index", "|Ez|": "V/m, level follows the source drive"}
+        }
+      ]
+    },
+    {
+      "path": "examples/tutorials/slab_rt_flux_monitor.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_sim", "required_args": ["with_slab"], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": []
+    },
+    {
+      "path": "examples/visualization/field_movies.py",
+      "kind": "script",
+      "builders": [
+        {"name": "build_simulation", "required_args": ["variant"], "returns": "Simulation"}
+      ],
+      "runs_solve": true,
+      "outputs": [
+        {
+          "path": "field-movies/{case}.npz",
+          "format": "npz",
+          "written_by": "numpy.savez_compressed",
+          "contains": "per variant, the recorded Ez slice frames with their sample positions and frame times from Result.snapshot_axes, and the probe record; --output sets the directory (default field-movies/ under the working directory)",
+          "units": {"positions": "metre", "times": "second", "Ez": "V/m"}
+        },
+        {
+          "path": "field-movies/{case}.json",
+          "format": "json",
+          "written_by": "json.dumps",
+          "contains": "the run metadata: case, variants, core source commit, environment, preflight, display normalization, artifact hashes",
+          "units": {"normalization_V_per_m": "V/m", "poster_time_s": "second"}
+        },
+        {
+          "path": "field-movies/{case}.csv",
+          "format": "csv",
+          "written_by": "numpy.savetxt",
+          "contains": "every variant's probe record at every recorded time step: columns {variant}_time_s, {variant}_probe_ez_V_per_m",
+          "units": {"{variant}_time_s": "second", "{variant}_probe_ez_V_per_m": "V/m"}
+        },
+        {
+          "path": "field-movies/{case}.png",
+          "format": "png",
+          "written_by": "matplotlib savefig",
+          "contains": "the poster frame of the case's Ez snapshots on a linear -1 to +1 scale of one shared normalization",
+          "units": {"colour": "Ez divided by the case's normalization_V_per_m"}
+        },
+        {
+          "path": "field-movies/{case}.mp4",
+          "format": "mp4",
+          "written_by": "matplotlib.animation.FFMpegWriter",
+          "contains": "the Ez snapshots as a 15 frame-per-second movie with the poster's normalization",
+          "units": {"colour": "Ez divided by the case's normalization_V_per_m"}
+        }
+      ]
+    }
+  ]
+}

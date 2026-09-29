@@ -133,17 +133,14 @@ importing it no longer solves).
 
 * ``builder_fused_with_solve`` (build and solve share one function with
   no separable build-only path) in that 47-set, i.e. the scripts this
-  gate does NOT reach: examples/tutorials/cad_mesh_import_demo.py, cv09,
-  cv10. "Out of this snapshot" is not "unverified": cv09 is REBUILT
-  build-only from its own constants and helpers in
-  tests/crossval/test_cv09_cv10_body_contract_controls.py (cv10 only at
-  the spec level there, via ``_common_spec()``) and both solve weekly.
-  cad_mesh_import_demo is the one script of #737 item 2 that did NOT get a
-  builder, and it is the one with no build or run coverage anywhere: its
-  Simulation needs ``trimesh`` (the optional [cad] extra), which the lane
-  running this gate does not install, and a build-time ModuleNotFoundError
-  would red the gate rather than skip (OPTIONAL_DEPENDENCIES only covers
-  an import-time miss). Its CLASSIFICATION entry carries that reason.
+  gate does NOT reach: cv09, cv10. "Out of this snapshot" is not
+  "unverified": cv09 is REBUILT build-only from its own constants and
+  helpers in tests/crossval/test_cv09_cv10_body_contract_controls.py
+  (cv10 only at the spec level there, via ``_common_spec()``) and both
+  solve weekly. examples/tutorials/cad_mesh_import_demo.py was the third
+  and left this bucket with #1271: it now has ``build_simulation()``, and
+  ``lib.call_builder`` turns its build-time ``trimesh`` miss into a
+  visible skip on a lane without the [cad] extra.
 * ``module_level_solve`` (importing the module solves at module scope):
   cv01-cv05 -- also out of scope, and deliberately never imported by this
   test. cv01/cv02 have ``--replay`` re-judge subprocess tests and cv05 a
@@ -409,6 +406,7 @@ def test_example_matches_snapshot(
         "scripts/capture_example_fidelity_snapshot.py")
     try:
         module = lib.load_module(relpath)
+        sim = lib.call_builder(relpath, module, builder, variant)
     except lib.MissingOptionalDependency as exc:
         # Visible SKIP, never green: this repo's exit-code convention
         # (development_methodology.md 2.7) says a missing reference is a
@@ -416,12 +414,9 @@ def test_example_matches_snapshot(
         # _FLAT_VARIANTS and pinned in the snapshot, so coverage is
         # reported as skipped rather than silently lost, and an
         # UNDECLARED missing module is still a hard error (see
-        # lib.OPTIONAL_DEPENDENCIES).
+        # lib.OPTIONAL_DEPENDENCIES). A declared module missing when the
+        # BUILDER runs (cad_mesh_import_demo's trimesh) skips the same way.
         pytest.skip(str(exc))
-    fn = getattr(module, builder.fn)
-    kwargs = variant.kwargs(module)
-    result = fn(**kwargs)
-    sim = result if builder.result_index is None else result[builder.result_index]
     # Round-trip through JSON so tuples (live digest) compare equal to lists
     # (snapshot, loaded from JSON) -- the digest itself is unchanged either
     # way, only its Python container types are normalized for comparison.

@@ -61,6 +61,9 @@ logs/
 **/*.gif
 **/benchmark_results.json
 examples/*.json
+# The machine-readable example index is source, not an example's output
+# (#1271; tests/contracts/test_example_index.py reads it).
+!examples/index.json
 
 # VESSL cluster log mirrors (operational; not physics evidence)
 docs/vessl-logs/

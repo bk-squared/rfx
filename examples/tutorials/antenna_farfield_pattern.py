@@ -8,7 +8,8 @@ directivity may be inaccurate.
 This tutorial first places a deliberately close box so ``preflight()`` can
 show the warning.  It then moves the box beyond half a wavelength, runs one
 small simulation, compares the result with the textbook short-dipole value,
-and saves an E-plane cut.
+and saves an E-plane cut: a PNG to look at, and the same cut's samples as a
+CSV written by ``rfx.export_radiation_pattern``.
 
 Run as::
 
@@ -25,7 +26,13 @@ import numpy as np
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from rfx import GaussianPulse, Simulation, compute_far_field, directivity
+from rfx import (
+    GaussianPulse,
+    Simulation,
+    compute_far_field,
+    directivity,
+    export_radiation_pattern,
+)
 
 
 C0 = 299_792_458.0
@@ -43,6 +50,7 @@ PROBE_OFFSET = 12.0e-3
 HALF_WAVELENGTH = C0 / (2.0 * F0)
 
 OUTPUT_PATH = Path(__file__).with_name("output") / "short_dipole_e_plane.png"
+SAMPLES_PATH = Path(__file__).with_name("output") / "short_dipole_e_plane.csv"
 
 
 def build_simulation() -> Simulation:
@@ -93,6 +101,28 @@ def save_e_plane_cut(far_field) -> None:
     ax.grid(True, alpha=0.3)
     fig.savefig(OUTPUT_PATH, dpi=130)
     plt.close(fig)
+
+
+def save_e_plane_samples(far_field) -> None:
+    """Write the phi=0 cut's samples next to the PNG, one row per angle.
+
+    ``far_field`` holds this single azimuth, so the rows are the cut and
+    nothing else. Columns, as ``rfx.export_radiation_pattern`` writes them:
+
+    * ``theta_deg``, ``phi_deg``: angles in degrees (phi is 0 on every row);
+    * ``E_theta_mag``, ``E_phi_mag``: |E_theta| and |E_phi| exactly as
+      ``compute_far_field`` returns them, with the 1/r factor omitted; their
+      level follows the source drive, so read them relative to the peak;
+    * ``E_theta_phase_deg``, ``E_phi_phase_deg``: phases in degrees;
+    * ``gain_dBi``: despite its name, NOT an absolute gain. It is
+      10*log10(P / P_max) with P = |E_theta|^2 + |E_phi|^2 over this cut:
+      dB relative to the peak (0 dB there), with no floor.
+
+    The PNG plots 20*log10(|E_theta| / max|E_theta|) floored at -40 dB; the
+    ``E_theta_mag`` column gives the same curve before the floor.
+    """
+    SAMPLES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    export_radiation_pattern(SAMPLES_PATH, far_field, freq_idx=0)
 
 
 def main() -> None:
@@ -170,6 +200,8 @@ def main() -> None:
 
     save_e_plane_cut(far_field)
     print(f"Saved E-plane cut: {OUTPUT_PATH}")
+    save_e_plane_samples(far_field)
+    print(f"Saved E-plane samples: {SAMPLES_PATH}")
 
 
 if __name__ == "__main__":
