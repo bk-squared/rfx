@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import EPS_0, MU_0, si_value_eps_r_grad
 
 
 ADI_INTERIOR_PEC_MESSAGE = (
@@ -145,6 +145,72 @@ def _apply_pec_2d(ez: jnp.ndarray, ez_pec_mask: jnp.ndarray | None = None) -> jn
     return ez
 
 
+def _adi_coeffs_eps_r(eps_r, sigma, dt, *lengths):
+    """The ADI E coefficients written in eps_r units (#1357).
+
+    ``(damping, half_dt/eps_plus, *couplings)``, where ``couplings[i] =
+    half_dt**2/(MU_0*eps_plus*d*d)`` for ``d = lengths[i]`` (``d = 1`` gives
+    the 3-D lane's bare ``cc``). ``eps_plus`` is written as ``EPS_0*(eps_r +
+    sigma*dt/(4*EPS_0))``, and the SI constants are grouped as the Python
+    floats ``half_dt/EPS_0`` and ``half_dt**2/(MU_0*EPS_0*d*d)`` (about 1 at
+    the ADI Courant number), so no SI-sized factor multiplies a cotangent.
+    The SI spelling's ``(MU_0*eps_plus*dx*dx)**-2`` is about 1e46 and
+    overflows float32 whatever the cotangent. It is the derivative half of
+    :func:`rfx.core.yee.si_value_eps_r_grad` for :func:`adi_step_2d` and
+    :func:`adi_step_3d`.
+    """
+    if not isinstance(dt, jax.Array):
+        dt = float(dt)
+    half_dt = dt / 2.0
+    q = dt / (4.0 * EPS_0)
+    eps_plus_r = eps_r + sigma * q
+    out = [(eps_r - sigma * q) / eps_plus_r, (half_dt / EPS_0) / eps_plus_r]
+    for d in lengths:
+        out.append((half_dt * half_dt / (MU_0 * EPS_0) / (d * d)) / eps_plus_r)
+    return tuple(out)
+
+
+def _adi_2d_coeffs_si(eps_r, sigma, dt, dx, dy):
+    """``(damping, half_dt/eps_plus, Cx, Cy)`` of :func:`adi_step_2d`, SI."""
+    eps = eps_r * EPS_0
+    half_dt = dt / 2.0
+
+    # Lossy medium: implicit conductivity integration
+    # (ε + σ*dt/4) * Ez^{n+1/2} = (ε - σ*dt/4) * Ez^n + ...
+    sigma_term = sigma * dt / 4.0
+    eps_plus = eps + sigma_term   # implicit damping factor
+    eps_minus = eps - sigma_term  # explicit damping factor
+    damping = eps_minus / eps_plus  # < 1 when sigma > 0
+
+    # Courant-like coupling coefficient for the implicit direction
+    Cx = half_dt * half_dt / (MU_0 * eps_plus * dx * dx)  # (Nx, Ny)
+    Cy = half_dt * half_dt / (MU_0 * eps_plus * dy * dy)  # (Nx, Ny)
+    return damping, half_dt / eps_plus, Cx, Cy
+
+
+def _adi_3d_coeffs_si(eps_r, sigma, dt, dx, dy, dz):
+    """``(damping, ce, cc, Cx, Cy, Cz)`` of :func:`adi_step_3d`, SI."""
+    eps = eps_r * EPS_0
+    half_dt = dt / 2.0
+
+    # Semi-implicit conductivity integration per dt/2 sub-step
+    # (ε + σ·dt/4) E' = (ε - σ·dt/4) E + ...   — mirrors adi_step_2d.
+    sigma_term = sigma * dt / 4.0
+    eps_plus = eps + sigma_term
+    damping = (eps - sigma_term) / eps_plus
+
+    ce = half_dt / eps_plus          # Ampère explicit-curl factor
+    cc = half_dt * half_dt / (MU_0 * eps_plus)  # substituted mixed-term factor
+    Cx = cc / (dx * dx)              # tridiagonal coupling per axis
+    Cy = cc / (dy * dy)
+    Cz = cc / (dz * dz)
+    return damping, ce, cc, Cx, Cy, Cz
+
+
+def _adi_3d_coeffs_eps_r(eps_r, sigma, dt, dx, dy, dz):
+    return _adi_coeffs_eps_r(eps_r, sigma, dt, 1.0, dx, dy, dz)
+
+
 def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
                 eps_r: jnp.ndarray, sigma: jnp.ndarray,
                 dt: float, dx: float, dy: float,
@@ -194,19 +260,14 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     """
     _validate_interior_pec(ez_pec_mask)
     Nx, Ny = ez.shape
-    eps = eps_r * EPS_0
     half_dt = dt / 2.0
 
-    # Lossy medium: implicit conductivity integration
-    # (ε + σ*dt/4) * Ez^{n+1/2} = (ε - σ*dt/4) * Ez^n + ...
-    sigma_term = sigma * dt / 4.0
-    eps_plus = eps + sigma_term   # implicit damping factor
-    eps_minus = eps - sigma_term  # explicit damping factor
-    damping = eps_minus / eps_plus  # < 1 when sigma > 0
-
-    # Courant-like coupling coefficient for the implicit direction
-    Cx = half_dt * half_dt / (MU_0 * eps_plus * dx * dx)  # (Nx, Ny)
-    Cy = half_dt * half_dt / (MU_0 * eps_plus * dy * dy)  # (Nx, Ny)
+    # Damping, the explicit-curl factor half_dt/(ε + σ*dt/4) and the
+    # Courant-like couplings Cx/Cy (:func:`_adi_2d_coeffs_si`). #1357: those
+    # bits, the eps_r-unit derivative -- ``(MU_0*eps_plus*dx*dx)`` is ~1e-23,
+    # so its VJP's ``**-2`` overflowed float32 at ANY cotangent.
+    damping, ce, Cx, Cy = si_value_eps_r_grad(
+        _adi_2d_coeffs_si, _adi_coeffs_eps_r, eps_r, sigma, dt, dx, dy)
 
     # ===================================================================
     # Half-step 1: implicit in x, explicit in y
@@ -255,7 +316,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
 
     curl_h_n = dhy_dx_n - dhx_dy_n  # (Nx, Ny)
 
-    rhs1 = damping * ez + (half_dt / eps_plus) * curl_h_n  # (Nx, Ny)
+    rhs1 = damping * ez + ce * curl_h_n  # (Nx, Ny)
 
     # Solve tridiagonal along x for each column j.
     # Interior points: i = 1 .. Nx-2. Boundary (i=0, i=Nx-1) are PEC: Ez=0.
@@ -310,7 +371,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     )
     curl_h_half = dhy_dx_half - dhx_dy_half
 
-    rhs2 = damping * ez_half + (half_dt / eps_plus) * curl_h_half  # (Nx, Ny)
+    rhs2 = damping * ez_half + ce * curl_h_half  # (Nx, Ny)
 
     # Solve tridiagonal along y for each row i.
     # Interior: j = 1 .. Ny-2. Boundary j=0, j=Ny-1: PEC Ez=0.
@@ -449,6 +510,14 @@ def init_adi_cpml_2d(n_cpml: int, dt: float, dx: float, dy: float,
     return params, state
 
 
+def _inv_eps_si(eps_r):
+    return 1.0 / (eps_r * EPS_0)
+
+
+def _inv_eps_eps_r(eps_r):
+    return (1.0 / EPS_0) / eps_r
+
+
 def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     """Apply CPML ADE corrections after an ADI step.
 
@@ -461,7 +530,9 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     mxlo, mxhi = cpml_params.magnetic_xlo, cpml_params.magnetic_xhi
     mylo, myhi = cpml_params.magnetic_ylo, cpml_params.magnetic_yhi
 
-    eps = eps_r * EPS_0
+    # #1357: 1/eps's bits, the eps_r-unit derivative (the VJP of 1/eps
+    # multiplies the cotangent by eps**-2 ~ 1.3e22).
+    inv_eps = si_value_eps_r_grad(_inv_eps_si, _inv_eps_eps_r, eps_r)
 
     # === Hy correction from dEz/dx (x-CPML) ===
     # xlo: forward diff dEz/dx at half-integer x in strip [0, n)
@@ -491,23 +562,23 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     # Ez[i] and its integer-node profile share the strip [0, n).
     dhy_dx_xlo = (hy[:n, :] - jnp.concatenate([jnp.zeros_like(hy[:1, :]), hy[:n - 1, :]])) / dx
     psi_ezy_xlo = bx[:, None] * cpml_state.psi_ezy_xlo + cx[:, None] * dhy_dx_xlo
-    inv_eps_xlo = 1.0 / eps[:n, :]
+    inv_eps_xlo = inv_eps[:n, :]
     ez = ez.at[:n, :].add(dt * inv_eps_xlo * psi_ezy_xlo)
 
     dhy_dx_xhi = (hy[-n:, :] - hy[-n - 1:-1, :]) / dx
     psi_ezy_xhi = bx_hi[:, None] * cpml_state.psi_ezy_xhi + cx_hi[:, None] * dhy_dx_xhi
-    inv_eps_xhi = 1.0 / eps[-n:, :]
+    inv_eps_xhi = inv_eps[-n:, :]
     ez = ez.at[-n:, :].add(dt * inv_eps_xhi * psi_ezy_xhi)
 
     # === Ez correction from dHx/dy (y-CPML) ===
     dhx_dy_ylo = (hx[:, :n] - jnp.concatenate([jnp.zeros_like(hx[:, :1]), hx[:, :n - 1]], axis=1)) / dy
     psi_ezx_ylo = by[None, :] * cpml_state.psi_ezx_ylo + cy[None, :] * dhx_dy_ylo
-    inv_eps_ylo = 1.0 / eps[:, :n]
+    inv_eps_ylo = inv_eps[:, :n]
     ez = ez.at[:, :n].add(-dt * inv_eps_ylo * psi_ezx_ylo)  # negative: Ampere sign
 
     dhx_dy_yhi = (hx[:, -n:] - hx[:, -n - 1:-1]) / dy
     psi_ezx_yhi = by_hi[None, :] * cpml_state.psi_ezx_yhi + cy_hi[None, :] * dhx_dy_yhi
-    inv_eps_yhi = 1.0 / eps[:, -n:]
+    inv_eps_yhi = inv_eps[:, -n:]
     ez = ez.at[:, -n:].add(-dt * inv_eps_yhi * psi_ezx_yhi)
 
     # PEC at outer boundaries (outermost cells of CPML)
@@ -809,21 +880,15 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     ex, ey, ez, hx, hy, hz : updated fields
     """
     _validate_interior_pec(pec_edge_masks)
-    eps = eps_r * EPS_0
     half_dt = dt / 2.0
 
-    # Semi-implicit conductivity integration per dt/2 sub-step
-    # (ε + σ·dt/4) E' = (ε - σ·dt/4) E + ...   — mirrors adi_step_2d.
-    sigma_term = sigma * dt / 4.0
-    eps_plus = eps + sigma_term
-    damping = (eps - sigma_term) / eps_plus
-
-    ce = half_dt / eps_plus          # Ampère explicit-curl factor
+    # Damping, the explicit-curl factor ce, the mixed-term factor cc and the
+    # per-axis couplings (:func:`_adi_3d_coeffs_si`). #1357: those bits, the
+    # eps_r-unit derivative -- the SI VJP of ``cc`` multiplies the cotangent
+    # by (MU_0*eps_plus)**-2 ~ 8e33.
+    damping, ce, cc, Cx, Cy, Cz = si_value_eps_r_grad(
+        _adi_3d_coeffs_si, _adi_3d_coeffs_eps_r, eps_r, sigma, dt, dx, dy, dz)
     ch = half_dt / MU_0              # Faraday factor (no magnetic loss)
-    cc = half_dt * half_dt / (MU_0 * eps_plus)  # substituted mixed-term factor
-    Cx = cc / (dx * dx)              # tridiagonal coupling per axis
-    Cy = cc / (dy * dy)
-    Cz = cc / (dz * dz)
 
     def _fwd(arr, ax):
         pw = [(0, 0)] * 3

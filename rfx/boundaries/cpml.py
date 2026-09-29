@@ -17,7 +17,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import _shift_fwd, _shift_bwd, EPS_0, MU_0
+from rfx.core.yee import _shift_fwd, _shift_bwd, EPS_0, MU_0, si_value_eps_r_grad
 from rfx.core.jax_utils import is_tracer
 
 
@@ -654,6 +654,24 @@ def _kappa_correction(kappa, curl_slice, shape_broadcast):
     return (1.0 / k - 1.0) * curl_slice
 
 
+def _ce_si(eps_r, dt):
+    """The psi coefficient ``dt/eps`` of the E correction, SI spelling."""
+    return dt / (eps_r * EPS_0)
+
+
+def _ce_eps_r(eps_r, dt):
+    return (dt / EPS_0) / eps_r
+
+
+def _ce_from_inv_si(inv, dt):
+    """``dt/eps`` from ``inv = 1/eps_r``, SI spelling."""
+    return dt * inv / EPS_0
+
+
+def _ce_from_inv_eps_r(inv, dt):
+    return (dt / EPS_0) * inv
+
+
 def apply_cpml_e(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None,  # per-cell eps_r for material-aware CPML (None = free-space)
@@ -735,13 +753,19 @@ def apply_cpml_e(
             inv = jnp.asarray(inv)
             if _mat_dtype is not None:
                 inv = inv.astype(_mat_dtype)
-            return dt * inv / EPS_0
+            # #1357: these bits; the derivative in eps_r units, where
+            # ``/ EPS_0`` no longer multiplies the cotangent by 1.1e11.
+            return si_value_eps_r_grad(_ce_from_inv_si, _ce_from_inv_eps_r,
+                                       inv, dt)
 
         _ce_ex, _ce_ey, _ce_ez = (_ce_from_inv(v) for v in inv_eps_r_update)
     elif materials is not None:
         # One array for all three components — the slices below are then
         # value-for-value what the single ``_ce_full`` produced.
-        _ce_ex = _ce_ey = _ce_ez = dt / (materials.eps_r * EPS_0)
+        # #1357: these bits; the derivative in eps_r units (the SI
+        # spelling's VJP squares ``eps_r*EPS_0`` and overflows float32).
+        _ce_ex = _ce_ey = _ce_ez = si_value_eps_r_grad(
+            _ce_si, _ce_eps_r, materials.eps_r, dt)
     else:
         _ce_ex = _ce_ey = _ce_ez = None
 

@@ -736,6 +736,98 @@ def edge_averaged_e_update_coeffs(eps_r, sigma, dt,
     return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
 
 
+def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
+    """``si_fn(*args)``, differentiated as ``eps_r_fn(*args)`` (#1357).
+
+    The E coefficients are written in SI units, ``eps = eps_r*EPS_0`` and a
+    division by it. The VALUE is fine; the REVERSE pass is not. The VJP of
+    ``x/eps`` multiplies the cotangent by ``eps**-2`` (about 1.3e22 in vacuum),
+    so a float32 cotangent above about 2.6e16 on Cb overflows to inf, and
+    ``0*inf`` then gives NaN on the lossless cells. Whether it fires depends
+    only on the objective's scale: a sum of squared fields from a
+    current-driven graded-mesh run is about 1e17. The ADI lane's
+    ``(MU_0*eps*dx**2)**-2`` overflows even at a cotangent of 1.
+
+    ``eps_r_fn`` computes the same coefficients written in eps_r, with the SI
+    constants grouped as Python floats such as ``dt/EPS_0``
+    (:func:`e_coeffs_eps_r_units`), so its derivative stays in range. A
+    ``jax.custom_jvp`` returns ``si_fn``'s value and takes the tangent from
+    ``jax.jvp(eps_r_fn)``. The primal is ``si_fn`` itself, so a run that is
+    not differentiated compiles exactly the graph it compiled before. That
+    matters because XLA's algebraic simplifier rewrites the SI arithmetic
+    (measured on the 3-D ADI lane), so any extra op in the forward graph,
+    even one whose value is exactly 0, can move the bits.
+
+    ``args`` are pytrees. Their ``jax.Array`` leaves (concrete or traced) are
+    the differentiable inputs, and every other leaf (a Python-float ``dt``, a
+    NumPy array) is held fixed. Every array the coefficients depend on must
+    therefore be an ARGUMENT. An array closed over by ``si_fn`` would be
+    differentiated through the SI spelling again. With no ``jax.Array`` leaf
+    the call is plain host arithmetic and returns ``si_fn(*args)``.
+    """
+    leaves, treedef = jax.tree.flatten(args)
+    dyn = [i for i, leaf in enumerate(leaves) if isinstance(leaf, jax.Array)]
+    if not dyn:
+        return si_fn(*args)
+
+    def _args(values):
+        full = list(leaves)
+        for i, v in zip(dyn, values):
+            full[i] = v
+        return jax.tree.unflatten(treedef, full)
+
+    @jax.custom_jvp
+    def _coeffs(*values):
+        return si_fn(*_args(values))
+
+    @_coeffs.defjvp
+    def _coeffs_jvp(primals, tangents):
+        out = _coeffs(*primals)
+        _, t_out = jax.jvp(lambda *v: eps_r_fn(*_args(v)), primals, tangents)
+        return out, jax.tree.map(lambda t, o: t.astype(o.dtype), t_out, out)
+
+    return _coeffs(*(leaves[i] for i in dyn))
+
+
+def e_coeffs_eps_r_units(eps_r, sigma, dt, *, inverse=False):
+    """``(loss, Cb)`` of the lossy E update written in eps_r units (#1357).
+
+    ``k = dt/(2*EPS_0)``, ``loss = sigma*k/eps_r``, ``Cb = (dt/EPS_0) /
+    (eps_r + sigma*k)``. These are the SI ``sigma*dt/(2*eps)`` and ``(dt/eps)
+    / (1 + loss)`` with ``eps = eps_r*EPS_0`` cancelled, and ``Ca = (1 -
+    loss)/(1 + loss)``. When ``dt`` is a number, ``dt/EPS_0`` and ``k`` are
+    Python floats, so no SI-sized factor ever meets a cotangent. With
+    ``inverse=True`` the first argument is ``1/eps_r`` (the Stage-2 subpixel
+    tensor, 0 on a frozen PEC edge): ``loss = sigma*k*inv``, ``Cb =
+    (dt/EPS_0)*inv/(1 + loss)``.
+
+    This is the derivative half of :func:`si_value_eps_r_grad` for every
+    Ca/Cb builder.
+    """
+    if not isinstance(dt, jax.Array):
+        dt = float(dt)
+    k = dt / (2.0 * EPS_0)
+    dt_eps0 = dt / EPS_0
+    if inverse:
+        loss = (sigma * k) * eps_r
+        return loss, (dt_eps0 * eps_r) / (1.0 + loss)
+    return (sigma * k) / eps_r, dt_eps0 / (eps_r + sigma * k)
+
+
+def _ca_cb_eps_r_units(eps_r, sigma, dt, inverse=False):
+    """``(Ca, Cb)`` from :func:`e_coeffs_eps_r_units`."""
+    loss, cb = e_coeffs_eps_r_units(eps_r, sigma, dt, inverse=inverse)
+    return (1.0 - loss) / (1.0 + loss), cb
+
+
+def _e_update_coeffs_si(eps_r, sigma, dt):
+    eps = eps_r * EPS_0
+    sigma_dt_2eps = sigma * dt / (2.0 * eps)
+    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
+    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
+    return ca, cb
+
+
 def e_update_coeffs(eps_r, sigma, dt):
     """``(Ca, Cb)`` of the lossy E update for a permittivity and conductivity.
 
@@ -746,12 +838,13 @@ def e_update_coeffs(eps_r, sigma, dt):
     over one box from arrays that need not come from ``materials`` (#1179).
     The arguments are arrays of any shape (or scalars); nothing here is
     grid-sized by construction.
+
+    #1357: the values are the SI spelling's bits and the derivative is the
+    eps_r spelling's (:func:`si_value_eps_r_grad`). A traced ``eps_r`` or
+    ``sigma`` therefore gets a finite gradient at any objective scale.
     """
-    eps = eps_r * EPS_0
-    sigma_dt_2eps = sigma * dt / (2.0 * eps)
-    ca = (1.0 - sigma_dt_2eps) / (1.0 + sigma_dt_2eps)
-    cb = (dt / eps) / (1.0 + sigma_dt_2eps)
-    return ca, cb
+    return si_value_eps_r_grad(_e_update_coeffs_si, _ca_cb_eps_r_units,
+                               eps_r, sigma, dt)
 
 
 def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
@@ -1065,12 +1158,21 @@ def precompute_coeffs(
     # homogeneous grid bakes the same bits it baked before.
     _eps_c, _sig_c = component_e_materials(materials, periodic)
 
-    def _bake(eps_r_c, sigma_c):
+    def _bake_si(eps_r_c, sigma_c, dt, dx):
         eps = eps_r_c * jnp.float32(EPS_0)
         loss = sigma_c * jnp.float32(dt) / (jnp.float32(2.0) * eps)
         denom = jnp.float32(1.0) + loss
         return ((jnp.float32(1.0) - loss) / denom,
                 (jnp.float32(dt) / eps) / (denom * jnp.float32(dx)))
+
+    def _bake_eps_r(eps_r_c, sigma_c, dt, dx):
+        ca, cb = _ca_cb_eps_r_units(eps_r_c, sigma_c, dt)
+        return ca, cb / dx
+
+    def _bake(eps_r_c, sigma_c):
+        # #1357: these bits, the eps_r-unit derivative.
+        return si_value_eps_r_grad(_bake_si, _bake_eps_r,
+                                   eps_r_c, sigma_c, dt, dx)
 
     (ca_ex, cb_ex) = _bake(_eps_c[0], _sig_c[0])
     (ca_ey, cb_ey) = _bake(_eps_c[1], _sig_c[1])
@@ -1219,21 +1321,11 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     sigma_ex, sigma_ey, sigma_ez = component_e_materials(
         materials, (False, False, False))[1]
 
-    abs_eps_ex = eps_ex * EPS_0
-    abs_eps_ey = eps_ey * EPS_0
-    abs_eps_ez = eps_ez * EPS_0
-
-    loss_ex = sigma_ex * dt / (2.0 * abs_eps_ex)
-    ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
-    cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
-
-    loss_ey = sigma_ey * dt / (2.0 * abs_eps_ey)
-    ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
-    cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
-
-    loss_ez = sigma_ez * dt / (2.0 * abs_eps_ez)
-    ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
-    cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
+    # The same arithmetic as update_e's, so one spelling (and its #1357
+    # eps_r-unit derivative) serves both.
+    ca_ex, cb_ex = e_update_coeffs(eps_ex, sigma_ex, dt)
+    ca_ey, cb_ey = e_update_coeffs(eps_ey, sigma_ey, dt)
+    ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
     # Backward differences with per-cell inv-spacing (mirrors update_e_nu)
     curl_x = (
@@ -1254,6 +1346,23 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * curl_z).astype(_fdtype)
 
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
+
+
+def _e_update_coeffs_inv_si(inv, sigma, dt):
+    """``(Ca, Cb)`` in inverse-eps form, ``inv = 1/eps_r``.
+
+    ``loss = σ · dt · μ / (2 · ε₀)`` is finite for any (σ, μ) ≥ 0, and the
+    ``1 + loss`` denominator is ≥ 1, so there is no division hazard.
+    """
+    inv_eps0 = 1.0 / EPS_0
+    loss = 0.5 * sigma * dt * inv * inv_eps0
+    ca = (1.0 - loss) / (1.0 + loss)
+    cb = (dt * inv * inv_eps0) / (1.0 + loss)
+    return ca, cb
+
+
+def _ca_cb_inv_eps_r_units(inv, sigma, dt):
+    return _ca_cb_eps_r_units(inv, sigma, dt, inverse=True)
 
 
 @partial(jax.jit, static_argnums=(7,))
@@ -1323,21 +1432,15 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     # runs keep their bytes.
     sigma_ex, sigma_ey, sigma_ez = component_e_materials(materials, periodic)[1]
 
-    # Per-component lossy update coefficients in inv-eps form.
-    # `loss = σ · dt · μ / (2 · ε₀)` is finite for any (σ, μ) ≥ 0; the
-    # `1 + loss` denominator is ≥ 1 so no division hazard.
-    inv_eps0 = 1.0 / EPS_0
-    loss_ex = 0.5 * sigma_ex * dt * inv_xx * inv_eps0
-    loss_ey = 0.5 * sigma_ey * dt * inv_yy * inv_eps0
-    loss_ez = 0.5 * sigma_ez * dt * inv_zz * inv_eps0
-
-    ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
-    ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
-    ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
-
-    cb_ex = (dt * inv_xx * inv_eps0) / (1.0 + loss_ex)
-    cb_ey = (dt * inv_yy * inv_eps0) / (1.0 + loss_ey)
-    cb_ez = (dt * inv_zz * inv_eps0) / (1.0 + loss_ez)
+    # Per-component lossy update coefficients in inv-eps form
+    # (:func:`_e_update_coeffs_inv_si`). #1357: those bits, the eps_r-unit
+    # derivative (``* inv_eps0`` handed the cotangent a factor 1/EPS_0).
+    ca_ex, cb_ex = si_value_eps_r_grad(
+        _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_xx, sigma_ex, dt)
+    ca_ey, cb_ey = si_value_eps_r_grad(
+        _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_yy, sigma_ey, dt)
+    ca_ez, cb_ez = si_value_eps_r_grad(
+        _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_zz, sigma_ez, dt)
 
     # curl H (identical to update_e and update_e_aniso).
     curl_x = (
@@ -1405,23 +1508,12 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     # runs keep their bytes.
     sigma_ex, sigma_ey, sigma_ez = component_e_materials(materials, periodic)[1]
 
-    # Per-component absolute permittivity
-    abs_eps_ex = eps_ex * EPS_0
-    abs_eps_ey = eps_ey * EPS_0
-    abs_eps_ez = eps_ez * EPS_0
-
-    # Per-component lossy update coefficients
-    loss_ex = sigma_ex * dt / (2.0 * abs_eps_ex)
-    ca_ex = (1.0 - loss_ex) / (1.0 + loss_ex)
-    cb_ex = (dt / abs_eps_ex) / (1.0 + loss_ex)
-
-    loss_ey = sigma_ey * dt / (2.0 * abs_eps_ey)
-    ca_ey = (1.0 - loss_ey) / (1.0 + loss_ey)
-    cb_ey = (dt / abs_eps_ey) / (1.0 + loss_ey)
-
-    loss_ez = sigma_ez * dt / (2.0 * abs_eps_ez)
-    ca_ez = (1.0 - loss_ez) / (1.0 + loss_ez)
-    cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
+    # Per-component lossy update coefficients: the arithmetic of
+    # e_update_coeffs, so one spelling (and its #1357 eps_r-unit
+    # derivative) serves both.
+    ca_ex, cb_ex = e_update_coeffs(eps_ex, sigma_ex, dt)
+    ca_ey, cb_ey = e_update_coeffs(eps_ey, sigma_ey, dt)
+    ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
     # curl H (same as update_e)
     curl_x = (

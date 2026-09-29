@@ -49,7 +49,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.grid import Grid
-from rfx.core.yee import EPS_0, MU_0, MaterialArrays
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, si_value_eps_r_grad
 from rfx.geometry.csg import Shape
 
 # Threshold above which a thin conductor is treated as PEC sheet.
@@ -663,8 +663,16 @@ def sheet_update_coeffs(sigma_sheet, materials, dt):
     ``eps_r`` is the BACKGROUND permittivity at the sheet cells (the f0
     branch no longer overwrites it, #677).
     """
-    eps = materials.eps_r * EPS_0
-    sigma_tot = materials.sigma + sigma_sheet
+    # #1357: these bits, the eps_r-unit derivative (``/ eps`` squares
+    # eps_r*EPS_0 in the VJP and overflows float32).
+    return si_value_eps_r_grad(_sheet_coeffs_si, _sheet_coeffs_eps_r,
+                               materials.eps_r, materials.sigma, sigma_sheet,
+                               dt)
+
+
+def _sheet_coeffs_si(eps_r, sigma, sigma_sheet, dt):
+    eps = eps_r * EPS_0
+    sigma_tot = sigma + sigma_sheet
     x2 = sigma_tot * dt / eps
     a = jnp.exp(-x2)
     # Safe division: off-sheet vacuum cells have sigma_tot == 0; their
@@ -673,6 +681,16 @@ def sheet_update_coeffs(sigma_sheet, materials, dt):
     safe = jnp.where(sigma_tot > 0, sigma_tot, 1.0)
     b = jnp.where(sigma_tot > 0, -jnp.expm1(-x2) / safe, dt / eps)
     return a, b
+
+
+def _sheet_coeffs_eps_r(eps_r, sigma, sigma_sheet, dt):
+    """:func:`sheet_update_coeffs` in eps_r units: ``dt/EPS_0`` grouped."""
+    dt_eps0 = dt / EPS_0
+    sigma_tot = sigma + sigma_sheet
+    x2 = sigma_tot * dt_eps0 / eps_r
+    safe = jnp.where(sigma_tot > 0, sigma_tot, 1.0)
+    return jnp.exp(-x2), jnp.where(sigma_tot > 0, -jnp.expm1(-x2) / safe,
+                                   dt_eps0 / eps_r)
 
 
 def apply_sheet_impedance_e(state, e_prev, curls, ctx, coeffs):

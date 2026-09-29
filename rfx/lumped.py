@@ -77,7 +77,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from rfx.core.yee import EPS_0
+from rfx.core.yee import EPS_0, si_value_eps_r_grad
 
 
 # ---------------------------------------------------------------------------
@@ -274,7 +274,19 @@ def edge_update_denominator(materials, cell, component, dt,
                                               periodic)
     if as_float:
         eps_r, sigma = float(eps_r), float(sigma)
+        return eps_r * EPS_0 / dt + sigma / 2.0
+    # #1357: these bits; the derivative with EPS_0/dt grouped as one factor,
+    # so the cotangent is not first multiplied by 1/dt ~ 5e11.
+    return si_value_eps_r_grad(_denominator_si, _denominator_eps_r,
+                               eps_r, sigma, dt)
+
+
+def _denominator_si(eps_r, sigma, dt):
     return eps_r * EPS_0 / dt + sigma / 2.0
+
+
+def _denominator_eps_r(eps_r, sigma, dt):
+    return eps_r * (EPS_0 / dt) + sigma / 2.0
 
 
 def _resolve_position_to_index(grid, position):
