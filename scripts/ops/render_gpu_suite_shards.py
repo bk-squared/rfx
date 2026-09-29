@@ -58,8 +58,11 @@ run: |-
   export PYTHONPATH="$ROOT"
   python -c "import jax, rfx; print('probe ok | jax', jax.__version__, '| devices', jax.devices())" | tee -a "$OUT/meta.txt"
   set +e
-  # "not crossval_ladder": the two full-ladder cases run in scripts/vessl_crossval_ladder.yaml
-  # (PI 2026-09-27, #1335). -v and --timeout: a stalled test is named and its stacks dumped.
+  # "not crossval_ladder" matches the other two GPU jobs (#1335). The shard lists in
+  # gpu_suite_shards.json hold neither ladder file, so nothing is deselected today; the
+  # marker keeps it that way if one is added. -v and --timeout: a stalled test is named,
+  # its stacks are dumped and the shard ends (os._exit: no junit.xml, which
+  # summarize_junit.py reports as a red shard).
   timeout 10800 python -m pytest -o addopts="" -m "gpu and not crossval_ladder" -v -ra -p no:cacheprovider \\
       --durations=40 --timeout=5400 --timeout-method=thread \\
       --junitxml "$OUT/junit.xml" \\

@@ -69,7 +69,9 @@ run: |-
   # 20000 s: this selection took 13221 s of pytest on run 369367264767 (RTX 3090, 2026-09-25) against the old 13800.
   # crossval_ladder cases run in scripts/vessl_crossval_ladder.yaml; a release needs that lane green too.
   # -v names each test as it starts, so a run cut by the outer timeout still says which
-  # test it was in; run 369367265464 (a9054338, RTX 4090) printed only ".." in 5.6 h under -q.
+  # test it was in; run 369367265464 (a9054338, RTX 4090) printed only ".." in 5.6 h under -q,
+  # while the same command at 0c3d3c61 eleven hours later finished (180 passed): the stall is
+  # intermittent, which is what the per-test timeout is for.
   # --timeout (pytest-timeout, thread method) ends the run 5400 s into any one test and
   # dumps every thread's stack; the slowest non-ladder test took ~21 min on a 4090.
   timeout 20000 python -m pytest -m "gpu and not crossval_ladder" -v -ra -p no:cacheprovider \
