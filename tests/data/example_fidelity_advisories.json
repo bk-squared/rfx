@@ -76,8 +76,9 @@
   },
   {
    "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "The graded x/y mesh puts the last PEC node 0.35 cell inside every sheet edge on purpose (rfx.mesh_edges.edge_aware_profiles, the remedy preflight's sheet_effective_size names; #1375), so this census, which measures each drawn face against its nearest node, reports 700 um on every patch and ground edge. The solved size is the drawn size: build_simulation asserts it and sheet_effective_size does not fire. main()'s comment lists the row: 'the off-lattice conductor-face residual on the patch and ground outlines (0.7 mm: the graded x/y mesh puts the last node 0.35 cell inside every sheet edge on purpose, #1375)'.",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Census defect, not a board defect. The graded x/y mesh puts the last PEC node 0.35 cell inside every sheet edge on purpose (rfx.mesh_edges.edge_aware_profiles, the remedy preflight's sheet_effective_size names; #1375), so this census, which measures each drawn face against its nearest node, reports 700 um on every patch and ground edge, and fidelity_report calls the patch 30.6 mm (-4.38 %) and names edge_aware_profile as the remedy the board already uses. The solved size is the drawn size: build_simulation asserts it and sheet_effective_size does not fire. The census and fidelity_report measure a sheet face against its nearest node instead of against the solved edge (rfx/preflight/pec_geometry.py:1241-1248, rfx/fidelity.py:854-872); tracked on #1138. main()'s comment lists the row: 'the off-lattice conductor-face residual on the patch and ground outlines (0.7 mm: the graded x/y mesh puts the last node 0.35 cell inside every sheet edge on purpose, #1375)'.",
    "ref": "examples/tutorials/patch_antenna_demo.py:3-7,333-340,534-538",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
