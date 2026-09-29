@@ -908,7 +908,8 @@
       "params": [
         "path",
         "ff_result",
-        "freq_idx"
+        "freq_idx",
+        "input_power"
       ]
     },
     "export_training_data": {
