@@ -2108,18 +2108,23 @@ def settling_db_from_port_records(final_cfgs, *, return_detail: bool = False):
     )
 
 
-def _s_matrix_dtypes(field_dtype):
-    """Select record/spectrum dtypes from the JAX-canonical field dtype."""
-    # result_type respects x64 availability; mixed fields accumulate at f32.
+def _s_matrix_dtypes(field_dtype, port_cfgs):
+    """Promote field, existing record, and frequency precision for extraction."""
+    # Preserve the frequency-based records from init_waveguide_port, widening
+    # for field storage when needed. Mixed fields accumulate at least at f32.
     record_dtype = jnp.result_type(
-        jnp.float32 if field_dtype is None else field_dtype, jnp.float32)
+        jnp.float32 if field_dtype is None else field_dtype,
+        jnp.float32,
+        *(cfg.v_probe_t.dtype for cfg in port_cfgs),
+        *(cfg.freqs.dtype for cfg in port_cfgs),
+    )
     return record_dtype, jnp.result_type(record_dtype, 1j)
 
 
 def _s_matrix_port_waves(cfg, *, ref_shift):
-    """Store modal amplitudes at the S-matrix record precision."""
+    """Store modal amplitudes at the promoted record/frequency precision."""
     waves = extract_waveguide_port_waves(cfg, ref_shift=ref_shift)
-    complex_dtype = jnp.result_type(cfg.v_ref_t.dtype, 1j)
+    complex_dtype = jnp.result_type(cfg.v_ref_t.dtype, cfg.freqs.dtype, 1j)
     return tuple(wave.astype(complex_dtype) for wave in waves)
 
 
@@ -2148,8 +2153,8 @@ def extract_waveguide_s_matrix(
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
-    Modal records and spectra use float64/complex128 for float64 fields
-    with JAX x64 enabled, and float32/complex64 otherwise.
+    Modal records preserve their precision and widen for field storage.
+    Spectra and S promote the record and frequency dtypes.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2187,9 +2192,8 @@ def extract_waveguide_s_matrix(
 
     from rfx.simulation import run as run_simulation
 
-    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
-
     template_cfgs = tuple(port_cfgs)
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
     n_ports = len(template_cfgs)
     # G-AD-WIRE: use a list-of-columns accumulator so the final jnp.stack
     # keeps all b_recv/safe_a values on the JAX tape.  The old np.zeros +
@@ -2204,7 +2208,6 @@ def extract_waveguide_s_matrix(
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
-            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -2304,8 +2307,8 @@ def extract_waveguide_s_matrix_flux(
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
-    Modal records and spectra use float64/complex128 for float64 fields
-    with JAX x64 enabled, and float32/complex64 otherwise.
+    Modal records preserve their precision and widen for field storage.
+    Spectra and S promote the record and frequency dtypes.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2382,13 +2385,12 @@ def extract_waveguide_s_matrix_flux(
     from rfx.simulation import run as run_simulation
     from rfx.probes.probes import init_flux_monitor, flux_spectrum
 
-    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
-
     _AXIS_IDX = {"x": 0, "y": 1, "z": 2}
 
     template_cfgs = tuple(port_cfgs)
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
     n_ports = len(template_cfgs)
-    freqs = jnp.asarray(template_cfgs[0].freqs, dtype=record_dtype)
+    freqs = template_cfgs[0].freqs
     # jnp-native assembly (issue #148): columns are collected per drive
     # port and stacked at the end — no in-place np mutation, so traced
     # values flow through to the returned S-matrix.
@@ -2399,7 +2401,6 @@ def extract_waveguide_s_matrix_flux(
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
-            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -2600,8 +2601,8 @@ def extract_waveguide_s_params_normalized(
     """Two-run normalized waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
-    Modal records and spectra use float64/complex128 for float64 fields
-    with JAX x64 enabled, and float32/complex64 otherwise.
+    Modal records preserve their precision and widen for field storage.
+    Spectra and S promote the record and frequency dtypes.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2682,9 +2683,8 @@ def extract_waveguide_s_params_normalized(
 
     from rfx.simulation import run as run_simulation
 
-    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
-
     template_cfgs = tuple(port_cfgs)
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, template_cfgs)
     n_ports = len(template_cfgs)
     n_freqs = len(template_cfgs[0].freqs)
     s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=complex_dtype)
@@ -2693,7 +2693,6 @@ def extract_waveguide_s_params_normalized(
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
-            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -3095,8 +3094,8 @@ def extract_multimode_s_matrix(
     """Assemble a multi-mode waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
-    Modal records and spectra use float64/complex128 for float64 fields
-    with JAX x64 enabled, and float32/complex64 otherwise.
+    Modal records preserve their precision and widen for field storage.
+    Spectra and S promote the record and frequency dtypes.
 
     Each physical port may have multiple modes.  The S-matrix indices
     enumerate (port_index, mode_index) pairs.
@@ -3125,8 +3124,6 @@ def extract_multimode_s_matrix(
     """
     from rfx.simulation import run as run_simulation
 
-    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
-
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
     flat_cfgs: list[WaveguidePortConfig] = []
     mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
@@ -3138,6 +3135,7 @@ def extract_multimode_s_matrix(
             m_idx = _mode_indices_from_config(cfg)
             mode_map.append((port_idx, mode_within, cfg.mode_type, m_idx))
 
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, flat_cfgs)
     n_total = len(flat_cfgs)
     n_freqs = len(flat_cfgs[0].freqs)
     s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=complex_dtype)
@@ -3158,7 +3156,6 @@ def extract_multimode_s_matrix(
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
-            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -3267,8 +3264,8 @@ def extract_multimode_s_matrix_flux(
     """Power-flux multi-mode waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
-    Modal records and spectra use float64/complex128 for float64 fields
-    with JAX x64 enabled, and float32/complex64 otherwise.
+    Modal records preserve their precision and widen for field storage.
+    Spectra and S promote the record and frequency dtypes.
 
     Multi-mode analogue of :func:`extract_waveguide_s_matrix_flux`. For
     each driven modal channel ``(p, m)``:
@@ -3304,8 +3301,6 @@ def extract_multimode_s_matrix_flux(
     """
     from rfx.simulation import run as run_simulation
 
-    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
-
     flat_cfgs: list[WaveguidePortConfig] = []
     mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
     for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
@@ -3323,6 +3318,7 @@ def extract_multimode_s_matrix_flux(
             "extract_multimode_s_matrix_flux requires at least two modal channels"
         )
 
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype, flat_cfgs)
     n_total = len(flat_cfgs)
     n_freqs = len(flat_cfgs[0].freqs)
     s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=complex_dtype)
@@ -3340,7 +3336,6 @@ def extract_multimode_s_matrix_flux(
         zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
-            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,

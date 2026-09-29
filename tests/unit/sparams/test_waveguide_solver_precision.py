@@ -103,8 +103,8 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
     run = uniform_core.run
     make_step = uniform_core.make_core_step
     extract_waves = waveguide_port._s_matrix_port_waves
-    expected_record = np.dtype(np.float64 if precision == "float64" else np.float32)
-    expected_complex = np.dtype(np.complex128 if precision == "float64" else np.complex64)
+    expected_record = np.result_type(expected_dtype, np.float32)
+    expected_complex = np.result_type(expected_record, np.complex64)
 
     def observe_run(*args, **kwargs):
         for cfg in kwargs["waveguide_ports"]:

@@ -1,8 +1,14 @@
-"""Uniform waveguide S uses the requested field precision when x64 permits it.
+"""The uniform waveguide S-matrix dtype follows ``JAX_ENABLE_X64``.
 
-This is a dtype regression test. Enabling x64 alone keeps float32 fields
-and complex64 S; precision="float64" selects float64 fields and complex128
-S when x64 is available. Both JAX-native extraction paths are covered.
+Decision 1 of the v1.8 chain-closure plan
+(``docs/design_notes/v18_waveguide_s_chain_plan.md``, Appendix B) removed
+the uniform flux lane's complex64 cast. This test pins complex64 with x64
+off and complex128 with x64 on, for ``False`` and ``"flux"`` alike,
+including float32 fields under x64. The frequency precision must survive
+regardless of the requested field precision.
+
+x64 is scoped per test through the context manager, never flipped at
+module level (that leaks into every same-process shard).
 """
 
 from __future__ import annotations
@@ -59,7 +65,7 @@ def _wr90_sim(precision):
 
 @pytest.mark.parametrize("x64, precision, expected", [
     (False, "float32", "complex64"),
-    (True, "float32", "complex64"),
+    (True, "float32", "complex128"),
     (False, "float64", "complex64"),
     (True, "float64", "complex128"),
 ])
