@@ -2128,8 +2128,11 @@ def extract_waveguide_s_matrix(
     return_settling: bool = False,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
+    field_dtype=None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
+
+    ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2214,6 +2217,7 @@ def extract_waveguide_s_matrix(
             checkpoint=_wg_checkpoint,
             checkpoint_segments=checkpoint_segments,
             sheet_impedance=sheet_impedance,
+            field_dtype=field_dtype,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_ports:
@@ -2275,8 +2279,11 @@ def extract_waveguide_s_matrix_flux(
     ref_pec_edge_masks_per_port: "list | None" = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
+    field_dtype=None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
+
+    ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2429,6 +2436,7 @@ def extract_waveguide_s_matrix_flux(
             pec_edge_masks=_ref_edges,
             checkpoint=_flux_checkpoint,
             checkpoint_segments=checkpoint_segments,
+            field_dtype=field_dtype,
             **common_run_kw,
         )
         ref_final_cfgs = ref_result.waveguide_ports or ()
@@ -2467,6 +2475,7 @@ def extract_waveguide_s_matrix_flux(
             checkpoint=_flux_checkpoint,
             checkpoint_segments=checkpoint_segments,
             sheet_impedance=sheet_impedance,
+            field_dtype=field_dtype,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
@@ -2558,8 +2567,11 @@ def extract_waveguide_s_params_normalized(
     return_settling: bool = False,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
+    field_dtype=None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Two-run normalized waveguide S-matrix.
+
+    ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2686,6 +2698,7 @@ def extract_waveguide_s_params_normalized(
             aniso_inv_eps=ref_aniso_inv_eps,
             checkpoint=_norm_checkpoint,
             checkpoint_segments=checkpoint_segments,
+            field_dtype=field_dtype,
             **common_run_kw,
         )
         ref_final_cfgs = ref_result.waveguide_ports or ()
@@ -2730,6 +2743,7 @@ def extract_waveguide_s_params_normalized(
             checkpoint=_norm_checkpoint,
             checkpoint_segments=checkpoint_segments,
             sheet_impedance=sheet_impedance,
+            field_dtype=field_dtype,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
@@ -3043,8 +3057,11 @@ def extract_multimode_s_matrix(
     conformal_weights: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
     pec_edge_masks: tuple | None = None,
+    field_dtype=None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Assemble a multi-mode waveguide S-matrix.
+
+    ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
 
     Each physical port may have multiple modes.  The S-matrix indices
     enumerate (port_index, mode_index) pairs.
@@ -3137,6 +3154,7 @@ def extract_multimode_s_matrix(
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=pec_edge_masks,
+            field_dtype=field_dtype,
         )
         final_cfgs = result.waveguide_ports or ()
         if len(final_cfgs) != n_total:
@@ -3206,8 +3224,11 @@ def extract_multimode_s_matrix_flux(
     aniso_inv_eps: tuple | None = None,
     ref_aniso_inv_eps: tuple | None = None,
     pec_edge_masks: tuple | None = None,
+    field_dtype=None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Power-flux multi-mode waveguide S-matrix.
+
+    ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
 
     Multi-mode analogue of :func:`extract_waveguide_s_matrix_flux`. For
     each driven modal channel ``(p, m)``:
@@ -3306,6 +3327,7 @@ def extract_multimode_s_matrix_flux(
             waveguide_ports=ref_cfgs,
             aniso_eps=ref_aniso_eps,
             aniso_inv_eps=ref_aniso_inv_eps,
+            field_dtype=field_dtype,
             **common_run_kw,
         )
         ref_final_cfgs = ref_result.waveguide_ports or ()
@@ -3336,6 +3358,7 @@ def extract_multimode_s_matrix_flux(
             conformal_weights=conformal_weights,
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=pec_edge_masks,
+            field_dtype=field_dtype,
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
