@@ -121,15 +121,109 @@ def test_outer_jit_cannot_silently_drop_a_declared_filament_radius(lane):
         solve(jnp.array(1.4))
 
 
-def test_traced_mesh_cannot_silently_reclassify_a_radius_filament():
+@pytest.mark.parametrize("graded", [False, True])
+def test_traced_mesh_cannot_silently_reclassify_a_radius_filament(graded):
     from rfx.geometry.rasterize_grid import GridCoords, classify_pec_entry
-    nodes = jnp.arange(8)*.001
+    nodes = np.arange(8)*.001
+    y_sizes = np.full(8, .001)
+    if graded:
+        y_sizes[0] = .0001  # Remote minimum must not replace the LOCAL cell.
+    y_nodes = np.r_[0., np.cumsum(y_sizes[:-1])]
+    sizes = (np.full(8, .001), y_sizes, np.full(8, .001))
+    wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=.0003)
+
+    def classify(x):
+        coords = GridCoords(x=x, y=y_nodes, z=nodes, shape=(8,)*3)
+        return classify_pec_entry(wire, coords, coords, sizes)
+
+    with pytest.raises(ValueError, match=REFUSAL):
+        jax.jit(classify)(nodes)
+
+
+@pytest.mark.parametrize("ratio,cells", [(.5, 4), (.6, 4), (1.2, 22)])
+def test_traced_mesh_resolved_wire_keeps_volume_mask(ratio, cells):
+    from rfx.geometry.rasterize_grid import (
+        GridCoords, classify_pec_entry, pec_volume_cell_mask,
+    )
+    nodes = np.arange(8)*.001
     sizes = (np.full(8, .001),)*3
-    wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=.0001)
+    wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=ratio*.001)
+
+    def masks(x):
+        coords = GridCoords(x=x, y=nodes, z=nodes, shape=(8,)*3)
+        mask, sheet, filament = classify_pec_entry(wire, coords, coords, sizes)
+        assert sheet is None and filament is None
+        # origin/main sends a traced wire straight to this volume sampler.
+        return mask, pec_volume_cell_mask(wire, coords)
+
+    for displacement in (0., .00015):
+        x = nodes + displacement*np.sin(np.linspace(0., np.pi, 8))
+        mask, main_volume = jax.jit(masks)(x)
+        assert np.asarray(mask).tobytes() == np.asarray(main_volume).tobytes()
+        assert int(np.sum(mask)) == cells
+
+
+@pytest.mark.parametrize("ratio", [.3, .6, 1.2])
+def test_traced_profile_without_nominal_metrics_refuses(ratio):
+    from rfx.geometry.rasterize_grid import (
+        cell_sizes_from_nonuniform_grid, centres_from_nonuniform_grid,
+        classify_pec_entry, coords_from_nonuniform_grid,
+    )
+    from rfx.nonuniform import make_nonuniform_grid
+    sizes = np.full(7, .001)
+    wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=ratio*.001)
+
+    def classify(profile):
+        grid = make_nonuniform_grid((.007, .007), sizes, .001, 0,
+                                    dx_profile=profile)
+        assert grid.dx_arr_f64 is None
+        coords = coords_from_nonuniform_grid(grid)
+        return classify_pec_entry(wire, coords, centres_from_nonuniform_grid(grid, coords),
+                                  cell_sizes_from_nonuniform_grid(grid))
+
+    with pytest.raises(NotImplementedError, match="x cell sizes are traced.*no nominal untraced"):
+        jax.jit(classify)(sizes)
+
+
+def test_traced_nodes_without_static_cell_sizes_refuse():
+    from rfx.geometry.rasterize_grid import GridCoords, classify_pec_entry
+    nodes = np.arange(8)*.001
+    wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=.0006)
+
+    def classify(x):
+        coords = GridCoords(x=x, y=nodes, z=nodes, shape=(8,)*3)
+        return classify_pec_entry(wire, coords, coords)
+
+    with pytest.raises(NotImplementedError, match="x cell sizes are traced.*no nominal untraced"):
+        jax.jit(classify)(nodes)
+
+
+def test_static_graded_profile_without_static_nodes_refuses():
+    from rfx.geometry.rasterize_grid import GridCoords, classify_pec_entry
+    nodes = np.arange(8)*.001
+    x_sizes = np.full(8, .001)
+    x_sizes[0] = .0001
+    sizes = (x_sizes, np.full(8, .001), np.full(8, .001))
+    wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=.0006)
 
     def classify(x):
         coords = GridCoords(x=x, y=nodes, z=nodes, shape=(8,)*3)
         return classify_pec_entry(wire, coords, coords, sizes)
 
-    with pytest.raises(NotImplementedError, match="static lattice metrics"):
+    with pytest.raises(NotImplementedError, match="graded x profile has no static node axis"):
         jax.jit(classify)(nodes)
+
+
+@pytest.mark.parametrize("traced_mesh", [False, True])
+def test_traced_radius_still_refuses_with_static_metrics(traced_mesh):
+    from rfx.geometry.rasterize_grid import GridCoords, classify_pec_entry
+    nodes = np.arange(8)*.001
+    sizes = (np.full(8, .001),)*3
+
+    def classify(radius, x):
+        coords = GridCoords(x=x if traced_mesh else nodes, y=nodes, z=nodes, shape=(8,)*3)
+        wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=radius)
+        return classify_pec_entry(wire, coords, coords, sizes)
+
+    with pytest.raises(NotImplementedError, match="a traced radius is not supported"):
+        jax.jit(classify)(.0006, nodes)

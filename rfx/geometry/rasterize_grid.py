@@ -713,12 +713,47 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes):
     """
     nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes)
     a = float(radius)
-    if 0 < a < 0.5 * d_min:
+    _refuse_subcell_wire_radius(a, d_min)
+    return nodes if a < 0.5 * d_min else None
+
+
+def _refuse_subcell_wire_radius(radius, d_min):
+    """Use the same positive-subcell refusal on static and traced meshes."""
+    if 0 < radius < 0.5 * d_min:
         raise ValueError(
             "PEC PolylineWire filament radius is not supported for "
             "0 < a < 0.5*d_min; resolve the wire as a volume, a >= 0.5*d "
             "(refine the mesh to resolve the declared radius).")
-    return nodes if a < 0.5 * d_min else None
+
+
+def _static_wire_min_cell(points, node_axes, cell_sizes):
+    """Local radius cutoff from host metrics, without reading traced nodes.
+
+    A constant static profile needs no vertex index. A graded profile needs
+    its static node axis to locate the nearest nodes, just as
+    ``wire_vertex_nodes`` does. Mesh-design profiles have no nominal host
+    copy in ``make_nonuniform_grid``; never substitute a boundary spacing.
+    """
+    widths = []
+    for t, (axis, sizes) in enumerate(zip(node_axes, cell_sizes)):
+        if is_tracer(sizes):
+            raise NotImplementedError(
+                "PEC PolylineWire radius requires static lattice metrics: "
+                f"{'xyz'[t]} cell sizes are traced and no nominal untraced "
+                "profile is available to decide 0 < a < 0.5*d_min.")
+        d = np.asarray(sizes, dtype=np.float64)
+        if np.all(d == d[0]):
+            widths.append(float(d[0]))
+        else:
+            if is_tracer(axis):
+                raise NotImplementedError(
+                    "PEC PolylineWire radius requires static lattice metrics: "
+                    f"the graded {'xyz'[t]} profile has no static node axis "
+                    "to locate the wire vertices and decide 0 < a < 0.5*d_min.")
+            x = np.asarray(axis, dtype=np.float64)
+            widths.extend(float(d[int(np.argmin(np.abs(x - float(p[t]))))])
+                          for p in points)
+    return min(widths)
 
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
@@ -735,6 +770,10 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
       or resolve the thickness;
     * PolylineWire with ``0 < radius < half the smallest local cell``;
     * any shape whose centre-sampled volume is empty (concrete only).
+
+    A traced wire radius or unavailable static local lattice metrics raises
+    ``NotImplementedError``. With static metrics, resolved wires retain the
+    centre-sampled volume path even when the coordinates are traced.
     """
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
 
@@ -766,11 +805,13 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     pts = getattr(shape, "points", None)
     radius = getattr(shape, "radius", None)
     if pts is not None and radius is not None:
-        if is_tracer(radius) or (traced and radius > 0):
+        if is_tracer(radius):
             raise NotImplementedError(
-                "PEC PolylineWire radius requires static lattice metrics and a "
-                "static radius to choose filament or volume; traced mesh "
-                "geometry is not implemented for this radius model.")
+                "PEC PolylineWire requires a static radius to choose "
+                "filament or volume; a traced radius is not supported.")
+        if traced and radius > 0:
+            d_min = _static_wire_min_cell(pts, node_axes, cell_sizes)
+            _refuse_subcell_wire_radius(radius, d_min)
     if pts is not None and radius is not None and not traced:
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # positive subcell radii refuse. A legacy radius=0 filament takes

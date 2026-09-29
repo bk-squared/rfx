@@ -50,7 +50,7 @@ def _oracle():
 
 def _assert_oracle(z):
     expected = _oracle()
-    np.testing.assert_array_less(np.abs(z-expected)/np.abs(expected), .02)
+    np.testing.assert_array_less(np.abs(z-expected)/np.abs(expected), .01)
     radiation = ETA0*(2*np.pi*FREQS/C0)*HEIGHT/4
     np.testing.assert_array_less(np.abs(z.real/radiation-1), .01)
     assert abs(z[1, 1].imag-z[0, 1].imag) <= 1.0
