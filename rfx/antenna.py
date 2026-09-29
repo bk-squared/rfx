@@ -16,6 +16,7 @@ from typing import NamedTuple
 
 import numpy as np
 
+from rfx._radiated_power import integrate_radiated_power
 from rfx.farfield import FarFieldResult
 from rfx.core.yee import EPS_0, MU_0
 
@@ -45,18 +46,10 @@ def _total_radiated_power(ff: FarFieldResult) -> np.ndarray:
 
     P_rad = integral U(theta, phi) sin(theta) d_theta d_phi
 
+    Requires full-sphere coverage. A single phi cut assumes axisymmetry.
     Returns (n_freqs,).
     """
-    U = _radiation_intensity(ff)
-    theta = ff.theta
-    dth = np.gradient(theta) if len(theta) > 1 else np.array([np.pi])
-    dph = np.gradient(ff.phi) if len(ff.phi) > 1 else np.array([2 * np.pi])
-    sin_th = np.sin(theta)
-
-    integrand = U * sin_th[None, :, None]
-    P_rad = np.sum(integrand * dth[None, :, None] * dph[None, None, :],
-                   axis=(1, 2))
-    return P_rad
+    return integrate_radiated_power(_radiation_intensity(ff), ff.theta, ff.phi)
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +67,8 @@ def antenna_gain(
 
     where P_ref = P_rad (IEEE gain) when *input_power* is ``None``,
     or P_ref = P_in (realized gain) when *input_power* is given.
+    P_rad requires full-sphere coverage (a single phi cut assumes
+    axisymmetry). Realized gain accepts partial angular patterns.
 
     Parameters
     ----------
@@ -118,6 +113,9 @@ def antenna_efficiency(
     input_power: np.ndarray | float,
 ) -> np.ndarray:
     """Radiation efficiency eta = P_rad / P_in.
+
+    P_rad requires full-sphere coverage (a single phi cut assumes axisymmetry),
+    even though input_power is supplied.
 
     Parameters
     ----------

@@ -839,8 +839,9 @@ def export_radiation_pattern(path, ff_result, freq_idx=0, *, input_power=None):
     input_power : array-like (n_freqs,) or scalar, optional
         Input power in watts, passed to :func:`rfx.antenna.antenna_gain_dB`
         for realized gain. Without it, gain_dBi is absolute IEEE gain
-        normalized by total radiated power. Supply a full-sphere pattern
-        for that angular power integral.
+        normalized by total radiated power. That integral requires full-sphere
+        coverage, or one phi cut under an axisymmetric assumption. Realized
+        gain with input_power accepts partial angular patterns.
     """
     from rfx.antenna import antenna_gain_dB
 

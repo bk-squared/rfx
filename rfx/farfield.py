@@ -19,6 +19,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
+from rfx._radiated_power import integrate_radiated_power
 from rfx.grid import Grid, C0
 from rfx.core.yee import EPS_0, MU_0
 
@@ -231,7 +232,10 @@ def _ntff_face_pads(grid, box: NTFFBox | None = None):
                 pads[face] = int(explicit)
             else:
                 faces = getattr(grid, "face_layers", None) or {}
-                pads[face] = int(faces.get(face, getattr(grid, "cpml_layers", 0)))
+                # Legacy objects may use None for an unspecified scalar pad;
+                # treat it like an absent attribute (no padding).
+                legacy = getattr(grid, "cpml_layers", 0)
+                pads[face] = int(faces.get(face, 0 if legacy is None else legacy))
     return pads
 
 
@@ -280,7 +284,6 @@ def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
     bad = _face_centre_margin_failures(box, counts)
     if not bad:
         return
-    pads = _ntff_face_pads(grid, box) if grid is not None else None
     lines = []
     flat = False
     for axis, lo, hi, n in bad:
@@ -292,8 +295,11 @@ def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
                 f"a cell on both sides of both {name} faces")
             continue
         detail = f"  {name}: faces at index {lo} and {hi} of {n} cells"
-        if grid is not None:
-            pos = _axis_node_positions(grid, axis, pads[f"{name}_lo"], n)
+        # A diagnostic must not resolve/validate box pads: a metadata
+        # conflict would hide the margin error. Use known grid coordinates.
+        pad_lo = getattr(grid, f"pad_{name}_lo", None)
+        if pad_lo is not None and 0 <= lo <= n and 0 <= hi <= n:
+            pos = _axis_node_positions(grid, axis, pad_lo, n)
             detail += (
                 f" ({pos[lo]:.6g} m and {pos[hi]:.6g} m); this axis can carry "
                 f"a face anywhere in [{pos[1]:.6g} m, {pos[n - 1]:.6g} m]")
@@ -1477,20 +1483,14 @@ def radiation_pattern(ff: FarFieldResult) -> np.ndarray:
 def directivity(ff: FarFieldResult) -> np.ndarray:
     """Directivity in dBi for each frequency.
 
-    Integrates radiated power over the sphere using trapezoidal rule
-    and computes D = 4π U_max / P_rad.
+    Integrates radiated power over the full sphere using gradient weights
+    and computes D = 4π U_max / P_rad. Requires full-sphere coverage;
+    a single phi cut assumes an axisymmetric pattern.
 
     Returns (n_freqs,) array.
     """
     power = np.abs(ff.E_theta) ** 2 + np.abs(ff.E_phi) ** 2  # (nf, nθ, nφ)
-    theta = ff.theta
-    dth = np.gradient(theta) if len(theta) > 1 else np.array([np.pi])
-    dph = np.gradient(ff.phi) if len(ff.phi) > 1 else np.array([2 * np.pi])
-
-    sin_th = np.sin(theta)  # (nθ,)
-    # Integrate: P_rad = ∫∫ U sin(θ) dθ dφ
-    integrand = power * sin_th[None, :, None]  # (nf, nθ, nφ)
-    P_rad = np.sum(integrand * dth[None, :, None] * dph[None, None, :], axis=(1, 2))
+    P_rad = integrate_radiated_power(power, ff.theta, ff.phi)
 
     U_max = np.max(power, axis=(1, 2))
     safe_P = np.where(P_rad > 0, P_rad, 1.0)

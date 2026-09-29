@@ -14,6 +14,7 @@ import pytest
 from rfx.farfield import (
     ETA_0, NTFFBox, NTFFData, compute_far_field, compute_far_field_jax,
     init_ntff_data, make_ntff_box,
+    with_face_centre_collocation,
 )
 from rfx.grid import C0, Grid
 from rfx.nonuniform import make_nonuniform_grid, position_to_index
@@ -192,3 +193,27 @@ def test_surface_export_and_transform_share_physical_origin(graded):
     # The transform retains its float32 solver cell store on a NU grid;
     # export uses the float64 coordinate spine. Allow that quantization.
     np.testing.assert_allclose(ff.E_theta[0], expected, rtol=5 * np.finfo(np.float32).eps)
+
+
+@pytest.mark.parametrize("graded", [False, True])
+def test_margin_error_is_not_hidden_by_pad_conflict(graded):
+    grid = _grid(graded)
+    box = _box(grid, graded)._replace(i_lo=0, cpml_lo_x=0)
+    with pytest.raises(ValueError, match="no room for the face-centre") as exc:
+        with_face_centre_collocation(box, grid)
+    assert "x: faces at index 0" in str(exc.value)
+    assert "can carry a face anywhere in" in str(exc.value)
+
+
+@pytest.mark.parametrize("transform", [compute_far_field, compute_far_field_jax])
+def test_legacy_none_scalar_pad_means_unpadded(transform):
+    grid = _grid(False)
+    box = NTFFBox(*_box(grid, False)[:7], face_centre=True)
+    data, _ = _dipole_record(grid, box)
+    # With no realized or explicit pads, None has the same meaning as an
+    # omitted scalar: no padding. Preserve any explicit per-face zero too.
+    attrs = dict(dx=DX, face_layers={"x_lo": 0, "y_lo": 2})
+    actual = transform(data, box, SimpleNamespace(**attrs, cpml_layers=None), THETA, PHI)
+    expected = transform(data, box, SimpleNamespace(**attrs, cpml_layers=0), THETA, PHI)
+    np.testing.assert_array_equal(actual.E_theta, expected.E_theta)
+    np.testing.assert_array_equal(actual.E_phi, expected.E_phi)

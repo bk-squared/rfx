@@ -294,8 +294,9 @@ def maximize_directivity(
 
     Computes the directivity ratio ``U(θ_target, φ_target) / P_rad`` where
     ``U = |E_θ|² + |E_φ|²`` is the radiation intensity and ``P_rad`` is
-    the total radiated power integrated over the FULL sphere (matching
-    ``farfield.directivity()`` and ``antenna._total_radiated_power`` — so the
+    the total radiated power integrated over the FULL sphere (the same
+    coverage as ``farfield.directivity()`` and ``antenna._total_radiated_power``,
+    retaining this objective's JAX trapezoid endpoint weights — so the
     optimized quantity is the true directivity, not an upper-hemisphere proxy
     that would inflate D for antennas with any back radiation). The ratio is
     scale-invariant, so the absolute magnitude of the NTFF spectral integral
@@ -369,6 +370,7 @@ def maximize_directivity(
 
     def objective(result) -> jnp.ndarray:
         from rfx.farfield import compute_far_field
+        from rfx._radiated_power import integrate_radiated_power
 
         ntff_data = result.ntff_data
         ntff_box = result.ntff_box
@@ -396,11 +398,8 @@ def maximize_directivity(
         # Full-sphere P_rad: ∬ U(θ,φ) sin(θ) dθ dφ — (n_freqs, n_theta, n_phi)
         ff_sphere = compute_far_field(ntff_data, ntff_box, grid, theta_sphere, phi_full)
         u_sphere = (jnp.abs(ff_sphere.E_theta) ** 2 + jnp.abs(ff_sphere.E_phi) ** 2)
-        sin_theta = jnp.asarray(np.sin(theta_sphere), dtype=u_sphere.dtype)
-        # trapz in θ then φ
-        integrand = u_sphere * sin_theta[None, :, None]
-        p_rad_phi = jnp.trapezoid(integrand, theta_sphere, axis=1)
-        p_rad = jnp.trapezoid(p_rad_phi, phi_full, axis=1)  # (n_freqs,)
+        p_rad = integrate_radiated_power(
+            u_sphere, theta_sphere, phi_full, jax_trapezoid=True)
 
         if log_ratio:
             # Full, NaN-safe quotient: grad = U'/U - P'/P (== true dD/dθ up to
