@@ -2118,6 +2118,8 @@ def run_nonuniform_distributed_pec(
         override when there is one, traced when it is -- by
         :func:`material_drive_scales`.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(sharded_materials, lane="distributed_nu", unsupported=True)
     if n_devices != sharded_grid.n_devices:
         raise ValueError(
             f"n_devices={n_devices} != sharded_grid.n_devices="

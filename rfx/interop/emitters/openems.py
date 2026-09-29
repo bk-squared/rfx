@@ -829,6 +829,12 @@ def _plan_ports(
     for index, entry in enumerate(lumped):
         payload = _require_mapping(entry, f"excitations.lumped_ports[{index}]")
         what = f"excitations.lumped_ports[{index}]"
+        if payload.get("radius") is not None:
+            raise _refuse(
+                f"{what} radius={payload['radius']!r}",
+                "the declared-radius wire self-field model has no openEMS "
+                "projection; resolve the pin geometrically instead",
+            )
         component = str(_get(payload, "component", what))
         if component not in _COMPONENT_AXIS:
             raise _refuse(

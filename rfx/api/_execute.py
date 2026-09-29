@@ -1795,6 +1795,7 @@ class _ExecuteMixin:
                     component=pe.component,
                     impedance=pe.impedance,
                     excitation=_drive_waveform,
+                    radius=pe.radius,
                 )
                 # Live-cell-aware fold + injection (issue #318): dead
                 # extent cells inside PEC carry no port sigma and no

@@ -2528,6 +2528,11 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(
+        materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
+        unsupported=(debye is not None or lorentz is not None
+                     or aniso_eps is not None or design_box is not None))
     sources = sources or []
     probes = probes or []
     wire_ports = wire_ports or []

@@ -25,6 +25,17 @@ Use `exchange_interval=1`.
 
 ## Ports and extraction
 
+**The default wire port is a mesh-sized probe.** `add_port(..., extent=...)`
+with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
+square transverse mesh. Refinement therefore changes its series inductance;
+it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
+the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
+square transverse stencil and uniform spacing along the pin. Axial grading
+across the port refuses this model. It is carried by single-device,
+nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
+Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
+Resolve larger pins geometrically (for example with a coax feed).
+
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power
