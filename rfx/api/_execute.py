@@ -4745,6 +4745,10 @@ class _ExecuteMixin:
         -------
         Result
         """
+        # The caller's arguments as given, before anything below resolves them:
+        # a devices= model that runs on one device is re-run with all of them.
+        _call_args = dict(locals())
+        del _call_args["self"]
         _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
@@ -4844,6 +4848,25 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane == "run_distributed" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
+        if plan.lane == "run_distributed" and (
+                self._tfsf is not None or self._waveguide_ports):
+            # TFSF sources and waveguide ports need the whole domain on one
+            # device. Re-run with every argument the caller gave, minus devices=;
+            # the runner's own fallback re-ran with n_steps alone and dropped
+            # the rest (#1305: an explicit conformal_pec=False came back as the
+            # declared conformal walls).
+            import warnings
+            warnings.warn(
+                "Distributed runner does not yet support "
+                + ("TFSF plane-wave sources" if self._tfsf is not None
+                   else "waveguide ports")
+                + ". Falling back to single-device execution with the same "
+                "arguments.",
+                stacklevel=2,
+            )
+            return self.run(**{**_call_args, "devices": None,
+                               "exchange_interval": 1,
+                               "skip_preflight": True})
         if plan.lane == "run_distributed":
             if self._dft_planes:
                 raise NotImplementedError(
@@ -4855,22 +4878,12 @@ class _ExecuteMixin:
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
                 )
-            # Leave TFSF and waveguide models to the runner's single-device fallbacks.
-            if self._tfsf is None and not self._waveguide_ports:
-                from rfx.runners.distributed_v2 import (
-                    refuse_unsupported_distributed_features,
-                )
-                refuse_unsupported_distributed_features(
-                    self, lane="distributed multi-device run()")
-            # TFSF and waveguide-port models take the runner's single-device
-            # fallback, ``sim.run(n_steps=n_steps)``. It drops every explicit
-            # argument, but it re-derives conformal_pec from the declared
-            # Boundary(conformal=True), so that request is carried there.
+            from rfx.runners.distributed_v2 import (
+                refuse_unsupported_distributed_features,
+            )
+            refuse_unsupported_distributed_features(
+                self, lane="distributed multi-device run()")
             _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
-            if ((self._tfsf is not None or self._waveguide_ports)
-                    and conformal_pec == bool(
-                        self._boundary_spec.conformal_faces())):
-                _dist_conformal = False
             # One device on a graded mesh is the non-uniform lane, which
             # carries neither snapshot nor conformal_pec, nor until_decay on
             # closed boundaries.
