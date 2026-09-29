@@ -152,30 +152,59 @@ def test_a_component_less_record_is_refused():
 
 
 def test_the_distributed_slab_update_loads_the_own_edge_only():
-    """The distributed lane's cell-owned slab update, given the same record:
-    in a homogeneous background it must equal the single-device update on all
-    three components (the port node included)."""
-    from rfx.core.yee import FDTDState, init_materials, update_e
-    from rfx.runners._distributed_common import _update_e_local
+    """The multi-device E update, given the same record (#1303): two x slabs
+    with the halo the runners stage. Each component's eps and sigma, built on
+    each slab by ``slab_e_component_materials`` and gathered, are the
+    single-device ``component_e_materials`` bit for bit, and the slab update
+    ``_update_e_local`` on ``slab_e_coeffs`` then equals ``update_e`` to its
+    own rounding. The
+    random background exercises the four-cell mean; one element sits on Ez
+    and one on Ey at the second slab's first real cell, whose i-1 cells are
+    the first slab's."""
+    from rfx.core.yee import FDTDState, update_e
+    from rfx.runners._distributed_common import (
+        _split_materials, _split_state, _update_e_local, slab_e_coeffs,
+        slab_e_component_materials)
 
-    mats = init_materials(SHAPE)._replace(
-        eps_r=jnp.full(SHAPE, 2.2, jnp.float32),
-        sigma=jnp.full(SHAPE, 0.3, jnp.float32))
-    mats = stamp_lumped_sigma(mats, CELL, 1.0 / (50.0 * DX), "ez")
+    n_dev, nx_per = 2, SHAPE[0] // 2
+    seam = (nx_per, 3, 4)
+    mats = stamp_lumped_sigma(_background(), seam, 1.0 / (50.0 * DX), "ez")
+    mats = stamp_lumped_sigma(mats, seam, 1.0 / (300.0 * DX), "ey")
     rng = np.random.default_rng(7)
     h = [jnp.asarray(rng.standard_normal(SHAPE).astype(np.float32))
          for _ in range(3)]
     z = jnp.zeros(SHAPE, jnp.float32)
     st = FDTDState(ex=z, ey=z, ez=z, hx=h[0], hy=h[1], hz=h[2],
                    step=jnp.array(0, jnp.int32))
-    slab = _update_e_local(st, mats, DT, DX)
+    slab_mats = _split_materials(mats, n_dev)
+    slab_st = _split_state(st, n_dev)
+    fields = {c: [] for c in COMPONENTS}
+    edge = {name: [[] for _ in COMPONENTS] for name in ("eps", "sigma")}
+    for rank in range(n_dev):
+        mat = MaterialArrays(
+            slab_mats.eps_r[rank], slab_mats.sigma[rank], slab_mats.mu_r[rank],
+            sigma_lumped=tuple(None if p is None else p[rank]
+                               for p in slab_mats.sigma_lumped))
+        local = FDTDState(*(getattr(slab_st, f)[rank] for f in
+                            ("ex", "ey", "ez", "hx", "hy", "hz")),
+                          step=jnp.array(0, jnp.int32))
+        e_mats = slab_e_component_materials(mat, nx_per, SHAPE[0], rank=rank)
+        for name, per_comp in zip(("eps", "sigma"), e_mats):
+            for c, arr in enumerate(per_comp):
+                edge[name][c].append(np.asarray(arr)[1:1 + nx_per])
+        out = _update_e_local(local, slab_e_coeffs(mat, nx_per, SHAPE[0], DT, rank=rank), DX)
+        for c in COMPONENTS:
+            fields[c].append(np.asarray(getattr(out, c))[1:1 + nx_per])
+    for name, want in zip(("eps", "sigma"), component_e_materials(mats)):
+        for c, comp in enumerate(COMPONENTS):
+            got = np.concatenate(edge[name][c])
+            assert got.tobytes() == np.asarray(want[c]).tobytes(), (name, comp)
     ref = update_e(st, mats, DT, DX)
     for comp in COMPONENTS:
-        a = np.asarray(getattr(slab, comp))
         b = np.asarray(getattr(ref, comp))
-        # Interior only: the slab lane pads H with zeros at its faces the
-        # same way; compare away from the lo faces of the backward curl.
-        np.testing.assert_allclose(a[1:, 1:, 1:], b[1:, 1:, 1:], rtol=2e-6,
+        # The two kernels spell the curl differently (division vs the jitted
+        # stencil), which is float32 rounding, not a coefficient.
+        np.testing.assert_allclose(np.concatenate(fields[comp]), b, rtol=2e-6,
                                    atol=1e-6 * float(np.max(np.abs(b))),
                                    err_msg=comp)
 

@@ -406,10 +406,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_subgridded=carries("inside the production envelope: PEC walls, no CPML, a slab "
                                    "touching one z wall"),
             run_adi=carries(),
-            run_distributed=carries("each E edge takes ε from the cell that owns it", wrong="#1303"),
+            run_distributed=carries("each E edge takes the mean ε of its four cells, as on one device (#1303)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
-            fwd_distributed_nu=carries("each E edge takes ε from the cell that owns it", wrong="#1303"),
+            fwd_distributed_nu=carries("each E edge takes the mean ε of its four cells, as on one device (#1303)"),
             fwd_adi=carries(),
         ),
         "sigma": lanes(
@@ -417,10 +417,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries(),
             run_subgridded=carries("inside the production envelope"),
             run_adi=carries("implicit conductivity in the ADI solve"),
-            run_distributed=carries("each E edge takes σ from the cell that owns it", wrong="#1303"),
+            run_distributed=carries("each E edge takes the mean σ of its four cells, as on one device (#1303)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
-            fwd_distributed_nu=carries("each E edge takes σ from the cell that owns it", wrong="#1303"),
+            fwd_distributed_nu=carries("each E edge takes the mean σ of its four cells, as on one device (#1303)"),
             fwd_adi=carries("implicit conductivity in the ADI solve"),
         ),
         "mu": lanes(
@@ -497,10 +497,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_subgridded=admission("a lossy thin conductor (add_thin_conductor)", RUN_SG,
                                      "it was dropped although production validation passes (#1311)"),
             run_adi=ADI_THIN,
-            run_distributed=carries("folded into σ, which each E edge takes from the cell that owns it", wrong="#1303"),
+            run_distributed=carries("folded into σ, which each E edge takes as the mean of its four cells (#1303)"),
             fwd_uniform=carries("folded into σ"),
             fwd_nonuniform=carries("folded into σ"),
-            fwd_distributed_nu=carries("folded into σ, which each E edge takes from the cell that owns it", wrong="#1303"),
+            fwd_distributed_nu=carries("folded into σ, which each E edge takes as the mean of its four cells (#1303)"),
             fwd_adi=ADI_THIN,
         ),
         "pec_sheet": lanes(

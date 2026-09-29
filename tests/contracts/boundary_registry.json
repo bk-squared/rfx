@@ -760,6 +760,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "slab_e_component_materials.x_lo_replicated",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/runners/distributed_nu.py",
       "function": "_apply_cpml_e_local_nu",
       "kind": "neighbour"
