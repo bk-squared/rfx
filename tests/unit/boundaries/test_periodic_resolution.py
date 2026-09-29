@@ -1,4 +1,4 @@
-"""Automatic periods preserve closed wall lengths and cell-based declarations."""
+"""Automatic wall preservation is bounded; cell-based declarations use the grid."""
 import warnings
 
 import numpy as np
@@ -21,32 +21,60 @@ def wall_model(*, geometry=False, domain=(.0103, .008, .006), dx=None, mode='3d'
     return sim
 
 
-@pytest.mark.parametrize('geometry', [False, True])
-def test_automatic_periodic_mesh_preserves_closed_walls(geometry):
+@pytest.mark.parametrize('geometry,period_cells,wall_cells', [
+    (False, 11, (9, 7)), (True, 21, (17, 13)),
+])
+def test_automatic_periodic_mesh_reports_costly_exact_wall_spacing(
+        geometry, period_cells, wall_cells):
     sim = wall_model(geometry=geometry)
+    with pytest.warns(UserWarning) as caught:
+        grid = sim._build_grid()
+        axes = sim.fidelity_report(print_report=False)[0]['axes']
+    expected_dx = .0103 / period_cells
+    assert grid.dx == expected_dx
+    assert grid.shape == (period_cells, wall_cells[0] + 1, wall_cells[1] + 1)
+    assert [a['realized_extent_um'] for a in axes] == pytest.approx(
+        [10300, *(n * expected_dx * 1e6 for n in wall_cells)], rel=2e-14)
+    text = '\n'.join(str(w.message) for w in caught)
+    for axis, declared, cells in zip('yz', (8, 6), wall_cells):
+        assert (f"wall-closed axis {axis!r}: declared {declared} mm, "
+                f"realized {cells * expected_dx * 1e3:.12g} mm") in text
+    # gcd(103,80,60) = 1 in units of 0.1 mm. That exact common spacing
+    # is too costly to adopt automatically for either planner request.
+    assert 'exact common spacing exists at 0.1 mm' in text.lower()
+    assert '0.75 * requested dx' in text
+
+
+@pytest.mark.parametrize('domain,expected_dx,shape', [
+    ((.0096, .0072, .0056), .0008, (12, 10, 8)),
+    ((.00975, .00825, .006), .00075, (13, 12, 9)),
+])
+def test_common_wall_spacing_inside_the_cost_bound_is_adopted(domain, expected_dx, shape):
+    sim = wall_model(domain=domain)
     with pytest.warns(UserWarning, match='snapped'):
         grid = sim._build_grid()
-    # gcd(103,80,60) = 1 in units of 0.1 mm: this is the largest common dx.
-    assert grid.dx == pytest.approx(.0001, rel=2e-14)
-    assert grid.shape == (103, 81, 61)
-    axes = sim.fidelity_report(print_report=False)[0]['axes']
-    assert [a['realized_extent_um'] for a in axes] == pytest.approx([10300, 8000, 6000], rel=2e-14)
+        axes = sim.fidelity_report(print_report=False)[0]['axes']
+    # The largest common spacings are 0.8 and exactly 0.75 of the 1 mm request.
+    assert grid.dx == pytest.approx(expected_dx, rel=2e-14, abs=0)
+    assert grid.shape == shape
+    assert [a['realized_extent_um'] for a in axes] == pytest.approx(
+        np.array(domain) * 1e6, rel=2e-14)
 
 
 def test_closed_walls_constrain_an_already_dividing_period():
     # Mixed PEC/PMC faces also close an axis. This checks lattice length;
     # it makes no claim about the separate PMC half-cell wall convention.
-    grid = Grid(C0 / .020, (.010, .0082, .006), periodic_axes='x', cpml_layers=0,
+    grid = Grid(C0 / .020, (.008, .0088, .0072), periodic_axes='x', cpml_layers=0,
                 pec_faces={'y_lo', 'z_lo', 'z_hi'}, pmc_faces={'y_hi'})
-    assert grid.dx == pytest.approx(.0002, rel=2e-14)
-    assert grid.shape == (50, 42, 31)
+    assert grid.dx == pytest.approx(.0008, rel=2e-14)
+    assert grid.shape == (10, 12, 10)
 
 
 @pytest.mark.parametrize('mode', ['2d_tmz', '2d_tez'])
 def test_automatic_wall_snap_ignores_the_invariant_axis(mode):
-    grid = wall_model(domain=(.0103, .008, .006157), mode=mode)._build_grid()
-    assert grid.dx == pytest.approx(.0001, rel=2e-14)
-    assert grid.shape == (103, 81, 1)
+    grid = wall_model(domain=(.0096, .0072, .006157), mode=mode)._build_grid()
+    assert grid.dx == pytest.approx(.0008, rel=2e-14)
+    assert grid.shape == (12, 10, 1)
 
 
 @pytest.mark.parametrize('length', [.0103, .010])
@@ -62,6 +90,8 @@ def test_bounded_snap_warning_names_every_moved_wall(length):
         assert (f"wall-closed axis {axis!r}: declared {declared} mm, "
                 f"realized {cells * expected_dx * 1e3:.12g} mm") in text
     assert 'requested dx/16' in text
+    assert '0.75 * requested dx' in text
+    assert 'exact common spacing exists' not in text.lower()
 
 
 def test_explicit_periodic_spacing_and_nonperiodic_auto_spacing_are_unchanged():

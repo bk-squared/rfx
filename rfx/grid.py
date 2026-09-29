@@ -37,8 +37,10 @@ C0 = 299_792_458.0
 #: domain of a few cells -- which is why this is relative.
 CELL_COUNT_ULP_BUDGET = 8
 
-# Bound automatic common-spacing refinement, including closed PEC/PMC walls.
-PERIODIC_AUTO_REFINEMENT = 16
+# Adopt a common spacing only within this fraction of the planner request.
+PERIODIC_AUTO_MIN_FRACTION = 0.75
+# Search farther only to suggest an explicit spacing, never to adopt it.
+PERIODIC_COMMON_SEARCH_REFINEMENT = 16
 
 
 def _divides_period(length: float, dx: float) -> bool:
@@ -61,11 +63,11 @@ def _wall_closed_axes(pec_faces, pmc_faces, *, is_2d=False):
 
 def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                          wall_axes: str = '') -> float:
-    """Automatic spacing preserves periods and closed walls within dx/16..dx.
+    """Preserve periods and closed walls within 0.75 * requested dx..dx.
 
-    If that bounded common search fails, retain the periodic-only snap and
-    report every displaced wall. Explicit spacing and non-periodic grids
-    keep their existing admission and arithmetic.
+    Otherwise retain the periodic-only snap and report every displaced wall.
+    Search down to requested dx/16 only for an explicit-spacing suggestion.
+    Explicit spacing and non-periodic grids keep their existing arithmetic.
     """
     if not axes:
         return dx
@@ -74,22 +76,27 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
         raise ValueError(f"periodic axes {axes!r} require positive finite lengths; L={lengths} m")
     walls = {a: float(domain['xyz'.index(a)]) for a in wall_axes
              if a not in axes and float(domain['xyz'.index(a)]) > 0}
+    common_below_bound = None
     if automatic:
         constrained = lengths + list(walls.values())
         if all(_divides_period(length, dx) for length in constrained):
             return dx
-        minimum = dx / PERIODIC_AUTO_REFINEMENT
+        minimum = dx / PERIODIC_COMMON_SEARCH_REFINEMENT
         anchor = min(constrained)
         # Every common spacing divides this length. Increasing the integer
         # cell count enumerates candidates from largest to smallest.
         for count in range(cells_spanning(anchor, dx), cells_spanning(anchor, minimum) + 1):
             candidate = min(dx, max(minimum, anchor / count))
             if all(_divides_period(length, candidate) for length in constrained):
+                if candidate < dx * PERIODIC_AUTO_MIN_FRACTION:
+                    common_below_bound = candidate
+                    break
                 warnings.warn(
                     f"Periodic axes {axes!r}, L={lengths} m: automatic dx={dx:.12g} m "
                     f"snapped to dx={candidate:.12g} m to divide every period"
                     + (f" and wall-closed axes {''.join(walls)!r}" if walls else '')
-                    + f" (search bound: requested dx/{PERIODIC_AUTO_REFINEMENT}).",
+                    + f" (minimum automatic common spacing: {PERIODIC_AUTO_MIN_FRACTION:g} "
+                    "* requested dx).",
                     UserWarning, stacklevel=3)
                 return candidate
     if all(_divides_period(length, dx) for length in lengths):
@@ -107,8 +114,13 @@ def _periodic_resolution(domain, axes: str, dx: float, *, automatic: bool,
                 + (f"snapped to dx={candidate:.12g} m" if candidate != dx
                    else f"kept at dx={candidate:.12g} m")
                 + " to divide every period."
-                + (f" No common spacing within requested dx/{PERIODIC_AUTO_REFINEMENT} "
-                   f"through requested dx; {'; '.join(moved)}." if moved else ''),
+                + (f" No common spacing within {PERIODIC_AUTO_MIN_FRACTION:g} * requested dx "
+                   f"through requested dx; {'; '.join(moved)}." if moved else '')
+                + (f" Exact common spacing exists at {common_below_bound * 1e3:.12g} mm, "
+                   f"below that bound; set dx={common_below_bound:.12g} m explicitly to use it."
+                   if moved and common_below_bound is not None else '')
+                + (f" Suggestion search limit: requested dx/{PERIODIC_COMMON_SEARCH_REFINEMENT}."
+                   if moved else ''),
                 UserWarning, stacklevel=3)
         return candidate
     # Rationally related periods may require a smaller common cell. This is
