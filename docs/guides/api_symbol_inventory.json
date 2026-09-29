@@ -1877,7 +1877,9 @@
         "report_label",
         "sheet_impedance",
         "design_box",
-        "design_occupancy"
+        "design_occupancy",
+        "stop_fn",
+        "stop_interval"
       ]
     },
     "run_adi_2d": {
@@ -2848,7 +2850,8 @@
       "skip_preflight",
       "report_every",
       "report_label",
-      "ringdown"
+      "ringdown",
+      "until_identified"
     ],
     "s_matrix_lane": [
       "lane"

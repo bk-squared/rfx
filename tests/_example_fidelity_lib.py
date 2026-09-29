@@ -296,6 +296,7 @@ class MissingOptionalDependency(ImportError):
 # test_optional_dependency_declarations_are_grounded keeps the table honest
 # in both directions.
 OPTIONAL_DEPENDENCIES: dict[str, frozenset[str]] = {
+    "examples/tutorials/cad_mesh_import_demo.py": frozenset({"trimesh"}),
     "validation/tmtt_paper/beam_steering_superstrate.py": frozenset({"optax"}),
     "validation/tmtt_paper/waveguide_dielectric_taper.py": frozenset({"optax"}),
 }
@@ -560,22 +561,6 @@ CLASSIFICATION: dict[str, Entry] = {
     # ---- module_level_solve: solves at import time, no main guard -------
 
     # ---- builder_fused_with_solve: build+solve share one function -------
-    "examples/tutorials/cad_mesh_import_demo.py": Entry(
-        "builder_fused_with_solve",
-        "`main()` builds and calls .run(...) in the same function. NOT given "
-        "a build-only entry point with the rest of #737 item 2, on purpose: "
-        "its Simulation cannot be built without `trimesh` (the optional "
-        "[cad] extra), which one of the two lanes that collect this gate does "
-        "not install: pr-tests.yml's fast suite does install `.[dev,cad]` "
-        "(pr-tests.yml line 123, for the MeshShape import tests of #358), but "
-        "validation.yml's weekly `slow-tests` job installs `.[dev]` only "
-        "(line 92) and its `-m 'not gpu and not highmem'` selection collects "
-        "these contract files. A builder would raise "
-        "ModuleNotFoundError at BUILD time there, and OPTIONAL_DEPENDENCIES only "
-        "converts an IMPORT-time miss (inside load_module) into a visible "
-        "skip, so this script would red that lane rather than skip; the "
-        "snapshot row could not be captured on a machine without trimesh "
-        "either. Revisit if the weekly lane ever installs the cad extra"),
     "validation/research/nu_cost/g4/cpml_baseline.py": Entry(
         "no_simulation",
         "G4 frozen low-level CPML reference; defines operators and state, "
@@ -623,8 +608,8 @@ CLASSIFICATION: dict[str, Entry] = {
     # Sheen low-pass filter and cv15 set, for the scripts the reopen comment
     # listed as unreachable. Each
     # builder is the one the script's own main path calls, so what the gate
-    # pins is the model that runs, not a copy of it. cad_mesh_import_demo is
-    # the one exception and stays out of scope with its reason, above.
+    # pins is the model that runs, not a copy of it. cad_mesh_import_demo
+    # joined them with #1271, below.
     "examples/quickstart/hello_world.py": Entry(
         "audited",
         "`build_simulation()` returns Simulation with no solve call (split "
@@ -751,8 +736,22 @@ CLASSIFICATION: dict[str, Entry] = {
         "(docs/design_notes/"
         "thru_feedpost_junction_windows_predeclaration.md)."),
     "examples/inverse_design/differentiable_s11_design.py": Entry(
-        "audited", "`_build_sim()` returns Simulation with no solve call",
-        (Builder("_build_sim", None, (_v("default"),)),)),
+        "audited",
+        "`build_simulation()` returns Simulation with no solve call (public "
+        "name since #1271; it was `_build_sim()`)",
+        (Builder("build_simulation", None, (_v("default"),)),)),
+    "examples/tutorials/cad_mesh_import_demo.py": Entry(
+        "audited",
+        "`build_simulation()` returns Simulation with no solve call (split "
+        "out of main() for #1271); main() consumes it, prints its preflight "
+        "and runs it. The build needs `trimesh` (the optional [cad] extra), "
+        "which the builder imports at CALL time, not at import time: it is "
+        "declared in OPTIONAL_DEPENDENCIES and call_builder turns that "
+        "build-time miss into the same visible skip load_module gives an "
+        "import-time one, so validation.yml's weekly slow-tests job, which "
+        "installs `.[dev]` only, skips this variant instead of failing. "
+        "pr-tests.yml's fast-suite shards install `.[dev,cad]` and run it",
+        (Builder("build_simulation", None, (_v("default"),)),)),
     "examples/inverse_design/field_observable_shielding.py": Entry(
         "audited", "`_build_sim()` returns Simulation with no solve call",
         (Builder("_build_sim", None, (_v("default"),)),)),
@@ -945,6 +944,31 @@ CLASSIFICATION: dict[str, Entry] = {
 }
 
 
+def call_builder(relpath: str, module: ModuleType, builder: Builder,
+                 variant: Variant):
+    """Call one audited builder variant build-only; return its Simulation.
+
+    A builder may import a declared optional dependency when it is CALLED
+    rather than when its module is imported (cad_mesh_import_demo imports
+    ``trimesh`` inside ``build_simulation()``). A ``ModuleNotFoundError``
+    naming a module declared for this script in ``OPTIONAL_DEPENDENCIES``
+    becomes ``MissingOptionalDependency`` here, exactly as ``load_module``
+    converts an import-time miss; any other ``ModuleNotFoundError`` stays a
+    hard error.
+    """
+    fn = getattr(module, builder.fn)
+    with build_only():
+        kwargs = variant.kwargs(module)
+        try:
+            result = fn(**kwargs)
+        except ModuleNotFoundError as exc:
+            declared = OPTIONAL_DEPENDENCIES.get(relpath, frozenset())
+            if exc.name in declared:
+                raise MissingOptionalDependency(relpath, exc.name) from exc
+            raise
+    return result if builder.result_index is None else result[builder.result_index]
+
+
 def iter_audited_variants():
     """Yield (script, builder_fn, variant_label, module, sim) for every
     audited (script, builder, variant) triple -- the harness's atomic unit."""
@@ -954,11 +978,8 @@ def iter_audited_variants():
         with build_only():
             module = load_module(relpath)
             for builder in entry.builders:
-                fn = getattr(module, builder.fn)
                 for variant in builder.variants:
-                    kwargs = variant.kwargs(module)
-                    result = fn(**kwargs)
-                    sim = result if builder.result_index is None else result[builder.result_index]
+                    sim = call_builder(relpath, module, builder, variant)
                     yield relpath, builder.fn, variant.label, sim
 
 

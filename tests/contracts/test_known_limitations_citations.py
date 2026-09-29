@@ -94,7 +94,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # node) and #1257 (a graded mesh with a dispersive material leaves a port
 # unterminated) joined on 2026-09-24 with the dispersive-lane entry of #1236;
 # both OPEN, checked with `gh issue view <N> --json number,state`.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1257, 1260})
+CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1257, 1260, 1381})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are

@@ -162,6 +162,8 @@ def run_uniform(
     pec_sheets=None,
     pec_wires=None,
     keep_wire_port_sparams: bool = False,
+    stop_fn=None,
+    stop_interval: int = 250,
 ):
     """Run the uniform-grid simulation path.
 
@@ -193,6 +195,13 @@ def run_uniform(
         ``Result.wire_port_sparams`` (default ``False``: left ``None``, as
         before). ``run(..., ringdown=...)`` reads the realized port cells and
         accumulators from them (issue #1254) and removes them again.
+    stop_fn, stop_interval
+        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        fixed-length scan runs in chunks of ``stop_interval`` steps and
+        ``stop_fn(steps_done, peek)`` decides after each one whether the run
+        ends there; ``peek()`` gives the record so far (``time_series``,
+        ``wire_port_sparams``, ``grid``, ``dt`` and the ``freqs`` this
+        function reports). ``None`` (default) is the unchanged path.
     All other parameters mirror Simulation.run().
 
     Returns
@@ -844,6 +853,28 @@ def run_uniform(
     from rfx.runners._admission import admit
     admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
                                         "conformal_pec": conformal_pec})
+    # Issue #1254: the early stop reads the record so far through the scan's
+    # chunk hook, with the bins the single-wire fast path below reports.
+    _stop_kwargs = {}
+    if stop_fn is not None:
+        if until_decay is not None:
+            raise NotImplementedError(
+                "run_uniform(stop_fn=...) does not combine with until_decay: "
+                "they are two rules for where the record ends.")
+        from types import SimpleNamespace as _NS
+
+        def _stop_with_bins(steps_done, peek):
+            def partial():
+                p = peek()
+                wps = p.wire_port_sparams
+                bins = (np.array(s_param_freqs) if s_param_freqs is not None
+                        else np.array(wps[0][0].freqs) if wps else None)
+                return _NS(time_series=p.time_series, wire_port_sparams=wps,
+                           grid=p.grid, dt=p.dt, freqs=bins)
+            return stop_fn(steps_done, partial)
+
+        _stop_kwargs = {"stop_fn": _stop_with_bins,
+                        "stop_interval": int(stop_interval)}
 
     # Main simulation
     if until_decay is not None:
@@ -926,6 +957,7 @@ def run_uniform(
             sheet_impedance=sheet_ctx,
             **({} if report_every is None else
                {"report_every": report_every, "report_label": report_label}),
+            **_stop_kwargs,
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),

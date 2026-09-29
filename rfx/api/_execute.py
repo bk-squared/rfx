@@ -516,7 +516,9 @@ class _ExecuteMixin:
                         radiated_flux_box: tuple | None = None,
                         flux_env_checks: int = 4,
                         report_every: int | None = None,
-                        report_label: str = ""):
+                        report_label: str = "",
+                        stop_fn=None,
+                        stop_interval: int = 250):
         """Run simulation on non-uniform grid with graded dz.
 
         ``until_decay`` (issue #383) is threaded through to
@@ -559,6 +561,8 @@ class _ExecuteMixin:
             decay_energy_consecutive=decay_energy_consecutive,
             radiated_flux_box=radiated_flux_box,
             flux_env_checks=flux_env_checks,
+            **({} if stop_fn is None else
+               {"stop_fn": stop_fn, "stop_interval": stop_interval}),
         )
 
     @staticmethod
@@ -4579,6 +4583,7 @@ class _ExecuteMixin:
         report_every: int | None = None,
         report_label: str = "",
         ringdown: RingdownSpec | None = None,
+        until_identified: bool = False,
     ) -> Result:
         """Run the simulation.
 
@@ -4716,11 +4721,40 @@ class _ExecuteMixin:
             (``add_port(..., extent=...)``) on the uniform (one port) and
             graded-mesh lanes, fixed record length; other ports, TFSF, Kerr,
             ``devices=`` and ``until_decay`` are refused with the reason.
+        until_identified : bool
+            Issue #1254 — with ``ringdown=``, end the run once the completion
+            is witnessed instead of at ``n_steps``, which becomes the longest
+            record allowed. The record is checked on a geometric schedule
+            (every check at least 1.25x the record of the last); the run
+            stops at the first check where every source is off over
+            ``[T/4, T]``, the error witness ``WE`` is within ``witness_tol``
+            there and at the check before, the record is at least half the
+            amplitude decay time ``Q / (pi f)`` of the slowest mode whose own
+            unrecorded tail moves the completed S by ``witness_tol`` (a static
+            field left in a closed box is left out; the largest such decay
+            time over the checks the two-in-a-row rule rests on), and the
+            completion reads passive with no growing pole. The result is the
+            one ``run(n_steps=T, ringdown=...)`` returns for the stopping
+            record ``T``, with the stop report (every check's record, ``WE``,
+            the pole that set the floor, the conditions and the check's wall
+            time) in ``Result.ringdown.stop``. Each check identifies the
+            record twice (0.1-3 s on a CPU for the test cavity); on a small
+            model that costs more than the steps it saves. A weakly coupled
+            high-Q mode holds the floor for half its own decay time, which
+            can be longer than ``n_steps``. When no check
+            stops the run, the whole ``n_steps`` record is completed and the
+            report names the condition that failed. Refused without
+            ``ringdown=``, with ``until_decay``, ``snapshot=``, DFT planes
+            and flux monitors.
 
         Returns
         -------
         Result
         """
+        # The caller's arguments as given, before anything below resolves them:
+        # a devices= model that runs on one device is re-run with all of them.
+        _call_args = dict(locals())
+        del _call_args["self"]
         _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
@@ -4729,6 +4763,11 @@ class _ExecuteMixin:
             if isinstance(self._tfsf.waveform, CustomWaveform):
                 raise NotImplementedError(
                     "TFSF CustomWaveform has no source-off time for until_decay; use n_steps")
+        if until_identified is not False:
+            from rfx.ringdown import refuse_until_identified
+            until_identified = refuse_until_identified(
+                self, ringdown, until_identified, until_decay=until_decay,
+                snapshot=snapshot)
         if ringdown is not None:
             from rfx.ringdown import refuse_run_request
             refuse_run_request(self, ringdown, devices=devices,
@@ -4815,6 +4854,25 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane == "run_distributed" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
+        if plan.lane == "run_distributed" and (
+                self._tfsf is not None or self._waveguide_ports):
+            # TFSF sources and waveguide ports need the whole domain on one
+            # device. Re-run with every argument the caller gave, minus devices=;
+            # the runner's own fallback re-ran with n_steps alone and dropped
+            # the rest (#1305: an explicit conformal_pec=False came back as the
+            # declared conformal walls).
+            import warnings
+            warnings.warn(
+                "Distributed runner does not yet support "
+                + ("TFSF plane-wave sources" if self._tfsf is not None
+                   else "waveguide ports")
+                + ". Falling back to single-device execution with the same "
+                "arguments.",
+                stacklevel=2,
+            )
+            return self.run(**{**_call_args, "devices": None,
+                               "exchange_interval": 1,
+                               "skip_preflight": True})
         if plan.lane == "run_distributed":
             if self._dft_planes:
                 raise NotImplementedError(
@@ -4826,22 +4884,12 @@ class _ExecuteMixin:
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
                 )
-            # Leave TFSF and waveguide models to the runner's single-device fallbacks.
-            if self._tfsf is None and not self._waveguide_ports:
-                from rfx.runners.distributed_v2 import (
-                    refuse_unsupported_distributed_features,
-                )
-                refuse_unsupported_distributed_features(
-                    self, lane="distributed multi-device run()")
-            # TFSF and waveguide-port models take the runner's single-device
-            # fallback, ``sim.run(n_steps=n_steps)``. It drops every explicit
-            # argument, but it re-derives conformal_pec from the declared
-            # Boundary(conformal=True), so that request is carried there.
+            from rfx.runners.distributed_v2 import (
+                refuse_unsupported_distributed_features,
+            )
+            refuse_unsupported_distributed_features(
+                self, lane="distributed multi-device run()")
             _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
-            if ((self._tfsf is not None or self._waveguide_ports)
-                    and conformal_pec == bool(
-                        self._boundary_spec.conformal_faces())):
-                _dist_conformal = False
             # One device on a graded mesh is the non-uniform lane, which
             # carries neither snapshot nor conformal_pec, nor until_decay on
             # closed boundaries.
@@ -4948,6 +4996,12 @@ class _ExecuteMixin:
             )
             if ringdown is None:
                 _res = _nu_call()
+            elif until_identified:
+                from rfx.ringdown import RingdownStop
+                _res = RingdownStop(
+                    self, ringdown, lane="graded", n_max=n_steps,
+                    grid=self._build_nonuniform_grid()).run(_nu_call)
+                n_steps = _res.ringdown.stop.n_stop
             else:
                 from rfx.ringdown import RingdownRun
                 _res = RingdownRun(
@@ -5103,6 +5157,11 @@ class _ExecuteMixin:
         )
         if ringdown is None:
             _res = _uniform_call()
+        elif until_identified:
+            from rfx.ringdown import RingdownStop
+            _res = RingdownStop(self, ringdown, lane="uniform", n_max=n_steps,
+                                grid=grid).run(_uniform_call)
+            n_steps = _res.ringdown.stop.n_stop
         else:
             from rfx.ringdown import RingdownRun
             _res = RingdownRun(self, ringdown, lane="uniform", n_steps=n_steps,

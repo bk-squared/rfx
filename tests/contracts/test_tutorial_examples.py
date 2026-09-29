@@ -66,9 +66,12 @@ def test_materials_and_dispersion_tutorial_runs():
 
 
 def test_antenna_farfield_pattern_tutorial_runs():
-    """The dipole reports its warning, directivity, and a fresh E-plane plot."""
+    """The dipole reports its warning, directivity, and a fresh E-plane cut:
+    the plot, and the cut's samples in degrees (#1271)."""
     plot_path = TUTORIALS_DIR / "output" / "short_dipole_e_plane.png"
     plot_path.unlink(missing_ok=True)
+    samples_path = TUTORIALS_DIR / "output" / "short_dipole_e_plane.csv"
+    samples_path.unlink(missing_ok=True)
 
     output = _run_tutorial("antenna_farfield_pattern.py")
 
@@ -82,6 +85,23 @@ def test_antenna_farfield_pattern_tutorial_runs():
     assert abs(peak_directivity_dbi - 1.76) < 0.3
     assert plot_path.is_file()
     assert plot_path.stat().st_size > 0
+
+    # The cut's samples: one row per polar angle of the tutorial's 73-point
+    # theta grid, in degrees, on phi = 0 only, with the last column normalized
+    # to the cut's peak (0 dB there; broadside, near theta = 90 degrees, for a
+    # z-directed dipole).
+    import numpy as np
+
+    header = samples_path.read_text().splitlines()[0]
+    assert header == ("theta_deg,phi_deg,E_theta_mag,E_theta_phase_deg,"
+                      "E_phi_mag,E_phi_phase_deg,gain_dBi")
+    rows = np.loadtxt(samples_path, delimiter=",", skiprows=1)
+    assert rows.shape == (73, 7)
+    np.testing.assert_allclose(
+        rows[:, 0], np.degrees(np.linspace(0.01, np.pi - 0.01, 73)), rtol=1e-6)
+    assert np.all(rows[:, 1] == 0.0)
+    assert rows[:, 6].max() == 0.0
+    assert 75.0 <= rows[np.argmax(rows[:, 6]), 0] <= 105.0
 
 
 def test_ports_and_sparams_101_tutorial_runs():

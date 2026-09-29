@@ -714,7 +714,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         radiated_flux_box: tuple | None = None,
                         flux_env_checks: int = 4,
                         design_box=None,
-                        lane: str = "run_nonuniform"):
+                        lane: str = "run_nonuniform",
+                        stop_fn=None,
+                        stop_interval: int = 250):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -745,6 +747,15 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     decay_energy_consecutive :
         Threaded to :func:`run_nonuniform_until_decay` (same semantics
         as ``Simulation.run``'s ``decay_*`` kwargs).
+    stop_fn, stop_interval :
+        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        ``n_steps`` record runs as :func:`run_nonuniform_until_decay`'s
+        chunked loop (chunks of ``stop_interval`` steps, energy stop off,
+        the #667 progress route's settings) and ``stop_fn(steps_done,
+        peek)`` decides after each chunk whether it ends there; ``peek()``
+        gives the record so far (``time_series``, ``wire_port_sparams``,
+        ``freqs``, ``grid``, ``dt`` as this function reports them).
+        ``None`` (default) is the unchanged path.
     compute_s_params : bool or None
     s_param_freqs : array or None
     eps_override, sigma_override : jnp.ndarray or None
@@ -1644,7 +1655,42 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         tfsf=tfsf_pair,
         emit_time_series=emit_time_series,
     )
-    if until_decay is not None:
+    if stop_fn is not None:
+        # #1254: the chunked loop of the #667 progress route (energy stop
+        # off, min_steps past the end) with the caller's stop check.
+        if until_decay is not None or checkpoint_every is not None or n_warmup:
+            raise NotImplementedError(
+                "run_nonuniform_path(stop_fn=...) does not combine with "
+                "until_decay, checkpoint_every or n_warmup (issue #1254).")
+        from types import SimpleNamespace as _NS
+
+        from rfx.progress import validate_report_every
+        _re_stop = (None if report_every is None
+                    else validate_report_every(report_every, n_steps=n_steps))
+
+        def _stop_with_result(steps_done, peek):
+            def partial():
+                d = peek()
+                raw = d.get("wire_sparams_raw")
+                wps = (None if raw is None else
+                       tuple(zip(d.get("wire_sparams_meta", ()), raw)))
+                return _NS(time_series=d["time_series"], wire_port_sparams=wps,
+                           freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt)
+            return stop_fn(steps_done, partial)
+
+        r = run_nonuniform_until_decay(
+            grid, materials,
+            decay_by=0.0,
+            check_interval=int(stop_interval),
+            min_steps=n_steps + 1,
+            max_steps=n_steps,
+            decay_energy_consecutive=1,
+            report_every=_re_stop,
+            report_label=report_label,
+            stop_fn=_stop_with_result,
+            **_shared_run_kwargs,
+        )
+    elif until_decay is not None:
         # #383: chunked host loop with the interior-energy stop. The
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored

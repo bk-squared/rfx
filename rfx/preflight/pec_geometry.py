@@ -1118,6 +1118,34 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
 _SHEET_EFFECTIVE_SIZE_TOL = 1e-2
 
 
+def _sheet_solved_spans(ctx, boxes):
+    """``(entry, axis, SolvedSheetSpan)`` for every in-plane axis of every
+    sheet in ``boxes``, from :func:`rfx.mesh_edges.solved_sheet_span` -- the
+    one solved-edge model the sheet-size and census advisories share with
+    ``fidelity_report``. The seam test reads the union of all sheets."""
+    from rfx.mesh_edges import solved_sheet_span
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
+    domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
+    sheets = [e for e in boxes if e.kind == "sheet"]
+    fps = [interior_lattice_mask(e.sheet.footprint, ctx.grid) for e in sheets]
+    union = None
+    for fp in fps:
+        union = fp.copy() if union is None else (union | fp)
+    out = []
+    for e, fp in zip(sheets, fps):
+        for a in range(3):
+            if a == int(e.sheet.normal_axis):
+                continue
+            if float(e.hi[a] - e.lo[a]) <= 0.0:
+                continue
+            span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
+                                     float(e.hi[a]), float(domain[a]),
+                                     union=union)
+            if span is not None:
+                out.append((e, a, span))
+    return out
+
+
 def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     """A PEC sheet is solved about ``EDGE_OFFSET`` of a cell LONGER at each
     in-plane end than the nodes it covers (measured:
@@ -1127,55 +1155,17 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     domain wall is a wall, not an edge, and adds nothing. This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
-    from rfx.geometry.rasterize_grid import interior_lattice_mask
-    domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
     rows = []
-    sheets = [e for e in boxes if e.kind == "sheet"]
-    union = None
-    for e in sheets:
-        fp = interior_lattice_mask(e.sheet.footprint, ctx.grid)
-        union = fp.copy() if union is None else (union | fp)
-
-    def _continues(fp, a, i_end, i_next):
-        """The metal goes on past this end: every footprint node of the end
-        row has sheet metal (another sheet's) on the next node. A seam
-        between two abutting sheets is interior metal, not a free edge."""
-        end = np.take(fp, i_end, axis=a)
-        return bool(end.any()) and bool(np.take(union, i_next, axis=a)[end].all())
-
-    for e in sheets:
-        fp = interior_lattice_mask(e.sheet.footprint, ctx.grid)
-        for a in range(3):
-            if a == int(e.sheet.normal_axis):
-                continue
-            ext = float(e.hi[a] - e.lo[a])
-            if ext <= 0.0:
-                continue
-            other = tuple(i for i in range(3) if i != a)
-            idx = np.flatnonzero(fp.any(axis=other))
-            if idx.size == 0:
-                continue
-            nodes = np.asarray(ctx.nodes[a], dtype=float)
-            i0, i1 = int(idx[0]), int(idx[-1])
-            span = float(nodes[i1] - nodes[i0])
-            # An end drawn at (or past) the declared domain boundary is not
-            # a free edge: it meets a wall, or it continues into the
-            # absorber pad. Only ends strictly inside the domain count.
-            dom_hi = float(domain[a])
-            tol = 1e-9 * max(dom_hi, 1e-12)
-            add = 0.0
-            if (i0 > 0 and float(e.lo[a]) > tol
-                    and not _continues(fp, a, i0, i0 - 1)):
-                add += EDGE_OFFSET * float(nodes[i0] - nodes[i0 - 1])
-            if (i1 + 1 < nodes.size and float(e.hi[a]) < dom_hi - tol
-                    and not _continues(fp, a, i1, i1 + 1)):
-                add += EDGE_OFFSET * float(nodes[i1 + 1] - nodes[i1])
-            if add == 0.0:
-                continue
-            eff = span + add
-            rel = (eff - ext) / ext
-            if abs(rel) > _SHEET_EFFECTIVE_SIZE_TOL:
-                rows.append((abs(rel), rel, e, a, ext, span, eff))
+    for e, a, span in _sheet_solved_spans(ctx, boxes):
+        if not (span.free_lo or span.free_hi):
+            continue
+        ext = float(e.hi[a] - e.lo[a])
+        nodes = np.asarray(ctx.nodes[a], dtype=float)
+        covered = float(nodes[span.i1] - nodes[span.i0])
+        eff = span.hi - span.lo
+        rel = (eff - ext) / ext
+        if abs(rel) > _SHEET_EFFECTIVE_SIZE_TOL:
+            rows.append((abs(rel), rel, e, a, ext, covered, eff))
     if not rows:
         return
     rows.sort(key=lambda t: -t[0])
@@ -1231,6 +1221,14 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
     offenders = []
     n_axes = 0
     n_normal_axes = 0
+    domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
+    # A sheet's in-plane face is measured against where it is SOLVED (the
+    # shared solved-edge model, rfx.mesh_edges.solved_sheet_span, #1375),
+    # not against its nearest node: a free edge is solved 0.35 of the
+    # outside cell beyond its last node. A registered sheet then reads 0,
+    # an on-node one 0.35 cell, and a right-sized but shifted one its shift.
+    solved = {(id(e), a): span
+              for e, a, span in _sheet_solved_spans(ctx, boxes)}
     for e in boxes:
         lo, hi = e.lo, e.hi
         for a in range(3):
@@ -1241,11 +1239,18 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
             if ext <= 0.0:
                 continue
             n_axes += 1
-            nodes = ctx.nodes[a]
-            res = max(
-                float(np.min(np.abs(nodes - float(lo[a])))),
-                float(np.min(np.abs(nodes - float(hi[a])))),
-            )
+            span = solved.get((id(e), a)) if e.kind == "sheet" else None
+            if span is not None:
+                # A wall end is compared with the domain face it meets.
+                d_lo = min(max(float(lo[a]), 0.0), float(domain[a]))
+                d_hi = min(max(float(hi[a]), 0.0), float(domain[a]))
+                res = max(abs(span.lo - d_lo), abs(span.hi - d_hi))
+            else:
+                nodes = ctx.nodes[a]
+                res = max(
+                    float(np.min(np.abs(nodes - float(lo[a])))),
+                    float(np.min(np.abs(nodes - float(hi[a])))),
+                )
             rel = res / ext
             if rel > _OFF_LATTICE_EDGE_TOL:
                 offenders.append((rel, e, a, ext, res))

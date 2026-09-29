@@ -645,8 +645,10 @@ class TestOffLatticeCensus:
         assert "frequency sensitivity depends on the mode" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
+    # A sheet's in-plane face is measured at its SOLVED edge since #1375
+    # (see test_sheet_in_plane_faces_are_measured_at_the_solved_edge), not
+    # at its nearest node, so only the volume case of this relation holds.
     @pytest.mark.parametrize("kind,lo,hi,z_hi,realized_mm,residual_mm", [
-        ("sheet", 1.2, 6.2, 2.0, 4.0, 0.2),
         ("volume", 1.3, 6.7, 4.0, 6.0, 0.3),
     ])
     def test_nearest_node_residual_is_not_an_extent_error_bound(
@@ -716,11 +718,13 @@ class TestOffLatticeCensus:
         msg = str(hits[0])
         assert msg.count("geometry[") == 5  # capped at the worst 5
 
-    def test_sheet_in_plane_edges_are_examined_and_its_normal_is_not(self):
-        """A sheet's in-plane rim is a real design edge (its footprint is
-        sampled closed on the nodes it covers); its NORMAL axis has no
-        extent and is reported by sheet_plane_realized instead — the
-        message says so."""
+    def test_sheet_in_plane_faces_are_measured_at_the_solved_edge(self):
+        """A sheet's in-plane rim is a real design edge, solved 0.35 cell
+        beyond its last node (rfx.mesh_edges.solved_sheet_span, #1375): the
+        sheet drawn 1.3-10.3 mm covers nodes 2-10 mm and is solved
+        1.65-10.35 mm, so its worst face is 350 um off (the nearest-node
+        reading was 300 um). Its NORMAL axis has no extent and is reported by
+        sheet_plane_realized instead -- the message says so."""
         sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=1 * MM,
                          freq_max=10e9, boundary="cpml")
         sim.add(Box((1.3 * MM, 2.0 * MM, 2.0 * MM),
@@ -728,7 +732,7 @@ class TestOffLatticeCensus:
         hits = sim.preflight().by_code(OFF_LATTICE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
-        assert "(sheet) x:" in msg and "300µm" in msg
+        assert "(sheet) x:" in msg and "350µm" in msg
         assert "1 sheet normal axis/axes reported by sheet_plane_realized" in msg
 
 

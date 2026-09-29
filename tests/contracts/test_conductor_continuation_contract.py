@@ -42,12 +42,13 @@ def test_absorbing_columns_equal_the_face(path, builder, variant):
     with lib.build_only():
         try:
             module = lib.load_module(path)
+            sim = lib.call_builder(path, module, builder, variant)
         except lib.MissingOptionalDependency as exc:
             # A visible SKIP, as test_example_fidelity_contract does: CI has
             # no optax, and an undeclared missing module is still an error.
+            # A declared module missing when the builder runs (trimesh for
+            # cad_mesh_import_demo) skips the same way.
             pytest.skip(str(exc))
-        result = getattr(module, builder.fn)(**variant.kwargs(module))
-        sim = result if builder.result_index is None else result[builder.result_index]
         try:
             grid, arrays, poles, nodes = assembled_arrays(sim)
             rows = HELD_FACES.get(path, ())
