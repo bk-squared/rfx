@@ -142,8 +142,8 @@ def main() -> None:
     print(f"Close-box advisory observed: {close_advisory_observed}")
 
     # Move every face 19.5 mm from the source: beyond lambda/2, and one cell
-    # inside the CPML-free region.  The next full preflight should print that
-    # all checks passed.  Its full check also catches a conductor crossing a
+    # inside the CPML-free region.  Only the six-layer absorber advisory should
+    # remain.  The full check also catches a conductor crossing a
     # monitor face, which run()'s automatic advisory tier does not check.
     sim.add_ntff_box(
         corner_lo=tuple(coordinate - VALID_GAP for coordinate in CENTER),
@@ -151,7 +151,7 @@ def main() -> None:
         freqs=[F0],
     )
     corrected_report = sim.preflight()
-    if len(corrected_report):   # PreflightReport refuses bool() (#980)
+    if any(issue.code != "thin_absorber" for issue in corrected_report):
         raise RuntimeError("Corrected far-field setup still has preflight advisories")
 
     print(
@@ -159,8 +159,8 @@ def main() -> None:
         f"(lambda/2 = {HALF_WAVELENGTH * 1e3:.2f} mm)"
     )
 
-    # run() repeats the near-field advisory tier, so the next message should
-    # again say that its checks passed.  For far-field work, call preflight()
+    # run() repeats the advisory tier, including the six-layer absorber
+    # warning.  For far-field work, call preflight()
     # yourself first, as above, to include the full monitor-face checks.
     result = sim.run(n_steps=N_STEPS, compute_s_params=False)
 

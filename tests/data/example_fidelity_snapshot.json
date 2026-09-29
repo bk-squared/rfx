@@ -306,7 +306,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
+        }
+      ]
     },
     "examples/inverse_design/progressive_demo.py::sim_factory::dx=1.0mm": {
       "fidelity": {
@@ -386,7 +394,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
+        }
+      ]
     },
     "examples/quickstart/hello_world.py::build_simulation::default": {
       "fidelity": {
@@ -794,7 +810,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
+        }
+      ]
     },
     "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default": {
       "fidelity": {
@@ -1512,6 +1536,13 @@
           "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
           "severity": "warning",
           "source": "_validate_cfg_no_sources"
+        },
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face x_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -2312,7 +2343,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
+        }
+      ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=True": {
       "fidelity": {
@@ -2392,7 +2431,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
+        }
+      ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default": {
       "fidelity": {
@@ -2697,6 +2744,13 @@
           "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.175mm (+17.50%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.675mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
+        },
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face x_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -2778,7 +2832,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi",
+          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
+        }
+      ]
     },
     "examples/tutorials/rcs_scattering.py::build_preflight_model::default": {
       "fidelity": {
@@ -3110,7 +3172,15 @@
           "realization": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
+        }
+      ]
     },
     "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=False": {
       "fidelity": {
@@ -6103,6 +6173,13 @@
           "message": "dx_profile is not uniform within the 6 interior cells adjacent to the x_hi absorber face (max adjacent cell-ratio deviation 0.0667). WHY: the absorber pad replicates the outermost interior cell, so a transition in that runway changes the discrete medium in the boundary-NORMAL direction exactly where the absorber starts \u2014 the documented PML breakdown class \u2014 and gives the transition's own reflection no runway to separate from the absorber's. COST: the validated multi-band envelope does not cover it at all; no witness in it MEASURES an accuracy observable with an absorber present (every accuracy witness is PEC-closed at cpml_layers = 0; the one absorber-bearing witness checks the AD path only) (docs/guides/support_matrix.md, 'Multi-band graded mesh'). REMEDY: keep at least 6 uniform interior cells against that face, or close it with PEC/PMC. STALE-IF: a witness that SCORES an accuracy observable with an absorber present is added to that row.",
           "severity": "warning",
           "source": "_validate_cfg_multiband_grading"
+        },
+        {
+          "code": "thin_absorber",
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",

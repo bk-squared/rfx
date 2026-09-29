@@ -349,7 +349,7 @@
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "edge_averaged_materials.mean4",
+      "function": "edge_mean_components.mean4",
       "kind": "neighbour"
     },
     {
@@ -657,6 +657,11 @@
     },
     {
       "file": "rfx/runners/_distributed_common.py",
+      "function": "_slab_x_lo_view",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
       "function": "_update_e_debye_local",
       "kind": "difference",
       "count": 6
@@ -757,11 +762,6 @@
     {
       "file": "rfx/runners/_distributed_common.py",
       "function": "exchange_h_yee_shmap._exchange",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "slab_e_component_materials.x_lo_replicated",
       "kind": "boundary"
     },
     {

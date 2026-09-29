@@ -49,7 +49,7 @@ _WR90_LX = 0.10       # domain length (m)
 # AND below 0.90 x fc_TE20 = 11.8 GHz (preflight's next-mode contamination
 # bound — the original 8-12 GHz band tripped it at the top edge). Those
 # numbers hold on the REALIZED guide only because dx divides a and b;
-# preflight reports 0 findings on this setup (issue #738).
+# preflight reports no aperture-snap finding on this setup (issue #738).
 # f0 is set explicitly at band center — a source centered at/below cutoff
 # launches an evanescent crawl whose extracted S grows with n_steps
 # (issue #150; preflight code "port_source_below_cutoff" now guards this).

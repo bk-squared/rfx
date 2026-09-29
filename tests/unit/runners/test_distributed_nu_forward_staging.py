@@ -14,6 +14,8 @@ from types import MethodType
 
 import jax
 import jax.numpy as jnp
+from functools import partial
+from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 import numpy as np
 import pytest
@@ -24,6 +26,7 @@ from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz, lorentz_pole
 from rfx.nonuniform import make_current_source, position_to_index
 from rfx.runners import distributed_nu as nu
+from rfx.runners import _distributed_common as common
 from rfx.runners._distributed_common import _split_materials
 from rfx.runners._distributed_common import shard_stacked
 from rfx.simulation import ProbeSpec, SourceSpec
@@ -151,6 +154,23 @@ def _bits(a, b, label):
                                       float(np.max(np.abs(a - b))))
 
 
+def _cross_trace(a, b, label, summed=False):
+    """The repository cross-trace bar: 9 peak ULP, 1e-4 for reductions.
+
+    Distributed E coefficients now run inside the scan (#1326 staging),
+    while the frozen reference forms them eagerly. That changes fusion and
+    gradient accumulation order, so dispersive comparisons use this bar.
+    No-pole staging still requires byte identity.
+    """
+    a, b = np.asarray(a), np.asarray(b)
+    assert a.shape == b.shape and a.dtype == b.dtype, label
+    assert np.isfinite(a).all() and np.isfinite(b).all(), label + " nonfinite"
+    peak = np.max(np.abs(b))
+    difference = np.max(np.abs(a.astype(np.float64) - b.astype(np.float64)))
+    gate = 1e-4 * peak if summed else 9 * np.spacing(np.float32(peak))
+    assert difference <= gate, (label, float(difference), float(gate))
+
+
 def _bit_case(case, checkpoint, warmup, transform):
     sim = _model(case)
     eps, kwargs = _inputs(sim, case)
@@ -186,17 +206,70 @@ def _bit_case(case, checkpoint, warmup, transform):
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(sim, "_forward_distributed_nonuniform_from_materials",
                       MethodType(_legacy_forward, sim))
+        # The oracle must consume its eagerly formed E coefficients; the
+        # current runner otherwise rebuilds them from the shared means too.
+        patch.setattr(nu, "slab_dispersion_coeffs", lambda coeffs, *args, **kwargs: coeffs)
         expected = evaluate()
     for i, (a, b) in enumerate(zip(actual, expected)):
-        _bits(a, b, f"{case}/{transform}/{i}")
+        if case != "lossy":
+            _cross_trace(a, b, f"{case}/{transform}/{i}", summed=transform == "bits" and i == 1)
+        else:
+            _bits(a, b, f"{case}/{transform}/{i}")
     pairs = None
     if transform != "bits":
         pairs = [np.asarray(a).tobytes() == np.asarray(b).tobytes() for a, b in (actual, expected)]
-        assert pairs[0] == pairs[1], (transform, pairs)
+        for name, pair in (("staged", actual), ("legacy", expected)):
+            _cross_trace(*pair, f"{case}/{transform}/{name}")
     print("RESULT " + json.dumps({"version": jax.__version__, "case": case,
                                   "devices": len(jax.devices()), "transform": transform,
-                                  "bits": True, "cross_equal_new_main": pairs,
+                                  "agreement": True, "cross_equal_new_main": pairs,
                                   "checkpoint": checkpoint, "warmup": warmup}))
+
+
+def _completed_slabs(staged, materials, sg, dt, mesh):
+    coeffs, state = staged
+    assert coeffs.ca is coeffs.cb is coeffs.cc is None, "E coefficients must wait for the scan"
+
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
+    def complete(c, m):
+        means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx)
+        return common.slab_dispersion_coeffs(c, means, dt, sg.nx_per_rank, sg.nx)
+
+    return jax.jit(complete)(coeffs, materials), state
+
+
+def _check_slabs(actual, expected, sg):
+    """Owned cells follow the whole-domain oracle; ghosts follow the slab rule.
+
+    E coefficients can differ by fusion rounding. Pole terms and carries are
+    exact. Physical ghosts and alignment pads retain the legacy coefficients;
+    interior ghosts intentionally take their cell value, as #1326's helper does.
+    """
+    checked = 0
+    a_leaves = jax.tree_util.tree_flatten_with_path(actual)[0]
+    b_leaves = jax.tree_util.tree_flatten_with_path(expected)[0]
+    assert len(a_leaves) == len(b_leaves)
+    for (path, a), (_, b) in zip(a_leaves, b_leaves):
+        label = str(path)
+        for x, y in zip(a.addressable_shards, b.addressable_shards):
+            assert x.device == y.device and x.index == y.index
+            xa, ya = np.asarray(x.data), np.asarray(y.data)
+            rank = (x.index[0].start or 0) // xa.shape[0]
+            nx_owned = min(sg.nx_per_rank, sg.nx - rank * sg.nx_per_rank)
+            sl = (slice(1, 1 + nx_owned), slice(None), slice(None))
+            if xa.ndim == 4:
+                sl = (slice(None),) + sl
+            is_e = any(f"name='{n}'" in label for n in ("ca", "cb", "cc"))
+            (_cross_trace if is_e else _bits)(xa[sl], ya[sl], label)
+            rows = rank * sg.nx_per_rank - 1 + np.arange(sg.nx_local)
+            physical = (rows < 0) | (rows >= sg.nx)
+            if np.any(physical):
+                if xa.ndim == 4:
+                    _bits(xa[:, physical], ya[:, physical], label + " physical pad")
+                else:
+                    _bits(xa[physical], ya[physical], label + " physical pad")
+            checked += 1
+    return checked
 
 
 def _per_shard():
@@ -223,13 +296,22 @@ def _per_shard():
         patch.setattr(sim, "_forward_distributed_nonuniform_from_materials",
                       MethodType(_legacy_forward, sim))
         _forward(sim, eps, kwargs)
+    sg = nu.build_sharded_nu_grid(sim._build_nonuniform_grid(), len(jax.devices()))
+    mesh = Mesh(np.array(jax.devices("cpu")), ("x",))
+    dt = sim._build_nonuniform_grid().dt
+    for kind in ("debye", "lorentz"):
+        captures[0][kind] = _completed_slabs(captures[0][kind], captures[0]["sharded_materials"], sg, dt, mesh)
     checked = 0
-    for (path, a), (_, b) in zip(*[jax.tree_util.tree_flatten_with_path(c)[0] for c in captures]):
-        for x, y in zip(a.addressable_shards, b.addressable_shards):
-            assert x.device == y.device and x.index == y.index
-            _bits(x.data, y.data, str(path))
-            checked += 1
-    assert checked == 49 * len(jax.devices()), checked
+    for name in captures[0]:
+        if name in ("debye", "lorentz"):
+            checked += _check_slabs(captures[0][name], captures[1][name], sg)
+        else:
+            for (path, a), (_, b) in zip(*[jax.tree_util.tree_flatten_with_path(c[name])[0] for c in captures]):
+                for x, y in zip(a.addressable_shards, b.addressable_shards):
+                    assert x.device == y.device and x.index == y.index
+                    _bits(x.data, y.data, str(path))
+                    checked += 1
+    assert checked == 65 * len(jax.devices()), checked
     print("RESULT " + json.dumps({"shard_arrays": checked, "version": jax.__version__}))
 
 
@@ -243,13 +325,18 @@ def _memory(mode, mutation="none", legacy=False):
     records, extents, retained = [], {"debye": [], "lorentz": [], "state": []}, []
     scan = jax.lax.scan
     codes = {init_debye.__code__: "debye", init_lorentz.__code__: "lorentz",
-             init_state.__code__: "state"}
+             init_state.__code__: "state",
+             common.debye_pole_coeffs.__code__: "debye",
+             common.lorentz_pole_coeffs.__code__: "lorentz"}
 
     def profile(frame, event, arg):
         if event == "call" and frame.f_code is init_state.__code__:
             # A whole padded domain of zeros used to set device 0's setup peak.
             extents["state"].append(int(frame.f_locals["shape"][0]))
         elif event == "call" and frame.f_code in codes:
+            if "fractions_by_pole" in frame.f_locals:
+                extents[codes[frame.f_code]].append(int(frame.f_locals["shape"][0]))
+                return
             arrays = (frame.f_locals["materials"], frame.f_locals["mask"])
             for arr in jax.tree.leaves(arrays):
                 if isinstance(arr, jax.core.Tracer):
@@ -348,32 +435,28 @@ def _multipole_shards():
             placed, grid.dt, (poles, masks), sg, mesh, kind)
         coeffs, state = init(poles, materials, grid.dt, mask=masks)
         expected = split_c(coeffs, sg, mesh), split_s(state, sg, mesh)
-        for (path, a), (_, b) in zip(*[jax.tree_util.tree_flatten_with_path(c)[0]
-                                      for c in (actual, expected)]):
-            for x, y in zip(a.addressable_shards, b.addressable_shards):
-                assert x.device == y.device and x.index == y.index
-                _bits(x.data, y.data, str(path))
-                checked += 1
-    assert checked == 20 * len(devices)
+        actual = _completed_slabs(actual, placed, sg, grid.dt, mesh)
+        checked += _check_slabs(actual, expected, sg)
+    # 36 arrays per device: per-E-component coefficient tuples since #1260 (20 before).
+    assert checked == 36 * len(devices)
     print("RESULT " + json.dumps({"multipole_shard_arrays": checked,
                                   "version": jax.__version__}))
 
 
-def _zero_cc_stage(original):
-    def mutate(*args):
-        result = original(*args)
-        if args[-1] == "lorentz" and result is not None:
-            coeffs, state = result
-            cc = coeffs.cc.at[0].set(0.).at[-1].set(0.)
-            result = coeffs._replace(cc=cc), state
-        return result
+def _zero_cc_pad(original):
+    def mutate(*args, **kwargs):
+        coeffs = original(*args, **kwargs)
+        if isinstance(coeffs, common.LorentzCoeffs) and coeffs.cc is not None:
+            cc = tuple(c.at[0].set(0.).at[-1].set(0.) for c in coeffs.cc)
+            return coeffs._replace(cc=cc)
+        return coeffs
     return mutate
 
 
 def _mutation_cc():
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(nu, "stage_forward_dispersion_x_slab",
-                      _zero_cc_stage(nu.stage_forward_dispersion_x_slab))
+        patch.setattr(common, "_pad_slab_dispersion_coeffs",
+                      _zero_cc_pad(common._pad_slab_dispersion_coeffs))
         try:
             _per_shard()
         except AssertionError as error:

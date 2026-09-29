@@ -95,6 +95,7 @@ from rfx.runners._distributed_common import (
     shard_stacked,
     shard_stacked_psi,
     slab_e_component_materials,
+    slab_e_materials_shmap,
     stage_dispersion_slabs,
     split_array_x,
     unstack_and_gather,
@@ -193,7 +194,7 @@ _apply_pmc_shmap = apply_pmc_face_shmap
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
-                         e_slab=None):
+                         e_slab=None, e_materials=None, separate_x_terms=False):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -206,8 +207,8 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     used (#1043): with ``e_slab = (nx_per, nx)`` each component's four-cell
     edge mean, built on each slab by
     :func:`rfx.runners._distributed_common.slab_e_component_materials`
-    (#1303); with ``e_slab=None`` (a dispersive model, whose E update is
-    cell-owned, #1260) the cell array ``eps_r``.
+    (#1303), including on dispersive models (#1260). ``e_materials`` can
+    supply the same means already formed before the time loop.
 
     ``pad_x`` (#623, same class as #622): forwarded to
     :func:`rfx.runners.distributed._apply_cpml_e_distributed` so the x-hi
@@ -230,6 +231,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             P("x"), P("x"), P("x"), P("x"),  # ex_ylo/yhi, ez_ylo/yhi
             P("x"), P("x"), P("x"), P("x"),  # ex_zlo/zhi, ey_zlo/zhi
             P("x"),  # materials (read-only, material-aware coefficient)
+            P("x"),  # precomputed component means, if supplied
         ),
         out_specs=(
             P("x"), P("x"), P("x"),           # ex, ey, ez
@@ -243,14 +245,14 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
                 psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
                 psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi,
-                mat_slab):
+                mat_slab, means):
         # Reconstruct minimal state and cpml_state objects
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
         if mat_slab is None:
             eps_r_slab = None
-        elif e_slab is None:
-            eps_r_slab = mat_slab.eps_r
+        elif means is not None:
+            eps_r_slab = means[0]
         else:
             eps_r_slab = slab_e_component_materials(mat_slab, *e_slab)[0]
         _cs = cpml_state._replace(
@@ -264,7 +266,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         new_st, new_cs = _apply_cpml_e_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
             n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab,
-            pad_x=pad_x)
+            pad_x=pad_x, separate_x_terms=separate_x_terms)
         return (
             new_st.ex, new_st.ey, new_st.ez,
             new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -287,7 +289,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         cpml_state.psi_ez_ylo, cpml_state.psi_ez_yhi,
         cpml_state.psi_ex_zlo, cpml_state.psi_ex_zhi,
         cpml_state.psi_ey_zlo, cpml_state.psi_ey_zhi,
-        materials,
+        materials, e_materials,
     )
     new_state = state._replace(ex=ex, ey=ey, ez=ez)
     new_cpml = cpml_state._replace(
@@ -302,7 +304,8 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
-                         mesh, n_devices, ghost=1, mu_r=None, pad_x=0):
+                         mesh, n_devices, ghost=1, mu_r=None, pad_x=0,
+                         separate_x_terms=False):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -358,7 +361,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         new_st, new_cs = _apply_cpml_h_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
             n_devices, ghost=ghost, axis_name="x", mu_r=mu_r_slab,
-            pad_x=pad_x)
+            pad_x=pad_x, separate_x_terms=separate_x_terms)
         return (
             new_st.hx, new_st.hy, new_st.hz,
             new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
@@ -1057,9 +1060,17 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     has_debye = debye_spec is not None
     has_lorentz = lorentz_spec is not None
+    e_wall_faces = _pec_faces_frozen
+    if has_debye or has_lorentz:
+        from rfx.boundaries.pec import resolve_wall_faces
+
+        # ADE runs need the single-device PEC backing on the absorber's
+        # outer node planes too. Keep this separate from the declared walls
+        # that determine the CPML profiles and their required slab depth.
+        e_wall_faces, _ = resolve_wall_faces(grid, (False, False, False))
     debye, lorentz = stage_dispersion_slabs(
         materials, grid.dt, debye_spec, lorentz_spec,
-        n_devices, nx_per, ghost, shd)
+        n_devices, nx_per, ghost, shd, nx=nx)
     del base_materials, materials, pec_mask, pec_shapes
     del debye_spec, lorentz_spec
     if pad_x > 0:
@@ -1223,7 +1234,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             mat.eps_r, mat.sigma, mat.mu_r)
         return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
-    def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st):
+    def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st, e_materials):
         """E update (with optional dispersion) via shard_map."""
         if is_nu:
             # NU path: no dispersion (blocked upstream).
@@ -1250,6 +1261,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
                 # #1236 lumped records: None or (x, y, z) of arrays / None
                 P("x"), P("x"),
+                P("x"),  # shared component means
                 # debye coeffs
                 P("x"), P("x"), P("x"), P("x"), P("x"),
                 # debye state
@@ -1268,7 +1280,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             check_rep=False,
         )
         def _e(ex, ey, ez, hx, hy, hz, step,
-               eps_r, sigma, mu_r, sigma_lumped, eps_r_lumped,
+               eps_r, sigma, mu_r, sigma_lumped, eps_r_lumped, means,
                d_ca, d_cb, d_cc, d_alpha, d_beta,
                d_px, d_py, d_pz,
                l_ca, l_cb, l_cc, l_a, l_b, l_c,
@@ -1285,7 +1297,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                    if has_lorentz else None
             new_st, new_db, new_lr = _update_e_local_with_dispersion(
                 _st, _mat, dt, dx, debye=_db, lorentz=_lr,
-                slab=(nx_per, nx))
+                slab=(nx_per, nx), e_materials=means)
             # Unpack debye
             if new_db is not None:
                 nd_px, nd_py, nd_pz = new_db.px, new_db.py, new_db.pz
@@ -1308,7 +1320,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
          nl_px, nl_py, nl_pz,
          nl_pxp, nl_pyp, nl_pzp) = _e(
             st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped,
+            mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped, e_materials,
             db_coeffs.ca, db_coeffs.cb, db_coeffs.cc, db_coeffs.alpha, db_coeffs.beta,
             db_st.px, db_st.py, db_st.pz,
             lr_coeffs.ca, lr_coeffs.cb, lr_coeffs.cc, lr_coeffs.a, lr_coeffs.b, lr_coeffs.c,
@@ -1327,7 +1339,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        cpml_params_arg, pec_mask_arg,
+        cpml_params_arg, pec_mask_arg, e_materials,
     ):
         """Single FDTD step (CPML path) operating on sharded arrays.
 
@@ -1360,7 +1372,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
-            pad_x=pad_x)
+            pad_x=pad_x, separate_x_terms=has_debye or has_lorentz)
 
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx)
@@ -1375,16 +1387,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         st, db_st, lr_st = _update_e_shmap(
             st, materials_arg,
             debye_coeffs_arg, db_st,
-            lorentz_coeffs_arg, lr_st)
+            lorentz_coeffs_arg, lr_st, e_materials)
 
         # 5. CPML E correction (material-aware, #205), with the permittivity
-        #    the E update just used (#1043): each component's edge mean, or
-        #    the cell array under dispersion, the single-device switch (#1303)
+        #    the E update just used (#1043): each component's edge mean.
         st, cpml_st = _apply_cpml_e_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, materials=materials_arg,
             pad_x=pad_x,
-            e_slab=None if (has_debye or has_lorentz) else (nx_per, nx))
+            e_slab=(nx_per, nx), e_materials=e_materials,
+            separate_x_terms=has_debye or has_lorentz)
 
         # 6. Source injection
         st = _inject_sources_shmap(st, src_vals)
@@ -1392,7 +1404,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # A mixed wall/absorber box still enforces its declared electric walls.
         st = _apply_pec_shmap(
             st, mesh, n_devices, nx_local, pad_x=pad_x,
-            pec_faces=_pec_faces_frozen)
+            pec_faces=e_wall_faces)
 
         # 6b. Realized-PEC cell mask (#1053). Geometry PEC is distinct from
         #     the declared domain faces above. Each rank realizes the
@@ -1449,7 +1461,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        pec_mask_arg,
+        pec_mask_arg, e_materials,
     ):
         """Single FDTD step (PEC path) operating on sharded arrays.
 
@@ -1487,7 +1499,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         st, db_st, lr_st = _update_e_shmap(
             st, materials_arg,
             debye_coeffs_arg, db_st,
-            lorentz_coeffs_arg, lr_st)
+            lorentz_coeffs_arg, lr_st, e_materials)
 
         # 4. Source injection
         st = _inject_sources_shmap(st, src_vals)
@@ -1564,11 +1576,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             cpml_params_arg, pec_mask_arg,
         ):
+            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx)
+                           if has_debye or has_lorentz else None)
             final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_cpml(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    cpml_params_arg, pec_mask_arg,
+                    cpml_params_arg, pec_mask_arg, e_materials,
                 ),
                 carry,
                 scan_xs,
@@ -1598,11 +1612,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             pec_mask_arg,
         ):
+            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx)
+                           if has_debye or has_lorentz else None)
             final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_pec(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    pec_mask_arg,
+                    pec_mask_arg, e_materials,
                 ),
                 carry,
                 scan_xs,

@@ -390,6 +390,10 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_half_node_split",
                 lambda sim, c: sim._validate_cfg_half_node_split(c.warn),
                 "ports"),
+    # #1272: report realized absorber depth on either mesh lane, in vacuum too.
+    ConfigCheck("_validate_cfg_thin_absorber",
+                lambda sim, c: sim._validate_cfg_thin_absorber(c.warn, c.dx),
+                "absorber"),
 )
 
 

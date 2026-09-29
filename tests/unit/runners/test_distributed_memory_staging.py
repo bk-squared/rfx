@@ -17,6 +17,7 @@ from types import FunctionType, SimpleNamespace
 
 import jax
 import jax.numpy as jnp
+from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P, SingleDeviceSharding
 import numpy as np
 import pytest
@@ -98,10 +99,14 @@ def _measure(case, multi_process):
     # seen. Active during setup only: traced_scan switches it off.
     from rfx.materials.debye import init_debye as _init_debye
     from rfx.materials.lorentz import init_lorentz as _init_lorentz
-    init_codes = {_init_debye.__code__: "debye", _init_lorentz.__code__: "lorentz"}
+    init_codes = {_init_debye.__code__: "debye", _init_lorentz.__code__: "lorentz",
+                  common.debye_pole_coeffs.__code__: "debye",
+                  common.lorentz_pole_coeffs.__code__: "lorentz"}
 
     def profile_init(frame, event, arg):
         if event == "call" and frame.f_code in init_codes:
+            if "shape" in frame.f_locals:
+                init_extents[init_codes[frame.f_code]].append(int(frame.f_locals["shape"][0]))
             materials = frame.f_locals.get("materials")
             if materials is not None:
                 init_extents.setdefault(init_codes[frame.f_code], []).append(
@@ -139,14 +144,31 @@ def _measure(case, multi_process):
             # after the live-array scan sample so those inspection-only views
             # cannot look like retained full-domain multi-pole setup copies.
             for kind in _dispersion_kinds(case):
-                coeffs = bound[kind + "_coeffs_arg"]
-                for name, arr in zip(coeffs._fields, coeffs):
-                    pad = float(1.0 / EPS_0) if kind == "lorentz" and name == "cc" else 0.0
-                    slabs = np.asarray(arr).reshape(len(devices), -1, nx_local, *grid.shape[1:])
-                    for row in (slabs[0, :, 0], slabs[-1, :, -1]):
-                        expected = np.full_like(row, pad)
-                        assert np.array_equal(row, expected), (kind, name, "physical ghost pad")
-                        assert row.tobytes() == expected.tobytes(), (kind, name, "ghost bits")
+                partial_coeffs = bound[kind + "_coeffs_arg"]
+                assert partial_coeffs.ca is partial_coeffs.cb is partial_coeffs.cc is None
+
+                @partial(shard_map, mesh=Mesh(np.array(devices), ("x",)),
+                         in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
+                def finish(c, m):
+                    means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0])
+                    return common.slab_dispersion_coeffs(c, means, grid.dt, nx_local - 2, grid.shape[0])
+
+                coeffs = jax.jit(finish)(partial_coeffs, bound["materials_arg"])
+                # #1302: rows outside the domain hold a vacuum cell's
+                # coefficients (ca 1, cb dt/eps_0, cc 1/eps_0, pole terms 0)
+                # (float32 arithmetic, as the coefficient builders run it)
+                eps0 = np.float32(EPS_0)
+                vacuum = {"ca": np.float32(1.0), "cb": np.float32(grid.dt) / eps0,
+                          "cc": np.float32(1.0) / eps0}
+                for name, field in zip(coeffs._fields, coeffs):
+                    pad = np.float32(vacuum.get(name, 0.0))
+                    # a per-E-component field (#1260) is an (x, y, z) tuple
+                    for arr in jax.tree_util.tree_leaves(field):
+                        slabs = np.asarray(arr).reshape(len(devices), -1, nx_local, *grid.shape[1:])
+                        for row in (slabs[0, :, 0], slabs[-1, :, -1]):
+                            expected = np.full_like(row, pad)
+                            assert np.array_equal(row, expected), (kind, name, "physical ghost pad")
+                            assert row.tobytes() == expected.tobytes(), (kind, name, "ghost bits")
                     ghost_checks.append(kind + "." + name)
             return result
 
@@ -251,7 +273,8 @@ def _measure(case, multi_process):
 ])
 def test_time_loop_holds_only_local_slabs(case, multi_process):
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
-           "XLA_FLAGS": "--xla_force_host_platform_device_count=2"}
+           "XLA_FLAGS": "--xla_force_host_platform_device_count=2",
+           "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     run = subprocess.run(
         [sys.executable, "-W", "ignore", str(Path(__file__).resolve()), case, str(int(multi_process))],
         env=env, text=True, capture_output=True, timeout=45,
@@ -278,6 +301,7 @@ def test_time_loop_holds_only_local_slabs(case, multi_process):
             assert np.prod(shape) <= 2, f"per-cell placeholder {name}: {shape}"
         for kind in kinds:
             extents = record["init_extents"][kind]
+            # The shared slab convention needs only its existing halo.
             assert extents and max(extents) <= record["nx_local"], (
                 f"whole-domain {kind} initialization: {extents}; nx_local={record['nx_local']}")
         assert len(record["ghost_checks"]) == (5 if "debye" in kinds else 0) + (6 if "lorentz" in kinds else 0)
@@ -347,7 +371,8 @@ print("MANY_DEVICE_SLABS_OK", checked)
 def test_direct_slabs_bit_identical_on_three_and_four_devices():
     """Interior ranks (a slab with neighbours on both sides) exist only with 3+ devices."""
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
-           "XLA_FLAGS": "--xla_force_host_platform_device_count=4"}
+           "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
+           "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     run = subprocess.run([sys.executable, "-W", "ignore", "-c", _MANY_DEVICE_SLABS],
                          env=env, text=True, capture_output=True, timeout=60)
     assert run.returncode == 0, run.stdout + run.stderr
@@ -387,12 +412,13 @@ def test_direct_slabs_callback_only_builds_addressable_shards(monkeypatch):
 
 
 def _direct_dispersion_slabs():
-    """Compare every coefficient/state with the original full-domain split."""
+    """Owned coefficients, fixed pole terms and physical pads on uneven meshes."""
     import itertools
-    from rfx.runners._distributed_common import (
-        _split_debye_coeffs, _split_debye_state,
-        _split_lorentz_coeffs, _split_lorentz_state,
-    )
+    from rfx.materials.debye import init_debye
+    from rfx.materials.lorentz import init_lorentz
+    from rfx.runners import distributed_nu as nu
+    from tests.unit.runners.test_distributed_nu_forward_staging import _completed_slabs, _check_slabs
+
     devices = jax.devices("cpu")
     assert len(devices) == 4
     rng = np.random.default_rng(1208)
@@ -401,97 +427,93 @@ def _direct_dispersion_slabs():
         nx = n * 4 - pad
         shape = (nx, 3, 4)
         mesh_devices = devices[:n][::-1] if pad else devices[:n]
-        shd = NamedSharding(Mesh(np.array(mesh_devices), ("x",)), P("x"))
+        mesh = Mesh(np.array(mesh_devices), ("x",))
+        shd = NamedSharding(mesh, P("x"))
+        dt = np.float64(1e-12)
+        sg = SimpleNamespace(n_devices=n, ghost_width=1, pad_x=pad, nx=nx,
+                             nx_padded=n * 4, nx_per_rank=4, nx_local=6, ny=3, nz=4,
+                             dt=dt)
         materials = MaterialArrays(
             eps_r=jnp.asarray(rng.uniform(1, 6, shape).astype(np.float32)),
             sigma=jnp.asarray(rng.uniform(0, 0.1, shape).astype(np.float32)),
             mu_r=jnp.ones(shape, dtype=jnp.float32))
         masks = [jnp.asarray(rng.random(shape) > 0.5) for _ in range(poles)]
+        padded, padded_masks = materials, masks
         if pad:
             widths = ((0, pad), (0, 0), (0, 0))
-            materials = MaterialArrays(*(jnp.pad(a, widths, constant_values=v)
-                                        for a, v in zip(materials, (1., 0., 1.))))
-            masks = [jnp.pad(m, widths, constant_values=False) for m in masks]
-        debye = ([DebyePole(1.0, 1e-11), DebyePole(0.5, 3e-11)][:poles], masks)
+            padded = MaterialArrays(*(jnp.pad(a, widths, constant_values=v)
+                                      for a, v in zip(materials[:3], (1., 0., 1.))))
+            padded_masks = [jnp.pad(m, widths, constant_values=False) for m in masks]
+        debye = ([DebyePole(1.0, 1e-11), DebyePole(0.5, 3e-11)][:poles], padded_masks)
         lorentz = ([lorentz_pole(1.0, 2 * np.pi * 3e9, 1e9),
-                    lorentz_pole(0.5, 2 * np.pi * 5e9, 2e9)][:poles], masks)
-        dt = np.float64(1e-12)
-        actual = common.stage_dispersion_slabs(materials, dt, debye, lorentz, n, 4, 1, shd)
-        for spec, init, split_coeffs, split_state, got in zip(
-                (debye, lorentz), (common.init_debye, common.init_lorentz),
-                (_split_debye_coeffs, _split_lorentz_coeffs),
-                (_split_debye_state, _split_lorentz_state), actual):
-            coeffs, state = init(spec[0], materials, dt, mask=spec[1])
-            expected = (split_coeffs(coeffs, n, 1), split_state(state, n, 1))
-            for got_tuple, want_tuple in zip(got, expected):
-                for name, arr, stacked in zip(got_tuple._fields, got_tuple, want_tuple):
-                    merged = stacked.reshape((stacked.shape[0] * stacked.shape[1],) + stacked.shape[2:])
-                    want = jax.device_put(merged, shd)
-                    assert arr.shape == want.shape and arr.dtype == want.dtype == jnp.float32
-                    for local, ref in zip(arr.addressable_shards, want.addressable_shards):
-                        assert local.device == ref.device and local.index == ref.index
-                        a, b = np.asarray(local.data), np.asarray(ref.data)
-                        assert np.array_equal(a, b), (n, pad, poles, type(got_tuple).__name__, name)
-                        assert a.tobytes() == b.tobytes(), (n, pad, poles, name, "bits")
-                        checked += 1
+                    lorentz_pole(0.5, 2 * np.pi * 5e9, 2e9)][:poles], padded_masks)
+        actual = common.stage_dispersion_slabs(padded, dt, debye, lorentz, n, 4, 1, shd, nx=nx)
+        placed = MaterialArrays(*(shard_x_slabs(a, n, 4, 1, v, shd)
+                                  for a, v in zip(padded[:3], (1., 0., 1.))))
+        for spec, init, split_c, split_s, got in zip(
+                (debye, lorentz), (init_debye, init_lorentz),
+                (nu.shard_debye_coeffs_x_slab, nu.shard_lorentz_coeffs_x_slab),
+                (nu.shard_debye_state_x_slab, nu.shard_lorentz_state_x_slab), actual):
+            coeffs, state = init(spec[0], materials, dt, mask=masks)
+            expected = split_c(coeffs, sg, mesh), split_s(state, sg, mesh)
+            got = _completed_slabs(got, placed, sg, dt, mesh)
+            checked += _check_slabs(got, expected, sg)
     print("DISPERSION_SLABS_OK", checked)
 
 
 def _addressable_dispersion_slabs():
-    """A remote rank must never build the other ranks' dispersion data."""
+    """A remote rank stages only its own pole-mask halo before shard_map."""
     devices = jax.devices("cpu")[:2]
-    shd = NamedSharding(Mesh(np.array(devices), ("x",)), P("x"))
-    local_only = SimpleNamespace(addressable_devices_indices_map=lambda shape: {
-        devices[1]: (slice(6, 12), slice(None), slice(None))})
+    mesh = Mesh(np.array(devices), ("x",))
+    local_only = SimpleNamespace(mesh=mesh)
     values = jnp.arange(8 * 3 * 4, dtype=jnp.float32).reshape(8, 3, 4) + 1
     materials = MaterialArrays(values, values * 0.001, jnp.ones_like(values))
     mask = values > 10
     reads, constructions = [], []
-    zeros = jnp.zeros
 
-    def record(init):
-        def run(poles, mat, dt, **kwargs):
-            reads.append(np.asarray(mat.eps_r))
-            assert mat.eps_r.devices() == {devices[1]}
-            assert kwargs["mask"][0].devices() == {devices[1]}
-            return init(poles, mat, dt, **kwargs)
-        return run
+    class MaskRecorder:
+        shape = mask.shape
+        ndim = mask.ndim
+        dtype = mask.dtype
 
-    # Signatures intentionally accept only the JAX 0.4.33 positional API.
-    def assemble(shape, sharding, arrays):
-        assert sharding is local_only and len(arrays) == 1
-        assert arrays[0].devices() == {devices[1]}
-        assert shape[0] == 2 * arrays[0].shape[0]
-        constructions.append(shape)
-        return arrays[0]
+        def __getitem__(self, index):
+            reads.append(index)
+            return mask[index]
 
-    def sharded_zeros(shape, *, dtype, device):
-        assert device is local_only
-        return zeros(shape, dtype=dtype, device=shd)
+    def local_callback(shape, sharding, callback):
+        assert shape == (12, 3, 4) and sharding is local_only
+        return jax.device_put(callback((slice(6, 12), slice(None), slice(None))), devices[1])
+
+    def pole_setup(poles, masks, dt, kind, got_mesh, nx_per, nx, shape):
+        assert got_mesh is mesh and (nx_per, nx, shape) == (4, 8, (12, 3, 4))
+        assert masks[0].devices() == {devices[1]}
+        expected = np.pad(np.asarray(mask[3:8]), ((0, 1), (0, 0), (0, 0)))
+        assert np.array_equal(np.asarray(masks[0]), expected)
+        constructions.append(kind)
+        return None
 
     with pytest.MonkeyPatch.context() as patch:
-        patch.setattr(common, "init_debye", record(common.init_debye))
-        patch.setattr(common, "init_lorentz", record(common.init_lorentz))
-        patch.setattr(jax, "make_array_from_single_device_arrays", assemble)
-        # Patch only the helper's jnp view; the initializers still create
-        # their ordinary slab-local zeros on the destination device.
-        patch.setattr(common, "jnp", SimpleNamespace(**{**vars(jnp), "zeros": sharded_zeros}))
+        patch.setattr(jax, "make_array_from_callback", local_callback)
+        patch.setattr(common, "stage_slab_pole_coeffs", pole_setup)
         common.stage_dispersion_slabs(
-            materials, np.float64(1e-12), ([DebyePole(1., 1e-11)], [mask]),
-            ([lorentz_pole(1., 2 * np.pi * 3e9, 1e9)], [mask]), 2, 4, 1, local_only)
-    assert len(reads) == 2 and len(constructions) == 11
-    for read in reads:
-        assert np.array_equal(read, np.asarray(values[3:8]))
+            materials, np.float64(1e-12), ([DebyePole(1., 1e-11)], [MaskRecorder()]),
+            ([lorentz_pole(1., 2 * np.pi * 3e9, 1e9)], [MaskRecorder()]),
+            2, 4, 1, local_only, nx=8)
+    assert reads == [slice(3, 8), slice(3, 8)]
+    assert constructions == ["debye", "lorentz"]
     print("ADDRESSABLE_DISPERSION_OK")
 
 
 @pytest.mark.parametrize("mode,marker", [
-    ("direct_dispersion", "DISPERSION_SLABS_OK 720"),
+    # 36 coefficient/state arrays x (2 + 3 + 4) devices x 2 pads x 2 pole
+    # counts; 20 arrays (720) before the per-component tuples of #1260.
+    ("direct_dispersion", "DISPERSION_SLABS_OK 1296"),
     ("addressable_dispersion", "ADDRESSABLE_DISPERSION_OK"),
 ])
 def test_dispersion_slabs_in_subprocess(mode, marker):
     env = {**os.environ, "JAX_PLATFORMS": "cpu",
-           "XLA_FLAGS": "--xla_force_host_platform_device_count=4"}
+           "XLA_FLAGS": "--xla_force_host_platform_device_count=4",
+           "PYTHONPATH": str(Path(__file__).resolve().parents[3])}
     run = subprocess.run([sys.executable, "-W", "ignore", str(Path(__file__).resolve()), mode],
                          env=env, text=True, capture_output=True, timeout=90)
     assert run.returncode == 0, run.stdout + run.stderr

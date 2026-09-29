@@ -705,19 +705,8 @@ def run_uniform(
         )
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        # Open-domain oblique Method B: k̂ in the xy-plane, so the transverse
-        # y-axis must be OPEN (CPML) and z stays thin-periodic. Every other TFSF
-        # (normal 1D-aux + Bloch 2D-aux) keeps the historical open-x / periodic-yz.
-        from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_ru
-        if sim._tfsf.closed_box:
-            periodic = (False, False, False)
-            cpml_axes = "xyz"
-        elif _is_methodB_ru(tfsf[0]):
-            periodic = (False, False, True)
-            cpml_axes = "xy"
-        else:
-            periodic = (False, True, True)
-            cpml_axes = "x"
+        from rfx.sources.tfsf import tfsf_boundary_flags
+        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0])
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
@@ -802,7 +791,10 @@ def run_uniform(
     # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
-        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32,
+        # The run's flags after the TFSF override above (#1260: the edge
+        # mean wraps on a periodic axis, as the E update's does).
+        periodic=_simulation.resolve_periodic(grid, periodic))
 
     # NTFF box
     ntff_box = None

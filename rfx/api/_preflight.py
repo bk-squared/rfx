@@ -1740,6 +1740,7 @@ class _PreflightMixin:
         # cells of an absorbing face that carries six layers or fewer. Defined
         # in the family module like the twelve above, never in this class body.
         _validate_cfg_conductor_in_thin_absorber,
+        _validate_cfg_thin_absorber,
     )
 
     # ------------------------------------------------------------------
