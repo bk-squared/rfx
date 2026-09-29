@@ -66,6 +66,21 @@ modes (2.1393 / 2.7266 / 3.5067 GHz, VESSL 369367259021); every one of them
 was HIGH, because a vacuum cell on each face of the cavity put air in series
 with the laminate and lowered eps_eff.
 
+Measurements after x/y registration (#1383), 200 periods, one CPU node
+(VESSL base-pod on remilab-r02, JAX 0.6.2), all harminv modes printed:
+
+    this script (12 mm margin, x/y registered; VESSL 369367266090):
+        2.3642 GHz  Q =  44.4
+        3.7062 GHz  Q = 115.1
+        settling -42.5 dB, 1969.5 s of FDTD
+    the pre-registration script re-run on the same node (10 mm margin,
+    uniform x/y; VESSL 369367266088):
+        1.8909 GHz  Q = 109.4
+        2.4276 GHz  Q =  44.5
+        3.1629 GHz  Q =  86.6
+        3.7380 GHz  Q = 114.4
+        settling -41.7 dB, 1542.0 s of FDTD
+
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
 """
@@ -457,6 +472,8 @@ def main() -> None:
     # 120 — UNDER-SETTLED by the script's own witness. The binding mode is TM01
     # on the 38 mm width (1.9037 GHz, Q = 99.9), the slowest decayer in the set.
     #
+    # After x/y registration, 200 periods measured -42.5 dB (VESSL
+    # 369367266090).
     # Before x/y registration, 200 periods measured -41.4 dB (VESSL
     # 369367259280). That cleared the -40 dB
     # bar, but by 1.4 dB, which is less margin than the number below was chosen
