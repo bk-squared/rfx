@@ -405,10 +405,12 @@ def test_the_cpml_box_agrees_with_one_device(lane, case):
 @pytest.mark.parametrize("lane", ["run", "fwd"])
 def test_the_thin_xhi_absorber_reads_past_the_alignment_pad(lane):
     """An eps_r 4 fill through both x faces, 150 steps, two devices:
-    23 x cells need one alignment row and a two-cell x-hi absorber. Pad 1
-    plus this thin face is the only two-device geometry found where moving
-    the psi coefficient slice into the pad reaches the probes. One cell is
-    excluded because conducting fills have a separate defect at that depth.
+    23 x cells need one alignment row, and the x-hi absorber is two cells
+    deep. With four cells and one pad row, a coefficient slice moved into
+    the pad changes only the outermost absorber row and stays under the
+    gate (8.2e-7 of the peak on the 25-cell box above); with two cells it
+    reaches the probes. One cell is avoided: a one-cell hi-side absorber
+    holding a conducting fill has a separate defect (ledger).
 
     Mac arm64, JAX 0.10.2, max |difference| / record peak, probe order:
     run: 1.43e-6 / 2.57e-6 / 3.60e-7, vacuum 3.21e-6 / 3.43e-6 / 1.01e-6,
@@ -417,8 +419,11 @@ def test_the_thin_xhi_absorber_reads_past_the_alignment_pad(lane):
     gates 1.01e-5 / 1.31e-5 / 2.84e-6 (max(FLOOR_FACTOR * floor, ROUNDING)).
     Replacing x_hi_edge by g in the uniform kernel's xhi_ slice gives
     1.61e-5 / 2.57e-6 / 4.25e-5: 1.249 / 0.187 / 10.566 times the gate.
-    The same edit to _apply_cpml_e_local_nu's xhi slice leaves fwd unchanged
-    and green at 0.073 / 0.174 / 0.291 times the gate.
+    The fwd half is a parity check only. The same edit to
+    _apply_cpml_e_local_nu's xhi leaves its records bit for bit unchanged:
+    in this model the graded lane's x-hi E correction does nothing, since
+    the inner row of a two-cell profile has c = 0 and the outer row is the
+    face, which that lane zeroes every step.
     """
     devices = _devices(2)
     boundary = BoundarySpec(
