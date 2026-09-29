@@ -352,7 +352,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_geometry", "pec_volume"): _plus(lambda s, _: s.add(Box(mm(5, 3, 3), mm(7, 9, 9)), material="pec")),
     ("_geometry", "pec_sheet"): _plus(lambda s, _: s.add(Box(mm(6, 3, 3), mm(6, 9, 9)), material="pec")),
     ("_geometry", "pec_wire"): _plus(lambda s, _: s.add(
-        PolylineWire((mm(6, 6, 3), mm(6, 6, 9)), radius=0.2e-3), material="pec")),
+        PolylineWire((mm(6, 6, 3), mm(6, 6, 9)), radius=0.0), material="pec")),
     ("_thin_conductors", "lossy_sheet"): _plus(lambda s, _: s.add_thin_conductor(
         Box(mm(6, 3, 3), mm(6, 9, 9)), sigma_bulk=1e3, thickness=1e-4)),
     ("_thin_conductors", "pec_sheet"): _plus(lambda s, _: s.add_thin_conductor(
