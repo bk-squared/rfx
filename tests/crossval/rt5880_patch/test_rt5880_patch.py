@@ -577,7 +577,7 @@ def _build_probe_shorted_by_a_wire(dx: float) -> Simulation:
     sim.add(_patch_box(), material="pec")
     px, py = FRAME.cx + FEED_OFFSET_X, FRAME.cy
     sim.add(PolylineWire(points=((px, py, FRAME.z_ground), (px, py, FRAME.z_patch)),
-                         radius=1e-6), material="pec")
+                         radius=0.), material="pec")
     _add_probe_and_witness(sim)
     return sim
 
