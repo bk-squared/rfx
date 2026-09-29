@@ -42,14 +42,6 @@
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
   {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "The example's subject IS the graded mesh: its own Rule 2 states 'NU TRADES ACCURACY FOR CELLS', and the z profile is built by ceil() onto a graded spine, so a design edge that does not land on a node is the trade the tutorial is demonstrating. The build prints the realized PEC sheet planes next to the declaration, which is the disclosure this advisory asks for.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:18,109-119,362-365",
-   "rows": 1,
-   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
-  },
-  {
    "code": "sheet_effective_size",
    "disposition": "defect-open",
    "issue": 1138,
@@ -71,15 +63,6 @@
    "disposition": "intended",
    "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'the small-ground-plane pattern advisory (60 mm = 0.56 lambda at f_max, so edge diffraction shapes the pattern) -- expected physics, shared with the openEMS reference, not a solver defect'.",
    "ref": "examples/tutorials/patch_antenna_demo.py:3-7,524-538",
-   "rows": 1,
-   "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
-  },
-  {
-   "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Census defect, not a board defect. The graded x/y mesh puts the last PEC node 0.35 cell inside every sheet edge on purpose (rfx.mesh_edges.edge_aware_profiles, the remedy preflight's sheet_effective_size names; #1375), so this census, which measures each drawn face against its nearest node, reports 700 um on every patch and ground edge, and fidelity_report calls the patch 30.6 mm (-4.38 %) and names edge_aware_profile as the remedy the board already uses. The solved size is the drawn size: build_simulation asserts it and sheet_effective_size does not fire. The census and fidelity_report measure a sheet face against its nearest node instead of against the solved edge (rfx/preflight/pec_geometry.py:1241-1248, rfx/fidelity.py:854-872); tracked on #1138. main()'s comment lists the row: 'the off-lattice conductor-face residual on the patch and ground outlines (0.7 mm: the graded x/y mesh puts the last node 0.35 cell inside every sheet edge on purpose, #1375)'.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-7,333-340,534-538 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -215,14 +198,6 @@
    "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
   },
   {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "This arm's subject is exactly that residual. A PEC sheet's in-plane edge is solved about 0.35 of a cell beyond its last node, so the offset arm puts the node 0.35 of a fine cell INSIDE the metal and draws the sheet at its true 600 um: the declared face then sits 16.54 um (0.35 x 47.24 um) off the nearest node BY CONSTRUCTION, which is what this row reports, and the metal's solved edge lands on the drawn one. The instrument's R3 refuses any build where that distance is not the offset the arm declares, and the build test's mutation (c) shows the refusal firing.",
-   "ref": "validation/research/multiband_nu/msl_notch_graded.py:36-41",
-   "rows": 1,
-   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
-  },
-  {
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "The board IS a microstrip: its ground is the z_lo PEC face and its line and stub are finite PEC sheets on the substrate top, which is the configuration this advisory describes. The crossval case this arm extends declares the same boundary (BoundarySpec z lo='pec') and both external records -- openEMS's own MSL_NotchFilter tutorial and the Palace FEM run -- are taken on an infinite ground plane, so a finite one would be the wrong board, not a safer one.",
@@ -352,14 +327,6 @@
    "reason": "The 2 normal intervals the advisory counts are the declared mesh: DX = 127e-6 with the comment 'h_sub / 2 -- 2 substrate cells. Demo geometry of record. Refining to 80 um (cv06b standard) gives a cleaner eps_eff staircase but exposes a dx-fragility in the plane lane (|S21|^2 > 1 unphysical) that is a follow-up; for now the demo runs at h_sub/2 where the extractor is well behaved.' One row per MSL port.",
    "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:140-152",
    "rows": 2,
-   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
-  },
-  {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "Disclosed in the source with the arithmetic that makes it unavoidable: 'The residual +5.8% width error is NOT fixable by redrawing: W_TRACE / DX = 4.72 is not an integer, and gcd(254 um, 600 um) = 2 um, so no sane uniform dx puts both the substrate top and both trace edges on node lines. That is disclosed here, not absorbed.' The substrate face, which the port checks key off, IS on a node (H_SUB / DX = 2 exactly).",
-   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:242-259",
-   "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {

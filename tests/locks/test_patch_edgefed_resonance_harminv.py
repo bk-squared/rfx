@@ -760,13 +760,20 @@ def test_realized_raster_agrees_with_the_public_fidelity_report():
     # the inclusive-+1 debt (#729 class) out of the ownership contract, so
     # it stays fenced here and is written down instead of absorbed.
     #
+    # Since #1375 the report gives a sheet's in-plane extent where it is
+    # SOLVED: the wall planes plus rfx.mesh_edges.EDGE_OFFSET of the outside
+    # cell at each free edge (both patch ends here; the uniform cell is DX),
+    # the same number preflight's sheet_effective_size prints.
+    #
     # The gate keeps its teeth: the relation is exact, so either reading
     # drifting breaks it.
+    from rfx.mesh_edges import EDGE_OFFSET
     dx_um = DX * 1e6
+    overhang_um = 2 * EDGE_OFFSET * dx_um
     assert abs(seen["patch"]["x"]["realized_extent_um"]
-               - (l_real * 1e6 - dx_um)) < 1e-3, seen["patch"]["x"]
+               - (l_real * 1e6 - dx_um + overhang_um)) < 1e-3, seen["patch"]["x"]
     assert abs(seen["patch"]["y"]["realized_extent_um"]
-               - (w_real * 1e6 - dx_um)) < 1e-3, seen["patch"]["y"]
+               - (w_real * 1e6 - dx_um + overhang_um)) < 1e-3, seen["patch"]["y"]
     # The substrate is a DIELECTRIC volume: node-sampled, unchanged by the
     # ownership contract, and reported as the same cell census.
     assert abs(seen["substrate"]["z"]["realized_extent_um"] - h_real * 1e6) < 1e-3
