@@ -120,6 +120,68 @@ class LorentzState(NamedTuple):
     pz_prev: jnp.ndarray
 
 
+def lorentz_pole_coeffs(poles, dt, shape, fractions_by_pole):
+    """Material-independent Lorentz ADE terms from per-pole edge fractions."""
+    a_list, b_list = [], []
+    c_lists = ([], [], [])
+
+    for pole, fractions in zip(poles, fractions_by_pole):
+        w0, d, k = pole.omega_0, pole.delta, pole.kappa
+        denom = 1.0 + d * dt
+
+        a_val = (2.0 - w0 ** 2 * dt ** 2) / denom
+        b_val = -(1.0 - d * dt) / denom
+        c_val = EPS_0 * k * dt ** 2 / denom
+
+        if fractions is not None:
+            reach = pole_reach(fractions)
+            a_list.append(jnp.where(reach, a_val, 0.0))
+            b_list.append(jnp.where(reach, b_val, 0.0))
+            for comp in range(3):
+                c_lists[comp].append(jnp.where(
+                    fractions[comp] > 0, c_val * fractions[comp], 0.0))
+        else:
+            # No dtype pin: ``a_val``/``b_val``/``c_val`` are numpy scalars
+            # (``dt`` is ``grid.dt``, an np.float64), so this matches the
+            # masked branch above, which has always produced whatever
+            # ``jnp.where`` promotes to. A hard float32 here made the two
+            # branches disagree and capped the ADE coefficients at float32
+            # under ``precision="float64"`` (issue #656). With x64 off JAX
+            # clamps to float32, so the default lane is unchanged.
+            a_list.append(jnp.full(shape, a_val))
+            b_list.append(jnp.full(shape, b_val))
+            c_arr = jnp.full(shape, c_val)
+            for comp in range(3):
+                c_lists[comp].append(c_arr)
+
+    a = jnp.stack(a_list)
+    b = jnp.stack(b_list)
+    c = tuple(jnp.stack(cl) for cl in c_lists)
+
+    return a, b, c
+
+
+def lorentz_e_coeffs(e_materials, dt, a, b, c):
+    """Build E coefficients from the component means and fixed ADE terms.
+
+    Distributed runners form these inside the time loop so autodiff does
+    not accumulate the coefficient cotangents before their reverse pass.
+    """
+    eps_c, sig_c = e_materials
+    ca, cb, cc = [], [], []
+    for comp in range(3):
+        eps_inf = eps_c[comp] * EPS_0
+        sigma = sig_c[comp]
+        gamma = eps_inf + sigma * dt / 2.0
+        safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
+        ca.append((eps_inf - sigma * dt / 2.0) / safe_gamma)
+        cb.append(dt / safe_gamma)
+        cc.append(1.0 / safe_gamma)
+
+    return LorentzCoeffs(ca=tuple(ca), cb=tuple(cb), a=a, b=b, c=c,
+                           cc=tuple(cc))
+
+
 def init_lorentz(
     poles: list[LorentzPole],
     materials,
@@ -171,55 +233,9 @@ def init_lorentz(
 
     eps_c, sig_c = component_e_materials(materials, periodic)
 
-    a_list, b_list = [], []
-    c_lists = ([], [], [])
-
-    for pole, pole_mask in zip(poles, pole_masks):
-        w0, d, k = pole.omega_0, pole.delta, pole.kappa
-        denom = 1.0 + d * dt
-
-        a_val = (2.0 - w0 ** 2 * dt ** 2) / denom
-        b_val = -(1.0 - d * dt) / denom
-        c_val = EPS_0 * k * dt ** 2 / denom
-
-        fractions = pole_edge_fractions(pole_mask, periodic)
-        if fractions is not None:
-            reach = pole_reach(fractions)
-            a_list.append(jnp.where(reach, a_val, 0.0))
-            b_list.append(jnp.where(reach, b_val, 0.0))
-            for comp in range(3):
-                c_lists[comp].append(jnp.where(
-                    fractions[comp] > 0, c_val * fractions[comp], 0.0))
-        else:
-            # No dtype pin: ``a_val``/``b_val``/``c_val`` are numpy scalars
-            # (``dt`` is ``grid.dt``, an np.float64), so this matches the
-            # masked branch above, which has always produced whatever
-            # ``jnp.where`` promotes to. A hard float32 here made the two
-            # branches disagree and capped the ADE coefficients at float32
-            # under ``precision="float64"`` (issue #656). With x64 off JAX
-            # clamps to float32, so the default lane is unchanged.
-            a_list.append(jnp.full(shape, a_val))
-            b_list.append(jnp.full(shape, b_val))
-            c_arr = jnp.full(shape, c_val)
-            for comp in range(3):
-                c_lists[comp].append(c_arr)
-
-    a = jnp.stack(a_list)
-    b = jnp.stack(b_list)
-    c = tuple(jnp.stack(cl) for cl in c_lists)
-
-    ca, cb, cc = [], [], []
-    for comp in range(3):
-        eps_inf = eps_c[comp] * EPS_0
-        sigma = sig_c[comp]
-        gamma = eps_inf + sigma * dt / 2.0
-        safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
-        ca.append((eps_inf - sigma * dt / 2.0) / safe_gamma)
-        cb.append(dt / safe_gamma)
-        cc.append(1.0 / safe_gamma)
-
-    coeffs = LorentzCoeffs(ca=tuple(ca), cb=tuple(cb), a=a, b=b, c=c,
-                           cc=tuple(cc))
+    a, b, c = lorentz_pole_coeffs(
+        poles, dt, shape, [pole_edge_fractions(m, periodic) for m in pole_masks])
+    coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
     state = LorentzState(

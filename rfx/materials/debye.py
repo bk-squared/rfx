@@ -126,6 +126,68 @@ class DebyeState(NamedTuple):
     pz: jnp.ndarray
 
 
+def debye_pole_coeffs(poles, dt, shape, fractions_by_pole):
+    """Material-independent Debye ADE terms from per-pole edge fractions."""
+    # Per-pole coefficients
+    alpha_list = []
+    beta_lists = ([], [], [])
+    for pole, fractions in zip(poles, fractions_by_pole):
+        tau = pole.tau
+        de = pole.delta_eps
+        a = (2.0 * tau - dt) / (2.0 * tau + dt)
+        b = EPS_0 * de * dt / (2.0 * tau + dt)
+
+        if fractions is not None:
+            alpha_list.append(jnp.where(pole_reach(fractions), a, 0.0))
+            for c in range(3):
+                beta_lists[c].append(
+                    jnp.where(fractions[c] > 0, b * fractions[c], 0.0))
+        else:
+            # No dtype pin — see the matching note in
+            # ``rfx.materials.lorentz.init_lorentz`` (issue #656): ``a``/``b``
+            # are numpy scalars (``dt`` is ``grid.dt``, an np.float64), so
+            # this matches the masked branch above instead of capping the
+            # ADE coefficients at float32 under ``precision="float64"``.
+            # With x64 off JAX clamps to float32: default lane unchanged.
+            alpha_list.append(jnp.full(shape, a))
+            b_arr = jnp.full(shape, b)
+            for c in range(3):
+                beta_lists[c].append(b_arr)
+
+    alpha = jnp.stack(alpha_list)  # (n_poles, nx, ny, nz)
+    beta = tuple(jnp.stack(bl) for bl in beta_lists)
+
+    return alpha, beta
+
+
+def debye_e_coeffs(e_materials, dt, alpha, beta):
+    """Build E coefficients from the component means and fixed ADE terms.
+
+    Distributed runners form these inside the time loop so autodiff does
+    not accumulate the coefficient cotangents before their reverse pass.
+    """
+    eps_c, sig_c = e_materials
+    n_poles = alpha.shape[0]
+    ca, cb, cc = [], [], []
+    for c in range(3):
+        eps_inf = eps_c[c] * EPS_0
+        sigma = sig_c[c]
+        # Sum of beta across poles
+        beta_sum = jnp.sum(beta[c], axis=0)
+        # Modified update coefficients
+        gamma = eps_inf + beta_sum + sigma * dt / 2.0
+        # Guard against zero (vacuum cells with no Debye)
+        safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
+        ca.append((eps_inf - beta_sum - sigma * dt / 2.0) / safe_gamma)
+        cb.append(dt / safe_gamma)
+        # Cc for each pole: (1 - alpha_p) / gamma
+        cc.append(jnp.stack([(1.0 - alpha[p]) / safe_gamma
+                             for p in range(n_poles)]))
+
+    return DebyeCoeffs(ca=tuple(ca), cb=tuple(cb), cc=tuple(cc),
+                         alpha=alpha, beta=beta)
+
+
 def init_debye(
     poles: list[DebyePole],
     materials: MaterialArrays,
@@ -192,54 +254,9 @@ def init_debye(
     # before it and added back to their own component (#1236).
     eps_c, sig_c = component_e_materials(materials, periodic)
 
-    # Per-pole coefficients
-    alpha_list = []
-    beta_lists = ([], [], [])
-    for pole, pole_mask in zip(poles, pole_masks):
-        tau = pole.tau
-        de = pole.delta_eps
-        a = (2.0 * tau - dt) / (2.0 * tau + dt)
-        b = EPS_0 * de * dt / (2.0 * tau + dt)
-
-        fractions = pole_edge_fractions(pole_mask, periodic)
-        if fractions is not None:
-            alpha_list.append(jnp.where(pole_reach(fractions), a, 0.0))
-            for c in range(3):
-                beta_lists[c].append(
-                    jnp.where(fractions[c] > 0, b * fractions[c], 0.0))
-        else:
-            # No dtype pin — see the matching note in
-            # ``rfx.materials.lorentz.init_lorentz`` (issue #656): ``a``/``b``
-            # are numpy scalars (``dt`` is ``grid.dt``, an np.float64), so
-            # this matches the masked branch above instead of capping the
-            # ADE coefficients at float32 under ``precision="float64"``.
-            # With x64 off JAX clamps to float32: default lane unchanged.
-            alpha_list.append(jnp.full(shape, a))
-            b_arr = jnp.full(shape, b)
-            for c in range(3):
-                beta_lists[c].append(b_arr)
-
-    alpha = jnp.stack(alpha_list)  # (n_poles, nx, ny, nz)
-    beta = tuple(jnp.stack(bl) for bl in beta_lists)
-
-    ca, cb, cc = [], [], []
-    for c in range(3):
-        eps_inf = eps_c[c] * EPS_0
-        sigma = sig_c[c]
-        # Sum of beta across poles
-        beta_sum = jnp.sum(beta[c], axis=0)
-        # Modified update coefficients
-        gamma = eps_inf + beta_sum + sigma * dt / 2.0
-        # Guard against zero (vacuum cells with no Debye)
-        safe_gamma = jnp.maximum(gamma, EPS_0 * 1e-10)
-        ca.append((eps_inf - beta_sum - sigma * dt / 2.0) / safe_gamma)
-        cb.append(dt / safe_gamma)
-        # Cc for each pole: (1 - alpha_p) / gamma
-        cc.append(jnp.stack([(1.0 - alpha[p]) / safe_gamma
-                             for p in range(n_poles)]))
-
-    coeffs = DebyeCoeffs(ca=tuple(ca), cb=tuple(cb), cc=tuple(cc),
-                         alpha=alpha, beta=beta)
+    alpha, beta = debye_pole_coeffs(
+        poles, dt, shape, [pole_edge_fractions(m, periodic) for m in pole_masks])
+    coeffs = debye_e_coeffs((eps_c, sig_c), dt, alpha, beta)
 
     # Zero-initialized polarization state
     p_zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))
