@@ -296,7 +296,14 @@ class Box:
             extent = float(hi - lo)  # staircase corners must be concrete
             if coords.size <= 1:             # static (shape, not values)
                 dc_local = 1e-3
+                node_widths = xp.full_like(coords, dc_local)
             else:
+                # Each node owns its forward primal cell; the final node
+                # repeats the boundary width. Shared faces must use the
+                # same band at a node regardless of either box's midpoint
+                # (#1138), or stacked boxes can leave a gap or overlap.
+                spacings = xp.diff(coords)
+                node_widths = xp.concatenate((spacings, spacings[-1:]))
                 # Local cell WIDTH at the midpoint cell — the smaller of the two
                 # neighbouring centre-to-centre spacings, NOT the single forward
                 # spacing coords[k+1]-coords[k] the legacy code used (#374). At a
@@ -335,7 +342,7 @@ class Box:
                 thin_mask = np.zeros(coords.shape, dtype=bool)
                 thin_mask[nearest_idx] = True
             # Volume: half-open [lo, hi), with the on-lattice band (#1138).
-            volume_mask = half_open_volume_mask(coords, lo, hi, dc_local)
+            volume_mask = half_open_volume_mask(coords, lo, hi, node_widths)
             # Thin-branch tie rule (#802 follow-up): a face-registered
             # one-cell box is an EXACT half-cell tie — mid sits midway
             # between two nodes — and argmin would resolve it by the last

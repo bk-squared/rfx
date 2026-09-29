@@ -228,3 +228,68 @@ def test_periodic_material_image_inherits_the_node_face_band():
     materials = sim._assemble_materials(grid)[0]
     _assert_span(np.any(np.asarray(materials.eps_r) > 1, axis=(1, 2)), FIRST, 6)
     _assert_span(np.any(np.asarray(shape.mask(grid)), axis=(1, 2)), FIRST, 6)
+
+
+@pytest.mark.parametrize("dx", DXS)
+@pytest.mark.parametrize("delta", [1e-13, 1e-12, 1e-11])
+def test_domain_and_box_share_the_band_at_a_cpml_face(dx, delta):
+    """The review rig: sizing and the slab must both realize 64 cells.
+
+    Without the sizing band, two empty hi nodes make PadFillShortfall
+    raise; without the Box band, the raw slab owns a 65th interior node.
+    """
+    domain = 64 * dx * (1 + delta)
+    sim = Simulation(
+        10e9, (domain, domain, 16 * dx), dx=dx,
+        boundary="cpml", cpml_layers=4)
+    sim.add_material("slab", eps_r=3.7)
+    sim.add(Box((0., 0., 4 * dx), (domain, domain, 8 * dx)), material="slab")
+    grid = sim._build_grid()
+    filled = np.asarray(sim._assemble_materials(grid)[0].eps_r)
+    raw = np.asarray(sim._assemble_materials(
+        grid, include_cpml_pad_extension=False)[0].eps_r)
+    for axis in (0, 1):
+        lo_pad, hi_pad = grid.face_pads[2 * axis:2 * axis + 2]
+        present = np.any(raw != 1.0, axis=tuple(a for a in range(3) if a != axis))
+        interior = present[lo_pad:len(present) - hi_pad]
+        assert interior.size == 65
+        _assert_span(interior, 0, 64)
+    k = grid.pad_z_lo + 5
+    expected = np.asarray(3.7, dtype=filled.dtype)
+    assert filled[-1, grid.pad_y_lo + 5, k] == expected
+    assert filled[grid.pad_x_lo + 5, -1, k] == expected
+
+
+@pytest.mark.parametrize("traced", [False, True], ids=["numpy", "traced"])
+@pytest.mark.parametrize("below,above,split", [(10., 1., 4), (1., 10., 3)])
+def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
+    """A shared face 5 nm above a node uses that node's forward cell.
+
+    Midpoint widths leave a gap with 10 m cells below / 1 m above, and an
+    overlap with the reverse grading. Both boxes must agree on ownership.
+    """
+    widths = np.r_[np.full(3, below), np.full(6, above)]
+    domain = float(np.sum(widths))
+    sim = Simulation(
+        10e6, (4., 4., domain), dx=1., dz_profile=widths,
+        boundary="pec", cpml_layers=0)
+    grid = sim._build_nonuniform_grid()
+    coords = coords_from_nonuniform_grid(grid)
+    face = float(coords.z[3]) + 5e-9
+    boxes = (Box((0., 0., 0.), (4., 4., face)),
+             Box((0., 0., face), (4., 4., domain)))
+    masks = []
+    for index, shape in enumerate(boxes):
+        sim.add_material(f"layer{index}", eps_r=2. + index)
+        sim.add(shape, material=f"layer{index}")
+        with enable_x64():
+            mask = (jax.jit(lambda z: shape.mask_on_coords(coords.x, coords.y, z))(
+                jnp.asarray(coords.z)) if traced else shape.mask_on_coords(*coords[:3]))
+        masks.append(np.any(np.asarray(mask), axis=(0, 1)))
+    ownership = masks[0].astype(int) + masks[1].astype(int)
+    np.testing.assert_array_equal(ownership[:-1], 1)
+    assert ownership[-1] == 0
+    _assert_span(masks[0], 0, split)
+    _assert_span(masks[1], split, len(widths) - split)
+    column = np.asarray(sim._assemble_materials_nu(grid)[0].eps_r)[1, 1]
+    np.testing.assert_array_equal(column, [2.] * split + [3.] * (len(widths) - split) + [1.])

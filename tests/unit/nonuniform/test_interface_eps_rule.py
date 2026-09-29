@@ -63,8 +63,9 @@ def test_columns_and_default_table(arm, scale):
     ce = w7.cell_eps(prof, w7.A1_EDGES, w7.A1_EPS)
     np.testing.assert_array_equal(ez[idx], np.asarray(np.r_[ce, ce[-1]], np.float32))
     default = w7.a1_production_column(prof, scale)
+    assert w7.A1_INTERFACE_TABLE[arm, scale] == (3.0, 4.3, 1.0)
     assert tuple(v["eps"] for v in default["interface_table"].values()) == tuple(
-        float(np.float32(v)) for v in w7.A1_INTERFACE_TABLE[arm, scale])
+        float(np.float32(v)) for v in (3.0, 4.3, 1.0))
     np.testing.assert_array_equal(w7.a1_production_column(prof, scale, interface_eps="dual_average")["column"], ey[idx])
     print(f"E3-C {arm}|{scale:g}: Ey relative={rel}; Ez max difference=0; default table unchanged")
 
