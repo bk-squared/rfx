@@ -22,7 +22,7 @@ from rfx.sources.waveguide_port import (
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
-from rfx.core.yee import lumped_components
+from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
 
 
 def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
@@ -304,13 +304,6 @@ def run_uniform(
             pec_shapes=pec_shapes or [],
             background_eps=1.0,
         )
-        # A folded capacitor adds to its own edge's permittivity (#1263).
-        # inv / (1 + inv * stamp) = 1 / (1 / inv + stamp), also at PEC
-        # where inv=0 must stay zero without a division by zero.
-        aniso_inv_eps = tuple(
-            inv if stamp is None else inv / (1.0 + inv * stamp)
-            for inv, stamp in zip(
-                aniso_inv_eps, lumped_components(materials.eps_r_lumped)))
         # Stage 2 *keeps* pec_mask alive (was previously null'd here).
         # Reasons:
         # 1. ``apply_pec_edges`` on top of inv=0 provides defense-in-
@@ -338,12 +331,6 @@ def run_uniform(
         warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
         if shape_eps_pairs:
             aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
-            # Shape smoothing has no lumped elements; add each capacitor
-            # stamp to its own component only, without averaging (#1263).
-            aniso_eps = tuple(
-                eps if stamp is None else eps + stamp
-                for eps, stamp in zip(
-                    aniso_eps, lumped_components(materials.eps_r_lumped)))
 
     # Conformal PEC (Stage 1): compute weights and produce anisotropic
     # eps. Skipped when Stage 2 unified path is active (use_kottke_pec)
@@ -360,7 +347,7 @@ def run_uniform(
         conformal_weights = (w_ex, w_ey, w_ez)
 
         # Compute conformal eps correction
-        eps_base = materials.eps_r
+        eps_base = permittivity_without_lumped(materials)
         eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(eps_base, w_ex, w_ey, w_ez)
 
         if aniso_eps is not None:
@@ -377,6 +364,12 @@ def run_uniform(
 
         # Conformal replaces binary pec_mask
         pec_mask = None
+
+    # Complete the volume tensor before adding edge-owned capacitors:
+    # conformal weights must act on the volume, never on a lumped C.
+    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+    aniso_inv_eps = add_lumped_eps(
+        aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
     # Build sources and probes for the compiled runner
     sources = []

@@ -121,6 +121,36 @@ def lumped_total(record):
     return total
 
 
+def permittivity_without_lumped(materials):
+    """Volume relative permittivity with every recorded capacitor removed."""
+    stamp = lumped_total(getattr(materials, "eps_r_lumped", None))
+    return materials.eps_r if stamp is None else materials.eps_r - stamp
+
+
+def add_lumped_eps(eps_components, record, *, inverse=False):
+    """Add each capacitor to its own E edge after volume averaging (#1263).
+
+    ``eps_components`` must contain only the volume contribution, after
+    any smoothing or conformal correction. Call once for the completed
+    array, so neither the volume average nor a conformal weight acts on
+    the lumped device. ``None`` leaves the ordinary material update active.
+
+    For an inverse tensor, inv/(1 + inv*stamp) = 1/(1/inv + stamp).
+    This adds to permittivity before inversion and leaves PEC inv=0 at zero.
+    """
+    if eps_components is None:
+        return None
+    out = []
+    for eps, stamp in zip(eps_components, lumped_components(record)):
+        if stamp is None:
+            out.append(eps)
+        elif inverse:
+            out.append(eps / (1.0 + eps * stamp))
+        else:
+            out.append(eps + stamp)
+    return tuple(out)
+
+
 def map_lumped(record, fn):
     """Apply ``fn`` to every array of a lumped record, keeping its shape:
     ``None`` stays ``None``, a ``None`` component stays ``None``. For readers
@@ -585,20 +615,15 @@ def component_e_materials(materials, periodic=(False, False, False)):
     With no stamps this is :func:`edge_averaged_materials` on
     ``materials.eps_r`` and ``materials.sigma`` and nothing else.
     """
-    eps_v = materials.eps_r
+    eps_v = permittivity_without_lumped(materials)
     sig_v = materials.sigma
-    eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
     sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
-    eps_l = lumped_total(eps_parts)
     sig_l = lumped_total(sig_parts)
-    if eps_l is not None:
-        eps_v = eps_v - eps_l
     if sig_l is not None:
         sig_v = sig_v - sig_l
     eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
     # Each stamp back on its OWN component (#1236).
-    eps_c = tuple(e if part is None else e + part
-                  for e, part in zip(eps_c, eps_parts))
+    eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
                   for s, part in zip(sig_c, sig_parts))
     return eps_c, sig_c
