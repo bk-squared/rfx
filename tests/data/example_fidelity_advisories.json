@@ -464,6 +464,86 @@
    "ref": "examples/visualization/field_movies.py:5-10,62-72",
    "rows": 3,
    "variant": "examples/visualization/field_movies.py::build_simulation::dielectric"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/inverse_design/progressive_demo.py:98-110 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/inverse_design/progressive_demo.py::sim_factory::dx=1.0mm"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/inverse_design/progressive_demo.py:98-110 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/inverse_design/progressive_demo.py::sim_factory::dx=0.5mm"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/tutorials/antenna_farfield_pattern.py:48-60 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/tutorials/antenna_farfield_pattern.py::build_simulation::default"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/tutorials/materials_and_dispersion.py:41-49 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/tutorials/materials_and_dispersion.py::make_sim::default"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:50-62 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=False"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:50-62 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=True"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=3, x_hi=3, y_lo=3, y_hi=3, z_lo=3, z_hi=3. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:114-126 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:223-235 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_waveguide_ports::default"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=4, x_hi=4, y_lo=4, y_hi=4, z_lo=4, z_hi=4. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "examples/tutorials/run_control_and_fields.py:47-59 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "examples/tutorials/run_control_and_fields.py::build_simulation::default"
+  },
+  {
+   "code": "thin_absorber",
+   "disposition": "intended",
+   "reason": "The built grid has these declared absorbing faces and realized layer counts: x_lo=6, x_hi=6, y_lo=6, y_hi=6, z_lo=6, z_hi=6. Issue #1272 intentionally adds a depth advisory for this unchanged construction. The row records the expected diagnostic; it makes no claim that the example's absorber meets a reflection-accuracy target.",
+   "ref": "validation/research/metal_edge/m6_wire_port_ad.py:194-206 | https://github.com/bk-squared/rfx/issues/1272",
+   "rows": 1,
+   "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
   }
  ]
 }

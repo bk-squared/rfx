@@ -450,6 +450,16 @@ def compute_waveguide_s_matrix(
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 
+    # This extractor assembles volume materials directly, without the
+    # run()/forward() RLC folding or element updates (#1263).
+    for model in (self, *(port_reference_sims or ())):
+        if model._lumped_rlc:
+            raise NotImplementedError(
+                "compute_waveguide_s_matrix() on a uniform mesh does not "
+                "implement lumped RLC elements in the device or reference "
+                "simulations (#1263). Use run() or forward() for fields "
+                "with these elements, or remove them from the S-matrix model.")
+
     # The uniform waveguide scan has no subgrid and never read
     # add_refinement (#1240); the graded branch above is refused by its runner.
     self._require_no_refinement_without_a_subgrid(
@@ -602,7 +612,9 @@ def compute_waveguide_s_matrix(
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
-    _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)
+    _, debye, lorentz = self._init_dispersion(
+        materials, grid.dt, debye_spec, lorentz_spec,
+        periodic=self._periodic_flags())
 
     # Build configs — may be a single config or a list of configs per port
     has_multimode = any(entry.n_modes > 1 for entry in entries)

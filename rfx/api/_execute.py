@@ -1703,23 +1703,11 @@ class _ExecuteMixin:
             # The legacy slab's concrete vacuum check runs via preflight.
             # The closed box also checks the final realized operators below,
             # after material overrides and port setup (including AD values).
-            # Open-domain oblique Method B forces OPEN transverse y (CPML) with
-            # thin-periodic z; all other TFSF keep the historical open-x/periodic-yz.
-            from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_fwd
-            if self._tfsf.closed_box:
-                periodic_bool = (False, False, False)
-                cpml_axes_run = "xyz"
-                # Match run(): all six CPML exteriors retain their PEC
-                # backing. An empty string withholds those walls.
-                pec_axes_run = None
-            elif _is_methodB_fwd(tfsf_run[0]):
-                periodic_bool = (False, False, True)
-                cpml_axes_run = "xy"
-                pec_axes_run = ""
-            else:
-                periodic_bool = (False, True, True)
-                cpml_axes_run = "x"
-                pec_axes_run = ""
+            from rfx.sources.tfsf import tfsf_boundary_flags
+            periodic_bool, cpml_axes_run = tfsf_boundary_flags(tfsf_run[0])
+            # Match run(): closed-box CPML exteriors retain their PEC
+            # backing. An empty string withholds those walls.
+            pec_axes_run = None if self._tfsf.closed_box else ""
 
 
         # #931 §1.7: realize (Mx, My, Mz) ONCE, here, from the volume cells
@@ -2135,6 +2123,7 @@ class _ExecuteMixin:
 
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
+            periodic=periodic_bool,
         )
 
         ntff_box = None
@@ -2304,10 +2293,12 @@ class _ExecuteMixin:
             refuse_h_side_conductor(
                 self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
+            from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
+            volume_eps = permittivity_without_lumped(materials)
             inv_baseline = (
-                (1.0 / materials.eps_r).astype(jnp.float32),
-                (1.0 / materials.eps_r).astype(jnp.float32),
-                (1.0 / materials.eps_r).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
+                (1.0 / volume_eps).astype(jnp.float32),
             )
             aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
                 grid,
@@ -2315,6 +2306,10 @@ class _ExecuteMixin:
                 aniso_inv_eps_baseline=inv_baseline,
                 periodic=periodic_bool,
             )
+            # Occupancy acts on the volume; the capacitor stays on its
+            # declared edge, added once after that correction (#1263).
+            aniso_inv_eps_run = add_lumped_eps(
+                aniso_inv_eps_run, materials.eps_r_lumped, inverse=True)
             pec_occupancy_for_run = None
             if design_occupancy is not None:
                 raise NotImplementedError(

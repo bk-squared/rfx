@@ -441,7 +441,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                     "production validation; research/off drop it, see _refinement "
                                     "'relaxed_validation'"),
             run_adi=ADI_DISPERSIVE,
-            run_distributed=carries("in a CPML box the two-device field grows without bound", wrong="#1302"),
+            run_distributed=carries(),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),

@@ -1274,20 +1274,50 @@ def _validate_cfg_conductor_in_thin_absorber(self, _w, dx, absorber_label) -> No
 
     Related: #801.
     """
+    findings = _conductor_in_thin_absorber_findings(self, dx)
+    for idx, mat_name, shape_name, axis_name, side, layers, cells, distance in findings:
+        _w.warn(
+            PreflightWarning(
+                f"Conductor '{mat_name}' (geometry entry #{idx}, {shape_name}) "
+                f"realizes {cells} cell(s) of clearance from the {axis_name}-{side} "
+                f"{absorber_label} face (declared {_fmt_len(abs(distance))} "
+                f"{'past' if distance < 0 else 'from'} it), and that face has "
+                f"{layers} absorbing layer(s). Both at once is a measured growth "
+                f"class (issue #801): on the isolated-patch rig at dx = h/3 with a "
+                f"laterally padded domain, 6 layers with the ground flush against "
+                f"the face grew (ring-down 0.00 dB, +8.5e-4 per step), while 8 and "
+                f"12 layers at the same mesh and geometry settled (-44.2 / -46.0 dB) "
+                f"and 6 layers with the conductors pulled 2 cells clear settled "
+                f"(-42.8 dB). Either remedy removed it in every arm measured. These "
+                f"are the EDGES OF THE MEASURED REGION, not a stability bound: the "
+                f"mechanism is not established, which is why this advises rather "
+                f"than refuses. The measured co-factor was the lateral padding, and "
+                f"the one unpadded arm (4 layers, conductor at the face) settled, so "
+                f"this may over-warn on an unpadded domain.",
+                code="conductor_in_thin_absorber",
+                loc=f"geometry[#{idx}] {axis_name}-{side}",
+                source="_validate_cfg_conductor_in_thin_absorber",
+            ),
+            stacklevel=3,
+        )
+
+
+def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
+    """The unchanged #801 predicate, shared only to identify overlapping advice."""
     if self._boundary not in ("cpml", "upml") or not self._geometry:
-        return
+        return []
     if dx is None or dx <= 0 or is_tracer(dx) or is_tracer(self._dx):
-        return
+        return []
     if any(getattr(self, name, None) is not None
            for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
-        return
+        return []
 
     try:
         face_layers = self._preflight_face_layers()
     except Exception:
         # Whatever makes the boundary spec unreadable has its own check; this
         # advisory has nothing to say without per-face layer counts.
-        return
+        return []
 
     findings: list[tuple] = []
     for idx, entry in enumerate(self._geometry):
@@ -1318,31 +1348,7 @@ def _validate_cfg_conductor_in_thin_absorber(self, _w, dx, absorber_label) -> No
                 findings.append((idx, mat_name, type(entry.shape).__name__,
                                  axis_name, side, layers, cells, distance))
 
-    for idx, mat_name, shape_name, axis_name, side, layers, cells, distance in findings:
-        _w.warn(
-            PreflightWarning(
-                f"Conductor '{mat_name}' (geometry entry #{idx}, {shape_name}) "
-                f"realizes {cells} cell(s) of clearance from the {axis_name}-{side} "
-                f"{absorber_label} face (declared {_fmt_len(abs(distance))} "
-                f"{'past' if distance < 0 else 'from'} it), and that face has "
-                f"{layers} absorbing layer(s). Both at once is a measured growth "
-                f"class (issue #801): on the isolated-patch rig at dx = h/3 with a "
-                f"laterally padded domain, 6 layers with the ground flush against "
-                f"the face grew (ring-down 0.00 dB, +8.5e-4 per step), while 8 and "
-                f"12 layers at the same mesh and geometry settled (-44.2 / -46.0 dB) "
-                f"and 6 layers with the conductors pulled 2 cells clear settled "
-                f"(-42.8 dB). Either remedy removed it in every arm measured. These "
-                f"are the EDGES OF THE MEASURED REGION, not a stability bound: the "
-                f"mechanism is not established, which is why this advises rather "
-                f"than refuses. The measured co-factor was the lateral padding, and "
-                f"the one unpadded arm (4 layers, conductor at the face) settled, so "
-                f"this may over-warn on an unpadded domain.",
-                code="conductor_in_thin_absorber",
-                loc=f"geometry[#{idx}] {axis_name}-{side}",
-                source="_validate_cfg_conductor_in_thin_absorber",
-            ),
-            stacklevel=3,
-        )
+    return findings
 
 
 # Thirteenth body, added here rather than moved (#801): like the twelfth it was
@@ -1356,3 +1362,121 @@ _validate_cfg_conductor_in_thin_absorber.__qualname__ = (
 _validate_cfg_port_conductor_continues.__qualname__ = (
     "_PreflightMixin._validate_cfg_port_conductor_continues"
 )
+
+
+# CPML reference measurements at 1 mm cells with the shipped CFS alpha
+# (#1272 / #1346): 2, 10, 30 GHz and below 1 GHz, respectively, in dB.
+# None: not measured (the 8-layer records stop at 20 GHz; rfx-archive
+# rfx/records/20260928-1272-cfs-alpha, direct/L8-dx0.001).
+_ABSORBER_REFLECTION_DB = {
+    4: (-20, -23, -17, -6),
+    6: (-38, -41, -32, -13),
+    8: (-60, -61, None, -21),
+}
+
+
+def _validate_cfg_thin_absorber(self, _w, dx) -> None:
+    """Report absorbing faces with fewer than eight realized layers.
+
+    This is an absorption advisory, including vacuum and graded meshes.
+    Reference reflections are measured CPML values, not interpolated
+    estimates for the caller's mesh or for UPML. Solver inputs are untouched.
+    """
+    axes = "xy" if self._mode.startswith("2d") else "xyz"
+    declared = {
+        f"{axis}_{side}": getattr(getattr(self._boundary_spec, axis), side)
+        for axis in axes for side in ("lo", "hi")
+    }
+    absorbing = {face: token for face, token in declared.items()
+                 if token in ("cpml", "upml")}
+    if not absorbing or is_tracer(self._dx) or any(
+        is_tracer(extent) for extent in self._domain
+    ) or any(
+        is_tracer(profile) for profile in (self._dx_profile, self._dy_profile, self._dz_profile)
+    ):
+        return
+
+    try:
+        grid = self._build_realized_grid()
+        periodic = self._periodic_flags()
+        if self._uses_nonuniform_mesh:
+            # The NU runner builds all non-periodic axes. It has neither
+            # uniform waveguide axis selection nor the TF/SF override.
+            cpml_axes = "".join(ax for ax in "xyz" if ax not in (self._periodic_axes or ""))
+        else:
+            cpml_axes = grid.cpml_axes
+            if self._tfsf is not None:
+                from rfx.sources.tfsf import init_tfsf, tfsf_boundary_flags
+                entry = self._tfsf
+                cfg, _ = init_tfsf(
+                    grid.nx, float(grid.cells("x")[0]), grid.dt,
+                    ny=grid.ny, nz=grid.nz, cpml_layers=grid.cpml_layers,
+                    tfsf_margin=entry.margin,
+                    f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
+                    bandwidth=entry.bandwidth, amplitude=entry.amplitude,
+                    polarization=entry.polarization, direction=entry.direction,
+                    angle_deg=entry.angle_deg, waveform=entry.waveform,
+                    method=entry.method, closed_box=entry.closed_box,
+                )
+                periodic, _ = tfsf_boundary_flags(cfg)
+    except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError):
+        # An unavailable grid has no realized depth to report. Keep the
+        # existing configuration diagnostics; do not guess from declarations.
+        return
+    absorbing = {face: token for face, token in absorbing.items()
+                 if face[0] in cpml_axes and not periodic["xyz".index(face[0])]}
+    # Report pads only on faces that absorb in this lane. A suppressed
+    # waveguide axis is a guide wall, not an absorber with missing layers.
+    thin = {face: int(getattr(grid, f"pad_{face}"))
+            for face in absorbing if int(getattr(grid, f"pad_{face}")) < 8}
+    if not thin:
+        return
+
+    messages = []
+    reference_depths = set()
+    for face, layers in thin.items():
+        message = f"face {face} is declared {absorbing[face]} with {layers} layers"
+        if layers == 0:
+            message += "; it is a reflecting edge, not an absorber"
+        else:
+            distance = min(abs(layers - depth) for depth in _ABSORBER_REFLECTION_DB)
+            nearest = [depth for depth in _ABSORBER_REFLECTION_DB
+                       if abs(layers - depth) == distance]
+            reference_depths.update(nearest)
+            if layers not in _ABSORBER_REFLECTION_DB:
+                message += ("; nearest measured depths: "
+                            + ", ".join(map(str, nearest)) + " layers (no interpolation)")
+        messages.append(message + ".")
+    if reference_depths:
+        rows = []
+        for depth in sorted(reference_depths):
+            r2, r10, r30, rlow = _ABSORBER_REFLECTION_DB[depth]
+            at30 = "not measured" if r30 is None else f"{r30} dB"
+            rows.append(f"{depth} layers: {r2} dB at 2 GHz, {r10} dB at 10 GHz, "
+                        f"{at30} at 30 GHz, {rlow} dB below 1 GHz")
+        messages.append("CPML reference reflections measured at 1 mm cells with "
+                        "the shipped CFS alpha (#1272, #1346): " + "; ".join(rows)
+                        + ". These reference values do not predict reflection "
+                        "on a different mesh or for UPML.")
+    messages.append("Use at least 8 absorbing layers; 16 layers is the default recommendation.")
+    conductor_faces = {
+        f"{axis}_{side}"
+        for _, _, _, axis, side, *_ in _conductor_in_thin_absorber_findings(self, dx)
+    }
+    overlap = [face for face in thin if face in conductor_faces]
+    if overlap:
+        messages.append("Conductor proximity on " + ", ".join(overlap)
+                        + " is also reported by conductor_in_thin_absorber (#801).")
+    _w.warn(
+        PreflightWarning(
+            " ".join(messages),
+            code="thin_absorber",
+            severity="warning",
+            loc=", ".join(thin),
+            source="_validate_cfg_thin_absorber",
+        ),
+        stacklevel=3,
+    )
+
+
+_validate_cfg_thin_absorber.__qualname__ = "_PreflightMixin._validate_cfg_thin_absorber"

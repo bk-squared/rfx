@@ -42,10 +42,17 @@
         "message": "MSL port 'checked' (direction='+x'): the 5-probe ladder (n_probe_offset=25, n_probe_spacing=2 cells) runs past the grid and CLAMPS \u2014 only 1 of 5 probes land on distinct grid cells (4 duplicate probe position(s): (24.0, 24.0, 24.0, 24.0, 24.0)mm). The N-probe least-squares wave-decomposition fit is rank-deficient on duplicated positions; `compute_msl_s_matrix`'s Z0/S11 extraction is unreliable for this port. Shorten n_probe_offset/n_probe_spacing or extend the domain so the full ladder stays in-grid.",
         "severity": "warning",
         "source": "_check_msl_port_geometry"
+      },
+      {
+        "code": "thin_absorber",
+        "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "message": "face x_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face x_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face y_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face y_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_lo is declared cpml with 0 layers; it is a reflecting edge, not an absorber. face z_hi is declared cpml with 0 layers; it is a reflecting edge, not an absorber. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_absorber"
       }
     ],
     "n_errors": 1,
-    "n_issues": 6,
+    "n_issues": 7,
     "ok": false
   }
 }

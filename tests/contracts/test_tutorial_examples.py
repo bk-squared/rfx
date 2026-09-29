@@ -65,6 +65,24 @@ def test_materials_and_dispersion_tutorial_runs():
     assert all(math.isfinite(value) and value >= 0.0 for value in peaks)
 
 
+def _reported_absorber_layers(output: str) -> set[tuple[str, int]]:
+    return {
+        (face, int(depth))
+        for face, depth in re.findall(
+            r"face ([xyz]_(?:lo|hi)) is declared (?:cpml|upml) with (\d+) layers",
+            output,
+        )
+    }
+
+
+def _assert_only_absorber_reports(output: str, minimum: int):
+    reports = [line.split("[PREFLIGHT] ", 1)[1]
+               for line in output.splitlines() if "[PREFLIGHT] " in line]
+    assert len(reports) >= minimum
+    assert all(line.startswith("face ") and " is declared cpml with " in line
+               for line in reports), reports
+
+
 def test_antenna_farfield_pattern_tutorial_runs():
     """The dipole reports its warning, directivity, and a fresh E-plane cut:
     the plot, and the cut's samples in degrees (#1271)."""
@@ -77,7 +95,11 @@ def test_antenna_farfield_pattern_tutorial_runs():
 
     assert "Close-box advisory observed: True" in output
     assert "Corrected face spacing:" in output
-    assert output.count("[PREFLIGHT] All checks passed") >= 2
+    assert _reported_absorber_layers(output) == {
+        (face, 6) for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+    }
+    # After the explicit corrected report, run() prints its own advisory tier.
+    _assert_only_absorber_reports(output.split("Corrected face spacing:", 1)[1], 1)
     match = re.search(r"Peak directivity:\s*([^\s]+)\s*dBi", output)
     assert match is not None
     peak_directivity_dbi = float(match.group(1))
@@ -108,26 +130,13 @@ def test_ports_and_sparams_101_tutorial_runs():
     """Every port family preflights and the live RLC load changes S11."""
     output = _run_tutorial("ports_and_sparams_101.py")
 
-    # Three empty general reports: the two generic-port models and the
-    # waveguide.  The microstrip's general report is NOT empty since the
-    # lattice ownership contract (#931) made its ground and trace SHEETS —
-    # preflight now COLLECTS them and says where they landed, which is the
-    # line asserted below.  This pin has now been wrong twice in one day, both
-    # times by asserting a preflight line that a later commit made conditional:
-    # first the collector warning (removed when the collectors were threaded),
-    # then the sheet-plane line (made conditional on an OFFSET, so a board whose
-    # sheets land exactly where they were declared prints nothing).  The stable
-    # statement is the second kind: this board is clean AND its realized planes
-    # are what it declared, which the tutorial prints itself and which the
-    # assertion further down pins.  Measured 2026-09-08: four clean reports.
-    #
-    # 2026-09-20: three. The microstrip board's report is no longer clean, and
-    # that is the true state: its 1 mm trace is four cells wide, a PEC sheet
-    # is solved about 0.35 cell beyond its last node at each free edge, and
-    # preflight now says so (``sheet_effective_size``: drawn 1 mm, solved as
-    # 1.175 mm, +17.5 %). The three reports that stay clean are the two
-    # generic-port models and the waveguide, which have no sheet edge.
-    assert output.count("[PREFLIGHT] All checks passed") >= 3
+    # The generic-port and microstrip examples retain their four- and
+    # three-layer absorbers; both depths must remain visible in the report.
+    assert _reported_absorber_layers(output) == {
+        (face, depth)
+        for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+        for depth in (3, 4)
+    }
     assert "solved more than 1% off their drawn size" in output
     assert "Microstrip port setup ready: True" in output
     # The declared foils must BE the realized wall planes, and the gap between
@@ -160,7 +169,10 @@ def test_run_control_and_fields_tutorial_runs():
 
     output = _run_tutorial("run_control_and_fields.py")
 
-    assert "[PREFLIGHT] All checks passed" in output
+    assert _reported_absorber_layers(output) == {
+        (face, 4) for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+    }
+    _assert_only_absorber_reports(output, 1)
     assert "Fixed n_steps samples: 120" in output
     assert "Truncation advisory:" in output
     assert "ring-down truncated" in output

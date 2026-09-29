@@ -22,6 +22,7 @@ from rfx.sources.waveguide_port import (
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
+from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
 
 
 def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
@@ -355,7 +356,7 @@ def run_uniform(
         conformal_weights = (w_ex, w_ey, w_ez)
 
         # Compute conformal eps correction
-        eps_base = materials.eps_r
+        eps_base = permittivity_without_lumped(materials)
         eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(eps_base, w_ex, w_ey, w_ez)
 
         if aniso_eps is not None:
@@ -372,6 +373,12 @@ def run_uniform(
 
         # Conformal replaces binary pec_mask
         pec_mask = None
+
+    # Complete the volume tensor before adding edge-owned capacitors:
+    # conformal weights must act on the volume, never on a lumped C.
+    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+    aniso_inv_eps = add_lumped_eps(
+        aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
     # Build sources and probes for the compiled runner
     sources = []
@@ -694,19 +701,8 @@ def run_uniform(
         )
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        # Open-domain oblique Method B: k̂ in the xy-plane, so the transverse
-        # y-axis must be OPEN (CPML) and z stays thin-periodic. Every other TFSF
-        # (normal 1D-aux + Bloch 2D-aux) keeps the historical open-x / periodic-yz.
-        from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_ru
-        if sim._tfsf.closed_box:
-            periodic = (False, False, False)
-            cpml_axes = "xyz"
-        elif _is_methodB_ru(tfsf[0]):
-            periodic = (False, False, True)
-            cpml_axes = "xy"
-        else:
-            periodic = (False, True, True)
-            cpml_axes = "x"
+        from rfx.sources.tfsf import tfsf_boundary_flags
+        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0])
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
@@ -791,7 +787,10 @@ def run_uniform(
     # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
-        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32,
+        # The run's flags after the TFSF override above (#1260: the edge
+        # mean wraps on a periodic axis, as the E update's does).
+        periodic=_simulation.resolve_periodic(grid, periodic))
 
     # NTFF box
     ntff_box = None

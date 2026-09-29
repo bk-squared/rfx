@@ -60,8 +60,8 @@ class MaterialArrays(NamedTuple):
     The lanes whose volume is still CELL-owned (the distributed slab update,
     UPML) take :func:`cell_owned_component_materials`: the cell total minus
     the other components' stamps. The dispersive Debye/Lorentz coefficients
-    still apply the cell total to all three components (#1260) and warn
-    (:func:`warn_lumped_on_cell_owned_lane`).
+    take :func:`component_e_materials` per component like the plain update
+    (#1260; until then they applied the cell total to all three).
     """
 
     # Relative permittivity (Nx, Ny, Nz) — used in E update
@@ -121,6 +121,36 @@ def lumped_total(record):
     return total
 
 
+def permittivity_without_lumped(materials):
+    """Volume relative permittivity with every recorded capacitor removed."""
+    stamp = lumped_total(getattr(materials, "eps_r_lumped", None))
+    return materials.eps_r if stamp is None else materials.eps_r - stamp
+
+
+def add_lumped_eps(eps_components, record, *, inverse=False):
+    """Add each capacitor to its own E edge after volume averaging (#1263).
+
+    ``eps_components`` must contain only the volume contribution, after
+    any smoothing or conformal correction. Call once for the completed
+    array, so neither the volume average nor a conformal weight acts on
+    the lumped device. ``None`` leaves the ordinary material update active.
+
+    For an inverse tensor, inv/(1 + inv*stamp) = 1/(1/inv + stamp).
+    This adds to permittivity before inversion and leaves PEC inv=0 at zero.
+    """
+    if eps_components is None:
+        return None
+    out = []
+    for eps, stamp in zip(eps_components, lumped_components(record)):
+        if stamp is None:
+            out.append(eps)
+        elif inverse:
+            out.append(eps / (1.0 + eps * stamp))
+        else:
+            out.append(eps + stamp)
+    return tuple(out)
+
+
 def map_lumped(record, fn):
     """Apply ``fn`` to every array of a lumped record, keeping its shape:
     ``None`` stays ``None``, a ``None`` component stays ``None``. For readers
@@ -129,41 +159,6 @@ def map_lumped(record, fn):
         return None
     return tuple(None if part is None else fn(part)
                  for part in lumped_components(record))
-
-
-def warn_lumped_on_cell_owned_lane(materials, lane):
-    """Say so when a CELL-owned coefficient builder meets a lumped record.
-
-    The Debye/Lorentz E updates take ONE coefficient per cell from the cell
-    total (``materials.sigma`` / ``eps_r``) and apply it to all three
-    components; #1210's per-edge rule does not reach them (#1260), and a
-    dispersive material ANYWHERE in the model puts the whole grid on them. A
-    lumped element folded into that total (a port's load, an RLC R or C),
-    wherever it sits, therefore loads the two other E edges at its node as
-    well -- the defect #1236 removed from the per-component lanes. This warns instead of refusing: a port on a
-    dispersive model is a supported workflow (material fitting), and the
-    error is bounded by the transverse field at the node (none where those
-    edges lie on a PEC plane; a dipole's feed gap moved +0.34 % in resonance
-    at lambda/43).
-    """
-    has = any(part is not None
-              for rec in (getattr(materials, "sigma_lumped", None),
-                          getattr(materials, "eps_r_lumped", None))
-              for part in lumped_components(rec))
-    if not has:
-        return
-    import warnings
-    warnings.warn(
-        f"{lane}: a Debye/Lorentz material anywhere in the model puts the "
-        "WHOLE grid on an E update that takes one coefficient per cell for "
-        "all three components (#1260), so every lumped element in this model "
-        "(a lumped/wire/MSL port's load, an RLC R or C), wherever it sits, "
-        "also loads the two other E edges at its node, not only its own "
-        "(#1236). Where the node carries a transverse field (a dipole's feed "
-        "gap) this shifts the result (+0.34 % resonance on a dipole at "
-        "lambda/43); where those edges lie on a PEC plane it does nothing. "
-        "Models with no dispersive material load the element's own edge only.",
-        UserWarning, stacklevel=3)
 
 
 def cell_owned_component_materials(materials):
@@ -560,16 +555,29 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
     exactly in binary floating point. That is what keeps every vacuum fixture
     and every uniform-dielectric lock byte-for-byte where it was.
     """
-    def mean4(arr, t1, t2):
+    return (edge_mean_components(eps_r, periodic),
+            edge_mean_components(sigma, periodic))
+
+
+def edge_mean_components(arr, periodic=(False, False, False)):
+    """``(mean_x, mean_y, mean_z)``: a cell array averaged over each E edge's
+    four incident cells -- the arithmetic of :func:`edge_averaged_materials`,
+    which calls it for ``eps_r`` and ``sigma``.
+
+    Also the rule for a dispersive pole (#1260): a pole's susceptibility is
+    parallel along the edge exactly as a conductivity is, so the edge carries
+    ``delta_eps`` times the fraction of its four cells that hold the pole. The
+    caller passes the pole's cell mask as a float array and gets that fraction
+    back, per component (0, 0.25, 0.5, 0.75 or 1, each exact).
+    """
+    def mean4(t1, t2):
         a1 = _material_bwd_neighbour(arr, t1, periodic)
         a2 = _material_bwd_neighbour(arr, t2, periodic)
         a12 = _material_bwd_neighbour(a1, t2, periodic)
         # Pairwise, so the homogeneous sum is exact (F4/#1210).
         return ((arr + a1) + (a2 + a12)) * 0.25
 
-    eps = tuple(mean4(eps_r, *[t for t in range(3) if t != c]) for c in range(3))
-    sig = tuple(mean4(sigma, *[t for t in range(3) if t != c]) for c in range(3))
-    return eps, sig
+    return tuple(mean4(*[t for t in range(3) if t != c]) for c in range(3))
 
 
 def component_e_materials(materials, periodic=(False, False, False)):
@@ -585,20 +593,15 @@ def component_e_materials(materials, periodic=(False, False, False)):
     With no stamps this is :func:`edge_averaged_materials` on
     ``materials.eps_r`` and ``materials.sigma`` and nothing else.
     """
-    eps_v = materials.eps_r
+    eps_v = permittivity_without_lumped(materials)
     sig_v = materials.sigma
-    eps_parts = lumped_components(getattr(materials, "eps_r_lumped", None))
     sig_parts = lumped_components(getattr(materials, "sigma_lumped", None))
-    eps_l = lumped_total(eps_parts)
     sig_l = lumped_total(sig_parts)
-    if eps_l is not None:
-        eps_v = eps_v - eps_l
     if sig_l is not None:
         sig_v = sig_v - sig_l
     eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
     # Each stamp back on its OWN component (#1236).
-    eps_c = tuple(e if part is None else e + part
-                  for e, part in zip(eps_c, eps_parts))
+    eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
                   for s, part in zip(sig_c, sig_parts))
     return eps_c, sig_c

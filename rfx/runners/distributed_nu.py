@@ -54,6 +54,7 @@ from rfx.core.yee import (
     EPS_0,
     _shift_fwd,
     _shift_bwd,
+    map_lumped,
 )
 from rfx.core.jax_utils import is_tracer  # noqa: F401  (Phase 2C reuse target)
 # ``realized_pec_edge_masks`` moved out with the hard-mask kernel in #1053
@@ -77,6 +78,8 @@ from rfx.runners._distributed_common import (
     shard_stacked_poles,
     shard_stacked_psi,
     slab_e_component_materials,
+    slab_dispersion_coeffs,
+    stage_slab_pole_coeffs,
     slab_e_materials_shmap,
     unstack_and_gather,
     update_e_nu_shmap,
@@ -1004,49 +1007,21 @@ def stage_forward_array_x_slab(arr, sharded_grid, mesh, pad_value=0.0):
 
 
 def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
-    """Initialize ADE on placed slabs, retaining the legacy ghost/pad values.
+    """Stage fixed pole terms; epsilon/sigma E coefficients wait for the loop.
 
-    Do not jit this setup: the eager elementwise operation boundaries are part
-    of forward's bitwise contract, including its transformed primals.
+    Pole masks take the same slab halo and boundary replication as the shared
+    material means. No differentiable coefficients pass through eager
+    shard_map setup, and no whole-domain ADE arrays are allocated.
     """
     if spec is None:
         return None
-    from jax.sharding import NamedSharding
-    from rfx.materials.debye import init_debye
-    from rfx.materials.lorentz import init_lorentz
-
     poles, masks = spec
     masks = jax.tree.map(
         lambda mask: stage_concrete_forward_array(mask, sharded_grid, mesh, False),
-        masks,
-    )
-    # Only an O(nx) predicate is needed. A neighbour's alignment-pad row is
-    # padding too; interior ghosts representing real cells keep their values.
-    indices = np.concatenate([
-        np.arange(rank * sharded_grid.nx_per_rank - sharded_grid.ghost_width,
-                  (rank + 1) * sharded_grid.nx_per_rank + sharded_grid.ghost_width)
-        for rank in range(sharded_grid.n_devices)
-    ])
-    valid = _concrete_on_mesh(
-        ((indices >= 0) & (indices < sharded_grid.nx))[:, None, None],
-        NamedSharding(mesh, P("x")),
-    )
-    init = init_debye if kind == "debye" else init_lorentz
-
-    def local(mat, mask, real):
-        coeffs, state = init(poles, mat, dt, mask=mask)
-        # Vacuum material padding keeps both branches finite for autodiff.
-        coeffs = type(coeffs)(*(
-            jnp.where(real, arr, float(1.0 / EPS_0)
-                      if kind == "lorentz" and name == "cc" else 0.0)
-            for name, arr in zip(coeffs._fields, coeffs)
-        ))
-        return coeffs, state
-
-    # Pole-axis outputs concatenate rank then pole, exactly like the legacy
-    # splitters; the runner's shard_map sees (n_poles, nx_local, ny, nz).
-    return shard_map(local, mesh=mesh, in_specs=(P("x"), P("x"), P("x")),
-                     out_specs=P("x"), check_rep=False)(materials, masks, valid)
+        masks)
+    return stage_slab_pole_coeffs(
+        poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
+        sharded_grid.nx, materials.eps_r.shape)
 
 
 def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
@@ -1069,33 +1044,37 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
 
     from jax.sharding import NamedSharding, PartitionSpec as _P
     from rfx.materials.debye import DebyeCoeffs
-    from rfx.runners._distributed_common import _split_debye_coeffs
+    from rfx.runners._distributed_common import (
+        _split_debye_coeffs, vacuum_dispersion_values,
+    )
 
     n_devices = sharded_grid.n_devices
     ghost = sharded_grid.ghost_width
     pad_x = sharded_grid.pad_x
+    # Rows outside the domain -- the x-hi alignment pad here, the
+    # physical-face ghosts in the splitter -- take the coefficients
+    # init_debye gives a vacuum cell (#1302), as the slab staging does.
+    vacuum = vacuum_dispersion_values(debye_coeffs, sharded_grid.dt)
 
     # Pad along x to nx_padded so the canonical splitter sees a clean
-    # multiple of n_devices.  For ca/cb pad with 0 (vacuum equivalent;
-    # ADE update is no-op when ca=0 -> see rfx/materials/debye.py
-    # init_debye for the vacuum-cell coefficients).  cc/alpha/beta also
-    # pad with 0.  This matches the high-x PEC pad rationale: those
-    # cells will be hard-zeroed by ``_apply_pec_face_nu_shmap``.
+    # multiple of n_devices.
     if pad_x > 0:
         pad3 = ((0, pad_x), (0, 0), (0, 0))
         pad4 = ((0, 0), (0, pad_x), (0, 0), (0, 0))
-        ca = jnp.pad(debye_coeffs.ca, pad3, constant_values=0.0)
-        cb = jnp.pad(debye_coeffs.cb, pad3, constant_values=0.0)
-        cc = jnp.pad(debye_coeffs.cc, pad4, constant_values=0.0)
-        alpha = jnp.pad(debye_coeffs.alpha, pad4, constant_values=0.0)
-        beta = jnp.pad(debye_coeffs.beta, pad4, constant_values=0.0)
-        debye_coeffs_padded = DebyeCoeffs(ca=ca, cb=cb, cc=cc,
-                                          alpha=alpha, beta=beta)
+
+        def _pad(name):
+            # A per-E-component field (#1260) is a tuple of such arrays.
+            return lambda arr: jnp.pad(arr, pad3 if arr.ndim == 3 else pad4,
+                                       constant_values=vacuum[name])
+
+        debye_coeffs_padded = DebyeCoeffs(*(
+            jax.tree.map(_pad(name), field)
+            for name, field in zip(debye_coeffs._fields, debye_coeffs)))
     else:
         debye_coeffs_padded = debye_coeffs
 
     coeffs_slabs = _split_debye_coeffs(
-        debye_coeffs_padded, n_devices, ghost,
+        debye_coeffs_padded, n_devices, ghost, dt=sharded_grid.dt,
     )
 
     shd = NamedSharding(mesh, _P("x"))
@@ -1110,11 +1089,11 @@ def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
         return shard_stacked_poles(arr, shd)
 
     return DebyeCoeffs(
-        ca=_shard_3d(coeffs_slabs.ca),
-        cb=_shard_3d(coeffs_slabs.cb),
-        cc=_shard_4d(coeffs_slabs.cc),
-        alpha=_shard_4d(coeffs_slabs.alpha),
-        beta=_shard_4d(coeffs_slabs.beta),
+        ca=jax.tree.map(_shard_3d, coeffs_slabs.ca),
+        cb=jax.tree.map(_shard_3d, coeffs_slabs.cb),
+        cc=jax.tree.map(_shard_4d, coeffs_slabs.cc),
+        alpha=jax.tree.map(_shard_4d, coeffs_slabs.alpha),
+        beta=jax.tree.map(_shard_4d, coeffs_slabs.beta),
     )
 
 
@@ -1175,33 +1154,35 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
 
     from jax.sharding import NamedSharding, PartitionSpec as _P
     from rfx.materials.lorentz import LorentzCoeffs
-    from rfx.runners._distributed_common import _split_lorentz_coeffs
+    from rfx.runners._distributed_common import (
+        _split_lorentz_coeffs, vacuum_dispersion_values,
+    )
 
     n_devices = sharded_grid.n_devices
     ghost = sharded_grid.ghost_width
     pad_x = sharded_grid.pad_x
+    # The vacuum-cell coefficients of init_lorentz (#1302); cc = 1/EPS_0
+    # there also keeps `gamma_base = 1/cc` finite in the mixed
+    # Debye+Lorentz path (see `_split_lorentz_coeffs`).
+    vacuum = vacuum_dispersion_values(lorentz_coeffs, sharded_grid.dt)
 
     if pad_x > 0:
         pad3 = ((0, pad_x), (0, 0), (0, 0))
         pad4 = ((0, 0), (0, pad_x), (0, 0), (0, 0))
-        # See `_split_lorentz_coeffs` docstring for the rationale: cc must
-        # pad with the vacuum 1/EPS_0 so `gamma_base = 1/cc` is finite in
-        # the mixed Debye+Lorentz path (avoids 0*inf = NaN leaking into
-        # backward gradients at the x-boundary).
-        lorentz_coeffs_padded = LorentzCoeffs(
-            ca=jnp.pad(lorentz_coeffs.ca, pad3, constant_values=0.0),
-            cb=jnp.pad(lorentz_coeffs.cb, pad3, constant_values=0.0),
-            cc=jnp.pad(lorentz_coeffs.cc, pad3,
-                       constant_values=float(1.0 / EPS_0)),
-            a=jnp.pad(lorentz_coeffs.a, pad4, constant_values=0.0),
-            b=jnp.pad(lorentz_coeffs.b, pad4, constant_values=0.0),
-            c=jnp.pad(lorentz_coeffs.c, pad4, constant_values=0.0),
-        )
+
+        def _pad(name):
+            # Per-E-component fields (#1260) are tuples: pad every leaf.
+            return lambda arr: jnp.pad(arr, pad3 if arr.ndim == 3 else pad4,
+                                       constant_values=vacuum[name])
+
+        lorentz_coeffs_padded = LorentzCoeffs(*(
+            jax.tree.map(_pad(name), field)
+            for name, field in zip(lorentz_coeffs._fields, lorentz_coeffs)))
     else:
         lorentz_coeffs_padded = lorentz_coeffs
 
     coeffs_slabs = _split_lorentz_coeffs(
-        lorentz_coeffs_padded, n_devices, ghost,
+        lorentz_coeffs_padded, n_devices, ghost, dt=sharded_grid.dt,
     )
 
     shd = NamedSharding(mesh, _P("x"))
@@ -1213,12 +1194,12 @@ def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
         return shard_stacked_poles(arr, shd)
 
     return LorentzCoeffs(
-        ca=_shard_3d(coeffs_slabs.ca),
-        cb=_shard_3d(coeffs_slabs.cb),
-        cc=_shard_3d(coeffs_slabs.cc),
+        ca=jax.tree.map(_shard_3d, coeffs_slabs.ca),
+        cb=jax.tree.map(_shard_3d, coeffs_slabs.cb),
+        cc=jax.tree.map(_shard_3d, coeffs_slabs.cc),
         a=_shard_4d(coeffs_slabs.a),
         b=_shard_4d(coeffs_slabs.b),
-        c=_shard_4d(coeffs_slabs.c),
+        c=jax.tree.map(_shard_4d, coeffs_slabs.c),
     )
 
 
@@ -1304,15 +1285,6 @@ def _update_e_dispersive_local_nu(
     )
 
 
-def _psi_permittivity(cell_eps, edge_eps):
-    """The permittivity the CPML E correction's psi coefficient takes: the
-    one the E update of the same step used (#1043) -- each component's
-    four-cell mean when the update takes it, else (a dispersive model, whose
-    update is cell-owned, #1260) the cell array. The single-device switch
-    (#1303)."""
-    return cell_eps if edge_eps is None else edge_eps
-
-
 def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
                            n_cpml: int, dt: float, ghost: int,
                            n_devices: int, eps_r=None, pad_x: int = 0):
@@ -1338,8 +1310,8 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
         permittivity the E update of the same step used (#1043): each
         component's four-cell edge mean
         (:func:`rfx.runners._distributed_common.slab_e_component_materials`,
-        #1303), or the cell array on a dispersive model, whose update is
-        cell-owned. ``None`` falls back to the vacuum scalar ``dt / eps_0``
+        #1303), including on dispersive models (#1260). ``None`` falls back
+        to the vacuum scalar ``dt / eps_0``
         (bit-identical to the pre-#205 behaviour).
     """
     from rfx.boundaries.cpml import CPMLAxisParams, _flip_profile
@@ -2046,14 +2018,15 @@ def run_nonuniform_distributed_pec(
     exchange_interval : int, optional
         Reserved for Phase 2E batched exchange; only ``1`` is supported.
     debye : (DebyeCoeffs, DebyeState) tuple or None, optional
-        Phase 2D Debye dispersion.  Both arrays must already be
-        x-slab-sharded via :func:`shard_debye_coeffs_x_slab` /
-        :func:`shard_debye_state_x_slab`.  ``None`` selects the
-        non-dispersive path.
+        Phase 2D Debye dispersion, already x-slab-sharded. Forward stages
+        fixed pole terms and zero carry with :func:`stage_forward_dispersion_x_slab`;
+        prebuilt bundles from :func:`shard_debye_coeffs_x_slab` /
+        :func:`shard_debye_state_x_slab` are also accepted. The E coefficients
+        are formed from the shared component means inside the scan.
+        ``None`` selects the non-dispersive path.
     lorentz : (LorentzCoeffs, LorentzState) tuple or None, optional
-        Phase 2D Lorentz/Drude dispersion.  Both arrays must already be
-        x-slab-sharded via :func:`shard_lorentz_coeffs_x_slab` /
-        :func:`shard_lorentz_state_x_slab`.  ``None`` selects the
+        Phase 2D Lorentz/Drude dispersion, already x-slab-sharded, with
+        fixed pole terms or a prebuilt bundle as for ``debye``. ``None`` selects the
         non-dispersive path.  When BOTH ``debye`` and ``lorentz`` are
         non-None, the runner takes the mixed Debye+Lorentz branch
         (V3 mandatory; DP4 makes mixed dispersive scope required).
@@ -2358,7 +2331,7 @@ def run_nonuniform_distributed_pec(
     if use_dispersion:
         def _update_e_dispersive_shmap(
             st, mat, db_st_in, lr_st_in, e_old_ex, e_old_ey, e_old_ez,
-            debye_coeffs, lorentz_coeffs, spacings,
+            debye_coeffs, lorentz_coeffs, spacings, e_materials,
         ):
             inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
             # Static booleans captured by closure: which poles are active.
@@ -2386,6 +2359,7 @@ def run_nonuniform_distributed_pec(
                 P("x"), P("x"), P("x"),       # eps_r, sigma, mu_r
                 P("x"), P(None), P(None),     # inv_dx, inv_dy, inv_dz
                 P("x"), P("x"), P("x"),       # ex_old, ey_old, ez_old (snapshots)
+                P("x"),                      # shared component materials
             )
             disp_in = tuple(P("x") for _ in range(db_in_count + lr_in_count))
             in_specs_full = base_in + disp_in
@@ -2442,6 +2416,8 @@ def run_nonuniform_distributed_pec(
                 idx += 1
                 ez_old_local = args[idx]
                 idx += 1
+                means = args[idx]
+                idx += 1
 
                 # Debye
                 if _has_db:
@@ -2463,8 +2439,10 @@ def run_nonuniform_distributed_pec(
                     d_pz = args[idx]
                     idx += 1
                     db_local = (
-                        DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc,
-                                    alpha=d_alpha, beta=d_beta),
+                        slab_dispersion_coeffs(
+                            DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc,
+                                        alpha=d_alpha, beta=d_beta),
+                            means, dt, nx_per, nx_real),
                         DebyeState(px=d_px, py=d_py, pz=d_pz),
                     )
                 else:
@@ -2499,8 +2477,10 @@ def run_nonuniform_distributed_pec(
                     l_pzp = args[idx]
                     idx += 1
                     lr_local = (
-                        LorentzCoeffs(ca=l_ca, cb=l_cb, cc=l_cc,
-                                      a=l_a, b=l_b, c=l_c),
+                        slab_dispersion_coeffs(
+                            LorentzCoeffs(ca=l_ca, cb=l_cb, cc=l_cc,
+                                          a=l_a, b=l_b, c=l_c),
+                            means, dt, nx_per, nx_real),
                         LorentzState(px=l_px, py=l_py, pz=l_pz,
                                      px_prev=l_pxp, py_prev=l_pyp,
                                      pz_prev=l_pzp),
@@ -2536,6 +2516,7 @@ def run_nonuniform_distributed_pec(
                 mat.eps_r, mat.sigma, mat.mu_r,
                 inv_dx_sharded, inv_dy_rep, inv_dz_rep,
                 e_old_ex, e_old_ey, e_old_ez,
+                e_materials,
             ]
             if _has_db:
                 call_args.extend([
@@ -2696,9 +2677,7 @@ def run_nonuniform_distributed_pec(
     def _apply_cpml_e_shmap(st, cs, cpml_params, materials, e_materials):
         # The psi coefficient takes the permittivity the E update of this
         # step used (#1043): each component's four-cell edge mean -- the one
-        # run_fn built before the loop -- or, on a dispersive model
-        # (cell-owned update, #1260), the cell array: the single-device
-        # switch (#1303).
+        # run_fn built before the loop, including dispersive models.
         @partial(
             shard_map,
             mesh=mesh,
@@ -2709,7 +2688,7 @@ def run_nonuniform_distributed_pec(
                 P("x"), P("x"), P("x"), P("x"),  # y-face psi
                 P("x"), P("x"), P("x"), P("x"),  # z-face psi
                 P("x"),  # materials (material-aware CPML coeff, #205)
-                P("x"),  # the four-cell eps means, or None
+                P("x"),  # the four-cell eps means
             ),
             out_specs=(
                 P("x"), P("x"), P("x"),               # ex, ey, ez
@@ -2726,7 +2705,7 @@ def run_nonuniform_distributed_pec(
                mat_slab, means_eps):
             _st = FDTDState(ex=ex, ey=ey, ez=ez,
                             hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
-            eps_r_slab = _psi_permittivity(mat_slab.eps_r, means_eps)
+            eps_r_slab = means_eps
             _cs = cs._replace(
                 psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
                 psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
@@ -2823,7 +2802,7 @@ def run_nonuniform_distributed_pec(
             st, db_st, lr_st = _update_e_dispersive_shmap(
                 st, sharded_materials, db_st, lr_st,
                 ex_old_snapshot, ey_old_snapshot, ez_old_snapshot,
-                debye_coeffs, lorentz_coeffs, spacings,
+                debye_coeffs, lorentz_coeffs, spacings, e_materials,
             )
         else:
             st = _update_e_shmap(st, sharded_materials, spacings, e_materials)
@@ -2832,7 +2811,7 @@ def run_nonuniform_distributed_pec(
         if use_cpml:
             st, cs = _apply_cpml_e_shmap(
                 st, cs, cpml_params, sharded_materials,
-                None if e_materials is None else e_materials[0])
+                e_materials[0])
 
         # 6. Source injection (rank-conditional via shard_map)
         st = _inject_sources_shmap(st, src_vals)
@@ -2962,10 +2941,10 @@ def run_nonuniform_distributed_pec(
             opt_xs = _drive_xs(opt_xs, scales)
         # #1303: each component's four-cell mean, built once for the
         # warm-up and the optimize scans (and every remat segment) -- see
-        # slab_e_materials_shmap for why not inside the loop. A dispersive
-        # model's update takes its own cell-owned coefficients.
-        e_materials = (None if use_dispersion else slab_e_materials_shmap(
-            invariants[0], mesh, nx_per, nx_real))
+        # slab_e_materials_shmap for why not inside the loop. Dispersive E
+        # coefficients are finished from these same means inside the loop.
+        e_materials = slab_e_materials_shmap(
+            invariants[0], mesh, nx_per, nx_real)
         scan_step = partial(step_fn, invariants=invariants, e_materials=e_materials)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the
