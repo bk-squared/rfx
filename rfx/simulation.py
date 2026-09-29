@@ -2718,11 +2718,13 @@ def make_core_step(ctx: _StepContext):
                 else:
                     kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
                     kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
+                # Preserve the declared storage when x64 phase arithmetic
+                # is wider than this monitor's complex64 accumulators.
                 new_flux_accs.append((
-                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
-                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
-                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
-                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
+                    (e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e).astype(e1_acc.dtype),
+                    (e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e).astype(e2_acc.dtype),
+                    (h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h).astype(h1_acc.dtype),
+                    (h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h).astype(h2_acc.dtype),
                 ))
 
         # ---- per-step extras (caller-specific outputs) ----

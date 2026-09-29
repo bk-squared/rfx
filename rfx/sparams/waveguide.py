@@ -129,11 +129,11 @@ def compute_waveguide_s_matrix(
         in S11 and the round-trip dispersion error in the
         ``normalize=True`` diagonal formula.  Costs 2 × N_ports
         FDTD runs (same as ``normalize=True``).  On the
-        differentiable chain like ``False``.  The result dtype
-        follows the ``freqs`` precision — complex64 by default,
-        complex128 under ``JAX_ENABLE_X64`` — the same rule as
-        ``False`` (a hard complex64 cast on this lane was removed
-        in v1.8).
+        differentiable chain like ``False``. On the uniform lane the
+        result and modal records follow the field precision: complex128
+        for float64 fields with JAX x64 enabled, complex64 otherwise.
+        The non-uniform lane's result follows the ``freqs`` precision:
+        complex64 by default, complex128 under ``JAX_ENABLE_X64``.
 
         **Reference impedance.**  On ``False`` and ``True`` each
         S_ij is the modal voltage-wave ratio ``b_i / a_j``, where

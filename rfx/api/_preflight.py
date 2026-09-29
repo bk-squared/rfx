@@ -1285,6 +1285,11 @@ class _PreflightMixin:
         stay method-only checks.
         """
 
+        if self._solver != "yee":
+            raise NotImplementedError(
+                "compute_waveguide_s_matrix() does not support "
+                f"solver={self._solver!r} (#1300). Use solver='yee'."
+            )
         if not self._waveguide_ports:
             raise ValueError(
                 "No waveguide ports registered. Call add_waveguide_port() first."

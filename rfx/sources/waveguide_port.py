@@ -2108,6 +2108,21 @@ def settling_db_from_port_records(final_cfgs, *, return_detail: bool = False):
     )
 
 
+def _s_matrix_dtypes(field_dtype):
+    """Select record/spectrum dtypes from the JAX-canonical field dtype."""
+    # result_type respects x64 availability; mixed fields accumulate at f32.
+    record_dtype = jnp.result_type(
+        jnp.float32 if field_dtype is None else field_dtype, jnp.float32)
+    return record_dtype, jnp.result_type(record_dtype, 1j)
+
+
+def _s_matrix_port_waves(cfg, *, ref_shift):
+    """Store modal amplitudes at the S-matrix record precision."""
+    waves = extract_waveguide_port_waves(cfg, ref_shift=ref_shift)
+    complex_dtype = jnp.result_type(cfg.v_ref_t.dtype, 1j)
+    return tuple(wave.astype(complex_dtype) for wave in waves)
+
+
 def extract_waveguide_s_matrix(
     grid,
     materials,
@@ -2133,6 +2148,8 @@ def extract_waveguide_s_matrix(
     """Assemble an x-directed waveguide S-matrix via one-driven-port-at-a-time runs.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
+    Modal records and spectra use float64/complex128 for float64 fields
+    with JAX x64 enabled, and float32/complex64 otherwise.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2170,6 +2187,8 @@ def extract_waveguide_s_matrix(
 
     from rfx.simulation import run as run_simulation
 
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
+
     template_cfgs = tuple(port_cfgs)
     n_ports = len(template_cfgs)
     # G-AD-WIRE: use a list-of-columns accumulator so the final jnp.stack
@@ -2182,9 +2201,10 @@ def extract_waveguide_s_matrix(
     settling_runs: list[float] = []
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
-        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
+            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -2228,14 +2248,14 @@ def extract_waveguide_s_matrix(
         # post-scan rect-DFT extractor below uses the correct Δt even when the
         # cfgs were built via init_waveguide_port without dt=.
 
-        a_drive, b_drive = extract_waveguide_port_waves(
+        a_drive, b_drive = _s_matrix_port_waves(
             final_cfgs[drive_idx],
             ref_shift=ref_shifts[drive_idx],
         )
         safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
         col_slices: list[jnp.ndarray] = []
         for recv_idx, cfg in enumerate(final_cfgs):
-            _a_recv, b_recv = extract_waveguide_port_waves(
+            _a_recv, b_recv = _s_matrix_port_waves(
                 cfg,
                 ref_shift=ref_shifts[recv_idx],
             )
@@ -2246,7 +2266,7 @@ def extract_waveguide_s_matrix(
 
     # Assemble full S-matrix: stack drive columns along axis=1 →
     # (n_ports, n_ports, n_freqs).
-    s_matrix = jnp.stack(s_cols, axis=1)
+    s_matrix = jnp.stack(s_cols, axis=1).astype(complex_dtype)
     if return_settling:
         return s_matrix, np.asarray(settling_runs, dtype=float)
     return s_matrix
@@ -2284,6 +2304,8 @@ def extract_waveguide_s_matrix_flux(
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
+    Modal records and spectra use float64/complex128 for float64 fields
+    with JAX x64 enabled, and float32/complex64 otherwise.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2360,11 +2382,13 @@ def extract_waveguide_s_matrix_flux(
     from rfx.simulation import run as run_simulation
     from rfx.probes.probes import init_flux_monitor, flux_spectrum
 
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
+
     _AXIS_IDX = {"x": 0, "y": 1, "z": 2}
 
     template_cfgs = tuple(port_cfgs)
     n_ports = len(template_cfgs)
-    freqs = template_cfgs[0].freqs
+    freqs = jnp.asarray(template_cfgs[0].freqs, dtype=record_dtype)
     # jnp-native assembly (issue #148): columns are collected per drive
     # port and stacked at the end — no in-place np mutation, so traced
     # values flow through to the returned S-matrix.
@@ -2372,9 +2396,10 @@ def extract_waveguide_s_matrix_flux(
     settling_runs: list[float] = []
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
-        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
+            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -2384,7 +2409,7 @@ def extract_waveguide_s_matrix_flux(
         )
 
     def _make_flux_monitors():
-        return [
+        monitors = [
             init_flux_monitor(
                 axis=_AXIS_IDX[cfg.normal_axis],
                 index=cfg.probe_x,
@@ -2400,6 +2425,12 @@ def extract_waveguide_s_matrix_flux(
             )
             for cfg in template_cfgs
         ]
+        return [mon._replace(
+            e1_dft=mon.e1_dft.astype(complex_dtype),
+            e2_dft=mon.e2_dft.astype(complex_dtype),
+            h1_dft=mon.h1_dft.astype(complex_dtype),
+            h2_dft=mon.h2_dft.astype(complex_dtype),
+        ) for mon in monitors]
 
     common_run_kw = dict(
         boundary=boundary,
@@ -2454,7 +2485,7 @@ def extract_waveguide_s_matrix_flux(
         safe_P_inc = jnp.where(P_inc > 1e-60, P_inc, jnp.ones_like(P_inc))
 
         # Modal incident wave (reference run) — used to determine phase reference
-        a_inc_ref, _ = extract_waveguide_port_waves(
+        a_inc_ref, _ = _s_matrix_port_waves(
             ref_final_cfgs[drive_idx], ref_shift=ref_shifts[drive_idx]
         )
 
@@ -2498,7 +2529,7 @@ def extract_waveguide_s_matrix_flux(
         col_entries = []
         for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
             # Phase from modal V/I decomposition of device run
-            _, b_recv_dev = extract_waveguide_port_waves(
+            _, b_recv_dev = _s_matrix_port_waves(
                 dev_cfg, ref_shift=ref_shifts[recv_idx]
             )
             safe_a = jnp.where(jnp.abs(a_inc_ref) > 1e-60, a_inc_ref, jnp.ones_like(a_inc_ref))
@@ -2525,18 +2556,15 @@ def extract_waveguide_s_matrix_flux(
                 p_ok, jnp.sqrt(jnp.where(p_ok, p_ratio, jnp.ones_like(p_ratio))), 0.0
             )
 
-            # No dtype cast: the column follows the freqs precision through
-            # _rect_dft / flux_spectrum (complex64 by default, complex128
-            # under JAX_ENABLE_X64), the same rule as normalize=False and
-            # the non-uniform flux lane. A hard complex64 cast lived here
-            # until v1.8 (removed under the chain-closure plan, WP1 step 3).
+            # Modal records and flux accumulators use the precision selected
+            # for this run, including the reference's incident spectrum.
             col_entries.append(mag * jnp.exp(1j * phase))
 
         # (n_ports, n_freqs) column for this drive port
         s_columns.append(jnp.stack(col_entries, axis=0))
 
     # Stack drive columns on axis 1 -> (recv, drive, n_freqs)
-    s_matrix = jnp.stack(s_columns, axis=1)
+    s_matrix = jnp.stack(s_columns, axis=1).astype(complex_dtype)
     if return_settling:
         return s_matrix, np.asarray(settling_runs, dtype=float)
     return s_matrix
@@ -2572,6 +2600,8 @@ def extract_waveguide_s_params_normalized(
     """Two-run normalized waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
+    Modal records and spectra use float64/complex128 for float64 fields
+    with JAX x64 enabled, and float32/complex64 otherwise.
 
     PEC realization (#931 §1.7): interior ``Box(material='pec')`` walls
     reach this lane as the realized edge masks ``pec_edge_masks``
@@ -2652,15 +2682,18 @@ def extract_waveguide_s_params_normalized(
 
     from rfx.simulation import run as run_simulation
 
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
+
     template_cfgs = tuple(port_cfgs)
     n_ports = len(template_cfgs)
     n_freqs = len(template_cfgs[0].freqs)
-    s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex64)
+    s_matrix = np.zeros((n_ports, n_ports, n_freqs), dtype=complex_dtype)
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
-        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
+            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -2708,7 +2741,7 @@ def extract_waveguide_s_params_normalized(
             )
 
         # Incident wave at the driven port (for diagonal normalization)
-        a_inc_ref, _ = extract_waveguide_port_waves(
+        a_inc_ref, _ = _s_matrix_port_waves(
             ref_final_cfgs[drive_idx],
             ref_shift=ref_shifts[drive_idx],
         )
@@ -2722,7 +2755,7 @@ def extract_waveguide_s_params_normalized(
         # Outgoing waves at all ports (for off-diagonal normalization)
         b_out_ref = []
         for recv_idx in range(n_ports):
-            _, b_ref_i = extract_waveguide_port_waves(
+            _, b_ref_i = _s_matrix_port_waves(
                 ref_final_cfgs[recv_idx],
                 ref_shift=ref_shifts[recv_idx],
                 )
@@ -2761,7 +2794,7 @@ def extract_waveguide_s_params_normalized(
                 else max(_sd_dev, _sd_ref))
 
         for recv_idx, cfg in enumerate(dev_final_cfgs):
-            _, b_recv_dev = extract_waveguide_port_waves(
+            _, b_recv_dev = _s_matrix_port_waves(
                 cfg,
                 ref_shift=ref_shifts[recv_idx],
                 )
@@ -3062,6 +3095,8 @@ def extract_multimode_s_matrix(
     """Assemble a multi-mode waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
+    Modal records and spectra use float64/complex128 for float64 fields
+    with JAX x64 enabled, and float32/complex64 otherwise.
 
     Each physical port may have multiple modes.  The S-matrix indices
     enumerate (port_index, mode_index) pairs.
@@ -3090,6 +3125,8 @@ def extract_multimode_s_matrix(
     """
     from rfx.simulation import run as run_simulation
 
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
+
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
     flat_cfgs: list[WaveguidePortConfig] = []
     mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
@@ -3103,7 +3140,7 @@ def extract_multimode_s_matrix(
 
     n_total = len(flat_cfgs)
     n_freqs = len(flat_cfgs[0].freqs)
-    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=np.complex64)
+    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=complex_dtype)
 
     n_ports = len(port_mode_cfgs)
     if ref_shifts is None:
@@ -3118,9 +3155,10 @@ def extract_multimode_s_matrix(
             flat_ref_shifts.append(ref_shifts[port_idx])
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
-        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
+            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -3162,14 +3200,14 @@ def extract_multimode_s_matrix(
                 f"Expected {n_total} final waveguide configs, got {len(final_cfgs)}"
             )
 
-        a_drive, _ = extract_waveguide_port_waves(
+        a_drive, _ = _s_matrix_port_waves(
             final_cfgs[drive_flat_idx],
             ref_shift=flat_ref_shifts[drive_flat_idx],
         )
         safe_a = jnp.where(jnp.abs(a_drive) > 0, a_drive, jnp.ones_like(a_drive))
 
         for recv_idx, cfg in enumerate(final_cfgs):
-            _, b_recv = extract_waveguide_port_waves(
+            _, b_recv = _s_matrix_port_waves(
                 cfg,
                 ref_shift=flat_ref_shifts[recv_idx],
             )
@@ -3229,6 +3267,8 @@ def extract_multimode_s_matrix_flux(
     """Power-flux multi-mode waveguide S-matrix.
 
     ``field_dtype`` is forwarded to every core run; ``None`` uses float32.
+    Modal records and spectra use float64/complex128 for float64 fields
+    with JAX x64 enabled, and float32/complex64 otherwise.
 
     Multi-mode analogue of :func:`extract_waveguide_s_matrix_flux`. For
     each driven modal channel ``(p, m)``:
@@ -3264,6 +3304,8 @@ def extract_multimode_s_matrix_flux(
     """
     from rfx.simulation import run as run_simulation
 
+    record_dtype, complex_dtype = _s_matrix_dtypes(field_dtype)
+
     flat_cfgs: list[WaveguidePortConfig] = []
     mode_map: list[tuple[int, int, str, tuple[int, int]]] = []
     for port_idx, mode_cfgs in enumerate(port_mode_cfgs):
@@ -3283,7 +3325,7 @@ def extract_multimode_s_matrix_flux(
 
     n_total = len(flat_cfgs)
     n_freqs = len(flat_cfgs[0].freqs)
-    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=np.complex64)
+    s_matrix = np.zeros((n_total, n_total, n_freqs), dtype=complex_dtype)
 
     n_ports = len(port_mode_cfgs)
     if ref_shifts is None:
@@ -3295,9 +3337,10 @@ def extract_multimode_s_matrix_flux(
         flat_ref_shifts.extend([float(ref_shifts[port_idx])] * len(mode_cfgs))
 
     def _reset_cfg(cfg: WaveguidePortConfig, drive_enabled: bool) -> WaveguidePortConfig:
-        zeros_t = jnp.zeros_like(cfg.v_probe_t)
+        zeros_t = jnp.zeros_like(cfg.v_probe_t, dtype=record_dtype)
         return cfg._replace(
             src_amp=cfg.src_amp if drive_enabled else 0.0,
+            freqs=jnp.asarray(cfg.freqs, dtype=record_dtype),
             v_probe_t=zeros_t,
             v_ref_t=zeros_t,
             i_probe_t=zeros_t,
@@ -3337,7 +3380,7 @@ def extract_multimode_s_matrix_flux(
         F_ref = [_modal_net_power(cfg) for cfg in ref_final_cfgs]
         P_inc = np.abs(F_ref[drive_flat_idx])
         safe_P_inc = np.where(P_inc > 1e-60, P_inc, np.ones_like(P_inc))
-        a_inc_ref, _ = extract_waveguide_port_waves(
+        a_inc_ref, _ = _s_matrix_port_waves(
             ref_final_cfgs[drive_flat_idx],
             ref_shift=flat_ref_shifts[drive_flat_idx],
         )
@@ -3368,7 +3411,7 @@ def extract_multimode_s_matrix_flux(
         F_dev = [_modal_net_power(cfg) for cfg in dev_final_cfgs]
 
         for recv_idx, dev_cfg in enumerate(dev_final_cfgs):
-            _, b_recv_dev = extract_waveguide_port_waves(
+            _, b_recv_dev = _s_matrix_port_waves(
                 dev_cfg, ref_shift=flat_ref_shifts[recv_idx]
             )
             phase = np.angle(np.array(b_recv_dev) / safe_a_inc)
