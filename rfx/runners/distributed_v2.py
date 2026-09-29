@@ -636,7 +636,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "sources. Falling back to single-device execution.",
             stacklevel=2,
         )
-        return sim.run(n_steps=n_steps, conformal_pec=kwargs.get("conformal_pec"))
+        return sim.run(n_steps=n_steps)
 
     if sim._waveguide_ports:
         warnings.warn(
@@ -644,7 +644,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "Falling back to single-device execution.",
             stacklevel=2,
         )
-        return sim.run(n_steps=n_steps, conformal_pec=kwargs.get("conformal_pec"))
+        return sim.run(n_steps=n_steps)
 
     refuse_unsupported_distributed_features(
         sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
