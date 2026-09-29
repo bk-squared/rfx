@@ -645,9 +645,9 @@ class TestOffLatticeCensus:
         assert "frequency sensitivity depends on the mode" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
-    # A sheet's in-plane size is sheet_effective_size's report since #1375
-    # (see test_sheet_in_plane_edges_are_left_to_sheet_effective_size), so
-    # only the volume case of this relation is the census's.
+    # A sheet's in-plane face is measured at its SOLVED edge since #1375
+    # (see test_sheet_in_plane_faces_are_measured_at_the_solved_edge), not
+    # at its nearest node, so only the volume case of this relation holds.
     @pytest.mark.parametrize("kind,lo,hi,z_hi,realized_mm,residual_mm", [
         ("volume", 1.3, 6.7, 4.0, 6.0, 0.3),
     ])
@@ -718,28 +718,21 @@ class TestOffLatticeCensus:
         msg = str(hits[0])
         assert msg.count("geometry[") == 5  # capped at the worst 5
 
-    def test_sheet_in_plane_edges_are_left_to_sheet_effective_size(self):
-        """A sheet's in-plane edge is solved 0.35 cell beyond its last node,
-        so its distance to the nearest node says nothing about its solved
-        size; that size is sheet_effective_size's report (#1375). The census
-        stays silent on a sheet, including an off-lattice one, while
-        sheet_effective_size fires on it; a VOLUME's off-lattice face next
-        to it is still reported, and the sheet's normal axis is still named
-        in COVERAGE."""
+    def test_sheet_in_plane_faces_are_measured_at_the_solved_edge(self):
+        """A sheet's in-plane rim is a real design edge, solved 0.35 cell
+        beyond its last node (rfx.mesh_edges.solved_sheet_span, #1375): the
+        sheet drawn 1.3-10.3 mm covers nodes 2-10 mm and is solved
+        1.65-10.35 mm, so its worst face is 350 um off (the nearest-node
+        reading was 300 um). Its NORMAL axis has no extent and is reported by
+        sheet_plane_realized instead -- the message says so."""
         sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=1 * MM,
                          freq_max=10e9, boundary="cpml")
         sim.add(Box((1.3 * MM, 2.0 * MM, 2.0 * MM),
                     (10.3 * MM, 5.0 * MM, 2.0 * MM)), material="pec")
-        rep = sim.preflight()
-        assert rep.by_code(OFF_LATTICE_CODE) == []
-        assert len(rep.by_code("sheet_effective_size")) == 1
-        sim.add(Box((1.3 * MM, 2.0 * MM, 4.0 * MM),
-                    (10.0 * MM, 5.0 * MM, 6.0 * MM)), material="pec")
         hits = sim.preflight().by_code(OFF_LATTICE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
-        assert "(volume) x:" in msg and "300µm" in msg
-        assert "(sheet)" not in msg.split(". OBSERVED")[0]
+        assert "(sheet) x:" in msg and "350µm" in msg
         assert "1 sheet normal axis/axes reported by sheet_plane_realized" in msg
 
 

@@ -42,6 +42,15 @@
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },
   {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 29.5mm, worst face residual 400\u00b5m (1.36% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 55mm, worst face residual 350\u00b5m (0.64% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) x: extent 60mm, worst face residual 350\u00b5m (0.58% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:207 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
+  },
+  {
    "code": "sheet_effective_size",
    "disposition": "defect-open",
    "issue": 1138,
@@ -73,6 +82,15 @@
    "ref": "examples/tutorials/ports_and_sparams_101.py:345-352",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 1mm, worst face residual 87.5\u00b5m (8.75% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 8.5mm, worst face residual 87.5\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:97 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   },
   {
    "code": "sheet_effective_size",
@@ -148,6 +166,15 @@
    "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
   },
   {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
+  },
+  {
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "FIX-T is the canonical two-port THRU battery fixture, verbatim: a microstrip trace over a z_lo PEC ground (boundary z=Boundary(lo='pec', hi='cpml')). Infinite ground + finite trace is the microstrip model. The harness prints every preflight row verbatim per arm (preflight_verbatim()).",
@@ -171,6 +198,15 @@
    "ref": "validation/research/issue770_offdiag_adjudication.py:93-101",
    "rows": 2,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
   {
    "code": "pec_faces_finite_pec",
@@ -238,6 +274,15 @@
    "variant": "validation/research/subgrid/13_subgrid_material_validation.py::build_uniform_reference::uniform_reference"
   },
   {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
+  },
+  {
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "The battery-verbatim THRU: a foil microstrip trace (zero-thickness PEC Box) over a z_lo PEC ground face. Infinite ground + finite trace is the microstrip model. The consumer harness pins this code in its own expected-code list (THRU_CODES) so a change in the fixture's emissions fails there too.",
@@ -255,6 +300,15 @@
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
   },
   {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
+  },
+  {
    "code": "pec_faces_finite_pec",
    "disposition": "intended",
    "reason": "The battery-verbatim THRU: a foil microstrip trace (zero-thickness PEC Box) over a z_lo PEC ground face. Infinite ground + finite trace is the microstrip model. The consumer harness pins this code in its own expected-code list (THRU_CODES) so a change in the fixture's emissions fails there too.",
@@ -270,6 +324,15 @@
    "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 21mm, worst face residual 175\u00b5m (0.83% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
    "code": "pec_faces_finite_pec",
@@ -305,6 +368,15 @@
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
   },
   {
+   "code": "off_lattice_design_edges",
+   "disposition": "defect-open",
+   "issue": 1138,
+   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) x: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent); geometry[0] 'pec' (sheet) y: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
+  },
+  {
    "code": "sheet_effective_size",
    "disposition": "defect-open",
    "issue": 1138,
@@ -327,6 +399,14 @@
    "reason": "The 2 normal intervals the advisory counts are the declared mesh: DX = 127e-6 with the comment 'h_sub / 2 -- 2 substrate cells. Demo geometry of record. Refining to 80 um (cv06b standard) gives a cleaner eps_eff staircase but exposes a dx-fragility in the plane lane (|S21|^2 > 1 unphysical) that is a follow-up; for now the demo runs at h_sub/2 where the extractor is well behaved.' One row per MSL port.",
    "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:140-152",
    "rows": 2,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
+  },
+  {
+   "code": "off_lattice_design_edges",
+   "disposition": "intended",
+   "reason": "Disclosed in the source with the arithmetic that makes it unavoidable: 'The residual +5.8% width error is NOT fixable by redrawing: W_TRACE / DX = 4.72 is not an integer, and gcd(254 um, 600 um) = 2 um, so no sane uniform dx puts both the substrate top and both trace edges on node lines. That is disclosed here, not absorbed.' The substrate face, which the port checks key off, IS on a node (H_SUB / DX = 2 exactly). Measured at the solved edges (#1375): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 47.55\u00b5m (7.92% of the extent); the strip drawn 1524-2124 um is solved 1479.55-2076.45 um (596.9 um, -0.52 %), so sheet_effective_size is silent and this row is its placement.",
+   "ref": "validation/tmtt_paper/msl_stub_notch_tuning.py:242-259",
+   "rows": 1,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {

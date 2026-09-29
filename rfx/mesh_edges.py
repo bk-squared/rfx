@@ -442,11 +442,13 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
                       edge_offset: float = EDGE_OFFSET):
     """The solved extent of a PEC sheet along one of its in-plane axes.
 
-    The one place the solved-edge model is written; the preflight's
-    ``sheet_effective_size`` and ``off_lattice_design_edges`` and
-    ``rfx.fidelity.fidelity_report`` all read it. A free edge is solved
-    ``edge_offset`` of the cell BEYOND its last covered node (see the module
-    docstring). An end that is not a free edge adds nothing: an end drawn at
+    The one place the solved-edge model is written. Three reports read it:
+    preflight's ``sheet_effective_size`` (solved size against drawn size),
+    preflight's ``off_lattice_design_edges`` and
+    ``rfx.fidelity.fidelity_report`` (each face as |solved edge - drawn
+    edge|, so the two print the same face residual). A free edge is solved
+    ``edge_offset`` of the OUTSIDE cell beyond its last covered node (see the
+    module docstring). An end that is not a free edge adds nothing: an end drawn at
     or past the domain boundary (a wall, or a continuation into the absorber
     pad), and an end whose whole row continues into other sheet metal in
     ``union`` (a seam inside one conductor).

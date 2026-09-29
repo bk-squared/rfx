@@ -16,6 +16,13 @@
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
+        "code": "off_lattice_design_edges",
+        "loc": null,
+        "message": "1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[1] 'pec' (sheet) y: extent 4mm, worst face residual 350\u00b5m (8.75% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "severity": "warning",
+        "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
         "code": "msl_port_conductor_planes",
         "loc": null,
         "message": "MSL port 'checked': declared trace at z=0.011 m maps to node 11 (z=0.011 m), but no longitudinal conductor edge meets it at width node 10. Observed conductor planes on this column are [0.006, 0.01] m. Make the port ground/trace declarations agree with the realized conductor surfaces. The conductor-plane gap is unavailable.",
@@ -38,7 +45,7 @@
       }
     ],
     "n_errors": 1,
-    "n_issues": 5,
+    "n_issues": 6,
     "ok": false
   }
 }

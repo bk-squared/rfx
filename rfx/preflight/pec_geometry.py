@@ -1221,6 +1221,14 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
     offenders = []
     n_axes = 0
     n_normal_axes = 0
+    domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
+    # A sheet's in-plane face is measured against where it is SOLVED (the
+    # shared solved-edge model, rfx.mesh_edges.solved_sheet_span, #1375),
+    # not against its nearest node: a free edge is solved 0.35 of the
+    # outside cell beyond its last node. A registered sheet then reads 0,
+    # an on-node one 0.35 cell, and a right-sized but shifted one its shift.
+    solved = {(id(e), a): span
+              for e, a, span in _sheet_solved_spans(ctx, boxes)}
     for e in boxes:
         lo, hi = e.lo, e.hi
         for a in range(3):
@@ -1231,18 +1239,18 @@ def _validate_cfg_off_lattice_design_edges(self, _w, ctx) -> None:
             if ext <= 0.0:
                 continue
             n_axes += 1
-            if e.kind == "sheet":
-                # A sheet's in-plane size is sheet_effective_size's report
-                # (the shared solved-edge model, #1375): its face is solved
-                # 0.35 cell beyond its last node, so a nearest-node residual
-                # here would report a registered sheet as off and an on-node
-                # one as clean. Still counted in the COVERAGE total.
-                continue
-            nodes = ctx.nodes[a]
-            res = max(
-                float(np.min(np.abs(nodes - float(lo[a])))),
-                float(np.min(np.abs(nodes - float(hi[a])))),
-            )
+            span = solved.get((id(e), a)) if e.kind == "sheet" else None
+            if span is not None:
+                # A wall end is compared with the domain face it meets.
+                d_lo = min(max(float(lo[a]), 0.0), float(domain[a]))
+                d_hi = min(max(float(hi[a]), 0.0), float(domain[a]))
+                res = max(abs(span.lo - d_lo), abs(span.hi - d_hi))
+            else:
+                nodes = ctx.nodes[a]
+                res = max(
+                    float(np.min(np.abs(nodes - float(lo[a])))),
+                    float(np.min(np.abs(nodes - float(hi[a])))),
+                )
             rel = res / ext
             if rel > _OFF_LATTICE_EDGE_TOL:
                 offenders.append((rel, e, a, ext, res))
