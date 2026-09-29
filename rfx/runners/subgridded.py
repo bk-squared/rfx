@@ -482,9 +482,7 @@ def _run_subgridded_once(
     ntff_box_f = None
     ntff_data_f = None
     if sim._ntff is not None:
-        from rfx.farfield import (
-            NTFFBox, init_ntff_data, _raise_face_centre_margin,
-        )
+        from rfx.farfield import NTFFBox, init_ntff_data
 
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = _pos_to_fine_idx(corner_lo)
@@ -494,7 +492,8 @@ def _run_subgridded_once(
                 "subgrid NTFF box corners must map to a non-empty fine-grid "
                 f"box; got lo={lo_idx}, hi={hi_idx}"
             )
-        ntff_box_f = NTFFBox(
+        ntff_box_f = NTFFBox.from_grid(
+            fine_grid,
             i_lo=lo_idx[0],
             i_hi=hi_idx[0],
             j_lo=lo_idx[1],
@@ -502,17 +501,7 @@ def _run_subgridded_once(
             k_lo=lo_idx[2],
             k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-            # Accumulate at the centre of each face cell (second-order
-            # surface integral). The fine grid is uniform, so the half-cell
-            # interpolation weights for the tangential H are the default 1/2
-            # on every face.
-            face_centre=True,
         )
-        # A face flush with the fine-grid boundary has no cell on one side
-        # of it, so the half-cell averages cannot be formed. Refuse here,
-        # beside the non-empty-box check and before the scan, rather than
-        # inside the traced body.
-        _raise_face_centre_margin(ntff_box_f, (nx_f, ny_f, nz_f))
         ntff_data_f = init_ntff_data(ntff_box_f)
 
     diagnostic_lumped_sparam_freqs = diagnostic_lumped_sparam_freqs_override

@@ -42,15 +42,15 @@ class NTFFBox(NamedTuple):
     k_lo: int
     k_hi: int
     freqs: jnp.ndarray  # (n_freqs,) Hz
-    # Per-face CPML thickness (T7 Phase 2 — asymmetric-friendly NTFF offsets).
-    # Default to 0 so legacy callers constructing NTFFBox without from_grid()
-    # still get the pre-per-face-CPML scalar behaviour via the fallbacks below.
-    cpml_lo_x: int = 0
-    cpml_hi_x: int = 0
-    cpml_lo_y: int = 0
-    cpml_hi_y: int = 0
-    cpml_lo_z: int = 0
-    cpml_hi_z: int = 0
+    # Realized per-face padding. None means unspecified on a hand-built box;
+    # zero is a physical value (e.g. PEC/PMC), never a missing-value sentinel.
+    # The transform resolves unspecified values from the accompanying grid.
+    cpml_lo_x: int | None = None
+    cpml_hi_x: int | None = None
+    cpml_lo_y: int | None = None
+    cpml_hi_y: int | None = None
+    cpml_lo_z: int | None = None
+    cpml_hi_z: int | None = None
     # Where on a face cell the four stored tangential components live.
     #
     # True — the accumulator holds E and H already moved to the CENTRE of the
@@ -89,22 +89,15 @@ class NTFFBox(NamedTuple):
     @classmethod
     def from_grid(cls, grid, *, i_lo, i_hi, j_lo, j_hi, k_lo, k_hi, freqs,
                   collocation: str = "face_centre"):
-        """Build an NTFFBox with per-face CPML thicknesses pulled from
-        ``grid.face_layers``. Under symmetric face_layers (all six equal
-        grid.cpml_layers), the box is numerically identical to the legacy
-        scalar-cpml construction.
+        """Build an NTFFBox with the grid's realized per-face padding.
+
+        Physical zero is the inner edge of each lower-face pad, including
+        a zero-cell pad. Symmetric padding keeps the legacy coordinates.
 
         The box is built for face-centre collocation by default (the
         second-order layout); pass ``collocation="node"`` to reproduce the
         pre-second-order geometry."""
-        fl = getattr(grid, "face_layers", None)
-        if fl is None:
-            # Grid types without face_layers (e.g. older NU grids) fall back
-            # to the scalar cpml_layers on every face.
-            scalar = int(getattr(grid, "cpml_layers", 0) or 0)
-            faces = {k: scalar for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
-        else:
-            faces = fl
+        faces = _ntff_face_pads(grid)
         box = cls(
             i_lo=i_lo, i_hi=i_hi, j_lo=j_lo, j_hi=j_hi, k_lo=k_lo, k_hi=k_hi,
             freqs=freqs,
@@ -210,6 +203,38 @@ def _normal_weight(widths, idx: int) -> float:
 _AXIS_NAMES = ("x", "y", "z")
 
 
+def _ntff_face_pads(grid, box: NTFFBox | None = None):
+    """Resolve NTFF padding from the realized grid, preserving zero.
+
+    Explicit box metadata must agree with that grid; silently accepting a
+    box from a different grid changes the complex phase. Hand-built boxes
+    may omit the metadata. Only legacy grid-like objects without realized
+    pad attributes use box metadata, face_layers or the scalar budget.
+    Both Grid and NonUniformGrid always take the realized-pad branch.
+    """
+    pads = {}
+    for axis in _AXIS_NAMES:
+        for side in ("lo", "hi"):
+            face = f"{axis}_{side}"
+            field = f"cpml_{side}_{axis}"
+            explicit = getattr(box, field, None)
+            realized = getattr(grid, f"pad_{face}", None)
+            if realized is not None:
+                if explicit is not None and explicit != realized:
+                    raise ValueError(
+                        f"NTFF box {field}={explicit} does not match the grid's "
+                        f"realized pad_{face}={realized}; use NTFFBox.from_grid "
+                        "with the grid used for accumulation, or leave pad "
+                        "metadata unspecified (None).")
+                pads[face] = int(realized)
+            elif explicit is not None:
+                pads[face] = int(explicit)
+            else:
+                faces = getattr(grid, "face_layers", None) or {}
+                pads[face] = int(faces.get(face, getattr(grid, "cpml_layers", 0)))
+    return pads
+
+
 def _grid_axis_counts(grid):
     """(nx, ny, nz) off a grid object, or None when it does not say."""
     shape = getattr(grid, "shape", None)
@@ -255,7 +280,7 @@ def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
     bad = _face_centre_margin_failures(box, counts)
     if not bad:
         return
-    cpml = ((box.cpml_lo_x, box.cpml_lo_y, box.cpml_lo_z))
+    pads = _ntff_face_pads(grid, box) if grid is not None else None
     lines = []
     flat = False
     for axis, lo, hi, n in bad:
@@ -268,7 +293,7 @@ def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
             continue
         detail = f"  {name}: faces at index {lo} and {hi} of {n} cells"
         if grid is not None:
-            pos = _axis_node_positions(grid, axis, int(cpml[axis]), n)
+            pos = _axis_node_positions(grid, axis, pads[f"{name}_lo"], n)
             detail += (
                 f" ({pos[lo]:.6g} m and {pos[hi]:.6g} m); this axis can carry "
                 f"a face anywhere in [{pos[1]:.6g} m, {pos[n - 1]:.6g} m]")
@@ -332,15 +357,14 @@ def make_ntff_box(
     """
     lo = grid.position_to_index(corner_lo)
     hi = grid.position_to_index(corner_hi)
-    box = NTFFBox(
+    return NTFFBox.from_grid(
+        grid,
         i_lo=lo[0], i_hi=hi[0],
         j_lo=lo[1], j_hi=hi[1],
         k_lo=lo[2], k_hi=hi[2],
         freqs=jnp.asarray(freqs, dtype=jnp.float32),
+        collocation=collocation,
     )
-    if collocation == "face_centre":
-        return with_face_centre_collocation(box, grid)
-    return box
 
 
 def ntff_accum_dtype(field_dtype=jnp.float32):
@@ -989,13 +1013,8 @@ def compute_far_field(
     # graded, every path below is the scalar one, bit-for-bit.
     dx_arr = getattr(grid, 'dx_arr', None)
     dy_arr = getattr(grid, 'dy_arr', None)
-    # Per-face CPML origins come from the box when populated via
-    # NTFFBox.from_grid; direct-construction callers (fields=0) fall back
-    # to scalar grid.cpml_layers so the symmetric case stays bit-identical.
-    _legacy_cpml = int(getattr(grid, 'cpml_layers', 0) or 0)
-    cpml_lo_x = box.cpml_lo_x or _legacy_cpml
-    cpml_lo_y = box.cpml_lo_y or _legacy_cpml
-    cpml_lo_z = box.cpml_lo_z or _legacy_cpml
+    pads = _ntff_face_pads(grid, box)
+    cpml_lo_x, cpml_lo_y, cpml_lo_z = (pads[f"{axis}_lo"] for axis in _AXIS_NAMES)
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
@@ -1306,12 +1325,8 @@ def compute_far_field_jax(
     dz_arr = getattr(grid, 'dz', None)
     dx_arr = getattr(grid, 'dx_arr', None)   # in-plane grading (#743)
     dy_arr = getattr(grid, 'dy_arr', None)
-    # Per-face CPML origins come from the box (populated by
-    # NTFFBox.from_grid). Legacy callers get grid.cpml_layers as fallback.
-    _legacy_cpml = int(getattr(grid, 'cpml_layers', 0) or 0)
-    cpml_lo_x = box.cpml_lo_x or _legacy_cpml
-    cpml_lo_y = box.cpml_lo_y or _legacy_cpml
-    cpml_lo_z = box.cpml_lo_z or _legacy_cpml
+    pads = _ntff_face_pads(grid, box)
+    cpml_lo_x, cpml_lo_y, cpml_lo_z = (pads[f"{axis}_lo"] for axis in _AXIS_NAMES)
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi

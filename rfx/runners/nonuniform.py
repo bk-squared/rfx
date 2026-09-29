@@ -1543,34 +1543,19 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     ntff_box = None
     ntff_data_init = None
     if sim._ntff is not None:
-        from rfx.farfield import (
-            NTFFBox, init_ntff_data, with_face_centre_collocation,
-        )
+        from rfx.farfield import NTFFBox, init_ntff_data
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = pos_to_nu_index(grid, corner_lo)
         hi_idx = pos_to_nu_index(grid, corner_hi)
-        # Per-face CPML depths must come from THIS grid's pads. A
-        # non-uniform grid carries no `face_layers`, so both the previous
-        # direct construction and NTFFBox.from_grid fall back to the scalar
-        # `cpml_layers` on every face — wrong whenever the pads are
-        # asymmetric, which they are for any non-absorbing face. Measured:
-        # a z_lo PEC face gives pad_z_lo = 0 while the scalar is 6, so
-        # every NTFF face coordinate was displaced by six cells in z, and
-        # the pattern came back with no warning (#743).
-        ntff_box = NTFFBox(
+        # Share realized padding and graded face-centre weights with the
+        # uniform and RCS constructors, including zero-cell PEC/PMC faces.
+        ntff_box = NTFFBox.from_grid(
+            grid,
             i_lo=lo_idx[0], i_hi=hi_idx[0],
             j_lo=lo_idx[1], j_hi=hi_idx[1],
             k_lo=lo_idx[2], k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-            cpml_lo_x=int(grid.pad_x_lo),
-            cpml_lo_y=int(grid.pad_y_lo),
-            cpml_lo_z=int(grid.pad_z_lo),
         )
-        # Accumulate at the centre of each face cell (second-order surface
-        # integral). The half-cell interpolation weights for the tangential
-        # H come from this grid's own cell widths, so a graded axis gets the
-        # right pair instead of a flat 1/2.
-        ntff_box = with_face_centre_collocation(ntff_box, grid)
         ntff_data_init = init_ntff_data(ntff_box)
 
     # In-loop block current moments (rfx.current_moments), realized against
