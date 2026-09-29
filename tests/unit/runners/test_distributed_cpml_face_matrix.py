@@ -70,7 +70,7 @@ def _build(lane, wall, face, x_cells=25):
 
 @pytest.mark.parametrize("lane", ("uniform", "nu"))
 @pytest.mark.parametrize("wall,face,n_devices,x_cells", CASES)
-def test_probe_records_match_single_device(lane, wall, face, n_devices, x_cells, record_property, request):
+def test_probe_records_match_single_device(lane, wall, face, n_devices, x_cells, record_property):
     devices = jax.devices("cpu")[:n_devices]
     if len(devices) != n_devices:
         pytest.skip(f"requires XLA_FLAGS=--xla_force_host_platform_device_count={n_devices}")
@@ -111,10 +111,4 @@ def test_probe_records_match_single_device(lane, wall, face, n_devices, x_cells,
                 else single_sim._build_nonuniform_grid())
         depths = (grid.pad_y_lo, grid.pad_y_hi)
         record_property("realized_y_lo_hi_layers", depths)
-        if lane == "nu":
-            # Mark only after field parity passes: unrelated field failures
-            # must remain failures. The NU builder currently makes 8/8 cells
-            # for the declared 4/8; matching that box is not 4/8 coverage.
-            request.node.add_marker(pytest.mark.xfail(
-                strict=True, reason="#1346: NU ignores unequal per-face CPML depths (4/8 becomes 8/8)"))
         assert depths == (4, 8), f"requested 4/8 layers; realized {depths}"

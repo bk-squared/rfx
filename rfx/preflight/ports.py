@@ -61,6 +61,7 @@ import numpy as np
 from rfx.preflight._common import (
     _component_is_dead,
     _fmt_len,
+    PreflightErrorWarning,
     PreflightWarning,
 )
 
@@ -789,6 +790,238 @@ def _validate_cfg_floating_single_cell_port(self, _w) -> None:
         )
 
 
+def half_node_split_findings(sim, grid=None) -> list[str]:
+    """Point features split from a conductor declared at the same coordinate.
+
+    A PolylineWire filament vertex and a PEC sheet plane midway between two
+    nodes go to the LOWER node (#931; ``wire_vertex_nodes``,
+    ``_nearest_plane``). On the non-uniform lane a port, source or probe
+    there does too (``rfx._grid_metric.nearest_node_index``, #1295). The
+    uniform ``Grid`` still rounds a point feature's tie to the EVEN node
+    (``round(x/dx)``) until #1342, so where the lower node is odd a feed
+    declared on a wire, or a port declared to end on a sheet, lands one cell
+    off the conductor it was drawn on: a gap-fed dipole whose port and arms
+    sit at y = 9.5 mm on 1 mm cells drives the Ez edge beside the gap (gap
+    field -23 dB). On either lane, two coordinates a hair apart that
+    straddle a half node split the same way (a port end at float32(3.5 mm)
+    against a sheet at 3.5 mm).
+
+    Compares, per axis, every port position (and a wire port's far end),
+    source and probe with every sub-cell wire vertex and PEC sheet plane
+    declared within 1e-6 of the local cell of it (or one float32 step of the
+    coordinate, whichever is wider), and returns one message
+    per (feature, conductor, axis) that resolves to different nodes. The
+    pairing starts on the DECLARED coordinates, so a model with no such pair
+    returns before any grid is built. ``grid`` is the grid the run builds
+    (``sim._build_realized_grid()`` when omitted); its own point lookup and
+    the conductor rules on its own node coordinates are compared, so a pair
+    the two rules happen to agree on is not reported. A traced mesh is
+    skipped: its sheet planes are refused elsewhere and it has no host node
+    line.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.geometry.rasterize_grid import _box_zero_axes
+    from rfx.materials.thin_conductor import sheet_bounds
+
+    # Declared-coordinate prefilter, wider than the 1e-6-of-a-cell pairing
+    # applied once the grid (and so the local cell) is known.
+    scale = float(getattr(sim, "_dx", None) or 0.0)
+
+    def _same(p, c):
+        return abs(p - c) <= 1e-6 * max(abs(p), abs(c), scale)
+
+    # (key, label, position) per point feature; a wire port's two ends
+    # share its key.
+    points = []
+    for pe in getattr(sim, "_ports", ()):
+        pos = tuple(float(v) for v in pe.position)
+        kind = ("add_source" if float(pe.impedance) == 0.0
+                and pe.extent is None else "add_port")
+        points.append((id(pe), f"{kind} at {pos}", pos))
+        if pe.extent is not None:
+            end = list(pos)
+            end["xyz".index(pe.component[-1])] += float(pe.extent)
+            points.append((id(pe), f"the far end {tuple(end)} of add_port at "
+                           f"{pos} (extent {float(pe.extent):g} m)",
+                           tuple(end)))
+    for pr in getattr(sim, "_probes", ()):
+        pos = tuple(float(v) for v in pr.position)
+        points.append((id(pr), f"add_probe at {pos}", pos))
+    if not points:
+        return []
+
+    def _meets_a_point(axis, c):
+        return any(_same(pos[axis], c) for _k, _l, pos in points)
+
+    # Conductor declarations with at least one declared coordinate a point
+    # feature shares: ("sheet"|"wire"|"thin", entry, normal axis or None).
+    candidates = []
+    for entry in getattr(sim, "_geometry", ()):
+        shape = entry.shape
+        lo, hi = (getattr(shape, "corner_lo", None),
+                  getattr(shape, "corner_hi", None))
+        if lo is not None and hi is not None:
+            zero = _box_zero_axes(lo, hi)
+            if len(zero) == 1 and _meets_a_point(zero[0], float(lo[zero[0]])):
+                candidates.append(("sheet", entry, zero[0]))
+        elif (getattr(shape, "points", None) is not None
+              and getattr(shape, "radius", None) is not None):
+            if any(_meets_a_point(a, float(p[a]))
+                   for p in shape.points for a in range(3)):
+                candidates.append(("wire", entry, None))
+    for tc in getattr(sim, "_thin_conductors", ()):
+        if not getattr(tc, "is_pec", False):
+            continue
+        lo, hi = sheet_bounds(tc.shape)
+        if lo is None or hi is None:
+            continue
+        a = min(range(3), key=lambda i: float(hi[i]) - float(lo[i]))
+        if _meets_a_point(a, 0.5 * (float(lo[a]) + float(hi[a]))):
+            candidates.append(("thin", tc, a))
+    if not candidates:
+        return []
+
+    from rfx.geometry.rasterize_grid import (
+        GridCoords,
+        _local_cell,
+        cell_sizes_from_nonuniform_grid,
+        cell_sizes_from_uniform_grid,
+        centres_from_nonuniform_grid,
+        centres_from_uniform_grid,
+        classify_pec_entry,
+        coords_from_nonuniform_grid,
+        coords_from_uniform_grid,
+        sheet_spec_from_shape,
+        wire_vertex_nodes,
+    )
+    from rfx.nonuniform import NonUniformGrid, position_to_index
+
+    if grid is None:
+        try:
+            grid = sim._build_realized_grid()
+        except Exception:
+            return []     # the lane that builds it refuses it, with its reason
+    nonuniform = isinstance(grid, NonUniformGrid)
+    if nonuniform:
+        coords = coords_from_nonuniform_grid(grid)
+        if any(is_tracer(getattr(coords, a)) for a in "xyz"):
+            return []
+        centres = centres_from_nonuniform_grid(grid, coords)
+        sizes = cell_sizes_from_nonuniform_grid(grid)
+    else:
+        coords = coords_from_uniform_grid(grid)
+        centres = centres_from_uniform_grid(grid)
+        sizes = cell_sizes_from_uniform_grid(grid)
+    coords = GridCoords(x=coords.x, y=coords.y, z=coords.z, shape=grid.shape)
+    node_axes = (np.asarray(coords.x, dtype=np.float64),
+                 np.asarray(coords.y, dtype=np.float64),
+                 np.asarray(coords.z, dtype=np.float64))
+    axes = (0, 1) if getattr(grid, "is_2d", False) else (0, 1, 2)
+    threshold = getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6)
+
+    # (key, label, axis, declared coordinate, node) per conductor feature;
+    # the key names the declaration, so a wire reports once, not per vertex.
+    # Each is classified by the function assembly uses, so only what the run
+    # realizes as a sheet or a filament is compared.
+    conductors = []
+    for kind, entry, a in candidates:
+        try:
+            if kind == "thin":
+                sheet = sheet_spec_from_shape(entry.shape, coords, sizes,
+                                              name="thin_conductor")
+                lo, hi = sheet_bounds(entry.shape)
+                conductors.append((
+                    ("thin", id(entry)), "the add_thin_conductor sheet",
+                    int(sheet.normal_axis),
+                    0.5 * (float(lo[a]) + float(hi[a])), int(sheet.plane)))
+                continue
+            sigma = sim._resolve_material(entry.material_name).sigma
+            if is_tracer(sigma) or float(sigma) < threshold:
+                continue
+            _cells, sheet, wire = classify_pec_entry(
+                entry.shape, coords, centres, sizes, name=entry.material_name)
+        except (KeyError, ValueError):
+            continue      # refused, or undefined, on its own account elsewhere
+        shape = entry.shape
+        if sheet is not None:
+            lo, hi = shape.corner_lo, shape.corner_hi
+            conductors.append((
+                ("sheet", id(entry)),
+                f"the PEC sheet {entry.material_name!r} (Box {tuple(lo)} to "
+                f"{tuple(hi)})", int(sheet.normal_axis),
+                0.5 * (float(lo[a]) + float(hi[a])), int(sheet.plane)))
+        elif wire is not None:
+            nodes, _d = wire_vertex_nodes(shape.points, node_axes, sizes)
+            for p, node in zip(shape.points, nodes):
+                for t in axes:
+                    conductors.append((
+                        ("wire", id(entry)),
+                        f"the vertex {tuple(float(v) for v in p)} of the "
+                        f"PolylineWire {entry.material_name!r}", t,
+                        float(p[t]), int(node[t])))
+
+    def _mm(v):
+        return f"{float(v) * 1e3:.6g} mm"
+
+    findings = []
+    seen = set()
+    for pkey, label, pos in points:
+        try:
+            idx = (position_to_index(grid, pos) if nonuniform
+                   else grid.position_to_index(pos))
+        except ValueError:
+            continue          # outside the grid: reported elsewhere
+        for ckey, clabel, a, c, node in conductors:
+            if a not in axes or not _same(pos[a], c):
+                continue
+            # 1e-6 of the local cell, or a float32 step of the coordinate,
+            # whichever is wider: a coordinate that came through float32 is
+            # up to half a float32 step off its float64 twin at any distance
+            # from the origin.
+            if abs(pos[a] - c) > max(
+                    1e-6 * _local_cell(node_axes[a], sizes[a], c),
+                    2.0 ** -23 * max(abs(pos[a]), abs(c))):
+                continue
+            if int(idx[a]) == node or (pkey, ckey, a) in seen:
+                continue
+            seen.add((pkey, ckey, a))
+            ax = "xyz"[a]
+            findings.append(
+                f"{label} and {clabel} are both declared at {ax} = "
+                f"{_mm(c)}, midway between two nodes, and land on "
+                f"different ones: the point feature on {ax} node "
+                f"{int(idx[a])} ({_mm(node_axes[a][int(idx[a])])}), the "
+                f"conductor on node {node} ({_mm(node_axes[a][node])}). A "
+                "wire vertex or a sheet plane at a half node goes to the "
+                "lower node. On the uniform lane a port, source or probe "
+                "there goes to the even node until #1342; on either lane two "
+                "coordinates a float step apart that straddle the half node "
+                "split the same way. The feature sits one cell off the "
+                "conductor it was drawn on and does not drive or sample it. "
+                "Move both off the half node (a quarter cell is enough).")
+    return findings
+
+
+def _validate_cfg_half_node_split(self, _w) -> None:
+    """ERROR: a port, source or probe and a wire vertex or PEC sheet declared
+    at the same half-node coordinate land one cell apart (#1295, #1342).
+
+    Both lanes. ``half_node_split_findings`` holds the rule and the text; the
+    run-time refusal (``Simulation._require_no_half_node_split``, called from
+    ``_dispatch_plan``) reads the same function, so ``skip_preflight=True``
+    does not bypass it.
+    """
+    for message in half_node_split_findings(self):
+        _w.warn(
+            PreflightErrorWarning(
+                message,
+                code="half_node_split",
+                source="_validate_cfg_half_node_split",
+            ),
+            stacklevel=3,
+        )
+
+
 # ---------------------------------------------------------------------------
 # Pre-move ``__qualname__``, restored explicitly.
 #
@@ -826,4 +1059,7 @@ _wire_port_cell_centers.__qualname__ = (
 )
 _validate_cfg_floating_single_cell_port.__qualname__ = (
     "_PreflightMixin._validate_cfg_floating_single_cell_port"
+)
+_validate_cfg_half_node_split.__qualname__ = (
+    "_PreflightMixin._validate_cfg_half_node_split"
 )

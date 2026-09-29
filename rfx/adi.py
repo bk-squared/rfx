@@ -20,6 +20,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
+from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import EPS_0, MU_0
 
 
@@ -403,6 +404,10 @@ class ADICPMLParams2D(NamedTuple):
     # y-direction profiles (n_cpml,)
     by: jnp.ndarray
     cy: jnp.ndarray
+    magnetic_xlo: CPMLParams
+    magnetic_xhi: CPMLParams
+    magnetic_ylo: CPMLParams
+    magnetic_yhi: CPMLParams
 
 
 def init_adi_cpml_2d(n_cpml: int, dt: float, dx: float, dy: float,
@@ -414,24 +419,22 @@ def init_adi_cpml_2d(n_cpml: int, dt: float, dx: float, dy: float,
     """
     import numpy as np
 
+    # ADI fixes conductivity rather than a depth-dependent reflection target.
+    # Passing it directly avoids exp(-1.6*n_cpml) underflow at 466 layers.
     eta = float(np.sqrt(MU_0 / EPS_0))
-    order = 3
 
-    def _make_bc(n_layers, ds):
-        sigma_max = 0.8 * (order + 1) / (eta * ds) * kappa_max
-        rho = 1.0 - np.arange(n_layers, dtype=np.float64) / max(n_layers - 1, 1)
-        sigma = sigma_max * rho**order
-        kappa = 1.0 + (kappa_max - 1.0) * rho**order
-        alpha = 0.05 * (1.0 - rho)
-        b = np.exp(-(sigma / kappa + alpha) * dt / EPS_0)
-        denom = sigma * kappa + kappa**2 * alpha
-        c = np.where(denom > 1e-30, sigma * (b - 1.0) / denom, 0.0)
-        return jnp.array(b, dtype=jnp.float32), jnp.array(c, dtype=jnp.float32)
+    def profile(spacing, offset=0.0):
+        return _cpml_profile(
+            n_cpml, dt, spacing, kappa_max=kappa_max, sample_offset=offset,
+            sigma_max=0.8 * 4 / (eta * spacing) * kappa_max,
+        )
 
-    bx, cx = _make_bc(n_cpml, dx)
-    by, cy = _make_bc(n_cpml, dy)
-
-    params = ADICPMLParams2D(n_cpml=n_cpml, bx=bx, cx=cx, by=by, cy=cy)
+    px, py = profile(dx), profile(dy)
+    params = ADICPMLParams2D(
+        n_cpml=n_cpml, bx=px.b, cx=px.c, by=py.b, cy=py.c,
+        magnetic_xlo=profile(dx, 0.5), magnetic_xhi=profile(dx, -0.5),
+        magnetic_ylo=profile(dy, 0.5), magnetic_yhi=profile(dy, -0.5),
+    )
 
     state = ADICPMLState2D(
         psi_ezy_xlo=jnp.zeros((n_cpml, ny), dtype=jnp.float32),
@@ -455,39 +458,41 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     n = cpml_params.n_cpml
     bx, cx = cpml_params.bx, cpml_params.cx
     by, cy = cpml_params.by, cpml_params.cy
+    mxlo, mxhi = cpml_params.magnetic_xlo, cpml_params.magnetic_xhi
+    mylo, myhi = cpml_params.magnetic_ylo, cpml_params.magnetic_yhi
 
     eps = eps_r * EPS_0
 
     # === Hy correction from dEz/dx (x-CPML) ===
     # xlo: forward diff dEz/dx at half-integer x in strip [0, n)
     dez_dx_xlo = (ez[1:n + 1, :] - ez[:n, :]) / dx
-    psi_hyx_xlo = bx[:, None] * cpml_state.psi_hyx_xlo + cx[:, None] * dez_dx_xlo
+    psi_hyx_xlo = mxlo.b[:, None] * cpml_state.psi_hyx_xlo + mxlo.c[:, None] * dez_dx_xlo
     hy = hy.at[:n, :].add((dt / MU_0) * psi_hyx_xlo)
 
-    # xhi: forward diff in strip [-n-1, -1)
-    dez_dx_xhi = (ez[-n:, :] - ez[-n - 1:-1, :]) / dx
+    # Hy[i] lives at i+1/2, including in the high-face strip.
+    dez_dx_xhi = (jnp.pad(ez, ((0, 1), (0, 0)))[-n:, :] - ez[-n:, :]) / dx
     bx_hi = jnp.flip(bx)
     cx_hi = jnp.flip(cx)
-    psi_hyx_xhi = bx_hi[:, None] * cpml_state.psi_hyx_xhi + cx_hi[:, None] * dez_dx_xhi
+    psi_hyx_xhi = jnp.flip(mxhi.b)[:, None] * cpml_state.psi_hyx_xhi + jnp.flip(mxhi.c)[:, None] * dez_dx_xhi
     hy = hy.at[-n:, :].add((dt / MU_0) * psi_hyx_xhi)
 
     # === Hx correction from dEz/dy (y-CPML) ===
     dez_dy_ylo = (ez[:, 1:n + 1] - ez[:, :n]) / dy
-    psi_hxy_ylo = by[None, :] * cpml_state.psi_hxy_ylo + cy[None, :] * dez_dy_ylo
+    psi_hxy_ylo = mylo.b[None, :] * cpml_state.psi_hxy_ylo + mylo.c[None, :] * dez_dy_ylo
     hx = hx.at[:, :n].add(-(dt / MU_0) * psi_hxy_ylo)  # negative: Faraday sign
 
-    dez_dy_yhi = (ez[:, -n:] - ez[:, -n - 1:-1]) / dy
+    dez_dy_yhi = (jnp.pad(ez, ((0, 0), (0, 1)))[:, -n:] - ez[:, -n:]) / dy
     by_hi = jnp.flip(by)
     cy_hi = jnp.flip(cy)
-    psi_hxy_yhi = by_hi[None, :] * cpml_state.psi_hxy_yhi + cy_hi[None, :] * dez_dy_yhi
+    psi_hxy_yhi = jnp.flip(myhi.b)[None, :] * cpml_state.psi_hxy_yhi + jnp.flip(myhi.c)[None, :] * dez_dy_yhi
     hx = hx.at[:, -n:].add(-(dt / MU_0) * psi_hxy_yhi)
 
     # === Ez correction from dHy/dx (x-CPML) ===
-    # xlo: backward diff dHy/dx at integer x in strip [1, n+1)
-    dhy_dx_xlo = (hy[1:n + 1, :] - hy[:n, :]) / dx
+    # Ez[i] and its integer-node profile share the strip [0, n).
+    dhy_dx_xlo = (hy[:n, :] - jnp.concatenate([jnp.zeros_like(hy[:1, :]), hy[:n - 1, :]])) / dx
     psi_ezy_xlo = bx[:, None] * cpml_state.psi_ezy_xlo + cx[:, None] * dhy_dx_xlo
-    inv_eps_xlo = 1.0 / eps[1:n + 1, :]
-    ez = ez.at[1:n + 1, :].add(dt * inv_eps_xlo * psi_ezy_xlo)
+    inv_eps_xlo = 1.0 / eps[:n, :]
+    ez = ez.at[:n, :].add(dt * inv_eps_xlo * psi_ezy_xlo)
 
     dhy_dx_xhi = (hy[-n:, :] - hy[-n - 1:-1, :]) / dx
     psi_ezy_xhi = bx_hi[:, None] * cpml_state.psi_ezy_xhi + cx_hi[:, None] * dhy_dx_xhi
@@ -495,10 +500,10 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     ez = ez.at[-n:, :].add(dt * inv_eps_xhi * psi_ezy_xhi)
 
     # === Ez correction from dHx/dy (y-CPML) ===
-    dhx_dy_ylo = (hx[:, 1:n + 1] - hx[:, :n]) / dy
+    dhx_dy_ylo = (hx[:, :n] - jnp.concatenate([jnp.zeros_like(hx[:, :1]), hx[:, :n - 1]], axis=1)) / dy
     psi_ezx_ylo = by[None, :] * cpml_state.psi_ezx_ylo + cy[None, :] * dhx_dy_ylo
-    inv_eps_ylo = 1.0 / eps[:, 1:n + 1]
-    ez = ez.at[:, 1:n + 1].add(-dt * inv_eps_ylo * psi_ezx_ylo)  # negative: Ampere sign
+    inv_eps_ylo = 1.0 / eps[:, :n]
+    ez = ez.at[:, :n].add(-dt * inv_eps_ylo * psi_ezx_ylo)  # negative: Ampere sign
 
     dhx_dy_yhi = (hx[:, -n:] - hx[:, -n - 1:-1]) / dy
     psi_ezx_yhi = by_hi[None, :] * cpml_state.psi_ezx_yhi + cy_hi[None, :] * dhx_dy_yhi

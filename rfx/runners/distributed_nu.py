@@ -266,6 +266,7 @@ class ShardedNUGrid(_NamedTuple):
     nx_trim: int
     x_starts: tuple
     x_stops: tuple
+    face_layers: dict[str, int] | None = None
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
@@ -418,6 +419,7 @@ def build_sharded_nu_grid(
         nx_trim=pad_x,
         x_starts=x_starts,
         x_stops=x_stops,
+        face_layers=grid.face_layers,
     )
 
 
@@ -772,6 +774,7 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
             self.dy = dy_boundary
             self.dz = jnp.asarray(dz_arr)
             self.cpml_layers = sharded_grid.cpml_layers
+            self.face_layers = sharded_grid.face_layers
             self.dt = sharded_grid.dt
             self.nx = nx
             self.ny = ny

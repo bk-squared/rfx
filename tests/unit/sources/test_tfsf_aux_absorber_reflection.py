@@ -1,5 +1,11 @@
 """The auxiliary absorber's reflection, as a gate (#888).
 
+The TF/SF auxiliary grids carry normal and oblique plane waves, whose outgoing
+field must be absorbed. These locks measure the returned field at each declared
+angle and retain the instrument's fit-residual check. With H at the Yee half cell
+(#1234), the 1-D depth is 20 and the 2-D depth remains 200; the 82-degree row is now
+below the 1e-3 return-amplitude bar on this instrument.
+
 THE ABSENCE THIS FILLS. The auxiliary-echo record invariant (#892, removed
 2026-09-21 with the slab family it ran on) bounded WHEN the auxiliary echo
 arrives and said so in its own words:
@@ -19,8 +25,8 @@ not the 70 degrees of its primary-rig cap -- this paragraph said 70 until the
 2026-09-13 review of PR #1005, which is the value section 3 of the note derived
 at and section 12 corrected. The assertion is
 ``test_the_target_was_rederived_at_grazing_not_at_seventy`` below, and
-``test_the_domain_edge_is_where_the_note_says`` is where the 82-degree row is
-required to sit OVER the bar.
+``test_the_domain_edge_is_where_the_note_says`` now records the updated
+82-degree reading below the bar.
 
 Both angles are quoted from the note's section 12, not read from a file here:
 cv26 is PR #924's lane and is NOT in this repository, so there is no
@@ -30,14 +36,16 @@ cv26 is PR #924's lane and is NOT in this repository, so there is no
 The declared ANGLE domain comes with a RESOLUTION: every 2-D rig here and in
 ``tests/_aux_absorber_reflection.py`` runs at 29.98 cells per free-space
 wavelength (``dx = 1 mm``, ``lambda_0 = 29.979 mm`` at 10 GHz; rounded to 30
-below and in the note), so "meets the bar through 80 degrees" means "at that
+below and in the note), so "meets the bar through 82 degrees" means "at that
 mesh". A cells-per-wavelength sweep is not run in this lane and is not filed as
 an issue; ``test_the_declared_domain_names_the_resolution_it_was_measured_at``
 is what keeps the claim from widening by accident. The 1-D depth law is a
 different case and is not covered by it: ``measure_aux_echo_1d`` integrates
 cv04's 3-15 GHz band, roughly 20 to 100 cells per wavelength.
 
-Derivation and every number: ``docs/design_notes/20260904_aux_absorber_depth_derivation.md``.
+Historical derivation: ``docs/design_notes/20260904_aux_absorber_depth_derivation.md``.
+That dated note retains its original measurements; the comments below record
+each #1234 re-pin at the final configuration.
 """
 
 from __future__ import annotations
@@ -77,20 +85,34 @@ SHIPPED_2D = {"aux_n_cpml": 30, "aux_cpml_order": 4, "aux_cpml_kappa_max": 7.0,
 # 5 %; the bar is derived from the measurement through gate_from_envelope, so widening
 # it means editing a shared, reviewer-visible object rather than a local literal (#528).
 FAST_MEASURED = {
-    0.0:  {"max": 6.4413e-06, "quantum": 1e7},
-    30.0: {"max": 7.8540e-05, "quantum": 1e6},
-    45.0: {"max": 7.5086e-05, "quantum": 1e6},
-    60.0: {"max": 3.1941e-04, "quantum": 1e5},
+    # 6.4413e-06 -> 3.7855e-07;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    0.0:  {"max": 3.7855e-07, "quantum": 1e7},
+    # 7.8540e-05 -> 7.5787e-05;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    30.0: {"max": 7.5787e-05, "quantum": 1e6},
+    # 7.5086e-05 -> 7.0387e-05;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    45.0: {"max": 7.0387e-05, "quantum": 1e6},
+    # 3.1941e-04 -> 3.2714e-04;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    60.0: {"max": 3.2714e-04, "quantum": 1e5},
 }
 
 # MEASURED maxima at the FULL rig, which does resolve 70 degrees.
 FULL_MEASURED = {
-    60.0: {"max": 5.1338e-05, "quantum": 1e6},
-    70.0: {"max": 1.2186e-04, "quantum": 1e5},
+    # 5.1338e-05 -> 3.4447e-05;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    60.0: {"max": 3.4447e-05, "quantum": 1e6},
+    # 1.2186e-04 -> 5.1014e-05;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    70.0: {"max": 5.1014e-05, "quantum": 1e5},
 }
 
-# The 1-D path on cv04's own rig and band.
-CV04_ECHO_MEASURED = 9.430e-06
+# The 1-D path on cv04's own rig and band, now at 20 cells.
+# 9.430e-06 -> 6.3843e-06;
+# #1234: the auxiliary H profile at the Yee half cell.
+CV04_ECHO_MEASURED = 6.3843e-06
 CV04_ECHO_QUANTUM = 1e8
 
 
@@ -103,12 +125,14 @@ def bar(measured: float, quantum: float) -> float:
 # ==========================================================================
 
 def test_the_declared_constants_are_the_derived_ones():
-    """Both paths carry the depth and target read off the derivation table,
-    and both use the SAME law the 3-D absorber uses."""
+    """The 1-D line uses 20 cells; the 2-D line retains 200 and its target.
+
+    Both paths use the same profile generator as the main absorber.
+    """
     assert (AUX_N_CPML, AUX_CPML_ORDER, AUX_CPML_KAPPA_MAX, AUX_CPML_R_ASYMPTOTIC) \
         == (200, 3, 1.0, 1e-28)
     assert (AUX_N_CPML_1D, AUX_CPML_ORDER_1D, AUX_CPML_KAPPA_MAX_1D,
-            AUX_CPML_R_ASYMPTOTIC_1D) == (200, 3, 1.0, 1e-6)
+            AUX_CPML_R_ASYMPTOTIC_1D) == (20, 3, 1.0, 1e-6)
 
 
 def test_the_deep_tight_absorber_is_GENTLER_than_the_shallow_one_it_replaces():
@@ -241,15 +265,21 @@ def test_the_full_rig_resolves_sixty_and_seventy(theta_deg):
 # ==========================================================================
 # The first derivation took 70 deg as the worst declared angle; cv26's grazing
 # arms are declared at 82. Measured on a 40000-step rig so the grazing bands
-# carry bins. The absorber meets LEAK_BAR through 80 deg (10 % in hand) and does
-# NOT at 82. Both halves are asserted: a domain that is only checked from the
-# inside is a claim, not a gate.
+# carry bins. With the half-cell H profile the measured rows at 70, 80 and 82
+# degrees all meet LEAK_BAR. This samples through 82 degrees at the declared
+# resolution; it does not locate a new outside edge beyond 82 degrees.
 LEAK_BAR = 1.0e-3
 GRAZE_RIG = {"nx": 400, "n_steps": 40000, "n_samp": 96}
 DOMAIN_MEASURED = {
-    70.0: {"max": 1.2462e-04, "inside": True},
-    80.0: {"max": 9.0631e-04, "inside": True},
-    82.0: {"max": 1.2282e-03, "inside": False},
+    # 1.2462e-04 -> 4.9831e-05;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    70.0: {"max": 4.9831e-05, "quantum": 1e6, "inside": True},
+    # 9.0631e-04 -> 1.3212e-04;
+    # #1234: the auxiliary H profile at the Yee half cell.
+    80.0: {"max": 1.3212e-04, "quantum": 1e5, "inside": True},
+    # 1.2282e-03 -> 4.3980e-04; outside -> inside at the unchanged 1e-3 bar.
+    # #1234: the auxiliary H profile at the Yee half cell.
+    82.0: {"max": 4.3980e-04, "quantum": 1e5, "inside": True},
 }
 
 
@@ -261,6 +291,7 @@ def test_the_domain_edge_is_where_the_note_says(theta_deg):
     r = measure_aux_reflection_2d(theta_deg, bw=bandwidth_for(theta_deg), **GRAZE_RIG)
     assert r["fit_resid_max"] < FIT_RESID_LIMIT, (theta_deg, r["fit_resid_max"])
     assert r["max"] == pytest.approx(m["max"], rel=0.10), (theta_deg, r["max"])
+    assert r["max"] <= bar(m["max"], m["quantum"])
     if m["inside"]:
         assert r["max"] <= LEAK_BAR, f"{theta_deg} deg is declared INSIDE the domain and reads {r['max']:.3e}"
     else:
@@ -274,7 +305,7 @@ def test_the_declared_domain_names_the_resolution_it_was_measured_at():
 
     Every 2-D |B/A| in this lane is measured at DX_M = 1e-3 with F0_HZ = 10 GHz
     -- lambda_0 = 29.979 mm, so 29.98 cells per free-space wavelength, which
-    the prose rounds to 30. "Meets LEAK_BAR through 80 deg" means "at that
+    the prose rounds to 30. "Meets LEAK_BAR through 82 deg" means "at that
     mesh" and says nothing about a coarser or finer one. The three rigs
     asserted below differ in grid EXTENT and record LENGTH only. Asserting that
     here is what stops a rig added at another resolution from widening the
@@ -297,8 +328,11 @@ def test_the_declared_domain_names_the_resolution_it_was_measured_at():
 
 
 def test_the_target_was_rederived_at_grazing_not_at_seventy():
-    """sigma_max = 1.711 is the 82-deg optimum (note 12.2). The 70-deg-derived
-    1e-14 would read 0.856 here; asserting the value pins the correction."""
+    """Keep the shipped sigma_max = 1.711 S/m after the half-cell correction.
+
+    The dated note's 82-degree tuning used the former H profile. Its earlier
+    70-degree target 1e-14 gives 0.856 S/m; neither target is re-optimized here.
+    """
     assert AUX_CPML_R_ASYMPTOTIC == 1e-28
     assert sigma_max_of(AUX_N_CPML, AUX_CPML_R_ASYMPTOTIC) == pytest.approx(1.711, rel=1e-2)
     assert sigma_max_of(AUX_N_CPML, 1e-14) == pytest.approx(0.856, rel=1e-2)

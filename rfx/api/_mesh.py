@@ -167,25 +167,17 @@ class _MeshMixin:
         round trip or a cloned simulation can all make the mesh non-uniform
         without the caller passing a profile.
 
-        * ``2d_tmz`` on ONE z cell between PEC walls IS that 3-D box (Ez is
-          the only field it keeps; byte-identical to ``mode="3d"``), so it
-          runs. On a thicker z stack the resonances coincide but every
-          amplitude scales with the z cell count, so that is refused too.
+        * ``2d_tmz`` on ONE z cell between PEC walls is solved as that 3-D
+          box, whose record differs from the uniform lane's 2-D solve of the
+          same declaration by 0.34 of the probe peak (#1340). One declaration
+          cannot mean both, so it is refused, and the message names the 3-D
+          box to declare instead (``mode="3d"``, one cell, PEC z walls). On a
+          thicker z stack every amplitude scales with the z cell count.
         * ``2d_tez`` came back with every field zero for the same reason,
           and ``2d_tmz`` with any other z wall is not a 2-D problem. Refused.
         """
         mode = getattr(self, "_mode", "3d")
         if mode == "3d" or not self._uses_nonuniform_mesh:
-            return
-        spec = getattr(self, "_boundary_spec", None)
-        z_walls = ((spec.z.lo, spec.z.hi) if spec is not None
-                   else (self._boundary, self._boundary))
-        mesh = self._resolve_mesh()
-        dz = mesh["_dz_profile"]
-        n_z = (len(dz) if dz is not None
-               else max(1, int(round(float(mesh["_domain"][2])
-                                     / float(mesh["_dx"])))))
-        if mode == "2d_tmz" and n_z == 1 and all(w == "pec" for w in z_walls):
             return
         raise ValueError(
             f"mode={mode!r} resolved to a non-uniform mesh (an axis profile "
@@ -231,6 +223,24 @@ class _MeshMixin:
         reason = self._nonuniform_refinement_refusal()
         if reason is not None:
             raise NotImplementedError(reason)
+
+    def _require_no_half_node_split(self):
+        """Refuse a port, source or probe that lands one cell off a wire
+        vertex or PEC sheet declared at the same half-node coordinate.
+
+        Wire vertices and sheet planes round a tie to the lower node, and so
+        do point features on the non-uniform lane; on the uniform lane point
+        features round it to the even node until #1342. The preflight finding
+        ``half_node_split`` says the same thing; this is the refusal
+        ``skip_preflight=True`` does not bypass, as for #1240. Features are
+        paired on their DECLARED coordinates first, so a model with no port,
+        source or probe at a conductor's coordinate returns without building
+        a grid.
+        """
+        from rfx.preflight.ports import half_node_split_findings
+        findings = half_node_split_findings(self)
+        if findings:
+            raise ValueError(" ".join(findings))
 
     def _require_no_refinement_without_a_subgrid(self, entry):
         """Refuse a refinement on an entry point with no subgridded lane.
