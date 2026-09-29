@@ -761,9 +761,11 @@ def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
     ``args`` are pytrees. Their ``jax.Array`` leaves (concrete or traced) are
     the differentiable inputs, and every other leaf (a Python-float ``dt``, a
     NumPy array) is held fixed. Every array the coefficients depend on must
-    therefore be an ARGUMENT. An array closed over by ``si_fn`` would be
-    differentiated through the SI spelling again. With no ``jax.Array`` leaf
-    the call is plain host arithmetic and returns ``si_fn(*args)``.
+    therefore be an ARGUMENT: differentiating with respect to a value that
+    ``si_fn`` or ``eps_r_fn`` closes over raises ``UnexpectedTracerError``
+    (JAX 0.6.2 and 0.10.2). Closing over a traced value that is not
+    differentiated works. With no ``jax.Array`` leaf the call is plain host
+    arithmetic and returns ``si_fn(*args)``.
     """
     leaves, treedef = jax.tree.flatten(args)
     dyn = [i for i, leaf in enumerate(leaves) if isinstance(leaf, jax.Array)]

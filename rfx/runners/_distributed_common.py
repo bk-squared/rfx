@@ -1949,7 +1949,8 @@ def _apply_cpml_e_distributed(
         ``nx - 1``), matching single-device ``cpml.py``'s ``[nx-n, nx)``
         (a no-op on other ranks / when ``pad_x == 0``).
     """
-    from rfx.boundaries.cpml import CPMLAxisParams
+    from rfx.boundaries.cpml import CPMLAxisParams, _ce_eps_r, _ce_si
+    from rfx.core.yee import si_value_eps_r_grad
     if not isinstance(cpml_params, CPMLAxisParams):
         raise TypeError("distributed CPML requires per-face CPMLAxisParams")
     n_xlo, n_xhi = cpml_state.psi_ey_xlo.shape[0], cpml_state.psi_ey_xhi.shape[0]
@@ -1973,7 +1974,9 @@ def _apply_cpml_e_distributed(
             # Sliced to the face BEFORE the division: the time loop then
             # holds face-sized coefficients, not a slab per component.
             # Each face at its own depth (#1365: walls one identity row).
-            return dt / (eps_face * EPS_0)
+            # #1357: ``dt / (eps_face * EPS_0)``'s bits (cpml._ce_si), the
+            # eps_r-unit derivative, as the single-device apply_cpml_e.
+            return si_value_eps_r_grad(_ce_si, _ce_eps_r, eps_face, dt)
 
         ce_ey_xlo, ce_ey_xhi = _ce(eps_y[g:g + n_xlo]), _ce(eps_y[xhi_])
         ce_ez_xlo, ce_ez_xhi = _ce(eps_z[g:g + n_xlo]), _ce(eps_z[xhi_])

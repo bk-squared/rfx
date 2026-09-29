@@ -15,17 +15,21 @@ The invariant pinned here is not a value. The objective is quadratic in its
 scale, so for a power-of-two ``s``, ``grad(s**2 * L) == s**2 * grad(L)``
 exactly in float32 unless something overflows or underflows on the way. Each
 row compares the gradient at two cotangent scales on either side of the
-threshold that ``origin/main`` crossed. Measured on these models before the
-fix: the uniform lane is finite at ``2**60`` and has 804 non-finite cells
-of 3375 at ``2**80``. The graded lane is finite at ``2**0`` and has 552 at
-``2**20``. The 2-D ADI lane has all 441 cells non-finite at every scale. The
-#1357 fixture has 16 at cotangent 1.
+threshold that ``origin/main`` crossed. Measured on these models on
+``origin/main`` (0d20666a, JAX 0.10.2), non-finite cells: the uniform lane
+0 at ``2**60``, 804 of 3375 at ``2**80``, 2522 at ``2**90``; the same with
+UPML 1407 at ``2**90``, with PEC/PMC faces 1342 of 1815; the graded lane 0
+at ``2**0``, 552 at ``2**20``, 2710 at ``2**40``, and 2712 on
+``forward(distributed=True)``; the 2-D ADI lane all 441 at every scale; the
+3-D ADI lane 0 at ``2**0``, the first 5 of 9261 at ``2**8`` (an objective
+of 3.2e-3, so about 1 after scaling), 4251 at ``2**30``, 7942 at ``2**60``.
+The #1357 fixture has 16 at cotangent 1.
 
-Rows that still overflow are strict xfails naming #1357 and #1325. The
-Debye/Lorentz ADE builders and the distributed slab updates are rewritten by
-open PR #1325, and are routed through the helper after it merges. The named
-builders themselves are listed in
-``tests/contracts/test_eps_r_unit_coefficient_builders.py``.
+Rows that still overflow are strict xfails naming #1357 and #1325: the
+Debye/Lorentz ADE builders and the mixed Debye+Lorentz update are rewritten
+by open PR #1325, and are routed through the helper after it merges. The
+builders are listed, and every other reader of ``EPS_0`` in ``rfx/`` is
+accounted for, in ``tests/contracts/test_eps_r_unit_coefficient_builders.py``.
 """
 from __future__ import annotations
 
@@ -36,6 +40,7 @@ import pytest
 
 import rfx.adi
 import rfx.boundaries.cpml
+import rfx.boundaries.upml
 import rfx.core.yee
 import rfx.lumped
 import rfx.materials.thin_conductor
@@ -58,9 +63,13 @@ DX = 1e-3
 REL_TOL = 1e-5
 
 # log2 of the cotangent on L, per lane: (small, large). The large one is past
-# where origin/main overflowed; on the 2-D ADI lane both were.
-SCALES = {"uniform": (0, 90), "nu": (-40, 40), "distributed_nu": (-40, 40),
-          "adi_2d": (0, 60)}
+# where origin/main overflowed; on the 2-D ADI lane both were. "upml" and
+# "walls" are the uniform lane with other boundaries: UPML's own E
+# coefficients (1407 non-finite cells at 2**90 before they were routed), and
+# PEC/PMC faces, which have no coefficient builder of their own.
+SCALES = {"uniform": (0, 90), "upml": (0, 90), "walls": (0, 90),
+          "nu": (-40, 40), "distributed_nu": (-40, 40),
+          "adi_2d": (0, 60), "adi_3d": (0, 60)}
 
 DEFERRED_1325 = pytest.mark.xfail(
     strict=True, raises=AssertionError,
@@ -70,9 +79,14 @@ DEFERRED_1325 = pytest.mark.xfail(
 
 
 def _model(lane, material):
-    kw = {}
+    kw = {"boundary": "cpml"}
     if lane in ("nu", "distributed_nu"):
         kw["dx_profile"] = np.array([1.0, 0.9, 0.8, 0.9, 1.0, 1.0]) * DX
+    if lane == "upml":
+        kw["boundary"] = "upml"
+    if lane == "walls":
+        kw["boundary"] = BoundarySpec(x=Boundary(lo="pec", hi="cpml"),
+                                      y=Boundary(lo="pmc", hi="cpml"), z="cpml")
     if lane.startswith("adi"):
         three_d = lane == "adi_3d"
         sim = Simulation(freq_max=10e9, domain=(12e-3, 12e-3, 12e-3 if three_d else DX),
@@ -87,7 +101,7 @@ def _model(lane, material):
         sim.add_probe((8e-3, 6e-3, z), "ez")
         return sim
     sim = Simulation(freq_max=15e9, domain=(6e-3, 6e-3, 6e-3), dx=DX,
-                     cpml_layers=4, boundary="cpml", **kw)
+                     cpml_layers=4, **kw)
     if material != "vacuum":
         mat = dict(eps_r=3.0, sigma=0.5 if material == "sigma" else 0.0)
         if material in ("debye", "debye+lorentz"):
@@ -155,21 +169,31 @@ def test_issue_1357_fixture_gradient_is_finite():
 
 
 # Each model is half vacuum (sigma = 0, where 0*inf became NaN) and half a
-# lossy or dispersive slab, inside CPML.
+# lossy or dispersive slab, inside CPML (or UPML, or PEC/PMC and CPML faces).
+# The dispersive rows are split by pole kind so that, once #1325 lands and
+# init_debye / init_lorentz are routed, a row that starts passing names the
+# builder that did it: a Debye-only or Lorentz-only model uses that builder's
+# own ca/cb, a model with both uses the mixed update (dt/gamma_total).
 @pytest.mark.parametrize("lane, material", [
     ("uniform", "sigma"),
+    ("upml", "sigma"),
+    ("walls", "sigma"),
     ("nu", "sigma"),
     ("adi_2d", "sigma"),
+    ("adi_3d", "sigma"),
+    ("distributed_nu", "sigma"),
+    pytest.param("uniform", "debye", marks=DEFERRED_1325),
+    pytest.param("uniform", "lorentz", marks=DEFERRED_1325),
     pytest.param("uniform", "debye+lorentz", marks=DEFERRED_1325),
-    pytest.param("distributed_nu", "sigma", marks=DEFERRED_1325),
+    pytest.param("nu", "debye+lorentz", marks=DEFERRED_1325),
 ])
 def test_gradient_is_scale_invariant(lane, material, request):
     kw = {}
     if lane == "distributed_nu":
         kw = dict(distributed=True, devices=request.getfixturevalue("two_devices"))
     exps = SCALES[lane]
-    grads = _gradients(lambda: _model(lane, material), exps,
-                       n_steps=24 if lane.startswith("adi") else 40, **kw)
+    n_steps = {"adi_2d": 24, "adi_3d": 16}.get(lane, 40)
+    grads = _gradients(lambda: _model(lane, material), exps, n_steps=n_steps, **kw)
     _assert_finite_and_scale_invariant(grads, exps)
 
 
@@ -204,6 +228,9 @@ def _builder_cases():
     cpml_2d = jax.tree.map(
         lambda a: jnp.asarray(rng.standard_normal(a.shape), jnp.float32), cpml_2d)
     sheet = jnp.full(shape, 4e4, jnp.float32).at[0].set(0.0)
+    upml_grid = Simulation(freq_max=15e9, domain=(3e-3, 3e-3, 3e-3), dx=DX,
+                           boundary="upml", cpml_layers=3)._build_grid()
+    m3 = _materials(rng, upml_grid.shape)
     return {
         "e_update_coeffs": (
             lambda e: rfx.core.yee.e_update_coeffs(e, mats.sigma, dt), mats.eps_r, 1e24),
@@ -231,13 +258,16 @@ def _builder_cases():
         "edge_update_denominator": (
             lambda e: rfx.lumped.edge_update_denominator(
                 mats._replace(eps_r=e), (2, 3, 3), "ez", dt), mats.eps_r, 1e30),
+        "init_upml": (
+            lambda e: rfx.boundaries.upml.init_upml(
+                upml_grid, m3._replace(eps_r=e))[:6], m3.eps_r, 1e24),
     }
 
 
 @pytest.mark.parametrize("name", [
     "e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv",
     "adi_step_2d", "adi_step_3d", "apply_adi_cpml_2d", "sheet_update_coeffs",
-    "edge_update_denominator"])
+    "edge_update_denominator", "init_upml"])
 def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
     """The builder's eps VJP at a cotangent past its SI overflow is finite
     and is exactly ``2**100`` times the VJP at ``2**-100`` of it."""
@@ -262,7 +292,9 @@ def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
 
 # --- forward bits: the helper is transparent -----------------------------
 
-_IMPORTERS = (rfx.core.yee, rfx.boundaries.cpml, rfx.adi,
+# The modules that import the helper by name. The distributed runners import
+# it inside their CPML functions, from rfx.core.yee, at call time.
+_IMPORTERS = (rfx.core.yee, rfx.boundaries.cpml, rfx.boundaries.upml, rfx.adi,
               rfx.materials.thin_conductor, rfx.lumped)
 
 
@@ -270,20 +302,31 @@ def _si_only(si_fn, eps_r_fn, *args):
     return si_fn(*args)
 
 
-@pytest.mark.parametrize("lane", ["uniform", "nu", "adi_3d"])
-def test_forward_bits_are_the_si_spelling(lane, monkeypatch):
+@pytest.mark.parametrize("lane", ["uniform", "upml", "nu", "distributed_nu",
+                                  "adi_2d", "adi_3d"])
+def test_forward_bits_are_the_si_spelling(lane, monkeypatch, request):
     """A forward run is bit-identical to the same run with the helper replaced
-    by its SI function, i.e. to the arithmetic before #1357. On the 3-D ADI
-    lane a value-level combination (``stop_gradient(si) + (r - stop_gradient(r))``,
-    exactly ``si`` in isolation) moved the trace by 1.6e-6 of its peak,
-    because XLA's algebraic simplifier rewrote the SI arithmetic differently
-    once the graph had changed."""
+    by its SI function: the helper adds nothing to the forward graph. On the
+    3-D ADI lane a value-level combination (``stop_gradient(si) + (r -
+    stop_gradient(r))``, exactly ``si`` in isolation) moved the trace by
+    1.6e-6 of its peak, because XLA's algebraic simplifier rewrote the SI
+    arithmetic differently once the graph had changed.
+
+    What this does not pin: the builders' own refactors (the SI arithmetic
+    moved into ``*_si`` functions, ``update_e_aniso`` through
+    ``e_update_coeffs``, the ADI 2-D ``ce`` hoist, UPML's ``eps_0`` moved into
+    its spellings) against the code before #1357. Those were compared with
+    ``origin/main`` once, bitwise, when #1357 was reviewed."""
+    kw = {}
+    if lane == "distributed_nu":
+        kw = dict(distributed=True, devices=request.getfixturevalue("two_devices"))
+
     def run():
         # No override: the materials are compile-time constants, which is
         # where the simplifier acts (a traced eps_override leaves it nothing
         # to fold).
         return np.asarray(_model(lane, "sigma").forward(
-            n_steps=40, skip_preflight=True).time_series)
+            n_steps=40, skip_preflight=True, **kw).time_series)
 
     got = run()
     for module in _IMPORTERS:

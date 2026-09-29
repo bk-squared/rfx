@@ -273,8 +273,8 @@ def edge_update_denominator(materials, cell, component, dt,
     eps_r, sigma = cell_component_e_materials(materials, cell, component,
                                               periodic)
     if as_float:
-        eps_r, sigma = float(eps_r), float(sigma)
-        return eps_r * EPS_0 / dt + sigma / 2.0
+        # Python floats: host arithmetic, nothing on a tape.
+        return _denominator_si(float(eps_r), float(sigma), dt)
     # #1357: these bits; the derivative with EPS_0/dt grouped as one factor,
     # so the cotangent is not first multiplied by 1/dt ~ 5e11.
     return si_value_eps_r_grad(_denominator_si, _denominator_eps_r,

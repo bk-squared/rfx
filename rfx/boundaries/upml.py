@@ -34,7 +34,8 @@ import numpy as np
 
 from rfx.boundaries.cpml import _get_axis_cell_sizes
 from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, _shift_bwd,
-                          _shift_fwd, cell_owned_component_materials)
+                          _shift_fwd, cell_owned_component_materials,
+                          si_value_eps_r_grad)
 
 
 class UPMLCoeffs(NamedTuple):
@@ -159,6 +160,41 @@ def _axis_sigma_E_H(grid, axis: str) -> tuple[jnp.ndarray, jnp.ndarray]:
     raise ValueError(f"Unsupported axis {axis!r}")
 
 
+def _upml_e_coeffs_si(sigma_perp, eps_r, sigma_mat, dt):
+    """``(Ca, Cb)`` of the UPML E update, SI spelling.
+
+    ``sigma_perp`` is the PML's perpendicular conductivity (its loss is
+    ``sigma_perp*dt/(2*EPS_0)``, material-independent), ``eps_r`` and
+    ``sigma_mat`` the material's. ``dt`` is a float32 scalar.
+    """
+    eps_0 = jnp.float32(EPS_0)
+    eps_abs = eps_r * eps_0
+    loss_pml = sigma_perp * dt / (jnp.float32(2.0) * eps_0)
+    loss_mat = sigma_mat * dt / (jnp.float32(2.0) * eps_abs)
+    loss = loss_pml + loss_mat
+    denom = jnp.float32(1.0) + loss
+    ca = (jnp.float32(1.0) - loss) / denom
+    cb = (dt / eps_abs) / denom
+    return ca.astype(jnp.float32), cb.astype(jnp.float32)
+
+
+def _upml_e_coeffs_eps_r(sigma_perp, eps_r, sigma_mat, dt):
+    """:func:`_upml_e_coeffs_si` written in eps_r units (#1357).
+
+    ``k = dt/(2*EPS_0)``: ``loss = sigma_perp*k + sigma_mat*k/eps_r`` and
+    ``Cb = (dt/EPS_0) / (eps_r*(1 + sigma_perp*k) + sigma_mat*k)``, the SI
+    ``(dt/eps_abs)/(1 + loss)`` with ``eps_abs = eps_r*EPS_0`` cancelled, so
+    no SI-sized factor multiplies a cotangent.
+    """
+    k = dt / (2.0 * EPS_0)
+    loss_pml = sigma_perp * k
+    loss_mat = sigma_mat * k / eps_r
+    loss = loss_pml + loss_mat
+    ca = (1.0 - loss) / (1.0 + loss)
+    cb = (dt / EPS_0) / (eps_r * (1.0 + loss_pml) + sigma_mat * k)
+    return ca.astype(jnp.float32), cb.astype(jnp.float32)
+
+
 def init_upml(
     grid,
     materials: MaterialArrays,
@@ -194,7 +230,6 @@ def init_upml(
     eps_r_c, sigma_c = cell_owned_component_materials(materials)
     sigma_mat_c = tuple(s_.astype(jnp.float32) for s_ in sigma_c)
     dt = jnp.float32(grid.dt)
-    eps_0 = jnp.float32(EPS_0)
 
     # Per-axis inverse cell-size broadcasts.  On NonUniformGrid these are
     # arrays we reshape into (nx,1,1) / (1,ny,1) / (1,1,nz); on the
@@ -219,31 +254,28 @@ def init_upml(
     inv_dy_h = _inv_broadcast("inv_dy_h", 1)
     inv_dz_h = _inv_broadcast("inv_dz_h", 2)
 
+    # Each component's relative permittivity; _upml_e_coeffs_si multiplies
+    # it by eps_0 as this function used to here.
     if aniso_eps is not None:
-        eps_ex, eps_ey, eps_ez = aniso_eps
-        eps_abs_ex = eps_ex.astype(jnp.float32) * eps_0
-        eps_abs_ey = eps_ey.astype(jnp.float32) * eps_0
-        eps_abs_ez = eps_ez.astype(jnp.float32) * eps_0
+        eps_ex, eps_ey, eps_ez = (e_.astype(jnp.float32) for e_ in aniso_eps)
     else:
-        eps_abs_ex, eps_abs_ey, eps_abs_ez = (e_ * eps_0 for e_ in eps_r_c)
+        eps_ex, eps_ey, eps_ez = eps_r_c
 
     # Perpendicular σ: E_x gets damping from y,z PML (using E-position σ)
     sigma_perp_ex = sEy + sEz
     sigma_perp_ey = sEx + sEz
     sigma_perp_ez = sEx + sEy
 
-    def _e_coeffs(sigma_perp, eps_abs, sigma_mat):
-        loss_pml = sigma_perp * dt / (jnp.float32(2.0) * eps_0)
-        loss_mat = sigma_mat * dt / (jnp.float32(2.0) * eps_abs)
-        loss = loss_pml + loss_mat
-        denom = jnp.float32(1.0) + loss
-        ca = (jnp.float32(1.0) - loss) / denom
-        cb = (dt / eps_abs) / denom
-        return ca.astype(jnp.float32), cb.astype(jnp.float32)
+    def _e_coeffs(sigma_perp, eps_r, sigma_mat):
+        # #1357: the SI spelling's bits (:func:`_upml_e_coeffs_si`), the
+        # eps_r-unit derivative. ``dt / eps_abs`` handed the cotangent a
+        # factor (eps_r*EPS_0)**-2 ~ 1.3e22 and overflowed float32.
+        return si_value_eps_r_grad(_upml_e_coeffs_si, _upml_e_coeffs_eps_r,
+                                   sigma_perp, eps_r, sigma_mat, dt)
 
-    ca_ex, cb_ex = _e_coeffs(sigma_perp_ex, eps_abs_ex, sigma_mat_c[0])
-    ca_ey, cb_ey = _e_coeffs(sigma_perp_ey, eps_abs_ey, sigma_mat_c[1])
-    ca_ez, cb_ez = _e_coeffs(sigma_perp_ez, eps_abs_ez, sigma_mat_c[2])
+    ca_ex, cb_ex = _e_coeffs(sigma_perp_ex, eps_ex, sigma_mat_c[0])
+    ca_ey, cb_ey = _e_coeffs(sigma_perp_ey, eps_ey, sigma_mat_c[1])
+    ca_ez, cb_ez = _e_coeffs(sigma_perp_ez, eps_ez, sigma_mat_c[2])
 
     # H perpendicular: use H-position σ
     sigma_perp_hx = sHy + sHz
@@ -251,6 +283,7 @@ def init_upml(
     sigma_perp_hz = sHx + sHy
 
     def _h_coeffs(sigma_perp):
+        eps_0 = jnp.float32(EPS_0)
         loss = sigma_perp * dt / (jnp.float32(2.0) * eps_0)
         denom = jnp.float32(1.0) + loss
         da = (jnp.float32(1.0) - loss) / denom
