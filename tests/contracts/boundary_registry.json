@@ -131,6 +131,11 @@
   ],
   "sites": [
     {
+      "file": "rfx/_radiated_power.py",
+      "function": "integrate_radiated_power",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/adi.py",
       "function": "_apply_pec_2d",
       "kind": "boundary"
