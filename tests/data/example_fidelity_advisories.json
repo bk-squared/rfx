@@ -37,7 +37,7 @@
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:268-271,455-461,518-523",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-283,467-473,530-535",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },

@@ -31,13 +31,16 @@ air.  This tutorial shows the practical recipe AND the trap that comes with it:
      faces with the cells between them shorted — and is the right one for a
      plate, an iris or a post.
 
-  Rule 4 — A PROPERLY RESOLVED PATCH IS MULTI-MODE.  Once the substrate is
-     truly 6 cells, harminv shows the patch's real modes: TM01 on the 38 mm
-     width and TM10 on the 29.5 mm length at comparable amplitude, plus a
-     higher mode.  Picking "the mode closest to the textbook estimate" is
-     mode-AMBIGUOUS; identifying the RADIATING mode needs the far field —
-     see ``examples/tutorials/patch_antenna_demo.py`` for that workflow.
-     This script prints the full mode list and gates on no single frequency.
+  Rule 4 — WHICH MODES YOU SEE DEPENDS ON WHERE THE FEED IS.  The probe
+     feed sits on the patch's y centre line, 8 mm in from one radiating edge.
+     The modes that vary across the 38 mm width (TM01, TM11) have a null on
+     that line and are not excited, so the list shows TM10 on the 29.5 mm
+     length (the design mode) and TM02.  Before #1383 the feed snapped 0.5 mm
+     off the centre line and TM01/TM11 appeared: excited by the snapping, not
+     by the drawn design.  A one-probe mode list says what the feed excites,
+     not which mode radiates; identifying the RADIATING mode needs the far
+     field — see ``examples/tutorials/patch_antenna_demo.py``.  This script
+     prints the full mode list and gates on no single frequency.
 
 Historical measurements before x/y registration (#1383):
 
@@ -70,8 +73,8 @@ Measurements after x/y registration (#1383), 200 periods, one CPU node
 (VESSL base-pod on remilab-r02, JAX 0.6.2), all harminv modes printed:
 
     this script (12 mm margin, x/y registered; VESSL 369367266090):
-        2.3642 GHz  Q =  44.4
-        3.7062 GHz  Q = 115.1
+        2.3642 GHz  Q =  44.4   TM10 on the 29.5 mm length — the design mode
+        3.7062 GHz  Q = 115.1   TM02 on the 38 mm width
         settling -42.5 dB, 1969.5 s of FDTD
     the pre-registration script re-run on the same node (10 mm margin,
     uniform x/y; VESSL 369367266088):
@@ -80,6 +83,15 @@ Measurements after x/y registration (#1383), 200 periods, one CPU node
         3.1629 GHz  Q =  86.6
         3.7380 GHz  Q = 114.4
         settling -41.7 dB, 1542.0 s of FDTD
+    the pre-registration script with only the margin widened to 12 mm
+    (VESSL 369367266089) moves every mode by <= 0.01 %: the margin and the
+    absorber are not what moved the modes.
+
+TM10 fell 2.6 % (2.4276 -> 2.3642 GHz) because the patch is now solved at its
+drawn 29.5 mm instead of 28.7 mm; with the fringing extension of 0.69 mm per
+edge the ratio (28.7 + 1.38) / (29.5 + 1.38) predicts -2.59 % (derived).
+TM02 fell 0.85 % with the width going from 37.7 to 38 mm.  TM01 and TM11 left
+the list because the feed now sits on the y centre line (Rule 4).
 
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
@@ -519,14 +531,13 @@ def main() -> None:
     for m in modes:
         print(f"  f = {m.freq/1e9:.4f} GHz   Q = {m.Q:5.1f}   amp = {m.amplitude:.2e}")
     print("""
-  Reading this honestly (Rule 4): with the substrate truly resolved to 6 cells
-  the patch shows its REAL modes — the lower one lives on the wider W=38 mm
-  dimension (TM01), the middle on L=29.5 mm (TM10, the radiating design mode),
-  plus a higher-order mode.  Their amplitudes at a single probe are comparable,
-  so "strongest" or "closest to the textbook number" would be an arbitrary,
-  geometry-sensitive pick.  Identifying the RADIATING mode takes a far-field
-  criterion (broadside beam + radiated power) — that workflow lives in
-  examples/tutorials/patch_antenna_demo.py.""")
+  Reading this honestly (Rule 4): the feed sits on the patch's y centre line,
+  where the modes that vary across the 38 mm width (TM01, TM11) have a null, so
+  the list shows TM10 on L=29.5 mm (the radiating design mode) and TM02.  Which
+  modes a single probe sees depends on where the feed is, so "strongest" or
+  "closest to the textbook number" would be an arbitrary pick.  Identifying the
+  RADIATING mode takes a far-field criterion (broadside beam + radiated power)
+  — that workflow lives in examples/tutorials/patch_antenna_demo.py.""")
 
     print(f"  Pass criterion of THIS tutorial: the substrate rasterized to "
           f"{n_sub} fine cells (asserted in [2]) — the mesh lesson, not a "
