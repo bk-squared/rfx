@@ -68,7 +68,6 @@ def test_code_prose_and_images_are_not_data(path: str) -> None:
     "docs/design_notes/schemas/rfx-design-ir-v2.schema.json",
     "docs/public/site_map.json",
     "docs/public/gallery/assets/patch_antenna/sparams.s1p",
-    "scripts/ops/gpu_suite_shards.json",
     "tests/contracts/boundary_registry.json",
     "tests/fixtures/a.json",
     "tests/fixtures/deep/er/a.npz",
