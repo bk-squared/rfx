@@ -77,10 +77,12 @@ def test_measured_reflections_are_quoted_without_interpolation(depth, rows):
     # constants. Extract the microwave quantities instead of locking prose.
     values = re.findall(
         r"(\d+) layers: (-?\d+) dB at 2 GHz, (-?\d+) dB at 10 GHz, "
-        r"(-?\d+) dB at 30 GHz, (-?\d+) dB below 1 GHz", issue)
+        r"(-?\d+ dB|not measured) at 30 GHz, (-?\d+) dB below 1 GHz", issue)
+    # No 8-layer record reaches 30 GHz (the direct runs stop at 20 GHz).
     reference = {4: (-20, -23, -17, -6), 6: (-38, -41, -32, -13),
-                 8: (-60, -61, -50, -21)}
-    got = {int(n): tuple(map(int, reflections)) for n, *reflections in values}
+                 8: (-60, -61, None, -21)}
+    got = {int(n): tuple(None if r == "not measured" else int(r.split()[0])
+                         for r in reflections) for n, *reflections in values}
     assert got == {n: reference[n] for n in rows}
     assert "1 mm cells" in issue
     if depth not in (4, 6):

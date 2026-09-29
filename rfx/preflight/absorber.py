@@ -1366,10 +1366,12 @@ _validate_cfg_port_conductor_continues.__qualname__ = (
 
 # CPML reference measurements at 1 mm cells with the shipped CFS alpha
 # (#1272 / #1346): 2, 10, 30 GHz and below 1 GHz, respectively, in dB.
+# None: not measured (the 8-layer records stop at 20 GHz; rfx-archive
+# rfx/records/20260928-1272-cfs-alpha, direct/L8-dx0.001).
 _ABSORBER_REFLECTION_DB = {
     4: (-20, -23, -17, -6),
     6: (-38, -41, -32, -13),
-    8: (-60, -61, -50, -21),
+    8: (-60, -61, None, -21),
 }
 
 
@@ -1427,8 +1429,9 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
         rows = []
         for depth in sorted(reference_depths):
             r2, r10, r30, rlow = _ABSORBER_REFLECTION_DB[depth]
+            at30 = "not measured" if r30 is None else f"{r30} dB"
             rows.append(f"{depth} layers: {r2} dB at 2 GHz, {r10} dB at 10 GHz, "
-                        f"{r30} dB at 30 GHz, {rlow} dB below 1 GHz")
+                        f"{at30} at 30 GHz, {rlow} dB below 1 GHz")
         messages.append("CPML reference reflections measured at 1 mm cells with "
                         "the shipped CFS alpha (#1272, #1346): " + "; ".join(rows)
                         + ". These reference values do not predict reflection "
