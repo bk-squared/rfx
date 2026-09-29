@@ -5,8 +5,10 @@
 #      claude-workspace/rfx/checkouts/gpu-suite-<sha>/
 #   2. render one VESSL YAML per shard (scripts/ops/gpu_suite_shards.json) and
 #      submit them all -- each shard gets its own RTX 4090
-#   3. poll until every run is terminal; harvest each full log to
-#      ~/Documents/vessl-run-logs/ and delete the run (run hygiene)
+#   3. poll until every run is terminal; back up each provider log to
+#      ~/Documents/vessl-run-logs/ and delete the run (run hygiene). The VESSL
+#      server returns only the tail of a long log, so the backup of a long shard
+#      is cut (--allow-truncated); the full pytest log and JUnit are on NFS
 #   4. fold the shard JUnit files into one markdown report, keep it under
 #      ~/Documents/rfx-ops/reports/, and post it as a comment on the standing
 #      GitHub issue "Weekly GPU suite (remilab-c0)" -- creating the issue once
@@ -95,7 +97,10 @@ for i in $(seq 1 120); do            # up to 6 h at 3-minute polls
 done
 for id in "${RUN_IDS[@]}"; do
   is_done "$id" || { echo "run $id still not terminal after 6 h; left in place"; continue; }
-  bash "$HARVEST" "$id" "gpu-suite-$STAMP" >/dev/null 2>&1 || echo "harvest failed for $id (run left in place)"
+  # harvest.sh needs a mode since 2026-09-29 (the two-argument form exits 2 and does nothing):
+  # shards are throwaway runs whose full output is on NFS, so delete and accept a cut log.
+  bash "$HARVEST" "$id" "gpu-suite-$STAMP" delete --allow-truncated >/dev/null 2>&1 \
+    || echo "harvest failed for $id (exit $?; run left in place, see harvest.sh exit codes 2-7)"
 done
 
 # --- 4. report + signal --------------------------------------------------
