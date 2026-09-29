@@ -18,6 +18,7 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 
 from __future__ import annotations
 
+from functools import partial
 from types import SimpleNamespace
 
 from typing import NamedTuple
@@ -2476,8 +2477,18 @@ class _NUScanSetup(NamedTuple):
     :func:`run_nonuniform_until_decay` (chunked host loop). This tuple
     never crosses a JAX transform boundary — ``step_fn`` is a Python
     closure and the ``use_*`` flags are Python bools.
+
+    ``step_fn_inv(carry, xs, invariants)`` is the same step taking the
+    per-cell arrays it reads (materials, PEC edge masks and occupancy, the
+    CPML permittivity, dispersion, anisotropic, sheet and design-box
+    coefficients) as ``invariants``; ``step_fn`` is it with ``invariants``
+    bound. A jitted loop passes them as an argument (see
+    :func:`rfx.core.jax_utils.split_loop_invariants`) instead of compiling
+    them into the program as grid-sized constants.
     """
     step_fn: object
+    step_fn_inv: object
+    invariants: dict
     carry_init: dict
     src_waveforms: jnp.ndarray
     dt: object
@@ -2846,7 +2857,36 @@ def _build_nu_scan(
     else:
         _cpml_inv_eps_r = None
 
-    def step_fn(carry, xs):
+    # The per-cell arrays the step reads reach it through ``invariants`` so
+    # that a jitted loop can pass them as an argument (_NUScanSetup). The
+    # CPML profiles and spacing vectors stay in the closure: they are not
+    # grid-sized.
+    invariants = {
+        "materials": materials,
+        "pec_edge_masks": pec_edge_masks,
+        "pec_occupancy": pec_occupancy,
+        "pec_static_edge_masks": pec_static_edge_masks,
+        "cpml_inv_eps_r": _cpml_inv_eps_r,
+        "debye_coeffs": debye_coeffs if use_debye else None,
+        "lorentz_coeffs": lorentz_coeffs if use_lorentz else None,
+        "aniso_eps": aniso_eps,
+        "sheet_impedance": sheet_impedance,
+        "sheet_coeffs": sheet_coeffs if use_sheet_impedance else None,
+        "design_box_coeffs": design_box_coeffs,
+    }
+
+    def step_fn(carry, xs, invariants):
+        materials = invariants["materials"]
+        pec_edge_masks = invariants["pec_edge_masks"]
+        pec_occupancy = invariants["pec_occupancy"]
+        pec_static_edge_masks = invariants["pec_static_edge_masks"]
+        _cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
+        debye_coeffs = invariants["debye_coeffs"]
+        lorentz_coeffs = invariants["lorentz_coeffs"]
+        aniso_eps = invariants["aniso_eps"]
+        sheet_impedance = invariants["sheet_impedance"]
+        sheet_coeffs = invariants["sheet_coeffs"]
+        design_box_coeffs = invariants["design_box_coeffs"]
         step_idx, src_vals = xs
         st = carry["fdtd"]
         # #1163: E^n at each lumped RLC edge, read before the E update (the
@@ -3214,7 +3254,9 @@ def _build_nu_scan(
         return new_carry, probe_out
 
     return _NUScanSetup(
-        step_fn=step_fn,
+        step_fn=partial(step_fn, invariants=invariants),
+        step_fn_inv=step_fn,
+        invariants=invariants,
         carry_init=carry_init,
         src_waveforms=src_waveforms,
         dt=dt,
@@ -3892,7 +3934,6 @@ def run_nonuniform_until_decay(
         sheet_impedance=sheet_impedance,
         design_box=design_box,
     )
-    step_fn = setup.step_fn
     carry = setup.carry_init
 
     # Source table: pad/truncate to max_steps so every chunk slice is
@@ -3906,10 +3947,17 @@ def run_nonuniform_until_decay(
         src_waveforms = src_waveforms[:max_steps]
 
     # One compiled program per chunk length: full chunks share one XLA
-    # executable; the final partial chunk (if any) compiles once more.
+    # executable; the final partial chunk (if any) compiles once more. The
+    # per-cell arrays are an argument, not constants compiled into it.
+    from rfx.core.jax_utils import split_loop_invariants
+    inv_args, inv_rebuild = split_loop_invariants(
+        setup.invariants, (grid.nx, grid.ny, grid.nz))
+    step_fn_inv = setup.step_fn_inv
+
     @jax.jit
-    def _run_chunk(carry_in, xs):
-        return jax.lax.scan(step_fn, carry_in, xs)
+    def _run_chunk(carry_in, xs, inv_args):
+        step = partial(step_fn_inv, invariants=inv_rebuild(inv_args))
+        return jax.lax.scan(step, carry_in, xs)
 
     # Non-CPML interior slice bounds + per-cell primal volume dV
     # (Python ints / concrete arrays — the reduction below is host-side;
@@ -3985,7 +4033,7 @@ def run_nonuniform_until_decay(
             jnp.arange(steps_done, steps_done + this_chunk, dtype=jnp.int32),
             src_waveforms[steps_done:steps_done + this_chunk],
         )
-        carry, ys = _run_chunk(carry, xs)
+        carry, ys = _run_chunk(carry, xs, inv_args)
         ys_chunks.append(ys)
         steps_done += this_chunk
         if reporter is not None and (

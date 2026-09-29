@@ -109,8 +109,6 @@ COAX_FILES = (
     "tests/oracle/test_coax_chain_battery.py "
     "tests/oracle/test_coax_open_end_settles.py "
     "tests/locks/test_coax_chain_battery_drift.py "
-    "tests/crossval/test_coax_broad_e5_envelope_gates.py "
-    "tests/crossval/test_coax_broad_e4_comparison_gates.py"
 )
 
 # Contract tests that build scratch repositories with ``git init -b``, which the

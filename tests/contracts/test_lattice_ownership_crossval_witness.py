@@ -160,18 +160,11 @@ _RETIRED = (
 # a file that names it in order to REFUSE it, and a file whose subject is the
 # history of its removal.
 _ALLOWED = {
-    "tests/crossval/test_lattice_ownership_crossval_witness.py":
+    "tests/contracts/test_lattice_ownership_crossval_witness.py":
         "this file — it names the tokens in order to forbid them",
-    "tests/crossval/test_meep_crossval.py":
-        "asserts the two retired symbols are GONE from rfx.boundaries.pec "
-        "(`for gone in (...): assert not hasattr(...)`), so it must name them; "
-        "it imports neither and re-implements nothing",
     # --- prose only: each names the retired flag to say what it USED to do
     # and why the committed number moves. None imports or re-derives anything;
     # all read realized_pec_edge_masks / realized_wall_planes.
-    "tests/crossval/test_patch_canonical_farfield_e4.py":
-        "one comment (:147) citing the #740 arm's -4.7% as the prediction the "
-        "post-#931 measurement was checked against",
     # 2026-09-24: the RT/Duroid 5880 patch case's script and its two old tests
     # (the wall-plane test and the mode-identification test) left with the
     # case, rebuilt as tests/crossval/rt5880_patch/; their rows went with them.

@@ -618,8 +618,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml",
                                 "a waveguide port needs a CPML face, which production validation refuses"),
         run_adi=ADI_PORTS,
-        run_distributed=falls_back("run_uniform", "one device, with a warning; an explicit "
-                                   "conformal_pec=False is overridden there (#1305)"),
+        run_distributed=falls_back("run_uniform", "one device, with a warning and every "
+                                   "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=refuses("waveguide ports refused",
@@ -690,8 +690,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("subgrid_overlaps_absorber",
                                 "a plane wave needs CPML, which production validation refuses"),
         run_adi=_adi("TFSF", "does not support TFSF sources"),
-        run_distributed=falls_back("run_uniform", "one device, with a warning; an explicit "
-                                   "conformal_pec=False is overridden there (#1305)"),
+        run_distributed=falls_back("run_uniform", "one device, with a warning and every "
+                                   "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=refuses("TFSF refused off the uniform forward lane",
                                raises="Differentiable TFSF plane-wave forward is supported only"),

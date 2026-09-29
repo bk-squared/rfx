@@ -537,6 +537,23 @@ def fidelity_report(sim, print_report: bool = True):
     # cells (a sheet contributes neither cells nor eps).
     pec_sheet_entities: set = set()
 
+    # Every entry's #931 sheet resolution, once, and the union of the PEC
+    # sheet footprints: a sheet end that runs on into another sheet is a
+    # seam, not a free edge, in the shared solved-edge model
+    # (rfx.mesh_edges.solved_sheet_span, #1375).
+    sheet_specs: dict = {}
+    sheet_union = None
+    for kind_src, i, entry in entries:
+        try:
+            entry.shape.bounding_box()
+        except Exception:
+            continue
+        spec = _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform)
+        sheet_specs[(kind_src, i)] = spec
+        if spec is not None:
+            fp = np.asarray(spec.footprint, dtype=bool)
+            sheet_union = fp.copy() if sheet_union is None else (sheet_union | fp)
+
     for kind_src, i, entry in entries:
         if kind_src == "thin_conductor":
             sig = float(getattr(entry, "sigma_bulk", 0.0))
@@ -584,7 +601,7 @@ def fidelity_report(sim, print_report: bool = True):
         # footprint on ONE node plane — not the cells the (node-sampled)
         # entity mask happens to touch. Resolved before the per-axis rows so
         # they report the plane, not a spurious one-cell z extent.
-        sheet_spec = _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform)
+        sheet_spec = sheet_specs[(kind_src, i)]
         sheet_fp = (np.asarray(sheet_spec.footprint, dtype=bool)
                     if sheet_spec is not None else None)
         # #931 §1.1: a PEC VOLUME is realized from cell CENTRES, so the row
@@ -796,8 +813,18 @@ def fidelity_report(sim, print_report: bool = True):
             if sheet_fp is not None:
                 # NODE bounds, closed: a sheet's footprint is a set of
                 # nodes, and on its normal axis i0 == i1 == the plane, so
-                # the row reads "declared plane -> realized plane".
+                # the row reads "declared plane -> realized plane". On an
+                # in-plane axis the realized ends are where the solve puts
+                # them: a free edge EDGE_OFFSET of the outside cell beyond
+                # its last node (the shared solved-edge model, #1375).
                 r_lo, r_hi = float(nodes[a][i0]), float(nodes[a][i1])
+                if a != int(sheet_spec.normal_axis):
+                    from rfx.mesh_edges import solved_sheet_span
+                    span = solved_sheet_span(
+                        sheet_fp, a, nodes[a], float(lo[a]), float(hi[a]),
+                        float(domain[a]), union=sheet_union)
+                    if span is not None:
+                        r_lo, r_hi = span.lo, span.hi
             else:
                 r_lo, r_hi = float(nodes[a][i0]), float(nodes[a][i1 + 1])
             d_lo, d_hi = float(lo[a]), float(hi[a])
