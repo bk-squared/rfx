@@ -82,6 +82,7 @@ import numpy as np  # noqa: E402
 import pytest  # noqa: E402
 
 from rfx import Box, DebyePole, GaussianPulse, Simulation  # noqa: E402
+from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.core.yee import (  # noqa: E402
     MaterialArrays, cell_owned_component_materials, component_e_materials,
     map_lumped,
@@ -399,6 +400,62 @@ def test_the_cpml_box_agrees_with_one_device(lane, case):
         _realized_cut("cpml", 2)
     got, floor = _parity("cpml", lane, case, 2)
     _check(f"cpml/{case}/{lane}/2", got, floor)
+
+
+@pytest.mark.parametrize("lane", ["run", "fwd"])
+def test_the_thin_xhi_absorber_reads_past_the_alignment_pad(lane):
+    """An eps_r 4 fill through both x faces, 150 steps, two devices:
+    23 x cells need one alignment row and a two-cell x-hi absorber. Pad 1
+    plus this thin face is the only two-device geometry found where moving
+    the psi coefficient slice into the pad reaches the probes. One cell is
+    excluded because conducting fills have a separate defect at that depth.
+
+    Mac arm64, JAX 0.10.2, max |difference| / record peak, probe order:
+    run: 1.43e-6 / 2.57e-6 / 3.60e-7, vacuum 3.21e-6 / 3.43e-6 / 1.01e-6,
+    gates 1.29e-5 / 1.37e-5 / 4.02e-6;
+    fwd: 7.33e-7 / 2.27e-6 / 8.25e-7, vacuum 2.52e-6 / 3.27e-6 / 7.09e-7,
+    gates 1.01e-5 / 1.31e-5 / 2.84e-6 (max(FLOOR_FACTOR * floor, ROUNDING)).
+    Replacing x_hi_edge by g in the uniform kernel's xhi_ slice gives
+    1.61e-5 / 2.57e-6 / 4.25e-5: 1.249 / 0.187 / 10.566 times the gate.
+    The same edit to _apply_cpml_e_local_nu's xhi slice leaves fwd unchanged
+    and green at 0.073 / 0.174 / 0.291 times the gate.
+    """
+    devices = _devices(2)
+    boundary = BoundarySpec(
+        x=Boundary(lo="cpml", hi="cpml", lo_thickness=4, hi_thickness=2),
+        y=Boundary(lo="cpml", hi="cpml", lo_thickness=4, hi_thickness=4),
+        z=Boundary(lo="cpml", hi="cpml", lo_thickness=4, hi_thickness=4))
+    kw = dict(freq_max=10e9, domain=_mm(16, 12, 12), dx=1e-3,
+              boundary=boundary, cpml_layers=4)
+    if lane == "fwd":
+        kw["dx_profile"] = np.full(16, 1e-3)
+
+    def record(material, dev):
+        sim = Simulation(**kw)
+        sim.add_source(_mm(4, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind="current")
+        sim.add_probe(_mm(8, 6, 6), "ez")
+        sim.add_probe(_mm(6.5, 6, 5), "ey")
+        sim.add_probe(_mm(15, 6, 6), "ez")
+        if material:
+            sim.add_material("m", eps_r=4.0)
+            sim.add(Box((-1.0, 3e-3, 3e-3), (1.0, 9e-3, 7e-3)), material="m")
+        grid = sim._build_grid() if lane == "run" else sim._build_nonuniform_grid()
+        nx = grid.shape[0]
+        pad_x = (-nx) % len(devices)
+        assert nx % 2 == 1, nx
+        assert pad_x == 1, (nx, pad_x)
+        assert grid.pad_x_hi == grid.face_layers["x_hi"] == 2
+        if lane == "run":
+            out = sim.run(n_steps=150, skip_preflight=True, devices=dev)
+        else:
+            dist = {} if dev is None else dict(distributed=True, devices=dev)
+            out = sim.forward(n_steps=150, skip_preflight=True, checkpoint=False, **dist)
+        return np.asarray(out.time_series, np.float64)
+
+    got = _rel(record(True, devices), record(True, None))
+    floor = _rel(record(False, devices), record(False, None))
+    gate = _gate(floor)
+    assert all(g <= t for g, t in zip(got, gate)), (lane, got, gate, floor)
 
 
 def _matrix(n_dev, boundaries, cases, mutation=None):
