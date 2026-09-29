@@ -2080,20 +2080,18 @@ class _StepContext:
     update_rlc_element: Callable | None = None
 
 
-def make_core_step(ctx: _StepContext):
-    """Build the shared per-step Yee kernel from an explicit context.
+def core_step_invariants(ctx: _StepContext) -> dict:
+    """What :func:`make_core_step`'s kernel reads besides its arguments.
 
-    Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
-    ``(new_carry, probe_out, extras)`` where ``extras`` is a dict carrying the
-    optional per-step outputs each caller needs:
-      * ``extras["snap_fields"]`` — snapshot field list (``use_snapshot``).
-      * ``extras["monitor_val"]`` — monitored scalar (``use_monitor``).
+    ``ctx`` itself plus the two arrays derived from it once, eagerly: the
+    CPML permittivity and the surface-impedance sheet coefficients. A jitted
+    caller passes the per-cell arrays in this dict as an argument
+    (:func:`rfx.core.jax_utils.split_loop_invariants`) and hands the rebuilt
+    dict to ``make_core_step(ctx, invariants=...)`` inside the trace, so they
+    are not compiled into the program as grid-sized constants.
     """
     materials = ctx.materials
-    dt = ctx.dt
-    dx = ctx.dx
     periodic = ctx.periodic
-    grid = ctx.grid
     aniso_eps = ctx.aniso_eps
     aniso_inv_eps = ctx.aniso_inv_eps
 
@@ -2128,13 +2126,47 @@ def make_core_step(ctx: _StepContext):
     # #677 surface-impedance sheet: Holland exponential-stepping A/B built
     # once from the FINAL run materials (background eps_r/sigma at the sheet
     # cells + the ctx's sigma_sheet), applied per step at tangential edges.
+    _sheet_coeffs = None
     if ctx.use_sheet_impedance:
         from rfx.materials.thin_conductor import (
-            apply_sheet_impedance_e as _apply_sheet_e,
             sheet_update_coeffs as _sheet_update_coeffs,
         )
         _sheet_coeffs = _sheet_update_coeffs(
-            ctx.sheet_impedance.sigma_sheet, materials, dt)
+            ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
+    return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r,
+            "sheet_coeffs": _sheet_coeffs}
+
+
+def make_core_step(ctx: _StepContext, invariants: dict | None = None):
+    """Build the shared per-step Yee kernel from an explicit context.
+
+    Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
+    ``(new_carry, probe_out, extras)`` where ``extras`` is a dict carrying the
+    optional per-step outputs each caller needs:
+      * ``extras["snap_fields"]`` — snapshot field list (``use_snapshot``).
+      * ``extras["monitor_val"]`` — monitored scalar (``use_monitor``).
+
+    ``invariants`` is :func:`core_step_invariants`'s dict (built from ``ctx``
+    when omitted); a jitted caller passes one whose per-cell arrays are its
+    arguments.
+    """
+    if invariants is None:
+        invariants = core_step_invariants(ctx)
+    ctx = invariants["ctx"]
+    materials = ctx.materials
+    dt = ctx.dt
+    dx = ctx.dx
+    periodic = ctx.periodic
+    grid = ctx.grid
+    aniso_eps = ctx.aniso_eps
+    aniso_inv_eps = ctx.aniso_inv_eps
+    cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
+    _sheet_coeffs = invariants["sheet_coeffs"]
+
+    if ctx.use_sheet_impedance:
+        from rfx.materials.thin_conductor import (
+            apply_sheet_impedance_e as _apply_sheet_e,
+        )
 
     if ctx.use_current_moments:
         from rfx.current_moments import slab_e_snapshot as _slab_e_snapshot
@@ -3790,10 +3822,16 @@ def run_until_decay(
         mon_idx=mon_idx,
         snapshot_extractor=None,
     )
-    _core_step = make_core_step(_step_ctx)
+    # The per-cell arrays are an argument of the jitted step, not constants
+    # compiled into it (split_loop_invariants).
+    from rfx.core.jax_utils import split_loop_invariants
+    _inv_args, _inv_rebuild = split_loop_invariants(
+        core_step_invariants(_step_ctx), tuple(grid.shape))
 
     @jax.jit
-    def _single_step(carry_in, step_idx, src_vals, mag_src_vals):
+    def _single_step(carry_in, step_idx, src_vals, mag_src_vals, inv_args):
+        _inv = _inv_rebuild(inv_args)
+        _core_step = make_core_step(_inv["ctx"], invariants=_inv)
         new_carry, probe_out, extras = _core_step(
             carry_in, step_idx, src_vals, mag_src_vals)
         return new_carry, probe_out, extras["monitor_val"]
@@ -3922,7 +3960,8 @@ def run_until_decay(
         step_idx = jnp.array(step, dtype=jnp.int32)
         src_vals = src_waveforms[step]
         mag_src_vals = mag_src_waveforms[step]
-        carry, probe_out, monitor_val = _single_step(carry, step_idx, src_vals, mag_src_vals)
+        carry, probe_out, monitor_val = _single_step(
+            carry, step_idx, src_vals, mag_src_vals, _inv_args)
 
         all_probes.append(probe_out)
         actual_steps = step + 1
