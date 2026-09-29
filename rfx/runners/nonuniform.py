@@ -11,7 +11,7 @@ import jax.numpy as jnp
 
 from rfx.grid import C0
 from rfx.core.jax_utils import is_tracer
-from rfx.core.yee import MaterialArrays
+from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lumped
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
@@ -81,6 +81,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
     if debye is not None or lorentz is not None:
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     eps = np.asarray(cell.eps_r, dtype=np.float64)
+    volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
     live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
     components = []
     for c in range(3):
@@ -95,7 +96,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
             lower = np.maximum(np.arange(grid.shape[a]) - 1, 0)
             num = num + np.take(num, lower, axis=a)
             den = den + np.take(den, lower, axis=a)
-        out = np.asarray(materials.eps_r, dtype=np.float64).copy()
+        out = volume_eps.copy()
         np.divide(num, den, out=out, where=den > 0)
         components.append(jnp.asarray(out, dtype=materials.eps_r.dtype))
     return tuple(components)
@@ -1068,6 +1069,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         for spec in sim._lumped_rlc:
             materials = setup_rlc_materials(grid, spec, materials)
             materials_drive = setup_rlc_materials(grid, spec, materials_drive)
+
+    # Smoothing / dual averaging above builds only the volume tensor.
+    # Fold first, then put each capacitor on its own edge exactly once.
+    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
 
     sources = []
     probes = []
