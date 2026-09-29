@@ -17,6 +17,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax.numpy as jnp
+
+from rfx._precision import HIGHEST
 import numpy as np
 
 from rfx.grid import Grid, C0
@@ -1410,18 +1412,18 @@ def compute_far_field_jax(
             else:
                 dS_flat = _face_dS_jax(axis, 0, 0)
 
-        dot = r_flat @ pos_flat.T  # (n_dir, nc)
+        dot = jnp.matmul(r_flat, pos_flat.T, precision=HIGHEST)  # (n_dir, nc)
 
         phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
         dS_flat = jnp.asarray(dS_flat)  # ensure JAX array (may be Python float)
         if jnp.ndim(dS_flat) > 0:
             J_w = J * dS_flat[None, :, None]
             M_w = M * dS_flat[None, :, None]
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J_w)
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M_w)
+            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
+            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
         else:
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J) * dS_flat
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M) * dS_flat
+            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J, precision=HIGHEST) * dS_flat
+            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M, precision=HIGHEST) * dS_flat
 
     th_flat = th_hat.reshape(-1, 3)
     ph_flat = ph_hat.reshape(-1, 3)

@@ -74,6 +74,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+from rfx._precision import HIGHEST
+
 from rfx.core.yee import EPS_0
 
 C0 = 299_792_458.0
@@ -651,7 +653,7 @@ def _reduce_to_blocks(monitor: CurrentMomentMonitor, jx, jy, jz):
     m = monitor
     out = []
     for w, j in ((m.w_ex, jx), (m.w_ey, jy), (m.w_ez, jz)):
-        per_ij = jnp.einsum("wijk,ijk->ijw", w, j.astype(w.dtype))
+        per_ij = jnp.einsum("wijk,ijk->ijw", w, j.astype(w.dtype), precision=HIGHEST)
         out.append(jax.ops.segment_sum(
             per_ij.reshape(-1, w.shape[0]), m.seg,
             num_segments=m.n_blocks, indices_are_sorted=False))
@@ -847,18 +849,19 @@ def block_far_field_jax(theta, phi, centres, P, Q, T, k, order, eta=ETA_0):
     th_hat = jnp.asarray(th_hat)
     ph_hat = jnp.asarray(ph_hat)
     centres = jnp.asarray(centres)
-    ph = jnp.exp(1j * k * (r_hat @ centres.T))          # (n_dir, n_blocks)
-    N = ph @ jnp.asarray(P)
+    ph = jnp.exp(1j * k * jnp.matmul(r_hat, centres.T, precision=HIGHEST))  # (n_dir, n_blocks)
+    N = jnp.matmul(ph, jnp.asarray(P), precision=HIGHEST)
     if order >= 1 and Q is not None:
         Qj = jnp.asarray(Q)
         for a in range(3):
-            N = N + 1j * k * r_hat[:, a, None] * (ph @ Qj[:, a, :])
+            N = N + 1j * k * r_hat[:, a, None] * jnp.matmul(ph, Qj[:, a, :], precision=HIGHEST)
     if order >= 2 and T is not None:
         Tj = jnp.asarray(T)
         for a in range(3):
             for b in range(3):
                 N = N + (-(k ** 2) / 2.0) * (
-                    r_hat[:, a, None] * r_hat[:, b, None] * (ph @ Tj[:, a, b, :]))
+                    r_hat[:, a, None] * r_hat[:, b, None]
+                    * jnp.matmul(ph, Tj[:, a, b, :], precision=HIGHEST))
     jk4pi = 1j * k / (4.0 * np.pi)
     e_th = -jk4pi * eta * jnp.sum(N * th_hat, axis=1)
     e_ph = -jk4pi * eta * jnp.sum(N * ph_hat, axis=1)

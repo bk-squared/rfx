@@ -83,6 +83,7 @@ def working_dtypes():
     """``(real, complex)`` dtypes of the map: float64 only if the caller enabled x64."""
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     if bool(jax.config.read("jax_enable_x64")):
         return jnp.float64, jnp.complex128
     return jnp.float32, jnp.complex64
@@ -118,6 +119,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     K = int(k_max)
@@ -181,6 +183,7 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     both factors built on the host in float64 and cast to the working dtype.
     """
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     rdt, cdt = working_dtypes()
     n, C = int(y.shape[0]), int(y.shape[1])
     freqs = np.asarray(freqs, dtype=np.float64)
@@ -191,8 +194,9 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     z_off = np.exp(1j * np.outer(np.arange(nb, dtype=np.float64) * B, w))      # (nb, nf)
     yp = jnp.zeros((nb * B, C), dtype=rdt).at[:n].set(y.astype(rdt))
     yb = yp.reshape(nb, B, C).astype(cdt)
-    inner = jnp.einsum("fm,bmc->bfc", jnp.asarray(k_blk, dtype=cdt), yb)
-    return float(dt) * jnp.einsum("bf,bfc->fc", jnp.asarray(z_off, dtype=cdt), inner)
+    inner = jnp.einsum("fm,bmc->bfc", jnp.asarray(k_blk, dtype=cdt), yb, precision=HIGHEST)
+    return float(dt) * jnp.einsum("bf,bfc->fc", jnp.asarray(z_off, dtype=cdt), inner,
+                                      precision=HIGHEST)
 
 
 def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
@@ -206,6 +210,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     _rdt, cdt = working_dtypes()
     freqs = np.asarray(freqs, dtype=np.float64)
     dt = float(dt)
@@ -218,7 +223,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
         dsdt = (s - jax.lax.stop_gradient(s)) * dt
         one_minus_lz = -jnp.expm1(tail_arg + dsdt[None, :])
     amp = jnp.exp(sdt * float(int(n_last) + 1 - int(n_ref)))[:, None] * c     # (K, C)
-    return dt * ((zN1[:, None] / one_minus_lz) @ amp)
+    return dt * jnp.matmul(zN1[:, None] / one_minus_lz, amp, precision=HIGHEST)
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +233,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
 def _basis(s, M, dt):
     """``B[m, k] = exp(s_k m dt)``, ``m = 0..M-1`` (the window's first sample is m = 0)."""
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     rdt, _cdt = working_dtypes()
     t = jnp.arange(int(M), dtype=rdt) * float(dt)
     return jnp.exp(t[:, None] * s[None, :]), t
@@ -242,6 +248,7 @@ def _qr_masked(A, mask):
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     mask = jnp.real(mask)
     A = A * mask.astype(A.dtype)[None, :]
     norms = jnp.sqrt(jnp.sum(jnp.abs(A) ** 2, axis=0))
@@ -255,11 +262,13 @@ def _qr_masked(A, mask):
 def _solve_qr(Q, R, norms, mask, b):
     """Least-squares solution for the factorised system against ``[b; 0]``, masked."""
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     from jax.scipy.linalg import solve_triangular
     K = R.shape[0]
     b = b.astype(Q.dtype)
     b_aug = jnp.concatenate([b, jnp.zeros((K, b.shape[1]), dtype=b.dtype)], axis=0)
-    x = solve_triangular(R, jnp.conj(Q).T @ b_aug, lower=False)
+    x = solve_triangular(R, jnp.matmul(jnp.conj(Q).T, b_aug, precision=HIGHEST),
+                         lower=False)
     return (x / norms.astype(x.dtype)[:, None]) * jnp.real(mask).astype(x.dtype)[:, None]
 
 
@@ -285,6 +294,7 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     if mutation not in MUTATIONS:
@@ -314,7 +324,9 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
         w = jax.lax.stop_gradient(1.0 / rms).astype(cdt)                       # (C,)
         D = t.astype(cdt)[:, None, None] * B0m[:, None, :] * (c0.T * w[:, None])[None, :, :]
         QB = Q0[:M] * mask_c[None, :]
-        PD = D - jnp.einsum("mk,kcj->mcj", QB, jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D))
+        PD = D - jnp.einsum("mk,kcj->mcj", QB,
+                            jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D, precision=HIGHEST),
+                            precision=HIGHEST)
         A = jax.lax.stop_gradient(PD.reshape(M * C, K))
         dyw = ((Yw - jax.lax.stop_gradient(Yw)) * w[None, :]).reshape(M * C, 1)
         ds = lstsq_masked(A, dyw, mask_c)[:, 0]

@@ -65,6 +65,8 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax.numpy as jnp
+
+from rfx._precision import HIGHEST
 import numpy as np
 
 from rfx.core.yee import EPS_0, MU_0
@@ -1630,7 +1632,7 @@ def _rect_dft(time_series: jnp.ndarray, freqs: jnp.ndarray, dt: float,
     # complex128 under JAX_ENABLE_X64).
     phase = jnp.exp(-1j * omega[None, :] * t[:, None])
     return 2.0 * jnp.asarray(dt, dtype=phase.dtype) * jnp.einsum(
-        "n,nf->f", masked_v.astype(phase.dtype), phase
+        "n,nf->f", masked_v.astype(phase.dtype), phase, precision=HIGHEST
     )
 
 

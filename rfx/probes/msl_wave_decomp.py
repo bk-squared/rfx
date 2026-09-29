@@ -34,6 +34,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
+from rfx._precision import HIGHEST
+
 
 @dataclass(frozen=True)
 class MSLWaveProbeSet:
@@ -568,7 +570,7 @@ def _lstsq_alpha_gamma(
     sol, _, _, _ = jnp.linalg.lstsq(a_mat, v, rcond=None)
     alpha = sol[0]
     gamma = sol[1]
-    pred = a_mat @ sol
+    pred = jnp.matmul(a_mat, sol, precision=HIGHEST)
     residual = jnp.sqrt(jnp.sum(jnp.abs(v - pred) ** 2))
     return alpha, gamma, residual
 

@@ -26,6 +26,8 @@ from typing import NamedTuple
 
 import jax
 import jax.numpy as jnp
+
+from rfx._precision import HIGHEST
 import numpy as np
 
 from rfx.grid import Grid
@@ -1128,7 +1130,7 @@ def _coaxial_line_reflection_jnp(
     Phi = jnp.stack([jnp.exp(+gamma * zc), jnp.exp(-gamma * zc)], axis=1)
     AB, *_ = jnp.linalg.lstsq(Phi, V, rcond=None)
     A, B = AB[0], AB[1]
-    resid = Phi @ AB - V
+    resid = jnp.matmul(Phi, AB, precision=HIGHEST) - V
     # AD-safe norm (double-where): a perfect fit makes the residual exactly 0,
     # where d(sqrt)/dx = inf; symmetric with rec_resid above.
     fit_sq = jnp.sum(jnp.abs(resid) ** 2)
@@ -1323,7 +1325,7 @@ def _solve_two_port_from_wave_amplitudes_jnp(a_inc, b_out) -> TwoPortWaveSolve:
         )
     A = jnp.moveaxis(a, -1, 0)   # (n_freqs, 2, 2)
     B = jnp.moveaxis(b, -1, 0)   # (n_freqs, 2, 2)
-    s = jnp.matmul(B, jnp.linalg.inv(A))    # (n_freqs, 2, 2)
+    s = jnp.matmul(B, jnp.linalg.inv(A), precision=HIGHEST)    # (n_freqs, 2, 2)
     cond_a = jnp.linalg.cond(A)             # (n_freqs,)
     return TwoPortWaveSolve(s_params=jnp.moveaxis(s, 0, -1), cond_a=cond_a)
 
