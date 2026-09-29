@@ -3696,9 +3696,10 @@ def run_until_decay(
          :func:`run`.
     report_every : int or None
         Issue #667. When set, emit one ``  [PROGRESS] ...`` line every *N*
-        steps plus a final line at the actual stop step. ``None`` (default)
-        is OFF. Chunk boundaries include reporting steps; reporting never
-        changes the decay-check cadence. The denominator is ``max_steps``, i.e. a CAP:
+        steps, at the first decay-chunk boundary at or past the interval,
+        plus a final line at the actual stop step. ``None`` (default) is OFF.
+        Reporting never changes the chunks or the decay-check cadence.
+        The denominator is ``max_steps``, i.e. a CAP:
         the line marks it ``(cap)`` and the ETA is an upper bound, because a
         decay stop can fire at any check.
     report_label : str
@@ -3836,33 +3837,52 @@ def run_until_decay(
             carry_in, step_idx, src_vals, mag_src_vals, _inv_args)
         return new_carry, (probe_out, monitor_val)
 
-    @jax.jit
-    def _run_chunk(carry_in, xs):
-        if snapshot is None:
-            return jax.lax.scan(step_fn, carry_in, xs), None
-        # At most ceil(chunk_length / interval) frames, independent of the
-        # chunk's starting phase. Trim the unused last slot on the host.
-        n_frames = (xs[0].shape[0] + snap_interval - 1) // snap_interval
-        frames = tuple(jnp.zeros((n_frames,) + f.shape, f.dtype)
-                       for f in snap_shapes)
-        first_frame = xs[0][0] // snap_interval
+    def step_with_previous(carries, xs):
+        # A one-step tail is joined to the preceding scan, as in
+        # scan_with_progress. Keep its penultimate carry so the check at
+        # that step can still stop BEFORE the cap. No padded/masked steps.
+        state, _previous = carries
+        state_out, out = step_fn(state, xs)
+        return (state_out, state), out
+
+    def _make_chunk_runner(*, keep_previous=False):
+        body = step_with_previous if keep_previous else step_fn
 
         def record(c, x):
-            state, frames = c
-            state, out = step_fn(state, x)
+            state, frames, first_frame = c
+            state, out = body(state, x)
             done = x[0] + 1
 
             def take(frames):
                 row = done // snap_interval - first_frame - 1
+                fdtd = (state[0] if keep_previous else state)["fdtd"]
                 return tuple(buf.at[row].set(frame) for buf, frame in
-                             zip(frames, _take_snapshot(state["fdtd"])))
+                             zip(frames, _take_snapshot(fdtd)))
 
             frames = jax.lax.cond(done % snap_interval == 0, take,
                                   lambda f: f, frames)
-            return (state, frames), out
+            return (state, frames, first_frame), out
 
-        (carry_out, frames), out = jax.lax.scan(record, (carry_in, frames), xs)
-        return (carry_out, out), frames
+        def run_chunk(carry_in, xs):
+            if keep_previous:
+                carry_in = (carry_in, carry_in)
+            if snapshot is None:
+                return jax.lax.scan(body, carry_in, xs), None
+            # At most ceil(chunk_length / interval) frames, independent of
+            # the starting phase. Keep record's identity across chunks so
+            # lax.scan reuses its executable, as run()'s recorder does.
+            n_frames = (xs[0].shape[0] + snap_interval - 1) // snap_interval
+            frames = tuple(jnp.zeros((n_frames,) + f.shape, f.dtype)
+                           for f in snap_shapes)
+            first_frame = xs[0][0] // snap_interval
+            (carry_out, frames, _), out = jax.lax.scan(
+                record, (carry_in, frames, first_frame), xs)
+            return (carry_out, out), frames
+
+        return run_chunk
+
+    _run_chunk = _make_chunk_runner()
+    _run_tail_chunk = _make_chunk_runner(keep_previous=True)
 
     # ---- precompute source waveforms up to max_steps ----
     if sources:
@@ -3960,8 +3980,8 @@ def run_until_decay(
     probe_chunks = []
     actual_steps = 0
 
-    # Issue #667: preserve exact reporting steps by cutting chunks there.
-    # Decay checks still use their original cadence. max_steps is a CAP.
+    # Match scan_with_progress(stop_fn=...): report at existing boundaries,
+    # never split a scan to print. max_steps is a CAP.
     _reporter = None
     if report_every is not None:
         _report_every = validate_report_every(report_every, n_steps=max_steps)
@@ -3975,24 +3995,42 @@ def run_until_decay(
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)
 
-    # Full chunks reuse one executable; a first or final partial chunk,
-    # or a progress split, compiles once per length.
-    compiled_chunks = {}
+    # Like scan_with_progress, call lax.scan directly: full chunks share
+    # its executable and only the ragged tail needs another length. The
+    # initial one-step check is required by the historical stop cadence.
+    pending_tail = None
     while actual_steps < max_steps:
         # The old loop checked step % interval == 0 AFTER stepping: completed
         # steps 1, interval + 1, ... . In particular, the first chunk has one
-        # step. A cap/report boundary may split a chunk but never adds a check.
+        # step. Reporting never changes these boundaries.
         lo = actual_steps
         next_check = 1 if lo == 0 else ((lo - 1) // check_interval + 1) * check_interval + 1
-        hi = min(next_check, max_steps)
-        if _reporter is not None:
-            hi = min(hi, (lo // _report_every + 1) * _report_every)
-        xs = (jnp.arange(lo, hi, dtype=jnp.int32), src_waveforms[lo:hi],
-              mag_src_waveforms[lo:hi])
-        chunk_size = hi - lo
-        if chunk_size not in compiled_chunks:
-            compiled_chunks[chunk_size] = _run_chunk.lower(carry, xs).compile()
-        (carry, (probe_out, monitor_vals)), frames = compiled_chunks[chunk_size](carry, xs)
+        if pending_tail is not None:
+            carry, probe_out, monitor_vals, frames = pending_tail
+            pending_tail = None
+            hi = max_steps
+        else:
+            this = min(next_check - lo, max_steps - lo)
+            keep_previous = max_steps - lo - this == 1
+            if keep_previous:
+                # Copy scan_with_progress's one-step-tail rule. Unlike its
+                # generic stop_fn, decay must inspect the penultimate step.
+                this += 1
+            hi = lo + this
+            xs = (jnp.arange(lo, hi, dtype=jnp.int32), src_waveforms[lo:hi],
+                  mag_src_waveforms[lo:hi])
+            chunk_scan = _run_tail_chunk if keep_previous else _run_chunk
+            (carry, (probe_out, monitor_vals)), frames = chunk_scan(carry, xs)
+            if keep_previous:
+                final_carry, carry = carry
+                tail_frames = None
+                if snapshot is not None:
+                    n_before = (hi - 1) // snap_interval - lo // snap_interval
+                    tail_frames = tuple(f[n_before:] for f in frames)
+                    frames = tuple(f[:n_before] for f in frames)
+                pending_tail = (final_carry, probe_out[-1:], monitor_vals[-1:], tail_frames)
+                probe_out, monitor_vals = probe_out[:-1], monitor_vals[:-1]
+                hi -= 1
         probe_chunks.append(probe_out)
         actual_steps = hi
         step = hi - 1
@@ -4001,7 +4039,9 @@ def run_until_decay(
             if n_frames:
                 snap_chunks.append(tuple(f[:n_frames] for f in frames))
 
-        if _reporter is not None and actual_steps % _report_every == 0:
+        if _reporter is not None and (
+                actual_steps - _reporter.last_reported >= _report_every
+                or actual_steps >= max_steps):
             # Block first: JAX dispatch is asynchronous, so an unsynchronised
             # tick would report the host's dispatch rate, not the solve rate.
             jax.block_until_ready(carry["fdtd"])

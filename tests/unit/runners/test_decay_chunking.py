@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import time
+from dataclasses import fields, is_dataclass
 
 import jax
 import numpy as np
@@ -27,6 +28,51 @@ from tests.unit.autodiff.test_forward_jit_compile_once import (
 from tests.unit.runners._until_decay_reference import run_until_decay_reference
 from tests.unit.runners.test_snapshot_interval_and_axes import _loaded_sim, _observables
 from tests.unit.sparams.test_ringdown_run import _box
+
+
+def _arrays(value, name=""):
+    """Include every array leaf, including metadata and compensation."""
+    if is_dataclass(value):
+        for field in fields(value):
+            yield from _arrays(getattr(value, field.name), f"{name}.{field.name}")
+    elif isinstance(value, dict):
+        for key, child in value.items():
+            yield from _arrays(child, f"{name}[{key!r}]")
+    elif isinstance(value, tuple) and hasattr(value, "_fields"):
+        for key in value._fields:
+            yield from _arrays(getattr(value, key), f"{name}.{key}")
+    elif isinstance(value, (tuple, list)):
+        for i, child in enumerate(value):
+            yield from _arrays(child, f"{name}[{i}]")
+    elif hasattr(value, "dtype") and hasattr(value, "shape"):
+        yield name, np.asarray(value)
+    elif isinstance(value, (int, float, complex, bool)):
+        yield name, np.asarray(value)
+
+
+def _record_metrics(got, ref, record_property, *, comparison):
+    """Measurements do not select or relax the assertion bar below.
+
+    Complex differences retain both components. Empty arrays have peak and
+    difference zero; the float32 spacing at zero is used for zero peaks.
+    """
+    left, right = dict(_arrays(got)), dict(_arrays(ref))
+    assert left.keys() == right.keys()
+    metrics = {}
+    for name, b in right.items():
+        a = left[name]
+        assert a.shape == b.shape, name
+        assert a.dtype == b.dtype, name
+        aa, bb = a.astype(np.complex128), b.astype(np.complex128)
+        peak = float(np.max(np.abs(bb), initial=0.0))
+        delta = float(np.max(np.abs(aa - bb), initial=0.0))
+        metrics[name] = dict(
+            shape=list(b.shape), dtype=str(b.dtype), reference_peak=peak,
+            max_abs_difference=delta,
+            max_ulp_at_peak=delta / float(np.spacing(np.float32(peak))),
+            array_equal=np.array_equal(a, b),
+        )
+    record_property(f"all_array_metrics_{comparison}", json.dumps(metrics, sort_keys=True))
 
 
 def _run(
@@ -82,6 +128,10 @@ def _assert_contract(got, ref, record_property):
     assert got_steps == ref_steps, f"stop step: got {got_steps}, reference {ref_steps}"
     for result in (got[0], got[1], ref[0], ref[1]):
         assert int(result.state.step) == ref_steps
+    _record_metrics(got[1], ref[1], record_property, comparison="old_loop")
+    _record_metrics(_observables(got[0]), _observables(ref[0]), record_property,
+                    comparison="old_loop_api")
+    record_property("assertion_bar", "exact stop; per-step <=9 ULP at peak; sums <=1e-4 of peak")
 
     # The API S and dt plus every low-level accumulator (including Kahan
     # compensation) are observable separately from the final six fields.
@@ -142,8 +192,9 @@ def _assert_contract(got, ref, record_property):
 
 @pytest.mark.parametrize("branch", ["point", "energy", "flux", "min-cap", "zero-cap"])
 @pytest.mark.parametrize("snapshot_interval", [None, 7])
+@pytest.mark.parametrize("report_every", [None, 13])
 def test_decay_chunks_match_old_loop_per_stop_branch(
-    branch, snapshot_interval, monkeypatch, record_property
+    branch, snapshot_interval, report_every, monkeypatch, record_property
 ):
     interval = 37 if branch == "point" else 17
     ref = _run(
@@ -152,6 +203,7 @@ def test_decay_chunks_match_old_loop_per_stop_branch(
         monkeypatch,
         snapshot_interval=snapshot_interval,
         interval=interval,
+        report_every=report_every,
     )
     got = _run(
         branch,
@@ -159,6 +211,7 @@ def test_decay_chunks_match_old_loop_per_stop_branch(
         monkeypatch,
         snapshot_interval=snapshot_interval,
         interval=interval,
+        report_every=report_every,
     )
     _assert_contract(got, ref, record_property)
     n = ref[0].time_series.shape[0]
@@ -170,6 +223,16 @@ def test_decay_chunks_match_old_loop_per_stop_branch(
         if branch == "point":
             # Reading peaks only at check steps would stop at 186, not 112.
             assert n == 112
+
+
+@pytest.mark.parametrize("branch,stop,interval", [("point", 112, 37), ("energy", 137, 17),
+                                                ("flux", 188, 17)])
+def test_decay_stops_before_absorbed_tail(branch, stop, interval, monkeypatch, record_property):
+    kw = dict(cap=stop + 1, interval=interval, report_every=13)
+    ref = _run(branch, run_until_decay_reference, monkeypatch, **kw)
+    got = _run(branch, simulation.run_until_decay, monkeypatch, **kw)
+    _assert_contract(got, ref, record_property)
+    assert got[0].time_series.shape[0] == stop
 
 
 @pytest.mark.parametrize(
@@ -235,6 +298,14 @@ def test_decay_without_stop_matches_run_scan(record_property):
     )
     assert got.time_series.shape == ref.time_series.shape == (n, len(probes))
     assert int(got.state.step) == int(ref.state.step) == n
+    _record_metrics(got, ref, record_property, comparison="run_forced_n")
+    old = run_until_decay_reference(
+        grid, materials, decay_by=0.0, min_steps=n, max_steps=n,
+        check_interval=n + 1, **kw,
+    )
+    assert int(old.state.step) == n
+    _record_metrics(got, old, record_property, comparison="old_loop_forced_n")
+    record_property("assertion_bar", "exact stop; vs run() per-step <=9 ULP at peak")
     arrays = {"time_series": (ref.time_series, got.time_series)}
     arrays.update({name: (getattr(ref.state, name), getattr(got.state, name))
                    for name in ("ex", "ey", "ez", "hx", "hy", "hz")})
