@@ -135,14 +135,31 @@ def test_msl_point_probe_ladder_uses_the_realized_periodic_cell():
 @pytest.mark.parametrize('capacitance', [1e-15, 1e-13])
 def test_ris_capacitance_uses_the_final_periodic_cell(capacitance):
     cell = RISUnitCell(cell_size=(.0103, .0206), substrate_thickness=.004,
-                       freq_range=(C0 / .040, C0 / .020), cpml_layers=2)
+                       freq_range=(C0 / .040, C0 / .020), cpml_layers=2,
+                       dx=.0103 / 26)
     cell.add_varactor((.0031, .0067), capacitance_range=(1e-15, 1e-13))
     sim = cell._build_sim(capacitance_override=capacitance)
     grid = sim._build_grid()
+    assert grid.dx == .0103 / 26
     # Recover the declared capacitance from the material the solver receives.
     added = float(sim._materials['substrate'].eps_r) - 4.4
     assert added * EPS_0 * grid.cells(0)[0] == pytest.approx(capacitance, rel=2e-13, abs=0)
     assert sim.freeze_mesh().shape == grid.shape
+
+
+def test_ris_without_varactor_keeps_the_automatic_uniform_mesh():
+    cell = RISUnitCell(cell_size=(.0103, .0206), substrate_thickness=.004,
+                       freq_range=(C0 / .040, C0 / .020), cpml_layers=2)
+    sim = cell._build_sim()
+    sim.add_probe((.0031, .0067, .0102), component='ex')
+    grid = sim._build_grid()
+    assert grid.shape == (26, 52, 66)
+    assert grid.dx == .0103 / 26
+    assert sim._declared_mesh['_dx'] is None
+    assert '_frozen_mesh' not in sim.__dict__
+    trace = np.asarray(sim.run(n_steps=96, compute_s_params=False).time_series)
+    assert trace.shape == (96, 2)
+    assert np.isfinite(trace).all() and np.any(trace != 0)
 
 
 def test_fidelity_counts_a_pec_volume_in_the_last_periodic_cell():

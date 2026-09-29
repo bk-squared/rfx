@@ -11,6 +11,7 @@ Typical usage
 ...     substrate_thickness=1.5e-3,
 ...     substrate_material="fr4",
 ...     freq_range=(4e9, 8e9),
+...     dx=0.5e-3,
 ... )
 >>> cell.add_element(Box((3e-3, 3e-3, z), (7e-3, 7e-3, z)), material="pec")
 >>> cell.add_varactor((5e-3, 5e-3), capacitance_range=(0.1e-12, 1.0e-12))
@@ -121,7 +122,8 @@ class RISUnitCell:
     n_steps : int
         Number of FDTD timesteps per simulation. Default 300.
     dx : float or None
-        Cell size override. Auto-computed if None.
+        Uniform cell size. Required when a varactor is added; otherwise
+        auto-computed if None.
     cpml_layers : int
         CPML layers on the port-normal axis. Default 8.
     ground_plane : bool
@@ -293,12 +295,18 @@ class RISUnitCell:
         # resonance shift without requiring lumped-element placement
         # that could collide with PEC cells.
         if self._varactors:
+            if self._dx is None:
+                raise ValueError(
+                    "RISUnitCell with a varactor requires an explicit uniform dx; "
+                    "set dx=<value> in metres so the capacitance load and solve "
+                    "use the same cell size."
+                )
             from rfx.core.yee import EPS_0
             C = capacitance_override if capacitance_override is not None else self._varactors[0].capacitance_range[0]
             eps_base = _substrate_eps(self._substrate_material)
-            # Loading changes eps_r, which otherwise re-plans an automatic
-            # mesh after the load was calculated. Hold the registered grid.
-            grid = sim.freeze_mesh()
+            # Explicit dx is unchanged when loading changes eps_r, so no
+            # freeze is needed. Read the registered periodic grid's cell.
+            grid = sim._build_grid()
             cell_size = float(grid.cells(0)[0])
             # Capacitance contribution to substrate permittivity
             eps_add = C / (EPS_0 * cell_size)

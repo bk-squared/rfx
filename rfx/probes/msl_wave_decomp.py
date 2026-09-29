@@ -73,7 +73,7 @@ def register_msl_wave_probes(
     """
     assert direction in ("+x", "-x")
     sign = 1 if direction == "+x" else -1
-    grid = sim._build_grid()
+    grid = sim._build_realized_grid()
     dx = float(grid.cells(0)[0])
 
     x1 = feed_x + sign * n_offset_cells * dx

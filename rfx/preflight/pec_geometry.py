@@ -1140,7 +1140,8 @@ def _sheet_solved_spans(ctx, boxes):
                 continue
             span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
                                      float(e.hi[a]), float(domain[a]),
-                                     union=union)
+                                     union=union,
+                                     periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
             if span is not None:
                 out.append((e, a, span))
     return out
@@ -1161,6 +1162,8 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
             continue
         ext = float(e.hi[a] - e.lo[a])
         nodes = np.asarray(ctx.nodes[a], dtype=float)
+        if span.i1 == nodes.size:  # unwrapped periodic endpoint N is at L
+            nodes = np.append(nodes, float(ctx.sim._domain[a]))
         covered = float(nodes[span.i1] - nodes[span.i0])
         eff = span.hi - span.lo
         rel = (eff - ext) / ext

@@ -826,7 +826,8 @@ def fidelity_report(sim, print_report: bool = True):
                     from rfx.mesh_edges import solved_sheet_span
                     span = solved_sheet_span(
                         sheet_fp, a, nodes[a], float(lo[a]), float(hi[a]),
-                        float(domain[a]), union=sheet_union)
+                        float(domain[a]), union=sheet_union,
+                        periodic='xyz'[a] in getattr(grid, 'periodic_axes', ''))
                     if span is not None:
                         r_lo, r_hi = span.lo, span.hi
             else:
