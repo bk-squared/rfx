@@ -90,12 +90,13 @@ def test_bad_radius_is_refused(radius):
         _plates(.5e-3, "uniform", radius=radius)
 
 
-def test_radius_requires_extent_and_resolved_pin_above_bound():
+@pytest.mark.parametrize("ratio", [MAX_RADIUS_RATIO+.001, .5, 1.])
+def test_radius_requires_extent_and_resolved_pin_above_bound(ratio):
     sim = Simulation(freq_max=30e9, domain=(.006,)*3, dx=.0005)
     with pytest.raises(ValueError, match="extent"):
         sim.add_port((.003,)*3, radius=1e-5)
     with pytest.raises(ValueError, match="resolve the pin geometrically"):
-        _impedance(_plates(.5e-3, "uniform", radius=.5e-3*(MAX_RADIUS_RATIO+.001)))
+        _impedance(_plates(.5e-3, "uniform", radius=.5e-3*ratio))
 
 
 @pytest.mark.parametrize("lane", ["uniform", "nonuniform"])
@@ -145,7 +146,7 @@ def test_radius_none_full_field_history_is_bit_identical(lane, monkeypatch):
         return np.stack(captured)
 
     current = solve()
-    monkeypatch.setattr("rfx.core.yee.component_h_materials", lambda m: (m.mu_r,)*3)
+    monkeypatch.setattr("rfx.core.yee.component_h_materials", lambda m, periodic=(False, False, False): (m.mu_r,)*3)
     update_h.clear_cache()
     legacy = solve()
     assert np.max(np.abs(current)) > 0

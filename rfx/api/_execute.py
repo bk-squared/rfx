@@ -1352,6 +1352,8 @@ class _ExecuteMixin:
         """
         import copy
 
+        from rfx.sources.wire_radius import require_radius_update
+        require_radius_update(materials, lane="ADI", unsupported=True)
         self._validate_adi_configuration(materials, debye_spec, lorentz_spec)
 
         from rfx.boundaries.pec import realized_pec_edge_masks as _rpem_adi
@@ -1720,6 +1722,8 @@ class _ExecuteMixin:
         )
         pec_sheets = tuple(pec_sheets or ())
         pec_wires = tuple(pec_wires or ())
+        from rfx.sources.wire_radius import prepare_pec_wire_radii
+        materials, pec_wires = prepare_pec_wire_radii(grid, materials, pec_wires)
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
         pec_edge_masks_local = None

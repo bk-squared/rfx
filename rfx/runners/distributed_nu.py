@@ -51,6 +51,7 @@ from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
     MU_0,
+    component_h_materials,
     EPS_0,
     _shift_fwd,
     _shift_bwd,
@@ -1637,7 +1638,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     # Same per-face slicing as the E kernel; vacuum scalar dt/mu_0 when
     # mu_r is None (bit-identical to pre-#205).
     if mu_r is not None:
-        _ch = dt / (mu_r * MU_0)  # (nx_local + 2*ghost, ny, nz)
+        _mu = component_h_materials(MaterialArrays(None, None, mu_r))
+        _ch = dt / (_mu[0] * MU_0)  # (nx_local + 2*ghost, ny, nz)
         ch_xlo = _ch[xlo, :, :]
         ch_xhi = _ch[xhi, :, :]
         ch_ylo = _ch[:, :n_ylo, :]

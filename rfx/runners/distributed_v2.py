@@ -149,6 +149,8 @@ def _shard_field_state(state: FDTDState, mesh: Mesh) -> FDTDState:
 
 
 def _shard_materials(materials: MaterialArrays, mesh: Mesh) -> MaterialArrays:
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(materials, lane="distributed_v2 material shard", unsupported=True)
     shd = _x_sharding(mesh)
     return MaterialArrays(
         eps_r=jax.device_put(materials.eps_r, shd),
@@ -755,6 +757,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # The rest (Kerr chi3 among it, refused above) is unused on this lane;
         # drop it now so no whole-domain array stays alive through the loop.
         del _assembly_rest
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
     if _d_pec_sheets or _d_pec_wires:
         _d_declared = []
         if _d_pec_sheets:

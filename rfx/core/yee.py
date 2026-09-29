@@ -74,19 +74,21 @@ class MaterialArrays(NamedTuple):
     # a 3-tuple (x, y, z) of per-component arrays / None (#1236)
     sigma_lumped: object = None
     eps_r_lumped: object = None
-    # H-component-owned permeability increments (thin-wire port contours).
+    # H-component-owned permeability increments (port and PEC filament contours).
     # None preserves the historical scalar/cell-owned H update exactly.
     mu_r_wire: object = None
 
 
-def component_h_materials(materials):
+def component_h_materials(materials, periodic=(False, False, False)):
     """Relative permeability at Hx, Hy, Hz, including local wire contours.
 
     H has no volume averaging convention here. A contour stamp belongs to
     one H component and must never change the other two at the same index.
-    All supported H updates, including the coefficient bake, read this owner.
+    ``periodic`` is accepted for parity with :func:`component_e_materials`;
+    it is unused until a separate volume-averaging rule is chosen.
+    Every H coefficient builder reads this owner.
     """
-    parts = materials.mu_r_wire
+    parts = getattr(materials, "mu_r_wire", None)
     if parts is None:
         return (materials.mu_r,) * 3
     if not isinstance(parts, (tuple, list)) or len(parts) != 3:
@@ -436,7 +438,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu_x, mu_y, mu_z = (m * MU_0 for m in component_h_materials(materials))
+    mu_x, mu_y, mu_z = (m * MU_0 for m in component_h_materials(materials, periodic))
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     # curl E components via forward staggered differences (order=2 byte-identical)
     # dEz/dy - dEy/dz
@@ -455,9 +458,9 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         - _diff_fwd_o(ex, 1, periodic, so, bloch) / dx
     )
 
-    hx = (state.hx.astype(_cdtype) - (dt / mu_x) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - (dt / mu_y) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - (dt / mu_z) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -936,6 +939,7 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
     mu_x, mu_y, mu_z = (m * MU_0 for m in component_h_materials(materials))
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     # Forward differences with same shape (zero-pad via _shift_fwd)
     curl_x = (
@@ -951,9 +955,9 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         - (_shift_fwd(ex, 1) - ex) * inv_dy_h[None, :, None]
     )
 
-    hx = (state.hx.astype(_cdtype) - (dt / mu_x) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - (dt / mu_y) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - (dt / mu_z) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -1057,10 +1061,11 @@ def precompute_coeffs(
     -------
     UpdateCoeffs
     """
-    ch = jnp.float32(dt / (MU_0 * dx)) / materials.mu_r
+    mu = component_h_materials(materials, periodic)
+    # Preserve the historical scalar-array bake, including its f32 numerator.
+    ch = jnp.float32(dt / (MU_0 * dx)) / mu[0]
     if materials.mu_r_wire is not None:
-        ch = tuple((dt / (MU_0 * dx)) / m
-                   for m in component_h_materials(materials))
+        ch = tuple((dt / (MU_0 * dx)) / m for m in mu)
 
     # #1210: per-component eps/sigma, the mean over the four cells incident
     # to each component's edge. The arithmetic below is unchanged, so a

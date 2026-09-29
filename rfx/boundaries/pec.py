@@ -295,10 +295,15 @@ class WireSpec:
 
     ``edges`` is the ``(Mx, My, Mz)`` boolean triple naming the edges on the
     path — built by :func:`wire_path_edge_masks` from the path's node
-    indices.  A wire owns no cell.
+    indices. A wire owns no cell. Positive subcell ``radius`` and static
+    ``nodes`` carry its self-field model into material preparation.
+    ``radius_stamped`` prevents the source and step setups applying it twice.
     """
     edges: tuple
     name: str | None = None
+    radius: float | None = None
+    nodes: tuple = ()
+    radius_stamped: bool = False
 
 
 def wire_path_edge_masks(nodes, shape):

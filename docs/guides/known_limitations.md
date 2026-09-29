@@ -34,7 +34,21 @@ square transverse stencil and uniform spacing along the pin. Axial grading
 across the port refuses this model. It is carried by single-device,
 nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
 Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
-Resolve larger pins geometrically (for example with a coax feed).
+Resolve larger wire ports geometrically with a coax feed or a volume wire.
+
+**PEC filament radius and a localized feed.** PEC `PolylineWire` filaments
+with `0 < a <= 0.20 * d_min` receive the same component magnetic self-field
+record (`mu_r_wire`) and neighbouring electric storage correction. Filaments
+with `0.20 * d_min < a < 0.50 * d_min` refuse: refine until the wire is a
+volume (`a >= 0.50 * d_min`) or coarsen until `a <= 0.20 * d_min`. The
+existing volume-wire rule and zero-radius filament ownership are unchanged.
+The local square-mesh, uniform axial-spacing, boundary clearance and solver
+restrictions above apply to the radius model. A one-edge port feeding a PEC
+filament between 1.5 mm parallel plates does **not** meet the full-height
+port's 2% Hankel-impedance target in the measured 8–14 GHz fixture
+(a=0.05 mm, dx=0.5/0.25 mm). Its longitudinal current is not uniform;
+the full-height distributed-drive oracle does not establish that feed's
+accuracy. The corresponding acceptance tests retain the 2% target.
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the

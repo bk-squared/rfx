@@ -706,9 +706,17 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes):
     the smallest local cell at the vertices' nearest nodes is a volume.
     ``classify_pec_entry`` realizes a wire by this rule, and lane admission
     asks it which kind of conductor a declared wire becomes. The vertex snap
-    itself is ``wire_vertex_nodes``."""
+    itself is ``wire_vertex_nodes``. Positive filament radii above 0.2 times
+    that cell size refuse: they exceed the self-field model's admitted range.
+    """
     nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes)
-    return nodes if float(radius) < 0.5 * d_min else None
+    a = float(radius)
+    if 0.2 * d_min * (1 + 1e-7) < a < 0.5 * d_min:
+        raise ValueError(
+            "PEC PolylineWire filament radius is in the unsupported band "
+            "0.2*d < a < 0.5*d; refine the mesh so the wire is a volume, "
+            "a >= 0.5*d, or coarsen so a <= 0.2*d.")
+    return nodes if a < 0.5 * d_min else None
 
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
@@ -754,6 +762,12 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         return mask, None, None
     pts = getattr(shape, "points", None)
     radius = getattr(shape, "radius", None)
+    if pts is not None and radius is not None:
+        if is_tracer(radius) or (traced and radius > 0):
+            raise NotImplementedError(
+                "PEC PolylineWire radius requires static lattice metrics and a "
+                "static radius to choose filament or volume; traced mesh "
+                "geometry is not implemented for this radius model.")
     if pts is not None and radius is not None and not traced:
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # below that it is a filament on the axis-aligned lattice path
@@ -761,7 +775,9 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes)
         if nodes is not None:
             edges = wire_path_edge_masks(nodes, coords.shape)
-            return None, None, WireSpec(edges=edges, name=name)
+            return None, None, WireSpec(edges=edges, name=name,
+                                        radius=float(radius) if radius > 0 else None,
+                                        nodes=tuple(nodes))
     elif not traced:
         # §1.5 for every OTHER shape with an axis-aligned bounding box —
         # a Cylinder via pad, a thin Sphere, an imported outline.  The

@@ -35,7 +35,7 @@ N_CPML = 10
 N_STEPS = 300
 
 
-def _dipole(boundary="cpml"):
+def _dipole(boundary="cpml", *, radius_ratio=0.1):
     dx = L_DIP / N_CELLS
     n_arm = (N_CELLS - 1) // 2
     nz = 2 * N_LAT + N_CELLS
@@ -46,7 +46,7 @@ def _dipole(boundary="cpml"):
     z_lo = N_LAT * dx
     z_port = (N_LAT + n_arm) * dx
     z_hi = (N_LAT + N_CELLS) * dx
-    r = 0.1 * dx
+    r = radius_ratio * dx
     sim.add(PolylineWire(((xc, yc, z_lo), (xc, yc, z_port)), radius=r),
             material="pec")
     sim.add(PolylineWire(((xc, yc, z_port + dx), (xc, yc, z_hi)), radius=r),
@@ -90,10 +90,12 @@ def _assert_realized(sim, n_arm):
 # (rfx/boundaries/upml.py::init_upml), so it is a separate lane for the port's
 # load and gets its own row: before the UPML half of #1236 it still pinned the
 # loaded side to 0.088 of its mirror.
-@pytest.mark.parametrize("boundary", ["cpml", "upml"])
+@pytest.mark.parametrize("boundary,radius_ratio", [("cpml", 0.1), ("cpml", 0.), ("upml", 0.)])
 def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(
-        boundary):
-    sim, names, n_arm = _dipole(boundary)
+        boundary, radius_ratio):
+    # UPML still exercises the load-owner regression with legacy filaments;
+    # a positive declared radius has a separate admission witness below.
+    sim, names, n_arm = _dipole(boundary, radius_ratio=radius_ratio)
     _assert_realized(sim, n_arm)
     res = sim.run(n_steps=N_STEPS, skip_preflight=True, compute_s_params=False)
     ts = dict(zip(names, np.asarray(res.time_series).T))
@@ -113,3 +115,12 @@ def test_the_feed_tip_radial_field_is_the_same_on_the_loaded_and_free_sides(
             f"the peak, peak ratio {ratio:.4f}. The port's 50 ohm load is on "
             f"the {plus[:2].upper()} edge leaving the feed node as well as on "
             f"the gap (#1236: that edge was pinned to ~0.09 of its mirror).")
+
+
+def test_upml_refuses_the_same_dipole_with_a_declared_filament_radius(monkeypatch):
+    import jax
+
+    sim, _, _ = _dipole("upml")
+    monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped"))
+    with pytest.raises(NotImplementedError, match="radius"):
+        sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)

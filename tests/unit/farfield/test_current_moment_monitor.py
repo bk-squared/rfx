@@ -1882,7 +1882,8 @@ def _kerr(sim, inside):
 
 def _pec_wire(sim, inside):
     from rfx.geometry.csg import PolylineWire
-    y = 12e-3 if inside else 3e-3
+    # Remain outside the 6 mm slab, with two live cells before the CPML.
+    y = 12e-3 if inside else 4e-3
     sim.add(PolylineWire(points=((10e-3, y, 12e-3), (14e-3, y, 12e-3)),
                          radius=1e-4), material="pec")
 

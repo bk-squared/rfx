@@ -1,10 +1,10 @@
-Wire ports accept an opt-in `radius=` in metres with `extent=`, using local
-magnetic and electric self-field corrections through shared component materials.
-`radius=None` preserves the existing mesh-sized probe (effective radius about
-`0.20 * dx`). The declared-radius model requires a locally square, uniform
-transverse mesh, uniform spacing along the pin, and `radius <= 0.20 * dx`;
-larger pins must be resolved
-geometrically, for example with a coax feed. Single-device nondispersive Yee
-`run()` and `forward()` carry the correction. Unsupported solver/material
-paths, including distributed, subgridded, ADI and Debye/Lorentz, refuse it
-before stepping.
+Wire ports accept `radius=` in metres with `extent=`. PEC `PolylineWire`
+filaments also carry their declared radius through shared component H materials.
+All H coefficient builders use the same material entry; no μ averaging is added.
+A missing radius record retains the cell permeability for all H components.
+The local model requires square, uniform transverse cells, uniform axial cells,
+and `0 < radius <= 0.20 * d_min`; filament radii between 0.20 and 0.50 cells
+refuse. Wires of radius at least 0.50 cells retain volume realization.
+Larger wire ports require a coax feed or a volume wire. Distributed, subgridded,
+ADI, UPML and dispersive radius boards refuse before stepping.
+The full-height port accuracy result does not cover a one-edge PEC-filament feed.
