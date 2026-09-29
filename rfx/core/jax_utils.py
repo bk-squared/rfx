@@ -26,11 +26,25 @@ def is_tracer(x: object) -> bool:
 # list fails. ``declaration_setup()`` evaluates everything that does not read
 # a traced input while it traces (``jax.ensure_compile_time_eval``);
 # ``recorded_scan`` is the way back out for the time-stepping loop, so the
-# solve is compiled into the caller's program instead of run while it traces.
+# solve is compiled into the caller's program instead of run while it traces,
+# over operands the compiler cannot read, as in a plain call.
 
-#: A tracer of the outer trace, created before the compile-time region is
-#: entered. Only the fallback of ``recorded_scan`` reads it.
-_OUTER_ANCHOR = contextvars.ContextVar("rfx_outer_trace_anchor", default=None)
+
+class _Region:
+    """A ``declaration_setup()`` in progress.
+
+    ``anchor`` is a tracer of the outer trace, made before the region was
+    entered, when JAX's switch is missing (the fallback), else None.
+    """
+
+    __slots__ = ("anchor",)
+
+    def __init__(self, anchor):
+        self.anchor = anchor
+
+
+#: The ``declaration_setup()`` in progress, or None.
+_REGION = contextvars.ContextVar("rfx_declaration_setup", default=None)
 
 
 @functools.lru_cache(maxsize=None)
@@ -43,14 +57,15 @@ def compile_time_switch():
     is private API, so it is trusted by behaviour, not by version number,
     probed once: inside a ``jax.make_jaxpr`` trace a constant must be
     concrete in the region, with the state on, and a tracer once the state
-    is turned off. A JAX that fails the probe (the declared 0.4.20 floor
-    implements the region differently) gets ``None``, and
-    :func:`recorded_scan` uses its fallback.
+    is turned off. A JAX that fails the probe in any way (the declared
+    0.4.20 floor implements the region differently) gets ``None``, and
+    :func:`recorded_scan` uses its fallback. Every plain ``run()`` reaches
+    this probe, so no exception it raises may escape.
     """
     try:
         from jax._src import config as _config
         switch = _config.eager_constant_folding
-    except (ImportError, AttributeError):
+    except Exception:
         return None
     seen = []
 
@@ -64,7 +79,7 @@ def compile_time_switch():
 
     try:
         jax.make_jaxpr(probe)()
-    except (AttributeError, TypeError):
+    except Exception:
         return None
     return switch if seen == [True] else None
 
@@ -82,30 +97,78 @@ def declaration_setup():
     anchor = None
     if compile_time_switch() is None:
         # Fallback: an operand of the outer trace, made before the region,
-        # that recorded_scan threads into an all-constant carry.
+        # that lifts recorded_scan's concrete operands into the outer trace.
         anchor = jnp.ones((), jnp.float32)
-    token = _OUTER_ANCHOR.set(anchor)
+    token = _REGION.set(_Region(anchor))
     try:
         with jax.ensure_compile_time_eval():
             yield
     finally:
-        _OUTER_ANCHOR.reset(token)
+        _REGION.reset(token)
 
 
-def _anchored(anchor, tree):
-    """``tree`` with its first inexact leaf multiplied by ``anchor`` (1.0).
+def _optimization_barrier(values):
+    """``jax.lax.optimization_barrier``; before JAX made it public (the
+    declared 0.4.20 floor) the same primitive is ``jax._src.ad_checkpoint``'s."""
+    barrier = getattr(jax.lax, "optimization_barrier", None)
+    if barrier is None:
+        from jax._src.ad_checkpoint import _optimization_barrier as barrier
+    return barrier(values)
 
-    ``x * 1.0`` is exact for every float, -0.0 and inf included, so the
-    carry keeps its values bit for bit; it now holds a tracer of the outer
-    trace, so a scan over it is recorded, not evaluated.
+
+def _opaque(tree, anchor):
+    """``tree`` with every concrete array behind one ``optimization_barrier``.
+
+    The barrier is the identity on values, bit for bit and for every dtype;
+    its outputs are operands of the outer trace that the compiler cannot
+    read. With ``anchor`` (the fallback, where the region still evaluates
+    concrete operations at once) the barrier also takes the anchor, a tracer
+    of the outer trace, so it is recorded there and not evaluated.
     """
     leaves, treedef = jax.tree_util.tree_flatten(tree)
-    for i, leaf in enumerate(leaves):
-        dtype = getattr(leaf, "dtype", None)
-        if dtype is not None and jnp.issubdtype(dtype, jnp.inexact):
-            leaves[i] = leaf * anchor.astype(dtype)
-            return jax.tree_util.tree_unflatten(treedef, leaves)
-    return tree
+    picked = [i for i, leaf in enumerate(leaves)
+              if hasattr(leaf, "dtype") and not is_tracer(leaf)]
+    if picked:
+        values = [leaves[i] for i in picked]
+        if anchor is None:
+            values = _optimization_barrier(values)
+        else:
+            _, values = _optimization_barrier((anchor, values))
+        for i, value in zip(picked, values):
+            leaves[i] = value
+    return jax.tree_util.tree_unflatten(treedef, leaves)
+
+
+def _scan_with_opaque_operands(f, init, xs, length, kwargs, anchor):
+    """``jax.lax.scan(f, init, xs)`` recorded over operands the compiler cannot read.
+
+    A scan's operands are its carry, its ``xs`` and the arrays its body
+    closes over. A plain call passes every one of them to the compiled loop
+    as an argument. Here they are concrete, and recorded as they are they
+    would become constants of the caller's program that XLA rewrites the
+    loop around: on an absorbing (CPML) board the jitted probe record then
+    drifted 20-170 float32 ULP at its peak from the plain call's over 200
+    steps. So the body is traced once to find the arrays it closes over, and
+    those, the carry and ``xs`` enter the loop through :func:`_opaque`; the
+    loop then compiles as in the plain call.
+    """
+    leading = [a.shape[0] for a in jax.tree_util.tree_leaves(xs)
+               if hasattr(a, "shape")]
+    if (length == 0) or (leading and leading[0] == 0):
+        # A zero-length scan runs nothing; its outputs are empty.
+        return jax.lax.scan(f, init, xs, length=length, **kwargs)
+    x0 = None if xs is None else jax.tree_util.tree_map(lambda a: a[0], xs)
+    closed, out_shape = jax.make_jaxpr(f, return_shape=True)(init, x0)
+    consts, init, xs = _opaque((list(closed.consts), init, xs), anchor)
+    jaxpr = closed.jaxpr
+    out_tree = jax.tree_util.tree_structure(out_shape)
+
+    def body(carry, x):
+        out = jax.core.eval_jaxpr(
+            jaxpr, consts, *jax.tree_util.tree_leaves((carry, x)))
+        return jax.tree_util.tree_unflatten(out_tree, out)
+
+    return jax.lax.scan(body, init, xs, length=length, **kwargs)
 
 
 def recorded_scan(f, init, xs=None, length=None, **kwargs):
@@ -118,19 +181,28 @@ def recorded_scan(f, init, xs=None, length=None, **kwargs):
     and 0.10.2 runs the solve uncompiled while it traces the caller's
     program. Its body would also be traced under eager constant folding.
 
-    With JAX's switch (:func:`compile_time_switch`) the scan is traced with
-    the switch off, exactly as outside the region. Without it, a carry and
-    ``xs`` that hold no tracer are anchored to the outer trace
-    (``x * 1.0``). Outside a compile-time region this is ``jax.lax.scan``.
+    Inside the region the scan is traced with JAX's switch
+    (:func:`compile_time_switch`) off, exactly as outside it, and every
+    concrete operand reaches the loop through an ``optimization_barrier``
+    (:func:`_scan_with_opaque_operands`), so the compiled loop is the one a
+    plain call compiles. Without the switch the barrier also takes a tracer
+    of the outer trace, which records it. A scan inside the body is a plain
+    scan. Outside the region this is ``jax.lax.scan``.
     """
+    region = _REGION.get()
     switch = compile_time_switch()
-    if switch is not None:
-        if not switch.value:
-            return jax.lax.scan(f, init, xs, length=length, **kwargs)
-        with switch(False):
-            return jax.lax.scan(f, init, xs, length=length, **kwargs)
-    anchor = _OUTER_ANCHOR.get()
-    if anchor is not None and not any(
-            is_tracer(leaf) for leaf in jax.tree_util.tree_leaves((init, xs))):
-        init = _anchored(anchor, init)
-    return jax.lax.scan(f, init, xs, length=length, **kwargs)
+    if region is None:
+        if switch is not None and switch.value:
+            with switch(False):
+                return jax.lax.scan(f, init, xs, length=length, **kwargs)
+        return jax.lax.scan(f, init, xs, length=length, **kwargs)
+    token = _REGION.set(None)
+    try:
+        if switch is not None:
+            with switch(False):
+                return _scan_with_opaque_operands(
+                    f, init, xs, length, kwargs, None)
+        return _scan_with_opaque_operands(
+            f, init, xs, length, kwargs, region.anchor)
+    finally:
+        _REGION.reset(token)
