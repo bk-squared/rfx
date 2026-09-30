@@ -14,10 +14,11 @@ missing durations in any selection. Collection used the specified local Python 3
 CPU environment, with the locally available trimesh package for the fast/highmem collections;
 slow collection has no CAD extra, matching validation.yml. Plotly is absent and its optional
 module is skipped. These counts come from the artifacts, the replaced file and HEAD collection;
-the contract below checks the entry count and carried-count bounds. No job logs were supplied,
-so the shard-sum versus pytest-session-time check in step 2 could not be performed. In particular,
-`test_ringdowns_are_settled` changes from the prior log-derived 1514.934755 s to the raw artifact's
-0.000938106 s; no log-derived correction or floor is added in this regeneration.
+the contract below checks the entry count and carried-count bounds. All eleven job logs were
+checked: **1 entry was re-priced from its job log** because pytest-split 0.11.0 drops setup or
+teardown phases above its 600 s `STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD`.
+`test_ringdowns_are_settled` is 1448.8538443 s from the log, replacing the artifact's
+0.000938106 s (the replaced file held 1514.934755 s). No floor is added.
 
 The four entries once set by hand are runner measurements, from the slow
 artifacts: `tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
@@ -27,7 +28,8 @@ and `[thru]` 176.9 s and 178.5 s (were 171.6 s and 170.6 s), and
 `tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` 64.2 s (was
 57.1 s).
 
-Every refreshed entry is a raw artifact measurement; the 14 highmem-only entries are carried.
+Of the refreshed entries, 15485 retain raw artifact measurements and 1 uses log-derived pricing;
+the 14 highmem-only entries are carried.
 **No floor is added** — see below.
 
 ## The 0.3 s floor, retired 2026-09-18
@@ -75,14 +77,20 @@ id measured twice; the fast maps went first, then `slow (1)`–`(5)`.
 
 | source | entries |
 |---|---|
-| `slow (1)`–`(5)` artifacts | 15474 |
+| `slow (1)`–`(5)` artifacts, excluding the log-corrected entry | 15473 |
+| `slow (2)` job log, correcting a dropped setup phase | 1 |
 | `fast (1)`–`(6)` artifacts, for ids no slow source priced | 12 |
 | carried unchanged from the replaced file | 14 |
 
 - The artifacts are `pytest --store-durations` output of run 36752442156 on `ubuntu-latest`, the
   runner class the lanes use, with Python 3.11 / JAX 0.10.2.
-- No job-log-derived values are used in this regeneration; the previous run's corrections
-  are recorded below. The new run's job logs were not supplied, so its phase-loss check is unverified.
+- All 30705 test result lines in the eleven jobs of run 36752442156 were checked. Each test's
+  wall time is the timestamp gap from the previous result line in that job; the first test is
+  timed from the pytest session-start line. Exactly one gap exceeds its new stored value by
+  more than 600 s: `tests/locks/test_patch_edgefed_resonance_harminv.py::test_ringdowns_are_settled`
+  in `slow (2)`, 1448.8538443 s versus 0.0009381059999213903 s stored (1514.934755 s in the
+  replaced file). Its duration now uses that gap. Module sums: old 1515.9735370 s, raw
+  1.8687104 s, corrected 1450.7216166 s.
 - **The previous run 36394962310 used log-derived `slow (5)` entries.** With `-v` each test's result line is written when
   the test ends, and the job log stamps every line. An entry is the gap between a test's result
   line and the one before it; the first test is timed from the `collected` line. The gap holds
@@ -106,7 +114,7 @@ id measured twice; the fast maps went first, then `slow (1)`–`(5)`.
   (2026-09-21), measured before that.
   The 14th, `tests/unit/autodiff/test_coax_two_port_ad.py::test_coax_two_port_eps_scale_unity_matches_concrete_path`,
   is also outside both GitHub selections now; its 21.178872745 s is carried from the replaced file.
-- Recorded total: 25528.4 s (7.09 h), against 28509.1 s (7.92 h) for the file this replaces.
+- Recorded total: 26977.2 s (7.49 h), against 28509.1 s (7.92 h) for the file this replaces.
 
 ## The one highmem test the fast lane does run
 
@@ -128,10 +136,14 @@ other 14 carried. When regenerating, do not overwrite this one from the a6000 ma
    the pytest session time in that shard's job log (the `= ... in Ns =` line). Look into any shard
    more than about 5 % short, or short by more than a minute: a setup or teardown over 600 s is
    dropped by `--store-durations` and is the known cause (see Sources).
+   Check every result-line gap against the merged duration (first test: session-start line);
+   re-price entries whose gap exceeds the stored value by more than 600 s from the log, because
+   pytest-split drops setup/teardown phases above that threshold.
 3. Take only the 14 GPU-only entries above (highmem and slow or slow_physics) from an a6000 run of
    the highmem selection. Leave the fast-lane highmem test on its runner value.
-4. **Do not add a floor.** Commit the raw measurements. The additive 0.3 s this step used to
-   require was retired on 2026-09-18 for the reason above; if a future lane really does carry
+4. **Do not add a floor.** Commit the measurements with the log-derived phase-loss corrections
+   above. The additive 0.3 s this step used to require was retired on 2026-09-18 for the reason
+   above; if a future lane really does carry
    per-test overhead the reports miss, measure it on that lane first and write the measurement
    here before any constant goes back in.
 5. Simulate both splits before committing (pytest-split's own `duration_based_chunks`), then read
@@ -143,6 +155,32 @@ other 14 carried. When regenerating, do not overwrite this one from the a6000 ma
    `tests/contracts/test_test_durations_provenance.py` compares both against the file.
 
 ## Balance
+
+Recomputed at `808e48dc` with the log correction above, using pytest-split 0.11.0's
+`duration_based_chunks` on pytest's collected items: fast 15231 tests / 6 groups, slow
+15474 tests / 5 groups. Old is `e6151107:.test_durations`; corrected is this file.
+Python 3.11 / JAX 0.10.2 CPU; fast includes the locally available trimesh package, slow
+excludes the CAD extra, and Plotly is absent. The marker selections match the workflows.
+Unknown old entries (2847 fast, 2864 slow) use the plugin's selected-population mean;
+the corrected file has no missing entries in either selection.
+
+| lane | group | old minutes | corrected minutes |
+|---|---|---:|---:|
+| fast | 1 | 42.99 | 39.82 |
+| fast | 2 | 42.99 | 40.21 |
+| fast | 3 | 43.32 | 39.84 |
+| fast | 4 | 43.00 | 39.82 |
+| fast | 5 | 43.10 | 40.83 |
+| fast | 6 | 42.48 | 38.37 |
+| fast | max | 43.32 | 40.83 |
+| slow | 1 | 115.04 | 88.67 |
+| slow | 2 | 114.68 | 88.51 |
+| slow | 3 | 114.81 | 88.65 |
+| slow | 4 | 119.10 | 88.77 |
+| slow | 5 | 109.67 | 87.74 |
+| slow | max | 119.10 | 88.77 |
+
+Earlier balance records follow.
 
 Every number here is anchored, because both of its inputs move. The collection grows with the
 tree: measured at c0ee0a7d the fast lane's selection holds 10472 tests and the slow lane's 10683,
