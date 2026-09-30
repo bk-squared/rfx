@@ -49,7 +49,8 @@ def test_graded_lumped_port_default_is_no_s_request():
     the S-request one, is what the user must see."""
     def graded():
         sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 0.0),
-                         dx=1e-3, boundary="pec", dz_profile=np.full(12, 1e-3))
+                         dx=1e-3, boundary="pec",
+                         dz_profile=np.array([1e-3] * 6 + [0.5e-3] * 12))
         sim.add_port((6e-3, 6e-3, 6e-3), "ez", impedance=50.0)
         sim.add_probe((12e-3, 6e-3, 6e-3), "ez")
         return sim
