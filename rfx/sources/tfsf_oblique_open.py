@@ -387,7 +387,9 @@ def apply_methodB_h(state, cfg: MethodBConfig, st: MethodBState, dx: float, dt: 
     y_lo-1 / y_hi get ``±ch·Ez_inc`` with NO cos/sin factor (the angle enters via
     the k̂ projection baked into the gather tables). Full-z broadcast ([:, None]).
     """
-    ch = dt / (MU_0 * dx)
+    from rfx.core.yee import MaterialArrays, component_h_materials
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    ch = dt / (mu_abs * dx)
     e1d = st.e1d
     hx, hy = state.hx, state.hy
 

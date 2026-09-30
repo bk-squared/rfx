@@ -34,7 +34,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 
@@ -219,7 +219,8 @@ def init_subgrid_1d(
 def _update_h_1d(e: jnp.ndarray, h: jnp.ndarray,
                  dt: float, dx: float) -> jnp.ndarray:
     """Standard 1D Yee H-update:  H += (dt/mu0) * (E[i+1] - E[i]) / dx."""
-    return h + (dt / MU_0) * (e[1:] - e[:-1]) / dx
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    return h + (dt / mu_abs) * (e[1:] - e[:-1]) / dx
 
 
 def _update_e_1d(e: jnp.ndarray, h: jnp.ndarray,

@@ -59,7 +59,7 @@ def _build(kind):
                     material="pec")
         elif kind == "wire":
             sim.add(PolylineWire(((10e-3, 6e-3, 6e-3), (14e-3, 6e-3, 6e-3)),
-                                 radius=0.2e-3), material="pec")
+                                 radius=0.), material="pec")  # legacy PEC filament
         sim.add_source(position=(4e-3, 6e-3, 6e-3), component="ez",
                        amplitude_kind="field")
         sim.add_probe(position=(12e-3, 6e-3, 6e-3), component="ez")

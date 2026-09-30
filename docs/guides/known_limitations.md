@@ -25,6 +25,30 @@ Use `exchange_interval=1`.
 
 ## Ports and extraction
 
+**The default wire port is a mesh-sized probe.** `add_port(..., extent=...)`
+with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
+square transverse mesh. Refinement therefore changes its series inductance;
+it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
+the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
+square transverse stencil and uniform spacing along the pin. Axial grading
+across the port refuses this model. It is carried by single-device,
+nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
+Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
+Resolve larger wire ports geometrically with a coax feed or a volume wire.
+
+**Positive subcell PEC filament radii are unsupported.** A PEC `PolylineWire`
+with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
+volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
+cell at its vertices. The existing volume-wire rule and legacy `radius=0`
+filament ownership remain; zero does not declare a physical wire radius.
+The attempted filament correction failed its independent uncorrected-main
+reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
+8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
+11.3 GHz was 2.58 Ω (limits 2% and 1 Ω). The correction is removed.
+That one-edge feed has nonuniform longitudinal current, so the full-height
+wire-port Hankel oracle does not establish its accuracy. The port radius
+model and its full-height oracle remain separate.
+
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power

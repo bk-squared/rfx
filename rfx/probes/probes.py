@@ -1962,6 +1962,9 @@ def extract_s_matrix_wire(
     for p in ports:
         mats = setup_wire_port(grid, p, mats, pec_edge_masks=pec_edge_masks)
 
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(mats, lane="dispersive wire S-matrix extraction",
+                          unsupported=debye_spec is not None or lorentz_spec is not None)
     debye = None
     if debye_spec is not None:
         debye_poles, debye_masks = debye_spec

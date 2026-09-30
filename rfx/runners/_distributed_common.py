@@ -41,6 +41,7 @@ from rfx.core.yee import (
     ade_state_dtype,
     cell_owned_component_materials,
     component_e_materials,
+    component_h_materials,
     edge_mean_components,
     e_update_coeffs,
     map_lumped,
@@ -448,7 +449,8 @@ def cpml_coeff_h_vacuum(dt: float) -> float:
     Takes ONLY ``dt`` — no ``mu_r``/``materials`` argument. The vacuum
     assumption is intentional and load-bearing: see the module docstring.
     """
-    return dt / MU_0
+    mu = component_h_materials(MaterialArrays(None, None, 1.0))[0]
+    return dt / (mu * MU_0)
 
 
 # ---------------------------------------------------------------------------
@@ -1156,10 +1158,11 @@ def _update_h_local_nu(state, materials, dt,
     y/z spacings are replicated (full-axis).
     """
     ex, ey, ez = state.ex, state.ey, state.ez
-    mu_r = materials.mu_r
+    mu = component_h_materials(materials)
     if _realized.ACTIVE is not None:
-        mu_r = _realized.magnetic(materials, "yee.H")
-    mu = mu_r * MU_0
+        mu = _realized.magnetic(materials, mu, "yee.H")
+    mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     curl_x = (
         (_shift_fwd(ez, 1) - ez) * inv_dy_h_full[None, :, None]
@@ -1174,9 +1177,9 @@ def _update_h_local_nu(state, materials, dt,
         - (_shift_fwd(ex, 1) - ex) * inv_dy_h_full[None, :, None]
     )
 
-    hx = state.hx - (dt / mu) * curl_x
-    hy = state.hy - (dt / mu) * curl_y
-    hz = state.hz - (dt / mu) * curl_z
+    hx = state.hx - ch_x * curl_x
+    hy = state.hy - ch_y * curl_y
+    hz = state.hz - ch_z * curl_z
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -1407,6 +1410,8 @@ def update_h_nu_shmap(st, mat, mesh, dt,
     components are passed in because the H curl reads them, and returned
     untouched by not being in ``out_specs``.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(mat, lane="distributed H shard", unsupported=True)
     @partial(
         shard_map,
         mesh=mesh,
@@ -1536,6 +1541,9 @@ def _split_materials(materials, n_devices, ghost=1):
     pad_value=0.0 for sigma (lossless). The per-component lumped records
     (#1236) are split like ``sigma`` (a ghost holds no stamp).
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(materials, lane="distributed material split", unsupported=True)
+
     def _split_lumped(arr):
         return split_array_x(arr, n_devices, ghost, pad_value=0.0)
 
@@ -1673,10 +1681,11 @@ def _update_h_local(state, materials, dt, dx):
     non-periodic (ghost cells handle inter-device coupling).
     """
     ex, ey, ez = state.ex, state.ey, state.ez
-    mu_r = materials.mu_r
+    mu = component_h_materials(materials)
     if _realized.ACTIVE is not None:
-        mu_r = _realized.magnetic(materials, "yee.H")
-    mu = mu_r * MU_0
+        mu = _realized.magnetic(materials, mu, "yee.H")
+    mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     curl_x = (
         (_shift_fwd(ez, 1) - ez) / dx
@@ -1691,9 +1700,9 @@ def _update_h_local(state, materials, dt, dx):
         - (_shift_fwd(ex, 1) - ex) / dx
     )
 
-    hx = state.hx - (dt / mu) * curl_x
-    hy = state.hy - (dt / mu) * curl_y
-    hz = state.hz - (dt / mu) * curl_z
+    hx = state.hx - ch_x * curl_x
+    hy = state.hy - ch_y * curl_y
+    hz = state.hz - ch_z * curl_z
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -2385,7 +2394,8 @@ def _apply_cpml_h_distributed(
     x_hi_edge = g + pad_x
     # Per-face H-coefficient (material-aware when mu_r is supplied).
     if mu_r is not None:
-        _ch = dt / (mu_r * MU_0)  # (nx_local+2g, ny, nz)
+        _mu = component_h_materials(MaterialArrays(None, None, mu_r))
+        _ch = dt / (_mu[0] * MU_0)  # (nx_local+2g, ny, nz)
         ch_xlo = _ch[g:g + n_xlo, :, :]
         ch_xhi = (
             _ch[-(x_hi_edge + n_xhi):-x_hi_edge, :, :]

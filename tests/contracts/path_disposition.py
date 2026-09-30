@@ -570,7 +570,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("the drive is read in other units, 1/dx² of run_uniform's", wrong="#1266"),
             run_subgridded=carries("inside the refined slab"),
             run_adi=ADI_SOFT_SOURCES,
-            run_distributed=carries("single-cell excited ports"),
+            run_distributed=carries("single-cell excited ports with compute_s_params=False; "
+                                    "the default S-matrix request is refused"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries("the drive is read in other units, 1/dx² of run_uniform's", wrong="#1266"),
             fwd_distributed_nu=DIST_FWD_PORTS,
@@ -799,7 +800,10 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=admission("Boundary(conformal=True) or conformal_pec=True with a lumped/wire S-matrix", RUN_U,
                                   "the lumped-port S-matrix run() returns came from "
                                   "_forward_from_materials, which staircases (#1299)"),
-            **CONFORMAL,
+            **(CONFORMAL | {"run_distributed": refuses(
+                "the default lumped/wire S-matrix request is refused before conformal fields",
+                raises="run(compute_s_params=True) is not supported on the distributed multi-device path",
+            )}),
         ),
         # A closed PEC box with a CPML lid on z_hi, against the all-PEC box.
         "absorbing_lid": lanes(

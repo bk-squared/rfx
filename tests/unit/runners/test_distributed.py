@@ -525,7 +525,7 @@ class TestDistributedLumpedPort:
         sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
 
         r1 = sim.run(n_steps=100)
-        r4 = sim.run(n_steps=100, devices=jax.devices()[:_N_MULTI])
+        r4 = sim.run(n_steps=100, devices=jax.devices()[:_N_MULTI], compute_s_params=False)
 
         ts1 = np.array(r1.time_series)
         ts4 = np.array(r4.time_series)
@@ -548,7 +548,7 @@ class TestDistributedLumpedPort:
         sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
 
         devices = jax.devices()[:_N_MULTI]
-        result = sim.run(n_steps=50, devices=devices)
+        result = sim.run(n_steps=50, devices=devices, compute_s_params=False)
         ts = np.array(result.time_series).ravel()
         assert np.max(np.abs(ts)) > 0, "Lumped port signal is zero"
 
@@ -568,7 +568,7 @@ class TestDistributedLumpedPort:
         sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
 
         r1 = sim.run(n_steps=100)
-        r2 = sim.run(n_steps=100, devices=jax.devices()[:2])
+        r2 = sim.run(n_steps=100, devices=jax.devices()[:2], compute_s_params=False)
 
         ts1 = np.array(r1.time_series)
         ts2 = np.array(r2.time_series)

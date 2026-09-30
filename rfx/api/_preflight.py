@@ -431,7 +431,8 @@ class _PreflightMixin:
             raise NotImplementedError(
                 "run(compute_s_params=True) is not supported on the "
                 "distributed multi-device path; run a single-device "
-                "uniform S-parameter calculation."
+                "uniform S-parameter calculation, or pass "
+                "compute_s_params=False for the fields alone."
             )
         if self._refinement is not None:
             if source_only_entries:

@@ -37,13 +37,13 @@ def _sim(lane, dom=DOM):
 
 
 def _dipole(lane, y):
-    """Two sub-cell wire arms along z at (10 mm, y), fed by a wire port in
+    """Two legacy filament arms along z at (10 mm, y), fed by a wire port in
     the 1 mm gap between them at the same (x, y)."""
     sim = _sim(lane)
     x = 10e-3
-    sim.add(PolylineWire(((x, y, 3e-3), (x, y, 8e-3)), radius=0.1e-3),
+    sim.add(PolylineWire(((x, y, 3e-3), (x, y, 8e-3)), radius=0.),
             material="pec")
-    sim.add(PolylineWire(((x, y, 9e-3), (x, y, 14e-3)), radius=0.1e-3),
+    sim.add(PolylineWire(((x, y, 9e-3), (x, y, 14e-3)), radius=0.),
             material="pec")
     sim.add_port((x, y, 8e-3), component="ez", extent=1e-3)
     return sim

@@ -1359,6 +1359,8 @@ class _ExecuteMixin:
         """
         import copy
 
+        from rfx.sources.wire_radius import require_radius_update
+        require_radius_update(materials, lane="ADI", unsupported=True)
         self._validate_adi_configuration(materials, debye_spec, lorentz_spec)
 
         from rfx.boundaries.pec import realized_pec_edge_masks as _rpem_adi
@@ -1824,6 +1826,7 @@ class _ExecuteMixin:
                     component=pe.component,
                     impedance=pe.impedance,
                     excitation=_drive_waveform,
+                    radius=pe.radius,
                 )
                 # Live-cell-aware fold + injection (issue #318): dead
                 # extent cells inside PEC carry no port sigma and no
@@ -4939,6 +4942,22 @@ class _ExecuteMixin:
                                  "conformal_pec": _one_uniform}
                 if self._boundary not in ("cpml", "upml"):
                     _dist_instead["until_decay"] = _one_uniform
+            # Resolve the default as the one-device lane of this mesh does: the
+            # uniform runner computes S for every impedance port, the non-uniform
+            # runner only for wire ports (extent set).
+            if compute_s_params is None:
+                if self._uses_nonuniform_mesh:
+                    compute_s_params = any(pe.impedance != 0.0 and pe.extent is not None
+                                           for pe in self._ports)
+                else:
+                    compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
+                # Use the same refusal as an explicit S-parameter request.
+                self._validate_run_sparameter_request(
+                    compute_s_params=compute_s_params,
+                    s_param_freqs=s_param_freqs,
+                    s_param_n_steps=s_param_n_steps,
+                    devices=devices,
+                )
             self._refuse_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
@@ -4958,6 +4977,8 @@ class _ExecuteMixin:
                 exchange_interval=exchange_interval,
                 conformal_pec=conformal_pec,
             )
+            _res = self._attach_run_settling_witness(
+                _res, n_steps=n_steps, num_periods=num_periods)
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")

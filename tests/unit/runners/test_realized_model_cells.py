@@ -21,7 +21,7 @@ import pytest
 from rfx import Box, Simulation
 from rfx import _realized
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.core.yee import component_e_materials, e_update_coeffs
+from rfx.core.yee import component_e_materials, component_h_materials, e_update_coeffs
 from tests.contracts import realized_model as T
 
 MM = 1e-3
@@ -146,7 +146,7 @@ def material_pairs(dump, row, axis):
         distributed = r["site"].startswith("distributed")
         mats = dump.full_materials if distributed else r["materials"]
         if row == "mu":
-            ref = np.asarray(mats.mu_r)
+            ref = np.asarray(component_h_materials(r["materials"], r["periodic"])[axis])
         else:
             eps, sig = component_e_materials(mats, r["periodic"])
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])

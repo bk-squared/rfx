@@ -809,7 +809,9 @@ def build_coaxial_tem_plane_source_specs(
     # waveguides are vacuum-filled by convention; coax in PTFE needs the
     # εr correction so the per-step E-injection matches the physical
     # ``cb = dt/(εr·ε₀·dz)`` of the FDTD update.
-    coeff_h = jnp.float32(dt_step / (MU_0 * dz))
+    from rfx.core.yee import MaterialArrays, component_h_materials
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    coeff_h = jnp.float32(dt_step / (mu_abs * dz))
     coeff_e = jnp.float32(dt_step / (float(eps_r) * EPS_0 * dz))
 
     # Inner edge of the outer conductor. Source cells stay inside the PTFE

@@ -552,7 +552,11 @@ class PolylineWire:
     points : tuple of tuple[float, float, float]
         Ordered vertices in metres, e.g. ((x0,y0,z0), (x1,y1,z1), ...).
     radius : float
-        Wire radius in metres.
+        Wire radius in metres. For PEC realization, a positive radius must
+        be at least half the smallest local cell at the vertices (a volume
+        wire). Smaller positive radii refuse; refine the mesh to resolve
+        the wire. Zero retains the legacy lattice filament without a
+        declared physical radius.
     """
 
     points: tuple[tuple[float, float, float], ...]

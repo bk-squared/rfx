@@ -468,8 +468,9 @@ def _refuse_zero_cells(shape, name, what: str):
         f"{what} {name!r} ({type(shape).__name__}) rasterizes to ZERO cells "
         "on this grid: no primal-cell centre lies inside it, so it would "
         "silently vanish (the #369 vaporized-metal class, now an error). A "
-        "filament (a via or post thinner than a cell) is a PolylineWire, "
-        "not a volume; a volume needs a radius of at least ~0.87 of the "
+        "legacy radius=0 filament is a PolylineWire. A positive PEC wire "
+        "radius must be resolved as a volume, a >= 0.5*d; a volume needs "
+        "a radius of at least ~0.87 of the "
         "local cell (half the cell diagonal) to be sure of one centre — "
         "resolve the mesh or redraw the body.")
 
@@ -747,14 +748,58 @@ def wire_filament_nodes(points, radius, node_axes, cell_sizes, *, grid=None):
     the smallest local cell at the vertices' nearest nodes is a volume.
     ``classify_pec_entry`` realizes a wire by this rule, and lane admission
     asks it which kind of conductor a declared wire becomes. The vertex snap
-    itself is ``wire_vertex_nodes``."""
+    itself is ``wire_vertex_nodes``. Every positive subcell radius refuses:
+    the filament self-field correction failed its independent main-grid
+    witness. Only the legacy zero-radius filament has no declared radius.
+    """
+    a = float(radius)
     # A declared periodic uniform grid has constant cells. Decide that a
     # wire is a volume before admitting its vertices as a directed path.
-    if getattr(grid, 'periodic_axes', '') and float(radius) >= .5 * min(
+    if getattr(grid, 'periodic_axes', '') and a >= .5 * min(
             float(np.asarray(d)[0]) for d in cell_sizes):
         return None
     nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes, grid=grid)
-    return nodes if float(radius) < 0.5 * d_min else None
+    _refuse_subcell_wire_radius(a, d_min)
+    return nodes if a < 0.5 * d_min else None
+
+
+def _refuse_subcell_wire_radius(radius, d_min):
+    """Use the same positive-subcell refusal on static and traced meshes."""
+    if 0 < radius < 0.5 * d_min:
+        raise ValueError(
+            "PEC PolylineWire filament radius is not supported for "
+            "0 < a < 0.5*d_min; resolve the wire as a volume, a >= 0.5*d "
+            "(refine the mesh to resolve the declared radius).")
+
+
+def _static_wire_min_cell(points, node_axes, cell_sizes):
+    """Local radius cutoff from host metrics, without reading traced nodes.
+
+    A constant static profile needs no vertex index. A graded profile needs
+    its static node axis to locate the nearest nodes, just as
+    ``wire_vertex_nodes`` does. Mesh-design profiles have no nominal host
+    copy in ``make_nonuniform_grid``; never substitute a boundary spacing.
+    """
+    widths = []
+    for t, (axis, sizes) in enumerate(zip(node_axes, cell_sizes)):
+        if is_tracer(sizes):
+            raise NotImplementedError(
+                "PEC PolylineWire radius requires static lattice metrics: "
+                f"{'xyz'[t]} cell sizes are traced and no nominal untraced "
+                "profile is available to decide 0 < a < 0.5*d_min.")
+        d = np.asarray(sizes, dtype=np.float64)
+        if np.all(d == d[0]):
+            widths.append(float(d[0]))
+        else:
+            if is_tracer(axis):
+                raise NotImplementedError(
+                    "PEC PolylineWire radius requires static lattice metrics: "
+                    f"the graded {'xyz'[t]} profile has no static node axis "
+                    "to locate the wire vertices and decide 0 < a < 0.5*d_min.")
+            x = np.asarray(axis, dtype=np.float64)
+            widths.extend(float(d[int(np.argmin(np.abs(x - float(p[t]))))])
+                          for p in points)
+    return min(widths)
 
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
@@ -769,10 +814,22 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     * Box with ``0 < extent < one local cell`` along any axis — a Box is a
       volume; declare a sheet (a zero-thickness Box or add_thin_conductor)
       or resolve the thickness;
+    * PolylineWire with ``0 < radius < half the smallest local cell``;
     * any shape whose centre-sampled volume is empty (concrete only).
+
+    A traced wire radius or unavailable static local lattice metrics raises
+    ``NotImplementedError``. With static metrics, resolved wires retain the
+    centre-sampled volume path even when the coordinates are traced.
     """
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
     from rfx._periodic import periodic_shape
+    pts = getattr(shape, "points", None)
+    radius = getattr(shape, "radius", None)
+    # Periodic filament validation also needs a concrete radius.
+    if pts is not None and is_tracer(radius):
+        raise NotImplementedError(
+            "PEC PolylineWire requires a static radius to choose "
+            "filament or volume; a traced radius is not supported.")
     shape = periodic_shape(grid, shape)
 
     traced = _is_traced_coords(coords) or _is_traced_coords(centres)
@@ -800,12 +857,13 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         if not traced and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
-    pts = getattr(shape, "points", None)
-    radius = getattr(shape, "radius", None)
+    if pts is not None and radius is not None and traced and radius > 0:
+        d_min = _static_wire_min_cell(pts, node_axes, cell_sizes)
+        _refuse_subcell_wire_radius(radius, d_min)
     if pts is not None and radius is not None and not traced:
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
-        # below that it is a filament on the axis-aligned lattice path
-        # joining the nearest nodes of consecutive vertices.
+        # positive subcell radii refuse. A legacy radius=0 filament takes
+        # the axis-aligned path joining the vertices' nearest nodes.
         nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes, grid=grid)
         if nodes is not None:
             if getattr(grid, 'periodic_axes', ''):

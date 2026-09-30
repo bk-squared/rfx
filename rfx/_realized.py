@@ -116,10 +116,11 @@ def scalar_electric(materials, site):
     return materials._replace(eps_r=eps[0], sigma=sigma[0])
 
 
-def magnetic(materials, site):
-    mu = ACTIVE.apply(site, "mu_h", (materials.mu_r,) * 3)
-    ACTIVE.observe(site, dict(mu_h=mu, materials=materials))
-    return mu[0]
+def magnetic(materials, mu, site, *, periodic=(False,) * 3):
+    """Observe and replay the relative H operands returned by their owner."""
+    mu = ACTIVE.apply(site, "mu_h", mu)
+    ACTIVE.observe(site, dict(mu_h=mu, materials=materials), periodic=periodic)
+    return mu
 
 
 def sources(grid, materials, specs, site, *, dt=None):

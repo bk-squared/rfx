@@ -1317,7 +1317,9 @@ def make_msl_port_sources_jm(
     n_z = em.n_z_grid
 
     # TFSF coefficients — identical to waveguide_port.py apply_waveguide_port_h/e
-    coeff_H = float(dt / (MU_0 * dx))
+    from rfx.core.yee import MaterialArrays, component_h_materials
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    coeff_H = float(dt / (mu_abs * dx))
 
     # Direction: +x → H plane behind = i-1; sign = -1 (matches waveguide port)
     #            -x → H plane behind = i;   sign = +1

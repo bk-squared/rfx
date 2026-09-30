@@ -352,7 +352,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_geometry", "pec_volume"): _plus(lambda s, _: s.add(Box(mm(5, 3, 3), mm(7, 9, 9)), material="pec")),
     ("_geometry", "pec_sheet"): _plus(lambda s, _: s.add(Box(mm(6, 3, 3), mm(6, 9, 9)), material="pec")),
     ("_geometry", "pec_wire"): _plus(lambda s, _: s.add(
-        PolylineWire((mm(6, 6, 3), mm(6, 6, 9)), radius=0.2e-3), material="pec")),
+        PolylineWire((mm(6, 6, 3), mm(6, 6, 9)), radius=0.0), material="pec")),
     ("_thin_conductors", "lossy_sheet"): _plus(lambda s, _: s.add_thin_conductor(
         Box(mm(6, 3, 3), mm(6, 9, 9)), sigma_bulk=1e3, thickness=1e-4)),
     ("_thin_conductors", "pec_sheet"): _plus(lambda s, _: s.add_thin_conductor(
@@ -365,7 +365,9 @@ FEATURES: dict[tuple[str, str], Feature] = {
         mm(6, 8, 6), "ez", waveform=WAVEFORM, amplitude_kind="field")),
     ("_ports", "amplitude_kind"): Feature(_amplitude_kind, off="base"),
     ("_ports", "lumped_port"): _plus(lambda s, _: s.add_port(
-        mm(6, 8, 6), "ez", impedance=50.0, waveform=WAVEFORM)),
+        mm(6, 8, 6), "ez", impedance=50.0, waveform=WAVEFORM))._replace(
+            run_kwargs=lambda lane: ({"compute_s_params": False}
+                                     if lane == "run_distributed" else {})),
     ("_ports", "passive_port"): _plus(lambda s, _: s.add_port(
         mm(6, 8, 6), "ez", impedance=50.0, excite=False)),
     ("_ports", "wire_port"): _plus(lambda s, _: s.add_port(
@@ -798,8 +800,9 @@ def test_a_slab_reaching_the_lid_is_refused_in_every_validation_mode(validation)
 
 def _band_wire(lane, x_mm):
     """A graded x mesh of 1 mm cells with a 0.25 mm band over x = 3-4 mm, and
-    a PEC PolylineWire of radius 0.3 mm along z at ``x_mm``: a filament in the
-    1 mm cells (0.3 < 0.5), a volume in the band (0.3 >= 0.125)."""
+    a PEC PolylineWire of radius 0.3 mm along z at ``x_mm``: in the refused
+    filament band in 1 mm cells (0 < 0.3 < 0.5), a volume in the fine
+    band (0.3 >= 0.125)."""
     profile = np.array([1e-3] * 3 + [0.25e-3] * 4 + [1e-3] * 8)
     sim = _simulation(lane, (12, 12, 12), dx_profile=profile)
     sim.add(PolylineWire((mm(x_mm, 6.5, 3), mm(x_mm, 6.5, 9)), radius=0.3e-3), material="pec")
@@ -820,6 +823,10 @@ def test_a_wire_is_judged_by_the_cells_at_its_own_vertices(x_mm, kind):
         sim = _band_wire("run_nonuniform", x_mm)
         grid = sim._build_nonuniform_grid()
         sheets, wires = [], []
+        if kind == "pec_wire":
+            with pytest.raises(ValueError, match="resolve the wire as a volume"):
+                sim._assemble_materials_nu(grid, pec_sheets=sheets, pec_wires=wires)
+            return
         sim._assemble_materials_nu(grid, pec_sheets=sheets, pec_wires=wires)
     assert len(wires) == (1 if kind == "pec_wire" else 0)
     assert A.DETECTORS["_geometry", kind](sim)
