@@ -1078,6 +1078,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     sources = []
     probes = []
     wire_port_specs = []
+    lumped_port_specs = []
 
     # Domain extents (for auto-detecting port direction).
     dom_lx = float(sim._domain[0])
@@ -1322,10 +1323,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 sources.append(src)
 
             # Explicit bins opt lumped ports into the same V/I accumulators
-            # as a one-cell wire port, matching uniform forward (#1410).
+            # as a one-cell wire port (#1410). Graded forward returns a
+            # driven-column matrix (n, n, nf); uniform lumped forward
+            # returns per-port diagonals (n, nf), squeezed for one port.
             # Leave the historical default (wire ports only) unchanged.
             if lane == "fwd_nonuniform" and s_param_freqs is not None:
-                wire_port_specs.append({
+                lumped_port_specs.append({
                     'mid_i': i, 'mid_j': j, 'mid_k': k,
                     'component': pe.component,
                     'impedance': pe.impedance,
@@ -1334,6 +1337,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     'live_cells': ((i, j, k),),
                     'n_live': 1,
                 })
+
+    # Preserve wire indices when explicit bins also include lumped ports.
+    wire_port_specs.extend(lumped_port_specs)
 
     for pe in sim._probes:
         idx = pos_to_nu_index(grid, pe.position)
