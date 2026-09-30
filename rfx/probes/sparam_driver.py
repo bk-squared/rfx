@@ -435,7 +435,13 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
                              _source_port_indices=(drive,), _record_probes=probes)
     samples = np.array(result.time_series)
     samples[:, zeros] = 0
-    v, i = _lumped_recording_dfts(samples, freqs, grid.dt, grid.dx)
+    # The cell width along each port's own E component, asked per cell.
+    axis_of = {"ex": 0, "ey": 1, "ez": 2}
+    dx_ports = np.array([
+        float(grid.cells(axis_of[pe.component])[
+            int(grid.position_to_index(pe.position)[axis_of[pe.component]])])
+        for pe in ports])
+    v, i = _lumped_recording_dfts(samples, freqs, grid.dt, dx_ports)
     # The current decomposer uses ONLY presence of v_ref to select the
     # post-injection convention. These zeros are NOT measured pre-injection V.
     return {"lumped": [(None, (vp, ip, np.zeros_like(vp)))

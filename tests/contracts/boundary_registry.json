@@ -643,7 +643,7 @@
       "file": "rfx/probes/probes.py",
       "function": "_ampere_loop",
       "kind": "neighbour",
-      "count": 6
+      "count": 2
     },
     {
       "file": "rfx/probes/probes.py",
