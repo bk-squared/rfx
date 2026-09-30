@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 import subprocess
 import sys
+import time
 
 import jax
 import numpy as np
@@ -21,6 +22,21 @@ FREQS = np.array([1, 2.5, 5, 7.5, 10]) * 1e9
 # tighter absolute S bar below leaves margin for float32 reduction rounding.
 S_ATOL = 9e-6
 TRACE_RTOL = 9e-6
+
+
+def _plate_line(impedance=40.):
+    """One-cell gap, w/h=10 PEC plates extending through the x-high CPML."""
+    sim = Simulation(freq_max=10e9, domain=(24e-3, 16e-3, 6e-3),
+                     dx=1e-3, boundary="cpml", cpml_layers=4)
+    for lo, hi in ((1e-3, 2e-3), (3e-3, 4e-3)):
+        sim.add(Box((3e-3, 3e-3, lo), (30e-3, 13e-3, hi)), material="pec")
+    # eta0*h/w = 37.673 ohm; 40 ohm is the nearby one-device sweep choice.
+    sim.add_port((4e-3, 8e-3, 2e-3), "ez", impedance=impedance,
+                 waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
+    sim.add_probe(sim._ports[0].position, "ez")
+    assert not sim._boundary_spec.pmc_faces()
+    assert not sim._boundary_spec.pec_faces()
+    return sim
 
 
 def _model(seam=True, ports=2, component="ez", channel=False, n_devices=2, boundary="cpml", magnetic=False):
@@ -47,7 +63,12 @@ def _model(seam=True, ports=2, component="ez", channel=False, n_devices=2, bound
 
 def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
             component="ez", n_devices=2, case=None, n_steps=256):
+    started = time.monotonic()
     sim = _model(seam, ports, component, channel, n_devices)
+    freqs = FREQS
+    if case == "plate_line":
+        sim = _plate_line()
+        freqs = np.linspace(1e9, 10e9, 19)
     if case in ("soft_pec", "legacy_soft_pec"):
         sim = _model(seam, ports, component, channel=False, n_devices=n_devices, boundary="pec")
     if case in ("debye", "lossy", "eps4"):
@@ -63,13 +84,14 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
                        **({} if case == "legacy_soft_pec" else {"amplitude_kind": "field"}))
     kwargs = {"n_steps": n_steps, "skip_preflight": True}
     if mode == "explicit":
-        kwargs.update(compute_s_params=True, s_param_freqs=FREQS, s_param_n_steps=max(320, n_steps))
+        kwargs.update(compute_s_params=True, s_param_freqs=freqs, s_param_n_steps=max(320, n_steps))
     elif mode == "true":
         kwargs.update(compute_s_params=True)
     elif mode == "freqs":
         kwargs.update(s_param_freqs=FREQS)
     elif mode == "steps":
         kwargs.update(s_param_n_steps=max(320, n_steps))
+    # time_series comes from the one-device MAIN run; S has its own drive scans.
     reference = sim.run(**kwargs)
     actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
     assert actual.s_params is not None
@@ -89,6 +111,12 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
     assert error <= S_ATOL, f"S parity max_delta={error} gate={S_ATOL}"
     assert error <= 1e-4 * np.max(np.abs(reference.s_params))
     assert len(sim._probes) == 1 and all(pe.excite for pe in sim._ports)
+    if case == "plate_line":
+        k = int(np.argmin(np.abs(reference.s_params[0, 0])))
+        print(f"plate_line Z0={sim._ports[0].impedance:g} ohm min_S11_dB={minimum:.9g} "
+              f"bin={k} frequency_Hz={reference.freqs[k]:g} "
+              f"parity_runtime_s={time.monotonic() - started:.3f}")
+        assert minimum <= -10
     if channel:
         # The all-nonmagnetic replacement radiates transversely as well as
         # along x; it is not the former PMC TEM matched-line fixture.
@@ -107,6 +135,10 @@ def test_all_entries_all_bins(seam, ports, mode):
 @pytest.mark.parametrize("mode", ["default", "explicit", "true", "freqs", "steps"])
 def test_cpml_channel(mode):
     _parity(channel=True, mode=mode)
+
+
+def test_matched_plate_line():
+    _parity(case="plate_line", ports=1, n_steps=512)
 
 
 @pytest.mark.parametrize("component", ["ex", "ey"])
@@ -226,12 +258,24 @@ def test_material_and_soft_source_parity(case):
     _parity(case=case)
 
 
-@pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="Legacy PEC soft-source default differs between single-device S scans and the main run",
-)
 def test_legacy_pec_soft_source_parity():
     _parity(case="legacy_soft_pec")
+
+
+def test_main_source_rule_in_drive_scans_mutation(monkeypatch):
+    import inspect
+    from rfx.runners import distributed_v2 as runner
+    source = inspect.getsource(runner.run_distributed)
+    source = source.replace(
+        'if _source_port_indices is not None or sim._boundary == "cpml":',
+        'if sim._boundary == "cpml":',
+    )
+    namespace = dict(vars(runner))
+    exec(compile(source, "<main-source-rule-mutation>", "exec"), namespace)
+    monkeypatch.setattr(runner, "run_distributed", namespace["run_distributed"])
+    with pytest.raises(AssertionError, match="S parity max_delta"):
+        _parity(case="legacy_soft_pec")
+    print("mutation=main_source_rule_in_drive_scans: soft PEC S parity RED")
 
 
 def test_long_record():
@@ -357,3 +401,5 @@ def test_explicit_opt_out_keeps_s_options_inert(monkeypatch):
 if __name__ == "__main__":
     _parity(n_devices=int(sys.argv[1]))
     _parity(n_devices=int(sys.argv[1]), channel=True)
+    _parity(n_devices=int(sys.argv[1]), case="plate_line", ports=1, n_steps=512)
+    _parity(n_devices=int(sys.argv[1]), case="legacy_soft_pec")

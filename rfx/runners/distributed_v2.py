@@ -617,7 +617,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     _source_port_indices : tuple[int, ...] or None
         Optional excited lumped-port indices; all terminations remain present.
-        Changes source selection only, never source semantics or step order.
+        Selects the S driver's source assembly (including impedance-0 sources).
+        The numerical step is shared with the main run.
     _record_probes : tuple or None
         Optional global-cell probes in place of the model probes.
 
@@ -945,8 +946,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 if _source_port_indices is None or port_idx in _source_port_indices:
                     sources.append(make_port_source(grid, lp, materials, n_steps))
             elif pe.impedance == 0.0:
-                # issue #571: thread amplitude_kind; helper stays boundary-selected.
-                if sim._boundary == "cpml":
+                # S scans use the one-device S driver's current-source helper
+                # on every boundary. Main runs retain their boundary rule.
+                if _source_port_indices is not None or sim._boundary == "cpml":
                     sources.append(make_j_source(grid, pe.position, pe.component,
                                                  pe.waveform, n_steps, materials,
                                                  amplitude_kind=pe.amplitude_kind))
