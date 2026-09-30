@@ -283,7 +283,7 @@ def test_long_record():
     _parity(n_steps=2048)
 
 
-def test_one_scan_per_drive_and_vi_dump_refusal(monkeypatch):
+def test_one_scan_per_drive_and_shared_replay_bundle(monkeypatch):
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     from rfx.probes.probes import PortVIReplayBundle
     from rfx.runners import distributed_v2 as runner
@@ -299,17 +299,19 @@ def test_one_scan_per_drive_and_vi_dump_refusal(monkeypatch):
     sim = _model(channel=True)
     expected = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, n_steps=320,
                                                    return_vi_dump=True)
-    assert isinstance(expected, PortVIReplayBundle)
-    with pytest.raises(NotImplementedError, match="return_vi_dump=True.*pre-injection"):
-        compute_lumped_wire_s_matrix_via_scan(
-            sim, FREQS, n_steps=320, return_vi_dump=True,
-            devices=jax.devices("cpu")[:2])
-    assert calls == []
-    actual, freqs = compute_lumped_wire_s_matrix_via_scan(
-        sim, FREQS, n_steps=320, devices=jax.devices("cpu")[:2])
+    actual = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, n_steps=320,
+                                                  return_vi_dump=True,
+                                                  devices=jax.devices("cpu")[:2])
     assert calls == [((0,), 10, 320), ((1,), 10, 320)]
-    np.testing.assert_array_equal(freqs, FREQS)
-    np.testing.assert_allclose(actual, expected.s_params, rtol=0, atol=S_ATOL)
+    assert isinstance(actual, PortVIReplayBundle)
+    assert actual.port_names == expected.port_names
+    assert actual.driven_port_indices == expected.driven_port_indices
+    np.testing.assert_array_equal(actual.freqs, expected.freqs)
+    np.testing.assert_array_equal(actual.port_impedances, expected.port_impedances)
+    np.testing.assert_allclose(actual.s_params, expected.s_params, rtol=0, atol=S_ATOL)
+    for name in ("voltages", "currents"):
+        np.testing.assert_allclose(getattr(actual, name), getattr(expected, name),
+                                   rtol=1e-5, atol=0)
 
 
 def _assert_shared_step_order(source):

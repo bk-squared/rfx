@@ -118,10 +118,11 @@ def compute_lumped_wire_s_matrix_via_scan(
     # convention. It does not read the main run's record. Other S requests
     # retain the selected-drive rule.
     if devices is not None:
-        if return_vi_dump:
+        if return_vi_dump and any(pe.impedance > 0 and pe.extent is not None
+                                  for pe in sim._ports):
             raise NotImplementedError(
-                "return_vi_dump=True is not supported with devices=...; "
-                "pre-injection drive reference voltages are not recorded. "
+                "return_vi_dump=True is not supported with devices=... for wire "
+                "ports; their pre-injection drive reference voltages are not recorded. "
                 "Use one device (omit devices=...).")
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")

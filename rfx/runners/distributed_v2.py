@@ -501,7 +501,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     DFT planes; NTFF on graded meshes). ``tests/unit/runners/test_distributed_admission_refusals.py``
     holds the disposition of every Simulation attribute on these lanes.
 
-    Call after the TFSF fallback and waveguide refusal, before sharding.
+    Call after the TFSF and waveguide single-device fallbacks, before sharding.
     ``bloch`` also accepts an explicit phase from a direct caller.
     """
     single_device_hint = (

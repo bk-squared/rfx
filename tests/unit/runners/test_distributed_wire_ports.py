@@ -129,13 +129,11 @@ def test_mixed_refusal_matches_baseline(monkeypatch, distributed):
     assert "mixed lumped + wire" in str(actual.value)
 
 
-@pytest.mark.parametrize("case", ["ez", "lumped"])
+@pytest.mark.parametrize("case", ["ez"])
 def test_distributed_vi_dump_refused(case):
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     sim = _model()
-    if case == "lumped":
-        sim._ports = [replace(pe, extent=None) for pe in sim._ports]
-    with pytest.raises(NotImplementedError, match="return_vi_dump=True.*pre-injection"):
+    with pytest.raises(NotImplementedError, match="return_vi_dump=True.*wire ports"):
         compute_lumped_wire_s_matrix_via_scan(
             sim, FREQS, n_steps=8, devices=jax.devices("cpu")[:2], return_vi_dump=True)
 
