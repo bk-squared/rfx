@@ -1618,7 +1618,10 @@ def stamp_coaxial_line(
     z_lo = (int(z_lo_index) - grid.pad_z_lo) * dz
     z_hi = (int(z_hi_index) - grid.pad_z_lo) * dz
     zc = 0.5 * (z_lo + z_hi)
-    height = (z_hi - z_lo) + 2.0 * dz
+    # Cylinder.mask samples node coordinates with a closed axial predicate.
+    # Put each end half a cell beyond the requested endpoint sample: exactly
+    # z_lo_index .. z_hi_index, without a floating-point tie on either end.
+    height = (z_hi - z_lo) + dz
     center = (float(center_xy[0]), float(center_xy[1]), zc)
 
     a = float(pin_radius)

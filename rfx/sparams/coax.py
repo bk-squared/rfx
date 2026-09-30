@@ -1614,10 +1614,9 @@ def compute_coax_msl_transition(
         pin_radius=a, outer_radius=b, target_impedance=r_feed,
         shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
     )
-    # The shared line stamper includes axial padding for standalone
-    # coax runs. Here the caller owns the junction, post and laminate:
-    # stop the generated stub BELOW the junction node. Restore the
-    # registered arrays, not air, so no DUT conductor/dielectric is cut.
+    # The declared stub ends below the junction node. The caller owns the
+    # junction, post and laminate: preserve the registered arrays at and above
+    # that node, so no DUT conductor/dielectric is cut.
     materials = materials._replace(
         eps_r=materials.eps_r.at[:, :, z_junction_idx:].set(
             junction_materials.eps_r[:, :, z_junction_idx:]),
