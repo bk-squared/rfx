@@ -4929,6 +4929,16 @@ class _ExecuteMixin:
                                  "conformal_pec": _one_uniform}
                 if self._boundary not in ("cpml", "upml"):
                     _dist_instead["until_decay"] = _one_uniform
+            # Match the uniform runner: zero-impedance sources produce no S.
+            if compute_s_params is None:
+                compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
+                # Use the same refusal as an explicit S-parameter request.
+                self._validate_run_sparameter_request(
+                    compute_s_params=compute_s_params,
+                    s_param_freqs=s_param_freqs,
+                    s_param_n_steps=s_param_n_steps,
+                    devices=devices,
+                )
             self._refuse_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,
@@ -4948,6 +4958,8 @@ class _ExecuteMixin:
                 exchange_interval=exchange_interval,
                 conformal_pec=conformal_pec,
             )
+            _res = self._attach_run_settling_witness(
+                _res, n_steps=n_steps, num_periods=num_periods)
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")

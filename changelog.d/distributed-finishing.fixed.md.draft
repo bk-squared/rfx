@@ -1,0 +1,6 @@
+`run(devices=...)` now refuses the default S-parameter request for lumped
+and wire ports instead of silently returning no S-parameters. Use one device
+for S-parameters, or pass `compute_s_params=False` for distributed fields.
+Distributed results now include the same probe-based settling witness as
+one-device runs, including an absent-witness explanation when no probe
+record can be scored.
