@@ -54,9 +54,9 @@ KERNEL_CALLERS = {
         "extract_waveguide_s_matrix", "extract_waveguide_s_matrix_flux",
         "extract_waveguide_s_params_normalized", "extract_multimode_s_matrix",
         "extract_multimode_s_matrix_flux")},
-    **{f"rfx/sparams/coax.py:{name}": "coax_calculators" for name in (
-        "compute_coaxial_line_reflection", "compute_coaxial_two_port",
-        "compute_coax_msl_transition")},
+    "rfx/sparams/coax.py:compute_coaxial_line_reflection": "coaxial_line_reflection",
+    "rfx/sparams/coax.py:compute_coaxial_two_port": "coaxial_two_port",
+    "rfx/sparams/coax.py:compute_coax_msl_transition": "coax_msl_transition",
     "rfx/differentiable_material_fit.py:differentiable_material_fit": "material_fit",
     "rfx/gpu.py:benchmark": "grid-level: times rfx.run on a Grid",
     "rfx/rcs.py:compute_rcs": "grid-level: takes a Grid and a TFSF/NTFF setup",
@@ -77,10 +77,10 @@ FIELD_STEPPERS = {
     "rfx/runners/distributed_v2.py:run_distributed": "internal to run_distributed",
     "rfx/simulation.py:_update_e_with_optional_dispersion":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
-        "waveguide_s_matrix, coax_calculators, material_fit",
+        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",
     "rfx/simulation.py:make_core_step":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
-        "waveguide_s_matrix, coax_calculators, material_fit",
+        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",
     "rfx/subgridding/disjoint_3d.py:_yee_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_yee_h_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_yee_e_step": "internal to run_subgridded",
@@ -203,7 +203,7 @@ def test_every_row_has_a_cell_on_every_path():
                     f"{attr}: only an ignorable cell may stand for every path")
                 assert T.ROW_CLASS[attr] == T.BOOKKEEPING, attr
                 continue
-            assert set(row) == set(T.LANES), (attr, feature, sorted(set(row) ^ set(T.LANES)))
+            assert set(row) == set(T.PATHS), (attr, feature, sorted(set(row) ^ set(T.PATHS)))
             for path in T.PATHS:
                 assert T.cell(attr, feature, path).kind in T.KINDS
 
@@ -225,9 +225,9 @@ def test_every_cell_says_what_it_needs_to():
                 if T.ROW_CLASS[attr] == T.PHYSICS:
                     assert c.kind != T.IGNORABLE, f"{where}: a physics input is never ignorable"
                 if T.ROW_CLASS[attr] == T.OBSERVER and c.kind == T.IGNORABLE:
-                    assert path.startswith("fwd_"), (
-                        f"{where}: an observer is ignorable only on a forward() lane, which "
-                        "returns no field for it")
+                    assert path.startswith("fwd_") or path in T.CALCULATORS, (
+                        f"{where}: an observer is ignorable only on a forward() lane "
+                        "or a calculator retaining its existing observer handling")
                 if c.declared:
                     assert c.kind == T.REFUSES, where
                 if T.executable(attr) and c.kind == T.REFUSES and not c.wrong:
@@ -292,11 +292,12 @@ def test_every_input_row_has_a_detector():
 def test_admission_admits_exactly_the_carried_cells():
     """One list of what a lane admits: ADMITS and the cell kinds agree."""
     assert A.LANES == T.LANES
+    assert A.CALCULATORS == T.CALCULATORS
     disagree = []
     for attr, features in T.TABLE.items():
         for feature, row in features.items():
             key = (attr, feature)
-            for lane in T.LANES:
+            for lane in T.PATHS:
                 if T.ROW_CLASS[attr] == T.BOOKKEEPING:
                     admitted = False   # bookkeeping is no input: no detector, no admission
                 else:

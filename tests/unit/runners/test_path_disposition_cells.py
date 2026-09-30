@@ -945,6 +945,67 @@ def test_the_rows_detector_fires_on_the_cells_model(attr, feature, lane):
         f"{attr}/{feature} is declared on the {lane} cell's model, but its detector does not see it")
 
 
+def _calculator_declarations():
+    for attr, feature in FEATURES:
+        for calculator in T.CALCULATORS:
+            disposition = T.cell(attr, feature, calculator)
+            if disposition.kind == T.NOT_REACHABLE:
+                continue
+            yield pytest.param(attr, feature, calculator,
+                               id=f"{attr}-{feature}-{calculator}")
+
+
+@pytest.mark.parametrize("attr,feature,calculator", list(_calculator_declarations()))
+def test_calculator_declaration_admission_cell(attr, feature, calculator, monkeypatch):
+    """Exercise the cell on a real declaration, without executing a kernel.
+
+    Public entry wiring and the migrated guard rows are exercised separately
+    in test_calculator_admission.py. Numerical calculator outputs remain in
+    the calculator-specific tests; this check isolates the named input even
+    when the common declaration contains another unsupported source or port.
+    """
+    sim = _build(FEATURES[attr, feature], "fwd_uniform", True)
+    row = (attr, feature)
+    assert A.DETECTORS[row](sim), row
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("admission started lax.scan")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    disposition = T.cell(attr, feature, calculator)
+    refused = A.refused(sim, calculator)
+    if disposition.kind == T.REFUSES:
+        assert row in refused, (calculator, row, refused)
+        with pytest.raises(NotImplementedError) as caught:
+            A.admit(sim, calculator)
+        assert A.ROW_WORDS[row] in str(caught.value)
+    else:
+        assert disposition.kind in (T.CARRIES, T.IGNORABLE)
+        assert row not in refused, (calculator, row, refused)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="#1293: vmap's auto-mesh fallback holds the step count while dt changes")
+def test_vmap_auto_mesh_cell_covers_the_requested_time_for_each_value():
+    """The _dx calculator cell remains a carry with a measured duration defect."""
+    from rfx.vmap_sweep import vmap_material_sweep
+
+    def model(eps):
+        sim = Simulation(freq_max=10e9, domain=mm(12, 12, 12), boundary="pec")
+        sim.add_material("diel", eps_r=eps)
+        sim.add(Box(mm(0, 0, 0), mm(12, 12, 4)), material="diel")
+        sim.add_port(mm(4, 6, 6), "ez", impedance=50., waveform=WAVEFORM)
+        sim.add_probe(mm(8, 6, 6), "ez")
+        return sim
+
+    values = (2., 3.)
+    swept = vmap_material_sweep(model(values[0]), "diel.eps_r", values, num_periods=2.)
+    grids = [model(value)._build_grid() for value in values]
+    covered = np.array([swept.time_series.shape[1] * float(grid.dt) for grid in grids])
+    requested = 2. / 10e9
+    assert np.all(covered >= requested), (covered, requested)
+
+
 @pytest.mark.parametrize("mode,name", [(m, n) for m, n in (p.values for p in _relaxed_params())])
 def test_the_relaxed_validation_detector_fires_on_its_models(mode, name):
     assert A.DETECTORS[_RELAXED](_relaxed(mode, RELAXED_INPUTS[name]))

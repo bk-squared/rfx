@@ -338,80 +338,16 @@ def _normalize_probe_spectra(
 
 
 def _require_supported_fixture(sim) -> None:
-    """Reject declarations the material fit's assembly does not pass to its scan."""
-    def refuse(input_name, remedy):
-        raise NotImplementedError(
-            f"differentiable_material_fit() does not support {input_name} "
-            f"(#1290). {remedy}"
-        )
-
-    if any(pe.extent is not None for pe in sim._ports):
-        refuse("add_port(..., extent=...) (wire port)",
-               "Remove the wire port from sim_factory; use Simulation.forward() "
-               "with a custom loss to fit a fixture with wire ports.")
-    if any(pe.impedance == 0.0 for pe in sim._ports):
-        refuse("add_source() (plain source)",
-               "Remove the plain source from sim_factory; use Simulation.forward() "
-               "with a custom loss to retain its amplitude_kind.")
-    if any(not pe.excite for pe in sim._ports):
-        refuse("add_port(..., excite=False) (passive port)",
-               "Remove the passive port from sim_factory; use Simulation.forward() "
-               "with a custom loss to retain the passive termination.")
-    if sim._msl_ports:
-        refuse("add_msl_port()",
-               "Remove the MSL port from sim_factory; use Simulation.forward() "
-               "with a custom loss and a supported MSL mode.")
-    if sim._lumped_rlc:
-        refuse("add_lumped_rlc()",
-               "Remove the lumped RLC element from sim_factory; use "
-               "Simulation.forward() with a custom loss to retain it.")
-    if sim._tfsf is not None:
-        refuse("add_tfsf_source()",
-               "Remove the TFSF source from sim_factory; use Simulation.forward() "
-               "with a custom loss on a supported TFSF configuration.")
-    if sim._waveguide_ports:
-        refuse("add_waveguide_port()",
-               "Remove the waveguide port from sim_factory; use "
-               "Simulation.forward() with a custom loss to retain it.")
-    if sim._coaxial_ports:
-        refuse("add_coaxial_port()",
-               "Remove the coaxial port from sim_factory; use "
-               "compute_coaxial_line_reflection() or compute_coaxial_two_port() "
-               "for coaxial-port results.")
-    if sim._floquet_ports:
-        refuse("add_floquet_port()",
-               "Remove the Floquet port from sim_factory; use "
-               "Simulation.forward() with a custom loss to retain it.")
+    """Admit each factory declaration, including its traced rebuild."""
+    from rfx.runners._admission import admit
+    admit(sim, "material_fit")
     # The scan already forces z periodic in 2D, even without an override.
     if any(axis != "z" or sim._mode == "3d" for axis in sim._periodic_axes):
-        refuse("periodic axes (set_periodic_axes() or BoundarySpec)",
-               "Remove the periodic-axis override from sim_factory; use "
-               "Simulation.forward() with a custom loss to retain it.")
-    if sim._boundary_spec.conformal_faces():
-        refuse("Boundary(conformal=True)",
-               "Remove conformal=True from sim_factory; use Simulation.run() "
-               "on a uniform mesh for conformal PEC walls.")
-    if any(sim._resolve_material(entry.material_name).chi3 != 0.0
-           for entry in sim._geometry):
-        refuse("add_material(..., chi3=...) (Kerr material)",
-               "Remove the Kerr material from sim_factory; use "
-               "Simulation.forward() with a custom loss on a supported Kerr fixture.")
-    if sim._solver != "yee":
-        refuse(f"solver={sim._solver!r}",
-               "Use solver='yee' in sim_factory, or Simulation.forward() "
-               "with a custom loss on a supported ADI fixture.")
-    if sim._precision != "float32":
-        refuse(f"precision={sim._precision!r}",
-               "Use precision='float32' in sim_factory, or Simulation.forward() "
-               "with a custom loss to select field precision.")
-    if sim._stencil_order != 2:
-        refuse(f"stencil_order={sim._stencil_order}",
-               "Use stencil_order=2 in sim_factory, or Simulation.forward() "
-               "with a custom loss on a supported fourth-order fixture.")
-    if sim._interface_eps != "sampled":
-        refuse(f"interface_eps={sim._interface_eps!r}",
-               "Use interface_eps='sampled' in sim_factory, or a supported "
-               "non-uniform Simulation.forward() with a custom loss.")
+        raise NotImplementedError(
+            "differentiable_material_fit() does not support periodic axes "
+            "(set_periodic_axes() or BoundarySpec) (#1290). Remove the "
+            "periodic-axis override from sim_factory; use Simulation.forward() "
+            "with a custom loss to retain it.")
 
 
 def _require_ports_clear_of_pec(sim, grid, pec_mask, pec_sheets, pec_wires) -> None:
@@ -563,57 +499,7 @@ def differentiable_material_fit(
         debye_init[:n_debye_poles],
         lorentz_init[:n_lorentz_poles],
     )
-    # Its own uniform scan has no subgrid (#1240).
-    dummy_sim._require_no_refinement_without_a_subgrid(
-        "differentiable_material_fit()")
-    _require_supported_fixture(dummy_sim)
-    grid = dummy_sim._build_grid()
-    dt = grid.dt
-    n_steps = grid.num_timesteps(num_periods=20.0)
-
-    # ---- normalization-mode validation (issue #580), fail-loud up front --
-    if normalization not in ("per_probe_max", "reference_probe"):
-        raise ValueError(
-            f"normalization must be 'per_probe_max' or 'reference_probe', "
-            f"got {normalization!r}"
-        )
-    _n_ports_meas = int(s_measured.shape[0])
-    _n_fixture_probes = len(dummy_sim._probes)
-    if normalization == "reference_probe":
-        if reference_probe is None:
-            raise ValueError(
-                "normalization='reference_probe' requires reference_probe= "
-                "(index into the fixture's registered probe list of the "
-                "incident-side reference probe)."
-            )
-        _ref = int(reference_probe)
-        if not (-_n_fixture_probes <= _ref < _n_fixture_probes):
-            raise ValueError(
-                f"reference_probe={reference_probe} is outside the fixture's "
-                f"probe list (n_probes={_n_fixture_probes})."
-            )
-        _ref_pos = _ref % _n_fixture_probes
-        if _ref_pos < _n_ports_meas:
-            raise ValueError(
-                f"reference_probe={reference_probe} indexes one of the first "
-                f"n_ports={_n_ports_meas} probes, which are the response "
-                "probes the proxy is built from — self-referencing "
-                "reintroduces the magnitude degeneracy this mode removes. "
-                "Register a dedicated incident-side probe and point at it."
-            )
-        if _n_fixture_probes < _n_ports_meas + 1:
-            raise ValueError(
-                "normalization='reference_probe' needs at least "
-                f"n_ports+1={_n_ports_meas + 1} registered probes "
-                f"(response probes + the reference); fixture has "
-                f"{_n_fixture_probes}."
-            )
-        reference_probe = _ref_pos
-
-    # ------------------------------------------------------------------
-    # Forward function (called inside jax.value_and_grad)
-    # ------------------------------------------------------------------
-    def forward(p):
+    def forward(p, *, _fixture=None, _validate_only=False):
         """log-space params -> FDTD -> S-params -> loss scalar."""
         # Unpack traced pole parameters
         eps_inf, debye_poles = _params_to_debye_poles(p, n_debye_poles)
@@ -622,12 +508,15 @@ def differentiable_material_fit(
 
         # Rebuild Simulation with traced poles (Python construction is not traced,
         # but the pole VALUES inside DebyePole/LorentzPole are JAX tracers)
-        sim = sim_factory(eps_inf, debye_poles, lorentz_poles)
-        _require_supported_fixture(sim)
+        sim = (_fixture if _fixture is not None
+               else sim_factory(eps_inf, debye_poles, lorentz_poles))
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "differentiable material fit")
+        _require_supported_fixture(sim)
+        if _validate_only:
+            return None
         _fit_pec_sheets: list = []
         _fit_pec_wires: list = []
         materials, debye_spec, lorentz_spec, pec_mask, *_ = sim._assemble_materials(
@@ -718,6 +607,52 @@ def differentiable_material_fit(
             weight_mag=weight_mag, weight_phase=weight_phase,
         )
         return loss, s_sim
+
+    # Validate the initial declaration through the same preparation as each
+    # traced rebuild, without rebuilding the factory or starting assembly.
+    forward(params, _fixture=dummy_sim, _validate_only=True)
+    grid = dummy_sim._build_grid()
+    dt = grid.dt
+    n_steps = grid.num_timesteps(num_periods=20.0)
+
+    # ---- normalization-mode validation (issue #580), fail-loud up front --
+    if normalization not in ("per_probe_max", "reference_probe"):
+        raise ValueError(
+            f"normalization must be 'per_probe_max' or 'reference_probe', "
+            f"got {normalization!r}"
+        )
+    _n_ports_meas = int(s_measured.shape[0])
+    _n_fixture_probes = len(dummy_sim._probes)
+    if normalization == "reference_probe":
+        if reference_probe is None:
+            raise ValueError(
+                "normalization='reference_probe' requires reference_probe= "
+                "(index into the fixture's registered probe list of the "
+                "incident-side reference probe)."
+            )
+        _ref = int(reference_probe)
+        if not (-_n_fixture_probes <= _ref < _n_fixture_probes):
+            raise ValueError(
+                f"reference_probe={reference_probe} is outside the fixture's "
+                f"probe list (n_probes={_n_fixture_probes})."
+            )
+        _ref_pos = _ref % _n_fixture_probes
+        if _ref_pos < _n_ports_meas:
+            raise ValueError(
+                f"reference_probe={reference_probe} indexes one of the first "
+                f"n_ports={_n_ports_meas} probes, which are the response "
+                "probes the proxy is built from — self-referencing "
+                "reintroduces the magnitude degeneracy this mode removes. "
+                "Register a dedicated incident-side probe and point at it."
+            )
+        if _n_fixture_probes < _n_ports_meas + 1:
+            raise ValueError(
+                "normalization='reference_probe' needs at least "
+                f"n_ports+1={_n_ports_meas + 1} registered probes "
+                f"(response probes + the reference); fixture has "
+                f"{_n_fixture_probes}."
+            )
+        reference_probe = _ref_pos
 
     # ------------------------------------------------------------------
     # Optimization loop (Adam)
