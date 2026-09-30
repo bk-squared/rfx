@@ -577,8 +577,6 @@ _CALCULATOR_ROWS = {
         ('_thin_conductors', 'lossy_sheet'),
         ('_thin_conductors', 'pec_sheet'),
         ('_pinned_sheets', 'pec_sheet'),
-        ('_ports', 'source'),
-        ('_ports', 'amplitude_kind'),
         ('_ports', 'lumped_port'),
         ('_ports', 'passive_port'),
         ('_ports', 'wire_port'),

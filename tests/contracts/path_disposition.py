@@ -1254,7 +1254,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'source'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('bare current source injected on every drive; measured max |delta S| = 1.4367268'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a soft source (add_source)'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a soft source (add_source)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a soft source (add_source)'),
@@ -1265,7 +1265,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'amplitude_kind'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': carries('bare current source injected on every drive; measured max |delta S| = 1.4367268'),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises="a soft source with amplitude_kind='current'"),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises="a soft source with amplitude_kind='current'"),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a soft source with amplitude_kind='current'"),

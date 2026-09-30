@@ -289,20 +289,14 @@ def test_guard_requires_lumped_or_wire_port():
         sim.compute_mixed_s_matrix(skip_preflight=True)
 
 
-def test_plain_current_source_changes_mixed_s_matrix():
-    from tests.unit.runners.test_silent_routes import _mixed
-    arrays = []
-    for on in (False, True):
-        sim = _mixed(False)
-        if on:
-            sim.add_source((.004, .004, .003), "ez",
-                           waveform=GaussianPulse(f0=5e9, bandwidth=.8),
-                           amplitude_kind="current")
-        result = sim.compute_mixed_s_matrix(
-            n_steps=200, skip_preflight=True, magnitude_channel="wave")
-        arrays.append(np.asarray(result.S))
-    assert all(np.isfinite(a).all() for a in arrays)
-    assert np.max(np.abs(arrays[1] - arrays[0])) > 1e-3
+def test_guard_rejects_bare_source():
+    sim, y_c = _base_sim()
+    _add_feed(sim, y_c)
+    _add_msl(sim, y_c)
+    sim.add_source(position=(1e-3, y_c, 4e-4), component="ez",
+                   waveform=GaussianPulse(f0=2.5e9, bandwidth=0.5))
+    with pytest.raises(NotImplementedError, match="bare sources"):
+        sim.compute_mixed_s_matrix(skip_preflight=True)
 
 
 def test_guard_rejects_nonuniform_mesh():
