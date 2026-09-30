@@ -106,6 +106,11 @@ _FD_H = 2.0e-3
 _REL_ERR_THRESHOLD = 0.02  # Retain the existing AD/FD policy.
 _MIN_FD_ULP_SPAN = 1.0e4
 assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0
+# The S21 phase itself against the closed form -beta*L: CPU mesh phase errors at
+# 6/8/10 GHz 0.0237/0.0287/0.0497 % (0.0206/0.0310/0.0456 % after the declared
+# line extent, #1138); repository envelope multiplier 1.5, round up to 0.01 %:
+# ceil(0.000497 * 1.5 * 10000) / 10000 = 0.0008 (0.08 %).
+_PHASE_ERROR_BAR = 0.0008
 # The AD phase gradient's gap to the closed form -beta*L/(2*eps) depends on
 # the record length, so the bar comes from the record-length witness, not
 # from the phase error alone. The earlier 0.08 % (1.5x the 0.0497 % mesh phase
@@ -116,7 +121,7 @@ assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0
 # envelope multiplier 1.5, round up to 0.01 %:
 # ceil(0.001236 * 1.5 * 10000) / 10000 = 0.0019 (0.19 %). A stop_gradient on
 # the traced port voltage puts the gradient 7 % off and still fails.
-_PHASE_MESH_BAR = 0.0019
+_PHASE_GRAD_BAR = 0.0019
 # Derived from this fixture: measured |d mean |S21|^2 / d eps_scale|
 # = 0.00263521; round up, then multiply by 3. Catch the pre-fix spurious
 # power slope from the analytic 1/r drive.
@@ -211,8 +216,8 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent(phase_sensiti
     exact_phase, exact_grad = _closed_form(concrete)
     phase_error = np.max(np.abs(np.unwrap(np.angle(concrete.s_params[1, 0])) - exact_phase) / np.abs(exact_phase))
     print(f"planes={concrete.reference_planes}, mesh phase error={phase_error:.6g}, exact gradient={exact_grad:.10g}")
-    assert phase_error <= _PHASE_MESH_BAR
-    assert abs(g_ad - exact_grad) / abs(exact_grad) <= _PHASE_MESH_BAR
+    assert phase_error <= _PHASE_ERROR_BAR
+    assert abs(g_ad - exact_grad) / abs(exact_grad) <= _PHASE_GRAD_BAR
     # Matched lossless power is constant; allow three times the measured
     # residual derivative, rather than demanding relative agreement at zero.
     assert abs(g_power) <= _POWER_GRAD_BOUND
@@ -238,4 +243,4 @@ def test_coax_two_port_eps_scale_unity_matches_concrete_path(phase_sensitivity):
     # Equal forward values alone cannot detect stop_gradient. Reuse the
     # phase tangent witness to require the differentiable path to stay live.
     _, exact_grad = _closed_form(a)
-    assert abs(phase_sensitivity[1] - exact_grad) / abs(exact_grad) <= _PHASE_MESH_BAR
+    assert abs(phase_sensitivity[1] - exact_grad) / abs(exact_grad) <= _PHASE_GRAD_BAR
