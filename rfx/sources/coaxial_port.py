@@ -33,6 +33,7 @@ import numpy as np
 from rfx.grid import Grid
 from rfx.core.yee import EPS_0, MU_0
 from rfx.geometry.csg import Cylinder
+from rfx.sources._laplace import _solve_laplace_2d
 
 
 # ---------------------------------------------------------------------------
@@ -635,9 +636,9 @@ def _coaxial_port_geometry(grid: Grid, port: CoaxialPort):
 class CoaxialPlaneSourceSpec(NamedTuple):
     """Specs returned by :func:`build_coaxial_tem_plane_source_specs`.
 
-    The lists carry one ``SourceSpec`` / ``MagneticSourceSpec`` per cell on
-    the coaxial cross-section between ``pin_radius`` and ``outer_radius``.
-    Cells whose radius falls outside that annulus are skipped.
+    The lists carry the nonzero transverse edges of the realized TEM mode.
+    The electric profile is the discrete gradient of a unit-voltage
+    electrostatic potential on the staircased conductor cross-section.
     """
 
     electric_sources: tuple
@@ -650,6 +651,87 @@ class CoaxialPlaneSourceSpec(NamedTuple):
     z_tem_ohm: float
 
 
+def _coaxial_tem_edge_profile(grid, port, e_plane_idx, shell_inner_radius,
+                            pec_cell_mask=None):
+    """Unit-voltage TEM E on the realized Ex/Ey edges (host float64).
+
+    The potential lives on Yee nodes. A shorted Ex/Ey edge joins two nodes
+    of one equipotential conductor; the component containing the pin centre
+    is at 1 V and the other conductor nodes are at 0 V. Forward differences
+    place -grad(phi) at Ex[i+1/2,j] and Ey[i,j+1/2]. The dual transverse H
+    profile has the same indices: Hx=-Ey/eta, Hy=Ex/eta.
+
+    Production callers supply the stamper's conductor cells. Standalone
+    callers realize the same cylinders on one cross-section. All of this is
+    geometry-only, including when the enclosing material solve is traced.
+    """
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
+
+    with jax.ensure_compile_time_eval():
+        if pec_cell_mask is None:
+            coords = coords_from_uniform_grid(grid)
+            center = (float(port.position[0]), float(port.position[1]), 0.0)
+            pin = Cylinder(center, float(port.pin_radius), 1.0, axis="z")
+            bore = Cylinder(center, float(shell_inner_radius), 1.0, axis="z")
+            pin_cells = np.asarray(pin.mask_on_coords(coords.x, coords.y, np.array([0.0])))
+            bore_cells = np.asarray(bore.mask_on_coords(coords.x, coords.y, np.array([0.0])))
+            cells = pin_cells | ~bore_cells
+            edge_plane = 0
+        else:
+            cells = np.asarray(pec_cell_mask, dtype=bool)
+            if cells.shape != grid.shape:
+                raise ValueError("coax TEM conductor mask must match the grid shape")
+            edge_plane = int(e_plane_idx)
+        # Match the runner: realize all four incident cells in 3-D before
+        # selecting Ex/Ey at the E source plane (including the previous z cell).
+        mx, my, _ = (np.asarray(m)[:, :, edge_plane] for m in
+                     realized_pec_edge_masks(cells))
+
+    # Mark both endpoints of every shorted transverse edge, using the
+    # repository's realized masks rather than a second conductor rule.
+    metal = mx | my
+    metal[1:, :] |= mx[:-1, :]
+    metal[:, 1:] |= my[:, :-1]
+    nx, ny = metal.shape
+    i0, j0 = grid.position_to_index(port.position)[:2]
+    if not metal[i0, j0]:
+        raise ValueError("coax TEM cross-section has no realized centre pin")
+    pin_nodes = np.zeros_like(metal)
+    pin_nodes[i0, j0] = True
+    pending = [(int(i0), int(j0))]
+    while pending:
+        i, j = pending.pop()
+        neighbours = []
+        if i + 1 < nx and mx[i, j]:
+            neighbours.append((i + 1, j))
+        if i > 0 and mx[i - 1, j]:
+            neighbours.append((i - 1, j))
+        if j + 1 < ny and my[i, j]:
+            neighbours.append((i, j + 1))
+        if j > 0 and my[i, j - 1]:
+            neighbours.append((i, j - 1))
+        for node in neighbours:
+            if not pin_nodes[node]:
+                pin_nodes[node] = True
+                pending.append(node)
+    ground_nodes = metal & ~pin_nodes
+    if not ground_nodes.any():
+        raise ValueError("coax TEM cross-section has no separate outer conductor")
+
+    # Homogeneous fill: its constant epsilon cancels from Laplace. In
+    # particular, eps_scale is a material design variable, not this profile.
+    dx = float(grid.dx)
+    phi = _solve_laplace_2d(np.ones((nx, ny)), pin_nodes, ground_nodes, dx, dx)
+    phi[pin_nodes] = 1.0
+    phi[ground_nodes] = 0.0
+    ex = np.zeros_like(phi)
+    ey = np.zeros_like(phi)
+    ex[:-1, :] = -np.diff(phi, axis=0) / dx
+    ey[:, :-1] = -np.diff(phi, axis=1) / dx
+    return ex, ey
+
+
 def build_coaxial_tem_plane_source_specs(
     *,
     grid: "Grid",
@@ -660,13 +742,19 @@ def build_coaxial_tem_plane_source_specs(
     reference_plane_axial_index_offset: int = 0,
     eps_r: float = PTFE_EPS_R,
     shell_inner_radius: float | None = None,
+    pec_cell_mask=None,
 ) -> CoaxialPlaneSourceSpec:
     """Return TFSF-style transverse E/M source specs for a coaxial port.
 
     ``shell_inner_radius`` is the inner face of the outer conductor, i.e. the
-    outer edge of the PTFE annulus the source injects on. Pass the value
+    outer edge of the PTFE annulus. Pass the value
     :func:`stamp_coaxial_line` returned for this line; omitted, it defaults to
     the declared ``port.outer_radius``, which is where that function puts it.
+    ``pec_cell_mask`` is that stamper's realized conductor-cell mask; the
+    source solves Laplace on its cross-section and injects the resulting
+    discrete TEM edge profile. Without a mask it realizes the declared
+    cylinders on the same grid. The fill is homogeneous with relative
+    permittivity ``eps_r``; the profile depends only on concrete geometry.
 
     Bakes a Yee-half-step-correct one-side TFSF correction pair into per-
     cell ``SourceSpec`` / ``MagneticSourceSpec`` lists. The additive
@@ -681,9 +769,8 @@ def build_coaxial_tem_plane_source_specs(
     near 0.2-0.4 regardless of termination):
 
     * **Cross-coupling**: H sources are driven by the E mode profile
-      (``e_radial`` decomposed into Cartesian ``(cos φ, sin φ)``), and
-      E sources are driven by the H mode profile (``h_φ`` decomposed
-      into Cartesian ``(-sin φ, cos φ)``). The previous implementation
+      (the realized electrostatic ``Ex, Ey``), and E sources are driven
+      by its magnetic dual ``(-Ey, Ex) / eta``. The previous implementation
       drove H from H and E from E, which does not enforce the curl
       coupling that makes the wave unidirectional.
     * **Spatial half-cell offset**: H sources move from the source plane
@@ -717,7 +804,7 @@ def build_coaxial_tem_plane_source_specs(
         Linear scale on the radial E waveform. Increase to lift the plane
         signal above DFT noise; the V/I extraction is amplitude-linear.
     magnetic_ratio:
-        Multiplier on the ``H`` waveform after the analytic ``1/Z_TEM``
+        Multiplier on the ``H`` waveform after the local ``1/eta``
         factor (already baked into ``h_inc`` so a unit ratio means
         Poynting-balanced TEM). Kept for diagnostic ablation; production
         callers should leave it at ``1.0``.
@@ -729,6 +816,9 @@ def build_coaxial_tem_plane_source_specs(
         Coaxial dielectric permittivity for the analytic ``Z_TEM`` and the
         Yee-half-step delay (``v_phase = c / sqrt(εr)``). Default
         :data:`PTFE_EPS_R` matches the SMA helper.
+    pec_cell_mask:
+        Optional conductor-cell mask returned by ``stamp_coaxial_line``.
+        Its source-plane cross-section sets the Laplace Dirichlet nodes.
 
     Returns
     -------
@@ -777,7 +867,6 @@ def build_coaxial_tem_plane_source_specs(
         port.outer_radius,
         eps_r,
     )
-    log_ratio = float(np.log(port.outer_radius / port.pin_radius))
 
     # Local (intrinsic) impedance of the dielectric fill: η = sqrt(μ/ε).
     # In a coax TEM mode the LOCAL field ratio is E_r/H_φ = η, while
@@ -814,19 +903,8 @@ def build_coaxial_tem_plane_source_specs(
     coeff_h = jnp.float32(dt_step / (mu_abs * dz))
     coeff_e = jnp.float32(dt_step / (float(eps_r) * EPS_0 * dz))
 
-    # Inner edge of the outer conductor. Source cells stay inside the PTFE
-    # annulus ``[pin_radius, shell_inner]``: injecting at a radius that lands
-    # in a conductor cell breaks the TFSF cancellation symmetry.
-    #
-    # ``stamp_coaxial_line`` puts that inner face at the DECLARED outer radius
-    # and grows the wall outward from there, so the annulus is [a, b] and this
-    # bound is ``port.outer_radius``. It used to recompute
-    # ``b - min(dz, (b-a)/2)`` here, a second copy of a formula that has since
-    # moved; with the wall now at b that copy would have excluded the
-    # outermost ring of dielectric from the injection while ``log_ratio``
-    # above still normalised over the full ``ln(b/a)`` — the two disagreed.
-    # Callers that hold the stamper's own return value pass it as
-    # ``shell_inner_radius`` so the two cannot drift again.
+    # The declared inner wall is only needed for standalone mask realization;
+    # production callers provide the stamper's actual conductor cells.
     if shell_inner_radius is None:
         shell_inner_radius = float(port.outer_radius)
     shell_inner_radius = float(shell_inner_radius)
@@ -844,90 +922,50 @@ def build_coaxial_tem_plane_source_specs(
 
     electric_sources: list = []
     magnetic_sources: list = []
+    ex_profile, ey_profile = _coaxial_tem_edge_profile(
+        grid, port, e_plane_idx, shell_inner_radius, pec_cell_mask,
+    )
     source_cell_count = 0
     for i in range(grid.nx):
-        x = (i - grid.pad_x_lo) * grid.dx
         for j in range(grid.ny):
-            y = (j - grid.pad_y_lo) * grid.dx
-            du = x - port.position[0]
-            dv = y - port.position[1]
-            radius = float(np.hypot(du, dv))
-            if not (
-                float(port.pin_radius) <= radius <= shell_inner_radius
-            ):
+            ex_value = ex_profile[i, j]
+            ey_value = ey_profile[i, j]
+            if ex_value == 0.0 and ey_value == 0.0:
                 continue
-            cos_phi = du / radius
-            sin_phi = dv / radius
-
-            # TEM mode shapes (1/r), normalised so V = ∫E_r dr = 1 for unit
-            # ``field_scale``. h_phi shape carries the same 1/r profile; the
-            # 1/Z_TEM factor relating H_φ to E_r is baked into h_inc_table.
-            mode_shape = 1.0 / (radius * log_ratio)
             source_cell_count += 1
 
-            # H-side TFSF correction at h_plane_idx, driven by E mode profile
-            # (cf. apply_waveguide_port_h: h_u += sign·coeff·src·ez_profile,
-            #                              h_v += -sign·coeff·src·ey_profile).
-            # For z-normal coax: e_u=Ex, e_v=Ey, h_u=Hx, h_v=Hy.
-            #   Hx (h_u) += h_sign·coeff_h·e_inc·Ey_profile
-            #            = h_sign·coeff_h·e_inc·(mode_shape·sin_phi)
-            #   Hy (h_v) += -h_sign·coeff_h·e_inc·Ex_profile
-            #            = -h_sign·coeff_h·e_inc·(mode_shape·cos_phi)
-            hx_shape = jnp.float32(mode_shape * sin_phi)
-            hy_shape = jnp.float32(-mode_shape * cos_phi)
-
-            if abs(sin_phi) > 1e-12:
+            # H-side correction: Hx += h_sign * coeff_h * Ey,
+            #                    Hy -= h_sign * coeff_h * Ex.
+            # The dual H edges have exactly these transverse locations.
+            if ey_value != 0.0:
                 magnetic_sources.append(
                     MagneticSourceSpec(
-                        i=i,
-                        j=j,
-                        k=h_plane_idx,
-                        component="hx",
-                        waveform=(hx_shape * h_factor).astype(jnp.float32),
+                        i=i, j=j, k=h_plane_idx, component="hx",
+                        waveform=(jnp.float32(ey_value) * h_factor).astype(jnp.float32),
                     )
                 )
-            if abs(cos_phi) > 1e-12:
+            if ex_value != 0.0:
                 magnetic_sources.append(
                     MagneticSourceSpec(
-                        i=i,
-                        j=j,
-                        k=h_plane_idx,
-                        component="hy",
-                        waveform=(hy_shape * h_factor).astype(jnp.float32),
+                        i=i, j=j, k=h_plane_idx, component="hy",
+                        waveform=(-jnp.float32(ex_value) * h_factor).astype(jnp.float32),
                     )
                 )
 
-            # E-side TFSF correction at e_plane_idx, driven by H mode profile
-            # (cf. apply_waveguide_port_e: e_v += sign·coeff·h_inc·hy_profile,
-            #                               e_u += -sign·coeff·h_inc·hz_profile).
-            #   Ex (e_u) += -e_sign·coeff_e·h_inc·Hy_profile
-            #            = -e_sign·coeff_e·h_inc·(mode_shape·cos_phi)
-            #   Ey (e_v) += e_sign·coeff_e·h_inc·Hx_profile
-            #            = e_sign·coeff_e·h_inc·(-mode_shape·sin_phi)
-            #            = -e_sign·coeff_e·h_inc·(mode_shape·sin_phi)
-            # Both Ex and Ey end up scaled by the same `-e_sign·coeff_e·h_inc`
-            # which is the e_factor lifted out above.
-            ex_shape = jnp.float32(mode_shape * cos_phi)
-            ey_shape = jnp.float32(mode_shape * sin_phi)
-
-            if abs(cos_phi) > 1e-12:
+            # E-side correction from H = z_hat cross E / eta. The local
+            # 1/eta, propagation signs and Yee timing remain in e_factor.
+            if ex_value != 0.0:
                 electric_sources.append(
                     SourceSpec(
-                        i=i,
-                        j=j,
-                        k=e_plane_idx,
-                        component="ex",
-                        waveform=(ex_shape * e_factor).astype(jnp.float32),
+                        i=i, j=j, k=e_plane_idx, component="ex",
+                        waveform=(jnp.float32(ex_value) * e_factor).astype(jnp.float32),
                     )
                 )
-            if abs(sin_phi) > 1e-12:
+            if ey_value != 0.0:
                 electric_sources.append(
                     SourceSpec(
-                        i=i,
-                        j=j,
-                        k=e_plane_idx,
-                        component="ey",
-                        waveform=(ey_shape * e_factor).astype(jnp.float32),
+                        i=i, j=j, k=e_plane_idx, component="ey",
+                        waveform=(jnp.float32(ey_value) * e_factor).astype(jnp.float32),
                     )
                 )
 

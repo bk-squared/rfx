@@ -490,7 +490,8 @@
         "magnetic_ratio",
         "reference_plane_axial_index_offset",
         "eps_r",
-        "shell_inner_radius"
+        "shell_inner_radius",
+        "pec_cell_mask"
       ]
     },
     "build_runtime_report": {

@@ -498,7 +498,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
     Periodic/Bloch boundaries, extended or passive ports, Kerr materials,
     lumped RLC elements, MSL ports, subgridding, and surface monitors (flux,
-    NTFF, DFT planes). ``tests/unit/runners/test_distributed_admission_refusals.py``
+    DFT planes; NTFF on graded meshes). ``tests/unit/runners/test_distributed_admission_refusals.py``
     holds the disposition of every Simulation attribute on these lanes.
 
     Call after the TFSF and waveguide single-device fallbacks, before sharding.
@@ -580,7 +580,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     monitors = []
     if getattr(sim, "_flux_monitors", None):
         monitors.append("add_flux_monitor() (flux monitors)")
-    if getattr(sim, "_ntff", None) is not None:
+    if getattr(sim, "_ntff", None) is not None and sim._uses_nonuniform_mesh:
         monitors.append("add_ntff_box() (NTFF box)")
     if getattr(sim, "_dft_planes", None):
         # The run() dispatch refuses these first with its own message; this
@@ -1356,6 +1356,15 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             px_prev=nl_pxp, py_prev=nl_pyp, pz_prev=nl_pzp)
         return new_st, new_db_st, new_lr_st
 
+    ntff_box = None
+    ntff_layout = None
+    if sim._ntff is not None:
+        from rfx.farfield import make_ntff_box
+        from ._distributed_ntff import SlabNTFF
+        ntff_box = make_ntff_box(grid, *sim._ntff)
+        ntff_layout = SlabNTFF(ntff_box, grid.shape, nx_per, mesh,
+                              sharded_state.ex.dtype)
+
     # ------------------------------------------------------------------
     # Step function (operates on sharded arrays)
     # ------------------------------------------------------------------
@@ -1478,8 +1487,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 8. Probe sampling
         probe_out = _sample_probes_shmap(st)
 
-        return {"fdtd": st, "cpml": cpml_st,
-                "debye": db_st, "lorentz": lr_st}, probe_out
+        updated = {"fdtd": st, "cpml": cpml_st,
+                   "debye": db_st, "lorentz": lr_st}
+        if ntff_layout is not None:
+            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx)
+        return updated, probe_out
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1571,7 +1583,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 7. Probe sampling
         probe_out = _sample_probes_shmap(st)
 
-        return {"fdtd": st, "debye": db_st, "lorentz": lr_st}, probe_out
+        updated = {"fdtd": st, "debye": db_st, "lorentz": lr_st}
+        if ntff_layout is not None:
+            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx)
+        return updated, probe_out
 
     # ------------------------------------------------------------------
     # Build step indices and waveform scan inputs
@@ -1594,6 +1609,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
+        if ntff_layout is not None:
+            carry_init["ntff"] = ntff_layout.initial()
         def _run_cpml(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             cpml_params_arg, pec_mask_arg,
@@ -1630,6 +1647,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
+        if ntff_layout is not None:
+            carry_init["ntff"] = ntff_layout.initial()
         def _run_pec(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             pec_mask_arg,
@@ -1710,7 +1729,15 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     else:
         time_series = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
+    ntff_data = None
+    if ntff_layout is not None:
+        buffer = final_carry["ntff"]
+        if multi_process:
+            buffer = multihost_utils.process_allgather(buffer, tiled=True)
+        ntff_data = ntff_layout.assemble(buffer)
+
     return Result(
+        ntff_data=ntff_data, ntff_box=ntff_box,
         state=final_state,
         time_series=time_series,
         s_params=None,

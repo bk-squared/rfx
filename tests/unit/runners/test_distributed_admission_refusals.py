@@ -1,7 +1,7 @@
 """Refuse the input classes the distributed lanes would drop or get wrong.
 
 Periodic/Bloch boundaries, extended and passive ports, surface monitors
-(flux, NTFF, DFT planes), Kerr materials, lumped RLC elements, subgridding.
+(flux, DFT planes), Kerr materials, lumped RLC elements, subgridding.
 
 Exercise the public dispatch and the shard_map runner entry with two CPU
 devices. The pmap runner entry went with that runner (#1296).
@@ -142,10 +142,10 @@ def test_passive_port_is_refused(entry, waveform):
 
 @pytest.mark.parametrize("entry", ENTRIES)
 @pytest.mark.parametrize("monitor,feature", (
-    ("flux", "add_flux_monitor()"), ("ntff", "add_ntff_box()"),
+    ("flux", "add_flux_monitor()"),
 ))
 def test_surface_monitor_is_refused(entry, monitor, feature):
-    """Flux planes and NTFF boxes request surface fields from the driven box."""
+    """Flux planes remain refused on this lane."""
     sim = _build(entry=entry, **{monitor: True})
     _assert_refused(sim, entry, feature, "would be None")
 

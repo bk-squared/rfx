@@ -883,6 +883,11 @@
     },
     {
       "file": "rfx/sources/coaxial_port.py",
+      "function": "_coaxial_tem_edge_profile",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
       "function": "_validate_monotone_axis",
       "kind": "roll/diff"
     },
