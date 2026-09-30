@@ -4,11 +4,11 @@ Regenerated 2026-10-01 on `main` (`e6151107`) from `regen-durations` run
 [36752442156](https://github.com/bk-squared/rfx/actions/runs/36752442156), measured on
 `ubuntu-latest` with Python 3.11 / JAX 0.10.2. **15500 entries in the
 file**, of which **14 of them carried unchanged** from the 12677-entry file this
-replaces. All eleven jobs succeeded. Fast artifacts are merged first, then slow artifacts;
+replaces. All eleven jobs succeeded. Slow artifacts are merged first, then fast artifacts;
 the last input wins for overlapping nodeids. The artifacts contain 15486 distinct
 nodeids; 0 measured entries and 41 old entries are not collected at HEAD and are
 dropped. The 14 carried entries are collected highmem tests outside both GitHub selections;
-no new a6000 measurements were supplied. At `e6151107`, the fast, slow and highmem selections
+no new a6000 measurements were supplied. At the `1c3617d7` tree, the fast, slow and highmem selections
 collect 15231, 15474 and 15 tests respectively (15500 distinct), with no
 missing durations in any selection. Collection used the specified local Python 3.11 / JAX 0.10.2
 CPU environment, with the locally available trimesh package for the fast/highmem collections;
@@ -21,11 +21,12 @@ teardown phases above its 600 s `STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD`.
 0.000938106 s (the replaced file held 1514.934755 s). No floor is added.
 
 The four entries once set by hand are runner measurements, from the slow
-artifacts: `tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
+artifacts except the open-end test, which now uses its fast artifact:
+`tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
 2006.5 s (was 2218.1 s), the two coaxial chain-battery drift locks
 `tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[bead]`
 and `[thru]` 176.9 s and 178.5 s (were 171.6 s and 170.6 s), and
-`tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` 64.2 s (was
+`tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` 61.4 s (was
 57.1 s).
 
 Of the refreshed entries, 15485 retain raw artifact measurements and 1 uses log-derived pricing;
@@ -73,13 +74,13 @@ longer stands on the 2026-09-08 measurement either.
 ## Sources
 
 Where each entry's value comes from. `merge_test_durations.py` takes the last input's value for an
-id measured twice; the fast maps went first, then `slow (1)`–`(5)`.
+id measured twice; `slow (1)`–`(5)` went first, then `fast (1)`–`(6)`.
 
 | source | entries |
 |---|---|
-| `slow (1)`–`(5)` artifacts, excluding the log-corrected entry | 15473 |
+| `slow (1)`–`(5)` artifacts, for ids no fast source priced, excluding the log-corrected entry | 254 |
 | `slow (2)` job log, correcting a dropped setup phase | 1 |
-| `fast (1)`–`(6)` artifacts, for ids no slow source priced | 12 |
+| `fast (1)`–`(6)` artifacts, including overlapping ids | 15231 |
 | carried unchanged from the replaced file | 14 |
 
 - The artifacts are `pytest --store-durations` output of run 36752442156 on `ubuntu-latest`, the
@@ -89,8 +90,8 @@ id measured twice; the fast maps went first, then `slow (1)`–`(5)`.
   timed from the pytest session-start line. Exactly one gap exceeds its new stored value by
   more than 600 s: `tests/locks/test_patch_edgefed_resonance_harminv.py::test_ringdowns_are_settled`
   in `slow (2)`, 1448.8538443 s versus 0.0009381059999213903 s stored (1514.934755 s in the
-  replaced file). Its duration now uses that gap. Module sums: old 1515.9735370 s, raw
-  1.8687104 s, corrected 1450.7216166 s.
+  replaced file). Its duration now uses that gap. Module sums: old 1515.9735370 s; slow-artifact raw 1.8687104 s;
+  fast-last raw 1.9359451 s; log-corrected fast-last 1450.7888513 s.
 - **The previous run 36394962310 used log-derived `slow (5)` entries.** With `-v` each test's result line is written when
   the test ends, and the job log stamps every line. An entry is the gap between a test's result
   line and the one before it; the first test is timed from the `collected` line. The gap holds
@@ -114,7 +115,7 @@ id measured twice; the fast maps went first, then `slow (1)`–`(5)`.
   (2026-09-21), measured before that.
   The 14th, `tests/unit/autodiff/test_coax_two_port_ad.py::test_coax_two_port_eps_scale_unity_matches_concrete_path`,
   is also outside both GitHub selections now; its 21.178872745 s is carried from the replaced file.
-- Recorded total: 26977.2 s (7.49 h), against 28509.1 s (7.92 h) for the file this replaces.
+- Recorded total: 29019.1 s (8.06 h), against 28509.1 s (7.92 h) for the file this replaces.
 
 ## The one highmem test the fast lane does run
 
@@ -128,11 +129,10 @@ other 14 carried. When regenerating, do not overwrite this one from the a6000 ma
 ## Regenerating
 
 1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts.
-2. `python scripts/ci/merge_test_durations.py .test_durations <fast shards...> <slow shards...>`.
-   Later inputs win on a nodeid measured twice, so pass the fast maps first and the slow maps
-   last; the two selections overlap and their measurements differ. A shard cut before the session
-   ends uploads nothing; price what it finished from its job log as in Sources, pass that map
-   last, and say so in the header. Then compare each input's sum, which the script prints, with
+2. `python scripts/ci/merge_test_durations.py .test_durations <slow shards...> <fast shards...>`.
+   Later inputs win: slow first, fast last — the required lane must be priced by its own runs.
+   A shard cut before the session ends uploads nothing; price what it finished from its job log
+   as in Sources, pass that map last, and say so in the header. Then compare each input's sum, which the script prints, with
    the pytest session time in that shard's job log (the `= ... in Ns =` line). Look into any shard
    more than about 5 % short, or short by more than a minute: a setup or teardown over 600 s is
    dropped by `--store-durations` and is the known cause (see Sources).
@@ -146,7 +146,8 @@ other 14 carried. When regenerating, do not overwrite this one from the a6000 ma
    above; if a future lane really does carry
    per-test overhead the reports miss, measure it on that lane first and write the measurement
    here before any constant goes back in.
-5. Simulate both splits before committing (pytest-split's own `duration_based_chunks`), then read
+5. Collect every group before committing (`pytest --collect-only --splits N --group k`,
+   pytest-split's own `duration_based_chunks`), then read
    the pull request's own shard times afterwards — that reading is the check, not the simulation.
    Re-measure the collection while you are there and quote it with the commit you measured it at:
    it grew 10224 -> 10472 on the fast lane in the three days this file's own refresh took, so a
@@ -156,29 +157,41 @@ other 14 carried. When regenerating, do not overwrite this one from the a6000 ma
 
 ## Balance
 
-Recomputed at `808e48dc` with the log correction above, using pytest-split 0.11.0's
-`duration_based_chunks` on pytest's collected items: fast 15231 tests / 6 groups, slow
-15474 tests / 5 groups. Old is `e6151107:.test_durations`; corrected is this file.
-Python 3.11 / JAX 0.10.2 CPU; fast includes the locally available trimesh package, slow
-excludes the CAD extra, and Plotly is absent. The marker selections match the workflows.
-Unknown old entries (2847 fast, 2864 slow) use the plugin's selected-population mean;
-the corrected file has no missing entries in either selection.
+Recomputed on the `1c3617d7` tree with the fast-last file and log correction above,
+using pytest-split 0.11.0's own `pytest --collect-only --splits N --group k` for all
+11 groups (`duration_based_chunks`): fast 15231 tests / 6 groups, slow 15474 tests /
+5 groups. Every group's ordered nodeids and summed durations match the reviewer's
+`sim.py` cross-check exactly; plugin estimates agree to their displayed 0.01 s.
+Python 3.11 / JAX 0.10.2 CPU; fast includes the locally available trimesh package,
+slow excludes the CAD extra, and Plotly is absent. Fast uses
+`not gpu and not slow and not slow_physics and not docs_consistency`; slow uses
+`not gpu and not highmem and not docs_consistency`, matching the workflows.
+The file has no missing entries in either selection. With these optional-dependency
+settings the local selections overlap on 15219 ids; the 11 CAD tests are collected
+only in fast, in addition to its one highmem test.
 
-| lane | group | old minutes | corrected minutes |
-|---|---|---:|---:|
-| fast | 1 | 42.99 | 39.82 |
-| fast | 2 | 42.99 | 40.21 |
-| fast | 3 | 43.32 | 39.84 |
-| fast | 4 | 43.00 | 39.82 |
-| fast | 5 | 43.10 | 40.83 |
-| fast | 6 | 42.48 | 38.37 |
-| fast | max | 43.32 | 40.83 |
-| slow | 1 | 115.04 | 88.67 |
-| slow | 2 | 114.68 | 88.51 |
-| slow | 3 | 114.81 | 88.65 |
-| slow | 4 | 119.10 | 88.77 |
-| slow | 5 | 109.67 | 87.74 |
-| slow | max | 119.10 | 88.77 |
+The reviewer found that slow-last pricing gave fast groups 3 and 4 predictions near
+40 min but fast-artifact prices near 52.5 min; slow jobs 3 and 4 had fitted speed
+factors 0.74 / 0.76 versus 0.93–1.20 for the other nine jobs. Fast-artifact pricing
+matched observed old-split group times within about 1 min on runs 36739385830 and
+36766208720. The table below uses this file's fast-last prices in both lanes; these
+are duration sums, not observed CI wall times.
+
+| lane | group | fast-last minutes |
+|---|---|---:|
+| fast | 1 | 45.49 |
+| fast | 2 | 45.50 |
+| fast | 3 | 46.10 |
+| fast | 4 | 45.58 |
+| fast | 5 | 46.12 |
+| fast | 6 | 44.12 |
+| fast | max | 46.12 |
+| slow | 1 | 95.30 |
+| slow | 2 | 95.32 |
+| slow | 3 | 95.30 |
+| slow | 4 | 95.59 |
+| slow | 5 | 94.86 |
+| slow | max | 95.59 |
 
 Earlier balance records follow.
 
