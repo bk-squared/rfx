@@ -325,6 +325,9 @@ def compute_coaxial_line_reflection(
             "not yet wired."
         )
 
+    from rfx.runners._admission import admit
+    admit(self, "coaxial_line_reflection")
+
     grid = self._build_grid()
     nz = grid.shape[2]
     dz = float(grid.dx)
@@ -788,6 +791,9 @@ def compute_coaxial_two_port(
         extra_flux_monitors, self._domain, "compute_coaxial_two_port"
     )
     flux_by_drive: dict = {}
+
+    from rfx.runners._admission import admit
+    admit(self, "coaxial_two_port")
 
     grid = self._build_grid()
     nz = grid.shape[2]
@@ -1504,6 +1510,9 @@ def compute_coax_msl_transition(
             "passed directly or set on the registered add_msl_port() "
             "(this method does not auto-detect it from geometry)."
         )
+
+    from rfx.runners._admission import admit
+    admit(self, "coax_msl_transition")
 
     grid = self._build_grid()
     dz = float(grid.dx)

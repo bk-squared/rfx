@@ -1557,9 +1557,9 @@ class _ExecuteMixin:
         input that lane does not carry is refused before the first step
         (``rfx.runners._admission``). The calculators that also enter here
         (``run()``'s lumped/wire S-matrix scan, ``compute_mixed_s_matrix``,
-        ``topology_optimize``) leave it ``None``: their columns of the
-        path-disposition table are not classified yet. The ADI route below
-        is always judged as ``fwd_adi``.
+        ``topology_optimize``) admit their model at their own entry and
+        leave it ``None`` here. The ADI route below is additionally judged
+        as ``fwd_adi``.
 
         Internal multi-drive S-matrix hook (item-5 Stage 1, 2026-06-22)
         --------------------------------------------------------------

@@ -1096,9 +1096,8 @@ def vmap_material_sweep(
     jax_param_values = jnp.asarray(param_values)
 
     if run_one_fn is not None:
-        sim._refuse_conformal_boundary(
-            "vmap_material_sweep batched kernel", entry="vmap_material_sweep()",
-            instead="use parametric_sweep() with uniform run() for conformal fields")
+        from rfx.runners._admission import admit
+        admit(sim, "vmap_sweep_batched")
         # The batched kernel has no subgrid and never read add_refinement;
         # the sequential fallback below runs it through run() (#1240).
         sim._require_no_refinement_without_a_subgrid("vmap_material_sweep()")
