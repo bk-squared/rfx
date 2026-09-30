@@ -651,7 +651,7 @@ class CoaxialPlaneSourceSpec(NamedTuple):
     z_tem_ohm: float
 
 
-def _coaxial_tem_edge_profile(grid, port, plane_index, shell_inner_radius,
+def _coaxial_tem_edge_profile(grid, port, e_plane_idx, shell_inner_radius,
                             pec_cell_mask=None):
     """Unit-voltage TEM E on the realized Ex/Ey edges (host float64).
 
@@ -677,12 +677,15 @@ def _coaxial_tem_edge_profile(grid, port, plane_index, shell_inner_radius,
             pin_cells = np.asarray(pin.mask_on_coords(coords.x, coords.y, np.array([0.0])))
             bore_cells = np.asarray(bore.mask_on_coords(coords.x, coords.y, np.array([0.0])))
             cells = pin_cells | ~bore_cells
+            edge_plane = 0
         else:
             cells = np.asarray(pec_cell_mask, dtype=bool)
             if cells.shape != grid.shape:
                 raise ValueError("coax TEM conductor mask must match the grid shape")
-            cells = cells[:, :, int(plane_index):int(plane_index) + 1]
-        mx, my, _ = (np.asarray(m)[:, :, 0] for m in
+            edge_plane = int(e_plane_idx)
+        # Match the runner: realize all four incident cells in 3-D before
+        # selecting Ex/Ey at the E source plane (including the previous z cell).
+        mx, my, _ = (np.asarray(m)[:, :, edge_plane] for m in
                      realized_pec_edge_masks(cells))
 
     # Mark both endpoints of every shorted transverse edge, using the
@@ -918,7 +921,7 @@ def build_coaxial_tem_plane_source_specs(
     electric_sources: list = []
     magnetic_sources: list = []
     ex_profile, ey_profile = _coaxial_tem_edge_profile(
-        grid, port, plane_index, shell_inner_radius, pec_cell_mask,
+        grid, port, e_plane_idx, shell_inner_radius, pec_cell_mask,
     )
     source_cell_count = 0
     for i in range(grid.nx):

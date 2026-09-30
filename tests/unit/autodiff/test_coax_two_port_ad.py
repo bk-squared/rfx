@@ -16,7 +16,7 @@ CPU h-sweep (2026-09-30), phase AD = -1.2753862143 rad/eps_scale::
 The full measured window is stable to 0.013%; h=2e-3 is interior.
 FD loss spans 2.87e12 to 5.74e13 float64 ULPs; field storage remains
 float32, so this does not claim float64 FDTD accuracy. The maximum
-column-normalized complex path difference is 8.22238e-6 (bar 1e-3).
+column-normalized complex path difference is 8.22238e-6 (bar 1e-4).
 """
 
 from __future__ import annotations
@@ -110,8 +110,10 @@ assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0
 # Apply the repository envelope multiplier (1.5) and round up to 0.01%:
 # ceil(0.000497 * 1.5 * 10000) / 10000 = 0.0008 (0.08%).
 _PHASE_MESH_BAR = 0.0008
-# Measured |d mean |S21|^2 / d eps_scale| = 0.00263521; round up, then x10.
-_POWER_GRAD_BOUND = 0.00264 * 10
+# Derived from this fixture: measured |d mean |S21|^2 / d eps_scale|
+# = 0.00263521; round up, then multiply by 3. Catch the pre-fix spurious
+# power slope from the analytic 1/r drive.
+_POWER_GRAD_BOUND = 0.00264 * 3
 
 
 def _fd_ulp_span(f_plus: float, f_minus: float, dtype) -> float:
@@ -204,7 +206,7 @@ def test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent(phase_sensiti
     print(f"planes={concrete.reference_planes}, mesh phase error={phase_error:.6g}, exact gradient={exact_grad:.10g}")
     assert phase_error <= _PHASE_MESH_BAR
     assert abs(g_ad - exact_grad) / abs(exact_grad) <= _PHASE_MESH_BAR
-    # Matched lossless power is constant; allow ten times the measured
+    # Matched lossless power is constant; allow three times the measured
     # residual derivative, rather than demanding relative agreement at zero.
     assert abs(g_power) <= _POWER_GRAD_BOUND
 
@@ -224,7 +226,8 @@ def test_coax_two_port_eps_scale_unity_matches_concrete_path(phase_sensitivity):
     assert np.all(scale > 0)
     error = np.abs(sb - sa) / scale
     print(f"column-normalized complex error: {error}; maximum={np.max(error):.10g}")
-    assert np.all(error <= 1.0e-3)
+    # Measured maximum column-normalized complex difference: 8.22238e-6.
+    assert np.all(error <= 1.0e-4)
     # Equal forward values alone cannot detect stop_gradient. Reuse the
     # phase tangent witness to require the differentiable path to stay live.
     _, exact_grad = _closed_form(a)

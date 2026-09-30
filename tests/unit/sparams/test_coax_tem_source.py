@@ -8,7 +8,8 @@ from rfx.core.yee import MU_0, curl_h, init_materials, init_state, update_h
 from tests.unit.sparams.test_coax_two_port_smatrix import _sim
 
 
-def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch):
+@pytest.mark.parametrize("geometry", ["centered", "off_center", "narrow_annulus"])
+def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
     """A cheaper TEM invariant than fitting a time-domain thru at three planes.
 
     In this homogeneous PEC guide, a TEM transverse profile produces neither
@@ -49,6 +50,19 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch):
         assert ez_error < 2e-6, f"TEM source creates longitudinal E: {ez_error}"
         raise SourceChecked
 
+    sim = _sim()
+    port = sim._coaxial_ports[0]
+    dx = float(sim._build_grid().dx)
+    if geometry == "off_center":
+        # Move the pin/shell centre by a fraction of a cell in each direction.
+        sim._coaxial_ports[0] = port._replace(
+            position=(port.position[0] + 0.3 * dx,
+                      port.position[1] - 0.2 * dx, port.position[2]),
+        )
+    elif geometry == "narrow_annulus":
+        # A covered but coarsely resolved annulus, 2.5 cells across radially.
+        sim._coaxial_ports[0] = port._replace(outer_radius=port.pin_radius + 2.5 * dx)
+
     monkeypatch.setattr("rfx.simulation.run", inspect_source)
     with pytest.raises(SourceChecked):
-        _sim().compute_coaxial_two_port(n_steps=1, freqs=np.array([8e9]))
+        sim.compute_coaxial_two_port(n_steps=1, freqs=np.array([8e9]))
