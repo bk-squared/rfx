@@ -458,20 +458,9 @@ def _wr90_probe_sim(conformal):
     return _quiet(build)
 
 
-def test_distributed_waveguide_fallback_carries_the_conformal_walls():
-    """A waveguide-port model with devices= runs the one-device fallback,
-    which rebuilds the conformal walls from the declaration: it must run,
-    and equal the one-device conformal answer, not the staircase one."""
-    dist = _quiet(lambda: _wr90_probe_sim(True).run(
-        n_steps=40, devices=_devices(), skip_preflight=True))
-    conf = _quiet(lambda: _wr90_probe_sim(True).run(
-        n_steps=40, skip_preflight=True))
-    stair = _quiet(lambda: _wr90_probe_sim(False).run(
-        n_steps=40, skip_preflight=True))
-    d, c, st = (np.asarray(r.time_series) for r in (dist, conf, stair))
-    peak = np.max(np.abs(c))
-    np.testing.assert_allclose(d, c, rtol=0, atol=1e-6 * peak)
-    assert np.max(np.abs(c - st)) > 0.1 * peak
+def test_distributed_waveguide_refused_with_conformal_walls():
+    with pytest.raises(NotImplementedError, match="Waveguide ports.*devices"):
+        _wr90_probe_sim(True).run(n_steps=40, devices=_devices(), skip_preflight=True)
 
 
 def _wr90_post_sim():
@@ -491,18 +480,10 @@ def _wr90_post_sim():
     return _quiet(build)
 
 
-def test_distributed_fallback_carries_a_conformal_request():
-    """An explicit conformal_pec=True with no Boundary(conformal=True): the
-    one-device fallback runs with the caller's arguments (#1305), so the
-    request is carried, not refused and not re-derived from the declaration."""
-    def run(n_steps, **kw):
-        return np.asarray(_quiet(lambda: _wr90_post_sim().run(
-            n_steps=n_steps, skip_preflight=True, **kw)).time_series)
-    fell = run(60, conformal_pec=True, devices=_devices())
-    on, off = run(60, conformal_pec=True), run(60, conformal_pec=False)
-    # The request is not a no-op on this model: conformal post vs staircase.
-    assert np.max(np.abs(on - off)) > 0.1 * np.max(np.abs(off))
-    np.testing.assert_array_equal(fell, on)
+def test_distributed_waveguide_refused_with_explicit_conformal_request():
+    with pytest.raises(NotImplementedError, match="Waveguide ports.*devices"):
+        _wr90_post_sim().run(n_steps=60, conformal_pec=True, devices=_devices(),
+                             skip_preflight=True)
 
 
 def _copper_sheet_sim(nonuniform):

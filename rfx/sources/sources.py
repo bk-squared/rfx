@@ -551,6 +551,14 @@ def _axis_node_position(grid, axis: int, index: int) -> float:
     return float(line[int(np.clip(index, 0, line.size - 1))])
 
 
+def wire_port_from_entry(pe):
+    """Build the axis-aligned wire declaration used by distributed setup/recording."""
+    end = list(pe.position)
+    end[{"ex": 0, "ey": 1, "ez": 2}[pe.component]] += pe.extent
+    return WirePort(start=pe.position, end=tuple(end), component=pe.component,
+                    impedance=pe.impedance, excitation=pe.waveform, radius=pe.radius)
+
+
 def _wire_port_live_cells(grid, port, pec_edge_masks=None):
     """Split the wire cells into (cells, live_flags, n_live) — issue #318.
 

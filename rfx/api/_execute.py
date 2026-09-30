@@ -4893,19 +4893,20 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane == "run_distributed" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
-        if plan.lane == "run_distributed" and (
-                self._tfsf is not None or self._waveguide_ports):
-            # TFSF sources and waveguide ports need the whole domain on one
+        if plan.lane == "run_distributed" and self._waveguide_ports:
+            raise NotImplementedError(
+                "Waveguide ports are not supported with devices=...; use one device "
+                "(omit devices=...).")
+        if plan.lane == "run_distributed" and self._tfsf is not None:
+            # TFSF sources need the whole domain on one
             # device. Re-run with every argument the caller gave, minus devices=;
             # the runner's own fallback re-ran with n_steps alone and dropped
             # the rest (#1305: an explicit conformal_pec=False came back as the
             # declared conformal walls).
             import warnings
             warnings.warn(
-                "Distributed runner does not yet support "
-                + ("TFSF plane-wave sources" if self._tfsf is not None
-                   else "waveguide ports")
-                + ". Falling back to single-device execution with the same "
+                "Distributed runner does not yet support TFSF plane-wave sources. "
+                "Falling back to single-device execution with the same "
                 "arguments.",
                 stacklevel=2,
             )
@@ -4959,6 +4960,16 @@ class _ExecuteMixin:
                     devices=devices,
                 )
             if compute_s_params:
+                _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
+                if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
+                    self._refuse_unsupported_run_kwargs(
+                        "uniform single-wire-port S-parameter", {
+                            "s_param_n_steps": self._s_param_n_steps_off_record(
+                                s_param_n_steps, n_steps, until_decay),
+                        }, instead=None,
+                        reason_overrides={"s_param_n_steps":
+                            "this lane reads S11 from the main run's port record, "
+                            "whose length is n_steps"})
                 from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
                 refuse_distributed_lumped_s_pmc(self)
 
@@ -4986,6 +4997,8 @@ class _ExecuteMixin:
                     self, s_param_freqs,
                     n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
                     devices=devices,
+                    **({"_main_wire_record": True} if len(_dist_ports) == 1
+                       and _dist_ports[0].extent is not None else {}),
                 )
                 _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
             _res = self._attach_run_settling_witness(

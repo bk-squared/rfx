@@ -146,7 +146,7 @@ def test_other_components(component):
     _parity(component=component)
 
 
-@pytest.mark.parametrize("kind, message", [("wire", "extended lumped port"),
+@pytest.mark.parametrize("kind, message", [("wire", "reference_plane_cells"),
                                             ("passive", "passive port"),
                                             ("graded", "Phase B distributed\\+NU")])
 @pytest.mark.parametrize("explicit", [False, True])
@@ -154,7 +154,7 @@ def test_refusals(kind, message, explicit):
     kwargs = {"dz_profile": np.array([1e-3] * 3 + [0.5e-3] * 6)} if kind == "graded" else {}
     sim = Simulation(freq_max=10e9, domain=(16e-3, 6e-3, 6e-3),
                      dx=1e-3, boundary="pec", **kwargs)
-    extra = {"extent": 1e-3} if kind == "wire" else {"excite": False} if kind == "passive" else {}
+    extra = {"extent": 1e-3, "reference_plane_cells": 1, "direction": "+x"} if kind == "wire" else {"excite": False} if kind == "passive" else {}
     sim.add_port((8e-3, 3e-3, 3e-3), "ez", impedance=50, **extra)
     with pytest.raises(NotImplementedError, match=message):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2],
