@@ -34,6 +34,7 @@ from rfx.grid import Grid
 from rfx.core.yee import EPS_0, MU_0
 from rfx.geometry.csg import Cylinder
 from rfx.sources._laplace import _solve_laplace_2d
+from rfx.sources.sources import stamp_lumped_sigma
 
 
 # ---------------------------------------------------------------------------
@@ -1778,10 +1779,10 @@ def stamp_coaxial_annular_resistor(
 ):
     """Stamp a radial annular resistor (``Γ → 0`` match) at one z-plane.
 
-    The PTFE annulus between the pin and the shell is filled with conductivity
+    Each Ex and Ey edge in the annulus at this node plane receives
     ``σ = log(b'/a) / (2π·dz·Z)`` so the radial pin-to-shell resistance matches
-    ``target_impedance``. Used both for the matched feed termination and for a
-    matched DUT.
+    ``target_impedance``. The edge-owned load is not averaged into adjacent
+    planes or Ez. Used both for the matched feed termination and a matched DUT.
 
     ``pec_cell_mask`` is the conductor mask :func:`stamp_coaxial_line` returns;
     cells in it are skipped. It replaces the old test ``sigma >= PEC_SIGMA/2``,
@@ -1816,9 +1817,10 @@ def stamp_coaxial_annular_resistor(
             occupied = (bool(pec[i, j, z]) if pec is not None
                         else sig[i, j, z] >= 0.5 * PEC_SIGMA)
             if float(pin_radius) <= r <= shell_inner_radius and not occupied:
-                sig[i, j, z] = sigma_load
+                materials = stamp_lumped_sigma(materials, (i, j, z), sigma_load, "ex")
+                materials = stamp_lumped_sigma(materials, (i, j, z), sigma_load, "ey")
                 eps[i, j, z] = 1.0
                 stamped += 1
     if stamped == 0:
         raise ValueError("stamp_coaxial_annular_resistor stamped 0 cells; check geometry/resolution")
-    return materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
+    return materials._replace(eps_r=jnp.asarray(eps))
