@@ -7,6 +7,7 @@ import pytest
 from rfx.api import Simulation
 from rfx.sources import coaxial_port
 from tests._coax_msl_instrument_fixture import (
+    GROUND,
     build_instrument_junction,
     instrument_kwargs,
 )
@@ -42,9 +43,29 @@ def test_coax_line_fills_its_declared_range(monkeypatch, lane, rung):
         pin = cells & (radius <= kw["pin_radius"])[:, :, None]
         shell = cells & (radius > kw["outer_radius"])[:, :, None]
         fill = np.asarray(stamped.eps_r) != np.asarray(materials.eps_r)
+        # Independent physical layout oracle: do not derive these planes from
+        # the stamper's bounds (a caller can pass a self-consistent wrong range).
+        dz = float(grid.dx)
+        if lane == "reflection":
+            end_nodes = (4 * dz, None)  # DUT reference plane, default offset.
+        elif lane == "two_port":
+            feed_bottom = 3 * dz
+            feed_top = (grid.shape[2] - grid.pad_z_hi - 3 - grid.pad_z_lo) * dz
+            # The declared line extends one cell below the bottom feed and
+            # through the cell one above the top feed (two nodes above it).
+            end_nodes = (feed_bottom - dz, feed_top + 2 * dz)
+        else:
+            end_nodes = (None, GROUND)  # Junction node, below the substrate.
         for name, mask in (("pin", pin), ("shell", shell), ("fill", fill)):
             indices = np.flatnonzero(mask.any(axis=(0, 1)))
             np.testing.assert_array_equal(indices, expected, err_msg=f"{lane}: {name}")
+            realized_nodes = ((indices[0] - grid.pad_z_lo) * dz,
+                              (indices[-1] + 1 - grid.pad_z_lo) * dz)
+            for realized, plane in zip(realized_nodes, end_nodes):
+                if plane is not None:
+                    assert realized == pytest.approx(plane, abs=dz * 1e-6), (
+                        f"{lane}: {name} end node {realized} != physical plane {plane}"
+                    )
             # No holes in any occupied axial column, including the endpoints.
             footprint = mask.any(axis=2)
             np.testing.assert_array_equal(mask[:, :, expected],
