@@ -2564,6 +2564,7 @@
       "impedance",
       "waveform",
       "extent",
+      "radius",
       "excite",
       "direction",
       "reference_plane_cells",
