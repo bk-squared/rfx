@@ -115,7 +115,7 @@ def _identify_window(w):
 
 
 def _completion(y, *, k_max=K_TEST, mutation=None, return_aux=False):
-    s0, mask, _status, tail_arg = rj.host_poles(_identify_window, y[N_START:], k_max,
+    s0, mask, _status, tail_arg, _count = rj.host_poles(_identify_window, y[N_START:], k_max,
                                                 DT, FREQS)
     return rj.completion(y, DT, FREQS, N_START, s0, mask, tail_arg, mutation=mutation,
                          return_aux=return_aux)
@@ -248,15 +248,57 @@ def test_padding_is_inert():
     assert np.all(np.asarray(daux["s"])[pad] == 0.0)
 
 
-def test_the_static_bound_covers_the_pencil():
-    """``static_pole_bound`` is at least the pencil's rank on this window, and
-    at least the kept count (the rank bounds the eigenvalue count)."""
-    y, _v = _series(N_WINDOWED)
-    m = rd.identify(y, DT, N_START, N_WINDOWED, freq_max=F_REF, guard=GUARD)
-    bound = rd.static_pole_bound(N_WINDOWED - N_START, 2, DT, F_REF)
-    print(f"\n[bound] rank {m.rank}, kept {m.s.size}, bound {bound}, decimated "
+def _noisy_record():
+    from tests.unit.sparams.test_ringdown_oracles import _record
+
+    return _record(1200) + 1e-4 * np.random.default_rng(7).standard_normal((1200, 2))
+
+
+@pytest.mark.parametrize("noisy", [False, True])
+def test_the_static_bound_covers_the_pencil(noisy):
+    """The traced pole slots cover the kept poles, not the pencil's rank."""
+    y = _noisy_record() if noisy else _series(N_WINDOWED)[0]
+    n0 = len(y) // 4 if noisy else N_START
+    m = rd.identify(y, DT, n0, len(y), freq_max=F_REF, guard=GUARD)
+    bound = rd.static_pole_bound(len(y) - n0, 2, DT, F_REF)
+    k_max = min(bound, rd.TRACED_POLE_BUDGET)
+    print(f"\n[bound] rank {m.rank}, kept {m.s.size}, k_max {k_max}, decimated "
           f"{m.n_decimated} samples")
-    assert m.s.size <= m.rank <= bound
+    assert m.s.size <= k_max
+    if noisy:
+        assert m.rank > k_max
+
+
+def test_capped_padding_preserves_the_noisy_record_and_residues():
+    """The highest-count fixture fits in the budget with unchanged spectra/c0."""
+    import jax
+    import jax.numpy as jnp
+
+    y = _noisy_record()
+    n0 = len(y) // 4
+    old_bound = rd.static_pole_bound(len(y) - n0, 2, DT, F_REF)
+    assert old_bound > rd.TRACED_POLE_BUDGET
+    outputs = []
+    with enable_x64():
+        for budget in (rd.TRACED_POLE_BUDGET, old_bound):
+            def complete(a):
+                s, mask, status, arg, count = rj.host_poles(
+                    _identify_window, a[n0:], budget, DT, FREQS)
+                spectra, aux = rj.completion(
+                    a, DT, FREQS, n0, s, mask, arg, return_aux=True)
+                return spectra, aux["c0"], count, status
+
+            outputs.append(jax.block_until_ready(jax.jit(complete)(jnp.asarray(y))))
+    capped, old = outputs
+    count = int(capped[2])
+    assert count == int(old[2]) and 256 < count <= rd.TRACED_POLE_BUDGET
+    assert int(capped[3]) == int(old[3]) == rj.STATUS_OK
+    value_error = _rel(capped[0], old[0])
+    residue_error = _rel(np.asarray(capped[1])[:count], np.asarray(old[1])[:count])
+    print(f"\n[capped noisy record] kept {count}, K {rd.TRACED_POLE_BUDGET}/{old_bound}, "
+          f"spectra {value_error:.9e}, c0 {residue_error:.9e} of peak")
+    assert value_error <= 1e-4
+    assert residue_error <= 1e-4
 
 
 @pytest.mark.parametrize("x64", [False, True])
@@ -277,12 +319,13 @@ def test_the_host_sees_the_window_bit_for_bit(x64):
     with (enable_x64() if x64 else contextlib.nullcontext()):
         dtype = jnp.float64 if x64 else jnp.float32
         w = jnp.asarray(y, dtype=dtype) * 1.000001
-        s, mask, status, tail_arg = jax.block_until_ready(
+        s, mask, status, tail_arg, count = jax.block_until_ready(
             jax.jit(lambda a: rj.host_poles(spy, a, 4, DT, FREQS[:3]))(w))   # the callback has run
         w_host = np.asarray(w)
     assert seen["w"].dtype == w_host.dtype and seen["w"].shape == w_host.shape
     assert np.array_equal(seen["w"].view(np.uint8), w_host.view(np.uint8))
     assert int(status) == rj.STATUS_OK and np.asarray(mask).tolist() == [1, 1, 0, 0]
+    assert int(count) == 2
     assert np.asarray(s)[0] == pytest.approx(-1.0e8 + 2j * np.pi * 2.0e9, rel=1e-6)
     # the pad poles are lambda = 0.5 per step, and the tail argument is s dt + log z
     assert np.abs(np.exp(np.asarray(s)[2:] * DT)) == pytest.approx(0.5, rel=1e-5)
@@ -305,10 +348,11 @@ def test_a_failed_identification_comes_back_as_a_status(case):
             raise ValueError("a window of 3 decimated samples is too short")
         return np.full(5, -1.0e8 + 1j, dtype=np.complex128)
 
-    s, mask, status, _tail_arg = jax.jit(lambda a: rj.host_poles(host, a, 4, DT, FREQS))(
+    s, mask, status, _tail_arg, count = jax.jit(lambda a: rj.host_poles(host, a, 4, DT, FREQS))(
         jnp.ones((50, 2), jnp.float32))
     want = rj.STATUS_FAILED if case == "raises" else rj.STATUS_OVER_BUDGET
     assert int(status) == want
+    assert int(count) == (-1 if case == "raises" else 5)
     assert np.all(np.asarray(mask) == 0.0)
     assert np.all(np.isfinite(np.asarray(s)))
 
@@ -389,7 +433,7 @@ def test_float32_keeps_its_precision_at_high_q(q, mutation):
         return rd.identify(w, HQ_DT, 0, w.shape[0], freq_max=HQ_FMAX, guard=GUARD).s
 
     def comp(a):
-        s0, mask, _st, tail_arg = rj.host_poles(ident, a[n0:], k_max, HQ_DT, HQ_FREQS)
+        s0, mask, _st, tail_arg, _count = rj.host_poles(ident, a[n0:], k_max, HQ_DT, HQ_FREQS)
         return rj.completion(a, HQ_DT, HQ_FREQS, n0, s0, mask, tail_arg, mutation=mutation)
 
     C, dC = jax.jit(lambda a, b: jax.jvp(comp, (a,), (b,)))(jnp.asarray(y), jnp.asarray(v))
