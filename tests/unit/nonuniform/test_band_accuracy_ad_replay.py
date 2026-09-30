@@ -198,7 +198,7 @@ def test_replay_a1_profiles_and_columns(w7_json):
             assert np.max(np.abs(expect - col)) == 0.0, key
         else:
             table = tuple(round(r["interface_eps"][k], 1) for k in ("14mm", "16mm", "30mm"))
-            assert table == w7.A1_INTERFACE_TABLE[(r["arm"], r["scale"])], (key, table)
+            assert table == w7.A1_INTERFACE_TABLE_RECORDED[(r["arm"], r["scale"])], (key, table)
             assert r["interior_transversely_uniform"] is True, key
 
 

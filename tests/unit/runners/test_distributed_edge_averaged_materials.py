@@ -112,7 +112,7 @@ CONDUCTOR_FLOOR_FACTOR = 16
 CONDUCTOR_CASES = ("sheet", "pec_on_slab")
 GRAD_RTOL = 1e-5               # of the single-device gradient's peak
 MUTATION_MARGIN = 100          # a restored defect must exceed the gate this many times
-CI_JAX = "0.6.2"               # the required fast-suite lane's JAX (Python 3.10)
+CI_JAX = "0.10.2"              # the required fast-suite lane's JAX (Python 3.11)
 
 WAVEFORM = GaussianPulse(f0=5e9, bandwidth=0.8)
 STEPS = {"pec": 60, "cpml": 120}
@@ -865,13 +865,17 @@ def test_a_dielectric_model_gives_the_plain_bits_in_every_trace_context(lane):
     for name, context in contexts.items():
         worst[name] = max(_peak_ulp(o, p) for o, p in zip(context(), plain))
     print(f"[cross-trace/{lane}] ULP of each peak, JAX {jax.__version__}: {worst}")
-    # Binding on the CI build's JAX, as the PI scoped the rule (2026-09-23):
-    # <= 9 ULP. There (arm64 0.6.2) the run lane is bitwise, main too, and
-    # the forward lane reads 4 ULP under jvp/vjp/value_and_grad -- main the
-    # same 4, and main's VACUUM box 13. Measured, not gated, elsewhere: on
+    # Binding on the pinned CI JAX (now 0.10.2); the PI's <= 9 ULP rule
+    # (2026-09-23) is unchanged. Historically on arm64 0.6.2 the run lane
+    # was bitwise, main too, and the forward lane read 4 ULP under
+    # jvp/vjp/value_and_grad -- main the same 4, and main's VACUUM box 13.
+    # Before the CI upgrade, measured on
     # 0.10.2 (Mac) the run lane reads 10 ULP under vjp/vmap, main 10.4, main's
     # vacuum 31. Compiler effects, not this lane's material rule.
-    if jax.__version__ == CI_JAX:
+    # CI's platform (Linux x86_64, JAX 0.10.2, validation run 36651839848): 0 ULP in every
+    # context on both lanes. The 10 ULP above is Mac arm64 only (#1400), so the rule binds on
+    # the CI build: its JAX on Linux.
+    if jax.__version__ == CI_JAX and sys.platform.startswith("linux"):
         assert all(v <= 9 for v in worst.values()), worst
 
 

@@ -6296,14 +6296,7 @@
               "sub_cell": true
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "the realized body extends beyond the declared domain on x \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
@@ -6377,7 +6370,7 @@
         "geometry|substrate|0.000,0.000,0.000um->24000.000,19409.000,254.000um": {
           "axes": {
             "x": {
-              "cell_um": 112.218604651,
+              "cell_um": 112.14953271,
               "declared_extent_um": 24000.0,
               "declared_um": [
                 0.0,
@@ -6385,12 +6378,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                127.0
+                0.0
               ],
-              "realized_extent_um": 24127.0,
+              "realized_extent_um": 24000.0,
               "realized_um": [
                 0.0,
-                24127.0
+                24000.0
               ],
               "sub_cell": false
             },
@@ -6431,20 +6424,7 @@
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "x",
-              "detail": "the realized body extends beyond the declared domain on x \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
-            },
-            {
-              "axis": "x",
-              "detail": "PLACEMENT off by 127.0 um (0.53% of the declared 24000.0 um extent); SIZE 24127.0 um (+127.0 um, +0.53%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            }
-          ],
+          "findings": [],
           "material": {
             "eps_r": 3.66,
             "kind": "dielectric",
@@ -6453,7 +6433,7 @@
             "name": "substrate",
             "sigma": 0.0
           },
-          "n_cells": 250260,
+          "n_cells": 249096,
           "realization": null
         }
       },
@@ -6730,25 +6710,18 @@
                 9000.0
               ],
               "face_residual_um": [
-                375.0,
+                0.0,
                 0.0
               ],
-              "realized_extent_um": 1125.0,
+              "realized_extent_um": 1500.0,
               "realized_um": [
-                7875.0,
+                7500.0,
                 9000.0
               ],
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "z",
-              "detail": "PLACEMENT off by 375.0 um (25.00% of the declared 1500.0 um extent); SIZE 1125.0 um (-375.0 um, -25.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            }
-          ],
+          "findings": [],
           "material": {
             "eps_r": 2.2,
             "kind": "dielectric",
@@ -6757,7 +6730,7 @@
             "name": "upper",
             "sigma": 0.0
           },
-          "n_cells": 1440,
+          "n_cells": 1920,
           "realization": null
         }
       },
@@ -7048,25 +7021,18 @@
                 9000.0
               ],
               "face_residual_um": [
-                375.0,
+                0.0,
                 0.0
               ],
-              "realized_extent_um": 1125.0,
+              "realized_extent_um": 1500.0,
               "realized_um": [
-                7875.0,
+                7500.0,
                 9000.0
               ],
               "sub_cell": false
             }
           },
-          "findings": [
-            {
-              "axis": "z",
-              "detail": "PLACEMENT off by 375.0 um (25.00% of the declared 1500.0 um extent); SIZE 1125.0 um (-375.0 um, -25.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
-            }
-          ],
+          "findings": [],
           "material": {
             "eps_r": 2.2,
             "kind": "dielectric",
@@ -7075,7 +7041,7 @@
             "name": "upper",
             "sigma": 0.0
           },
-          "n_cells": 1440,
+          "n_cells": 1920,
           "realization": null
         }
       },

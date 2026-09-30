@@ -78,6 +78,9 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # #838 left on 2026-09-23: closed as not planned before 2.0 by PI decision.
 # The coax-to-microstrip power over-read remains a standing limitation, with
 # its closed issue named for provenance in RESOLVED_REFERENCES.
+# #1381 left on 2026-09-30: closed as a stated limit by PI decision (both the
+# completion of an unresolved pair and the early stop it can end). The two ring-down
+# entries stay as standing limitations, with 1381 in RESOLVED_REFERENCES.
 # #1230 replaces #801 on 2026-09-23 for the part PR #1178 does not fix: with a
 # traced mesh axis no conductor is continued into the absorber. #801 is closed;
 # the residual is tracked by #1230.
@@ -100,14 +103,14 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # was already CLOSED (PR #1283, tests/unit/nonuniform/test_dispersive_port_load_1257.py)
 # -- `gh issue view 1257 --json state` read CLOSED that day. With the entry gone
 # the page no longer names #1236 either.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1381})
+CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
 # allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186})
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1381})
 # #1100 and #1122 join it together: the taper entry names both to record which
 # half was fixed and what was decided about the other, and both are closed.
 
