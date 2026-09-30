@@ -21,6 +21,7 @@ import math
 import numpy as np
 import pytest
 
+from rfx._grid_metric import NODE_TIE_REL
 from rfx.grid import CELL_COUNT_ULP_BUDGET, cells_spanning
 
 EPS = float(np.finfo(float).eps)
@@ -47,17 +48,28 @@ def test_a_few_ulps_above_an_integer_is_float_dust(k: int) -> None:
 
 
 @pytest.mark.parametrize("k", [15, 32, 1000])
-def test_far_enough_above_an_integer_is_a_real_cell(k: int) -> None:
-    """15 ULP and beyond is taken as declared. The boundary is stated rather
-    than left to be discovered: ``8 * eps * 232`` is 14.5 ULP of 232."""
-    assert cells_spanning(_ratio(232, k) * DX, DX) == 233
+def test_old_ulp_cutoffs_inside_the_node_band_do_not_add_a_cell(k: int) -> None:
+    """#1138 gives sizing the Box's 1e-9-cell band: all three now need 232.
+
+    These exceed the old 14.5-ULP limit but are still on the Box's face.
+    """
+    assert cells_spanning(_ratio(232, k) * DX, DX) == 232
 
 
-def test_the_budget_is_what_sets_that_boundary() -> None:
-    """The constant is the knob, not a magic number in the branch."""
-    r = _ratio(232, 14)
-    assert cells_spanning(r * DX, DX, ulp_budget=CELL_COUNT_ULP_BUDGET) == 232
-    assert cells_spanning(r * DX, DX, ulp_budget=1) == 233
+def test_the_ulp_budget_remains_a_floor_for_large_cell_counts() -> None:
+    """At a million cells 14 ULP exceeds 1e-9 cell but fits the old budget."""
+    r = _ratio(1000000, 14)
+    assert r - 1000000 > NODE_TIE_REL
+    assert cells_spanning(r * DX, DX, ulp_budget=CELL_COUNT_ULP_BUDGET) == 1000000
+    assert cells_spanning(r * DX, DX, ulp_budget=1) == 1000001
+
+
+@pytest.mark.parametrize("outside,expected", [(False, 232), (True, 233)])
+def test_the_node_band_boundary_keeps_a_real_overhang(outside, expected) -> None:
+    """Representable lengths bracket the shared 1e-9-cell band."""
+    length = np.nextafter(232 + NODE_TIE_REL, np.inf if outside else 232)
+    assert (length - 232 > NODE_TIE_REL) == outside
+    assert cells_spanning(length, 1.0) == expected
 
 
 # --- the defect itself -----------------------------------------------------
@@ -102,18 +114,14 @@ def test_a_genuine_half_cell_still_takes_the_cell() -> None:
 ])
 def test_a_declared_sub_cell_overhang_still_takes_the_cell(
         excess: float, label: str) -> None:
-    """The smallest of these sits 8.2e6 ULP above 232 -- six orders of
-    magnitude outside the band. An absolute ``round(r, 9)`` would swallow the
-    last one."""
+    """The smallest overhang is 2.32e-7 cells, 232 times the #1138 band."""
     assert cells_spanning((232.0 + excess) * DX, DX) == 233, label
 
 
-def test_an_absolute_rounding_would_be_wrong_at_both_ends() -> None:
-    """Why the tolerance is relative, as a measurement rather than a claim.
+def test_a_large_domain_keeps_dust_but_not_a_real_overhang() -> None:
+    """Three ULP of dust snaps; a declared 0.001-cell overhang still grows.
 
-    At a million cells an absolute 1e-9 is coarser than the dust it must
-    catch; at a few cells it is far finer than an ULP and would let a real
-    sub-cell overhang through.
+    #1138 uses the larger of the node band and the arithmetic ULP budget.
     """
     dust = _ratio(1000000, 3)
     assert cells_spanning(dust * DX, DX) == 1000000
@@ -139,8 +147,7 @@ def test_just_below_an_integer_is_unchanged() -> None:
 ])
 def test_a_domain_smaller_than_one_cell_still_gets_a_cell(
         ratio: float, expected: int) -> None:
-    """``max(1, r)`` in the tolerance is what keeps this an absolute floor of
-    8 eps down here, instead of a tolerance that vanishes with r."""
+    """A positive fraction of a cell still needs at least one cell."""
     assert cells_spanning(ratio * DX, DX) == expected
 
 
@@ -157,7 +164,7 @@ def test_a_positive_length_below_the_dust_band_still_gets_a_cell(
         ratio: float) -> None:
     """Zero is reachable from above (review of PR #1136, G).
 
-    For ``0 < r < 8*eps`` the nearest integer is 0 and the dust test passes,
+    For ``0 < r <= 1e-9`` the nearest integer is 0 and the dust test passes,
     so an unguarded snap returned 0 cells for a real length where ``ceil``
     returned 1. Everywhere else the snap gives back a cell the ratio did not
     need; here it would have taken away one the length does need, which is a

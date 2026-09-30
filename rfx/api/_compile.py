@@ -386,7 +386,7 @@ class _CompileMixin:
                 pole_mask = _material_cell_mask(entry.shape, _coords, _centres, grid=grid)
                 if mat.sigma >= self._PEC_SIGMA_THRESHOLD and cells is not None:
                     from rfx.geometry.rasterize_grid import pec_volume_cell_mask
-                    pole_mask = pec_volume_cell_mask(entry.shape, _centres, grid=grid)
+                    pole_mask = pec_volume_cell_mask(entry.shape, _centres, _cell_sizes, grid=grid)
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:

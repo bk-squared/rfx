@@ -479,6 +479,7 @@ def run_uniform(
                 start=pe.position, end=tuple(end),
                 component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
+                radius=pe.radius,
             )
             wire_ports.append(wp)
             wire_port_excites.append(bool(pe.excite))

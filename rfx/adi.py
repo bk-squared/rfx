@@ -21,7 +21,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 
 
 ADI_INTERIOR_PEC_MESSAGE = (
@@ -192,6 +192,8 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     -------
     ez_new, hx_new, hy_new : updated fields
     """
+    # This API accepts no magnetic materials; radius declarations are refused upstream.
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     _validate_interior_pec(ez_pec_mask)
     Nx, Ny = ez.shape
     eps = eps_r * EPS_0
@@ -205,8 +207,8 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     damping = eps_minus / eps_plus  # < 1 when sigma > 0
 
     # Courant-like coupling coefficient for the implicit direction
-    Cx = half_dt * half_dt / (MU_0 * eps_plus * dx * dx)  # (Nx, Ny)
-    Cy = half_dt * half_dt / (MU_0 * eps_plus * dy * dy)  # (Nx, Ny)
+    Cx = half_dt * half_dt / (mu_abs * eps_plus * dx * dx)  # (Nx, Ny)
+    Cy = half_dt * half_dt / (mu_abs * eps_plus * dy * dy)  # (Nx, Ny)
 
     # ===================================================================
     # Half-step 1: implicit in x, explicit in y
@@ -216,7 +218,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     # Hx[i,j] at (i, j+1/2): dEz/dy = (Ez[i,j+1] - Ez[i,j]) / dy
     dez_dy = jnp.zeros_like(ez)
     dez_dy = dez_dy.at[:, :-1].set((ez[:, 1:] - ez[:, :-1]) / dy)
-    hx_half = hx - (half_dt / MU_0) * dez_dy
+    hx_half = hx - (half_dt / mu_abs) * dez_dy
 
     # Step 1b: Build tridiagonal for Ez^{n+1/2} along x.
     #
@@ -277,7 +279,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     dez_dx_half = dez_dx_half.at[:-1, :].set(
         (ez_half[1:, :] - ez_half[:-1, :]) / dx
     )
-    hy_half = hy + (half_dt / MU_0) * dez_dx_half
+    hy_half = hy + (half_dt / mu_abs) * dez_dx_half
 
     # ===================================================================
     # Half-step 2: implicit in y, explicit in x
@@ -289,7 +291,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     dez_dx_half2 = dez_dx_half2.at[:-1, :].set(
         (ez_half[1:, :] - ez_half[:-1, :]) / dx
     )
-    hy_new = hy_half + (half_dt / MU_0) * dez_dx_half2
+    hy_new = hy_half + (half_dt / mu_abs) * dez_dx_half2
 
     # Step 2b: Build tridiagonal for Ez^{n+1} along y.
     # Same derivation as half-step 1, but with x<->y swapped.
@@ -332,7 +334,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     dez_dy_new = dez_dy_new.at[:, :-1].set(
         (ez_new[:, 1:] - ez_new[:, :-1]) / dy
     )
-    hx_new = hx_half - (half_dt / MU_0) * dez_dy_new
+    hx_new = hx_half - (half_dt / mu_abs) * dez_dy_new
 
     return ez_new, hx_new, hy_new
 
@@ -455,6 +457,8 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     Updates psi auxiliary variables and adds corrections to fields
     in the CPML boundary strips.
     """
+    # This API accepts no magnetic materials; radius declarations are refused upstream.
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     n = cpml_params.n_cpml
     bx, cx = cpml_params.bx, cpml_params.cx
     by, cy = cpml_params.by, cpml_params.cy
@@ -467,25 +471,25 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     # xlo: forward diff dEz/dx at half-integer x in strip [0, n)
     dez_dx_xlo = (ez[1:n + 1, :] - ez[:n, :]) / dx
     psi_hyx_xlo = mxlo.b[:, None] * cpml_state.psi_hyx_xlo + mxlo.c[:, None] * dez_dx_xlo
-    hy = hy.at[:n, :].add((dt / MU_0) * psi_hyx_xlo)
+    hy = hy.at[:n, :].add((dt / mu_abs) * psi_hyx_xlo)
 
     # Hy[i] lives at i+1/2, including in the high-face strip.
     dez_dx_xhi = (jnp.pad(ez, ((0, 1), (0, 0)))[-n:, :] - ez[-n:, :]) / dx
     bx_hi = jnp.flip(bx)
     cx_hi = jnp.flip(cx)
     psi_hyx_xhi = jnp.flip(mxhi.b)[:, None] * cpml_state.psi_hyx_xhi + jnp.flip(mxhi.c)[:, None] * dez_dx_xhi
-    hy = hy.at[-n:, :].add((dt / MU_0) * psi_hyx_xhi)
+    hy = hy.at[-n:, :].add((dt / mu_abs) * psi_hyx_xhi)
 
     # === Hx correction from dEz/dy (y-CPML) ===
     dez_dy_ylo = (ez[:, 1:n + 1] - ez[:, :n]) / dy
     psi_hxy_ylo = mylo.b[None, :] * cpml_state.psi_hxy_ylo + mylo.c[None, :] * dez_dy_ylo
-    hx = hx.at[:, :n].add(-(dt / MU_0) * psi_hxy_ylo)  # negative: Faraday sign
+    hx = hx.at[:, :n].add(-(dt / mu_abs) * psi_hxy_ylo)  # negative: Faraday sign
 
     dez_dy_yhi = (jnp.pad(ez, ((0, 0), (0, 1)))[:, -n:] - ez[:, -n:]) / dy
     by_hi = jnp.flip(by)
     cy_hi = jnp.flip(cy)
     psi_hxy_yhi = jnp.flip(myhi.b)[None, :] * cpml_state.psi_hxy_yhi + jnp.flip(myhi.c)[None, :] * dez_dy_yhi
-    hx = hx.at[:, -n:].add(-(dt / MU_0) * psi_hxy_yhi)
+    hx = hx.at[:, -n:].add(-(dt / mu_abs) * psi_hxy_yhi)
 
     # === Ez correction from dHy/dx (x-CPML) ===
     # Ez[i] and its integer-node profile share the strip [0, n).
@@ -808,6 +812,8 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     -------
     ex, ey, ez, hx, hy, hz : updated fields
     """
+    # This API accepts no magnetic materials; radius declarations are refused upstream.
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     _validate_interior_pec(pec_edge_masks)
     eps = eps_r * EPS_0
     half_dt = dt / 2.0
@@ -819,8 +825,8 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     damping = (eps - sigma_term) / eps_plus
 
     ce = half_dt / eps_plus          # Ampère explicit-curl factor
-    ch = half_dt / MU_0              # Faraday factor (no magnetic loss)
-    cc = half_dt * half_dt / (MU_0 * eps_plus)  # substituted mixed-term factor
+    ch = half_dt / mu_abs              # Faraday factor (no magnetic loss)
+    cc = half_dt * half_dt / (mu_abs * eps_plus)  # substituted mixed-term factor
     Cx = cc / (dx * dx)              # tridiagonal coupling per axis
     Cy = cc / (dy * dy)
     Cz = cc / (dz * dz)

@@ -31,7 +31,7 @@ from rfx.subgridding.sbp_sat_3d import (
     _shared_node_coupling_h_3d,
 )
 from rfx.subgridding.material_sat import interface_pair_deltas
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import EPS_0, MU_0, component_h_materials
 from rfx.probes.probes import _ampere_loop
 
 
@@ -770,6 +770,9 @@ def _z_slab_material_coupling_h_3d(
     opts: SubgridRunOptions = SubgridRunOptions(),
 ):
     """Material-weighted H correction for z-lo/z-hi artificial interfaces."""
+    from rfx.sources.wire_radius import require_radius_update
+    for mats in (mats_c, mats_f):
+        require_radius_update(mats, lane="subgridded", unsupported=True)
     # Unpack the relevant option fields into same-named locals so the body
     # below is byte-unchanged from the historical keyword-argument signature.
     use_exterior_z_interfaces = opts.use_exterior_z_interfaces
@@ -851,11 +854,11 @@ def _z_slab_material_coupling_h_3d(
 
     def face_coeffs_c(k):
         sl = (slice(fi, fi + ni), slice(fj, fj + nj), k)
-        return mats_c.eps_r[sl] * EPS_0, mats_c.mu_r[sl] * MU_0
+        return mats_c.eps_r[sl] * EPS_0, component_h_materials(mats_c)[0][sl] * MU_0
 
     def face_coeffs_f(k):
         sl = (slice(None), slice(None), k)
-        return mats_f.eps_r[sl] * EPS_0, mats_f.mu_r[sl] * MU_0
+        return mats_f.eps_r[sl] * EPS_0, component_h_materials(mats_f)[0][sl] * MU_0
 
     def apply_zlo(hx_c_arr, hy_c_arr, hx_f_arr, hy_f_arr):
         c = (slice(fi, fi + ni), slice(fj, fj + nj), plan.k_lo_c)
@@ -1185,6 +1188,9 @@ def _z_slab_material_coupling_e_3d(
     opts: SubgridRunOptions = SubgridRunOptions(),
 ):
     """Material-weighted E correction for z-lo/z-hi artificial interfaces."""
+    from rfx.sources.wire_radius import require_radius_update
+    for mats in (mats_c, mats_f):
+        require_radius_update(mats, lane="subgridded", unsupported=True)
     # Unpack the relevant option fields into same-named locals so the body
     # below is byte-unchanged from the historical keyword-argument signature.
     use_exterior_z_interfaces = opts.use_exterior_z_interfaces
@@ -1267,11 +1273,11 @@ def _z_slab_material_coupling_e_3d(
 
     def face_coeffs_c(k):
         sl = (slice(fi, fi + ni), slice(fj, fj + nj), k)
-        return mats_c.eps_r[sl] * EPS_0, mats_c.mu_r[sl] * MU_0
+        return mats_c.eps_r[sl] * EPS_0, component_h_materials(mats_c)[0][sl] * MU_0
 
     def face_coeffs_f(k):
         sl = (slice(None), slice(None), k)
-        return mats_f.eps_r[sl] * EPS_0, mats_f.mu_r[sl] * MU_0
+        return mats_f.eps_r[sl] * EPS_0, component_h_materials(mats_f)[0][sl] * MU_0
 
     alpha_f = config.tau * ratio / (ratio + 1.0)
     alpha_c = config.tau / (ratio + 1.0)
@@ -2431,6 +2437,9 @@ def run_subgridded_jit(
         Diagnostic-only experiment: also inject soft source waveforms on the
         overlapping coarse grid when sources lie inside the refined region.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    for mats in (mats_c, mats_f):
+        require_radius_update(mats, lane="subgridded", unsupported=True)
     # Unpack the bundled options into same-named locals so the body below is
     # byte-unchanged from the historical keyword-argument signature.
     pec_mask_c = opts.pec_mask_c

@@ -16,7 +16,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 
 C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
 
@@ -87,12 +87,14 @@ def init_subgrid_2d(
 
 def _update_hx_2d(ez, hx, dt, dx):
     """Hx = Hx - dt/mu0 * dEz/dy."""
-    return hx - (dt / MU_0) * (ez[:, 1:] - ez[:, :-1]) / dx
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    return hx - (dt / mu_abs) * (ez[:, 1:] - ez[:, :-1]) / dx
 
 
 def _update_hy_2d(ez, hy, dt, dx):
     """Hy = Hy + dt/mu0 * dEz/dx."""
-    return hy + (dt / MU_0) * (ez[1:, :] - ez[:-1, :]) / dx
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    return hy + (dt / mu_abs) * (ez[1:, :] - ez[:-1, :]) / dx
 
 
 def _update_ez_interior_2d(ez, hx, hy, dt, dx):

@@ -74,6 +74,27 @@ class MaterialArrays(NamedTuple):
     # a 3-tuple (x, y, z) of per-component arrays / None (#1236)
     sigma_lumped: object = None
     eps_r_lumped: object = None
+    # H-component-owned permeability increments (port and PEC filament contours).
+    # None preserves the historical scalar/cell-owned H update exactly.
+    mu_r_wire: object = None
+
+
+def component_h_materials(materials, periodic=(False, False, False)):
+    """Relative permeability at Hx, Hy, Hz, including local wire contours.
+
+    H has no volume averaging convention here. A contour stamp belongs to
+    one H component and must never change the other two at the same index.
+    ``periodic`` is accepted for parity with :func:`component_e_materials`;
+    it is unused until a separate volume-averaging rule is chosen.
+    Every H coefficient builder reads this owner.
+    """
+    parts = getattr(materials, "mu_r_wire", None)
+    if parts is None:
+        return (materials.mu_r,) * 3
+    if not isinstance(parts, (tuple, list)) or len(parts) != 3:
+        raise TypeError("mu_r_wire must be None or a (Hx, Hy, Hz) tuple of arrays/None")
+    return tuple(materials.mu_r if p is None else materials.mu_r + p
+                 for p in parts)
 
 
 _LUMPED_AXIS = {"ex": 0, "ey": 1, "ez": 2}
@@ -395,6 +416,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
+    if materials.mu_r_wire is not None and so != 2:
+        raise NotImplementedError("wire-port radius requires the second-order Yee stencil")
     if bloch is not None and so != 2:
         raise ValueError(
             f"bloch phase (oblique-periodic BC, #404) requires stencil_order=2, got {so}"
@@ -415,7 +438,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu = materials.mu_r * MU_0
+    mu_x, mu_y, mu_z = (m * MU_0 for m in component_h_materials(materials, periodic))
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     # curl E components via forward staggered differences (order=2 byte-identical)
     # dEz/dy - dEy/dz
@@ -434,9 +458,9 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         - _diff_fwd_o(ex, 1, periodic, so, bloch) / dx
     )
 
-    hx = (state.hx.astype(_cdtype) - (dt / mu) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - (dt / mu) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - (dt / mu) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -914,7 +938,8 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu = materials.mu_r * MU_0
+    mu_x, mu_y, mu_z = (m * MU_0 for m in component_h_materials(materials))
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     # Forward differences with same shape (zero-pad via _shift_fwd)
     curl_x = (
@@ -930,9 +955,9 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         - (_shift_fwd(ex, 1) - ex) * inv_dy_h[None, :, None]
     )
 
-    hx = (state.hx.astype(_cdtype) - (dt / mu) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - (dt / mu) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - (dt / mu) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
@@ -992,8 +1017,8 @@ class UpdateCoeffs(NamedTuple):
 
     Use :func:`precompute_coeffs` to build.
     """
-    # H-field coefficient: dt / (mu_r * MU_0 * dx)  — shape (Nx, Ny, Nz)
-    ch: jnp.ndarray
+    # H coefficient: one grid array, or (Hx, Hy, Hz) arrays with wire stamps.
+    ch: object
     # E-field decay coefficient  — per-component (Nx, Ny, Nz)
     ca_ex: jnp.ndarray
     ca_ey: jnp.ndarray
@@ -1036,7 +1061,11 @@ def precompute_coeffs(
     -------
     UpdateCoeffs
     """
-    ch = jnp.float32(dt / (MU_0 * dx)) / materials.mu_r
+    mu = component_h_materials(materials, periodic)
+    # Preserve the historical scalar-array bake, including its f32 numerator.
+    ch = jnp.float32(dt / (MU_0 * dx)) / mu[0]
+    if materials.mu_r_wire is not None:
+        ch = tuple((dt / (MU_0 * dx)) / m for m in mu)
 
     # #1210: per-component eps/sigma, the mean over the four cells incident
     # to each component's edge. The arithmetic below is unchanged, so a
@@ -1088,7 +1117,7 @@ def precompute_coeffs(
     )
 
 
-def update_h_fast(state: FDTDState, ch: jnp.ndarray) -> FDTDState:
+def update_h_fast(state: FDTDState, ch: jnp.ndarray | tuple) -> FDTDState:
     """H update using pre-computed coefficient ``ch = dt/(mu*dx)``.
 
     Avoids recomputing material coefficients each timestep.
@@ -1101,9 +1130,10 @@ def update_h_fast(state: FDTDState, ch: jnp.ndarray) -> FDTDState:
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    hx = (state.hx.astype(_cdtype) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
+    cx, cy, cz = ch if isinstance(ch, tuple) else (ch,) * 3
+    hx = (state.hx.astype(_cdtype) - cx * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - cy * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - cz * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
@@ -1151,9 +1181,10 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
     ch = coeffs.ch
-    hx = (state.hx.astype(_cdtype) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
+    cx, cy, cz = ch if isinstance(ch, tuple) else (ch,) * 3
+    hx = (state.hx.astype(_cdtype) - cx * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - cy * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - cz * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     # --- E update (with PEC baked into coefficients) ---
     # Upcast newly computed H fields back to _cdtype for curl computation
     hx_f = hx.astype(_cdtype)

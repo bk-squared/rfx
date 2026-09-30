@@ -285,6 +285,8 @@ def _entry_summary(entry: Any, *, kind: str, index: int) -> dict[str, Any]:
             "bounding_box": _bbox(shape),
         })
     for key, value in data.items():
+        if key == "radius" and value is None and kind in ("source", "lumped-port"):
+            continue  # Keep legacy source/port records byte-for-byte shaped.
         out[key] = _jsonable(value, array_values=True)
     return out
 

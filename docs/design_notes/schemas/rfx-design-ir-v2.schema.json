@@ -519,6 +519,11 @@
                   "null"
                 ]
               },
+              "radius": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "description": "Opt-in wire-probe radius in metres; absence preserves the legacy mesh-sized filament."
+              },
               "reference_plane_cells": {
                 "type": [
                   "integer",

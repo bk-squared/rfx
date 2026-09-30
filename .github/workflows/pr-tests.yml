@@ -110,7 +110,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       # Ungated on purpose, like the setup above: a PR that adds records under
       # docs/ or scripts/ is a "not code" diff, and that is exactly what this
@@ -135,7 +135,7 @@ jobs:
           python scripts/ci/check_data_budget.py --base "$BASE_SHA" --head "$HEAD_SHA"
 
       - name: Install package with dev dependencies
-        run: pip install -e ".[dev]"
+        run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
 
       # tests/contracts/ is where the repo pins things the SHARDS cannot see:
       # much of it asserts on docs/, scripts/, .github/workflows/, CHANGELOG.md
@@ -218,26 +218,20 @@ jobs:
   # on the weekly validation run, up to 7 days later. Sharded fresh processes
   # avoid the XLA-cache OOM that killed the unsharded full run (roadmap W2.1).
   #
-  # Issue #876: this job also pins the JAX VERSION, silently. `pip install -e
-  # ".[dev]"` is unpinned, and jax 0.6.2 is the last release supporting Python
-  # 3.10 — so a 3.10-only lane freezes CI on a 2025 XLA while developers run
-  # jax >= 0.7. Two bit-identity tests (the CPML budget saturation gate and
-  # the order-2 stencil gate) failed ONLY on a developer Mac for exactly that
-  # reason: they are JAX/XLA-version effects, and they would have failed on
-  # Linux too under jax >= 0.7. The 3.11 entry runs the SAME fast suite so a
-  # version effect surfaces on the reference platform instead of on whoever
-  # upgrades first. The 3.10 entry stays: it is what the published floor and
-  # the weekly validation lane run.
+  # Issue #876: Python 3.10 silently froze unpinned CI on JAX 0.6.2.
+  # Required checks now use Python 3.11 and explicitly pin JAX/jaxlib 0.10.2.
+  # The push-only, non-required Python 3.10 duplicate stays unpinned to check
+  # dependency resolution at the published requires-python >= 3.10 floor.
   fast-suite:
     needs: changes
-    # The job NAME must stay `fast-suite (<group>)` on the 3.10 entry: those are
+    # The job NAME must stay `fast-suite (<group>)` on the 3.11 entry: those are
     # the contexts main's ruleset requires, and a matrix that renames
-    # them to `fast-suite (3.10, 1)` leaves every required check permanently
-    # unreported, so no PR can merge. The 3.11 entry gets its own suffixed name.
+    # them to `fast-suite (3.11, 1)` leaves every required check permanently
+    # unreported, so no PR can merge. The 3.10 entry gets its own suffixed name.
     # Groups 5 and 6 (added 2026-09-05, #890) produce `fast-suite (5)` / `(6)`,
     # required since 2026-09-19 like (1)-(4).
     name: >-
-      ${{ matrix.python-version == '3.10'
+      ${{ matrix.python-version == '3.11'
           && format('fast-suite ({0})', matrix.group)
           || format('fast-suite-py{0} ({1})', matrix.python-version, matrix.group) }}
     runs-on: ubuntu-latest
@@ -245,13 +239,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.11 is the non-required duplicate lane. It runs on pushes to main
-        # (every merge is still exercised on both interpreters) but not on
-        # pull_request events, where it doubled a PR's job count (21 → 15)
-        # for a lane the ruleset never reads. A branch that needs the
-        # 3.11 witness before merging can trigger it by pushing to main via
-        # the merge itself,.
-        python-version: ${{ github.event_name == 'push' && fromJSON('["3.10", "3.11"]') || fromJSON('["3.10"]') }}
+        # Required 3.11 runs on PRs and pushes; the non-required 3.10 floor
+        # witness runs only on pushes to main, keeping the same PR job count.
+        python-version: ${{ github.event_name == 'push' && fromJSON('["3.11", "3.10"]') || fromJSON('["3.11"]') }}
         group: [1, 2, 3, 4, 5, 6]
     steps:
       - name: Check out repository
@@ -275,7 +265,9 @@ jobs:
 
       - name: Install package with dev dependencies
         if: needs.changes.outputs.code_changed != 'false'
-        run: pip install -e ".[dev,cad]"   # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358)
+        # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358).
+        # Requirement markers apply both pins on 3.11 and leave 3.10 unpinned.
+        run: pip install -e ".[dev,cad]" "jax==0.10.2; python_version == '3.11'" "jaxlib==0.10.2; python_version == '3.11'"
 
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
         if: needs.changes.outputs.code_changed != 'false'

@@ -241,9 +241,11 @@ def save_materials(path: str | Path, materials: MaterialArrays) -> None:
         grp.create_dataset("mu_r", data=np.array(materials.mu_r))
         # The lumped records (#1210), per E component (#1236): without them a
         # reloaded port load is averaged over four cells (quartered).
-        for name in ("sigma_lumped", "eps_r_lumped"):
+        for name, components in (("sigma_lumped", ("ex", "ey", "ez")),
+                                 ("eps_r_lumped", ("ex", "ey", "ez")),
+                                 ("mu_r_wire", ("hx", "hy", "hz"))):
             parts = lumped_components(getattr(materials, name, None))
-            for comp, part in zip(("ex", "ey", "ez"), parts):
+            for comp, part in zip(components, parts):
                 if part is not None:
                     grp.create_dataset(f"{name}_{comp}", data=np.array(part))
 
@@ -256,11 +258,13 @@ def load_materials(path: str | Path) -> MaterialArrays:
     with h5py.File(path, "r") as f:
         grp = f["materials"]
         records = {}
-        for name in ("sigma_lumped", "eps_r_lumped"):
+        for name, components in (("sigma_lumped", ("ex", "ey", "ez")),
+                                 ("eps_r_lumped", ("ex", "ey", "ez")),
+                                 ("mu_r_wire", ("hx", "hy", "hz"))):
             parts = tuple(
                 jnp.array(grp[f"{name}_{comp}"][:])
                 if f"{name}_{comp}" in grp else None
-                for comp in ("ex", "ey", "ez"))
+                for comp in components)
             records[name] = (None if all(p is None for p in parts)
                              else parts)
         return MaterialArrays(

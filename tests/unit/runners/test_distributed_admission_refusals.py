@@ -226,7 +226,9 @@ def test_lumped_port_with_debye_block_matches_native(entry):
     """
     sim = _build(entry=entry, port={"impedance": 50.0}, debye=True)
     native = np.asarray(sim.run(n_steps=N_STEPS).time_series)
-    multi = np.asarray(_run(sim, entry).time_series)
+    multi = np.asarray(_run(
+        sim, entry, **({"compute_s_params": False} if entry == "api" else {})
+    ).time_series)
     assert np.max(np.abs(native)) > 0
     relative = np.max(np.abs(native - multi)) / np.max(np.abs(native))
     assert relative < 1e-4, f"{entry}: relative Ez difference {relative:.9e}"
@@ -242,7 +244,9 @@ def test_default_pec_model_matches_native(source):
         assert not sim._flux_monitors and sim._ntff is None
         assert all(p.extent is None and p.excite for p in sim._ports)
         native = np.asarray(sim.run(n_steps=N_STEPS).time_series)
-        multi = np.asarray(_run(sim, entry).time_series)
+        multi = np.asarray(_run(
+            sim, entry, **({"compute_s_params": False} if entry == "api" else {})
+        ).time_series)
         assert native.shape == multi.shape == (N_STEPS, 2)
         assert np.max(np.abs(native)) > 0
         relative = np.max(np.abs(native - multi)) / (np.max(np.abs(native)) + 1e-30)

@@ -1240,6 +1240,8 @@ class _PortEntry:
     amplitude_kind: str | None = None
     terminates: tuple = ()
 
+    radius: float | None = None
+
 
 @dataclass(frozen=True)
 class _ProbeEntry:

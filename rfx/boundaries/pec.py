@@ -298,7 +298,8 @@ class WireSpec:
 
     ``edges`` is the ``(Mx, My, Mz)`` boolean triple naming the edges on the
     path — built by :func:`wire_path_edge_masks` from the path's node
-    indices.  A wire owns no cell.
+    indices. A wire owns no cell. Positive subcell radii are refused by
+    the PEC classifier; this is the legacy filament without a physical radius.
     """
     edges: tuple
     name: str | None = None

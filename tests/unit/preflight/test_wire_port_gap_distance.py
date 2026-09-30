@@ -76,7 +76,7 @@ def test_axial_filament_contact_does_not_need_a_tangential_wall(gap, side):
     wire_lo, wire_hi = (1, 3) if side < 0 else (9, 11)
     target_edge, target_node = (2, 3) if side < 0 else (9, 9)
     sim.add(PolylineWire(points=((6*DX, 6*DX, wire_lo*DX), (6*DX, 6*DX, wire_hi*DX)),
-                         radius=.1*DX), material="pec")
+                         radius=0.), material="pec")  # legacy filament contact
     port_start = 3+gap if side < 0 else 6-gap
     sim.add_port(position=(6*DX, 6*DX, port_start*DX), component="ez",
                  impedance=50., extent=3*DX)

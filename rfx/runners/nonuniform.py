@@ -1229,6 +1229,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 c for c, live in zip(_cells_ijk, live_flags) if live)
             mid_cell = list(_live_cells[len(_live_cells) // 2])
 
+            if pe.radius is not None:
+                from rfx.sources.wire_radius import stamp_wire_radius
+                materials = stamp_wire_radius(
+                    grid, materials, pe.component, pe.radius, _live_cells)
+                materials_drive = stamp_wire_radius(
+                    grid, materials_drive, pe.component, pe.radius, _live_cells)
+
             if pe.excite:
                 for cell_ijk, live in zip(_cells_ijk, live_flags):
                     # Dead extent cells get no source (issue #318).

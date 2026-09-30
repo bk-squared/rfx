@@ -1367,7 +1367,7 @@ def test_conductor_mask_counts_a_sub_cell_wire():
     sim = Simulation(freq_max=15e9, domain=(10e-3, 10e-3, 8e-3), dx=1e-3,
                      boundary="pec")
     sim.add(PolylineWire(((3e-3, 5e-3, 4e-3), (7e-3, 5e-3, 4e-3)),
-                         radius=0.2e-3), material="pec")
+                         radius=0.), material="pec")  # legacy filament owns no cell
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         cond = np.asarray(sim.conductor_mask(), dtype=bool)

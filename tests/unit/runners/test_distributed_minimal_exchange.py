@@ -141,7 +141,7 @@ def _run(boundary, n_devices, model="composed"):
     devices = jax.devices("cpu")[:n_devices]
     assert len(devices) == n_devices
     sim = _build_model(boundary, n_devices, model)
-    result = sim.run(n_steps=_STEPS, devices=devices)
+    result = sim.run(n_steps=_STEPS, devices=devices, compute_s_params=False)
     assert result.time_series.shape == (_STEPS, len(sim._probes))
     assert result.time_series.dtype == jnp.float32
     assert result.time_series.sharding.is_fully_replicated

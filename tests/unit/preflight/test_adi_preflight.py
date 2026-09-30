@@ -116,7 +116,7 @@ def _conductor_sim(mode="3d", kind="sheet", **kwargs):
                      boundary="pec", solver="adi", mode=mode, **kwargs)
     if kind == "wire":
         sim.add(PolylineWire(((.010, .005, 0), (.010, .015, 0)),
-                             radius=.0002), material="pec")
+                             radius=0.), material="pec")  # legacy PEC filament
     else:
         thickness = {"sheet": 0, "volume1": .001, "volume3": .003}[kind]
         sim.add(Box((.004, .010, 0), (.016, .010 + thickness, .020)),
