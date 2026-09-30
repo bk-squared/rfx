@@ -92,11 +92,13 @@ class Box:
 
     **Rasterization convention (read before drawing a PEC obstacle).**
     On each axis the volume branch is **half-open** ``[lo, hi)`` over
-    **node** coordinates: node ``j`` at ``y_j = j * dx`` belongs to the box
+    **node** coordinates: node ``j`` at ``y_j`` belongs to the box
     iff ``lo - tol <= y_j < hi - tol``, with ``tol = NODE_TIE_REL *
-    dc_local`` (#1138). The convention is deliberate and several paths
-    depend on it (see ``_axis_mask`` for the issue history), but it has two
-    consequences that bite when a box is drawn to a nominal physical size:
+    node_widths[j]`` (#1138), using each node's forward primal cell width
+    and repeating the last width at the final node. The convention is
+    deliberate and several paths depend on it (see ``_axis_mask`` for the
+    issue history), but it has two consequences when a box is drawn to a
+    nominal physical size:
 
     1. **The ``hi`` face contributes no cell.** A box whose corners both
        land on node planes, ``lo = i*dx`` and ``hi = k*dx``, occupies nodes
