@@ -4972,6 +4972,9 @@ class _ExecuteMixin:
             }, instead=_dist_instead)
             from rfx.materials.thin_conductor import refuse_f0_sheets
             refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
+            from rfx.runners._admission import admit_run_s_matrix
+            admit_run_s_matrix(self, compute_s_params=compute_s_params,
+                               conformal_pec=conformal_pec, distributed=True)
             from rfx.runners.distributed_v2 import run_distributed
             _res = run_distributed(
                 self, n_steps=n_steps, devices=devices,

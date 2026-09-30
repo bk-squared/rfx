@@ -1066,15 +1066,15 @@ CALCULATOR_CELLS = {
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises="solver='adi'"),
     },
     ('_adi_cfl_factor', ''): {
-        's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='adi_cfl_factor'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='adi_cfl_factor'),
-        'topology_optimize': refuses('carried only by the ADI forward branch, through LANE_GATES', raises='adi_cfl_factor'),
-        'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='adi_cfl_factor'),
-        'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='adi_cfl_factor'),
-        'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='adi_cfl_factor'),
-        'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='adi_cfl_factor'),
-        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='adi_cfl_factor'),
-        'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='adi_cfl_factor'),
+        's_matrix_scan': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'mixed_s_matrix': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'topology_optimize': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'waveguide_s_matrix': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'coaxial_line_reflection': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'coaxial_two_port': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'coax_msl_transition': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'vmap_sweep_batched': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
+        'material_fit': carries('accepted on Yee as on the time-stepping lanes; ADI uses the multiplier'),
     },
     ('_stencil_order', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
@@ -1254,7 +1254,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'source'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a soft source (add_source)'),
+        'mixed_s_matrix': carries('bare current source injected on every drive; measured max |delta S| = 1.4367268'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a soft source (add_source)'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a soft source (add_source)'),
@@ -1265,7 +1265,7 @@ CALCULATOR_CELLS = {
     },
     ('_ports', 'amplitude_kind'): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
-        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises="a soft source with amplitude_kind='current'"),
+        'mixed_s_matrix': carries('bare current source injected on every drive; measured max |delta S| = 1.4367268'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises="a soft source with amplitude_kind='current'"),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises="a soft source with amplitude_kind='current'"),
@@ -1633,7 +1633,6 @@ for (_attr, _feature), _cells in CALCULATOR_CELLS.items():
 LANE_GATES.update({
     ("waveguide_s_matrix", ("_dt_pin", "")): "graded builder reads dt",
     ("waveguide_s_matrix", ("_dt_min_cell", "")): "graded builder reads dt_min_cell",
-    ("topology_optimize", ("_adi_cfl_factor", "")): "ADI forward branch reads its CFL multiplier",
 })
 
 

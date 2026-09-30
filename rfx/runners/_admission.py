@@ -489,7 +489,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
 # passes them to its device scans; its graded branch uses run_nonuniform_path.
 for _row in (
     ("_freq_max", ""), ("_domain", ""), ("_dx", ""),
-    ("_precision", ""), ("_mode", ""),
+    ("_precision", ""), ("_mode", ""), ("_adi_cfl_factor", ""),
     ("_materials", "eps"), ("_materials", "sigma"), ("_materials", "mu"),
     ("_materials", "debye"), ("_materials", "lorentz"), ("_materials", "drude"),
     ("_geometry", "pec_volume"), ("_geometry", "pec_sheet"), ("_geometry", "pec_wire"),
@@ -513,6 +513,7 @@ for _row in (
 _CALCULATOR_ROWS = {
     's_matrix_scan': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_precision', ''),
@@ -558,6 +559,7 @@ _CALCULATOR_ROWS = {
     ),
     'mixed_s_matrix': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_precision', ''),
@@ -575,6 +577,8 @@ _CALCULATOR_ROWS = {
         ('_thin_conductors', 'lossy_sheet'),
         ('_thin_conductors', 'pec_sheet'),
         ('_pinned_sheets', 'pec_sheet'),
+        ('_ports', 'source'),
+        ('_ports', 'amplitude_kind'),
         ('_ports', 'lumped_port'),
         ('_ports', 'passive_port'),
         ('_ports', 'wire_port'),
@@ -597,6 +601,7 @@ _CALCULATOR_ROWS = {
     ),
     'topology_optimize': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_solver', ''),
@@ -642,6 +647,7 @@ _CALCULATOR_ROWS = {
     ),
     'coaxial_line_reflection': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_coaxial_ports', 'coax_port'),
@@ -652,6 +658,7 @@ _CALCULATOR_ROWS = {
     ),
     'coaxial_two_port': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_coaxial_ports', 'coax_port'),
@@ -662,6 +669,7 @@ _CALCULATOR_ROWS = {
     ),
     'coax_msl_transition': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_materials', 'eps'),
@@ -682,6 +690,7 @@ _CALCULATOR_ROWS = {
     ),
     'vmap_sweep_batched': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_mode', ''),
@@ -707,6 +716,7 @@ _CALCULATOR_ROWS = {
     ),
     'material_fit': (
         ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
         ('_domain', ''),
         ('_dx', ''),
         ('_mode', ''),
@@ -794,16 +804,10 @@ def _waveguide_profiled(sim, grid) -> bool:
                for attr in ("_dx_profile", "_dy_profile", "_dz_profile"))
 
 
-def _topology_adi(sim, grid) -> bool:
-    """The ADI branch, rather than the Yee scan, reads the CFL multiplier."""
-    return sim._solver == "adi"
-
-
 LANE_GATES: dict[str, dict[Row, Callable]] = {
     "run_subgridded": {row: _guarded_lid for row in _LID_ROWS},
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
         ("_dt_pin", ""), ("_dt_min_cell", ""))},
-    "topology_optimize": {("_adi_cfl_factor", ""): _topology_adi},
 }
 
 
@@ -846,8 +850,9 @@ def message(lane: str, rows, sim, run_args=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
     carry, and the lanes that carry every other input of this model."""
     if lane in CALCULATORS:
-        lines = [f"  - {ROW_WORDS[row]}" for row in rows]
-        if ("_refinement", "slab") in rows:
+        lines = ([] if lane == "material_fit" else
+                 [f"  - {ROW_WORDS[row]}" for row in rows])
+        if ("_refinement", "slab") in rows and lane != "material_fit":
             lines.append("  - add_refinement(): this calculator has no subgridded lane (#1240).")
             if sim._uses_nonuniform_mesh:
                 lines.append("  - subgridding on a non-uniform mesh is not supported.")
@@ -873,8 +878,11 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 ("_precision", ""): "Use precision='float32'.",
                 ("_stencil_order", ""): "Use stencil_order=2.",
                 ("_interface_eps", "dual_average"): "Use interface_eps='sampled'.",
+                ("_refinement", "slab"): "This calculator has no subgridded lane (#1240). Remove the refinement.",
             }
-            lines.extend(f"  - {names.get(row, ROW_WORDS[row])} (#1290). "
+            lines.extend(f"  - {ROW_WORDS[row]}"
+                         + (f" — {names[row]}" if row in names else "")
+                         + " (#1290). "
                          + remedies.get(row, "Remove this input from sim_factory.")
                          for row in rows)
         if lane == "waveguide_s_matrix" and ("_solver", "") in rows:
@@ -915,3 +923,21 @@ def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
     rows = refused(sim, lane, run_args, grid)
     if rows:
         raise NotImplementedError(message(lane, rows, sim, run_args))
+
+
+def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
+                       distributed=False):
+    """Check the requested scan extraction before run() starts its field solve."""
+    uses_scan = (any(p.impedance != 0.0 for p in sim._ports)
+                 if distributed else _s_matrix_ports(sim))
+    if compute_s_params is False or not uses_scan:
+        return
+    try:
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+    except NotImplementedError as error:
+        rows = refused(sim, "s_matrix_scan", {"conformal_pec": conformal_pec})
+        inputs = ", ".join(ROW_WORDS[row] for row in rows) or str(error)
+        raise NotImplementedError(
+            "run() cannot compute its lumped/wire S-matrix with these inputs: "
+            + inputs + ". Use compute_s_params=False for fields only, or remove "
+            "the unsupported input.") from error

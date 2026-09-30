@@ -117,7 +117,6 @@ def calculator_case(calculator):
     ("_interface_eps", "dual_average", "interface_eps"),
     ("_dt_pin", 1e-12, "pinned time step"),
     ("_dt_min_cell", 1e-4, "dt_min_cell"),
-    ("_adi_cfl_factor", 2.718, "adi_cfl_factor"),
 ])
 def test_calculator_refuses_unread_setting_before_scan(monkeypatch, calculator, attr, value, words):
     sim, call = calculator_case(calculator)
@@ -209,7 +208,7 @@ def test_waveguide_timestep_gate(attr, value, graded, monkeypatch):
 def test_topology_cfl_gate(solver):
     sim = _sim(solver=solver)
     sim._adi_cfl_factor = 2.718
-    assert (("_adi_cfl_factor", "") in A.refused(sim, "topology_optimize")) is (solver == "yee")
+    assert ("_adi_cfl_factor", "") not in A.refused(sim, "topology_optimize")
 
 
 @pytest.mark.parametrize("calculator,feature", PHYSICS_CASES)
@@ -222,6 +221,10 @@ def test_calculator_refuses_dropped_physics_before_scan(monkeypatch, calculator,
         pytest.fail("a calculator started lax.scan with a dropped physics input")
 
     monkeypatch.setattr(jax.lax, "scan", forbidden)
+    if calculator == "waveguide_s_matrix" and feature == "floquet":
+        with pytest.raises(ValueError, match="periodic-axis"):
+            call()
+        return
     with pytest.raises(NotImplementedError) as caught:
         call()
     assert "does not carry" in str(caught.value)
@@ -268,3 +271,62 @@ def test_waveguide_refuses_upml_before_scan(monkeypatch):
     monkeypatch.setattr(jax.lax, "scan", forbidden)
     with pytest.raises(NotImplementedError, match="a UPML absorber"):
         sim.compute_waveguide_s_matrix(n_steps=4, normalize=False)
+
+
+@pytest.mark.parametrize("calculator", A.CALCULATORS)
+def test_yee_calculator_accepts_adi_cfl_setting(calculator):
+    sim, _ = calculator_case(calculator)
+    sim._adi_cfl_factor = 2.718
+    assert ("_adi_cfl_factor", "") not in A.refused(sim, calculator)
+
+
+@pytest.mark.parametrize("compute_s_params", [None, True])
+def test_run_kerr_s_matrix_refuses_before_main_scan(monkeypatch, compute_s_params):
+    sim, _ = calculator_case("s_matrix_scan")
+    declare_physics(sim, "kerr")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("run started its main scan before S-matrix admission")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    with pytest.raises(NotImplementedError, match=r"run\(\).*Kerr.*compute_s_params=False"):
+        sim.run(n_steps=4, compute_s_params=compute_s_params, skip_preflight=True)
+
+
+def test_run_kerr_fields_only_reaches_main_scan(monkeypatch):
+    sim, _ = calculator_case("s_matrix_scan")
+    declare_physics(sim, "kerr")
+
+    class Reached(Exception):
+        pass
+
+    def reached(*args, **kwargs):
+        raise Reached
+
+    monkeypatch.setattr(jax.lax, "scan", reached)
+    with pytest.raises(Reached):
+        sim.run(n_steps=4, compute_s_params=False, skip_preflight=True)
+
+
+def test_devices_s_matrix_admission_precedes_distributed_runner(monkeypatch):
+    from types import SimpleNamespace
+    sim, _ = calculator_case("s_matrix_scan")
+    sim._dt_pin = 1e-12
+    monkeypatch.setattr(Simulation, "_dispatch_plan", lambda *args, **kwargs:
+                        SimpleNamespace(lane="run_distributed", n_steps=4))
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("distributed runner entered before S-matrix admission")
+
+    monkeypatch.setattr("rfx.runners.distributed_v2.run_distributed", forbidden)
+    with pytest.raises(NotImplementedError, match=r"run\(\).*pinned time step.*compute_s_params=False"):
+        sim.run(n_steps=4, devices=[jax.devices()[0]], skip_preflight=True)
+
+
+def test_material_fit_message_has_one_line_per_input():
+    sim, _ = calculator_case("material_fit")
+    sim._precision = "mixed"
+    sim._stencil_order = 4
+    rows = A.refused(sim, "material_fit")
+    message = A.message("material_fit", rows, sim)
+    assert len([line for line in message.splitlines() if line.startswith("  - ")]) == len(rows)

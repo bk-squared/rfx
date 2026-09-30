@@ -163,8 +163,7 @@ def compute_mixed_s_matrix(
       truncation suspect); preflight output is part of the result.
 
     v1 restrictions (loud ``NotImplementedError``): uniform mesh only,
-    no waveguide/Floquet/coax/TFSF registrations, no bare sources or
-    0-ohm ports (they would fire in every drive run), no
+    no waveguide/Floquet/coax/TFSF registrations, no
     ``reference_plane_cells`` wire ports, no mixed lumped+wire set
     (same fence as the production scan driver), imperative only (no
     ``eps_override`` AD channel). The default ``"flux"`` channel adds
@@ -172,6 +171,7 @@ def compute_mixed_s_matrix(
     treats the port extent as a height: a **PEC ``z_lo`` boundary**
     and **vertical (``component="ez"``) lumped/wire ports** are
     required. ``magnitude_channel="wave"`` makes neither assumption.
+    Registered plain sources remain active in every drive solve.
 
     Parameters
     ----------
@@ -212,13 +212,6 @@ def compute_mixed_s_matrix(
             "compute_mixed_s_matrix() needs at least one sparam-eligible "
             "add_port() lumped/wire port (impedance != 0). For a pure "
             "MSL multiport use compute_msl_s_matrix()."
-        )
-    if any(pe.impedance == 0.0 for pe in self._ports):
-        raise NotImplementedError(
-            "compute_mixed_s_matrix() does not support bare sources / "
-            "0-ohm ports (add_source or add_port(impedance=0)): they "
-            "are not excite-gated and would fire in EVERY drive run, "
-            "contaminating the single-drive S-parameter contract."
         )
     if self._waveguide_ports or self._floquet_ports:
         raise NotImplementedError(
