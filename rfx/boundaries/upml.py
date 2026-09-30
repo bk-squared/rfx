@@ -172,6 +172,11 @@ def init_upml(
     Separate σ_E / σ_H with half-cell offset for impedance matching.
     No n/2 scaling — textbook σ_max.
     """
+    if getattr(grid, "kappa_max", None) not in (None, 1):
+        raise NotImplementedError(
+            "cpml_kappa_max != 1 is not supported when building the UPML absorber: "
+            "UPML does not read kappa. Use boundary='cpml', or set cpml_kappa_max=1."
+        )
     z32 = jnp.zeros(grid.shape, dtype=jnp.float32)
 
     def _get_sigma(axis):

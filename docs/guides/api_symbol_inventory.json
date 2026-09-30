@@ -908,7 +908,8 @@
       "params": [
         "path",
         "ff_result",
-        "freq_idx"
+        "freq_idx",
+        "input_power"
       ]
     },
     "export_training_data": {
@@ -962,7 +963,8 @@
         "aniso_eps",
         "conformal_weights",
         "aniso_inv_eps",
-        "pec_edge_masks"
+        "pec_edge_masks",
+        "field_dtype"
       ]
     },
     "extract_s_matrix_wire": {
@@ -1024,7 +1026,8 @@
         "checkpoint_segments",
         "return_settling",
         "sheet_impedance",
-        "pec_edge_masks"
+        "pec_edge_masks",
+        "field_dtype"
       ]
     },
     "extract_waveguide_sparams": {

@@ -114,9 +114,10 @@ def save_e_plane_samples(far_field) -> None:
       ``compute_far_field`` returns them, with the 1/r factor omitted; their
       level follows the source drive, so read them relative to the peak;
     * ``E_theta_phase_deg``, ``E_phi_phase_deg``: phases in degrees;
-    * ``gain_dBi``: despite its name, NOT an absolute gain. It is
-      10*log10(P / P_max) with P = |E_theta|^2 + |E_phi|^2 over this cut:
-      dB relative to the peak (0 dB there), with no floor.
+    * ``gain_dBi``: absolute IEEE gain, normalized by total radiated power.
+      This dipole's rotational symmetry lets the single azimuth represent
+      the full 2*pi integral, as in ``directivity`` below. For a general
+      antenna, supply a full-sphere pattern for the power normalization.
 
     The PNG plots 20*log10(|E_theta| / max|E_theta|) floored at -40 dB; the
     ``E_theta_mag`` column gives the same curve before the floor.

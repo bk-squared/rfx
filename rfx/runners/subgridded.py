@@ -24,6 +24,7 @@ def _run_subgridded_once(
     *,
     diagnostic_lumped_sparam_freqs_override=None,
     diagnostic_lumped_sparam_driven_index_override=None,
+    conformal_pec=None,
 ):
     """Run one SBP-SAT subgrid simulation, optionally collecting one S-column.
 
@@ -149,7 +150,7 @@ def _run_subgridded_once(
     # every validation mode, after the production refusals above and before
     # the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_subgridded", grid=grid_coarse)
+    admit(sim, "run_subgridded", run_args={"conformal_pec": conformal_pec}, grid=grid_coarse)
 
     topology = ref.get("topology", "overlap_z_slab")
     if topology != "overlap_z_slab":
@@ -482,9 +483,7 @@ def _run_subgridded_once(
     ntff_box_f = None
     ntff_data_f = None
     if sim._ntff is not None:
-        from rfx.farfield import (
-            NTFFBox, init_ntff_data, _raise_face_centre_margin,
-        )
+        from rfx.farfield import NTFFBox, init_ntff_data
 
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = _pos_to_fine_idx(corner_lo)
@@ -494,7 +493,8 @@ def _run_subgridded_once(
                 "subgrid NTFF box corners must map to a non-empty fine-grid "
                 f"box; got lo={lo_idx}, hi={hi_idx}"
             )
-        ntff_box_f = NTFFBox(
+        ntff_box_f = NTFFBox.from_grid(
+            fine_grid,
             i_lo=lo_idx[0],
             i_hi=hi_idx[0],
             j_lo=lo_idx[1],
@@ -502,17 +502,7 @@ def _run_subgridded_once(
             k_lo=lo_idx[2],
             k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-            # Accumulate at the centre of each face cell (second-order
-            # surface integral). The fine grid is uniform, so the half-cell
-            # interpolation weights for the tangential H are the default 1/2
-            # on every face.
-            face_centre=True,
         )
-        # A face flush with the fine-grid boundary has no cell on one side
-        # of it, so the half-cell averages cannot be formed. Refuse here,
-        # beside the non-empty-box check and before the scan, rather than
-        # inside the traced body.
-        _raise_face_centre_margin(ntff_box_f, (nx_f, ny_f, nz_f))
         ntff_data_f = init_ntff_data(ntff_box_f)
 
     diagnostic_lumped_sparam_freqs = diagnostic_lumped_sparam_freqs_override
@@ -740,6 +730,7 @@ def run_subgridded_path(
     compute_s_params=None,
     s_param_freqs=None,
     s_param_n_steps=None,
+    conformal_pec=None,
 ):
     """Run simulation using SBP-SAT subgridding (JIT-compiled).
 
@@ -757,6 +748,7 @@ def run_subgridded_path(
         base_materials_coarse,
         pec_mask_coarse,
         n_steps,
+        conformal_pec=conformal_pec,
     )
 
     requested_sparams = (
@@ -813,6 +805,7 @@ def run_subgridded_path(
                 sp_n_steps,
                 diagnostic_lumped_sparam_freqs_override=freqs,
                 diagnostic_lumped_sparam_driven_index_override=driven,
+                conformal_pec=conformal_pec,
             )
             if column_result.s_params is None:
                 raise RuntimeError(

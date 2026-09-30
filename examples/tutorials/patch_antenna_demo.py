@@ -137,6 +137,7 @@ from rfx import (
     realized_wall_planes,
     smooth_grading,
 )
+from rfx._radiated_power import integrate_radiated_power
 from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 
 C0 = 2.998e8
@@ -594,12 +595,7 @@ def main():
     d_dbi = directivity(ff)
 
     power = np.abs(np.asarray(ff.E_theta)) ** 2 + np.abs(np.asarray(ff.E_phi)) ** 2
-    dth = np.gradient(theta)
-    dph = np.gradient(phi)
-    p_rad = np.sum(
-        power * np.sin(theta)[None, :, None] * dth[None, :, None] * dph[None, None, :],
-        axis=(1, 2),
-    )
+    p_rad = integrate_radiated_power(power, theta, phi)
     p_rel_db = 10 * np.log10(p_rad / p_rad.max())
     peak_theta_deg = np.degrees(theta[np.argmax(np.max(power, axis=2), axis=1)])
 

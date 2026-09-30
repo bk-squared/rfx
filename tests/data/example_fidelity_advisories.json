@@ -36,26 +36,8 @@
   {
    "code": "lossless_q",
    "disposition": "intended",
-   "reason": "The tutorial models FR4 with sigma=0 on purpose and says so at the build: 'FR4 is modelled lossless (sigma=0) so preflight's infinite-Q advisory will fire: legitimate here -- we quote mode FREQUENCIES, not absolute Q (real FR4 tan_delta ~0.02 would cap Q near ~50).' It reports frequencies, never a Q, so the advisory names a modelling choice the example has already justified.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:358-361",
-   "rows": 1,
-   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
-  },
-  {
-   "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: thin_conductor[1] 'thin_conductor[1]' (sheet) x: extent 29.5mm, worst face residual 400\u00b5m (1.36% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 55mm, worst face residual 350\u00b5m (0.64% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) x: extent 60mm, worst face residual 350\u00b5m (0.58% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:207 | https://github.com/bk-squared/rfx/issues/1138",
-   "rows": 1,
-   "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
-  },
-  {
-   "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.7mm (-2.71%); thin_conductor[0] 'thin_conductor[0]' y: drawn 55mm, nodes cover 55mm, solved as 55.7mm (+1.27%); thin_conductor[0] 'thin_conductor[0]' x: drawn 60mm, nodes cover 60mm, solved as 60.7mm (+1.17%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' x: drawn 29.5mm, nodes cover 28mm, solved as 28.7mm (-2.71%) -- is what build_simulation actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
-   "ref": "examples/tutorials/nonuniform_patch_demo.py:207 | https://github.com/bk-squared/rfx/issues/1138",
+   "reason": "The tutorial deliberately models FR4 with sigma=0. The printed harminv Q values describe that lossless model; they do not include FR4 dielectric loss. main() prints the lossless_q advisory before the solve.",
+   "ref": "examples/tutorials/nonuniform_patch_demo.py:280-283,467-473,531-536",
    "rows": 1,
    "variant": "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default"
   },

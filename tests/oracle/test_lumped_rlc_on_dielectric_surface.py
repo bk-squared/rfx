@@ -74,10 +74,9 @@ def _sheet_run(load, eps2):
     nx, ny = int(grid.shape[0]), int(grid.shape[1])
     z_s, z_src = K_SHEET * DX, K_SOURCE * DX
     if eps2 is not None:
-        # Wider than the declared cross-section on purpose: the periodic axes
-        # realize TWO cells for a one-cell domain (the #1223 boundary
-        # campaign records it), and a Box of the declared width fills only
-        # one of the four cells. Asserted below on every cell.
+        # Each declared periodic axis realizes one cell (N=L/dx). Keep the
+        # wider Box to exercise material filling from periodic images;
+        # the whole realized cross-section is asserted below.
         sim.add_material("half_space", eps_r=eps2)
         sim.add(Box((-2 * DX, -2 * DX, z_s), (4 * DX, 4 * DX, LZ)),
                 material="half_space")

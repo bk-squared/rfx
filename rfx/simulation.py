@@ -14,6 +14,7 @@ from typing import Any, Callable, NamedTuple
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from rfx.grid import Grid
 from rfx.core.yee import (
@@ -35,7 +36,7 @@ from rfx.boundaries.pec import (
     realized_pec_edge_masks,
 )
 from rfx.progress import (
-    ProgressReporter, check_not_traced, scan_with_progress,
+    ProgressReporter, check_not_traced, concat_chunks, scan_with_progress,
     validate_report_every,
 )
 from rfx.snapshots import (
@@ -737,7 +738,8 @@ def _suggest_checkpoint_segments(n_steps: int) -> int:
 #     (use_flux_window=False).  Unifying decay onto windowed DFT is a
 #     deliberate future task.
 #   * ``use_fast_he`` / ``fast_coeffs`` — ``run()`` only; decay path is a
-#     Python loop and the GPU fast-path is not applicable.
+#     chunked scan with the fast path deliberately OFF to preserve its
+#     standalone-step arithmetic (no GPU fast-path change in #1322).
 
 class _SimSetup(NamedTuple):
     """Shared setup artefacts returned by ``_build_step_setup``.
@@ -1918,14 +1920,14 @@ def _build_step_setup(
 # Shared Yee scan body (W6.1)
 # ---------------------------------------------------------------------------
 #
-# ``run()`` (jax.lax.scan) and ``run_until_decay()`` (Python loop + jax.jit)
+# ``run()`` and ``run_until_decay()`` (formerly Python loop + jax.jit)
 # ran two ~85%-identical copies of the per-step Yee kernel.  ``make_core_step``
 # is the single source of truth.  Both call sites build a ``_StepContext`` from
 # their own setup code, then:
 #   * ``run()``           wraps ``core`` in a scan body that unpacks ``xs`` and
 #                         assembles the scan output tuple (probe + snapshot).
-#   * ``run_until_decay`` calls ``core`` directly inside its Python loop and
-#                         reads ``extras["monitor_val"]`` for the decay check.
+#   * ``run_until_decay`` scans ``core`` in chunks and reads every step
+#                         of ``extras["monitor_val"]`` at chunk boundaries.
 #
 # Every free variable of the old closures is passed explicitly via the context
 # (no capture of caller locals) so the builder is unit-testable.  Numerics,
@@ -2737,11 +2739,13 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 else:
                     kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
                     kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
+                # Preserve the declared storage when x64 phase arithmetic
+                # is wider than this monitor's complex64 accumulators.
                 new_flux_accs.append((
-                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
-                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
-                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
-                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
+                    (e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e).astype(e1_acc.dtype),
+                    (e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e).astype(e2_acc.dtype),
+                    (h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h).astype(h1_acc.dtype),
+                    (h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h).astype(h2_acc.dtype),
                 ))
 
         # ---- per-step extras (caller-specific outputs) ----
@@ -3494,7 +3498,7 @@ def run(
 
 
 # ---------------------------------------------------------------------------
-# Field-decay-based stopping criterion (Python loop + JIT step)
+# Field-decay-based stopping criterion (host checks + compiled scan chunks)
 # ---------------------------------------------------------------------------
 
 def _warn_static_remnant_cap_hit(state, materials, grid) -> None:
@@ -3603,8 +3607,8 @@ def run_until_decay(
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
-    Uses a Python loop calling a JIT-compiled single-step function so
-    that dynamic termination is possible without ``jax.lax.while_loop``.
+    Runs compiled scan chunks with host-side decay checks at the historical
+    step indices (0, check_interval, ...).
 
     Parameters
     ----------
@@ -3648,8 +3652,8 @@ def run_until_decay(
         the domain.
     checkpoint_segments : int or None
         **Not supported** on the decay path.  ``run_until_decay`` uses a
-        Python loop (not ``jax.lax.scan``), so scan-level gradient
-        checkpointing does not apply.  Passing a non-None value raises
+        host-driven early stop, so scan-level gradient checkpointing does
+        not apply.  Passing a non-None value raises
         ``NotImplementedError``.
 
     Notes
@@ -3664,7 +3668,7 @@ def run_until_decay(
       the frame does not touch the stepped state.
     * ``checkpoint`` (``jax.checkpoint`` gradient tape) is accepted but
       **silently ignored** — gradient checkpointing has no effect on the
-      Python-loop path.
+      host-driven decay path.
     * Flux-monitor DFT accumulation uses a rectangular (no-window) weight
       instead of the streaming Hann window used by :func:`run`.  Flux values
       from the two paths are therefore not numerically identical even for
@@ -3701,10 +3705,10 @@ def run_until_decay(
          :func:`run`.
     report_every : int or None
         Issue #667. When set, emit one ``  [PROGRESS] ...`` line every *N*
-        steps plus a final line at the actual stop step. ``None`` (default)
-        is OFF. This lane is already a Python loop, so the tick is a pure
-        addition on Python ints — it never reads a field value and cannot
-        perturb the result. The denominator is ``max_steps``, i.e. a CAP:
+        steps, at the first decay-chunk boundary at or past the interval,
+        plus a final line at the actual stop step. ``None`` (default) is OFF.
+        Reporting never changes the chunks or the decay-check cadence.
+        The denominator is ``max_steps``, i.e. a CAP:
         the line marks it ``(cap)`` and the ETA is an upper bound, because a
         decay stop can fire at any check.
     report_label : str
@@ -3718,11 +3722,15 @@ def run_until_decay(
     if checkpoint_segments is not None:
         raise NotImplementedError(
             "checkpoint_segments is not supported by run_until_decay: "
-            "this function uses a Python loop, not jax.lax.scan, so "
+            "this function uses a host-driven early stop, so "
             "scan-level gradient checkpointing does not apply. "
             "Use run() with checkpoint_segments if you need scan-level "
             "checkpointing."
         )
+    if check_interval < 1:
+        raise ValueError(f"check_interval must be >= 1, got {check_interval}")
+    if max_steps < 1:
+        raise ValueError(f"max_steps must be >= 1, got {max_steps}")
     sources = sources or []
     probes = probes or []
     dft_planes = dft_planes or []
@@ -3790,7 +3798,7 @@ def run_until_decay(
         monitor_position = (cx, cy, cz)
     mon_idx = grid.position_to_index(monitor_position)
 
-    # ---- JIT-compiled single step (shared kernel; W6.1 + W6.2 setup) ----
+    # ---- shared kernel (W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
     # historical rect (no-window) flux DFT: use_flux_window=False keeps the
     # 8-field flux_meta and skips the streaming window weight so decay-path
@@ -3823,11 +3831,67 @@ def run_until_decay(
             carry_in, step_idx, src_vals, mag_src_vals)
         return new_carry, probe_out, extras["monitor_val"]
 
-    # #1258: frames are read from the carry after every interval-th step.
+    # #1258: keep only frames at GLOBAL multiples of the interval, even
+    # when an interval does not divide the decay/progress chunk. The scan
+    # carries a bounded frame buffer, not a full field history.
     if snapshot is not None:
         snap_interval = validate_snapshot_spec(snapshot)
         _take_snapshot = snapshot_extractor(snapshot)
-        snap_frames: list = []
+        snap_shapes = jax.eval_shape(_take_snapshot, carry["fdtd"])
+        snap_chunks = []
+
+    def step_fn(carry_in, xs):
+        step_idx, src_vals, mag_src_vals = xs
+        new_carry, probe_out, monitor_val = _single_step(
+            carry_in, step_idx, src_vals, mag_src_vals, _inv_args)
+        return new_carry, (probe_out, monitor_val)
+
+    def step_with_previous(carries, xs):
+        # A one-step tail is joined to the preceding scan, as in
+        # scan_with_progress. Keep its penultimate carry so the check at
+        # that step can still stop BEFORE the cap. No padded/masked steps.
+        state, _previous = carries
+        state_out, out = step_fn(state, xs)
+        return (state_out, state), out
+
+    def _make_chunk_runner(*, keep_previous=False):
+        body = step_with_previous if keep_previous else step_fn
+
+        def record(c, x):
+            state, frames, first_frame = c
+            state, out = body(state, x)
+            done = x[0] + 1
+
+            def take(frames):
+                row = done // snap_interval - first_frame - 1
+                fdtd = (state[0] if keep_previous else state)["fdtd"]
+                return tuple(buf.at[row].set(frame) for buf, frame in
+                             zip(frames, _take_snapshot(fdtd)))
+
+            frames = jax.lax.cond(done % snap_interval == 0, take,
+                                  lambda f: f, frames)
+            return (state, frames, first_frame), out
+
+        def run_chunk(carry_in, xs):
+            if keep_previous:
+                carry_in = (carry_in, carry_in)
+            if snapshot is None:
+                return jax.lax.scan(body, carry_in, xs), None
+            # At most ceil(chunk_length / interval) frames, independent of
+            # the starting phase. Keep record's identity across chunks so
+            # lax.scan reuses its executable, as run()'s recorder does.
+            n_frames = (xs[0].shape[0] + snap_interval - 1) // snap_interval
+            frames = tuple(jnp.zeros((n_frames,) + f.shape, f.dtype)
+                           for f in snap_shapes)
+            first_frame = xs[0][0] // snap_interval
+            (carry_out, frames, _), out = jax.lax.scan(
+                record, (carry_in, frames, first_frame), xs)
+            return (carry_out, out), frames
+
+        return run_chunk
+
+    _run_chunk = _make_chunk_runner()
+    _run_tail_chunk = _make_chunk_runner(keep_previous=True)
 
     # ---- precompute source waveforms up to max_steps ----
     if sources:
@@ -3845,7 +3909,7 @@ def run_until_decay(
     else:
         mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
-    # ---- Python loop with decay check ----
+    # ---- host chunk loop with decay check ----
     # Stop criterion depends on the boundary (issue #169):
     #   * absorbing (cpml/upml): TOTAL interior-domain energy decay. The energy
     #     leaves through the absorber, so U -> 0 and the criterion is a genuine
@@ -3889,8 +3953,8 @@ def run_until_decay(
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
     use_flux_stop = radiated_flux_box is not None and use_absorbing
     if use_flux_stop:
-        _flo = grid.position_to_index(radiated_flux_box[0])
-        _fhi = grid.position_to_index(radiated_flux_box[1])
+        from rfx._periodic import interval_indices
+        _flo, _fhi = interval_indices(grid, *radiated_flux_box)
         _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
                min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
                min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
@@ -3904,6 +3968,10 @@ def run_until_decay(
         il, ih, jl, jh, kl, kh = _bl
         jj, kk = slice(jl, jh), slice(kl, kh)
         ii = slice(il, ih)
+        # Normal planes wrap; the tangential cell slices keep endpoint N.
+        il, ih = il % grid.nx, ih % grid.nx
+        jl, jh = jl % grid.ny, jh % grid.ny
+        kl, kh = kl % grid.nz, kh % grid.nz
         # +x/-x faces: S_x = Ey·Hz - Ez·Hy
         p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
         p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
@@ -3922,14 +3990,11 @@ def run_until_decay(
     flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
     flux_hist: list[float] = []   # recent |P| samples for the max-envelope
     decayed_fired = False  # #388: did the energy criterion fire (vs silently cap-hit)?
-    all_probes = []
+    probe_chunks = []
     actual_steps = 0
 
-    # Issue #667 progress ticker. This lane is already a host loop, so the
-    # tick is a pure addition: it reads Python ints (``actual_steps``,
-    # ``report_every``) and never touches a traced value or a field value,
-    # so it cannot perturb the result. ``max_steps`` is a CAP, not a known
-    # length — the line says so and the ETA is an upper bound.
+    # Match scan_with_progress(stop_fn=...): report at existing boundaries,
+    # never split a scan to print. max_steps is a CAP.
     _reporter = None
     if report_every is not None:
         _report_every = validate_report_every(report_every, n_steps=max_steps)
@@ -3943,19 +4008,53 @@ def run_until_decay(
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)
 
-    for step in range(max_steps):
-        step_idx = jnp.array(step, dtype=jnp.int32)
-        src_vals = src_waveforms[step]
-        mag_src_vals = mag_src_waveforms[step]
-        carry, probe_out, monitor_val = _single_step(
-            carry, step_idx, src_vals, mag_src_vals, _inv_args)
+    # Like scan_with_progress, call lax.scan directly: full chunks share
+    # its executable and only the ragged tail needs another length. The
+    # initial one-step check is required by the historical stop cadence.
+    pending_tail = None
+    while actual_steps < max_steps:
+        # The old loop checked step % interval == 0 AFTER stepping: completed
+        # steps 1, interval + 1, ... . In particular, the first chunk has one
+        # step. Reporting never changes these boundaries.
+        lo = actual_steps
+        next_check = 1 if lo == 0 else ((lo - 1) // check_interval + 1) * check_interval + 1
+        if pending_tail is not None:
+            carry, probe_out, monitor_vals, frames = pending_tail
+            pending_tail = None
+            hi = max_steps
+        else:
+            this = min(next_check - lo, max_steps - lo)
+            keep_previous = max_steps - lo - this == 1
+            if keep_previous:
+                # Copy scan_with_progress's one-step-tail rule. Unlike its
+                # generic stop_fn, decay must inspect the penultimate step.
+                this += 1
+            hi = lo + this
+            xs = (jnp.arange(lo, hi, dtype=jnp.int32), src_waveforms[lo:hi],
+                  mag_src_waveforms[lo:hi])
+            chunk_scan = _run_tail_chunk if keep_previous else _run_chunk
+            (carry, (probe_out, monitor_vals)), frames = chunk_scan(carry, xs)
+            if keep_previous:
+                final_carry, carry = carry
+                tail_frames = None
+                if snapshot is not None:
+                    n_before = (hi - 1) // snap_interval - lo // snap_interval
+                    tail_frames = tuple(f[n_before:] for f in frames)
+                    frames = tuple(f[:n_before] for f in frames)
+                pending_tail = (final_carry, probe_out[-1:], monitor_vals[-1:], tail_frames)
+                probe_out, monitor_vals = probe_out[:-1], monitor_vals[:-1]
+                hi -= 1
+        probe_chunks.append(probe_out)
+        actual_steps = hi
+        step = hi - 1
+        if snapshot is not None:
+            n_frames = hi // snap_interval - lo // snap_interval
+            if n_frames:
+                snap_chunks.append(tuple(f[:n_frames] for f in frames))
 
-        all_probes.append(probe_out)
-        actual_steps = step + 1
-        if snapshot is not None and actual_steps % snap_interval == 0:
-            snap_frames.append(_take_snapshot(carry["fdtd"]))
-
-        if _reporter is not None and actual_steps % _report_every == 0:
+        if _reporter is not None and (
+                actual_steps - _reporter.last_reported >= _report_every
+                or actual_steps >= max_steps):
             # Block first: JAX dispatch is asynchronous, so an unsynchronised
             # tick would report the host's dispatch rate, not the solve rate.
             jax.block_until_ready(carry["fdtd"])
@@ -4016,9 +4115,14 @@ def run_until_decay(
         else:
             # Closed/PEC fallback — BYTE-IDENTICAL to the pre-#169 point stop.
             # Decay check
-            val_sq = float(monitor_val) ** 2
-            if val_sq > peak_sq:
-                peak_sq = val_sq
+            # One transfer per chunk; square in host float64 just as
+            # float(monitor_val) ** 2 did for EVERY step of the old loop.
+            # Reading only the final sample loses peaks between checks.
+            values_sq = np.asarray(monitor_vals, dtype=np.float64) ** 2
+            chunk_peak = np.max(values_sq, where=~np.isnan(values_sq), initial=0.0)
+            if chunk_peak > peak_sq:
+                peak_sq = float(chunk_peak)
+            val_sq = float(values_sq[-1])
 
             if actual_steps >= min_steps and step % check_interval == 0 and peak_sq > 0.0:
                 if val_sq < decay_by * peak_sq:
@@ -4038,7 +4142,7 @@ def run_until_decay(
         _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
 
     # ---- assemble result ----
-    time_series = jnp.stack(all_probes, axis=0)
+    time_series = concat_chunks(probe_chunks)
 
     final_dft_planes = None
     if use_dft_planes:
@@ -4088,10 +4192,8 @@ def run_until_decay(
 
     snapshots = snap_axes = None
     if snapshot is not None:
-        if snap_frames:
-            snapshots = {
-                comp: jnp.stack([frame[i] for frame in snap_frames])
-                for i, comp in enumerate(snapshot.components)}
+        if snap_chunks:
+            snapshots = dict(zip(snapshot.components, concat_chunks(snap_chunks)))
         else:
             snapshots = {
                 comp: jnp.zeros((0,) + s.shape, s.dtype)

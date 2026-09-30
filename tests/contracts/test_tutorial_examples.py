@@ -109,9 +109,9 @@ def test_antenna_farfield_pattern_tutorial_runs():
     assert plot_path.stat().st_size > 0
 
     # The cut's samples: one row per polar angle of the tutorial's 73-point
-    # theta grid, in degrees, on phi = 0 only, with the last column normalized
-    # to the cut's peak (0 dB there; broadside, near theta = 90 degrees, for a
-    # z-directed dipole).
+    # theta grid, in degrees, on phi = 0 only. The last column is absolute
+    # IEEE gain; for this lossless dipole its peak matches the directivity
+    # reported above (broadside, near theta = 90 degrees).
     import numpy as np
 
     header = samples_path.read_text().splitlines()[0]
@@ -122,7 +122,9 @@ def test_antenna_farfield_pattern_tutorial_runs():
     np.testing.assert_allclose(
         rows[:, 0], np.degrees(np.linspace(0.01, np.pi - 0.01, 73)), rtol=1e-6)
     assert np.all(rows[:, 1] == 0.0)
-    assert rows[:, 6].max() == 0.0
+    # The console rounds to 0.001 dB; CSV rounding is below 1e-6 dB here.
+    # #1369 changes this column's old 0 dB peak to about 1.76 dBi.
+    assert abs(rows[:, 6].max() - peak_directivity_dbi) < 5.1e-4
     assert 75.0 <= rows[np.argmax(rows[:, 6]), 0] <= 105.0
 
 

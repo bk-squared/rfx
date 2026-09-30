@@ -234,7 +234,8 @@ def test_api_conformal_flag():
     sim.add_port((0.005, 0.025, 0.025), "ez", waveform=GaussianPulse(f0=3e9))
     sim.add_probe((0.045, 0.025, 0.025), "ez")
 
-    result = sim.run(n_steps=50, conformal_pec=True)
+    # The port only excites the model; a conformal lumped S-matrix is refused (#1299).
+    result = sim.run(n_steps=50, conformal_pec=True, compute_s_params=False)
     assert result.time_series.shape == (50, 1)
     # Signal should not be all zeros (source is outside PEC)
     assert float(jnp.max(jnp.abs(result.time_series))) > 0

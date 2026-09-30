@@ -34,6 +34,8 @@ from dataclasses import dataclass
 import jax
 import jax.numpy as jnp
 
+from rfx._precision import HIGHEST
+
 
 @dataclass(frozen=True)
 class MSLWaveProbeSet:
@@ -73,7 +75,8 @@ def register_msl_wave_probes(
     """
     assert direction in ("+x", "-x")
     sign = 1 if direction == "+x" else -1
-    dx = float(sim._dx)
+    grid = sim._build_realized_grid()
+    dx = float(grid.cells(0)[0])
 
     x1 = feed_x + sign * n_offset_cells * dx
     x2 = x1 + sign * n_spacing_cells * dx
@@ -303,7 +306,7 @@ def register_msl_plane_probes(
 
     # Cross-section index metadata, identical to compute_msl_s_matrix's
     # per-port meta (rfx/api/_sparams.py:2961-2980).
-    span = msl_cross_section_span(grid, mp)
+    span = msl_cross_section_span(grid, mp, require_contiguous_width=True)
     j_centre = span["w_centre"]
     j_lo, j_hi = span["w_lo"], span["w_hi"]     # trace-conductor width span
     k_lo = span["n_lo"]                          # ground plane proxy
@@ -568,7 +571,7 @@ def _lstsq_alpha_gamma(
     sol, _, _, _ = jnp.linalg.lstsq(a_mat, v, rcond=None)
     alpha = sol[0]
     gamma = sol[1]
-    pred = a_mat @ sol
+    pred = jnp.matmul(a_mat, sol, precision=HIGHEST)
     residual = jnp.sqrt(jnp.sum(jnp.abs(v - pred) ** 2))
     return alpha, gamma, residual
 

@@ -784,7 +784,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # the single-device fallbacks (judged on the lane they fall back to) and
     # the specific refusals above, and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_distributed")
+    admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
     materials = base_materials
 
     _distributed_boundary_layers(
