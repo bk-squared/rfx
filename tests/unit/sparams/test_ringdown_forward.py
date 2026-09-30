@@ -861,6 +861,6 @@ def test_over_budget_reports_the_kept_count_and_each_window_budget(monkeypatch):
     report_note = out.report.witness("traced").note
     gradient_note = gradient_witness(1.0, 1.0, ringdown=out).note
     for budget in np.asarray(out._pole_budgets):
-        reason = f"kept {kept} poles, exceeding the traced pole budget of {budget}"
+        reason = f"kept {kept} poles, more than the {budget} slots the traced completion reserves"
         assert reason in report_note
         assert reason in gradient_note

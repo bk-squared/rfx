@@ -2614,8 +2614,9 @@ def _status_reason(code: int, consistency=None, *, kept_count, pole_budget) -> s
     if code == rj.STATUS_FAILED:
         return "the host identification failed"
     if code == rj.STATUS_OVER_BUDGET:
-        return (f"the identification kept {int(kept_count)} poles, exceeding the "
-                f"traced pole budget of {int(pole_budget)}")
+        return (f"the identification kept {int(kept_count)} poles, more than the "
+                f"{int(pole_budget)} slots the traced completion reserves for this window "
+                f"(min of the pencil's capacity and TRACED_POLE_BUDGET = {TRACED_POLE_BUDGET})")
     if code == rj.STATUS_INCONSISTENT:
         c = "" if consistency is None else f" (read {float(consistency):.3g}, bar {CONSISTENCY_BAR:g})"
         return ("the in-program consistency check failed: the rebuilt port V/I "
