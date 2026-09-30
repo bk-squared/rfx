@@ -816,7 +816,6 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
         observed = _realized.scalar_electric(
             MaterialArrays(eps_r, sigma, jnp.ones_like(eps_r)), "adi.E")
         eps_r, sigma = observed.eps_r, observed.sigma
-        _realized.magnetic(observed, "adi.H")
     eps = eps_r * EPS_0
     half_dt = dt / 2.0
 

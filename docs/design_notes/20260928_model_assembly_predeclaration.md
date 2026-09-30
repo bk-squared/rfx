@@ -47,7 +47,7 @@ Why the table missed the ADI case: a `carries` cell asks whether declaring the i
    - the calculators take the same object.
 
    No path computes a coefficient from the declaration itself.
-3. **The gate compares realized arrays, not fields.** Two time-stepping schemes (Yee and ADI, coarse and subgridded) give different fields for the same model, so field parity needs a tolerance per scheme. The arrays a kernel consumes do not: ε at an edge is either the convention's value or it is not. For every carried physics input, a contract cell dumps each path's realized arrays for the cell's model and compares them with the assembler's arrays on that path's grid, exactly or to float rounding. It extends `test_realized_boundary.py`, the B1 boundary record, which already works this way for faces.
+3. **The gate compares realized arrays, not fields.** Two time-stepping schemes (Yee and ADI, coarse and subgridded) give different fields for the same model, so field parity needs a tolerance per scheme. The arrays a kernel consumes do not: ε at an edge is either the convention's value or it is not. For every carried physics input, a contract cell dumps each path's realized arrays for the cell's model and compares them with the assembler's arrays on that path's grid, exactly or to float rounding.
 4. **Measure first, then move results.** Phase P0 changes no result:
    - it adds the dump hooks and the realized-array table;
    - it records every departure as a strict xfail, naming its issue;
@@ -62,7 +62,7 @@ Why the table missed the ADI case: a `carries` cell asks whether declaring the i
      - the drive scale each lane applies to a declared soft source, lumped port and wire port, for each `amplitude_kind` including `None`.
    - Lanes: the nine time-stepping lanes of the #1338 table.
    - Reference: the assembler's arrays, built on the lane's own grid. For P0 these are the single-device uniform lane's functions, `component_e_materials` and the `amplitude_kind` contract (`rfx/api/_source_semantics.py`), applied to that grid. A departure from the reference is recorded, not fixed. The reference is not presumed correct where §4 leaves a question open.
-   - Not in P0: dispersive pole arrays, PEC masks (the #931 realized-geometry records already cover them), boundaries (#1221) and the calculators (#1362).
+   - Not in P0: dispersive pole arrays, PEC masks (the #931 realized-geometry records already cover them), boundaries (#1221) and the calculators (#1362). Dielectric placement of the cell array (#1298) and defects inside the shared helper are also not checked by P0; these belong to the assembler phase (§2.2).
 
 ## 3. Judges for P0 (frozen)
 

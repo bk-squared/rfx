@@ -3,7 +3,8 @@
 The observer is absent in ordinary runs: guards at the sites add no array
 operations. Observed eps_e and mu_h are RELATIVE (dimensionless), sigma_e
 is in S/m. A sharded record is on the kernel's local grid, including its
-ghosts; consumers compare only the owned rows. Subgrid face records carry
+ghosts; consumers compare only the owned rows. Distributed E records carry
+the global owned-row offset and count for a full-domain reference. Subgrid face records carry
 their slice into the corresponding coarse or fine grid.
 
 This diagnostic is serial and not an autodiff API. Entering/leaving it
@@ -98,11 +99,14 @@ def enter(sim, lane):
     ACTIVE.lane = "fwd_adi" if lane == "fwd_uniform" and sim._solver == "adi" else lane
 
 
-def electric(materials, eps, sigma, site, *, periodic=(False,) * 3, region=None):
+def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
+             region=None, owned_start=None, owned_count=None):
     eps = ACTIVE.apply(site, "eps_e", eps)
     sigma = ACTIVE.apply(site, "sigma_e", sigma)
-    ACTIVE.observe(site, dict(eps_e=eps, sigma_e=sigma, materials=materials),
-                   region=region, periodic=periodic)
+    payload = dict(eps_e=eps, sigma_e=sigma, materials=materials)
+    if owned_start is not None:
+        payload.update(owned_start=owned_start, owned_count=owned_count)
+    ACTIVE.observe(site, payload, region=region, periodic=periodic)
     return eps, sigma
 
 

@@ -1265,10 +1265,13 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None):
     eps, sigma = per_row(eps_edge, eps_cell), per_row(sig_edge, sig_cell)
     if _realized.ACTIVE is not None:
         # Both coefficient paths consume these operands, including the
-        # checkpointed shard_map. The reference sees the same x-lo cells.
+        # checkpointed shard_map. Record global ownership for the
+        # full-grid reference.
         site = ("distributed_nu.E" if _realized.ACTIVE.lane == "fwd_distributed_nu"
                 else "distributed.E")
-        eps, sigma = _realized.electric(view, eps, sigma, site)
+        eps, sigma = _realized.electric(
+            view, eps, sigma, site, owned_start=rank * nx_per,
+            owned_count=jnp.minimum(nx_per, nx - rank * nx_per))
     return eps, sigma
 
 
