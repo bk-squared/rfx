@@ -21,7 +21,8 @@ BAR = 5e-5
 
 
 def _model(case, n_devices=2):
-    sim = Simulation(freq_max=15e9, domain=(11e-3, 9e-3, 7e-3),
+    length_x = 12e-3 if case == "x_hi_padded" else 11e-3
+    sim = Simulation(freq_max=15e9, domain=(length_x, 9e-3, 7e-3),
                      dx=1e-3, boundary="cpml" if case == "cpml" else "pec",
                      cpml_layers=2)
     sim.add_source((5e-3, 5e-3, 4e-3), "ez")
@@ -36,7 +37,13 @@ def _model(case, n_devices=2):
         grid = sim._build_grid()
         lo = (((grid.shape[0] + n_devices - 1) // n_devices - grid.pad_x_lo) * grid.dx,
               3e-3, 2e-3)
-    sim.add_ntff_box(lo, (9e-3, 7e-3, 6e-3), freqs=[5e9, 10e9, 15e9])
+    hi = (9e-3, 7e-3, 6e-3)
+    if case == "x_hi_padded":
+        grid = sim._build_grid()
+        assert grid.shape[0] % n_devices != 0
+        seam = (grid.shape[0] + n_devices - 1) // n_devices
+        hi = ((seam - grid.pad_x_lo) * grid.dx, 7e-3, 6e-3)
+    sim.add_ntff_box(lo, hi, freqs=[5e9, 10e9, 15e9])
     return sim
 
 
@@ -81,27 +88,72 @@ def _parity(case, n_devices=2):
     sim = _model(case, n_devices)
     kwargs = dict(n_steps=160, skip_preflight=True)
     reference = sim.run(**kwargs)
-    with pytest.MonkeyPatch.context() as patch:
-        if case == "seam_hx":
-            from rfx.runners import _distributed_ntff as owner
-            original = owner.SlabNTFF.update
-            def poisoned(self, buffer, state, dt, step):
-                # Hx's right ghost is dead to the Yee curl. Do not rely on
-                # its incidental local evolution matching the owner. Poison
-                # only the sampling view; the main field carry is untouched.
-                width = state.hx.shape[0] // self.n_devices
-                state = state._replace(hx=state.hx.at[width - 1::width].set(1.0))
-                return original(self, buffer, state, dt, step)
-            patch.setattr(owner.SlabNTFF, "update", poisoned)
-        actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
+    actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
+    if case == "x_hi_padded":
+        assert actual.ntff_box.i_hi == (actual.grid.shape[0] + n_devices - 1) // n_devices
     print(f"devices={n_devices} case={case}")
-    _compare(actual, reference, case)
+    errors = _compare(actual, reference, case)
+    if case == "x_hi_padded":
+        assert all(error == 0 for error in errors.values())
     return actual
 
 
-@pytest.mark.parametrize("case", ["spanning", "x_seam", "seam_hx", "dielectric", "cpml"])
+@pytest.mark.parametrize("case", ["spanning", "x_seam", "x_hi_padded", "dielectric", "cpml"])
 def test_parity(case):
     _parity(case)
+
+
+def _ghost_hx_invariant(monkeypatch):
+    from rfx.runners import _distributed_ntff as owner
+    sim = _model("cpml")
+    grid = sim._build_grid()
+    seam = ((grid.shape[0] + 1) // 2 - grid.pad_x_lo) * grid.dx
+    sim.add_material("magnetic", mu_r=3, sigma=0.3)
+    sim.add(Box((seam - 2e-3, 3e-3, 2e-3),
+                (seam + 2e-3, 7e-3, 6e-3)), material="magnetic")
+    sim.add_source((seam, 5e-3, 4e-3), "ez")
+    samples = []
+    original = owner.SlabNTFF.update
+
+    def observe(self, buffer, state, dt, step):
+        width = state.hx.shape[0] // self.n_devices
+        # All internal right ghosts and their owners, at the real sampler.
+        jax.debug.callback(lambda ghost, real: samples.append(
+            (np.array(ghost), np.array(real))),
+            state.hx[width - 1:-1:width], state.hx[width + 1::width])
+        return original(self, buffer, state, dt, step)
+
+    monkeypatch.setattr(owner.SlabNTFF, "update", observe)
+    result = sim.run(n_steps=160, devices=jax.devices("cpu")[:2], skip_preflight=True)
+    jax.block_until_ready(result.ntff_data)
+    jax.effects_barrier()
+    assert len(samples) == 160
+    peak = max(float(np.max(np.abs(real))) for _, real in samples)
+    assert peak > 1e-6, "seam Hx must carry energy"
+    for ghost, real in samples:
+        np.testing.assert_array_equal(ghost, real, err_msg="right-ghost Hx invariant")
+    print(f"right-ghost Hx invariant: 160 steps, exact equality, owner peak={peak}")
+
+
+def test_right_ghost_hx_invariant(monkeypatch):
+    _ghost_hx_invariant(monkeypatch)
+
+
+def test_mutation_h_update_skips_ghost_rows(monkeypatch):
+    from rfx.runners import distributed_v2 as runner
+    original = runner._update_h_local
+
+    def skip_ghosts(state, *args):
+        updated = original(state, *args)
+        return updated._replace(**{
+            name: getattr(updated, name).at[0].set(getattr(state, name)[0])
+                  .at[-1].set(getattr(state, name)[-1])
+            for name in ("hx", "hy", "hz")})
+
+    monkeypatch.setattr(runner, "_update_h_local", skip_ghosts)
+    with pytest.raises(AssertionError, match="right-ghost Hx invariant"):
+        _ghost_hx_invariant(monkeypatch)
+    print("mutation=H update skips ghost rows: RED")
 
 
 def _patch_parity(n_devices=2):
@@ -129,14 +181,13 @@ def test_lumped_patch_s_and_ntff():
     _patch_parity()
 
 
-@pytest.mark.parametrize("mutation", ["skip", "hx", "duplicate", "compensation"])
+@pytest.mark.parametrize("mutation", ["skip", "duplicate", "compensation"])
 def test_mutations(monkeypatch, mutation):
     from rfx.runners import _distributed_ntff as owner
     if mutation == "skip":
         monkeypatch.setattr(owner.SlabNTFF, "update", lambda self, buffer, *args: buffer)
-    elif mutation == "hx":
-        monkeypatch.setattr(owner, "exchange_ntff_hx", lambda state, *args: state)
     elif mutation == "duplicate":
+        # The wrong rank writes the x face; y/z ownership uses clipped ranges.
         import inspect
         import textwrap
         source = textwrap.dedent(inspect.getsource(owner.SlabNTFF.__init__))
@@ -152,7 +203,7 @@ def test_mutations(monkeypatch, mutation):
                                     for name in data._fields[6:]})
         monkeypatch.setattr(owner.SlabNTFF, "assemble", drop)
     with pytest.raises(AssertionError, match="NTFF parity"):
-        _parity("seam_hx" if mutation == "hx" else "spanning")
+        _parity("spanning")
     print(f"mutation={mutation}: RED")
 
 
@@ -188,11 +239,11 @@ def test_out_of_scope_refused(kind):
                 run_distributed(sim, n_steps=8, devices=jax.devices("cpu")[:2])
 
 
-def test_no_box_does_not_exchange_ntff_hx(monkeypatch):
+def test_no_box_does_not_allocate_ntff(monkeypatch):
     from rfx.runners import _distributed_ntff as owner
     def unexpected(*args):
-        pytest.fail("no-box run exchanged NTFF Hx")
-    monkeypatch.setattr(owner, "exchange_ntff_hx", unexpected)
+        pytest.fail("no-box run allocated NTFF")
+    monkeypatch.setattr(owner.SlabNTFF, "initial", unexpected)
     sim = _model("spanning")
     sim._ntff = None
     result = sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True)
@@ -232,6 +283,6 @@ def test_compact_storage_and_unique_placement():
 
 
 if __name__ == "__main__":
-    for case in ("spanning", "x_seam", "seam_hx", "dielectric", "cpml"):
+    for case in ("spanning", "x_seam", "dielectric", "cpml"):
         _parity(case, int(sys.argv[1]))
     _patch_parity(int(sys.argv[1]))

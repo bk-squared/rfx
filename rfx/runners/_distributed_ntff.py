@@ -17,17 +17,6 @@ from rfx.farfield import (NTFFData, accumulate_ntff, init_ntff_data,
                           ntff_accum_dtype, _require_face_centre_margin)
 
 
-def exchange_ntff_hx(state, mesh, n_devices):
-    """Supply the right Hx neighbour used by y/z face-centre samples."""
-    @partial(shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"),
-             check_rep=False)
-    def exchange(hx):
-        received = lax.ppermute(hx[1], "x", [(i, i - 1) for i in range(1, n_devices)])
-        return hx.at[-1].set(jnp.where(lax.axis_index("x") < n_devices - 1,
-                                       received, hx[-1]))
-    return state._replace(hx=exchange(state.hx))
-
-
 class SlabNTFF:
     """Static ownership/layout and shared-arithmetic scan adapter."""
 
@@ -64,8 +53,9 @@ class SlabNTFF:
         return NTFFData(*arrays)
 
     def update(self, buffer, state, dt, step):
-        # This exchanged Hx is a sampling view: do not change the FDTD carry.
-        sampled = exchange_ntff_hx(state, self.mesh, self.n_devices)
+        # The right ghost Hx equals the neighbour's first real Hx: the H
+        # update computes ghost rows from exchanged E, including CPML
+        # corrections. Face-centre y/z samples rely on this invariant.
         branches = []
         for lo, hi, faces, offset, shapes, sizes in self.parts:
             def branch(args, lo=lo, hi=hi, faces=faces, offset=offset,
@@ -87,7 +77,7 @@ class SlabNTFF:
         def update_local(local, fields, n):
             return lax.switch(lax.axis_index("x"), branches,
                               (local[0], fields, n))[None]
-        return update_local(buffer, sampled, step)
+        return update_local(buffer, state, step)
 
     def assemble(self, buffer):
         """Place each cell once, preserving compensation; no spatial sum."""

@@ -780,11 +780,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/runners/_distributed_ntff.py",
-      "function": "exchange_ntff_hx.exchange",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/runners/distributed_nu.py",
       "function": "_apply_cpml_e_local_nu",
       "kind": "neighbour"
