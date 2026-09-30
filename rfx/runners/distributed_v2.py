@@ -593,7 +593,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
 
 def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
-                    **kwargs):
+                    _sparam_drive_idx=None, _sparam_probes=(), **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -927,17 +927,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 component=pe.component,
             ))
     else:
+        port_idx = -1
         for pe in sim._ports:
             if pe.impedance > 0.0 and pe.extent is None:
+                port_idx += 1
                 lp = LumpedPort(
                     position=pe.position, component=pe.component,
                     impedance=pe.impedance, excitation=pe.waveform,
                 )
                 materials = setup_lumped_port(grid, lp, materials)
-                sources.append(make_port_source(grid, lp, materials, n_steps))
+                if _sparam_drive_idx is None or port_idx == _sparam_drive_idx:
+                    sources.append(make_port_source(grid, lp, materials, n_steps))
             elif pe.impedance == 0.0:
                 # issue #571: thread amplitude_kind; helper stays boundary-selected.
-                if sim._boundary == "cpml":
+                if sim._boundary == "cpml" or _sparam_drive_idx is not None:
                     sources.append(make_j_source(grid, pe.position, pe.component,
                                                  pe.waveform, n_steps, materials,
                                                  amplitude_kind=pe.amplitude_kind))
@@ -946,8 +949,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                                                pe.waveform, n_steps,
                                                materials=materials,
                                                amplitude_kind=pe.amplitude_kind))
-        for pe in sim._probes:
-            probes.append(make_probe(grid, pe.position, pe.component))
+        if _sparam_drive_idx is None:
+            for pe in sim._probes:
+                probes.append(make_probe(grid, pe.position, pe.component))
+        else:
+            # Global cells enter the ordinary owner mapping below independently.
+            probes.extend(_sparam_probes)
 
     # Map source/probe global indices to (device_id, local_index)
     src_device_ids = []
@@ -1398,8 +1405,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             e_slab=(nx_per, nx), e_materials=e_materials,
             separate_x_terms=has_debye or has_lorentz)
 
-        # 6. Source injection
-        st = _inject_sources_shmap(st, src_vals)
+        # S scans use the production driver's post-boundary injection slot.
+        if _sparam_drive_idx is None:
+            st = _inject_sources_shmap(st, src_vals)
 
         # A mixed wall/absorber box still enforces its declared electric walls.
         st = _apply_pec_shmap(
@@ -1425,6 +1433,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
                 st, pec_mask_arg, mesh, n_devices, nx_local)
+        if _sparam_drive_idx is not None:
+            st = _inject_sources_shmap(st, src_vals)
 
         # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,
@@ -1501,8 +1511,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             debye_coeffs_arg, db_st,
             lorentz_coeffs_arg, lr_st, e_materials)
 
-        # 4. Source injection
-        st = _inject_sources_shmap(st, src_vals)
+        if _sparam_drive_idx is None:
+            st = _inject_sources_shmap(st, src_vals)
 
         # 5. PEC boundaries (domain faces only; a declared PEC VOLUME is
         #    realized at stage 5b below, and declared sheets/wires are
@@ -1514,7 +1524,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    PEC face, where the tangential E is zeroed in the same step it
         #    is injected. #1041 measured no such fixture and did not change
         #    it -- a source on a PEC face is its own question.
-        st = _apply_pec_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
+        st = _apply_pec_shmap(
+            st, mesh, n_devices, nx_local, pad_x=pad_x,
+            **({"pec_faces": e_wall_faces} if _sparam_drive_idx is not None else {}))
 
         # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
         #     immediately before the E ghost exchange -- distributed_nu's
@@ -1529,6 +1541,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
                 st, pec_mask_arg, mesh, n_devices, nx_local)
+        if _sparam_drive_idx is not None:
+            st = _inject_sources_shmap(st, src_vals)
 
         # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,

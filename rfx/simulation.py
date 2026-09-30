@@ -2429,7 +2429,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
-            from rfx.probes.probes import _ampere_loop
+            from rfx.probes.probes import _ampere_loop, _port_voltage_value
+            from rfx.core.dft_utils import port_dft_phase
             # Both families advance their H-derived current by dt/2 to the
             # E time level; one import for both blocks.
             from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
@@ -2455,9 +2456,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
                 v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_ref_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                v_ref_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
+                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt)
                 new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
@@ -2582,7 +2582,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     new_lumped_refs):
                 v_dft_l, i_dft_l = accs[0], accs[1]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
+                v_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
                 # #692: shared loop — see the wire-port block above.
                 i_val_l = _ampere_loop(
                     st, (li, lj, lk), lp_meta.component, dx, periodic)

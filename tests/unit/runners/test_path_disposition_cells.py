@@ -365,9 +365,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
         mm(6, 8, 6), "ez", waveform=WAVEFORM, amplitude_kind="field")),
     ("_ports", "amplitude_kind"): Feature(_amplitude_kind, off="base"),
     ("_ports", "lumped_port"): _plus(lambda s, _: s.add_port(
-        mm(6, 8, 6), "ez", impedance=50.0, waveform=WAVEFORM))._replace(
-            run_kwargs=lambda lane: ({"compute_s_params": False}
-                                     if lane == "run_distributed" else {})),
+        mm(6, 8, 6), "ez", impedance=50.0, waveform=WAVEFORM)),
     ("_ports", "passive_port"): _plus(lambda s, _: s.add_port(
         mm(6, 8, 6), "ez", impedance=50.0, excite=False)),
     ("_ports", "wire_port"): _plus(lambda s, _: s.add_port(

@@ -1,4 +1,4 @@
-"""Public two-device run() refuses implicit S and finishes probe diagnostics."""
+"""Public two-device run() returns implicit S and finishes probe diagnostics."""
 
 import jax
 import numpy as np
@@ -31,15 +31,12 @@ def _model(*, port=False, probes=True):
     return sim
 
 
-def test_default_lumped_port_s_request_matches_explicit_refusal():
-    messages = []
-    for kwargs in ({}, {"compute_s_params": True}):
-        with pytest.raises(NotImplementedError) as exc:
-            _model(port=True).run(n_steps=N_STEPS, devices=_devices(), **kwargs)
-        messages.append(str(exc.value))
-    assert messages[0] == messages[1]
-    assert "compute_s_params=False" in messages[0]
-    assert "distributed multi-device path" in messages[0]
+def test_default_lumped_port_s_request_matches_explicit():
+    results = [_model(port=True).run(n_steps=N_STEPS, devices=_devices(), **kwargs)
+               for kwargs in ({}, {"compute_s_params": True})]
+    assert results[0].s_params is not None
+    np.testing.assert_array_equal(results[0].s_params, results[1].s_params)
+    np.testing.assert_array_equal(results[0].freqs, results[1].freqs)
 
 
 def test_graded_lumped_port_default_is_no_s_request():

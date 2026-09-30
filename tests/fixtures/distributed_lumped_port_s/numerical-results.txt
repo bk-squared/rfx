@@ -1,0 +1,28 @@
+devices=2 seam=False ports=1 mode=default component=ez matched=False max_delta=1.20655706083e-07 min_S11_dB=-3.00277752e-05 gate=9e-06
+devices=2 seam=True ports=1 mode=default component=ez matched=False max_delta=1.20137002294e-07 min_S11_dB=-3.00277752e-05 gate=9e-06
+devices=2 seam=False ports=2 mode=default component=ez matched=False max_delta=1.4675941768e-07 min_S11_dB=-4.86657555e-05 gate=9e-06
+devices=2 seam=True ports=2 mode=default component=ez matched=False max_delta=1.20137002294e-07 min_S11_dB=-4.86657555e-05 gate=9e-06
+devices=2 seam=False ports=1 mode=explicit component=ez matched=False max_delta=7.45058059692e-08 min_S11_dB=1.03543869e-06 gate=9e-06
+devices=2 seam=True ports=1 mode=explicit component=ez matched=False max_delta=7.45058059692e-08 min_S11_dB=1.03543869e-06 gate=9e-06
+devices=2 seam=False ports=2 mode=explicit component=ez matched=False max_delta=1.24894489454e-07 min_S11_dB=-3.52049901e-05 gate=9e-06
+devices=2 seam=True ports=2 mode=explicit component=ez matched=False max_delta=2.60770320892e-08 min_S11_dB=-3.36518242e-05 gate=9e-06
+devices=2 seam=True ports=2 mode=default component=ez matched=True max_delta=1.55916639454e-06 min_S11_dB=-10.8591385 gate=9e-06
+devices=2 seam=True ports=2 mode=explicit component=ez matched=True max_delta=2.20425323864e-06 min_S11_dB=-11.0305843 gate=9e-06
+devices=2 seam=True ports=2 mode=true component=ez matched=True max_delta=1.55916639454e-06 min_S11_dB=-10.8591385 gate=9e-06
+devices=2 seam=True ports=2 mode=freqs component=ez matched=True max_delta=1.61430201466e-06 min_S11_dB=-10.8591385 gate=9e-06
+devices=2 seam=True ports=2 mode=steps component=ez matched=True max_delta=2.20425323864e-06 min_S11_dB=-11.0305843 gate=9e-06
+devices=2 seam=True ports=2 mode=explicit component=ex matched=False max_delta=1.20137002294e-07 min_S11_dB=-0.00295978831 gate=9e-06
+devices=2 seam=True ports=2 mode=explicit component=ey matched=False max_delta=2.23517417908e-08 min_S11_dB=-3.36518242e-05 gate=9e-06
+devices=3 seam=True ports=2 mode=explicit component=ez matched=False max_delta=1.33280037493e-07 min_S11_dB=-0.000143927173 gate=9e-06
+devices=3 seam=True ports=2 mode=explicit component=ez matched=True max_delta=6.95143561768e-07 min_S11_dB=-11.0295916 gate=9e-06
+devices=4 seam=True ports=2 mode=explicit component=ez matched=False max_delta=1.20137002294e-07 min_S11_dB=-0.000244884694 gate=9e-06
+devices=4 seam=True ports=2 mode=explicit component=ez matched=True max_delta=7.80217119685e-07 min_S11_dB=-11.0119743 gate=9e-06
+devices=2 seam=True ports=2 mode=explicit component=ez matched=True max_delta=0.721627006337 min_S11_dB=-11.0305843 gate=9e-06
+mutation=disable: parity RED
+devices=2 seam=True ports=2 mode=explicit component=ez matched=True max_delta=0.724454580116 min_S11_dB=-11.0305843 gate=9e-06
+mutation=own_slab: parity RED
+devices=2 seam=True ports=2 mode=explicit component=ez matched=True max_delta=0.0325529175502 min_S11_dB=-11.0305843 gate=9e-06
+mutation=half_step: parity RED
+closed_matched nodes=5 max_delta=3.67616508977e-07 min_S11_dB=-67.3232269
+closed_matched nodes=9 max_delta=9.25312918202e-07 min_S11_dB=-27.5647316
+30 passed, 42 warnings in 89.80s (0:01:29)

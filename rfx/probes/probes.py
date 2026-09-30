@@ -123,7 +123,7 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     idx = grid.position_to_index(port.position)
     i, j, k = idx
     field = getattr(state, port.component)
-    return -field[i, j, k] * grid.dx
+    return _port_voltage_value(field[i, j, k], grid.dx)
 
 
 def _bwd_h(h, idx, axis, periodic=(False, False, False)):
@@ -225,25 +225,30 @@ def _ampere_loop(state, idx, component, dx, periodic):
     :func:`wire_port_current` — they were two verbatim copies of the same
     six branches, and #692 had to fix the same wrap twice because of it.
     """
-    if component == "ez":
-        # curl_z = (Hy[i,j,k] - Hy[i-1,j,k] - Hx[i,j,k] + Hx[i,j-1,k]) / dx
-        return (
-            state.hy[idx] - _bwd_h(state.hy, idx, 0, periodic)
-            - state.hx[idx] + _bwd_h(state.hx, idx, 1, periodic)
-        ) * dx
-    if component == "ex":
-        # curl_x = (Hz[i,j,k] - Hz[i,j-1,k] - Hy[i,j,k] + Hy[i,j,k-1]) / dx
-        return (
-            state.hz[idx] - _bwd_h(state.hz, idx, 1, periodic)
-            - state.hy[idx] + _bwd_h(state.hy, idx, 2, periodic)
-        ) * dx
-    if component == "ey":
-        # curl_y = (Hx[i,j,k] - Hx[i,j,k-1] - Hz[i,j,k] + Hz[i-1,j,k]) / dx
-        return (
-            state.hx[idx] - _bwd_h(state.hx, idx, 2, periodic)
-            - state.hz[idx] + _bwd_h(state.hz, idx, 0, periodic)
-        ) * dx
-    raise ValueError(f"Unknown port component: {component!r}")
+    h_a, axis_a, h_b, axis_b = _ampere_loop_components(component)
+    a, b = getattr(state, h_a), getattr(state, h_b)
+    return _ampere_loop_values(a[idx], _bwd_h(a, idx, axis_a, periodic),
+                              b[idx], _bwd_h(b, idx, axis_b, periodic), dx)
+
+
+def _ampere_loop_components(component):
+    """H components and backward axes, in the loop's subtraction order."""
+    try:
+        return {"ez": ("hy", 0, "hx", 1),
+                "ex": ("hz", 1, "hy", 2),
+                "ey": ("hx", 2, "hz", 0)}[component]
+    except KeyError:
+        raise ValueError(f"Unknown port component: {component!r}") from None
+
+
+def _ampere_loop_values(a, a_back, b, b_back, dx):
+    """Shared field arithmetic for live fields and owning-slab recordings."""
+    return (a - a_back - b + b_back) * dx
+
+
+def _port_voltage_value(e, dx):
+    """FDTD-sign voltage across one cubic cell, for live or recorded E."""
+    return -e * dx
 
 
 # ---------------------------------------------------------------------------
