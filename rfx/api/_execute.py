@@ -2674,6 +2674,7 @@ class _ExecuteMixin:
         pec_occupancy_override: jnp.ndarray | None = None,
         design_box: object | None = None,
         n_steps: int,
+        port_s11_freqs: object | None = None,
         checkpoint: bool = True,
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
@@ -2725,6 +2726,8 @@ class _ExecuteMixin:
         result = run_nonuniform_path(
             self,
             n_steps=n_steps,
+            s_param_freqs=(None if port_s11_freqs is None else
+                           jnp.asarray(port_s11_freqs, dtype=jnp.float32)),
             eps_override=eps_override,
             sigma_override=sigma_override,
             pec_mask_override=pec_mask_override,
@@ -3346,15 +3349,12 @@ class _ExecuteMixin:
                 return int(np.ceil(
                     num_periods * period / float(grid_probe.dt)))
 
-            # Issue #72: forward(port_s11_freqs=...) is currently wired only on
-            # the uniform single-device path. Reject loudly elsewhere so users
-            # don't get a silent s_params=None.
-            if port_s11_freqs is not None and (distributed or is_nonuniform):
+            # Distributed runners do not carry port S-parameter accumulators.
+            if port_s11_freqs is not None and distributed:
                 raise NotImplementedError(
-                    "forward(port_s11_freqs=...) is currently wired only on the "
-                    "uniform single-device forward path (issue #72). Drop "
-                    "port_s11_freqs or run on a uniform mesh without "
-                    "distributed=True."
+                    "forward(port_s11_freqs=...) is supported only on "
+                    "single-device forward paths (issue #72). Drop "
+                    "distributed=True to request port S-parameter frequencies."
                 )
 
             # Issue #73: forward(checkpoint_segments=...) is currently wired only
@@ -4109,8 +4109,8 @@ class _ExecuteMixin:
             (issue #72) — the AD-traceable counterpart of
             ``run(compute_s_params=True)``.  Required by the
             :func:`minimize_s11_at_freq_wave_decomp` objective.  Currently
-            wired only on the uniform single-device path; non-uniform meshes
-            and ``distributed=True`` raise ``NotImplementedError``.
+            supported on uniform and graded single-device paths;
+            ``distributed=True`` raises ``NotImplementedError``.
         rlc_values_override : dict or None
             Differentiable-value injection for lumped RLC elements added with
             :meth:`add_lumped_rlc` (WP 4-E).  ``LumpedRLCSpec`` stores plain
@@ -4412,6 +4412,7 @@ class _ExecuteMixin:
                 )
             _nu_fwd_call = functools.partial(
                 self._forward_nonuniform_from_materials,
+                port_s11_freqs=port_s11_freqs,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
