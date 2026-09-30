@@ -46,6 +46,7 @@ KERNEL_CALLERS = {
     "rfx/runners/subgridded.py:_run_subgridded_once": "internal to run_subgridded",
     "rfx/runners/uniform.py:run_uniform": "internal to run_uniform",
     "rfx/probes/sparam_driver.py:compute_lumped_wire_s_matrix_via_scan": "s_matrix_scan",
+    "rfx/probes/sparam_driver.py:_distributed_lumped_accumulators": "internal to run_distributed",
     "rfx/sparams/mixed.py:compute_mixed_s_matrix": "mixed_s_matrix",
     "rfx/topology.py:topology_optimize": "topology_optimize",
     "rfx/sparams/waveguide.py:_compute_waveguide_s_matrix_nu": "waveguide_s_matrix",

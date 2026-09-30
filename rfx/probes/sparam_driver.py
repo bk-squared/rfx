@@ -32,6 +32,16 @@ from rfx.probes.probes import (
 )
 
 
+def refuse_distributed_lumped_s_pmc(sim):
+    """The distributed wall rule cannot supply lumped S on magnetic faces."""
+    faces = sorted(sim._boundary_spec.pmc_faces())
+    if faces and any(pe.impedance != 0 for pe in sim._ports):
+        raise NotImplementedError(
+            f"Lumped-port S-parameters with magnetic (PMC) face(s) {', '.join(faces)} "
+            "are not supported with devices=...; use one device (omit devices=...)."
+        )
+
+
 def compute_lumped_wire_s_matrix_via_scan(
     sim, freqs, *, n_steps=None, return_vi_dump=False,
     return_refplane_diagnostics=False, conformal_pec=None, devices=None,
@@ -101,6 +111,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     if devices is not None:
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")
+        refuse_distributed_lumped_s_pmc(sim)
     freqs = np.asarray(freqs, dtype=np.float64)
     n_freqs = len(freqs)
 
@@ -405,7 +416,8 @@ def _lumped_recording_dfts(samples, freqs, dt, dx):
     # Frequencies enter the uniform scan as float32 even with x64 enabled.
     with jax.default_device(jax.devices("cpu")[0]):
         f = jnp.asarray(freqs, dtype=jnp.float32)
-        half = half_step_current_phase(f.astype(jnp.float64), dt).astype(jnp.complex64)
+        phase_dtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
+        half = half_step_current_phase(f.astype(phase_dtype), dt).astype(jnp.complex64)
         for start in range(0, len(samples), 256):
             stop = min(start + 256, len(samples))
             phase = port_dft_phase(jnp.arange(start, stop)[:, None], f[None, :], dt)
@@ -420,7 +432,7 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
 
     probes, zeros = _lumped_recording_probes(grid, ports)
     result = run_distributed(sim, n_steps=n_steps, devices=devices,
-                             _sparam_drive_idx=drive, _sparam_probes=probes)
+                             _source_port_indices=(drive,), _record_probes=probes)
     samples = np.array(result.time_series)
     samples[:, zeros] = 0
     v, i = _lumped_recording_dfts(samples, freqs, grid.dt, grid.dx)

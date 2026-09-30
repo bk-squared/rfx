@@ -1,6 +1,7 @@
 """Owning-cell recordings feed the production lumped S-matrix decomposer."""
 
 import os
+from dataclasses import replace
 from pathlib import Path
 import subprocess
 import sys
@@ -9,51 +10,66 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import Box, DebyePole, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
 FREQS = np.array([1, 2.5, 5, 7.5, 10]) * 1e9
-# Measured max 2.2043e-6 across 2/3/4 CPUs; 9e-6 is 4.08x for
-# float32 scan/reduction rounding across compiler versions (rtol=0).
+# Summed quantities must agree within 1e-4 of the peak across all traces
+# (cross-trace rule, not a per-bin relative tolerance near zeros). The
+# tighter absolute S bar below leaves margin for float32 reduction rounding.
 S_ATOL = 9e-6
+TRACE_RTOL = 9e-6
 
 
-def _model(seam=True, ports=2, component="ez", matched=False, n_devices=2):
-    if matched:
+def _model(seam=True, ports=2, component="ez", channel=False, n_devices=2, boundary="cpml", magnetic=False):
+    if channel:
         sim = Simulation(freq_max=10e9, domain=(20e-3, 1e-3, 1e-3), dx=1e-3, cpml_layers=4,
                          boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
-                                               y=Boundary(lo="pmc", hi="pmc"),
+                                               y=Boundary.from_string("pmc" if magnetic else "cpml"),
                                                z=Boundary(lo="pec", hi="pec")))
     else:
         sim = Simulation(freq_max=10e9, domain=(16e-3, 6e-3, 6e-3), dx=1e-3,
-                         boundary="cpml", cpml_layers=2)
+                         boundary=boundary, cpml_layers=2)
     grid = sim._build_grid()
     width = (grid.shape[0] + n_devices - 1) // n_devices
     node = width if seam else width - 2
     for x in ([node] if ports == 1 else [node, node - 2]):
         pos = ((x - grid.pad_x_lo) * grid.dx,
-               0.0 if matched else 3e-3, 0.0 if matched else 3e-3)
-        sim.add_port(pos, component, impedance=188.365156834 if matched else 50,
+               0.0 if channel else 3e-3, 0.0 if channel else 3e-3)
+        sim.add_port(pos, component, impedance=188.365156834 if channel else 50,
                      waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
         assert grid.position_to_index(pos)[0] == x
     sim.add_probe(sim._ports[0].position, component)
     return sim
 
 
-def _parity(*, seam=True, ports=2, mode="explicit", matched=False,
-            component="ez", n_devices=2):
-    sim = _model(seam, ports, component, matched, n_devices)
-    kwargs = {"n_steps": 256, "skip_preflight": True}
+def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
+            component="ez", n_devices=2, case=None, n_steps=256):
+    sim = _model(seam, ports, component, channel, n_devices)
+    if case in ("soft_pec", "legacy_soft_pec"):
+        sim = _model(seam, ports, component, channel=False, n_devices=n_devices, boundary="pec")
+    if case in ("debye", "lossy", "eps4"):
+        extra = {"debye_poles": [DebyePole(delta_eps=1., tau=1e-11)]} if case == "debye" else {"sigma": 0.05} if case == "lossy" else {}
+        sim.add_material("block", eps_r=4., **extra)
+        sim.add(Box((4e-3, 2e-3, 2e-3), (10e-3, 4e-3, 4e-3)), material="block")
+    elif case == "pec":
+        # Keep the body strictly between the ports, away from both port edges.
+        sim._ports[1] = replace(sim._ports[1], position=(4e-3, 3e-3, 3e-3))
+        sim.add(Box((6e-3, 2e-3, 2e-3), (7e-3, 4e-3, 4e-3)), material="pec")
+    elif case in ("soft_cpml", "soft_pec", "legacy_soft_pec"):
+        sim.add_source((4e-3, 3e-3, 3e-3), "ez", waveform=GaussianPulse(f0=5e9, bandwidth=1.6),
+                       **({} if case == "legacy_soft_pec" else {"amplitude_kind": "field"}))
+    kwargs = {"n_steps": n_steps, "skip_preflight": True}
     if mode == "explicit":
-        kwargs.update(compute_s_params=True, s_param_freqs=FREQS, s_param_n_steps=320)
+        kwargs.update(compute_s_params=True, s_param_freqs=FREQS, s_param_n_steps=max(320, n_steps))
     elif mode == "true":
         kwargs.update(compute_s_params=True)
     elif mode == "freqs":
         kwargs.update(s_param_freqs=FREQS)
     elif mode == "steps":
-        kwargs.update(s_param_n_steps=320)
+        kwargs.update(s_param_n_steps=max(320, n_steps))
     reference = sim.run(**kwargs)
     actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
     assert actual.s_params is not None
@@ -63,14 +79,21 @@ def _parity(*, seam=True, ports=2, mode="explicit", matched=False,
                                - reference.s_params.astype(np.complex128))))
     minimum = float(np.min(20 * np.log10(np.abs(reference.s_params[0, 0]))))
     print(f"devices={n_devices} seam={seam} ports={ports} mode={mode} "
-          f"component={component} matched={matched} max_delta={error:.12g} "
+          f"component={component} channel={channel} max_delta={error:.12g} "
           f"min_S11_dB={minimum:.9g} gate={S_ATOL:g}")
+    assert actual.time_series.shape == (n_steps, 1)
+    peak = float(np.max(np.abs(reference.time_series)))
+    trace_error = float(np.max(np.abs(actual.time_series - reference.time_series))) / peak
+    print(f"case={case} steps={n_steps} time_series_relative_peak_error={trace_error:.12g} gate={TRACE_RTOL:g}")
+    assert trace_error <= TRACE_RTOL, f"time_series parity {trace_error}"
     assert error <= S_ATOL, f"S parity max_delta={error} gate={S_ATOL}"
-    assert actual.time_series.shape == (256, 1)
+    assert error <= 1e-4 * np.max(np.abs(reference.s_params))
     assert len(sim._probes) == 1 and all(pe.excite for pe in sim._ports)
-    if matched:
-        assert minimum <= -10
-        assert np.min(np.abs(reference.s_params[1, 0])) > 0.1
+    if channel:
+        # The all-nonmagnetic replacement radiates transversely as well as
+        # along x; it is not the former PMC TEM matched-line fixture.
+        assert minimum <= -1
+        assert np.max(np.abs(reference.s_params[1, 0])) > 0.1
     return actual
 
 
@@ -82,8 +105,8 @@ def test_all_entries_all_bins(seam, ports, mode):
 
 
 @pytest.mark.parametrize("mode", ["default", "explicit", "true", "freqs", "steps"])
-def test_matched_line(mode):
-    _parity(matched=True, mode=mode)
+def test_cpml_channel(mode):
+    _parity(channel=True, mode=mode)
 
 
 @pytest.mark.parametrize("component", ["ex", "ey"])
@@ -158,33 +181,62 @@ def test_parity_detects_mutations(monkeypatch, mutation):
 
         monkeypatch.setattr(driver, "_lumped_recording_dfts", no_half_step)
     with pytest.raises(AssertionError, match="S parity max_delta"):
-        _parity(matched=True)
+        _parity(channel=True)
     print(f"mutation={mutation}: parity RED")
 
 
-@pytest.mark.parametrize("nodes", [5, 9])
-def test_closed_matched_line(nodes):
-    # Regression for the initial candidate: y-PMC must not clamp the port E.
+@pytest.mark.parametrize("explicit", [False, True])
+@pytest.mark.parametrize("channel", [False, True])
+def test_pmc_matched_line_refused(explicit, channel):
     from tests.unit.ports.test_lumped_two_port_matched_line import _build
     sim = _build("lumped")
-    if nodes == 9:
-        sim = Simulation(freq_max=10e9, domain=(8e-3, 1e-3, 1e-3), dx=1e-3,
-                         boundary=BoundarySpec(x=Boundary(lo="pmc", hi="pmc"),
-                                               y=Boundary(lo="pmc", hi="pmc"),
-                                               z=Boundary(lo="pec", hi="pec")))
-        for node in (5, 3):
-            sim.add_port((node * 1e-3, 0, 0), "ez", impedance=376.730313668,
-                         waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
-    kwargs = (dict(n_steps=256, skip_preflight=True) if nodes == 9 else
-              dict(n_steps=320, s_param_freqs=FREQS, skip_preflight=True))
-    expected = sim.run(**kwargs)
-    actual = sim.run(devices=jax.devices("cpu")[:2], **kwargs)
-    error = float(np.max(np.abs(actual.s_params.astype(np.complex128)
-                               - expected.s_params.astype(np.complex128))))
-    minimum = float(np.min(20 * np.log10(np.abs(expected.s_params[0, 0]))))
-    print(f"closed_matched nodes={nodes} max_delta={error:.12g} min_S11_dB={minimum:.9g}")
-    assert error <= S_ATOL
-    assert minimum <= -10
+    if channel:
+        sim = _model(channel=True, magnetic=True)
+        reference = sim.run(n_steps=320, s_param_freqs=FREQS, skip_preflight=True)
+        minimum = float(np.min(20 * np.log10(np.abs(reference.s_params[0, 0]))))
+        print(f"PMC channel one-device min_S11_dB={minimum:.9g}; multi-device refused")
+        assert minimum <= -10
+    with pytest.raises(NotImplementedError, match=r"magnetic .*y_lo.*one device"):
+        sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
+                **({"compute_s_params": True} if explicit else {}))
+
+
+@pytest.mark.parametrize("face", ["x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"])
+@pytest.mark.parametrize("explicit", [False, True])
+def test_each_magnetic_face_refused_before_scan(monkeypatch, face, explicit):
+    from rfx.runners import distributed_v2 as runner
+    axes = {axis: Boundary(lo="cpml", hi="cpml") for axis in "xyz"}
+    axis, side = face.split("_")
+    axes[axis] = replace(axes[axis], **{side: "pmc"})
+    sim = Simulation(freq_max=10e9, domain=(16e-3, 6e-3, 6e-3), dx=1e-3,
+                     boundary=BoundarySpec(**axes), cpml_layers=2)
+    sim.add_port((8e-3, 3e-3, 3e-3), "ez", impedance=50)
+
+    def unexpected(*args, **kwargs):
+        pytest.fail("magnetic S request must refuse before any distributed scan")
+
+    monkeypatch.setattr(runner, "run_distributed", unexpected)
+    with pytest.raises(NotImplementedError, match=rf"magnetic .*{face}.*one device"):
+        sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
+                **({"compute_s_params": True} if explicit else {}))
+
+
+@pytest.mark.parametrize("case", ["debye", "lossy", "pec", "soft_cpml", "soft_pec", "eps4"])
+def test_material_and_soft_source_parity(case):
+    _parity(case=case)
+
+
+@pytest.mark.xfail(
+    strict=True, raises=AssertionError,
+    reason="Legacy PEC soft-source default differs between single-device S scans and the main run",
+)
+def test_legacy_pec_soft_source_parity():
+    _parity(case="legacy_soft_pec")
+
+
+def test_long_record():
+    # Small domain keeps this 2048-step record in the fast suite.
+    _parity(n_steps=2048)
 
 
 def test_one_scan_per_drive_and_shared_replay_bundle(monkeypatch):
@@ -195,18 +247,18 @@ def test_one_scan_per_drive_and_shared_replay_bundle(monkeypatch):
     original = runner.run_distributed
 
     def recorded(sim, **kwargs):
-        calls.append((kwargs.get("_sparam_drive_idx"),
-                      len(kwargs.get("_sparam_probes", ())), kwargs["n_steps"]))
+        calls.append((kwargs.get("_source_port_indices"),
+                      len(kwargs.get("_record_probes", ())), kwargs["n_steps"]))
         return original(sim, **kwargs)
 
     monkeypatch.setattr(runner, "run_distributed", recorded)
-    sim = _model(matched=True)
+    sim = _model(channel=True)
     expected = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, n_steps=320,
                                                    return_vi_dump=True)
     actual = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, n_steps=320,
                                                   return_vi_dump=True,
                                                   devices=jax.devices("cpu")[:2])
-    assert calls == [(0, 10, 320), (1, 10, 320)]
+    assert calls == [((0,), 10, 320), ((1,), 10, 320)]
     assert isinstance(actual, PortVIReplayBundle)
     assert actual.port_names == expected.port_names
     assert actual.driven_port_indices == expected.driven_port_indices
@@ -216,6 +268,76 @@ def test_one_scan_per_drive_and_shared_replay_bundle(monkeypatch):
     for name in ("voltages", "currents"):
         np.testing.assert_allclose(getattr(actual, name), getattr(expected, name),
                                    rtol=1e-5, atol=0)
+
+
+def _assert_shared_step_order(source):
+    """Lock the common numerical step, including cases where walls are inert."""
+    import ast
+    tree = ast.parse(source)
+    steps = [node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
+             and node.name in ("step_fn_cpml", "step_fn_pec")]
+    assert len(steps) == 2
+    for step in steps:
+        calls = [node.value for node in step.body if isinstance(node, ast.Assign)
+                 and isinstance(node.value, ast.Call)]
+        names = [call.func.id for call in calls if isinstance(call.func, ast.Name)]
+        assert names.count("_inject_sources_shmap") == 1, "shared step injection order"
+        assert names.index("_inject_sources_shmap") < names.index("_apply_pec_shmap"), "shared step injection order"
+        assert not any(isinstance(node, ast.Name) and node.id.startswith(("_sparam", "_source_port", "_record_probe"))
+                       for node in ast.walk(step)), "drive-dependent step"
+
+
+def test_shared_step_order():
+    import inspect
+    from rfx.runners import distributed_v2 as runner
+    _assert_shared_step_order(inspect.getsource(runner.run_distributed))
+
+
+def test_drive_only_order_mutation(monkeypatch):
+    import inspect
+    from rfx.runners import distributed_v2 as runner
+    source = inspect.getsource(runner.run_distributed)
+    source = source.replace("        st = _inject_sources_shmap(st, src_vals)",
+                            "        if _source_port_indices is None:\n            st = _inject_sources_shmap(st, src_vals)")
+    source = source.replace("        # 7. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals)\n\n        # 7. Exchange E ghost cells")
+    source = source.replace("        # 6. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals)\n\n        # 6. Exchange E ghost cells")
+    namespace = dict(vars(runner))
+    exec(compile(source, "<drive-only-order-mutation>", "exec"), namespace)
+    monkeypatch.setattr(runner, "run_distributed", namespace["run_distributed"])
+    # All these sources are away from walls/masks: numerical parity alone
+    # cannot require a shared step. The structural invariant must also fail.
+    for case in (None, "debye", "lossy", "pec", "soft_cpml", "soft_pec", "eps4"):
+        _parity(case=case)
+    with pytest.raises(AssertionError, match="shared step injection order"):
+        _assert_shared_step_order(source)
+    print("mutation=drive_only_order: numerical parity GREEN; shared step check RED")
+
+
+def test_host_dft_warning_fix_preserves_s(monkeypatch):
+    import warnings
+    import jax.numpy as jnp
+    from rfx.core import dft_utils
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    sim = _model()
+    kwargs = dict(n_steps=320, devices=jax.devices("cpu")[:2])
+    with warnings.catch_warnings(record=True) as caught:
+        actual, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, **kwargs)
+    assert not any("float64 requested" in str(w.message) for w in caught)
+
+    def old_phase(step, freqs, dt):
+        t = jnp.asarray(step, dtype=jnp.float32) * dt
+        return jnp.exp(-1j * 2. * jnp.pi * jnp.asarray(freqs).astype(jnp.float64)
+                       * t.astype(jnp.float64)).astype(jnp.complex64) * dt
+
+    old_half = dft_utils.half_step_current_phase
+    monkeypatch.setattr(dft_utils, "port_dft_phase", old_phase)
+    monkeypatch.setattr(dft_utils, "half_step_current_phase",
+                        lambda f, dt: old_half(f.astype(jnp.float64), dt))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        before, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, **kwargs)
+    np.testing.assert_array_equal(actual, before)
+    print(f"host_dft_warning_fix: {actual.size} complex S entries bit-identical; max_delta=0")
 
 
 def test_explicit_opt_out_keeps_s_options_inert(monkeypatch):
@@ -234,4 +356,4 @@ def test_explicit_opt_out_keeps_s_options_inert(monkeypatch):
 
 if __name__ == "__main__":
     _parity(n_devices=int(sys.argv[1]))
-    _parity(n_devices=int(sys.argv[1]), matched=True)
+    _parity(n_devices=int(sys.argv[1]), channel=True)

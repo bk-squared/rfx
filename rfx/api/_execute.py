@@ -4945,6 +4945,10 @@ class _ExecuteMixin:
                     s_param_n_steps=s_param_n_steps,
                     devices=devices,
                 )
+            if compute_s_params:
+                from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
+                refuse_distributed_lumped_s_pmc(self)
+
             self._refuse_unsupported_run_kwargs("distributed multi-device", {
                 "subpixel_smoothing": subpixel_smoothing,
                 "checkpoint": checkpoint,

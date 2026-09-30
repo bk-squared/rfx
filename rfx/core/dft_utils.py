@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 
 
@@ -115,7 +116,8 @@ def port_dft_phase(step, freqs, dt):
     Accepts a scalar step in the scan or broadcast arrays for host replay.
     Preserve the scan's float32 time even when x64 is enabled.
     """
+    phase_dtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
     t = jnp.asarray(step, dtype=jnp.float32) * dt
     return jnp.exp(-1j * 2.0 * jnp.pi
-                   * jnp.asarray(freqs).astype(jnp.float64)
-                   * t.astype(jnp.float64)).astype(jnp.complex64) * dt
+                   * jnp.asarray(freqs).astype(phase_dtype)
+                   * t.astype(phase_dtype)).astype(jnp.complex64) * dt
