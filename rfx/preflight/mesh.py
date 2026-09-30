@@ -574,7 +574,7 @@ def _validate_cfg_graded_box_rasterization(self, _w) -> None:
             # (rasterize_grid._box_axis_volume), not the node sampler.
             from rfx.geometry.rasterize_grid import _box_axis_volume
             actual = int(np.count_nonzero(
-                np.asarray(_box_axis_volume(z_centres, z_lo, z_hi))))
+                np.asarray(_box_axis_volume(z_centres, z_lo, z_hi, np.diff(z_nodes)))))
         else:
             mask = np.asarray(entry.shape.mask_on_coords(x_mid, y_mid, z_nodes))
             actual = int(np.count_nonzero(mask))

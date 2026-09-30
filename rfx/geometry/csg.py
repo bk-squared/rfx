@@ -14,6 +14,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
+from rfx._grid_metric import half_open_volume_mask
 from rfx.grid import Grid
 
 
@@ -91,10 +92,13 @@ class Box:
 
     **Rasterization convention (read before drawing a PEC obstacle).**
     On each axis the volume branch is **half-open** ``[lo, hi)`` over
-    **node** coordinates: node ``j`` at ``y_j = j * dx`` belongs to the box
-    iff ``lo <= y_j < hi``. The convention is deliberate and several paths
-    depend on it (see ``_axis_mask`` for the issue history), but it has two
-    consequences that bite when a box is drawn to a nominal physical size:
+    **node** coordinates: node ``j`` at ``y_j`` belongs to the box
+    iff ``lo - tol <= y_j < hi - tol``, with ``tol = NODE_TIE_REL *
+    node_widths[j]`` (#1138), using each node's forward primal cell width
+    and repeating the last width at the final node. The convention is
+    deliberate and several paths depend on it (see ``_axis_mask`` for the
+    issue history), but it has two consequences when a box is drawn to a
+    nominal physical size:
 
     1. **The ``hi`` face contributes no cell.** A box whose corners both
        land on node planes, ``lo = i*dx`` and ``hi = k*dx``, occupies nodes
@@ -108,17 +112,13 @@ class Box:
        load-bearing one — see the facing-pair discussion below, where it
        cancels in one case and not the other.
 
-    2. **A corner exactly on a node plane is a knife edge — now a
-       float64-route one.** Since the exact-coordinate fix (#802), node
-       coordinates are host float64 ``(i - pad) * dx`` and comparisons run
-       in float64, independent of ``jax_enable_x64``. A corner whose f64
-       value equals the node's bitwise sits on the convention's exact
-       boundary and behaves predictably (``lo`` keeps it, ``hi`` drops it).
-       The residual hazard is the ROUTE: a corner computed as ``a - n*dx``
-       or ``a + b`` can land one f64 ulp off the algebraically identical
-       ``m*dx`` node value and flip a whole node plane. Spell
-       intended-on-lattice corners in lattice arithmetic (``m*dx``), or
-       use the midpoint recipe below, which is immune to both.
+    2. **Float arithmetic within the on-lattice band keeps the face on
+       its node.** Concrete coordinates and comparisons remain host
+       float64, independent of ``jax_enable_x64`` (#802). A corner drawn
+       through ``m*dx``, ``lo + N*dx``, repeated addition or a graded
+       cumulative sum can differ from its node by a few ULP. The shared
+       ``1e-9``-local-cell band includes that node at ``lo`` and excludes
+       it at ``hi`` (#1138), preserving the half-open cell count.
 
        Historical (pre-#802, kept because committed values were pinned to
        it): masks compared float32 coordinates, themselves double-rounded
@@ -167,21 +167,20 @@ class Box:
     interior faces are different kinds of corner.** For fins drawn from each
     wall inward, the lo fin's interior face is a ``hi`` corner, which
     half-openness **always** drops, so that fin always retreats one cell.
-    The hi fin's interior face is a ``lo`` corner, which ``coords >= lo``
-    normally **keeps** — it retreats only when (2) puts the node just below
-    the corner. Hence the realized opening is:
+    The hi fin's interior face is a ``lo`` corner, which the banded window
+    **keeps**, including float dust within the on-lattice band. Historically,
+    before that band, the realized opening was:
 
     * ``d + dx`` when only the lo fin retreated. The opening is then
       **asymmetric**: its centre sits ``dx/2`` below the guide centre.
     * ``d + 2*dx`` when rounding made the hi fin retreat as well. The two
       retreats cancel and the opening is **symmetric**.
 
-    Since #802 the nominal drawing lands on the FIRST case at every
+    Since #802 the nominal drawing landed on the FIRST case at every
     aperture (measured across the WR-90 table at a/30 and a/60: excess is
     uniformly one cell, asymmetric): the hi fin's lo corner, being an
-    exact node value, always captures its node. The second case now needs
-    an actual route mismatch (a corner one f64 ulp below its node), not a
-    rounding accident. Historical (pre-#802, float32): which case you got
+    exact node value, captured its node. #1138 also keeps a lo face a few
+    ULP above that node from retreating. Historical (pre-#802, float32): which case you got
     was unpredictable — ``d`` = 12.192 mm gave ``d + 2*dx`` while 7.620
     and 18.288 mm gave ``d + dx``, and over ~99k (guide, mesh, aperture)
     combinations the split was 82% / 9% / 8% across ``d + dx`` /
@@ -299,7 +298,14 @@ class Box:
             extent = float(hi - lo)  # staircase corners must be concrete
             if coords.size <= 1:             # static (shape, not values)
                 dc_local = 1e-3
+                node_widths = xp.full_like(coords, dc_local)
             else:
+                # Each node owns its forward primal cell; the final node
+                # repeats the boundary width. Shared faces must use the
+                # same band at a node regardless of either box's midpoint
+                # (#1138), or stacked boxes can leave a gap or overlap.
+                spacings = xp.diff(coords)
+                node_widths = xp.concatenate((spacings, spacings[-1:]))
                 # Local cell WIDTH at the midpoint cell — the smaller of the two
                 # neighbouring centre-to-centre spacings, NOT the single forward
                 # spacing coords[k+1]-coords[k] the legacy code used (#374). At a
@@ -337,8 +343,8 @@ class Box:
             else:
                 thin_mask = np.zeros(coords.shape, dtype=bool)
                 thin_mask[nearest_idx] = True
-            # Volume: half-open [lo, hi).
-            volume_mask = (coords >= lo) & (coords < hi)
+            # Volume: half-open [lo, hi), with the on-lattice band (#1138).
+            volume_mask = half_open_volume_mask(coords, lo, hi, node_widths)
             # Thin-branch tie rule (#802 follow-up): a face-registered
             # one-cell box is an EXACT half-cell tie — mid sits midway
             # between two nodes — and argmin would resolve it by the last
@@ -350,10 +356,8 @@ class Box:
             # node out) and it is ulp-robust in exactly the way the volume
             # branch is. Zero nodes (a sub-cell box straddling no node) or
             # several (a graded-transition window) keep nearest-node
-            # argmin. A corner INTENDED on-lattice but computed through a
-            # different f64 route (a+b vs m*dx) can still miss its node by
-            # one ulp — that is the documented knife-edge class; spell such
-            # corners in lattice arithmetic (see the class docstring).
+            # argmin. The shared on-lattice band also keeps corners computed
+            # through different f64 routes (a+b vs m*dx) on that same node.
             n_vol = xp.sum(volume_mask)
             thin_mask = xp.where(n_vol == 1, volume_mask, thin_mask)
             # Thin sheet when the extent is within one local cell.

@@ -544,7 +544,9 @@ def test_node_aligned_faces_on_uniform_valued_axes_report_zero_residual():
         return _geo(_graded_z_sim().fidelity_report(print_report=False), 0)
 
     for tag, item in _both_flags(build):
-        assert item["n_cells"] == 1800, tag   # realized mask: unchanged by this
+        # z = [20D, 25D) spans ten D/2 cells; #1138 keeps the low-face
+        # node instead of losing a layer to cumsum dust: 20 * 10 * 10.
+        assert item["n_cells"] == 2000, tag
         for ax in item["axes"][:2]:
             assert ax["face_residual_um"] == (0.0, 0.0), (tag, ax)
             assert ax["realized_um"] == ax["declared_um"], (tag, ax)

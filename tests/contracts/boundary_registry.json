@@ -489,6 +489,11 @@
     },
     {
       "file": "rfx/geometry/csg.py",
+      "function": "Box._axis_masks_on_coords._axis_mask",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/csg.py",
       "function": "PolylineWire.mask_on_coords",
       "kind": "difference"
     },
