@@ -433,7 +433,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_ports", "passive_port"): _ALL - _ADI - {"run_distributed", "fwd_distributed_nu"},
     ("_ports", "wire_port"): _ALL - _ADI - {"fwd_distributed_nu"},
     ("_msl_ports", "msl_port"): _NO_SHEETS,
-    ("_waveguide_ports", "waveguide_port"): _NO_SHEETS - {"run_distributed"},
+    ("_waveguide_ports", "waveguide_port"): _NO_SHEETS,
     ("_coaxial_ports", "coax_port"): frozenset(),
     ("_floquet_ports", "floquet_port"): _UNIFORM_YEE,
     ("_floquet_ports", "scan_angle"): frozenset(),

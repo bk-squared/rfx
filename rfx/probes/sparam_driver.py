@@ -33,8 +33,16 @@ from rfx.probes.probes import (
 
 
 def refuse_distributed_lumped_s_pmc(sim):
-    """The distributed wall rule cannot supply lumped S on magnetic faces."""
+    """Refuse lumped S and wire loads/drives under the distributed PMC rule."""
     faces = sorted(sim._boundary_spec.pmc_faces())
+    if faces and any(pe.impedance != 0 and pe.extent is not None for pe in sim._ports):
+        raise NotImplementedError(
+            f"Wire ports with magnetic (PMC) face(s) {', '.join(faces)} "
+            "are not supported with devices=...; the multi-device main run "
+            "zeroes tangential E on a declared PMC face, so nearby wire loads "
+            "and drives would be wrong even with compute_s_params=False "
+            "(rfx #1221, B3b). Use one device (omit devices=...)."
+        )
     if faces and any(pe.impedance != 0 for pe in sim._ports):
         raise NotImplementedError(
             f"Lumped-port S-parameters with magnetic (PMC) face(s) {', '.join(faces)} "
@@ -84,7 +92,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     devices : list or None
         Uniform distributed scan devices. Excited lumped/wire ports without planes.
         Records the live E line and four midpoint H samples per receive port;
-        host DFTs feed the same decomposer and replay bundle below.
+        host DFTs feed the same decomposer. return_vi_dump=True is refused
+        because pre-injection drive reference voltages are not recorded.
     conformal_pec : bool or None
         As in ``run()``: ``None`` reads ``Boundary(conformal=True)``. The
         production scan has no conformal update, so a conformal request on a
@@ -102,12 +111,18 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     Notes
     -----
-    Mixed sets use the same whole-port frame: a lumped port contributes
-    its one-cell voltage and a wire its live-line voltage.
+    Mixed lumped + wire port sets are not supported.
     """
-    # run()'s one-wire S11 comes from the main record, including its soft
-    # source convention. Other S requests retain the selected-drive rule.
+    # For distributed run()'s one-wire S11, _main_wire_record launches a
+    # second full run with all sources on and the main run's soft-source
+    # convention. It does not read the main run's record. Other S requests
+    # retain the selected-drive rule.
     if devices is not None:
+        if return_vi_dump:
+            raise NotImplementedError(
+                "return_vi_dump=True is not supported with devices=...; "
+                "pre-injection drive reference voltages are not recorded. "
+                "Use one device (omit devices=...).")
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")
         refuse_distributed_lumped_s_pmc(sim)
@@ -156,12 +171,14 @@ def compute_lumped_wire_s_matrix_via_scan(
         )
 
     is_wire = [pe.extent is not None for pe in eligible]
-    wire_mode = any(is_wire)
-    if wire_mode and not all(is_wire) and any(
-            pe.reference_plane_cells is not None for pe in eligible):
+    if any(is_wire) and not all(is_wire):
         raise NotImplementedError(
-            "Mixed lumped + wire reference_plane_cells require the legacy V_ref path; "
-            "use a homogeneous wire set on one device.")
+            "compute_lumped_wire_s_matrix_via_scan: mixed lumped + wire port "
+            "sets are not supported in Stage 1 (the off-diagonal wave-"
+            "decomposition conventions differ).  Use a homogeneous all-lumped "
+            "or all-wire port set."
+        )
+    wire_mode = any(is_wire)
     if wire_mode and devices is not None:
         # Geometry only: release the assembled materials before any scan stages slabs.
         from rfx.boundaries.pec import realized_pec_edge_masks
@@ -254,11 +271,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 conformal_pec=conformal_pec,
             )
 
-        if wire_mode and not all(is_wire):
-            wires, lumped = iter(raw["wire"]), iter(raw["lumped"])
-            accs = [next(wires) if wire else next(lumped) for wire in is_wire]
-        else:
-            accs = raw["wire"] if wire_mode else raw["lumped"]
+        accs = raw["wire"] if wire_mode else raw["lumped"]
         if accs is None or len(accs) != n_ports:
             raise RuntimeError(
                 "compute_lumped_wire_s_matrix_via_scan: production scan "

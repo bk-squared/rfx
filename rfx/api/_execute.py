@@ -4967,8 +4967,9 @@ class _ExecuteMixin:
                                 s_param_n_steps, n_steps, until_decay),
                         }, instead=None,
                         reason_overrides={"s_param_n_steps":
-                            "this lane reads S11 from the main run's port record, "
-                            "whose length is n_steps"})
+                            "this lane computes S11 with a second full distributed "
+                            "run with all sources on, using the main run's "
+                            "n_steps and source convention"})
                 from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
                 refuse_distributed_lumped_s_pmc(self)
 

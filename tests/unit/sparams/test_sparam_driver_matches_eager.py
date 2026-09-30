@@ -174,17 +174,23 @@ def _mixed_lumped_wire_sim():
     return sim
 
 
-def test_mixed_lumped_wire_driver():
+def test_mixed_lumped_wire_driver_raises():
+    """The driver rejects heterogeneous lumped+wire sets loudly — their
+    off-diagonal wave-decomposition conventions differ
+    (rfx/probes/sparam_driver.py mixed-set guard, PR #258). Before #258,
+    run(compute_s_params=True) on a mixed set silently returned a wire-only
+    diagonal matrix that DROPPED the lumped ports. This locks the guard
+    (it shipped without a test — declared-only surfaces rot)."""
     sim = _mixed_lumped_wire_sim()
-    result, freqs = compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=200)
-    assert result.shape == (2, 2, len(_FREQS))
-    assert np.all(np.isfinite(result))
-    assert np.any(np.abs(result[0, 1]) > 0)
-    assert np.any(np.abs(result[1, 0]) > 0)
+    with pytest.raises(NotImplementedError, match=r"mixed lumped \+ wire"):
+        compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=200)
 
 
-def test_mixed_lumped_wire_run_compute_s_params():
+def test_mixed_lumped_wire_run_compute_s_params_raises():
+    """The PUBLIC run(compute_s_params=True) path raises on a mixed set too:
+    the single-wire fast-path requires ``not lumped_ports``
+    (rfx/runners/uniform.py dispatch), so a mixed set routes to the driver
+    and hits the same guard — the #258 behaviour change users actually see."""
     sim = _mixed_lumped_wire_sim()
-    expected, freqs = compute_lumped_wire_s_matrix_via_scan(sim, _FREQS, n_steps=200)
-    actual = sim.run(n_steps=200, compute_s_params=True, s_param_freqs=_FREQS)
-    np.testing.assert_array_equal(actual.s_params, expected)
+    with pytest.raises(NotImplementedError, match=r"mixed lumped \+ wire"):
+        sim.run(n_steps=200, compute_s_params=True)

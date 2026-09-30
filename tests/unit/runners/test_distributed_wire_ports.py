@@ -103,9 +103,41 @@ def _parity(case="ez", mode="explicit", n_devices=2):
     return actual
 
 
-@pytest.mark.parametrize("case", ["ez", "ex", "mixed", "dead", "dielectric"])
+@pytest.mark.parametrize("case", ["ez", "ex", "dead", "dielectric"])
 def test_wire_parity(case):
     _parity(case)
+
+
+@pytest.mark.parametrize("distributed", [False, True])
+def test_mixed_refusal_matches_baseline(monkeypatch, distributed):
+    from rfx.probes import sparam_driver as driver
+    sim = _model("mixed")
+    options = dict(n_steps=8, compute_s_params=True, s_param_freqs=FREQS,
+                   skip_preflight=True)
+    source = subprocess.check_output(
+        ["git", "show", "beb0d3fd:rfx/probes/sparam_driver.py"], text=True)
+    namespace = dict(vars(driver))
+    exec(compile(source, "<baseline-sparam-driver>", "exec"), namespace)
+    with monkeypatch.context() as patch:
+        patch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan",
+                      namespace["compute_lumped_wire_s_matrix_via_scan"])
+        with pytest.raises(NotImplementedError) as baseline:
+            sim.run(**options)
+    with pytest.raises(NotImplementedError) as actual:
+        sim.run(devices=jax.devices("cpu")[:2] if distributed else None, **options)
+    assert str(actual.value) == str(baseline.value)
+    assert "mixed lumped + wire" in str(actual.value)
+
+
+@pytest.mark.parametrize("case", ["ez", "lumped"])
+def test_distributed_vi_dump_refused(case):
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    sim = _model()
+    if case == "lumped":
+        sim._ports = [replace(pe, extent=None) for pe in sim._ports]
+    with pytest.raises(NotImplementedError, match="return_vi_dump=True.*pre-injection"):
+        compute_lumped_wire_s_matrix_via_scan(
+            sim, FREQS, n_steps=8, devices=jax.devices("cpu")[:2], return_vi_dump=True)
 
 
 @pytest.mark.parametrize("mode", ["default", "true", "freqs", "steps"])
@@ -169,7 +201,7 @@ def test_single_wire_zero_wave():
 
 @pytest.mark.parametrize("kind,message", [
     ("planes", "reference_plane_cells"), ("radius", "radius"),
-    ("passive", "passive port"), ("graded", "Phase B"), ("pmc", "magnetic")])
+    ("passive", "passive port"), ("graded", "Phase B"), ("pmc", "zeroes tangential E.*compute_s_params=False")])
 @pytest.mark.parametrize("compute_s", [None, True, False])
 def test_refusals(kind, message, compute_s):
     from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -263,5 +295,5 @@ def test_one_device_bytes_against_main(monkeypatch, case, planes):
 
 
 if __name__ == "__main__":
-    for case in ("ez", "ex", "mixed", "dead", "dielectric"):
+    for case in ("ez", "ex", "dead", "dielectric"):
         _parity(case, n_devices=int(sys.argv[1]))
