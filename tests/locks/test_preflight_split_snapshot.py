@@ -910,6 +910,7 @@ _REBOUND_ON_MIXIN = {
         # never moved, and bound on the mixin the same way -- so it wants the
         # same qualname pin.
         "_validate_cfg_conductor_in_thin_absorber",
+        "_validate_cfg_thin_absorber",
         # 2026-09-15 (#1043 stage B): not a MOVED body -- written in the
         # family module, bound on the mixin the same way, so it wants the
         # same qualname pin as the eleven that moved.

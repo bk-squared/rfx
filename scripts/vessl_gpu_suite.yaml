@@ -42,7 +42,7 @@ run: |-
   python -m pip install -q "uv==0.12.19"
   uv venv -q --python 3.11.16 /tmp/venv-py311
   PY=/tmp/venv-py311/bin/python
-  uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0"
+  uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0" "pytest-timeout==2.4.0"
   # Assert what was realized, on its own line: a pipe under `set -eu` would hide a failure.
   "$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; assert jax.__version__ == '0.10.2', jax.__version__; assert jax.default_backend() == 'gpu', jax.default_backend()"
   export RFX_REPO_ROOT="$src"
@@ -70,7 +70,13 @@ run: |-
   set +e
   # 20000 s: this selection took 13221 s of pytest on run 369367264767 (RTX 3090, 2026-09-25) against the old 13800.
   # crossval_ladder cases run in scripts/vessl_crossval_ladder.yaml; a release needs that lane green too.
-  timeout 20000 "$PY" -m pytest -m "gpu and not crossval_ladder" -q -ra -p no:cacheprovider \
+  # -v names each test as it starts, so a run cut by the outer timeout still says which
+  # test it was in; run 369367265464 (a9054338, RTX 4090) printed only ".." in 5.6 h under -q,
+  # while the same command at 0c3d3c61 eleven hours later finished (180 passed): the stall is
+  # intermittent, which is what the per-test timeout is for (thread method: a stall inside
+  # XLA holds the main thread outside Python bytecode, where a SIGALRM handler never runs).
+  timeout 20000 "$PY" -m pytest -m "gpu and not crossval_ladder" -v -ra -p no:cacheprovider \
+    --durations=40 --timeout=5400 --timeout-method=thread \
     > "$out/gpu_suite.log" 2>&1
   rc=$?
   set -e

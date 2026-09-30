@@ -117,6 +117,10 @@ FALLBACK_LANE_LABELS = (
     "lane:ci-infra",
     "lane:examples-docs",
     "lane:plan",
+    # Created 2026-09-21 for research tracks no other lane owns (far field/NTFF,
+    # IDM, FDFD); missing here until 2026-09-28, so a local pr-body step failed
+    # every lane:research PR that passed on GitHub.
+    "lane:research",
 )
 
 # Em dash, en dash or a plain hyphen. Codex-written bodies use the hyphen and a

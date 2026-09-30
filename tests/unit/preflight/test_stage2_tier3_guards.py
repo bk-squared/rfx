@@ -88,3 +88,22 @@ def test_ris_substrate_material_carries_sigma_and_dispersion():
 
     # Substrates with permittivity-only data still resolve.
     assert _substrate_material_kwargs("rogers5880") == {"eps_r": 2.2}
+
+
+@pytest.mark.parametrize("thickness,freq_range", [
+    (1.5e-3, (4e9, 8e9)),
+    (4e-3, (299792458.0 / .040, 299792458.0 / .020)),
+])
+@pytest.mark.parametrize("entry", ["build", "sweep"])
+def test_ris_varactor_requires_explicit_uniform_dx(thickness, freq_range, entry):
+    """Refuse at loading, whether the unloaded automatic plan would grade or not."""
+    from rfx.ris import RISUnitCell
+
+    cell = RISUnitCell(cell_size=(.0103, .0206), substrate_thickness=thickness,
+                       freq_range=freq_range, cpml_layers=2)
+    cell.add_varactor((.0031, .0067), capacitance_range=(.2e-12, 1e-12))
+    with pytest.raises(ValueError, match=r"varactor.*explicit uniform dx.*dx="):
+        if entry == "build":
+            cell._build_sim()
+        else:
+            cell.sweep_capacitance([.2e-12])

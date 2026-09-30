@@ -22,6 +22,7 @@ from rfx.sources.waveguide_port import (
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
+from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
 
 
 def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
@@ -145,7 +146,7 @@ def run_uniform(
     s_param_n_steps=None,
     snapshot=None,
     subpixel_smoothing: bool | str = False,
-    conformal_pec: bool = False,
+    conformal_pec: bool | None = None,
     conformal_min_weight: float = 0.1,
     pec_shapes=None,
     # pre-built grid and materials passed in from Simulation.run()
@@ -162,6 +163,8 @@ def run_uniform(
     pec_sheets=None,
     pec_wires=None,
     keep_wire_port_sparams: bool = False,
+    stop_fn=None,
+    stop_interval: int = 250,
 ):
     """Run the uniform-grid simulation path.
 
@@ -182,8 +185,9 @@ def run_uniform(
         PEC sheets (#931 §1.3) and sub-cell wires (§1.4) collected by the
         assembler; they own no cell, so they reach the stepper only
         through the realized edge masks built here.
-    conformal_pec : bool
-        Enable Dey-Mittra conformal PEC (default False).
+    conformal_pec : bool or None
+        Enable Dey-Mittra conformal PEC. None reads Boundary(conformal=True);
+        an explicit False requests staircase PEC.
     conformal_min_weight : float
         Minimum conformal weight for CFL stability (default 0.1).
     pec_shapes : list or None
@@ -193,6 +197,13 @@ def run_uniform(
         ``Result.wire_port_sparams`` (default ``False``: left ``None``, as
         before). ``run(..., ringdown=...)`` reads the realized port cells and
         accumulators from them (issue #1254) and removes them again.
+    stop_fn, stop_interval
+        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        fixed-length scan runs in chunks of ``stop_interval`` steps and
+        ``stop_fn(steps_done, peek)`` decides after each one whether the run
+        ends there; ``peek()`` gives the record so far (``time_series``,
+        ``wire_port_sparams``, ``grid``, ``dt`` and the ``freqs`` this
+        function reports). ``None`` (default) is the unchanged path.
     All other parameters mirror Simulation.run().
 
     Returns
@@ -200,6 +211,9 @@ def run_uniform(
     Result
     """
     from rfx.api import Result, WaveguideSParamResult
+
+    if conformal_pec is None:
+        conformal_pec = bool(sim._boundary_spec.conformal_faces())
 
     # run() sends a refined model to the subgridded lane; a direct call must
     # not solve it here without the refinement (#1240).
@@ -346,7 +360,7 @@ def run_uniform(
         conformal_weights = (w_ex, w_ey, w_ez)
 
         # Compute conformal eps correction
-        eps_base = materials.eps_r
+        eps_base = permittivity_without_lumped(materials)
         eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(eps_base, w_ex, w_ey, w_ez)
 
         if aniso_eps is not None:
@@ -363,6 +377,12 @@ def run_uniform(
 
         # Conformal replaces binary pec_mask
         pec_mask = None
+
+    # Complete the volume tensor before adding edge-owned capacitors:
+    # conformal weights must act on the volume, never on a lumped C.
+    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+    aniso_inv_eps = add_lumped_eps(
+        aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
     # Build sources and probes for the compiled runner
     sources = []
@@ -685,19 +705,8 @@ def run_uniform(
         )
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        # Open-domain oblique Method B: k̂ in the xy-plane, so the transverse
-        # y-axis must be OPEN (CPML) and z stays thin-periodic. Every other TFSF
-        # (normal 1D-aux + Bloch 2D-aux) keeps the historical open-x / periodic-yz.
-        from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_ru
-        if sim._tfsf.closed_box:
-            periodic = (False, False, False)
-            cpml_axes = "xyz"
-        elif _is_methodB_ru(tfsf[0]):
-            periodic = (False, False, True)
-            cpml_axes = "xy"
-        else:
-            periodic = (False, True, True)
-            cpml_axes = "x"
+        from rfx.sources.tfsf import tfsf_boundary_flags
+        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0])
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
@@ -782,7 +791,10 @@ def run_uniform(
     # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
-        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32,
+        # The run's flags after the TFSF override above (#1260: the edge
+        # mean wraps on a periodic axis, as the E update's does).
+        periodic=_simulation.resolve_periodic(grid, periodic))
 
     # NTFF box
     ntff_box = None
@@ -844,6 +856,28 @@ def run_uniform(
     from rfx.runners._admission import admit
     admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
                                         "conformal_pec": conformal_pec})
+    # Issue #1254: the early stop reads the record so far through the scan's
+    # chunk hook, with the bins the single-wire fast path below reports.
+    _stop_kwargs = {}
+    if stop_fn is not None:
+        if until_decay is not None:
+            raise NotImplementedError(
+                "run_uniform(stop_fn=...) does not combine with until_decay: "
+                "they are two rules for where the record ends.")
+        from types import SimpleNamespace as _NS
+
+        def _stop_with_bins(steps_done, peek):
+            def partial():
+                p = peek()
+                wps = p.wire_port_sparams
+                bins = (np.array(s_param_freqs) if s_param_freqs is not None
+                        else np.array(wps[0][0].freqs) if wps else None)
+                return _NS(time_series=p.time_series, wire_port_sparams=wps,
+                           grid=p.grid, dt=p.dt, freqs=bins)
+            return stop_fn(steps_done, partial)
+
+        _stop_kwargs = {"stop_fn": _stop_with_bins,
+                        "stop_interval": int(stop_interval)}
 
     # Main simulation
     if until_decay is not None:
@@ -926,6 +960,7 @@ def run_uniform(
             sheet_impedance=sheet_ctx,
             **({} if report_every is None else
                {"report_every": report_every, "report_label": report_label}),
+            **_stop_kwargs,
         )
 
     # S-parameters: use JIT-integrated DFT for wire ports (fast),
@@ -1038,6 +1073,7 @@ def run_uniform(
         )
         s_params, _ = compute_lumped_wire_s_matrix_via_scan(
             sim, s_param_freqs, n_steps=sp_n_steps,
+            conformal_pec=conformal_pec,
         )
 
     waveguide_ports_result = (

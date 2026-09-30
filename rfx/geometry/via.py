@@ -67,6 +67,10 @@ class Via:
         z_max = max(z for _, z in self.layers)
         return ((x - r, y - r, z_min), (x + r, y + r, z_max))
 
+    def _mask_components(self, dx):
+        """Expose child masks for the shared periodic image fold."""
+        return [box for box, _ in self.to_shapes()]
+
     def mask_on_coords(self, x, y, z):
         """Evaluate via occupancy — union of decomposed Box shapes."""
         result = jnp.zeros((len(x), len(y), len(z)), dtype=jnp.bool_)
@@ -75,6 +79,11 @@ class Via:
         return result
 
     def mask(self, grid):
+        if getattr(grid, 'periodic_axes', ''):
+            result = jnp.zeros(grid.shape, dtype=jnp.bool_)
+            for box, _ in self.to_shapes():
+                result = result | box.mask(grid)
+            return result
         from rfx.geometry.csg import _grid_coords
         x, y, z = _grid_coords(grid)
         return self.mask_on_coords(x, y, z)

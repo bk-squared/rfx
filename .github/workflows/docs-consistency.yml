@@ -61,15 +61,11 @@ jobs:
       - name: Documentation against code, records and script output
         run: |
           set -e
-          IGNORE="--ignore=tests/crossval/test_meep_crossval.py
-            --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py
-            --ignore=tests/crossval/test_openems_crossval.py
-            --ignore=tests/crossval/test_crossval_comprehensive.py"
-          collected=$(python -m pytest --collect-only -q -o addopts="" -m "docs_consistency and not gpu" $IGNORE tests | grep -c "::" || true)
+          collected=$(python -m pytest --collect-only -q -o addopts="" -m "docs_consistency and not gpu" tests | grep -c "::" || true)
           echo "collected $collected docs_consistency tests"
           if [ "$collected" -lt 50 ]; then
             echo "FAIL: only $collected docs_consistency tests collected (<50) -- silent deselection?"
             exit 1
           fi
           python -m pytest -q -ra -p no:cacheprovider -o addopts="" \
-            -m "docs_consistency and not gpu" --strict-markers $IGNORE tests
+            -m "docs_consistency and not gpu" --strict-markers tests

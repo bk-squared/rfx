@@ -63,7 +63,11 @@ def _make_dipole_ff(n_theta=181, n_phi=181, n_freqs=1):
     Short dipole: E_theta ~ sin(theta), E_phi = 0.
     Theoretical directivity = 1.5 (1.76 dBi).
     """
-    theta = np.linspace(0.01, np.pi - 0.01, n_theta)
+    # Include the poles: the former 0.01-rad gaps exceeded half a step at
+    # n_theta=181 (0.00867 rad), leaving polar caps out of total power.
+    # The dipole's sin^2(theta) makes that error tiny, but does not supply
+    # the missing coverage: old P_rad=0.01111880315731223 W, peak=1.760912594 dBi.
+    theta = np.linspace(0, np.pi, n_theta)
     phi = np.linspace(0, 2 * np.pi - 2 * np.pi / n_phi, n_phi)
     freqs = np.array([3e9] * n_freqs, dtype=np.float64)
 

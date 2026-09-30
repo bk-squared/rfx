@@ -986,6 +986,19 @@ _SHARED_HELPER_BINDINGS = (
     # through -- the shared body returns the state only.
     ("update_e_nu_shmap", "rfx.runners.distributed_nu", "update_e_nu_shmap"),
     ("update_e_nu_shmap", "rfx.runners.distributed_v2", "update_e_nu_shmap"),
+    # #1303 -- the slab view of the four-cell edge mean. Not a de-duplication:
+    # one definition that both runners' CPML E corrections call (the E
+    # updates reach it through the shared kernels above), so the psi
+    # coefficient and the update take one rule. These rows are what says
+    # neither runner grew its own spelling of it.
+    ("slab_e_component_materials", "rfx.runners.distributed_nu",
+     "slab_e_component_materials"),
+    ("slab_e_component_materials", "rfx.runners.distributed_v2",
+     "slab_e_component_materials"),
+    # #1303 -- the forward lane's four-cell means, built once before its
+    # loop by the same helper (the uniform runner takes them in its loop body).
+    ("slab_e_materials_shmap", "rfx.runners.distributed_nu",
+     "slab_e_materials_shmap"),
     # Retiring the pmap runner -- the names distributed_v2 imported from
     # distributed.py, moved verbatim so that module can stop defining them.
     # Single definitions, not de-duplications: these rows say each importer

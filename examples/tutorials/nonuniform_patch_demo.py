@@ -31,13 +31,18 @@ air.  This tutorial shows the practical recipe AND the trap that comes with it:
      faces with the cells between them shorted — and is the right one for a
      plate, an iris or a post.
 
-  Rule 4 — A PROPERLY RESOLVED PATCH IS MULTI-MODE.  Once the substrate is
-     truly 6 cells, harminv shows the patch's real modes: TM01 on the 38 mm
-     width and TM10 on the 29.5 mm length at comparable amplitude, plus a
-     higher mode.  Picking "the mode closest to the textbook estimate" is
-     mode-AMBIGUOUS; identifying the RADIATING mode needs the far field —
-     see ``examples/tutorials/patch_antenna_demo.py`` for that workflow.
-     This script prints the full mode list and gates on no single frequency.
+  Rule 4 — WHICH MODES YOU SEE DEPENDS ON WHERE THE FEED IS.  The probe
+     feed sits on the patch's y centre line, 8 mm in from one radiating edge.
+     The modes that vary across the 38 mm width (TM01, TM11) have a null on
+     that line and are not excited, so the list shows TM10 on the 29.5 mm
+     length (the design mode) and TM02.  Before #1383 the feed snapped 0.5 mm
+     off the centre line and TM01/TM11 appeared: excited by the snapping, not
+     by the drawn design.  A one-probe mode list says what the feed excites,
+     not which mode radiates; identifying the RADIATING mode needs the far
+     field — see ``examples/tutorials/patch_antenna_demo.py``.  This script
+     prints the full mode list and gates on no single frequency.
+
+Historical measurements before x/y registration (#1383):
 
 Runtime: the pre-#931 board measured 1169 s (19 min) at num_periods=120 on a
 64-core CPU run alone, settling -53.8 dB.  Under the ownership contract the
@@ -47,7 +52,7 @@ in part [5].  The run is 200 periods for that reason and measures -41.4 dB,
 in 840 s of FDTD (VESSL 369367259280, CPU lane).  Parts [1]-[3], the mesh
 lesson itself, are grid-only arithmetic and cost nothing to run.
 
-The modes this now resolves, and why they are the patch's and not the mesh's
+Modes recorded on the pre-registration uniform x/y mesh
 (VESSL 369367259280):
 
     1.9037 GHz  Q =  99.9   TM01 on the 38 mm width
@@ -55,7 +60,7 @@ The modes this now resolves, and why they are the patch's and not the mesh's
     3.1847 GHz  Q =  97.9   TM11
     3.7588 GHz  Q = 116.7   TM02
 
-TM10 sits 0.9 % under the Balanis estimate 2.4235 GHz.  The check that the
+The recorded TM10 is 2.4446 GHz; the Balanis estimate is 2.4235 GHz.  The check that the
 list is a patch and not four numbers: TM11 predicted from the measured pair as
 sqrt(TM01^2 + TM10^2) is 3.100 GHz against 3.1847 measured, and TM02 predicted
 as 2 x TM01 is 3.807 GHz against 3.7588 — both inside the coarse-mode spread,
@@ -63,6 +68,30 @@ so the ladder closes on itself.  The pre-contract board showed only three
 modes (2.1393 / 2.7266 / 3.5067 GHz, VESSL 369367259021); every one of them
 was HIGH, because a vacuum cell on each face of the cavity put air in series
 with the laminate and lowered eps_eff.
+
+Measurements after x/y registration (#1383), 200 periods, one CPU node
+(VESSL base-pod on remilab-r02, JAX 0.6.2), all harminv modes printed:
+
+    this script (12 mm margin, x/y registered; VESSL 369367266090):
+        2.3642 GHz  Q =  44.4   TM10 on the 29.5 mm length — the design mode
+        3.7062 GHz  Q = 115.1   TM02 on the 38 mm width
+        settling -42.5 dB, 1969.5 s of FDTD
+    the pre-registration script re-run on the same node (10 mm margin,
+    uniform x/y; VESSL 369367266088):
+        1.8909 GHz  Q = 109.4
+        2.4276 GHz  Q =  44.5
+        3.1629 GHz  Q =  86.6
+        3.7380 GHz  Q = 114.4
+        settling -41.7 dB, 1542.0 s of FDTD
+    the pre-registration script with only the margin widened to 12 mm
+    (VESSL 369367266089) moves every mode by <= 0.01 %: the margin and the
+    absorber are not what moved the modes.
+
+TM10 fell 2.6 % (2.4276 -> 2.3642 GHz) because the patch is now solved at its
+drawn 29.5 mm instead of 28.7 mm; with the fringing extension of 0.69 mm per
+edge the ratio (28.7 + 1.38) / (29.5 + 1.38) predicts -2.59 % (derived).
+TM02 fell 0.85 % with the width going from 37.7 to 38 mm.  TM01 and TM11 left
+the list because the feed now sits on the y centre line (Rule 4).
 
 Run:
   python examples/tutorials/nonuniform_patch_demo.py
@@ -87,6 +116,7 @@ from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
 from rfx.sources.sources import GaussianPulse
 from rfx.auto_config import smooth_grading
 from rfx.harminv import harminv
+from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 
 C0 = 2.998e8
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
@@ -118,8 +148,8 @@ n_buf  = 8                      # uniform-fine buffer cells on EACH side of the
 n_below = int(math.ceil(air_below / dx))
 n_above = int(math.ceil(air_above / dx))
 
-dom_x = gx + 2 * 10e-3
-dom_y = gy + 2 * 10e-3
+dom_x = gx + 2 * 12e-3
+dom_y = gy + 2 * 12e-3
 
 gx_lo = (dom_x - gx) / 2;  gx_hi = gx_lo + gx
 gy_lo = (dom_y - gy) / 2;  gy_hi = gy_lo + gy
@@ -219,12 +249,31 @@ def build_simulation(dz_profile=None) -> Simulation:
     z_gnd, z_patch = substrate_faces(dz_profile)
     src_z = z_sub_lo + dz_sub * 2.5
     probe_z = src_z
+    probe_x, probe_y = dom_x / 2 + 5e-3, dom_y / 2 + 5e-3
+    ground = Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd))
+    substrate = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi))
+    patch = Box((patch_x_lo, patch_y_lo, z_patch),
+                (patch_x_hi, patch_y_hi, z_patch))
+
+    # Register x/y to the solved sheet edges (#1383), as in the patch tutorial.
+    # A free edge is solved 0.35 of the outside cell beyond its last PEC node.
+    # Keep the z profile and its layer-registration lesson unchanged.
+    # Nodes pinned at n_cpml*dx from each x/y face keep the 8 interior cells
+    # beside the absorber uniform (the absorber is padded from the outermost cell).
+    profiles = edge_aware_profiles(
+        (dom_x, dom_y, float(np.sum(dz_profile))), dx,
+        sheets=[ground, patch], solids=[substrate],
+        faces={"x": [feed_x, probe_x, n_cpml * dx, dom_x - n_cpml * dx],
+               "y": [feed_y, probe_y, n_cpml * dx, dom_y - n_cpml * dx]},
+        axes="xy",
+    )
 
     sim = Simulation(
         freq_max=4e9,
         domain=(dom_x, dom_y, 0),
         dx=dx,
         dz_profile=dz_profile,
+        **profiles,
         boundary="cpml",
         cpml_layers=n_cpml,
     )
@@ -235,11 +284,9 @@ def build_simulation(dz_profile=None) -> Simulation:
     # is unread — expected, and the reason foil is declared this way instead
     # of as a Box: a Box is a VOLUME and would put a shorted cell of metal
     # into a 1.5 mm board with a wall on each of its faces.
-    sim.add_thin_conductor(Box((gx_lo, gy_lo, z_gnd), (gx_hi, gy_hi, z_gnd)))
-    sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)),
-            material="fr4")
-    sim.add_thin_conductor(Box((patch_x_lo, patch_y_lo, z_patch),
-                               (patch_x_hi, patch_y_hi, z_patch)))
+    sim.add_thin_conductor(ground)
+    sim.add(substrate, material="fr4")
+    sim.add_thin_conductor(patch)
     sim.add_source(
         position=(feed_x, feed_y, src_z),
         component="ez",
@@ -247,10 +294,69 @@ def build_simulation(dz_profile=None) -> Simulation:
         amplitude_kind="current",
     )
     sim.add_probe(
-        position=(dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, probe_z),
+        position=(probe_x, probe_y, probe_z),
         component="ez",
     )
+    report_realized_in_plane(sim, z_gnd, z_patch, (feed_x, feed_y, src_z))
     return sim
+
+
+def report_realized_in_plane(sim, z_gnd, z_patch, feed) -> None:
+    """Assert solved sheet bounds and feed placement from the realized E edges.
+
+    Substrate faces share the ground's sheet edges, so the sheet registration
+    takes priority there: the substrate cell bounds are checked within dx.
+    Build only, no solve; the separate z-plane check below is unchanged.
+    """
+    from rfx.nonuniform import position_to_index
+
+    grid = sim._build_nonuniform_grid()
+    sheets: list = []
+    materials, _debye, _lorentz, pec_cells = sim._assemble_materials_nu(
+        grid, pec_sheets=sheets)
+    ex, ey, _ez = (np.asarray(m) for m in realized_pec_edge_masks(
+        pec_cells, sheets=sheets, periodic=sim._periodic_flags()))
+    coords = coords_from_nonuniform_grid(grid)
+    x, y, z = (np.asarray(n, dtype=float) for n in (coords.x, coords.y, coords.z))
+
+    def solved(nodes, a0, a1):
+        return (nodes[a0] - EDGE_OFFSET * (nodes[a0] - nodes[a0 - 1]),
+                nodes[a1] + EDGE_OFFSET * (nodes[a1 + 1] - nodes[a1]))
+
+    nodes_span, solved_span = {}, {}
+    for name, height in (("ground", z_gnd), ("patch", z_patch)):
+        k = int(np.argmin(np.abs(z - height)))
+        i = np.flatnonzero(ex[:, :, k].any(axis=1))
+        j = np.flatnonzero(ey[:, :, k].any(axis=0))
+        nodes_span[name] = (x[i[0]], x[i[-1] + 1], y[j[0]], y[j[-1] + 1])
+        solved_span[name] = solved(x, i[0], i[-1] + 1) + solved(y, j[0], j[-1] + 1)
+    cells = np.argwhere(np.asarray(materials.eps_r) > 1.0)
+    lo, hi = cells.min(axis=0), cells.max(axis=0)
+    sub_span = (x[lo[0]], x[hi[0] + 1], y[lo[1]], y[hi[1] + 1])
+    i_f, j_f, _k = position_to_index(grid, feed)
+    checks = {
+        "patch solved": ((patch_x_lo, patch_x_hi, patch_y_lo, patch_y_hi),
+                         solved_span["patch"], 1e-6 * dx),
+        "ground solved": ((gx_lo, gx_hi, gy_lo, gy_hi),
+                          solved_span["ground"], 1e-6 * dx),
+        "feed Ez edge": ((feed_x, feed_y), (x[i_f], y[j_f]), 1e-6 * dx),
+        "substrate cells": ((gx_lo, gx_hi, gy_lo, gy_hi), sub_span, dx),
+    }
+
+    def mm(values):
+        return "(" + ", ".join(f"{float(v) * 1e3:.2f}" for v in values) + ")"
+
+    print(
+        "  realized in-plane (x lo, x hi, y lo, y hi) mm: "
+        f"patch nodes {mm(nodes_span['patch'])}, ground nodes {mm(nodes_span['ground'])} | "
+        + " | ".join(f"{name} {mm(got)}"
+                     for name, (_want, got, _tol) in checks.items()))
+    off = [f"{name}: drawn {mm(want)}, realized {mm(got)} mm"
+           for name, (want, got, tol) in checks.items()
+           if not np.allclose(want, got, rtol=0.0, atol=tol)]
+    if off:
+        raise RuntimeError(
+            "the board is not solved where it is drawn in-plane — " + "; ".join(off))
 
 
 def report_realized_planes(sim, dz_profile) -> list[int]:
@@ -345,8 +451,10 @@ def main() -> None:
     # =============================================================================
     # PART 3 — mesh economics (Rule 2): what the graded mesh buys.
     # =============================================================================
-    nx = int(math.ceil(dom_x / dx))
-    ny = int(math.ceil(dom_y / dx))
+    sim = build_simulation(dz_profile)
+    # Both sides of this z-resolution comparison use the same registered x/y.
+    nx = len(sim._dx_profile)
+    ny = len(sim._dy_profile)
     nz_nu = len(dz_profile)
     dom_z = float(edges[-1])
     nz_uniform_equiv = int(math.ceil(dom_z / dz_sub))
@@ -364,8 +472,6 @@ def main() -> None:
     # conductor is visible to it.  It is a statement of where the metal is, not a
     # finding about this geometry.
     # =============================================================================
-    sim = build_simulation(dz_profile)
-
     # --- Build-time realization check (no solve): declared planes == realized ---
     report_realized_planes(sim, dz_profile)
 
@@ -375,10 +481,14 @@ def main() -> None:
     # 120 periods settled the PRE-#931 board (-53.8 dB, 2026-09-05). It does not
     # settle this one: with the vacuum cells gone from the cavity the modes are
     # higher-Q, and the #931 re-solve (VESSL 369367259177) measured -30.9 dB at
-    # 120 — UNDER-SETTLED by the script's own witness. The binding mode is TM01
-    # on the 38 mm width (1.9037 GHz, Q = 99.9), the slowest decayer in the set.
+    # 120 — UNDER-SETTLED by the script's own witness. On that board the
+    # binding mode was TM01 on the 38 mm width (1.9037 GHz, Q = 99.9).
     #
-    # 200 periods measures -41.4 dB (VESSL 369367259280). That clears the -40 dB
+    # After x/y registration the feed sits on the y centre line and TM01 is not
+    # excited; the slowest decayer left is TM02 (3.7062 GHz, Q = 115.1), and
+    # 200 periods measured -42.5 dB (VESSL 369367266090).
+    # Before x/y registration, 200 periods measured -41.4 dB (VESSL
+    # 369367259280). That cleared the -40 dB
     # bar, but by 1.4 dB, which is less margin than the number below was chosen
     # for — worth knowing before anyone shortens this run or quotes a Q off it.
     # The two estimates that picked 200 bracketed badly: TM01's free decay says
@@ -390,7 +500,7 @@ def main() -> None:
     #
     # Raising the run length is the response to an unsettled run; lowering the bar
     # would not be.
-    n_periods = 200   # -41.4 dB measured; see the docstring runtime note
+    n_periods = 200   # retained from the pre-registration runs documented above
     print(f"\nRunning NU simulation (num_periods={n_periods})...")
     t0 = time.time()
     result = sim.run(num_periods=n_periods)
@@ -422,14 +532,13 @@ def main() -> None:
     for m in modes:
         print(f"  f = {m.freq/1e9:.4f} GHz   Q = {m.Q:5.1f}   amp = {m.amplitude:.2e}")
     print("""
-  Reading this honestly (Rule 4): with the substrate truly resolved to 6 cells
-  the patch shows its REAL modes — the lower one lives on the wider W=38 mm
-  dimension (TM01), the middle on L=29.5 mm (TM10, the radiating design mode),
-  plus a higher-order mode.  Their amplitudes at a single probe are comparable,
-  so "strongest" or "closest to the textbook number" would be an arbitrary,
-  geometry-sensitive pick.  Identifying the RADIATING mode takes a far-field
-  criterion (broadside beam + radiated power) — that workflow lives in
-  examples/tutorials/patch_antenna_demo.py.""")
+  Reading this honestly (Rule 4): the feed sits on the patch's y centre line,
+  where the modes that vary across the 38 mm width (TM01, TM11) have a null, so
+  the list shows TM10 on L=29.5 mm (the radiating design mode) and TM02.  Which
+  modes a single probe sees depends on where the feed is, so "strongest" or
+  "closest to the textbook number" would be an arbitrary pick.  Identifying the
+  RADIATING mode takes a far-field criterion (broadside beam + radiated power)
+  — that workflow lives in examples/tutorials/patch_antenna_demo.py.""")
 
     print(f"  Pass criterion of THIS tutorial: the substrate rasterized to "
           f"{n_sub} fine cells (asserted in [2]) — the mesh lesson, not a "

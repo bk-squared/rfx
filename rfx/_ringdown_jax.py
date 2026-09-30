@@ -181,6 +181,7 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     both factors built on the host in float64 and cast to the working dtype.
     """
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     rdt, cdt = working_dtypes()
     n, C = int(y.shape[0]), int(y.shape[1])
     freqs = np.asarray(freqs, dtype=np.float64)
@@ -191,8 +192,9 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     z_off = np.exp(1j * np.outer(np.arange(nb, dtype=np.float64) * B, w))      # (nb, nf)
     yp = jnp.zeros((nb * B, C), dtype=rdt).at[:n].set(y.astype(rdt))
     yb = yp.reshape(nb, B, C).astype(cdt)
-    inner = jnp.einsum("fm,bmc->bfc", jnp.asarray(k_blk, dtype=cdt), yb)
-    return float(dt) * jnp.einsum("bf,bfc->fc", jnp.asarray(z_off, dtype=cdt), inner)
+    inner = jnp.einsum("fm,bmc->bfc", jnp.asarray(k_blk, dtype=cdt), yb, precision=HIGHEST)
+    return float(dt) * jnp.einsum("bf,bfc->fc", jnp.asarray(z_off, dtype=cdt), inner,
+                                      precision=HIGHEST)
 
 
 def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
@@ -206,6 +208,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     _rdt, cdt = working_dtypes()
     freqs = np.asarray(freqs, dtype=np.float64)
     dt = float(dt)
@@ -218,7 +221,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
         dsdt = (s - jax.lax.stop_gradient(s)) * dt
         one_minus_lz = -jnp.expm1(tail_arg + dsdt[None, :])
     amp = jnp.exp(sdt * float(int(n_last) + 1 - int(n_ref)))[:, None] * c     # (K, C)
-    return dt * ((zN1[:, None] / one_minus_lz) @ amp)
+    return dt * jnp.matmul(zN1[:, None] / one_minus_lz, amp, precision=HIGHEST)
 
 
 # ---------------------------------------------------------------------------
@@ -248,18 +251,23 @@ def _qr_masked(A, mask):
     norms = jax.lax.stop_gradient(jnp.where(mask > 0, norms, 1.0))
     aug = jnp.diag((1.0 - mask).astype(A.dtype))
     A_aug = jnp.concatenate([A / norms.astype(A.dtype)[None, :], aug], axis=0)
-    Q, R = jnp.linalg.qr(A_aug, mode="reduced")
+    # The derivative rule of QR issues its own matrix products, which a
+    # precision= argument cannot reach; the context sets them to HIGHEST too.
+    with jax.default_matmul_precision("highest"):
+        Q, R = jnp.linalg.qr(A_aug, mode="reduced")
     return Q, R, norms
 
 
 def _solve_qr(Q, R, norms, mask, b):
     """Least-squares solution for the factorised system against ``[b; 0]``, masked."""
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     from jax.scipy.linalg import solve_triangular
     K = R.shape[0]
     b = b.astype(Q.dtype)
     b_aug = jnp.concatenate([b, jnp.zeros((K, b.shape[1]), dtype=b.dtype)], axis=0)
-    x = solve_triangular(R, jnp.conj(Q).T @ b_aug, lower=False)
+    x = solve_triangular(R, jnp.matmul(jnp.conj(Q).T, b_aug, precision=HIGHEST),
+                         lower=False)
     return (x / norms.astype(x.dtype)[:, None]) * jnp.real(mask).astype(x.dtype)[:, None]
 
 
@@ -285,6 +293,7 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     if mutation not in MUTATIONS:
@@ -314,7 +323,9 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
         w = jax.lax.stop_gradient(1.0 / rms).astype(cdt)                       # (C,)
         D = t.astype(cdt)[:, None, None] * B0m[:, None, :] * (c0.T * w[:, None])[None, :, :]
         QB = Q0[:M] * mask_c[None, :]
-        PD = D - jnp.einsum("mk,kcj->mcj", QB, jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D))
+        PD = D - jnp.einsum("mk,kcj->mcj", QB,
+                            jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D, precision=HIGHEST),
+                            precision=HIGHEST)
         A = jax.lax.stop_gradient(PD.reshape(M * C, K))
         dyw = ((Yw - jax.lax.stop_gradient(Yw)) * w[None, :]).reshape(M * C, 1)
         ds = lstsq_masked(A, dyw, mask_c)[:, 0]

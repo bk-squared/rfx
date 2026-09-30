@@ -155,7 +155,6 @@ def test_magnetic_cavity_separation(entry, dx):
     compare_quantity(separation, .024, .0002, "derived wall separation / m")
 
 
-@pytest.mark.xfail(strict=True, raises=BoundaryDeparture, reason="e; periodic ring; fixed in B2")
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("dx", [.001, .0005])
 def test_periodic_ring(entry, dx):

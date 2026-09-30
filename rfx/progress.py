@@ -271,6 +271,8 @@ def scan_with_progress(
     stream: object | None = None,
     trace_probes: tuple = (),
     chunk_scan=None,
+    stop_fn=None,
+    chunk: int | None = None,
 ):
     """``jax.lax.scan(body, carry_init, xs)`` split into host-side chunks.
 
@@ -298,6 +300,15 @@ def scan_with_progress(
     the same ``(carry, outputs)`` pair, with every output leaf stacked on a
     leading axis that concatenates across chunks.
 
+    ``stop_fn``, when given (issue #1254, ``run(..., until_identified=True)``),
+    is called after every chunk as ``stop_fn(done, carry, chunk_outputs)``,
+    ``done`` being the steps run so far and ``carry`` the state after them;
+    a true return ends the loop there, and the returned outputs hold those
+    ``done`` steps. The chunks are then ``chunk`` steps long, and
+    ``report_every`` may be ``None`` (no progress lines) or a cadence,
+    reported at the first chunk boundary at or past each interval and at the
+    stop. With ``stop_fn=None`` the loop is the one above, unchanged.
+
     Costs, so they are not buried:
 
     * Each report inserts a device synchronisation. Without one the host
@@ -315,7 +326,17 @@ def scan_with_progress(
     """
     import jax
 
-    every = validate_report_every(report_every, n_steps=n_steps)
+    if stop_fn is None:
+        every = validate_report_every(report_every, n_steps=n_steps)
+        step = every
+    else:
+        every = (None if report_every is None
+                 else validate_report_every(report_every, n_steps=n_steps))
+        if isinstance(chunk, bool) or not isinstance(chunk, int) or chunk < 1:
+            raise ValueError(
+                f"scan_with_progress(stop_fn=...) needs chunk= a positive "
+                f"number of steps, got {chunk!r}")
+        step = int(chunk)
     check_not_traced(carry_init, xs, *trace_probes)
 
     if chunk_scan is None:
@@ -342,12 +363,20 @@ def scan_with_progress(
             f"(index, shape): {bad}"
         )
 
-    reporter = ProgressReporter(n_steps, label=label, stream=stream)
+    reporter = (None if every is None else
+                ProgressReporter(n_steps, label=label, stream=stream,
+                                 total_is_cap=stop_fn is not None))
     carry = carry_init
     chunk_outputs = []
     done = 0
     while done < n_steps:
-        this = min(every, n_steps - done)
+        this = min(step, n_steps - done)
+        if stop_fn is not None and n_steps - done - this == 1:
+            # never a one-step last chunk: XLA inlines a loop that runs once,
+            # and the inlined step can move the last bit of a field against
+            # the single scan (rfx-known-issues, "A one-step scan compiles
+            # differently"); the stopped record must be the single scan's.
+            this += 1
         lo, hi = done, done + this
         xs_chunk = jax.tree_util.tree_map(lambda a: a[lo:hi], xs)
         carry, ys = chunk_scan(carry, xs_chunk, lo)
@@ -357,6 +386,14 @@ def scan_with_progress(
         carry = jax.block_until_ready(carry)
         chunk_outputs.append(ys)
         done = hi
-        reporter.report(done)
+        if reporter is not None and (
+                stop_fn is None or done - reporter.last_reported >= every
+                or done >= n_steps):
+            reporter.report(done)
+        if stop_fn is not None and stop_fn(done, carry, chunk_outputs):
+            break
 
+    if (stop_fn is not None and reporter is not None
+            and reporter.last_reported != done):
+        reporter.report(done)
     return carry, concat_chunks(chunk_outputs)

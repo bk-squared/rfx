@@ -347,8 +347,9 @@ def _reflection_1d(*, extend_half_cell, dx, n_steps, lz, f0):
                                            z="cpml"),
                      cpml_layers=10)
     sim.add_material("diel", eps_r=EPS_SLAB)
-    sim.add(Box((-1.0, -1.0, 0.0),
-                (1.0, 1.0, lz + (0.5 * dx if extend_half_cell else 0.0))),
+    # Fill the declared transverse periods without an out-of-period span.
+    sim.add(Box((0.0, 0.0, 0.0),
+                (dx, dx, lz + (0.5 * dx if extend_half_cell else 0.0))),
             material="diel")
     sim.add_source((0.0, 0.0, 0.25 * lz), "ex",
                    waveform=GaussianPulse(f0=f0, bandwidth=0.8),

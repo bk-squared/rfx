@@ -233,6 +233,8 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_port_conductor_continues", ("warn",)),
     # #1295 / #1342: a point feature and a conductor at one half node.
     ("_validate_cfg_half_node_split", ("warn",)),
+    # #1272: appended absorption advisory, independent of conductor proximity.
+    ("_validate_cfg_thin_absorber", ("warn", "dx")),
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.

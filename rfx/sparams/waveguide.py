@@ -82,6 +82,10 @@ def compute_waveguide_s_matrix(
 ) -> WaveguideSMatrixResult:
     """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
+    Requires ``solver="yee"``. On a uniform mesh, ``precision`` selects
+    field storage for every device and reference run, as on ``run()``.
+    A non-uniform mesh supports only ``precision="float32"``.
+
     Parameters
     ----------
     num_periods : float
@@ -125,11 +129,13 @@ def compute_waveguide_s_matrix(
         in S11 and the round-trip dispersion error in the
         ``normalize=True`` diagonal formula.  Costs 2 × N_ports
         FDTD runs (same as ``normalize=True``).  On the
-        differentiable chain like ``False``.  The result dtype
-        follows the ``freqs`` precision — complex64 by default,
-        complex128 under ``JAX_ENABLE_X64`` — the same rule as
-        ``False`` (a hard complex64 cast on this lane was removed
-        in v1.8).
+        differentiable chain like ``False``. On the uniform lane the
+        result promotes field, frequency, and JAX default float precision,
+        like ``False``: complex64 with x64 off and at least complex128 with
+        x64 on, including explicit float32 frequencies and float32/mixed fields.
+        Modal records retain at least the frequency and default float precision.
+        The non-uniform lane's result follows the ``freqs`` precision:
+        complex64 by default, complex128 under ``JAX_ENABLE_X64``.
 
         **Reference impedance.**  On ``False`` and ``True`` each
         S_ij is the modal voltage-wave ratio ``b_i / a_j``, where
@@ -236,6 +242,12 @@ def compute_waveguide_s_matrix(
         and the companion evidence gate test
         ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
     """
+    if self._solver != "yee":
+        raise NotImplementedError(
+            "compute_waveguide_s_matrix() does not support "
+            f"solver={self._solver!r} (#1300). Use solver='yee'."
+        )
+
     if not normalize:
         import warnings
         warnings.warn(
@@ -450,6 +462,16 @@ def compute_waveguide_s_matrix(
             passivity_tol=2.0 if normalize is False else 0.10,
         )
 
+    # This extractor assembles volume materials directly, without the
+    # run()/forward() RLC folding or element updates (#1263).
+    for model in (self, *(port_reference_sims or ())):
+        if model._lumped_rlc:
+            raise NotImplementedError(
+                "compute_waveguide_s_matrix() on a uniform mesh does not "
+                "implement lumped RLC elements in the device or reference "
+                "simulations (#1263). Use run() or forward() for fields "
+                "with these elements, or remove them from the S-matrix model.")
+
     # The uniform waveguide scan has no subgrid and never read
     # add_refinement (#1240); the graded branch above is refused by its runner.
     self._require_no_refinement_without_a_subgrid(
@@ -602,7 +624,9 @@ def compute_waveguide_s_matrix(
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
-    _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)
+    _, debye, lorentz = self._init_dispersion(
+        materials, grid.dt, debye_spec, lorentz_spec,
+        periodic=self._periodic_flags())
 
     # Build configs — may be a single config or a list of configs per port
     has_multimode = any(entry.n_modes > 1 for entry in entries)
@@ -863,6 +887,7 @@ def compute_waveguide_s_matrix(
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 pec_edge_masks=_wg_pec_edge_masks,
+                field_dtype=self._resolve_field_dtype(),
             )
         elif normalize:
             # The two-run normalized extractor divides each receiving
@@ -896,6 +921,7 @@ def compute_waveguide_s_matrix(
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 pec_edge_masks=_wg_pec_edge_masks,
+                field_dtype=self._resolve_field_dtype(),
             )
         # Report the ABSOLUTE de-embed target plane (matches the single-mode + coax paths and
         # the WaveguideSMatrixResult schema), NOT the relative shift ref_shifts_mm — that is the
@@ -1028,6 +1054,7 @@ def compute_waveguide_s_matrix(
             checkpoint_segments=checkpoint_segments,
             return_settling=True,
             sheet_impedance=_wg_sheet_ctx,
+            field_dtype=self._resolve_field_dtype(),
         )
         s_params, settling_db = s_params
     elif normalize:
@@ -1056,6 +1083,7 @@ def compute_waveguide_s_matrix(
             checkpoint_segments=checkpoint_segments,
             return_settling=True,
             sheet_impedance=_wg_sheet_ctx,
+            field_dtype=self._resolve_field_dtype(),
         )
         s_params, settling_db = s_params
     else:
@@ -1077,6 +1105,7 @@ def compute_waveguide_s_matrix(
             checkpoint_segments=checkpoint_segments,
             return_settling=True,
             sheet_impedance=_wg_sheet_ctx,
+            field_dtype=self._resolve_field_dtype(),
         )
     reference_planes = np.array(
         [

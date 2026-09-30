@@ -85,6 +85,21 @@ def is_tfsf_methodB(cfg) -> bool:
     return isinstance(cfg, MethodBConfig)
 
 
+def tfsf_boundary_flags(cfg) -> tuple[tuple[bool, bool, bool], str]:
+    """Periodic flags and CPML axes for an initialized uniform TF/SF source.
+
+    A closed box absorbs on all axes. Open oblique Method B absorbs on x/y
+    and wraps z; the normal and Bloch slabs absorb on x and wrap y/z.
+    The initialized config matters: zero-angle Method B uses the normal slab.
+    This override is not used by the non-uniform runner.
+    """
+    if getattr(cfg, "closed_box", False):
+        return (False, False, False), "xyz"
+    if is_tfsf_methodB(cfg):
+        return (False, False, True), "xy"
+    return (False, True, True), "x"
+
+
 def tfsf_injection_planes(cfg) -> "dict[str, tuple[int, int]]":
     """The node planes that bound the total-field region, per injected axis.
 

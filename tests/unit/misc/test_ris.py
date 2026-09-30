@@ -140,6 +140,7 @@ def test_ris_build_sim():
         freq_range=(4e9, 8e9),
         n_freqs=5,
         cpml_layers=6,
+        dx=0.5e-3,  # capacitance loading requires an explicit uniform mesh
     )
 
     h = 1.5e-3
@@ -181,6 +182,7 @@ def test_ris_sweep_capacitance():
         n_freqs=5,
         n_steps=300,
         cpml_layers=6,
+        dx=0.5e-3,  # keep the loading cell identical to the solve's cell
     )
 
     h = 1.5e-3

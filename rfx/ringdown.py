@@ -69,6 +69,20 @@ S-matrix with the lane's own assembly (the graded lane's
 ``rfx.probes.probes.driven_port_reflection``). When W0, W1 or the pole
 identification fails, the run is returned as it is, uncompleted, with the
 failed check in ``Result.ringdown.report`` and a warning.
+
+With ``until_identified=True`` (:class:`RingdownStop`)
+-------------------------------------------------------
+``n_steps`` is the longest record. The lane steps in chunks of
+:data:`STOP_CHUNK`; at records growing :data:`STOP_GROWTH` apart the port
+channels of the record so far are rebuilt and completed as above, and the run
+ends at the first record ``T`` where every source is off over ``[T/4, T]``, WE
+is within ``witness_tol`` at :data:`STOP_CONSECUTIVE` checks in a row, and
+``T`` is at least :data:`STOP_FLOOR_DECAY_TIMES` decay times of the slowest
+pole that can move the completed S by the bar -- a floor no in-record witness
+can supply, since a pair no window separates is completed as one mode while
+every window agrees -- and the completion reads passive with no growing pole.
+The result is what ``run(n_steps=T, ringdown=...)`` returns, with the stop
+report in ``Result.ringdown.stop``.
 """
 
 from __future__ import annotations
@@ -76,7 +90,7 @@ from __future__ import annotations
 import inspect
 import math
 import warnings
-from dataclasses import dataclass
+from dataclasses import dataclass, replace as _dc_replace
 from importlib import import_module
 from typing import NamedTuple
 
@@ -112,6 +126,8 @@ __all__ = [
     "static_pole_bound",
     "gradient_witness",
     "GRADIENT_WITNESS_BAR",
+    "RingdownStopCheck",
+    "RingdownStopReport",
 ]
 
 
@@ -256,23 +272,32 @@ class RingdownModel:
         n = np.asarray(n, dtype=np.float64)
         return np.exp(np.outer((n - self.n_ref) * self.dt, self.s)) @ self.c
 
-    def poles(self) -> tuple:
-        """Every kept pole as a :class:`RingdownPole`, largest amplitude first
-        (by frequency when no amplitude is known)."""
+    def _pole_arrays(self):
         f = self.s.imag / (2.0 * np.pi)
         alpha = -self.s.real
         lam = np.abs(self.lam)
         amp = (np.full(self.s.size, math.nan) if self.amplitude is None
                else np.asarray(self.amplitude, dtype=np.float64))
+        return f, alpha, lam, amp
+
+    @staticmethod
+    def _pole_row(k, f, alpha, lam, amp) -> RingdownPole:
+        q = (math.pi * abs(float(f[k])) / float(alpha[k])
+             if alpha[k] != 0 else math.inf)
+        return RingdownPole(float(f[k]), float(q), float(alpha[k]),
+                            float(lam[k]), float(amp[k]))
+
+    def pole(self, k: int) -> RingdownPole:
+        """Kept pole ``k`` (its index in ``s``) as a :class:`RingdownPole`."""
+        return self._pole_row(int(k), *self._pole_arrays())
+
+    def poles(self) -> tuple:
+        """Every kept pole as a :class:`RingdownPole`, largest amplitude first
+        (by frequency when no amplitude is known)."""
+        f, alpha, lam, amp = self._pole_arrays()
         order = (np.argsort(f, kind="stable") if np.all(np.isnan(amp))
                  else np.argsort(-np.nan_to_num(amp, nan=-1.0), kind="stable"))
-        rows = []
-        for k in order:
-            q = (math.pi * abs(float(f[k])) / float(alpha[k])
-                 if alpha[k] != 0 else math.inf)
-            rows.append(RingdownPole(float(f[k]), float(q), float(alpha[k]),
-                                     float(lam[k]), float(amp[k])))
-        return tuple(rows)
+        return tuple(self._pole_row(k, f, alpha, lam, amp) for k in order)
 
 
 @dataclass(frozen=True)
@@ -367,12 +392,15 @@ class RingdownResult(NamedTuple):
     ``s_params`` has the shape and dtype of ``Result.s_params`` and is
     evaluated at the same bins (``freqs`` is ``Result.freqs``; rfx accumulates
     at those bins rounded to float32, and so does the completion). It is
-    ``None`` when the report says the completion was not produced.
+    ``None`` when the report says the completion was not produced. ``stop``
+    is the :class:`RingdownStopReport` of ``run(..., until_identified=True)``
+    and ``None`` otherwise.
     """
 
     s_params: np.ndarray | None
     freqs: np.ndarray
     report: RingdownReport
+    stop: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -706,19 +734,41 @@ def early_start_witness(series, dt, freqs, n_record, window_start, *, freq_max,
     return EarlyStartWitness(value, spectra_long, model_long, n_long)
 
 
+def _zero_frequency(f_hz: float, record_s: float) -> bool:
+    """``|f| < 1 / record``: the record cannot tell this pole's frequency from DC.
+
+    The one definition the growing-pole exemption (:func:`growing_poles`) and
+    the early stop's floor (:func:`_floor_pole`) share.
+    """
+    return abs(float(f_hz)) < 1.0 / float(record_s)
+
+
+def _static_pole(p: RingdownPole, record_s: float, unit_tol: float) -> bool:
+    """A static field: ``|f| < 1 / record`` and ``|1 - |lambda|| < unit_tol``.
+
+    A field left behind in a closed box identifies as a pole the record cannot
+    tell from DC (:func:`_zero_frequency`) on the unit circle to rounding
+    (rfx #1254, the Q 533 cavity). The one definition the growing-pole
+    exemption (:func:`growing_poles`) and the early stop's floor
+    (:func:`_floor_pole`) share; a decaying low-frequency mode is not one.
+    """
+    return (_zero_frequency(p.f_hz, record_s)
+            and abs(p.abs_lambda - 1.0) < float(unit_tol))
+
+
 def growing_poles(model: RingdownModel, record_s: float, unit_tol: float):
     """Kept poles with ``|lambda| > 1`` per step, split into (growing, exempt).
 
-    Exempt: a pole within rounding of zero frequency -- ``|f| < 1 / record``
-    (the record cannot tell it from DC) and ``|lambda| - 1 < unit_tol`` per
-    step. A static field left behind in a closed box identifies as such a
-    pole (rfx #1254, the Q 533 cavity).
+    Exempt: a static field (:func:`_static_pole`) -- a pole within rounding
+    of zero frequency, ``|f| < 1 / record`` (the record cannot tell it from
+    DC) and ``|lambda| - 1 < unit_tol`` per step. A static field left behind
+    in a closed box identifies as such a pole (rfx #1254, the Q 533 cavity).
     """
     grow, exempt = [], []
     for p in model.poles():
         if not p.abs_lambda > 1.0:
             continue
-        if abs(p.f_hz) < 1.0 / float(record_s) and p.abs_lambda - 1.0 < float(unit_tol):
+        if _static_pole(p, record_s, unit_tol):
             exempt.append(p)
         else:
             grow.append(p)
@@ -1160,6 +1210,43 @@ def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
         use_lumped_rlc=False, use_ntff=False, use_waveguide_ports=False)
     r = _assemble_nu_result(setup, {"fdtd": None, "wire_sparams": accs}, None)
     return r["s_params"]
+
+
+def _s_observable(lane: str, pms, freqs32, dt):
+    """``(f_bins, to_s)``: the float64 bins and the map from completed port
+    spectra ``(nf, 2P)`` (``V_port, I`` per port) to the lane's S-matrix.
+
+    The current's half-step phase is applied here, as the run's accumulators
+    carry it. :meth:`RingdownRun._complete` and the early stop's check
+    (:class:`RingdownStop`) both judge ``WE`` through this one map.
+    """
+    from rfx.core.dft_utils import half_step_current_phase
+
+    f_bins = np.asarray(freqs32, dtype=np.float32).astype(np.float64)
+    half = np.asarray(half_step_current_phase(f_bins, dt)).astype(np.complex128)
+    nf = int(f_bins.size)
+
+    def to_s(spectra):
+        # ``spectra`` may hold several copies of the bins stacked along its
+        # first axis (``_tail_influence``); the S axis then holds them in turn.
+        reps = int(np.shape(spectra)[0]) // nf
+        h = half if reps == 1 else np.tile(half, reps)
+        fq = freqs32 if reps == 1 else np.tile(np.asarray(freqs32), reps)
+        vp = [spectra[:, 2 * p] for p in range(len(pms))]
+        ii = [_cmul(spectra[:, 2 * p + 1], h) for p in range(len(pms))]
+        return _assemble(lane, pms, vp, ii, fq, dt)
+
+    return f_bins, to_s
+
+
+def _passivity_value(S, driven) -> float:
+    """``max |S_kk|`` over the driven ports ``driven``: the passivity witness's
+    number. ``driven=None`` reads ``max |S|`` over everything (a synthetic
+    observable). The report (:meth:`RingdownRun._complete`) and the early stop
+    (:func:`_judge_record`) share it."""
+    if driven is None:
+        return float(np.max(np.abs(np.asarray(S))))
+    return max(float(np.max(np.abs(S[p, p, :]))) for p in driven)
 
 
 def _relative_at_peak(rebuilt, rfx_values) -> float:
@@ -1616,14 +1703,7 @@ class RingdownRun:
 
         # ---- the rebuilt record, float64 ------------------------------------
         Y = _rebuild_channels(self.lane, pms, e_cols, h_cols)
-        f_bins = np.asarray(freqs32, dtype=np.float32).astype(np.float64)
-        from rfx.core.dft_utils import half_step_current_phase
-        half = np.asarray(half_step_current_phase(f_bins, dt)).astype(np.complex128)
-
-        def to_s(spectra):
-            vp = [spectra[:, 2 * p] for p in range(len(pms))]
-            ii = [_cmul(spectra[:, 2 * p + 1], half) for p in range(len(pms))]
-            return _assemble(self.lane, pms, vp, ii, freqs32, dt)
+        f_bins, to_s = _s_observable(self.lane, pms, freqs32, dt)
 
         # ---- W1: the channels fed to the completion are the ones W0 checked --
         # float64 DFT of the float64 rebuild vs float64 DFT of the float32
@@ -1673,7 +1753,7 @@ class RingdownRun:
         else:
             g_max, g_f = 0.0, math.nan
         driven = [p for p, pm in enumerate(pms) if pm.excite]
-        s_diag = max(float(np.max(np.abs(S[p, p, :]))) for p in driven)
+        s_diag = _passivity_value(S, driven)
         s_plain = max(float(np.max(np.abs(S_run[p, p, :]))) for p in driven)
         p_bar = 1.0 + float(spec.passivity_tol)
         p_note = (f"plain record max |S_kk| = {s_plain:.6g}"
@@ -1724,6 +1804,655 @@ class RingdownRun:
             tail_share=tail_share, slowest_decay_over_window=slowest,
             discarded_growth_max=g_max, discarded_growth_f_hz=g_f)
         return S, extra
+
+
+# ---------------------------------------------------------------------------
+# Simulation.run(..., ringdown=..., until_identified=True) (issue #1254, PR 2)
+# ---------------------------------------------------------------------------
+
+#: The early stop's floor (PI decision 2026-09-27): no stop before the record
+#: is at least this many amplitude decay times ``tau = Q / (pi f) = 1 / alpha``
+#: of the slowest identified mode. The in-record witnesses cannot see a pair of
+#: modes that no window of the record separates: two modes 0.03 % apart
+#: recorded for 7 % of their decay time are identified as one blended pole by
+#: every window, so WE agrees with the completion while it is 8.8 % of the
+#: peak off; the same pair is resolved at 19 % (rfx #1254, R-i). E4's cavity
+#: completed within its bars at 1 / 0.5 / 0.2 decay times for loaded Q
+#: 181 / 533 / 1199. Which poles are the "identified modes" is
+#: :func:`_floor_pole`'s rule (lead's choice).
+STOP_FLOOR_DECAY_TIMES = 0.5
+#: Geometric check schedule (lead's choice): after a check at ``T`` steps the
+#: next one is at the first chunk boundary at or past ``STOP_GROWTH * T``, so
+#: the checks' identification cost stays a bounded share of the run.
+STOP_GROWTH = 1.25
+#: Chunk length of the stepping loop, in steps (lead's choice). Measured on the
+#: ring-down boxes (JAX 0.10.2, CPU): 21.7 us / 13.4 us per step in chunks of
+#: 250 against 18.0 / 11.8 in one scan (uniform / graded lane), 23.2 / 12.0 in
+#: chunks of 1000; the probe series and S bit-identical to the single scan at
+#: every chunk length.
+STOP_CHUNK = 250
+#: Checks in a row at which the sources are off over [T/4, T] and WE is within
+#: its bar, the check that stops included (lead's choice).
+STOP_CONSECUTIVE = 2
+#: Which poles set the floor (lead's decision 2026-09-27), for the report.
+FLOOR_POLE_RULE = (
+    "the slowest pole whose own unrecorded tail, at the requested bins and "
+    "through the S observable, moves the completed S by at least witness_tol "
+    "of its peak; a static field (|f| < 1/record and |1 - |lambda|| < "
+    "unit_tol) is left out")
+
+
+class RingdownStopCheck(NamedTuple):
+    """One check of ``run(..., until_identified=True)`` at a record of ``n_record`` steps.
+
+    ``sources_off`` is condition (a), every source at or below
+    ``source_off_tol`` of its peak over ``[window_start/2 T, T]``
+    (``source_ratio_long`` the largest ratio); ``we`` / ``we_ok`` condition
+    (b), the error witness WE against ``witness_tol`` (NaN when it was not
+    formed); ``consecutive`` the checks in a row, this one included, that held
+    (a) and (b) (condition (c) is ``consecutive >= STOP_CONSECUTIVE``).
+
+    Condition (d), the floor: ``tau_own_s`` / ``own_pole`` are this check's
+    slowest pole that counts (:func:`_floor_pole`); ``tau_slowest_s`` /
+    ``floor_pole`` the decay time the floor uses -- the largest over the checks
+    the consecutive rule rests on, read at the check ``floor_from`` --,
+    ``record_over_tau`` the record in units of it and ``floor_ok`` the
+    condition. ``zero_frequency_poles`` are the static-field poles the floor
+    left out and ``n_below_bar`` the ringing poles whose tail cannot move the
+    completed S by the bar.
+
+    ``passivity`` / ``passive_ok`` and ``n_growing`` / ``growing_ok`` are the
+    report's passivity and growing-pole witnesses on this record's completion
+    (a stop needs both). ``seconds`` is the wall time of the check.
+    """
+
+    n_record: int
+    record_s: float
+    sources_off: bool
+    source_ratio_long: float
+    we: float
+    we_ok: bool
+    consecutive: int
+    tau_slowest_s: float
+    record_over_tau: float
+    floor_ok: bool
+    stop: bool
+    seconds: float
+    note: str = ""
+    floor_pole: object = None
+    zero_frequency_poles: tuple = ()
+    tau_own_s: float = math.nan
+    own_pole: object = None
+    floor_from: int = 0
+    n_below_bar: int = 0
+    passivity: float = math.nan
+    passive_ok: bool = False
+    n_growing: int = 0
+    growing_ok: bool = False
+
+
+def _stop_decision(consecutive_before: int, sources_off: bool, we_ok: bool,
+                   floor_ok: bool, *, passive_ok: bool = True,
+                   growing_ok: bool = True) -> tuple:
+    """``(consecutive, stop)`` of a check, given the run of checks before it.
+
+    ``consecutive`` counts the checks in a row, this one included, with the
+    sources off and WE within its bar; the run stops when that count reaches
+    :data:`STOP_CONSECUTIVE`, the record is past the floor, and this check's
+    completion reads passive with no kept growing pole.
+    """
+    run = int(consecutive_before) + 1 if (sources_off and we_ok) else 0
+    return run, bool(run >= STOP_CONSECUTIVE and floor_ok and passive_ok
+                     and growing_ok)
+
+
+def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
+    """Each kept pole's term of :func:`tail_dft`: ``(nf, K, C)``, K in ``model.s`` order."""
+    freqs = np.asarray(freqs, dtype=np.float64)
+    s = np.asarray(model.s, dtype=np.complex128)
+    c = np.asarray(model.c, dtype=np.complex128)
+    dt = float(model.dt)
+    if s.size == 0:
+        return np.zeros((freqs.size, 0, c.shape[1]), dtype=np.complex128)
+    n1 = int(n_last) + 1
+    wdt = 2.0 * np.pi * freqs * dt
+    amp = _cmul(np.exp(s * dt * (n1 - int(model.n_ref)))[:, None], c)   # (K, C)
+    zn1 = np.exp(-1j * wdt * n1)
+    one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])          # (nf, K)
+    return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
+
+
+def _on_nearest_bin(s, f_bins, record_s: float) -> np.ndarray:
+    """Each pole moved onto the nearest requested bin within ``1 / record_s``.
+
+    A record of length ``T`` places a pole's frequency only to about ``1/T``:
+    an unresolved pair is identified as one pole between its members, which
+    can sit far from every bin while the members sit on bins. For the floor a
+    pole is weighed as if it sat on the nearest bin it could be on; its decay
+    and residue are kept. A pole with no bin within ``1/T`` is left in place.
+    """
+    s = np.asarray(s, dtype=np.complex128)
+    fb = np.asarray(f_bins, dtype=np.float64)
+    if s.size == 0 or fb.size == 0 or not record_s > 0.0:
+        return s
+    f = s.imag / (2.0 * np.pi)
+    j = np.argmin(np.abs(fb[None, :] - f[:, None]), axis=1)
+    # a pole the record cannot tell from DC stays where it is: moved onto a
+    # low bin, a slowly relaxing static field would weigh like a mode there
+    near = ((np.abs(fb[j] - f) <= 1.0 / float(record_s))
+            & (np.abs(f) >= 1.0 / float(record_s)))
+    return np.where(near, s.real + 1j * 2.0 * np.pi * fb[j], s)
+
+
+def _tail_influence(model: RingdownModel, n_record: int, f_bins, spectra,
+                    observable) -> tuple:
+    """``(influence (K,), peak)``: how far each pole's own tail can move the answer.
+
+    ``influence[k] = max |obs(spectra) - obs(spectra - tail_k)|`` over every
+    bin and entry, ``tail_k`` pole ``k``'s term of the completion's tail at
+    the requested bins with the pole moved onto the nearest bin within
+    ``1 / T`` (:func:`_on_nearest_bin`, ``T`` the record), ``obs`` the
+    observable (the lane's S assembly) and ``peak = max |obs(spectra)|``. The
+    observable is called once, on every copy stacked along the bins, and must
+    return the bins on its last axis (the lanes' S) or its first (a map of the
+    spectra themselves).
+    """
+    record_s = int(n_record) * float(model.dt)
+    shifted = _dc_replace(model, s=_on_nearest_bin(model.s, f_bins, record_s))
+    tails = _pole_tails(shifted, int(n_record) - 1, f_bins)
+    full = np.asarray(observable(spectra))
+    peak = float(np.max(np.abs(full))) if full.size else 0.0
+    nf, K, C = tails.shape
+    if K == 0:
+        return np.zeros(0), peak
+    stacked = (np.asarray(spectra, dtype=np.complex128)[None, :, :]
+               - np.moveaxis(tails, 1, 0)).reshape(K * nf, C)
+    out = np.asarray(observable(stacked))
+    if out.shape[-1] == K * nf and full.shape[-1] == nf:
+        axis = -1
+    elif out.shape[0] == K * nf and full.shape[0] == nf:
+        axis = 0
+    else:
+        raise ValueError(
+            f"the observable returned {out.shape} for {K} stacked copies of "
+            f"{nf} bins ({full.shape} for one); the bins must be its first or "
+            "last axis")
+    out = np.moveaxis(out, axis, -1)
+    full = np.moveaxis(full, axis, -1)
+    out = out.reshape(out.shape[:-1] + (K, nf)).astype(np.complex128)
+    diff = np.abs(out - full.astype(np.complex128)[..., None, :])
+    return np.max(np.moveaxis(diff, -2, 0).reshape(K, -1), axis=1), peak
+
+
+def _floor_pole(model: RingdownModel, record_s: float, influence, peak: float,
+                spec: RingdownSpec) -> tuple:
+    """``(tau, the pole that sets it, static poles left out, poles below the bar)``.
+
+    A pole counts for the floor when its own unrecorded tail moves the
+    completed answer by at least ``witness_tol`` of its peak
+    (:func:`_tail_influence`): a mode is weighed by what it does to the S a
+    user receives, so a weakly coupled high-Q mode (small in time, tall in
+    frequency) counts and a pole whose tail cannot move the answer by the bar
+    does not. A static field (:func:`_static_pole`) is left out: it does not
+    ring, and its decay time without end would hold the stop for ever; a
+    decaying low-frequency mode counts like any other. ``tau = 1 / alpha =
+    Q / (pi f)`` of the slowest counted pole is returned: ``inf`` when it does
+    not decay, 0.0 with no pole when none counts.
+    """
+    tol = float(spec.witness_tol)
+    static, counted, below = [], [], 0
+    for k in range(int(np.size(model.s))):
+        p = model.pole(k)
+        if _static_pole(p, record_s, spec.unit_tol):
+            static.append(p)
+        elif float(influence[k]) >= tol * float(peak):
+            counted.append(p)
+        else:
+            below += 1
+    if not counted:
+        return 0.0, None, tuple(static), below
+    slow = min(counted, key=lambda p: p.decay_per_s)
+    tau = math.inf if slow.decay_per_s <= 0.0 else 1.0 / slow.decay_per_s
+    return tau, slow, tuple(static), below
+
+
+def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
+                  spec: RingdownSpec, *, ref_hz: float, observable,
+                  driven=None) -> dict:
+    """Conditions (b) and (d) and the report's passivity and growing-pole
+    witnesses of the early stop, on a record of ``n_record`` samples.
+
+    ``Y (n, C)`` are the port channels, ``observable`` the map from completed
+    spectra to what WE compares (the lane's S-matrix in ``run()``, bins on its
+    last axis), ``driven`` the driven ports for the passivity witness (``None``:
+    every entry). The main completion is the one from ``[n_start, n_record)``,
+    WE is :func:`early_start_witness` on it and passivity and growing poles
+    are read as :meth:`RingdownRun._complete` reads them. Returns the check's
+    fields; the floor's own-check reading is ``tau_own_s`` / ``own_pole``.
+    """
+    kw = dict(freq_max=ref_hz, guard=spec.guard, sv_rel=spec.sv_rel,
+              unit_tol=spec.unit_tol)
+    try:
+        plain = plain_dft(Y, dt, f_bins)
+        model = identify(Y, dt, n_start, n_record, **kw)
+        spectra = plain + tail_dft(model, n_record - 1, f_bins)
+    except (ValueError, np.linalg.LinAlgError) as exc:
+        return dict(note=f"the identification on [{spec.window_start:g} T, T] "
+                         f"failed: {exc}")
+    note = ""
+    try:
+        we = early_start_witness(Y, dt, f_bins, n_record, spec.window_start,
+                                 observable=observable, plain=plain,
+                                 spectra=spectra, **kw).value
+    except Exception as exc:  # a WE that cannot be read fails, as in the report
+        we, note = math.nan, (f"the identification on "
+                              f"[{0.5 * spec.window_start:g} T, T] failed: {exc}")
+    record_s = n_record * dt
+    influence, peak = _tail_influence(model, n_record, f_bins, spectra, observable)
+    tau, pole, static, below = _floor_pole(model, record_s, influence, peak, spec)
+    passivity = _passivity_value(observable(spectra), driven)
+    grow, _exempt = growing_poles(model, record_s, spec.unit_tol)
+    return dict(we=float(we), we_ok=bool(we <= float(spec.witness_tol)),
+                tau_own_s=tau, own_pole=pole, zero_frequency_poles=static,
+                n_below_bar=int(below), note=note,
+                passivity=float(passivity),
+                passive_ok=bool(passivity <= 1.0 + float(spec.passivity_tol)),
+                n_growing=len(grow), growing_ok=len(grow) == 0)
+
+
+def _first_check_record(n_off: int, window_start: float, chunk: int) -> int:
+    """The shortest record ``T >= chunk`` with ``round(window_start / 2 * T) >= n_off``."""
+    half = 0.5 * float(window_start)
+    t = max(int(chunk), int(math.ceil(int(n_off) / half)))
+    while int(round(half * t)) < int(n_off):
+        t += 1
+    return t
+
+
+class _StopSchedule:
+    """The check schedule and the stop rule, apart from where a check's numbers come from.
+
+    :class:`RingdownStop` feeds it the numbers of a run's record; a test can
+    feed it those of a synthetic one through :func:`_judge_record`. The first
+    check is ``first_check``; after a check at ``T`` the next is due at the
+    first chunk boundary at or past :data:`STOP_GROWTH` ``T``. The floor uses
+    the largest decay time over the checks the consecutive rule rests on (the
+    current one and the :data:`STOP_CONSECUTIVE` - 1 before it when they all
+    held (a) and (b)), so one check's flickering pole set cannot let the stop
+    through.
+    """
+
+    def __init__(self, first_check: int):
+        self.first_check = int(first_check)
+        self.next = self.first_check
+        self.checks: list = []
+
+    def due(self, steps_done: int) -> bool:
+        return int(steps_done) >= self.next
+
+    def record(self, n_record: int, record_s: float, fields: dict,
+               seconds: float) -> RingdownStopCheck:
+        """The check at ``n_record`` from its fields; returns it (``.stop``)."""
+        f = dict(sources_off=False, source_ratio_long=math.nan, we=math.nan,
+                 we_ok=False, tau_own_s=math.nan, own_pole=None,
+                 zero_frequency_poles=(), n_below_bar=0, note="",
+                 passivity=math.nan, passive_ok=False, n_growing=0,
+                 growing_ok=False)
+        f.update(fields)
+        before = self.checks[-1].consecutive if self.checks else 0
+        run, _ = _stop_decision(before, f["sources_off"], f["we_ok"], False)
+        tau, pole, frm = f["tau_own_s"], f["own_pole"], int(n_record)
+        if run >= STOP_CONSECUTIVE:
+            for c in self.checks[-(STOP_CONSECUTIVE - 1):]:
+                if c.tau_own_s > tau:
+                    tau, pole, frm = c.tau_own_s, c.own_pole, c.n_record
+        over = (math.nan if math.isnan(tau) else
+                math.inf if tau == 0.0 else record_s / tau)
+        floor_ok = bool(over >= STOP_FLOOR_DECAY_TIMES)
+        run, stop = _stop_decision(before, f["sources_off"], f["we_ok"], floor_ok,
+                                   passive_ok=f["passive_ok"],
+                                   growing_ok=f["growing_ok"])
+        check = RingdownStopCheck(
+            n_record=int(n_record), record_s=float(record_s),
+            sources_off=f["sources_off"], source_ratio_long=f["source_ratio_long"],
+            we=f["we"], we_ok=f["we_ok"], consecutive=run, tau_slowest_s=tau,
+            record_over_tau=over, floor_ok=floor_ok, stop=stop,
+            seconds=float(seconds), note=f["note"], floor_pole=pole,
+            zero_frequency_poles=f["zero_frequency_poles"], tau_own_s=f["tau_own_s"],
+            own_pole=f["own_pole"], floor_from=frm, n_below_bar=f["n_below_bar"],
+            passivity=f["passivity"], passive_ok=f["passive_ok"],
+            n_growing=f["n_growing"], growing_ok=f["growing_ok"])
+        self.checks.append(check)
+        self.next = max(int(n_record) + 1, int(math.ceil(STOP_GROWTH * n_record)))
+        return check
+
+
+@dataclass(frozen=True)
+class RingdownStopReport:
+    """``Result.ringdown.stop``: where ``run(..., until_identified=True)`` ended and why.
+
+    ``fired`` is True when the stop rule ended the run at ``n_stop`` steps;
+    False when the record reached the maximum ``n_max`` (``run()``'s
+    ``n_steps``) without it, ``reason`` then naming the condition the last
+    check failed. ``checks`` holds every check in order; the schedule is
+    ``first_check``, then the first chunk boundary (``chunk`` steps) at or
+    past ``growth`` times the last check. ``floor_rule`` says which poles set
+    the floor.
+    """
+
+    fired: bool
+    n_stop: int
+    n_max: int
+    dt: float
+    chunk: int
+    growth: float
+    first_check: int
+    floor_decay_times: float
+    floor_rule: str
+    consecutive: int
+    checks: tuple
+    reason: str
+
+    @property
+    def check_seconds(self) -> float:
+        """Wall time of every check together, in seconds."""
+        return float(sum(c.seconds for c in self.checks))
+
+    def summary(self) -> str:
+        """A few lines for a log: where the run ended, why, and every check."""
+        lines = [
+            f"ring-down early stop: {'stopped' if self.fired else 'did not stop'} "
+            f"at {self.n_stop} of at most {self.n_max} steps "
+            f"({self.n_stop * self.dt * 1e9:.4g} ns); {len(self.checks)} checks, "
+            f"{self.check_seconds:.3g} s in them",
+            f"  {self.reason}"]
+        for c in self.checks:
+            frm = "" if c.floor_from == c.n_record else f", read at T = {c.floor_from}"
+            lines.append(
+                f"  T = {c.n_record} ({c.record_s * 1e9:.4g} ns): sources "
+                f"{'off' if c.sources_off else 'ON'}, WE {c.we:.3e} "
+                f"({'ok' if c.we_ok else 'not ok'}), {c.consecutive} in a row, "
+                f"record {c.record_over_tau:.3g} decay times of the floor pole "
+                f"({_pole_text(c.floor_pole)}, {c.tau_slowest_s * 1e9:.4g} ns{frm}; "
+                f"{'past' if c.floor_ok else 'below'} the floor"
+                + (f"; {len(c.zero_frequency_poles)} static pole(s) left out"
+                   if c.zero_frequency_poles else "")
+                + f"; {c.n_below_bar} below the bar), max|S_kk| {c.passivity:.4g}"
+                + ("" if c.passive_ok else " (not passive)")
+                + ("" if c.growing_ok else f", {c.n_growing} growing pole(s)")
+                + f", {c.seconds * 1e3:.0f} ms" + (f" -- {c.note}" if c.note else ""))
+        return "\n".join(lines)
+
+
+def _pole_text(p) -> str:
+    """``f GHz, Q`` of a pole for a log line; ``no pole`` for None."""
+    if p is None:
+        return "no pole"
+    return f"{abs(p.f_hz) / 1e9:.5g} GHz, Q {p.q:.4g}"
+
+
+def refuse_until_identified(sim, spec, until_identified, *, until_decay,
+                            snapshot) -> bool:
+    """Raise, with the reason, for every ``run(until_identified=...)`` not covered.
+
+    Returns the flag. The rest of what ``until_identified=True`` refuses is
+    what ``ringdown=`` refuses (:func:`refuse_run_request`,
+    :func:`refuse_run_lane`) and, before the run, what ``run(n_steps=n_steps,
+    ringdown=spec)`` would refuse for the maximum record (:class:`RingdownStop`).
+    """
+    if not isinstance(until_identified, bool):
+        raise TypeError(
+            f"until_identified must be True or False, got {until_identified!r}")
+    if not until_identified:
+        return False
+    if spec is None:
+        raise ValueError(
+            "run(until_identified=True) ends the run once the ring-down "
+            "completion of the wire-port S-parameters is witnessed; it needs "
+            "ringdown=RingdownSpec(...).")
+    if until_decay is not None:
+        raise ValueError(
+            "run(until_identified=True) and until_decay= are two rules for "
+            "where the record ends (the completion's witnesses, the field "
+            "energy); pass one. With until_identified, n_steps= is the longest "
+            "record the run may take.")
+    if snapshot is not None:
+        raise NotImplementedError(
+            "run(until_identified=True) is not supported with snapshot=: the "
+            "frame axes are laid out from n_steps before the run, and the early "
+            "stop ends the record at a length chosen during it.")
+    for attr, what in (("_dft_planes", "a DFT plane (add_dft_plane_probe)"),
+                       ("_flux_monitors", "a flux monitor (add_flux_monitor)")):
+        if getattr(sim, attr, None):
+            raise NotImplementedError(
+                f"run(until_identified=True) is not supported with {what}: its "
+                "accumulator is built for the record length n_steps before the "
+                "run (the DFT window and its step count), and the early stop ends "
+                "the record at a length chosen during it. Use run(n_steps=..., "
+                "ringdown=...) with a fixed record.")
+    for attr, what in (("_ntff", "an NTFF box (add_ntff_box)"),
+                       ("_current_moments",
+                        "a current-moment monitor (add_current_moment_monitor)")):
+        if getattr(sim, attr, None):
+            raise NotImplementedError(
+                f"run(until_identified=True) is not supported with {what}: the "
+                "early stop chooses the record from the wire-port S-parameters "
+                "alone and completes only those, so the far field would come "
+                "from a record cut while the structure still rings. Use "
+                "run(n_steps=..., ringdown=...) with a record long enough for "
+                "the far field.")
+    return True
+
+
+class RingdownStop:
+    """``run(..., ringdown=spec, until_identified=True)``: the stop and its result.
+
+    Built by ``Simulation.run`` with the maximum record ``n_max`` (its
+    ``n_steps``). Before the run it applies every refusal of
+    ``run(n_steps=n_max, ringdown=spec)`` (it builds that run's
+    :class:`RingdownRun`), so a model whose sources are still on in the
+    maximum record's window is refused before a step is taken. The lane's
+    runner steps in chunks of :data:`STOP_CHUNK` and calls
+    :meth:`after_chunk` after each; on the schedule (:class:`_StopSchedule`)
+    it checks
+
+    (a) every source at or below ``source_off_tol`` of its peak over
+        ``[window_start/2 T, T]``, evaluated as ``run(n_steps=T,
+        ringdown=spec)`` evaluates it (so WE can be formed);
+    (b) WE, formed on the port channels of the record so far exactly as that
+        run forms it, at or below ``witness_tol``;
+    (c) (a) and (b) at :data:`STOP_CONSECUTIVE` checks in a row;
+    (d) the record at least :data:`STOP_FLOOR_DECAY_TIMES` decay times of the
+        slowest pole that can move the completed S by the bar
+        (:func:`_floor_pole`), the largest such decay time over the checks
+        (c) rests on;
+    (e) the report's passivity and growing-pole witnesses ok on this record,
+
+    and ends the run at the first check where all five hold. The result is
+    ``RingdownRun(n_steps=T)`` finishing the ``T``-step record -- the code
+    ``run(n_steps=T, ringdown=spec)`` runs -- with the stop report in
+    ``Result.ringdown.stop``. When the record reaches ``n_max`` without a
+    stop, the result is the completion of the whole record and the report
+    says which condition the last check failed.
+    """
+
+    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_max: int, grid):
+        self.sim, self.spec, self.lane, self.grid = sim, spec, lane, grid
+        self.base = RingdownRun(sim, spec, lane=lane, n_steps=int(n_max), grid=grid)
+        self.n_max = int(n_max)
+        self.dt = float(grid.dt)
+        self.chunk = int(STOP_CHUNK)
+        self.first_check = self._first_check()
+        self.schedule = _StopSchedule(self.first_check)
+        self.n_user = None
+
+    @property
+    def checks(self) -> list:
+        return self.schedule.checks
+
+    def _first_check(self) -> int:
+        """The shortest record whose WE window can be free of every source.
+
+        From the maximum record's source tables (``waveform(float32(n) dt)``,
+        as :meth:`RingdownRun._check_sources_off` builds them): ``n_off`` is
+        the first step after which every driven source stays at or below
+        ``source_off_tol`` of its peak, and the first check is the shortest
+        record ``T >= STOP_CHUNK`` with ``round(window_start / 2 * T) >=
+        n_off`` (:func:`_first_check_record`). Condition (a) is still
+        evaluated at every check.
+        """
+        import jax
+        import jax.numpy as jnp
+
+        times = jnp.arange(self.n_max, dtype=jnp.float32) * self.base.dt
+        n_off = 0
+        for pe in self.sim._ports:
+            driven = float(pe.impedance) == 0.0 or bool(pe.excite)
+            if not driven or pe.waveform is None:
+                continue
+            w = np.abs(np.asarray(jax.vmap(pe.waveform)(times), dtype=np.float64))
+            peak = float(np.max(w)) if w.size else 0.0
+            if peak == 0.0:
+                continue
+            on = np.nonzero(w > float(self.spec.source_off_tol) * peak)[0]
+            if on.size:
+                n_off = max(n_off, int(on[-1]) + 1)
+        return _first_check_record(n_off, self.spec.window_start, self.chunk)
+
+    # -- the run -------------------------------------------------------------
+
+    def run(self, call):
+        """Attach the probes, call the lane's runner with the stop, detach, complete."""
+        from rfx.api._spec import _ProbeEntry
+
+        probes = self.sim._probes
+        n_user = len(probes)
+        self.n_user = n_user
+        probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
+                                  component=comp)
+                      for comp, idx in self.base.probe_keys)
+        try:
+            kwargs = {"keep_wire_port_sparams": True} if self.lane == "uniform" else {}
+            result = call(stop_fn=self.after_chunk, stop_interval=self.chunk,
+                          **kwargs)
+        finally:
+            del probes[n_user:]
+        n_rec = int(np.shape(result.time_series)[0])
+        fin = (self.base if n_rec == self.n_max else
+               RingdownRun(self.sim, self.spec, lane=self.lane, n_steps=n_rec,
+                           grid=self.grid))
+        if fin.probe_keys != self.base.probe_keys:
+            raise RuntimeError(
+                "run(until_identified=True): the port-channel probes planned for "
+                f"{n_rec} steps differ from those the run carried.")
+        out = fin._finish(result, n_user)
+        return out._replace(ringdown=out.ringdown._replace(stop=self._report(n_rec)))
+
+    def after_chunk(self, steps_done: int, peek) -> bool:
+        """The lanes' ``stop_fn``: check when the schedule says so; True to stop."""
+        steps_done = int(steps_done)
+        if not self.schedule.due(steps_done):
+            return False
+        return self._check(steps_done, peek).stop
+
+    def _check(self, T: int, peek) -> RingdownStopCheck:
+        """Conditions (a)-(e) at a record of ``T`` steps, recorded on the schedule."""
+        import time
+
+        t0 = time.perf_counter()
+        spec = self.spec
+
+        def finish(**fields):
+            return self.schedule.record(T, T * self.dt, fields,
+                                        time.perf_counter() - t0)
+
+        # (a), as run(n_steps=T, ringdown=spec) evaluates it
+        try:
+            rr = RingdownRun(self.sim, spec, lane=self.lane, n_steps=T, grid=self.grid)
+        except ValueError as exc:
+            return finish(note=f"(a) not held: {exc}")
+        ratio_long = float(rr.source_ratio_long)
+        if not ratio_long <= float(spec.source_off_tol):
+            return finish(source_ratio_long=ratio_long,
+                          note=f"(a) not held: a source reaches {ratio_long:.3e} of "
+                               f"its peak in [{0.5 * spec.window_start:g} T, T]")
+
+        # (b), (d) and (e) on the record so far, rebuilt as that run rebuilds it
+        partial = peek()
+        ts_all = np.asarray(partial.time_series)
+        try:
+            pms, e_cols, h_cols = rr._rebuild_inputs(partial, ts_all, self.n_user)
+        except _NotCompleted as nc:
+            return finish(sources_off=True, source_ratio_long=ratio_long,
+                          note=f"the port channels could not be rebuilt: {nc.message}")
+        dt = float(partial.grid.dt)
+        ref_hz = max(rr.freq_max, float(np.max(np.asarray(partial.freqs,
+                                                          dtype=np.float64))))
+        Y = _rebuild_channels(self.lane, pms, e_cols, h_cols)
+        f_bins, to_s = _s_observable(self.lane, pms, pms[0].freqs, dt)
+        driven = [p for p, pm in enumerate(pms) if pm.excite]
+        return finish(sources_off=True, source_ratio_long=ratio_long,
+                      **_judge_record(Y, dt, f_bins, T, rr.n_start, spec,
+                                      ref_hz=ref_hz, observable=to_s,
+                                      driven=driven))
+
+    def _report(self, n_rec: int) -> RingdownStopReport:
+        spec = self.spec
+        tol = float(spec.witness_tol)
+        checks = self.checks
+        fired = bool(checks) and checks[-1].stop
+        if fired:
+            c, p = checks[-1], checks[-2]
+            frm = ("" if c.floor_from == c.n_record else
+                   f", read at the check at {c.floor_from} steps")
+            reason = (
+                f"stopped at {c.n_record} steps: every source off over "
+                f"[{0.5 * spec.window_start:g} T, T], WE within {tol:g} here "
+                f"({c.we:.3e}) and at the check before ({p.n_record} steps, "
+                f"{p.we:.3e}), the record is {c.record_over_tau:.3g} decay times "
+                f"of the slowest pole that moves S by the bar "
+                f"({_pole_text(c.floor_pole)}, {c.tau_slowest_s * 1e9:.4g} ns{frm}), "
+                f"past the floor of {STOP_FLOOR_DECAY_TIMES:g}, and the completion "
+                f"reads passive (max|S_kk| {c.passivity:.4g}) with no growing pole"
+                + (f"; {len(c.zero_frequency_poles)} static-field pole(s) left out "
+                   "of the floor" if c.zero_frequency_poles else ""))
+        elif not checks:
+            reason = (f"did not stop: the record reached the maximum of "
+                      f"{self.n_max} steps before the first check at "
+                      f"{self.first_check} steps")
+        else:
+            c = checks[-1]
+            failed = []
+            if not c.sources_off:
+                failed.append("(a) a source is still on over "
+                              f"[{0.5 * spec.window_start:g} T, T]"
+                              + (f" ({c.note})" if c.note else ""))
+            elif not c.we_ok:
+                failed.append(f"(b) WE {c.we:.3e} above its bar {tol:g}"
+                              + (f" ({c.note})" if c.note else ""))
+            elif c.consecutive < STOP_CONSECUTIVE:
+                failed.append(f"(c) {c.consecutive} check(s) in a row held (a) and "
+                              f"(b), {STOP_CONSECUTIVE} needed")
+            if c.sources_off and not c.floor_ok:
+                failed.append(f"(d) the record is {c.record_over_tau:.3g} decay "
+                              f"times of the slowest pole that moves S by the bar "
+                              f"({_pole_text(c.floor_pole)}, "
+                              f"{c.tau_slowest_s * 1e9:.4g} ns), below the floor "
+                              f"of {STOP_FLOOR_DECAY_TIMES:g}")
+            if c.sources_off and not c.passive_ok and not math.isnan(c.passivity):
+                failed.append(f"(e) the completion reads non-passive, max|S_kk| "
+                              f"{c.passivity:.4g} above "
+                              f"{1.0 + float(spec.passivity_tol):g}")
+            if c.sources_off and not c.growing_ok and c.n_growing:
+                failed.append(f"(e) {c.n_growing} kept growing pole(s)")
+            reason = (f"did not stop: the record reached the maximum of "
+                      f"{self.n_max} steps; at the last check ({c.n_record} "
+                      f"steps) " + "; ".join(failed))
+        return RingdownStopReport(
+            fired=fired, n_stop=int(n_rec), n_max=self.n_max, dt=self.dt,
+            chunk=self.chunk, growth=STOP_GROWTH, first_check=self.first_check,
+            floor_decay_times=STOP_FLOOR_DECAY_TIMES, floor_rule=FLOOR_POLE_RULE,
+            consecutive=STOP_CONSECUTIVE, checks=tuple(checks), reason=reason)
 
 
 # ---------------------------------------------------------------------------

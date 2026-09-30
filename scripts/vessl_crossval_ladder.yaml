@@ -43,13 +43,12 @@ run: |-
   uv pip freeze --python "$PY" > "$OUT/pip_freeze.txt"
   export PYTHONPATH="$WORK"
   "$PY" -c "import jax, rfx; print('jax', jax.__version__, jax.devices(), 'rfx', rfx.__version__)"
-  IGN="--ignore=tests/crossval/test_meep_crossval.py --ignore=tests/crossval/test_meep_crossval_dielectric_cavity.py --ignore=tests/crossval/test_openems_crossval.py --ignore=tests/crossval/test_crossval_comprehensive.py"
   echo "=== crossval_ladder selection ==="
   # 9691 s on an A6000 (2026-09-24), 7938 s on an RTX 3090 (run 369367264767). 14400 s plus ~200 s
   # of setup leaves ~100 min of queue inside the workflow's ~348 min poll (360 min job limit).
   # Tee, so `vessl run logs` shows progress; the exit code goes through a file because a pipe hides it.
   set +e
-  { timeout 14400 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m crossval_ladder $IGN; echo "$?" > "$OUT/rc.txt"; } 2>&1 | tee "$OUT/crossval_ladder.log"
+  { timeout 14400 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m crossval_ladder; echo "$?" > "$OUT/rc.txt"; } 2>&1 | tee "$OUT/crossval_ladder.log"
   RC=$(cat "$OUT/rc.txt")
   set -e
   # The pytest result line, not `tail -1`: VESSL traces the block, so the log ends in "+ echo <rc>".

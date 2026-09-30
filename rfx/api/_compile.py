@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np  # noqa: F401  (used by moved method bodies)
 
 from rfx.core.jax_utils import is_tracer
-from rfx.grid import Grid, C0  # noqa: F401  (used by moved method bodies)
+from rfx.grid import Grid, C0, _periodic_resolution  # noqa: F401  (used by moved method bodies)
 from rfx.core.yee import MaterialArrays  # noqa: F401
 from rfx.geometry.csg import Box, _grid_coords
 # NOTE: import from _pole_keying, NOT rfx.geometry.rasterize_grid — importing
@@ -91,14 +91,26 @@ class _CompileMixin:
         # Uniform-only consumers must never silently approximate an auto or
         # explicit profiled mesh. General consumers use _build_realized_grid.
         self._require_uniform_mesh("uniform grid construction")
+        # B2 changes declared periods only. The legacy TF/SF transverse
+        # wrap (including its pads) is a feature rewrite owned by B5.
+        periodic_axes = "".join(a for a, yes in zip("xyz", self._periodic_flags()) if yes)
+        dx = self._dx
+        if dx is not None and self._declared_mesh["_dx"] is None:
+            from rfx.grid import _wall_closed_axes
+            physical_axes = periodic_axes.replace("z", "") if self._mode.startswith("2d") else periodic_axes
+            dx = _periodic_resolution(
+                self._domain, physical_axes, dx, automatic=True,
+                wall_axes=_wall_closed_axes(
+                    self._boundary_spec.pec_faces(), self._boundary_spec.pmc_faces(),
+                    is_2d=self._mode.startswith("2d")))
         # Remove periodic axes from CPML allocation — CPML on a periodic
         # axis fights the wrap-around and corrupts the physics
         # (issue #68). Default is "xyz"; the waveguide-port path overrides
         # with a port-normal-PEC filter.
         def _filter_periodic(axes: str) -> str:
-            if not self._periodic_axes:
+            if not periodic_axes:
                 return axes
-            return "".join(ax for ax in axes if ax not in self._periodic_axes)
+            return "".join(ax for ax in axes if ax not in periodic_axes)
 
         face_layers = self._resolve_face_layers()
 
@@ -109,7 +121,7 @@ class _CompileMixin:
             return Grid(
                 freq_max=self._freq_max,
                 domain=self._domain,
-                dx=self._dx,
+                dx=dx,
                 cpml_layers=self._cpml_layers,
                 cpml_axes=cpml_axes,
                 mode=self._mode,
@@ -118,11 +130,12 @@ class _CompileMixin:
                 pmc_faces=self._boundary_spec.pmc_faces(),
                 face_layers=face_layers,
                 conformal_faces=self._boundary_spec.conformal_faces(),
+                periodic_axes=periodic_axes,
             )
         return Grid(
             freq_max=self._freq_max,
             domain=self._domain,
-            dx=self._dx,
+            dx=dx,
             cpml_layers=self._cpml_layers,
             cpml_axes=_filter_periodic("xyz"),
             mode=self._mode,
@@ -131,6 +144,7 @@ class _CompileMixin:
             pmc_faces=self._boundary_spec.pmc_faces(),
             face_layers=face_layers,
             conformal_faces=self._boundary_spec.conformal_faces(),
+            periodic_axes=periodic_axes,
         )
 
     def _resolve_face_layers(self) -> dict:
@@ -324,7 +338,7 @@ class _CompileMixin:
                 # vacuum values either way.
                 cells, sheet, wire = classify_pec_entry(
                     solved_shape, _coords, _centres, _cell_sizes,
-                    name=entry.material_name)
+                    name=entry.material_name, grid=grid)
                 if cells is not None:
                     pec_mask = pec_mask | cells
                     has_pec_cells = True
@@ -372,7 +386,7 @@ class _CompileMixin:
                 pole_mask = _material_cell_mask(entry.shape, _coords, _centres, grid=grid)
                 if mat.sigma >= self._PEC_SIGMA_THRESHOLD and cells is not None:
                     from rfx.geometry.rasterize_grid import pec_volume_cell_mask
-                    pole_mask = pec_volume_cell_mask(entry.shape, _centres)
+                    pole_mask = pec_volume_cell_mask(entry.shape, _centres, grid=grid)
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
@@ -562,6 +576,7 @@ class _CompileMixin:
         lorentz_spec: _LorentzSpec | None,
         *,
         field_dtype=None,
+        periodic=(False, False, False),
     ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Initialize Debye/Lorentz coefficients for the given materials.
 
@@ -569,18 +584,22 @@ class _CompileMixin:
         driven by; the P carry is allocated at
         ``ade_state_dtype(field_dtype)`` (issue #656). Callers that leave it
         ``None`` get the ambient default float with a float32 floor.
+
+        ``periodic`` is the run's per-axis flags, as its E update takes them:
+        the coefficients are per E component, averaged over each edge's four
+        cells (#1260), and a periodic axis wraps that average.
         """
         debye = None
         if debye_spec is not None:
             debye_poles, debye_masks = debye_spec
             debye = init_debye(debye_poles, materials, dt, mask=debye_masks,
-                               field_dtype=field_dtype)
+                               field_dtype=field_dtype, periodic=periodic)
 
         lorentz = None
         if lorentz_spec is not None:
             lorentz_poles, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
-                                   field_dtype=field_dtype)
+                                   field_dtype=field_dtype, periodic=periodic)
 
         return materials, debye, lorentz
 
@@ -729,7 +748,8 @@ class _CompileMixin:
                 "not an edge rule — or solve the model with run() / "
                 "forward(), which realize the declaration.")
         _, debye, lorentz = self._init_dispersion(
-            materials, grid.dt, debye_spec, lorentz_spec)
+            materials, grid.dt, debye_spec, lorentz_spec,
+            periodic=self._periodic_flags())
         return materials, debye, lorentz
 
     @staticmethod

@@ -11,7 +11,7 @@ import jax.numpy as jnp
 
 from rfx.grid import C0
 from rfx.core.jax_utils import is_tracer
-from rfx.core.yee import MaterialArrays
+from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lumped
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
@@ -81,6 +81,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
     if debye is not None or lorentz is not None:
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     eps = np.asarray(cell.eps_r, dtype=np.float64)
+    volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
     live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
     components = []
     for c in range(3):
@@ -95,7 +96,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
             lower = np.maximum(np.arange(grid.shape[a]) - 1, 0)
             num = num + np.take(num, lower, axis=a)
             den = den + np.take(den, lower, axis=a)
-        out = np.asarray(materials.eps_r, dtype=np.float64).copy()
+        out = volume_eps.copy()
         np.divide(num, den, out=out, where=den > 0)
         components.append(jnp.asarray(out, dtype=materials.eps_r.dtype))
     return tuple(components)
@@ -714,7 +715,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         radiated_flux_box: tuple | None = None,
                         flux_env_checks: int = 4,
                         design_box=None,
-                        lane: str = "run_nonuniform"):
+                        lane: str = "run_nonuniform",
+                        stop_fn=None,
+                        stop_interval: int = 250,
+                        conformal_pec=None):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -745,6 +749,15 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     decay_energy_consecutive :
         Threaded to :func:`run_nonuniform_until_decay` (same semantics
         as ``Simulation.run``'s ``decay_*`` kwargs).
+    stop_fn, stop_interval :
+        ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
+        ``n_steps`` record runs as :func:`run_nonuniform_until_decay`'s
+        chunked loop (chunks of ``stop_interval`` steps, energy stop off,
+        the #667 progress route's settings) and ``stop_fn(steps_done,
+        peek)`` decides after each chunk whether it ends there; ``peek()``
+        gives the record so far (``time_series``, ``wire_port_sparams``,
+        ``freqs``, ``grid``, ``dt`` as this function reports them).
+        ``None`` (default) is the unchanged path.
     compute_s_params : bool or None
     s_param_freqs : array or None
     eps_override, sigma_override : jnp.ndarray or None
@@ -1057,6 +1070,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         for spec in sim._lumped_rlc:
             materials = setup_rlc_materials(grid, spec, materials)
             materials_drive = setup_rlc_materials(grid, spec, materials_drive)
+
+    # Smoothing / dual averaging above builds only the volume tensor.
+    # Fold first, then put each capacitor on its own edge exactly once.
+    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
 
     sources = []
     probes = []
@@ -1532,34 +1549,19 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     ntff_box = None
     ntff_data_init = None
     if sim._ntff is not None:
-        from rfx.farfield import (
-            NTFFBox, init_ntff_data, with_face_centre_collocation,
-        )
+        from rfx.farfield import NTFFBox, init_ntff_data
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = pos_to_nu_index(grid, corner_lo)
         hi_idx = pos_to_nu_index(grid, corner_hi)
-        # Per-face CPML depths must come from THIS grid's pads. A
-        # non-uniform grid carries no `face_layers`, so both the previous
-        # direct construction and NTFFBox.from_grid fall back to the scalar
-        # `cpml_layers` on every face — wrong whenever the pads are
-        # asymmetric, which they are for any non-absorbing face. Measured:
-        # a z_lo PEC face gives pad_z_lo = 0 while the scalar is 6, so
-        # every NTFF face coordinate was displaced by six cells in z, and
-        # the pattern came back with no warning (#743).
-        ntff_box = NTFFBox(
+        # Share realized padding and graded face-centre weights with the
+        # uniform and RCS constructors, including zero-cell PEC/PMC faces.
+        ntff_box = NTFFBox.from_grid(
+            grid,
             i_lo=lo_idx[0], i_hi=hi_idx[0],
             j_lo=lo_idx[1], j_hi=hi_idx[1],
             k_lo=lo_idx[2], k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-            cpml_lo_x=int(grid.pad_x_lo),
-            cpml_lo_y=int(grid.pad_y_lo),
-            cpml_lo_z=int(grid.pad_z_lo),
         )
-        # Accumulate at the centre of each face cell (second-order surface
-        # integral). The half-cell interpolation weights for the tangential
-        # H come from this grid's own cell widths, so a graded axis gets the
-        # right pair instead of a flat 1/2.
-        ntff_box = with_face_centre_collocation(ntff_box, grid)
         ntff_data_init = init_ntff_data(ntff_box)
 
     # In-loop block current moments (rfx.current_moments), realized against
@@ -1611,7 +1613,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, lane)
+    admit(sim, lane, run_args={"conformal_pec": conformal_pec,
+                               "compute_s_params": compute_s_params})
 
     _shared_run_kwargs = dict(
         design_box=design_box,
@@ -1644,7 +1647,42 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         tfsf=tfsf_pair,
         emit_time_series=emit_time_series,
     )
-    if until_decay is not None:
+    if stop_fn is not None:
+        # #1254: the chunked loop of the #667 progress route (energy stop
+        # off, min_steps past the end) with the caller's stop check.
+        if until_decay is not None or checkpoint_every is not None or n_warmup:
+            raise NotImplementedError(
+                "run_nonuniform_path(stop_fn=...) does not combine with "
+                "until_decay, checkpoint_every or n_warmup (issue #1254).")
+        from types import SimpleNamespace as _NS
+
+        from rfx.progress import validate_report_every
+        _re_stop = (None if report_every is None
+                    else validate_report_every(report_every, n_steps=n_steps))
+
+        def _stop_with_result(steps_done, peek):
+            def partial():
+                d = peek()
+                raw = d.get("wire_sparams_raw")
+                wps = (None if raw is None else
+                       tuple(zip(d.get("wire_sparams_meta", ()), raw)))
+                return _NS(time_series=d["time_series"], wire_port_sparams=wps,
+                           freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt)
+            return stop_fn(steps_done, partial)
+
+        r = run_nonuniform_until_decay(
+            grid, materials,
+            decay_by=0.0,
+            check_interval=int(stop_interval),
+            min_steps=n_steps + 1,
+            max_steps=n_steps,
+            decay_energy_consecutive=1,
+            report_every=_re_stop,
+            report_label=report_label,
+            stop_fn=_stop_with_result,
+            **_shared_run_kwargs,
+        )
+    elif until_decay is not None:
         # #383: chunked host loop with the interior-energy stop. The
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored

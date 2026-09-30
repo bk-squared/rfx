@@ -34,7 +34,7 @@ from rfx.probes.probes import (
 
 def compute_lumped_wire_s_matrix_via_scan(
     sim, freqs, *, n_steps=None, return_vi_dump=False,
-    return_refplane_diagnostics=False,
+    return_refplane_diagnostics=False, conformal_pec=None,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -70,6 +70,11 @@ def compute_lumped_wire_s_matrix_via_scan(
         ``diagnostics`` carries the per-port measured Zc(f) and beta(f)
         (R5 inspection surface).  ``(S, freqs, None)`` when no port
         opted in.
+    conformal_pec : bool or None
+        As in ``run()``: ``None`` reads ``Boundary(conformal=True)``. The
+        production scan has no conformal update, so a conformal request on a
+        model with PEC to conform is refused before the first step; ``False``
+        asks for staircase PEC (#1299).
 
     Returns
     -------
@@ -210,6 +215,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             _sparam_drive_idx=j,
             _return_raw_port_sparams=True,
             sheet_impedance=_sheet_ctx,
+            conformal_pec=conformal_pec,
         )
 
         accs = raw["wire"] if wire_mode else raw["lumped"]

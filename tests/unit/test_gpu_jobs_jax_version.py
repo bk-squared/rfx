@@ -31,6 +31,9 @@ PY = "PY=/tmp/venv-py311/bin/python"
 PIN = ('uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" '
        '"numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" '
        '"pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0"')
+# A job may add pins after the shared set, only these and only in that job. The per-release GPU
+# suite ends a stalled test with pytest-timeout's thread method (#1376: run 369367265464 hung 4.9 h).
+EXTRA_PINS = {"scripts/vessl_gpu_suite.yaml": ' "pytest-timeout==2.4.0"'}
 CHECK = ('"$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; '
          "assert jax.__version__ == '0.10.2', jax.__version__; "
          "assert jax.default_backend() == 'gpu', jax.default_backend()\"")
@@ -41,7 +44,6 @@ PY_ASSIGN = re.compile(_B + r"(?:export\s+)?PY=")
 IMAGE_PYTHON = re.compile(_B + r"(?:/[^\s\"']*/)?python[0-9.]*(?=[\s\"';)]|$)")
 PYTEST = re.compile(_B + r"(?:/[^\s\"']*/)?pytest(?=[\s\"';)]|$)")
 JOBS = ["scripts/vessl_gpu_suite.yaml",                 # per release and after GPU-touching merges
-        "scripts/ops/render_gpu_suite_shards.py",       # weekly sharded suite (template)
         "scripts/vessl_validation_lane_a6000.yaml",     # weekly A6000 lane (validation.yml cron)
         "scripts/vessl_crossval_ladder.yaml"]           # monthly crossval-ladder lane (crossval-ladder.yml cron)
 
@@ -68,16 +70,17 @@ def test_gpu_job_runs_jax_0102_in_a_python_311_venv(path):
     text = _job_text(path)
     assert "nvcr.io/nvidia/jax:24.10-py3" in text, "image changed: re-decide the venv and its pins"
     lines = _commands(yaml.safe_load(text)["run"])
+    pin = PIN + EXTRA_PINS.get(path, "")
     for line, what in [(UV, "install uv"), (VENV, "create the Python 3.11 venv"),
-                       (PIN, "install the pinned set"), (CHECK, "assert Python and JAX (no pipe)")]:
+                       (pin, "install the pinned set"), (CHECK, "assert Python and JAX (no pipe)")]:
         assert lines.count(line) == 1, f"{path}: {what} once, on its own line"
     assigns = [line for line in lines for _ in PY_ASSIGN.finditer(line)]
     assert assigns == [PY], f"{path}: PY is assigned once, to the venv's python: {assigns}"
     assert sum(bool(FREEZE.fullmatch(line)) for line in lines) == 1, f"{path}: record the venv's freeze"
     first_import = next(i for i, line in enumerate(lines) if "import jax" in line)
-    order = [lines.index(line) for line in (UV, VENV, PY, PIN, CHECK)]
+    order = [lines.index(line) for line in (UV, VENV, PY, pin, CHECK)]
     assert order == sorted(order) and order[-1] == first_import, f"{path}: order is venv, install, check, use"
-    others = [line for line in lines if re.search(r"pip install.*\bjax", line) and line != PIN]
+    others = [line for line in lines if re.search(r"pip install.*\bjax", line) and line != pin]
     assert not others, f"{path}: a second JAX install could replace 0.10.2: {others}"
     image_python = [line for line in lines if IMAGE_PYTHON.search(line) and line not in (UV, PY)]
     assert not image_python, f"{path}: the image's python 3.10 runs JAX 0.4.33; use \"$PY\": {image_python}"

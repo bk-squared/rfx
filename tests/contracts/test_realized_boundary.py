@@ -63,6 +63,11 @@ EXPECTED += [pytest.param("pmc-cpml", "distributed", face, "g",
                           id=f"pmc-cpml--distributed--{face}--g",
                           marks=pytest.mark.xdist_group("pmc-cpml--distributed"))
              for face in ("x_lo", "x_hi")]
+EXPECTED += [pytest.param("periodic-xy", entry, face, "e",
+                          id=f"periodic-xy--{entry}--{face}--e",
+                          marks=pytest.mark.xdist_group(f"periodic-xy--{entry}"))
+             for entry in ("run", "forward", "sweep", "gpu-query")
+             for face in ("x_lo", "x_hi", "y_lo", "y_hi")]
 
 
 @pytest.mark.parametrize("case,entry,face,code", EXPECTED)

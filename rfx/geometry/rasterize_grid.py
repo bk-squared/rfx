@@ -326,10 +326,15 @@ def _material_cell_mask(shape, coords: GridCoords, centres: GridCoords, *, grid=
     the material by half a cell. Use the supplied physical centres (already
     centred on the fine subgrid), without changing Shape.mask's node API or
     the separate PEC volume/sheet/wire classifier. Other shapes retain their
-    existing rules, including custom uniform shapes that implement only mask.
+    existing rules. Custom shapes need mask_on_coords on a periodic grid;
+    non-periodic uniform shapes may implement only mask(grid).
     """
+    from rfx._periodic import periodic_mask, periodic_shape
+    shape = periodic_shape(grid, shape)
     if isinstance(shape, (Sphere, Cylinder, OrientedBox)):
-        return shape.mask_on_coords(centres.x, centres.y, centres.z)
+        return periodic_mask(grid, shape, centres[:3])
+    if getattr(grid, 'periodic_axes', ''):
+        return periodic_mask(grid, shape, coords[:3])
     if grid is not None:
         return shape.mask(grid)
     return shape.mask_on_coords(coords.x, coords.y, coords.z)
@@ -399,7 +404,7 @@ def _is_traced_coords(coords) -> bool:
     return any(is_tracer(c) for c in (coords.x, coords.y, coords.z))
 
 
-def pec_volume_cell_mask(shape, centres: GridCoords):
+def pec_volume_cell_mask(shape, centres: GridCoords, *, grid=None):
     """CELL occupancy of a PEC VOLUME (§1.1): centre-sampled.
 
     Box: half-open ``lo <= c < hi`` per axis, spelled here directly — the
@@ -407,6 +412,13 @@ def pec_volume_cell_mask(shape, centres: GridCoords):
     decide a PEC volume.  Sphere / Cylinder / any other shape: the centre
     lies inside the shape (``mask_on_coords`` on the centre coordinates).
     """
+    if getattr(grid, 'periodic_axes', ''):
+        from rfx._periodic import periodic_mask
+        if getattr(shape, 'corner_lo', None) is None or getattr(shape, 'corner_hi', None) is None:
+            return periodic_mask(grid, shape, centres[:3])
+        def sample(x, y, z):
+            return pec_volume_cell_mask(shape, GridCoords(x, y, z, (len(x), len(y), len(z))))
+        return periodic_mask(grid, shape, centres[:3], sample=sample)
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     if lo is not None and hi is not None:
@@ -417,7 +429,7 @@ def pec_volume_cell_mask(shape, centres: GridCoords):
     return jnp.asarray(shape.mask_on_coords(centres.x, centres.y, centres.z))
 
 
-def _volume_is_empty(shape, centres: GridCoords, mask) -> bool | None:
+def _volume_is_empty(shape, centres: GridCoords, mask, *, grid=None) -> bool | None:
     """Zero-cell test that never converts a jnp mask to bool (§1.5 refusal).
 
     Inside an outer ``jax.jit`` the grid coordinates are still concrete host
@@ -435,7 +447,8 @@ def _volume_is_empty(shape, centres: GridCoords, mask) -> bool | None:
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     axes = (centres.x, centres.y, centres.z)
-    if lo is not None and hi is not None and not any(is_tracer(c) for c in axes):
+    if (lo is not None and hi is not None and not getattr(grid, 'periodic_axes', '')
+            and not any(is_tracer(c) for c in axes)):
         for i in range(3):
             c = np.asarray(axes[i], dtype=np.float64)
             if not np.any((c >= float(lo[i])) & (c < float(hi[i]))):
@@ -459,7 +472,7 @@ def _refuse_zero_cells(shape, name, what: str):
 
 def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
                           normal_axis=None, name=None, lane: str = "",
-                          refuse_thick: bool = False):
+                          refuse_thick: bool = False, grid=None):
     """A :class:`SheetSpec` for a sheet declaration (§1.3).
 
     * plane = the node plane nearest the shape's mid-plane along
@@ -504,6 +517,9 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     if cell_sizes is None:
         cell_sizes = tuple(axis_cell_sizes(n) for n in node_axes)
     mid = 0.5 * (lo[a] + hi[a])
+    from rfx._periodic import periodic_mask, plane_coordinate
+    requested_mid = mid
+    mid = plane_coordinate(grid, a, mid)
     d_local = _local_cell(node_axes[a], cell_sizes[a], mid)
     if refuse_thick and extents[a] > d_local * (1.0 + _REL_TOL):
         raise ValueError(
@@ -513,24 +529,35 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
             "realizes a volume with both faces and a shorted interior).")
     plane = _nearest_plane(node_axes[a], mid, d_local,
                            what="sheet", name=name, axis=a)
-    shape_3 = tuple(coords.shape)
+    # Tangential endpoints stay distinct until edge enumeration. Folding L
+    # into 0 here would either lose the final edge or add an edge near 0.
+    node_axes = list(node_axes)
+    for t in range(3):
+        if t != a and 'xyz'[t] in getattr(grid, 'periodic_axes', ''):
+            node_axes[t] = np.append(node_axes[t], float(grid.domain[t]))
+    shape_3 = tuple(len(line) for line in node_axes)
     is_box = getattr(shape, "corner_lo", None) is not None
     if is_box:
-        axes = []
-        for t in range(3):
-            if t == a:
-                m = np.zeros((shape_3[t],), dtype=bool)
-                m[plane] = True
-                axes.append(m)
-            else:
-                d_t = _local_cell(node_axes[t], cell_sizes[t],
-                                  0.5 * (lo[t] + hi[t]))
-                axes.append(np.asarray(_box_axis_closed(node_axes[t], lo[t], hi[t], d_t)))
-        fp = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+        def sample(x, y, z):
+            masks = []
+            for t, line in enumerate((x, y, z)):
+                if t == a:
+                    m = np.zeros((len(line),), dtype=bool)
+                    m[plane] = True
+                    masks.append(m)
+                else:
+                    d_t = _local_cell(node_axes[t], cell_sizes[t],
+                                      0.5 * (lo[t] + hi[t]))
+                    masks.append(np.asarray(_box_axis_closed(line, lo[t], hi[t], d_t)))
+            return masks[0][:, None, None] & masks[1][None, :, None] & masks[2][None, None, :]
+        fp = periodic_mask(grid, shape, node_axes, sample=sample,
+                           axes=tuple(t for t in range(3) if t != a), closed_footprint=True)
     else:
         sample = [np.asarray(n, dtype=np.float64) for n in node_axes]
-        sample[a] = np.asarray([mid], dtype=np.float64)
-        cross = np.asarray(shape.mask_on_coords(*sample), dtype=bool)
+        sample[a] = np.asarray([requested_mid], dtype=np.float64)
+        cross = np.asarray(periodic_mask(
+            grid, shape, sample, axes=tuple(t for t in range(3) if t != a),
+            closed_footprint=True), dtype=bool)
         fp = np.zeros(shape_3, dtype=bool)
         idx = [slice(None)] * 3
         idx[a] = slice(plane, plane + 1)
@@ -541,8 +568,13 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
             f"grid{(' (' + lane + ' lane)') if lane else ''} at plane "
             f"{'xyz'[a]}={plane}; it would silently vanish (#369 class). "
             "Widen the footprint to reach a node line or refine the mesh.")
+    unwrapped = None
+    if shape_3 != tuple(coords.shape):
+        from rfx.boundaries.pec import _fold_sheet_nodes
+        unwrapped = jnp.asarray(fp)
+        fp = _fold_sheet_nodes(fp, coords.shape, xp=np)
     return SheetSpec(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
-                     name=name)
+                     name=name, unwrapped_footprint=unwrapped)
 
 
 
@@ -670,13 +702,14 @@ def interior_lattice_mask(mask, grid, *, cell_axes=(False, False, False)):
     interior = tuple(slice(
         int(getattr(grid, f"pad_{a}_lo")),
         arr.shape[i] - int(getattr(grid, f"pad_{a}_hi"))
-        - int(cell_axes[i] and arr.shape[i] > 1))
+        - int(cell_axes[i] and arr.shape[i] > 1
+              and a not in getattr(grid, 'periodic_axes', '')))
         for i, a in enumerate("xyz"))
     out[interior] = arr[interior]
     return out
 
 
-def wire_vertex_nodes(points, node_axes, cell_sizes):
+def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
     """Node of each PolylineWire vertex, and the smallest cell at them.
 
     Each coordinate goes to the nearest node, an exact tie to the FIRST
@@ -692,27 +725,36 @@ def wire_vertex_nodes(points, node_axes, cell_sizes):
         idx = []
         for t in range(3):
             x = np.asarray(node_axes[t], dtype=np.float64)
+            if 'xyz'[t] in getattr(grid, 'periodic_axes', ''):
+                from rfx._periodic import interval_coordinates
+                interval_coordinates(grid, t, p[t], p[t])
+                x = np.append(x, float(grid.domain[t]))
             k = int(np.argmin(np.abs(x - float(p[t]))))
             idx.append(k)
-            d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[k])
+            d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[min(k, len(cell_sizes[t]) - 1)])
             d_min = d_here if d_min is None else min(d_min, d_here)
         nodes.append(tuple(idx))
     return nodes, d_min
 
 
-def wire_filament_nodes(points, radius, node_axes, cell_sizes):
+def wire_filament_nodes(points, radius, node_axes, cell_sizes, *, grid=None):
     """PolylineWire §1.4: the nearest lattice node of each vertex, when the
     wire is a filament; ``None`` when it is a volume. A radius at least half
     the smallest local cell at the vertices' nearest nodes is a volume.
     ``classify_pec_entry`` realizes a wire by this rule, and lane admission
     asks it which kind of conductor a declared wire becomes. The vertex snap
     itself is ``wire_vertex_nodes``."""
-    nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes)
+    # A declared periodic uniform grid has constant cells. Decide that a
+    # wire is a volume before admitting its vertices as a directed path.
+    if getattr(grid, 'periodic_axes', '') and float(radius) >= .5 * min(
+            float(np.asarray(d)[0]) for d in cell_sizes):
+        return None
+    nodes, d_min = wire_vertex_nodes(points, node_axes, cell_sizes, grid=grid)
     return nodes if float(radius) < 0.5 * d_min else None
 
 
 def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
-                       cell_sizes=None, *, name=None):
+                       cell_sizes=None, *, name=None, grid=None):
     """Classify one PEC geometry entry (``sim.add(shape, material=pec)``).
 
     Returns ``(cell_mask, sheet, wire)`` with exactly one of the three set:
@@ -726,6 +768,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     * any shape whose centre-sampled volume is empty (concrete only).
     """
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
+    from rfx._periodic import periodic_shape
+    shape = periodic_shape(grid, shape)
 
     traced = _is_traced_coords(coords) or _is_traced_coords(centres)
     node_axes = (coords.x, coords.y, coords.z)
@@ -743,13 +787,13 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
                 "one zero-extent axis.")
         if len(zero) == 1:
             return None, sheet_spec_from_shape(
-                shape, coords, cell_sizes, normal_axis=zero[0], name=name), None
+                shape, coords, cell_sizes, normal_axis=zero[0], name=name, grid=grid), None
         if not traced:
             subcell = _subcell_axes(lo, hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)
-        mask = pec_volume_cell_mask(shape, centres)
-        if not traced and _volume_is_empty(shape, centres, mask):
+        mask = pec_volume_cell_mask(shape, centres, grid=grid)
+        if not traced and _volume_is_empty(shape, centres, mask, grid=grid):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
     pts = getattr(shape, "points", None)
@@ -758,9 +802,29 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # below that it is a filament on the axis-aligned lattice path
         # joining the nearest nodes of consecutive vertices.
-        nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes)
+        nodes = wire_filament_nodes(pts, radius, node_axes, cell_sizes, grid=grid)
         if nodes is not None:
-            edges = wire_path_edge_masks(nodes, coords.shape)
+            if getattr(grid, 'periodic_axes', ''):
+                # Retain the virtual endpoint while enumerating a segment;
+                # only the finished edge's nodal coordinates are periodic.
+                extended = tuple(n + int('xyz'[a] in grid.periodic_axes)
+                                 for a, n in enumerate(coords.shape))
+                from jax import ensure_compile_time_eval
+                with ensure_compile_time_eval():
+                    raw = wire_path_edge_masks(nodes, extended)
+                edges = []
+                for mask in raw:
+                    mask = np.asarray(mask).copy()
+                    for a in range(3):
+                        if 'xyz'[a] in grid.periodic_axes:
+                            first, last = [slice(None)] * 3, [slice(None)] * 3
+                            first[a], last[a] = 0, -1
+                            mask[tuple(first)] |= mask[tuple(last)]
+                            mask = np.take(mask, range(coords.shape[a]), axis=a)
+                    edges.append(jnp.asarray(mask))
+                edges = tuple(edges)
+            else:
+                edges = wire_path_edge_masks(nodes, coords.shape)
             return None, None, WireSpec(edges=edges, name=name)
     elif not traced:
         # §1.5 for every OTHER shape with an axis-aligned bounding box —
@@ -777,8 +841,8 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
             subcell = _subcell_axes(bb_lo, bb_hi, node_axes, cell_sizes)
             if subcell:
                 _refuse_subcell(subcell, shape, name)
-    mask = pec_volume_cell_mask(shape, centres)
-    if not traced and _volume_is_empty(shape, centres, mask):
+    mask = pec_volume_cell_mask(shape, centres, grid=grid)
+    if not traced and _volume_is_empty(shape, centres, mask, grid=grid):
         _refuse_zero_cells(shape, name, "PEC volume")
     return mask, None, None
 
@@ -871,12 +935,13 @@ def rasterize_geometry(
 
     for entry_index, entry in enumerate(geometry_entries):
         mat = material_resolver(entry.material_name)
-        mask = _material_cell_mask(entry.shape, coords, centres)
+        mask = _material_cell_mask(entry.shape, coords, centres,
+                                   grid=grid if getattr(grid, 'periodic_axes', '') else None)
 
         if mat.sigma >= pec_sigma_threshold:
             cells, sheet, wire = classify_pec_entry(
                 entry.shape, coords, centres, cell_sizes,
-                name=entry.material_name)
+                name=entry.material_name, grid=grid)
             if cells is not None:
                 has_pec_cells = True
                 pec_mask = pec_mask | cells
@@ -908,9 +973,10 @@ def rasterize_geometry(
         pole_mask = mask
         if pole_geometry_entries is not None and (mat.debye_poles or mat.lorentz_poles):
             declared = pole_geometry_entries[entry_index].shape
-            pole_mask = _material_cell_mask(declared, coords, centres)
+            pole_mask = _material_cell_mask(declared, coords, centres,
+                                            grid=grid if getattr(grid, 'periodic_axes', '') else None)
             if mat.sigma >= pec_sigma_threshold and cells is not None:
-                pole_mask = pec_volume_cell_mask(declared, centres)
+                pole_mask = pec_volume_cell_mask(declared, centres, grid=grid)
 
         if mat.debye_poles:
             for pole in mat.debye_poles:

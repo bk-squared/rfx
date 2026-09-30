@@ -68,12 +68,11 @@ def test_code_prose_and_images_are_not_data(path: str) -> None:
     "docs/design_notes/schemas/rfx-design-ir-v2.schema.json",
     "docs/public/site_map.json",
     "docs/public/gallery/assets/patch_antenna/sparams.s1p",
-    "scripts/ops/gpu_suite_shards.json",
     "tests/contracts/boundary_registry.json",
     "tests/fixtures/a.json",
     "tests/fixtures/deep/er/a.npz",
     "tests/data/preflight_split_snapshot/x.json",
-    "tests/crossval/sheen_lpf/reference/openems_sheen.json",
+    "tests/crossval/msl_notch_filter/reference/openems_tutorial.json",
 ])
 def test_the_allowlist_covers_the_measured_paths(path: str) -> None:
     assert budget.allowlisted(path)
@@ -115,8 +114,8 @@ def test_every_frozen_data_home_is_on_the_allowlist() -> None:
     # Only data suffixes come off: `split(".")[0]` would leave "rfx", which
     # every file under rfx/ names.
     ("tests/fixtures/rfx.golden_v2.json", ["rfx.golden_v2.json", "rfx.golden_v2"]),
-    ("tests/crossval/sheen_lpf/reference/openems_sheen.json",
-     ["openems_sheen.json", "openems_sheen"]),
+    ("tests/crossval/msl_notch_filter/reference/openems_tutorial.json",
+     ["openems_tutorial.json", "openems_tutorial"]),
 ])
 def test_reference_tokens(path: str, tokens: list) -> None:
     """A file directly in its home gets no directory token: `fixtures` names everything."""

@@ -30,6 +30,7 @@ from rfx.grid import C0, Grid
 from rfx.core.yee import MaterialArrays
 from rfx.farfield import (
     FarFieldResult, NTFFBox, compute_far_field, compute_far_field_jax,
+    _ntff_face_pads,
 )
 from rfx.sources.tfsf import init_tfsf, measure_normal_incident_spectrum
 from rfx.simulation import run
@@ -492,12 +493,9 @@ def compute_rcs(
     # --- 2. Set up NTFF box just outside TFSF box ---
     # NTFF box must be in scattered-field region (outside TFSF box).
     # Place it `ntff_offset` cells outside the TFSF boundaries.
-    # Per-face CPML thicknesses from grid.face_layers so asymmetric
-    # cavity configurations (e.g., thin ground-plane z_lo) still keep
-    # the NTFF surface outside active-CPML cells.
-    fl = getattr(grid, "face_layers", None) or {
-        k: grid.cpml_layers for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
-    }
+    # Use realized pads for placement as well as the phase origin: declared
+    # face_layers may still carry a nonzero budget on a PEC/PMC face.
+    fl = _ntff_face_pads(grid)
     ntff_i_lo = tfsf_cfg.x_lo - ntff_offset
     ntff_i_hi = tfsf_cfg.x_hi + ntff_offset + 1
     ntff_j_lo = fl["y_lo"] + ntff_offset

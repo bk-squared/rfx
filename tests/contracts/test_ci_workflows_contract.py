@@ -404,8 +404,8 @@ def test_the_contract_tests_run_when_the_diff_is_code() -> None:
         "the sharded suite now names tests/contracts explicitly -- check it is "
         f"not being ignored: {suite}"
     )
-    assert re.search(r"--ignore=tests/crossval", suite), (
-        "the ignore list changed shape; re-read what the shards now exclude"
+    assert "--ignore" not in suite, (
+        "the sharded suite must collect the whole test tree"
     )
 
 

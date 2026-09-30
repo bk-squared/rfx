@@ -645,8 +645,10 @@ class TestOffLatticeCensus:
         assert "frequency sensitivity depends on the mode" in msg
         assert "COVERAGE:" in msg and "STALE IF:" in msg
 
+    # A sheet's in-plane face is measured at its SOLVED edge since #1375
+    # (see test_sheet_in_plane_faces_are_measured_at_the_solved_edge), not
+    # at its nearest node, so only the volume case of this relation holds.
     @pytest.mark.parametrize("kind,lo,hi,z_hi,realized_mm,residual_mm", [
-        ("sheet", 1.2, 6.2, 2.0, 4.0, 0.2),
         ("volume", 1.3, 6.7, 4.0, 6.0, 0.3),
     ])
     def test_nearest_node_residual_is_not_an_extent_error_bound(
@@ -716,11 +718,13 @@ class TestOffLatticeCensus:
         msg = str(hits[0])
         assert msg.count("geometry[") == 5  # capped at the worst 5
 
-    def test_sheet_in_plane_edges_are_examined_and_its_normal_is_not(self):
-        """A sheet's in-plane rim is a real design edge (its footprint is
-        sampled closed on the nodes it covers); its NORMAL axis has no
-        extent and is reported by sheet_plane_realized instead — the
-        message says so."""
+    def test_sheet_in_plane_faces_are_measured_at_the_solved_edge(self):
+        """A sheet's in-plane rim is a real design edge, solved 0.35 cell
+        beyond its last node (rfx.mesh_edges.solved_sheet_span, #1375): the
+        sheet drawn 1.3-10.3 mm covers nodes 2-10 mm and is solved
+        1.65-10.35 mm, so its worst face is 350 um off (the nearest-node
+        reading was 300 um). Its NORMAL axis has no extent and is reported by
+        sheet_plane_realized instead -- the message says so."""
         sim = Simulation(domain=(12 * MM, 8 * MM, 8 * MM), dx=1 * MM,
                          freq_max=10e9, boundary="cpml")
         sim.add(Box((1.3 * MM, 2.0 * MM, 2.0 * MM),
@@ -728,7 +732,7 @@ class TestOffLatticeCensus:
         hits = sim.preflight().by_code(OFF_LATTICE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
-        assert "(sheet) x:" in msg and "300µm" in msg
+        assert "(sheet) x:" in msg and "350µm" in msg
         assert "1 sheet normal axis/axes reported by sheet_plane_realized" in msg
 
 
@@ -1125,3 +1129,48 @@ def test_symmetric_metal_on_nu_is_silent():
         f"uniform-dz profile triggered the asymmetric-metal warning; "
         f"issues: {issues!r}"
     )
+
+
+@pytest.mark.parametrize('axis', [0, 1])
+@pytest.mark.parametrize('lo_mm', [0, 9])
+def test_periodic_sheet_end_reports_the_unwrapped_node_span(axis, lo_mm):
+    """The L node closes an interval at N; its stored node is still zero."""
+    from rfx.boundaries.spec import BoundarySpec
+
+    domain = [.013, .007, .006]
+    lo, hi = [lo_mm * MM, .002, .003], [.013, .005, .003]
+    if axis == 1:
+        for values in (domain, lo, hi):
+            values[0], values[1] = values[1], values[0]
+    boundary = dict(x='pec', y='pec', z='pec')
+    boundary['xyz'[axis]] = 'periodic'
+    sim = Simulation(10e9, tuple(domain), dx=MM, cpml_layers=0,
+                     boundary=BoundarySpec(**boundary))
+    sim.add(Box(tuple(lo), tuple(hi)), material='pec')
+    grid = sim._build_grid()
+    before = sim._assemble_realized(grid, nonuniform=False).edges
+    issues = [i.to_dict() for i in sim.preflight()]
+    body = sim.fidelity_report(print_report=False)[1]
+    span = body['axes'][axis]
+    # The node span is 9--13 mm. Keep the existing 0.35-cell free-edge
+    # correction at 9 mm; the endpoint at L has no domain-wall overhang.
+    expected_lo_um = 8650 if lo_mm else 0
+    np.testing.assert_allclose(span['realized_um'], [expected_lo_um, 13000],
+                               rtol=0, atol=1e-9)
+    messages = '\n'.join(i['message'] for i in issues)
+    assert '225.00%' not in messages
+    if lo_mm:
+        assert f"{'xyz'[axis]}: drawn 4mm, nodes cover 4mm, solved as 4.35mm" in messages
+        assert (f"(sheet) {'xyz'[axis]}: extent 4mm, worst face residual "
+                "350µm (8.75% of the extent)") in messages
+    after = sim._assemble_realized(grid, nonuniform=False).edges
+    # Independently enumerate the tangential edges, including the stored
+    # node 0 used by the transverse component at the closing endpoint.
+    ex, ey, ez = [np.zeros((13, 8, 7), dtype=bool) for _ in range(3)]
+    ex[lo_mm:13, 2:6, 3] = True
+    ey[([0, *range(lo_mm, 13)] if lo_mm else list(range(13))), 2:5, 3] = True
+    expected = (ex, ey, ez) if axis == 0 else tuple(
+        np.swapaxes(a, 0, 1) for a in (ey, ex, ez))
+    for old, new, want in zip(before, after, expected):
+        np.testing.assert_array_equal(old, want)
+        np.testing.assert_array_equal(new, want)

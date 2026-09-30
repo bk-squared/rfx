@@ -14,10 +14,17 @@
         "message": "all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
+      },
+      {
+        "code": "thin_absorber",
+        "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "severity": "warning",
+        "source": "_validate_cfg_thin_absorber"
       }
     ],
     "n_errors": 0,
-    "n_issues": 2,
+    "n_issues": 3,
     "ok": true
   }
 }

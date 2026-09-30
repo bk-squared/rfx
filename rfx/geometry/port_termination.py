@@ -154,10 +154,20 @@ def default_msl_terminates(sim, grid, *, position, width, height, direction):
     indices[span["prop_idx"]] = span["i_feed"]
     indices[span["width_idx"]] = span["w_lo"]
     indices[span["normal_idx"]] = span["n_hi"]
-    lower = [float(nodes[axis][index]) for axis, index in enumerate(indices)]
+    lower = [float(nodes[axis][index % len(nodes[axis])])
+             for axis, index in enumerate(indices)]
     upper = lower.copy()
     transverse = span["width_idx"]
-    upper[transverse] = float(nodes[transverse][span["w_hi"]])
+    upper[transverse] = float(nodes[transverse][span["width_nodes"][-1]])
+    apertures = [(lower, upper)]
+    if span["width_axis"] in getattr(grid, "periodic_axes", ""):
+        # The seam width may be (4, 5, 0), not the bounding interval 0..5.
+        # Check each unique signal node against the conductor footprint.
+        apertures = []
+        for w in span["width_nodes"]:
+            point = lower.copy()
+            point[transverse] = float(nodes[transverse][w])
+            apertures.append((point, point))
     references = []
     for ref, entry in candidates:
         try:
@@ -166,7 +176,8 @@ def default_msl_terminates(sim, grid, *, position, width, height, direction):
             # A refused entry has no realized footprint; its own preflight
             # reports the refusal against that entry.
             continue
-        if lattice_intersects_aperture(lattice, nodes, lower, upper):
+        if any(lattice_intersects_aperture(lattice, nodes, lo, hi)
+               for lo, hi in apertures):
             references.append(ref)
     return tuple(references)
 
@@ -192,6 +203,8 @@ def port_terminal_points(collection, port, grid, nodes):
         start = tuple(float(nodes[a][index[a]]) for a in range(3))
         end = list(start)
         end[axis] = float(nodes[axis][min(index[axis]+1, len(nodes[axis])-1)])
+        if 'xyz'[axis] in getattr(grid, 'periodic_axes', '') and index[axis] == grid.shape[axis]-1:
+            end[axis] = float(grid.domain[axis])
     else:
         start = tuple(port.position)
         end = list(start)

@@ -491,20 +491,18 @@ def _wr90_post_sim():
     return _quiet(build)
 
 
-def test_distributed_fallback_refuses_a_conformal_request_it_would_drop():
+def test_distributed_fallback_carries_a_conformal_request():
     """An explicit conformal_pec=True with no Boundary(conformal=True): the
-    one-device fallback re-derives False from the declaration and would
-    return the staircase post, so the request is refused, not exempted."""
-    with pytest.raises(NotImplementedError, match=_refusal(
-            "distributed multi-device", "conformal_pec")):
-        _wr90_post_sim().run(n_steps=8, conformal_pec=True,
-                             devices=_devices(), skip_preflight=True)
-    # The request is not a no-op on this model: one device, conformal post
-    # vs staircase post.
-    on, off = (np.asarray(_quiet(lambda: _wr90_post_sim().run(
-        n_steps=60, conformal_pec=flag, skip_preflight=True)).time_series)
-        for flag in (True, False))
+    one-device fallback runs with the caller's arguments (#1305), so the
+    request is carried, not refused and not re-derived from the declaration."""
+    def run(n_steps, **kw):
+        return np.asarray(_quiet(lambda: _wr90_post_sim().run(
+            n_steps=n_steps, skip_preflight=True, **kw)).time_series)
+    fell = run(60, conformal_pec=True, devices=_devices())
+    on, off = run(60, conformal_pec=True), run(60, conformal_pec=False)
+    # The request is not a no-op on this model: conformal post vs staircase.
     assert np.max(np.abs(on - off)) > 0.1 * np.max(np.abs(off))
+    np.testing.assert_array_equal(fell, on)
 
 
 def _copper_sheet_sim(nonuniform):

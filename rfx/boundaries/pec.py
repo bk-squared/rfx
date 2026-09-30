@@ -187,6 +187,9 @@ class SheetSpec:
     plane: int
     footprint: object
     name: str | None = None
+    # A physical in-plane interval distinguishes node 0 from its virtual
+    # endpoint N until its edges have been enumerated.
+    unwrapped_footprint: object | None = None
 
     @classmethod
     def from_node_ranges(cls, grid_shape, *, normal_axis: int, plane: int,
@@ -406,6 +409,62 @@ def _volume_occupancy_masks(occ, periodic):
     return tuple(out)
 
 
+def _fold_sheet_nodes(mask, shape, *, edge_axis=None, xp=jnp):
+    """Identify virtual endpoint nodes after enumerating physical edges."""
+    for axis, n in enumerate(shape):
+        if mask.shape[axis] == n:
+            continue
+        first, last, middle = ([slice(None)] * 3 for _ in range(3))
+        first[axis], last[axis], middle[axis] = slice(0, 1), slice(n, n + 1), slice(1, n)
+        if axis == edge_axis:
+            first[axis] = slice(0, n)
+            mask = mask[tuple(first)]
+        else:
+            mask = xp.concatenate((mask[tuple(first)] | mask[tuple(last)],
+                                   mask[tuple(middle)]), axis=axis)
+    return mask
+
+
+def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
+    """Union physical footprints before folding their endpoint nodes."""
+    per_axis = {}
+    for sp in sheets:
+        a = sp.normal_axis
+        full = sp.footprint
+        if tuple(full.shape) != tuple(shape):
+            raise ValueError(f"SheetSpec footprint shape {full.shape} does not match grid shape {shape}")
+        # Explicit legacy node masks already identify the periodic endpoints.
+        # Also use this as the clip mask for diagnostic copies of a sheet.
+        for t in range(3):
+            if periodic[t] and t != a:
+                first = [slice(None)] * 3
+                first[t] = slice(0, 1)
+                full = jnp.concatenate((full, full[tuple(first)]), axis=t)
+        raw = sp.unwrapped_footprint
+        if raw is not None:
+            for t in range(3):
+                if periodic[t] and t != a and raw.shape[t] == shape[t]:
+                    first = [slice(None)] * 3
+                    first[t] = slice(0, 1)
+                    raw = jnp.concatenate((raw, raw[tuple(first)]), axis=t)
+            if tuple(raw.shape) != tuple(full.shape):
+                raise ValueError("SheetSpec unwrapped footprint does not match the periodic grid")
+            full = raw & full
+        per_axis[a] = full if a not in per_axis else (per_axis[a] | full)
+    edge = [None, None, None]
+    for a, full in per_axis.items():
+        for t in range(3):
+            if t == a:
+                if shape[a] != 1:
+                    continue
+                mask = _fold_sheet_nodes(full, shape)
+            else:
+                mask = full & _shift(full, t, (False, False, False), -1)
+                mask = _fold_sheet_nodes(mask, shape, edge_axis=t)
+            edge[t] = mask if edge[t] is None else (edge[t] | mask)
+    return edge
+
+
 def _sheet_edge_masks(sheets, shape, periodic):
     """§1.3: E_t (t != normal) on the sheet plane, both end nodes in F.
 
@@ -425,6 +484,8 @@ def _sheet_edge_masks(sheets, shape, periodic):
     gives the same drawn rectangle on the 2-D lane (design note §1.3:
     "realized as a 2-D volume of its footprint").
     """
+    if any(sp.unwrapped_footprint is not None for sp in sheets):
+        return _unwrapped_sheet_edge_masks(sheets, shape, periodic)
     edge = [None, None, None]
     per_axis = {}
     for sp in sheets:

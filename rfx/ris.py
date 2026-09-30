@@ -11,6 +11,7 @@ Typical usage
 ...     substrate_thickness=1.5e-3,
 ...     substrate_material="fr4",
 ...     freq_range=(4e9, 8e9),
+...     dx=0.5e-3,
 ... )
 >>> cell.add_element(Box((3e-3, 3e-3, z), (7e-3, 7e-3, z)), material="pec")
 >>> cell.add_varactor((5e-3, 5e-3), capacitance_range=(0.1e-12, 1.0e-12))
@@ -121,7 +122,8 @@ class RISUnitCell:
     n_steps : int
         Number of FDTD timesteps per simulation. Default 300.
     dx : float or None
-        Cell size override. Auto-computed if None.
+        Uniform cell size. Required when a varactor is added; otherwise
+        auto-computed if None.
     cpml_layers : int
         CPML layers on the port-normal axis. Default 8.
     ground_plane : bool
@@ -266,33 +268,7 @@ class RISUnitCell:
         for elem in self._elements:
             sim.add(elem.shape, material=elem.material)
 
-        # Varactors as substrate permittivity modulation.
-        #
-        # In a real RIS, the varactor changes the effective capacitance
-        # of the unit cell, which shifts the resonant frequency and
-        # thus the reflection phase.  In FDTD this is modelled by
-        # varying the substrate permittivity.  The mapping is:
-        #
-        #     eps_eff = eps_substrate + C / (eps_0 * h_sub)
-        #
-        # where the added capacitance per unit area augments the
-        # substrate's effective permittivity. This produces the desired
-        # resonance shift without requiring lumped-element placement
-        # that could collide with PEC cells.
-        if self._varactors:
-            from rfx.core.yee import EPS_0
-            C = capacitance_override if capacitance_override is not None else self._varactors[0].capacitance_range[0]
-            eps_base = _substrate_eps(self._substrate_material)
-            dx_est = sim._dx or (c0 / freq_max / 20.0)
-            # Capacitance contribution to substrate permittivity
-            eps_add = C / (EPS_0 * dx_est)
-            eps_loaded = eps_base + eps_add
-            # Re-register the substrate material with the loaded value
-            sim._materials["substrate"] = sim._materials["substrate"].__class__(
-                eps_r=eps_loaded
-            )
-
-        # Floquet port above the structure
+        # Register the periodic port before reading its realized cell size.
         port_z = h_sub + (z_total - h_sub) * 0.4
         f_center = (self._freq_range[0] + self._freq_range[1]) / 2.0
         sim.add_floquet_port(
@@ -304,6 +280,41 @@ class RISUnitCell:
             n_freqs=self._n_freqs,
             f0=f_center,
         )
+
+        # Varactors as substrate permittivity modulation.
+        #
+        # In a real RIS, the varactor changes the effective capacitance
+        # of the unit cell, which shifts the resonant frequency and
+        # thus the reflection phase.  In FDTD this is modelled by
+        # varying the substrate permittivity.  The mapping is:
+        #
+        #     eps_eff = eps_substrate + C / (eps_0 * cell_size)
+        #
+        # where the added capacitance per unit area augments the
+        # substrate's effective permittivity. This produces the desired
+        # resonance shift without requiring lumped-element placement
+        # that could collide with PEC cells.
+        if self._varactors:
+            if self._dx is None:
+                raise ValueError(
+                    "RISUnitCell with a varactor requires an explicit uniform dx; "
+                    "set dx=<value> in metres so the capacitance load and solve "
+                    "use the same cell size."
+                )
+            from rfx.core.yee import EPS_0
+            C = capacitance_override if capacitance_override is not None else self._varactors[0].capacitance_range[0]
+            eps_base = _substrate_eps(self._substrate_material)
+            # Explicit dx is unchanged when loading changes eps_r, so no
+            # freeze is needed. Read the registered periodic grid's cell.
+            grid = sim._build_grid()
+            cell_size = float(grid.cells(0)[0])
+            # Capacitance contribution to substrate permittivity
+            eps_add = C / (EPS_0 * cell_size)
+            eps_loaded = eps_base + eps_add
+            # Re-register the substrate material with the loaded value
+            sim._materials["substrate"] = sim._materials["substrate"].__class__(
+                eps_r=eps_loaded
+            )
 
         # Probe above the patch
         probe_z = h_sub + (z_total - h_sub) * 0.3
