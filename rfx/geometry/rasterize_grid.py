@@ -819,6 +819,13 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     """
     from rfx.boundaries.pec import WireSpec, wire_path_edge_masks
     from rfx._periodic import periodic_shape
+    pts = getattr(shape, "points", None)
+    radius = getattr(shape, "radius", None)
+    # Periodic filament validation also needs a concrete radius.
+    if pts is not None and is_tracer(radius):
+        raise NotImplementedError(
+            "PEC PolylineWire requires a static radius to choose "
+            "filament or volume; a traced radius is not supported.")
     shape = periodic_shape(grid, shape)
 
     traced = _is_traced_coords(coords) or _is_traced_coords(centres)
@@ -846,16 +853,9 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
         if not traced and _volume_is_empty(shape, centres, mask, grid=grid):
             _refuse_zero_cells(shape, name, "PEC volume")
         return mask, None, None
-    pts = getattr(shape, "points", None)
-    radius = getattr(shape, "radius", None)
-    if pts is not None and radius is not None:
-        if is_tracer(radius):
-            raise NotImplementedError(
-                "PEC PolylineWire requires a static radius to choose "
-                "filament or volume; a traced radius is not supported.")
-        if traced and radius > 0:
-            d_min = _static_wire_min_cell(pts, node_axes, cell_sizes)
-            _refuse_subcell_wire_radius(radius, d_min)
+    if pts is not None and radius is not None and traced and radius > 0:
+        d_min = _static_wire_min_cell(pts, node_axes, cell_sizes)
+        _refuse_subcell_wire_radius(radius, d_min)
     if pts is not None and radius is not None and not traced:
         # PolylineWire (§1.4): radius >= half the local cell is a volume;
         # positive subcell radii refuse. A legacy radius=0 filament takes

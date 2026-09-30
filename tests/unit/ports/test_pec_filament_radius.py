@@ -215,15 +215,19 @@ def test_static_graded_profile_without_static_nodes_refuses():
 
 
 @pytest.mark.parametrize("traced_mesh", [False, True])
-def test_traced_radius_still_refuses_with_static_metrics(traced_mesh):
+@pytest.mark.parametrize("periodic", [False, True])
+def test_traced_radius_still_refuses_with_static_metrics(traced_mesh, periodic):
     from rfx.geometry.rasterize_grid import GridCoords, classify_pec_entry
+    from rfx.grid import Grid
     nodes = np.arange(8)*.001
     sizes = (np.full(8, .001),)*3
+    grid = (Grid(10e9, (.008,)*3, dx=.001, cpml_layers=0, periodic_axes="xyz")
+            if periodic else None)
 
     def classify(radius, x):
         coords = GridCoords(x=x if traced_mesh else nodes, y=nodes, z=nodes, shape=(8,)*3)
         wire = PolylineWire(((.003, .003, .002), (.003, .003, .005)), radius=radius)
-        return classify_pec_entry(wire, coords, coords, sizes)
+        return classify_pec_entry(wire, coords, coords, sizes, grid=grid)
 
     with pytest.raises(NotImplementedError, match="a traced radius is not supported"):
         jax.jit(classify)(.0006, nodes)
