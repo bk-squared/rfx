@@ -4893,20 +4893,19 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane == "run_distributed" and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
-        if plan.lane == "run_distributed" and self._waveguide_ports:
-            raise NotImplementedError(
-                "Waveguide ports are not supported with devices=...; use one device "
-                "(omit devices=...).")
-        if plan.lane == "run_distributed" and self._tfsf is not None:
-            # TFSF sources need the whole domain on one
+        if plan.lane == "run_distributed" and (
+                self._tfsf is not None or self._waveguide_ports):
+            # TFSF sources and waveguide ports need the whole domain on one
             # device. Re-run with every argument the caller gave, minus devices=;
             # the runner's own fallback re-ran with n_steps alone and dropped
             # the rest (#1305: an explicit conformal_pec=False came back as the
             # declared conformal walls).
             import warnings
             warnings.warn(
-                "Distributed runner does not yet support TFSF plane-wave sources. "
-                "Falling back to single-device execution with the same "
+                "Distributed runner does not yet support "
+                + ("TFSF plane-wave sources" if self._tfsf is not None
+                   else "waveguide ports")
+                + ". Falling back to single-device execution with the same "
                 "arguments.",
                 stacklevel=2,
             )

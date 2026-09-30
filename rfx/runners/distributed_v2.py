@@ -606,8 +606,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     CPML boundaries, soft sources, point probes, lumped ports, and
     Debye/Lorentz dispersive materials.
 
-    TFSF sources warn and fall back to one device. Waveguide ports are
-    refused; excited wire ports without radius or reference planes run.
+    TFSF sources and waveguide ports warn and fall back to one device;
+    excited wire ports without radius or reference planes run.
 
     Parameters
     ----------
@@ -645,15 +645,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Graceful fallback for features that require the full domain on a
     # single device.
     # ------------------------------------------------------------------
-    if sim._waveguide_ports:
-        raise NotImplementedError(
-            "Waveguide ports are not supported with devices=...; use one device "
-            "(omit devices=...).")
-
     if sim._tfsf is not None:
         warnings.warn(
             "Distributed runner does not yet support TFSF plane-wave "
             "sources. Falling back to single-device execution.",
+            stacklevel=2,
+        )
+        return sim.run(n_steps=n_steps)
+
+    if sim._waveguide_ports:
+        warnings.warn(
+            "Distributed runner does not yet support waveguide ports. "
+            "Falling back to single-device execution.",
             stacklevel=2,
         )
         return sim.run(n_steps=n_steps)

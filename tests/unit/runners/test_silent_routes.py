@@ -271,7 +271,7 @@ def test_conformal_probe_fields_without_s_matrix_are_allowed(ports):
     assert got.s_params is None
 
 
-def test_waveguide_devices_refused_with_staircase(two_devices):
+def test_waveguide_device_fallback_preserves_staircase(two_devices):
     sim = Simulation(
         freq_max=20e9,
         domain=(0.0243, 0.0121, 0.0067),
@@ -290,9 +290,11 @@ def test_waveguide_devices_refused_with_staircase(two_devices):
         ref_offset=1,
     )
     sim.add_probe((0.016, 0.006, 0.003), "ez")
-    with pytest.raises(NotImplementedError, match="Waveguide ports.*devices"):
-        sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=False,
-                devices=two_devices)
+    expected = sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=False)
+    got = sim.run(
+        n_steps=N_STEPS, skip_preflight=True, conformal_pec=False, devices=two_devices
+    )
+    _identical(expected, got)
 
 
 @pytest.mark.parametrize(

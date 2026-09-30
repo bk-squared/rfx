@@ -620,8 +620,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml",
                                 "a waveguide port needs a CPML face, which production validation refuses"),
         run_adi=ADI_PORTS,
-        run_distributed=refuses("waveguide ports require one device",
-                                raises="Waveguide ports are not supported with devices"),
+        run_distributed=falls_back("run_uniform", "one device, with a warning and every "
+                                   "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=refuses("waveguide ports refused",

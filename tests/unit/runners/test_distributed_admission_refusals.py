@@ -254,8 +254,8 @@ def test_default_pec_model_matches_native(source):
         assert relative < 1e-4, f"{entry}: relative Ez difference {relative:.9e}"
 
 
-def test_tfsf_falls_back_and_waveguide_is_refused(monkeypatch):
-    """TFSF uses the native fallback; waveguide requests require one device.
+def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
+    """TFSF or waveguide excitation with surface monitors uses the native fallback.
 
     Through ``run(devices=...)`` the one-device run gets every argument the
     caller gave (#1305: the runner's own fallback passed n_steps alone, so an
@@ -288,15 +288,6 @@ def test_tfsf_falls_back_and_waveguide_is_refused(monkeypatch):
             monkeypatch.setattr(sim, "run", native_run)
             explicit = {"conformal_pec": False, "conformal_min_weight": 0.3,
                         "compute_s_params": False}
-            if kind == "waveguide":
-                with pytest.raises(NotImplementedError, match="Waveguide ports.*devices"):
-                    if entry == "api":
-                        public_run(n_steps=N_STEPS, devices=_devices(),
-                                   skip_preflight=True, **explicit)
-                    else:
-                        _run(sim, entry)
-                assert calls == []
-                continue
             with pytest.warns(UserWarning, match="Falling back to single-device"):
                 result = (public_run(n_steps=N_STEPS, devices=_devices(),
                                      skip_preflight=True, **explicit)
