@@ -21,7 +21,7 @@ from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
-    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, _shift_bwd,
+    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, curl_h, CurlBoundary,
     map_lumped, lumped_components, lumped_total,
     precompute_coeffs, update_he_fast,
 )
@@ -526,6 +526,7 @@ def _update_e_with_optional_dispersion(
     aniso_inv_eps: tuple | None = None,
     stencil_order: int = 2,
     bloch: tuple | None = None,
+    boundary=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -550,20 +551,20 @@ def _update_e_with_optional_dispersion(
         if aniso_inv_eps is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
-                                      dt, dx, periodic=periodic), None, None
+                                      dt, dx, periodic=periodic, boundary=boundary), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                  dt, dx, periodic=periodic), None, None
+                                  dt, dx, periodic=periodic, boundary=boundary), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch), None, None
+                        stencil_order=stencil_order, bloch=bloch, boundary=boundary), None, None
 
     if debye is not None and lorentz is None:
         from rfx.materials.debye import update_e_debye
 
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
-            state, debye_coeffs, debye_state, dt, dx, periodic=periodic)
+            state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
@@ -571,7 +572,7 @@ def _update_e_with_optional_dispersion(
 
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
-            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic)
+            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz update.
@@ -580,11 +581,6 @@ def _update_e_with_optional_dispersion(
 
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lorentz_state = lorentz
-
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
 
     # Narrow every output back to the dtype of the carry it came from
     # (issue #656) — same policy as the single-model bodies in
@@ -595,9 +591,8 @@ def _update_e_with_optional_dispersion(
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
-    curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
-    curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
-    curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
 
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
@@ -1861,6 +1856,7 @@ def _build_step_setup(
         ntff=ntff,
         pec_faces_frozen=_pec_faces_frozen,
         pmc_faces_frozen=_pmc_faces_frozen,
+        curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
         src_meta=tuple(src_meta),
         mag_src_meta=tuple(mag_src_meta),
         prb_meta=tuple(prb_meta),
@@ -2008,6 +2004,7 @@ class _StepContext:
     # every existing caller's context is unchanged.
     use_current_moments: bool = False
     current_moments: Any = None
+    curl_boundary: Any = None
     pec_faces_frozen: Any = frozenset()
     pmc_faces_frozen: Any = frozenset()
 
@@ -2177,7 +2174,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             # Fast path: combined H+E update with PEC baked into
             # pre-computed coefficients — eliminates separate apply_pec(),
             # coefficient recomputation, and reduces XLA scatter ops.
-            st = update_he_fast(st, ctx.fast_coeffs)
+            st = update_he_fast(st, ctx.fast_coeffs, boundary=ctx.curl_boundary)
         else:
             # H update
             if ctx.use_upml:
@@ -2265,7 +2262,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             if ctx.use_upml:
                 if ctx.use_debye or ctx.use_lorentz:
                     raise ValueError("boundary='upml' does not yet support dispersion")
-                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic)
+                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic,
+                                      boundary=ctx.curl_boundary)
                 debye_new = None
                 lorentz_new = None
             else:
@@ -2281,6 +2279,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
+                    boundary=ctx.curl_boundary,
                 )
 
             # #1179 design box: redo the E update at the design cells with
@@ -2296,6 +2295,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     periodic=periodic,
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
+                    boundary=ctx.curl_boundary,
                 )
 
             # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff (#437).
@@ -2312,7 +2312,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 st, cpml_new = ctx.apply_cpml_e(
                     st, ctx.cpml_params, cpml_new, grid, ctx.cpml_axes,
                     materials=materials,
-                    inv_eps_r_update=cpml_inv_eps_r)
+                    inv_eps_r_update=cpml_inv_eps_r,
+                    boundary=ctx.curl_boundary)
             # Re-enforce Kottke-frozen E cells after CPML-E correction.
             # CPML adds a psi-driven correction that can thaw cells
             # where inv_eps==0; re-zero them here so the frozen
@@ -2385,7 +2386,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 _curls = _curl_h(
                     st.hx.astype(_scd), st.hy.astype(_scd),
                     st.hz.astype(_scd), dx, periodic,
-                    ctx.stencil_order, ctx.bloch)
+                    ctx.stencil_order, ctx.bloch, boundary=ctx.curl_boundary)
                 st = _apply_sheet_e(
                     st, e_prev_sheet, _curls, ctx.sheet_impedance,
                     _sheet_coeffs)
@@ -2545,7 +2546,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 # increment at driven cells, which #683's gate G2 measured
                 # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
-                    st, (mi, mj, mk), wp_meta.component, dx, periodic)
+                    st, (mi, mj, mk), wp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
                 # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
                 # E-derived (E^{n+1}); advance the current sample by dt/2 so
                 # both DFT channels share a reference time
@@ -2585,7 +2586,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
                 # #692: shared loop — see the wire-port block above.
                 i_val_l = _ampere_loop(
-                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                    st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
                 # Yee half-step: I is H-derived (H^{n+1/2}), V is E-derived
                 # (E^{n+1}).  Withheld on this lane until the slot above
                 # was post-injection, because that is the correction's

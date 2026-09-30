@@ -126,12 +126,18 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     return -field[i, j, k] * grid.dx
 
 
-def _bwd_h(h, idx, axis, periodic=(False, False, False)):
+def _port_curl_boundary(grid, periodic):
+    from rfx.boundaries.pec import resolve_wall_faces
+    from rfx.core.yee import CurlBoundary
+    return CurlBoundary(*resolve_wall_faces(grid, periodic), periodic)
+
+
+def _bwd_h(h, idx, axis, periodic=(False, False, False), boundary=None):
     """``h`` one cell back along ``axis``, with the SAME out-of-domain
     convention the uniform E update uses.
 
     Uniform-lane twin of :func:`rfx.nonuniform._bwd_neighbor` (issue #689),
-    and this is where the rule ships: ``rfx/__init__.py`` re-exports
+    Both now delegate to ``rfx.core.yee.h_neighbor``. ``rfx/__init__.py`` re-exports
     ``wire_port_current`` as the public ``rfx.wire_port_current``, and both
     extractors here sit behind ``extract_s_matrix`` / ``extract_s_matrix_wire``.
 
@@ -162,17 +168,8 @@ def _bwd_h(h, idx, axis, periodic=(False, False, False)):
     periodic axes (#206, ``NotImplementedError``), so no periodic run reaches
     these extractors today.
     """
-    n = h.shape[axis]
-    i = int(idx[axis])
-    if n == 1 or periodic[axis]:
-        back = list(idx)
-        back[axis] = (i - 1) % n
-        return h[tuple(back)]
-    if i == 0:
-        return jnp.zeros_like(h[idx])
-    back = list(idx)
-    back[axis] = i - 1
-    return h[tuple(back)]
+    from rfx.core.yee import h_neighbor
+    return h_neighbor(h, axis, index=idx, periodic=periodic, boundary=boundary)
 
 
 def port_current(state, grid: Grid, port: LumpedPort,
@@ -215,10 +212,11 @@ def port_current(state, grid: Grid, port: LumpedPort,
     idx = tuple(grid.position_to_index(port.position))
     dx = grid.dx
 
-    return _ampere_loop(state, idx, port.component, dx, periodic)
+    return _ampere_loop(state, idx, port.component, dx, periodic,
+                        boundary=_port_curl_boundary(grid, periodic))
 
 
-def _ampere_loop(state, idx, component, dx, periodic):
+def _ampere_loop(state, idx, component, dx, periodic, boundary=None):
     """4-term discrete Ampere loop at ``idx`` on a uniform (cubic) grid.
 
     Single spelling shared by :func:`port_current` and
@@ -228,20 +226,20 @@ def _ampere_loop(state, idx, component, dx, periodic):
     if component == "ez":
         # curl_z = (Hy[i,j,k] - Hy[i-1,j,k] - Hx[i,j,k] + Hx[i,j-1,k]) / dx
         return (
-            state.hy[idx] - _bwd_h(state.hy, idx, 0, periodic)
-            - state.hx[idx] + _bwd_h(state.hx, idx, 1, periodic)
+            state.hy[idx] - _bwd_h(state.hy, idx, 0, periodic, boundary)
+            - state.hx[idx] + _bwd_h(state.hx, idx, 1, periodic, boundary)
         ) * dx
     if component == "ex":
         # curl_x = (Hz[i,j,k] - Hz[i,j-1,k] - Hy[i,j,k] + Hy[i,j,k-1]) / dx
         return (
-            state.hz[idx] - _bwd_h(state.hz, idx, 1, periodic)
-            - state.hy[idx] + _bwd_h(state.hy, idx, 2, periodic)
+            state.hz[idx] - _bwd_h(state.hz, idx, 1, periodic, boundary)
+            - state.hy[idx] + _bwd_h(state.hy, idx, 2, periodic, boundary)
         ) * dx
     if component == "ey":
         # curl_y = (Hx[i,j,k] - Hx[i,j,k-1] - Hz[i,j,k] + Hz[i-1,j,k]) / dx
         return (
-            state.hx[idx] - _bwd_h(state.hx, idx, 2, periodic)
-            - state.hz[idx] + _bwd_h(state.hz, idx, 0, periodic)
+            state.hx[idx] - _bwd_h(state.hx, idx, 2, periodic, boundary)
+            - state.hz[idx] + _bwd_h(state.hz, idx, 0, periodic, boundary)
         ) * dx
     raise ValueError(f"Unknown port component: {component!r}")
 
@@ -1135,7 +1133,8 @@ def wire_port_current(state, grid, port,
     mid = _wire_port_live_mid(grid, port, pec_edge_masks)
     dx = grid.dx
 
-    return _ampere_loop(state, tuple(mid), port.component, dx, periodic)
+    return _ampere_loop(state, tuple(mid), port.component, dx, periodic,
+                        boundary=_port_curl_boundary(grid, periodic))
 
 
 # ---------------------------------------------------------------------------
@@ -1643,6 +1642,7 @@ def extract_s_matrix(
         if return_vi_dump else None
     )
 
+    curl_boundary = _port_curl_boundary(grid, (False, False, False))
     for j in range(n_ports):
         state = init_state(grid.shape)
         sprobes = [init_sparam_probe(grid, p, freqs, dft_total_steps=n_steps) for p in ports]
@@ -1665,12 +1665,13 @@ def extract_s_matrix(
                 dx,
                 debye=(debye[0], debye_state) if debye is not None else None,
                 lorentz=(lorentz[0], lorentz_state) if lorentz is not None else None,
+                boundary=curl_boundary,
             )
 
             if use_cpml:
                 state, cpml_state = apply_cpml_e(
                     state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats)
+                    materials=mats, boundary=curl_boundary)
             state = apply_pec(state)
 
             # Apply interior PEC mask (e.g. ground plane, scatterers
@@ -1997,6 +1998,7 @@ def extract_s_matrix_wire(
     ]
     port_cell_counts = np.asarray(port_n_live, dtype=np.int64)
 
+    curl_boundary = _port_curl_boundary(grid, (False, False, False))
     for j in range(n_ports):
         state = init_state(grid.shape)
         sprobes = [
@@ -2023,12 +2025,13 @@ def extract_s_matrix_wire(
                 dx,
                 debye=(debye[0], debye_state) if debye is not None else None,
                 lorentz=(lorentz[0], lorentz_state) if lorentz is not None else None,
+                boundary=curl_boundary,
             )
 
             if use_cpml:
                 state, cpml_state = apply_cpml_e(
                     state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats)
+                    materials=mats, boundary=curl_boundary)
             state = apply_pec(state)
 
             if pec_edge_masks is not None:
