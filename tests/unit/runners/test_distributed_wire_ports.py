@@ -108,25 +108,24 @@ def test_wire_parity(case):
     _parity(case)
 
 
+# The one-device refusal of a mixed lumped + wire port set, verbatim as at
+# beb0d3fd (rfx/probes/sparam_driver.py). Both lanes must keep raising it.
+_BASE_MIXED_REFUSAL = (
+    "compute_lumped_wire_s_matrix_via_scan: mixed lumped + wire port "
+    "sets are not supported in Stage 1 (the off-diagonal wave-"
+    "decomposition conventions differ).  Use a homogeneous all-lumped "
+    "or all-wire port set."
+)
+
+
 @pytest.mark.parametrize("distributed", [False, True])
-def test_mixed_refusal_matches_baseline(monkeypatch, distributed):
-    from rfx.probes import sparam_driver as driver
+def test_mixed_refusal_matches_baseline(distributed):
     sim = _model("mixed")
     options = dict(n_steps=8, compute_s_params=True, s_param_freqs=FREQS,
                    skip_preflight=True)
-    source = subprocess.check_output(
-        ["git", "show", "beb0d3fd:rfx/probes/sparam_driver.py"], text=True)
-    namespace = dict(vars(driver))
-    exec(compile(source, "<baseline-sparam-driver>", "exec"), namespace)
-    with monkeypatch.context() as patch:
-        patch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan",
-                      namespace["compute_lumped_wire_s_matrix_via_scan"])
-        with pytest.raises(NotImplementedError) as baseline:
-            sim.run(**options)
     with pytest.raises(NotImplementedError) as actual:
         sim.run(devices=jax.devices("cpu")[:2] if distributed else None, **options)
-    assert str(actual.value) == str(baseline.value)
-    assert "mixed lumped + wire" in str(actual.value)
+    assert str(actual.value) == _BASE_MIXED_REFUSAL
 
 
 @pytest.mark.parametrize("case", ["ez"])
