@@ -45,6 +45,22 @@ LANES = (
     "fwd_adi",
 )
 
+CALCULATORS = (
+    "s_matrix_scan", "mixed_s_matrix", "topology_optimize",
+    "waveguide_s_matrix", "coax_calculators", "vmap_sweep_batched",
+    "material_fit",
+)
+
+CALCULATOR_WORDS = {
+    "s_matrix_scan": "lumped/wire S-matrix scan",
+    "mixed_s_matrix": "compute_mixed_s_matrix()",
+    "topology_optimize": "topology_optimize()",
+    "waveguide_s_matrix": "compute_waveguide_s_matrix()",
+    "coax_calculators": "coaxial calculators",
+    "vmap_sweep_batched": "vmap_material_sweep() batched kernel",
+    "material_fit": "differentiable_material_fit()",
+}
+
 LANE_WORDS = {
     "run_uniform": "uniform run()",
     "run_nonuniform": "graded run()",
@@ -464,9 +480,31 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 
+# Calculator memberships are independent of every shared lane set. A new
+# lane capability therefore never silently expands a calculator's contract.
+# The waveguide extractor assembles these materials and PEC operators and
+# passes them to its device scans; its graded branch uses run_nonuniform_path.
+for _row in (
+    ("_freq_max", ""), ("_domain", ""), ("_dx", ""),
+    ("_dt_pin", ""), ("_dt_min_cell", ""),
+    ("_precision", ""), ("_mode", ""),
+    ("_materials", "eps"), ("_materials", "sigma"), ("_materials", "mu"),
+    ("_materials", "debye"), ("_materials", "lorentz"), ("_materials", "drude"),
+    ("_geometry", "pec_volume"), ("_geometry", "pec_sheet"), ("_geometry", "pec_wire"),
+    ("_thin_conductors", "lossy_sheet"), ("_thin_conductors", "pec_sheet"),
+    ("_thin_conductors", "surface_impedance"), ("_pinned_sheets", "pec_sheet"),
+    ("_waveguide_ports", "waveguide_port"),
+    ("_boundary", "cpml"), ("_pec_faces", "pec_face"),
+    ("_boundary_spec", "pmc_face"), ("_boundary_spec", "conformal"),
+    ("_boundary_spec", "absorbing_lid"),
+    ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"),
+    ("_dx_profile", "graded"), ("_dy_profile", "graded"), ("_dz_profile", "graded"),
+):
+    _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {"waveguide_s_matrix"}
+
 ADMITS: dict[str, frozenset] = {
     lane: frozenset(row for row, lanes in _ADMITTED_ON.items() if lane in lanes)
-    for lane in LANES
+    for lane in LANES + CALCULATORS
 }
 
 
@@ -551,6 +589,12 @@ LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_pr
 def message(lane: str, rows, sim, run_args=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
     carry, and the lanes that carry every other input of this model."""
+    if lane in CALCULATORS:
+        lines = [f"  - {ROW_WORDS[row]}" for row in rows]
+        return (f"{CALCULATOR_WORDS[lane]} does not carry these declared inputs "
+                "and refuses them before the first time step:\n"
+                + "\n".join(lines)
+                + "\nUse run() / forward() on a model those paths support.")
     lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
              for row in rows]
     carriers = [LANE_WORDS[other] for other in LANES if other != lane

@@ -242,11 +242,8 @@ def compute_waveguide_s_matrix(
         and the companion evidence gate test
         ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
     """
-    if self._solver != "yee":
-        raise NotImplementedError(
-            "compute_waveguide_s_matrix() does not support "
-            f"solver={self._solver!r} (#1300). Use solver='yee'."
-        )
+    from rfx.runners._admission import admit
+    admit(self, "waveguide_s_matrix")
 
     if not normalize:
         import warnings
