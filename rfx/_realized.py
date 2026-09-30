@@ -36,6 +36,9 @@ class Capture:
         traced = any(isinstance(x, jax.core.Tracer) for x in jax.tree.leaves(payload))
 
         def save(values):
+            assert not any(isinstance(x, jax.core.Tracer)
+                           for x in jax.tree.leaves(values)), (
+                               site, "realized records must contain concrete arrays")
             values = jax.tree.map(lambda x: np.array(x, copy=True), values)
             # A scan emits the same static operands each step. Keep each
             # distinct slab once, including different slabs of equal shape.

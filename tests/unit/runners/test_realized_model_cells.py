@@ -135,6 +135,8 @@ def drive_pairs(dump, row):
     assert records, (dump.lane, row)
     for r in records:
         grid, pe = r["grid"], r["declaration"]
+        # Main's helper includes add_lumped_eps on the stamped component;
+        # neither the volume mean nor the lumped stamp is reimplemented here.
         eps, sig = component_e_materials(r["materials"])
         expected = []
         n = len(r["cells"])

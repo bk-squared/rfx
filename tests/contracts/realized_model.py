@@ -33,16 +33,16 @@ for row, feature in (("eps", "dielectric"), ("sigma", "lossy"), ("mu", "mu")):
     for lane in LANES:
         if lane in ("run_adi", "fwd_adi") and row == "mu":
             TABLE[row][lane] = Cell("refuses", note="ADI refuses magnetic materials")
-        elif row in ("eps", "sigma") and lane in ("run_adi", "fwd_adi", "fwd_distributed_nu"):
+        elif row in ("eps", "sigma") and lane in ("run_adi", "fwd_adi"):
             TABLE[row][lane] = Cell(issue="#1373", note="per-cell E material")
-        elif row in ("eps", "sigma") and lane == "run_distributed":
-            TABLE[row][lane] = Cell(issue="#1303", note="per-cell E material")
+        elif row in ("eps", "sigma") and lane in ("run_distributed", "fwd_distributed_nu"):
+            TABLE[row][lane] = Cell(note="#1303, fixed by #1326")
 
 for lane in LANES:
     TABLE["override_drive"][lane] = (Cell() if lane == "fwd_distributed_nu"
                                      else Cell("not reachable",
                                                note="distributed graded runtime drive"))
-    TABLE["conformal"][lane] = (Cell(issue="#1306", note="per-cell dielectric epsilon")
+    TABLE["conformal"][lane] = (Cell(issue="#1373", note="#1306 folded here; per-cell dielectric epsilon")
                                 if lane == "run_uniform" else Cell("refuses"))
     TABLE["sat"][lane] = (Cell(issue="#1373", note="per-cell SAT face epsilon")
                           if lane == "run_subgridded" else Cell("not reachable",

@@ -1262,7 +1262,14 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None):
     def per_row(edge, cell):
         return tuple(jnp.where(model_cell, e, c) for e, c in zip(edge, cell))
 
-    return per_row(eps_edge, eps_cell), per_row(sig_edge, sig_cell)
+    eps, sigma = per_row(eps_edge, eps_cell), per_row(sig_edge, sig_cell)
+    if _realized.ACTIVE is not None:
+        # Both coefficient paths consume these operands, including the
+        # checkpointed shard_map. The reference sees the same x-lo cells.
+        site = ("distributed_nu.E" if _realized.ACTIVE.lane == "fwd_distributed_nu"
+                else "distributed.E")
+        eps, sigma = _realized.electric(view, eps, sigma, site)
+    return eps, sigma
 
 
 def component_e_coeffs(e_materials, dt):
