@@ -460,7 +460,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dft_planes", "dft_plane"): _NO_SHEETS,
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "fwd_adi"}),
-    ("_ntff", "ntff_box"): _ALL - _ADI - {"run_distributed", "fwd_distributed_nu"},
+    ("_ntff", "ntff_box"): _ALL - _ADI - {"fwd_distributed_nu"},
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 

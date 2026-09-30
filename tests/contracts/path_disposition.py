@@ -930,7 +930,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=carries("inside the refined slab, clear of its artificial interface"),
         run_adi=_adi("NTFF", "does not support NTFF accumulation"),
-        run_distributed=refuses("NTFF refused (#1241)", raises="add_ntff_box() (NTFF box)"),
+        run_distributed=carries("uniform mesh; owner-partitioned surface record"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=admission("an NTFF box", FWD_DNU, "ntff_data came back None (#1313)"),

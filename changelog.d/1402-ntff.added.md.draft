@@ -1,0 +1,7 @@
+### Added — NTFF boxes on uniform multi-device runs (#1402)
+
+`sim.run(devices=[...])` now returns the NTFF box and its complete surface
+DFT record, including Kahan compensation, for far-field and antenna-gain
+post-processing. Each slab accumulates its owned face cells using the
+one-device stencil and exchanges the Hx neighbour required at x seams.
+Graded meshes and distributed forward NTFF remain unsupported.

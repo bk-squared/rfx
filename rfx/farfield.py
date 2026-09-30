@@ -652,10 +652,19 @@ def accumulate_ntff(
     box: NTFFBox,
     dt: float,
     step_idx,
+    *,
+    x_offset: int = 0,
+    owned_x: tuple[int, int] | None = None,
+    owned_x_faces: tuple[bool, bool] = (True, True),
 ) -> NTFFData:
     """Accumulate one timestep of tangential field DFTs on all 6 faces.
 
     Called from the scan body.  ``step_idx`` comes from the scan xs.
+    Slab callers may select a global half-open ``owned_x`` range for y/z
+    faces and ``owned_x_faces`` for the two x planes. ``x_offset`` maps
+    global x indices to the local array (including ghosts). They validate
+    the global sampling margin before partitioning; absent x faces have
+    zero-sized arrays. The stencil, phases and Kahan operations are shared.
 
     On a Yee lattice the four tangential components of a face do not sit on
     top of each other: the two E components straddle the face cell along
@@ -698,11 +707,14 @@ def accumulate_ntff(
     ph = jnp.stack([phase_e, phase_e, phase_h, phase_h], axis=-1)
     ph = ph[:, None, None, :]  # (nf, 1, 1, 4)
 
-    i0, i1 = box.i_lo, box.i_hi
+    # Slab callers validate the global box before selecting owned cells.
+    # x_offset maps global indices into the slab, including its left ghost.
+    i0, i1 = (box.i_lo, box.i_hi) if owned_x is None else owned_x
+    i0, i1 = i0 - x_offset, i1 - x_offset
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
     face_centre = bool(getattr(box, "face_centre", False))
-    if face_centre:
+    if face_centre and owned_x is None:
         _require_face_centre_margin(box, state.ex.shape)
 
     def _x_face(idx, w_lo):
@@ -812,8 +824,10 @@ def accumulate_ntff(
         new_c = (t - s) - y
         return t, new_c
 
-    xl_val = ph * _x_face(i0, box.w_x_lo)[None]
-    xh_val = ph * _x_face(i1, box.w_x_hi)[None]
+    xl_val = (ph * _x_face(box.i_lo - x_offset, box.w_x_lo)[None]
+              if owned_x_faces[0] else jnp.zeros_like(ntff_data.x_lo))
+    xh_val = (ph * _x_face(box.i_hi - x_offset, box.w_x_hi)[None]
+              if owned_x_faces[1] else jnp.zeros_like(ntff_data.x_hi))
     yl_val = ph * _y_face(j0, box.w_y_lo)[None]
     yh_val = ph * _y_face(j1, box.w_y_hi)[None]
     zl_val = ph * _z_face(k0, box.w_z_lo)[None]
