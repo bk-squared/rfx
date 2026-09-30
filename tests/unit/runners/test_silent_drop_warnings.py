@@ -963,3 +963,41 @@ def test_uniform_grid_asymmetric_pmc_allocation():
     assert g.position_to_index((0.0, 0.0, 0.0))[1] == 0
     # Shape: ny = interior + pad_y_hi (no lo padding).
     assert g.shape[1] == int(np.ceil(10e-3 / 1e-3)) + 1 + 8
+
+
+# forward() CALL ARGUMENTS: graded carries fixed by #1410. Numerical carry
+# witnesses live in nonuniform/test_nu_forward_port_freqs.py.
+FORWARD_CALL_ARGUMENTS = {
+    "port_s11_freqs": {
+        "uniform": "carries",
+        "graded": "carries",
+        "distributed_uniform": "refuses",
+        "distributed_graded": "refuses",
+    },
+}
+
+
+@pytest.mark.parametrize("lane,disposition", FORWARD_CALL_ARGUMENTS["port_s11_freqs"].items())
+def test_forward_port_s11_freqs_disposition(lane, disposition, monkeypatch):
+    graded = "graded" in lane
+    sim = Simulation(freq_max=10e9, domain=(8e-3,) * 3, dx=1e-3,
+                     boundary="pec",
+                     **({"dz_profile": np.linspace(0.8e-3, 1.2e-3, 8)} if graded else {}))
+    sim.add_port(position=(4e-3, 4e-3, 3e-3), component="ez",
+                 impedance=50, extent=2e-3)
+    # Refusals must happen at dispatch, before any runner/material helper.
+    def no_step(*args, **kwargs):
+        pytest.fail("port_s11_freqs refusal reached a forward runner")
+
+    for helper in ("_forward_from_materials", "_forward_nonuniform_from_materials",
+                   "_forward_distributed_nonuniform_from_materials"):
+        monkeypatch.setattr(sim, helper, no_step)
+    kwargs = dict(mode="forward", n_steps=1, num_periods=1, port_s11_freqs=[2e9],
+                  distributed=lane.startswith("distributed"))
+    if disposition == "refuses":
+        with pytest.raises(NotImplementedError, match="port_s11_freqs.*single-device"):
+            sim.forward(n_steps=1, port_s11_freqs=[2e9], distributed=True,
+                        skip_preflight=True)
+    else:
+        assert sim._dispatch_plan(**kwargs).lane == (
+            "fwd_nonuniform" if graded else "fwd_uniform")

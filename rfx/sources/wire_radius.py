@@ -50,13 +50,18 @@ def validate_radius(radius):
         raise ValueError("wire-port radius must be a finite positive length in metres")
 
 
+RADIUS_SUPPORTED_PATHS = frozenset({
+    "run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform",
+    "s_matrix_scan", "mixed_s_matrix", "topology_optimize",
+})
+
+
 def require_radius_support(sim, lane):
     """Admission for declarations; never inspect a traced material array."""
     if not any(getattr(p, "radius", None) is not None for p in sim._ports):
         return
-    supported = {"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}
     reason = None
-    if lane not in supported:
+    if lane not in RADIUS_SUPPORTED_PATHS:
         reason = lane
     elif sim._solver != "yee" or sim._mode != "3d" or sim._stencil_order != 2:
         reason = "only the 3-D second-order Yee solver carries this radius model"

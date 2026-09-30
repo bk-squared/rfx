@@ -324,3 +324,22 @@ def test_radius_refuses_stamping_in_axial_cpml():
     port = WirePort((.003, .003, -.0005), (.003, .003, .001), "ez", radius=RADIUS)
     with pytest.raises(ValueError, match="outside axial CPML"):
         setup_wire_port(grid, port, init_materials(grid.shape))
+
+
+def test_calculator_scan_radius_matches_run_and_changes_s():
+    from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
+    from rfx.runners._admission import admit
+    for calculator in ("s_matrix_scan", "mixed_s_matrix", "topology_optimize"):
+        admit(_plates(.5e-3, "uniform"), calculator)
+    scan, _ = compute_lumped_wire_s_matrix_via_scan(
+        _plates(.5e-3, "uniform"), FREQS, n_steps=400)
+    no_radius, _ = compute_lumped_wire_s_matrix_via_scan(
+        _plates(.5e-3, "uniform", radius=None), FREQS, n_steps=400)
+    result = _plates(.5e-3, "uniform").run(
+        n_steps=400, skip_preflight=True, compute_s_params=True, s_param_freqs=FREQS)
+    np.testing.assert_allclose(scan, result.s_params, rtol=1e-5, atol=1e-6)
+    radius_effect = float(np.max(np.abs(np.asarray(scan) - np.asarray(no_radius))))
+    print("radius S11", np.asarray(scan)[0, 0], "max |scan-run|",
+          float(np.max(np.abs(np.asarray(scan) - np.asarray(result.s_params)))),
+          "max |radius-none|", radius_effect)
+    assert radius_effect > .05

@@ -389,9 +389,6 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
-    sim._refuse_conformal_boundary(
-        "topology_optimize", entry="topology_optimize()",
-        instead="use run() on a uniform mesh for conformal fields")
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # #677 lane fence, deliberately ABOVE the optional-dependency import:
@@ -402,6 +399,8 @@ def topology_optimize(
     # package exists is a fence nothing checks in the default CI image).
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "topology-optimization")
+    from rfx.runners._admission import admit
+    admit(sim, "topology_optimize")
     # #1240: the same reasoning for a refinement. The forward lane refuses it
     # too, but only after the optax import, so without the extra it was a
     # refusal nothing checked.

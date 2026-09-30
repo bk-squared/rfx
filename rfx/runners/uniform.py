@@ -857,6 +857,9 @@ def run_uniform(
     from rfx.runners._admission import admit
     admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
                                         "conformal_pec": conformal_pec})
+    from rfx.runners._admission import admit_run_s_matrix
+    admit_run_s_matrix(sim, compute_s_params=compute_s_params,
+                       conformal_pec=conformal_pec)
     # Issue #1254: the early stop reads the record so far through the scan's
     # chunk hook, with the bins the single-wire fast path below reports.
     _stop_kwargs = {}

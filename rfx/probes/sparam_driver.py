@@ -118,6 +118,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     # The distributed runner owns slab staging: do not retain a second
     # whole-domain material assembly across its scans.
     sim._require_uniform_mesh("compute_lumped_wire_s_matrix_via_scan")
+    from rfx.runners._admission import admit
+    admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
     grid = sim._build_grid()
     if devices is None:
         _sheet_specs: list = []

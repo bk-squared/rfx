@@ -45,6 +45,25 @@ LANES = (
     "fwd_adi",
 )
 
+CALCULATORS = (
+    "s_matrix_scan", "mixed_s_matrix", "topology_optimize",
+    "waveguide_s_matrix", "coaxial_line_reflection", "coaxial_two_port",
+    "coax_msl_transition", "vmap_sweep_batched",
+    "material_fit",
+)
+
+CALCULATOR_WORDS = {
+    "s_matrix_scan": "lumped/wire S-matrix scan",
+    "mixed_s_matrix": "compute_mixed_s_matrix()",
+    "topology_optimize": "topology_optimize()",
+    "waveguide_s_matrix": "compute_waveguide_s_matrix()",
+    "coaxial_line_reflection": "compute_coaxial_line_reflection()",
+    "coaxial_two_port": "compute_coaxial_two_port()",
+    "coax_msl_transition": "compute_coax_msl_transition()",
+    "vmap_sweep_batched": "vmap_material_sweep() batched kernel",
+    "material_fit": "differentiable_material_fit()",
+}
+
 LANE_WORDS = {
     "run_uniform": "uniform run()",
     "run_nonuniform": "graded run()",
@@ -464,9 +483,276 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 
+# Calculator memberships are independent of every shared lane set. A new
+# lane capability therefore never silently expands a calculator's contract.
+# The waveguide extractor assembles these materials and PEC operators and
+# passes them to its device scans; its graded branch uses run_nonuniform_path.
+for _row in (
+    ("_freq_max", ""), ("_domain", ""), ("_dx", ""),
+    ("_precision", ""), ("_mode", ""), ("_adi_cfl_factor", ""),
+    ("_materials", "eps"), ("_materials", "sigma"), ("_materials", "mu"),
+    ("_materials", "debye"), ("_materials", "lorentz"), ("_materials", "drude"),
+    ("_geometry", "pec_volume"), ("_geometry", "pec_sheet"), ("_geometry", "pec_wire"),
+    ("_thin_conductors", "lossy_sheet"), ("_thin_conductors", "pec_sheet"),
+    ("_thin_conductors", "surface_impedance"), ("_pinned_sheets", "pec_sheet"),
+    ("_waveguide_ports", "waveguide_port"),
+    ("_boundary", "cpml"), ("_pec_faces", "pec_face"),
+    ("_boundary_spec", "pmc_face"), ("_boundary_spec", "conformal"),
+    ("_boundary_spec", "absorbing_lid"),
+    ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"),
+    ("_dx_profile", "graded"), ("_dy_profile", "graded"), ("_dz_profile", "graded"),
+    # Preserve observer handling: the calculator warns for NTFF (#704).
+    ("_probes", "probe"), ("_dft_planes", "dft_plane"),
+    ("_flux_monitors", "flux"), ("_ntff", "ntff_box"),
+    ("_current_moments", "block_moments"),
+):
+    _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {"waveguide_s_matrix"}
+
+
+# Explicit memberships for calculators that assemble or step their own model.
+_CALCULATOR_ROWS = {
+    's_matrix_scan': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_precision', ''),
+        ('_stencil_order', ''),
+        ('_mode', ''),
+        ('_materials', 'eps'),
+        ('_materials', 'sigma'),
+        ('_materials', 'mu'),
+        ('_materials', 'debye'),
+        ('_materials', 'lorentz'),
+        ('_materials', 'drude'),
+        ('_geometry', 'pec_volume'),
+        ('_geometry', 'pec_sheet'),
+        ('_geometry', 'pec_wire'),
+        ('_thin_conductors', 'lossy_sheet'),
+        ('_thin_conductors', 'pec_sheet'),
+        ('_thin_conductors', 'surface_impedance'),
+        ('_pinned_sheets', 'pec_sheet'),
+        ('_ports', 'source'),
+        ('_ports', 'amplitude_kind'),
+        ('_ports', 'lumped_port'),
+        ('_ports', 'passive_port'),
+        ('_ports', 'wire_port'),
+        ('_msl_ports', 'msl_port'),
+        ('_waveguide_ports', 'waveguide_port'),
+        ('_floquet_ports', 'floquet_port'),
+        ('_lumped_rlc', 'R'),
+        ('_lumped_rlc', 'series_RL'),
+        ('_tfsf', 'plane_wave'),
+        ('_boundary', 'cpml'),
+        ('_boundary', 'upml'),
+        ('_pec_faces', 'pec_face'),
+        ('_boundary_spec', 'pmc_face'),
+        ('_boundary_spec', 'absorbing_lid'),
+        ('_periodic_axes', 'periodic'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_probes', 'probe'),
+        ('_dft_planes', 'dft_plane'),
+        ('_flux_monitors', 'flux'),
+        ('_ntff', 'ntff_box'),
+        ('_current_moments', 'block_moments'),
+    ),
+    'mixed_s_matrix': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_precision', ''),
+        ('_stencil_order', ''),
+        ('_mode', ''),
+        ('_materials', 'eps'),
+        ('_materials', 'sigma'),
+        ('_materials', 'mu'),
+        ('_materials', 'debye'),
+        ('_materials', 'lorentz'),
+        ('_materials', 'drude'),
+        ('_geometry', 'pec_volume'),
+        ('_geometry', 'pec_sheet'),
+        ('_geometry', 'pec_wire'),
+        ('_thin_conductors', 'lossy_sheet'),
+        ('_thin_conductors', 'pec_sheet'),
+        ('_pinned_sheets', 'pec_sheet'),
+        ('_ports', 'lumped_port'),
+        ('_ports', 'passive_port'),
+        ('_ports', 'wire_port'),
+        ('_msl_ports', 'msl_port'),
+        ('_lumped_rlc', 'R'),
+        ('_lumped_rlc', 'series_RL'),
+        ('_boundary', 'cpml'),
+        ('_boundary', 'upml'),
+        ('_pec_faces', 'pec_face'),
+        ('_boundary_spec', 'pmc_face'),
+        ('_boundary_spec', 'absorbing_lid'),
+        ('_periodic_axes', 'periodic'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_probes', 'probe'),
+        ('_dft_planes', 'dft_plane'),
+        ('_flux_monitors', 'flux'),
+        ('_ntff', 'ntff_box'),
+        ('_current_moments', 'block_moments'),
+    ),
+    'topology_optimize': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_solver', ''),
+        ('_precision', ''),
+        ('_stencil_order', ''),
+        ('_mode', ''),
+        ('_materials', 'eps'),
+        ('_materials', 'sigma'),
+        ('_materials', 'mu'),
+        ('_materials', 'debye'),
+        ('_materials', 'lorentz'),
+        ('_materials', 'drude'),
+        ('_geometry', 'pec_volume'),
+        ('_geometry', 'pec_sheet'),
+        ('_geometry', 'pec_wire'),
+        ('_thin_conductors', 'lossy_sheet'),
+        ('_thin_conductors', 'pec_sheet'),
+        ('_pinned_sheets', 'pec_sheet'),
+        ('_ports', 'source'),
+        ('_ports', 'amplitude_kind'),
+        ('_ports', 'lumped_port'),
+        ('_ports', 'passive_port'),
+        ('_ports', 'wire_port'),
+        ('_msl_ports', 'msl_port'),
+        ('_waveguide_ports', 'waveguide_port'),
+        ('_floquet_ports', 'floquet_port'),
+        ('_lumped_rlc', 'R'),
+        ('_lumped_rlc', 'series_RL'),
+        ('_tfsf', 'plane_wave'),
+        ('_boundary', 'cpml'),
+        ('_boundary', 'upml'),
+        ('_pec_faces', 'pec_face'),
+        ('_boundary_spec', 'pmc_face'),
+        ('_boundary_spec', 'absorbing_lid'),
+        ('_periodic_axes', 'periodic'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_probes', 'probe'),
+        ('_dft_planes', 'dft_plane'),
+        ('_flux_monitors', 'flux'),
+        ('_ntff', 'ntff_box'),
+        ('_current_moments', 'block_moments'),
+    ),
+    'coaxial_line_reflection': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_coaxial_ports', 'coax_port'),
+        ('_boundary', 'cpml'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_current_moments', 'block_moments'),
+    ),
+    'coaxial_two_port': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_coaxial_ports', 'coax_port'),
+        ('_boundary', 'cpml'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_current_moments', 'block_moments'),
+    ),
+    'coax_msl_transition': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_materials', 'eps'),
+        ('_materials', 'sigma'),
+        ('_materials', 'mu'),
+        ('_geometry', 'pec_volume'),
+        ('_geometry', 'pec_sheet'),
+        ('_geometry', 'pec_wire'),
+        ('_thin_conductors', 'lossy_sheet'),
+        ('_thin_conductors', 'pec_sheet'),
+        ('_pinned_sheets', 'pec_sheet'),
+        ('_coaxial_ports', 'coax_port'),
+        ('_msl_ports', 'msl_port'),
+        ('_boundary', 'cpml'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_current_moments', 'block_moments'),
+    ),
+    'vmap_sweep_batched': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_mode', ''),
+        ('_materials', 'eps'),
+        ('_materials', 'sigma'),
+        ('_materials', 'mu'),
+        ('_geometry', 'pec_volume'),
+        ('_geometry', 'pec_sheet'),
+        ('_geometry', 'pec_wire'),
+        ('_thin_conductors', 'lossy_sheet'),
+        ('_thin_conductors', 'pec_sheet'),
+        ('_pinned_sheets', 'pec_sheet'),
+        ('_ports', 'source'),
+        ('_ports', 'amplitude_kind'),
+        ('_boundary', 'cpml'),
+        ('_pec_faces', 'pec_face'),
+        ('_boundary_spec', 'absorbing_lid'),
+        ('_periodic_axes', 'periodic'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_probes', 'probe'),
+        ('_dft_planes', 'dft_plane'),
+    ),
+    'material_fit': (
+        ('_freq_max', ''),
+        ('_adi_cfl_factor', ''),
+        ('_domain', ''),
+        ('_dx', ''),
+        ('_mode', ''),
+        ('_materials', 'eps'),
+        ('_materials', 'sigma'),
+        ('_materials', 'mu'),
+        ('_materials', 'debye'),
+        ('_materials', 'lorentz'),
+        ('_materials', 'drude'),
+        ('_geometry', 'pec_volume'),
+        ('_geometry', 'pec_sheet'),
+        ('_geometry', 'pec_wire'),
+        ('_thin_conductors', 'lossy_sheet'),
+        ('_thin_conductors', 'pec_sheet'),
+        ('_pinned_sheets', 'pec_sheet'),
+        ('_ports', 'lumped_port'),
+        ('_boundary', 'cpml'),
+        ('_boundary', 'upml'),
+        ('_pec_faces', 'pec_face'),
+        ('_boundary_spec', 'pmc_face'),
+        ('_boundary_spec', 'absorbing_lid'),
+        ('_cpml_layers', 'layers'),
+        ('_cpml_kappa_max', 'kappa'),
+        ('_periodic_axes', 'periodic'),
+        ('_probes', 'probe'),
+        ('_dft_planes', 'dft_plane'),
+        ('_flux_monitors', 'flux'),
+        ('_ntff', 'ntff_box'),
+        ('_current_moments', 'block_moments'),
+    ),
+}
+for _calculator, _rows in _CALCULATOR_ROWS.items():
+    for _row in _rows:
+        _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {_calculator}
+
 ADMITS: dict[str, frozenset] = {
     lane: frozenset(row for row, lanes in _ADMITTED_ON.items() if lane in lanes)
-    for lane in LANES
+    for lane in LANES + CALCULATORS
 }
 
 
@@ -508,8 +794,18 @@ CALL_GATES: dict[Row, Callable] = {
 # tests/contracts/path_disposition.py lists the same gates as LANE_GATES.
 _LID_ROWS = (("_boundary", "cpml"), ("_pec_faces", "pec_face"),
              ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"))
+
+
+def _waveguide_profiled(sim, grid) -> bool:
+    """Only the graded waveguide builder passes the declared dt controls."""
+    return any(getattr(sim, attr) is not None
+               for attr in ("_dx_profile", "_dy_profile", "_dz_profile"))
+
+
 LANE_GATES: dict[str, dict[Row, Callable]] = {
     "run_subgridded": {row: _guarded_lid for row in _LID_ROWS},
+    "waveguide_s_matrix": {row: _waveguide_profiled for row in (
+        ("_dt_pin", ""), ("_dt_min_cell", ""))},
 }
 
 
@@ -551,6 +847,50 @@ LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_pr
 def message(lane: str, rows, sim, run_args=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
     carry, and the lanes that carry every other input of this model."""
+    if lane in CALCULATORS:
+        lines = ([] if lane == "material_fit" else
+                 [f"  - {ROW_WORDS[row]}" for row in rows])
+        if ("_refinement", "slab") in rows and lane != "material_fit":
+            lines.append("  - add_refinement(): this calculator has no subgridded lane (#1240).")
+            if sim._uses_nonuniform_mesh:
+                lines.append("  - subgridding on a non-uniform mesh is not supported.")
+        if lane == "material_fit":
+            # Preserve the input names and remedies of #1380 while the
+            # refusal itself is owned solely by the admission membership.
+            names = {
+                ("_ports", "wire_port"): "add_port(..., extent=...) (wire port)",
+                ("_ports", "source"): "add_source() (plain source)",
+                ("_ports", "passive_port"): "add_port(..., excite=False) (passive port)",
+                ("_msl_ports", "msl_port"): "add_msl_port()",
+                ("_lumped_rlc", "R"): "add_lumped_rlc()",
+                ("_lumped_rlc", "series_RL"): "add_lumped_rlc()",
+                ("_tfsf", "plane_wave"): "add_tfsf_source()",
+                ("_waveguide_ports", "waveguide_port"): "add_waveguide_port()",
+                ("_coaxial_ports", "coax_port"): "add_coaxial_port()",
+                ("_floquet_ports", "floquet_port"): "add_floquet_port()",
+                ("_materials", "kerr"): "add_material(..., chi3=...) (Kerr material)",
+                ("_precision", ""): f"precision={sim._precision!r}",
+            }
+            remedies = {
+                ("_solver", ""): "Use solver='yee'.",
+                ("_precision", ""): "Use precision='float32'.",
+                ("_stencil_order", ""): "Use stencil_order=2.",
+                ("_interface_eps", "dual_average"): "Use interface_eps='sampled'.",
+                ("_refinement", "slab"): "This calculator has no subgridded lane (#1240). Remove the refinement.",
+            }
+            lines.extend(f"  - {ROW_WORDS[row]}"
+                         + (f" — {names[row]}" if row in names else "")
+                         + " (#1290). "
+                         + remedies.get(row, "Remove this input from sim_factory.")
+                         for row in rows)
+        if lane == "waveguide_s_matrix" and ("_solver", "") in rows:
+            lines.append("  - solver='adi' (#1300). Use solver='yee'.")
+        if lane == "waveguide_s_matrix" and any(row[0] == "_lumped_rlc" for row in rows):
+            lines.append("  - lumped RLC elements are not implemented (#1263). Use run() / forward().")
+        return (f"{CALCULATOR_WORDS[lane]} does not carry these declared inputs "
+                "and refuses them before the first time step:\n"
+                + "\n".join(lines)
+                + "\nUse run() / forward() on a model those paths support.")
     lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
              for row in rows]
     carriers = [LANE_WORDS[other] for other in LANES if other != lane
@@ -581,3 +921,21 @@ def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
     rows = refused(sim, lane, run_args, grid)
     if rows:
         raise NotImplementedError(message(lane, rows, sim, run_args))
+
+
+def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
+                       distributed=False):
+    """Check the requested scan extraction before run() starts its field solve."""
+    uses_scan = (any(p.impedance != 0.0 for p in sim._ports)
+                 if distributed else _s_matrix_ports(sim))
+    if compute_s_params is False or not uses_scan:
+        return
+    try:
+        admit(sim, "s_matrix_scan", run_args={"conformal_pec": conformal_pec})
+    except NotImplementedError as error:
+        rows = refused(sim, "s_matrix_scan", {"conformal_pec": conformal_pec})
+        inputs = ", ".join(ROW_WORDS[row] for row in rows) or str(error)
+        raise NotImplementedError(
+            "run() cannot compute its lumped/wire S-matrix with these inputs: "
+            + inputs + ". Use compute_s_params=False for fields only, or remove "
+            "the unsupported input.") from error
