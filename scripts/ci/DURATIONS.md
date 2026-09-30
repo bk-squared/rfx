@@ -1,30 +1,33 @@
 # .test_durations — provenance
 
-Regenerated 2026-09-28 on `main` (`58ac0d16`, assembled at `cae7d6bf`) from `regen-durations` run
-[36394962310](https://github.com/bk-squared/rfx/actions/runs/36394962310). **12677 entries in the
-file**, of which **13 of them carried unchanged** from the 8289-entry file this replaces. Ten of that
-run's eleven jobs succeeded. `slow (5)` was cut at its 180-minute job limit with 2361 of its 2567
-tests finished; pytest-split writes its durations file only when the session ends, so that shard
-uploaded none, and its 2361 finished tests are priced from the job log instead (see Sources). The
-206 it never reached are all in the fast selection too and take the fast shards' measurements. The
-merge drops the 819 committed entries whose tests are not collected at `cae7d6bf`, and one measured
-case that `cae7d6bf` renamed. Of the 12943 tests the three collections (fast, slow, highmem) select
-on the pod at `cae7d6bf`, 76 have no entry: the 73 cases of
-`tests/unit/runners/test_distributed_cpml_admission.py` and 3 of
-`tests/locks/test_runner_split_bit_identity.py`, added by `cae7d6bf` after the run's commit;
-pytest-split prices them at the file's mean. The counts here are computed from the artifacts, the
-job log, the replaced file and those collection lists; the contract below checks the first two
-against the file.
+Regenerated 2026-10-01 on `main` (`e6151107`) from `regen-durations` run
+[36752442156](https://github.com/bk-squared/rfx/actions/runs/36752442156), measured on
+`ubuntu-latest` with Python 3.11 / JAX 0.10.2. **15500 entries in the
+file**, of which **14 of them carried unchanged** from the 12677-entry file this
+replaces. All eleven jobs succeeded. Fast artifacts are merged first, then slow artifacts;
+the last input wins for overlapping nodeids. The artifacts contain 15486 distinct
+nodeids; 0 measured entries and 41 old entries are not collected at HEAD and are
+dropped. The 14 carried entries are collected highmem tests outside both GitHub selections;
+no new a6000 measurements were supplied. At `e6151107`, the fast, slow and highmem selections
+collect 15231, 15474 and 15 tests respectively (15500 distinct), with no
+missing durations in any selection. Collection used the specified local Python 3.11 / JAX 0.10.2
+CPU environment, with the locally available trimesh package for the fast/highmem collections;
+slow collection has no CAD extra, matching validation.yml. Plotly is absent and its optional
+module is skipped. These counts come from the artifacts, the replaced file and HEAD collection;
+the contract below checks the entry count and carried-count bounds. No job logs were supplied,
+so the shard-sum versus pytest-session-time check in step 2 could not be performed. In particular,
+`test_ringdowns_are_settled` changes from the prior log-derived 1514.934755 s to the raw artifact's
+0.000938106 s; no log-derived correction or floor is added in this regeneration.
 
-The four entries the previous file set by hand are runner measurements now, from the slow
+The four entries once set by hand are runner measurements, from the slow
 artifacts: `tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
-2218.1 s (was 2247 s, read from a weekly run's clock), the two coaxial chain-battery drift locks
+2006.5 s (was 2218.1 s), the two coaxial chain-battery drift locks
 `tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[bead]`
-and `[thru]` 171.6 s and 170.6 s (were 179.59 s and 160.90 s from VESSL), and
-`tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` 57.1 s (was
-69.56 s from VESSL).
+and `[thru]` 176.9 s and 178.5 s (were 171.6 s and 170.6 s), and
+`tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` 64.2 s (was
+57.1 s).
 
-Every entry is a raw measurement or, for `slow (5)` and one `slow (2)` entry, a raw log-derived time.
+Every refreshed entry is a raw artifact measurement; the 14 highmem-only entries are carried.
 **No floor is added** — see below.
 
 ## The 0.3 s floor, retired 2026-09-18
@@ -57,9 +60,8 @@ toward equal test COUNTS and away from equal time.
 So the floor is gone, and step 4 of Regenerating below says not to re-add it. Two consequences to
 keep in mind:
 
-- The 57 carried entries predate the 2026-09-18 floor retirement, so each may still hold the old
-  additive 0.3 s (at most 17 s in total, 0.09 % of the file). No collected test that has an entry
-  is priced from anything but a runner measurement or one of those 57.
+- The 14 carried entries retain their previous measurements. No floor is added to them or to
+  the refreshed artifact values.
 
 An earlier version of this note blamed a pytest-split threshold that supposedly drops short setup
 and teardown readings. That was backwards — `STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD` is
@@ -69,25 +71,25 @@ longer stands on the 2026-09-08 measurement either.
 ## Sources
 
 Where each entry's value comes from. `merge_test_durations.py` takes the last input's value for an
-id measured twice; the fast maps went first, then `slow (1)`–`(4)`, then the `slow (5)` log map.
+id measured twice; the fast maps went first, then `slow (1)`–`(5)`.
 
 | source | entries |
 |---|---|
-| `slow (1)`–`(4)` artifacts | 10274 |
-| `slow (5)` job log, log-derived | 2361 |
-| `slow (2)` job log, log-derived (a setup over 600 s, below) | 1 |
-| `fast (1)`–`(6)` artifacts, for ids no slow source priced | 218 |
-| carried unchanged from the replaced file | 13 |
+| `slow (1)`–`(5)` artifacts | 15474 |
+| `fast (1)`–`(6)` artifacts, for ids no slow source priced | 12 |
+| carried unchanged from the replaced file | 14 |
 
-- The artifacts are `pytest --store-durations` output of run 36394962310 on `ubuntu-latest`, the
-  runner class the lanes use.
-- **The `slow (5)` entries are log-derived.** With `-v` each test's result line is written when
+- The artifacts are `pytest --store-durations` output of run 36752442156 on `ubuntu-latest`, the
+  runner class the lanes use, with Python 3.11 / JAX 0.10.2.
+- No job-log-derived values are used in this regeneration; the previous run's corrections
+  are recorded below. The new run's job logs were not supplied, so its phase-loss check is unverified.
+- **The previous run 36394962310 used log-derived `slow (5)` entries.** With `-v` each test's result line is written when
   the test ends, and the job log stamps every line. An entry is the gap between a test's result
   line and the one before it; the first test is timed from the `collected` line. The gap holds
   setup, call, teardown and pytest's own work between tests. 2233 of the 2361 were also measured
   by a fast shard. Over those the log-derived sum is the lower one: 4019.2 s against 4100.7 s
   for the fast artifacts (-1.99 %).
-- **One `slow (2)` entry is log-derived too.** `--store-durations` does not store a setup or
+- **That previous run used one log-derived `slow (2)` entry too.** `--store-durations` does not store a setup or
   teardown phase longer than 600 s (`STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD` in
   pytest-split's plugin). The module fixture of
   `tests/locks/test_patch_edgefed_resonance_harminv.py::test_ringdowns_are_settled` spends its
@@ -96,22 +98,24 @@ id measured twice; the fast maps went first, then `slow (1)`–`(4)`, then the `
   the ten artifacts whose log time exceeds its artifact value by more than 600 s. Before the fix,
   `slow (2)`'s artifact summed to 3590.9 s against a 5127.3 s pytest session; every other shard
   summed to 97.1-99.5 % of its session, and `fast (1)`, the shortest, to 91.6 % (339 s of 370 s).
-- The 13 carried are the highmem-marked tests that also carry `slow` or `slow_physics`, so no
+- The 14 carried are the highmem-marked tests that also carry `slow` or `slow_physics`, so no
   GitHub selection runs them and no GitHub split uses their time. 12 are the a6000 measurements of
   2026-09-16 (VESSL run 369367259335, `-m "highmem and not gpu"`), carried from the file before.
   The 13th, `tests/unit/autodiff/test_coax_two_port_ad.py::test_compute_coaxial_two_port_ad_grad_finite_and_fd_consistent`,
   became highmem in pull request 1358; its 67.46 s is `slow (2)` of run 35613805791
   (2026-09-21), measured before that.
-- Recorded total: 29037.0 s (8.07 h), against 18804.0 s (5.22 h) for the file this replaces.
+  The 14th, `tests/unit/autodiff/test_coax_two_port_ad.py::test_coax_two_port_eps_scale_unity_matches_concrete_path`,
+  is also outside both GitHub selections now; its 21.178872745 s is carried from the replaced file.
+- Recorded total: 25528.4 s (7.09 h), against 28509.1 s (7.92 h) for the file this replaces.
 
 ## The one highmem test the fast lane does run
 
 `tests/unit/ports/test_msl_source_fixture_static.py::test_auto_eps_msl_gradient_matches_fd_mini_referee`
 carries `highmem` and nothing else, so pyproject's default `-m 'not gpu and not slow and not
 slow_physics'` does not deselect it and it runs in a fast shard. Its entry must therefore be a
-runner measurement, and it is: 61.22 s from `fast (5)` of run 36394962310 (it was 36.25 s from run
-35613805791; the a6000 said 28.9 s). It is the one highmem-marked entry the regen refreshed; the
-other 13 carried. When regenerating, do not overwrite this one from the a6000 map.
+runner measurement, and it is: 47.77 s from `fast (4)` of run 36752442156 (it was 61.22 s from run
+36394962310; the a6000 said 28.9 s). It is the one highmem-marked entry the regen refreshed; the
+other 14 carried. When regenerating, do not overwrite this one from the a6000 map.
 
 ## Regenerating
 
@@ -124,7 +128,7 @@ other 13 carried. When regenerating, do not overwrite this one from the a6000 ma
    the pytest session time in that shard's job log (the `= ... in Ns =` line). Look into any shard
    more than about 5 % short, or short by more than a minute: a setup or teardown over 600 s is
    dropped by `--store-durations` and is the known cause (see Sources).
-3. Take only the 13 GPU-only entries above (highmem and slow or slow_physics) from an a6000 run of
+3. Take only the 14 GPU-only entries above (highmem and slow or slow_physics) from an a6000 run of
    the highmem selection. Leave the fast-lane highmem test on its runner value.
 4. **Do not add a floor.** Commit the raw measurements. The additive 0.3 s this step used to
    require was retired on 2026-09-18 for the reason above; if a future lane really does carry
