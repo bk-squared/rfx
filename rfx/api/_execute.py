@@ -4929,9 +4929,15 @@ class _ExecuteMixin:
                                  "conformal_pec": _one_uniform}
                 if self._boundary not in ("cpml", "upml"):
                     _dist_instead["until_decay"] = _one_uniform
-            # Match the uniform runner: zero-impedance sources produce no S.
+            # Resolve the default as the one-device lane of this mesh does: the
+            # uniform runner computes S for every impedance port, the non-uniform
+            # runner only for wire ports (extent set).
             if compute_s_params is None:
-                compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
+                if self._uses_nonuniform_mesh:
+                    compute_s_params = any(pe.impedance != 0.0 and pe.extent is not None
+                                           for pe in self._ports)
+                else:
+                    compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
                 # Use the same refusal as an explicit S-parameter request.
                 self._validate_run_sparameter_request(
                     compute_s_params=compute_s_params,
