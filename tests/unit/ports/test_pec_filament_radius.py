@@ -154,7 +154,7 @@ def test_traced_mesh_resolved_wire_keeps_volume_mask(ratio, cells):
         mask, sheet, filament = classify_pec_entry(wire, coords, coords, sizes)
         assert sheet is None and filament is None
         # origin/main sends a traced wire straight to this volume sampler.
-        return mask, pec_volume_cell_mask(wire, coords)
+        return mask, pec_volume_cell_mask(wire, coords, sizes)
 
     for displacement in (0., .00015):
         x = nodes + displacement*np.sin(np.linspace(0., np.pi, 8))
