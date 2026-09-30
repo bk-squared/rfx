@@ -106,10 +106,17 @@ _FD_H = 2.0e-3
 _REL_ERR_THRESHOLD = 0.02  # Retain the existing AD/FD policy.
 _MIN_FD_ULP_SPAN = 1.0e4
 assert _MIN_FD_ULP_SPAN * _REL_ERR_THRESHOLD >= 100.0
-# CPU mesh phase errors at 6/8/10 GHz: 0.0237%, 0.0287%, 0.0497%.
-# Apply the repository envelope multiplier (1.5) and round up to 0.01%:
-# ceil(0.000497 * 1.5 * 10000) / 10000 = 0.0008 (0.08%).
-_PHASE_MESH_BAR = 0.0008
+# The AD phase gradient's gap to the closed form -beta*L/(2*eps) depends on
+# the record length, so the bar comes from the record-length witness, not
+# from the phase error alone. The earlier 0.08 % (1.5x the 0.0497 % mesh phase
+# error) was read on this 600-step record only; the same gradient from 1.5x
+# and 2x records reads 0.103 % / 0.115 % on the pre-#1138 tree and 0.124 % /
+# 0.110 % here (0.105 % at 600 steps), and scaling eps only between the
+# reference planes changes it by < 0.003 %. Largest gap 0.1236 %; repository
+# envelope multiplier 1.5, round up to 0.01 %:
+# ceil(0.001236 * 1.5 * 10000) / 10000 = 0.0019 (0.19 %). A stop_gradient on
+# the traced port voltage puts the gradient 7 % off and still fails.
+_PHASE_MESH_BAR = 0.0019
 # Derived from this fixture: measured |d mean |S21|^2 / d eps_scale|
 # = 0.00263521; round up, then multiply by 3. Catch the pre-fix spurious
 # power slope from the analytic 1/r drive.
