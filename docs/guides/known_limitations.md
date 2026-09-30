@@ -95,7 +95,7 @@ blended pole, and the completion from any window of that record makes the same
 blend. The error witness WE then agrees while the completed S can be several
 percent off near the pair. What to do: record longer. In the measured case, a
 pair 0.03 % apart was resolved at about a fifth of its decay time.
-→ [#1381](https://github.com/bk-squared/rfx/issues/1381)
+#1381 was closed as a stated limit (PI decision, 2026-09-30); this is a standing limitation.
 
 **The early stop can end the run before a weak unresolved high-Q pair is
 resolved.** The rule is `run(..., until_identified=True)`: stop once WE agrees
@@ -109,7 +109,6 @@ Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
-→ [#1381](https://github.com/bk-squared/rfx/issues/1381)
 
 ## Absorbing boundaries
 
