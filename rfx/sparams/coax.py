@@ -408,6 +408,7 @@ def compute_coaxial_line_reflection(
     spec = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port, n_steps=int(n_steps), field_scale=float(field_scale),
         magnetic_ratio=1.0, shell_inner_radius=shell_inner,
+        pec_cell_mask=pec_cells,
     )
 
     planes = []
@@ -884,12 +885,12 @@ def compute_coaxial_two_port(
     spec_top = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port_top, n_steps=int(n_steps),
         field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner,
+        shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
     )
     spec_bot = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port_bot, n_steps=int(n_steps),
         field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner,
+        shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
     )
 
     n_bot = len(probes_bot)
@@ -1623,7 +1624,7 @@ def compute_coax_msl_transition(
     spec_coax = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port, n_steps=int(n_steps),
         field_scale=float(field_scale), magnetic_ratio=1.0,
-        shell_inner_radius=shell_inner,
+        shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
     )
     ref_coax_m = (z_junction_idx - grid.pad_z_lo) * dz
     z_planes_coax_m = np.array(
