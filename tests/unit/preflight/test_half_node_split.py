@@ -169,3 +169,15 @@ def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_is_refused(
 
 def test_the_same_declared_coordinate_has_no_split_message():
     assert _split_findings(_dipole("uniform", 9.5e-3)) == []
+
+
+@pytest.mark.parametrize("lane", ["uniform", "nu"])
+def test_the_message_names_both_features_and_both_nodes(lane):
+    sim = _patch(lane, 3.5e-3)
+    from dataclasses import replace
+    sim._ports[0] = replace(sim._ports[0], extent=float(np.float32(3.5e-3)))
+    text = str(_split_findings(sim)[0])
+    assert "add_port at (0.01, 0.009, 0.0)" in text
+    assert "PEC sheet 'pec'" in text
+    assert "z = 3.5 mm" in text
+    assert "z node 4 (4 mm)" in text and "node 3 (3 mm)" in text

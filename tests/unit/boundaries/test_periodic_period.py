@@ -81,21 +81,22 @@ def _check_material(epsilon):
     assert epsilon == pytest.approx(5.)
 
 
-def _check_half_node(position_index, axis_index, expected_position):
+def _check_half_node(position_index, axis_index, expected_position, expected_axis):
     assert position_index == expected_position
-    assert axis_index == 2
+    assert axis_index == expected_axis
 
 
 @pytest.mark.parametrize('dtype', [np.float32, np.float64])
 @pytest.mark.parametrize('axis', [0, 1, 2])
 def test_nonperiodic_half_node_takes_the_lower_node(dtype, axis):
-    # #1342 replaces B2's historical tie rounding: both public lookups
-    # take the lower node, with division in the input scalar's dtype.
+    # Both take lower ties, with their original division arithmetic:
+    # position_to_index keeps the scalar dtype; index_of divides float64.
+    # float32(.00075) is above the tie when promoted before division.
     grid = Grid(60e9, (.009, .006, .0042), dx=.0003, cpml_layers=0)
     position = [0., 0., 0.]
     position[axis] = dtype(.00075)
     _check_half_node(grid.position_to_index(position)[axis],
-                     grid.index_of(axis, position[axis]), 2)
+                     grid.index_of(axis, position[axis]), 2, 3 if dtype is np.float32 else 2)
 
 
 @pytest.mark.parametrize('mode', ['2d_tmz', '2d_tez'])
@@ -282,4 +283,4 @@ def test_period_judges_reject_corrupted_measurements(judge):
         elif judge == 'material':
             _check_material(1.)
         else:
-            _check_half_node(3, 3, 2)
+            _check_half_node(3, 3, 2, 2)

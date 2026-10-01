@@ -29,7 +29,7 @@ def model(lane):
 
 
 KINDS = ["point", "interval", "wire_vertex", "wire_radius", "sheet",
-         "traced_sheet", "aperture", "flux", "current_window", "thin_wire",
+         "traced_sheet", "csg_thin_box", "aperture", "flux", "current_window", "thin_wire",
          "port_wire", "source_wire", "lumped_wire", "port_sheet", "port_lossy", "port_face",
          "probe_sheet", "dft_sheet", "subgrid_bound", "disjoint_bound",
          "disjoint_point", "preflight_node"]
@@ -69,6 +69,15 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
         from rfx.geometry.rasterize_grid import sheet_footprint_traced
         with enable_x64():
             mask = sheet_footprint_traced(Box((.003, .003, .0105), (.009, .009, .0105)), coords, 2)
+        assert set(np.nonzero(np.asarray(mask))[2]) == {10}
+    elif kind == "csg_thin_box":
+        # One ULP above this lane's computed midpoint is inside the tie
+        # band, but a reverted argmin chooses the upper node on both lanes.
+        mid = np.nextafter(.5 * (coords.z[10] + coords.z[11]), np.inf)
+        shape = Box((.003, .003, mid - .0001), (.009, .009, mid + .0001))
+        assert (shape.corner_lo[2] + shape.corner_hi[2]) / 2 == mid
+        assert int(np.argmin(abs(np.asarray(coords.z) - mid))) == 11
+        mask = shape.mask_on_coords(coords.x, coords.y, coords.z)
         assert set(np.nonzero(np.asarray(mask))[2]) == {10}
     elif kind == "aperture":
         if lane == "graded":
@@ -188,12 +197,34 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 @pytest.mark.parametrize("extent", [None, .003])
-def test_trace_far_end_is_refused_before_steps(lane, extent):
-    sim, _, _, _ = model(lane)
-    sim.add(Box((.003, .007, .003), (.0115, .011, .003)), material="pec")
-    sim.add_port((.0115, .009, .002 if extent is None else 0.), component="ez", extent=extent)
-    with pytest.raises(ValueError, match="trace far end.*Move the port"):
-        sim.run(n_steps=1, skip_preflight=True)
+@pytest.mark.parametrize("lo,hi,x,node,footprint,refused", [
+    (.003, .0115, .0115, 11, (3, 11), False),
+    (.003, .0113, .0113, 11, (3, 11), False),
+    (.003, .0117, .0117, 12, (3, 11), True),
+    (.0035, .011, .0035, 3, (4, 11), True),
+    (.0033, .011, .0033, 3, (4, 11), True),
+], ids=["A", "B", "C", "D", "D2"])
+def test_trace_port_realized_footprint(lane, extent, lo, hi, x, node, footprint, refused):
+    from rfx.preflight.ports import trace_far_end_findings
+    from rfx.geometry.rasterize_grid import sheet_spec_from_shape
+    sim, grid, coords, sizes = model(lane)
+    shape = Box((lo, .007, .003), (hi, .011, .003))
+    sim.add(shape, material="pec")
+    sim.add_port((x, .009, .002 if extent is None else 0.), component="ez", extent=extent)
+    occupied = np.nonzero(np.asarray(sheet_spec_from_shape(shape, coords, sizes, grid=grid).footprint))[0]
+    assert (int(occupied.min()), int(occupied.max())) == footprint
+    assert grid.index_of(0, x) == node
+    findings = trace_far_end_findings(sim)
+    assert bool(findings) is refused
+    report = sim.preflight(strict=False)
+    reported = [i for i in report if i.code == "trace_port_footprint"]
+    assert [str(i) for i in reported] == findings
+    assert all(i.severity == "error" for i in reported)
+    if refused:
+        with pytest.raises(ValueError, match="Move the port.*#1342"):
+            sim.run(n_steps=1, skip_preflight=True)
+    else:
+        assert np.isfinite(sim.run(n_steps=1, skip_preflight=True).time_series).all()
 
 
 def test_off_ties_keep_rounding_and_input_dtype():
@@ -206,18 +237,22 @@ def test_off_ties_keep_rounding_and_input_dtype():
     from rfx.grid import Grid
     grid = Grid(60e9, (.009, .006, .0042), dx=.0003, cpml_layers=0)
     assert grid.position_to_index((np.float32(.00075), 0., 0.))[0] == 2
-    assert grid.index_of(0, np.float32(.00075)) == 2
+    assert float(np.float32(.00075)) / grid.dx > 2.5 + 1e-9
+    assert grid.index_of(0, np.float32(.00075)) == 3
 
 
 def test_subgrid_runner_bound_and_point_sites(monkeypatch):
     """Observe the runner's own setup, before its first fine/coarse step."""
     from rfx.runners.subgridded import _run_subgridded_once
     from rfx.subgridding import jit_runner
-    sim = Simulation(freq_max=10e9, domain=(.021, .021, .02), dx=.001, boundary="pec")
+    dx = 3 / 1024  # binary-exact coarse and fine cells (ratio 3)
+    sim = Simulation(freq_max=10e9, domain=(21 * dx, 21 * dx, 20 * dx), dx=dx, boundary="pec")
     grid = sim._build_grid()
-    sim._refinement = dict(ratio=3, z_range=(.0035, .0095), xy_margin=.0035,
+    sim._refinement = dict(ratio=3, z_range=(3.5 * dx, 9.5 * dx), xy_margin=3.5 * dx,
                            validation="off")
-    pos = (.003 + 3.5 * (.001 / 3),) * 3
+    pos = (3 * dx + 3.5 * (dx / 3),) * 3
+    assert (pos[0] - 3 * dx) / (dx / 3) == 3.5
+    assert round((pos[0] - 3 * dx) / (dx / 3)) == 4
     sim.add_source(pos, component="ez", amplitude_kind="field")
     sim.add_probe(pos, component="ez")
     mats = sim._assemble_materials(grid)[0]

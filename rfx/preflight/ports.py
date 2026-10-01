@@ -999,12 +999,10 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
 
 
 def trace_far_end_findings(sim, grid=None) -> list[str]:
-    """Refuse normal ports at a sheet's inward-rounded high footprint edge.
+    """Refuse a port end whose realized node misses its declared trace.
 
-    Pair on the declared sheet plane and tangential high bound, then read
-    the actual closed footprint. An on-node high bound is not ambiguous.
-    No aspect-ratio heuristic is needed: either tangential high edge can be
-    the end of a trace, independent of its orientation.
+    Both tangential ends are included in the declared pairing. Admission
+    depends on the realized footprint, not whether a declared edge rounds.
     """
     from rfx._grid_metric import NODE_TIE_REL
     from rfx.geometry.rasterize_grid import (
@@ -1047,34 +1045,35 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
             end = start + (float(pe.extent) if pe.extent is not None
                            else _local_cell(nodes[normal], sizes[normal], start))
             tol = NODE_TIE_REL * _local_cell(nodes[normal], sizes[normal], plane)
-            if not min(start, end) - tol <= plane <= max(start, end) + tol:
+            if min(abs(start - plane), abs(end - plane)) > tol:
                 continue
-            for a in tangent:
-                b = next(t for t in tangent if t != a)
-                tol_a = NODE_TIE_REL * _local_cell(nodes[a], sizes[a], hi[a])
-                if (abs(pe.position[a] - hi[a]) > tol_a
-                        or not lo[b] <= pe.position[b] <= hi[b]):
-                    continue
-                sheet = sheet_spec_from_shape(shape, coords, sizes, name=name, grid=grid)
-                occupied = np.nonzero(np.asarray(sheet.footprint))[tangent.index(a)]
-                if not occupied.size:
-                    continue
-                last = int(occupied.max())
-                if float(hi[a]) - nodes[a][last] > tol_a:
+            if any(not lo[a] <= float(pe.position[a]) <= hi[a] for a in tangent):
+                continue
+            sheet = sheet_spec_from_shape(shape, coords, sizes, name=name, grid=grid)
+            occupied = np.nonzero(np.asarray(sheet.footprint))
+            if not occupied[0].size:
+                continue
+            if nu:
+                from rfx.nonuniform import position_to_index
+                port_node = position_to_index(grid, pe.position)
+            else:
+                port_node = grid.position_to_index(pe.position)
+            for dimension, a in enumerate(tangent):
+                first, last = int(occupied[dimension].min()), int(occupied[dimension].max())
+                if not first <= port_node[a] <= last:
                     messages.append(
-                        f"Port at {pe.position} touches trace far end {'xyz'[a]}={hi[a]:.9g} m "
-                        f"of {name!r}, whose footprint rounds inward to node {last} "
-                        f"({nodes[a][last]:.9g} m). Move the port and the trace end "
+                        f"Port at {pe.position} touches trace {name!r}, but its realized "
+                        f"{'xyz'[a]} node {port_node[a]} is outside the trace footprint "
+                        f"nodes {first}..{last}. Move the port and the trace end "
                         "onto the same mesh node, extend the trace past the port, "
                         "or refine the mesh to put a node at the declared end (#1342).")
     return messages
 
 
 def _validate_cfg_half_node_split(self, _w) -> None:
-    """ERROR: a port, source or probe and a wire vertex or PEC sheet declared
-    at the same half-node coordinate land one cell apart (#1295, #1342).
+    """ERROR: a point splits from its conductor or a port misses its trace.
 
-    Both lanes. ``half_node_split_findings`` holds the rule and the text; the
+    Both lanes. The finding functions hold the rules and the text; the
     run-time refusal (``Simulation._require_no_half_node_split``, called from
     ``_dispatch_plan``) reads the same function, so ``skip_preflight=True``
     does not bypass it.
@@ -1084,6 +1083,16 @@ def _validate_cfg_half_node_split(self, _w) -> None:
             PreflightErrorWarning(
                 message,
                 code="half_node_split",
+                source="_validate_cfg_half_node_split",
+            ),
+            stacklevel=3,
+        )
+
+    for message in trace_far_end_findings(self):
+        _w.warn(
+            PreflightErrorWarning(
+                message,
+                code="trace_port_footprint",
                 source="_validate_cfg_half_node_split",
             ),
             stacklevel=3,
