@@ -489,6 +489,7 @@
         "field_scale",
         "magnetic_ratio",
         "reference_plane_axial_index_offset",
+        "plane_axial_index",
         "eps_r",
         "shell_inner_radius",
         "pec_cell_mask"
