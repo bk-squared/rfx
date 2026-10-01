@@ -13,12 +13,15 @@ this file, so that absorption physics is not asserted.
 """
 
 import functools
+import re
 
 import numpy as np
 import jax.numpy as jnp
 import pytest
 
+from rfx import Simulation
 from rfx.grid import Grid
+from rfx.ringdown import RingdownSpec
 from rfx.core.yee import init_state, init_materials, update_e, update_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse, LumpedPort, setup_lumped_port, apply_lumped_port
@@ -129,33 +132,66 @@ def test_lumped_port_pec_cavity_s11():
         "cannot do")
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "#1255 (closed as a stated limit, PI 2026-10-01): the lossless box's TM110 "
-    "is loaded only by the one-cell 50 ohm port and rings at 4.148 GHz with "
-    "Q ~ 2000 (amplitude e-fold 153 ns); this 12 ns record cuts it, and the "
-    "truncated DFT reads |S11| up to 1.025 around the mode (two-sided). The "
-    "port's V/I extraction is not the cause: the same box at loaded Q ~ 30 "
-    "stays passive (max |S11| 0.995). run(ringdown=) refuses one-cell lumped "
-    "ports, so the completion cannot repair it here."))
-def test_lumped_port_pec_cavity_s11_around_the_first_mode():
-    """The same box and the same bar, around and above TM110 (> 3.74 GHz).
+def _pec_cavity_simulation(*, wire):
+    """The low-level cavity fixture's geometry and drive through the public API."""
+    grid = Grid(freq_max=5e9, domain=(0.05, 0.05, 0.025), cpml_layers=0)
+    sim = Simulation(
+        freq_max=5e9, domain=(0.05, 0.05, 0.025), boundary="pec",
+        cpml_layers=0, dx=grid.dx,
+    )
+    sim.add_port(
+        position=(0.025, 0.025, 0.0125), component="ez", impedance=50.0,
+        waveform=GaussianPulse(f0=3e9, bandwidth=0.8, amplitude=1.0),
+        **({"extent": grid.dx} if wire else {}),
+    )
+    return sim, grid
 
-    A lossless box is |S11| = 1 here too. The port is the TM110 mode's only
-    loss, so the mode rings at 4.148 GHz with Q ~ 2000 (amplitude e-fold
-    153 ns) and this record cuts it; the truncated DFT reads |S11| up to
-    1.025 around the mode (two-sided; 24 / 60 / 120 ns records: 0.042 /
-    0.032 / 0.026). At loaded Q ~ 30 the same box stays passive, so the port
-    extraction is not the cause (#1255, closed as a stated limit; records
-    rfx-archive rfx/records/20261001-lumped-port-1255-vi/). Kept as a strict
-    xfail: a change that completes the ringing for lumped ports (today
-    run(ringdown=) refuses them) turns it green loudly.
+
+def test_wire_port_pec_cavity_s11_around_the_first_mode():
+    """A lossless box reflects fully; the port is its only loss.
+
+    TM110 has Q ≈ 2000 and rings with a 153 ns amplitude e-fold time. A plain
+    12 ns record reads |S11| = 0.975–1.009 around the mode; wire-port ringdown
+    completion restores unity within 1e-6. Check the same band around and
+    above TM110 (> 0.9 times the realized-box mode) as the former lumped-port
+    xfail, with a two-sided 1e-3 bound and the completion's own witnesses.
     """
-    freqs, s11, f_tm110 = _pec_cavity_port_s11()
-    around = freqs > _BELOW_MODE * f_tm110
-    s11_mag = np.abs(s11)
-    assert np.max(s11_mag[around]) <= 1.0 + 1e-3, (
-        f"|S11| = {np.max(s11_mag[around]):.5f} around the first mode "
-        "exceeds unity on a lossless PEC cavity")
+    sim, grid = _pec_cavity_simulation(wire=True)
+    freqs = jnp.linspace(1e9, 5e9, 50)
+    n_steps = grid.num_timesteps(num_periods=60)
+    result = sim.run(
+        n_steps=n_steps, s_param_n_steps=n_steps, s_param_freqs=freqs,
+        compute_s_params=True, ringdown=RingdownSpec(),
+    )
+    a_r = (grid.shape[0] - 1) * grid.dx
+    b_r = (grid.shape[1] - 1) * grid.dx
+    f_tm110 = _C0 / 2.0 * np.sqrt(1.0 / a_r ** 2 + 1.0 / b_r ** 2)
+    around = np.asarray(freqs) > _BELOW_MODE * f_tm110
+    assert int(around.sum()) == 16, "the around-mode band moved; re-derive it"
+    s11 = np.asarray(result.ringdown.s_params)[0, 0]
+    deviation = np.max(np.abs(np.abs(s11[around]) - 1.0))
+    assert deviation <= 1e-3, f"max ||S11| - 1| = {deviation:.6g} in a lossless box"
+    report = result.ringdown.report
+    assert report.completed and report.ok, report.failure
+    assert report.witnesses
+    assert all(w.ok for w in report.witnesses), report.witnesses
+
+
+def test_lumped_port_pec_cavity_ringdown_refused():
+    """Completion currently refuses the same box's one-cell lumped port."""
+    sim, grid = _pec_cavity_simulation(wire=False)
+    n_steps = grid.num_timesteps(num_periods=60)
+    message = (
+        "run(ringdown=...) completes wire-port S-parameters only; the "
+        "port at (0.025, 0.025, 0.0125) is a one-cell lumped port "
+        "(add_port without extent=)."
+    )
+    with pytest.raises(NotImplementedError, match=re.escape(message)):
+        sim.run(
+            n_steps=n_steps, s_param_n_steps=n_steps,
+            s_param_freqs=jnp.linspace(1e9, 5e9, 50),
+            compute_s_params=True, ringdown=RingdownSpec(),
+        )
 
 
 def test_lumped_port_injects_energy():

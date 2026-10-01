@@ -134,16 +134,17 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
-**A lumped port reads S of a weakly coupled, nearly lossless resonance wrongly when the record is shorter
-than the resonance's decay, and the end-of-run witness can miss it.** A closed lossless 50 × 50 × 25 mm
-PEC box fed by a one-cell 50 Ω lumped port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold
-153 ns), because the port is its only loss. A 12 ns record cuts that ringing, and the truncated DFT reads
-|S11| up to 1.025 around the mode, where a lossless box must read 1; a 24, 60 or 120 ns record does not
-fix it (0.042, 0.032, 0.026). The end-of-run witness read −64 dB and passed, because its reference peak
-was the direct, non-resonant response and the weakly coupled mode rings below it. At loaded Q ≈ 30 the
-same box stays passive. `run(ringdown=...)` would complete the ringing but refuses one-cell lumped ports.
-What to do: record well past the slowest mode's decay, or feed the structure with a one-cell wire port
-(`add_port(..., extent=...)`), which is the same cell and is accepted by `run(ringdown=...)`.
+**A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port,
+and the end-of-run witness can miss it.** A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
+port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the port is its only loss.
+On a plain 12 ns record, |S11| reads 0.975–1.009 around the mode (largest deviation 0.025);
+24 / 60 / 120 ns records: deviation 0.042 / 0.032 / 0.026. The end-of-run witness read −64 dB
+and passed: its reference peak was the direct response, and the weakly coupled mode rings below it.
+On the same 12 ns record, one-cell wire-port completion restores |S11| to 1 ± 1e-6 with passing witnesses
+(`tests/unit/sparams/test_sparam.py::test_wire_port_pec_cavity_s11_around_the_first_mode`).
+`run(ringdown=...)` currently refuses one-cell lumped ports.
+What to do: record well past the slowest mode's decay, or use a one-cell wire port
+(`add_port(..., extent=dx)`) with `run(ringdown=...)`.
 #1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
 
 ## Absorbing boundaries
