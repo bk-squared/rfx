@@ -203,7 +203,9 @@ def test_declared_half_node_is_lower_and_colocated(kind, lane, monkeypatch):
     (.003, .0117, .0117, 12, (3, 11), True),
     (.0035, .011, .0035, 3, (4, 11), True),
     (.0033, .011, .0033, 3, (4, 11), True),
-], ids=["A", "B", "C", "D", "D2"])
+    # declared one float step below the trace start (e.g. through a float sum)
+    (.0035, .011, float(np.nextafter(.0035, 0.)), 3, (4, 11), True),
+], ids=["A", "B", "C", "D", "D2", "D-eps"])
 def test_trace_port_realized_footprint(lane, extent, lo, hi, x, node, footprint, refused):
     from rfx.preflight.ports import trace_far_end_findings
     from rfx.geometry.rasterize_grid import sheet_spec_from_shape

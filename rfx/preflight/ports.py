@@ -1047,7 +1047,12 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
             tol = NODE_TIE_REL * _local_cell(nodes[normal], sizes[normal], plane)
             if min(abs(start - plane), abs(end - plane)) > tol:
                 continue
-            if any(not lo[a] <= float(pe.position[a]) <= hi[a] for a in tangent):
+            # A port declared within the tie band of a trace edge (e.g. one float
+            # step outside it through a float sum) still touches that trace.
+            if any(not (lo[a] - NODE_TIE_REL * _local_cell(nodes[a], sizes[a], lo[a])
+                        <= float(pe.position[a])
+                        <= hi[a] + NODE_TIE_REL * _local_cell(nodes[a], sizes[a], hi[a]))
+                   for a in tangent):
                 continue
             sheet = sheet_spec_from_shape(shape, coords, sizes, name=name, grid=grid)
             occupied = np.nonzero(np.asarray(sheet.footprint))
