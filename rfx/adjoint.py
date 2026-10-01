@@ -167,8 +167,14 @@ def design_adjoint_scan(ctx, initial, xs):
 
         core = make_core_step(local, {**invariants, "ctx": local}, design_hook=hook if recording else None)
         def step(carry, row):
-            state, acc_e, acc_h = carry
+            state, acc_e, acc_h, peak, last_e = carry
             state, probes, extras = core(state, *row)
+            if targets is None:
+                # Yee E edges owned by the design box, after the full update.
+                last_e = jnp.max(jnp.stack([
+                    jnp.max(jnp.abs(getattr(state["fdtd"], c)[sl]))
+                    for c in ("ex", "ey", "ez")]))
+                peak = jnp.maximum(peak, last_e)
             if recording:
                 # Forward Epre and curl use the post-update timestamp. Adjoint
                 # E is post-update; its DFT then represents L^-1 b.
@@ -179,9 +185,15 @@ def design_adjoint_scan(ctx, initial, xs):
                 acc_e = tuple(a + phase[:, None, None, None]*v for a, v in zip(acc_e, e))
                 if targets is None:
                     acc_h = tuple(a + phase[:, None, None, None]*v for a, v in zip(acc_h, h))
-            return (state, acc_e, acc_h), (probes,) if targets is None else None
+            return (state, acc_e, acc_h, peak, last_e), (probes,) if targets is None else None
         start = initial if targets is None else {k: v for k, v in initial.items() if k != "dft_planes"}
-        return recorded_scan(step, (start, z, z), xs)
+        (last, e, h, peak, last_e), outputs = recorded_scan(
+            step, (start, z, z, jnp.zeros((), dtype), jnp.zeros((), dtype)), xs)
+        if targets is None:
+            # No excitation gives no settling evidence, rather than a false zero.
+            last = {**last, "adjoint_settling": jax.lax.stop_gradient(
+                jnp.where(peak > 0, last_e / peak, jnp.nan))}
+        return (last, e, h), outputs
 
     @jax.custom_vjp
     def scan(coeffs):
@@ -211,4 +223,6 @@ def design_adjoint_scan(ctx, initial, xs):
         return (grads,)
 
     scan.defvjp(forward, backward, symbolic_zeros=True)
-    return scan(ab)
+    last, outputs = scan(ab)
+    return {**last, "adjoint_settling": jax.lax.stop_gradient(
+        last["adjoint_settling"])}, outputs

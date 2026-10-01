@@ -165,6 +165,7 @@ def test_g5_default(precision):
             options = {"gradient": "autodiff"} if explicit else {}
             r = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=e,
                 design_sigma_override=sigma, n_steps=48, skip_preflight=True, **options)
+            assert r.adjoint_settling is None
             return r.time_series, r.dft_planes["out"].accumulator
         functions = [lambda e: result(e, False), lambda e: result(e, True)]
         assert str(jax.make_jaxpr(functions[0])(eps)) == str(jax.make_jaxpr(functions[1])(eps))
@@ -391,3 +392,21 @@ def test_g1_raw_coefficients_lossless_point():
               f"edge_shapes={[a.shape for a in coefficients[0]]}", flush=True)
         np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-12)
         assert max(relative) <= 1e-5
+
+
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("steps", [STEPS, 64])
+def test_adjoint_settling(precision, steps):
+    with enable_x64() if precision == "float64" else nullcontext():
+        sim, eps = fixture(precision)
+        def measure(e):
+            result = sim.forward(design_box=(BOX_LO, BOX_HI),
+                design_eps_override=e, n_steps=steps, gradient="adjoint",
+                skip_preflight=True)
+            return jnp.sum(jnp.abs(result.dft_planes["out"].accumulator)**2), result.adjoint_settling
+        (_, witness), grad = jax.jit(jax.value_and_grad(measure, has_aux=True))(eps)
+        print(f"SETTLING {precision=} {steps=} ratio={float(witness):.17g}", flush=True)
+        np.testing.assert_array_equal(jax.jit(measure)(eps)[1], witness)
+        assert witness.shape == ()
+        assert np.all(np.isfinite(grad))
+        assert witness < 1e-5 if steps == STEPS else witness > 1e-1

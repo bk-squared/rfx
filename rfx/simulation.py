@@ -331,6 +331,7 @@ class SimResult(NamedTuple):
     dt: float | None = None
     current_moment_data: object = None
     current_moment_monitor: object = None
+    adjoint_settling: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -3524,6 +3525,7 @@ def run(
         dt=dt,
         current_moment_data=final_carry.get("current_moments"),
         current_moment_monitor=current_moments,
+        adjoint_settling=final_carry.get("adjoint_settling"),
     )
 
 

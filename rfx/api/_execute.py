@@ -2637,6 +2637,7 @@ class _ExecuteMixin:
             dt=result.dt,
             current_moment_data=result.current_moment_data,
             current_moment_monitor=current_moments_fwd,
+            adjoint_settling=result.adjoint_settling,
         )
 
     @staticmethod
@@ -3857,6 +3858,9 @@ class _ExecuteMixin:
             Design sigma overrides are refused (#1424): the conductivity
             derivative is not validated. Fixed lossy materials are allowed.
             Stores design-edge DFTs and runs a second ordinary forward.
+            The adjoint gradient is the settled-spectrum gradient, and
+            ``ForwardResult.adjoint_settling`` above about 1e-2 (-40 dB)
+            means the record has not settled.
             Uniform Yee design_box only; unsupported paths raise. Checkpoint
             options are unused by the adjoint (its storage does not depend on them).
         eps_override : jnp.ndarray or None
