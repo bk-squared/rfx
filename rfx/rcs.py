@@ -51,7 +51,8 @@ class RCSResult(NamedTuple):
         (theta=pi/2, phi=pi), i.e. -x.
     settling_db : float or None
         Last-tenth mean / whole-record peak sampled E/H energy in dB at
-        six NTFF face centres. Above -40 dB is truncation-suspect; None is
+        six scattered-field NTFF surface points. Above -40 dB is
+        truncation-suspect; None is
         unavailable, not a pass. This is not a bound on sigma error.
 
     VALIDATION SCOPE (read before trusting the full pattern)
@@ -98,8 +99,12 @@ class ScatteringResponse(NamedTuple):
     settling_db: float | None = None
 
 
-def _rcs_settling_probes(box):
-    """Six face-centre E/H samples just inside the NTFF integration box."""
+def _rcs_settling_probes(box, *, oblique=False):
+    """Six E/H samples on the NTFF surface, outside the total-field box.
+
+    The oblique source is periodic in z: its z-face centres remain in the
+    total field. Move those two samples to the low/high x edges instead.
+    """
     from rfx.simulation import ProbeSpec
 
     lo = (box.i_lo, box.j_lo, box.k_lo)
@@ -107,9 +112,11 @@ def _rcs_settling_probes(box):
     mid = [(a + b) // 2 for a, b in zip(lo, hi)]
     probes = []
     for axis in range(3):
-        for side in (lo[axis] + 1, hi[axis] - 2):
+        for side_index, side in enumerate((lo[axis], hi[axis])):
             point = mid.copy()
             point[axis] = side
+            if oblique and axis == 2:
+                point[0] = (lo[0], hi[0])[side_index]
             probes.extend(ProbeSpec(*point, component)
                           for component in ("ex", "ey", "ez", "hx", "hy", "hz"))
     return probes
@@ -133,7 +140,7 @@ def _rcs_settling_db(time_series):
     # Restore storage precision for the shared helper's underflow coverage floor.
     amplitude = np.sqrt(energy).astype(raw.real.dtype)
     value = settling_db_from_named_records(
-        [("NTFF face-centre energy", amplitude)], record_noun="NTFF energy records")
+        [("NTFF surface energy", amplitude)], record_noun="NTFF energy records")
     return float(value) if np.isfinite(value) else None
 
 
@@ -626,7 +633,7 @@ def compute_rcs(
     _run_kw = dict(boundary=boundary, tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box)
     if _oblique:
         _run_kw.update(cpml_axes="xy", periodic=(False, False, True), pec_axes="")
-    settling_probes = _rcs_settling_probes(ntff_box)
+    settling_probes = _rcs_settling_probes(ntff_box, oblique=_oblique)
     result = run(grid, materials, n_steps, probes=settling_probes, **_run_kw)
     settling_db = _rcs_settling_db(result.time_series)
 
@@ -686,9 +693,10 @@ def compute_rcs(
     if verdict == "fail":
         _warn_if_ringdown_truncated(
             np.array([settling_db]), (), n_steps=n_steps,
-            drive_labels=("NTFF face-centre energy (worst solve)",),
+            drive_labels=("NTFF surface energy (worst solve)",),
             consequence="RCS from this compute_rcs() call integrates a cut transient",
             quoted_thing="any RCS value",
+            stacklevel=3,
         )
     elif verdict == "absent":
         import warnings

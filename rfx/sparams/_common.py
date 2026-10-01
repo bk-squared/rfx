@@ -384,6 +384,7 @@ def _warn_if_ringdown_truncated(
     drive_labels: tuple | None = None,
     consequence: str | None = None,
     quoted_thing: str = "any S value",
+    stacklevel: int = 2,
 ) -> None:
     """Emit one aggregate warning when a driven run's record is truncated.
 
@@ -452,7 +453,7 @@ def _warn_if_ringdown_truncated(
         f"ringing, so {consequence}. Increase "
         f"{knob} until the witness is below −40 dB before quoting "
         f"{quoted_thing} (see the result's settling_db field).",
-        stacklevel=2,
+        stacklevel=stacklevel,
     )
 
 
