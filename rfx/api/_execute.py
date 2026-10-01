@@ -1534,6 +1534,7 @@ class _ExecuteMixin:
         *,
         n_steps: int,
         checkpoint: bool = True,
+        gradient: str = "autodiff",
         checkpoint_segments: int | None = None,
         pec_mask: jnp.ndarray | None = None,
         pec_sheets: object = (),
@@ -2465,6 +2466,7 @@ class _ExecuteMixin:
             stencil_order=self._stencil_order,
             sheet_impedance=sheet_impedance,
             design_box=design_box,
+            gradient=gradient,
             design_occupancy=design_occupancy,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -3808,6 +3810,7 @@ class _ExecuteMixin:
         n_steps: int | None = None,
         num_periods: float = 20.0,
         checkpoint: bool = True,
+        gradient: str = "autodiff",
         checkpoint_segments: int | None = None,
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
@@ -3829,6 +3832,11 @@ class _ExecuteMixin:
 
         Parameters
         ----------
+        gradient : {"autodiff", "adjoint"}
+            Opt-in exact discrete design-permittivity/conductivity adjoint.
+            Stores local E and curl H per step, without checkpoint replay.
+            Uniform Yee design_box only; unsupported paths raise. Checkpoint
+            options are unused by the adjoint (its storage does not depend on them).
         eps_override : jnp.ndarray or None
             Replacement permittivity array with shape ``grid.shape``.
             With ``distributed=True``, eps/sigma/occupancy overrides also accept
@@ -4179,6 +4187,17 @@ class _ExecuteMixin:
         float32 rounding, not necessarily bit for bit: XLA compiles the whole
         step as one program.
         """
+        if gradient not in ("autodiff", "adjoint"):
+            raise ValueError("gradient must be 'autodiff' or 'adjoint'")
+        if gradient == "adjoint":
+            from rfx.adjoint import admit_forward_adjoint
+            admit_forward_adjoint(
+                self, distributed=distributed, ringdown=ringdown,
+                design_box=design_box, design_eps=design_eps_override,
+                other_overrides=(eps_override, sigma_override, mu_r_override,
+                                 pec_mask_override, pec_occupancy_override,
+                                 design_occupancy_override, rlc_values_override),
+                port_s11_freqs=port_s11_freqs)
         _refuse_transformed_extended_tfsf(self._tfsf)
         if _forward_needs_trace_time_setup(self, distributed=distributed):
             # #1225: evaluate the set-up now instead of recording it. Only
@@ -4569,6 +4588,7 @@ class _ExecuteMixin:
             rlc_values_override=rlc_values_override,
             sheet_impedance=_fwd_sheet_ctx,
             design_box=_design_spec,
+            gradient=gradient,
             design_occupancy=_design_occ_spec,
             monitor_overrides={"eps_r": eps_override, "sigma": sigma_override,
                                "mu_r": mu_r_override,
