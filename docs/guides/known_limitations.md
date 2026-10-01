@@ -134,6 +134,18 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
+**A lumped port reads S of a weakly coupled, nearly lossless resonance wrongly when the record is shorter
+than the resonance's decay, and the end-of-run witness can miss it.** A closed lossless 50 × 50 × 25 mm
+PEC box fed by a one-cell 50 Ω lumped port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold
+153 ns), because the port is its only loss. A 12 ns record cuts that ringing, and the truncated DFT reads
+|S11| up to 1.025 around the mode, where a lossless box must read 1; a 24, 60 or 120 ns record does not
+fix it (0.042, 0.032, 0.026). The end-of-run witness read −64 dB and passed, because its reference peak
+was the direct, non-resonant response and the weakly coupled mode rings below it. At loaded Q ≈ 30 the
+same box stays passive. `run(ringdown=...)` would complete the ringing but refuses one-cell lumped ports.
+What to do: record well past the slowest mode's decay, or feed the structure with a one-cell wire port
+(`add_port(..., extent=...)`), which is the same cell and is accepted by `run(ringdown=...)`.
+#1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
+
 ## Absorbing boundaries
 
 **A magnetic symmetry wall lies half a cell inside its declared face.**

@@ -130,21 +130,25 @@ def test_lumped_port_pec_cavity_s11():
 
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "#1255: the lumped-port V/I reading of a lossless cavity scatters about "
-    "+-1 % of |Zin|, sign-indefinite, largest at the resonance: |S11| 1.0089 "
-    "at 4.10 GHz on this box (60 periods); main read 1.0355 at 4.18 GHz with "
-    "a 240-period record. Remove this marker when #1255 closes."))
+    "#1255 (closed as a stated limit, PI 2026-10-01): the lossless box's TM110 "
+    "is loaded only by the one-cell 50 ohm port and rings at 4.148 GHz with "
+    "Q ~ 2000 (amplitude e-fold 153 ns); this 12 ns record cuts it, and the "
+    "truncated DFT reads |S11| up to 1.025 around the mode (two-sided). The "
+    "port's V/I extraction is not the cause: the same box at loaded Q ~ 30 "
+    "stays passive (max |S11| 0.995). run(ringdown=) refuses one-cell lumped "
+    "ports, so the completion cannot repair it here."))
 def test_lumped_port_pec_cavity_s11_around_the_first_mode():
     """The same box and the same bar, around and above TM110 (> 3.74 GHz).
 
-    A lossless box is |S11| = 1 here too, but the port's terminal V/I DFT
-    near the resonance, where |Zin| peaks, carries a sign-indefinite error of
-    about +-1 % of |Zin| (#1255). Measured (60 periods): max |S11| 1.00892 at
-    4.10 GHz, 4 of 16 bins above 1 + 1e-3 (240 periods: 1.04303 at 4.18 GHz,
-    Re Zin -533 ohm). Main before #1236 read 0.99461 at 60 periods only
-    because the spurious transverse loads added ~+15 ohm, and 1.03548 at
-    4.18 GHz at 240 periods. Kept as a strict xfail so a fix to #1255
-    turns it green loudly.
+    A lossless box is |S11| = 1 here too. The port is the TM110 mode's only
+    loss, so the mode rings at 4.148 GHz with Q ~ 2000 (amplitude e-fold
+    153 ns) and this record cuts it; the truncated DFT reads |S11| up to
+    1.025 around the mode (two-sided; 24 / 60 / 120 ns records: 0.042 /
+    0.032 / 0.026). At loaded Q ~ 30 the same box stays passive, so the port
+    extraction is not the cause (#1255, closed as a stated limit; records
+    rfx-archive rfx/records/20261001-lumped-port-1255-vi/). Kept as a strict
+    xfail: a change that completes the ringing for lumped ports (today
+    run(ringdown=) refuses them) turns it green loudly.
     """
     freqs, s11, f_tm110 = _pec_cavity_port_s11()
     around = freqs > _BELOW_MODE * f_tm110
