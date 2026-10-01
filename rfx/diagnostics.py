@@ -65,14 +65,14 @@ def _version_of(dist: str) -> str:
 def _check_python(report: _Report) -> None:
     v = sys.version_info
     detail = f"{v.major}.{v.minor}.{v.micro} ({platform.python_implementation()})"
-    # pyproject requires-python = ">=3.10".
-    if (v.major, v.minor) >= (3, 10):
+    # pyproject requires-python = ">=3.11".
+    if (v.major, v.minor) >= (3, 11):
         report.record(PASS, "Python version", detail, critical=True)
     else:
         report.record(
             FAIL,
             "Python version",
-            f"{detail} — rfx requires Python >= 3.10",
+            f"{detail} — rfx requires Python >= 3.11",
             critical=True,
         )
 

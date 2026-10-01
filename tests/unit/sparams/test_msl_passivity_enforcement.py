@@ -155,9 +155,7 @@ def test_projection_preserves_nonfinite_bins_for_the_finiteness_audit(bad_value)
 def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
     with enable_x64():
         raw = jnp.asarray([[[.2], [1.]], [[1.], [.2]]], dtype=jnp.complex128)
-    disabled = (jax.enable_x64(False) if hasattr(jax, "enable_x64")
-                else jax.experimental.disable_x64())
-    with disabled:
+    with jax.enable_x64(False):
         projected, correction = _project_passive(raw)
         assert not jax.config.x64_enabled
         assert projected.dtype == np.dtype(np.complex128)

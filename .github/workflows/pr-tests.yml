@@ -218,22 +218,17 @@ jobs:
   # on the weekly validation run, up to 7 days later. Sharded fresh processes
   # avoid the XLA-cache OOM that killed the unsharded full run (roadmap W2.1).
   #
-  # Issue #876: Python 3.10 silently froze unpinned CI on JAX 0.6.2.
-  # Required checks now use Python 3.11 and explicitly pin JAX/jaxlib 0.10.2.
-  # The push-only, non-required Python 3.10 duplicate stays unpinned to check
-  # dependency resolution at the published requires-python >= 3.10 floor.
+  # Issues #876/#1401: Python 3.10 froze CI on JAX 0.6.2; #1429 drops that lane.
+  # PRs and pushes use Python 3.11 with JAX/jaxlib pinned to 0.10.2.
   fast-suite:
     needs: changes
-    # The job NAME must stay `fast-suite (<group>)` on the 3.11 entry: those are
+    # The job NAME must stay `fast-suite (<group>)`: those are
     # the contexts main's ruleset requires, and a matrix that renames
     # them to `fast-suite (3.11, 1)` leaves every required check permanently
-    # unreported, so no PR can merge. The 3.10 entry gets its own suffixed name.
+    # unreported, so no PR can merge.
     # Groups 5 and 6 (added 2026-09-05, #890) produce `fast-suite (5)` / `(6)`,
     # required since 2026-09-19 like (1)-(4).
-    name: >-
-      ${{ matrix.python-version == '3.11'
-          && format('fast-suite ({0})', matrix.group)
-          || format('fast-suite-py{0} ({1})', matrix.python-version, matrix.group) }}
+    name: fast-suite (${{ matrix.group }})
     runs-on: ubuntu-latest
     # 75, not 60 (2026-10-01): with the durations priced on Python 3.11 the six groups predict
     # 44-46 min each, and the same tests vary up to 1.22x between runners, so a slow runner
@@ -242,9 +237,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Required 3.11 runs on PRs and pushes; the non-required 3.10 floor
-        # witness runs only on pushes to main, keeping the same PR job count.
-        python-version: ${{ github.event_name == 'push' && fromJSON('["3.11", "3.10"]') || fromJSON('["3.11"]') }}
+        python-version: ["3.11"]
         group: [1, 2, 3, 4, 5, 6]
     steps:
       - name: Check out repository
@@ -269,8 +262,7 @@ jobs:
       - name: Install package with dev dependencies
         if: needs.changes.outputs.code_changed != 'false'
         # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358).
-        # Requirement markers apply both pins on 3.11 and leave 3.10 unpinned.
-        run: pip install -e ".[dev,cad]" "jax==0.10.2; python_version == '3.11'" "jaxlib==0.10.2; python_version == '3.11'"
+        run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
 
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
         if: needs.changes.outputs.code_changed != 'false'

@@ -366,15 +366,9 @@ def test_a_staged_direct_call_of_the_shared_entry_obeys_the_rule(graded):
 # ---------------------------------------------------------------------------
 
 def test_the_compile_time_switch_is_found_on_the_ci_jax_versions():
-    """The probe finds JAX's own switch on the versions CI runs (0.6.2 and
-    0.10.2), so the gate above exercises it; a JAX that drops it falls back
-    to the anchor, which the next test exercises (and which the 0.4.20
-    floor runs for real)."""
+    """The validated JAX exposes the switch; the next test exercises its fallback."""
     from rfx.core.jax_utils import compile_time_switch
 
-    major_minor = tuple(int(p) for p in jax.__version__.split(".")[:2])
-    if major_minor < (0, 6):
-        pytest.skip(f"JAX {jax.__version__} predates the CI builds")
     assert compile_time_switch() is not None
 
 
