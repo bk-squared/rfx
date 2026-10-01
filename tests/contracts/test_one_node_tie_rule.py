@@ -206,7 +206,7 @@ def test_off_ties_keep_rounding_and_input_dtype():
     from rfx.grid import Grid
     grid = Grid(60e9, (.009, .006, .0042), dx=.0003, cpml_layers=0)
     assert grid.position_to_index((np.float32(.00075), 0., 0.))[0] == 2
-    assert grid.index_of(0, np.float32(.00075)) == 3
+    assert grid.index_of(0, np.float32(.00075)) == 2
 
 
 def test_subgrid_runner_bound_and_point_sites(monkeypatch):

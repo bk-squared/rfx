@@ -82,19 +82,19 @@ def _check_material(epsilon):
 
 def _check_half_node(position_index, axis_index, expected_position):
     assert position_index == expected_position
-    assert axis_index == 3
+    assert axis_index == 2
 
 
-@pytest.mark.parametrize('dtype,expected_position', [(np.float32, 2), (np.float64, 3)])
+@pytest.mark.parametrize('dtype', [np.float32, np.float64])
 @pytest.mark.parametrize('axis', [0, 1, 2])
-def test_nonperiodic_half_node_keeps_input_arithmetic(dtype, expected_position, axis):
-    # A 0.75 mm source on a 0.3 mm mesh retains its pre-B2 node. The two
-    # public lookups historically prepare their quotients differently.
+def test_nonperiodic_half_node_takes_the_lower_node(dtype, axis):
+    # #1342 replaces B2's historical tie rounding: both public lookups
+    # take the lower node, with division in the input scalar's dtype.
     grid = Grid(60e9, (.009, .006, .0042), dx=.0003, cpml_layers=0)
     position = [0., 0., 0.]
     position[axis] = dtype(.00075)
     _check_half_node(grid.position_to_index(position)[axis],
-                     grid.index_of(axis, position[axis]), expected_position)
+                     grid.index_of(axis, position[axis]), 2)
 
 
 @pytest.mark.parametrize('mode', ['2d_tmz', '2d_tez'])

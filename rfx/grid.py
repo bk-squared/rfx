@@ -461,8 +461,8 @@ class Grid:
     def index_of(self, axis, x: float) -> int:
         """Padded index of the node nearest physical coordinate ``x``.
 
-        Divides ``float(x)/dx`` before applying the lower-node tie rule;
-        ``position_to_index`` instead divides in the input scalar's dtype.
+        Divides in the input scalar's dtype, as ``position_to_index`` does,
+        before applying the shared lower-node tie rule.
         Declared periodic axes wrap modulo their node count. In 2-D
         mode the z axis holds one cell and the answer is always 0, which is
         what ``position_to_index`` returns there.
@@ -471,7 +471,7 @@ class Grid:
         n, _ = self._axis_extent(ax)
         if ax == 2 and self.is_2d:
             return 0
-        idx = self._rounded_index(ax, float(x) / self.dx)
+        idx = self._rounded_index(ax, x / self.dx)
         if not (0 <= idx < n):
             raise ValueError(
                 f"position {float(x)} on axis {_axis_name(ax)!r} maps to "
