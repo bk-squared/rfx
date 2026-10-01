@@ -167,6 +167,27 @@ cell except the outermost row on the +x and +y faces.
 
 ## Gradients and optimization
 
+**Port-only ring-down completion can miss the gradient of a weakly coupled
+high-Q resonance.** A pole and the completed S-parameter can be accurate while
+its material derivative is tens of percent wrong at the resonance bin. Add
+interior field channels with
+`RingdownSpec(identification_probes=(((x, y, z), "ez"),))` on `run()` or
+`forward()`. They inform pole identification; S still uses the port V/I
+residues. The report lists snapped identification channels and per-pole
+residue/RMS shares as information, without an observability threshold or a
+W0-style accumulator witness for these channels.
+
+Judge completed gradients with `gradient_witness(g, g_early, ringdown=result.ringdown,
+bin_axis=k)` when axis `k` carries frequency: it normalizes each bin of each
+parameter leaf independently and returns the worst bin. Exactly zero reference
+bins are skipped and counted. Without `bin_axis`, normalization is per leaf;
+a scalar objective's gradient is already per objective. A passing value witness
+does not establish a passing gradient witness. Where the early-start witness
+cannot be formed, compare against a record 1.5–2 times longer.
+The weak-port cavity contract is in
+`tests/unit/sparams/test_ringdown_identification.py`.
+→ [#1419](https://github.com/bk-squared/rfx/issues/1419)
+
 **A gradient can be wrong by tens of percent on a record whose value is
 converged.** Every frequency-domain quantity rfx differentiates is a DFT of a
 finite time record. A structure still ringing when the record ends leaves a term
