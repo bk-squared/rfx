@@ -741,6 +741,7 @@ def build_coaxial_tem_plane_source_specs(
     field_scale: float = 1.0e4,
     magnetic_ratio: float = 1.0,
     reference_plane_axial_index_offset: int = 0,
+    plane_axial_index: int | None = None,
     eps_r: float = PTFE_EPS_R,
     shell_inner_radius: float | None = None,
     pec_cell_mask=None,
@@ -813,6 +814,10 @@ def build_coaxial_tem_plane_source_specs(
         Shift of the source plane (and therefore the V/I reference plane)
         relative to ``port.pin_center`` along the port axis. ``0`` injects
         at the pin centre plane.
+    plane_axial_index:
+        Explicit E-plane node for a calculator's internally indexed source.
+        If supplied, bypasses the physical pin-centre lookup; the offset
+        above is still applied. Declared ports use the default lookup.
     eps_r:
         Coaxial dielectric permittivity for the analytic ``Z_TEM`` and the
         Yee-half-step delay (``v_phase = c / sqrt(εr)``). Default
@@ -847,7 +852,8 @@ def build_coaxial_tem_plane_source_specs(
     # Forward direction: +1 for face='bottom' (pin goes +z), -1 for face='top'.
     forward_sign = float(direction)
 
-    plane_index = int(grid.position_to_index(pin_center)[2]) + int(
+    plane_index = (int(grid.position_to_index(pin_center)[2])
+                   if plane_axial_index is None else int(plane_axial_index)) + int(
         reference_plane_axial_index_offset
     )
 
