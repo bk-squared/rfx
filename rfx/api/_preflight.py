@@ -374,7 +374,14 @@ class _PreflightMixin:
         )
         if compute_s_params is not False and (requested or default_requested):
             from rfx.runners._admission import refuse_plain_sources_s_matrix
-            refuse_plain_sources_s_matrix(self)
+            from rfx.runners._admission import _s_matrix_ports
+            _one_device = devices is None or len(devices) <= 1
+            # S read from the main run's own record: the graded wire path and
+            # the uniform single-wire fast path (no scan, _s_matrix_ports False).
+            _main_record = (
+                _one_device and self._refinement is None and self._solver != "adi"
+                and (self._uses_nonuniform_mesh or not _s_matrix_ports(self)))
+            refuse_plain_sources_s_matrix(self, main_record=_main_record)
         if not requested:
             return
 
@@ -494,7 +501,7 @@ class _PreflightMixin:
         # The port S11 is the port drive's own reflection only if nothing else
         # excites the model (#1420), as on run()'s S request.
         from rfx.runners._admission import refuse_plain_sources_s_matrix
-        refuse_plain_sources_s_matrix(self)
+        refuse_plain_sources_s_matrix(self, main_record=True)
         port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:

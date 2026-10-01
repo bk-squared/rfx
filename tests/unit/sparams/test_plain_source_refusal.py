@@ -137,3 +137,42 @@ def test_passive_port_illuminated_by_a_plain_source_is_admitted():
     result = sim.run(n_steps=12, compute_s_params=True, s_param_freqs=[5e9],
                      skip_preflight=True)
     assert result.s_params is not None
+
+
+def _two_passive_lumped(source=True):
+    sim = Simulation(freq_max=10e9, domain=(.012, .008, .008), dx=.001,
+                     boundary="cpml", cpml_layers=2)
+    for x in (.004, .008):
+        sim.add_port((x, .004, .004), "ez", impedance=50.0, excite=False)
+    sim.add_probe((.006, .004, .004), "ez")
+    if source:
+        sim.add_source((.006, .004, .004), "ez", amplitude_kind="field")
+    return sim
+
+
+@pytest.mark.parametrize("route", ["run", "run_default", "scan", "run_devices"])
+def test_passive_ports_on_drive_by_drive_routes_refused(monkeypatch, route):
+    """Drive-by-drive S routes drive every impedance port, passive ones too, so
+    a plain source fires in every drive even when no port is excite=True."""
+    sim = _two_passive_lumped()
+    monkeypatch.setattr(jax.lax, "scan", _before_step)
+    monkeypatch.setattr(jax.lax, "while_loop", _before_step)
+    with pytest.raises(NotImplementedError, match="plain sources"):
+        if route == "scan":
+            compute_lumped_wire_s_matrix_via_scan(sim, [5e9], n_steps=4)
+        else:
+            sim.run(n_steps=4, skip_preflight=True,
+                    compute_s_params=None if route == "run_default" else True,
+                    devices=jax.devices("cpu")[:2] if route == "run_devices" else None)
+
+
+def test_subgridded_passive_port_with_plain_source_refused(monkeypatch):
+    sim = Simulation(freq_max=10e9, domain=(.008, .008, .012), dx=.001, boundary="pec")
+    sim.add_refinement(z_range=(.004, .008), ratio=2, validation="research")
+    sim.add_port((.004, .004, .006), "ez", excite=False)
+    sim.add_probe((.004, .004, .006), "ez")
+    sim.add_source((.002, .004, .006), "ez", amplitude_kind="field")
+    monkeypatch.setattr(jax.lax, "scan", _before_step)
+    monkeypatch.setattr(jax.lax, "while_loop", _before_step)
+    with pytest.raises(NotImplementedError, match="plain sources"):
+        sim.run(n_steps=4, compute_s_params=True, skip_preflight=True)
