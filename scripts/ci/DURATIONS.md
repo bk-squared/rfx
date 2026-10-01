@@ -172,9 +172,9 @@ only in fast, in addition to its one highmem test.
 
 The reviewer found that slow-last pricing gave fast groups 3 and 4 predictions near
 40 min but fast-artifact prices near 52.5 min; slow jobs 3 and 4 had fitted speed
-factors 0.74 / 0.76 versus 0.93–1.20 for the other nine jobs. Fast-artifact pricing
-matched observed old-split group times within about 1 min on runs 36739385830 and
-36766208720. The table below uses this file's fast-last prices in both lanes; these
+factors 0.74 / 0.76 versus 0.93–1.20 for the other nine jobs. On runs 36739385830 and
+36766208720, fast-artifact pricing matched old-split group 3 within 1 min in both runs;
+across all 12 jobs the observed/price ratio was 0.69–1.22. The table below uses this file's fast-last prices in both lanes; these
 are duration sums, not observed CI wall times.
 
 | lane | group | fast-last minutes |
