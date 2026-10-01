@@ -1,4 +1,6 @@
 """Identification channels and frequency-local gradient judgments."""
+import sys
+
 import numpy as np
 import pytest
 
@@ -194,8 +196,10 @@ def test_weak_port_resonance_gradient_needs_an_identification_probe():
         assert np.all(np.asarray(result._pole_counts) <= np.asarray(result._pole_budgets))
         return g, result
 
-    ref, _ = evaluate(3000, PROBES)
-    longer, _ = evaluate(6000, PROBES)
+    # The reference is port-only (independent of the probe code under test): a
+    # record long enough that the completion has nothing left to recover.
+    ref, _ = evaluate(3000, ())
+    longer, _ = evaluate(6000, ())
     ref_w = rd.gradient_witness(ref[0], longer[0], against="longer_record", bin_axis=0)
     assert ref_w.judged and ref_w.ok
     for probes in ((), PROBES):
@@ -203,7 +207,7 @@ def test_weak_port_resonance_gradient_needs_an_identification_probe():
         w = rd.gradient_witness(g[0], g[1], ringdown=result, bin_axis=0)
         error = float(np.max(np.abs(g[0] - ref[0]) / np.abs(ref[0])))
         print(f"probes={bool(probes)}: resonance error={error:.6g}, WE={w.value:.6g}, "
-              f"reference witness={ref_w.value:.6g}")
+              f"reference witness={ref_w.value:.6g}", file=sys.stderr)
         assert w.judged
         if probes:
             assert w.ok and error < .01
