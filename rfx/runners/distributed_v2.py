@@ -952,9 +952,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 if _source_port_indices is None or port_idx in _source_port_indices:
                     sources.append(make_port_source(grid, lp, materials, n_steps))
             elif pe.impedance == 0.0:
-                # S scans use the one-device S driver's current-source helper
-                # on every boundary. Main runs retain their boundary rule.
-                if _source_port_indices is not None or sim._boundary == "cpml":
+                if sim._boundary == "cpml":
                     sources.append(make_j_source(grid, pe.position, pe.component,
                                                  pe.waveform, n_steps, materials,
                                                  amplitude_kind=pe.amplitude_kind))

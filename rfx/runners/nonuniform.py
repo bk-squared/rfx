@@ -803,6 +803,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     -------
     Result
     """
+    if (lane == "run_nonuniform" and compute_s_params is not False
+            and any(p.impedance != 0.0 and p.extent is not None for p in sim._ports)):
+        from rfx.runners._admission import refuse_plain_sources_s_matrix
+        refuse_plain_sources_s_matrix(sim, main_record=True)
+
     # every single-device non-uniform solve (run AND forward) enters here
     from rfx.sources.tfsf import _refuse_extended_tfsf
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")

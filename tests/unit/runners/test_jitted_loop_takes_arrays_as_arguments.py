@@ -170,7 +170,7 @@ def _record(sim, graded, run_kwargs):
     with pytest.MonkeyPatch.context() as patch:
         for mod in _LOOPS:
             patch.setattr(mod, "jax", SimpleNamespace(**{**vars(jax), "jit": traced_jit}))
-        result = sim.run(**run_kwargs)
+        result = sim.run(**({"compute_s_params": False} | run_kwargs))
     ts = np.asarray(result.time_series)
     assert ts.shape[0] > 0 and np.isfinite(ts).all()
     return records
