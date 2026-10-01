@@ -594,7 +594,8 @@ def compute_mixed_s_matrix(
             # odd number of cells; user port/source coordinates still use
             # the shared lower-node tie rule.
             witness_z = float(pe_w.position[2]) + 0.5 * float(pe_w.height)
-            witness_z = int(round(witness_z / grid.dx)) * grid.dx
+            dz = float(grid.cells(2)[0])   # uniform mesh (refused graded above)
+            witness_z = int(round(witness_z / dz)) * dz
             for _x_w in pxs_w:
                 self.add_probe(
                     position=(

@@ -60,7 +60,8 @@ def _calculator_source_plane(grid, port):
     """
     direction = 1 if port.face == "bottom" else -1
     centre = port.position[2] + direction * port.pin_length / 2.0
-    return int(round(centre / grid.dx)) + grid.pad_z_lo
+    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
+    return int(round(centre / dz)) + grid.pad_z_lo
 
 
 def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
