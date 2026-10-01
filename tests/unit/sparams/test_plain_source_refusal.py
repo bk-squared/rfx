@@ -3,7 +3,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import GaussianPulse, Simulation
 from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
 from tests.contracts.path_disposition import PLAIN_SOURCE_S_REQUEST, REFUSES
 
@@ -87,3 +87,53 @@ def test_direct_runner_s_request_refused(monkeypatch, graded, s_request):
     runner = run_nonuniform_path if graded else run_uniform
     with pytest.raises(NotImplementedError, match="plain sources.*compute_s_params=False"):
         runner(sim, n_steps=4, compute_s_params=s_request, **kwargs)
+
+
+def _subgrid_model(source=True):
+    sim = Simulation(freq_max=10e9, domain=(.008, .008, .012), dx=.001, boundary="pec")
+    sim.add_refinement(z_range=(.004, .008), ratio=2, validation="research")
+    sim.add_port((.004, .004, .006), "ez", waveform=GaussianPulse(f0=5e9, bandwidth=.8))
+    sim.add_probe((.004, .004, .006), "ez")
+    if source:
+        sim.add_source((.002, .004, .006), "ez", amplitude_kind="field")
+    return sim
+
+
+def test_subgridded_plain_source_s_request_refused(monkeypatch):
+    assert PLAIN_SOURCE_S_REQUEST["run_subgridded"].kind == REFUSES
+    sim = _subgrid_model()
+    monkeypatch.setattr(jax.lax, "scan", _before_step)
+    monkeypatch.setattr(jax.lax, "while_loop", _before_step)
+    with pytest.raises(NotImplementedError, match="plain sources"):
+        sim.run(n_steps=4, compute_s_params=True, skip_preflight=True)
+
+
+@pytest.mark.parametrize("graded,wire", [(False, False), (False, True), (True, True)])
+def test_forward_port_s11_with_plain_source_refused(monkeypatch, graded, wire):
+    path = "fwd_nonuniform" if graded else "fwd_uniform"
+    assert PLAIN_SOURCE_S_REQUEST[path].kind == REFUSES
+    sim = _model(wire, graded=graded)
+    monkeypatch.setattr(jax.lax, "scan", _before_step)
+    monkeypatch.setattr(jax.lax, "while_loop", _before_step)
+    with pytest.raises(NotImplementedError, match="plain sources"):
+        sim.forward(n_steps=4, port_s11_freqs=[5e9], skip_preflight=True)
+
+
+@pytest.mark.parametrize("graded,wire", [(False, False), (True, True)])
+def test_forward_port_s11_without_plain_source_runs(graded, wire):
+    sim = _model(wire, graded=graded, source=False)
+    out = sim.forward(n_steps=12, port_s11_freqs=[5e9], skip_preflight=True)
+    assert out.s_params is not None
+
+
+def test_passive_port_illuminated_by_a_plain_source_is_admitted():
+    """No port is driven, so the plain source contaminates no drive: the
+    passive termination's reflection is a diagnostic and still runs (#1420)."""
+    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008), dx=.001,
+                     boundary="cpml", cpml_layers=2)
+    sim.add_port((.004, .004, .003), "ez", impedance=50.0, extent=.002, excite=False)
+    sim.add_probe((.004, .004, .003), "ez")
+    sim.add_source((.002, .004, .003), "ez", amplitude_kind="field")
+    result = sim.run(n_steps=12, compute_s_params=True, s_param_freqs=[5e9],
+                     skip_preflight=True)
+    assert result.s_params is not None

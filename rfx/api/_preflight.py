@@ -491,6 +491,10 @@ class _PreflightMixin:
     def _validate_forward_sparameter_request(self) -> None:
         """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""
 
+        # The port S11 is the port drive's own reflection only if nothing else
+        # excites the model (#1420), as on run()'s S request.
+        from rfx.runners._admission import refuse_plain_sources_s_matrix
+        refuse_plain_sources_s_matrix(self)
         port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:

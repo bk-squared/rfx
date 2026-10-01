@@ -1647,5 +1647,6 @@ def cell(attr: str, feature: str, path: str) -> Cell:
 PLAIN_SOURCE_S_REQUEST = {
     path: refuses("rfx.runners._admission.refuse_plain_sources_s_matrix; "
                   "tests/unit/sparams/test_plain_source_refusal.py", raises="plain sources")
-    for path in ("run_uniform", "run_nonuniform", "run_distributed", "s_matrix_scan")
+    for path in ("run_uniform", "run_nonuniform", "run_subgridded", "run_distributed",
+                 "s_matrix_scan", "fwd_uniform", "fwd_nonuniform")
 }

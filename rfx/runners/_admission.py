@@ -924,8 +924,14 @@ def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
 
 
 def refuse_plain_sources_s_matrix(sim):
-    """A port drive must be the only excitation of a lumped/wire S solve."""
-    if any(p.impedance != 0.0 for p in sim._ports) and any(
+    """A port drive must be the only excitation of a lumped/wire S solve.
+
+    Refused when a DRIVEN impedance port (excite=True) shares the model with a
+    plain source: the source would fire in every port drive. A passive port
+    (excite=False) illuminated by a plain source has no drive to contaminate;
+    its reflection is the passive-termination diagnostic and stays admitted.
+    """
+    if any(p.impedance != 0.0 and getattr(p, "excite", True) for p in sim._ports) and any(
         p.impedance == 0.0 for p in sim._ports
     ):
         raise NotImplementedError(
