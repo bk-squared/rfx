@@ -474,6 +474,11 @@
     },
     {
       "file": "rfx/current_moments.py",
+      "function": "_index_window",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/current_moments.py",
       "function": "slab_curl_h",
       "kind": "difference"
     },
