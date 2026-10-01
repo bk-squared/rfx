@@ -51,7 +51,7 @@ jobs:
 
       # The same extras as the fast suite: collection imports every test module.
       - name: Install package with dev dependencies
-        run: pip install -e ".[dev,cad]"
+        run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
 
       # -o addopts="" because the default addopts deselect exactly these tests.
       # The collect-count floor catches the other way a lane goes quiet: a

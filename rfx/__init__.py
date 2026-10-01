@@ -1,7 +1,17 @@
 """rfx — JAX-based RF FDTD electromagnetic simulator."""
-# ruff: noqa: F401
+# The runtime guard must execute before the public JAX-dependent imports.
+# ruff: noqa: F401, E402
 
 __version__ = "1.8.0"
+
+import sys as _sys
+
+import jax as _jax
+import jaxlib as _jaxlib
+
+from rfx._runtime_floor import check as _check_runtime_floor
+
+_check_runtime_floor(_sys.version_info, _jax.__version__, _jaxlib.__version__)
 
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
