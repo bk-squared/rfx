@@ -735,7 +735,7 @@ def test_the_gradient_witness_reads_every_leaf_and_fails_on_nan():
     f = _box("uniform").forward(n_steps=600, skip_preflight=True, port_s11_freqs=FREQS,
                                 ringdown=RingdownSpec())
     w = gradient_witness(g, other, ringdown=f.ringdown)
-    assert w.value == pytest.approx(0.04 / 4.0) and w.ok
+    assert w.value == pytest.approx(0.04 / 0.5) and not w.ok
     bad = {"a": np.array([1.0, np.nan]), "b": np.array([[0.5]])}
     w = gradient_witness(g, bad, ringdown=f.ringdown)
     assert math.isnan(w.value) and not w.ok
