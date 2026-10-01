@@ -4,6 +4,8 @@ from dataclasses import replace
 import jax
 import jax.numpy as jnp
 
+from rfx._precision import HIGHEST
+
 
 def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
                           other_overrides, port_s11_freqs, design_sigma=None):
@@ -70,12 +72,12 @@ def _wavelet_coefficients(freqs, dt, length, target):
     carrier = jnp.exp(2j * jnp.pi * t[:, None] * freqs)
     basis = _wavelet_basis(freqs, dt, length, jnp.arange(length, dtype=freqs.dtype))
     transform = jnp.conj(carrier).T * dt
-    a = transform @ basis
-    b = transform @ jnp.conj(basis)
+    a = jnp.matmul(transform, basis, precision=HIGHEST)
+    b = jnp.matmul(transform, jnp.conj(basis), precision=HIGHEST)
     flat = target.reshape((len(freqs), -1))
     cross = jnp.linalg.solve(jnp.conj(a), jnp.conj(b))
-    rhs = flat - b @ jnp.linalg.solve(jnp.conj(a), jnp.conj(flat))
-    return jnp.linalg.solve(a - b @ cross, rhs).reshape(target.shape)
+    rhs = flat - jnp.matmul(b, jnp.linalg.solve(jnp.conj(a), jnp.conj(flat)), precision=HIGHEST)
+    return jnp.linalg.solve(a - jnp.matmul(b, cross, precision=HIGHEST), rhs).reshape(target.shape)
 
 
 def design_adjoint_scan(ctx, initial, xs):
@@ -160,7 +162,7 @@ def design_adjoint_scan(ctx, initial, xs):
                     slot = _plane_slice(m, ctx.grid.shape)
                     basis = _wavelet_basis(jnp.asarray(m[3], dtype=dtype), ctx.dt,
                                            wavelet_length, n.astype(dtype))
-                    value = 2 * jnp.real(jnp.einsum('f,fij->ij', basis, w))
+                    value = 2 * jnp.real(jnp.einsum('f,fij->ij', basis, w, precision=HIGHEST))
                     cb = monitor_cb[("ex", "ey", "ez").index(c)][slot]
                     state = state._replace(**{c: getattr(state, c).at[slot].add((cb*value).astype(dtype))})
             return state, (e, curl)
