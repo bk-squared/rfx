@@ -437,7 +437,7 @@ def _stub_identification(monkeypatch):
         rdt, cdt = rj.working_dtypes()
         return (jnp.full(4, np.log(rj.INERT_LAMBDA) / dt, cdt), jnp.zeros(4, rdt),
                 jnp.int32(rj.STATUS_OK),
-                jnp.full((np.size(freqs), 4), np.log(rj.INERT_LAMBDA), cdt))
+                jnp.full((np.size(freqs), 4), np.log(rj.INERT_LAMBDA), cdt), jnp.int32(0))
 
     monkeypatch.setattr(rj, "host_poles", poles)
     monkeypatch.setattr(rj, "completion",
@@ -791,3 +791,76 @@ def test_the_poles_derivative_is_what_carries_the_shift(monkeypatch):
     err = abs(g - g_ref) / abs(g_ref)
     print(f"\n[poles held constant] {N_GRAD_SHORT}-step gradient {g:.5f}, {err:.2e} off")
     assert err > 0.1, err
+
+
+def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
+    """A 140,000-step one-port record never traces more than the pole budget."""
+    sim = _box("graded")
+    eps = jnp.full(tuple(sim._build_nonuniform_grid().shape), 2.2, jnp.float32)
+    seen = []
+    host_poles = rj.host_poles
+
+    def capture(identify_window, window, k_max, dt, freqs):
+        seen.append((window.shape[0], k_max))
+        return host_poles(identify_window, window, k_max, dt, freqs)
+
+    monkeypatch.setattr(rj, "host_poles", capture)
+    jax.eval_shape(lambda p: sim.forward(
+        n_steps=140000, skip_preflight=True, eps_override=eps * p,
+        ringdown=RingdownSpec()).ringdown, jnp.float32(1.0))
+    assert [m for m, _k in seen] == [70000, 105000]
+    assert all(0 < k <= rd.TRACED_POLE_BUDGET for _m, k in seen), seen
+
+
+@pytest.mark.parametrize("lane,n", [("graded", 2500), ("uniform", 12000)])
+def test_capped_padding_preserves_completed_s(lane, n, monkeypatch):
+    """Both completed S arrays agree with the old algebraic padding bound."""
+    sim = _box(lane)
+    grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
+    eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
+    outputs = []
+    budgets = []
+    for budget in (rd.TRACED_POLE_BUDGET, 1000000):
+        with monkeypatch.context() as m:
+            m.setattr(rd, "TRACED_POLE_BUDGET", budget)
+
+            def f(p):
+                return sim.forward(n_steps=n, skip_preflight=True, eps_override=eps * p,
+                                   ringdown=RingdownSpec(), **_kw(lane)).ringdown
+
+            out = jax.block_until_ready(jax.jit(f)(jnp.float32(1.0)))
+            assert np.all(np.asarray(out._status) == rj.STATUS_OK)
+            outputs.append((np.asarray(out.s_params), np.asarray(out.s_params_long)))
+            budgets.append(np.asarray(out._pole_budgets))
+    assert np.any(budgets[0] < budgets[1]), budgets
+    for window, (capped, old) in enumerate(zip(*outputs)):
+        error = float(np.max(np.abs(capped - old)) / np.max(np.abs(old)))
+        print(f"\n[capped S, {lane}, window {window}] K {budgets[0][window]}/"
+              f"{budgets[1][window]}, relative error {error:.9e}")
+        assert error <= 1e-4, (lane, window, error)
+
+
+def test_over_budget_reports_the_kept_count_and_each_window_budget(monkeypatch):
+    """Callback counts survive JIT and the empty mask on a budget rejection."""
+    host_poles = rj.host_poles
+    kept = rd.TRACED_POLE_BUDGET + 1
+
+    def over_budget(identify_window, window, k_max, dt, freqs):
+        return host_poles(lambda _w: np.full(kept, -1e8 + 1j),
+                          window, k_max, dt, freqs)
+
+    monkeypatch.setattr(rj, "host_poles", over_budget)
+    sim = _box("graded")
+    out = jax.jit(lambda: sim.forward(
+        n_steps=2500, skip_preflight=True, ringdown=RingdownSpec()).ringdown)()
+    assert np.all(np.asarray(out._status) == rj.STATUS_OVER_BUDGET)
+    assert np.asarray(out._pole_counts).tolist() == [kept, kept]
+    assert int(out._pole_budgets[0]) == rd.TRACED_POLE_BUDGET
+    assert np.all(np.isnan(np.asarray(out.s_params)))
+    assert np.all(np.isnan(np.asarray(out.s_params_long)))
+    report_note = out.report.witness("traced").note
+    gradient_note = gradient_witness(1.0, 1.0, ringdown=out).note
+    for budget in np.asarray(out._pole_budgets):
+        reason = f"kept {kept} poles, more than the {budget} slots the traced completion reserves"
+        assert reason in report_note
+        assert reason in gradient_note

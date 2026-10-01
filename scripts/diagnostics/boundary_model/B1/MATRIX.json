@@ -6791,8 +6791,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -6804,7 +6804,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -6816,12 +6816,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -6838,7 +6838,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -6850,12 +6850,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -6878,9 +6878,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
           "face_node_response": 0.0
         },
         "z_hi": {
@@ -6897,9 +6897,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
           "face_node_response": 0.0
         }
       },
@@ -6909,41 +6909,14 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
         }
       ],
-      "departures": [
-        {
-          "face": "x_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "x_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "y_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        },
-        {
-          "face": "y_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        }
-      ],
-      "cpu_s": 2.5024724409999983,
-      "wall_s": 2.861165668000467
+      "departures": []
     },
     {
       "case": "periodic-xy",
@@ -6971,8 +6944,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -6984,7 +6957,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -6996,12 +6969,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7018,7 +6991,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7030,12 +7003,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7056,10 +7029,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
-          "face_node_response": 0.004137363284826279
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
+          "face_node_response": 0.004136481322348118
         },
         "z_hi": {
           "e_zero": false,
@@ -7073,10 +7046,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
-          "face_node_response": 0.0041346619836986065
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
+          "face_node_response": 0.0041364342905581
         }
       },
       "scan_records": [
@@ -7085,38 +7058,14 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
         }
       ],
       "departures": [
-        {
-          "face": "x_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "x_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "y_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        },
-        {
-          "face": "y_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        },
         {
           "face": "z_lo",
           "code": "f",
@@ -7129,9 +7078,7 @@
           "step": "B3",
           "detail": "electric backing required at 0.024 m"
         }
-      ],
-      "cpu_s": 2.4324187749999986,
-      "wall_s": 2.3683637849753723
+      ]
     },
     {
       "case": "periodic-xy",
@@ -7148,8 +7095,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -7161,7 +7108,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7173,12 +7120,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7195,7 +7142,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7207,12 +7154,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7235,9 +7182,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
           "face_node_response": 0.0
         },
         "z_hi": {
@@ -7254,9 +7201,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
           "face_node_response": 0.0
         }
       },
@@ -7266,41 +7213,14 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
         }
       ],
-      "departures": [
-        {
-          "face": "x_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "x_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "y_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        },
-        {
-          "face": "y_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        }
-      ],
-      "cpu_s": 2.6299525740000007,
-      "wall_s": 2.703496141009964
+      "departures": []
     },
     {
       "case": "periodic-xy",
@@ -7362,8 +7282,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -7375,7 +7295,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7387,12 +7307,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7409,7 +7329,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7421,12 +7341,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -7449,9 +7369,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
           "face_node_response": 0.0
         },
         "z_hi": {
@@ -7468,9 +7388,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
           "face_node_response": 0.0
         }
       },
@@ -7480,41 +7400,14 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
         }
       ],
-      "departures": [
-        {
-          "face": "x_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "x_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.025 m; declared 0.024 m"
-        },
-        {
-          "face": "y_lo",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        },
-        {
-          "face": "y_hi",
-          "code": "e",
-          "step": "B2",
-          "detail": "period 0.021 m; declared 0.02 m"
-        }
-      ],
-      "cpu_s": 1.5269684750000039,
-      "wall_s": 1.234108763979748
+      "departures": []
     },
     {
       "case": "tfsf",
@@ -12192,8 +12085,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -12205,7 +12098,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12217,12 +12110,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12239,7 +12132,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12251,12 +12144,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12279,9 +12172,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
           "face_node_response": 0.0
         },
         "z_hi": {
@@ -12298,9 +12191,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
           "face_node_response": 0.0
         }
       },
@@ -12310,8 +12203,8 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
@@ -12366,9 +12259,7 @@
           "step": "B5",
           "detail": "electric backing required at 0.028 m"
         }
-      ],
-      "cpu_s": 1.5692133330000004,
-      "wall_s": 1.0163441570475698
+      ]
     },
     {
       "case": "floquet",
@@ -12396,8 +12287,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -12409,7 +12300,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12421,12 +12312,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12443,7 +12334,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12455,12 +12346,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12481,10 +12372,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
-          "face_node_response": 0.004137363284826279
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
+          "face_node_response": 0.004136481322348118
         },
         "z_hi": {
           "e_zero": false,
@@ -12498,10 +12389,10 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
-          "face_node_response": 0.0041346619836986065
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
+          "face_node_response": 0.0041364342905581
         }
       },
       "scan_records": [
@@ -12510,8 +12401,8 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
@@ -12578,9 +12469,7 @@
           "step": "B3",
           "detail": "electric backing required at 0.024 m"
         }
-      ],
-      "cpu_s": 1.5466656059999977,
-      "wall_s": 1.2789456730242819
+      ]
     },
     {
       "case": "floquet",
@@ -12597,8 +12486,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -12610,7 +12499,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12622,12 +12511,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12644,7 +12533,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12656,12 +12545,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12684,9 +12573,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
           "face_node_response": 0.0
         },
         "z_hi": {
@@ -12703,9 +12592,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
           "face_node_response": 0.0
         }
       },
@@ -12715,8 +12604,8 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
@@ -12771,9 +12660,7 @@
           "step": "B5",
           "detail": "electric backing required at 0.028 m"
         }
-      ],
-      "cpu_s": 1.922532799999999,
-      "wall_s": 2.229076243005693
+      ]
     },
     {
       "case": "floquet",
@@ -12835,8 +12722,8 @@
         "z_hi": "cpml"
       },
       "shape": [
-        25,
-        21,
+        24,
+        20,
         33
       ],
       "faces": {
@@ -12848,7 +12735,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12860,12 +12747,12 @@
         "x_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.024,
-          "h_plane_m": 0.0235,
+          "e_plane_m": 0.023,
+          "h_plane_m": 0.0225,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.025,
+          "period_m": 0.024,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12882,7 +12769,7 @@
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12894,12 +12781,12 @@
         "y_hi": {
           "e_zero": false,
           "h_zero": false,
-          "e_plane_m": 0.02,
-          "h_plane_m": 0.0195,
+          "e_plane_m": 0.019,
+          "h_plane_m": 0.018500000000000003,
           "coupled": true,
           "e_zero_planes_m": [],
           "h_zero_planes_m": [],
-          "period_m": 0.021000000000000005,
+          "period_m": 0.020000000000000004,
           "absorbs": false,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
@@ -12922,9 +12809,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -35.77384948730469,
-          "psi_decay_max": 36.05937957763672,
-          "psi_field_response": 0.0041103363037109375,
+          "psi_decay_min": -27.18639373779297,
+          "psi_decay_max": 27.74043083190918,
+          "psi_field_response": 0.004105567932128906,
           "face_node_response": 0.0
         },
         "z_hi": {
@@ -12941,9 +12828,9 @@
           "absorbs": true,
           "constant_e_max": 1.0,
           "constant_e_reference_max": 1.0,
-          "psi_decay_min": -29.787635803222656,
-          "psi_decay_max": 30.07335662841797,
-          "psi_field_response": 0.004103660583496094,
+          "psi_decay_min": -36.290740966796875,
+          "psi_decay_max": 36.38286590576172,
+          "psi_field_response": 0.004105329513549805,
           "face_node_response": 0.0
         }
       },
@@ -12953,8 +12840,8 @@
           "shape": [
             12,
             6,
-            25,
-            21,
+            24,
+            20,
             33
           ],
           "layout": "full-grid"
@@ -13009,9 +12896,7 @@
           "step": "B5",
           "detail": "electric backing required at 0.028 m"
         }
-      ],
-      "cpu_s": 1.5759631150000004,
-      "wall_s": 1.037478536949493
+      ]
     }
   ],
   "b0_changes": [

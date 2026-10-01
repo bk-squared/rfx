@@ -131,6 +131,11 @@
   ],
   "sites": [
     {
+      "file": "rfx/_radiated_power.py",
+      "function": "integrate_radiated_power",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/adi.py",
       "function": "_apply_pec_2d",
       "kind": "boundary"
@@ -209,6 +214,11 @@
       "file": "rfx/boundaries/pec.py",
       "function": "_shift",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "_unwrapped_sheet_edge_masks",
+      "kind": "neighbour"
     },
     {
       "file": "rfx/boundaries/pec.py",
@@ -349,7 +359,7 @@
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "edge_averaged_materials.mean4",
+      "function": "edge_mean_components.mean4",
       "kind": "neighbour"
     },
     {
@@ -476,6 +486,11 @@
       "file": "rfx/floquet.py",
       "function": "apply_bloch_periodic_x._wrap",
       "kind": "boundary"
+    },
+    {
+      "file": "rfx/geometry/csg.py",
+      "function": "Box._axis_masks_on_coords._axis_mask",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/geometry/csg.py",
@@ -628,7 +643,7 @@
       "file": "rfx/probes/probes.py",
       "function": "_ampere_loop",
       "kind": "neighbour",
-      "count": 6
+      "count": 2
     },
     {
       "file": "rfx/probes/probes.py",
@@ -653,6 +668,11 @@
     {
       "file": "rfx/runners/_distributed_common.py",
       "function": "_init_cpml_distributed",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_slab_x_lo_view",
       "kind": "boundary"
     },
     {
@@ -760,11 +780,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "slab_e_component_materials.x_lo_replicated",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/runners/distributed_nu.py",
       "function": "_apply_cpml_e_local_nu",
       "kind": "neighbour"
@@ -865,6 +880,11 @@
       "file": "rfx/sources/_waveguide_modes.py",
       "function": "_cell_centred_gradient",
       "kind": "difference"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "_coaxial_tem_edge_profile",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/sources/coaxial_port.py",

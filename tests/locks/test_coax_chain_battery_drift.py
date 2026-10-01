@@ -47,10 +47,10 @@ time: 98 s for the thru and 94 s for the bead on four VESSL CPU cores (run
 LOCK_PROVENANCE = {
     "fixture": "tests/fixtures/coax_chain_battery/fixture.json",
     "generator": "scripts/diagnostics/coax_chain_battery_measure.py",
-    "commit": "556ce7b6",
-    "date": "2026-09-25",
-    "run_id": "369367264944 (bead), 369367264945 (thru)",
-    "host": "VESSL gpu, jax 0.6.2 cuda, float32",
+    "commit": "36f7fd00",
+    "date": "2026-10-01",
+    "run_id": "369367266483 (bead), 369367266492 (thru)",
+    "host": "VESSL gpu, jax 0.10.2 cuda, float32",
     "pinned_until": "2027-03-25",
 }
 
@@ -70,7 +70,7 @@ REMEASURE = (f"`PYTHONPATH=. python {DRIVER} --stage solve --dut <dut> --rung <4
 RUNG = 4
 DUTS = ("thru", "bead")
 # The records this guard reads, by the commit each was measured at: both at
-# one commit since the re-measure of 2026-09-25, after the coax lanes began to
+# one commit since the re-measure of 2026-09-30, after the coax lanes began to
 # absorb on all three axes (issue 1218).
 RECORD_COMMITS = {"thru": LOCK_PROVENANCE["commit"], "bead": LOCK_PROVENANCE["commit"]}
 

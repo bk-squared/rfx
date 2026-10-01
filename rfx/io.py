@@ -824,7 +824,7 @@ def save_far_field(path, ff_result, metadata=None):
                 f.attrs[k] = v
 
 
-def export_radiation_pattern(path, ff_result, freq_idx=0):
+def export_radiation_pattern(path, ff_result, freq_idx=0, *, input_power=None):
     """Export radiation pattern as CSV for measurement comparison.
 
     Columns: theta_deg, phi_deg, E_theta_mag, E_theta_phase_deg,
@@ -836,17 +836,22 @@ def export_radiation_pattern(path, ff_result, freq_idx=0):
     ff_result : FarFieldResult
     freq_idx : int
         Frequency index to export.
+    input_power : array-like (n_freqs,) or scalar, optional
+        Input power in watts, passed to :func:`rfx.antenna.antenna_gain_dB`
+        for realized gain. Without it, gain_dBi is absolute IEEE gain
+        normalized by total radiated power. That integral requires full-sphere
+        coverage, or one phi cut under an axisymmetric assumption. Realized
+        gain with input_power accepts partial angular patterns.
     """
+    from rfx.antenna import antenna_gain_dB
+
     path = Path(path)
     E_th = np.asarray(ff_result.E_theta[freq_idx])  # (n_theta, n_phi)
     E_ph = np.asarray(ff_result.E_phi[freq_idx])
     theta = np.asarray(ff_result.theta)
     phi = np.asarray(ff_result.phi)
 
-    TH, PH = np.meshgrid(theta, phi, indexing="ij")
-    power = np.abs(E_th) ** 2 + np.abs(E_ph) ** 2
-    max_power = np.max(power)
-    gain_dbi = 10 * np.log10(power / max(max_power, 1e-30) + 1e-30)
+    gain_dbi = antenna_gain_dB(ff_result, input_power=input_power)[freq_idx]
 
     rows = []
     for i in range(len(theta)):

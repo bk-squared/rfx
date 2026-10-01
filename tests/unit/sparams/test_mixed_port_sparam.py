@@ -1378,8 +1378,10 @@ def test_wire_port_end_gap_advisory_silent_in_open_vacuum():
     tests/unit/preflight/test_inverse_design_preflight.py's _clean_sim (which pins
     preflight() == [] on it, so this control is double-locked).
     """
+    # 8 layers, as _clean_sim: a 6-layer face now draws the #1272
+    # thin_absorber advisory, and this control must stay fully clean.
     sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
-                     dx=0.02 / 15, boundary="cpml", cpml_layers=6)
+                     dx=0.02 / 15, boundary="cpml", cpml_layers=8)
     sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
                  impedance=50.0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.9),

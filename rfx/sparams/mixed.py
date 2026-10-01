@@ -318,6 +318,10 @@ def compute_mixed_s_matrix(
         )
 
     n_lw = len(lw_entries)
+    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
+    _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
+    from rfx.runners._admission import admit
+    admit(self, "mixed_s_matrix")
     grid = self._build_grid()
 
     if freqs is None:
@@ -429,7 +433,7 @@ def compute_mixed_s_matrix(
     dz_arr = _msl_cell_profile(grid, "z", grid.nz)
     port_idx_meta = []
     for mp in msl_ports:
-        span = msl_cross_section_span(grid, mp)
+        span = msl_cross_section_span(grid, mp, require_contiguous_width=True)
         port_idx_meta.append(dict(
             j_lo=span["w_lo"], j_hi=span["w_hi"],
             k_lo=span["n_lo"], k_hi=span["n_hi"],
@@ -438,8 +442,6 @@ def compute_mixed_s_matrix(
 
     # One materials assembly shared by the HJ eps anchor AND every
     # drive run (materials do not depend on excite flags).
-    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
-    _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
     _mx_pec_sheets: list = []
     _mx_pec_wires: list = []
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \

@@ -10,7 +10,7 @@ import numpy as np
 
 from rfx.farfield import (
     NTFFBox, NTFFData, _face_positions, _require_face_centre_margin,
-    _surface_currents, with_face_centre_collocation,
+    _ntff_face_pads, _surface_currents, with_face_centre_collocation,
 )
 from rfx.geometry.rasterize_grid import _axis_node_positions
 
@@ -177,6 +177,8 @@ def export_ntff_surface(data: NTFFData, box: NTFFBox, grid, *, dt: float,
         raise ValueError("subgrid NTFF export needs global-origin metadata; use a domain-level uniform or graded grid")
     if not box.face_centre:
         raise ValueError("export requires face_centre accumulation; legacy node layout is not collocated")
+    # The transform and exported positions must refer to the same grid.
+    _ntff_face_pads(grid, box)
     bounds = ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi), (box.k_lo, box.k_hi))
     for pair in bounds:
         for value in pair:

@@ -109,6 +109,10 @@ CPML sigma / kappa         ``boundaries.cpml._grid_spacings`` and     x and y: t
 waveguide-port injection   ``nonuniform``                            PRIMAL at the H plane, DUAL at
                            ``._waveguide_port_axis_metrics``, used    the E plane, on the port's own
                            by ``run_nonuniform``'s H/E apply steps    propagation axis
+periodic uniform axis      ``grid.Grid``; ``core.yee`` roll           N=L/dx cells, no pads or duplicate
+                                                                      endpoint; PRIMAL=DUAL=dx, including
+                                                                      the seam. Full-period sums count N;
+                                                                      index_of wraps modulo N (L -> 0).
 =========================  =========================================  ==================================
 
 The CPML row is the one open defect left in this table; it is listed as what
@@ -205,9 +209,22 @@ def axis_name(axis) -> str:
 
 #: Two node distances within this fraction of the local cell are a TIE. The
 #: sheet snap (``rfx.geometry.rasterize_grid._nearest_plane``) and the point
-#: lookups read the same constant through :func:`nearest_node_index`. Equal to
-#: ``rasterize_grid._REL_TOL``, its "on the lattice" tolerance.
+#: lookups read the same constant through :func:`nearest_node_index`. Box
+#: volume faces and closed sheet footprints use the same on-lattice band.
 NODE_TIE_REL = 1e-9
+
+
+def half_open_volume_mask(coords, lo, hi, d_local):
+    """Half-open Box volume window with an on-lattice band (#1138).
+
+    Shift both faces down by ``NODE_TIE_REL * d_local``: a low face a few
+    ULP above its sample includes it, and a high face a few ULP above its
+    sample excludes it. ``d_local`` is the caller's local cell width (a
+    scalar or one width per sample). Arithmetic stays in numpy or traced
+    JAX according to the input arrays; no host conversion is performed.
+    """
+    tol = NODE_TIE_REL * d_local
+    return (coords >= lo - tol) & (coords < hi - tol)
 
 
 def nearest_node_index(nodes, x: float, d_local: float) -> int:

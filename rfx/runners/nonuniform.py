@@ -11,7 +11,7 @@ import jax.numpy as jnp
 
 from rfx.grid import C0
 from rfx.core.jax_utils import is_tracer
-from rfx.core.yee import MaterialArrays
+from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lumped
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
@@ -81,6 +81,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
     if debye is not None or lorentz is not None:
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     eps = np.asarray(cell.eps_r, dtype=np.float64)
+    volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
     live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
     components = []
     for c in range(3):
@@ -95,7 +96,7 @@ def assemble_interface_eps_nu(sim, grid, materials):
             lower = np.maximum(np.arange(grid.shape[a]) - 1, 0)
             num = num + np.take(num, lower, axis=a)
             den = den + np.take(den, lower, axis=a)
-        out = np.asarray(materials.eps_r, dtype=np.float64).copy()
+        out = volume_eps.copy()
         np.divide(num, den, out=out, where=den > 0)
         components.append(jnp.asarray(out, dtype=materials.eps_r.dtype))
     return tuple(components)
@@ -716,7 +717,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         design_box=None,
                         lane: str = "run_nonuniform",
                         stop_fn=None,
-                        stop_interval: int = 250):
+                        stop_interval: int = 250,
+                        conformal_pec=None):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -1069,9 +1071,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             materials = setup_rlc_materials(grid, spec, materials)
             materials_drive = setup_rlc_materials(grid, spec, materials_drive)
 
+    # Smoothing / dual averaging above builds only the volume tensor.
+    # Fold first, then put each capacitor on its own edge exactly once.
+    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+
     sources = []
     probes = []
     wire_port_specs = []
+    lumped_port_specs = []
 
     # Domain extents (for auto-detecting port direction).
     dom_lx = float(sim._domain[0])
@@ -1223,6 +1230,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 c for c, live in zip(_cells_ijk, live_flags) if live)
             mid_cell = list(_live_cells[len(_live_cells) // 2])
 
+            if pe.radius is not None:
+                from rfx.sources.wire_radius import stamp_wire_radius
+                materials = stamp_wire_radius(
+                    grid, materials, pe.component, pe.radius, _live_cells)
+                materials_drive = stamp_wire_radius(
+                    grid, materials_drive, pe.component, pe.radius, _live_cells)
+
             if pe.excite:
                 for cell_ijk, live in zip(_cells_ijk, live_flags):
                     # Dead extent cells get no source (issue #318).
@@ -1307,6 +1321,25 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 src = make_current_source(
                     grid, idx, pe.component, pe.waveform, sizing_n, materials_drive)
                 sources.append(src)
+
+            # Explicit bins opt lumped ports into the same V/I accumulators
+            # as a one-cell wire port (#1410). Graded forward returns a
+            # driven-column matrix (n, n, nf); uniform lumped forward
+            # returns per-port diagonals (n, nf), squeezed for one port.
+            # Leave the historical default (wire ports only) unchanged.
+            if lane == "fwd_nonuniform" and s_param_freqs is not None:
+                lumped_port_specs.append({
+                    'mid_i': i, 'mid_j': j, 'mid_k': k,
+                    'component': pe.component,
+                    'impedance': pe.impedance,
+                    'excite': bool(pe.excite),
+                    'direction': pe.direction or _auto_direction(pe.position),
+                    'live_cells': ((i, j, k),),
+                    'n_live': 1,
+                })
+
+    # Preserve wire indices when explicit bins also include lumped ports.
+    wire_port_specs.extend(lumped_port_specs)
 
     for pe in sim._probes:
         idx = pos_to_nu_index(grid, pe.position)
@@ -1543,34 +1576,19 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     ntff_box = None
     ntff_data_init = None
     if sim._ntff is not None:
-        from rfx.farfield import (
-            NTFFBox, init_ntff_data, with_face_centre_collocation,
-        )
+        from rfx.farfield import NTFFBox, init_ntff_data
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = pos_to_nu_index(grid, corner_lo)
         hi_idx = pos_to_nu_index(grid, corner_hi)
-        # Per-face CPML depths must come from THIS grid's pads. A
-        # non-uniform grid carries no `face_layers`, so both the previous
-        # direct construction and NTFFBox.from_grid fall back to the scalar
-        # `cpml_layers` on every face — wrong whenever the pads are
-        # asymmetric, which they are for any non-absorbing face. Measured:
-        # a z_lo PEC face gives pad_z_lo = 0 while the scalar is 6, so
-        # every NTFF face coordinate was displaced by six cells in z, and
-        # the pattern came back with no warning (#743).
-        ntff_box = NTFFBox(
+        # Share realized padding and graded face-centre weights with the
+        # uniform and RCS constructors, including zero-cell PEC/PMC faces.
+        ntff_box = NTFFBox.from_grid(
+            grid,
             i_lo=lo_idx[0], i_hi=hi_idx[0],
             j_lo=lo_idx[1], j_hi=hi_idx[1],
             k_lo=lo_idx[2], k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-            cpml_lo_x=int(grid.pad_x_lo),
-            cpml_lo_y=int(grid.pad_y_lo),
-            cpml_lo_z=int(grid.pad_z_lo),
         )
-        # Accumulate at the centre of each face cell (second-order surface
-        # integral). The half-cell interpolation weights for the tangential
-        # H come from this grid's own cell widths, so a graded axis gets the
-        # right pair instead of a flat 1/2.
-        ntff_box = with_face_centre_collocation(ntff_box, grid)
         ntff_data_init = init_ntff_data(ntff_box)
 
     # In-loop block current moments (rfx.current_moments), realized against
@@ -1622,7 +1640,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, lane)
+    admit(sim, lane, run_args={"conformal_pec": conformal_pec,
+                               "compute_s_params": compute_s_params})
 
     _shared_run_kwargs = dict(
         design_box=design_box,

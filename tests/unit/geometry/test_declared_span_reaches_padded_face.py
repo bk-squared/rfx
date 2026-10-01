@@ -24,18 +24,17 @@ import rfx.grid as rfx_grid
 from rfx import Box, Simulation
 from rfx.geometry.rasterize_grid import PadFillShortfall
 
-#: The #1070 rig: RO4003C at h = 0.787 mm, dx = h/4, cpml_layers 8. +10h is
-#: the one pad value whose x ratio is BOTH one ULP above an integer AND has
-#: ``232*dx`` reproducing the declared length exactly, which is what costs the
-#: second node. +8h and +12h round up too but lose only one node, so #627a
-#: repairs them and they are not red rigs.
+#: The #1070 rig: RO4003C at h = 0.787 mm, dx = h/4, cpml_layers 8. +10h
+#: makes plain ceil invent a cell beyond x = 232*dx. With the #1138 band,
+#: +8h/+12h also lose two nodes at a hi face under the old sizing; the
+#: harmless-round-up test below moves its faces half a cell off the nodes.
 H = 0.787e-3
 DX = H / 4.0
 EPS_R = 3.38
 CPML = 8
 
 
-def _rig(pad_h: int = 10, *, hi_shrink_cells: float = 0.0):
+def _rig(pad_h: float = 10, *, hi_shrink_cells: float = 0.0):
     dom_x = 38 * H + 2 * (pad_h * H)
     dom_y = 23 * H + 2 * (pad_h * H)
     dom_z = 16 * H
@@ -92,14 +91,33 @@ def test_it_fires_when_the_grid_is_sized_the_old_way(monkeypatch) -> None:
 @pytest.mark.parametrize("pad_h", [6, 8, 12])
 def test_the_pad_values_that_lose_only_one_node_stay_silent(
         monkeypatch, pad_h: int) -> None:
-    """+8h and +12h round up as well, and #627a repairs them.
+    """The original +8h/+12h faces lose two nodes under plain ceil and #1138.
 
-    Silent even with the old sizing, which is the measurement that says the
-    extra cell alone is not the defect.
+    Add H/16 to each pad so x/y faces sit half a cell past a node, outside
+    the band: ceil leaves one empty node, which #627a repairs.
     """
     _size_by_plain_ceil(monkeypatch)
-    sim = _rig(pad_h)
-    sim._assemble_materials(sim._build_grid())
+    sim = _rig(pad_h + 1 / 16)
+    grid = sim._build_grid()
+    raw = np.asarray(sim._assemble_materials(
+        grid, include_cpml_pad_extension=False)[0].eps_r)
+    for axis in (0, 1):
+        face = sim._geometry[0].shape.corner_hi[axis]
+        # Ceil adds a partial cell; its face is well outside the 1e-9 band.
+        fractional_cell = face / DX - math.floor(face / DX)
+        assert 1e-9 < fractional_cell < 1 - 1e-9
+        others = tuple(a for a in range(3) if a != axis)
+        present = np.any(raw != 1.0, axis=others)
+        lo_pad, hi_pad = grid.face_pads[2 * axis:2 * axis + 2]
+        interior = present[lo_pad:len(present) - hi_pad]
+        assert len(interior) == math.ceil(face / DX) + 1
+        assert np.flatnonzero(interior)[-1] == len(interior) - 2
+
+    filled = np.asarray(sim._assemble_materials(grid)[0].eps_r)
+    k = np.flatnonzero(np.any(raw != 1.0, axis=(0, 1)))[0]
+    expected = np.asarray(EPS_R, dtype=filled.dtype)
+    assert filled[-1, grid.shape[1] // 2, k] == expected
+    assert filled[grid.shape[0] // 2, -1, k] == expected
 
 
 @pytest.mark.parametrize("shrink", [0.3, 1.0, 3.0])

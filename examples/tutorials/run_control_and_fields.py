@@ -91,11 +91,11 @@ def save_ez_slice(plane: np.ndarray) -> tuple[int, int]:
 def main() -> None:
     sim = build_simulation()
 
-    # Expect "All checks passed": the source and probe are inside the open
-    # domain, and no geometry overlaps the absorbing cells.  The explicit call
+    # Expect the four-layer absorber advisory: the source and probe are inside
+    # the open domain, with no geometry in the absorber.  The explicit call
     # keeps the full report visible; each run below skips the duplicate check.
     report = sim.preflight()
-    if len(report):   # PreflightReport refuses bool() (#980)
+    if any(issue.code != "thin_absorber" for issue in report):
         raise RuntimeError("Run-control setup has unexpected advisories")
 
     # Fixed n_steps means exactly 120 updates.  It makes no promise that the

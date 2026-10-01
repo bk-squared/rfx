@@ -31,6 +31,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.sources._laplace import _solve_laplace_2d
+
 from rfx.core.yee import (EPS_0, MU_0,
                           cell_component_e_coeffs as _cell_component_e_coeffs)
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
@@ -284,6 +286,10 @@ def _msl_normal_bounds(grid, port):
         raise ValueError("MSL port requires finite ground/trace planes on a resolved normal axis")
     if port.z_hi <= port.z_lo:
         raise ValueError("MSL port trace plane must be above its ground plane")
+    from rfx._periodic import interval_coordinates
+    interval_coordinates(grid, 2, port.z_lo, port.z_hi)
+    if 'z' in getattr(grid, 'periodic_axes', ''):
+        nodes = np.append(nodes, float(grid.domain[2]))
     indices = []
     for label, position in (("ground", port.z_lo), ("trace", port.z_hi)):
         local = _local_cell(nodes, sizes[2], position)
@@ -334,10 +340,17 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     # beneath the intentional lateral fringing part of a Laplace source.
     width_nodes = nodes[iw]
     local = _local_cell(width_nodes, sizes[iw], .5*(port.y_lo+port.y_hi))
+    if span["width_axis"] in getattr(grid, "periodic_axes", ""):
+        width_nodes = np.append(width_nodes, float(grid.domain[iw]))
     widths = np.flatnonzero(_box_axis_closed(width_nodes, port.y_lo, port.y_hi, local))
     if not len(widths):
         raise ValueError(f"{label}: the declared width contains no grid node")
-    widths = sorted(set(map(int, widths)) | {span["w_centre"]})
+    widths = sorted({int(w) % len(nodes[iw]) for w in widths} | {span["w_centre"]})
+    if (span["width_axis"] in getattr(grid, "periodic_axes", "")
+            and 0 in span["width_nodes"]):
+        # A rounded endpoint can select the seam node even just below L.
+        # That selected image needs a conductor too.
+        widths = sorted(set(widths) | {0})
     for axis, indices in ((ip, [p]), (iw, widths)):
         for side, boundary_node in (("lo", 0), ("hi", grid.shape[axis]-1)):
             face = f"{'xyz'[axis]}_{side}"
@@ -347,6 +360,8 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
                     "zeros its substrate-normal E component. Move the port off that wall.")
 
     def along_trace(w, k):
+        if 'z' in getattr(grid, 'periodic_axes', ''):
+            k %= grid.shape[2]
         if k in domain_planes:
             return True
         idx = list(msl_cell(port.direction, p, w, k))
@@ -368,7 +383,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
                 locations = [float(nodes[2][j]) for j in alternatives]
                 raise ValueError(
                     f"{label}: declared {role} at z={declared:.9g} m maps to node "
-                    f"{k} (z={nodes[2][k]:.9g} m), but no longitudinal conductor "
+                    f"{k} (z={nodes[2][k % len(nodes[2])]:.9g} m), but no longitudinal conductor "
                     f"edge meets it at width node {w}. Observed conductor planes "
                     f"on this column are {locations} m. Make the port ground/trace "
                     "declarations agree with the realized conductor surfaces.")
@@ -470,14 +485,18 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     iw = _MSL_AXIS_INDEX[width]
     inr = _MSL_AXIS_INDEX[normal]
 
-    lo_idx = _msl_position_to_index(
-        grid, msl_physical_point(port.direction, port.feed_x, port.y_lo, port.z_lo)
-    )
-    hi_idx = _msl_position_to_index(
-        grid, msl_physical_point(port.direction, port.feed_x, port.y_hi, port.z_hi)
-    )
+    from rfx._periodic import interval_indices
+    lo_idx, hi_idx = interval_indices(
+        grid, msl_physical_point(port.direction, port.feed_x, port.y_lo, port.z_lo),
+        msl_physical_point(port.direction, port.feed_x, port.y_hi, port.z_hi))
     i_feed = int(lo_idx[ip])
     w_a, w_b = sorted((int(lo_idx[iw]), int(hi_idx[iw])))
+    # Width owns both endpoint nodes; height owns the edges between nodes.
+    # The endpoint at L is node zero's image, included only once even for
+    # a full-period width. Keep the interval helper's bounds admission.
+    widths = list(range(w_a, w_b + 1))
+    if width in getattr(grid, 'periodic_axes', ''):
+        widths = list(dict.fromkeys(w % grid.shape[iw] for w in widths))
     n_a, n_b = _msl_normal_bounds(grid, port)
 
     if n_b <= n_a:
@@ -486,7 +505,7 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
             "trace planes; resolve the substrate on the mesh."
         )
     cells = []
-    for w in range(w_a, w_b + 1):
+    for w in widths:
         # E_normal[n] lives on [node n, node n+1]. The trace-plane node
         # is the EXCLUSIVE edge bound; including it injects/loads above
         # the trace. Width coordinates of E_normal remain nodal/inclusive.
@@ -499,7 +518,7 @@ def _msl_yz_cells(grid, port: MSLPort) -> list[tuple[int, int, int]]:
     return cells
 
 
-def msl_cross_section_span(grid, port: MSLPort) -> dict:
+def msl_cross_section_span(grid, port: MSLPort, *, require_contiguous_width=False) -> dict:
     """Feed index, width nodes and normal bounding planes of the cross-section.
 
     Returns a dict with ``i_feed``, ``w_lo``/``w_hi``, ``w_centre``,
@@ -508,6 +527,9 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
     ``c[2]`` from :func:`_msl_yz_cells` should read this instead, so the
     axis projection lives in one place.
 
+    ``width_nodes`` lists unique node images in interval order; ``w_lo`` /
+    ``w_hi`` bound that sequence before wrapping. Consumers requiring a
+    contiguous mode/current window must request ``require_contiguous_width``.
     Width nodes are inclusive. Normal E edges use ``n_lo <= k < n_hi``;
     ``n_hi`` is the upper bounding NODE (trace plane), as extraction and
     trace searches require. ``cells`` contains edges, not that upper node.
@@ -517,7 +539,15 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
     iw = _MSL_AXIS_INDEX[width]
     inr = _MSL_AXIS_INDEX[normal]
     cells = _msl_yz_cells(grid, port)
-    ws = sorted({c[iw] for c in cells})
+    ws = list(dict.fromkeys(c[iw] for c in cells))
+    if (require_contiguous_width and width in getattr(grid, "periodic_axes", "")
+            and 0 in ws):
+        raise ValueError(
+            f"MSL mode/current aperture on periodic axis {width!r}: node-inclusive "
+            f"width [{port.y_lo}, {port.y_hi}] m touches the seam of period "
+            f"L={grid.domain[iw]} m; this operation requires a contiguous "
+            "aperture with a sampling margin. Uniform run/forward loading "
+            "supports the seam.")
     ns = sorted({c[inr] for c in cells})
     centre = _msl_position_to_index(grid, msl_physical_point(
         port.direction, port.feed_x, .5*(port.y_lo+port.y_hi), port.z_lo))[iw]
@@ -525,7 +555,8 @@ def msl_cross_section_span(grid, port: MSLPort) -> dict:
         prop_axis=prop, width_axis=width, normal_axis=normal, sign=sign,
         prop_idx=ip, width_idx=iw, normal_idx=inr,
         i_feed=int(cells[0][ip]),
-        w_lo=int(ws[0]), w_hi=int(ws[-1]),
+        w_lo=int(ws[0]), w_hi=int(ws[0] + len(ws) - 1),
+        width_nodes=tuple(ws),
         w_centre=int(centre),
         n_lo=int(ns[0]), n_hi=int(ns[-1]) + 1,
         cells=cells,
@@ -560,147 +591,6 @@ def msl_cell(direction: str, i_prop: int, i_width: int, i_normal: int
 # ---------------------------------------------------------------------------
 # 2D quasi-TEM mode solver (electrostatic Laplace)
 # ---------------------------------------------------------------------------
-
-
-def _solve_laplace_2d(
-    eps_yz: np.ndarray,
-    trace_mask: np.ndarray,
-    ground_mask: np.ndarray,
-    dy: float,
-    dz: float,
-) -> np.ndarray:
-    """Solve ∇·(ε ∇φ) = 0 with Dirichlet trace/ground via 5-point FV.
-
-    Parameters
-    ----------
-    eps_yz : (n_y, n_z) array of cell-centred relative permittivity.
-    trace_mask : (n_y, n_z) bool, True where φ = 1.
-    ground_mask : (n_y, n_z) bool, True where φ = 0.
-    dy, dz : float, cell sizes.
-
-    Returns
-    -------
-    phi : (n_y, n_z) electrostatic potential.
-
-    Notes
-    -----
-    Boundary at far y / top z is implicit Neumann (no flux) by truncating
-    coefficients at the array edge. Caller must extend the box well past
-    fringing fields (≥ 5W lateral, ≥ 4H above) for that to be accurate.
-    """
-    try:
-        from scipy.sparse import lil_matrix, csr_matrix
-        from scipy.sparse.linalg import spsolve
-        _have_sparse = True
-    except Exception:
-        _have_sparse = False
-
-    n_y, n_z = eps_yz.shape
-    fixed_mask = trace_mask | ground_mask
-    fixed_val = np.where(trace_mask, 1.0, 0.0)
-
-    def _idx(j, k):
-        return j * n_z + k
-
-    n_unk = n_y * n_z
-
-    if _have_sparse:
-        A = lil_matrix((n_unk, n_unk), dtype=np.float64)
-        b = np.zeros(n_unk, dtype=np.float64)
-        for j in range(n_y):
-            for k in range(n_z):
-                p = _idx(j, k)
-                if fixed_mask[j, k]:
-                    A[p, p] = 1.0
-                    b[p] = fixed_val[j, k]
-                    continue
-                # 5-point ε-weighted Laplacian. Off-diagonal coeffs use
-                # harmonic-mean ε at the face (continuous flux).
-                diag = 0.0
-                # +y neighbour
-                if j + 1 < n_y:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j + 1, k] / (
-                        eps_yz[j, k] + eps_yz[j + 1, k] + 1e-30
-                    )
-                    coef = eps_face / (dy * dy)
-                    A[p, _idx(j + 1, k)] = coef
-                    diag -= coef
-                # -y neighbour
-                if j - 1 >= 0:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j - 1, k] / (
-                        eps_yz[j, k] + eps_yz[j - 1, k] + 1e-30
-                    )
-                    coef = eps_face / (dy * dy)
-                    A[p, _idx(j - 1, k)] = coef
-                    diag -= coef
-                # +z neighbour
-                if k + 1 < n_z:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j, k + 1] / (
-                        eps_yz[j, k] + eps_yz[j, k + 1] + 1e-30
-                    )
-                    coef = eps_face / (dz * dz)
-                    A[p, _idx(j, k + 1)] = coef
-                    diag -= coef
-                # -z neighbour
-                if k - 1 >= 0:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j, k - 1] / (
-                        eps_yz[j, k] + eps_yz[j, k - 1] + 1e-30
-                    )
-                    coef = eps_face / (dz * dz)
-                    A[p, _idx(j, k - 1)] = coef
-                    diag -= coef
-                A[p, p] = diag
-                b[p] = 0.0
-        phi = spsolve(csr_matrix(A), b)
-        return phi.reshape(n_y, n_z)
-
-    # Fallback: Jacobi/Gauss-Seidel iteration.
-    phi = np.zeros((n_y, n_z), dtype=np.float64)
-    phi[trace_mask] = 1.0
-    for _ in range(20000):
-        phi_new = phi.copy()
-        max_d = 0.0
-        for j in range(n_y):
-            for k in range(n_z):
-                if fixed_mask[j, k]:
-                    continue
-                num = 0.0
-                den = 0.0
-                if j + 1 < n_y:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j + 1, k] / (
-                        eps_yz[j, k] + eps_yz[j + 1, k] + 1e-30
-                    )
-                    c = eps_face / (dy * dy)
-                    num += c * phi_new[j + 1, k]
-                    den += c
-                if j - 1 >= 0:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j - 1, k] / (
-                        eps_yz[j, k] + eps_yz[j - 1, k] + 1e-30
-                    )
-                    c = eps_face / (dy * dy)
-                    num += c * phi_new[j - 1, k]
-                    den += c
-                if k + 1 < n_z:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j, k + 1] / (
-                        eps_yz[j, k] + eps_yz[j, k + 1] + 1e-30
-                    )
-                    c = eps_face / (dz * dz)
-                    num += c * phi_new[j, k + 1]
-                    den += c
-                if k - 1 >= 0:
-                    eps_face = 2.0 * eps_yz[j, k] * eps_yz[j, k - 1] / (
-                        eps_yz[j, k] + eps_yz[j, k - 1] + 1e-30
-                    )
-                    c = eps_face / (dz * dz)
-                    num += c * phi_new[j, k - 1]
-                    den += c
-                new_val = num / (den + 1e-30)
-                max_d = max(max_d, abs(new_val - phi_new[j, k]))
-                phi_new[j, k] = new_val
-        phi = phi_new
-        if max_d < 1e-9:
-            break
-    return phi
 
 
 def compute_msl_mode_profile(
@@ -756,7 +646,7 @@ def compute_msl_mode_profile(
     # (width, normal) cross-section problem -- measured independent of the
     # propagation axis beyond ``i_feed`` (identical ez_profile/z0_static/
     # eps_eff across two feed planes and opposite directions).
-    span = msl_cross_section_span(grid, port)
+    span = msl_cross_section_span(grid, port, require_contiguous_width=True)
     width_axis = span["width_axis"]
     normal_axis = span["normal_axis"]
     j_trace_lo = span["w_lo"]
@@ -790,6 +680,12 @@ def compute_msl_mode_profile(
 
     # FDTD-grid cells that will receive an Ez source (clamped into the
     # available grid). Capture the maximum y-padding the grid allows.
+    if (width_axis in getattr(grid, "periodic_axes", "")
+            and (j_trace_lo - pad_y_cells < 0
+                 or j_trace_hi + pad_y_cells >= grid.shape[span["width_idx"]])):
+        raise ValueError(
+            f"MSL Laplace aperture on periodic axis {width_axis!r} crosses "
+            "the seam; its fringing profile requires a contiguous width window.")
     j_grid_lo = max(0, j_trace_lo - pad_y_cells)
     j_grid_hi = min(grid.shape[span["width_idx"]] - 1, j_trace_hi + pad_y_cells)
     k_grid_lo = k_sub_lo  # ground at bottom of substrate
@@ -995,7 +891,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         cells = span["cells"]
         if not cells:
             return materials
-        n_y = span["w_hi"] - span["w_lo"] + 1
+        n_y = len(span["width_nodes"])
         n_z = span["n_hi"] - span["n_lo"]
         # Issue #661: these three cell sizes are the PROPAGATION, WIDTH
         # and NORMAL cell sizes -- not literally dx/dy/dz. sigma scales as
@@ -1282,7 +1178,9 @@ def make_msl_port_sources_jm(
     n_z = em.n_z_grid
 
     # TFSF coefficients — identical to waveguide_port.py apply_waveguide_port_h/e
-    coeff_H = float(dt / (MU_0 * dx))
+    from rfx.core.yee import MaterialArrays, component_h_materials
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    coeff_H = float(dt / (mu_abs * dx))
 
     # Direction: +x → H plane behind = i-1; sign = -1 (matches waveguide port)
     #            -x → H plane behind = i;   sign = +1
@@ -1390,6 +1288,8 @@ def _msl_coord_for_index(grid, axis: str, target_i: int) -> float:
     """
     n_axis = int(getattr(grid, {"x": "nx", "y": "ny", "z": "nz"}[axis]))
     pad = int(getattr(grid, f"pad_{axis}_lo", 0))
+    if axis in getattr(grid, 'periodic_axes', ''):
+        return grid.node_of(axis, grid.index_of(axis, int(target_i) * float(grid.cells(axis)[0])))
     clamped = max(0, min(int(target_i), n_axis - 1))
     u = clamped - pad  # user-domain (non-CPML) interior index
     arr_attr = {"x": "dx_arr", "y": "dy_arr", "z": "dz"}[axis]
@@ -1470,17 +1370,23 @@ def msl_h_plane_stencil(grid, port: MSLPort, e_plane_coordinate: float) -> dict:
         centres = centres_from_uniform_grid(grid)
     nodes = np.asarray(getattr(coords, axis), dtype=float)
     h_coords = np.asarray(getattr(centres, axis), dtype=float)
-    if not nodes[0] <= coordinate <= nodes[-1]:
+    declared_periodic = axis in getattr(grid, 'periodic_axes', '')
+    if declared_periodic:
+        from rfx._periodic import plane_coordinate
+        coordinate = plane_coordinate(grid, axis_index, coordinate)
+    if not declared_periodic and not nodes[0] <= coordinate <= nodes[-1]:
         raise ValueError("MSL voltage plane must lie inside the grid")
     point = msl_physical_point(port.direction, coordinate, port.y_lo, port.z_lo)
     index = int(_msl_position_to_index(grid, point)[axis_index])
-    if not 0 < index < len(nodes) - 1:
+    if not declared_periodic and not 0 < index < len(nodes) - 1:
         raise ValueError(
             "MSL current needs two H planes bracketing the voltage plane; "
             "move the first probe inside the grid")
-    indices = (index - 1, index)
+    indices = ((index - 1) % len(nodes), index) if declared_periodic else (index - 1, index)
     registration = tuple(float(nodes[i]) for i in indices)
     samples = tuple(float(h_coords[i]) for i in indices)
+    if declared_periodic and index == 0:
+        samples = (samples[0] - float(grid.domain[axis_index]), samples[1])
     target = float(nodes[index])
     if not (np.isfinite(samples).all() and samples[0] < target < samples[1]):
         raise ValueError("MSL H samples do not bracket the voltage E-node")
@@ -1538,6 +1444,10 @@ def msl_probe_x_coords(
     i1 = i_feed + sign * n_offset_cells
     i2 = i1 + sign * n_spacing_cells
     i3 = i2 + sign * n_spacing_cells
+    if prop in getattr(grid, 'periodic_axes', ''):
+        from rfx._periodic import interval_coordinates
+        width = float(grid.cells(prop)[0])
+        interval_coordinates(grid, _MSL_AXIS_INDEX[prop], i_feed * width, i3 * width)
     return (
         _msl_coord_for_index(grid, prop, i1),
         _msl_coord_for_index(grid, prop, i2),
@@ -1568,6 +1478,11 @@ def msl_probe_x_coords_n(
     )
     i_feed = int(idx[_MSL_AXIS_INDEX[prop]])
     sign = int(sign_f)
+    if prop in getattr(grid, 'periodic_axes', ''):
+        from rfx._periodic import interval_coordinates
+        end = i_feed + sign * (n_offset_cells + (n_probes - 1) * n_spacing_cells)
+        width = float(grid.cells(prop)[0])
+        interval_coordinates(grid, _MSL_AXIS_INDEX[prop], i_feed * width, end * width)
     return tuple(
         _msl_coord_for_index(
             grid, prop, i_feed + sign * (n_offset_cells + n * n_spacing_cells)

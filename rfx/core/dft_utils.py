@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import jax
 import jax.numpy as jnp
 
 
@@ -92,14 +93,9 @@ def half_step_current_phase(freqs: jnp.ndarray, dt: float) -> jnp.ndarray:
     of I, so a reciprocity improvement is an incidental move of a noise-level
     residual, not evidence for this factor.
 
-    SCOPE — wire ports only. Applied by ``update_wire_sparam_probe`` and the
-    wire-port DFT blocks in ``rfx/simulation.py`` / ``rfx/nonuniform.py``.
-    Deliberately NOT applied on the LUMPED single-cell port lane, where V is
-    sampled PRE-injection at a driven cell (the issue #72 contract) and issue
-    #683 measured that sample is not any field time level of the discrete
-    update — so the premise ``E = E^{n+1}`` fails there and the V/I offset is
-    not established to be dt/2. Deciding the lumped lane needs a lumped
-    known-load run of its own; see the scope notes at those call sites.
+    Applied to post-injection lumped and wire V/I in the production scan,
+    and to owning-cell recordings in the distributed lumped scan driver.
+    The pre-injection reference-voltage channel receives no H correction.
 
     Parameters
     ----------
@@ -112,3 +108,16 @@ def half_step_current_phase(freqs: jnp.ndarray, dt: float) -> jnp.ndarray:
     phase by this. Do NOT apply it to the voltage or incident-wave channels.
     """
     return jnp.exp(1j * jnp.pi * jnp.asarray(freqs) * dt)
+
+
+def port_dft_phase(step, freqs, dt):
+    """Production port stamp: float32(step)*dt, complex64 phase times dt.
+
+    Accepts a scalar step in the scan or broadcast arrays for host replay.
+    Preserve the scan's float32 time even when x64 is enabled.
+    """
+    phase_dtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
+    t = jnp.asarray(step, dtype=jnp.float32) * dt
+    return jnp.exp(-1j * 2.0 * jnp.pi
+                   * jnp.asarray(freqs).astype(phase_dtype)
+                   * t.astype(phase_dtype)).astype(jnp.complex64) * dt

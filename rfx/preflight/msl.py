@@ -1051,6 +1051,8 @@ def _msl_conductor_gap(self, pe, assembled):
     span = msl_cross_section_span(grid, port)
     nodes, _ = _msl_grid_geometry(grid)
     normal_nodes = nodes[span["normal_idx"]]
+    if span["normal_axis"] in getattr(grid, 'periodic_axes', ''):
+        normal_nodes = np.append(normal_nodes, float(grid.domain[span["normal_idx"]]))
     lo, hi = span["n_lo"], span["n_hi"]
     return dict(n=hi - lo, h=float(normal_nodes[hi] - normal_nodes[lo]),
                 ground=float(normal_nodes[lo]), trace=float(normal_nodes[hi]))

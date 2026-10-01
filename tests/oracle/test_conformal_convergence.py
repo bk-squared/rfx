@@ -303,7 +303,8 @@ class TestConformalConvergence:
         sim.add_port((0.03, 0.03, 0.005), "ez", waveform=GaussianPulse(f0=3e9))
         sim.add_probe((0.03, 0.045, 0.03), "ez")
 
-        result_conf = sim.run(n_steps=200, conformal_pec=True)
+        # The port only excites the model; a conformal lumped S-matrix is refused (#1299).
+        result_conf = sim.run(n_steps=200, conformal_pec=True, compute_s_params=False)
         result_stair = sim.run(n_steps=200)
 
         ts_conf = np.array(result_conf.time_series).ravel()

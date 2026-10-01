@@ -17,8 +17,11 @@ from __future__ import annotations
 from typing import NamedTuple
 
 import jax.numpy as jnp
+
+from rfx._precision import HIGHEST
 import numpy as np
 
+from rfx._radiated_power import integrate_radiated_power
 from rfx.grid import Grid, C0
 from rfx.core.yee import EPS_0, MU_0
 
@@ -42,15 +45,15 @@ class NTFFBox(NamedTuple):
     k_lo: int
     k_hi: int
     freqs: jnp.ndarray  # (n_freqs,) Hz
-    # Per-face CPML thickness (T7 Phase 2 — asymmetric-friendly NTFF offsets).
-    # Default to 0 so legacy callers constructing NTFFBox without from_grid()
-    # still get the pre-per-face-CPML scalar behaviour via the fallbacks below.
-    cpml_lo_x: int = 0
-    cpml_hi_x: int = 0
-    cpml_lo_y: int = 0
-    cpml_hi_y: int = 0
-    cpml_lo_z: int = 0
-    cpml_hi_z: int = 0
+    # Realized per-face padding. None means unspecified on a hand-built box;
+    # zero is a physical value (e.g. PEC/PMC), never a missing-value sentinel.
+    # The transform resolves unspecified values from the accompanying grid.
+    cpml_lo_x: int | None = None
+    cpml_hi_x: int | None = None
+    cpml_lo_y: int | None = None
+    cpml_hi_y: int | None = None
+    cpml_lo_z: int | None = None
+    cpml_hi_z: int | None = None
     # Where on a face cell the four stored tangential components live.
     #
     # True — the accumulator holds E and H already moved to the CENTRE of the
@@ -89,22 +92,15 @@ class NTFFBox(NamedTuple):
     @classmethod
     def from_grid(cls, grid, *, i_lo, i_hi, j_lo, j_hi, k_lo, k_hi, freqs,
                   collocation: str = "face_centre"):
-        """Build an NTFFBox with per-face CPML thicknesses pulled from
-        ``grid.face_layers``. Under symmetric face_layers (all six equal
-        grid.cpml_layers), the box is numerically identical to the legacy
-        scalar-cpml construction.
+        """Build an NTFFBox with the grid's realized per-face padding.
+
+        Physical zero is the inner edge of each lower-face pad, including
+        a zero-cell pad. Symmetric padding keeps the legacy coordinates.
 
         The box is built for face-centre collocation by default (the
         second-order layout); pass ``collocation="node"`` to reproduce the
         pre-second-order geometry."""
-        fl = getattr(grid, "face_layers", None)
-        if fl is None:
-            # Grid types without face_layers (e.g. older NU grids) fall back
-            # to the scalar cpml_layers on every face.
-            scalar = int(getattr(grid, "cpml_layers", 0) or 0)
-            faces = {k: scalar for k in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
-        else:
-            faces = fl
+        faces = _ntff_face_pads(grid)
         box = cls(
             i_lo=i_lo, i_hi=i_hi, j_lo=j_lo, j_hi=j_hi, k_lo=k_lo, k_hi=k_hi,
             freqs=freqs,
@@ -210,6 +206,41 @@ def _normal_weight(widths, idx: int) -> float:
 _AXIS_NAMES = ("x", "y", "z")
 
 
+def _ntff_face_pads(grid, box: NTFFBox | None = None):
+    """Resolve NTFF padding from the realized grid, preserving zero.
+
+    Explicit box metadata must agree with that grid; silently accepting a
+    box from a different grid changes the complex phase. Hand-built boxes
+    may omit the metadata. Only legacy grid-like objects without realized
+    pad attributes use box metadata, face_layers or the scalar budget.
+    Both Grid and NonUniformGrid always take the realized-pad branch.
+    """
+    pads = {}
+    for axis in _AXIS_NAMES:
+        for side in ("lo", "hi"):
+            face = f"{axis}_{side}"
+            field = f"cpml_{side}_{axis}"
+            explicit = getattr(box, field, None)
+            realized = getattr(grid, f"pad_{face}", None)
+            if realized is not None:
+                if explicit is not None and explicit != realized:
+                    raise ValueError(
+                        f"NTFF box {field}={explicit} does not match the grid's "
+                        f"realized pad_{face}={realized}; use NTFFBox.from_grid "
+                        "with the grid used for accumulation, or leave pad "
+                        "metadata unspecified (None).")
+                pads[face] = int(realized)
+            elif explicit is not None:
+                pads[face] = int(explicit)
+            else:
+                faces = getattr(grid, "face_layers", None) or {}
+                # Legacy objects may use None for an unspecified scalar pad;
+                # treat it like an absent attribute (no padding).
+                legacy = getattr(grid, "cpml_layers", 0)
+                pads[face] = int(faces.get(face, 0 if legacy is None else legacy))
+    return pads
+
+
 def _grid_axis_counts(grid):
     """(nx, ny, nz) off a grid object, or None when it does not say."""
     shape = getattr(grid, "shape", None)
@@ -255,7 +286,6 @@ def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
     bad = _face_centre_margin_failures(box, counts)
     if not bad:
         return
-    cpml = ((box.cpml_lo_x, box.cpml_lo_y, box.cpml_lo_z))
     lines = []
     flat = False
     for axis, lo, hi, n in bad:
@@ -267,8 +297,11 @@ def _raise_face_centre_margin(box: NTFFBox, counts, grid=None):
                 f"a cell on both sides of both {name} faces")
             continue
         detail = f"  {name}: faces at index {lo} and {hi} of {n} cells"
-        if grid is not None:
-            pos = _axis_node_positions(grid, axis, int(cpml[axis]), n)
+        # A diagnostic must not resolve/validate box pads: a metadata
+        # conflict would hide the margin error. Use known grid coordinates.
+        pad_lo = getattr(grid, f"pad_{name}_lo", None)
+        if pad_lo is not None and 0 <= lo <= n and 0 <= hi <= n:
+            pos = _axis_node_positions(grid, axis, pad_lo, n)
             detail += (
                 f" ({pos[lo]:.6g} m and {pos[hi]:.6g} m); this axis can carry "
                 f"a face anywhere in [{pos[1]:.6g} m, {pos[n - 1]:.6g} m]")
@@ -330,17 +363,18 @@ def make_ntff_box(
     The box is built for face-centre collocation (the second-order layout);
     pass ``collocation="node"`` for the pre-second-order geometry.
     """
-    lo = grid.position_to_index(corner_lo)
-    hi = grid.position_to_index(corner_hi)
-    box = NTFFBox(
+    from rfx._periodic import interval_indices
+    lo, hi = interval_indices(grid, corner_lo, corner_hi)
+    if any(hi[a] == grid.shape[a] for a in range(3)):
+        raise ValueError("NTFF box requires an interior plane with a sampling margin; move its high face inside the period")
+    return NTFFBox.from_grid(
+        grid,
         i_lo=lo[0], i_hi=hi[0],
         j_lo=lo[1], j_hi=hi[1],
         k_lo=lo[2], k_hi=hi[2],
         freqs=jnp.asarray(freqs, dtype=jnp.float32),
+        collocation=collocation,
     )
-    if collocation == "face_centre":
-        return with_face_centre_collocation(box, grid)
-    return box
 
 
 def ntff_accum_dtype(field_dtype=jnp.float32):
@@ -618,10 +652,19 @@ def accumulate_ntff(
     box: NTFFBox,
     dt: float,
     step_idx,
+    *,
+    x_offset: int = 0,
+    owned_x: tuple[int, int] | None = None,
+    owned_x_faces: tuple[bool, bool] = (True, True),
 ) -> NTFFData:
     """Accumulate one timestep of tangential field DFTs on all 6 faces.
 
     Called from the scan body.  ``step_idx`` comes from the scan xs.
+    Slab callers may select a global half-open ``owned_x`` range for y/z
+    faces and ``owned_x_faces`` for the two x planes. ``x_offset`` maps
+    global x indices to the local array (including ghosts). They validate
+    the global sampling margin before partitioning; absent x faces have
+    zero-sized arrays. The stencil, phases and Kahan operations are shared.
 
     On a Yee lattice the four tangential components of a face do not sit on
     top of each other: the two E components straddle the face cell along
@@ -664,11 +707,14 @@ def accumulate_ntff(
     ph = jnp.stack([phase_e, phase_e, phase_h, phase_h], axis=-1)
     ph = ph[:, None, None, :]  # (nf, 1, 1, 4)
 
-    i0, i1 = box.i_lo, box.i_hi
+    # Slab callers validate the global box before selecting owned cells.
+    # x_offset maps global indices into the slab, including its left ghost.
+    i0, i1 = (box.i_lo, box.i_hi) if owned_x is None else owned_x
+    i0, i1 = i0 - x_offset, i1 - x_offset
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
     face_centre = bool(getattr(box, "face_centre", False))
-    if face_centre:
+    if face_centre and owned_x is None:
         _require_face_centre_margin(box, state.ex.shape)
 
     def _x_face(idx, w_lo):
@@ -778,8 +824,10 @@ def accumulate_ntff(
         new_c = (t - s) - y
         return t, new_c
 
-    xl_val = ph * _x_face(i0, box.w_x_lo)[None]
-    xh_val = ph * _x_face(i1, box.w_x_hi)[None]
+    xl_val = (ph * _x_face(box.i_lo - x_offset, box.w_x_lo)[None]
+              if owned_x_faces[0] else jnp.zeros_like(ntff_data.x_lo))
+    xh_val = (ph * _x_face(box.i_hi - x_offset, box.w_x_hi)[None]
+              if owned_x_faces[1] else jnp.zeros_like(ntff_data.x_hi))
     yl_val = ph * _y_face(j0, box.w_y_lo)[None]
     yh_val = ph * _y_face(j1, box.w_y_hi)[None]
     zl_val = ph * _z_face(k0, box.w_z_lo)[None]
@@ -990,13 +1038,8 @@ def compute_far_field(
     # graded, every path below is the scalar one, bit-for-bit.
     dx_arr = getattr(grid, 'dx_arr', None)
     dy_arr = getattr(grid, 'dy_arr', None)
-    # Per-face CPML origins come from the box when populated via
-    # NTFFBox.from_grid; direct-construction callers (fields=0) fall back
-    # to scalar grid.cpml_layers so the symmetric case stays bit-identical.
-    _legacy_cpml = int(getattr(grid, 'cpml_layers', 0) or 0)
-    cpml_lo_x = box.cpml_lo_x or _legacy_cpml
-    cpml_lo_y = box.cpml_lo_y or _legacy_cpml
-    cpml_lo_z = box.cpml_lo_z or _legacy_cpml
+    pads = _ntff_face_pads(grid, box)
+    cpml_lo_x, cpml_lo_y, cpml_lo_z = (pads[f"{axis}_lo"] for axis in _AXIS_NAMES)
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
@@ -1309,12 +1352,8 @@ def compute_far_field_jax(
     dz_arr = getattr(grid, 'dz', None)
     dx_arr = getattr(grid, 'dx_arr', None)   # in-plane grading (#743)
     dy_arr = getattr(grid, 'dy_arr', None)
-    # Per-face CPML origins come from the box (populated by
-    # NTFFBox.from_grid). Legacy callers get grid.cpml_layers as fallback.
-    _legacy_cpml = int(getattr(grid, 'cpml_layers', 0) or 0)
-    cpml_lo_x = box.cpml_lo_x or _legacy_cpml
-    cpml_lo_y = box.cpml_lo_y or _legacy_cpml
-    cpml_lo_z = box.cpml_lo_z or _legacy_cpml
+    pads = _ntff_face_pads(grid, box)
+    cpml_lo_x, cpml_lo_y, cpml_lo_z = (pads[f"{axis}_lo"] for axis in _AXIS_NAMES)
     i0, i1 = box.i_lo, box.i_hi
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
@@ -1413,18 +1452,18 @@ def compute_far_field_jax(
             else:
                 dS_flat = _face_dS_jax(axis, 0, 0)
 
-        dot = r_flat @ pos_flat.T  # (n_dir, nc)
+        dot = jnp.matmul(r_flat, pos_flat.T, precision=HIGHEST)  # (n_dir, nc)
 
         phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
         dS_flat = jnp.asarray(dS_flat)  # ensure JAX array (may be Python float)
         if jnp.ndim(dS_flat) > 0:
             J_w = J * dS_flat[None, :, None]
             M_w = M * dS_flat[None, :, None]
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J_w)
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M_w)
+            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J_w, precision=HIGHEST)
+            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M_w, precision=HIGHEST)
         else:
-            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J) * dS_flat
-            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M) * dS_flat
+            N_total = N_total + jnp.einsum("fdc,fcj->fdj", phase, J, precision=HIGHEST) * dS_flat
+            L_total = L_total + jnp.einsum("fdc,fcj->fdj", phase, M, precision=HIGHEST) * dS_flat
 
     th_flat = th_hat.reshape(-1, 3)
     ph_flat = ph_hat.reshape(-1, 3)
@@ -1465,20 +1504,14 @@ def radiation_pattern(ff: FarFieldResult) -> np.ndarray:
 def directivity(ff: FarFieldResult) -> np.ndarray:
     """Directivity in dBi for each frequency.
 
-    Integrates radiated power over the sphere using trapezoidal rule
-    and computes D = 4π U_max / P_rad.
+    Integrates radiated power over the full sphere using gradient weights
+    and computes D = 4π U_max / P_rad. Requires full-sphere coverage;
+    a single phi cut assumes an axisymmetric pattern.
 
     Returns (n_freqs,) array.
     """
     power = np.abs(ff.E_theta) ** 2 + np.abs(ff.E_phi) ** 2  # (nf, nθ, nφ)
-    theta = ff.theta
-    dth = np.gradient(theta) if len(theta) > 1 else np.array([np.pi])
-    dph = np.gradient(ff.phi) if len(ff.phi) > 1 else np.array([2 * np.pi])
-
-    sin_th = np.sin(theta)  # (nθ,)
-    # Integrate: P_rad = ∫∫ U sin(θ) dθ dφ
-    integrand = power * sin_th[None, :, None]  # (nf, nθ, nφ)
-    P_rad = np.sum(integrand * dth[None, :, None] * dph[None, None, :], axis=(1, 2))
+    P_rad = integrate_radiated_power(power, ff.theta, ff.phi)
 
     U_max = np.max(power, axis=(1, 2))
     safe_P = np.where(P_rad > 0, P_rad, 1.0)

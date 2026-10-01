@@ -25,6 +25,30 @@ Use `exchange_interval=1`.
 
 ## Ports and extraction
 
+**The default wire port is a mesh-sized probe.** `add_port(..., extent=...)`
+with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
+square transverse mesh. Refinement therefore changes its series inductance;
+it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
+the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
+square transverse stencil and uniform spacing along the pin. Axial grading
+across the port refuses this model. It is carried by single-device,
+nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
+Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
+Resolve larger wire ports geometrically with a coax feed or a volume wire.
+
+**Positive subcell PEC filament radii are unsupported.** A PEC `PolylineWire`
+with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
+volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
+cell at its vertices. The existing volume-wire rule and legacy `radius=0`
+filament ownership remain; zero does not declare a physical wire radius.
+The attempted filament correction failed its independent uncorrected-main
+reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
+8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
+11.3 GHz was 2.58 Ω (limits 2% and 1 Ω). The correction is removed.
+That one-edge feed has nonuniform longitudinal current, so the full-height
+wire-port Hankel oracle does not establish its accuracy. The port radius
+model and its full-height oracle remain separate.
+
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power
@@ -85,28 +109,6 @@ this condition now carries that measurement, and `docs/guides/sparameter_support
 has the full reading guidance. Settled in #726 (closed): the guard and preflight
 used to contradict each other about this, and the measurement decided it.
 
-**In a model with any Debye, Lorentz or Drude material, a lumped port's load or
-a folded R or C also loads the two other E edges at its node.** A lumped
-element is a device across one Yee edge, and a model without dispersive
-materials puts it there (#1236). A dispersive material anywhere in the model —
-even one small block far from the port — moves the whole grid onto an E update
-that takes one coefficient per cell for all three components (#1260), so every
-lumped element in that model, wherever it sits, is also a resistor (or
-capacitor) of the same value on the Ex and Ey edges leaving its node (for an
-element on Ez). What it changes: at a feed whose node carries a transverse field — a
-dipole-like gap — the same three-edge load on a centre-fed half-wave dipole
-moved the resonance +0.34 % at λ/43 (+0.16 % at λ/85) and Zin by 12–28 % at
-3.5–4 GHz off resonance; at a feed whose transverse edges lie on a PEC plane or
-carry no field (a port between two plates, a wire port across a substrate) it
-changes nothing. Such a run warns: a `UserWarning` from
-`rfx.core.yee.warn_lumped_on_cell_owned_lane`, raised by `init_debye` /
-`init_lorentz`, naming #1260 and #1236. On a graded mesh with a dispersive
-material a port's load is missing altogether, a separate defect (#1257). If
-your band allows it, a constant ε and σ in place of the dispersive model avoids
-both.
-→ [#1260](https://github.com/bk-squared/rfx/issues/1260)
-→ [#1257](https://github.com/bk-squared/rfx/issues/1257)
-
 ## Ring-down completion and the early stop
 
 **A pair of modes that no window of the record separates is completed as one
@@ -117,7 +119,7 @@ blended pole, and the completion from any window of that record makes the same
 blend. The error witness WE then agrees while the completed S can be several
 percent off near the pair. What to do: record longer. In the measured case, a
 pair 0.03 % apart was resolved at about a fifth of its decay time.
-→ [#1381](https://github.com/bk-squared/rfx/issues/1381)
+#1381 was closed as a stated limit (PI decision, 2026-09-30); this is a standing limitation.
 
 **The early stop can end the run before a weak unresolved high-Q pair is
 resolved.** The rule is `run(..., until_identified=True)`: stop once WE agrees
@@ -131,9 +133,16 @@ Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
-→ [#1381](https://github.com/bk-squared/rfx/issues/1381)
 
 ## Absorbing boundaries
+
+**A magnetic symmetry wall lies half a cell inside its declared face.**
+On the single-device Yee paths, the nearest tangential magnetic-field sample
+is zeroed half a cell inside the face. A source on the face's electric node
+does not reach the interior, and a symmetry half-model is half a cell narrower
+than declared. For a 24 mm separation between two magnetic faces, the realized
+separation is 23 mm at dx = 1 mm. The on-face image rule is pending in B3.
+→ [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 **On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**
 A face declared `pmc` is solved as a magnetic wall only on a single-device Yee run. On `run(devices=...)` and

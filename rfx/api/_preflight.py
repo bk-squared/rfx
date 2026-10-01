@@ -428,11 +428,14 @@ class _PreflightMixin:
                 "solver='adi'; use the uniform Yee solver."
             )
         if devices is not None and len(devices) > 1:
-            raise NotImplementedError(
-                "run(compute_s_params=True) is not supported on the "
-                "distributed multi-device path; run a single-device "
-                "uniform S-parameter calculation."
-            )
+            from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
+            refuse_unsupported_distributed_features(
+                self, lane="distributed multi-device run()")
+            if self._uses_nonuniform_mesh:
+                raise NotImplementedError(
+                    "Phase B distributed+NU does not support lumped / wire "
+                    "ports yet. Use single-device for ports on NU meshes."
+                )
         if self._refinement is not None:
             if source_only_entries:
                 raise NotImplementedError(
@@ -1285,6 +1288,11 @@ class _PreflightMixin:
         stay method-only checks.
         """
 
+        if self._solver != "yee":
+            raise NotImplementedError(
+                "compute_waveguide_s_matrix() does not support "
+                f"solver={self._solver!r} (#1300). Use solver='yee'."
+            )
         if not self._waveguide_ports:
             raise ValueError(
                 "No waveguide ports registered. Call add_waveguide_port() first."
@@ -1740,6 +1748,7 @@ class _PreflightMixin:
         # cells of an absorbing face that carries six layers or fewer. Defined
         # in the family module like the twelve above, never in this class body.
         _validate_cfg_conductor_in_thin_absorber,
+        _validate_cfg_thin_absorber,
     )
 
     # ------------------------------------------------------------------

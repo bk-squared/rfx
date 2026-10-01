@@ -81,7 +81,9 @@ def _debye_overlap_entries_and_ratio(make_pole):
     grid = sim._build_grid()
     _, debye, _ = sim._build_materials(grid)
     coeffs, _state = debye
-    n_entries = int(coeffs.beta.shape[0])
+    # beta / c are per E component since #1260; the overlap cell's three
+    # components are equal (interior of the union), Ex's stands for them.
+    n_entries = int(coeffs.beta[0].shape[0])
 
     ref = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
     ref.add_material("mat", eps_r=2.0, debye_poles=[make_pole()])
@@ -91,8 +93,8 @@ def _debye_overlap_entries_and_ratio(make_pole):
     ref_coeffs, _ = ref_debye
 
     cell = _overlap_cell(grid)
-    beta_two_mats = float(jnp.sum(coeffs.beta, axis=0)[cell])
-    beta_single = float(jnp.sum(ref_coeffs.beta, axis=0)[cell])
+    beta_two_mats = float(jnp.sum(coeffs.beta[0], axis=0)[cell])
+    beta_single = float(jnp.sum(ref_coeffs.beta[0], axis=0)[cell])
     assert beta_single > 0.0
     return n_entries, beta_two_mats / beta_single
 
@@ -193,8 +195,8 @@ def test_equal_lorentz_poles_on_overlapping_boxes_apply_once():
     _, _, lorentz = sim._build_materials(grid)
     coeffs, _state = lorentz
 
-    assert coeffs.c.shape[0] == 1, (
-        f"equal poles must merge into one entry, got {coeffs.c.shape[0]}")
+    assert coeffs.c[0].shape[0] == 1, (
+        f"equal poles must merge into one entry, got {coeffs.c[0].shape[0]}")
 
     ref = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
     ref.add_material("mat", eps_r=2.0, lorentz_poles=[make_pole()])
@@ -204,8 +206,8 @@ def test_equal_lorentz_poles_on_overlapping_boxes_apply_once():
     ref_coeffs, _ = ref_lorentz
 
     cell = _overlap_cell(grid)
-    c_two_mats = float(jnp.sum(coeffs.c, axis=0)[cell])
-    c_single = float(jnp.sum(ref_coeffs.c, axis=0)[cell])
+    c_two_mats = float(jnp.sum(coeffs.c[0], axis=0)[cell])
+    c_single = float(jnp.sum(ref_coeffs.c[0], axis=0)[cell])
     assert c_single > 0.0
     ratio = c_two_mats / c_single
     assert ratio == pytest.approx(1.0, rel=1e-6), (
@@ -298,7 +300,7 @@ def test_traced_debye_pole_compiles():
         assert debye_spec is not None
         coeffs, _ = init_debye(debye_spec[0], materials, grid.dt,
                                mask=debye_spec[1])
-        return jnp.sum(coeffs.beta)
+        return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(3.0))
     assert np.isfinite(float(g))
@@ -346,7 +348,7 @@ def test_traced_lorentz_pole_compiles():
         assert lorentz_spec is not None
         coeffs, _ = init_lorentz(lorentz_spec[0], materials, grid.dt,
                                  mask=lorentz_spec[1])
-        return jnp.sum(coeffs.c)
+        return sum(jnp.sum(c) for c in coeffs.c)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(np.log((2 * np.pi * 3e9) ** 2)))
     assert np.isfinite(float(g))
@@ -379,7 +381,7 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
             t_sim._geometry, t_sim._resolve_material, t_coords)
         coeffs, _ = init_debye(t_debye_spec[0], materials, t_grid.dt,
                                mask=t_debye_spec[1])
-        return jnp.sum(coeffs.beta)
+        return sum(jnp.sum(b) for b in coeffs.beta)   # per component (#1260)
 
     g = jax.grad(loss)(jnp.float32(3.0))
     assert np.isfinite(float(g))

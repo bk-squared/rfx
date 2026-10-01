@@ -102,7 +102,7 @@ def _callback_keywords():
 # ---------------------------------------------------------------------------
 
 def host_poles(identify_window, window, k_max, dt, freqs):
-    """``(s, mask, status, tail_arg)`` from the host, constants of the traced program.
+    """``(s, mask, status, tail_arg, count)`` from the host, traced constants.
 
     ``identify_window(w)`` gets the window as a numpy array of the traced
     window's own dtype and shape, bit for bit, and returns the kept poles
@@ -114,7 +114,8 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     :data:`STATUS_OVER_BUDGET` (more than ``k_max`` poles), on either failure
     with an all-zero mask; and ``tail_arg (nf, k_max)``, ``s dt + log z`` at
     ``freqs`` formed in float64 on the host and then cast (see the module
-    docstring, TAIL).
+    docstring, TAIL). ``count`` is the kept count before padding or budget
+    rejection, or -1 if identification raised; it survives an empty failure mask.
     """
     import jax
     import jax.numpy as jnp
@@ -145,20 +146,23 @@ def host_poles(identify_window, window, k_max, dt, freqs):
             s = np.asarray(identify_window(w), dtype=np.complex128).ravel()
         except Exception:  # noqa: BLE001  (reported by the host report, not here)
             s, status = np.zeros(0, dtype=np.complex128), STATUS_FAILED
+        count = -1 if status == STATUS_FAILED else s.size
         if s.size > K:
             s, status = np.zeros(0, dtype=np.complex128), STATUS_OVER_BUDGET
         s_out[:s.size] = s
         mask[:s.size] = 1
         arg = s_out[None, :] * dt + logz[:, None]                          # float64
-        return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg))
+        return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg),
+                np.asarray(count, dtype=np.int32))
 
     w_in = jax.lax.bitcast_convert_type(jax.lax.stop_gradient(window), jnp.uint32)
     shapes = (jax.ShapeDtypeStruct((K, 2, n_words), jnp.uint32),
               jax.ShapeDtypeStruct((K,), jnp.int32),
               jax.ShapeDtypeStruct((), jnp.int32),
-              jax.ShapeDtypeStruct((nf, K, 2, n_words), jnp.uint32))
-    s_words, mask_i, status, arg_words = jax.pure_callback(host, shapes, w_in,
-                                                           **_callback_keywords())
+              jax.ShapeDtypeStruct((nf, K, 2, n_words), jnp.uint32),
+              jax.ShapeDtypeStruct((), jnp.int32))
+    s_words, mask_i, status, arg_words, count = jax.pure_callback(
+        host, shapes, w_in, **_callback_keywords())
 
     def from_words(x):
         parts = jax.lax.bitcast_convert_type(x[..., 0] if n_words == 1 else x, rdt)
@@ -166,7 +170,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
 
     # The pole is the unit that crossed from the host: a complex s (1/s) in
     # the working precision.
-    return from_words(s_words), mask_i.astype(rdt), status, from_words(arg_words)
+    return from_words(s_words), mask_i.astype(rdt), status, from_words(arg_words), count
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +185,7 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     both factors built on the host in float64 and cast to the working dtype.
     """
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     rdt, cdt = working_dtypes()
     n, C = int(y.shape[0]), int(y.shape[1])
     freqs = np.asarray(freqs, dtype=np.float64)
@@ -191,8 +196,9 @@ def plain_dft(y, dt, freqs, block=DFT_BLOCK):
     z_off = np.exp(1j * np.outer(np.arange(nb, dtype=np.float64) * B, w))      # (nb, nf)
     yp = jnp.zeros((nb * B, C), dtype=rdt).at[:n].set(y.astype(rdt))
     yb = yp.reshape(nb, B, C).astype(cdt)
-    inner = jnp.einsum("fm,bmc->bfc", jnp.asarray(k_blk, dtype=cdt), yb)
-    return float(dt) * jnp.einsum("bf,bfc->fc", jnp.asarray(z_off, dtype=cdt), inner)
+    inner = jnp.einsum("fm,bmc->bfc", jnp.asarray(k_blk, dtype=cdt), yb, precision=HIGHEST)
+    return float(dt) * jnp.einsum("bf,bfc->fc", jnp.asarray(z_off, dtype=cdt), inner,
+                                      precision=HIGHEST)
 
 
 def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
@@ -206,6 +212,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     _rdt, cdt = working_dtypes()
     freqs = np.asarray(freqs, dtype=np.float64)
     dt = float(dt)
@@ -218,7 +225,7 @@ def tail_dft(s, c, n_ref, n_last, dt, freqs, tail_arg=None):
         dsdt = (s - jax.lax.stop_gradient(s)) * dt
         one_minus_lz = -jnp.expm1(tail_arg + dsdt[None, :])
     amp = jnp.exp(sdt * float(int(n_last) + 1 - int(n_ref)))[:, None] * c     # (K, C)
-    return dt * ((zN1[:, None] / one_minus_lz) @ amp)
+    return dt * jnp.matmul(zN1[:, None] / one_minus_lz, amp, precision=HIGHEST)
 
 
 # ---------------------------------------------------------------------------
@@ -248,18 +255,23 @@ def _qr_masked(A, mask):
     norms = jax.lax.stop_gradient(jnp.where(mask > 0, norms, 1.0))
     aug = jnp.diag((1.0 - mask).astype(A.dtype))
     A_aug = jnp.concatenate([A / norms.astype(A.dtype)[None, :], aug], axis=0)
-    Q, R = jnp.linalg.qr(A_aug, mode="reduced")
+    # The derivative rule of QR issues its own matrix products, which a
+    # precision= argument cannot reach; the context sets them to HIGHEST too.
+    with jax.default_matmul_precision("highest"):
+        Q, R = jnp.linalg.qr(A_aug, mode="reduced")
     return Q, R, norms
 
 
 def _solve_qr(Q, R, norms, mask, b):
     """Least-squares solution for the factorised system against ``[b; 0]``, masked."""
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
     from jax.scipy.linalg import solve_triangular
     K = R.shape[0]
     b = b.astype(Q.dtype)
     b_aug = jnp.concatenate([b, jnp.zeros((K, b.shape[1]), dtype=b.dtype)], axis=0)
-    x = solve_triangular(R, jnp.conj(Q).T @ b_aug, lower=False)
+    x = solve_triangular(R, jnp.matmul(jnp.conj(Q).T, b_aug, precision=HIGHEST),
+                         lower=False)
     return (x / norms.astype(x.dtype)[:, None]) * jnp.real(mask).astype(x.dtype)[:, None]
 
 
@@ -285,6 +297,7 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
     """
     import jax
     import jax.numpy as jnp
+    from rfx._precision import HIGHEST
 
     rdt, cdt = working_dtypes()
     if mutation not in MUTATIONS:
@@ -314,7 +327,9 @@ def completion(y, dt, freqs, n_start, s0, mask, tail_arg, *, plain=None,
         w = jax.lax.stop_gradient(1.0 / rms).astype(cdt)                       # (C,)
         D = t.astype(cdt)[:, None, None] * B0m[:, None, :] * (c0.T * w[:, None])[None, :, :]
         QB = Q0[:M] * mask_c[None, :]
-        PD = D - jnp.einsum("mk,kcj->mcj", QB, jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D))
+        PD = D - jnp.einsum("mk,kcj->mcj", QB,
+                            jnp.einsum("mk,mcj->kcj", jnp.conj(QB), D, precision=HIGHEST),
+                            precision=HIGHEST)
         A = jax.lax.stop_gradient(PD.reshape(M * C, K))
         dyw = ((Yw - jax.lax.stop_gradient(Yw)) * w[None, :]).reshape(M * C, 1)
         ds = lstsq_masked(A, dyw, mask_c)[:, 0]

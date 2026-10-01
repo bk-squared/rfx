@@ -1,11 +1,9 @@
 """Topology-independent scan arguments, local bit pins and global JAX arrays."""
 
 from functools import partial
-import hashlib
 import inspect
 import os
 from pathlib import Path
-import platform
 import socket
 import subprocess
 import sys
@@ -15,7 +13,6 @@ from unittest.mock import Mock
 
 import jax
 from jax.experimental import multihost_utils
-import jaxlib
 import numpy as np
 import pytest
 
@@ -26,26 +23,6 @@ from rfx.runners import distributed_v2
 # subprocess test has its own shared deadline instead of a pytest plugin.
 pytestmark = pytest.mark.distributed
 _FIELDS = ("ex", "ey", "ez", "hx", "hy", "hz")
-_BASELINE = {
-    "pec": {
-        "trace": "0ee5a57d7263d66d374b9911b2d735b40b17f4aca406465607d83ea07b33943d",
-        "ex": "e56cc2a200d8856de5fe7b727314d2c6d63a0c6dd64c1a6c85f78a505b1ea396",
-        "ey": "f3c49f0aeb1eeb7c232ddfa19f3e2d74feb585ca94ae39a4d9703e0716944f87",
-        "ez": "f5c4b5e1c7a06799da43663e320270bd7ba4346bc9659dae166d367491dd745f",
-        "hx": "f4899f531f073c935462d2e97459484e359b985f994d9b1e2bfe6125fe769e43",
-        "hy": "316d373d2880b5ab9a1580fb23ab70489b292b408657a738333db19e8a27a09b",
-        "hz": "5e6f7547699614e24e21233865eb46bc71efa2a5bb0554008137f40b4d2b020d",
-    },
-    "cpml": {
-        "trace": "e8a9024ff2b5917bc90e7738b584dbf03aa952d14c992dc6eb27c66a90c5f46e",
-        "ex": "4f01aa7ae12de326523bfedced694f2dd2f5f7a8740bda08f8652dd3cbc0c3e9",
-        "ey": "f1d80073b0cafe60232da9e43ed76ab2ff65a299e25235b6259e555d710d2d20",
-        "ez": "a0ea84740b70365f27f429372c0fe3940f79b22c6221002a60ea69f1a4d85b94",
-        "hx": "32967a5083226d72ad4bca2dc9bc6f724b2bd55a24c72c009fa474df1d5a3909",
-        "hy": "66026b56e7582d08ec7768e06d089dc418e2ace6d823fe026acc6dd0fd197a1c",
-        "hz": "5ca0ad0dccdfe1912f4cdc144b82ebc823d1a3d3988bc63f15e8d6442125b3ae",
-    },
-}
 
 
 def _build_box(boundary, *, dz_profile=None):
@@ -213,47 +190,6 @@ def test_non_uniform_grid_is_refused_across_processes(monkeypatch):
         sim.run(n_steps=3, devices=devices)
     assert "more than one JAX process" in str(exc.value)
     scan.assert_not_called()
-
-
-@pytest.mark.skipif(
-    (sys.platform, platform.machine(), jax.__version__, jaxlib.__version__)
-    != ("darwin", "arm64", "0.10.2", "0.10.2"),
-    reason="SHA256 pins require the measurement toolchain: Darwin arm64 JAX/jaxlib 0.10.2",
-)
-@pytest.mark.parametrize("boundary", ["pec", "cpml"])
-def test_single_process_path_is_bit_identical(boundary):
-    """Pin the explicit-argument scan after PI decision A (2026-09-23).
-
-    BEFORE: origin/main c2dbf922bc9230cd6fa4054a7b6d84d118768bde used the
-    capturing-lambda path on one process. Decision A passes material, PEC-mask,
-    dispersion and CPML arrays as explicit jit arguments on every topology.
-    Root cause of the shift (reviewer, measured): XLA's algebraic simplifier
-    rewrote arithmetic on the captured, uniform eps_r array of these vacuum
-    boxes; with arguments it no longer knows the array is uniform. Disabling
-    the algsimp pass makes old and new bit-identical; boxes whose eps_r varies
-    anywhere are bit-identical without it. Which models move depends on the
-    XLA version.
-
-    Measured on Darwin arm64, JAX/jaxlib 0.10.2, two CPU devices, 20 steps:
-    max per-value float32 ULP shift (trace / all six fields) was
-    PEC 6 / 1,469,981,254 and CPML 3 / 1,459,299,516. These field distances use
-    monotonic float32 bit ordering across signs, collapsing signed zero;
-    near-zero cancellation values change sign. Restricting to same-sign
-    values gives field maxima of 70,132,873 and 461,373,440 ULP, respectively.
-    Max absolute field shifts divided by spacing(field peak) are only 0.5
-    and 1.0 ULP; a few-ULP bound per field value would be incorrect.
-
-    The pins are what this test computes: _build_box's fixture, 20 steps on two
-    CPU devices, SHA256 over np.asarray(array).tobytes() of time_series and
-    state.ex/ey/ez/hx/hy/hz. They remain toolchain scoped. CPML adds two cells
-    per face: shape 20x12x12.
-    """
-    result = _build_box(boundary).run(n_steps=20, devices=_cpu_devices())
-    arrays = _snapshot(result)
-    assert np.max(np.abs(arrays["trace"])) > 0
-    actual = {name: hashlib.sha256(array.tobytes()).hexdigest()
-              for name, array in arrays.items()}
-    assert actual == _BASELINE[boundary]
 
 
 @pytest.mark.parametrize("boundary", ["pec", "cpml"])

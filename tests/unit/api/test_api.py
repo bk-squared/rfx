@@ -919,7 +919,7 @@ def test_periodic_axes_reject_specialized_source_conflicts():
         cpml_layers=8,
         dx=0.001,
     )
-    sim_tfsf.set_periodic_axes("y")
+    sim_tfsf.set_periodic_axes("x")
     with pytest.raises(ValueError, match="periodic-axis overrides"):
         sim_tfsf.add_tfsf_source()
 

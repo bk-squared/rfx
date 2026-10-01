@@ -116,9 +116,14 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
         else:
             # The collapsed z direction in 2D is one extruded integration
             # cell, not a pair of stored bounding nodes.
-            cells = 1 if getattr(grid, "is_2d", False) and t == 2 else grid.shape[t] - pad_lo - pad_hi - 1
+            if getattr(grid, "is_2d", False) and t == 2:
+                cells = 1
+            else:
+                cells = grid.shape[t] - pad_lo - pad_hi - (letter not in getattr(grid, "periodic_axes", ""))
             edges = np.arange(cells + 1, dtype=float) * grid.dx
             c = float(domain[t]) / 2 if c is None else c
+            from rfx._periodic import interval_coordinates
+            interval_coordinates(grid, t, c - size[n] / 2, c + size[n] / 2)
             indices = (round(c / grid.dx - size[n] / (2 * grid.dx)),
                        round(c / grid.dx + size[n] / (2 * grid.dx)))
         axes.append(resolve_flux_axis(edges, pad_lo, c, size[n], indices=indices))

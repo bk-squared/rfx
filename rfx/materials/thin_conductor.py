@@ -327,18 +327,32 @@ def pinned_sheet_spec(grid, sheet: PinnedSheet):
     POSITIONS, so this is the same spec whether the mesh is concrete or a
     tracer, and the same spec on the uniform and non-uniform lanes.
     """
-    from rfx.boundaries.pec import SheetSpec
+    from rfx.boundaries.pec import SheetSpec, _fold_sheet_nodes
     pads = _axis_pads(grid)
     a = int(sheet.normal_axis)
     others = tuple(b for b in range(3) if b != a)
     plane = int(sheet.plane_index) + pads[a]
+    if 'xyz'[a] in getattr(grid, 'periodic_axes', ''):
+        plane = grid.index_of(a, sheet.plane_index * float(grid.cells(a)[0]))
     ranges = []
+    shape = list(grid.shape)
     for t, rng in zip(others, (sheet.i_range, sheet.j_range)):
-        ranges.append((int(rng[0]) + pads[t], int(rng[1]) + pads[t]))
-    return SheetSpec.from_node_ranges(
-        tuple(grid.shape), normal_axis=a, plane=plane,
+        lo, hi = int(rng[0]) + pads[t], int(rng[1]) + pads[t]
+        if 'xyz'[t] in getattr(grid, 'periodic_axes', ''):
+            from rfx._periodic import interval_coordinates
+            width = float(grid.cells(t)[0])
+            interval_coordinates(grid, t, rng[0] * width, rng[1] * width)
+            shape[t] += 1
+        ranges.append((lo, hi))
+    spec = SheetSpec.from_node_ranges(
+        tuple(shape), normal_axis=a, plane=plane,
         in_plane_ranges=tuple(ranges),
         name=sheet.name or "pinned_sheet")
+    if tuple(shape) != tuple(grid.shape):
+        from dataclasses import replace
+        spec = replace(spec, footprint=_fold_sheet_nodes(spec.footprint, grid.shape),
+                       unwrapped_footprint=spec.footprint)
+    return spec
 
 
 def pinned_sheet_realized(grid, sheet: PinnedSheet) -> dict:
@@ -365,6 +379,8 @@ def pinned_sheet_realized(grid, sheet: PinnedSheet) -> dict:
 
     def _at(axis, idx):
         line = lines[axis]
+        if 'xyz'[axis] in getattr(grid, 'periodic_axes', '') and idx == grid.shape[axis]:
+            return float(grid.domain[axis])
         return None if is_tracer(line) else float(np.asarray(line)[idx])
 
     out = {
@@ -393,7 +409,30 @@ def _pec_sheet_spec(conductor, grid, *, lane: str):
     coords = GridCoords(x=x, y=y, z=z, shape=tuple(grid.shape))
     return sheet_spec_from_shape(
         conductor.shape, coords, cell_sizes_from_uniform_grid(grid),
-        name="thin_conductor", lane=lane, refuse_thick=True)
+        name="thin_conductor", lane=lane, refuse_thick=True, grid=grid)
+
+
+
+def _thin_conductor_cell_mask(shape, grid):
+    """DC sheet sampling with the periodic normal plane identified first."""
+    if getattr(grid, 'periodic_axes', ''):
+        from rfx._periodic import periodic_mask, plane_coordinate
+        from rfx.geometry.csg import _grid_coords
+        lo, hi = sheet_bounds(shape)
+        normal = None if lo is None or hi is None else min(range(3), key=lambda a: hi[a] - lo[a])
+        if normal is not None and hi[normal] - lo[normal] <= float(grid.cells(normal)[0]):
+            mid = .5 * (lo[normal] + hi[normal])
+            sample = list(_grid_coords(grid))
+            shift = mid - plane_coordinate(grid, normal, mid)
+            if shift:
+                sample[normal] = sample[normal] + shift
+            mask = periodic_mask(grid, shape, sample,
+                                 axes=tuple(a for a in range(3) if a != normal))
+        else:
+            mask = shape.mask(grid)
+    else:
+        mask = shape.mask(grid)
+    return mask
 
 
 def apply_thin_conductor(
@@ -449,8 +488,6 @@ def apply_thin_conductor(
         sheets.append(spec)
         return materials, pec_mask
 
-    mask = conductor.shape.mask(grid)
-
     if conductor.surface_impedance_f0 is not None:
         # Leontovich (band-centre) surface-impedance mode (issues #669/#677):
         # the sheet is a resistive sheet of sheet resistance Rs0 =
@@ -498,7 +535,8 @@ def apply_thin_conductor(
             sigma_sheet = jnp.where(mask, g_sheet / grid.dx, 0.0)
             sheet_specs.append(SheetImpedanceSpec(
                 mask=mask, normal_axis=n_axis, g_sheet=g_sheet,
-                sigma_sheet=sigma_sheet, plane=spec.plane))
+                sigma_sheet=sigma_sheet, plane=spec.plane,
+                unwrapped_footprint=spec.unwrapped_footprint))
         # Materials are returned UNCHANGED: assembled arrays are sheet-free
         # by design since #677. A caller that runs the fields without
         # applying the sheet ctx must refuse f0 sheets at its entry point
@@ -507,6 +545,8 @@ def apply_thin_conductor(
 
     # Lossy thin conductor (DC fold): effective conductivity preserves
     # the DC sheet resistance R_s = 1/(sigma_bulk*t).
+    mask = _thin_conductor_cell_mask(conductor.shape, grid)
+
     sigma_eff = conductor.sigma_bulk * (conductor.thickness / grid.dx)
 
     eps_r = jnp.where(mask, conductor.eps_r, materials.eps_r)
@@ -540,6 +580,7 @@ class SheetImpedanceSpec:
     g_sheet: object       # scalar sheet conductance per square, 1/Rs0 (S)
     sigma_sheet: object   # (nx, ny, nz) float — G/d_dual at sheet cells
     plane: int | None = None   # realized node plane (#931); None = read from mask
+    unwrapped_footprint: object | None = None
 
 
 @dataclass(frozen=True)
@@ -618,7 +659,8 @@ def build_sheet_impedance_ctx(sheet_specs, pec_edge_masks=None,
                 other = tuple(b for b in range(3) if b != a)
                 layers = np.flatnonzero(np.asarray(jnp.any(sp.mask, axis=other)))
                 plane = int(layers[0]) if layers.size else 0
-        sheets.append(SheetSpec(normal_axis=a, plane=int(plane), footprint=sp.mask))
+        sheets.append(SheetSpec(normal_axis=a, plane=int(plane), footprint=sp.mask,
+                                unwrapped_footprint=sp.unwrapped_footprint))
         if k:
             # Coincident same-normal sheets are PARALLEL sheet admittances
             # (1/Rs_tot = 1/Rs_1 + 1/Rs_2); ``sigma_sheet = G/d_dual`` is

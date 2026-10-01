@@ -1099,7 +1099,7 @@ def digest_preflight(report) -> list[dict]:
     gained a 7th row, ``uncoded None: jax.experimental.shard_map is
     deprecated in v0.8.0``, and the gate failed
     (``1 failed, 81 passed, 1 skipped in 54.33s``) -- while CI stayed green
-    because it resolves jax 0.6.2. It is also ORDER dependent: importing a
+    because it then resolved jax 0.6.2. It is also ORDER dependent: importing a
     module that pulls ``jax.experimental.shard_map`` earlier in the same
     process consumes the once-per-location warning and the row disappears.
     Uncoded ERROR rows are kept: those come from an rfx validator raising.

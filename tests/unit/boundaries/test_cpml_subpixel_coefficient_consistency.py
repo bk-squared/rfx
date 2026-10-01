@@ -303,8 +303,9 @@ def test_threading_an_equal_permittivity_is_bit_identical():
     (False, False, True),    # #1210: the plain E update is per-component too
     (True, False, True),     # Stage 1 -> 1/aniso_eps
     # dispersion wins the E update, so it wins here too (with subpixel on,
-    # a dispersive run is refused since 2.0: the tensor would be dropped)
-    (False, True, False),
+    # a dispersive run is refused since 2.0: the tensor would be dropped);
+    # since #1260 its eps_inf is the same per-component edge mean
+    (False, True, True),
 ])
 def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
         monkeypatch, subpixel, dispersive, expect_threaded):
@@ -329,6 +330,14 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
     through ``test_threading_an_equal_permittivity_is_bit_identical`` above — a
     homogeneous pad averages to itself exactly.
 
+    RE-PINNED 2026-09-26, root cause #1260: the dispersive row used to expect
+    NO threading, because the Debye/Lorentz update took ONE eps_inf per cell
+    (``materials.eps_r``) for all three components. It now builds eps_inf per
+    component from ``component_e_materials`` -- the plain update's edge mean --
+    so the psi half must take that array too, and on a dispersive run the
+    threaded array is checked to BE that mean (not an anisotropic one, which
+    the dispersive update ignores).
+
     (The committed-geometry CPML control is NOT pinned as unchanged: its pad
     holds ``materials.eps_r = 12`` against ``aniso_eps = 1``, so its numbers
     move by design. cv01 Run 1 goes 0.9195301017439319 -> 0.9166511849380675;
@@ -340,10 +349,21 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
     from rfx.materials.lorentz import LorentzPole
 
     seen = []
+    edge_mean_matches = []
     orig = _cpml.apply_cpml_e
 
     def spy(*a, **kw):
-        seen.append(kw.get("inv_eps_r_update"))
+        inv = kw.get("inv_eps_r_update")
+        seen.append(inv)
+        if dispersive and inv is not None and kw.get("materials") is not None:
+            # inside the scan these are tracers: compare in JAX, report at run time
+            import jax
+            import jax.numpy as jnp
+            from rfx.core.yee import component_e_materials
+            eps_c, _ = component_e_materials(kw["materials"])
+            ok = jnp.all(jnp.stack([jnp.all(i == 1.0 / e)
+                                    for i, e in zip(inv, eps_c)]))
+            jax.debug.callback(lambda v: edge_mean_matches.append(bool(v)), ok)
         return orig(*a, **kw)
 
     monkeypatch.setattr(_cpml, "apply_cpml_e", spy)
@@ -368,6 +388,10 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
         assert len(threaded) == len(seen), (
             f"expected every CPML-E call to carry inv_eps_r_update, "
             f"{len(seen) - len(threaded)} of {len(seen)} did not")
+        if dispersive:
+            assert edge_mean_matches and all(edge_mean_matches), (
+                "on a dispersive run the psi coefficient must be the edge mean "
+                "of eps_r that the dispersive update's eps_inf uses (#1260)")
     else:
         assert not threaded, (
             f"inv_eps_r_update was passed on a run whose E update does not use "
