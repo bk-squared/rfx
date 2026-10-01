@@ -15,6 +15,7 @@ from rfx.sources import tfsf
 @pytest.mark.parametrize("kind,expected", [
     ("normal", ((False, True, True), "x")),
     ("bloch", ((False, True, True), "x")),
+    ("p", ((False, True, True), "x")),
     ("methodB", ((False, False, True), "xy")),
     ("closed", ((False, False, False), "xyz")),
 ])
@@ -40,9 +41,10 @@ def _capture_policy(monkeypatch, entry, kind, expected):
                      dx=0.001, cpml_layers=4)
     sim.add_tfsf_source(
         f0=15e9, bandwidth=0.15, margin=3,
-        angle_deg=20 if kind in ("bloch", "methodB") else 0,
+        angle_deg=20 if kind in ("bloch", "methodB", "p") else 0,
         method="methodB" if kind == "methodB" else "bloch",
         closed_box=kind == "closed",
+        polarization="p" if kind == "p" else "ez",
     )
     captured = {}
 
@@ -60,3 +62,16 @@ def _capture_policy(monkeypatch, entry, kind, expected):
     # Preserve forward's existing wall policy as well as the shared flags.
     if entry == "forward":
         assert captured["pec_axes"] == (None if kind == "closed" else "")
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_p_helper_change_reaches_both_entry_points(monkeypatch, entry):
+    original = tfsf.tfsf_boundary_flags
+
+    def changed(cfg):
+        if getattr(cfg, "mode", None) == "P":
+            return (False, True, False), "xz"
+        return original(cfg)
+
+    monkeypatch.setattr(tfsf, "tfsf_boundary_flags", changed)
+    _capture_policy(monkeypatch, entry, "p", ((False, True, False), "xz"))

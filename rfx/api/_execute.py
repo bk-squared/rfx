@@ -3296,6 +3296,17 @@ class _ExecuteMixin:
         self._require_no_half_node_split()
         is_nonuniform = self._uses_nonuniform_mesh
 
+        if self._tfsf is not None and self._tfsf.polarization == "p":
+            if any(face.startswith(("y_", "z_")) for face in self._boundary_spec.pmc_faces()):
+                raise NotImplementedError(
+                    "polarization='p' Bloch TFSF does not support magnetic transverse faces")
+            if (is_nonuniform or distributed or (devices is not None and len(devices) > 1)
+                    or self._refinement is not None or self._mode != "3d"
+                    or self._solver != "yee" or self._stencil_order != 2):
+                raise NotImplementedError(
+                    "polarization='p' TFSF requires a uniform, single-device, 3D "
+                    "second-order Yee run/forward; non-uniform, distributed and subgrid lanes are unsupported")
+
         if self._tfsf is not None:
             from rfx.sources.sources import CustomWaveform
             extended_tfsf = (self._tfsf.closed_box

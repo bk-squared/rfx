@@ -903,6 +903,16 @@
     },
     {
       "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_e_p",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_e_p",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
       "function": "_update_e_tez",
       "kind": "boundary"
     },
@@ -919,6 +929,16 @@
     {
       "file": "rfx/sources/tfsf_2d.py",
       "function": "_update_e_tmz",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_h_p",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/sources/tfsf_2d.py",
+      "function": "_update_h_p",
       "kind": "roll/diff"
     },
     {

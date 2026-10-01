@@ -208,7 +208,11 @@ def validate_custom_tfsf_waveform(waveform, dt: float, n_steps: int) -> None:
 
 
 def _refuse_extended_tfsf(entry, lane: str) -> None:
-    """Admission fence for runners that cannot carry either new source input."""
+    """Admission fence for runners that cannot carry these source inputs."""
+    if entry is not None and getattr(entry, "polarization", None) == "p":
+        raise NotImplementedError(
+            f"polarization='p' TFSF is not supported on {lane}; "
+            "use the uniform single-device 3D second-order Yee run/forward")
     if entry is not None and (getattr(entry, "closed_box", False)
                               or isinstance(entry.waveform, CustomWaveform)):
         raise NotImplementedError(
@@ -302,6 +306,11 @@ def init_tfsf(
     (TFSFConfig, TFSFState) for normal incidence, or
     (TFSF2DConfig, TFSF2DState) for oblique incidence (|angle_deg| > 0.01).
     """
+    if polarization == "p":
+        if method != "bloch" or closed_box:
+            raise NotImplementedError("polarization='p' requires method='bloch' and closed_box=False")
+        if abs(angle_deg) <= 0.01:
+            raise NotImplementedError("polarization='p' requires oblique |angle_deg| > 0.01; use 'ey' at normal incidence")
     custom = isinstance(waveform, CustomWaveform)
     if not custom and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
         raise ValueError(

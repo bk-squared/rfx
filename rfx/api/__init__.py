@@ -2185,7 +2185,8 @@ class Simulation(
         """Add a normal-incidence plane-wave TFSF source.
 
         Current scope is intentionally narrow: x-directed propagation,
-        ``ez``/``ey`` polarization, 3D mode, and CPML boundaries. For
+        ``ez``/``ey`` or ``p`` polarization, 3D mode, and CPML boundaries.
+        ``p`` uses xy incidence with Ex/Ey and Hz (Bloch only). For
         oblique incidence, only the single transverse-axis plane implied
         by the chosen polarization is supported.
 
@@ -2262,8 +2263,15 @@ class Simulation(
             raise ValueError(f"bandwidth must be positive, got {bandwidth}")
         if margin < 1:
             raise ValueError(f"margin must be >= 1, got {margin}")
-        if polarization not in ("ez", "ey"):
-            raise ValueError(f"polarization must be 'ez' or 'ey', got {polarization!r}")
+        if polarization == "p":
+            if method != "bloch" or closed_box:
+                raise NotImplementedError("polarization='p' requires method='bloch' and closed_box=False")
+            if abs(angle_deg) <= 0.01:
+                raise NotImplementedError("polarization='p' requires oblique |angle_deg| > 0.01; use 'ey' at normal incidence")
+            if self._mode != "3d":
+                raise NotImplementedError("polarization='p' requires mode='3d'")
+        if polarization not in ("ez", "ey", "p"):
+            raise ValueError(f"polarization must be 'ez', 'ey', or 'p', got {polarization!r}")
         if direction not in ("+x", "-x"):
             raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
         if abs(angle_deg) >= 90.0:

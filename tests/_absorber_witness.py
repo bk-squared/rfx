@@ -229,7 +229,7 @@ def tfsf_auxiliary_reflection(n_layers, face, freqs, *, far=400, reference_dista
 
 
 def tfsf_oblique_auxiliary_reflection(n_layers=30, *, polarization="ez", direction="+x",
-                                     steps=2500):
+                                     steps=2500, r_asymptotic=1e-15):
     """Return backward/forward plane-wave amplitude at 30 degrees, near 10 GHz.
 
     Propagate the shipped 2-D auxiliary updates and fit both numerical Yee
@@ -247,7 +247,7 @@ def tfsf_oblique_auxiliary_reflection(n_layers=30, *, polarization="ez", directi
         150, 4, dx, dt, nz=4, cpml_layers=20, tfsf_margin=5,
         f0=frequency, bandwidth=bandwidth, theta_deg=30,
         polarization=polarization, direction=direction,
-        aux_n_cpml=n_layers, aux_cpml_r_asymptotic=1e-15,
+        aux_n_cpml=n_layers, aux_cpml_r_asymptotic=r_asymptotic,
     )
     left, right = cfg.src_x + 40, cfg.n2x - n_layers - 40
     if direction == "-x":

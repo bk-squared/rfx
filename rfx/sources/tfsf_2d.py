@@ -1,6 +1,6 @@
 """2D auxiliary grid for oblique-incidence TFSF plane waves.
 
-Supports two modes:
+Supports three modes:
 
 **TMz** (xy-plane): Ez out-of-plane, Hx/Hy in-plane.
   Used for ``ez`` polarization oblique incidence.
@@ -10,7 +10,9 @@ Supports two modes:
   Used for ``ey`` polarization oblique incidence.
   Periodic in z, CFS-CPML on x boundaries.
 
-Both modes use the same cell size ``dx`` as the 3D simulation so
+**P (xy-plane)**: Ex/Ey in-plane, Hz out-of-plane; ``polarization="p"``.
+
+All modes use the same cell size ``dx`` as the 3D simulation so
 numerical dispersion matches exactly at any angle.
 
 Oblique wavevector — Bloch field-transformation (#404)
@@ -117,10 +119,11 @@ class TFSF2DState(NamedTuple):
     Field semantics depend on mode:
       TMz: ez_2d=Ez, hx_2d=Hx, hy_2d=Hy  (xy-plane)
       TEz: ez_2d=Ey, hx_2d=Hx, hy_2d=Hz  (xz-plane)
+      P:   ez_2d=Ey, hx_2d=Ex, hy_2d=Hz  (xy-plane)
     """
-    ez_2d: jnp.ndarray   # (n2x, n2t) — E out-of-plane
-    hx_2d: jnp.ndarray   # (n2x, n2t) — H transverse component 1
-    hy_2d: jnp.ndarray   # (n2x, n2t) — H longitudinal / component 2
+    ez_2d: jnp.ndarray   # (n2x, n2t) — Ez or Ey
+    hx_2d: jnp.ndarray   # (n2x, n2t) — Hx, or Ex in P mode
+    hy_2d: jnp.ndarray   # (n2x, n2t) — Hy or Hz
     # CFS-CPML psi arrays (x-direction only, 4 total)
     psi_ez_xlo: jnp.ndarray  # (n_cpml, n2t)
     psi_ez_xhi: jnp.ndarray  # (n_cpml, n2t)
@@ -134,7 +137,7 @@ class TFSF2DConfig(NamedTuple):
     x_lo: int
     x_hi: int
     n2x: int
-    n2y: int          # periodic transverse dim (ny for TMz, nz for TEz)
+    n2y: int          # periodic transverse dim (ny for TMz/P, nz for TEz)
     i0_x: int         # 2D x-index mapping to 3D x_lo
     i0_y: int         # always 0 (periodic transverse, no padding)
     src_x: int
@@ -159,7 +162,7 @@ class TFSF2DConfig(NamedTuple):
     grid_pad: int
     angle_deg: float
     dx_1d: float
-    mode: str         # "TMz" or "TEz"
+    mode: str         # "TMz", "TEz", or "P"
     magnetic_lo: CPMLParams
     magnetic_hi: CPMLParams
 
@@ -192,6 +195,7 @@ def init_tfsf_2d(
 
     TMz mode (ez polarization): 2D grid in xy-plane, periodic in y.
     TEz mode (ey polarization): 2D grid in xz-plane, periodic in z.
+    P mode (p polarization): Ex/Ey/Hz in xy, periodic in y.
     CFS-CPML on x boundaries only.
 
     Parameters
@@ -200,8 +204,8 @@ def init_tfsf_2d(
         Number of cells in z (3D grid).  Required for ey oblique
         (TEz mode).  Ignored for ez polarization.
     """
-    if polarization not in ("ez", "ey"):
-        raise ValueError(f"polarization must be 'ez' or 'ey', got {polarization!r}")
+    if polarization not in ("ez", "ey", "p"):
+        raise ValueError(f"polarization must be 'ez', 'ey', or 'p', got {polarization!r}")
     if direction not in ("+x", "-x"):
         raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
     if abs(theta_deg) >= 90.0:
@@ -210,6 +214,8 @@ def init_tfsf_2d(
     # Determine mode
     if polarization == "ez":
         mode = "TMz"
+    elif polarization == "p":
+        mode = "P"
     else:
         mode = "TEz"
 
@@ -230,7 +236,7 @@ def init_tfsf_2d(
 
     # ---- 2D grid sizing ----
     # Periodic transverse dimension: y for TMz, z for TEz
-    if mode == "TMz":
+    if mode in ("TMz", "P"):
         n2y = ny
     else:
         if nz is None:
@@ -286,7 +292,7 @@ def init_tfsf_2d(
         electric_component = "ey"
         magnetic_component = "hz"
         curl_sign = -1.0
-        transverse_axis = "z"
+        transverse_axis = "y" if mode == "P" else "z"
 
     direction_sign = 1.0 if direction == "+x" else -1.0
 
@@ -541,6 +547,43 @@ def _update_e_tez(cfg, st, dx, dt, t):
     )
 
 
+# P polarization in xy: slots (ez_2d, hx_2d, hy_2d) hold (Ey, Ex, Hz).
+# Yee locations in units of dx: Ey=(i,j+1/2), Ex=(i+1/2,j),
+# Hz=(i+1/2,j+1/2). E is at integer time, H at half time, exactly
+# as in core.yee: Faraday uses forward differences, Ampere backward.
+# The envelope is indexed by j (not physical y); staggering is carried by
+# these differences, so no extra half-y phase belongs in face sampling.
+def _update_h_p(cfg, st, dx, dt):
+    """Hz += dt/mu0 * (D_y+ Ex - D_x+ Ey)."""
+    ey, ex, hz = st.ez_2d, st.hx_2d, st.hy_2d
+    coeff = dt / (component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0)
+    phase = jnp.exp(-1j * cfg.k_transverse * dx)
+    dex_dy = (jnp.roll(ex, -1, axis=1) * phase - ex) / dx
+    dey_dx = (jnp.concatenate([ey[1:], jnp.zeros_like(ey[:1])]) - ey) / dx
+    hz = hz + coeff * (dex_dy - dey_dx)
+    # Hz lives at x=i+1/2: use the shared magnetic half-cell profiles.
+    hz, lo, hi = _apply_cpml_h(cfg, st, dey_dx, hz, -coeff)
+    return st._replace(hy_2d=hz, psi_hy_xlo=lo, psi_hy_xhi=hi)
+
+
+def _update_e_p(cfg, st, dx, dt, t):
+    """Ex += dt/eps0 D_y- Hz; Ey -= dt/eps0 D_x- Hz + soft Ey source."""
+    ey, ex, hz = st.ez_2d, st.hx_2d, st.hy_2d
+    coeff = dt / EPS_0
+    phase = jnp.exp(1j * cfg.k_transverse * dx)
+    dhz_dy = (hz - jnp.roll(hz, 1, axis=1) * phase) / dx
+    dhz_dx = (hz - jnp.concatenate([jnp.zeros_like(hz[:1]), hz[:-1]])) / dx
+    ex = ex + coeff * dhz_dy
+    ey = ey - coeff * dhz_dx
+    ey, lo, hi = _apply_cpml_e(cfg, st, dhz_dx, ey, -coeff)
+    arg = (t - cfg.src_t0) / cfg.src_tau
+    source = (cfg.src_amp * jnp.exp(-1j * 2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+              * jnp.exp(-(arg ** 2)))
+    ey = ey.at[cfg.src_x, :].add(source)
+    return st._replace(ez_2d=ey, hx_2d=ex, psi_ez_xlo=lo,
+                       psi_ez_xhi=hi, step=st.step + 1)
+
+
 # ---------------------------------------------------------------------------
 # Mode-dispatching update entry points
 # ---------------------------------------------------------------------------
@@ -586,9 +629,11 @@ def update_tfsf_2d_h(cfg: TFSF2DConfig, st: TFSF2DState,
                       dx: float, dt: float) -> TFSF2DState:
     """Advance 2D auxiliary H: H^{n-1/2} -> H^{n+1/2}.
 
-    Dispatches to TMz or TEz based on ``cfg.mode``.
+    Dispatches to TMz, TEz, or P based on ``cfg.mode``.
     """
-    if cfg.mode == "TEz":
+    if cfg.mode == "P":
+        out = _update_h_p(cfg, st, dx, dt)
+    elif cfg.mode == "TEz":
         out = _update_h_tez(cfg, st, dx, dt)
     else:
         out = _update_h_tmz(cfg, st, dx, dt)
@@ -599,9 +644,11 @@ def update_tfsf_2d_e(cfg: TFSF2DConfig, st: TFSF2DState,
                       dx: float, dt: float, t: float) -> TFSF2DState:
     """Advance 2D auxiliary E: E^n -> E^{n+1} + source injection.
 
-    Dispatches to TMz or TEz based on ``cfg.mode``.
+    Dispatches to TMz, TEz, or P based on ``cfg.mode``.
     """
-    if cfg.mode == "TEz":
+    if cfg.mode == "P":
+        out = _update_e_p(cfg, st, dx, dt, t)
+    elif cfg.mode == "TEz":
         out = _update_e_tez(cfg, st, dx, dt, t)
     else:
         out = _update_e_tmz(cfg, st, dx, dt, t)
@@ -682,6 +729,16 @@ def _face_incident(sample_vals, cfg: TFSF2DConfig, n_trans: int, dx: float,
 
 # ---------------------------------------------------------------------------
 # 3D TFSF corrections using 2D auxiliary grid
+#
+# For P, equivalence currents n x H and -n x E on an x-normal face
+# contain only Ey and Hz; Ex is normal and has no x-face correction.
+# In the Yee stencil Ey -= dt/eps D_x- Hz and Hz -= dt/mu D_x+ Ey.
+# At the low face the missing incident Hz[i0-1] and unwanted Ey[i0]
+# therefore require +dt/(eps dx) Hz and +dt/(mu dx) Ey; the high face
+# has opposite signs. These are the existing curl_sign=-1 corrections,
+# broadcast along z (P transverse_axis=y), not TEz's broadcast along y.
+# Ey samples x=i at E^n; Hz samples x=i+1/2 at H^(n+1/2), so the
+# existing i0-1/i0 and high-face indices match core.yee without a shift.
 # ---------------------------------------------------------------------------
 
 def apply_tfsf_2d_e(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
