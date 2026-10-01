@@ -290,3 +290,59 @@ def test_g5_kernel_admission(case):
         ctx.stencil_order = 4
     with pytest.raises(NotImplementedError, match="adjoint"):
         design_adjoint_scan(ctx, initial, ())
+
+
+def test_g1_raw_coefficients_lossless_point():
+    """#1424 follow-up: differentiate the identical resolved edge arrays."""
+    import rfx.adjoint as adjoint
+    from rfx.simulation import make_core_step, core_step_invariants
+
+    class Captured(Exception):
+        pass
+
+    captured = {}
+    def capture(ctx, initial, xs):
+        captured.update(ctx=ctx, initial=initial, xs=xs)
+        raise Captured
+
+    with enable_x64():
+        sim, eps = fixture("float64", True)
+        with patch.object(adjoint, "design_adjoint_scan", capture):
+            with pytest.raises(Captured):
+                objective(sim, mode="adjoint")(eps, jnp.zeros_like(eps))
+        ctx, initial, xs = (captured[k] for k in ("ctx", "initial", "xs"))
+        coefficients = (ctx.design_box.ca, ctx.design_box.cb)
+
+        def loss(coeffs, mode):
+            local = replace(ctx, design_box=ctx.design_box._replace(
+                ca=coeffs[0], cb=coeffs[1]))
+            if mode == "adjoint":
+                last, _ = adjoint.design_adjoint_scan(local, initial, xs)
+            else:
+                core = make_core_step(local, core_step_invariants(local))
+                def step(carry, row):
+                    carry, _, _ = core(carry, *row)
+                    return carry, None
+                def segment(carry, rows):
+                    return jax.lax.scan(step, carry, rows)
+                rows = jax.tree.map(lambda a: a.reshape((8, STEPS // 8) + a.shape[1:]), xs)
+                last, _ = jax.lax.scan(jax.checkpoint(segment), initial, rows)
+            spectrum = last["dft_planes"][0] / ctx.dt
+            weights = jnp.arange(spectrum.size).reshape(spectrum.shape) + 1
+            return jnp.sum(weights * jnp.abs(spectrum)**2)
+
+        results = [jax.jit(jax.value_and_grad(lambda ab: loss(ab, mode)))(coefficients)
+                   for mode in ("autodiff", "adjoint")]
+        relative = []
+        for name, actual, reference in zip(("gCa", "gCb"), results[1][1], results[0][1]):
+            component_errors = errors(actual, reference)
+            peak = max(float(jnp.max(jnp.abs(a))) for a in reference)
+            difference = max(float(jnp.max(jnp.abs(a-b))) for a, b in zip(actual, reference))
+            relative.append(difference / peak)
+            print(f"RAW {name} max_abs_difference={difference:.17g} "
+                  f"reference_peak={peak:.17g} max_relative={relative[-1]:.17g} "
+                  f"component_relative={component_errors}", flush=True)
+        print(f"RAW values={[float(r[0]) for r in results]} "
+              f"edge_shapes={[a.shape for a in coefficients[0]]}", flush=True)
+        np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-12)
+        assert max(relative) <= 1e-5
