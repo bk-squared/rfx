@@ -179,14 +179,15 @@ W0-style accumulator witness for these channels.
 
 Judge completed gradients with `gradient_witness(g, g_early, ringdown=result.ringdown,
 bin_axis=k)` when axis `k` carries frequency: it normalizes each bin of each
-parameter leaf independently and returns the worst bin. Exactly zero reference
+parameter leaf independently and returns the worst bin, so pass only the bins
+your objective reads (a near-zero gradient at an unused band edge reads large). Exactly zero reference
 bins are skipped and counted. Without `bin_axis`, normalization is per leaf;
 a scalar objective's gradient is already per objective. A passing value witness
 does not establish a passing gradient witness. Where the early-start witness
 cannot be formed, compare against a record 1.5–2 times longer.
 The weak-port cavity contract is in
-`tests/unit/sparams/test_ringdown_identification.py`.
-→ [#1419](https://github.com/bk-squared/rfx/issues/1419)
+`tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
+identification-probe option; port-only identification remains the default).
 
 **A gradient can be wrong by tens of percent on a record whose value is
 converged.** Every frequency-domain quantity rfx differentiates is a DFT of a
