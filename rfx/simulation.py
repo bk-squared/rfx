@@ -2864,7 +2864,7 @@ def run(
     gradient : {"autodiff", "adjoint"}
         Adjoint requires a uniform real-valued design box. It stores local
         DFTs instead of checkpoints; checkpoint options are unused.
-        See ``docs/design_notes/20261001-1424-reciprocity-adjoint.md``.
+        See the module docstring of ``rfx.adjoint``.
     boundary : "pec", "cpml", or "upml"
     cpml_axes : axes string for CPML (default "xyz")
     pec_axes : axes string or None

@@ -1,4 +1,56 @@
-"""Settled-spectrum reciprocity adjoint of the uniform production scan (#1424)."""
+"""Settled-spectrum reciprocity adjoint of the uniform production scan (#1424).
+
+Discrete overlap
+----------------
+
+Use the production DFT convention `F = dt sum_n f[n] exp(-i w n dt)`.
+E is sampled after the update, at `(n+1)dt`; the design hook observes
+`E[n]` and `curl H[n+1/2]`. For each bin, eliminating H gives a symmetric
+uniform interior electric operator L with `L E = q/Cb`, where q is an
+additive E increment with the post-update timestamp. Reciprocity gives
+`dY_m = sum_j L^-1[m,j] (dCa_j Epre_j + dCb_j curlH_j)/Cb_j`.
+For JAX's complex cotangent b, `dJ = Re sum_m b_m dY_m` (no conjugation).
+An ordinary second forward run with `DFT(q_m)=Cb_m b_m` produces A on the
+design edges. Therefore
+
+dJ/dCa_j = Re sum_bins A_j Epre_j / Cb_j
+dJ/dCb_j = Re sum_bins A_j curlH_j / Cb_j.
+
+Both field factors include dt; the source DFT targets b, not b*dt.
+JAX differentiates the production edge averaging and Ca/Cb arithmetic
+outside the custom VJP. Public adjoint admission refuses every supplied
+`design_sigma_override` (#1424: conductivity derivative not validated).
+Fixed material conductivity remains allowed; its dCa/deps reaches gCa.
+Finite record endpoint terms are omitted: the result is a settled-spectrum
+gradient. No time tape or transposed time sweep is part of F2.
+
+Injection and wavelets
+----------------------
+
+Inject the monitor's E component at its exact Yee array index, after the
+design update and before the ordinary source/monitor stage. A point is a
+single selected pixel of an E DFT plane; a plane injects each of its pixels.
+Interior uniform dual volumes are V=dx^3: reciprocal density sources use
+b/V and the overlap uses V, so these factors cancel. CPML and boundary
+monitor pixels are excluded from admission. The half-step current spectrum
+is `exp(+i w dt/2)` times the post-update increment spectrum; equivalently
+q uses the E timestamp and no additional phase. Epre uses the same timestamp
+as q, giving its explicit one-step delay relative to post-update E.
+
+For each monitor use compact early real wavelets formed from positive and
+negative complex exponentials with a smooth envelope. Take the compact
+discrete difference of each carrier to enforce zero deposited DC. Their sampled
+DFTs form A (positive carriers) and B (negative carriers). Solve
+`(A-B conj(A)^-1 conj(B)) c = b-B conj(A)^-1 conj(b)` and inject
+`2 Re sum_k c_k difference(envelope exp(+i w_k t))`. These are Nf-by-Nf solves;
+including the conjugate carriers makes arbitrary complex targets reachable
+with real fields. Monitors must share identical bins. Reject empty, duplicate,
+DC/Nyquist/out-of-band bins.
+The remaining run lets the wavelet response decay. Storage is design
+edges × components × bins, plus monitor bins and ordinary field carries.
+
+Gates, measurements and the refusal table: issue #1424 and PR #1430.
+"""
 from dataclasses import replace
 
 import jax

@@ -1858,6 +1858,7 @@
         "current_moments",
         "snapshot",
         "checkpoint",
+        "gradient",
         "checkpoint_segments",
         "aniso_eps",
         "aniso_inv_eps",
@@ -2476,7 +2477,8 @@
       "component",
       "freqs",
       "n_freqs",
-      "name"
+      "name",
+      "region"
     ],
     "add_floquet_port": [
       "position",
@@ -2779,6 +2781,7 @@
       "n_steps",
       "num_periods",
       "checkpoint",
+      "gradient",
       "checkpoint_segments",
       "emit_time_series",
       "checkpoint_every",
