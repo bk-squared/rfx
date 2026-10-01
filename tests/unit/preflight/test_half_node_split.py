@@ -173,11 +173,14 @@ def test_the_same_declared_coordinate_has_no_split_message():
 
 @pytest.mark.parametrize("lane", ["uniform", "nu"])
 def test_the_message_names_both_features_and_both_nodes(lane):
-    sim = _patch(lane, 3.5e-3)
     from dataclasses import replace
-    sim._ports[0] = replace(sim._ports[0], extent=float(np.float32(3.5e-3)))
+    # Keep the original dipole/message witness, with the conductor's
+    # float32 coordinate just above the tie so the refusal still fires.
+    wire_y = float(np.nextafter(np.float32(9.5e-3), np.float32(np.inf)))
+    sim = _dipole(lane, wire_y)
+    sim._ports[0] = replace(sim._ports[0], position=(10e-3, 9.5e-3, 8e-3))
     text = str(_split_findings(sim)[0])
-    assert "add_port at (0.01, 0.009, 0.0)" in text
-    assert "PEC sheet 'pec'" in text
-    assert "z = 3.5 mm" in text
-    assert "z node 4 (4 mm)" in text and "node 3 (3 mm)" in text
+    assert "add_port at (0.01, 0.0095, 0.008)" in text
+    assert "PolylineWire 'pec'" in text
+    assert "y = 9.5 mm" in text
+    assert "y node 9 (9 mm)" in text and "node 10 (10 mm)" in text
