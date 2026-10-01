@@ -543,11 +543,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     # --------------------------------------------------- ports and sources
     "_ports": {
         "source": lanes(
-            run_uniform=carries("add_source(): a soft point source"),
-            run_nonuniform=carries(),
+            run_uniform=carries("add_source() without S; S requests: PLAIN_SOURCE_S_REQUEST"),
+            run_nonuniform=carries("without S; S requests: PLAIN_SOURCE_S_REQUEST"),
             run_subgridded=carries("inside the refined slab"),
             run_adi=carries(),
-            run_distributed=carries(),
+            run_distributed=carries("without S; S requests: PLAIN_SOURCE_S_REQUEST"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
@@ -1253,7 +1253,7 @@ CALCULATOR_CELLS = {
         'material_fit': carries('rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss'),
     },
     ('_ports', 'source'): {
-        's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
+        's_matrix_scan': carries('source-only declaration; with an impedance port see PLAIN_SOURCE_S_REQUEST'),
         'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='a soft source (add_source)'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises='a soft source (add_source)'),
@@ -1264,7 +1264,7 @@ CALCULATOR_CELLS = {
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='a soft source (add_source)'),
     },
     ('_ports', 'amplitude_kind'): {
-        's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
+        's_matrix_scan': carries('source-only declaration; with an impedance port see PLAIN_SOURCE_S_REQUEST'),
         'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises="a soft source with amplitude_kind='current'"),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
         'waveguide_s_matrix': refuses('admission before the scan; rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards', raises="a soft source with amplitude_kind='current'"),
@@ -1640,3 +1640,13 @@ def cell(attr: str, feature: str, path: str) -> Cell:
     """The recorded disposition for one input and one execution path."""
     row = TABLE[attr][feature]
     return row["*"] if "*" in row else row[path]
+
+
+# Conditional on an S request, including the lane's resolved default. Source
+# rows above continue to carry ordinary field runs and forward() unchanged.
+PLAIN_SOURCE_S_REQUEST = {
+    path: refuses("rfx.runners._admission.refuse_plain_sources_s_matrix; "
+                  "tests/unit/sparams/test_plain_source_refusal.py", raises="plain sources")
+    for path in ("run_uniform", "run_nonuniform", "run_subgridded", "run_distributed",
+                 "s_matrix_scan", "fwd_uniform", "fwd_nonuniform")
+}

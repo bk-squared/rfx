@@ -353,13 +353,35 @@ class _PreflightMixin:
         s_param_n_steps: int | None,
         devices: list | None = None,
     ) -> None:
-        """Reject explicit ``run`` S-parameter requests outside its contract."""
+        """Reject unsupported explicit S requests and contaminated default S solves."""
 
         requested = (
             compute_s_params is True
             or s_param_freqs is not None
             or s_param_n_steps is not None
         )
+        # Subgridded runs opt into S explicitly; uniform/graded runs resolve
+        # None from the presence of lumped/wire or wire ports respectively.
+        default_requested = (
+            compute_s_params is None
+            and self._refinement is None
+            and self._solver != "adi"
+            and any(
+                pe.impedance != 0.0
+                and (not self._uses_nonuniform_mesh or pe.extent is not None)
+                for pe in self._ports
+            )
+        )
+        if compute_s_params is not False and (requested or default_requested):
+            from rfx.runners._admission import refuse_plain_sources_s_matrix
+            from rfx.runners._admission import _s_matrix_ports
+            _one_device = devices is None or len(devices) <= 1
+            # S read from the main run's own record: the graded wire path and
+            # the uniform single-wire fast path (no scan, _s_matrix_ports False).
+            _main_record = (
+                _one_device and self._refinement is None and self._solver != "adi"
+                and (self._uses_nonuniform_mesh or not _s_matrix_ports(self)))
+            refuse_plain_sources_s_matrix(self, main_record=_main_record)
         if not requested:
             return
 
@@ -437,13 +459,6 @@ class _PreflightMixin:
                     "ports yet. Use single-device for ports on NU meshes."
                 )
         if self._refinement is not None:
-            if source_only_entries:
-                raise NotImplementedError(
-                    "subgrid compute_s_params ignores ordinary "
-                    "add_source(...) entries like the uniform S-matrix "
-                    "extractor; remove source-only entries and drive through "
-                    "add_port(...) waveforms."
-                )
             if any(pe.waveform is None for pe in port_entries):
                 raise ValueError(
                     "subgrid compute_s_params needs a waveform "
@@ -483,6 +498,10 @@ class _PreflightMixin:
     def _validate_forward_sparameter_request(self) -> None:
         """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""
 
+        # The port S11 is the port drive's own reflection only if nothing else
+        # excites the model (#1420), as on run()'s S request.
+        from rfx.runners._admission import refuse_plain_sources_s_matrix
+        refuse_plain_sources_s_matrix(self, main_record=True)
         port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:
