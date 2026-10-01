@@ -22,6 +22,8 @@ outside the production validation envelope.
 
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 import json
 from typing import NamedTuple
 
@@ -159,8 +161,8 @@ def build_subgrid_region(sim, grid) -> SubgridRegion | None:
     dx_f = dx_c / ratio
     pad_z_lo = int(getattr(grid, "pad_z_lo", grid.cpml_layers))
     pad_z_hi = int(getattr(grid, "pad_z_hi", grid.cpml_layers))
-    fk_lo = max(int(round(z_lo / dx_c)) + pad_z_lo, pad_z_lo)
-    fk_hi = min(int(round(z_hi / dx_c)) + pad_z_lo + 1, grid.nz - pad_z_hi)
+    fk_lo = max(nearest_uniform_index(z_lo / dx_c) + pad_z_lo, pad_z_lo)
+    fk_hi = min(nearest_uniform_index(z_hi / dx_c) + pad_z_lo + 1, grid.nz - pad_z_hi)
     xy_margin = ref.get("xy_margin")
     if xy_margin is None:
         fi_lo = grid.pad_x_lo
@@ -169,14 +171,14 @@ def build_subgrid_region(sim, grid) -> SubgridRegion | None:
         fj_hi = grid.ny - grid.pad_y_hi
     else:
         margin = float(xy_margin)
-        fi_lo = max(int(round(margin / dx_c)) + grid.pad_x_lo, grid.pad_x_lo)
+        fi_lo = max(nearest_uniform_index(margin / dx_c) + grid.pad_x_lo, grid.pad_x_lo)
         fi_hi = min(
-            int(round((sim._domain[0] - margin) / dx_c)) + grid.pad_x_lo + 1,
+            nearest_uniform_index((sim._domain[0] - margin) / dx_c) + grid.pad_x_lo + 1,
             grid.nx - grid.pad_x_hi,
         )
-        fj_lo = max(int(round(margin / dx_c)) + grid.pad_y_lo, grid.pad_y_lo)
+        fj_lo = max(nearest_uniform_index(margin / dx_c) + grid.pad_y_lo, grid.pad_y_lo)
         fj_hi = min(
-            int(round((sim._domain[1] - margin) / dx_c)) + grid.pad_y_lo + 1,
+            nearest_uniform_index((sim._domain[1] - margin) / dx_c) + grid.pad_y_lo + 1,
             grid.ny - grid.pad_y_hi,
         )
     # Fine-grid extent uses the node-aligned convention
@@ -214,8 +216,8 @@ def build_stage2_disjoint_region(sim, grid) -> SubgridRegion:
     dx_f = dx_c / ratio
     pad_z_lo = int(getattr(grid, "pad_z_lo", grid.cpml_layers))
     pad_z_hi = int(getattr(grid, "pad_z_hi", grid.cpml_layers))
-    fk_lo = max(int(round(z_lo / dx_c)) + pad_z_lo, pad_z_lo)
-    fk_hi = min(int(round(z_hi / dx_c)) + pad_z_lo + 1, grid.nz - pad_z_hi)
+    fk_lo = max(nearest_uniform_index(z_lo / dx_c) + pad_z_lo, pad_z_lo)
+    fk_hi = min(nearest_uniform_index(z_hi / dx_c) + pad_z_lo + 1, grid.nz - pad_z_hi)
     xy_margin = sim._refinement.get("xy_margin")
     if xy_margin is None:
         fi_lo = grid.pad_x_lo
@@ -224,14 +226,14 @@ def build_stage2_disjoint_region(sim, grid) -> SubgridRegion:
         fj_hi = grid.ny - grid.pad_y_hi
     else:
         margin = float(xy_margin)
-        fi_lo = max(int(round(margin / dx_c)) + grid.pad_x_lo, grid.pad_x_lo)
+        fi_lo = max(nearest_uniform_index(margin / dx_c) + grid.pad_x_lo, grid.pad_x_lo)
         fi_hi = min(
-            int(round((sim._domain[0] - margin) / dx_c)) + grid.pad_x_lo + 1,
+            nearest_uniform_index((sim._domain[0] - margin) / dx_c) + grid.pad_x_lo + 1,
             grid.nx - grid.pad_x_hi,
         )
-        fj_lo = max(int(round(margin / dx_c)) + grid.pad_y_lo, grid.pad_y_lo)
+        fj_lo = max(nearest_uniform_index(margin / dx_c) + grid.pad_y_lo, grid.pad_y_lo)
         fj_hi = min(
-            int(round((sim._domain[1] - margin) / dx_c)) + grid.pad_y_lo + 1,
+            nearest_uniform_index((sim._domain[1] - margin) / dx_c) + grid.pad_y_lo + 1,
             grid.ny - grid.pad_y_hi,
         )
     # The Stage-2 disjoint runner contract (``build_disjoint_runner_contract``)

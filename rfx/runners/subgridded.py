@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 from dataclasses import replace
 
 import numpy as np
@@ -66,8 +68,8 @@ def _run_subgridded_once(
     # Map z_range to coarse grid indices
     pad_z_lo = int(getattr(grid_coarse, "pad_z_lo", grid_coarse.cpml_layers))
     pad_z_hi = int(getattr(grid_coarse, "pad_z_hi", grid_coarse.cpml_layers))
-    fk_lo = max(int(round(z_lo / dx_c)) + pad_z_lo, pad_z_lo)
-    fk_hi = min(int(round(z_hi / dx_c)) + pad_z_lo + 1, grid_coarse.nz - pad_z_hi)
+    fk_lo = max(nearest_uniform_index(z_lo / dx_c) + pad_z_lo, pad_z_lo)
+    fk_hi = min(nearest_uniform_index(z_hi / dx_c) + pad_z_lo + 1, grid_coarse.nz - pad_z_hi)
 
     # Fine region covers full x/y by default.  A finite xy_margin enables a
     # research-only local x/y window inset from the physical x/y boundaries;
@@ -81,21 +83,21 @@ def _run_subgridded_once(
     else:
         margin = float(xy_margin)
         fi_lo = max(
-            int(round(margin / dx_c)) + grid_coarse.pad_x_lo,
+            nearest_uniform_index(margin / dx_c) + grid_coarse.pad_x_lo,
             grid_coarse.pad_x_lo,
         )
         fi_hi = min(
-            int(round((sim._domain[0] - margin) / dx_c))
+            nearest_uniform_index((sim._domain[0] - margin) / dx_c)
             + grid_coarse.pad_x_lo
             + 1,
             grid_coarse.nx - grid_coarse.pad_x_hi,
         )
         fj_lo = max(
-            int(round(margin / dx_c)) + grid_coarse.pad_y_lo,
+            nearest_uniform_index(margin / dx_c) + grid_coarse.pad_y_lo,
             grid_coarse.pad_y_lo,
         )
         fj_hi = min(
-            int(round((sim._domain[1] - margin) / dx_c))
+            nearest_uniform_index((sim._domain[1] - margin) / dx_c)
             + grid_coarse.pad_y_lo
             + 1,
             grid_coarse.ny - grid_coarse.pad_y_hi,
@@ -233,9 +235,9 @@ def _run_subgridded_once(
     # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos):
         idx = (
-            int(round((pos[0] - x_off) / dx_f)),
-            int(round((pos[1] - y_off) / dx_f)),
-            int(round((pos[2] - z_off) / dx_f)),
+            nearest_uniform_index((pos[0] - x_off) / dx_f),
+            nearest_uniform_index((pos[1] - y_off) / dx_f),
+            nearest_uniform_index((pos[2] - z_off) / dx_f),
         )
         # Bounds check — source/probe outside fine grid causes garbage results.
         # JAX scatter/gather can otherwise silently drop or clamp OOB indices,

@@ -446,29 +446,16 @@ def build_current_moment_monitor(
 
 
 def _index_window(nodes, lo_m, hi_m, n_axis, margin_cells=0):
-    """Nearest node index to each corner, plus a cell margin, inclusive.
+    """Declared window corners use the shared node tie rule, plus a margin.
 
-    ``np.argmin`` at BOTH ends, so a corner that lands exactly halfway
-    between two nodes resolves to the lower one at either end. Breaking that
-    tie outwards instead is defensible on its own and WOULD put the window
-    one cell wider on an exact tie at a high corner. On the tutorial patch
-    the exact ties are at the low corners and the high corners are strict
-    minima by 2.8e-17 m, so the slab there is 25,920 edges at 2 mm and
-    84,500 at 1 mm.
-
-    This function does not clamp to ``[1, n_axis - 1]``; the builder below
-    refuses such a window instead of moving it.
-
-    Away from an exact tie what decides the window is that ``nodes`` comes
-    from ``coords_from_nonuniform_grid`` (see :func:`_axis_arrays`) rather
-    than from a second cumsum here. A node line recomputed locally landed
-    2e-16 m away, which turned the tutorial patch's halfway board edge into
-    a strict minimum on the other side and moved the slab by a cell — 24,500
-    edges instead of 25,920.
+    The builder refuses a window outside its admitted range; no clamp here.
     """
+    from rfx._grid_metric import nearest_node_index
+    from rfx.geometry.rasterize_grid import _local_cell
     nodes = np.asarray(nodes)[:n_axis]
-    lo = int(np.argmin(np.abs(nodes - float(lo_m))))
-    hi = int(np.argmin(np.abs(nodes - float(hi_m))))
+    cells = np.diff(nodes)
+    lo = nearest_node_index(nodes, lo_m, _local_cell(nodes, cells, lo_m))
+    hi = nearest_node_index(nodes, hi_m, _local_cell(nodes, cells, hi_m))
     return lo - int(margin_cells), hi + int(margin_cells)
 
 

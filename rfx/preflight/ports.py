@@ -799,14 +799,9 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     nodes go to the LOWER node (#931; ``wire_vertex_nodes``,
     ``_nearest_plane``). On the non-uniform lane a port, source or probe
     there does too (``rfx._grid_metric.nearest_node_index``, #1295). The
-    uniform ``Grid`` still rounds a point feature's tie to the EVEN node
-    (``round(x/dx)``) until #1342, so where the lower node is odd a feed
-    declared on a wire, or a port declared to end on a sheet, lands one cell
-    off the conductor it was drawn on: a gap-fed dipole whose port and arms
-    sit at y = 9.5 mm on 1 mm cells drives the Ez edge beside the gap (gap
-    field -23 dB). On either lane, two coordinates a hair apart that
-    straddle a half node split the same way (a port end at float32(3.5 mm)
-    against a sheet at 3.5 mm).
+    uniform lane now shares that rule (#1342). On either lane, distinct
+    coordinates outside the tie band can still straddle a half node (a
+    port end at float32(3.5 mm) against a sheet at 3.5 mm).
 
     Compares, per axis, every port position (and a wire port's far end),
     source and probe with every sub-cell wire vertex and PEC sheet plane
@@ -995,13 +990,84 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                 f"{int(idx[a])} ({_mm(node_axes[a][int(idx[a])])}), the "
                 f"conductor on node {node} ({_mm(node_axes[a][node])}). A "
                 "wire vertex or a sheet plane at a half node goes to the "
-                "lower node. On the uniform lane a port, source or probe "
-                "there goes to the even node until #1342; on either lane two "
+                "lower node (#1342), as do point features. On either lane two "
                 "coordinates a float step apart that straddle the half node "
                 "split the same way. The feature sits one cell off the "
                 "conductor it was drawn on and does not drive or sample it. "
                 "Move both off the half node (a quarter cell is enough).")
     return findings
+
+
+def trace_far_end_findings(sim, grid=None) -> list[str]:
+    """Refuse normal ports at a sheet's inward-rounded high footprint edge.
+
+    Pair on the declared sheet plane and tangential high bound, then read
+    the actual closed footprint. An on-node high bound is not ambiguous.
+    No aspect-ratio heuristic is needed: either tangential high edge can be
+    the end of a trace, independent of its orientation.
+    """
+    from rfx._grid_metric import NODE_TIE_REL
+    from rfx.geometry.rasterize_grid import (
+        _local_cell, cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+        coords_from_nonuniform_grid, coords_from_uniform_grid, sheet_spec_from_shape,
+    )
+    from rfx.materials.thin_conductor import sheet_bounds
+    from rfx.nonuniform import NonUniformGrid
+    ports = [pe for pe in sim._ports if float(pe.impedance) > 0]
+    if not ports:
+        return []
+    shapes = [(e.shape, e.material_name) for e in sim._geometry
+              if e.material_name == "pec"
+              and getattr(e.shape, "corner_lo", None) is not None
+              and sum(a == b for a, b in zip(e.shape.corner_lo, e.shape.corner_hi)) == 1]
+    shapes.extend((tc.shape, "thin_conductor") for tc in sim._thin_conductors)
+    if not shapes:
+        return []
+    if grid is None:
+        grid = sim._build_realized_grid()
+    nu = isinstance(grid, NonUniformGrid)
+    coords = (coords_from_nonuniform_grid(grid) if nu else coords_from_uniform_grid(grid))
+    from rfx.core.jax_utils import is_tracer
+    if any(is_tracer(getattr(coords, a)) for a in "xyz"):
+        return []  # No concrete sheet footprint on a traced mesh.
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if nu else cell_sizes_from_uniform_grid(grid))
+    nodes = [np.asarray(getattr(coords, a), dtype=float) for a in "xyz"]
+    messages = []
+    for shape, name in shapes:
+        lo, hi = sheet_bounds(shape)
+        if lo is None or hi is None:
+            continue
+        normal = min(range(3), key=lambda a: hi[a] - lo[a])
+        plane = .5 * (lo[normal] + hi[normal])
+        tangent = [a for a in range(3) if a != normal]
+        for pe in ports:
+            if "xyz".index(pe.component[-1]) != normal:
+                continue
+            start = float(pe.position[normal])
+            end = start + (float(pe.extent) if pe.extent is not None
+                           else _local_cell(nodes[normal], sizes[normal], start))
+            tol = NODE_TIE_REL * _local_cell(nodes[normal], sizes[normal], plane)
+            if not min(start, end) - tol <= plane <= max(start, end) + tol:
+                continue
+            for a in tangent:
+                b = next(t for t in tangent if t != a)
+                tol_a = NODE_TIE_REL * _local_cell(nodes[a], sizes[a], hi[a])
+                if (abs(pe.position[a] - hi[a]) > tol_a
+                        or not lo[b] <= pe.position[b] <= hi[b]):
+                    continue
+                sheet = sheet_spec_from_shape(shape, coords, sizes, name=name, grid=grid)
+                occupied = np.nonzero(np.asarray(sheet.footprint))[tangent.index(a)]
+                if not occupied.size:
+                    continue
+                last = int(occupied.max())
+                if float(hi[a]) - nodes[a][last] > tol_a:
+                    messages.append(
+                        f"Port at {pe.position} touches trace far end {'xyz'[a]}={hi[a]:.9g} m "
+                        f"of {name!r}, whose footprint rounds inward to node {last} "
+                        f"({nodes[a][last]:.9g} m). Move the port and the trace end "
+                        "onto the same mesh node, extend the trace past the port, "
+                        "or refine the mesh to put a node at the declared end (#1342).")
+    return messages
 
 
 def _validate_cfg_half_node_split(self, _w) -> None:

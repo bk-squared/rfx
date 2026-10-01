@@ -1195,8 +1195,7 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
     Each axis resolves through ``_axis_position_to_index``: the node
     ``index_of`` names, clamped into the interior. On a constant axis, for a
     coordinate inside the interior that is not a tie, that is the uniform
-    ``Grid``'s ``round(pos/cell) + pad_{axis}_lo``. At a tie this takes the
-    lower node and the uniform grid the even one, until #1342. Outside the
+    ``Grid`` lookup. Both lanes take the lower node within the tie band. Outside the
     interior this clamps to the end node, while the uniform grid returns a
     pad index or refuses.
     """
