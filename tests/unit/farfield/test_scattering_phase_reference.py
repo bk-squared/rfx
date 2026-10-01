@@ -85,6 +85,8 @@ def test_source_delay_cancels_from_complex_response(monkeypatch):
     monkeypatch.setattr(rcs, "init_tfsf", delayed_source)
     delayed = _scatter(grid, target)
     assert isinstance(original, rcs.ScatteringResponse)
+    assert original.settling_db is not None
+    assert original.settling_db == original.rcs.settling_db
     # The Gaussian starts at 3*tau, not minus infinity. Delaying it changes
     # the small omitted leading tail, so an ideal exp(-jw*delay) would be
     # the wrong comparator. DFT the two actual finite input waveforms.

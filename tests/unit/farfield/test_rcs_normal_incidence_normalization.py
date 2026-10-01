@@ -62,11 +62,11 @@ def test_compute_rcs_divides_by_the_incident_at_the_domain_centre(monkeypatch):
     seen = {}
 
     def run_with_centre_probe(g, materials, n_steps, **kw):
-        assert "probes" not in kw
+        witness_probes = kw.pop("probes", [])
         res = _real_run(g, materials, n_steps,
-                        probes=[ProbeSpec(*centre, "ez")], **kw)
-        seen["probe"] = np.asarray(res.time_series, dtype=np.float64)[:, 0]
-        return res
+                        probes=[*witness_probes, ProbeSpec(*centre, "ez")], **kw)
+        seen["probe"] = np.asarray(res.time_series, dtype=np.float64)[:, -1]
+        return res._replace(time_series=res.time_series[:, :-1])
 
     def far_field_recorder(*args, **kwargs):
         ff = _real_compute_far_field(*args, **kwargs)

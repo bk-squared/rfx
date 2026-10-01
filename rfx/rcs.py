@@ -49,6 +49,10 @@ class RCSResult(NamedTuple):
         propagation vector), independent of the theta/phi observation
         grid. For normal-incidence +x propagation this is
         (theta=pi/2, phi=pi), i.e. -x.
+    settling_db : float or None
+        Last-tenth mean / whole-record peak sampled E/H energy in dB at
+        six NTFF face centres. Above -40 dB is truncation-suspect; None is
+        unavailable, not a pass. This is not a bound on sigma error.
 
     VALIDATION SCOPE (read before trusting the full pattern)
     -------------------------------------------------------
@@ -70,6 +74,7 @@ class RCSResult(NamedTuple):
     rcs_dbsm: np.ndarray
     rcs_linear: np.ndarray
     monostatic_rcs: np.ndarray
+    settling_db: float | None = None
 
 
 class ScatteringResponse(NamedTuple):
@@ -82,6 +87,7 @@ class ScatteringResponse(NamedTuple):
     of ``rcs.theta``/``rcs.phi``. Run both ``ey`` and ``ez`` for two columns.
     ``incident_spectrum`` is the actual E-field DFT at that reference, not
     the source waveform. Grid/record convergence still bounds accuracy.
+    ``settling_db`` is the same sampled-energy witness as ``rcs.settling_db``.
     """
     rcs: RCSResult
     F_theta: np.ndarray
@@ -89,6 +95,46 @@ class ScatteringResponse(NamedTuple):
     incident_spectrum: np.ndarray
     reference_position: np.ndarray
     polarization: str
+    settling_db: float | None = None
+
+
+def _rcs_settling_probes(box):
+    """Six face-centre E/H samples just inside the NTFF integration box."""
+    from rfx.simulation import ProbeSpec
+
+    lo = (box.i_lo, box.j_lo, box.k_lo)
+    hi = (box.i_hi, box.j_hi, box.k_hi)
+    mid = [(a + b) // 2 for a, b in zip(lo, hi)]
+    probes = []
+    for axis in range(3):
+        for side in (lo[axis] + 1, hi[axis] - 2):
+            point = mid.copy()
+            point[axis] = side
+            probes.extend(ProbeSpec(*point, component)
+                          for component in ("ex", "ey", "ez", "hx", "hy", "hz"))
+    return probes
+
+
+def _rcs_settling_db(time_series):
+    """Shared tail/peak scorer on sampled vacuum E/H energy amplitude.
+
+    Sum the six points before scoring, avoiding component/symmetry nodes.
+    This samples energy near the NTFF box; it is not whole-domain energy
+    or a bound on RCS error. Widen before squaring and retain complex power.
+    """
+    from rfx.core.yee import EPS_0, MU_0
+    from rfx.sources.waveguide_port import settling_db_from_named_records
+
+    raw = np.asarray(time_series)
+    fields = raw.astype(np.complex128 if np.iscomplexobj(raw) else np.float64)
+    fields = fields.reshape(len(raw), 6, 6)
+    energy = np.sum(np.abs(fields[:, :, :3]) ** 2, axis=(1, 2))
+    energy += (MU_0 / EPS_0) * np.sum(np.abs(fields[:, :, 3:]) ** 2, axis=(1, 2))
+    # Restore storage precision for the shared helper's underflow coverage floor.
+    amplitude = np.sqrt(energy).astype(raw.real.dtype)
+    value = settling_db_from_named_records(
+        [("NTFF face-centre energy", amplitude)], record_noun="NTFF energy records")
+    return float(value) if np.isfinite(value) else None
 
 
 def _incident_spectrum_amplitude(
@@ -214,7 +260,9 @@ def compute_rcs(
         Material arrays with the scatterer defined (e.g., PEC regions
         with very high conductivity or high eps_r).
     n_steps : int
-        Number of FDTD timesteps.
+        Number of FDTD timesteps. A sampled NTFF-box energy witness warns
+        if the record has not decayed by 40 dB; inspect ``settling_db`` on
+        the result. Increasing the record remains the caller's decision.
     f0 : float
         Center frequency of the Gaussian pulse (Hz).
     bandwidth : float
@@ -578,7 +626,9 @@ def compute_rcs(
     _run_kw = dict(boundary=boundary, tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box)
     if _oblique:
         _run_kw.update(cpml_axes="xy", periodic=(False, False, True), pec_axes="")
-    result = run(grid, materials, n_steps, **_run_kw)
+    settling_probes = _rcs_settling_probes(ntff_box)
+    result = run(grid, materials, n_steps, probes=settling_probes, **_run_kw)
+    settling_db = _rcs_settling_db(result.time_series)
 
     # --- 4. Compute far-field from NTFF data ---
     ff = compute_far_field(
@@ -617,7 +667,10 @@ def compute_rcs(
             vacuum = MaterialArrays(jnp.ones_like(materials.eps_r),
                                     jnp.zeros_like(materials.sigma),
                                     jnp.ones_like(materials.mu_r))
-        ref_result = run(grid, vacuum, n_steps, **_run_kw)
+        ref_result = run(grid, vacuum, n_steps, probes=settling_probes, **_run_kw)
+        ref_settling_db = _rcs_settling_db(ref_result.time_series)
+        settling_db = (max(settling_db, ref_settling_db)
+                       if settling_db is not None and ref_settling_db is not None else None)
         ff_ref = compute_far_field(
             ref_result.ntff_data, ntff_box, grid, theta_obs, phi_obs,
         )
@@ -625,6 +678,24 @@ def compute_rcs(
             E_theta=ff.E_theta - ff_ref.E_theta,
             E_phi=ff.E_phi - ff_ref.E_phi,
             theta=ff.theta, phi=ff.phi, freqs=ff.freqs,
+        )
+
+    from rfx.api._sparams import settling_verdict, _warn_if_ringdown_truncated
+
+    verdict = settling_verdict(settling_db)
+    if verdict == "fail":
+        _warn_if_ringdown_truncated(
+            np.array([settling_db]), (), n_steps=n_steps,
+            drive_labels=("NTFF face-centre energy (worst solve)",),
+            consequence="RCS from this compute_rcs() call integrates a cut transient",
+            quoted_thing="any RCS value",
+        )
+    elif verdict == "absent":
+        import warnings
+        warnings.warn(
+            "no ring-down settling witness on this compute_rcs() call: "
+            "NTFF energy records have no usable coverage. Its truncation is "
+            "unguarded; settling_db is None, which is not a pass.", stacklevel=2,
         )
 
     # --- 5. Compute incident field spectrum for normalization ---
@@ -747,6 +818,7 @@ def compute_rcs(
         rcs_dbsm=rcs_dbsm,
         rcs_linear=rcs_linear,
         monostatic_rcs=monostatic_rcs,
+        settling_db=settling_db,
     )
     if reference_index is None:
         return rcs
@@ -762,4 +834,5 @@ def compute_rcs(
         rcs=rcs, F_theta=E_theta * factor, F_phi=E_phi * factor,
         incident_spectrum=incident, reference_position=reference_position,
         polarization=polarization,
+        settling_db=settling_db,
     )
