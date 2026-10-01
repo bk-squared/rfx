@@ -76,6 +76,7 @@ body:
         - "lane:examples-docs"
         - "lane:plan"
         - "lane:research"
+        - "lane:performance"
     validations:
       required: true
 

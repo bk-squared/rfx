@@ -19,6 +19,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
+from rfx.core.jax_utils import recorded_scan
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
@@ -3219,7 +3220,7 @@ def run(
                 a, b = piece.start, piece.start + piece.length
                 rows = jax.tree_util.tree_map(lambda x: x[a:b], xs_seg)
                 if piece.kind == "plain":
-                    carry, (p,) = jax.lax.scan(body, carry, rows)
+                    carry, (p,) = recorded_scan(body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         frame_parts.append(
@@ -3228,11 +3229,11 @@ def run(
                     nb = piece.length // m
                     blocks = jax.tree_util.tree_map(
                         lambda x: x.reshape(nb, m, *x.shape[1:]), rows)
-                    carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
+                    carry, (p, f) = recorded_scan(block_body, carry, blocks)
                     probe_parts.append(p.reshape(nb * m, *p.shape[2:]))
                     frame_parts.append(list(f))
                 else:  # "rec"
-                    carry, (p, f) = jax.lax.scan(rec_body, carry, rows)
+                    carry, (p, f) = recorded_scan(rec_body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         idx = jnp.asarray(piece.frame_rows, dtype=jnp.int32)
@@ -3240,7 +3241,7 @@ def run(
 
             if not probe_parts:
                 # n == 0: the zero-length scan the other paths return.
-                carry, (p,) = jax.lax.scan(body, carry, xs_seg)
+                carry, (p,) = recorded_scan(body, carry, xs_seg)
                 probe_parts.append(p)
             probes = (probe_parts[0] if len(probe_parts) == 1
                       else jnp.concatenate(probe_parts, axis=0))
@@ -3303,7 +3304,7 @@ def run(
         elif report_every is None and snap_by_block:
             final_carry, outputs = _make_recorder(body)(carry_init, xs, 0)
         elif report_every is None:
-            final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+            final_carry, outputs = recorded_scan(body, carry_init, xs)
         else:
             # Issue #667: same scan, driven from the host in chunks so a
             # multi-hour solve emits progress. The carry threads through
@@ -3394,7 +3395,7 @@ def run(
 
         seg_body_ckpt = jax.checkpoint(
             segment_body, prevent_cse=False) if checkpoint else segment_body
-        final_carry, seg_outputs = jax.lax.scan(
+        final_carry, seg_outputs = recorded_scan(
             seg_body_ckpt, carry_init, xs_segmented)
         # seg_outputs leaves: (K, per-segment rows, ...). Flatten back to
         # (K * rows, ...): n_steps for the probe rows (and for per-step

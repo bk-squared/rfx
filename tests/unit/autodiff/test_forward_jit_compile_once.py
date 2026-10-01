@@ -12,15 +12,17 @@ every call, and the obvious remedy, ``jax.jit(jax.value_and_grad(loss))``,
 failed while tracing on this board. The wire port decides which of its edges
 are live by reading the realized PEC edge mask on the host, and under an outer
 ``jax.jit`` that mask — built from the geometry alone — was a tracer. The fix
-evaluates the set-up of a model WITH A WIRE PORT at trace time (``forward()``
-enters ``jax.ensure_compile_time_eval()`` when it finds itself staged).
+evaluates the set-up at trace time (``forward()`` enters
+``jax.ensure_compile_time_eval()`` when it finds itself staged).
 ``rfx.optimize(jit=True)`` is tested in ``test_optimize_jit_compile_once.py``.
 
-Every model without a wire port keeps the code path it had before, so its
-jitted program — and every plain-versus-jitted comparison of it — is
-unchanged (the PI's cross-trace rule, ledger decision of 2026-09-23). The
-predicate test below pins that scope: widening the trace-time evaluation to
-other models turns it red.
+#1225 did this for a whitelist of ports only, which missed MSL ports (#1367)
+and the NTFF box (#1364) and pulled the time stepping of a function with no
+traced input into the trace-time region (#1354). Every staged, single-device
+forward() now evaluates its set-up at trace time and records its time
+stepping (``test_forward_jit_contract.py`` gates the rule on one model per
+host-read class). The predicate test below pins that scope: restoring a
+per-model whitelist turns it red.
 
 The jitted value and gradient are compared with the plain call under the PI's
 cross-trace rule (2026-09-23): bit-identical is the aim, and a difference up
@@ -365,27 +367,31 @@ def _graded_source_without_a_port():
     return sim
 
 
-def test_trace_time_setup_is_used_only_where_the_trace_failed(monkeypatch):
-    """Models that traced before #1225 trace exactly as before.
+def test_every_staged_single_device_forward_evaluates_its_setup_at_trace_time(
+        monkeypatch):
+    """Under ``jax.jit`` the set-up of every model is evaluated at trace time.
 
-    ``forward()`` asks ``_forward_needs_trace_time_setup`` whether to evaluate
-    its set-up at trace time. Under ``jax.jit`` it must answer False for a
-    uniform-mesh model with a conductor and a lumped port and for a graded
-    model with no port, and True for the graded wire-port and lumped-port
-    boards — the staged call; the re-call inside the trace-time context then
-    answers False and runs the plain body. The positive controls keep a spy
-    that saw no call from passing.
+    The shared forward entries ask ``_setup_evaluated_at_trace_time`` whether
+    to evaluate their set-up at trace time. Under ``jax.jit`` ``forward()``
+    must answer True for every model: the two #1225 left recorded (a
+    uniform-mesh model with a conductor and a lumped port, a graded model
+    with no port) as for the graded wire-port and lumped-port boards. The
+    lane entry it calls inside the trace-time context then answers False and
+    runs its body. A plain call and a bare ``jax.grad`` stage nothing and
+    answer False, and the distributed lane always does. A per-model
+    whitelist turns the first two models red; the positive controls keep a
+    spy that saw no call from passing.
     """
     import rfx.api._execute as ex
 
     answers = []
-    real = ex._forward_needs_trace_time_setup
+    real = ex._setup_evaluated_at_trace_time
 
-    def spy(sim, **kwargs):
-        answers.append(real(sim, **kwargs))
+    def spy(**kwargs):
+        answers.append(real(**kwargs))
         return answers[-1]
 
-    monkeypatch.setattr(ex, "_forward_needs_trace_time_setup", spy)
+    monkeypatch.setattr(ex, "_setup_evaluated_at_trace_time", spy)
 
     for build in (_conductor_and_uniform_lumped_port,
                   _graded_source_without_a_port):
@@ -400,8 +406,8 @@ def test_trace_time_setup_is_used_only_where_the_trace_failed(monkeypatch):
 
         answers.clear()
         jax.jit(jax.value_and_grad(loss)).lower(eps)
-        assert answers == [False], (
-            f"{build.__name__}: predicate answered {answers}")
+        assert answers == [True, False], (
+            f"{build.__name__}: predicate answered {answers} under jax.jit")
 
     for board in ("graded wire port", "graded lumped port"):
         build, objective, design = BOARDS[board]
@@ -410,6 +416,18 @@ def test_trace_time_setup_is_used_only_where_the_trace_failed(monkeypatch):
         jax.jit(jax.value_and_grad(objective(sim))).lower(design(sim))
         assert answers == [True, False], (
             f"{board}: predicate answered {answers}")
+
+    # What stages nothing never enters the region: a plain call, a bare
+    # jax.grad; and the distributed lane never does.
+    def probe(x):
+        answers.append(real(distributed=False))
+        return x * x
+
+    answers.clear()
+    probe(jnp.float32(2.0))
+    jax.grad(probe)(jnp.float32(2.0))
+    jax.jit(lambda x: (answers.append(real(distributed=True)), x)[1])(1.0)
+    assert answers == [False, False, False], answers
 
 
 def test_a_trace_time_context_that_cannot_make_constants_does_not_recurse(

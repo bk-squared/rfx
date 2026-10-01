@@ -235,7 +235,10 @@ jobs:
           && format('fast-suite ({0})', matrix.group)
           || format('fast-suite-py{0} ({1})', matrix.python-version, matrix.group) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # 75, not 60 (2026-10-01): with the durations priced on Python 3.11 the six groups predict
+    # 44-46 min each, and the same tests vary up to 1.22x between runners, so a slow runner
+    # reaches ~57 min. Shards 56-60 min and one cancel at 60 min were seen on 2026-09-30/10-01.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:

@@ -23,7 +23,7 @@
 # configuration that silently owns nothing.
 #
 # NOT every path is owned, by design. `rfx/` core (grid, simulation, api,
-# materials), `scripts/diagnostics/`,
+# materials), `scripts/diagnostics/` (except a few files named below),
 # `validation/research/` and most of `tests/unit/` carry no lane; a PR confined
 # to them gets no label and must carry the `Lane:` line itself. `changelog.d/`
 # is deliberately unowned: every PR adds a fragment there, so owning it would
@@ -120,3 +120,22 @@
           - "gallery-deploy/**"
           - "README.md"
           - "ROADMAP.md"
+
+# Speed and memory work: profiling, the ring-down early stop, matmul precision (TF32),
+# benchmarks. Owner: the acceleration session (2026-10-01). test_matmul_precision.py is
+# also under lane:ci-infra's tests/contracts/**; a PR touching it gets both labels and
+# its Lane: line names the primary one.
+"lane:performance":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rfx/profiling.py"
+          - "rfx/_precision.py"
+          - "rfx/ringdown.py"
+          - "rfx/_ringdown_jax.py"
+          - "tests/unit/runners/test_profiling.py"
+          - "tests/contracts/test_matmul_precision.py"
+          - "tests/unit/sparams/test_ringdown_*.py"
+          - "tests/**/*benchmark*"
+          - "scripts/benchmarks/**"
+          - "scripts/benchmark_*.py"
+          - "scripts/diagnostics/gpu_throughput_bench.py"
