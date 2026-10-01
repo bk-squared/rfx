@@ -22,7 +22,9 @@ dJ/dCb_j = Re sum_bins A_j curlH_j / Cb_j.
 
 Both field factors include dt; the source DFT targets b, not b*dt.
 JAX differentiates the production edge averaging and Ca/Cb arithmetic
-outside the custom VJP, including scalar or component-wise design sigma.
+outside the custom VJP. Public adjoint admission refuses every supplied
+`design_sigma_override` (#1424: conductivity derivative not validated).
+Fixed material conductivity remains allowed; its dCa/deps reaches gCa.
 Finite record endpoint terms are omitted: the result is a settled-spectrum
 gradient. No time tape or transposed time sweep is part of F2.
 
@@ -54,7 +56,9 @@ edges × components × bins, plus monitor bins and ordinary field carries.
 
 | Input | F2 disposition |
 |---|---|
-| Uniform real float32/float64, second-order Yee, design eps/sigma | Implement |
+| Uniform real float32/float64, second-order Yee, design eps | Implement |
+| Design sigma override (including zero/fixed arrays) | Refuse: #1424 conductivity derivative not validated |
+| Fixed lossy materials with design eps | Allowed; G1 includes sigma=0.2 in and around the box |
 | Point E DFT / E DFT planes | Implement; point via plane pixel |
 | Direct time records or final fields as objectives | Refuse in pullback |
 | NTFF / H planes / flux | Refuse until NTFF G1 passes |

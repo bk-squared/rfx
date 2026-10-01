@@ -1,5 +1,5 @@
 """#1424 F2 gates: CPU fixtures; measurements are printed, never stored here."""
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from unittest.mock import patch
 
@@ -75,11 +75,55 @@ def errors(actual, reference):
             for a, b in zip(jax.tree.leaves(actual), jax.tree.leaves(reference))]
 
 
+@contextmanager
+def sigma_diagnostic_admission():
+    """Keep the unresolved sigma numerical witness below public admission."""
+    import rfx.adjoint as adjoint
+    original = adjoint.admit_forward_adjoint
+    def admit(sim, **kwargs):
+        return original(sim, **{**kwargs, "design_sigma": None})
+    with patch.object(adjoint, "admit_forward_adjoint", admit):
+        yield
+
+
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("lossy", [False, True])
+@pytest.mark.parametrize("point", [True, False])
+def test_g1_eps(precision, lossy, point):
+    with enable_x64() if precision == "float64" else nullcontext():
+        sim, eps = fixture(precision, point)
+        if lossy:
+            sim.add_material("fixed_loss", eps_r=1., sigma=0.2)
+            sim.add(Box((6e-3, 4e-3, 2e-3), (18e-3, 16e-3, 14e-3)),
+                    material="fixed_loss")
+        settling = decay(sim, eps, None)
+        results = [jax.jit(jax.value_and_grad(objective(sim, mode=mode)))(eps, None)
+                   for mode in ("autodiff", "adjoint")]
+        err = errors(results[1][1], results[0][1])[0]
+        print(f"G1 eps {precision=} {lossy=} {point=} {settling=} error={err}", flush=True)
+        assert settling["decay_db"] >= 100
+        np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-6)
+        assert err <= (1e-5 if precision == "float64" else 1e-4)
+
+
+@pytest.mark.parametrize("sigma", [0., 0.2])
+def test_design_sigma_refused_at_admission(sigma):
+    sim, eps = fixture("float32")
+    for value in (sigma, jnp.full_like(eps, sigma), (eps * 0 + sigma,) * 3):
+        with patch.object(sim, "_build_grid", side_effect=AssertionError("past admission")):
+            with pytest.raises(NotImplementedError, match="#1424.*conductivity derivative is not validated"):
+                sim.forward(gradient="adjoint", design_box=(BOX_LO, BOX_HI),
+                            design_eps_override=eps, design_sigma_override=value)
+    with pytest.raises(NotImplementedError, match="#1424.*conductivity derivative is not validated"):
+        jax.grad(objective(sim, mode="adjoint"), argnums=1)(eps, jnp.full_like(eps, sigma))
+
+
 @pytest.mark.parametrize("precision", ["float64", "float32"])
 @pytest.mark.parametrize("lossy", [True, False])
 @pytest.mark.parametrize("point", [True, False])
-def test_g1(precision, lossy, point):
-    with enable_x64() if precision == "float64" else nullcontext():
+@pytest.mark.xfail(strict=True, reason="#1424 sigma-at-zero gCa overlap")
+def test_g1_sigma(precision, lossy, point):
+    with sigma_diagnostic_admission(), (enable_x64() if precision == "float64" else nullcontext()):
         sim, eps = fixture(precision, point)
         sigma = jnp.full_like(eps, 0.2 if lossy else 0.)
         settling = decay(sim, eps, sigma)
@@ -97,12 +141,12 @@ def test_g1(precision, lossy, point):
 def test_g2(precision):
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision)
-        sigma = jnp.full_like(eps, 0.2)
+        sigma = None
         short = 128
         settling = decay(sim, eps, sigma, short)
         print(f"G2 {precision=} short_decay={settling}", flush=True)
         assert settling["decay_db"] < 100
-        grads = [jax.jit(jax.grad(objective(sim, steps, mode), argnums=(0, 1)))(eps, sigma)
+        grads = [jax.jit(jax.grad(objective(sim, steps, mode)))(eps, sigma)
                  for steps, mode in ((short, "autodiff"), (short, "adjoint"),
                                      (2*short, "autodiff"))]
         print(f"G2 {precision=} short={short} long={2*short} "
@@ -134,8 +178,8 @@ def test_g5_mutation(precision):
     import rfx.adjoint as adjoint
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision)
-        sigma = jnp.full_like(eps, 0.2)
-        reference = jax.jit(jax.grad(objective(sim), argnums=(0, 1)))(eps, sigma)
+        sigma = None
+        reference = jax.jit(jax.grad(objective(sim)))(eps, sigma)
         def drop_solve(freqs, dt, length, target):
             # Mutation: independently normalized carriers; all off-diagonal
             # leakage and the negative-frequency image are dropped.
@@ -145,7 +189,7 @@ def test_g5_mutation(precision):
             diagonal = jnp.diag(transform @ basis)
             return target / diagonal[:, None, None]
         with patch.object(adjoint, "_wavelet_coefficients", drop_solve):
-            mutated = jax.jit(jax.grad(objective(sim, mode="adjoint"), argnums=(0, 1)))(eps, sigma)
+            mutated = jax.jit(jax.grad(objective(sim, mode="adjoint")))(eps, sigma)
         err = errors(mutated, reference)
         print(f"G5 mutation {precision=} {err=}", flush=True)
         assert max(err) > (1e-5 if precision == "float64" else 1e-4)
@@ -292,6 +336,7 @@ def test_g5_kernel_admission(case):
         design_adjoint_scan(ctx, initial, ())
 
 
+@pytest.mark.xfail(strict=True, reason="#1424 sigma-at-zero gCa overlap")
 def test_g1_raw_coefficients_lossless_point():
     """#1424 follow-up: differentiate the identical resolved edge arrays."""
     import rfx.adjoint as adjoint
@@ -309,7 +354,7 @@ def test_g1_raw_coefficients_lossless_point():
         sim, eps = fixture("float64", True)
         with patch.object(adjoint, "design_adjoint_scan", capture):
             with pytest.raises(Captured):
-                objective(sim, mode="adjoint")(eps, jnp.zeros_like(eps))
+                objective(sim, mode="adjoint")(eps, None)
         ctx, initial, xs = (captured[k] for k in ("ctx", "initial", "xs"))
         coefficients = (ctx.design_box.ca, ctx.design_box.cb)
 

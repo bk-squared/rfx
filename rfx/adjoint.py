@@ -6,8 +6,12 @@ import jax.numpy as jnp
 
 
 def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
-                          other_overrides, port_s11_freqs):
+                          other_overrides, port_s11_freqs, design_sigma=None):
     """Refuse inputs outside the first implementation before lane dispatch."""
+    if design_sigma is not None:
+        raise NotImplementedError(
+            "gradient='adjoint' refuses design_sigma_override: #1424 "
+            "the conductivity derivative is not validated")
     reason = None
     if distributed:
         reason = "distributed execution"
@@ -33,7 +37,7 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
     elif sim._solver != "yee":
         reason = "non-Yee solvers"
     elif any(v is not None for v in other_overrides):
-        reason = "overrides other than design eps and design sigma"
+        reason = "overrides other than design eps"
     elif design_box is None or design_eps is None:
         reason = "calls without design_box and design_eps_override"
     if reason is not None:

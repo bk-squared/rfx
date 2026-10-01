@@ -3853,7 +3853,9 @@ class _ExecuteMixin:
         Parameters
         ----------
         gradient : {"autodiff", "adjoint"}
-            Opt-in settled-spectrum reciprocity design eps/sigma adjoint.
+            Opt-in settled-spectrum reciprocity design eps adjoint.
+            Design sigma overrides are refused (#1424): the conductivity
+            derivative is not validated. Fixed lossy materials are allowed.
             Stores design-edge DFTs and runs a second ordinary forward.
             Uniform Yee design_box only; unsupported paths raise. Checkpoint
             options are unused by the adjoint (its storage does not depend on them).
@@ -4219,6 +4221,7 @@ class _ExecuteMixin:
             admit_forward_adjoint(
                 self, distributed=distributed, ringdown=ringdown,
                 design_box=design_box, design_eps=design_eps_override,
+                design_sigma=design_sigma_override,
                 other_overrides=(eps_override, sigma_override, mu_r_override,
                                  pec_mask_override, pec_occupancy_override,
                                  design_occupancy_override, rlc_values_override),
