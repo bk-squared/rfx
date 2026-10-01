@@ -45,7 +45,8 @@ DFTs form A (positive carriers) and B (negative carriers). Solve
 `(A-B conj(A)^-1 conj(B)) c = b-B conj(A)^-1 conj(b)` and inject
 `2 Re sum_k c_k difference(envelope exp(+i w_k t))`. These are Nf-by-Nf solves;
 including the conjugate carriers makes arbitrary complex targets reachable
-with real fields. Reject empty, duplicate, DC/Nyquist/out-of-band bins.
+with real fields. Monitors must share identical bins. Reject empty, duplicate,
+DC/Nyquist/out-of-band bins.
 The remaining run lets the wavelet response decay. Storage is design
 edges × components × bins, plus monitor bins and ordinary field carries.
 
@@ -58,7 +59,7 @@ edges × components × bins, plus monitor bins and ordinary field carries.
 | Direct time records or final fields as objectives | Refuse in pullback |
 | NTFF / H planes / flux | Refuse until NTFF G1 passes |
 | Graded, distributed, ports, ring-down, TFSF | Refuse |
-| Debye/Lorentz (anywhere), Kerr, UPML, Bloch | Refuse |
+| Debye/Lorentz (anywhere), Kerr, UPML, Bloch/periodic | Refuse |
 | Other overrides, occupancy, sheets, current moments, non-Yee | Refuse |
 | Boundary/CPML monitor pixels, anisotropy, unsupported boundaries | Refuse |
 

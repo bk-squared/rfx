@@ -99,6 +99,9 @@ def test_g2(precision):
         sim, eps = fixture(precision)
         sigma = jnp.full_like(eps, 0.2)
         short = 128
+        settling = decay(sim, eps, sigma, short)
+        print(f"G2 {precision=} short_decay={settling}", flush=True)
+        assert settling["decay_db"] < 100
         grads = [jax.jit(jax.grad(objective(sim, steps, mode), argnums=(0, 1)))(eps, sigma)
                  for steps, mode in ((short, "autodiff"), (short, "adjoint"),
                                      (2*short, "autodiff"))]
