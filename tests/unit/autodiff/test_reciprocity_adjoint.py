@@ -119,9 +119,12 @@ def test_design_sigma_refused_at_admission(sigma):
 
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
-@pytest.mark.parametrize("lossy", [True, False])
+@pytest.mark.parametrize("lossy", [
+    True,
+    pytest.param(False, marks=pytest.mark.xfail(
+        strict=True, reason="#1424 sigma-at-zero gCa overlap")),
+])
 @pytest.mark.parametrize("point", [True, False])
-@pytest.mark.xfail(strict=True, reason="#1424 sigma-at-zero gCa overlap")
 def test_g1_sigma(precision, lossy, point):
     with sigma_diagnostic_admission(), (enable_x64() if precision == "float64" else nullcontext()):
         sim, eps = fixture(precision, point)
