@@ -4816,17 +4816,6 @@ class _ExecuteMixin:
         # a devices= model that runs on one device is re-run with all of them.
         _call_args = dict(locals())
         del _call_args["self"]
-        if gradient not in ("autodiff", "adjoint"):
-            raise ValueError("gradient must be 'autodiff' or 'adjoint'")
-        if gradient == "adjoint":
-            from rfx.adjoint import admit_forward_adjoint
-            admit_forward_adjoint(
-                self, distributed=distributed, ringdown=ringdown,
-                design_box=design_box, design_eps=design_eps_override,
-                other_overrides=(eps_override, sigma_override, mu_r_override,
-                                 pec_mask_override, pec_occupancy_override,
-                                 design_occupancy_override, rlc_values_override),
-                port_s11_freqs=port_s11_freqs)
         _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None

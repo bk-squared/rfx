@@ -39,10 +39,11 @@ q uses the E timestamp and no additional phase. Epre uses the same timestamp
 as q, giving its explicit one-step delay relative to post-update E.
 
 For each monitor use compact early real wavelets formed from positive and
-negative complex exponentials with a smooth envelope. Their actual sampled
+negative complex exponentials with a smooth envelope. Take the compact
+discrete difference of each carrier to enforce zero deposited DC. Their sampled
 DFTs form A (positive carriers) and B (negative carriers). Solve
 `(A-B conj(A)^-1 conj(B)) c = b-B conj(A)^-1 conj(b)` and inject
-`2 Re sum_k c_k envelope exp(+i w_k t)`. These are Nf-by-Nf solves;
+`2 Re sum_k c_k difference(envelope exp(+i w_k t))`. These are Nf-by-Nf solves;
 including the conjugate carriers makes arbitrary complex targets reachable
 with real fields. Reject empty, duplicate, DC/Nyquist/out-of-band bins.
 The remaining run lets the wavelet response decay. Storage is design

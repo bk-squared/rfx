@@ -50,14 +50,24 @@ def _plane_slice(meta, shape):
     return tuple(out)
 
 
+def _wavelet_basis(freqs, dt, length, n):
+    """Compact discrete derivative: telescoping sum has no deposited DC."""
+    def primitive(k):
+        envelope = jnp.where((k >= 0) & (k < length - 1),
+                            jnp.sin(jnp.pi * (k + 1) / length)**4, 0.)
+        return envelope[..., None] * jnp.exp(
+            2j * jnp.pi * ((k + 1) * dt)[..., None] * freqs)
+    return primitive(n) - primitive(n - 1)
+
+
 def _wavelet_coefficients(freqs, dt, length, target):
     """Real compact wavelet, exact complex bin targets via Nf-square solves."""
     t = (jnp.arange(length, dtype=freqs.dtype) + 1) * dt
-    envelope = jnp.sin(jnp.pi * (jnp.arange(length) + 1) / (length + 1))**4
     carrier = jnp.exp(2j * jnp.pi * t[:, None] * freqs)
+    basis = _wavelet_basis(freqs, dt, length, jnp.arange(length, dtype=freqs.dtype))
     transform = jnp.conj(carrier).T * dt
-    a = transform @ (envelope[:, None] * carrier)
-    b = transform @ (envelope[:, None] * jnp.conj(carrier))
+    a = transform @ basis
+    b = transform @ jnp.conj(basis)
     flat = target.reshape((len(freqs), -1))
     cross = jnp.linalg.solve(jnp.conj(a), jnp.conj(b))
     rhs = flat - b @ jnp.linalg.solve(jnp.conj(a), jnp.conj(flat))
@@ -141,14 +151,12 @@ def design_adjoint_scan(ctx, initial, xs):
                                             ctx.dx, ctx.periodic, ctx.stencil_order, ctx.bloch))
             if targets is not None:
                 n = prev.step
-                t = (n + 1) * ctx.dt
-                envelope = jnp.where(n < wavelet_length,
-                    jnp.sin(jnp.pi * (n + 1) / (wavelet_length + 1))**4, 0.)
                 for m, w in zip(ctx.dft_meta, weights):
                     c = m[0]
                     slot = _plane_slice(m, ctx.grid.shape)
-                    phase = jnp.exp(2j * jnp.pi * jnp.asarray(m[3], dtype=dtype) * t)
-                    value = 2 * envelope * jnp.real(jnp.einsum('f,fij->ij', phase, w))
+                    basis = _wavelet_basis(jnp.asarray(m[3], dtype=dtype), ctx.dt,
+                                           wavelet_length, n.astype(dtype))
+                    value = 2 * jnp.real(jnp.einsum('f,fij->ij', basis, w))
                     cb = monitor_cb[("ex", "ey", "ez").index(c)][slot]
                     state = state._replace(**{c: getattr(state, c).at[slot].add((cb*value).astype(dtype))})
             return state, (e, curl)
