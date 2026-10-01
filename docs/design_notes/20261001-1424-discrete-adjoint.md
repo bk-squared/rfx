@@ -52,7 +52,5 @@ meaning on the default path.
 | Missing design box/eps; snapshot/stopping/progress via low-level run | Raises |
 | CPML/PEC and source/design collision rules | Existing design-box fences retained |
 
-Tests: `tests/unit/autodiff/test_discrete_adjoint.py`. CPU timings and mutation
-observations are recorded separately with the implementation report. The
-GPU time and 48 GB capacity gates are not measured here. Interpretation:
-**lead fills**.
+Tests: `tests/unit/autodiff/test_discrete_adjoint.py`.
+Interpretation: **lead fills**.
