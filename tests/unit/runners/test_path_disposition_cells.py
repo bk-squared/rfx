@@ -429,7 +429,10 @@ def _run(sim, lane, feature, *, entry=None):
         if entry.startswith("run_"):
             if entry == "run_distributed":
                 kwargs["devices"] = _devices()
-            return sim.run(**kwargs, **feature.run_kwargs(entry))
+            # These cells compare field records; S-request cells opt in below.
+            kwargs.update(compute_s_params=False)
+            kwargs.update(feature.run_kwargs(entry))
+            return sim.run(**kwargs)
         kwargs["checkpoint"] = False
         if entry == "fwd_distributed_nu":
             kwargs.update(distributed=True, devices=_devices())

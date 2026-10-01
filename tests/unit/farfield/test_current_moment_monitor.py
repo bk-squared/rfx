@@ -1542,7 +1542,7 @@ def _guard_sim(**kw):
 
 
 def _guard_runs(sim, **kw):
-    return sim.run(n_steps=4, skip_preflight=True, **kw)
+    return sim.run(n_steps=4, skip_preflight=True, compute_s_params=False, **kw)
 
 
 def _block(sim, lo_mm, hi_mm, material="diel"):

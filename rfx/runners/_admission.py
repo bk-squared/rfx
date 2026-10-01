@@ -923,9 +923,25 @@ def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
         raise NotImplementedError(message(lane, rows, sim, run_args))
 
 
+def refuse_plain_sources_s_matrix(sim):
+    """A port drive must be the only excitation of a lumped/wire S solve."""
+    if any(p.impedance != 0.0 for p in sim._ports) and any(
+        p.impedance == 0.0 for p in sim._ports
+    ):
+        raise NotImplementedError(
+            "Lumped/wire S-matrix requests do not support plain sources / "
+            "0-ohm ports (add_source, add_polarized_source or "
+            "add_port(impedance=0)): they fire in every port drive. "
+            "Remove the plain source, or call run(compute_s_params=False) "
+            "to get raw port waves with the source included."
+        )
+
+
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
                        distributed=False):
     """Check the requested scan extraction before run() starts its field solve."""
+    if compute_s_params is not False:
+        refuse_plain_sources_s_matrix(sim)
     uses_scan = (any(p.impedance != 0.0 for p in sim._ports)
                  if distributed else _s_matrix_ports(sim))
     if compute_s_params is False or not uses_scan:

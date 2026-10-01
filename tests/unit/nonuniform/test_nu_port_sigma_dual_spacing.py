@@ -226,7 +226,7 @@ def _capture(sim):
 
     _rn.run_nonuniform = spy
     try:
-        sim.run(n_steps=4, skip_preflight=True)
+        sim.run(n_steps=4, compute_s_params=False, skip_preflight=True)
     except SystemExit:
         pass
     finally:
@@ -366,8 +366,8 @@ def _s11(component, extent):
     n_live = _stamped(component, extent)["n_live"]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        res = sim.run(n_steps=1200, compute_s_params=True,
-                      s_param_freqs=FREQS, skip_preflight=True)
+        # Passive-cell admittance diagnostic, with the separate source retained.
+        res = sim.forward(n_steps=1200, port_s11_freqs=FREQS, skip_preflight=True)
     return np.real(np.asarray(res.s_params)[0, 0, :]), n_live
 
 

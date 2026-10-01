@@ -209,6 +209,12 @@ def _build(nu, *, extent=3e-3, excite=False, z0=50.0, port_x=8e-3,
 
 
 def _s11(sim, n_steps=N_STEPS):
+    if any(pe.impedance == 0.0 for pe in sim._ports):
+        # #1420: this is a passive cell diagnostic, not a structure S-matrix.
+        # Keep the separate illumination and the production wave decomposition
+        # via forward()'s per-port diagnostic (uniform 1-D, graded 1x1xN).
+        r = sim.forward(n_steps=n_steps, port_s11_freqs=FREQS, skip_preflight=True)
+        return np.asarray(r.s_params).reshape(-1)
     r = sim.run(n_steps=n_steps, compute_s_params=True,
                 s_param_freqs=FREQS, skip_preflight=True)
     return np.asarray(r.s_params)[0, 0, :]

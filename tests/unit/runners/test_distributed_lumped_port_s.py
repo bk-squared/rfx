@@ -69,8 +69,6 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
     if case == "plate_line":
         sim = _plate_line()
         freqs = np.linspace(1e9, 10e9, 19)
-    if case in ("soft_pec", "legacy_soft_pec"):
-        sim = _model(seam, ports, component, channel=False, n_devices=n_devices, boundary="pec")
     if case in ("debye", "lossy", "eps4"):
         extra = {"debye_poles": [DebyePole(delta_eps=1., tau=1e-11)]} if case == "debye" else {"sigma": 0.05} if case == "lossy" else {}
         sim.add_material("block", eps_r=4., **extra)
@@ -79,9 +77,9 @@ def _parity(*, seam=True, ports=2, mode="explicit", channel=False,
         # Keep the body strictly between the ports, away from both port edges.
         sim._ports[1] = replace(sim._ports[1], position=(4e-3, 3e-3, 3e-3))
         sim.add(Box((6e-3, 2e-3, 2e-3), (7e-3, 4e-3, 4e-3)), material="pec")
-    elif case in ("soft_cpml", "soft_pec", "legacy_soft_pec"):
-        sim.add_source((4e-3, 3e-3, 3e-3), "ez", waveform=GaussianPulse(f0=5e9, bandwidth=1.6),
-                       **({} if case == "legacy_soft_pec" else {"amplitude_kind": "field"}))
+    elif case == "cpml_box":
+        # Unequal drive impedances in a CPML box, without an extra source.
+        sim._ports[0] = replace(sim._ports[0], impedance=75.)
     kwargs = {"n_steps": n_steps, "skip_preflight": True}
     if mode == "explicit":
         kwargs.update(compute_s_params=True, s_param_freqs=freqs, s_param_n_steps=max(320, n_steps))
@@ -253,29 +251,20 @@ def test_each_magnetic_face_refused_before_scan(monkeypatch, face, explicit):
                 **({"compute_s_params": True} if explicit else {}))
 
 
-@pytest.mark.parametrize("case", ["debye", "lossy", "pec", "soft_cpml", "soft_pec", "eps4"])
-def test_material_and_soft_source_parity(case):
+@pytest.mark.parametrize("case", ["debye", "lossy", "pec", "cpml_box", "eps4"])
+def test_material_and_cpml_box_parity(case):
     _parity(case=case)
 
 
-def test_legacy_pec_soft_source_parity():
-    _parity(case="legacy_soft_pec")
-
-
-def test_main_source_rule_in_drive_scans_mutation(monkeypatch):
-    import inspect
-    from rfx.runners import distributed_v2 as runner
-    source = inspect.getsource(runner.run_distributed)
-    source = source.replace(
-        'if _source_port_indices is not None or sim._boundary == "cpml":',
-        'if sim._boundary == "cpml":',
-    )
-    namespace = dict(vars(runner))
-    exec(compile(source, "<main-source-rule-mutation>", "exec"), namespace)
-    monkeypatch.setattr(runner, "run_distributed", namespace["run_distributed"])
-    with pytest.raises(AssertionError, match="S parity max_delta"):
-        _parity(case="legacy_soft_pec")
-    print("mutation=main_source_rule_in_drive_scans: soft PEC S parity RED")
+@pytest.mark.parametrize("case", ["soft_pec", "legacy_soft_pec"])
+@pytest.mark.parametrize("distributed", [False, True])
+def test_pec_plain_source_refused(case, distributed):
+    sim = _model(boundary="pec")
+    sim.add_source((4e-3, 3e-3, 3e-3), "ez",
+                   **({} if case == "legacy_soft_pec" else {"amplitude_kind": "field"}))
+    with pytest.raises(NotImplementedError, match="plain sources.*compute_s_params=False"):
+        sim.run(n_steps=8, skip_preflight=True,
+                devices=jax.devices("cpu")[:2] if distributed else None)
 
 
 def test_long_record():
@@ -350,7 +339,7 @@ def test_drive_only_order_mutation(monkeypatch):
     monkeypatch.setattr(runner, "run_distributed", namespace["run_distributed"])
     # All these sources are away from walls/masks: numerical parity alone
     # cannot require a shared step. The structural invariant must also fail.
-    for case in (None, "debye", "lossy", "pec", "soft_cpml", "soft_pec", "eps4"):
+    for case in (None, "debye", "lossy", "pec", "cpml_box", "eps4"):
         _parity(case=case)
     with pytest.raises(AssertionError, match="shared step injection order"):
         _assert_shared_step_order(source)
@@ -402,4 +391,4 @@ if __name__ == "__main__":
     _parity(n_devices=int(sys.argv[1]))
     _parity(n_devices=int(sys.argv[1]), channel=True)
     _parity(n_devices=int(sys.argv[1]), case="plate_line", ports=1, n_steps=512)
-    _parity(n_devices=int(sys.argv[1]), case="legacy_soft_pec")
+    _parity(n_devices=int(sys.argv[1]), case="cpml_box")
