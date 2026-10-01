@@ -147,42 +147,59 @@ def _refuse_transformed_extended_tfsf(entry) -> None:
             "checkpoint and segmentation options remain available.")
 
 
-def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
-    """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
+def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
+    """Whether a forward entry evaluates its set-up while being traced (#1367).
 
-    A port with a load (``add_port(..., impedance=...)``, nonzero) reads the
-    model on the host while it is set up, and under an outer ``jax.jit``
-    those arrays are tracers, so the read fails:
+    The rule: set-up that reads only the declaration is always concrete, and
+    the time stepping is always recorded (``rfx.core.jax_utils``). Under an
+    outer ``jax.jit`` every operation is recorded, including the ones that
+    read only the model, and set-up reads the model on the host in many
+    places: a wire port's live edges and an MSL port's geometry check read
+    the realized PEC edge mask, a graded-lane port takes its cell sizes as
+    Python floats, the far-field transform reads an NTFF box's frequency
+    count. #1225 answered True for a whitelist of ports and missed the rest
+    (MSL ports, #1367; the NTFF box, #1364), so the answer no longer depends
+    on the model: staged by an outer trace, and not distributed.
 
-    * a wire port (``extent=...``) asks the realized PEC edge mask which of
-      its edges are live — on the uniform lane whenever the model has a
-      conductor (``rfx.sources.sources._wire_port_live_cells``), on the
-      graded lane always (``rfx.runners.nonuniform.run_nonuniform_path``);
-    * on the graded lane every loaded port, wire or lumped, takes its cell
-      sizes as Python floats (``rfx.nonuniform.port_metric_axes``).
-
-    For those models the set-up is evaluated at trace time instead. Every
-    other model — no loaded port, or only lumped ports on the uniform lane —
-    keeps exactly the code path it had before, so its jitted program is
-    unchanged; so does the distributed lane, whose ``shard_map`` step cannot
-    run its constant-operand collectives outside the mesh. The lane test is
-    the one ``forward()`` dispatches on (``_dispatch_plan``: not distributed
-    and ``_uses_nonuniform_mesh``).
-
-    The ports are checked first and the staging probe second, so a model
-    without a loaded port runs neither the probe nor the mesh resolution,
-    and a plain call never reaches the lane test.
+    Operations that read a traced input stay recorded, so a gradient is
+    unchanged. The distributed lane is excluded: its ``shard_map`` step
+    cannot run its constant-operand collectives outside the mesh.
     """
-    if distributed:
-        return False
-    loaded = [pe for pe in sim._ports if pe.impedance != 0.0]
-    if not loaded:
-        return False
-    if not _staged_by_an_outer_trace():
-        return False
-    if any(getattr(pe, "extent", None) is not None for pe in loaded):
-        return True
-    return bool(sim._uses_nonuniform_mesh)
+    return not distributed and _staged_by_an_outer_trace()
+
+
+def _declaration_setup_at_trace_time(entry):
+    """Give a shared forward entry the set-up / time-stepping boundary.
+
+    ``forward()`` and the entries its single-device lanes share with the
+    calculators (``_forward_from_materials``,
+    ``_forward_nonuniform_from_materials``) carry it, so the rule holds
+    wherever one of them is staged. The calculators that call
+    ``_forward_from_materials`` directly (``topology_optimize``,
+    ``compute_mixed_s_matrix``, the S-matrix driver) run it without an outer
+    trace, where the rule is inactive: ``topology_optimize`` differentiates
+    with an un-jitted ``jax.value_and_grad`` and still compiles the solve on
+    every iteration. When :func:`_setup_evaluated_at_trace_time` holds, the
+    entry runs inside
+    ``rfx.core.jax_utils.declaration_setup()``; a nested entry then sees no
+    staging and runs its body directly. The time-stepping scans inside leave
+    that region through ``rfx.core.jax_utils.recorded_scan``.
+
+    The body runs in the region only if the region really made constants
+    concrete: inside an eager ``jax.shard_map`` the probe still reads True
+    there, and the entry then runs its body outside the region, exactly as
+    before #1225, instead of re-entering without end.
+    """
+    @functools.wraps(entry)
+    def staged_entry(self, *args, **kwargs):
+        if _setup_evaluated_at_trace_time(
+                distributed=bool(kwargs.get("distributed", False))):
+            from rfx.core.jax_utils import declaration_setup
+            with declaration_setup():
+                if not _staged_by_an_outer_trace():
+                    return entry(self, *args, **kwargs)
+        return entry(self, *args, **kwargs)
+    return staged_entry
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
@@ -1525,6 +1542,7 @@ class _ExecuteMixin:
             dt=dt,
         )
 
+    @_declaration_setup_at_trace_time
     def _forward_from_materials(
         self,
         grid: Grid,
@@ -2667,6 +2685,7 @@ class _ExecuteMixin:
             current_moment_monitor=current_moment_monitor,
         )
 
+    @_declaration_setup_at_trace_time
     def _forward_nonuniform_from_materials(
         self,
         *,
@@ -3794,6 +3813,7 @@ class _ExecuteMixin:
                      and hi_idx[axis] == grid.shape[axis])))
         )
 
+    @_declaration_setup_at_trace_time
     def forward(
         self,
         *,
@@ -4179,13 +4199,18 @@ class _ExecuteMixin:
         step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
         compiles on its first call and reuses the program afterwards, while
         an un-jitted ``jax.value_and_grad(loss)`` compiles the whole solve
-        again on every call (#1225). Two kinds of model could not be traced
-        under ``jax.jit`` before #1225: one with a wire port
-        (``add_port(..., extent=...)``; on the uniform lane only when it also
-        had a conductor), and one on a graded mesh with any port that carries
-        an impedance. Their set-up is now evaluated while tracing. The jitted value and gradient agree with a plain call to
-        float32 rounding, not necessarily bit for bit: XLA compiles the whole
-        step as one program.
+        again on every call (#1225). Under an outer ``jax.jit`` (single
+        device), the set-up built from the model alone is evaluated while
+        tracing and the time stepping is compiled into the caller's program
+        (#1367, #1354), so a function with no traced input compiles too. The
+        set-up's arrays become constants of that program: the first call
+        costs a plain call's set-up on top of the compile, and the compiled
+        program holds those arrays for as long as JAX caches it. The loop
+        compiles over operands XLA cannot read, as in a plain call; what is
+        computed from a traced input before the loop (a port's drive from a
+        traced permittivity, #1320) is compiled with the caller's program,
+        so the jitted value and gradient agree with a plain call to float32
+        rounding, not necessarily bit for bit.
         """
         if gradient not in ("autodiff", "adjoint"):
             raise ValueError("gradient must be 'autodiff' or 'adjoint'")
@@ -4199,28 +4224,6 @@ class _ExecuteMixin:
                                  design_occupancy_override, rlc_values_override),
                 port_s11_freqs=port_s11_freqs)
         _refuse_transformed_extended_tfsf(self._tfsf)
-        if _forward_needs_trace_time_setup(self, distributed=distributed):
-            # #1225: evaluate the set-up now instead of recording it. Only
-            # the operations that read a traced argument are recorded;
-            # everything built from the model alone is computed at trace
-            # time, so the port's host reads (the realized PEC edge mask,
-            # the cell sizes) see concrete arrays. Forwarding ``locals()``
-            # — the parameters, and nothing else yet — keeps a parameter
-            # added later from being dropped here.
-            #
-            # The re-call happens only if the context really made constants
-            # concrete: inside an eager ``jax.shard_map`` the probe still
-            # reads True, and re-calling would recurse without end. Then
-            # the call falls through to the plain body below, outside the
-            # context, exactly as before #1225.
-            _call = dict(locals())
-            del _call["self"]
-            _unknown = _call.pop("_removed_kwargs")
-            with jax.ensure_compile_time_eval():
-                if not _staged_by_an_outer_trace():
-                    return self.forward(**_call, **_unknown)
-            del _call, _unknown
-
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)
@@ -4813,6 +4816,17 @@ class _ExecuteMixin:
         # a devices= model that runs on one device is re-run with all of them.
         _call_args = dict(locals())
         del _call_args["self"]
+        if gradient not in ("autodiff", "adjoint"):
+            raise ValueError("gradient must be 'autodiff' or 'adjoint'")
+        if gradient == "adjoint":
+            from rfx.adjoint import admit_forward_adjoint
+            admit_forward_adjoint(
+                self, distributed=distributed, ringdown=ringdown,
+                design_box=design_box, design_eps=design_eps_override,
+                other_overrides=(eps_override, sigma_override, mu_r_override,
+                                 pec_mask_override, pec_occupancy_override,
+                                 design_occupancy_override, rlc_values_override),
+                port_s11_freqs=port_s11_freqs)
         _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None

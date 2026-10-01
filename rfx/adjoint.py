@@ -71,6 +71,7 @@ def design_adjoint_scan(ctx, initial, xs):
     records/final-field objectives are refused through symbolic cotangents.
     """
     import numpy as np
+    from rfx.core.jax_utils import recorded_scan
     from rfx.core.yee import curl_h, e_component_coeffs
     from rfx.simulation import make_core_step, core_step_invariants
 
@@ -168,7 +169,7 @@ def design_adjoint_scan(ctx, initial, xs):
                     acc_h = tuple(a + phase[:, None, None, None]*v for a, v in zip(acc_h, h))
             return (state, acc_e, acc_h), (probes,) if targets is None else None
         start = initial if targets is None else {k: v for k, v in initial.items() if k != "dft_planes"}
-        return jax.lax.scan(step, (start, z, z), xs)
+        return recorded_scan(step, (start, z, z), xs)
 
     @jax.custom_vjp
     def scan(coeffs):
