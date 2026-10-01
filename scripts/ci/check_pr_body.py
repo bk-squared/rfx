@@ -121,6 +121,9 @@ FALLBACK_LANE_LABELS = (
     # IDM, FDFD); missing here until 2026-09-28, so a local pr-body step failed
     # every lane:research PR that passed on GitHub.
     "lane:research",
+    # Created for speed and memory work (profiling, benchmarks, TF32); owner: the
+    # acceleration session (2026-10-01).
+    "lane:performance",
 )
 
 # Em dash, en dash or a plain hyphen. Codex-written bodies use the hyphen and a
