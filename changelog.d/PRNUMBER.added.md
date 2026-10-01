@@ -1,6 +1,9 @@
-Opt-in `forward(gradient="adjoint")` computes settled-spectrum design-permittivity
-gradients on supported uniform Yee scenes using record-length-independent storage.
-`ForwardResult.adjoint_settling` reports the final-to-peak electric-field amplitude
-ratio on the design-box Yee edges; above about 1e-2 (-40 dB), the record has not settled.
-Autodiff leaves this field `None`. Unsupported paths and design conductivity
-overrides are refused; the conductivity derivative remains unvalidated (#1424 gCa).
+### Added — `forward(gradient="adjoint")`: a design-permittivity gradient by a second forward run (#1424)
+
+- Opt-in on the uniform lane. The gradient takes about 1.8 forward runs instead of 2.5-2.8, and its memory
+  no longer grows with the record or the checkpoint carries (A6000, 3.7e7 cells: 4.6 GB instead of 25.8 GB).
+- It is the gradient of the settled spectrum: equal to `jax.grad` on a settled record, different on an
+  unsettled one. `ForwardResult.adjoint_settling` reports the design box's final |E| over its peak; above
+  about 1e-2 the record has not settled (a value below that is not an accuracy bound).
+- Objectives from E DFT planes and point DFTs. Design conductivity, graded meshes, ports, NTFF, ring-down,
+  dispersive materials and distributed runs are refused.

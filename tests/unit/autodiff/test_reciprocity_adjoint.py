@@ -122,7 +122,7 @@ def test_design_sigma_refused_at_admission(sigma):
 @pytest.mark.parametrize("lossy", [
     True,
     pytest.param(False, marks=pytest.mark.xfail(
-        strict=True, reason="#1424 sigma-at-zero gCa overlap")),
+        strict=True, reason="#1424 at sigma=0 the autodiff reference is not record-stable (gCa moves 94 % of its peak from 2400 to 4800 steps; F2 4.5e-8)")),
 ])
 @pytest.mark.parametrize("point", [True, False])
 def test_g1_sigma(precision, lossy, point):
@@ -340,7 +340,7 @@ def test_g5_kernel_admission(case):
         design_adjoint_scan(ctx, initial, ())
 
 
-@pytest.mark.xfail(strict=True, reason="#1424 sigma-at-zero gCa overlap")
+@pytest.mark.xfail(strict=True, reason="#1424 at sigma=0 the autodiff reference is not record-stable (gCa moves 94 % of its peak from 2400 to 4800 steps; F2 4.5e-8)")
 def test_g1_raw_coefficients_lossless_point():
     """#1424 follow-up: differentiate the identical resolved edge arrays."""
     import rfx.adjoint as adjoint
