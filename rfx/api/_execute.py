@@ -1508,9 +1508,9 @@ class _ExecuteMixin:
             probes.append((i, j, pe.component))
 
         # A derivative with respect to eps or sigma through the 2-D ADI update
-        # is NaN (its coupling coefficient's backward pass underflows float32;
-        # 3-D is finite), so it is refused when one is requested; the value,
-        # also under jax.jit, is unaffected (#1373).
+        # is NaN in forward and reverse mode while central differences are
+        # finite (3-D is finite; cause not confirmed, #1373), so it is refused
+        # when one is requested; the value, also under jax.jit, is unaffected.
         eps_r_2d = _refuse_adi_2d_material_derivative(materials.eps_r[:, :, 0])
         sigma_2d = _refuse_adi_2d_material_derivative(materials.sigma[:, :, 0])
 
