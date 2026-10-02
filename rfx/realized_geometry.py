@@ -184,17 +184,14 @@ def _build_record(sim, ctx):
             mask = e.cells
         elif e.kind == "wire":
             mask = np.logical_or.reduce(e.edges(ctx.periodic, ctx.grid.shape))
+        elif e.kind == "lossy" and id(sim._thin_conductors[index - len(sim._geometry)]) in assembled.geometry_masks:
+            from rfx.geometry.rasterize_grid import interior_lattice_mask
+            mask = interior_lattice_mask(
+                assembled.geometry_masks[id(sim._thin_conductors[index - len(sim._geometry)])], ctx.grid)
         else:
-            # Refused declarations and legacy lossy folds have no PEC cells.
-            # Preserve their audit evidence here, not in individual readers.
-            from rfx.fidelity import _entity_mask
-            entry = (sim._geometry[index] if label.startswith("geometry") else
-                     sim._thin_conductors[index - len(sim._geometry)])
-            try:
-                mask = _entity_mask(entry, sim, ctx.grid, ctx.lane == "nonuniform")
-            except Exception as exc:
-                mask = None
-                mask_error = f"{type(exc).__name__}: {exc}"
+            # A refused declaration has no production occupancy to report.
+            mask = None
+            mask_error = e.error or "ValueError: declaration not represented by the production assembly"
         axes = []
         if mask is not None and mask.any():
             occ = np.where(mask)
@@ -246,7 +243,8 @@ def _build_record(sim, ctx):
         domain.append(DomainAxisGeometry(axis, end - plo,
                                         float(nodes[a][end] - nodes[a][plo]),
                                         (plo, phi), float(sim._domain[a])))
-    return RealizedGeometry(tuple(entities), _ports(sim, ctx), tuple(domain),
+    entities.extend(_pinned_entities(sim, ctx, assembled, nodes, sizes))
+    return RealizedGeometry(tuple(entities), _ports(sim, ctx, assembled), tuple(domain),
                             tuple(_readonly(n) for n in nodes), tuple(_readonly(s) for s in sizes),
                             tuple(_readonly(m) for m in assembled.edges),
                             None if assembled.pec_mask is None else _readonly(assembled.pec_mask),
@@ -256,7 +254,32 @@ def _build_record(sim, ctx):
                             tuple(tuple(row.items()) for row in pad_findings))
 
 
-def _ports(sim, ctx):
+def _pinned_entities(sim, ctx, assembled, nodes, sizes):
+    """Read the pinned specs appended by both production assemblers."""
+    from rfx.preflight.realization import _realized_edges_np
+    declarations = getattr(sim, "_pinned_sheets", ())
+    specs = assembled.sheets[len(assembled.sheets) - len(declarations):] if declarations else ()
+    rows = []
+    for i, (declaration, sheet) in enumerate(zip(declarations, specs, strict=True)):
+        fp = np.asarray(sheet.footprint, bool)
+        unwrapped = getattr(sheet, "unwrapped_footprint", None)
+        occ = np.where(fp if unwrapped is None else np.asarray(unwrapped, bool))
+        axes = []
+        for a in range(3):
+            lo, hi = int(occ[a].min()), int(occ[a].max())
+            bounds = (float(nodes[a][lo]), float(nodes[a][hi]))
+            axes.append(AxisGeometry('xyz'[a], (lo, hi), None, None, bounds,
+                                     bounds[1] - bounds[0], None, float(sizes[a][lo])))
+        a, k = int(sheet.normal_axis), int(sheet.plane)
+        rows.append(EntityGeometry(
+            f"pinned_sheet[{i}]", declaration.name or "pinned_sheet", "sheet", tuple(axes),
+            0, (a, k, float(nodes[a][k])), (), _readonly(fp),
+            tuple(_readonly(m) for m in _realized_edges_np(None, [sheet], [], ctx.periodic, ctx.grid.shape)),
+            sheet=_freeze(sheet)))
+    return rows
+
+
+def _ports(sim, ctx, assembled):
     from rfx.sources.sources import WirePort, _wire_port_cells, wire_port_edge_span
     from rfx.nonuniform import position_to_index
 
@@ -280,6 +303,10 @@ def _ports(sim, ctx):
                 first, last = wire_port_edge_span(grid, a, lo, hi, pe.position[a], end[a])
                 cells = tuple(tuple(k if j == a else int(start_idx[j]) for j in range(3))
                               for k in range(first, last + 1))
+        if pe.extent is not None:
+            from rfx.boundaries.pec import edges_are_pec
+            cells = tuple(cell for cell, dead in zip(
+                cells, edges_are_pec(assembled.edges, pe.component, cells), strict=True) if not dead)
         rows.append(PortGeometry(f"port[{i}]", "lumped" if pe.extent is None else "wire",
                                  pe.component, cells))
     for i, pe in enumerate(sim._waveguide_ports):
@@ -296,13 +323,19 @@ def _ports(sim, ctx):
                                             grid.dx, grid.shape[b], grid.axis_pads[b])
                 aperture.append((int(sl[0]), int(sl[1] - 1)))
         rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
+    for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
+                       ("_floquet_ports", "floquet")):
+        for i, _ in enumerate(getattr(sim, attr, ())):
+            rows.append(PortGeometry(f"{kind}_port[{i}]", kind, None, (),
+                                     error="not represented: family-specific aperture/drive assembly"))
     return tuple(rows)
 
 
 def realized_geometry(sim):
     """Build once per preflight context and port configuration, without stepping."""
     ctx = sim._campaign_ctx()
-    key = (id(ctx), tuple(id(p) for p in sim._ports), tuple(id(p) for p in sim._waveguide_ports))
+    key = (id(ctx), *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
+                     ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")))
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]

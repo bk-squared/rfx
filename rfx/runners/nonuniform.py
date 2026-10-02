@@ -289,6 +289,8 @@ def assemble_materials_nu(
         conductors = [replace(tc, shape=continued_conductor_shape(
                         sim, grid, tc.shape, entry=tc, unextendable=conductor_findings))
                       for tc in sim._thin_conductors]
+        conductor_keys = {id(tc): id(original)
+                          for tc, original in zip(conductors, sim._thin_conductors, strict=True)}
         pec_tcs = [tc for tc in conductors
                    if getattr(tc, "is_pec", False)]
         lossy_tcs = [tc for tc in conductors
@@ -386,6 +388,8 @@ def assemble_materials_nu(
                 # sheet normal, so the rasterized sheet must occupy exactly
                 # one layer there — and must not have vaporized.
                 check_sheet_occupancy(m, n_axis, lane="non-uniform")
+                if geometry_masks is not None:
+                    geometry_masks.append((conductor_keys[id(tc)], m))
                 # Leontovich band-centre surface-impedance mode (#669/#677):
                 # since #677 the sheet does NOT fold into materials.sigma
                 # (that realized it as a full-cell slab and moved resonances
@@ -418,6 +422,8 @@ def assemble_materials_nu(
                         sigma_sheet=sigma_sheet, plane=_plane))
                 continue
             m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
+            if geometry_masks is not None:
+                geometry_masks.append((conductor_keys[id(tc)], m))
             sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
             materials = materials._replace(
                 eps_r=jnp.where(m, tc.eps_r, materials.eps_r),

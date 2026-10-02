@@ -459,11 +459,13 @@ class _CompileMixin:
         # ``include_thin_conductors`` in this method's docstring (#642).
         if include_thin_conductors:
             for tc in self._thin_conductors:
+                geometry_key = id(tc)
                 tc = replace(tc, shape=continued_conductor_shape(
                     self, grid, tc.shape, entry=tc, unextendable=conductor_findings))
                 materials, pec_mask = apply_thin_conductor(
                     grid, tc, materials, pec_mask=pec_mask,
-                    sheet_specs=sheet_specs, sheets=_pec_sheets)
+                    sheet_specs=sheet_specs, sheets=_pec_sheets,
+                    geometry_masks=geometry_masks, geometry_key=geometry_key)
                 if tc.is_pec:
                     pec_shapes.append(tc.shape)
 

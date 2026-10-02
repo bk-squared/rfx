@@ -700,7 +700,8 @@ def fidelity_report(sim, print_report: bool = True):
                     and getattr(grid, f"pad_{'xyz'[a]}_hi") > 0))
             if len(idx) and (drawn_in_pad
                              or nodes[a][idx.min()] < -1e-12
-                             or nodes[a][idx.max() + 1] > domain[a] + 1e-12):
+                             or nodes[a][idx.max() + (geometry.axes[a].cell_range is not None)]
+                             > domain[a] + 1e-12):
                 pad_hit.append(_axis_names()[a])
         if pad_hit:
             item["findings"].append(dict(
@@ -961,8 +962,14 @@ def fidelity_report(sim, print_report: bool = True):
     # pinned board reported a sheet-report-assembly-drift finding telling the
     # reader to trust neither realization, on a model where the two agreed.
     for j, ps in enumerate(getattr(sim, "_pinned_sheets", ()) or ()):
-        from rfx.materials.thin_conductor import pinned_sheet_realized
-        info = pinned_sheet_realized(grid, ps)
+        geometry = rows[f"pinned_sheet[{j}]"]
+        a, k, plane_m = geometry.plane
+        info = dict(normal_axis=a, plane_index=k, plane_m=plane_m,
+                    n_nodes=int(geometry.mask.sum()))
+        for axis in geometry.axes:
+            info[f"{axis.axis}_node_indices"] = axis.node_range
+            info[f"{axis.axis}_edges_m"] = axis.bounds_m
+            info[f"{axis.axis}_span_m"] = axis.extent_m
         a = int(info["normal_axis"])
         k = int(info["plane_index"])
         others = tuple(b for b in range(3) if b != a)

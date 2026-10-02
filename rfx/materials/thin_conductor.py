@@ -442,6 +442,8 @@ def apply_thin_conductor(
     pec_mask: jnp.ndarray | None = None,
     sheet_specs: list | None = None,
     sheets: list | None = None,
+    geometry_masks: list | None = None,
+    geometry_key: int | None = None,
 ) -> tuple[MaterialArrays, jnp.ndarray | None]:
     """Apply thin conductor subcell correction to material arrays.
 
@@ -527,6 +529,8 @@ def apply_thin_conductor(
         # and plane the PEC sheet on this shape gets.
         spec = _pec_sheet_spec(conductor, grid, lane="uniform")
         mask = spec.footprint
+        if geometry_masks is not None:
+            geometry_masks.append((geometry_key, mask))
         n_axis = spec.normal_axis
         check_sheet_occupancy(mask, n_axis, lane="uniform")
         g_sheet = 1.0 / leontovich_rs(conductor.surface_impedance_f0,
@@ -546,6 +550,8 @@ def apply_thin_conductor(
     # Lossy thin conductor (DC fold): effective conductivity preserves
     # the DC sheet resistance R_s = 1/(sigma_bulk*t).
     mask = _thin_conductor_cell_mask(conductor.shape, grid)
+    if geometry_masks is not None:
+        geometry_masks.append((geometry_key, mask))
 
     sigma_eff = conductor.sigma_bulk * (conductor.thickness / grid.dx)
 
