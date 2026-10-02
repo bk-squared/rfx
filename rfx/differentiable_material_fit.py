@@ -345,7 +345,7 @@ def _require_supported_fixture(sim) -> None:
     if any(axis != "z" or sim._mode == "3d" for axis in sim._periodic_axes):
         raise NotImplementedError(
             "differentiable_material_fit() does not support periodic axes "
-            "(set_periodic_axes() or BoundarySpec) (#1290). Remove the "
+            "(BoundarySpec per-face periodic declarations) (#1290). Remove the "
             "periodic-axis override from sim_factory; use Simulation.forward() "
             "with a custom loss to retain it.")
 

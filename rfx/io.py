@@ -19,9 +19,9 @@ Legacy rfx multi-port layout:
   frequency, continuation lines are indented without a frequency column.
   Column-major order: S11, S21, ..., SN1, S12, ..., SNN.
 
-Standard Touchstone layout is the default for writing and reading: row-major
-for 3+ ports, S11 S21 S12 S22 for 2 ports. Use ``layout="legacy-rfx"``
-explicitly to read older unmarked rfx files or write their column-major order.
+Standard Touchstone layout is the default for writing: row-major for 3+
+ports, S11 S21 S12 S22 for 2 ports. Readers detect old unmarked rfx v1
+exports automatically. An explicit ``layout`` overrides detection.
 """
 
 from __future__ import annotations
@@ -301,6 +301,7 @@ def write_touchstone(
     with open(filepath, "w") as f:
         # Comments
         f.write("! rfx Touchstone export\n")
+        f.write(f"! rfx layout: {layout}\n")
         f.write(f"! {n_ports}-port, {n_freqs} frequencies\n")
         if comments:
             for c in comments:
@@ -345,26 +346,14 @@ def write_touchstone(
                     tokens.extend([p1, p2])
                 f.write(" ".join(tokens) + "\n")
             else:
-                # 3+ ports: first line has freq + up to 4 pairs,
-                # continuation lines have up to 4 pairs each.
-                idx = 0
-                first_line_tokens = [f"{freq_scaled:.9e}"]
-                for _ in range(min(_MAX_PAIRS_PER_LINE, len(pairs))):
-                    p1, p2 = pairs[idx]
-                    first_line_tokens.extend([p1, p2])
-                    idx += 1
-                f.write(" ".join(first_line_tokens) + "\n")
-
-                # Continuation lines
-                while idx < len(pairs):
-                    chunk_end = min(idx + _MAX_PAIRS_PER_LINE, len(pairs))
-                    cont_tokens: list[str] = []
-                    while idx < chunk_end:
-                        p1, p2 = pairs[idx]
-                        cont_tokens.extend([p1, p2])
-                        idx += 1
-                    # Indent continuation lines to distinguish from freq lines
-                    f.write("  " + " ".join(cont_tokens) + "\n")
+                # Start each matrix row on a new line, with at most four pairs.
+                for row_start in range(0, len(pairs), n_ports):
+                    for start in range(row_start, row_start + n_ports, _MAX_PAIRS_PER_LINE):
+                        chunk = pairs[start:min(start + _MAX_PAIRS_PER_LINE, row_start + n_ports)]
+                        tokens = [f"{freq_scaled:.9e}"] if start == 0 else []
+                        for p1, p2 in chunk:
+                            tokens.extend([p1, p2])
+                        f.write(("" if start == 0 else "  ") + " ".join(tokens) + "\n")
 
         if version == "2.0":
             f.write("[End]\n")
@@ -381,8 +370,8 @@ def read_touchstone(filepath: str | Path, *, layout: str = "auto") -> tuple[np.n
     ----------
     filepath : str or Path
     layout : str
-        Standard order by default. Pass ``"legacy-rfx"`` for older unmarked
-        rfx files; default reading transposes their 3+ port matrices.
+        Auto-detect old unmarked rfx v1 exports; otherwise use standard order.
+        An explicit layout overrides detection.
 
     Returns
     -------
@@ -412,10 +401,9 @@ def read_touchstone_full(filepath: str | Path, *,
     - Touchstone 2.0 information blocks preserved as raw lines
     - Full matrix data only
 
-    ``layout="auto"`` reads standard order for both versions. Older unmarked
-    rfx 3+ port files cannot be distinguished from standard files: default
-    reading transposes their S matrices. Pass ``layout="legacy-rfx"`` to read
-    those files correctly (also supported by :func:`read_touchstone`).
+    ``layout="auto"`` detects legacy column-major order for unmarked rfx
+    v1 exports with 3+ ports. Marked exports and external files use standard
+    order. Two-port and v2 files are unaffected; explicit layouts override.
     """
     filepath = Path(filepath)
 
@@ -628,7 +616,12 @@ def read_touchstone_full(filepath: str | Path, *,
     freqs = np.array(freqs_list)
 
     if layout == "auto":
-        resolved_layout = "standard"
+        legacy_export = (
+            version == "1.0" and n_ports >= 3
+            and "rfx Touchstone export" in comments
+            and not any(c.lower().startswith("rfx layout:") for c in comments)
+        )
+        resolved_layout = "legacy-rfx" if legacy_export else "standard"
     else:
         resolved_layout = layout.lower()
 

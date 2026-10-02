@@ -4516,7 +4516,11 @@ class _ExecuteMixin:
             pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
         if n_steps is None:
-            n_steps = grid.num_timesteps(num_periods=num_periods)
+            if self._solver == "adi":
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+            else:
+                n_steps = grid.num_timesteps(num_periods=num_periods)
 
         # #677: node-thin sheet ctx against the realized PEC edges of this
         # forward run (PEC wins on overlapping edges).  #931: the PEC
@@ -5192,7 +5196,8 @@ class _ExecuteMixin:
                 **({} if report_every is None else {"report_every": report_every}),
             }, instead="use the default solver='yee'")
             if n_steps is None:
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
             _res = self._run_adi_from_materials(
                 grid,
                 base_materials,

@@ -579,3 +579,21 @@ def test_simulation_adi_3d_cpml():
     assert not jnp.any(jnp.isnan(result.state.ez))
     max_ez = float(jnp.max(jnp.abs(result.state.ez)))
     assert max_ez < 100.0, f"3D ADI+CPML diverged: max|Ez| = {max_ez:.2e}"
+
+
+@pytest.mark.parametrize("factor", [2.0, 5.0])
+@pytest.mark.parametrize("mode", ["2d_tmz", "3d"])
+@pytest.mark.parametrize("entrypoint", ["run", "forward"])
+def test_adi_default_record_honours_num_periods(factor, mode, entrypoint):
+    sim = Simulation(freq_max=10e9, domain=(.006, .006, .006),
+                     dx=.001, boundary="pec", mode=mode, solver="adi",
+                     adi_cfl_factor=factor)
+    sim.add_probe((.003, .003, .003 if mode == "3d" else 0.), "ez")
+    periods = 1.3
+    result = getattr(sim, entrypoint)(num_periods=periods)
+    steps = result.time_series.shape[0]
+    duration = periods / result.grid.freq_max
+    assert steps * result.dt >= duration
+    assert (steps - 1) * result.dt < duration
+    explicit = getattr(sim, entrypoint)(n_steps=7, num_periods=periods)
+    assert explicit.time_series.shape[0] == 7

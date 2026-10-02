@@ -30,6 +30,7 @@ import jax
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.harminv import harminv
 from rfx.sources import GaussianPulse
 
@@ -49,7 +50,8 @@ _N_STEPS = 6000  # same physical duration as the retired 1 mm / 3000 record
 def _build_sim(*, dx=_DX) -> Simulation:
     sim = Simulation(
         freq_max=_F_MAX, domain=_DOMAIN, dx=dx,
-        boundary="cpml", cpml_layers=round(0.004 / dx), pec_faces={"z_lo"},
+        boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=round(0.004 / dx),
     )
     sim.add_material("fr4", eps_r=_FR4_EPS)
     sim.add(Box((0., 0., 0.), (_DOMAIN[0], _DOMAIN[1], _SUB_T)), material="fr4")

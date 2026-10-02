@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from typing import Callable
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -486,13 +485,12 @@ def minimize_reflected_energy(
     return objective
 
 
-def __getattr__(name):
-    if name == "minimize_s11_at_freq":
-        raise AttributeError(
-            "minimize_s11_at_freq was removed; use minimize_s11_at_freq_wave_decomp "
-            "with forward(port_s11_freqs=...)."
-        )
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+def minimize_s11_at_freq(*args, **kwargs):
+    """Retired time-gated objective; fail immediately with its replacement."""
+    raise AttributeError(
+        "minimize_s11_at_freq was removed; use minimize_s11_at_freq_wave_decomp "
+        "with forward(port_s11_freqs=...)."
+    )
 
 
 def minimize_s11_at_freq_wave_decomp(
