@@ -61,16 +61,16 @@ half-step registers for an H plane stamped at the E timestamp.
 
 NTFF surface sources
 --------------------
-The spatial sampling map is the per-step accumulator increment evaluated
-with unit dt and a zero frequency. jax.linear_transpose of this map distributes
-face cotangents back to the original Yee samples, including every face-centre
-average and repeated edge/corner contribution. The wavelet solve stays on the
+The spatial sampling map shares the accumulator's face sampler, without its
+temporal DFT multiplier. jax.linear_transpose on six cropped face slabs
+distributes cotangents back to the original Yee samples, including every
+face-centre average and repeated edge/corner contribution. The wavelet solve stays on the
 six faces; the spatial transpose runs on each instantaneous wavelet, so no
 frequency-by-volume source array is stored. NTFF stamps H at (n+1/2)dt,
 so its cotangent is multiplied by exp(+i w dt/2) before the H-plane rule
 above: DFT(p) = -D exp(-i w dt/2) b. E uses the unchanged electric rule.
 Only the six accumulated faces are observables; Kahan compensation outputs
-are refused. Flux monitors remain refused.
+are refused. forward() has no flux-monitor output.
 
 Gates, measurements and the refusal table: issue #1424 and PR #1430.
 """
@@ -162,21 +162,54 @@ def _magnetic_target(freqs, dt, target):
 
 
 def _ntff_transpose(ctx, state):
-    """Transpose the accumulator's own spatial increment, without a field tape."""
-    from rfx.farfield import accumulate_ntff, init_ntff_data
-    components = ("ex", "ey", "ez", "hx", "hy", "hz")
-    # Unit dt and a zero bin factor out ONLY the temporal DFT multiplier.
-    # All spatial indices and face-centre weights remain the accumulator's.
-    box = ctx.ntff._replace(freqs=jnp.zeros((1,), dtype=state.ex.dtype))
-    zero = init_ntff_data(box, field_dtype=state.ex.dtype)
-    fields = tuple(jnp.zeros_like(getattr(state, c)) for c in components)
+    """Transpose face sampling on six cropped slabs, including stencil halos.
+
+    Face-centre H reads the lower normal neighbour; in-plane averages read
+    through hi. Node sampling needs only the face plane and [lo, hi).
+    Slabs can overlap: their transpose contributions are added at shared edges.
+    """
+    from rfx.farfield import _ntff_face_samples
+    names = ("ex", "ey", "ez", "hx", "hy", "hz")
+    box = ctx.ntff
+    bounds = ((box.i_lo, box.i_hi), (box.j_lo, box.j_hi),
+              (box.k_lo, box.k_hi))
+    halo = int(box.face_centre)
+    windows, boxes, samples = [], [], []
+    for axis in range(3):
+        for side, index in enumerate(bounds[axis]):
+            window = [slice(lo, hi + halo) for lo, hi in bounds]
+            window[axis] = slice(index - halo, index + 1)
+            window = tuple(window)
+            offsets = [w.start for w in window]
+            local_box = box._replace(**{
+                f"{c}_{end}": bounds[d][k] - offsets[d]
+                for d, c in enumerate("ijk") for k, end in enumerate(("lo", "hi"))})
+            windows.append(window)
+            boxes.append(local_box)
+            samples.append((axis, index - offsets[axis],
+                            getattr(box, f"w_{'xyz'[axis]}_{('lo', 'hi')[side]}")))
+    fields = tuple(tuple(jnp.zeros(tuple(w.stop - w.start for w in window),
+                                  dtype=state.ex.dtype) for _ in names)
+                   for window in windows)
 
     def increment(fields):
-        st = state._replace(**dict(zip(components, fields)))
-        value = accumulate_ntff(zero, st, box, 1., 0)
-        return tuple(jnp.real(a[0]) for a in value[:6])
+        return tuple(_ntff_face_samples(
+            state._replace(**dict(zip(names, values))), local_box, *sample)
+            for values, local_box, sample in zip(fields, boxes, samples))
 
-    return jax.linear_transpose(increment, fields)
+    return tuple(windows), jax.linear_transpose(increment, fields)
+
+
+def _inject_ntff(state, faces, transpose, coefficients, magnetic):
+    windows, pullback = transpose
+    fields, = pullback(faces)
+    names = ("hx", "hy", "hz") if magnetic else ("ex", "ey", "ez")
+    for window, values in zip(windows, fields):
+        selected = values[3:] if magnetic else values[:3]
+        state = state._replace(**{
+            c: getattr(state, c).at[window].add((a[window] * v).astype(state.ex.dtype))
+            for c, a, v in zip(names, coefficients, selected)})
+    return state
 
 
 def design_adjoint_scan(ctx, initial, xs):
@@ -284,12 +317,8 @@ def design_adjoint_scan(ctx, initial, xs):
             if ctx.use_ntff:
                 faces = tuple(2 * jnp.real(jnp.einsum("f,fijc->ijc", basis, w, precision=HIGHEST))
                               for w in ntff_weights)
-                fields, = transpose_ntff(faces)
-                names = ("hx", "hy", "hz") if magnetic else ("ex", "ey", "ez")
-                selected = fields[3:] if magnetic else fields[:3]
-                coefficients = monitor_ch if magnetic else monitor_cb
-                state = state._replace(**{c: getattr(state, c) + (a * v).astype(dtype)
-                    for c, a, v in zip(names, coefficients, selected)})
+                state = _inject_ntff(state, faces, transpose_ntff,
+                                     monitor_ch if magnetic else monitor_cb, magnetic)
             return state
 
         def hook(prev, state):

@@ -521,3 +521,45 @@ def test_ntff_compensation_objective_refused():
         return jnp.real(jnp.sum(result.ntff_data.c_x_lo))
     with pytest.raises(NotImplementedError, match="NTFF compensation"):
         jax.grad(loss)(eps)
+
+
+def _full_grid_ntff_transpose(ctx, state):
+    """Pre-shell implementation: independent full-grid injection oracle."""
+    from rfx.farfield import accumulate_ntff, init_ntff_data
+    names = ("ex", "ey", "ez", "hx", "hy", "hz")
+    box = ctx.ntff._replace(freqs=jnp.zeros((1,), dtype=state.ex.dtype))
+    zero = init_ntff_data(box, field_dtype=state.ex.dtype)
+    fields = tuple(jnp.zeros_like(getattr(state, c)) for c in names)
+
+    def increment(fields):
+        value = accumulate_ntff(zero, state._replace(**dict(zip(names, fields))), box, 1., 0)
+        return tuple(jnp.real(a[0]) for a in value[:6])
+
+    return jax.linear_transpose(increment, fields)
+
+
+def _full_grid_ntff_inject(state, faces, transpose, coefficients, magnetic):
+    fields, = transpose(faces)
+    names = ("hx", "hy", "hz") if magnetic else ("ex", "ey", "ez")
+    selected = fields[3:] if magnetic else fields[:3]
+    return state._replace(**{c: getattr(state, c) + (a * v).astype(state.ex.dtype)
+                            for c, a, v in zip(names, coefficients, selected)})
+
+
+@pytest.mark.parametrize("lossy", [False, True])
+@pytest.mark.parametrize("face_centre", [True, False])
+def test_n2_shell_matches_full_grid(lossy, face_centre):
+    import rfx.adjoint as adjoint
+    with enable_x64(), ntff_collocation(face_centre):
+        sim, eps = ntff_fixture("float64", lossy)
+        actual = jax.jit(jax.grad(ntff_objective(sim, mode="adjoint")))(eps)
+        with (patch.object(adjoint, "_ntff_transpose", _full_grid_ntff_transpose),
+              patch.object(adjoint, "_inject_ntff", _full_grid_ntff_inject)):
+            reference = jax.jit(jax.grad(ntff_objective(sim, mode="adjoint")))(eps)
+        difference = float(jnp.max(jnp.abs(actual - reference)))
+        peak = float(jnp.max(jnp.abs(reference)))
+        relative = difference / peak
+        print(f"N2_SHELL {lossy=} {face_centre=} max_difference={difference:.17g} "
+              f"reference_peak={peak:.17g} relative={relative:.17g}", flush=True)
+        assert peak > 0
+        assert relative <= 1e-12
