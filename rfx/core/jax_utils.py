@@ -51,7 +51,7 @@ _REGION = contextvars.ContextVar("rfx_declaration_setup", default=None)
 def compile_time_switch():
     """JAX's switch behind ``jax.ensure_compile_time_eval``, or ``None``.
 
-    On the JAX versions rfx runs in CI (0.6.2 and 0.10.2) the region is the
+    On JAX 0.10.2, the only version rfx runs in required CI, the region is the
     configuration state ``eager_constant_folding`` set to True, and setting
     it back to False inside the region records operations again. That state
     is private API, so it is trusted by behaviour, not by version number,
