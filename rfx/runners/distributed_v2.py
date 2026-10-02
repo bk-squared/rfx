@@ -198,7 +198,7 @@ _apply_pmc_shmap = apply_pmc_face_shmap
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
-                         e_slab=None, e_materials=None, separate_x_terms=False, *, ranks=None):
+                         e_slab=None, e_materials=None, separate_x_terms=False, *, ranks):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -285,7 +285,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
      psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
      psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
      psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi) = _cpml_e(
-        (mesh_ranks(mesh) if ranks is None else ranks), state.ex, state.ey, state.ez,
+        ranks, state.ex, state.ey, state.ez,
         state.hx, state.hy, state.hz,
         cpml_state.psi_ey_xlo, cpml_state.psi_ey_xhi,
         cpml_state.psi_ez_xlo, cpml_state.psi_ez_xhi,
@@ -309,7 +309,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, mu_r=None, pad_x=0,
-                         separate_x_terms=False, *, ranks=None):
+                         separate_x_terms=False, *, ranks):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -380,7 +380,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
      psi_hy_xlo, psi_hy_xhi, psi_hz_xlo, psi_hz_xhi,
      psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
      psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi) = _cpml_h(
-        (mesh_ranks(mesh) if ranks is None else ranks), state.ex, state.ey, state.ez,
+        ranks, state.ex, state.ey, state.ez,
         state.hx, state.hy, state.hz,
         cpml_state.psi_hy_xlo, cpml_state.psi_hy_xhi,
         cpml_state.psi_hz_xlo, cpml_state.psi_hz_xhi,
@@ -1209,14 +1209,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Per-device source/probe injection via shard_map
     # ------------------------------------------------------------------
 
-    def _inject_sources_shmap(st, src_vals_step, *, ranks=None):
+    def _inject_sources_shmap(st, src_vals_step, *, ranks):
         """Inject sources on their owning device using shard_map."""
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,
             ranks=ranks)
 
-    def _sample_probes_shmap(st, *, ranks=None):
+    def _sample_probes_shmap(st, *, ranks):
         """Keep masked samples local until the scan has finished."""
         return sample_probes_shmap(
             st, mesh, n_prb, prb_local_specs, prb_device_ids,
@@ -1259,7 +1259,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
         hx, hy, hz, step = _h(
-            (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
+            ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
             mat.eps_r, mat.sigma, mat.mu_r)
         return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
@@ -1348,7 +1348,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
          nd_px, nd_py, nd_pz,
          nl_px, nl_py, nl_pz,
          nl_pxp, nl_pyp, nl_pzp) = _e(
-            (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
+            ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
             mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped, e_materials,
             db_coeffs.ca, db_coeffs.cb, db_coeffs.cc, db_coeffs.alpha, db_coeffs.beta,
             db_st.px, db_st.py, db_st.pz,

@@ -496,7 +496,7 @@ def zeros_psi_stacked(n_devices, n, dim1, dim2):
 # ---------------------------------------------------------------------------
 
 
-def exchange_component_shmap(field, mesh, n_devices, *, ranks=None):
+def exchange_component_shmap(field, mesh, n_devices, *, ranks):
     """Exchange ghost cells for one field component using ``shard_map``.
 
     Extracted verbatim from ``distributed_v2.py::_exchange_component_shmap``
@@ -543,10 +543,10 @@ def exchange_component_shmap(field, mesh, n_devices, *, ranks=None):
         f = f.at[-1:, :, :].set(right_ghost_val)
         return f
 
-    return _exchange((mesh_ranks(mesh) if ranks is None else ranks), field)
+    return _exchange(ranks, field)
 
 
-def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks=None):
+def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks):
     """Send packed Hy/Hz last-real rows right into the live LEFT ghosts.
 
     The second-order Yee E curl reads only these two x-neighbours. Keep
@@ -566,11 +566,11 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks=None):
         hz = hz.at[0].set(jnp.where(interior, received[1], hz[0]))
         return hy, hz
 
-    hy, hz = _exchange((mesh_ranks(mesh) if ranks is None else ranks), state.hy, state.hz)
+    hy, hz = _exchange(ranks, state.hy, state.hz)
     return state._replace(hy=hy, hz=hz)
 
 
-def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks=None):
+def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks):
     """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
 
     The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
@@ -591,7 +591,7 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks=None):
         ez = ez.at[-1].set(jnp.where(interior, received[1], ez[-1]))
         return ey, ez
 
-    ey, ez = _exchange((mesh_ranks(mesh) if ranks is None else ranks), state.ey, state.ez)
+    ey, ez = _exchange(ranks, state.ey, state.ez)
     return state._replace(ey=ey, ez=ez)
 
 
@@ -608,7 +608,7 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks=None):
 
 def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
                          nx_local_with_ghost: int,
-                         pad_x: int = 0, pec_faces: frozenset | None = None, *, ranks=None) -> FDTDState:
+                         pad_x: int = 0, pec_faces: frozenset | None = None, *, ranks) -> FDTDState:
     """Apply PEC on the physical domain faces (x_lo, x_hi, y, z) under
     ``shard_map``, using device identity for the two x faces.
 
@@ -715,13 +715,13 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 
         return ex, ey, ez
 
-    ex, ey, ez = _pec((mesh_ranks(mesh) if ranks is None else ranks), state.ex, state.ey, state.ez)
+    ex, ey, ez = _pec(ranks, state.ex, state.ey, state.ez)
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
 def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
                          nx_local_with_ghost: int,
-                         pmc_faces: frozenset, pad_x: int = 0, *, ranks=None) -> FDTDState:
+                         pmc_faces: frozenset, pad_x: int = 0, *, ranks) -> FDTDState:
     """Apply PMC (``H_tangential = 0``) on the physical domain faces under
     ``shard_map``.
 
@@ -815,7 +815,7 @@ def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 
         return hx, hy, hz
 
-    hx, hy, hz = _pmc((mesh_ranks(mesh) if ranks is None else ranks), state.hx, state.hy, state.hz)
+    hx, hy, hz = _pmc(ranks, state.hx, state.hy, state.hz)
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
@@ -838,7 +838,7 @@ def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 
 
 def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
-                         n_devices: int, nx_local: int, *, ranks=None) -> FDTDState:
+                         n_devices: int, nx_local: int, *, ranks) -> FDTDState:
     """Apply geometry-defined PEC mask zeroing on x-sharded fields.
 
     Each rank owns the PEC cells inside its real-cell range
@@ -921,7 +921,7 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
         ez = ez * (1.0 - mask_ez.astype(ez.dtype))
         return ex, ey, ez
 
-    ex, ey, ez = _pec_mask((mesh_ranks(mesh) if ranks is None else ranks), state.ex, state.ey, state.ez, sharded_pec_mask)
+    ex, ey, ez = _pec_mask(ranks, state.ex, state.ey, state.ez, sharded_pec_mask)
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
@@ -1022,7 +1022,7 @@ def shard_stacked_psi(arr, shd):
 
 
 def inject_sources_shmap(st, src_vals_step, mesh, n_src,
-                         src_local_specs, src_device_ids, *, ranks=None):
+                         src_local_specs, src_device_ids, *, ranks):
     """Inject sources on their owning device using ``shard_map``.
 
     ``shard_map`` gives each device its own slab; device identity inside
@@ -1067,12 +1067,12 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
                 ez = ez.at[li, lj, lk].add(val)
         return ex, ey, ez
 
-    ex, ey, ez = _inject((mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, src_vals_step)
+    ex, ey, ez = _inject(ranks, st.ex, st.ey, st.ez, src_vals_step)
     return st._replace(ex=ex, ey=ey, ez=ez)
 
 
 def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
-                        *, reduce_devices=True, ranks=None):
+                        *, reduce_devices=True, ranks):
     """Sample probes on their owning devices, then sum across devices.
 
     Mirror of :func:`inject_sources_shmap` on the read side: every device
@@ -1124,7 +1124,7 @@ def sample_probes_shmap(st, mesh, n_prb, prb_local_specs, prb_device_ids,
         samples = jnp.stack(samples)
         return lax.psum(samples, "x") if reduce_devices else samples[None, :]
 
-    return _sample((mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
+    return _sample(ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz)
 
 
 # ---------------------------------------------------------------------------
@@ -1293,7 +1293,7 @@ def slab_e_coeffs(materials, nx_per, nx, dt, rank=None):
         slab_e_component_materials(materials, nx_per, nx, rank), dt)
 
 
-def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks=None):
+def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks):
     """:func:`slab_e_component_materials` of every slab, as x-sharded
     arrays, for a runner that averages once, before its time loop, and
     forms the coefficients (:func:`component_e_coeffs`) inside it.
@@ -1317,7 +1317,7 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks=None):
     def _mean(local, *, rank):
         return slab_e_component_materials(local, nx_per, nx, rank=rank)
 
-    return jax.checkpoint(_mean)((mesh_ranks(mesh) if ranks is None else ranks), MaterialArrays(
+    return jax.checkpoint(_mean)(ranks, MaterialArrays(
         eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,
         sigma_lumped=getattr(mat, "sigma_lumped", None),
         eps_r_lumped=getattr(mat, "eps_r_lumped", None)))
@@ -1385,7 +1385,7 @@ def _update_e_local_nu(state, e_coeffs,
 
 def update_h_nu_shmap(st, mat, mesh, dt,
                       inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-                      inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *, ranks=None):
+                      inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *, ranks):
     """H update on the NU distributed path, via ``shard_map``.
 
     Shared by ``distributed_nu.run_nonuniform_distributed_pec`` and by the
@@ -1434,7 +1434,7 @@ def update_h_nu_shmap(st, mat, mesh, dt,
         return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
     hx, hy, hz, step = _h(
-        (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
+        ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
         mat.eps_r, mat.sigma, mat.mu_r,
         inv_dx_sharded, inv_dy_rep, inv_dz_rep,
         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
@@ -1444,7 +1444,7 @@ def update_h_nu_shmap(st, mat, mesh, dt,
 
 def update_e_nu_shmap(st, mat, mesh, dt,
                       inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx,
-                      e_materials=None, *, ranks=None):
+                      e_materials=None, *, ranks):
     """E update on the NU distributed path, via ``shard_map``.
 
     The E sibling of :func:`update_h_nu_shmap`, shared by the same two
@@ -1494,7 +1494,7 @@ def update_e_nu_shmap(st, mat, mesh, dt,
         return new_st.ex, new_st.ey, new_st.ez, new_st.step
 
     ex, ey, ez, step = _e(
-        (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
+        ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
         mat.eps_r, mat.sigma, mat.mu_r,
         getattr(mat, "sigma_lumped", None), getattr(mat, "eps_r_lumped", None),
         inv_dx_sharded, inv_dy_rep, inv_dz_rep, e_materials,
@@ -2068,6 +2068,8 @@ def _apply_cpml_e_distributed(
         CPML does. Dispersive v2 runs need this order for the cross-trace ULP
         bound; False preserves the established no-pole arithmetic.
     """
+    if rank is None:
+        raise ValueError("slab rank must be supplied as data")
     from rfx.boundaries.cpml import CPMLAxisParams
     if not isinstance(cpml_params, CPMLAxisParams):
         raise TypeError("distributed CPML requires per-face CPMLAxisParams")
@@ -2383,6 +2385,8 @@ def _apply_cpml_h_distributed(
         CPML does. Dispersive v2 runs need this order for the cross-trace ULP
         bound; False preserves the established no-pole arithmetic.
     """
+    if rank is None:
+        raise ValueError("slab rank must be supplied as data")
     from rfx.boundaries.cpml import CPMLAxisParams
     if not isinstance(cpml_params, CPMLAxisParams):
         raise TypeError("distributed CPML requires per-face CPMLAxisParams")

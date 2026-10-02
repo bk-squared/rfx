@@ -2,14 +2,18 @@
 
 CPU compilation also runs the SPMD partitioner: inspect compiled HLO, not
 just StableHLO, where a device-identity operation can still be hidden.
-The root conftest requests two virtual host devices before importing JAX.
+One fresh subprocess uses the same two virtual host devices as root conftest,
+with XLA dumping every optimized module, including eager and setup JITs.
 """
-from functools import wraps
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
 
 import jax
 import jax.numpy as jnp
 import numpy as np
-import pytest
 
 from rfx import Box, DebyePole, LorentzPole, Simulation
 
@@ -62,68 +66,85 @@ def model(lane, mode, boundary):
     return sim
 
 
-def assert_no_device_identity(hlo):
-    # Both spellings cover HLO and StableHLO diagnostics.
-    for forbidden in ("partition-id", "replica-id", "partition_id", "replica_id"):
-        assert forbidden not in hlo, f"distributed executable contains {forbidden}"
+# Each forward case executes the public value and value-and-gradient paths.
+# Keep the independent setup, scan, AD, and eager-result compilations visible.
+PROGRAMS = [case for case in CASES if not case[1].startswith("forward")] + [
+    ("uniform", "gradient-debye", "cpml"),
+    ("graded", "gradient-checkpoint", "cpml"),
+]
 
 
-@pytest.mark.parametrize("lane,mode,boundary", CASES)
-def test_distributed_program_has_no_device_identity(monkeypatch, lane, mode, boundary):
-    devices = jax.devices("cpu")[:2]
-    if len(devices) != 2:
-        pytest.skip("requires two virtual CPU devices (root conftest)")
-    import rfx.runners.distributed_v2 as uniform
-    import rfx.runners.distributed_nu as graded
-
-    checked = []
-    differentiated = []
-
-    class JaxProxy:
-        def __getattr__(self, name):
-            return getattr(jax, name)
-
-        def jit(self, fun, *args, **kwargs):
-            compiled = jax.jit(fun, *args, **kwargs)
-
-            @wraps(fun)
-            def invoke(*values, **kw):
-                if not any(isinstance(v, jax.core.Tracer) for v in jax.tree.leaves((values, kw))):
-                    inspected = compiled
-                    if mode.startswith("gradient") and fun.__name__ == "run_fn":
-                        # Differentiate the actual staged scan, with all its inputs
-                        # (including rank) dynamic, exactly as forward's AD does.
-                        def loss(*a, **k):
-                            return jnp.sum(fun(*a, **k)[1] ** 2)
-                        differentiated.append(fun.__name__)
-                        inspected = jax.jit(jax.value_and_grad(
-                            loss, argnums=1, allow_int=True))
-                    hlo = inspected.lower(*values, **kw).compile().as_text()
-                    assert_no_device_identity(hlo)
-                    checked.append(hlo)
-                return compiled(*values, **kw)
-            return invoke
-
-    monkeypatch.setattr(uniform, "jax", JaxProxy())
-    monkeypatch.setattr(graded, "jax", JaxProxy())
-    sim = model(lane, mode, boundary)
-    if mode.startswith(("forward", "gradient")):
-        grid = sim._build_nonuniform_grid()
-        eps = jnp.ones(grid.shape, jnp.float32)
-
-        overrides = {"eps_override": eps}
-        if mode.endswith("sharded"):
-            overrides = {name: sim.shard_distributed_override(value) for name, value in
-                         (("eps_override", eps), ("sigma_override", eps * .01),
-                          ("pec_occupancy_override", eps * .1))}
-        sim.forward(n_steps=4, distributed=True, devices=devices,
-                    **overrides, skip_preflight=True)
-    else:
+def exercise_programs():
+    devices = jax.devices("cpu")
+    assert len(devices) == 2, devices
+    for lane, mode, boundary in PROGRAMS:
+        sim = model(lane, mode, boundary)
         kwargs = dict(n_steps=4, devices=devices, skip_preflight=True)
-        if mode == "lumped":
-            kwargs.update(compute_s_params=True, s_param_freqs=[5e9], s_param_n_steps=4)
-        sim.run(**kwargs)
-    if mode.startswith("gradient"):
-        assert differentiated == ["run_fn"], "the backward scan must be inspected"
-    assert checked, "the contract must inspect an executable"
-    assert any("while(" in hlo or "while (" in hlo for hlo in checked), "time loop was not lowered"
+        if mode.startswith("gradient"):
+            grid = sim._build_nonuniform_grid()
+            eps = jnp.full(grid.shape, 1.5, jnp.float32)
+            overrides = {}
+            if mode.endswith("sharded"):
+                eps = sim.shard_distributed_override(eps)
+                overrides = {name: sim.shard_distributed_override(
+                    np.full(grid.shape, value, np.float32)) for name, value in
+                    (("sigma_override", .01), ("pec_occupancy_override", .1))}
+            if mode.endswith("checkpoint"):
+                kwargs["checkpoint_every"] = 2
+
+            def loss(design):
+                trace = sim.forward(distributed=True, eps_override=design,
+                                    **overrides, **kwargs).time_series
+                return jnp.sum(trace ** 2)
+
+            value = loss(eps)
+            differentiated = jax.value_and_grad(loss)(eps)
+            jax.block_until_ready((value, differentiated))
+            assert all(np.isfinite(np.asarray(a)).all() for a in
+                       jax.tree.leaves((value, differentiated)))
+        else:
+            if mode == "lumped":
+                kwargs.update(compute_s_params=True, s_param_freqs=[5e9],
+                              s_param_n_steps=4)
+            result = sim.run(**kwargs)
+            jax.block_until_ready((result.time_series, result.state, result.ntff_data))
+        print(f"completed {lane}-{mode}-{boundary}", flush=True)
+
+
+def assert_clean_dumps(directory):
+    modules = sorted(directory.rglob("*after_optimizations*.txt"))
+    assert modules, "no optimized XLA modules were dumped"
+    violations = []
+    for module in modules:
+        text = module.read_text()
+        for op in ("partition-id", "replica-id", "partition_id", "replica_id"):
+            if op in text:
+                violations.append(f"{module.name}: {op}")
+    assert not violations, "device identity in optimized modules:\n" + "\n".join(violations)
+    return len(modules)
+
+
+def test_distributed_programs_have_no_device_identity(tmp_path, record_property):
+    root = Path(__file__).resolve().parents[2]
+    dump = tmp_path / "hlo"
+    dump.mkdir()
+    env = dict(os.environ, PYTHONPATH=str(root), JAX_PLATFORMS="cpu",
+               PYTHONDONTWRITEBYTECODE="1", OMP_NUM_THREADS="1",
+               XLA_FLAGS=f"--xla_force_host_platform_device_count=2 --xla_dump_to={dump}",
+               # A persistent compilation cache would hide optimized modules.
+               JAX_ENABLE_COMPILATION_CACHE="false")
+    started = time.monotonic()
+    run = subprocess.run([sys.executable, str(Path(__file__).resolve()), "--worker"],
+                         cwd=root, env=env, capture_output=True, text=True, timeout=240)
+    elapsed = time.monotonic() - started
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert run.stdout.count("completed ") == len(PROGRAMS), run.stdout
+    count = assert_clean_dumps(dump)
+    record_property("wall_seconds", elapsed)
+    record_property("optimized_dump_files", count)
+    print(f"{len(PROGRAMS)} programs; {count} optimized dump files; {elapsed:.2f} s")
+
+
+if __name__ == "__main__":
+    assert sys.argv[1:] == ["--worker"], sys.argv
+    exercise_programs()

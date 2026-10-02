@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import lax
-from rfx.runners._rank import mesh_ranks, rank_shard_map
+from rfx.runners._rank import rank_shard_map
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.farfield import (NTFFData, accumulate_ntff, init_ntff_data,
@@ -52,7 +52,7 @@ class SlabNTFF:
             offset += size
         return NTFFData(*arrays)
 
-    def update(self, buffer, state, dt, step, *, ranks=None):
+    def update(self, buffer, state, dt, step, *, ranks):
         # The right ghost Hx equals the neighbour's first real Hx: the H
         # update computes ghost rows from exchanged E, including CPML
         # corrections. Face-centre y/z samples rely on this invariant.
@@ -77,14 +77,18 @@ class SlabNTFF:
         def update_local(local, fields, n, *, rank):
             return lax.switch(rank, branches,
                               (local[0], fields, n))[None]
-        return update_local((mesh_ranks(self.mesh) if ranks is None else ranks), buffer, state, step)
+        return update_local(ranks, buffer, state, step)
 
     def assemble(self, buffer):
         """Place each cell once, preserving compensation; no spatial sum."""
         result = list(init_ntff_data(self.box, field_dtype=jnp.float64
                                     if self.dtype == jnp.complex128 else jnp.float32))
+        # Materialize once on the host: eager indexing of the globally
+        # sharded buffer compiles a gather with an XLA partition-id. The
+        # multi-process caller has already gathered the nonlocal records.
+        host_buffer = np.asarray(buffer)
         for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):
-            part = self.unpack(buffer[rank], shapes, sizes)
+            part = self.unpack(jnp.asarray(host_buffer[rank]), shapes, sizes)
             for index, value in enumerate(part):
                 face = index % 6
                 if face < 2:

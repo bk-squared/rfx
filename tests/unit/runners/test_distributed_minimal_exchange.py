@@ -375,7 +375,9 @@ def test_exchange_preserves_physical_ghosts_and_packs_both_fields(n_devices):
         (common.exchange_h_yee_shmap, ("hy", "hz"), 0, -2, range(1, n_devices)),
         (common.exchange_e_yee_shmap, ("ey", "ez"), -1, 1, range(n_devices - 1)),
     ):
-        result = jax.jit(lambda s: exchange(s, mesh, n_devices))(st)
+        from rfx.runners._rank import mesh_ranks
+        result = jax.jit(lambda s, r: exchange(s, mesh, n_devices, ranks=r))(
+            st, mesh_ranks(mesh))
         for c in _FIELDS:
             expected = original[c].copy()
             if c in components:

@@ -597,12 +597,12 @@ def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
 _exchange_component_nu_shmap = exchange_component_shmap
 
 
-def _exchange_h_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks=None) -> FDTDState:
+def _exchange_h_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks) -> FDTDState:
     """Refill only the Hy/Hz left ghosts consumed by the E curl."""
     return exchange_h_yee_shmap(state, mesh, n_devices, ranks=ranks)
 
 
-def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks=None) -> FDTDState:
+def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks) -> FDTDState:
     """Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
 
     Placement contract: this is the LAST stage of the E half-step in
@@ -643,7 +643,7 @@ _apply_pec_mask_nu_shmap = apply_pec_mask_shmap
 
 def _apply_pec_occupancy_nu_shmap(state: FDTDState, sharded_pec_occupancy,
                                   mesh, n_devices: int,
-                                  nx_local: int, *, ranks=None) -> FDTDState:
+                                  nx_local: int, *, ranks) -> FDTDState:
     """Apply soft PEC occupancy to x-sharded fields.
 
     This is the differentiable analogue of :func:`_apply_pec_mask_nu_shmap`
@@ -699,7 +699,7 @@ def _apply_pec_occupancy_nu_shmap(state: FDTDState, sharded_pec_occupancy,
         ez = ez * (1.0 - occ_ez)
         return ex, ey, ez
 
-    ex, ey, ez = _pec_occ((mesh_ranks(mesh) if ranks is None else ranks), state.ex, state.ey, state.ez, sharded_pec_occupancy)
+    ex, ey, ez = _pec_occ(ranks, state.ex, state.ey, state.ez, sharded_pec_occupancy)
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
@@ -1313,6 +1313,8 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
         to the vacuum scalar ``dt / eps_0``
         (bit-identical to the pre-#205 behaviour).
     """
+    if rank is None:
+        raise ValueError("slab rank must be supplied as data")
     from rfx.boundaries.cpml import CPMLAxisParams, _flip_profile
 
     if isinstance(cpml_params, CPMLAxisParams):
@@ -1586,6 +1588,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
         material-aware NU path, #208).  ``None`` falls back to the vacuum
         scalar ``dt / mu_0`` (bit-identical to the pre-#205 behaviour).
     """
+    if rank is None:
+        raise ValueError("slab rank must be supplied as data")
     from rfx.boundaries.cpml import CPMLAxisParams, _flip_profile
 
     if isinstance(cpml_params, CPMLAxisParams):
@@ -1814,7 +1818,7 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     return new_state, new_cpml
 
 
-def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks=None):
+def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks):
     """``Cb/dV`` of each material-driven current source, read from the slabs
     the E update receives (#1279). Called inside the runner's jitted program.
 
@@ -1873,7 +1877,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks=None):
             out.append(jnp.where(owner, cb / dV, 0.0))
         return lax.psum(jnp.stack(out), "x")
 
-    return _scales((mesh_ranks(mesh) if ranks is None else ranks), eps_r, sigma)
+    return _scales(ranks, eps_r, sigma)
 
 
 def run_nonuniform_distributed_pec(
@@ -2291,7 +2295,7 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     # Per-step shmap-wrapped helpers
     # ------------------------------------------------------------------
-    def _update_h_shmap(st, mat, spacings, *, ranks=None):
+    def _update_h_shmap(st, mat, spacings, *, ranks):
         (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
          inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings
         # #1038 leg 4: body moved VERBATIM to
@@ -2304,7 +2308,7 @@ def run_nonuniform_distributed_pec(
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
             ranks=ranks)
 
-    def _update_e_shmap(st, mat, spacings, e_materials, *, ranks=None):
+    def _update_e_shmap(st, mat, spacings, e_materials, *, ranks):
         inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
         # #1038 leg 4: body moved VERBATIM to
         # _distributed_common.update_e_nu_shmap, shared with the `is_nu`
@@ -2535,7 +2539,7 @@ def run_nonuniform_distributed_pec(
                     lr_st_in.px_prev, lr_st_in.py_prev, lr_st_in.pz_prev,
                 ])
 
-            results = _e_disp((mesh_ranks(mesh) if ranks is None else ranks), *call_args)
+            results = _e_disp(ranks, *call_args)
 
             ridx = 0
             new_ex = results[ridx]
@@ -2568,13 +2572,13 @@ def run_nonuniform_distributed_pec(
                                     step=new_step)
             return new_state, new_db_st, new_lr_st
 
-    def _inject_sources_shmap(st, src_vals_step, *, ranks=None):
+    def _inject_sources_shmap(st, src_vals_step, *, ranks):
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,
             ranks=ranks)
 
-    def _sample_probes_shmap(st, *, ranks=None):
+    def _sample_probes_shmap(st, *, ranks):
         return sample_probes_shmap(
             st, mesh, n_prb, prb_local_specs, prb_device_ids,
             reduce_devices=False,
@@ -2606,7 +2610,7 @@ def run_nonuniform_distributed_pec(
         cpml_params = jax.tree_util.tree_map(
             lambda arr: _concrete_on_mesh(arr, rep), cpml_params)
 
-    def _apply_cpml_h_shmap(st, cs, cpml_params, mu_r, *, ranks=None):
+    def _apply_cpml_h_shmap(st, cs, cpml_params, mu_r, *, ranks):
         @partial(
             rank_shard_map,
             mesh=mesh,
@@ -2660,7 +2664,7 @@ def run_nonuniform_distributed_pec(
          psi_hy_xlo, psi_hy_xhi, psi_hz_xlo, psi_hz_xhi,
          psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
          psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi) = _h(
-            (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
+            ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
             cs.psi_hy_xlo, cs.psi_hy_xhi, cs.psi_hz_xlo, cs.psi_hz_xhi,
             cs.psi_hx_ylo, cs.psi_hx_yhi, cs.psi_hz_ylo, cs.psi_hz_yhi,
             cs.psi_hx_zlo, cs.psi_hx_zhi, cs.psi_hy_zlo, cs.psi_hy_zhi,
@@ -2677,7 +2681,7 @@ def run_nonuniform_distributed_pec(
         )
         return new_st, new_cs
 
-    def _apply_cpml_e_shmap(st, cs, cpml_params, materials, e_materials, *, ranks=None):
+    def _apply_cpml_e_shmap(st, cs, cpml_params, materials, e_materials, *, ranks):
         # The psi coefficient takes the permittivity the E update of this
         # step used (#1043): each component's four-cell edge mean -- the one
         # run_fn built before the loop, including dispersive models.
@@ -2733,7 +2737,7 @@ def run_nonuniform_distributed_pec(
          psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
          psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
          psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi) = _e(
-            (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
+            ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz,
             cs.psi_ey_xlo, cs.psi_ey_xhi, cs.psi_ez_xlo, cs.psi_ez_xhi,
             cs.psi_ex_ylo, cs.psi_ex_yhi, cs.psi_ez_ylo, cs.psi_ez_yhi,
             cs.psi_ex_zlo, cs.psi_ex_zhi, cs.psi_ey_zlo, cs.psi_ey_zhi,
@@ -2753,7 +2757,7 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     # Per-step scan body (Phase 2B/2C/2D ordering — see docstring)
     # ------------------------------------------------------------------
-    def step_fn(carry, xs, invariants, e_materials=None, *, ranks=None):
+    def step_fn(carry, xs, invariants, e_materials=None, *, ranks):
         (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
          debye_coeffs, lorentz_coeffs, cpml_params, spacings) = invariants
         if cpml_spacings:
@@ -2932,7 +2936,7 @@ def run_nonuniform_distributed_pec(
         return steps, table
 
     @jax.jit
-    def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks=None):
+    def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks):
         if drives:
             # #1279: the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.

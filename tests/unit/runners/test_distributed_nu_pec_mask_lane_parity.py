@@ -54,6 +54,7 @@ from jax.sharding import Mesh
 
 from rfx.boundaries.pec import SheetSpec, apply_pec_mask
 from rfx.core.yee import init_state
+from rfx.runners._rank import mesh_ranks
 from rfx.runners.distributed_nu import _apply_pec_mask_nu_shmap
 
 NX, NY, NZ = 6, 6, 10
@@ -125,7 +126,7 @@ def _distributed_nnz(gmask, n_devices=1):
     one = jnp.ones(shape, jnp.float32)
     out = _apply_pec_mask_nu_shmap(st._replace(ex=one, ey=one, ez=one),
                                    jnp.asarray(slabs), mesh, n_devices,
-                                   nx_local)
+                                   nx_local, ranks=mesh_ranks(mesh))
     tot = [0, 0, 0]
     for c, comp in enumerate((out.ex, out.ey, out.ez)):
         a = np.asarray(comp)
@@ -222,7 +223,7 @@ def _distributed_occ_nnz(occ, n_devices=1):
     one = jnp.ones(shape, jnp.float32)
     out = _apply_pec_occupancy_nu_shmap(st._replace(ex=one, ey=one, ez=one),
                                         jnp.asarray(slabs), mesh, n_devices,
-                                        nx_local)
+                                        nx_local, ranks=mesh_ranks(mesh))
     tot = [0, 0, 0]
     for c, comp in enumerate((out.ex, out.ey, out.ez)):
         a = np.asarray(comp)

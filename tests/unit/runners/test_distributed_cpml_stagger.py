@@ -17,7 +17,7 @@ from rfx.runners.distributed_nu import _apply_cpml_h_local_nu
 @pytest.mark.parametrize("apply", [_apply_cpml_e_distributed, _apply_cpml_h_distributed])
 def test_distributed_cpml_rejects_bare_profile(apply):
     with pytest.raises(TypeError, match="CPMLAxisParams"):
-        apply(None, CPMLParams(*(np.ones(1) for _ in range(5))), None, 1, 1e-12, 1e-3, 2)
+        apply(None, CPMLParams(*(np.ones(1) for _ in range(5))), None, 1, 1e-12, 1e-3, 2, rank=0)
 
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
