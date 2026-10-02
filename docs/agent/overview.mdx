@@ -59,4 +59,4 @@ The ADI default is `adi_cfl_factor=2.0`
 (source: `rfx/api/__init__.py::Simulation.__init__`).
 Matrix products use `jax.lax.Precision.HIGHEST`
 (witness: `tests/contracts/test_matmul_precision.py`).
-Use `BoundarySpec` through `Simulation(boundary=...)` to select boundary faces.
+Use `BoundarySpec` (`from rfx.boundaries.spec import BoundarySpec, Boundary`) through `Simulation(boundary=...)` to select boundary faces.

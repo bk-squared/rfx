@@ -365,6 +365,20 @@ def test_raw_anchors_keep_their_own_text_and_urls():
     )
 
 
+def test_linked_images_and_attribute_order_keep_their_urls():
+    # Gallery cards wrap an <img> in an <a>: the link keeps the image's alt and
+    # source; href is matched case-insensitively and not inside data-href.
+    source = ('<a href="../gallery/boundary/"><img src="../assets/b.png" alt="Boundary reflection"/></a>'
+              '<a data-href="/wrong/" HREF="/rfx/right/">Right</a>')
+    _, markdown = bundle.clean_markdown(
+        source, route="examples/demo", base_url="https://remilab.ai/rfx", source_sha="a" * 40,
+    )
+    assert "[![Boundary reflection](" in markdown
+    assert "b.png)](https://remilab.ai/rfx/examples/gallery/boundary/)" in markdown
+    assert "[Right](https://remilab.ai/rfx/right/)" in markdown
+    assert "wrong" not in markdown
+
+
 def test_agent_publication_is_explicit_and_private_paths_stay_blocked(monkeypatch, tmp_path):
     sources = {tmp_path / 'docs/agent' / name for name in bundle.PUBLIC_AGENT_PAGES}
     private = {tmp_path / 'docs/agent' / name for name in (

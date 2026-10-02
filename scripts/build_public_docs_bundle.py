@@ -220,9 +220,19 @@ def clean_markdown(text: str, *, route: str, base_url: str, source_sha: str) -> 
 
         def anchor(match: re.Match) -> str:
             attrs, label = match.groups()
-            href = re.search(r"\bhref\s*=\s*([\"'])(.*?)\1", attrs, flags=re.S)
+            href = re.search(r"(?<![\w-])href\s*=\s*([\"'])(.*?)\1", attrs,
+                             flags=re.S | re.I)
+
+            def image(img: re.Match) -> str:
+                found = dict(re.findall(r"([\w-]+)=[\"']([^\"']*)[\"']", img.group(1)))
+                src = found.get("src")
+                alt = found.get("alt") or found.get("title") or "image"
+                return f"![{alt}]({target(src)})" if src else alt
+
             # Consume the entire anchor before removing presentation markup;
-            # an opening-tag replacement detaches the label from its URL.
+            # an opening-tag replacement detaches the label from its URL. An
+            # image inside the link keeps its alt text and source.
+            label = re.sub(r"<img\b([^>]*?)/?>", image, label, flags=re.I)
             label = re.sub(r"</?[^>]+>", "", label)
             return f"[{label}]({target(href[2])})" if href else label
 
