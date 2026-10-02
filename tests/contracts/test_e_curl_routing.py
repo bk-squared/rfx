@@ -19,14 +19,17 @@ import rfx.nonuniform as nu
 from tests.contracts.curl_cases import model
 
 
-class Reached(Exception):
-    pass
+def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
+    """Count complete traced calls and all six nearest reads of each curl.
 
-
-def require_shared(call, *, helper="curl_h", indexed=False, minimum_calls=1):
-    """Observe the actual call during execution/tracing, including JIT bodies."""
+    A curl has three components, each with two backward differences. Graded
+    curl_h_nu delegates to curl_h, so it also owns six nearest reads. Sheet
+    replacement evaluates two curls. Indexed current samples own two reads.
+    Counts concern Python execution/tracing, not the scan's time iterations.
+    """
     seen = []
     original = getattr(yee, helper)
+    neighbor = yee.h_neighbor
 
     def witness(*args, **kwargs):
         if indexed and kwargs.get("index") is None:
@@ -34,21 +37,27 @@ def require_shared(call, *, helper="curl_h", indexed=False, minimum_calls=1):
         boundary = kwargs.get("boundary")
         assert isinstance(boundary, yee.CurlBoundary), "realized boundary missing"
         seen.append(boundary)
-        if len(seen) >= minimum_calls:
-            raise Reached
-        return original(*args, **kwargs)
+        if indexed:
+            return original(*args, **kwargs)
+        reads = []
 
-    # ADE/UPML historically imported the helper into their module namespace.
+        def read(*a, **kw):
+            assert kw.get("boundary") == boundary, "neighbor boundary missing"
+            reads.append(a[1])
+            return neighbor(*a, **kw)
+
+        with patch.object(yee, "h_neighbor", read):
+            result = original(*args, **kwargs)
+        assert reads == [1, 2, 2, 0, 0, 1], "curl bypassed shared h_neighbor"
+        return result
+
     jax.clear_caches()
     with ExitStack() as stack:
         for module in (yee, uniform, debye, lorentz, upml):
             if hasattr(module, helper):
                 stack.enter_context(patch.object(module, helper, witness))
-        try:
-            call()
-        except Reached:
-            pass
-    assert len(seen) >= minimum_calls, f"E update bypassed shared {helper}"
+        call()
+    assert len(seen) == expected_calls, f"E update bypassed shared {helper}: {len(seen)} != {expected_calls}"
     return seen[0]
 
 
@@ -99,12 +108,14 @@ def test_special_run_branches(feature, mesh):
 def test_scan_port_current_uses_boundary_neighbour(mesh, feature):
     sim = model(feature, mesh)
     if mesh == "graded":
-        call = lambda: sim.run(n_steps=2, skip_preflight=True, compute_s_params=True,
-                               s_param_freqs=jnp.array([12e9]))
+        def call():
+            return sim.run(n_steps=2, skip_preflight=True, compute_s_params=True,
+                           s_param_freqs=jnp.array([12e9]))
     else:
-        call = lambda: sim.forward(n_steps=2, skip_preflight=True,
-                                   port_s11_freqs=jnp.array([12e9]))
-    require_shared(call, helper="h_neighbor", indexed=True)
+        def call():
+            return sim.forward(n_steps=2, skip_preflight=True,
+                               port_s11_freqs=jnp.array([12e9]))
+    require_shared(call, helper="h_neighbor", indexed=True, expected_calls=2)
 
 
 def kernel_inputs():
@@ -134,8 +145,9 @@ def test_kernel_adapters(branch):
                                          1., .1, dx, boundary=boundary),
     }
     if branch == "upml":
-        from types import SimpleNamespace
-        coeff = SimpleNamespace(inv_dx=1/dx, inv_dy=1/dx, inv_dz=1/dx)
+        grid = model(wall="pec")._build_grid()
+        state = yee.init_state(grid.shape)
+        coeff = upml.init_upml(grid, yee.init_materials(grid.shape))
         calls[branch] = lambda: upml.apply_upml_e(state, coeff, boundary=boundary)
     assert require_shared(calls[branch]) == boundary
 
@@ -161,12 +173,15 @@ def test_cpml_uses_boundary_neighbours():
     boundary = yee.CurlBoundary(*resolve_wall_faces(grid, (False, False, False)))
     import rfx.boundaries.cpml as cpml
     original = cpml.h_neighbor
-    def sentinel(*args, **kwargs):
+    reads = []
+    def witness(*args, **kwargs):
         assert kwargs["boundary"] == boundary
-        raise Reached
-    with patch.object(cpml, "h_neighbor", sentinel), pytest.raises(Reached):
+        reads.append(args[1])
+        return original(*args, **kwargs)
+    with patch.object(cpml, "h_neighbor", witness):
         apply_cpml_e(yee.init_state(grid.shape), params, psi, grid, boundary=boundary)
-    assert cpml.h_neighbor is original
+    # Two transverse H components per face, two faces per axis.
+    assert reads == [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2]
 
 
 @pytest.mark.parametrize("graded", [False, True])
@@ -197,15 +212,29 @@ def test_coaxial_injection_parent_uses_shared_curl():
 def test_cpml_driver_passes_realized_boundary(mesh, lane):
     from rfx.boundaries import cpml
     sim = model(mesh=mesh, wall="cpml")
+    original = cpml.apply_cpml_e
+    calls = []
     def correction(*args, **kwargs):
-        assert isinstance(kwargs.get("boundary"), yee.CurlBoundary)
-        raise Reached
+        boundary = kwargs.get("boundary")
+        assert isinstance(boundary, yee.CurlBoundary)
+        neighbor = cpml.h_neighbor
+        reads = []
+        def read(*a, **kw):
+            assert kw.get("boundary") == boundary
+            reads.append(True)
+            return neighbor(*a, **kw)
+        with patch.object(cpml, "h_neighbor", read):
+            result = original(*args, **kwargs)
+        assert len(reads) == 12
+        calls.append(True)
+        return result
     kwargs = dict(n_steps=2, skip_preflight=True)
     if lane == "run":
         kwargs["compute_s_params"] = False
     jax.clear_caches()
-    with patch.object(cpml, "apply_cpml_e", correction), pytest.raises(Reached):
+    with patch.object(cpml, "apply_cpml_e", correction):
         getattr(sim, lane)(**kwargs)
+    assert len(calls) == 1
 
 
 @pytest.mark.parametrize("mesh", ["uniform", "graded"])
@@ -218,7 +247,7 @@ def test_sheet_replacement_update_also_uses_shared_curl(mesh, lane):
     kwargs = dict(n_steps=2, skip_preflight=True)
     if lane == "run":
         kwargs["compute_s_params"] = False
-    require_shared(lambda: getattr(sim, lane)(**kwargs), minimum_calls=2,
+    require_shared(lambda: getattr(sim, lane)(**kwargs), expected_calls=2,
                    helper="curl_h_nu" if mesh == "graded" else "curl_h")
 
 
@@ -244,3 +273,24 @@ def test_baked_dispatch_passes_realized_boundary_on_cpu():
     assert invoked
     assert boundary.pec_faces == frozenset(
         f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
+
+
+@pytest.mark.parametrize("component", ["ex", "ey", "ez"])
+@pytest.mark.parametrize("idx", [(0, 0, 0), (2, 1, 1), (4, 3, 2)])
+@pytest.mark.parametrize("periodic", [(False, False, False), (True, True, True)])
+def test_each_port_sample_reads_two_neighbors(component, idx, periodic):
+    from rfx.probes.probes import _ampere_loop
+    state, _, boundary = kernel_inputs()
+    boundary = boundary._replace(periodic=periodic)
+    require_shared(lambda: _ampere_loop(state, idx, component, 1e-3, periodic, boundary),
+                   helper="h_neighbor", indexed=True, expected_calls=2)
+
+
+@pytest.mark.parametrize("component", ["ex", "ey", "ez"])
+@pytest.mark.parametrize("idx", [(0, 0, 0), (2, 1, 1), (4, 3, 2)])
+def test_each_graded_port_sample_reads_two_neighbors(component, idx):
+    state, _, boundary = kernel_inputs()
+    require_shared(lambda: nu.wire_port_current(
+        state.hx, state.hy, state.hz, component, *idx,
+        .9e-3, 1.1e-3, 1.3e-3, boundary=boundary),
+        helper="h_neighbor", indexed=True, expected_calls=2)
