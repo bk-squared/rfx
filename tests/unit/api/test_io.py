@@ -341,7 +341,7 @@ def test_read_s4p_multiline_handcrafted():
     with tempfile.TemporaryDirectory() as tmpdir:
         path = Path(tmpdir) / "hand.s4p"
         path.write_text(text)
-        s_read, freqs, z0 = read_touchstone(path)
+        s_read, freqs, z0 = read_touchstone(path, layout="legacy-rfx")
 
     assert s_read.shape == (4, 4, 1)
     np.testing.assert_allclose(freqs, [100e6])

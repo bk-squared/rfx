@@ -42,8 +42,7 @@ def model(feature="plain", mesh="uniform", mode="3d", wall="pmc"):
     if wall == "periodic":
         # Explicit periodic dx requires a commensurate length (#1221 B2).
         sim = Simulation(freq_max=20e9, domain=(12e-3, domain[1], domain[2]),
-                         dx=1e-3, mode=mode, boundary="pec", cpml_layers=0, **kwargs)
-        sim.set_periodic_axes("x")
+                         dx=1e-3, mode=mode, boundary=BoundarySpec(x="periodic", y="pec", z="pec"), cpml_layers=0, **kwargs)
     pulse = GaussianPulse(f0=12e9, bandwidth=1.2)
     component = "ex" if mode == "2d_tez" else "ez"
     z = 0.0 if mode != "3d" else 2.1e-3

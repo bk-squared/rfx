@@ -717,8 +717,10 @@ def _case_coax():
 
 
 def _case_floquet():
-    sim = _wire(_open_box())
-    sim.set_periodic_axes("xy")
+    from rfx.boundaries.spec import BoundarySpec
+    sim = _wire(Simulation(freq_max=20e9, domain=(12 * MM, 11 * MM, 5 * MM),
+                           dx=MM, cpml_layers=4,
+                           boundary=BoundarySpec(x="periodic", y="periodic", z="cpml")))
     sim.add_floquet_port(4 * MM)
     return sim, {}
 

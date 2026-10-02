@@ -1,4 +1,5 @@
 """Absorber columns must contain the adjacent solved cross-section."""
+from rfx.boundaries.spec import Boundary, BoundarySpec
 import sys
 from pathlib import Path
 
@@ -100,7 +101,7 @@ def test_port_exception_is_only_the_named_entry():
     import numpy as np
     from rfx import Box, Simulation
     sim = Simulation(domain=(8., 8., 8.), dx=1., freq_max=1e6,
-                     boundary="cpml", cpml_layers=2, pec_faces={"z_lo"})
+                     boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")), cpml_layers=2)
     sim.add(Box((0., 2., 3.), (8., 3., 3.)), material="pec")
     sim.add_port((4., 2., 0.), component="ez", extent=3., terminates=0)
     sim.add(Box((.1, 5., 3.), (7.9, 7., 5.)), material="pec")

@@ -1412,11 +1412,11 @@ def test_refuses_a_periodic_declaration():
 
 def test_graded_lane_hands_the_monitor_the_declared_periodic_axes():
     from rfx import Simulation
+    from rfx.boundaries.spec import BoundarySpec
 
     dz = np.full(10, DX)
     sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, float(dz.sum())),
-                     dx=DX, dz_profile=dz, cpml_layers=6, boundary="cpml")
-    sim.set_periodic_axes("x")
+                     dx=DX, dz_profile=dz, cpml_layers=6, boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"))
     sim.add_source(position=(1.2e-2, 1.2e-2, 1.0e-2), component="ez")
     sim.add_current_moment_monitor(
         corner_lo=(0.6e-2, 0.6e-2, 0.8e-2), corner_hi=(1.8e-2, 1.8e-2, 1.2e-2),

@@ -148,8 +148,8 @@ box with `sim.add_ntff_box(corner_lo, corner_hi)` first; without it the
 objective raises `ValueError`. Angles are in radians. Keep the default
 `log_ratio=True`: it gives the correct gradient sign for every design variable,
 including ones that change the total radiated power (conductors, loss,
-large permittivity changes). `log_ratio=False` is correct only for variables
-that leave the radiated power unchanged. NTFF objectives cost more than probe
+large permittivity changes). `log_ratio=False` raises `ValueError` because it gives wrong-sign gradients
+for power-changing variables; use the default. NTFF objectives cost more than probe
 objectives, so iterate on a coarse mesh and check the final design with
 [Far-Field and RCS](/rfx/guide/farfield-rcs/).
 

@@ -13,13 +13,7 @@ must match. It is deliberately mechanical: it does not model deprecation policy,
 does not read ``pyproject.toml`` or ``CHANGELOG.md``, and covers only the
 deprecations that carry a version in both places.
 
-Not covered, and why (checked at the time of writing):
-
-* ``pec_faces=`` — the warning says "removed in rfx v2.0" but no docstring in
-  ``rfx/api/__init__.py`` states a version for it, so there is no pair.
-* ``compute_coaxial_s_matrix`` (``rfx/api/_sparams.py``) and
-  ``minimize_s11_at_freq`` (``rfx/optimize_objectives.py``) — issue #954 lists
-  them as living in ``rfx/api/__init__.py``; they do not.
+Removed periodic/PEC/time-gating APIs are covered by test_api_1448.py.
 """
 
 import inspect
@@ -94,25 +88,4 @@ def test_add_source_docstring_and_warning_state_the_same_window():
         "add_source docstring and DeprecationWarning disagree on when "
         f"'current' becomes the default: docstring {doc_default[0]}, "
         f"warning {warn_default[0]} (issue #954)"
-    )
-
-
-def test_set_periodic_axes_docstring_and_warning_state_the_same_removal():
-    doc, body = _docstring_and_body(Simulation.set_periodic_axes)
-
-    doc_removed = _versions(doc, _REMOVED_IN)
-    warn_removed = _versions(body, _REMOVED_IN)
-
-    assert len(doc_removed) == 1, (
-        "set_periodic_axes docstring must state 'removed in vX.Y'; "
-        f"found {doc_removed}"
-    )
-    assert len(warn_removed) == 1, (
-        "set_periodic_axes DeprecationWarning must state 'removed in vX.Y'; "
-        f"found {warn_removed}"
-    )
-    assert doc_removed == warn_removed, (
-        "set_periodic_axes docstring and DeprecationWarning disagree on the "
-        f"removal version: docstring {doc_removed[0]}, warning "
-        f"{warn_removed[0]} (issue #954)"
     )

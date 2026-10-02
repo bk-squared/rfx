@@ -482,7 +482,7 @@ class _PreflightMixin:
 
         # The lumped/wire S-parameter extractor runs a SEPARATE eager FDTD
         # re-run that does NOT apply periodic boundaries, so it would silently
-        # ignore set_periodic_axes() and return an S-matrix for the wrong
+        # ignore BoundarySpec periodic faces and return an S-matrix for the wrong
         # (non-periodic) boundary-value problem (issue #206). Fail loudly
         # instead of returning silently-wrong S-parameters.
         if self._periodic_axes and port_entries:
@@ -490,7 +490,7 @@ class _PreflightMixin:
                 "run(compute_s_params=True) for lumped/wire add_port(...) does "
                 "not honor periodic axes: the S-parameter extraction re-run uses "
                 "non-periodic boundaries, so the returned S-matrix would silently "
-                f"ignore set_periodic_axes({self._periodic_axes!r}). Remove the "
+                f"ignore BoundarySpec periodic axes {self._periodic_axes!r}. Remove the "
                 "periodic axes for the S-parameter run, or use a port family that "
                 "supports periodicity (e.g. a Floquet port)."
             )

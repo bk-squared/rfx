@@ -825,7 +825,10 @@ class Result(NamedTuple):
             ts = ts[:, probe_idx]
         ts = ts.ravel()
         if self.dt is None:
-            raise ValueError("dt not available in Result — run with store_dt=True")
+            raise ValueError(
+                "dt not available in Result — Simulation.run() populates dt "
+                "automatically; supply dt when constructing Result manually."
+            )
         fr = freq_range
         if fr is None:
             fr = self.freq_range
@@ -1061,7 +1064,8 @@ class Result(NamedTuple):
         """Plot the probe time series.
 
         Thin wrapper over :func:`rfx.visualize.plot_time_series`. Requires
-        ``dt`` to be present (run with ``store_dt=True``).
+        ``dt`` to be present. ``Simulation.run()`` populates it automatically;
+        supply ``dt`` when constructing a Result manually.
 
         Parameters
         ----------
@@ -1083,8 +1087,8 @@ class Result(NamedTuple):
 
         if self.dt is None:
             raise ValueError(
-                "no dt in this Result — run with store_dt=True to plot the "
-                "time series"
+                "no dt in this Result — Simulation.run() populates dt "
+                "automatically; supply dt when constructing Result manually."
             )
         ts = np.asarray(self.time_series)
         if ts.ndim == 1:

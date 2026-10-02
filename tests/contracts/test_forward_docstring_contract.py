@@ -115,7 +115,9 @@ def test_all_is_curated_subset():
     # this belongs next to `flux_spectrum` on the star surface, not in each
     # caller. The validation helpers (`_flux_meta_equal`) stay private.
     assert "subtract_flux_monitors" in names
-    assert len(names) < 218, f"rfx.__all__ too large to be curated: {len(names)}"
+    # #1448 B1: ForwardResult is the public return type of forward(), alongside Result.
+    assert "ForwardResult" in names
+    assert len(names) < 219, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

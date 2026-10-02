@@ -17,7 +17,7 @@ from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
 from rfx.adi import ADIState2D, ADIState3D, thomas_solve, adi_step_2d, run_adi_2d, adi_step_3d, run_adi_3d
 from rfx.api import (
-    Simulation, Result, WaveguideSParamResult, WaveguideSMatrixResult,
+    Simulation, Result, ForwardResult, WaveguideSParamResult, WaveguideSMatrixResult,
     MSLProbeClearance, MSLSMatrixResult, MixedSMatrixResult, MATERIAL_LIBRARY,
     AD_MemoryEstimate, ADMemoryPlan, ADMemoryComponent,
     ADMemoryActionHint, ADMemoryExplainabilityReport,
@@ -273,7 +273,7 @@ __all__ = [
     "make_source", "make_probe", "make_port_source", "make_current_source",
     "SimResult", "SnapshotSpec",
     # result + S-matrix types
-    "Result", "WaveguideSParamResult", "WaveguideSMatrixResult",
+    "Result", "ForwardResult", "WaveguideSParamResult", "WaveguideSMatrixResult",
     "MSLProbeClearance", "MSLSMatrixResult", "MixedSMatrixResult",
     "AD_MemoryEstimate", "ADMemoryPlan", "ADMemoryComponent",
     "ADMemoryActionHint",

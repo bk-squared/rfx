@@ -10,6 +10,7 @@ Tests:
 7. Unit cell with Floquet port (patch element unit cell)
 8. API integration (add_floquet_port method)
 """
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 import math
 
@@ -496,9 +497,8 @@ def test_floquet_port_tfsf_incompatible():
 
 def test_floquet_port_periodic_conflict():
     """If periodic axes are already set and conflict, should raise."""
-    sim = Simulation(freq_max=10e9, domain=(0.015, 0.015, 0.03), boundary="cpml")
+    sim = Simulation(freq_max=10e9, domain=(0.015, 0.015, 0.03), boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"))
     # Set periodic on x only
-    sim.set_periodic_axes("x")
 
     # z-normal Floquet needs xy periodic — x is satisfied, but y is missing
     with pytest.raises(ValueError, match="periodic"):

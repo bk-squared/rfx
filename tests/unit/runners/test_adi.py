@@ -329,7 +329,7 @@ def test_simulation_adi_default_refuses_internal_pec_geometry():
                            [0.008 + n * dx for n in range(5)],
                            what=f"2-D ADI interior PEC body, {'xy'[axis]}")
 
-    assert sim._adi_cfl_factor == 5.0
+    assert sim._adi_cfl_factor == 2.0  # #1448 ADI default CFL 5 -> 2
     for entrypoint in (sim.run, sim.forward):
         with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
             entrypoint(n_steps=20, skip_preflight=True)
@@ -528,7 +528,7 @@ class TestADI3DCavityPhysics:
         sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.02)), material="pec")
         sim.add_source((0.005, 0.01, 0.01), "ez")
         sim.add_probe((0.015, 0.01, 0.01), "ez")
-        assert sim._adi_cfl_factor == 5.0
+        assert sim._adi_cfl_factor == 2.0  # #1448 ADI default CFL 5 -> 2
         for entrypoint in (sim.run, sim.forward):
             with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
                 entrypoint(n_steps=4, skip_preflight=True)

@@ -4186,6 +4186,10 @@ class _ExecuteMixin:
             ``None`` (default) leaves every output and the traced program as
             they were.
 
+        **_removed_kwargs
+            Rejection shim for removed keywords, providing migration errors;
+            it does not accept additional simulation options.
+
         Returns
         -------
         ForwardResult
@@ -4720,6 +4724,21 @@ class _ExecuteMixin:
             interior-energy checks required before stopping (default ``2``;
             ``>= 2`` mandatory — the interior energy is not null-free and a
             single check can false-fire on a transient inter-packet dip).
+        radiated_flux_box : tuple or None
+            Physical lower/upper corners of a closed box enclosing the radiator,
+            clear of CPML. Selects outgoing-flux decay instead of interior-energy
+            decay on absorbing boundaries; None keeps the energy criterion.
+        flux_env_checks : int
+            Number of recent checks whose maximum absolute flux forms the
+            radiated-flux envelope (default 4).
+        snapshot : SnapshotSpec or None
+            Field snapshot schedule and selection; None disables snapshots.
+        subpixel_smoothing : bool or str
+            Material-interface smoothing rule; False disables smoothing.
+            True enables dielectric smoothing; "kottke_pec" selects the
+            unified PEC occupancy rule on supported lanes.
+        skip_preflight : bool
+            Skip advisory preflight checks. Runtime admission guards still apply.
         decay_monitor_component : str
             Field component to monitor (default ``"ez"``). Used only by the
             closed/PEC point-field fallback stop.

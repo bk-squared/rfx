@@ -1,6 +1,6 @@
 """Touchstone (.sNp) S-parameter file I/O.
 
-Reads and writes the legacy rfx Touchstone v1-compatible format plus a bounded
+Reads and writes standard Touchstone 1.0, explicit legacy rfx layout, and a bounded
 metadata-aware Touchstone 2.0 S-parameter subset for interoperability with ADS,
 CST, HFSS, scikit-rf-style workflows, and other RF tools.
 
@@ -19,8 +19,9 @@ Legacy rfx multi-port layout:
   frequency, continuation lines are indented without a frequency column.
   Column-major order: S11, S21, ..., SN1, S12, ..., SNN.
 
-Standard Touchstone layout is available with ``layout="standard"`` or
-``version="2.0"`` and uses row-wise 3+ port full matrices.
+Standard Touchstone layout is the default for writing and reading: row-major
+for 3+ ports, S11 S21 S12 S22 for 2 ports. Use ``layout="legacy-rfx"``
+explicitly to read older unmarked rfx files or write their column-major order.
 """
 
 from __future__ import annotations
@@ -231,8 +232,8 @@ def write_touchstone(
         writes Touchstone 2.0 metadata keywords for the supported S-parameter
         subset.
     layout : "legacy-rfx", "standard", or None
-        Multi-port order.  ``None`` means historical legacy layout for
-        Touchstone 1.0 output and standard layout for Touchstone 2.0 output.
+        Multi-port order.  ``None`` means standard layout for both
+        Touchstone 1.0 and 2.0 output.
         The legacy rfx layout is column-major for all port counts.  The
         standard layout is row-major for 3+ ports.  Two-port standard order is
         controlled by ``two_port_order``.
@@ -275,7 +276,7 @@ def write_touchstone(
             "with [Number of Ports] metadata"
         )
     if layout is None:
-        layout = "standard" if version == "2.0" else "legacy-rfx"
+        layout = "standard"
     layout = layout.lower()
     fmt = fmt.upper()
     matrix_format = matrix_format.capitalize()
@@ -369,7 +370,7 @@ def write_touchstone(
             f.write("[End]\n")
 
 
-def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float]:
+def read_touchstone(filepath: str | Path, *, layout: str = "auto") -> tuple[np.ndarray, np.ndarray, float]:
     """Read S-parameters from a Touchstone file.
 
     This legacy compatibility API returns a scalar reference impedance.  If a
@@ -379,6 +380,9 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     Parameters
     ----------
     filepath : str or Path
+    layout : str
+        Standard order by default. Pass ``"legacy-rfx"`` for older unmarked
+        rfx files; default reading transposes their 3+ port matrices.
 
     Returns
     -------
@@ -386,7 +390,7 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     freqs : (n_freqs,) float in Hz
     z0 : float reference impedance
     """
-    data = read_touchstone_full(filepath)
+    data = read_touchstone_full(filepath, layout=layout)
     scalar_z0 = _uniform_reference_or_none(data.reference)
     if scalar_z0 is None:
         raise ValueError(
@@ -408,9 +412,10 @@ def read_touchstone_full(filepath: str | Path, *,
     - Touchstone 2.0 information blocks preserved as raw lines
     - Full matrix data only
 
-    For backwards compatibility, Touchstone 1-style files default to the
-    historical rfx multi-port layout.  Touchstone 2.0 files default to the
-    standard full-matrix row-wise layout for 3+ ports.
+    ``layout="auto"`` reads standard order for both versions. Older unmarked
+    rfx 3+ port files cannot be distinguished from standard files: default
+    reading transposes their S matrices. Pass ``layout="legacy-rfx"`` to read
+    those files correctly (also supported by :func:`read_touchstone`).
     """
     filepath = Path(filepath)
 
@@ -623,7 +628,7 @@ def read_touchstone_full(filepath: str | Path, *,
     freqs = np.array(freqs_list)
 
     if layout == "auto":
-        resolved_layout = "standard" if has_v2_keywords else "legacy-rfx"
+        resolved_layout = "standard"
     else:
         resolved_layout = layout.lower()
 

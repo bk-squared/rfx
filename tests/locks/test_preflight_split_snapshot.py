@@ -1987,6 +1987,8 @@ _FIXTURES = (
      {"check_ad_memory": True, "n_steps_for_memory": 1000,
       "available_memory_gb": 0.5}, None),
     # -- 25-28. ADI / non-uniform grading / flux windows / PEC-to-wall ------
+    # #1448 ADI default CFL 5 -> 2: measured adi_3d_accuracy count 1 -> 0.
+    # The retained conductor refusal now calls factor 5 the former default.
     ("adi_conductor_sheet", _adi_conductor_sim, {}, None),
     ("nu_grading_beyond_cap",
      lambda: _nu_grading_sim(np.array([1, 1, 1, 2, 2, 2, 1, 1, 1]) * _MM),

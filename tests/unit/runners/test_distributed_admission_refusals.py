@@ -44,9 +44,8 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
         warnings.simplefilter("ignore", UserWarning)
         warnings.simplefilter("ignore", DeprecationWarning)
         sim = Simulation(freq_max=15e9, domain=(domain_x, 12e-3, 12e-3),
-                         dx=1e-3, boundary=boundary)
-        if periodic:
-            sim.set_periodic_axes(periodic)
+                         dx=1e-3, boundary=(BoundarySpec(**{axis: "periodic" if axis in periodic else boundary
+                                                   for axis in "xyz"}) if periodic else boundary))
         if port is None:
             sim.add_source(position=(6e-3, 6e-3, 6e-3), component="ez",
                            amplitude_kind="field")

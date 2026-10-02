@@ -34,6 +34,7 @@ The ``CoaxialPort`` primitive and the TEM reference-plane V/I helpers stay in
 rule). Every assertion, tolerance, fixture value and parametrisation of the
 absorbed files is kept verbatim.
 """
+from rfx.boundaries.spec import Boundary, BoundarySpec
 import numpy as np
 import jax
 import jax.numpy as jnp
@@ -282,12 +283,10 @@ def test_periodic_axis_is_rejected_before_coaxial_line_run():
     sim = Simulation(
         domain=(0.008, 0.008, 0.040),
         freq_max=40.0e9,
-        boundary="cpml",
+        boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"),
         dx=1.0e-3,
     )
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
-    with pytest.warns(DeprecationWarning):
-        sim.set_periodic_axes("x")
 
     # A periodic lateral axis has no absorber, so the all-six-faces absorber
     # requirement (issue 1218) is the refusal that fires first.
