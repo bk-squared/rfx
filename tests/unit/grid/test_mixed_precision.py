@@ -185,7 +185,7 @@ class TestSimulationMixedPrecision:
             boundary="pec",
             precision="mixed",
         )
-        sim.add_source(position=(0.01, 0.01, 0.01), component="ez")
+        sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=10)
         st = result.state
         # Each field component should be float16 (2 bytes per element)
