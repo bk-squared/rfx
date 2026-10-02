@@ -77,15 +77,23 @@ a preflight warning. Far-field and RCS use is covered in
 
 ### Lumped and wire ports
 
+For the matched air-line fixture in
+`tests/unit/ports/test_lumped_two_port_matched_line.py`, the S21 phase of a
+lumped/wire pair is referenced a combined half cell inside the realized port
+separation; it is not the phase across the full realized separation.
+
 ```text
 add_port(position, component="ez", *, impedance=50.0, waveform=None,
-         extent=None, excite=True, direction=None,
+         extent=None, radius=None, excite=True, direction=None,
          reference_plane_cells=None, terminates=None) -> Simulation
 ```
 
 - `impedance`: the port's reference impedance in ohms.
 - `extent`: omit for a one-cell lumped port. Set it (in metres) to make a wire
   port spanning `extent` from `position` along the component axis.
+- `radius`: the physical probe-pin radius for a wire port, subject to the
+  local thin-probe mesh restrictions. With `radius=None`, the effective pin
+  radius follows the mesh, so refining changes its series inductance.
 - `excite=False`: a matched load only, no source. Use it for ports that only
   receive.
 - `direction`: outward normal of the port (`"+x"`, `"-x"`, `"+y"`, `"-y"`),

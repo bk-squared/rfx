@@ -49,6 +49,8 @@ with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
 volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
 cell at its vertices. The existing volume-wire rule and legacy `radius=0`
 filament ownership remain; zero does not declare a physical wire radius.
+A positive-radius PEC `PolylineWire` also refuses when the mesh cell sizes
+are traced; its geometric radius check requires concrete cell metrics.
 The attempted filament correction failed its independent uncorrected-main
 reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
 8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
@@ -89,8 +91,9 @@ cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), not as gain.
 `enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
 the raw S is gated: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch at its 25 µm claims rung (1.0103 measured; the
-thru line 1.0030), in `tests/oracle/test_msl_chain_battery.py`. Coarser meshes are
+or below 1.02 on the open-stub notch at its 25 µm claims rung, in
+`tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
+measured notch and thru values. Coarser meshes are
 reported, not gated.
 
 **The fitted microstrip propagation constant sits 1.0 to 1.3 % above the

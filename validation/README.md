@@ -10,27 +10,11 @@ different setup.
 
 ## Run a validation case
 
-Run scripts from the repository root, one case at a time:
-
-```bash
-python validation/crossval/15_patch_antenna_rt5880.py
-```
-
-The process exit code has a specific meaning:
-
-- `0`: every configured numerical check passed, including a required external
-  comparison when the case has one.
-- `1`: a simulation, numerical check, or required execution step failed.
-- `2`: the rfx checks completed, but a required reference file or external
-  solver was unavailable. This result is inconclusive, not a pass.
-
-See `crossval/manifest.json` for each script's dependencies, expected exit
-codes, numerical-check files, and generated artifacts.
-
-## Available cases
-
-| Script | What it checks | Reference and interpretation limit |
-| --- | --- | --- |
+Cross-solver comparisons live in `tests/crossval/`, with frozen reference
+records and per-case pytest instructions. For the RT/Duroid patch, see
+`tests/crossval/rt5880_patch/test_rt5880_patch.py`. The former
+`validation/crossval/` scripts, manifest and script exit-code convention were
+removed; use the pytest result and the case's stated scope.
 
 When reporting a result, include the script path, commit, geometry, mesh,
 frequency range, comparator, and numerical thresholds. Do not generalize a

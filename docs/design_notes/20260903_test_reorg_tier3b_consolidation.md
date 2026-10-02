@@ -1,5 +1,7 @@
 # Test-suite reorganization — tier 3b: consolidation of duplicated test files
 
+> Documentation update (2026-10-03): `scripts/ops/gpu_suite_shards.json` in the historical references below was removed. The maintained GPU suite harness is `scripts/vessl_gpu_suite.yaml`.
+
 Date: 2026-09-03. Branch `agent/reorg-tier3b-consolidate`, stacked on tier 4b
 (`agent/reorg-tier4b-unit`, tip `3bafe2f` = the BEFORE reference of every
 count below). PI instruction, verbatim: "3b도 진행해 누락되는거 있나 점검 하면

@@ -58,7 +58,7 @@ was 5 min 16 s of it, and everything else together was under ten seconds.
 `scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, data-budget, pr-body, workflow-yaml, contract-tests.
 
 ```
-scripts/ci/local.sh                   # the six steps; pr-body reports skipped
+scripts/ci/local.sh                   # the local checks; pr-body reports skipped
 scripts/ci/local.sh /tmp/body.md      # also check that PR body
 PYTHON=.venv/bin/python scripts/ci/local.sh
 ```
@@ -289,7 +289,7 @@ the classifier.
 
 ## GPU validation
 
-`scripts/vessl_gpu_suite.yaml` is THE maintained harness — runs `pytest -m gpu -q -ra`
+`scripts/vessl_gpu_suite.yaml` is THE maintained harness — runs `pytest -m "gpu and not crossval_ladder" -q -ra`
 on gpu-rtx4090:
 
 ```
@@ -305,7 +305,9 @@ a "post-merge" run then silently tested code 6 commits behind main — VESSL run
 the log itself says what was tested.) Artifacts still land under the primary
 checkout's `.omx/gpu-suite/<utc>-<short sha>/` on the shared volume.
 
-**Cadence**: per release tag AND after any GPU-touching merge. Record pass/fail
+**Cadence**: the GPU suite runs per release tag and after GPU-touching merges.
+Full cross-validation ladders run in the monthly `crossval-ladder` lane and
+before a release. Record pass/fail
 counts in tracked release notes or a committed validation artifact suitable
 for the claim.
 
