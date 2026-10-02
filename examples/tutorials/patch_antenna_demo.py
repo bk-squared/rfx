@@ -195,27 +195,9 @@ OUTPUT_PATH = Path(__file__).with_name("output") / "patch_antenna_cuts.png"
 
 
 def realized_z_wall_planes(sim):
-    """Node planes along z where THIS run will zero tangential E.
-
-    Read from the contract's own realization — ``realized_pec_edge_masks``
-    then ``realized_wall_planes`` (#931 §1.7) — applied to the very arrays
-    the assembly hands the stepper, so what this reports and what the solve
-    applies cannot drift apart.  Build only: no field is stepped.
-
-    ``_assemble_materials_nu`` is private because the realized edge set has
-    no public accessor yet; the two functions it feeds are public
-    (``from rfx import realized_pec_edge_masks, realized_wall_planes``).
-    """
-    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-
-    grid = sim._build_nonuniform_grid()
-    sheets: list = []
-    _materials, _debye, _lorentz, pec_mask = sim._assemble_materials_nu(
-        grid, pec_sheets=sheets)
-    edges = realized_pec_edge_masks(pec_mask, sheets=sheets,
-                                    periodic=sim._periodic_flags())
-    z_nodes = np.asarray(coords_from_nonuniform_grid(grid).z, dtype=float)
-    return z_nodes, sheets, realized_wall_planes(edges, 2)
+    """Read realized wall planes and sheets from the public build-time record."""
+    record = sim.realized_geometry()
+    return record.nodes[2], record.sheets, record.wall_planes(2)
 
 
 def realized_in_plane(sim, planes, feed):
@@ -230,35 +212,18 @@ def realized_in_plane(sim, planes, feed):
     the point source on (``position_to_index``, the non-uniform runner's
     own lookup).
     """
-    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-    from rfx.nonuniform import position_to_index
-
-    grid = sim._build_nonuniform_grid()
-    sheets: list = []
-    materials, _debye, _lorentz, pec_mask = sim._assemble_materials_nu(
-        grid, pec_sheets=sheets)
-    ex, ey, _ez = (np.asarray(m) for m in realized_pec_edge_masks(
-        pec_mask, sheets=sheets, periodic=sim._periodic_flags()))
-    coords = coords_from_nonuniform_grid(grid)
-    x = np.asarray(coords.x, dtype=float)
-    y = np.asarray(coords.y, dtype=float)
-
-    def solved(nodes, a0, a1):
-        return (nodes[a0] - EDGE_OFFSET * (nodes[a0] - nodes[a0 - 1]),
-                nodes[a1] + EDGE_OFFSET * (nodes[a1 + 1] - nodes[a1]))
-
+    record = sim.realized_geometry()
     nodes_span, solved_span = {}, {}
     for k in planes:
-        i = np.flatnonzero(ex[:, :, k].any(axis=1))
-        j = np.flatnonzero(ey[:, :, k].any(axis=0))
-        i0, i1, j0, j1 = i[0], i[-1] + 1, j[0], j[-1] + 1
-        nodes_span[k] = (x[i0], x[i1], y[j0], y[j1])
-        solved_span[k] = solved(x, i0, i1) + solved(y, j0, j1)
-    cells = np.argwhere(np.asarray(materials.eps_r) > 1.0)
-    lo, hi = cells.min(axis=0), cells.max(axis=0)
-    substrate = (x[lo[0]], x[hi[0] + 1], y[lo[1]], y[hi[1] + 1])
-    i_f, j_f, _k = position_to_index(grid, feed)
-    return nodes_span, solved_span, substrate, (x[i_f], y[j_f])
+        sheet = next(e for e in record.entities if e.plane is not None and e.plane[:2] == (2, k))
+        nodes_span[k] = tuple(float(record.nodes[a][i])
+                              for a in (0, 1) for i in sheet.axes[a].node_range)
+        solved_span[k] = tuple(v for a in sheet.axes[:2] for v in a.bounds_m)
+    substrate = next(e for e in record.entities if e.kind == "material")
+    substrate = tuple(v for a in substrate.axes[:2] for v in a.bounds_m)
+    port = record.ports[0]
+    i_f, j_f, _k = port.edges[0]
+    return nodes_span, solved_span, substrate, (record.nodes[0][i_f], record.nodes[1][j_f])
 
 
 def build_simulation():

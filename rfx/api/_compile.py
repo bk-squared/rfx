@@ -379,8 +379,8 @@ class _CompileMixin:
                 sigma = jnp.where(mask, mat.sigma, sigma)
                 mu_r = jnp.where(mask, mat.mu_r, mu_r)
 
-            if geometry_masks is not None:
-                geometry_masks.append(mask)
+            if geometry_masks is not None and mat.sigma < self._PEC_SIGMA_THRESHOLD:
+                geometry_masks.append((id(entry), mask))
 
             if mat.chi3 != 0.0:
                 chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)

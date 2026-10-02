@@ -177,26 +177,10 @@ def build_microstrip_ports() -> Simulation:
     # A one-cell wire port on a microstrip badly undersamples the mode field
     # between strip and ground.  Use add_msl_port() for microstrip.
     #
-    # Build-time check (no solve): the two declared foil planes must be the
-    # two realized tangential-wall planes along z, and the gap between them
-    # must be the 1.0 mm the ports were told.  Read from the contract's own
-    # realization (``realized_pec_edge_masks`` then ``realized_wall_planes``,
-    # #931 §1.7) over the arrays the assembly hands the stepper, so the check
-    # and the solve cannot drift apart.  ``_assemble_materials`` is private
-    # only because the realized edge set has no public accessor yet; the two
-    # functions it feeds are public (``from rfx import ...``).
-    from rfx.geometry.rasterize_grid import coords_from_uniform_grid
-
-    grid = sim._build_grid()
-    sheets: list = []
-    _mat, _deb, _lor, pec_cells, _s, _w, _c = sim._assemble_materials(
-        grid, pec_sheets=sheets)
-    walls = realized_wall_planes(
-        realized_pec_edge_masks(pec_cells, sheets=sheets,
-                                periodic=sim._periodic_flags()), 2)
-    # Node indices are offset by the CPML pad, so read the declared planes off
-    # the built grid's own z node line rather than from z / dx.
-    z_nodes = np.asarray(coords_from_uniform_grid(grid).z, dtype=float)
+    # Build-time check from the same public record the Result carries.
+    record = sim.realized_geometry()
+    walls = record.wall_planes(2)
+    z_nodes = record.nodes[2]
     k_gnd = int(np.argmin(np.abs(z_nodes - 1.25e-3)))
     k_trace = int(np.argmin(np.abs(z_nodes - 2.25e-3)))
     if walls != sorted({k_gnd, k_trace}):

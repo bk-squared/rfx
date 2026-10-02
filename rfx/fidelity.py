@@ -50,49 +50,7 @@ def _axis_names():
     return ("x", "y", "z")
 
 
-def _node_arrays(sim, grid, nonuniform):
-    """Per-axis ``(cell sizes, node positions)`` on the padded grid.
-
-    Both come from the SAME exact host-float64 producers the rasterizer
-    reads — ``coords_from_nonuniform_grid`` (float64 spine) on the
-    non-uniform lane and ``_uniform_axis_nodes`` (closed form) on the
-    uniform lane — so the report and the realized mask cannot disagree on
-    where a node is. Before this the report re-derived its own node line by
-    cumsumming the solver's float32 cell-size stores (NU) or a float64
-    ``np.full`` (uniform); on a graded 0.3048 mm profile that line sat
-    3.9e-10 m off the rasterizer's, a uniform-valued NU axis reported a
-    declared 500.0 um cell as 500.00002374872565 um, and exactly-on-node
-    faces carried ~1e-12 um residuals (#833 item 2, measured 2026-09-02).
-
-    ``sizes[a]`` has one entry per node-provider cell (``grid.shape[a]``
-    entries); ``nodes[a]`` has one more — the grid's own nodes plus the far
-    edge of the last cell — so ``nodes[a][i + 1]`` is the far face of cell
-    ``i`` for every ``i``. Node index ``pad_lo`` sits at domain 0 on every
-    axis, by the producers' construction.
-    """
-    from rfx.geometry.rasterize_grid import (
-        _uniform_axis_nodes, coords_from_nonuniform_grid)
-    if nonuniform:
-        c = coords_from_nonuniform_grid(grid)
-        lines = tuple(np.asarray(v, dtype=np.float64) for v in (c.x, c.y, c.z))
-        stores = (grid.dx_arr, grid.dy_arr, grid.dz)
-        spines = (getattr(grid, "dx_arr_f64", None),
-                  getattr(grid, "dy_arr_f64", None),
-                  getattr(grid, "dz_f64", None))
-        # Cell sizes from the same spine the node line was built from; a
-        # grid without one has already been warned about by the producer.
-        sizes = tuple(np.asarray(store if spine is None else spine,
-                                 dtype=np.float64)
-                      for store, spine in zip(stores, spines))
-    else:
-        n = grid.shape
-        dx = float(grid.dx)
-        pads = grid.axis_pads
-        lines = tuple(_uniform_axis_nodes(n[a], pads[a], dx) for a in range(3))
-        sizes = tuple(np.full(n[a], dx) for a in range(3))
-    nodes = tuple(np.concatenate([line, [line[-1] + d[-1]]])
-                  for line, d in zip(lines, sizes))
-    return sizes, nodes
+from rfx.realized_geometry import _node_arrays
 
 
 def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
@@ -305,64 +263,23 @@ def fidelity_report(sim, print_report: bool = True):
     carries a ``note`` key (rendered by the printed report) instead of a
     finding.
     """
-    nonuniform = any(getattr(sim, a, None) is not None
-                     for a in ("_dx_profile", "_dy_profile", "_dz_profile"))
-    grid = sim._build_nonuniform_grid() if nonuniform else sim._build_grid()
-    refused = _contract_refusals(sim, grid, nonuniform)
-    # A thin conductor the non-uniform assembler refuses (run() would
-    # raise) is left out of the audited assembly and reported on its row.
-    refused_tc = {}
-    if nonuniform:
-        from rfx.runners.nonuniform import nu_thin_conductor_refusal
-        for j, tc in enumerate(getattr(sim, "_thin_conductors", ()) or ()):
-            why = nu_thin_conductor_refusal(tc)
-            if why is not None:
-                refused_tc[j] = why
-    sim_audit = sim
-    if refused or refused_tc:
-        import copy
-        sim_audit = copy.copy(sim)
-        sim_audit._geometry = [e for i, e in enumerate(sim._geometry)
-                               if i not in refused]
-        sim_audit._thin_conductors = [
-            tc for j, tc in enumerate(getattr(sim, "_thin_conductors", ()) or ())
-            if j not in refused_tc]
-    # #931 §1.9: the assembly's own sheet/wire classification. The report
-    # derives a SheetSpec per entry (``_pec_sheet_spec``) so it can name the
-    # declaration each plane came from; these are the same objects the SOLVE
-    # will realize, and the cross-check after the entry loop is what stops
-    # the two derivations drifting apart unnoticed.
-    assembled_sheets: list = []
-    assembled_wires: list = []
-    pad_fill_findings: list = []
-    geometry_masks: list = []
-    if nonuniform:
-        from rfx.runners.nonuniform import assemble_materials_nu
-        out = assemble_materials_nu(sim_audit, grid, pec_sheets=assembled_sheets,
-                                    pec_wires=assembled_wires,
-                                    geometry_masks=geometry_masks)
-    else:
-        # #1070 / review of PR #1136 A: collect the declared-but-unfilled
-        # spans instead of letting the assembly raise. This report exists to
-        # say where the realized model differs from the declared one, and a
-        # pad seam the structure does not reach is exactly that; refusing to
-        # produce the report would hide the row that names it.
-        out = sim_audit._assemble_materials(grid, pec_sheets=assembled_sheets,
-                                            pec_wires=assembled_wires,
-                                            pad_fill_findings=pad_fill_findings,
-                                            geometry_masks=geometry_masks)
-    material_masks = {id(entry): np.asarray(mask, dtype=bool)
-                      for entry, mask in zip(sim_audit._geometry, geometry_masks)}
-    mats, pec_mask = out[0], out[3]
+    record = sim.realized_geometry()
+    ctx = sim._campaign_ctx()
+    nonuniform = ctx.lane == "nonuniform"
+    grid = ctx.grid
+    refused = dict(record.refused)
+    refused_tc = dict(record.refused_thin_conductors)
+    assembled_sheets = record.sheets
+    assembled_wires = record.wires
+    pad_fill_findings = [dict(row) for row in record.pad_fill_findings]
+    rows = {row.label: row for row in record.entities}
+    mats = record.materials
     eps = np.asarray(mats.eps_r, dtype=float)
     sigma_arr = np.asarray(mats.sigma, dtype=float)
-    pec_mask = (np.asarray(pec_mask, dtype=bool)
-                if pec_mask is not None else np.zeros(eps.shape, bool))
-    sizes, nodes = _node_arrays(sim, grid, nonuniform)
+    pec_mask = (record.pec_mask if record.pec_mask is not None else np.zeros(eps.shape, bool))
+    sizes, nodes = record.cell_sizes, record.nodes
     # The realized edge set depends on the run's #689 flags, so the report
     # reads the same ones the solve will.
-    from rfx.geometry.rasterize_grid import periodic_flags_from_axes
-    periodic = periodic_flags_from_axes(getattr(sim, "_periodic_axes", ""))
     domain = tuple(float(v) for v in getattr(sim, "_domain", (0.0, 0.0, 0.0)))
     # Mask/material arrays live on the PADDED grid (CPML pad cells on every
     # side); declared coordinates are DOMAIN coordinates. The producers
@@ -550,20 +467,8 @@ def fidelity_report(sim, print_report: bool = True):
     # sheet footprints: a sheet end that runs on into another sheet is a
     # seam, not a free edge, in the shared solved-edge model
     # (rfx.mesh_edges.solved_sheet_span, #1375).
-    sheet_specs: dict = {}
-    sheet_union = None
     for kind_src, i, entry in entries:
-        try:
-            entry.shape.bounding_box()
-        except Exception:
-            continue
-        spec = _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform)
-        sheet_specs[(kind_src, i)] = spec
-        if spec is not None:
-            fp = np.asarray(spec.footprint, dtype=bool)
-            sheet_union = fp.copy() if sheet_union is None else (sheet_union | fp)
-
-    for kind_src, i, entry in entries:
+        geometry = rows[f"{kind_src}[{i}]"]
         if kind_src == "thin_conductor":
             sig = float(getattr(entry, "sigma_bulk", 0.0))
             mat_name = "pec" if sig >= 1e6 else "lossy-sheet"
@@ -583,8 +488,11 @@ def fidelity_report(sim, print_report: bool = True):
             report.append(nb_item)
             if kind_src == "geometry" and _assembled_as_pec(sim, entry):
                 try:
-                    nb_mask = _entity_mask(entry, sim, grid, nonuniform,
-                                           pec_volume=(i not in refused))
+                    if geometry.mask_error is not None:
+                        import builtins
+                        cls, message = geometry.mask_error.split(": ", 1)
+                        raise getattr(builtins, cls, ValueError)(message)
+                    nb_mask = geometry.mask
                 except Exception as exc:
                     pec_unrasterized.append((i, name, type(exc).__name__))
                     nb_item["findings"].append(dict(
@@ -610,7 +518,7 @@ def fidelity_report(sim, print_report: bool = True):
         # footprint on ONE node plane — not the cells the (node-sampled)
         # entity mask happens to touch. Resolved before the per-axis rows so
         # they report the plane, not a spurious one-cell z extent.
-        sheet_spec = sheet_specs[(kind_src, i)]
+        sheet_spec = geometry.sheet
         sheet_fp = (np.asarray(sheet_spec.footprint, dtype=bool)
                     if sheet_spec is not None else None)
         # #931 §1.1: a PEC VOLUME is realized from cell CENTRES, so the row
@@ -618,27 +526,13 @@ def fidelity_report(sim, print_report: bool = True):
         # disagree by a cell on any off-lattice conductor. Sheets carry no
         # cell (sheet_fp above) and a refused entry never reaches the
         # assembly, so both keep the node sampler.
-        if kind_src == "geometry" and not pec_assembled:
-            mask = material_masks[id(entry)]
-        else:
-            mask = _entity_mask(
-                entry, sim, grid, nonuniform,
-                pec_volume=(pec_assembled and sheet_spec is None
-                            and i not in refused))
+        mask = (geometry.mask if geometry.mask is not None else np.zeros(eps.shape, bool))
         item = dict(entity=name, material=_declared_material(sim, mat_name),
                     declared_lo=tuple(float(v) for v in lo),
                     declared_hi=tuple(float(v) for v in hi),
                     n_cells=int(mask.sum()), findings=[])
         if (pec_assembled and i not in refused) or kind_src == "thin_conductor":
-            from rfx.geometry.csg import declared_bounds
-            from rfx.geometry.smoothing import continued_conductor_shape
-            declared = declared_bounds(entry.shape)
-            solved = declared_bounds(continued_conductor_shape(sim, grid, entry.shape, entry=entry))
-            if declared is not None and solved is not None:
-                item["continued_faces"] = [
-                    f"{'xyz'[a]}-{'hi' if side else 'lo'}"
-                    for a in range(3) for side in (0, 1)
-                    if solved[side][a] != declared[side][a]]
+            item["continued_faces"] = list(geometry.continued_faces)
         if sheet_fp is not None:
             item["n_cells"] = 0
             item["n_sheet_nodes"] = int(sheet_fp.sum())
@@ -817,29 +711,10 @@ def fidelity_report(sim, print_report: bool = True):
                 remedy="keep the body inside the domain, or enlarge the "
                        "domain so the absorber stays empty"))
 
-        occ = np.where(sheet_fp if sheet_fp is not None else mask)
         axes = []
         clipped_axes = []
-        for a in range(3):
-            i0, i1 = int(occ[a].min()), int(occ[a].max())
-            if sheet_fp is not None:
-                # NODE bounds, closed: a sheet's footprint is a set of
-                # nodes, and on its normal axis i0 == i1 == the plane, so
-                # the row reads "declared plane -> realized plane". On an
-                # in-plane axis the realized ends are where the solve puts
-                # them: a free edge EDGE_OFFSET of the outside cell beyond
-                # its last node (the shared solved-edge model, #1375).
-                r_lo, r_hi = float(nodes[a][i0]), float(nodes[a][i1])
-                if a != int(sheet_spec.normal_axis):
-                    from rfx.mesh_edges import solved_sheet_span
-                    span = solved_sheet_span(
-                        sheet_fp, a, nodes[a], float(lo[a]), float(hi[a]),
-                        float(domain[a]), union=sheet_union,
-                        periodic='xyz'[a] in getattr(grid, 'periodic_axes', ''))
-                    if span is not None:
-                        r_lo, r_hi = span.lo, span.hi
-            else:
-                r_lo, r_hi = float(nodes[a][i0]), float(nodes[a][i1 + 1])
+        for a, realized_axis in enumerate(geometry.axes):
+            r_lo, r_hi = realized_axis.bounds_m
             d_lo, d_hi = float(lo[a]), float(hi[a])
             # A body drawn past the domain is CLIPPED by construction (a
             # common deliberate idiom: draw big, let the rasterizer cut).
@@ -852,15 +727,18 @@ def fidelity_report(sim, print_report: bool = True):
                 d_lo, d_hi = max(d_lo, 0.0), min(d_hi, dom_hi)
             # Local cell size on this axis over the body's span — the scale a
             # placement can actually be resolved to.
-            cell_m = float(np.mean(sizes[a][i0:i1 + 1]))
+            cell_m = realized_axis.cell_size_m
             cell_um = cell_m * 1e6
+            residual = realized_axis.face_residual_m
+            if (d_lo, d_hi) != realized_axis.declared_bounds_m:
+                residual = (r_lo - d_lo, r_hi - d_hi)
             ax = dict(axis=_axis_names()[a],
                       declared_um=(d_lo * 1e6, d_hi * 1e6),
                       realized_um=(r_lo * 1e6, r_hi * 1e6),
-                      face_residual_um=(_zero_tie(abs(r_lo - d_lo), cell_m) * 1e6,
-                                        _zero_tie(abs(r_hi - d_hi), cell_m) * 1e6),
+                      face_residual_um=(_zero_tie(abs(residual[0]), cell_m) * 1e6,
+                                        _zero_tie(abs(residual[1]), cell_m) * 1e6),
                       declared_extent_um=(d_hi - d_lo) * 1e6,
-                      realized_extent_um=(r_hi - r_lo) * 1e6)
+                      realized_extent_um=realized_axis.extent_m * 1e6)
             ext = ax["declared_extent_um"]
             ax["cell_um"] = cell_um
             # Relative margin, not an exact compare: see _SUB_CELL_TIE_REL.
@@ -1013,8 +891,10 @@ def fidelity_report(sim, print_report: bool = True):
             # (The drawn-vs-realized wall-plane table per axis is the
             # follow-up of this report; a zero-thickness Box is a SHEET and
             # is not in pec_mask, so it does not reach this branch.)
-            item["realized_wall_planes"] = _wall_plane_rows(
-                mask, nodes, periodic)
+            item["realized_wall_planes"] = {
+                _axis_names()[a]: dict(planes=list(planes),
+                                      planes_um=[float(nodes[a][k]) * 1e6 for k in planes])
+                for a, planes in enumerate(geometry.wall_planes)}
             runs = [_max_run_length(mask, a) for a in range(3)]
             thin_axes = [a for a, r in enumerate(runs) if r == 1]
             if not thin_axes:
@@ -1080,7 +960,7 @@ def fidelity_report(sim, print_report: bool = True):
     # below sees the same planes the assembly produced. Without these rows a
     # pinned board reported a sheet-report-assembly-drift finding telling the
     # reader to trust neither realization, on a model where the two agreed.
-    for j, ps in enumerate(getattr(sim_audit, "_pinned_sheets", ()) or ()):
+    for j, ps in enumerate(getattr(sim, "_pinned_sheets", ()) or ()):
         from rfx.materials.thin_conductor import pinned_sheet_realized
         info = pinned_sheet_realized(grid, ps)
         a = int(info["normal_axis"])

@@ -1033,8 +1033,10 @@ def rasterize_geometry(
             sigma = jnp.where(mask, mat.sigma, sigma)
             mu_r = jnp.where(mask, mat.mu_r, mu_r)
 
-        if geometry_masks is not None:
-            geometry_masks.append(mask)
+        if geometry_masks is not None and mat.sigma < pec_sigma_threshold:
+            declared_entry = (entry if pole_geometry_entries is None
+                              else pole_geometry_entries[entry_index])
+            geometry_masks.append((id(declared_entry), mask))
 
         if mat.chi3 != 0.0:
             chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)

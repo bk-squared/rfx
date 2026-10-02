@@ -1039,6 +1039,16 @@ class Simulation(
             shape=shape, material_name=material))
         return self
 
+    def realized_geometry(self):
+        """Return the immutable host record of this configuration's built geometry.
+
+        Build only: entities, solved sheet spans, signed face residuals in
+        metres, domain padding, and driven port edges. The same object is
+        attached as ``Result.realized_geometry`` by ``run()``.
+        """
+        from rfx.realized_geometry import realized_geometry
+        return realized_geometry(self)
+
     def fidelity_report(self, print_report: bool = True):
         """Input-fidelity audit: declared vs solved, per entity, in input
         units — run BEFORE any solve. See :func:`rfx.fidelity.fidelity_report`

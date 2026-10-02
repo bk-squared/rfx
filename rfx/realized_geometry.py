@@ -39,6 +39,10 @@ class EntityGeometry:
     mask: np.ndarray | None
     edge_masks: tuple[np.ndarray, ...]
     error: str | None = None
+    sheet: object = None
+    declared_bounds_m: tuple | None = None
+    continued_faces: tuple[str, ...] = ()
+    mask_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -81,10 +85,18 @@ class RealizedGeometry:
     cell_sizes: tuple[np.ndarray, ...]
     edge_masks: tuple[np.ndarray, ...]
     pec_mask: np.ndarray | None
+    sheets: tuple
+    wires: tuple
+    materials: object
+    periodic: tuple[bool, bool, bool]
+    refused: tuple[tuple[int, str], ...] = ()
+    refused_thin_conductors: tuple[tuple[int, str], ...] = ()
+    pad_fill_findings: tuple = ()
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
         from rfx.boundaries.pec import realized_wall_planes
+        kwargs.setdefault("periodic", self.periodic)
         return realized_wall_planes(self.edge_masks, axis, **kwargs)
 
 
@@ -94,14 +106,57 @@ def _readonly(value):
     return np.frombuffer(a.tobytes(), dtype=a.dtype).reshape(a.shape)
 
 
+def _freeze(value):
+    from dataclasses import fields, is_dataclass, replace
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    if isinstance(value, np.ndarray) or hasattr(value, "__array__"):
+        return _readonly(value)
+    if is_dataclass(value):
+        return replace(value, **{f.name: _freeze(getattr(value, f.name)) for f in fields(value)})
+    if isinstance(value, tuple) and hasattr(value, "_fields"):
+        return type(value)(*(_freeze(v) for v in value))
+    if isinstance(value, (tuple, list)):
+        return tuple(_freeze(v) for v in value)
+    return value
+
+
+def _assembly(sim, ctx):
+    """Reuse production assembly; retain refused-model audit evidence too."""
+    assembled = ctx.realized()
+    if assembled is not None:
+        return assembled, {}, {}, []
+    if ctx.grid is None:
+        raise ValueError(ctx.error)
+    import copy
+    from rfx.fidelity import _contract_refusals
+    from rfx.runners.nonuniform import nu_thin_conductor_refusal
+    from rfx.preflight.realization import _RealizedPEC
+    nonuniform = ctx.lane == "nonuniform"
+    refused = _contract_refusals(sim, ctx.grid, nonuniform)
+    refused_tc = {i: why for i, tc in enumerate(sim._thin_conductors)
+                  if nonuniform and (why := nu_thin_conductor_refusal(tc)) is not None}
+    audit = copy.copy(sim)
+    audit._geometry = [e for i, e in enumerate(sim._geometry) if i not in refused]
+    audit._thin_conductors = [tc for i, tc in enumerate(sim._thin_conductors) if i not in refused_tc]
+    sheets, wires, masks, findings = [], [], [], []
+    if nonuniform:
+        result = audit._assemble_materials_nu(ctx.grid, pec_sheets=sheets, pec_wires=wires,
+                                             geometry_masks=masks)
+    else:
+        result = audit._assemble_materials(ctx.grid, pec_sheets=sheets, pec_wires=wires,
+                                          geometry_masks=masks, pad_fill_findings=findings)
+    assembled = _RealizedPEC(lane=ctx.lane, grid=ctx.grid, materials=result[0],
+                             pec_mask=result[3], sheets=sheets, wires=wires,
+                             periodic=ctx.periodic, geometry_masks=masks)
+    return assembled, refused, refused_tc, findings
+
+
 def _build_record(sim, ctx):
-    from rfx.fidelity import _node_arrays
     from rfx.mesh_edges import solved_sheet_span
     from rfx.preflight.realization import _shape_bounds
 
-    assembled = ctx.realized()
-    if assembled is None:
-        raise ValueError(ctx.assembly_error or ctx.error or "geometry assembly unavailable")
+    assembled, refused, refused_tc, pad_findings = _assembly(sim, ctx)
     sizes, nodes = _node_arrays(sim, ctx.grid, ctx.lane == "nonuniform")
     conductors = {e.label: e for e in ctx.entry_realizations()}
     interior = {e.label: e for e in ctx.interior_pec_entries()}
@@ -116,12 +171,13 @@ def _build_record(sim, ctx):
                         for i, e in enumerate(sim._thin_conductors))
     entities = []
     for index, (label, name, shape) in enumerate(declarations):
+        mask_error = None
         e = interior.get(label, conductors.get(label))
         bounds = _shape_bounds(shape)
         sheet = None if e is None else e.sheet
         kind = "material" if e is None else e.kind
         if e is None:
-            mask = np.asarray(assembled.geometry_masks[index], dtype=bool)
+            mask = np.asarray(assembled.geometry_masks[id(sim._geometry[index])], dtype=bool)
         elif sheet is not None:
             mask = np.asarray(sheet.footprint, dtype=bool)
         elif e.cells is not None:
@@ -129,7 +185,16 @@ def _build_record(sim, ctx):
         elif e.kind == "wire":
             mask = np.logical_or.reduce(e.edges(ctx.periodic, ctx.grid.shape))
         else:
-            mask = None
+            # Refused declarations and legacy lossy folds have no PEC cells.
+            # Preserve their audit evidence here, not in individual readers.
+            from rfx.fidelity import _entity_mask
+            entry = (sim._geometry[index] if label.startswith("geometry") else
+                     sim._thin_conductors[index - len(sim._geometry)])
+            try:
+                mask = _entity_mask(entry, sim, ctx.grid, ctx.lane == "nonuniform")
+            except Exception as exc:
+                mask = None
+                mask_error = f"{type(exc).__name__}: {exc}"
         axes = []
         if mask is not None and mask.any():
             occ = np.where(mask)
@@ -157,11 +222,20 @@ def _build_record(sim, ctx):
         plane = (None if sheet is None else
                  (int(sheet.normal_axis), int(sheet.plane),
                   float(nodes[int(sheet.normal_axis)][int(sheet.plane)])))
+        continued = ()
+        if e is not None:
+            solved_bounds = _shape_bounds(e.solved_shape)
+            if bounds is not None and solved_bounds is not None:
+                continued = tuple(f"{'xyz'[a]}-{'hi' if side else 'lo'}"
+                                  for a in range(3) for side in (0, 1)
+                                  if bounds[side][a] != solved_bounds[side][a])
         entities.append(EntityGeometry(
             label, name, kind, tuple(axes),
-            int(mask.sum()) if mask is not None and kind in ("material", "volume") else 0,
+            int(mask.sum()) if mask is not None and kind not in ("sheet", "wire") else 0,
             plane, walls, None if mask is None else _readonly(mask), edges,
-            None if e is None else e.error))
+            None if e is None else e.error, _freeze(sheet),
+            None if bounds is None else tuple(tuple(float(v) for v in b) for b in bounds[:2]),
+            continued, mask_error))
     domain = []
     for a, axis in enumerate('xyz'):
         plo = int(getattr(ctx.grid, f'pad_{axis}_lo'))
@@ -175,7 +249,11 @@ def _build_record(sim, ctx):
     return RealizedGeometry(tuple(entities), _ports(sim, ctx), tuple(domain),
                             tuple(_readonly(n) for n in nodes), tuple(_readonly(s) for s in sizes),
                             tuple(_readonly(m) for m in assembled.edges),
-                            None if assembled.pec_mask is None else _readonly(assembled.pec_mask))
+                            None if assembled.pec_mask is None else _readonly(assembled.pec_mask),
+                            _freeze(assembled.sheets), _freeze(assembled.wires),
+                            _freeze(assembled.materials), tuple(ctx.periodic),
+                            tuple(refused.items()), tuple(refused_tc.items()),
+                            tuple(tuple(row.items()) for row in pad_findings))
 
 
 def _ports(sim, ctx):
@@ -216,7 +294,7 @@ def _ports(sim, ctx):
             else:
                 sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
                                             grid.dx, grid.shape[b], grid.axis_pads[b])
-                aperture.append((int(sl.start), int(sl.stop - 1)))
+                aperture.append((int(sl[0]), int(sl[1] - 1)))
         rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
     return tuple(rows)
 
@@ -231,3 +309,49 @@ def realized_geometry(sim):
     record = _build_record(sim, ctx)
     sim._realized_geometry_record = key, record
     return record
+
+
+def _node_arrays(sim, grid, nonuniform):
+    """Per-axis ``(cell sizes, node positions)`` on the padded grid.
+
+    Both come from the SAME exact host-float64 producers the rasterizer
+    reads — ``coords_from_nonuniform_grid`` (float64 spine) on the
+    non-uniform lane and ``_uniform_axis_nodes`` (closed form) on the
+    uniform lane — so the report and the realized mask cannot disagree on
+    where a node is. Before this the report re-derived its own node line by
+    cumsumming the solver's float32 cell-size stores (NU) or a float64
+    ``np.full`` (uniform); on a graded 0.3048 mm profile that line sat
+    3.9e-10 m off the rasterizer's, a uniform-valued NU axis reported a
+    declared 500.0 um cell as 500.00002374872565 um, and exactly-on-node
+    faces carried ~1e-12 um residuals (#833 item 2, measured 2026-09-02).
+
+    ``sizes[a]`` has one entry per node-provider cell (``grid.shape[a]``
+    entries); ``nodes[a]`` has one more — the grid's own nodes plus the far
+    edge of the last cell — so ``nodes[a][i + 1]`` is the far face of cell
+    ``i`` for every ``i``. Node index ``pad_lo`` sits at domain 0 on every
+    axis, by the producers' construction.
+    """
+    from rfx.geometry.rasterize_grid import (
+        _uniform_axis_nodes, coords_from_nonuniform_grid)
+    if nonuniform:
+        c = coords_from_nonuniform_grid(grid)
+        lines = tuple(np.asarray(v, dtype=np.float64) for v in (c.x, c.y, c.z))
+        stores = (grid.dx_arr, grid.dy_arr, grid.dz)
+        spines = (getattr(grid, "dx_arr_f64", None),
+                  getattr(grid, "dy_arr_f64", None),
+                  getattr(grid, "dz_f64", None))
+        # Cell sizes from the same spine the node line was built from; a
+        # grid without one has already been warned about by the producer.
+        sizes = tuple(np.asarray(store if spine is None else spine,
+                                 dtype=np.float64)
+                      for store, spine in zip(stores, spines))
+    else:
+        n = grid.shape
+        dx = float(grid.dx)
+        pads = grid.axis_pads
+        lines = tuple(_uniform_axis_nodes(n[a], pads[a], dx) for a in range(3))
+        sizes = tuple(np.full(n[a], dx) for a in range(3))
+    nodes = tuple(np.concatenate([line, [line[-1] + d[-1]]])
+                  for line, d in zip(lines, sizes))
+    return sizes, nodes
+

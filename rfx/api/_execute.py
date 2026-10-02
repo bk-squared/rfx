@@ -4913,6 +4913,7 @@ class _ExecuteMixin:
             exchange_interval=exchange_interval,
         )
         n_steps = plan.n_steps
+        geometry_record = self.realized_geometry()
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if ringdown is not None:
@@ -5027,7 +5028,7 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res
+            return _res._replace(realized_geometry=geometry_record)
 
         # ---- Non-uniform mesh lane ----
         if plan.lane == "run_nonuniform":
@@ -5122,7 +5123,7 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res
+            return _res._replace(realized_geometry=geometry_record)
 
         grid = self._build_grid()
         _run_sheet_specs: list = []
@@ -5164,7 +5165,7 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res
+            return _res._replace(realized_geometry=geometry_record)
 
         # ---- Subgridded lane ----
         if plan.lane == "run_subgridded":
@@ -5212,7 +5213,7 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res
+            return _res._replace(realized_geometry=geometry_record)
 
         # ---- Uniform path ----
         if n_steps is None:
@@ -5283,4 +5284,4 @@ class _ExecuteMixin:
         _warn_if_nonfinite_result(_res, context="run")
         from rfx.current_moments import require_accumulated_current_moments
         require_accumulated_current_moments(self, _res, "run")
-        return _res
+        return _res._replace(realized_geometry=geometry_record)
