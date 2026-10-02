@@ -52,6 +52,7 @@ structure (rfx #1254, R-i). It needs the sources off over its window too; when
 they are not, the two-window witness ``W2`` (the shorter window
 ``[n_start, split * N)``, which read the actual error 0.003-22x there) is
 judged in its place. Otherwise ``W2`` is reported, not judged.
+``W2`` is a consistency diagnostic, not an error bound.
 
 What this module does inside ``Simulation.run(..., ringdown=RingdownSpec())``
 --------------------------------------------------------------------------
