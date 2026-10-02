@@ -396,7 +396,8 @@ OPENEMS_MESH_STATEMENT_STAGES = ("stage_b_coarse", "stage_b_mid")
 def _sim(dx: float, fr: Frame = FRAME) -> Simulation:
     """The box, the boundary and the lossy substrate material — shared by
     every builder."""
-    sim = Simulation(
+    # #1138: coarse patch x/y solved +1.368%/+1.052%; this checks external S11.
+    sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_HZ,
         domain=fr.domain,
         dx=dx,

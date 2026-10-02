@@ -321,7 +321,8 @@ def test_enforce_passivity_true_is_still_skipped_under_eps_override():
 
 def _live_thru() -> Simulation:
     """The tiny truncated thru of tests/unit/sparams/test_msl_passivity_enforcement."""
-    sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
+    # #1138: trace y solved +11.667% off; this tests run/forward S-matrix identity.
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")

@@ -47,7 +47,8 @@ _N_STEPS = 6000  # same physical duration as the retired 1 mm / 3000 record
 
 
 def _build_sim(*, dx=_DX) -> Simulation:
-    sim = Simulation(
+    # #1138: patch x solved +1.25% at dx=0.5 mm; this checks physics bit identity.
+    sim = Simulation(snap="declared",
         freq_max=_F_MAX, domain=_DOMAIN, dx=dx,
         boundary="cpml", cpml_layers=round(0.004 / dx), pec_faces={"z_lo"},
     )

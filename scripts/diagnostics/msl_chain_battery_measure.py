@@ -347,7 +347,7 @@ def domain() -> tuple[float, float, float]:
 
 def build_sim(dx: float, dut: str, *, drive: str = DEFAULT_DRIVE,
               probe_offset: int | None = None, probe_spacing: int | None = None,
-              precision: str = "float32") -> Simulation:
+              precision: str = "float32", snap: str = "strict") -> Simulation:
     """The board of the pre-declaration at one cell size.
 
     The ground is the PEC wall at the bottom of the domain — on the uniform
@@ -362,7 +362,7 @@ def build_sim(dx: float, dut: str, *, drive: str = DEFAULT_DRIVE,
     if dut not in DUTS:
         raise ValueError(f"unknown dut {dut!r}; expected one of {DUTS}")
     lx, ly, lz = domain()
-    sim = Simulation(
+    sim = Simulation(snap=snap,
         freq_max=F_HI, domain=(lx, ly, lz), dx=dx, precision=precision,
         cpml_layers=CPML_LAYERS,
         boundary=BoundarySpec(x="cpml", y="cpml",
