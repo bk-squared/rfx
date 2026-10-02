@@ -364,3 +364,28 @@ def test_raw_anchors_keep_their_own_text_and_urls():
         '[Repository](https://github.com/bk-squared/rfx)'
         '[Read the guide](https://remilab.ai/rfx/examples/guide/)\n'
     )
+
+
+def test_agent_publication_is_explicit_and_private_paths_stay_blocked(monkeypatch, tmp_path):
+    sources = {tmp_path / 'docs/agent' / name for name in bundle.PUBLIC_AGENT_PAGES}
+    private = {tmp_path / 'docs/agent' / name for name in (
+        'working-on-rfx.mdx', 'agent-runbook.mdx', 'repo-map.mdx',
+        'recipe-waveguide-sparams.mdx', 'gpu-throughput.mdx', 'new-private-page.mdx')}
+    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: sources | private)
+    assert set(bundle.source_inputs(tmp_path)) == sources
+    for source in sources:
+        assert bundle.allowed_artifact(f'markdown/agent/{source.stem}.md')
+    for source in private:
+        with pytest.raises(ValueError, match='excluded publication path'):
+            bundle.allowed_artifact(f'markdown/agent/{source.stem}.md')
+
+
+def test_agent_index_has_descriptions_and_omits_manual_pages():
+    pages = [dict(route=route, title=route, markdown_url=f'https://example/{route}.md',
+                  description=f'About {route}')
+             for route in ('guide/start', 'agent/auto-config', 'agent/overview')]
+    lines = bundle.agent_index(pages)
+    assert lines[0] == '## For coding agents'
+    assert 'agent/overview' in lines[2]
+    assert 'About agent/overview' in lines[2]
+    assert not any('guide/start' in line for line in lines)
