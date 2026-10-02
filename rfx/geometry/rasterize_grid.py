@@ -926,6 +926,7 @@ def rasterize_geometry(
     wires: list | None = None,
     periodic=(False, False, False),
     pole_geometry_entries=None,
+    geometry_masks: list | None = None,
 ):
     """Rasterize geometry entries onto material arrays.
 
@@ -1031,6 +1032,9 @@ def rasterize_geometry(
             eps_r = jnp.where(mask, mat.eps_r, eps_r)
             sigma = jnp.where(mask, mat.sigma, sigma)
             mu_r = jnp.where(mask, mat.mu_r, mu_r)
+
+        if geometry_masks is not None:
+            geometry_masks.append(mask)
 
         if mat.chi3 != 0.0:
             chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)

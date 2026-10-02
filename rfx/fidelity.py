@@ -335,10 +335,12 @@ def fidelity_report(sim, print_report: bool = True):
     assembled_sheets: list = []
     assembled_wires: list = []
     pad_fill_findings: list = []
+    geometry_masks: list = []
     if nonuniform:
         from rfx.runners.nonuniform import assemble_materials_nu
         out = assemble_materials_nu(sim_audit, grid, pec_sheets=assembled_sheets,
-                                    pec_wires=assembled_wires)
+                                    pec_wires=assembled_wires,
+                                    geometry_masks=geometry_masks)
     else:
         # #1070 / review of PR #1136 A: collect the declared-but-unfilled
         # spans instead of letting the assembly raise. This report exists to
@@ -347,7 +349,10 @@ def fidelity_report(sim, print_report: bool = True):
         # produce the report would hide the row that names it.
         out = sim_audit._assemble_materials(grid, pec_sheets=assembled_sheets,
                                             pec_wires=assembled_wires,
-                                            pad_fill_findings=pad_fill_findings)
+                                            pad_fill_findings=pad_fill_findings,
+                                            geometry_masks=geometry_masks)
+    material_masks = {id(entry): np.asarray(mask, dtype=bool)
+                      for entry, mask in zip(sim_audit._geometry, geometry_masks)}
     mats, pec_mask = out[0], out[3]
     eps = np.asarray(mats.eps_r, dtype=float)
     sigma_arr = np.asarray(mats.sigma, dtype=float)
@@ -613,10 +618,13 @@ def fidelity_report(sim, print_report: bool = True):
         # disagree by a cell on any off-lattice conductor. Sheets carry no
         # cell (sheet_fp above) and a refused entry never reaches the
         # assembly, so both keep the node sampler.
-        mask = _entity_mask(
-            entry, sim, grid, nonuniform,
-            pec_volume=(pec_assembled and sheet_spec is None
-                        and i not in refused))
+        if kind_src == "geometry" and not pec_assembled:
+            mask = material_masks[id(entry)]
+        else:
+            mask = _entity_mask(
+                entry, sim, grid, nonuniform,
+                pec_volume=(pec_assembled and sheet_spec is None
+                            and i not in refused))
         item = dict(entity=name, material=_declared_material(sim, mat_name),
                     declared_lo=tuple(float(v) for v in lo),
                     declared_hi=tuple(float(v) for v in hi),

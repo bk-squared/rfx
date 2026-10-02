@@ -182,6 +182,7 @@ def assemble_materials_nu(
     sheet_specs: list | None = None,
     pec_sheets: list | None = None,
     pec_wires: list | None = None,
+    geometry_masks: list | None = None,
 ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
     """Build material arrays and dispersion specs for non-uniform grid.
 
@@ -226,6 +227,7 @@ def assemble_materials_nu(
         coords,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
         pole_geometry_entries=sim._geometry,
+        geometry_masks=geometry_masks,
         centres=centres,
         cell_sizes=cell_sizes,
         sheets=_pec_sheets,
