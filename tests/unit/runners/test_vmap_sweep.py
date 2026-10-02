@@ -226,6 +226,10 @@ class TestVmapSweepCPML:
     def test_cpml_vmap_matches_sequential(self, thin_conductor):
         """CPML vmap results must match sequential runs.
 
+        #1373 retains 200 steps and uses nine peak float32 ULP for the
+        thin-conductor row. The following measurements describe the older
+        drive convention and pointwise gate.
+
         ``n_steps`` and the tolerance are BOTH measured, not chosen
         (issue #642(b)). This test ran at ``n_steps=30``,
         ``atol=1e-5, rtol=1e-4`` and stayed green through the entire
@@ -279,13 +283,18 @@ class TestVmapSweepCPML:
             single_result = sim_single.run(n_steps=n_steps)
             single_ts = np.asarray(single_result.time_series)
 
-            npt.assert_allclose(
-                vmap_result.time_series[idx],
-                single_ts,
-                atol=1e-8,
-                rtol=1e-6,
-                err_msg=f"CPML mismatch at eps_r={eps_val}",
-            )
+            if thin_conductor:
+                # #1373: per-step cross-trace bar is nine float32 ULP of peak.
+                peak = np.float32(np.max(np.abs(single_ts)))
+                ulp = float(np.spacing(peak))
+                delta = float(np.max(np.abs(vmap_result.time_series[idx] - single_ts)))
+                assert delta <= 9 * ulp, (eps_val, delta, peak, delta / ulp)
+            else:
+                npt.assert_allclose(
+                    vmap_result.time_series[idx], single_ts,
+                    atol=1e-8, rtol=1e-6,
+                    err_msg=f"CPML mismatch at eps_r={eps_val}",
+                )
 
 
 class TestVmapSweepAutoSteps:
