@@ -121,6 +121,7 @@ def assert_clean_dumps(directory):
             if op in text:
                 violations.append(f"{module.name}: {op}")
     assert not violations, "device identity in optimized modules:\n" + "\n".join(violations)
+    assert any(" while(" in m.read_text() for m in modules), "no time loop was compiled"
     return len(modules)
 
 

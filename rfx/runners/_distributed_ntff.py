@@ -83,12 +83,14 @@ class SlabNTFF:
         """Place each cell once, preserving compensation; no spatial sum."""
         result = list(init_ntff_data(self.box, field_dtype=jnp.float64
                                     if self.dtype == jnp.complex128 else jnp.float32))
-        # Materialize once on the host: eager indexing of the globally
-        # sharded buffer compiles a gather with an XLA partition-id. The
-        # multi-process caller has already gathered the nonlocal records.
-        host_buffer = np.asarray(buffer)
+        # Indexing the x-sharded buffer by rank compiles a gather with an
+        # XLA partition-id (#1441); replicate it first, which stays
+        # differentiable. The multi-process caller passes an already
+        # gathered host array, which needs neither.
+        if isinstance(buffer, jax.Array):
+            buffer = jax.device_put(buffer, NamedSharding(self.mesh, P()))
         for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):
-            part = self.unpack(jnp.asarray(host_buffer[rank]), shapes, sizes)
+            part = self.unpack(buffer[rank], shapes, sizes)
             for index, value in enumerate(part):
                 face = index % 6
                 if face < 2:
