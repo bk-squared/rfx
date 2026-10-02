@@ -919,7 +919,7 @@ and all requested planes must fit between the DUT and source. Increase the z
 domain or reduce the count, start, or spacing if the method reports that they
 do not fit; it does not silently use fewer planes.
 
-**RF evidence (broad-E5 analytic, broad-E4 external):**
+**RF evidence (broad-E5 analytic, broad-E4 external), measured before #1218 with `cpml_axes="z"` and not re-measured under `"xyz"`; #1218 moved every coaxial S slightly:**
 
 - The analytic check covers 4--12 GHz, short/open/matched/resistive 25 and
   100 ohm terminations, characteristic impedances 48.6 and 63 ohm, and a mesh
