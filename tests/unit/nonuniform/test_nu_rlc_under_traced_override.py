@@ -3,9 +3,9 @@ through ``eps_override`` (#1373).
 
 The board of ``test_nu_drive_sees_override_1267.py``: a 50 ohm wire port
 feeding a patch through two substrate layers (eps_r 3.38 under 10.2) on a
-graded z mesh, here with a lumped element on the port's top Ez edge -- a
-0.3 pF capacitor in parallel, or a 20 ohm + 0.5 nH series branch one cell
-up. An element enters Ampere's law through the E-update denominator of its
+graded z mesh, here with a lumped element on an Ez edge inside the 10.2
+layer, two cells from the port -- a 0.5 nH inductor in parallel, or a
+20 ohm + 0.5 nH series branch. An element enters Ampere's law through the E-update denominator of its
 own edge, ``D0 = eps/dt + sigma/2`` (#1163), so it reads the permittivity
 the override supplies. The graded lane builds its element records with the
 concrete builder for ``run()`` and ``forward()`` alike, and that builder
@@ -24,9 +24,15 @@ What is checked, per element:
    through the override equals a Richardson central difference of boards
    BUILT with the perturbed eps_r (h = 0.02, 0.01; 0.04 as the ladder
    check) -- a route that never touches the override -- within 1e-3.
-Mutation (b): restore the unconditional ``float()`` in
+   AD and FD differentiate the same record, so this checks the code path,
+   not the physical derivative (no record-length witness).
+Mutations: restore the unconditional ``float()`` in
 ``rfx.lumped.edge_update_denominator`` (every builder call kept) and both
-cases raise again.
+cases raise again; hold D0 out of the gradient (``jax.lax.stop_gradient``
+on the denominator, the run kept) and the parallel inductor reads
+|AD/FD - 1| = 1.5e-2 against 2.7e-5 -- it is the case that sees the
+gradient through D0 (a capacitor-only element never reads D0, and the
+series branch moves 6e-4, under the bar).
 """
 
 from __future__ import annotations
@@ -46,12 +52,13 @@ VALUE_TOL = 1e-4
 
 
 def _board(eps_lo, eps_hi, element):
-    if element == "parallel_C":
-        return B._board(eps_lo, eps_hi, port="wire", cap=0.3e-12)
     sim = B._board(eps_lo, eps_hi, port="wire")
-    # a series R-L branch on the Ez edge one cell above the port's top edge
-    sim.add_lumped_rlc((B.I_PORT * B.DX, B.J_PORT * B.DX, B.Z_G + 3 * B.DX),
-                       "ez", R=20.0, L=0.5e-9, topology="series")
+    # an Ez edge inside the 10.2 layer, two cells from the port
+    pos = ((B.I_PORT + 2) * B.DX, B.J_PORT * B.DX, B.Z_G + 2 * B.DX)
+    if element == "parallel_L":
+        sim.add_lumped_rlc(pos, "ez", L=0.5e-9, topology="parallel")
+    else:
+        sim.add_lumped_rlc(pos, "ez", R=20.0, L=0.5e-9, topology="series")
     return sim
 
 
@@ -91,7 +98,7 @@ def _fd_built(element):
     return d, (4 * d[h2] - d[h1]) / 3, (4 * d[h1] - d[h0]) / 3
 
 
-@pytest.mark.parametrize("element", ["parallel_C", "series_RL"])
+@pytest.mark.parametrize("element", ["parallel_L", "series_RL"])
 def test_a_graded_board_with_a_lumped_element_differentiates_through_the_override(
         element):
     eager, traced, g = _ad(element)
