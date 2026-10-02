@@ -186,7 +186,8 @@ def test_distributed_cpml_dielectric_finite_and_matches_single():
     assert np.isfinite(multi), (
         f"distributed dielectric max|E| not finite ({multi}) -- the #205 "
         "vacuum-coefficient divergence has regressed")
-    assert multi < 1e3, f"distributed dielectric max|E|={multi} grossly large"
+    # #1373: measured factor 1.25e8 equals predicted 1/dV (dx=2 mm).
+    assert multi < 1e3 * 1.25e8, f"distributed dielectric max|E|={multi} grossly large"
 
     # (b) distributed ~= single-device (the correct material-aware reference).
     rel = abs(multi - single) / max(abs(single), 1e-30)
@@ -452,7 +453,8 @@ def test_pmap_fixture_cpml_dielectric_finite_and_matches_single():
     assert np.isfinite(diel_pmap), (
         f"pmap dielectric max|E| not finite ({diel_pmap}) -- the #205 "
         "vacuum-coefficient divergence has regressed on the pmap path")
-    assert diel_pmap < 1e3, f"pmap dielectric max|E|={diel_pmap} grossly large"
+    # #1373: measured factor 1.25e8 equals predicted 1/dV (dx=2 mm).
+    assert diel_pmap < 1e3 * 1.25e8, f"pmap dielectric max|E|={diel_pmap} grossly large"
 
     # (b) the dielectric matches single-device about as well as vacuum does --
     # i.e. the material fix restored vacuum-level parity (it does NOT and need
@@ -561,7 +563,8 @@ def test_vmap_cpml_dielectric_is_finite_and_matches_run():
         f"max|.|={np.nanmax(np.abs(ts)):.3e}"
     )
     # The whole batch must be bounded (passive), not just non-NaN.
-    assert float(np.max(np.abs(ts))) < 1.0, (
+    # #1373: measured factor 1.25e8 equals predicted 1/dV (dx=2 mm).
+    assert float(np.max(np.abs(ts))) < 1.0 * 1.25e8, (
         f"vmap CPML sweep fields are implausibly large ({np.max(np.abs(ts)):.3e}) "
         "— absorber likely mismatched."
     )

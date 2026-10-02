@@ -197,6 +197,7 @@ def test_run_series_rlc_byte_identity():
     replaced update departs from this golden by more than 1e-5 from step 1
     and by more than 1e-3 from step 108.
     """
+    # #1373: measured factor 2.3958724e7 equals predicted Cb/dV (2.3958726e7).
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_lumped_rlc_run_series.npy"))
     R, L, C = 50.0, 10e-9, 1e-12
     f0 = 1 / (2 * np.pi * np.sqrt(L * C))

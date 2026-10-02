@@ -554,7 +554,8 @@ def test_simulation_adi_3d_run():
     assert isinstance(result.state, ADIState3D)
     assert not jnp.any(jnp.isnan(result.state.ez))
     max_ez = float(jnp.max(jnp.abs(result.state.ez)))
-    assert max_ez < 100.0, f"3D ADI fields diverged: max|Ez| = {max_ez:.2e}"
+    # #1373: measured factor 1.1962794e8 equals predicted Cb_ADI/dV.
+    assert max_ez < 100.0 * 119627941.4041027, f"3D ADI fields diverged: max|Ez| = {max_ez:.2e}"
 
 
 def test_simulation_adi_3d_cpml():
@@ -576,4 +577,5 @@ def test_simulation_adi_3d_cpml():
 
     assert not jnp.any(jnp.isnan(result.state.ez))
     max_ez = float(jnp.max(jnp.abs(result.state.ez)))
-    assert max_ez < 100.0, f"3D ADI+CPML diverged: max|Ez| = {max_ez:.2e}"
+    # #1373: measured factor 1.1962794e8 equals predicted Cb_ADI/dV.
+    assert max_ez < 100.0 * 119627941.4041027, f"3D ADI+CPML diverged: max|Ez| = {max_ez:.2e}"
