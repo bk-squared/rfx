@@ -1204,7 +1204,9 @@
         "lo1",
         "hi1",
         "lo2",
-        "hi2"
+        "hi2",
+        "pmc_faces",
+        "staggered_area"
       ]
     },
     "init_multimode_waveguide_port": {

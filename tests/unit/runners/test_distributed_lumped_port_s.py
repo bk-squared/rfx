@@ -222,11 +222,8 @@ def test_pmc_matched_line_refused(explicit, channel):
     sim = _build("lumped")
     if channel:
         sim = _model(channel=True, magnetic=True)
-        reference = sim.run(n_steps=320, s_param_freqs=FREQS, skip_preflight=True)
-        minimum = float(np.min(20 * np.log10(np.abs(reference.s_params[0, 0]))))
-        print(f"PMC channel one-device min_S11_dB={minimum:.9g}; multi-device refused")
-        assert minimum <= -10
-    with pytest.raises(NotImplementedError, match=r"magnetic .*y_lo.*one device"):
+        # This row checks admission, not the old half-cell line's matching.
+    with pytest.raises(NotImplementedError, match=r"PMC magnetic face.*y_lo.*distributed_v2.*magnetic image"):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
                 **({"compute_s_params": True} if explicit else {}))
 
@@ -246,7 +243,7 @@ def test_each_magnetic_face_refused_before_scan(monkeypatch, face, explicit):
         pytest.fail("magnetic S request must refuse before any distributed scan")
 
     monkeypatch.setattr(runner, "run_distributed", unexpected)
-    with pytest.raises(NotImplementedError, match=rf"magnetic .*{face}.*one device"):
+    with pytest.raises(NotImplementedError, match=rf"PMC magnetic face.*{face}.*distributed_v2.*magnetic image"):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
                 **({"compute_s_params": True} if explicit else {}))
 

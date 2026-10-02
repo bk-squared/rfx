@@ -456,10 +456,27 @@ class _ExecuteMixin:
         a CRITICAL correctness failure. This single guard, called at the top
         of every run/forward entry BEFORE any dispatch, guarantees order=4
         can never reach an unsupported runner even if a per-path fence is
-        missed. order=2 (the default) is unaffected.
+        missed. Magnetic images also require a single-device second-order
+        kernel, so distributed PMC requests are rejected here for either order.
         """
+        from rfx.boundaries.pmc import refuse_waveguide_pmc
+        refuse_waveguide_pmc(self)
+        magnetic_faces = sorted(self._boundary_spec.pmc_faces())
+        if magnetic_faces and distributed:
+            graded = any(getattr(self, f"_{a}_profile", None) is not None
+                         for a in ("dx", "dy", "dz"))
+            kernel = "distributed_nu" if graded else "distributed_v2"
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)}: {kernel} "
+                "does not implement the declared-face magnetic image; use a "
+                "single-device Yee run/forward until B4.")
         if getattr(self, "_stencil_order", 2) != 4:
             return
+        if magnetic_faces:
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)} with stencil_order=4: "
+                "yee._diff_bwd_o far neighbors do not implement the magnetic image; "
+                "use stencil_order=2.")
         unsupported = []
         is_nonuniform = (
             self._dz_profile is not None
@@ -1413,12 +1430,6 @@ class _ExecuteMixin:
         if self._mode == "3d":
             from rfx.adi import run_adi_3d, ADIState3D, make_adi_absorbing_sigma_3d
 
-            sources_3d = []
-            for pe in self._ports:
-                i, j, k = grid.position_to_index(pe.position)
-                waveform = jax.vmap(pe.waveform)(times)
-                sources_3d.append((i, j, k, pe.component, waveform))
-
             probes_3d = []
             for pe in self._probes:
                 i, j, k = grid.position_to_index(pe.position)
@@ -1432,6 +1443,12 @@ class _ExecuteMixin:
                 absorb_sigma = make_adi_absorbing_sigma_3d(
                     nx, ny, nz, self._cpml_layers, grid.dx, grid.dx, grid.dx)
                 sigma_3d = sigma_3d + absorb_sigma
+
+            sources_3d = []
+            for pe in self._ports:
+                i, j, k = grid.position_to_index(pe.position)
+                waveform = jax.vmap(pe.waveform)(times)
+                sources_3d.append((i, j, k, pe.component, waveform))
 
             shape = grid.shape
             if _realized.ACTIVE is not None:
@@ -1470,12 +1487,6 @@ class _ExecuteMixin:
             )
 
         # ---- 2D TMz path ----
-        sources = []
-        for pe in self._ports:
-            i, j, _ = grid.position_to_index(pe.position)
-            waveform = jax.vmap(pe.waveform)(times)
-            sources.append((i, j, waveform))
-
         probes = []
         for pe in self._probes:
             i, j, _ = grid.position_to_index(pe.position)
@@ -1491,6 +1502,12 @@ class _ExecuteMixin:
             absorb_sigma = make_adi_absorbing_sigma(
                 nx_2d, ny_2d, self._cpml_layers, grid.dx)
             sigma_2d = sigma_2d + absorb_sigma
+
+        sources = []
+        for pe in self._ports:
+            i, j, _ = grid.position_to_index(pe.position)
+            waveform = jax.vmap(pe.waveform)(times)
+            sources.append((i, j, waveform))
 
         # The 2-D TMz lane carries only Ez, so its realized PEC mask is
         # the Mz plane (#931 §1.7).
@@ -1814,6 +1831,9 @@ class _ExecuteMixin:
                                   pe.waveform, n_steps, materials,
                                   amplitude_kind=pe.amplitude_kind)
                 )
+                from rfx.api._source_semantics import guard_float16_source_increment
+                sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
+                    sources[-1].waveform, self._resolve_field_dtype(), pe.amplitude_kind))
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.

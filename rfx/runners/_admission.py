@@ -464,7 +464,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_boundary", "cpml"): _ALL - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
     ("_pec_faces", "pec_face"): _ALL - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "pmc_face"): _ALL - _ADI - {"run_subgridded"},
+    ("_boundary_spec", "pmc_face"): _ALL - _ADI - {"run_subgridded", "run_distributed", "fwd_distributed_nu"},
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
     ("_boundary_spec", "absorbing_lid"): _ALL - _ADI,
@@ -497,7 +497,7 @@ for _row in (
     ("_thin_conductors", "surface_impedance"), ("_pinned_sheets", "pec_sheet"),
     ("_waveguide_ports", "waveguide_port"),
     ("_boundary", "cpml"), ("_pec_faces", "pec_face"),
-    ("_boundary_spec", "pmc_face"), ("_boundary_spec", "conformal"),
+    ("_boundary_spec", "conformal"),
     ("_boundary_spec", "absorbing_lid"),
     ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"),
     ("_dx_profile", "graded"), ("_dy_profile", "graded"), ("_dz_profile", "graded"),
@@ -893,6 +893,11 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 + "\nUse run() / forward() on a model those paths support.")
     lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
              for row in rows]
+    if lane in _ADI and ("_ports", "amplitude_kind") in rows:
+        lines.append(
+            "ADI implements only amplitude_kind='field'; 'current' is the default "
+            "when amplitude_kind is not given (2.0); declare amplitude_kind='field' "
+            "to run on ADI (the earlier ADI behaviour).")
     carriers = [LANE_WORDS[other] for other in LANES if other != lane
                 and not set(refused(sim, other, run_args)) - LANE_SELECTORS]
     where = ("Lanes that carry every input of this model apart from the ones that choose the "

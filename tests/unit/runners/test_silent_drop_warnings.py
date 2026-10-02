@@ -101,7 +101,7 @@ def _adi_sim(pec=False):
         if pec:
             sim.add(Box((0.002, 0.002, 0.0), (0.004, 0.004, 0.01)),
                     material="pec")
-        sim.add_source((0.01, 0.01, 0.0), "ez")
+        sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
         sim.add_probe((0.012, 0.01, 0.0), "ez")
         return sim
     return _quiet(build)

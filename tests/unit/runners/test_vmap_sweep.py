@@ -14,7 +14,7 @@ pytestmark = pytest.mark.gpu
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_dielectric_sim(eps_r: float = 4.0):
+def _make_dielectric_sim(eps_r: float = 4.0, amplitude_kind=None):
     """Create a simple PEC-bounded sim with a dielectric slab and probe."""
     sim = Simulation(
         freq_max=5e9,
@@ -25,12 +25,13 @@ def _make_dielectric_sim(eps_r: float = 4.0):
     sim.add_material("substrate", eps_r=eps_r)
     sim.add(Box((0.005, 0, 0), (0.015, 0.02, 0.02)), material="substrate")
     sim.add_source((0.01, 0.01, 0.01), "ez",
-                    waveform=GaussianPulse(f0=3e9))
+                    waveform=GaussianPulse(f0=3e9), amplitude_kind=amplitude_kind)
     sim.add_probe((0.005, 0.01, 0.01), "ez")
     return sim
 
 
-def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False):
+def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False,
+                   amplitude_kind=None, boundary="cpml"):
     """Create a CPML-bounded sim with a dielectric slab and probe.
 
     ``thin_conductor`` adds a NON-PEC lossy conductor spanning the full x
@@ -58,7 +59,7 @@ def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False):
     sim = Simulation(
         freq_max=5e9,
         domain=(0.02, 0.02, 0.02),
-        boundary="cpml",
+        boundary=boundary,
         cpml_layers=6,
         dx=0.002,
     )
@@ -69,7 +70,7 @@ def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False):
             Box((0.0, 0.008, 0.008), (0.02, 0.012, 0.012)),
             sigma_bulk=1.0e4, thickness=35e-6)
     sim.add_source((0.01, 0.01, 0.01), "ez",
-                    waveform=GaussianPulse(f0=3e9))
+                    waveform=GaussianPulse(f0=3e9), amplitude_kind=amplitude_kind)
     sim.add_probe((0.005, 0.01, 0.01), "ez")
     return sim
 
@@ -226,6 +227,10 @@ class TestVmapSweepCPML:
     def test_cpml_vmap_matches_sequential(self, thin_conductor):
         """CPML vmap results must match sequential runs.
 
+        #1373 restores bit identity by sharing run()'s source preparation;
+        the comparison is exact. The measurements below set the run length
+        and describe the previous pointwise gate.
+
         ``n_steps`` and the tolerance are BOTH measured, not chosen
         (issue #642(b)). This test ran at ``n_steps=30``,
         ``atol=1e-5, rtol=1e-4`` and stayed green through the entire
@@ -279,11 +284,8 @@ class TestVmapSweepCPML:
             single_result = sim_single.run(n_steps=n_steps)
             single_ts = np.asarray(single_result.time_series)
 
-            npt.assert_allclose(
-                vmap_result.time_series[idx],
-                single_ts,
-                atol=1e-8,
-                rtol=1e-6,
+            npt.assert_array_equal(
+                vmap_result.time_series[idx], single_ts,
                 err_msg=f"CPML mismatch at eps_r={eps_val}",
             )
 
@@ -300,3 +302,42 @@ class TestVmapSweepAutoSteps:
         )
         assert result.time_series.shape[0] == 2
         assert result.time_series.shape[1] > 0
+
+
+@pytest.mark.parametrize("build", [_make_dielectric_sim, _make_cpml_sim], ids=["pec", "cpml"])
+def test_explicit_current_sweep_is_bit_identical_to_run(build, monkeypatch):
+    """#1373: current drives retain run()'s float32 arithmetic order."""
+    def forbid_fallback(*args, **kwargs):
+        pytest.fail("current source unexpectedly used the sequential fallback")
+
+    monkeypatch.setattr("rfx.vmap_sweep._sequential_fallback", forbid_fallback)
+    values = np.array([2.0, 6.0])
+    result = vmap_material_sweep(build(amplitude_kind="current"),
+                                 "substrate.eps_r", values, n_steps=200)
+    for idx, eps in enumerate(values):
+        reference = build(eps_r=float(eps), amplitude_kind="current").run(n_steps=200)
+        assert np.asarray(reference.time_series).dtype == np.float32
+        assert np.max(np.abs(reference.time_series)) > 0
+        npt.assert_array_equal(result.time_series[idx], reference.time_series)
+
+
+def test_explicit_current_upml_sweep_fallback_is_bit_identical_to_run(monkeypatch):
+    from rfx import vmap_sweep
+
+    original = vmap_sweep._sequential_fallback
+    calls = []
+
+    def record_fallback(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(vmap_sweep, "_sequential_fallback", record_fallback)
+    values = np.array([2., 6.])
+    result = vmap_material_sweep(
+        _make_cpml_sim(amplitude_kind="current", boundary="upml"),
+        "substrate.eps_r", values, n_steps=200)
+    assert calls == [True]
+    for idx, eps in enumerate(values):
+        reference = _make_cpml_sim(eps_r=float(eps), amplitude_kind="current",
+                                   boundary="upml").run(n_steps=200)
+        npt.assert_array_equal(result.time_series[idx], reference.time_series)

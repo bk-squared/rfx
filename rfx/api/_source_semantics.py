@@ -3,19 +3,20 @@
 Two named, boundary- and mesh-INDEPENDENT amplitude kinds:
 
 ``'current'``
-    The waveform is a current I(t) in amperes; realized as
+    The waveform is a current moment I(t) in A·m; realized as
     ``E += Cb * I / dV`` on every path and boundary
-    (``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``; ``dV`` = local cell
-    volume). This is the non-uniform path's native convention
-    (Meep-style, resolution-independent injected power) and the future
-    default.
+    (Yee: ``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``; ADI refuses
+    ``'current'`` and requires explicit ``'field'``;
+    ``dV`` = local cell volume). This is the non-uniform path's native convention
+    (Meep-style, resolution-independent injected power) and the declaration default.
 
 ``'field'``
     The waveform is a raw E-field increment per step; realized as
     ``E += w(t)`` on every path and boundary. This is the uniform-PEC
     path's native convention.
 
-The three LEGACY (``amplitude_kind=None``) contracts map onto these exactly:
+Declarations resolve ``None`` to ``current``. Low-level helpers retain their
+native ``None`` contracts for internal callers:
 
 ====================  ====================  =====================================
 path                  legacy native coeff   exact explicit spelling
@@ -38,7 +39,7 @@ declare their native coefficient and, when :func:`needs_scale` says a
 conversion applies, multiply the waveform by
 :func:`source_amplitude_scale`. ``kind=None`` or a kind matching the
 native convention skips the multiply entirely, keeping legacy output
-bit-identical during the deprecation window.
+bit-identical for internal callers.
 
 Tracer safety (issue #571 dossier): whether to apply the multiply is
 decided by :func:`needs_scale` on the PYTHON-LEVEL ``(kind, native)``
@@ -78,7 +79,7 @@ _NATIVES = ("raw", "cb", "cb_over_dv")
 
 # Which named kind each native coefficient already realizes. 'cb' realizes
 # NEITHER kind — it is the legacy open-uniform third contract, reachable
-# only through amplitude_kind=None during the deprecation window.
+# through low-level helper calls with amplitude_kind=None.
 _NATIVE_REALIZES = {"raw": "field", "cb": None, "cb_over_dv": "current"}
 
 
@@ -87,6 +88,12 @@ def validate_amplitude_kind(kind) -> None:
     if kind is not None and kind not in SOURCE_AMPLITUDE_KINDS:
         raise ValueError(
             f"amplitude_kind must be 'field', 'current' or None, got {kind!r}")
+
+
+def resolve_amplitude_kind(kind) -> str:
+    """Validate a soft-source declaration and resolve its default to current moments."""
+    validate_amplitude_kind(kind)
+    return "current" if kind is None else kind
 
 
 def needs_scale(kind, native) -> bool:
@@ -141,18 +148,44 @@ def source_amplitude_scale(kind, native, *, cb, dV):
 
 
 def legacy_kind_description(is_nonuniform: bool, boundary: str) -> str:
-    """One-line concrete statement of what ``amplitude_kind=None`` means for
-    THIS simulation's ``run()`` path — used verbatim in the ``add_source``
-    DeprecationWarning. (The ``forward()`` uniform route always uses the
-    Cb-normalized helper regardless of boundary — pre-existing route
-    difference, documented at ``add_source``.)"""
-    if is_nonuniform:
-        return ("a CURRENT in amperes (E += Cb*I/dV; identical to "
-                "amplitude_kind='current')")
-    if boundary in ("cpml", "upml"):
-        return ("a Cb-normalized field add (E += Cb*w; NOT one of the two "
-                "named kinds — to keep today's numbers, multiply your "
-                "waveform amplitude by the cell volume dV and pass "
-                "amplitude_kind='current')")
-    return ("a raw field increment (E += w; identical to "
-            "amplitude_kind='field')")
+    """Description of the declaration default, independent of mesh/boundary."""
+    return "'current' (E += Cb*I/dV, I is a current moment in A·m) on every path"
+
+
+def guard_float16_source_increment(waveform, field_dtype, amplitude_kind=None):
+    """Refuse an oversized, fully scaled soft-source increment before stepping.
+
+    ``waveform`` already includes the native drive coefficient and kind scaling.
+    A traced build uses a host check whose returned token is a data
+    dependency of the source samples, so stepping cannot precede the check.
+    """
+    import numpy as np
+
+    if field_dtype is None or np.dtype(field_dtype) != np.dtype(np.float16):
+        return waveform
+
+    import jax
+    import jax.numpy as jnp
+
+    # Refuse only an increment that overflows float16 on its own, in one
+    # step: an explicit 'current' source with a one-step increment of ~4e4
+    # ran finite before this guard existed and must still run (#1442).
+    limit = float(np.finfo(np.float16).max)
+
+    def check(samples):
+        peak = float(np.max(np.abs(np.asarray(samples)), initial=0))
+        if not np.isfinite(peak) or peak > limit:
+            raise ValueError(
+                f"float16 soft-source one-step increment {peak:g} exceeds "
+                f"the float16 maximum ({limit:g}); scale the waveform"
+                + ("." if amplitude_kind == "field" else
+                   " or declare amplitude_kind='field'."))
+        return np.int32(0)
+
+    if isinstance(waveform, jax.core.Tracer):
+        from jax.experimental import io_callback
+        token = io_callback(check, jax.ShapeDtypeStruct((), jnp.int32),
+                            jax.lax.stop_gradient(waveform), ordered=False)
+        return waveform + token.astype(waveform.dtype)
+    check(waveform)
+    return waveform

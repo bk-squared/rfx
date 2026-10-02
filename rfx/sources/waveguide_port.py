@@ -2418,6 +2418,7 @@ def extract_waveguide_s_matrix_flux(
         )
 
     def _make_flux_monitors():
+        from rfx.boundaries.pec import resolve_wall_faces
         monitors = [
             init_flux_monitor(
                 axis=_AXIS_IDX[cfg.normal_axis],
@@ -2431,6 +2432,7 @@ def extract_waveguide_s_matrix_flux(
                 dft_total_steps=n_steps,
                 lo1=cfg.u_lo, hi1=cfg.u_hi,
                 lo2=cfg.v_lo, hi2=cfg.v_hi,
+                pmc_faces=resolve_wall_faces(grid, periodic or (False, False, False))[1],
             )
             for cfg in template_cfgs
         ]

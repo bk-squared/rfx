@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "scripts/diagnostics/boundary_model/B1"
 # Stable leading phrases, without counts, face lists, or explanatory advice.
 REFUSAL_PREFIXES = (
+    "PMC magnetic face(s)",
     "subgrid validation: supported=False",
     "[run] preflight found",
     "boundary='upml' does not support",
@@ -140,11 +141,56 @@ def write_baseline(baseline, old_markdown, target):
 
 
 def validate_class_changes(previous, cells):
-    """Permit the TFSF backing correction and the declared B2 periods."""
+    """Permit the TFSF backing, B2 periods and B3b magnetic image migrations."""
     old_lookup = {(r["case"], r["entry"]): r for r in previous["cells"]}
     for row in cells:
         cell = row["case"], row["entry"]
         old = old_lookup[cell]
+        if cell[0] == "waveguide-pmc" and cell[1] in (
+                "run", "forward", "nonuniform", "sweep", "gpu-query", "distributed", "subgridded"):
+            assert row["status"] == "REFUSED"
+            assert row["exception"] == "NotImplementedError"
+            assert row["message_prefix"] == "PMC magnetic face(s)"
+            continue
+        magnetic = cell[0] in ("pmc-pec", "pmc-cpml", "waveguide-pmc")
+        if magnetic and cell[1] == "distributed":
+            assert row["status"] == "REFUSED"
+            assert row["message_prefix"] == "PMC magnetic face(s)"
+            continue
+        if magnetic and cell[1] in ("run", "forward", "nonuniform", "wire-fast", "gpu-query", "sweep"):
+            if old["status"] == "REFUSED":
+                assert row["status"] == "REFUSED"
+                assert (old["exception"], old["message_prefix"]) == (row["exception"], row["message_prefix"])
+                continue
+            assert row["status"] == "MEASURED"
+            axes = "yz" if cell[0] == "waveguide-pmc" else "x"
+            before = {(d["face"], d["code"]) for d in old["departures"]}
+            after = {(d["face"], d["code"]) for d in row["departures"]}
+            image_departures = {(f"{axis}_{side}", code) for axis in axes for side in ("lo", "hi")
+                                for code in ("b1", "h")}
+            assert after == before - image_departures, row["departures"]
+            for name in (f"{axis}_{side}" for axis in axes for side in ("lo", "hi")):
+                face = row["faces"][name]
+                assert not face["e_zero"] and not face["h_zero"]
+                assert face["face_node_response"] > 1e-7
+            for name, face in row["faces"].items():
+                prior_face = old["faces"][name]
+                migrating = name[0] in axes and prior_face["h_zero"] and not face["h_zero"]
+                for kind in ("e_zero", "h_zero", "absorbs", "coupled",
+                             "e_zero_planes_m", "h_zero_planes_m", "period_m",
+                             "e_plane_m", "h_plane_m"):
+                    if migrating and kind in ("h_zero", "h_zero_planes_m"):
+                        continue
+                    prior, current = prior_face[kind], face[kind]
+                    same = ((prior is None and current is None) or
+                            (prior is not None and current is not None and
+                             np.size(prior) == np.size(current) and
+                             np.allclose(prior, current, rtol=0, atol=1e-10)))
+                    assert same, f"STOP {cell}/{name}: {kind} {prior} -> {current}"
+            # Only these magnetic declarations/lanes gain the B3b image. Their
+            # declared-plane location is pinned by the independent cavity
+            # and mirrored-domain tests; do not accept other class changes.
+            continue
         assert old["status"] == row["status"], f"STOP {cell}: status changed"
         if row["status"] == "REFUSED":
             assert (old["exception"], old["message_prefix"]) == (row["exception"], row["message_prefix"]), (

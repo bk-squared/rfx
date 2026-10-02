@@ -3,10 +3,9 @@
 Tolerances below were set before the B1 measurements were read. One fixture
 changed after its first measurement: the CPML box's pulse cutoff went from 3 to
 4.5 because the cutoff-3 run ended at -24.98 dB against the -40 dB level; both
-records are committed under scripts/diagnostics/boundary_model/B1/battery/. On
-main the electric cube passes on run() and forward(); the magnetic cavity's
-(1,1) wall separation, the periodic ring and the face-node traces against the
-mirrored model are strict expected failures, removed by B3, B2 and B3.
+records are committed under scripts/diagnostics/boundary_model/B1/battery/. B1 recorded
+the magnetic cavity separation and face-node mirrors as strict expected
+failures. B3b promotes them to passing judges on the declared E-node plane.
 """
 
 from contextlib import contextmanager
@@ -134,25 +133,24 @@ def test_electric_cube(entry, dx):
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("dx", [.001, .0005])
+@pytest.mark.parametrize("dx", [.001, .0005, .00025])
 def test_magnetic_cavity_01(entry, dx):
     expected = C0 / (.020 * 2)
     measured = nearest(resonance("magnetic", entry, dx), expected, (6.8e9, 8.2e9))
-    # 0.5% allows Yee dispersion, and excludes an 8.05 GHz termination.
-    compare_quantity(measured, expected, .005 * expected, "f01 / Hz")
+    # B3b predeclared 0.1% frequency bound; excludes free termination.
+    compare_quantity(measured, expected, .001 * expected, "f01 / Hz")
 
 
-@pytest.mark.xfail(strict=True, raises=BoundaryDeparture, reason="h; magnetic wall separation; fixed in B3")
 @pytest.mark.parametrize("entry", ["run", "forward"])
-@pytest.mark.parametrize("dx", [.001, .0005])
+@pytest.mark.parametrize("dx", [.001, .0005, .00025])
 def test_magnetic_cavity_separation(entry, dx):
     target = C0 / 2 * np.sqrt(1 / .024**2 + 1 / .020**2)
     frequency = nearest(resonance("magnetic", entry, dx), target, (9e9, 10.7e9))
     separation = 1 / np.sqrt((2 * frequency / C0)**2 - 1 / .020**2)
     record(f"separation-{entry}-{dx}", dict(frequency_Hz=frequency, derived_separation_m=float(separation),
                                            formula="1/sqrt((2*f/c)^2-(1/0.020)^2)"))
-    # 0.2 mm (0.83%) allows dispersion; the supplied 23.02/23.50 mm fail.
-    compare_quantity(separation, .024, .0002, "derived wall separation / m")
+    # B3b predeclared 0.3% separation bound; the half-cell wall fails.
+    compare_quantity(separation, .024, .003 * .024, "derived wall separation / m")
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
@@ -195,7 +193,6 @@ def test_cpml_box_energy(entry, dx):
         raise BoundaryDeparture(f"CPML end/post-source-peak energy {level} dB; required < -40 dB")
 
 
-@pytest.mark.xfail(strict=True, raises=BoundaryDeparture, reason="b1/h; material face node; fixed in B3")
 @pytest.mark.parametrize("entry,material", [
     ("run", "dielectric"), ("run", "debye"), ("forward", "debye"),
     pytest.param("forward", "dielectric", marks=pytest.mark.skip(
@@ -225,3 +222,17 @@ def test_material_face_against_full_symmetric_domain(entry, material, dx):
                                                 full_peak_V_per_m=float(np.max(abs(traces[1])))))
     # Identical mirrored lattice and excitation; 1% permits accumulated float32 error.
     compare_quantity(relative, 0, .01, "relative face trace L2")
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_magnetic_cavity_second_order_separation(entry):
+    errors = []
+    for dx in (.001, .0005, .00025):
+        target = C0 / 2 * np.sqrt(1 / .024**2 + 1 / .020**2)
+        frequency = nearest(resonance("magnetic", entry, dx), target, (9e9, 10.7e9))
+        separation = 1 / np.sqrt((2 * frequency / C0)**2 - 1 / .020**2)
+        errors.append(abs(separation - .024))
+    ratios = np.asarray(errors[:-1]) / errors[1:]
+    record(f"magnetic-convergence-{entry}", dict(errors_m=errors, ratios=ratios.tolist()))
+    # The declared second-order limit is four, rather than the old first-order two.
+    np.testing.assert_allclose(ratios, 4., rtol=.1)

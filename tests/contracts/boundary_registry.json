@@ -519,6 +519,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/probes/probes.py",
+      "function": "init_flux_monitor.face_weights",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/runners/_distributed_common.py",
       "function": "_apply_cpml_e_distributed",
       "kind": "neighbour"

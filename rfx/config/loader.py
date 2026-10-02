@@ -257,6 +257,7 @@ def _add_sources(sim: Simulation, sources_cfg) -> None:
             amplitude_kind = entry.get("amplitude_kind")
             if amplitude_kind is not None:
                 amplitude_kind = str(amplitude_kind)
+            # add_source validates/resolves None at the declaration storage site.
             sim.add_source(
                 position, component, waveform=waveform,
                 amplitude_kind=amplitude_kind,

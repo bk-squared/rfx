@@ -150,11 +150,12 @@ def test_nu_finite_flux_guard_removed_returns_spectrum():
 def _restrict_full_to_window(mon_full, mon_sub):
     e1 = np.asarray(mon_full.e1_dft); e2 = np.asarray(mon_full.e2_dft)
     h1 = np.asarray(mon_full.h1_dft); h2 = np.asarray(mon_full.h2_dft)
-    integrand = e1 * np.conj(h2) - e2 * np.conj(h1)
-    dA = np.asarray(mon_full.dA)  # (ny_plane, nz_plane) per-cell for NU
-    win_i = integrand[:, mon_sub.lo1:mon_sub.hi1, mon_sub.lo2:mon_sub.hi2]
-    win_A = dA[mon_sub.lo1:mon_sub.hi1, mon_sub.lo2:mon_sub.hi2]
-    return np.real(np.sum(win_i * win_A[None], axis=(-2, -1)))
+    # The two products occupy different transverse Yee locations: each
+    # carries its own primal/dual area, including in a restricted window.
+    weighted = (e1 * np.conj(h2) * np.asarray(mon_full.dA)
+                - e2 * np.conj(h1) * np.asarray(mon_full.dA2))
+    return np.real(np.sum(weighted[:, mon_sub.lo1:mon_sub.hi1,
+                                  mon_sub.lo2:mon_sub.hi2], axis=(-2, -1)))
 
 
 def test_nu_finite_flux_bitexact_restriction():
@@ -230,7 +231,13 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
 
     # (c) cumulative dA == sum of the INTENDED cells' local face areas, computed
     #     independently from the realized grid (NOT from the monitor's own dA).
-    exp_dA = float(np.sum(np.outer(dy_full[yl:yh], dz_full[zl:zh])))
+    # Ey*Hz is edge-centered in y and node-centered in z. Its control
+    # area spans the adjacent cell centers in z, not the primal z edges.
+    dz_dual = np.r_[dz_full[0], .5*(dz_full[:-1]+dz_full[1:])]
+    dy_dual = np.r_[dy_full[0], .5*(dy_full[:-1]+dy_full[1:])]
+    exp_dA = float(np.sum(np.outer(dy_full[yl:yh], dz_dual[zl:zh])))
+    np.testing.assert_allclose(mon.dA2, np.outer(dy_dual[yl:yh], dz_full[zl:zh]),
+                               rtol=1e-4, atol=0.)
     got_dA = float(np.sum(np.asarray(mon.dA)))
     reldA = abs(got_dA - exp_dA) / max(exp_dA, 1e-300)
     print(f"\n[T3 absolute] y {mon.lo1}:{mon.hi1} z {mon.lo2}:{mon.hi2} "
@@ -384,7 +391,10 @@ def test_nu_finite_flux_generality_two_gradings():
         dy_full, ply, phy, _ = _grid_axis(grid, 1)
         dz_full, plz, phz, _ = _grid_axis(grid, 2)
         y_ext = float(np.sum(dy_full[mon.lo1:mon.hi1]))
-        z_ext = float(np.sum(dz_full[mon.lo2:mon.hi2]))
+        # Ey*Hz's nodal z samples integrate dual widths. The primal
+        # aperture selection remains separately pinned by T3 above.
+        dz_dual = np.r_[dz_full[0], .5*(dz_full[:-1]+dz_full[1:])]
+        z_ext = float(np.sum(dz_dual[mon.lo2:mon.hi2]))
         ap_area.append((y_ext, z_ext, y_ext * z_ext))
 
     dA_sums = [float(np.sum(a)) for a in dA_arrs]

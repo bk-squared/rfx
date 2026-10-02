@@ -51,10 +51,12 @@ def _model():
     dx = np.full(14, 1e-3)
     dx[3:6] *= .8
     dx[6:9] *= 1.2
+    # PEC retains a reflecting face and all seam/material/halo checks;
+    # these tests measure exchange, not the deferred distributed PMC image.
     sim = Simulation(
         freq_max=15e9, domain=(float(dx.sum()), 4e-3, 4e-3), dx=1e-3,
         dx_profile=dx, boundary=BoundarySpec(
-            x="cpml", y=Boundary(lo="pmc", hi="cpml"),
+            x="cpml", y=Boundary(lo="pec", hi="cpml"),
             z=Boundary(lo="pec", hi="cpml")), cpml_layers=1,
     )
     grid = sim._build_nonuniform_grid()

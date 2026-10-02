@@ -1064,11 +1064,12 @@ class Simulation(
             What the waveform amplitude MEANS — issue #571. Boundary- and
             mesh-independent once explicit:
 
-            - ``'current'``: the amplitude is a current I(t) in amperes,
+            - ``'current'``: the amplitude is a current moment I(t) in A·m,
               realized as ``E += Cb * I / dV`` on every path and boundary
-              (``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))`` at the source cell,
+              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``; ADI refuses
+              ``'current'`` and requires explicit ``'field'``,
               ``dV`` = local cell volume). Resolution-independent injected
-              power; Meep's convention; the future default.
+              power; Meep's convention; the declaration default.
             - ``'field'``: the amplitude is a raw E-field increment per
               step, ``E += w(t)`` on every path and boundary.
 
@@ -1082,31 +1083,10 @@ class Simulation(
             ``(d[k-1]+d[k])/2`` on the two transverse axes (issue #672);
             the two coincide on a uniform profile.
 
-            .. deprecated:: 1.7
-               ``None`` (the current default) keeps the legacy PER-PATH
-               meaning and emits one :class:`DeprecationWarning` per
-               Simulation naming what it resolves to on this simulation:
-               a CURRENT in amperes on a profiled (non-uniform) mesh
-               (identical to ``'current'``); on the uniform mesh a raw
-               field add for ``pec`` (identical to ``'field'``) or a
-               ``Cb``-normalized add for ``cpml``/``upml`` — which is
-               named by NEITHER kind. Cross-path amplitude ratios
-               ``dt/(eps0*dV)`` (pec) and ``1/dV`` (open), measured
-               2.15e8 and 1.00e9 at dx = 1 mm
-               (``tests/unit/nonuniform/test_nonuniform_uniform_end_to_end_reduction.py``
-               pins both). **Exact migration for the open-uniform legacy
-               contract**: multiply your waveform amplitude by the cell
-               volume ``dV`` and pass ``amplitude_kind='current'`` —
-               algebra ``Cb*(w*dV)/dV == Cb*w``, exact up to one float
-               multiply/divide pair (not bit-identical).
-               ``amplitude_kind`` becomes required in 1.9 (and
-               ``'current'`` the default in 2.0).
-
-            Route note (pre-existing, unchanged): the ``forward()``
-            uniform route uses the ``Cb``-normalized helper regardless of
-            boundary, so ``None`` there means the ``Cb`` contract even on
-            ``pec``; explicit kinds behave identically on ``run()`` and
-            ``forward()``.
+            ``None`` means ``'current'`` (E += Cb*I/dV, I is a current moment in A·m)
+            on every path and emits one
+            :class:`DeprecationWarning` per Simulation. Pass the kind
+            explicitly to silence it.
 
             The open-boundary + ``subpixel_smoothing`` cross-path residual
             (0.18 % amplitude, issue #582) is a solver defect independent
@@ -1115,23 +1095,16 @@ class Simulation(
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
         from rfx.api._source_semantics import (
-            validate_amplitude_kind, legacy_kind_description)
-        validate_amplitude_kind(amplitude_kind)
+            resolve_amplitude_kind, legacy_kind_description)
+        resolved_kind = resolve_amplitude_kind(amplitude_kind)
         if amplitude_kind is None and not getattr(
                 self, "_amplitude_kind_warned", False):
             self._amplitude_kind_warned = True
             import warnings
-            _is_nu = (self._dx_profile is not None
-                      or self._dy_profile is not None
-                      or self._dz_profile is not None)
             warnings.warn(
-                "add_source(..., amplitude_kind=None): on this simulation "
-                "the waveform amplitude is "
-                f"{legacy_kind_description(_is_nu, self._boundary)}. "
-                "This per-path default is deprecated (issue #571): pass "
-                "amplitude_kind='current' (amperes, resolution-independent "
-                "power — the future default) or amplitude_kind='field' (raw "
-                "E increment). amplitude_kind becomes required in 1.9 (and 'current' the default in 2.0).",
+                "add_source(..., amplitude_kind=None) now means "
+                f"{legacy_kind_description(False, self._boundary)}. "
+                "Pass amplitude_kind explicitly to silence this warning.",
                 DeprecationWarning, stacklevel=2)
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
@@ -1141,7 +1114,7 @@ class Simulation(
             position=position, component=component,
             impedance=0.0,  # 0 = no port impedance (soft source)
             waveform=waveform, extent=None,
-            amplitude_kind=amplitude_kind,
+            amplitude_kind=resolved_kind,
         ))
         return self
 
