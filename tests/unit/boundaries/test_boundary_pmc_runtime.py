@@ -1,33 +1,7 @@
-"""T7-E Phase 2 PR3 — PMC runtime mechanism (not a physics oracle).
+"""PMC lives on E nodes; adjacent H samples are physical half-cell samples.
 
-Pins the mechanism of ``rfx.boundaries.pmc.apply_pmc_faces``. The
-quantitative PMC physics (λ/4 mode-ladder vs PEC-PEC λ/2 ladder) is
-asserted separately in
-``tests/oracle/test_boundary_pmc_oracle.py::test_pmc_lambda_quarter_two_peak_ladder``
-— that oracle is what makes the PMC claim load-bearing; this file
-only guarantees the mechanism wiring.
-
-Mechanism pins:
-
-1. **Tangential-H-zero at the PMC face** — direct state-field sample
-   asserts ``|H_tan|`` < 1e-20 on PMC-designated face cells after the
-   scan body runs.
-2. **Finite non-zero trace** — PMC + CPML mix produces a valid
-   probe time series.
-3. **Mixed PMC/CPML seam finite output** — no NaN/Inf when PMC and
-   CPML share an axis.
-4. **Dual-boundary Hx sample** — PMC zeros Hx at the face cell while
-   PEC leaves it free, confirming the two code paths are engaged.
-5. **Distributed-PMC acceptance** (T8, 2026-04) — the sharded NU forward
-   path now wires ``apply_pmc_faces`` via ``_apply_pmc_face_nu_shmap``
-   (and dually in ``distributed_v2.py`` / ``distributed.py``).
-   ``forward(distributed=True)`` with any PMC face must NOT raise
-   ``NotImplementedError``. Full sharded-state evidence is in
-   ``tests/unit/boundaries/test_boundary_pmc_distributed.py``.
-
-Additional quantitative oracles beyond the λ/4 ladder (closed-box
-energy conservation, analytic impedance matching) are tracked as a
-follow-up harness — they need a source-calibrated long run.
+B3b replaces the former H[0]=0 mechanism pins with odd-image checks.
+Distributed kernels refuse until they implement the same image.
 """
 
 from __future__ import annotations
@@ -39,9 +13,8 @@ from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 
-def test_tangential_h_is_zero_at_pmc_face():
-    """Sample H at the PMC face at the end of a short run and assert
-    that the tangential components are zero (or below numerical dust)."""
+def test_tangential_h_has_odd_image_at_pmc_face():
+    """The odd-image pair, not the interior Yee sample, averages to zero."""
     spec = BoundarySpec(
         x="cpml", y="cpml",
         z=Boundary(lo="pmc", hi="cpml"),
@@ -54,16 +27,14 @@ def test_tangential_h_is_zero_at_pmc_face():
     sim.add_probe((0.005, 0.005, 0.005), "ez")
     res = sim.run(n_steps=40)
 
-    # state.hx and state.hy at k=0 are tangential to the z_lo face,
-    # so PMC must zero them. state.hz is normal — skip.
-    hx_at_z_lo = np.asarray(res.state.hx)[:, :, 0]
-    hy_at_z_lo = np.asarray(res.state.hy)[:, :, 0]
-    max_hx = float(np.max(np.abs(hx_at_z_lo)))
-    max_hy = float(np.max(np.abs(hy_at_z_lo)))
-    # PMC is enforced at every scan step; post-scan max_|H_tan| must
-    # be zero (exactly, in float32 arithmetic).
-    assert max_hx < 1e-20, f"PMC z_lo failed: max |Hx| = {max_hx:.3e}"
-    assert max_hy < 1e-20, f"PMC z_lo failed: max |Hy| = {max_hy:.3e}"
+    from rfx.core.yee import CurlBoundary, h_neighbor
+    boundary = CurlBoundary(pmc_faces=frozenset({"z_lo"}))
+    for field in (res.state.hx, res.state.hy):
+        # H[0] is half a cell INSIDE: preserve it. Interpolation between
+        # that sample and its odd image puts H_t=0 on the declared face.
+        assert np.max(np.abs(np.asarray(field)[:, :, 0])) > 0
+        image = h_neighbor(field, 2, boundary=boundary)
+        np.testing.assert_array_equal(np.asarray(field + image)[:, :, 0], 0.)
 
 
 def test_pmc_runtime_produces_finite_nonzero_trace():
@@ -100,19 +71,8 @@ def test_mixed_pmc_cpml_seam_is_finite():
     assert np.all(np.isfinite(ts))
 
 
-def test_pmc_plus_distributed_forward_accepts():
-    """T8 (2026-04): PMC is now wired into the sharded NU forward path.
-
-    The reject guard that used to live at ``rfx/api.py:4264-4274`` was
-    removed in T8 once ``_apply_pmc_face_nu_shmap`` landed in the
-    sharded scan body. Regression pin: ``forward(distributed=True)``
-    with a PMC face must NOT raise ``NotImplementedError`` anymore.
-
-    Quantitative PMC-on-sharded-state evidence is asserted in
-    ``tests/unit/boundaries/test_boundary_pmc_distributed.py``. Here we only pin that
-    the dispatch no longer blocks; a full sharded run requires a
-    multi-device fixture and is covered separately.
-    """
+def test_pmc_plus_distributed_forward_refuses_until_image_lands():
+    """The old distributed H-zero rule is not the declared-face image."""
     import jax
     dz = np.array([0.5e-3] * 10, dtype=np.float64)
     sim = Simulation(
@@ -126,21 +86,13 @@ def test_pmc_plus_distributed_forward_accepts():
     # Use a real single-device list. Multi-device sharded-PMC evidence
     # lives in tests/unit/boundaries/test_boundary_pmc_distributed.py.
     devices = [jax.devices()[0]]
-    # Should NOT raise the removed PMC NotImplementedError. If the
-    # guard is ever restored by mistake, this line raises.
-    res = sim.forward(n_steps=20, distributed=True, devices=devices,
-                      skip_preflight=True)
-    # Sanity: probe time series is finite.
-    ts = np.asarray(res.time_series)
-    assert np.all(np.isfinite(ts))
+    with pytest.raises(NotImplementedError, match="z_lo.*distributed_nu.*magnetic image"):
+        sim.forward(n_steps=20, distributed=True, devices=devices,
+                    skip_preflight=True)
 
 
 def test_pmc_and_pec_produce_physically_different_h_at_face():
-    """Dual-boundary evidence: PEC zeros tangential E on z_lo, PMC zeros
-    tangential H on z_lo. The direct field-sample evidence pins the
-    duality without relying on probe-time-series sensitivity that
-    depends on source waveform and propagation time.
-    """
+    """PEC and PMC both retain physical H but solve different wall fields."""
     def _final_state(spec):
         sim = Simulation(
             freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=0.5e-3,
@@ -150,20 +102,13 @@ def test_pmc_and_pec_produce_physically_different_h_at_face():
         sim.add_probe((0.005, 0.005, 0.005), "ez")
         return sim.run(n_steps=40).state
 
-    # PMC z_lo must zero Hx, Hy at z=0 (tangential H). PEC z_lo
-    # leaves Hx, Hy free (PEC zeros tangential E instead — see
-    # apply_pec_faces).
+    # Both nearest H planes lie inside the domain; neither is the wall.
     st_pmc = _final_state(BoundarySpec(x="cpml", y="cpml",
                                        z=Boundary(lo="pmc", hi="cpml")))
     st_pec = _final_state(BoundarySpec(x="cpml", y="cpml",
                                        z=Boundary(lo="pec", hi="cpml")))
     hx_pmc_face = float(np.max(np.abs(np.asarray(st_pmc.hx)[:, :, 0])))
     hx_pec_face = float(np.max(np.abs(np.asarray(st_pec.hx)[:, :, 0])))
-    assert hx_pmc_face < 1e-20, f"PMC z_lo failed to zero Hx: {hx_pmc_face:.3e}"
-    # PEC should have non-zero Hx at z_lo (nothing constrains it there).
-    # The threshold is loose — we just assert the PEC path does NOT
-    # zero H (i.e. Hx_pec is meaningfully > machine-zero).
-    assert hx_pec_face > hx_pmc_face, (
-        f"PEC z_lo unexpectedly left Hx ≈ 0 ({hx_pec_face:.3e}); "
-        f"PEC and PMC may share a code path"
-    )
+    assert hx_pmc_face > 0., "the physical half-cell H sample must survive"
+    assert hx_pec_face > 0.
+    assert not np.array_equal(np.asarray(st_pmc.hx), np.asarray(st_pec.hx))

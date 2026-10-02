@@ -2431,6 +2431,7 @@ def extract_waveguide_s_matrix_flux(
                 dft_total_steps=n_steps,
                 lo1=cfg.u_lo, hi1=cfg.u_hi,
                 lo2=cfg.v_lo, hi2=cfg.v_hi,
+                pmc_faces=frozenset(getattr(grid, "pmc_faces", ())),
             )
             for cfg in template_cfgs
         ]

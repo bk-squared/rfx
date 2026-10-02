@@ -113,7 +113,9 @@ def test_every_metadata_mismatch_raises_value_error(field):
     """Covers the full metadata field list, so a new field cannot slip the gate."""
     sample = _monitor(1 + 0j, 1 + 0j)
     value = getattr(sample, field)
-    if isinstance(value, str):
+    if value is None:
+        perturbed = jnp.ones_like(sample.dA)
+    elif isinstance(value, str):
         perturbed = "hann" if value != "hann" else "rect"
     elif isinstance(value, (int, float)) and not isinstance(value, bool):
         perturbed = type(value)(value + 1)

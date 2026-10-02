@@ -149,21 +149,15 @@ What to do: record well past the slowest mode's decay, or use a one-cell wire po
 
 ## Absorbing boundaries
 
-**A magnetic symmetry wall lies half a cell inside its declared face.**
-On the single-device Yee paths, the nearest tangential magnetic-field sample
-is zeroed half a cell inside the face. A source on the face's electric node
-does not reach the interior, and a symmetry half-model is half a cell narrower
-than declared. For a 24 mm separation between two magnetic faces, the realized
-separation is 23 mm at dx = 1 mm. The on-face image rule is pending in B3.
-→ [#1221](https://github.com/bk-squared/rfx/issues/1221)
-
-**On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**
-A face declared `pmc` is solved as a magnetic wall only on a single-device Yee run. On `run(devices=...)` and
-`forward(distributed=True)` with no absorbing face the plane is shorted (tangential E held at zero); with absorbing
-faces the cells next to it absorb, and a source one cell off the plane reaches the volume 65–75 dB below the
-single-device run. `solver='adi'` solves the face as an electric wall. A half-model on these lanes is a different
-structure from the one declared. Use a single-device Yee run for a symmetry plane; there the wall sits half a cell
-inside the declared face, which #1221 also fixes.
+**Magnetic faces require the single-device second-order Yee image.**
+Uniform and graded run/forward place the wall on the declared E-node face.
+Distributed kernels, subgridded and ADI lanes refuse magnetic faces. The
+fourth-order stencil also refuses them because its far neighbors have no
+magnetic image. Subpixel smoothing refuses a material surface within half
+an adjacent cell of a magnetic face when the smoother would need the
+material's even extension; extending the material at least a cell beyond
+the face is supported. These refusals remain until the corresponding
+kernels and smoothing extension are implemented.
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 **With the mesh as a design variable, a ground plane still ends at the absorber.**

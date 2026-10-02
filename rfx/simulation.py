@@ -2244,7 +2244,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                     )
             if ctx.use_pmc_faces:
                 from rfx.boundaries.pmc import apply_pmc_faces
-                st = apply_pmc_faces(st, ctx.pmc_faces_frozen)
+                st = apply_pmc_faces(st, ctx.pmc_faces_frozen, image=True)
             if ctx.use_tfsf:
                 if ctx.tfsf_is_2d:
                     tfsf_h_state = ctx.update_tfsf_2d_h(ctx.tfsf_cfg, carry["tfsf"], dx, dt)

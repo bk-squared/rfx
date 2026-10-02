@@ -464,7 +464,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_boundary", "cpml"): _ALL - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
     ("_pec_faces", "pec_face"): _ALL - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "pmc_face"): _ALL - _ADI - {"run_subgridded"},
+    ("_boundary_spec", "pmc_face"): _ALL - _ADI - {"run_subgridded", "run_distributed", "fwd_distributed_nu"},
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
     ("_boundary_spec", "absorbing_lid"): _ALL - _ADI,

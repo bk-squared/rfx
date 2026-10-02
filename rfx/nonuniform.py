@@ -2887,7 +2887,7 @@ def _build_nu_scan(
             cpml_new = None
         if use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
-            st = apply_pmc_faces(st, _pmc_faces_frozen)
+            st = apply_pmc_faces(st, _pmc_faces_frozen, image=True)
         if use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)

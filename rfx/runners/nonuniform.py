@@ -1030,6 +1030,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                                wires=_pec_wires)
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
 
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(sim, grid)
+
     # ── Subpixel smoothing on non-uniform mesh ─────────────────────────
     # Builds Kottke tensor-averaged ε per E-component using per-axis
     # cell-size arrays. Only the non-dispersive scan branch consumes
@@ -1428,6 +1432,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     dft_window=getattr(pe, "dft_window", "rect"),
                     dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
                     lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
+                    pmc_faces=frozenset(sim._boundary_spec.pmc_faces()), staggered_area=True,
                 )
             )
 
@@ -1526,6 +1531,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     dft_total_steps=sizing_n,
                     lo1=cfg.u_lo, hi1=cfg.u_hi,
                     lo2=cfg.v_lo, hi2=cfg.v_hi,
+                    pmc_faces=frozenset(sim._boundary_spec.pmc_faces()), staggered_area=True,
                 )
             )
 

@@ -122,6 +122,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
                 dft_window=getattr(pe, 'dft_window', 'rect'),
                 dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
                 lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
+                pmc_faces=frozenset(sim._boundary_spec.pmc_faces()),
             )
         )
     return flux_monitors
@@ -244,6 +245,10 @@ def run_uniform(
                 "not supported (#677 v1): the sheet operator would "
                 "silently override the ADE dispersion update at its "
                 "edges. Remove the dispersive material or the f0 sheet.")
+
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(sim, grid)
 
     # A Debye/Lorentz E update reads neither the smoothed permittivity
     # tensor nor the Dey-Mittra eps correction

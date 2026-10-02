@@ -1,24 +1,17 @@
-"""Perfect Magnetic Conductor (PMC) boundary condition (T7 Phase 2 PR3).
+"""PMC storage handling during the B3/B4 kernel migration.
 
-Zeros tangential H-field at boundary faces. The electromagnetic dual
-of :mod:`rfx.boundaries.pec`: PEC enforces E_tangential = 0, PMC
-enforces H_tangential = 0. PMC is the boundary condition imposed by a
-"magnetic wall" — physically rare in practice but essential as a
-symmetry-plane image source for structures with mirror symmetry and
-as a building block for cavities / waveguides with mixed-BC modes.
-
-For a face normal to axis ``a`` at side ``s ∈ {lo, hi}`` the
-tangential H components are the two H components with indices
-``≠ a``. On ``x_lo``: Hy[0, :, :] and Hz[0, :, :]. The order point in
-the scan body mirrors :func:`rfx.boundaries.pec.apply_pec_faces`
-(after the H update, before the next E update).
+Single-device shared-image paths pass image=True: physical H is retained,
+and only unused high ghosts are canonicalized. The odd image is evaluated
+by yee.h_neighbor after every H change. The default retains the old half-cell
+zeroing solely for kernels that have not migrated; public distributed and
+subgridded/ADI magnetic requests refuse rather than exposing that rule.
 """
 
 from __future__ import annotations
 
 
-def apply_pmc_faces(state, faces: set[str]) -> object:
-    """Apply PMC (``H_tan = 0``) on specific boundary faces.
+def apply_pmc_faces(state, faces: set[str], *, image: bool = False) -> object:
+    """Canonicalize ghosts for image paths, or apply legacy half-cell zeros.
 
     Parameters
     ----------
@@ -42,6 +35,20 @@ def apply_pmc_faces(state, faces: set[str]) -> object:
     """
     if not faces:
         return state
+    if image:
+        # Physical H samples survive. Shared curl/port reads impose the odd
+        # image at consumption; keep the unused stored high ghosts canonical.
+        fields = dict(hx=state.hx, hy=state.hy, hz=state.hz)
+        for axis, letter in enumerate("xyz"):
+            if f"{letter}_hi" in faces and state.hx.shape[axis] > 1:
+                edge = [slice(None)] * 3
+                edge[axis] = -1
+                for component in "xyz":
+                    if component != letter:
+                        key = "h" + component
+                        fields[key] = fields[key].at[tuple(edge)].set(0.0)
+        return state._replace(**fields)
+    # Legacy half-cell enforcement for kernels not yet using the shared image.
     hx, hy, hz = state.hx, state.hy, state.hz
 
     if "x_lo" in faces:

@@ -777,21 +777,17 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     # Magnetic walls on the x faces, electric on y and z.
     "_boundary_spec": {
         "pmc_face": lanes(
-            run_uniform=carries("the magnetic wall sits half a cell inside its face "
-                                "(test_realized_boundary.py pmc-pec--run)", wrong="#1221"),
-            run_nonuniform=carries("half a cell inside (pmc-pec--nonuniform)", wrong="#1221"),
-            run_subgridded=admission("a PMC (magnetic wall) face", RUN_SG, "it was solved as electric walls although "
-                                     "production validation passes (#1311)"),
-            run_adi=admission("a PMC (magnetic wall) face", RUN_ADI, "it was solved as electric walls (pmc-pec--adi, "
-                              "#1221)"),
-            run_distributed=carries("tangential E held at zero on the x faces "
-                                    "(pmc-pec--distributed)", wrong="#1221"),
-            fwd_uniform=carries("half a cell inside (pmc-pec--forward)", wrong="#1221"),
-            fwd_nonuniform=carries("the kernel of run_nonuniform; test_realized_boundary.py does not "
-                                   "run this entry"),
-            fwd_distributed_nu=carries("test_realized_boundary.py does not run this entry"),
-            fwd_adi=admission("a PMC (magnetic wall) face", FWD_ADI, "it was solved as electric walls, as on run_adi "
-                              "(#1221)"),
+            run_uniform=carries("odd H image on the declared E-node face (#1221 B3b)"),
+            run_nonuniform=carries("graded shared curl carries the declared-face image"),
+            run_subgridded=admission("a PMC (magnetic wall) face", RUN_SG, "no magnetic image"),
+            run_adi=admission("a PMC (magnetic wall) face", RUN_ADI, "no magnetic image"),
+            run_distributed=refuses("distributed_v2 has no declared-face image until B4",
+                                    raises="does not implement the declared-face magnetic image"),
+            fwd_uniform=carries(),
+            fwd_nonuniform=carries(),
+            fwd_distributed_nu=refuses("distributed_nu has no declared-face image until B4",
+                                      raises="does not implement the declared-face magnetic image"),
+            fwd_adi=admission("a PMC (magnetic wall) face", FWD_ADI, "no magnetic image"),
         ),
         "conformal": lanes(
             run_uniform=carries("Dey-Mittra weights on every PEC shape, including direct run_uniform() by default; conformal_pec=False requests staircase PEC"),

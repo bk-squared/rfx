@@ -456,10 +456,25 @@ class _ExecuteMixin:
         a CRITICAL correctness failure. This single guard, called at the top
         of every run/forward entry BEFORE any dispatch, guarantees order=4
         can never reach an unsupported runner even if a per-path fence is
-        missed. order=2 (the default) is unaffected.
+        missed. Magnetic images also require a single-device second-order
+        kernel, so distributed PMC requests are rejected here for either order.
         """
+        magnetic_faces = sorted(self._boundary_spec.pmc_faces())
+        if magnetic_faces and distributed:
+            graded = any(getattr(self, f"_{a}_profile", None) is not None
+                         for a in ("dx", "dy", "dz"))
+            kernel = "distributed_nu" if graded else "distributed_v2"
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)}: {kernel} "
+                "does not implement the declared-face magnetic image; use a "
+                "single-device Yee run/forward until B4.")
         if getattr(self, "_stencil_order", 2) != 4:
             return
+        if magnetic_faces:
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)} with stencil_order=4: "
+                "yee._diff_bwd_o far neighbors do not implement the magnetic image; "
+                "use stencil_order=2.")
         unsupported = []
         is_nonuniform = (
             self._dz_profile is not None
