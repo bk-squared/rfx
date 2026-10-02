@@ -14,6 +14,8 @@ a committed test pins the fix, not when someone believes it is better.
 Nothing here is a substitute for the repo's standing rule: a warning's absence is
 not an accuracy guarantee, and a preflight pass is not a convergence study.
 
+Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not judged by `sheet_effective_size` (`rfx/materials/thin_conductor.py::ThinConductor.is_pec`, `rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`).
+
 ---
 
 ## Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
@@ -50,6 +52,8 @@ reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
 That one-edge feed has nonuniform longitudinal current, so the full-height
 wire-port Hankel oracle does not establish its accuracy. The port radius
 model and its full-height oracle remain separate.
+
+`compute_coax_msl_transition` runs no automatic preflight (`rfx/sparams/coax.py::compute_coax_msl_transition`).
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the

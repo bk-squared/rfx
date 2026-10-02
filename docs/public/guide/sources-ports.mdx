@@ -260,21 +260,11 @@ wave amplitudes from a row of probe planes downstream of the feed. Use
 `compute_msl_s_matrix()`, not `run(compute_s_params=True)`:
 
 ```python
-board = Simulation(freq_max=10e9, domain=(0.020, 0.010, 0.004), dx=0.25e-3,
-                   boundary="cpml", cpml_layers=3)
-board.add_material("substrate", eps_r=3.2, sigma=0.01)
-board.add(Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3)),
-          material="substrate")
-board.add_thin_conductor(Box((0.75e-3, 0.75e-3, 1.25e-3),
-                             (19.25e-3, 9.25e-3, 1.25e-3)))     # ground sheet
-board.add_thin_conductor(Box((0.75e-3, 4.50e-3, 2.25e-3),
-                             (19.25e-3, 5.50e-3, 2.25e-3)))     # 1 mm trace
+# Run from the repository root to use the tutorial's edge-aware board.
+from examples.tutorials.ports_and_sparams_101 import build_microstrip_ports
 
-for x, direction, name in [(0.004, "+x", "in"), (0.016, "-x", "out")]:
-    board.add_msl_port((x, 0.005, 1.25e-3), width=1.0e-3, height=1.0e-3,
-                       direction=direction, eps_r_sub=3.2, name=name)
-
-msl = board.compute_msl_s_matrix(freqs=np.linspace(2e9, 8e9, 13),
+board = build_microstrip_ports()
+msl = board.compute_msl_s_matrix(freqs=np.linspace(2e9, 6e9, 13),
                                  num_periods=20)
 print(np.abs(msl.S[1, 0]))     # |S21| across the band
 ```
@@ -285,8 +275,12 @@ returned as extracted. A warning names any bins where it is not passive;
 `enforce_passivity=True` projects it instead. `msl.reliable` flags bins with
 too little signal to trust.
 
-This board is coarse for speed, so rfx warns that the fitted Z0 is off from
-the closed form and that the trace's solved width differs from the drawn one.
+The builder in `examples/tutorials/ports_and_sparams_101.py` uses a
+44 × 34 mm domain, edge-aware x/y profiles, and a layered z profile. It
+builds and preflights this board without solving it in the tutorial; the
+calculation above runs it. The tutorial's live generic-port S11 examples
+use `S11_STEPS = 600` each. This board is coarse for speed, so check the fitted
+Z0 against the closed form.
 S11 and S21 use the measured V and I with the analytic Z0, not the fitted
 Z0. Refine before you quote Z0.
 
