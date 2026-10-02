@@ -304,7 +304,7 @@
         "compute_coaxial_line_reflection(...) requires exactly one registered coaxial port with face='top' and no mixed port family",
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
         "compute_coaxial_line_reflection(...) requires mode='3d', solver='yee', precision='float32', stencil_order=2, a uniform grid, and boundary='cpml' with cpml_layers > 0",
-        "compute_coaxial_line_reflection(...) requires positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, and no periodic boundary axes",
+        "compute_coaxial_line_reflection(...) requires CPML tokens with positive thickness on all six BoundarySpec faces, cpml_axes='xyz' (the default and the only accepted value; 'z' raises, #1218), and no periodic boundary axes",
         "compute_coaxial_line_reflection(...) constructs its line, TEM source, DFT planes, and termination; separately registered geometry, thin conductors, lumped RLC elements, probes, field monitors, NTFF boxes, and add_coaxial_* termination helpers are unsupported",
         "the registered coaxial port contributes x/y position, face, radii, and waveform; its z position, pin_length, and impedance do not set the internally derived line layout or loads; use feed_impedance= and use dut_impedance= only with termination='matched'",
         "probe_count must be an integer of at least three and all requested probe planes must fit between the DUT and source; the method raises instead of silently using fewer planes",

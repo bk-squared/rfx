@@ -905,9 +905,9 @@ The simulation must contain exactly one coaxial port, it must use `face="top"`,
 and no other port family may be registered. It also requires `mode="3d"`,
 `solver="yee"`, `precision="float32"`, `stencil_order=2`, a uniform grid, and
 `boundary="cpml"` with `cpml_layers > 0`. Other settings raise before grid
-construction. Both z faces must have positive CPML thickness, the method must
-use its default `cpml_axes="z"`, all six `BoundarySpec` face tokens must be
-`cpml`, and periodic boundary axes are unsupported.
+construction. Every boundary face must be a `cpml` token with positive
+thickness, `cpml_axes="xyz"` is the default and the only accepted value
+(`"z"` raises, #1218), and periodic boundary axes are unsupported.
 The calculator constructs the line, TEM source, DFT planes, and termination.
 Do not register separate geometry, thin conductors, lumped RLC elements,
 probes, field monitors, NTFF boxes, or `add_coaxial_*` termination helpers.
