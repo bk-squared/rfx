@@ -10,18 +10,16 @@ lax.ppermute inside shard_map.  Supports PEC and CPML boundaries, soft
 sources, point probes, lumped ports, and dispersive materials
 (Debye / Lorentz / Drude).
 
-Single-device fallback: when only 1 device is available, sharding is skipped
-and a plain jit path is used.
+A direct one-device call uses the same ``shard_map`` path on a one-device mesh.
 
 Declared PEC (#1053): a PEC VOLUME is realized here.  ``pec_mask`` is
 sharded with the material arrays and applied in both step bodies after
 source injection and immediately before the E ghost exchange, which is
 ``distributed_nu``'s stage 8 at the #1041 ordering.  Declared SHEETS and
 sub-cell WIRES own no cell, this lane has no other carrier for them, and
-they are refused rather than silently dropped.  Note the single-device fast
-path below delegates to the pmap runner, which still drops the mask and so
-still refuses a volume (#1055); ``Simulation.run(devices=...)`` never reaches
-it, because ``rfx/api/_execute.py`` routes here only for ``len(devices) > 1``.
+they are refused rather than silently dropped. A direct one-device call
+also realizes the PEC mask. ``Simulation.run(devices=...)`` routes here
+only for ``len(devices) > 1``; otherwise it uses the single-device lane.
 
 Known limitations (transparent single-device fallback):
 - TFSF plane-wave sources: require full-domain field injection, not
@@ -33,7 +31,7 @@ Known limitations (transparent single-device fallback):
 - Declared PEC sheets and sub-cell wires: refused (see above).
 
 The public entry point ``run_distributed`` has an identical signature to the
-pmap version in ``distributed.py`` so callers need no changes.
+retired pmap version so callers retain the same entry-point arguments.
 """
 
 from __future__ import annotations
@@ -498,8 +496,9 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
     Periodic/Bloch boundaries, extended or passive ports, Kerr materials,
     lumped RLC elements, MSL ports, subgridding, and surface monitors (flux,
-    DFT planes; NTFF on graded meshes). ``tests/unit/runners/test_distributed_admission_refusals.py``
-    holds the disposition of every Simulation attribute on these lanes.
+    DFT planes; NTFF on graded meshes). ``tests/contracts/path_disposition.py``
+    records the per-path disposition of every Simulation attribute;
+    ``tests/unit/runners/test_path_disposition_cells.py`` enforces it.
 
     Call after the TFSF and waveguide single-device fallbacks, before sharding.
     ``bloch`` also accepts an explicit phase from a direct caller.
@@ -736,9 +735,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # assembled and then dropped (measured then: a two-device run probing
     # inside a declared PEC Box returned a trace bit-identical to the same
     # model with the Box deleted). It also had to warn that redrawing a
-    # sheet as a volume did NOT help. Both statements are now false HERE
-    # and both stay true of the pmap lane in ``distributed.py``, whose copy
-    # of the message is a separate string and is out of #1053 scope (#1055).
+    # sheet as a volume did NOT help. Both statements are now false here.
+    # Those limitations also applied to the now-retired pmap runner.
     # run()'s preflight memoizes the production assembly -- whole-domain
     # materials and realized conductor masks -- on Simulation
     # (rfx/preflight/realization.py::_campaign_ctx). Only preflight reads it,
@@ -858,7 +856,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         raise NotImplementedError(
             "Phase B supports non-uniform grids on the distributed path "
             "with PEC boundaries only. boundary='cpml' with dx/dy/dz "
-            "profile and devices>1 is a Phase C item."
+            "profile is unsupported on this runner, including a direct one-device call."
         )
     if is_nu and debye_spec is not None:
         raise NotImplementedError(

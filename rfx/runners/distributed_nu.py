@@ -1948,8 +1948,11 @@ def run_nonuniform_distributed_pec(
     the PEC mask, the soft occupancy) — the same placement the H half
     gives the PMC face (stage 2b before the H exchange, "so the zero
     propagates to neighbours via the exchange").  A rank acts only on
-    its real cells; a ghost row is a copy of the owner's real row, and
-    that copy is only faithful if it is taken after the owner is done.
+    its real cells. Only Hy/Hz left ghosts and Ey/Ez right ghosts are
+    refreshed from their owners each step, after those owners finish.
+    Other field, CPML and dispersion ghost entries are locally updated
+    scratch values, can grow, and are never read by real cells. Exclude them
+    from physical energy calculations; ``forward()`` discards this state.
     Measured on the #931 seam fixtures (16x8x8, 2 ranks, 30 steps, one
     PEC cell at ``(nx_per_rank, ny//2, nz//2)`` = rank 1's first real
     cell): with the exchange BEFORE the PEC stages, rank 0's right ghost
