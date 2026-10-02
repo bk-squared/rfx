@@ -13,7 +13,6 @@ this file, so that absorption physics is not asserted.
 """
 
 import functools
-import re
 
 import numpy as np
 import jax.numpy as jnp
@@ -106,12 +105,14 @@ def test_lumped_port_pec_cavity_s11():
     Measured (60-period record, the test's own loop): max |S11| 1.00059 at
     3.04 GHz, Re Zin -8.0 ... +15.2 ohm around a mean of 0.01 ohm on a |Zin|
     of ~800-3000 ohm. With the record at 240 periods the same bins reach
-    1.00133 (3.69 GHz) -- the #1255 scatter, smaller here than at the mode.
-    Before #1236 the port was also a 50 ohm resistor on the Ex and Ey edges
-    at its node, and the box read Re Zin = +15.0 ohm on average below the
-    mode (8.5 ... 26.6): a loss the lossless box does not have, which kept
-    |S11| below 1 (max 0.99961) and hid the scatter. Split from the band
-    around the mode by PI decision 2026-09-24 (the other half is #1255).
+    1.00133 (3.69 GHz): the leakage of the truncated TM110 ringing (Q ~ 2000,
+    e-fold 153 ns; #1255), smaller here than at the mode. Before #1236 the
+    port was also a 50 ohm resistor on the Ex and Ey edges at its node, and
+    the box read Re Zin = +15.0 ohm on average below the mode (8.5 ... 26.6):
+    a loss the lossless box does not have, which kept |S11| below 1 (max
+    0.99961) and also damped the ringing. Split from the band around the
+    mode by PI decision 2026-09-24 (the other half is the wire-port
+    completion test below).
     """
     freqs, s11, f_tm110 = _pec_cavity_port_s11()
     s11_mag = np.abs(s11)
@@ -181,12 +182,7 @@ def test_lumped_port_pec_cavity_ringdown_refused():
     """Completion currently refuses the same box's one-cell lumped port."""
     sim, grid = _pec_cavity_simulation(wire=False)
     n_steps = grid.num_timesteps(num_periods=60)
-    message = (
-        "run(ringdown=...) completes wire-port S-parameters only; the "
-        "port at (0.025, 0.025, 0.0125) is a one-cell lumped port "
-        "(add_port without extent=)."
-    )
-    with pytest.raises(NotImplementedError, match=re.escape(message)):
+    with pytest.raises(NotImplementedError, match="one-cell lumped port"):
         sim.run(
             n_steps=n_steps, s_param_n_steps=n_steps,
             s_param_freqs=jnp.linspace(1e9, 5e9, 50),

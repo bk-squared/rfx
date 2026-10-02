@@ -140,7 +140,7 @@ port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the 
 On a plain 12 ns record, |S11| reads 0.975–1.009 around the mode (largest deviation 0.025);
 24 / 60 / 120 ns records: deviation 0.042 / 0.032 / 0.026. The end-of-run witness read −64 dB
 and passed: its reference peak was the direct response, and the weakly coupled mode rings below it.
-On the same 12 ns record, one-cell wire-port completion restores |S11| to 1 ± 1e-6 with passing witnesses
+On the same 12 ns record, one-cell wire-port completion restores |S11| to 1 within 1e-3 (measured about 1e-6) with passing witnesses
 (`tests/unit/sparams/test_sparam.py::test_wire_port_pec_cavity_s11_around_the_first_mode`).
 `run(ringdown=...)` currently refuses one-cell lumped ports.
 What to do: record well past the slowest mode's decay, or use a one-cell wire port
