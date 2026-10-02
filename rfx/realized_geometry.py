@@ -430,7 +430,7 @@ def _mask_ranges(mask):
     return tuple((int(i.min()), int(i.max())) for i in indices) if indices[0].size else ()
 
 
-def record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
+def _record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
                          geometry_masks, assembly_entries, *, lane):
     """Summarize the run's classifier outputs; never consult preflight caches."""
     from dataclasses import replace
@@ -450,7 +450,7 @@ def record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
             label = f"{prefix}[{i}]"
             if id(entry) in products:
                 cells, sheet, wire, shape = products[id(entry)]
-                kind = "volume" if cells is not None else "sheet" if sheet is not None else "wire"
+                kind = "volume" if cells is not None else "sheet" if sheet is not None else "wire" if wire is not None else "lossy"
                 ctx._entries.append(_EntryRealization(label=label, name=getattr(entry, "material_name", label),
                     shape=entry.shape, solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire))
             elif prefix == "thin_conductor":
@@ -458,3 +458,24 @@ def record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
     record = _build_record(sim, ctx, compact=True)
     return replace(record, lane=lane, limitations=("refined region not represented",)
                    if lane == "run_subgridded" else ())
+
+
+def record_from_assembly(*args, **kwargs):
+    """Best-effort run metadata; assembly/solver refusals remain outside this guard.
+
+    Host inspection can fail for traced coordinates or unsupported diagnostic
+    geometry. In that case the run has no record; its assembly still runs and
+    raises normally before this function is called.
+    """
+    try:
+        return _record_from_assembly(*args, **kwargs)
+    except Exception:
+        return None
+
+
+def attach_record(result, record):
+    """Attach metadata to the public Result, preserving custom runner results."""
+    from rfx.api._spec import Result
+    if isinstance(result, Result):
+        return result._replace(realized_geometry=record)
+    return result

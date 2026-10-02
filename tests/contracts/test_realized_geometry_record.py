@@ -381,3 +381,49 @@ def test_unextendable_conductor_warning_is_present(reader, capsys):
         getattr(sim, reader)()
     assert (any("Conducting geometry reaches" in str(w.message) for w in caught)
             or "Conducting geometry reaches" in capsys.readouterr().out)
+
+
+@pytest.mark.parametrize("nonuniform", [False, True])
+def test_record_failure_does_not_stop_run(monkeypatch, nonuniform):
+    import rfx.realized_geometry as records
+    import rfx.runners.uniform as uniform
+    import rfx.runners.nonuniform as nu
+    from rfx import Result
+    sim = _model(nonuniform)
+    calls = []
+
+    def fail_record(*args, **kwargs):
+        calls.append("record")
+        raise ValueError("diagnostic aperture unavailable")
+
+    def runner(*args, **kwargs):
+        calls.append("runner")
+        if nonuniform:
+            return {"state": None, "time_series": np.zeros((0, 0))}
+        return Result(None, np.zeros((0, 0)), None, None)
+
+    monkeypatch.setattr(records, "_record_from_assembly", fail_record)
+    monkeypatch.setattr(nu if nonuniform else uniform,
+                        "run_nonuniform" if nonuniform else "run_uniform", runner)
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    assert calls == ["record", "runner"]
+    assert result.realized_geometry is None
+
+
+@pytest.mark.parametrize("nonuniform", [False, True])
+def test_lossy_run_record_retains_assembly_continuation(monkeypatch, nonuniform):
+    from rfx import Result
+    import rfx.runners.uniform as uniform
+    import rfx.runners.nonuniform as nu
+    kwargs = {"dz_profile": np.full(8, .001)} if nonuniform else {}
+    sim = Simulation(freq_max=10e9, domain=(.0086, .0086, .008), dx=.001,
+                     boundary="cpml", cpml_layers=4, **kwargs)
+    sim.add_thin_conductor(Box((0., 0., .004), (.0086, .0086, .004)),
+                           sigma_bulk=1e4, surface_impedance_f0=10e9)
+    monkeypatch.setattr(uniform, "run_uniform", lambda *a, **k: Result(None, np.zeros((0, 0)), None, None))
+    monkeypatch.setattr(nu, "run_nonuniform", lambda *a, **k: {"state": None, "time_series": np.zeros((0, 0))})
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    record = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False).realized_geometry
+    assert record.entities[0].kind == "lossy"
+    assert record.entities[0].continued_faces == ("x-lo", "x-hi", "y-lo", "y-hi")

@@ -5,6 +5,9 @@ record. `Result.realized_geometry` is a separate compact record built from the
 run's own assembly, including when `skip_preflight=True`. The assemblers collect
 original entry identities and their actual cells, sheets and wires; the Result
 builder neither assembles again nor consults preflight. No stepping kernel changes.
+If host inspection fails (including traced mesh coordinates or an unsupported
+aperture), the run returns `realized_geometry=None`; assembly refusals still
+raise. Custom runner result objects are returned unchanged.
 
 Lengths are metres, node ranges inclusive, cell ranges half-open, and residuals
 signed solved minus declared. Entities carry kind, declared bounds, realized

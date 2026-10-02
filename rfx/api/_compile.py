@@ -469,9 +469,10 @@ class _CompileMixin:
                     grid, tc, materials, pec_mask=pec_mask,
                     sheet_specs=sheet_specs, sheets=_pec_sheets,
                     geometry_masks=geometry_masks, geometry_key=geometry_key)
+                if assembly_entries is not None:
+                    assembly_entries.append((geometry_key, None,
+                                             _pec_sheets[-1] if tc.is_pec else None, None, tc.shape))
                 if tc.is_pec:
-                    if assembly_entries is not None:
-                        assembly_entries.append((geometry_key, None, _pec_sheets[-1], None, tc.shape))
                     pec_shapes.append(tc.shape)
 
         # Node-pinned PEC sheets (add_pinned_sheet): built from node indices,

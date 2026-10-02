@@ -528,7 +528,8 @@ class _CampaignStaticsContext:
             if not getattr(tc, "is_pec", False):
                 out.append(_EntryRealization(
                     label=label, name=label, shape=tc.shape, kind="lossy",
-                    lo=lo, hi=hi))
+                    lo=lo, hi=hi, solved_shape=continued_conductor_shape(
+                        sim, self.grid, tc.shape, entry=tc)))
                 continue
             try:
                 solved = continued_conductor_shape(

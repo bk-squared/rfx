@@ -331,6 +331,8 @@ def assemble_materials_nu(
         # and jnp.where keeps the sigma field (an AD-live material)
         # differentiable.
         for tc in lossy_tcs:
+            if assembly_entries is not None:
+                assembly_entries.append((conductor_keys[id(tc)], None, None, None, tc.shape))
             _f0 = getattr(tc, "surface_impedance_f0", None)
             if _f0 is not None:
                 # #674: a surface-impedance sheet may be ANY
