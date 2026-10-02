@@ -294,3 +294,20 @@ def test_each_graded_port_sample_reads_two_neighbors(component, idx):
         state.hx, state.hy, state.hz, component, *idx,
         .9e-3, 1.1e-3, 1.3e-3, boundary=boundary),
         helper="h_neighbor", indexed=True, expected_calls=2)
+
+
+@pytest.mark.parametrize("feature,mesh", [("subpixel", "uniform"),
+                                          ("subpixel", "graded"),
+                                          ("conformal", "uniform")])
+def test_smoothed_checkpoint_scan_uses_complete_curl(feature, mesh):
+    # These front doors build the actual smoothing tensors/weights, then
+    # execute the differentiable checkpointed scan. Simulation.forward has
+    # no subpixel keyword and refuses conformal PEC; do not label this as
+    # public forward() support.
+    sim = model(feature, mesh)
+    kwargs = dict(n_steps=2, skip_preflight=True, compute_s_params=False,
+                  checkpoint=True)
+    if feature == "subpixel":
+        kwargs["subpixel_smoothing"] = True
+    require_shared(lambda: sim.run(**kwargs),
+                   helper="curl_h_nu" if mesh == "graded" else "curl_h")
