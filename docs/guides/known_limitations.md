@@ -22,7 +22,7 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 No result is returned, so nothing is silently wrong. PEC models on several GPUs and CPML models on one GPU are not affected.
 The failure is in XLA's capture of the multi-device CPML program into a CUDA graph; the cause inside that program is not yet located.
 Until it is fixed, set `XLA_FLAGS=--xla_gpu_enable_command_buffer=` in the environment before JAX is imported. With it, the two- and three-GPU results agree with one GPU to float32 rounding.
-Tracking: #1441.
+→ [#1441](https://github.com/bk-squared/rfx/issues/1441)
 
 ## Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
 
