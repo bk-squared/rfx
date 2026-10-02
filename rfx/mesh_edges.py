@@ -369,7 +369,7 @@ def edge_aware_profiles(
             if len(thin) != 1:
                 raise ValueError(
                     "a sheet must be a Box with exactly one zero-thickness "
-                    f"axis; got extents {tuple(h - l for l, h in zip(lo, hi))}")
+                    f"axis; got extents {tuple(upper - lower for lower, upper in zip(lo, hi))}")
             n = thin[0]
             if k == n:
                 axis_faces.append(lo[k])
@@ -438,13 +438,14 @@ class SolvedSheetSpan(NamedTuple):
 
     def comparison_bounds(self, declared_lo: float, declared_hi: float,
                           domain_hi: float) -> tuple[float, float]:
-        """Drawn bounds inside the domain at non-free ends.
+        """Comparison bounds whose residual counts only free ends.
 
-        Preserve internal seams and free edges. Only the portion past a
-        domain face is excluded from the size being judged.
+        A seam, overlap, or domain end has no independently solved edge.
+        Use its solved coordinate so that it contributes zero residual.
+        ``domain_hi`` is retained for callers using the shared span API.
         """
-        lo = float(declared_lo) if self.free_lo else max(0.0, float(declared_lo))
-        hi = float(declared_hi) if self.free_hi else min(float(domain_hi), float(declared_hi))
+        lo = float(declared_lo) if self.free_lo else self.lo
+        hi = float(declared_hi) if self.free_hi else self.hi
         return lo, hi
 
 

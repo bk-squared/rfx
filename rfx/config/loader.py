@@ -33,6 +33,7 @@ _KNOWN_TOP_KEYS = {
     "dx",
     "mode",
     "precision",
+    "snap",
     "materials",
     "geometry",
     "thin_conductors",
@@ -131,6 +132,9 @@ def _build_simulation_kwargs(cfg: dict) -> dict:
         kwargs["mode"] = str(cfg["mode"])
     if "precision" in cfg:
         kwargs["precision"] = str(cfg["precision"])
+
+    if "snap" in cfg:
+        kwargs["snap"] = cfg["snap"]
 
     return kwargs
 

@@ -147,7 +147,8 @@ def test_domain_face_ends_compare_only_the_drawing_inside_domain(monkeypatch, bo
     record = sim.realized_geometry()
     axis = record.entities[0].axes[0]
     assert axis.declared_bounds_m == (lo, hi)
-    assert axis.comparison_bounds_m == (max(lo, 0), min(hi, DOMAIN[0]))
+    assert axis.comparison_bounds_m == (
+        (axis.bounds_m[0], hi) if side == "lo" else (lo, axis.bounds_m[1]))
     assert axis.free_ends == ((False, True) if side == "lo" else (True, False))
     drawn = axis.comparison_bounds_m[1] - axis.comparison_bounds_m[0]
     assert axis.extent_m == pytest.approx(drawn, abs=1e-15)
@@ -174,3 +175,79 @@ def test_five_line_patch_reports_only_in_domain_free_edge_residuals():
     axes = sim.realized_geometry().entities[0].axes
     assert axes[0].extent_m == pytest.approx(0.01675)
     assert axes[1].extent_m == pytest.approx(0.01175)
+
+
+@pytest.mark.parametrize("join", ["butted_off_node", "butted_on_node", "overlap", "tee"])
+@pytest.mark.parametrize("misregistered", [False, True])
+def test_composite_only_free_ends_decide_verdict(monkeypatch, join, misregistered):
+    calls = _stub_runners(monkeypatch)
+    seam = 0.010 if join == "butted_on_node" else 0.0103
+    first = Box((0.003, 0.005, 0.003), (seam, 0.015, 0.003))
+    second = Box((seam - (0.002 if join == "overlap" else 0),
+                  0.008 if join == "tee" else 0.005, 0.003),
+                 (0.017, 0.012 if join == "tee" else 0.015, 0.003))
+    profiles = edge_aware_profiles(DOMAIN, DX, sheets=[first, second])
+    sim = Simulation(10e9, DOMAIN, dx=DX, boundary="pec", **profiles)
+    if misregistered:
+        second = Box(second.corner_lo, (0.0168, second.corner_hi[1], 0.003))
+    for sheet in (first, second):
+        sim.add(sheet, material="pec")
+    sim.add_source((0.002, 0.002, 0.002), component="ez")
+    findings = sim.preflight().by_code(CODE)
+    assert bool(findings) == misregistered
+    record = sim.realized_geometry()
+    assert record.entities[1].axes[0].free_ends == (False, True)
+    for entity in record.entities:
+        for axis in entity.axes:
+            if axis.free_ends is None:
+                continue
+            comparison = axis.comparison_bounds_m
+            residual = axis.extent_m - (comparison[1] - comparison[0])
+            free_residual = sum(sign * delta for sign, delta, free in
+                                zip((-1, 1), axis.face_residual_m, axis.free_ends, strict=True)
+                                if free)
+            assert residual == pytest.approx(free_residual, abs=1e-15)
+    if misregistered:
+        with pytest.raises(ValueError, match="conductor sheet dimension"):
+            sim.run(n_steps=1, compute_s_params=False)
+        assert not calls
+    else:
+        with pytest.raises(_ReachedRunner):
+            sim.run(n_steps=1, compute_s_params=False)
+        assert calls == [True]
+
+
+def test_declared_survives_design_and_convergence_rebuild(monkeypatch):
+    from rfx.interop import design_to_dict, simulation_from_design
+    from rfx.convergence import quick_convergence
+
+    original = _build(snap="declared")
+    document = design_to_dict(original)
+    assert document["solver"]["snap"] == "declared"
+    restored = simulation_from_design(document)
+    assert restored.realized_geometry().snap == "declared"
+    assert restored.preflight().by_code(CODE)[0].severity == "warning"
+
+    def study(*, sim_factory, **kwargs):
+        for dx in (DX, DX / 2):
+            rebuilt = sim_factory(dx)
+            assert rebuilt._snap == "declared"
+            assert rebuilt.realized_geometry().snap == "declared"
+            assert all(row.severity == "warning" for row in rebuilt.preflight().by_code(CODE))
+        return "rebuilt"
+
+    monkeypatch.setattr("rfx.convergence.convergence_study", study)
+    assert quick_convergence(restored) == "rebuilt"
+    # Older design documents have the original strict default.
+    del document["solver"]["snap"]
+    assert simulation_from_design(document)._snap == "strict"
+
+
+def test_config_carries_snap():
+    from rfx.config.loader import _build_simulation_kwargs
+
+    cfg = {"frequency": {"freq_max": 10e9}, "domain": DOMAIN, "snap": "declared"}
+    assert Simulation(**_build_simulation_kwargs(cfg))._snap == "declared"
+    cfg["snap"] = "invalid"
+    with pytest.raises(ValueError, match="snap must be"):
+        Simulation(**_build_simulation_kwargs(cfg))

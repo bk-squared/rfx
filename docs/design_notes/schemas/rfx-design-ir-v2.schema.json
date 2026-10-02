@@ -173,6 +173,12 @@
         "dt_min_cell"
       ],
       "properties": {
+        "snap": {
+          "type": "string",
+          "enum": ["strict", "declared"],
+          "default": "strict",
+          "description": "Sheet-size acceptance policy; omitted legacy documents default to strict."
+        },
         "dt_pin": {
           "type": [
             "number",

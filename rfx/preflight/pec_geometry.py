@@ -1154,7 +1154,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     sees is ``covered node span + EDGE_OFFSET * (cell beyond each end)``.
     Reported in input units against the drawn size; an end that lies on the
     domain wall is a wall, not an edge, and adds nothing. At non-free ends,
-    exclude the drawing outside the domain from the comparison. This fires for a
+    exclude their residual from the comparison (including seams and overlaps). This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
     rows = []

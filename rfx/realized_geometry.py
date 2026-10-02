@@ -16,7 +16,7 @@ class AxisGeometry:
     """One entity axis, including signed (solved minus declared) residuals.
 
     Sheet in-plane axes also expose ``comparison_bounds_m`` (the drawing
-    clipped at non-free domain ends) and ``free_ends`` for size verdicts.
+    with non-free ends replaced by their solved coordinates) and ``free_ends`` for size verdicts.
     ``declared_bounds_m`` and ``face_residual_m`` retain the original drawing.
     """
 
@@ -28,7 +28,7 @@ class AxisGeometry:
     extent_m: float
     face_residual_m: tuple[float, float] | None
     cell_size_m: float
-    # Sheet-size verdict compares against these domain-clipped drawn bounds.
+    # Sheet-size verdict excludes residuals at all non-free ends.
     comparison_bounds_m: tuple[float, float] | None = None
     free_ends: tuple[bool, bool] | None = None
 

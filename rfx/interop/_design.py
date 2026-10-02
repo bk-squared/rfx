@@ -107,7 +107,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import math
 from typing import Any, Callable, NamedTuple
 
 import jax
@@ -864,6 +863,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_probes",
     "_refinement",
     "_solver",
+    "_snap",
     "_stencil_order",
     "_dt_pin",
     "_dt_min_cell",
@@ -1512,6 +1512,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
         },
         "boundary": _dump_boundary(sim),
         "solver": {
+            "snap": check_text(sim._snap, what="_snap"),
             "precision": check_text(sim._precision, what="_precision"),
             "solver": check_text(sim._solver, what="_solver"),
             "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
@@ -1767,7 +1768,7 @@ def simulation_from_design(document: Any) -> Any:
     _require_exact_keys(
         solver,
         {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps",
-         "dt_pin", "dt_min_cell"},
+         "dt_pin", "dt_min_cell"} | ({"snap"} & set(solver)),
         what="solver",
     )
 
@@ -1812,6 +1813,7 @@ def simulation_from_design(document: Any) -> Any:
             if mesh["dz_profile"] is None
             else _array_from_dict(mesh["dz_profile"], what="mesh.dz_profile")
         ),
+        snap=check_text(solver.get("snap", "strict"), what="solver.snap"),
         precision=check_text(solver["precision"], what="solver.precision"),
         solver=check_text(solver["solver"], what="solver.solver"),
         adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
@@ -2069,6 +2071,9 @@ def _first_difference(left: Any, right: Any, path: str = "") -> str | None:
 
 def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
+    # Documents written before snap was exported use the strict default.
+    if "snap" not in document["solver"]:
+        document = {**document, "solver": {**document["solver"], "snap": "strict"}}
     if _equal(rebuilt, document):
         return
     where = _first_difference(rebuilt, document) or "<unknown>"

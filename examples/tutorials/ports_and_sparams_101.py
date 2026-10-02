@@ -26,8 +26,6 @@ from rfx import (
     Box,
     GaussianPulse,
     Simulation,
-    realized_pec_edge_masks,
-    realized_wall_planes,
 )
 
 
@@ -115,13 +113,19 @@ def build_microstrip_ports() -> Simulation:
     """Build a short, lossy microstrip line with the correct modal ports."""
     from rfx.mesh_edges import edge_aware_profiles
 
-    domain = (0.020, 0.010, 0.004)
-    dx = 0.05e-3
+    domain = (0.044, 0.034, 0.004)
+    dx = 0.25e-3
+    margin = 12e-3
     ground = Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 1.25e-3))
     substrate = Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3))
     trace = Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.25e-3))
-    # Eight 50 um interior cells beside each absorber fit before the
-    # ground edge at 0.75 mm; z retains its 0.25 mm layer spacing.
+    # Translate the board and ports together to leave 12 mm extra margin.
+    # Eight interior cells beside each absorber retain the 0.25 mm target.
+    def shifted(box):
+        return Box(tuple(v + margin if a < 2 else v for a, v in enumerate(box.corner_lo)),
+                   tuple(v + margin if a < 2 else v for a, v in enumerate(box.corner_hi)))
+
+    ground, substrate, trace = map(shifted, (ground, substrate, trace))
     edge_dx = dx
     # #1138: register solved edges and port planes to the drawing.
     pad = 8 * edge_dx
@@ -136,7 +140,7 @@ def build_microstrip_ports() -> Simulation:
         (domain[0] - 2 * pad, domain[1] - 2 * pad, domain[2]), 0.25e-3, boundary_cell=edge_dx,
         sheets=[interior_box(ground), interior_box(trace)],
         solids=[interior_box(substrate)],
-        faces={"x": [4e-3 - pad, 16e-3 - pad], "y": [5e-3 - pad]}, axes="xy",
+        faces={"x": [4e-3 + margin - pad, 16e-3 + margin - pad], "y": [5e-3 + margin - pad]}, axes="xy",
     )
     profiles = {key: np.concatenate((np.full(8, edge_dx), cells, np.full(8, edge_dx)))
                 for key, cells in profiles.items()}
@@ -184,13 +188,13 @@ def build_microstrip_ports() -> Simulation:
         "eps_r_sub": 3.2,
     }
     sim.add_msl_port(
-        (4.0e-3, 5.0e-3, 1.25e-3),
+        (4.0e-3 + margin, 5.0e-3 + margin, 1.25e-3),
         direction="+x",
         name="left",
         **common,
     )
     sim.add_msl_port(
-        (16.0e-3, 5.0e-3, 1.25e-3),
+        (16.0e-3 + margin, 5.0e-3 + margin, 1.25e-3),
         direction="-x",
         name="right",
         **common,
@@ -293,7 +297,9 @@ def main() -> None:
     # small generic-port demonstrations above.
     #
     # The edge-aware propagation mesh reports that the automatic downstream
-    # reflector-clearance solve is skipped on graded cells. The three-layer
+    # reflector-clearance solve is skipped on graded cells. Both short feeds
+    # also report insufficient probe clearance; fitted Z0/beta are unreadable.
+    # The three-layer
     # absorber also remains advisory. This section only builds the setup; it
     # does not quote a settled microstrip S-matrix.
     microstrip_report = microstrip.preflight()

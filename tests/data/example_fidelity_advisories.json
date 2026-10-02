@@ -500,9 +500,9 @@
   {
    "code": "msl_port_geometry",
    "disposition": "intended",
-   "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only, without claiming a settled S-matrix or automatic downstream reflector clearance.",
+   "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The two short-feed probe-clearance warnings and skipped automatic offset solve are reported without claiming fitted Z0/beta or a settled S-matrix.",
    "ref": "examples/tutorials/ports_and_sparams_101.py:114-148,315-321",
-   "rows": 1,
+   "rows": 3,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   }
  ]

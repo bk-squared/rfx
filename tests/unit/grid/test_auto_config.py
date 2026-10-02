@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from rfx.auto_config import auto_configure, SimConfig
+from rfx.auto_config import auto_configure
 
 
 def test_auto_configure_source_recommendation_cpml():
@@ -174,7 +174,6 @@ def test_smooth_grading_preserves_boundary_values():
 def test_simulation_auto_mesh_sets_dx():
     """When dx=None and geometry exists, run() should auto-set dx from features."""
     import warnings
-    import pytest
     from rfx import Simulation, Box, GaussianPulse
 
     sim = Simulation(freq_max=5e9, domain=(0.05, 0.05, 0.02), boundary="pec")
@@ -474,7 +473,6 @@ def test_auto_configure_waveform_default_byte_identical():
     """waveform=None (and a cutoff=3 waveform at the internal f_center /
     bw=0.8) reproduce the historical 6*tau n_steps exactly."""
     import math
-    import pytest
     from rfx import GaussianPulse
 
     f1, f2 = 1e9, 3e9

@@ -447,6 +447,7 @@ def quick_convergence(
         from rfx.api import Simulation
         new_sim = Simulation(
             freq_max=sim._freq_max,
+            snap=sim._snap,
             domain=sim._domain,
             # Issue #647 grep sweep: clone the normalized BoundarySpec, not
             # the collapsed `_boundary` string. `_boundary` is

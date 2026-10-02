@@ -2431,39 +2431,39 @@
         "domain": {
           "axes": {
             "x": {
-              "declared_extent_um": 20000.0,
+              "declared_extent_um": 44000.0,
               "declared_um": [
                 0.0,
-                20000.0
+                44000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 20000.0,
-              "n_cells": 106,
-              "realized_extent_um": 20000.0,
+              "mesh_extent_um": 44000.0,
+              "n_cells": 178,
+              "realized_extent_um": 44000.0,
               "realized_um": [
                 0.0,
-                20000.0
+                44000.0
               ]
             },
             "y": {
-              "declared_extent_um": 10000.0,
+              "declared_extent_um": 34000.0,
               "declared_um": [
                 0.0,
-                10000.0
+                34000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 10000.0,
-              "n_cells": 68,
-              "realized_extent_um": 10000.0,
+              "mesh_extent_um": 34000.0,
+              "n_cells": 140,
+              "realized_extent_um": 34000.0,
               "realized_um": [
                 0.0,
-                10000.0
+                34000.0
               ]
             },
             "z": {
@@ -2490,41 +2490,41 @@
           "n_cells": null,
           "realization": null
         },
-        "geometry|substrate|750.000,750.000,1250.000um->19250.000,9250.000,2250.000um": {
+        "geometry|substrate|12750.000,12750.000,1250.000um->31250.000,21250.000,2250.000um": {
           "axes": {
             "x": {
-              "cell_um": 234.430379747,
+              "cell_um": 247.666666667,
               "declared_extent_um": 18500.0,
               "declared_um": [
-                750.0,
-                19250.0
+                12750.0,
+                31250.0
               ],
               "face_residual_um": [
-                23.3333333333,
-                43.3333333333
+                87.5,
+                162.5
               ],
-              "realized_extent_um": 18520.0,
+              "realized_extent_um": 18575.0,
               "realized_um": [
-                773.333333333,
-                19293.3333333
+                12837.5,
+                31412.5
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 207.75152439,
+              "cell_um": 231.452702703,
               "declared_extent_um": 8500.0,
               "declared_um": [
-                750.0,
-                9250.0
+                12750.0,
+                21250.0
               ],
               "face_residual_um": [
-                20.78125,
-                38.59375
+                74.375,
+                138.125
               ],
-              "realized_extent_um": 8517.8125,
+              "realized_extent_um": 8563.75,
               "realized_um": [
-                770.78125,
-                9288.59375
+                12824.375,
+                21388.125
               ],
               "sub_cell": false
             },
@@ -2547,7 +2547,20 @@
               "sub_cell": false
             }
           },
-          "findings": [],
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 162.5 um (0.88% of the declared 18500.0 um extent); SIZE 18575.0 um (+75.0 um, +0.41%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 138.1 um (1.63% of the declared 8500.0 um extent); SIZE 8563.8 um (+63.8 um, +0.75%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
           "material": {
             "eps_r": 3.2,
             "kind": "dielectric",
@@ -2556,17 +2569,17 @@
             "name": "substrate",
             "sigma": 0.01
           },
-          "n_cells": 12956,
+          "n_cells": 11100,
           "realization": null
         },
-        "thin_conductor|pec|750.000,4500.000,2250.000um->19250.000,5500.000,2250.000um": {
+        "thin_conductor|pec|12750.000,12750.000,1250.000um->31250.000,21250.000,1250.000um": {
           "axes": {
             "x": {
-              "cell_um": 234.430379747,
+              "cell_um": 247.666666667,
               "declared_extent_um": 18500.0,
               "declared_um": [
-                750.0,
-                19250.0
+                12750.0,
+                31250.0
               ],
               "face_residual_um": [
                 0.0,
@@ -2574,81 +2587,17 @@
               ],
               "realized_extent_um": 18500.0,
               "realized_um": [
-                750.0,
-                19250.0
+                12750.0,
+                31250.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 214.25,
-              "declared_extent_um": 1000.0,
-              "declared_um": [
-                4500.0,
-                5500.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "realized_extent_um": 1000.0,
-              "realized_um": [
-                4500.0,
-                5500.0
-              ],
-              "sub_cell": false
-            },
-            "z": {
-              "cell_um": 250.0,
-              "declared_extent_um": 0.0,
-              "declared_um": [
-                2250.0,
-                2250.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "realized_extent_um": 0.0,
-              "realized_um": [
-                2250.0,
-                2250.0
-              ],
-              "sub_cell": true
-            }
-          },
-          "findings": [],
-          "material": {
-            "kind": "pec"
-          },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 2250.00 um (395 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
-        },
-        "thin_conductor|pec|750.000,750.000,1250.000um->19250.000,9250.000,1250.000um": {
-          "axes": {
-            "x": {
-              "cell_um": 234.430379747,
-              "declared_extent_um": 18500.0,
-              "declared_um": [
-                750.0,
-                19250.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "realized_extent_um": 18500.0,
-              "realized_um": [
-                750.0,
-                19250.0
-              ],
-              "sub_cell": false
-            },
-            "y": {
-              "cell_um": 207.75152439,
+              "cell_um": 231.452702703,
               "declared_extent_um": 8500.0,
               "declared_um": [
-                750.0,
-                9250.0
+                12750.0,
+                21250.0
               ],
               "face_residual_um": [
                 0.0,
@@ -2656,8 +2605,8 @@
               ],
               "realized_extent_um": 8500.0,
               "realized_um": [
-                750.0,
-                9250.0
+                12750.0,
+                21250.0
               ],
               "sub_cell": false
             },
@@ -2685,7 +2634,71 @@
             "kind": "pec"
           },
           "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1250.00 um (3239 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "realization": "PEC sheet on node plane z = 1250.00 um (2775 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+        },
+        "thin_conductor|pec|12750.000,16500.000,2250.000um->31250.000,17500.000,2250.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 247.666666667,
+              "declared_extent_um": 18500.0,
+              "declared_um": [
+                12750.0,
+                31250.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 18500.0,
+              "realized_um": [
+                12750.0,
+                31250.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 212.75,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                16500.0,
+                17500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 1000.0,
+              "realized_um": [
+                16500.0,
+                17500.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.0,
+              "declared_extent_um": 0.0,
+              "declared_um": [
+                2250.0,
+                2250.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                2250.0,
+                2250.0
+              ],
+              "sub_cell": true
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 0,
+          "realization": "PEC sheet on node plane z = 2250.00 um (375 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         }
       },
       "preflight": [
@@ -2693,6 +2706,20 @@
           "code": "msl_port_geometry",
           "loc": null,
           "message": "MSL auto probe-offset interval solve (issue #469) SKIPPED for 2 port(s), so the downstream reflector clearance is NOT enforced for them and no auto probe spacing is widened (#681; on a graded propagation axis both would count reflector and absorber distances in cells of more than one size). Per port: 'left' (direction='+x'): the propagation axis x is GRADED; the automatic probe ladder is counted in this port's own runway cell (offset 20 + 4 x spacing 3 cells of 250\u00b5m, probe 0 5mm from the source); 'right' (direction='-x'): the propagation axis x is GRADED; the automatic probe ladder is counted in this port's own runway cell (offset 20 + 4 x spacing 3 cells of 250\u00b5m, probe 0 5mm from the source). This used to be silent for every non-uniform mesh (issue #686). Set n_probe_offset explicitly on these ports, or make the propagation axis uniform, if the deepest probe's clearance matters.",
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
+        },
+        {
+          "code": "msl_port_geometry",
+          "loc": null,
+          "message": "MSL port 'left' (direction='+x'): deepest probe at x=24.00mm sits -11250\u00b5m from a strong reflector candidate (thin_conductor[0] at x\u2208[12.75,31.25]mm y\u2208[12.75,21.25]mm; distance estimated from registered conductor bounds); recommended \u2265 5586\u00b5m (= \u03bb_g/4 at f_max with \u03b5_eff_proxy=5.0). Measured on ONE fixture (VESSL 369367260508, cv06b fixed-source, same source, load and DUT; only p1's observation offset varied; both arms settled below -118 dB): standing-wave content at the probes corrupts the FITTED Z0/beta - the near-reflector arm's beta scan railed on 51/51 bins over 3-5 GHz against 0/51 for the compliant arm - while raw S11 at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported here as physics - they are raw, unprojected values carrying the coherent power excess tracked as #838. Their 0.009 dB difference is one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that comparison's producer verdict was not_read. What it does show is that S11/S21 move far less than the fit does, because they normalize with the analytic Hammerstad-Jensen Z0 rather than with the fit. Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure is right. This layout warning does not certify accuracy when absent. Available layout: no compliant n_probe_offset exists on this feed length (interval empty). Choose an offset within a nonempty interval; if it is empty, extend the uniform feed region to fit the source standoff, full probe ladder and reflector clearance. Gate on probe_clearance for the geometric condition and beta_railed for the fitted-value symptom; reliable is a per-bin fit-quality mask and gates neither. When no compliant offset exists on the available feed length, keep the analytic Hammerstad-Jensen Z0 for normalization (already the production path) and treat the fitted Z0/beta as UNREADABLE rather than merely uncertain. S11/S21 are the better-behaved of the two, but nothing here BOUNDS their error. The fix is to lengthen the uniform feed region or move the reference plane; raising n_probe_offset alone moves the probes toward the reflector. Check settling and observation-plane sensitivity before interpreting S.",
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
+        },
+        {
+          "code": "msl_port_geometry",
+          "loc": null,
+          "message": "MSL port 'right' (direction='-x'): deepest probe at x=20.00mm sits -11250\u00b5m from a strong reflector candidate (thin_conductor[0] at x\u2208[12.75,31.25]mm y\u2208[12.75,21.25]mm; distance estimated from registered conductor bounds); recommended \u2265 5586\u00b5m (= \u03bb_g/4 at f_max with \u03b5_eff_proxy=5.0). Measured on ONE fixture (VESSL 369367260508, cv06b fixed-source, same source, load and DUT; only p1's observation offset varied; both arms settled below -118 dB): standing-wave content at the probes corrupts the FITTED Z0/beta - the near-reflector arm's beta scan railed on 51/51 bins over 3-5 GHz against 0/51 for the compliant arm - while raw S11 at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported here as physics - they are raw, unprojected values carrying the coherent power excess tracked as #838. Their 0.009 dB difference is one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that comparison's producer verdict was not_read. What it does show is that S11/S21 move far less than the fit does, because they normalize with the analytic Hammerstad-Jensen Z0 rather than with the fit. Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure is right. This layout warning does not certify accuracy when absent. Available layout: no compliant n_probe_offset exists on this feed length (interval empty). Choose an offset within a nonempty interval; if it is empty, extend the uniform feed region to fit the source standoff, full probe ladder and reflector clearance. Gate on probe_clearance for the geometric condition and beta_railed for the fitted-value symptom; reliable is a per-bin fit-quality mask and gates neither. When no compliant offset exists on the available feed length, keep the analytic Hammerstad-Jensen Z0 for normalization (already the production path) and treat the fitted Z0/beta as UNREADABLE rather than merely uncertain. S11/S21 are the better-behaved of the two, but nothing here BOUNDS their error. The fix is to lengthen the uniform feed region or move the reference plane; raising n_probe_offset alone moves the probes toward the reflector. Check settling and observation-plane sensitivity before interpreting S.",
           "severity": "warning",
           "source": "_check_msl_port_geometry"
         },
