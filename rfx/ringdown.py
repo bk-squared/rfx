@@ -575,7 +575,7 @@ def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float):
     if np.any(rms <= 0) or not np.all(np.isfinite(rms)):
         raise ValueError(
             f"a channel has zero or non-finite RMS over the window ({rms}); "
-            "the port saw no ringing to identify")
+            "the identification channel saw no ringing to identify")
     b0, b1 = [], []
     for ch in range(C):
         y = Yd[:, ch].astype(np.complex128) / rms[ch]
