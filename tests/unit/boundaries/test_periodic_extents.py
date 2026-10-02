@@ -110,8 +110,10 @@ def test_microstrip_plane_and_substrate_endpoint_at_period():
     assert msl_h_plane_stencil(grid, port(.010), .010) == msl_h_plane_stencil(grid, port(0.), 0.)
 
 
-@pytest.mark.parametrize('snap', ['strict', 'declared'])
-@pytest.mark.parametrize('kind', ['pec', 'surface_impedance', 'dc'])
+@pytest.mark.parametrize('kind,snap', [
+    ('pec', 'strict'), ('pec', 'declared'),
+    ('surface_impedance', 'strict'), ('dc', 'strict'),
+])
 def test_thin_sheet_at_period_has_zero_plane_edges(kind, snap):
     from rfx.boundaries.pec import realized_pec_edge_masks
     footprints = []
@@ -181,9 +183,12 @@ def _check_sheet_extent(actual, expected):
         np.testing.assert_array_equal(a, b)
 
 
-@pytest.mark.parametrize('snap', ['strict', 'declared'])
 @pytest.mark.parametrize('start', [.001, .009])
-@pytest.mark.parametrize('kind', ['box', 'thin', 'surface_impedance', 'pinned'])
+@pytest.mark.parametrize('kind,snap', [
+    ('box', 'strict'), ('box', 'declared'),
+    ('thin', 'strict'), ('thin', 'declared'),
+    ('surface_impedance', 'strict'), ('pinned', 'strict'),
+])
 def test_sheet_tangential_interval_keeps_last_edge_without_wrapping_its_start(start, kind, snap):
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx

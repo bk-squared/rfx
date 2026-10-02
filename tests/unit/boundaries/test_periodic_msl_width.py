@@ -13,7 +13,7 @@ from rfx.boundaries.spec import BoundarySpec
 
 def microstrip_model(*, full_period=False, point_loads=False, mode='uniform', short_trace=False,
                      field_source=True, end=.006):
-    # #1138: geometry[1] y solved +17.5 % off; this test checks periodic microstrip mode aperture is refused.
+    # #1138: geometry[1] x solved +8.75 % off the domain-clipped drawing (all variants); this test checks periodic microstrip mode aperture is refused.
     sim = Simulation(20e9, (.010, .006, .004), snap="declared", dx=.001, cpml_layers=0,
                      boundary=BoundarySpec(x='pec', y='periodic', z='pec'))
     sim.add(Box((0., 0., .001), (.010, .006, .001)), material='pec')

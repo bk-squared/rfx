@@ -81,7 +81,7 @@ def build_thru(pulse: GaussianPulse,
     instrument for the in-situ Zc(f)/beta(f) measurement
     (docs/design_notes/thru_feedpost_twoseg_predeclaration.md, I1).
     """
-    # #1138: retain the declared sheet geometry for closed investigation.
+    # #1138: geometry[0] x/y solved +2.059/+7 % off the domain-clipped drawing; retain closed-investigation geometry.
     sim = Simulation(snap="declared",
         freq_max=FREQ_MAX, domain=DOMAIN, dx=DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
