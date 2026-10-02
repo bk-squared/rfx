@@ -578,10 +578,9 @@ def test_vmap_cpml_dielectric_is_finite_and_matches_run():
         ref = np.asarray(
             _vmap_full_dielectric_cpml_sim(float(ev)).run(n_steps=n_steps).time_series
         )
-        np.testing.assert_allclose(
-            ts[idx], ref, atol=1e-5, rtol=1e-4,
-            err_msg=f"vmap CPML sweep (eps_r={ev}) disagrees with "
-                    f"material-aware run()",
+        np.testing.assert_array_equal(
+            ts[idx], ref,
+            err_msg=f"vmap CPML sweep (eps_r={ev}) disagrees with material-aware run()",
         )
 
 
