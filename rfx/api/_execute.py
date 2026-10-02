@@ -32,6 +32,21 @@ from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in mo
 from rfx.materials.debye import init_debye  # noqa: F401  (local import in moved bodies)
 from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in moved bodies)
 from rfx.adi import ADIState2D, run_adi_2d
+
+
+@jax.custom_jvp
+def _refuse_adi_2d_material_derivative(x):
+    """Identity on the 2-D ADI material arrays; differentiating it raises."""
+    return x
+
+
+@_refuse_adi_2d_material_derivative.defjvp
+def _refuse_adi_2d_material_derivative_jvp(primals, tangents):
+    raise NotImplementedError(
+        "solver='adi' in 2-D cannot differentiate with respect to the "
+        "permittivity or conductivity (eps_override / sigma_override): the "
+        "2-D ADI update's derivative is NaN in float32 (#1373). The value "
+        "runs; for a gradient use solver='yee', or mode='3d' with ADI.")
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
 from rfx.ringdown import RingdownSpec  # noqa: F401  (run() signature type-hint)
@@ -1492,8 +1507,12 @@ class _ExecuteMixin:
             i, j, _ = grid.position_to_index(pe.position)
             probes.append((i, j, pe.component))
 
-        eps_r_2d = materials.eps_r[:, :, 0]
-        sigma_2d = materials.sigma[:, :, 0]
+        # A derivative with respect to eps or sigma through the 2-D ADI update
+        # is NaN (its coupling coefficient's backward pass underflows float32;
+        # 3-D is finite), so it is refused when one is requested; the value,
+        # also under jax.jit, is unaffected (#1373).
+        eps_r_2d = _refuse_adi_2d_material_derivative(materials.eps_r[:, :, 0])
+        sigma_2d = _refuse_adi_2d_material_derivative(materials.sigma[:, :, 0])
 
         # Add implicit absorbing sigma layer for CPML boundary
         if self._boundary == "cpml" and self._cpml_layers > 0:
