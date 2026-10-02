@@ -1177,6 +1177,8 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         f"cover {_fmt_len(span)}, solved as {_fmt_len(eff)} ({rel:+.2%})"
         for _, rel, e, a, ext, span, eff in rows[:_CAMPAIGN_MAX_OFFENDERS])
     _w.warn(PreflightWarning(
+        severity="error",
+        message=(
         f"{len(rows)} conductor sheet dimension(s) are solved more than "
         f"{_SHEET_EFFECTIVE_SIZE_TOL:.0%} off their drawn size (worst "
         f"{min(len(rows), _CAMPAIGN_MAX_OFFENDERS)} listed): {lines}. "
@@ -1190,6 +1192,7 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         "Simulation(dx_profile=..., dy_profile=...); a node ON the edge is "
         "not the fix. STALE IF: the footprint's node span on the run's node "
         "coordinates does not reproduce the printed numbers.",
+        ),
         code="sheet_effective_size",
         source="_validate_cfg_off_lattice_design_edges",
     ))
