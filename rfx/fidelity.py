@@ -359,7 +359,7 @@ def fidelity_report(sim, print_report: bool = True):
     # conductors are OR-ed in after ALL geometry (a different ordering
     # question, not audited here).
     pec_before = np.zeros(eps.shape, dtype=bool)
-    # Every PEC-assembled geometry entity's realized cells, rasterized ONCE
+    # Every PEC volume entity's realized cells, rasterized ONCE
     # and kept as flat indices (memory scales with occupied cells, not with
     # the grid). The ordered finding below reads this instead of
     # re-rasterizing every earlier conductor for every overlapping
@@ -372,10 +372,10 @@ def fidelity_report(sim, print_report: bool = True):
     # never reads as a clean one (the #303 class: "All checks passed" with
     # a silently skipped family).
     pec_unrasterized: list = []
-    # Which of those entities realized as SHEETS, so the finding can print
-    # "footprint nodes" where it means nodes and "cells" where it means
-    # cells (a sheet contributes neither cells nor eps).
-    pec_sheet_entities: set = set()
+    # Sheet faces are indexed by their lower in-plane corner and normal.
+    # Keep them separate from volume cells: both adjacent dielectric cells
+    # must be occupied before a face contributes to the ordered finding.
+    pec_faces_by_entity: dict = {}
 
     # Every entry's #931 sheet resolution, once, and the union of the PEC
     # sheet footprints: a sheet end that runs on into another sheet is a
@@ -508,28 +508,43 @@ def fidelity_report(sim, print_report: bool = True):
                            "fraction of the declared material is not solved",
                     remedy="check the overlap against the intended stack; "
                            "shrink whichever body is over-declared"))
-        # Ordered case of the overlap above (issue #589): a non-PEC entity
-        # sharing cells with a PEC entity declared EARLIER. claimed-by-
+        # Ordered overlap (issue #589): cells shared with an EARLIER PEC
+        # volume, or complete sheet faces with dielectric on BOTH sides. claimed-by-
         # conductor stays byte-identical (it fires for either order); this
         # adds the statement that the assembly order makes these cells a
         # no-op — a hole "carved" by a later dielectric does not exist in
         # the solve. Report-only: a slab deliberately drawn through a
         # ground sheet is a legitimate pattern and lands here too.
         if kind_src == "geometry" and not pec_assembled:
-            n_ov = int(np.count_nonzero(mask & pec_before))
-            if n_ov > 0:
-                flat = mask.ravel()
-                contributors = []
-                for m, cells_m in pec_cells_by_entity.items():
-                    if m >= i:      # declaration order; defensive
-                        continue
+            n_cells = int(np.count_nonzero(mask & pec_before))
+            flat = mask.ravel()
+            contributors = []
+            for m, cells_m in pec_cells_by_entity.items():
+                if m < i:
                     n_m = int(np.count_nonzero(flat[cells_m]))
-                    if n_m > 0:
+                    if n_m:
                         contributors.append((m, n_m))
+            faces_by_normal = {}
+            for m, (normal, faces) in pec_faces_by_entity.items():
+                if m >= i:
+                    continue
+                coords = np.unravel_index(faces, mask.shape)
+                valid = coords[normal] > 0
+                faces = faces[valid]
+                stride = int(np.prod(mask.shape[normal + 1:]))
+                occupied = faces[flat[faces] & flat[faces - stride]]
+                if occupied.size:
+                    contributors.append((m, int(occupied.size)))
+                    faces_by_normal.setdefault(normal, []).append(occupied)
+            n_faces = sum(np.unique(np.concatenate(faces)).size
+                          for faces in faces_by_normal.values())
+            n_ov = n_cells + int(n_faces)
+            if n_ov > 0:
+                contributors.sort()
                 who = ", ".join(
                     f"geometry[{m}] '{sim._geometry[m].material_name}' "
                     f"({n_m} "
-                    f"{'sheet-contact cells' if m in pec_sheet_entities else 'cells'})"
+                    f"{'faces' if m in pec_faces_by_entity else 'cells'})"
                     for m, n_m in contributors)
                 # A VOLUME claims the cell, so the eps written there is
                 # discarded and "no-op" is literally true. A SHEET owns no
@@ -539,15 +554,16 @@ def fidelity_report(sim, print_report: bool = True):
                 # conductor -- but only one of them discards material, so
                 # they get different sentences. The volume-only text is
                 # unchanged byte for byte.
-                if any(m in pec_sheet_entities for m, _ in contributors):
+                if n_faces:
                     detail = (
-                        f"{n_ov} of this entity's {item['n_cells']} cells "
-                        f"({100.0 * n_ov / item['n_cells']:.1f}%) meet a "
-                        f"conductor declared EARLIER: {who}. "
+                        f"{n_faces} metal faces have this entity's declared "
+                        "dielectric in the cells on BOTH sides"
+                        + (f"; {n_cells} cells are already PEC" if n_cells else "")
+                        + f" from a conductor declared EARLIER: {who}. "
                         "_assemble_materials is PEC-OR-only and there is no "
                         "CSG subtraction, so a dielectric declared after a "
                         "conductor cannot carve it. A sheet contributor owns "
-                        f"no cell, so these {n_ov} cells keep the eps_r/sigma "
+                        "no cell, so adjacent cells keep the eps_r/sigma "
                         "declared here — what does not exist is the "
                         "CLEARANCE: the sheet's metal stays on its node "
                         "plane and shorts the tangential E there. If a "
@@ -589,16 +605,16 @@ def fidelity_report(sim, print_report: bool = True):
                             "that conductor is still possible"),
                     remedy="fix that conductor's shape so it rasterizes, "
                            "then re-run fidelity_report"))
-        # Accumulate conductor contact on the MATERIAL CELL lattice. Volumes
-        # occupy cells; sheets contact both cells bounded by a complete metal
-        # face (four in-plane metal nodes). A sheet owns no cell and writes no
-        # eps, but a later dielectric cannot carve clearance through it.
+        # Volumes occupy cells; sheets contribute complete metal faces.
+        # A later dielectric cannot carve a face with material on both sides.
         if pec_assembled:
-            realized_fp = mask if sheet_fp is None else _sheet_contact_cells(sheet_fp, int(geometry.plane[0]))
-            pec_before |= realized_fp
-            pec_cells_by_entity[i] = np.flatnonzero(realized_fp)
-            if sheet_fp is not None:
-                pec_sheet_entities.add(i)
+            if sheet_fp is None:
+                pec_before |= mask
+                pec_cells_by_entity[i] = np.flatnonzero(mask)
+            else:
+                normal = int(geometry.plane[0])
+                pec_faces_by_entity[i] = (
+                    normal, np.flatnonzero(_sheet_contact_faces(sheet_fp, normal)))
         # Absorber overlap: cells outside [0, domain) live in the CPML pad.
         pad_hit = []
         for a in range(3):
@@ -1017,11 +1033,10 @@ def _print(report):
         print()
 
 
-def _sheet_contact_cells(footprint, normal):
-    """Cells bounded by the sheet plane with all four in-plane corners metal.
+def _sheet_contact_faces(footprint, normal):
+    """Metal faces indexed at their lower in-plane corner on the node plane.
 
-    This requires a complete metal face, not a single coincident index.
-    Both cells adjacent to the plane are included; open edges never wrap.
+    All four in-plane corners must be metal; open edges never wrap.
     """
     metal = np.asarray(footprint, bool).copy()
     for a in range(3):
@@ -1032,8 +1047,4 @@ def _sheet_contact_cells(footprint, normal):
         low[a], high[a] = slice(None, -1), slice(1, None)
         shifted[tuple(low)] = metal[tuple(high)]
         metal &= shifted
-    previous = np.zeros_like(metal)
-    low, high = [slice(None)]*3, [slice(None)]*3
-    low[normal], high[normal] = slice(None, -1), slice(1, None)
-    previous[tuple(low)] = metal[tuple(high)]
-    return metal | previous
+    return metal

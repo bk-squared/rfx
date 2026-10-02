@@ -303,17 +303,17 @@ def test_fixture_copies_differ_only_by_the_junction_hole():
 # ---------------------------------------------------------------------------
 
 def test_rule_i_fires_on_the_shorted_junction_copy():
-    """Both adjacent layers have 52 material cells bounded by solid metal."""
+    """52 metal faces have declared PTFE cells on both sides."""
     report = _junction_sim(open_annulus=False).fidelity_report(print_report=False)
     (ptfe,) = _rows(report, "ptfe")
     hits = _findings(ptfe, RULE_I_KIND)
     assert len(hits) == 1, [f["kind"] for f in ptfe["findings"]]
     f = hits[0]
-    assert f["overlap_cells"] == 104
+    assert f["overlap_cells"] == 52
     assert ptfe["n_cells"] == 156
     assert f["conductor_entities"] == [0]
-    assert "geometry[0]" in f["detail"] and "104" in f["detail"]
-    assert "sheet-contact cells" in f["detail"]
+    assert "geometry[0]" in f["detail"] and "52" in f["detail"]
+    assert "52 faces" in f["detail"]
     assert "OR-only" in f["detail"] or "cannot carve" in f["detail"]
     assert f["remedy"]
     # the pre-existing order-blind finding is untouched (it fires here too)
@@ -327,6 +327,32 @@ def test_rule_i_is_silent_when_the_hole_is_built_into_the_conductor():
     assert _findings(ptfe, RULE_I_KIND) == []
     for it in report:
         assert _findings(it, RULE_I_KIND) == [], it["entity"]
+
+
+@pytest.mark.parametrize("normal", range(3))
+@pytest.mark.parametrize("through", [False, True])
+def test_rule_i_ground_sheet_requires_dielectric_on_both_sides(normal, through):
+    d = 1e-3
+    def permute(values):
+        values = list(values)
+        values[normal], values[2] = values[2], values[normal]
+        return tuple(v * d for v in values)
+
+    sim = Simulation(freq_max=10e9, domain=permute((12, 12, 8)), dx=d,
+                     boundary="cpml", cpml_layers=4)
+    sim.add_material("sub", eps_r=3.0)
+    sim.add(Box(permute((2, 2, 3)), permute((10, 10, 3))), material="pec")
+    sim.add(Box(permute((2, 2, 2 if through else 3)), permute((10, 10, 5))),
+            material="sub")
+    (sub,) = _rows(sim.fidelity_report(print_report=False), "sub")
+    hits = _findings(sub, RULE_I_KIND)
+    if through:
+        assert len(hits) == 1
+        assert hits[0]["overlap_cells"] == 64
+        assert "64 faces" in hits[0]["detail"]
+        assert hits[0]["conductor_entities"] == [0]
+    else:
+        assert hits == []
 
 
 def test_rule_i_does_not_fire_on_pec_after_dielectric_the_intended_contacts():
