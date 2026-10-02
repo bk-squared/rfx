@@ -350,3 +350,17 @@ def test_export_takes_the_showcase_catalog_from_the_bundle_when_one_is_given(tmp
     source_only = tmp_path / "source-only/rfx"
     export_snapshot(repo, source_only)
     assert (source_only / "showcase/showcase.json").read_text() == '{"authored": true}\n'
+
+
+def test_raw_anchors_keep_their_own_text_and_urls():
+    source = ('<a href="/rfx/showcase/">See the showcase →</a>'
+              '<a href="https://github.com/bk-squared/rfx">Repository</a>'
+              '<a href="../guide/"><strong>Read</strong> the <em>guide</em></a>')
+    _, markdown = bundle.clean_markdown(
+        source, route="examples/demo", base_url="https://remilab.ai/rfx", source_sha="a" * 40,
+    )
+    assert markdown == (
+        '[See the showcase →](https://remilab.ai/rfx/showcase/)'
+        '[Repository](https://github.com/bk-squared/rfx)'
+        '[Read the guide](https://remilab.ai/rfx/examples/guide/)\n'
+    )

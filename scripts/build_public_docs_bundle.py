@@ -193,7 +193,16 @@ def clean_markdown(text: str, *, route: str, base_url: str, source_sha: str) -> 
                 output += f"\n### {label}\n"
             return output
 
-        prose = re.sub(r"<(LinkCard|Card|video|source|img|a)\b([^>]*)>", component, prose)
+        def anchor(match: re.Match) -> str:
+            attrs, label = match.groups()
+            href = re.search(r"\bhref\s*=\s*([\"'])(.*?)\1", attrs, flags=re.S)
+            # Consume the entire anchor before removing presentation markup;
+            # an opening-tag replacement detaches the label from its URL.
+            label = re.sub(r"</?[^>]+>", "", label)
+            return f"[{label}]({target(href[2])})" if href else label
+
+        prose = re.sub(r"<a\b([^>]*)>(.*?)</a\s*>", anchor, prose, flags=re.S | re.I)
+        prose = re.sub(r"<(LinkCard|Card|video|source|img)\b([^>]*)>", component, prose)
         prose = re.sub(r"</?[A-Za-z][\w.:]*(?:\s[^<>]*?)?/?>", "", prose)
         prose = re.sub(r"(!?\[[^\]]*\]\()([^\s)]+)(\))",
                        lambda m: m[1] + target(m[2]) + m[3], prose)
