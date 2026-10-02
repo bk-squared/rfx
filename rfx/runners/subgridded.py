@@ -17,6 +17,7 @@ from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
 from rfx.grid import Grid
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 from rfx.core.yee import cell_component_e_coeffs as _cell_component_e_coeffs
+from rfx.sources.port_drive import port_drive_waveform
 
 
 def _run_subgridded_once(
@@ -206,6 +207,8 @@ def _run_subgridded_once(
     )
     # Override shape to match exactly (Grid may add +1 rounding)
     fine_grid._shape_override = shape_f
+    # Port tables must use the fine stepper's actual time step.
+    fine_grid.dt = dt
 
     # Rasterize geometry into fine grid materials using shared function.
     # Uses cell-center coordinates (not cell edges) for correct placement.
@@ -454,10 +457,9 @@ def _run_subgridded_once(
             if pe.excite and pe.waveform is not None:
                 for cell in cells:
                     i, j, k = cell
-                    # #1210: the drive coefficient is the E update's own per-component Cb.
-                    cb = float(_cell_component_e_coeffs(
-                        mats_f, (i, j, k), pe.component, dt)[1])
-                    waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times) / n_cells
+                    waveform = port_drive_waveform(
+                        fine_grid, cell, pe.component, pe.waveform, n_steps,
+                        mats_f, n_live=n_cells)
                     sources_f.append((i, j, k, pe.component, np.array(waveform)))
         else:
             # Lumped port
@@ -470,10 +472,8 @@ def _run_subgridded_once(
                 pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 
             if pe.excite and pe.waveform is not None:
-                # #1210: the drive coefficient is the E update's own per-component Cb.
-                cb = float(_cell_component_e_coeffs(
-                    mats_f, idx, pe.component, dt)[1])
-                waveform = (cb / dx_f) * jax.vmap(pe.waveform)(times)
+                waveform = port_drive_waveform(
+                    fine_grid, idx, pe.component, pe.waveform, n_steps, mats_f)
                 sources_f.append((i, j, k, pe.component, np.array(waveform)))
 
     # Build probes on fine grid

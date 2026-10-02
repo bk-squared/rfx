@@ -461,17 +461,12 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     The port impedance must already be folded into *materials* via
     ``setup_lumped_port()``.
     """
-    from rfx.sources.sources import port_d_parallel
+    from rfx.sources.port_drive import port_drive_waveform
     idx = grid.position_to_index(port.position)
     i, j, k = idx
 
-    # #1210: the drive coefficient is the update's own per-component Cb.
-    cb = cell_component_e_coeffs(
-        materials, idx, port.component, grid.dt)[1]
-
-    d_par = port_d_parallel(grid, idx, port.component)
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    waveform = (cb / d_par) * jax.vmap(port.excitation)(times)
+    waveform = port_drive_waveform(
+        grid, idx, port.component, port.excitation, n_steps, materials)
     return SourceSpec(i=i, j=j, k=k,
                       component=port.component, waveform=waveform)
 
@@ -493,19 +488,16 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
     from rfx.sources.sources import _wire_port_live_cells
 
     cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-
-    from rfx.sources.sources import port_d_parallel
+    from rfx.sources.port_drive import port_drive_waveform
 
     specs = []
     for cell, live in zip(cells, live_flags):
         if not live:
             continue
         i, j, k = cell
-        d_par = port_d_parallel(grid, (i, j, k), port.component)
-        cb = cell_component_e_coeffs(      # #1210
-            materials, (i, j, k), port.component, grid.dt)[1]
-        waveform = (cb / d_par) * jax.vmap(port.excitation)(times) / n_live
+        waveform = port_drive_waveform(
+            grid, cell, port.component, port.excitation, n_steps, materials,
+            n_live=n_live)
         specs.append(SourceSpec(i=i, j=j, k=k,
                                 component=port.component, waveform=waveform))
     return specs

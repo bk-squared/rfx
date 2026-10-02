@@ -17,6 +17,7 @@ from rfx.materials.lorentz import init_lorentz
 from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
 from rfx.sources.waveguide_port import _node_span_to_cell_span
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
+from rfx.sources.port_drive import port_drive_waveform
 from rfx.nonuniform import (
     NonUniformGrid,
     e_node_dual_spacing_at,
@@ -980,8 +981,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # carried that ratio's derivative as a false amplitude term. The
     # uniform ``forward()`` builds its drives from the traced overridden
     # materials (``rfx/api/_execute.py``); a traced override now makes this
-    # lane's source table traced in the same way (``make_current_source``
-    # and ``make_msl_port_sources`` stay in jnp for a tracer). A two-run
+    # lane's source table traced in the same way (``port_drive_waveform``,
+    # ``make_current_source`` and ``make_msl_port_sources`` stay in jnp
+    # for a tracer). A two-run
     # reference (the waveguide S-matrix's vacuum override) likewise drives
     # any current source through its own arrays; its modal port drives never
     # read them. The one thing still read from the arrays as drawn is the
@@ -1271,19 +1273,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     # Dead extent cells get no source (issue #318).
                     if not live:
                         continue
-                    src = make_current_source(
-                        grid, cell_ijk, pe.component,
-                        pe.waveform, sizing_n, materials_drive)
-                    # Scale by 1/n_live for distributed excitation. A traced
-                    # source table stays traced: on a mesh design variable
-                    # the injected current moment is normalized by the port
-                    # cell's own control volume (#672), so the table carries
-                    # a real term of the derivative.
-                    _wf = src[4]
-                    scaled_wf = (_wf if is_tracer(_wf) else np.array(_wf)) \
-                        / n_live
-                    sources.append(
-                        (src[0], src[1], src[2], src[3], scaled_wf))
+                    waveform = port_drive_waveform(
+                        grid, cell_ijk, pe.component, pe.waveform, sizing_n,
+                        materials_drive, n_live=n_live)
+                    sources.append((*cell_ijk, pe.component, waveform))
 
             # Wire port S-param spec — include excite/direction so the
             # runner scan body can record V/I and the post-processing
@@ -1347,9 +1340,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 pec_edge_masks = _clear_edges(
                     pec_edge_masks, [(i, j, k)], component=pe.component)
             if pe.excite:
-                src = make_current_source(
+                waveform = port_drive_waveform(
                     grid, idx, pe.component, pe.waveform, sizing_n, materials_drive)
-                sources.append(src)
+                sources.append((*idx, pe.component, waveform))
 
             # Explicit bins opt lumped ports into the same V/I accumulators
             # as a one-cell wire port (#1410). Graded forward returns a
