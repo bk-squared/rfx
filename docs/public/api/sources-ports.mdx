@@ -51,11 +51,12 @@ sim.add_polarized_source((0.010, 0.020, 0.015), polarization="slant45",
 | `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform="differentiated_gaussian", method="bloch")` | plane wave travelling along x, for scattering; 3-D or 2-D (`mode="2d_tmz"`/`"2d_tez"`), with CPML |
 | `add_floquet_port` | see the [generated reference](/rfx/api/generated/) | experimental; no documented S-parameter API |
 
-**`amplitude_kind`.** Always pass it. `"current"` means the waveform amplitude
-is a current in amperes, so the injected power does not depend on the cell
-size or the boundary. `"field"` adds the waveform directly to E each step.
-Leaving it as `None` keeps an older rule that differs between boundaries and
-is deprecated.
+**`amplitude_kind`.** The default is `"current"`: the waveform amplitude is
+a current moment in A·m, injected as `E += Cb * I / dV` on Yee paths.
+`"field"` adds the waveform directly to E each step. The signature sentinel
+`None` also resolves to `"current"` and warns once per simulation; pass the
+kind explicitly to silence that warning. ADI requires explicit `"field"`.
+Witness: `tests/unit/sources/test_source_amplitude_kind.py`.
 
 `add_polarized_source` also accepts `"rhcp"`, `"lhcp"` and complex tuples, but
 circular polarization from this source has not been verified. Don't use it to

@@ -81,12 +81,13 @@ sim.add_source((0.025, 0.025, 0.010), "ez",
 
 Always pass `amplitude_kind`:
 
-- `"current"`: the amplitude is a current in amperes. The injected power does
+- `"current"`: the amplitude is a current moment in A·m. The injected power does
   not change when you refine the mesh. Use this by default.
 - `"field"`: the amplitude is added to E each step, in V/m.
 
-Omitting it is deprecated: the meaning then depends on the boundary and mesh,
-and rfx warns.
+Omitting it or passing `None` selects `"current"` and warns once per simulation.
+The default is boundary- and mesh-independent on Yee paths; ADI requires
+explicit `"field"`. Witness: `tests/unit/sources/test_source_amplitude_kind.py`.
 
 ### Polarized sources
 
