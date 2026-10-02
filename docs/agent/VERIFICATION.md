@@ -33,3 +33,83 @@ Raw execution record: `/private/tmp/agent-docs-blocks/results.json`;
 stdout/stderr: `/private/tmp/agent-docs-blocks/auto-config-1.log`.
 The resonance recipe's former sizing formula and simulation were removed to
 respect the paper boundary; it now documents API selection only.
+
+The same auto-configuration block also passed with `n_steps=1` as its minimal
+execution smoke, under the same CPU/timeout settings. Its log is
+`/private/tmp/agent-docs-blocks/auto-config-minimal.log`.
+
+## Anchor regression
+
+Before the fix, the adjacent/nested raw-anchor test produced:
+
+```text
+E       AssertionError: assert '[a](https://...d the guide\n' == '[See the sho...les/guide/)\n'
+E         - [See the showcase →](https://remilab.ai/rfx/showcase/)[Repository](https://github.com/bk-squared/rfx)[Read the guide](https://remilab.ai/rfx/examples/guide/)
+E         + [a](https://remilab.ai/rfx/showcase/)
+E         + See the showcase →[a](https://github.com/bk-squared/rfx)
+E         + Repository[a](https://remilab.ai/rfx/examples/guide/)
+E         + Read the guide
+FAILED tests/unit/docs/test_public_docs_bundle.py::test_raw_anchors_keep_their_own_text_and_urls
+1 failed, 47 deselected in 0.07s
+```
+
+After the fix, the anchor regression and existing MDX conversion test:
+
+```text
+2 passed, 46 deselected in 0.04s
+```
+
+Full logs: `/private/tmp/agent-docs-red.txt` and
+`/private/tmp/agent-docs-green.txt`.
+
+## Final validation
+
+- Builder tests: `52 passed` (including a mocked-renderer full-build test
+  that checks agent index ordering, combined text and excluded content).
+- Docs consistency: `512 passed, 8 skipped, 16198 deselected, 1 warning`.
+  Skips: optional plotly and trimesh missing at collection, plus support
+  overclaim checks that are not applicable to their current rows.
+- All eligible Markdown sources convert: 67 pages, comprising 57 public
+  pages and 10 allowlisted agent pages. This is a source count, not a
+  completed bundle count.
+- API inventory verification and helper/member import audit pass.
+- Existing builder-test fixtures now supply tracked-file mocks instead of
+  creating temporary Git repositories. No `git init` is needed.
+
+Commands used (environment: `PYTHONDONTWRITEBYTECODE=1`,
+`TMPDIR=/private/tmp`, `MPLCONFIGDIR=/private/tmp/agent-docs-mpl`,
+`JAX_PLATFORMS=cpu`; `python` below is the venv interpreter above):
+
+```text
+python scripts/check_api_reference.py
+python -m pytest tests/unit/docs/test_public_docs_bundle.py -q
+python -m pytest -q -ra -p no:cacheprovider -o addopts='' -m 'docs_consistency and not gpu' --strict-markers tests
+python scripts/build_public_docs_bundle.py --output-dir /private/tmp/agent-docs-bundle
+```
+
+The end-to-end builder attempt failed at toolchain validation:
+
+```text
+importlib.metadata.PackageNotFoundError: No package metadata was found for jinja2
+```
+
+An explicit import check also reported:
+
+```text
+ModuleNotFoundError: No module named 'pdoc'
+```
+
+No packages were installed. No end-to-end bundle was produced, so a generated
+`llms.txt` first-60-lines excerpt and generated-page count are unavailable.
+The mocked-renderer unit test is not a substitute for that build.
+
+Logs: `/private/tmp/agent-docs-build.txt`,
+`/private/tmp/agent-docs-builder-tests.txt`,
+`/private/tmp/agent-docs-consistency-final.txt`,
+`/private/tmp/agent-api-audit.txt`.
+
+`git rev-parse --git-common-dir`:
+
+```text
+/Users/byungkwankim/Documents/rfx/.git
+```

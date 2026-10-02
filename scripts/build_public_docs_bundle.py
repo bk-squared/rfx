@@ -125,7 +125,7 @@ def source_inputs(root: Path) -> list[Path]:
         rel = path.relative_to(root)
         if rel.parts[:2] in {("docs", "public"), ("docs", "pdoc_templates")}:
             result.append(path)
-        elif rel.parts[:2] == ("docs", "agent") and rel.name in PUBLIC_AGENT_PAGES:
+        elif rel.parent == Path("docs/agent") and rel.name in PUBLIC_AGENT_PAGES:
             result.append(path)
         elif rel.parts[0] == "rfx" and path.suffix == ".py":
             result.append(path)

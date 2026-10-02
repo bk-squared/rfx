@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -82,14 +81,14 @@ def test_bundle_tamper_extra_file_and_symlink_are_rejected(tmp_path):
         bundle.validate_bundle(root)
 
 
-def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path):
+def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
     public.mkdir(parents=True)
     (public / "index.mdx").write_text("public")
     (public / "untracked-secret.md").write_text("private")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "docs/public/index.mdx"], check=True)
+    monkeypatch.setattr('export_public_docs_to_gitops.get_tracked_files',
+                        lambda *args: frozenset({public / 'index.mdx'}))
     destination = tmp_path / "rfx"
     release = destination / "versions/v1.8.0"
     release.mkdir(parents=True)
@@ -318,20 +317,20 @@ def test_the_showcase_catalog_is_the_one_publishable_authored_json():
         assert not bundle.allowed_artifact(name)
 
 
-def _public_repo(tmp_path):
+def _public_repo(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
     (public / "showcase").mkdir(parents=True)
     (public / "index.mdx").write_text("public")
     (public / "site_map.json").write_text("{}")
     (public / "showcase/showcase.json").write_text('{"authored": true}\n')
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "docs/public"], check=True)
+    tracked = frozenset(path for path in public.rglob('*') if path.is_file())
+    monkeypatch.setattr('export_public_docs_to_gitops.get_tracked_files', lambda *args: tracked)
     return repo
 
 
 def test_export_takes_the_showcase_catalog_from_the_bundle_when_one_is_given(tmp_path, monkeypatch):
-    repo = _public_repo(tmp_path)
+    repo = _public_repo(tmp_path, monkeypatch)
     root = fixture_bundle(tmp_path)
     files = root / "files"
     (files / "showcase").mkdir()
@@ -371,7 +370,8 @@ def test_agent_publication_is_explicit_and_private_paths_stay_blocked(monkeypatc
     private = {tmp_path / 'docs/agent' / name for name in (
         'working-on-rfx.mdx', 'agent-runbook.mdx', 'repo-map.mdx',
         'recipe-waveguide-sparams.mdx', 'gpu-throughput.mdx', 'new-private-page.mdx')}
-    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: sources | private)
+    nested = tmp_path / 'docs/agent/internal/overview.mdx'
+    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: sources | private | {nested})
     assert set(bundle.source_inputs(tmp_path)) == sources
     for source in sources:
         assert bundle.allowed_artifact(f'markdown/agent/{source.stem}.md')
