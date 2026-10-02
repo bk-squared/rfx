@@ -132,7 +132,8 @@ def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
         for axis, length, step in zip("xyz", E2E_DOMAIN, spacing)
     }
     profiles["dz_profile"] = np.repeat(E2E_DZ_PROFILE / refinement, refinement)
-    sim = Simulation(
+    # #1138: trace y solved +5.83% (1x), +2.92% (2x); this tests the AD golden pair.
+    sim = Simulation(snap="declared",
         freq_max=F_MAX, domain=E2E_DOMAIN, dx=min(spacing),
         cpml_layers=16 * refinement,
         boundary=BoundarySpec(x="cpml", y="cpml",
@@ -872,10 +873,7 @@ def _assert_e2e_preflight(sim):
 def test_migrated_trace_is_a_sheet_on_the_declared_plane(refinement):
     sim = _build_aligned_e2e_sim(refinement=refinement)
     _assert_trace_sheet_realized(sim)
-    # #1138: node-aligned trace width is not its solved free-edge width.
-    report = sim.preflight()
-    assert not report.ok
-    assert report.by_code("sheet_effective_size")[0].severity == "error"
+    _assert_e2e_preflight(sim)
 
 
 def _ideal_qualification_result():

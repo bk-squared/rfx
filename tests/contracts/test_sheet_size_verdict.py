@@ -92,9 +92,16 @@ def test_verdict_spans_equal_public_record_per_entity_axis(inset, aligned):
     sim = _build(inset=inset, aligned=aligned)
     # A second declaration tests identity and both declaration routes.
     sim.add_thin_conductor(Box((0.004, 0.004, 0.004), (0.016, 0.016, 0.004)))
+    # Both x ends continue to domain faces; only the y free ends are judged.
+    sim.add_thin_conductor(Box((-0.001, 0.006, 0.005), (0.021, 0.014, 0.005)))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         record = sim.realized_geometry()
+    spanning = record.entities[-1].axes[0]
+    assert spanning.free_ends == (False, False)
+    assert spanning.comparison_bounds_m == spanning.bounds_m
+    assert spanning.extent_m == pytest.approx(
+        spanning.comparison_bounds_m[1] - spanning.comparison_bounds_m[0])
     ctx = sim._campaign_ctx()
     actual = {(e.label, "xyz"[a]): (span.lo, span.hi)
               for e, a, span in _sheet_solved_spans(ctx, ctx.interior_pec_entries())}

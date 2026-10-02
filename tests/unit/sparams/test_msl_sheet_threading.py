@@ -144,7 +144,7 @@ def build_msl_thru(sheet=None, dz_profile=None):
     z extent is then ``sum(dz_profile)``).
     """
     if dz_profile is None:
-        # #1138: geometry[1] y solved +8.656 % off; this test checks threading witness sheet changes s.
+        # #1138: trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests sheet threading.
         sim = Simulation(snap="declared",
             freq_max=F_MAX, domain=(LX, LY, LZ), dx=DX, cpml_layers=8,
             boundary=BoundarySpec(x="cpml", y="cpml",
@@ -152,7 +152,7 @@ def build_msl_thru(sheet=None, dz_profile=None):
         )
     else:
         lz = float(np.sum(dz_profile))
-        # #1138: geometry[1] y solved +8.656 % off; this test checks nu smoke sheet applies on dz profile lane.
+        # #1138: trace y +8.656%; PEC witness x/y -2.069%/-5.052%; this tests NU sheet threading.
         sim = Simulation(snap="declared",
             freq_max=F_MAX, domain=(LX, LY, lz), dx=DX,
             dz_profile=list(dz_profile), cpml_layers=8,

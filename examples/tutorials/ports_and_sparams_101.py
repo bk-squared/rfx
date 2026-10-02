@@ -156,8 +156,8 @@ def build_microstrip_ports() -> Simulation:
     sim.add_material("substrate", eps_r=3.2, sigma=0.01)
 
     # The metal and dielectric end before the absorbing cells.  The 1 mm
-    # substrate faces are registered to nodes, and the side clearance is
-    # greater than twice that height, so preflight should pass cleanly.
+    # substrate has x/y faces 23–43 µm off nodes where sheet-edge registration
+    # takes precedence; side clearance exceeds twice the substrate height.
     #
     # FOIL IS A SHEET, A PLATE IS A VOLUME.  A microstrip ground plane and its
     # trace are etched copper foil — tens of microns on a 1 mm board — so they
