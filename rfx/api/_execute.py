@@ -1408,7 +1408,7 @@ class _ExecuteMixin:
 
         grid_out = copy.copy(grid)
         grid_out.dt = dt
-        from rfx.adi import adi_current_coefficient
+        from rfx.adi import adi_current_coefficient, require_lossless_current_source
         from rfx.api._source_semantics import needs_scale, source_amplitude_scale
 
         # ---- 3D path ----
@@ -1434,10 +1434,8 @@ class _ExecuteMixin:
                 i, j, k = grid.position_to_index(pe.position)
                 waveform = jax.vmap(pe.waveform)(times)
                 if needs_scale(pe.amplitude_kind, "raw"):
-                    if pe.amplitude_kind == "current" and float(sigma_3d[i, j, k]) > 0:
-                        raise ValueError(
-                            "current source amplitude unverified in a lossy cell on ADI; "
-                            "declare it in a lossless cell, or use the Yee solver.")
+                    if pe.amplitude_kind == "current":
+                        require_lossless_current_source(sigma_3d[i, j, k])
                     cb = adi_current_coefficient(eps_r_3d[i, j, k], sigma_3d[i, j, k], dt)
                     waveform = waveform * source_amplitude_scale(
                         pe.amplitude_kind, "raw", cb=cb, dV=float(grid.cells("x")[i])**3)
@@ -1501,10 +1499,8 @@ class _ExecuteMixin:
             i, j, _ = grid.position_to_index(pe.position)
             waveform = jax.vmap(pe.waveform)(times)
             if needs_scale(pe.amplitude_kind, "raw"):
-                if pe.amplitude_kind == "current" and float(sigma_2d[i, j]) > 0:
-                    raise ValueError(
-                        "current source amplitude unverified in a lossy cell on ADI; "
-                        "declare it in a lossless cell, or use the Yee solver.")
+                if pe.amplitude_kind == "current":
+                    require_lossless_current_source(sigma_2d[i, j])
                 cb = adi_current_coefficient(eps_r_2d[i, j], sigma_2d[i, j], dt)
                 waveform = waveform * source_amplitude_scale(
                     pe.amplitude_kind, "raw", cb=cb, dV=float(grid.cells("x")[i])**3)
