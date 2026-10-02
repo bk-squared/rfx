@@ -226,6 +226,7 @@ class RingdownPole(NamedTuple):
     Signed frequency, loaded Q, amplitude decay rate, ``|lambda|`` per step,
     and its amplitude: the largest ``|residue|`` over the channels at the
     window's first sample, relative to that channel's RMS over the window.
+    Channels include identification probes when requested, as well as ports.
     """
 
     f_hz: float
@@ -342,6 +343,11 @@ class RingdownReport:
     includes any TM pole the user identifies by frequency; no mode type or
     observability threshold is inferred. These channels have no W0-style
     accumulator witness; the shares are information only.
+
+    ``tail_share`` takes its maximum over the identification-probe channels
+    as well as the port channels when ``identification_probes`` is set.
+    Pole ``amplitude`` and the strong-pole set used for
+    ``slowest_decay_over_window`` use those channels too.
     """
 
     n_record: int
