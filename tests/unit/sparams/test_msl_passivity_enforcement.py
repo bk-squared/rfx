@@ -170,7 +170,8 @@ def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
 # ---------------------------------------------------------------------------
 
 def _thru():
-    sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
+    # #1138: geometry[2] y solved +11.67 % off; this test checks enforced result is strictly passive and loud.
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")

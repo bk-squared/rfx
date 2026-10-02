@@ -422,7 +422,8 @@ def test_a_binary_zero_occupancy_override_keeps_the_ports_edge_clearing():
     def _build():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            sim = Simulation(freq_max=15e9, domain=(12e-3, 12e-3, 12e-3),
+            # #1138: geometry[0] x/y solved +17.5 % off; this test checks port edge clearing.
+            sim = Simulation(snap="declared", freq_max=15e9, domain=(12e-3, 12e-3, 12e-3),
                              dx=dx, boundary="pec")
             sim.add(Box((2e-3, 2e-3, 6e-3), (10e-3, 10e-3, 6e-3)),
                     material="pec")

@@ -317,6 +317,10 @@ class Simulation(
     mode : str
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
+    snap : {"strict", "declared"}
+        Strict (default) refuses PEC sheets solved more than 1% off their
+        drawn in-plane size. "declared" accepts the difference as a warning
+        and records the choice in realized geometry; no solved numbers change.
     dt : float or None
         Concrete time step (s) for the NON-UNIFORM lane, used instead of
         the Courant step derived from the smallest cell. ``None`` (the
@@ -441,9 +445,14 @@ class Simulation(
         adi_cfl_factor: float = 5.0,
         stencil_order: int = 2,
         interface_eps: str = "sampled",
+        snap: str = "strict",
     ):
         from rfx.boundaries.spec import normalize_boundary
         from rfx.runners.nonuniform import INTERFACE_EPS_RULES
+
+        if snap not in ("strict", "declared"):
+            raise ValueError(f"snap must be 'strict' or 'declared', got {snap!r}")
+        self._snap = snap
 
         if interface_eps not in INTERFACE_EPS_RULES:
             raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")

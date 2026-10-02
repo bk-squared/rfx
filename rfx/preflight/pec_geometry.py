@@ -1188,9 +1188,12 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         "in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, "
         "dx, sheets=[...], solids=[...]) and pass them as "
         "Simulation(dx_profile=..., dy_profile=...); a node ON the edge is "
-        "not the fix. STALE IF: the footprint's node span on the run's node "
+        'not the fix. Use Simulation(..., snap="declared") to accept the '
+        "declared geometry knowingly without changing the solved geometry. "
+        "STALE IF: the footprint's node span on the run's node "
         "coordinates does not reproduce the printed numbers.",
         code="sheet_effective_size",
+        severity="warning" if ctx.sim._snap == "declared" else "error",
         source="_validate_cfg_off_lattice_design_edges",
     ))
 

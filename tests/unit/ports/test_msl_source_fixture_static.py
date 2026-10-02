@@ -53,7 +53,8 @@ def _msl_sim_auto_eps():
     lx = _L_LINE + 2 * _MARGIN
     ly = _W_TRACE + 2 * (2 * _H_SUB + 8 * _DX)
     lz = _H_SUB + 0.5e-3
-    sim = Simulation(
+    # #1138: geometry[1] y solved +8.656 % off; this test checks explicit and auto eps build the same fixture.
+    sim = Simulation(snap="declared",
         freq_max=5e9, domain=(lx, ly, lz), dx=_DX, cpml_layers=8,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),

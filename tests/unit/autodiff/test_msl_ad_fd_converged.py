@@ -58,7 +58,8 @@ def _build_msl_sim(*, precision="float32") -> Simulation:
     ly = _MSL_W_TRACE + 2 * (2 * _MSL_H_SUB + 8 * _MSL_DX)
     lz = _MSL_H_SUB + 0.5e-3
 
-    sim = Simulation(
+    # #1138: thin_conductor[0] y solved +8.656 % off; this test checks referee precision reaches the actual field state.
+    sim = Simulation(snap="declared",
         freq_max=_MSL_F_MAX,
         domain=(lx, ly, lz),
         dx=_MSL_DX,

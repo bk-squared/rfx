@@ -375,7 +375,8 @@ def test_unit_cell_with_floquet():
     Lx, Ly = 0.015, 0.015
     Lz = 0.03  # enough room for CPML on z
 
-    sim = Simulation(
+    # #1138: geometry[1] x solved -3.75 % off; this test checks unit cell with floquet.
+    sim = Simulation(snap="declared",
         freq_max=15e9,
         domain=(Lx, Ly, Lz),
         boundary="cpml",

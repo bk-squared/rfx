@@ -775,7 +775,9 @@ class TestRealizationFindings:
         assert "declared mid-plane 6.3mm, realized node plane" in msg
         assert "(offset -0.300 cell = 300µm)" in msg
         assert "declared mid-plane 5mm" in msg and "(offset +0.000 cell" in msg
-        assert rep.ok
+        # #1138: the plane notice stays informational; x/y size now refuses.
+        assert not rep.ok
+        assert all(h.severity == "error" for h in rep.by_code("sheet_effective_size"))
 
     def test_half_cell_tie_is_a_warning_naming_both_planes(self):
         """A face-registered foil (both faces on nodes) has its mid-plane
@@ -860,9 +862,9 @@ class TestWiring:
                      UNAVAILABLE_CODE):
             assert rep.by_code(code) == []
 
-    def test_advisory_tier_none_block(self):
+    def test_advisory_tier_and_sheet_size_error(self):
         """The campaign checks and the one-cell/slot findings are
-        warning-severity, the plane notice is info: report.ok stays True."""
+        warning-severity; #1138 sheet-size findings independently block."""
         rep = _congruence_sim(True).preflight()
         hits = rep.by_code(CONGRUENCE_CODE)
         assert hits and all(h.severity == "warning" for h in hits)
@@ -871,10 +873,12 @@ class TestWiring:
         assert all(h.severity == "warning"
                    for h in rep2.by_code(CAVITY_CODE))
         assert all(h.severity == "info" for h in rep2.by_code(PLANE_CODE))
-        assert rep2.ok
+        assert not rep2.ok
+        assert all(h.severity == "error" for h in rep2.by_code("sheet_effective_size"))
         rep3 = _slot_sim(True).preflight()
         assert all(h.severity == "warning" for h in rep3.by_code(SLOT_CODE))
-        assert rep3.ok
+        assert not rep3.ok
+        assert all(h.severity == "error" for h in rep3.by_code("sheet_effective_size"))
 
     def test_context_is_built_once_per_configuration(self):
         """The shared context is reused across the checks of one preflight

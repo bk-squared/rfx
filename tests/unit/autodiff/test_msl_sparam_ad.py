@@ -872,7 +872,10 @@ def _assert_e2e_preflight(sim):
 def test_migrated_trace_is_a_sheet_on_the_declared_plane(refinement):
     sim = _build_aligned_e2e_sim(refinement=refinement)
     _assert_trace_sheet_realized(sim)
-    _assert_e2e_preflight(sim)
+    # #1138: node-aligned trace width is not its solved free-edge width.
+    report = sim.preflight()
+    assert not report.ok
+    assert report.by_code("sheet_effective_size")[0].severity == "error"
 
 
 def _ideal_qualification_result():

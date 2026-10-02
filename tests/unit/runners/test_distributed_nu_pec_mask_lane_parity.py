@@ -261,7 +261,8 @@ def test_the_distributed_nu_forward_lane_refuses_a_sheet():
 
     import rfx
 
-    sim = rfx.Simulation(freq_max=10e9, domain=(0.06, 0.01, 0.01), dx=1e-3,
+    # #1138: geometry[0] x solved +11.67 % off; this test checks the distributed nu forward lane refuses a sheet.
+    sim = rfx.Simulation(snap="declared", freq_max=10e9, domain=(0.06, 0.01, 0.01), dx=1e-3,
                          cpml_layers=4, dz_profile=np.full(18, 1e-3))
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

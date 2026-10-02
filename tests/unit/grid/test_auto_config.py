@@ -174,6 +174,7 @@ def test_smooth_grading_preserves_boundary_values():
 def test_simulation_auto_mesh_sets_dx():
     """When dx=None and geometry exists, run() should auto-set dx from features."""
     import warnings
+    import pytest
     from rfx import Simulation, Box, GaussianPulse
 
     sim = Simulation(freq_max=5e9, domain=(0.05, 0.05, 0.02), boundary="pec")
@@ -365,6 +366,7 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
     top face z = 0.002 = node plane k = 1.
     """
     import warnings
+    import pytest
     from rfx import Simulation, Box, GaussianPulse
     from tests._realized_geometry import (
         assert_sheet_planes, assert_wall_planes, node_index, realized)
@@ -397,9 +399,10 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        result = sim.run(n_steps=10)
-
-    assert result is not None
+        # #1138: the sheet still owns no cells; its -3% size error blocks run.
+        assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
+        with pytest.raises(ValueError, match="conductor sheet dimension"):
+            sim.run(n_steps=10)
 
 
 def test_auto_mesh_thin_conductor_only_configures_dx():

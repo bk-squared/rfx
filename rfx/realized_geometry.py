@@ -84,6 +84,7 @@ class RealizedGeometry:
     dense masks, materials and sheet/wire specs; entity edge counts/ranges
     summarize the interior solver geometry. Request diagnostic arrays through
     ``Simulation.realized_geometry()``. ``lane`` names the execution lane.
+    ``snap`` records the strict or declared sheet-size acceptance policy.
     """
 
     entities: tuple[EntityGeometry, ...]
@@ -102,6 +103,7 @@ class RealizedGeometry:
     pad_fill_findings: tuple = ()
     lane: str = "uniform"
     limitations: tuple[str, ...] = ()
+    snap: str = "strict"
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
@@ -282,7 +284,8 @@ def _build_record(sim, ctx, *, compact=False):
                             () if compact else _freeze(assembled.sheets), () if compact else _freeze(assembled.wires),
                             None if compact else _freeze(assembled.materials), tuple(ctx.periodic),
                             tuple(refused.items()), tuple(refused_tc.items()),
-                            tuple(tuple(row.items()) for row in pad_findings), ctx.lane)
+                            tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
+                            snap=sim._snap)
 
 
 def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):

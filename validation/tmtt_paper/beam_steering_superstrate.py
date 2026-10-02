@@ -190,7 +190,8 @@ def build_problem():
     Ly = Lx
     cx, cy = Lx / 2.0, Ly / 2.0
 
-    sim = Simulation(freq_max=freq_max, domain=(Lx, Ly, Lz),
+    # #1138: retain the declared sheet geometry for projected targets.
+    sim = Simulation(snap="declared",freq_max=freq_max, domain=(Lx, Ly, Lz),
                      cpml_layers=cpml_layers, dx=dx)
     sim.add_source((cx, cy, float(src_z)), "ex")     # x-oriented dipole
 

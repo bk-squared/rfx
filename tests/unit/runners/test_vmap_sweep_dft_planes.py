@@ -1004,7 +1004,8 @@ class TestVmapPortFamilyEligibility:
 
     def test_floquet_port_takes_sequential_fallback(self):
         Lx, Ly, Lz = 0.015, 0.015, 0.03
-        sim = Simulation(freq_max=15e9, domain=(Lx, Ly, Lz), boundary="cpml",
+        # #1138: geometry[1] x solved -3.75 % off; this test checks floquet port takes sequential fallback.
+        sim = Simulation(snap="declared", freq_max=15e9, domain=(Lx, Ly, Lz), boundary="cpml",
                           cpml_layers=8, dx=0.001)
         sim.add_material("substrate", eps_r=2.2)
         sim.add(Box((0, 0, Lz / 2 - 0.001), (Lx, Ly, Lz / 2)), material="substrate")
@@ -1029,7 +1030,8 @@ class TestVmapPortFamilyEligibility:
         assert res.time_series.shape[0] == 2
 
     def test_msl_port_takes_sequential_fallback(self):
-        sim = Simulation(freq_max=5e9, domain=(0.02, 0.01, 0.006),
+        # #1138: geometry[2] y solved +35 % off; this test checks msl port takes sequential fallback.
+        sim = Simulation(snap="declared", freq_max=5e9, domain=(0.02, 0.01, 0.006),
                           boundary="cpml", cpml_layers=6, dx=0.001)
         sim.add_material("sub", eps_r=4.0)
         sim.add(Box((0, 0, 0), (0.02, 0.01, 0.002)), material="sub")
