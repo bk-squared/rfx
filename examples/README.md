@@ -1,5 +1,7 @@
 # rfx Examples
 
+The [machine-readable index](index.json) lists builders and output files.
+
 ## Start here — the learning path
 
 New to rfx? Run these in order; each teaches one decision a real design needs.
@@ -14,11 +16,14 @@ New to rfx? Run these in order; each teaches one decision a real design needs.
 | 6 | `tutorials/run_control_and_fields.py` | `n_steps` vs `num_periods` vs `until_decay`, reading the truncation warning, extracting field slices |
 | 7 | `tutorials/ports_and_sparams_101.py` | which port for which structure (all five), S11 basics, real-world pitfalls |
 | 8 | `tutorials/resonance_harminv.py` | ring-down resonance extraction, picking modes by physics (not loudness), record-length vs resolution |
-| 9 | `tutorials/antenna_farfield_pattern.py` | far-field boxes done right (half-wavelength rule), directivity vs the textbook dipole |
+| 9 | `tutorials/antenna_farfield_pattern.py` | far-field boxes done right (half-wavelength rule), directivity vs the textbook dipole; writes `output/short_dipole_e_plane.csv` |
 | 10 | `tutorials/patch_antenna_demo.py` | a real antenna end to end: mesh-registered stack with the ground and patch declared as sheets, picking the radiating mode by its far field (not loudness), settling witness, error budget vs openEMS |
 | 11 | `tutorials/rcs_scattering.py` | radar cross-section with incident-reference subtraction |
 | 12 | `inverse_design/differentiable_s11_design.py` | end-to-end `jax.grad` through the public `compute_waveguide_s_matrix`, cross-checked against central finite differences |
 | 13 | `tutorials/artifact_report_demo.py` | exporting a shareable scene/mesh/report bundle |
+
+`tutorials/cad_mesh_import_demo.py` exposes `build_simulation()` for CAD import
+with `MeshShape` (requires the CAD extra).
 
 `config/microstrip_thru.yaml` shows the declarative YAML front-end for the same
 Simulation API, including the `thin_conductors:` block that declares a sheet

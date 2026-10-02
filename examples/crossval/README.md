@@ -1,6 +1,5 @@
 # Moved
 
-The cross-validation scripts moved to `validation/crossval/` (2026-07 examples
-restructure). The machine-readable registry is
-`validation/crossval/manifest.json`; the script table is in
-`validation/README.md`. User-facing tutorials remain under `examples/`.
+Cross-solver comparisons now live in `tests/crossval/`, with frozen reference
+records and per-case pytest instructions. The former `validation/crossval/`
+scripts and manifest were removed. User-facing tutorials remain under `examples/`.

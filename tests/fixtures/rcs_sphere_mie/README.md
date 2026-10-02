@@ -23,7 +23,8 @@ gate test `tests/oracle/test_rcs_mie_fixture.py`.
 staircased PEC sphere at ka≈1.0, at the committed resolution
 (dx=λ/40, ≈6.4 cells per sphere radius, 24-cell CPML, 90³ grid), against the
 exact Mie series. The gate is |Δ| ≤ 1.0 dB on this single configuration; the
-measured distance is 0.102 dB (0.185 dB before the second-order NTFF rule of #1159).
+current measured distance is stored in `fixture.json`. The earlier distance
+quoted here predates the normal-incidence normalization correction.
 
 **This is NOT a bistatic validation.** The same run that produced this
 fixture (2026-07-06 falsifier, reproduced by `generate_fixture.py`) shows:
@@ -71,5 +72,5 @@ moved every rung by −0.28 to −0.37 dB. With the first-order rule the ladder 
 paragraph above were read with the first-order rule.)
 
 Past 24 the value only wanders inside a ~0.02 dB floor, so `CPML_LAYERS = 24`
-and the fixture reads 0.102 dB from Mie. The grid grows 58³ → 90³; the interior
+in that historical depth study. The grid grows 58³ → 90³; the interior
 is unchanged.
