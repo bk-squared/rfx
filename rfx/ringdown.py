@@ -2580,7 +2580,9 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     each leaf is normalized by its own reference maximum over remaining axes,
     and the worst bin is returned. Exactly zero reference bins are skipped
     and counted in ``note``; no nonzero bins means the witness is not judged.
-    A scalar objective's gradient is already per objective. NaNs fail the check.
+    A scalar objective's gradient is already per objective. Near a stationary
+    point its reference maximum can be tiny, making this relative comparison
+    misleading; inspect the gradient magnitude too. NaNs fail the check.
 
     One forward pass serves both gradients of the early-start form::
 

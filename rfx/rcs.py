@@ -11,8 +11,8 @@ The standard FDTD RCS approach:
 
 Validation scope: the monostatic (backscatter) bin is cross-validated against
 the exact Mie series. The default unsubtracted bistatic pattern is not
-validated because residual TFSF incident-field leakage contaminates oblique
-angles. The two-run ``subtract_incident_reference=True`` path is validated for
+validated because the NTFF side faces cross the total-field slab and
+record the full incident field at oblique angles. The two-run ``subtract_incident_reference=True`` path is validated for
 the documented ka~1 PEC-sphere comparison; other targets and configurations
 require their own convergence and reference checks.
 
@@ -52,10 +52,10 @@ class RCSResult(NamedTuple):
 
     VALIDATION SCOPE (read before trusting the full pattern)
     -------------------------------------------------------
-    ``monostatic_rcs`` agrees with exact Mie to about 0.06 dB for the
-    committed ka~1 PEC-sphere case. The default unsubtracted
-    ``rcs_dbsm`` / ``rcs_linear`` bistatic pattern is NOT validated: residual
-    TFSF incident-field leakage contaminates off-backscatter angles, and
+    ``monostatic_rcs`` is compared with exact Mie in the committed
+    ``tests/fixtures/rcs_sphere_mie/`` PEC-sphere case. The default unsubtracted
+    ``rcs_dbsm`` / ``rcs_linear`` bistatic pattern is NOT validated: the NTFF side faces
+    record the full incident field inside the total-field slab, and
     increasing ``ntff_offset`` alone does not remove it. Results produced by
     ``compute_rcs(..., subtract_incident_reference=True)`` use two-run complex
     far-field subtraction; that path is validated only for the documented
@@ -282,15 +282,14 @@ def compute_rcs(
         with the identical TFSF+NTFF setup and subtract its far-field from
         the target's at the COMPLEX level (E_scat = E_far[target] -
         E_far[vacuum]) before forming the RCS. This is the standard
-        total-field/scattered-field normalization; it removes the residual
-        TFSF-boundary incident-field leakage that the NTFF box otherwise
-        integrates into a spurious forward-oblique lobe (issue #280).
+        total-field/scattered-field normalization; it removes the full incident
+        field read by NTFF side faces inside the total-field slab, which
+        otherwise produces a spurious forward-oblique lobe (issue #280).
         Doubles the solve cost. Default False keeps the validated
         monostatic path byte-identical; opt in for the bistatic pattern.
         Without ``phase_reference``, ``monostatic_rcs`` is computed from the raw
-        (unsubtracted) run regardless of this flag -- the leakage nulls at backscatter (~90 dB
-        down), so subtraction would change it by <0.02 dB, and keeping the
-        validated monostatic extraction untouched is intentional.
+        (unsubtracted) run regardless of this flag, preserving the separately
+        checked monostatic extraction.
     phase_reference : (x, y, z) in metres, optional
         Opt in to a ``ScatteringResponse`` with complex scattering amplitudes
         referenced to this physical point. Requires normal +x incidence, a
@@ -316,28 +315,21 @@ def compute_rcs(
 
     Bistatic pattern caveat
     -----------------------
-    ``RCSResult.monostatic_rcs`` agrees with exact Mie to about 0.06 dB for the
-    committed ka~1 PEC-sphere case. It is evaluated from the raw target run at
-    the exact backscatter direction, independently of the requested observation
-    grid.
+    ``RCSResult.monostatic_rcs`` is evaluated from the raw target run at
+    exact backscatter, independently of the observation grid. Its current
+    Mie comparison is in ``tests/fixtures/rcs_sphere_mie/``.
 
-    The default unsubtracted ``rcs_dbsm`` / ``rcs_linear`` bistatic pattern is
-    NOT VALIDATED. With ``ntff_offset=1`` the oblique bins can be several dB to
-    about 20 dB from the reference. Increasing ``ntff_offset`` alone does not
-    remove the forward-oblique lobe. An empty-domain run produces the same lobe,
-    demonstrating that its dominant cause is target-independent incident-field
-    leakage from the discrete TFSF boundary rather than the scatterer staircase.
+    The default unsubtracted ``rcs_dbsm`` / ``rcs_linear`` bistatic pattern
+    is NOT VALIDATED. The source's total-field slab is infinite transversely,
+    so the side faces of a closed NTFF box record the full incident field.
+    Increasing ``ntff_offset`` does not remove that contribution; off-axis
+    bins cannot be interpreted as the scatterer's bistatic response.
 
-    Set ``subtract_incident_reference=True`` for the validated bistatic path.
-    It doubles the solve cost, subtracts a matching vacuum run at the complex
-    far-field level, and removes the target-independent leakage. In the
-    committed ka~1 PEC-sphere H-plane comparison, the largest 15-90 degree
-    difference from exact Mie falls from 10.5 to 1.2 dB, full-pattern dB
-    correlation is 0.965, mean absolute difference is 0.42 dB, and the
-    backscatter difference is about 0.06 dB. Those values validate only the
-    stated sphere, frequency, polarization, angle cut, and discretization. An
-    independent Bempp cube comparison confirms the raw discrepancy on another
-    geometry; it is not validation of a corrected cube pattern.
+    Set ``subtract_incident_reference=True`` for the reference-subtracted
+    path. It doubles the solve cost and subtracts a matching vacuum run at
+    the complex far-field level. The committed sphere comparison is in
+    ``tests/fixtures/rcs280_reference_subtraction/``; its scope is limited
+    to that sphere, frequency, polarization, angle cut and discretization.
 
     After subtraction, refine curved surfaces, repeat with a longer run, vary
     NTFF placement and CPML thickness, and enlarge the domain when deep pattern
@@ -590,21 +582,12 @@ def compute_rcs(
     )
 
     # --- 4b. Optional two-run incident-reference subtraction (issue #280) ---
-    # The discrete TFSF boundary does not perfectly cancel the incident field in
-    # the scattered-field region, so the NTFF box integrates a residual incident
-    # leakage into a spurious forward-oblique far-field lobe (an empty-domain run
-    # produces the same lobe with NO scatterer; it nulls at backscatter, ~90 dB
-    # below its forward-oblique peak). Because that leakage is target-INDEPENDENT
-    # (the TFSF injects the same incident field with or without a scatterer) it
-    # cancels under a two-run subtraction at the COMPLEX far-field level:
-    # E_scat = E_far[target] - E_far[vacuum] (equivalent to subtracting the
-    # near-fields then transforming, by linearity of the NTFF integral). This is
-    # the standard total-field/scattered-field normalization (as in Meep's
-    # scattered-field runs, done here at the far-field level). Validated vs the
-    # EXACT Mie bistatic on a PEC sphere (tests/fixtures/rcs280_reference_
-    # subtraction/): H-plane forward-oblique gap 10.5 -> 1.2 dB, shape
-    # correlation -0.14 -> 0.965; backscatter (leakage ~0) essentially unchanged.
-    # Default OFF keeps the validated monostatic path byte-identical.
+    # The NTFF side faces cut through the transversely infinite total-field
+    # slab and read the full incident field. It is target-independent, so
+    # subtract the matching vacuum run at the complex far-field level before
+    # forming power: E_scat = E_far[target] - E_far[vacuum]. See the committed
+    # sphere comparison in tests/fixtures/rcs280_reference_subtraction/.
+    # Default OFF preserves the separately checked monostatic path.
     if subtract_incident_reference:
         vacuum = MaterialArrays(
             eps_r=jnp.ones(grid.shape, dtype=jnp.float32),
