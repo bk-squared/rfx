@@ -4353,8 +4353,9 @@ class _ExecuteMixin:
              "fwd_distributed_nu": "distributed non-uniform forward",
              }.get(plan.lane, plan.lane),
             entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
-            instead="use a supported uniform-mesh forward configuration for optimization; "
-                    "use run() on a uniform mesh for run-only features")
+            instead="drop Boundary(conformal=True) (staircase PEC) to optimize, since no "
+                    "forward lane applies the conformal update; use run() on a uniform "
+                    "mesh to keep conformal PEC for a forward-only result")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(

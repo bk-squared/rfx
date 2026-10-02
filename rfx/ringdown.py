@@ -1367,9 +1367,10 @@ class RingdownRun:
     Built by ``Simulation.run`` once the lane, the step count and the grid are
     known; :meth:`run` wraps the lane's runner call. Everything that can refuse
     the request does so here, before the run. A malformed time-series shape
-    can still raise after the run; other failed completion checks return the
-    plain result unchanged with the reason in
-    ``Result.ringdown.report`` and a warning.
+    can still raise after the run. A completion that cannot be formed returns
+    the plain result unchanged; a formed completion whose judged witness fails
+    still carries its completed S in ``Result.ringdown.s_params``. Either way
+    the reason is in ``Result.ringdown.report`` with a warning.
     """
 
     #: The entry point named in refusal messages.

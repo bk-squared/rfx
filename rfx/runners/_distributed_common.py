@@ -96,7 +96,7 @@ __all__ = [
 # about them was duplicated; they move because they are the x-slab primitives
 # every shared helper in this module that touches slabs has to call, and a
 # shared body could not reach them at their old address without a circular
-# import. The former ``distributed.py`` re-exported both at the position they were
+# import. ``distributed.py`` re-exports both at the position they were
 # defined, so ``rfx.runners.distributed.split_array_x`` / ``.gather_array_x``
 # still resolve for its external importers.
 #
@@ -1499,7 +1499,7 @@ def update_e_nu_shmap(st, mat, mesh, dt,
 # ``_update_e_local``, ``_update_e_debye_local`` and ``_update_e_lorentz_local``
 # ride along because ``_update_e_local_with_dispersion`` calls them. The names
 # keep their leading underscore so every call site reads as it did;
-# The former ``distributed.py`` re-exported all of them. Bodies are byte-identical to the
+# ``distributed.py`` re-exports all of them. Bodies are byte-identical to the
 # ones they replace -- tests/locks/test_runner_split_bit_identity.py's baseline
 # rows are what say the arrays did not move, and its _SHARED_HELPER_BINDINGS
 # rows what says each importer holds this one object.
