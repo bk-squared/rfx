@@ -334,7 +334,7 @@ def _ports(sim, ctx, assembled):
                 aperture.append((k, k))
             else:
                 sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
-                                            grid.dx, grid.shape[b], grid.axis_pads[b])
+                                            grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b])
                 aperture.append((int(sl[0]), int(sl[1] - 1)))
         rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
     for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
@@ -394,10 +394,10 @@ def _node_arrays(sim, grid, nonuniform):
                       for store, spine in zip(stores, spines))
     else:
         n = grid.shape
-        dx = float(grid.dx)
         pads = grid.axis_pads
-        lines = tuple(_uniform_axis_nodes(n[a], pads[a], dx) for a in range(3))
-        sizes = tuple(np.full(n[a], dx) for a in range(3))
+        sizes = tuple(grid.cells(a) for a in range(3))
+        lines = tuple(_uniform_axis_nodes(n[a], pads[a], float(sizes[a][0]))
+                      for a in range(3))
     nodes = tuple(np.concatenate([line, [line[-1] + d[-1]]])
                   for line, d in zip(lines, sizes))
     return sizes, nodes

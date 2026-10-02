@@ -157,3 +157,30 @@ def test_refused_occupancy_is_diagnostic_and_cached():
                if r["entity"].startswith(refused.label))
     assert "refused-by-contract" in [f["kind"] for f in row["findings"]]
     assert sim.realized_geometry() is record
+
+
+@pytest.mark.parametrize("entry", ["realized", "run", "forward"])
+@pytest.mark.parametrize("diagnostic_first", [False, True])
+def test_frozen_unresolved_volume_still_refuses_execution(entry, diagnostic_first):
+    from tests._realized_geometry import realized
+
+    sim = Simulation(freq_max=10e9, domain=(.008, .008, .008), boundary="pec")
+    grid = sim.freeze_mesh()
+    d = grid.cells("x")[0]
+    sim.add(Box((2*d, d, d), (2.2*d, 4*d, 4*d)), material="pec")
+    if diagnostic_first:
+        record = sim.realized_geometry()
+        assert record.entities[0].kind == "refused"
+        report = sim.fidelity_report(print_report=False)
+        assert any(f["kind"] == "refused-by-contract"
+                   for row in report for f in row.get("findings", ()))
+        assert sim.realized_geometry() is record
+    with pytest.raises(ValueError, match="volume|sub.cell|thickness"):
+        if entry == "realized":
+            realized(sim)
+        else:
+            getattr(sim, entry)(n_steps=1, skip_preflight=True)
+    later = sim._build_realized_grid()
+    assert later.shape == grid.shape
+    for axis in "xyz":
+        np.testing.assert_array_equal(later.cells(axis), grid.cells(axis))

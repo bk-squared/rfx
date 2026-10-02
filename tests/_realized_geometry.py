@@ -116,6 +116,7 @@ def realized(sim, *, nonuniform: bool | None = None) -> Realization:
         raise ValueError("realized() must read the simulation's selected grid lane")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+        sim._campaign_ctx().realized(strict=True)
         record = sim.realized_geometry()
     return Realization(sim._campaign_ctx().grid, record.pec_mask,
                        record.sheets, record.wires, record.edge_masks)

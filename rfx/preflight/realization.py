@@ -332,6 +332,7 @@ class _CampaignStaticsContext:
         self._realized = None
         self._entries = None
         self.assembly_error: str | None = None
+        self._assembly_exception: Exception | None = None
         self._build()
 
     def _build(self) -> None:
@@ -392,16 +393,21 @@ class _CampaignStaticsContext:
     # The realized conductor set (whole model) and per-entry realization
     # ------------------------------------------------------------------
 
-    def realized(self):
+    def realized(self, *, strict=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         #931 sheet/wire collectors), once; ``None`` when the assembly
-        raised (``assembly_error`` says why)."""
+        raised (``assembly_error`` says why). Strict execution/build readers
+        re-raise the original exception, including after a diagnostic read.
+        """
         if self._realized is None and self.assembly_error is None:
             try:
                 self._realized = self.sim._assemble_realized(
                     self.grid, nonuniform=(self.lane == "nonuniform"))
             except self._NARROW_EXCS as exc:
                 self.assembly_error = f"{type(exc).__name__}: {exc}"
+                self._assembly_exception = exc
+        if strict and self._assembly_exception is not None:
+            raise self._assembly_exception
         return self._realized
 
     def assembled(self):

@@ -4914,6 +4914,9 @@ class _ExecuteMixin:
         )
         n_steps = plan.n_steps
         geometry_record = self.realized_geometry()
+        # The diagnostic build owns warning suppression; execution must still
+        # propagate its cached production refusal before entering any runner.
+        self._campaign_ctx().realized(strict=True)
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if ringdown is not None:
