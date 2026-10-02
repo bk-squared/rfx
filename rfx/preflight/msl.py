@@ -36,7 +36,7 @@ move untouched; the realization block it belongs to stays in the facade.
 ``rfx.api._preflight`` re-exports all 11 module-level names explicitly, so
 the sites that do ``from rfx.api._preflight import <name>`` -- among them
 ``rfx/sparams/_common.py``, ``rfx/sparams/coax.py``,
-``scripts/diagnostics/msl_probe_clearance_bias.py`` and four test files --
+the preflight tests --
 keep working, and ``_validate_forward_sparameter_request``, which stays on
 the mixin and calls ``msl_source_near_field_standoff_cells`` by bare name,
 keeps resolving it as a global of the facade.
@@ -113,7 +113,7 @@ MSL_EPS_EFF_PROXY = 5.0
 #
 # The measurement that settles it (asked for as item 1 of #726, and the
 # reason neither number below may be paraphrased): VESSL run 369367260508,
-# fixture cv06b fixed-source, same source / load / DUT, with ONLY the p1
+# fixture microstrip open-stub notch fixed-source, same source / load / DUT, with ONLY the p1
 # observation offset varied between the two arms. Both arms settled below
 # −118 dB.
 #
@@ -148,7 +148,7 @@ MSL_EPS_EFF_PROXY = 5.0
 
 #: Witness for :data:`MSL_PROBE_CLEARANCE_EFFECT`; kept separate so a test
 #: can assert the run id survives every rewording of the sentence.
-MSL_PROBE_CLEARANCE_WITNESS = "VESSL 369367260508, cv06b fixed-source"
+MSL_PROBE_CLEARANCE_WITNESS = "VESSL 369367260508, microstrip open-stub notch fixed-source"
 
 #: The ONE sentence allowed to quote either retired claim, because it is what
 #: retracts them. Named so every test that asserts "this site does not state a
@@ -175,7 +175,7 @@ MSL_PROBE_CLEARANCE_EFFECT = (
     "quarter-wave open-stub notch has. Both are ABOVE unity on a passive "
     "structure, by 0.31 % and 0.21 %; that is never reported here as "
     "physics - they are raw, unprojected values carrying the coherent power "
-    "excess tracked as #838. Their 0.009 dB difference is one fixture, one "
+    "excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one fixture, one "
     "bin, an arm-to-arm difference, NOT a bound on S, and that comparison's "
     "producer verdict was not_read. What it does show is that S11/S21 move "
     "far less than the fit does, because they normalize with the analytic "
@@ -319,8 +319,10 @@ def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
 
     NOT a new constant. This is the issue-#80 "Fix B" source-fringing rule
     (``~5*h_sub``) that ``rfx.api.Simulation.add_msl_port`` already applies to
-    every AUTO ``n_probe_offset``; an auto port therefore cannot violate it by
-    construction. What issue #823 adds is (a) a derivation of WHY that scale is
+    AUTO ``n_probe_offset``. Driver-time recounting uses the runway cell
+    unless the ladder crosses a grading ramp; that fallback can fall short.
+    Here ``dx_m`` is the runway cell size. What issue #823 adds is
+    (a) a derivation of WHY that scale is
     the right one and how much margin it carries, and (b) advisories at the two
     places an EXPLICIT offset, or a method-level probe ladder, can under-provision
     it without anything saying so.
@@ -1153,9 +1155,9 @@ def _check_msl_port_geometry(
        1e-5..4e-3. The threshold is ``max(3, round(5·h_sub/dx))`` —
        the repo's EXISTING issue-#80 Fix B constant — with ``dx`` the
        runway cell at the feed. ``add_msl_port`` floors every AUTO
-       ``n_probe_offset`` to the same constant counted in the BOUNDARY
-       cell, so an automatic offset reaches this check only on a runway
-       finer than that cell, and is then told to set one explicitly. See
+       ``n_probe_offset`` to the same constant. The driver recounts it in
+       runway cells unless the ladder crosses a grading ramp; that fallback
+       retains the scalar-dx count and can trigger this advisory. See
        :func:`msl_source_near_field_standoff_cells` for the
        derivation (and for the W/h limitation it carries).
        REPORT-ONLY; the ``msl_probe_*`` ladder of
@@ -1956,8 +1958,8 @@ def _check_msl_port_geometry(
         # discontinuity: the field within a few substrate thicknesses of
         # it is not the guided mode yet. ``add_msl_port`` has floored the
         # AUTO offset to ``max(3, lam_cells, round(5*h_sub/dx))`` since
-        # issue #80 (Fix B), so this can only fire on an EXPLICIT offset
-        # — which is exactly the case nothing warned about.
+        # issue #80 (Fix B). This can fire on an explicit offset or an
+        # automatic ladder whose ramp fallback retains scalar-dx counts.
         #
         # Measured (issue #823, settled attempt-3 run VESSL 369367257533):
         # a probe 0.4 mm = 1.33*h_sub from the feed carried a two-wave
@@ -2030,7 +2032,7 @@ def _check_msl_port_geometry(
             # What leaving the offset None gives on this port, counted the
             # way the driver counts it: the automatic lengths in this
             # runway's cell where the ladder lies in one zone, and in the
-            # boundary cell add_msl_port used where it would cross a ramp.
+            # scalar dx cell add_msl_port used where it would cross a ramp.
             # An automatic port reaches this branch only in the second case;
             # "leave it None" is then the advice that produced the short
             # offset, so None is offered only where it clears this runway.
@@ -2058,7 +2060,7 @@ def _check_msl_port_geometry(
                 _nf_none_term = msl_auto_probe_offset_term(
                     _nf_lengths[0], h_sub, _nf_none_cell)
                 _nf_none_txt = (
-                    f"counts {_nf_none_term} in the boundary cell "
+                    f"counts {_nf_none_term} in the scalar dx cell "
                     f"({_fmt_len(dx)}), {_nf_none_off} cells, because "
                     f"counted in this runway's own cells its probe ladder "
                     f"would cross a grading ramp"
@@ -2077,7 +2079,7 @@ def _check_msl_port_geometry(
                 f" add_msl_port chose {int(_nf_off)} by counting "
                 + (msl_auto_probe_offset_term(_nf_lengths[0], h_sub, dx)
                    if _nf_lengths is not None else "its near-field lengths")
-                + f" in the boundary cell ({_fmt_len(dx)}); this port's "
+                + f" in the scalar dx cell ({_fmt_len(dx)}); this port's "
                 f"runway cells are {_fmt_len(_runway_cell)}, so on this "
                 f"runway the automatic floor falls short."
                 + (" The driver keeps that count because, counted in this "

@@ -1132,7 +1132,7 @@ def test_an_automatic_offset_whose_ladder_crosses_a_ramp_is_still_flagged():
     assert "the automatic n_probe_offset=5 puts probe 0 635\u00b5m" in text, text
     assert "38.1\u00b5m from the declared feed" in text, text
     assert ("add_msl_port chose 5 by counting 5·h_sub = 1.27mm in the "
-            "boundary cell (254µm)") in text, text
+            "scalar dx cell (254µm)") in text, text
     assert "the probe ladder would cross a grading ramp" in text, text
     assert "Set n_probe_offset >= 10 explicitly on this port" in text, text
     assert "leave it None" not in text, text
@@ -1156,12 +1156,12 @@ def test_none_is_offered_where_the_wavelength_term_clears_the_fringing():
     sim = _auto_offset_board(f_max=2e9, n_probe_offset=7)
     text = _finding(_preflight(sim), "OWN feed plane")
     assert ("Set n_probe_offset >= 10, or leave it None: the automatic "
-            "offset counts λ_eff/(4π) at f_max = 6.235mm in the boundary "
+            "offset counts λ_eff/(4π) at f_max = 6.235mm in the scalar dx "
             "cell (254µm), 25 cells") in text, text
     assert "falls short" not in text, text
     msg = _forward_message(sim)
     assert ("increase n_probe_offset or leave it None: the automatic offset "
-            "counts λ_eff/(4π) at f_max = 6.235mm in the boundary cell") \
+            "counts λ_eff/(4π) at f_max = 6.235mm in the scalar dx cell") \
         in msg, msg
     assert "25 cells" in msg, msg
 
@@ -1176,11 +1176,11 @@ def test_an_automatic_offset_names_the_wavelength_term_that_chose_it():
     assert sim._msl_ports[0].n_probe_offset == 8
     text = _finding(_preflight(sim), "OWN feed plane")
     assert ("add_msl_port chose 8 by counting λ_eff/(4π) at f_max = 2.078mm "
-            "in the boundary cell (254µm)") in text, text
+            "in the scalar dx cell (254µm)") in text, text
     assert "by counting 5·h_sub" not in text, text
     msg = _forward_message(sim)
     assert ("the automatic choice counts λ_eff/(4π) at f_max = 2.078mm in "
-            "the boundary cell") in msg, msg
+            "the scalar dx cell") in msg, msg
     assert "leaving it None chooses 8 again" in msg, msg
 
 

@@ -694,7 +694,7 @@ class Simulation(
         #     _resolve_msl_auto_offsets widens the auto spacing toward
         #     span = (N-1)*lambda_g(f_max)/4 where the geometry allows;
         #     the entry keeps the conservative registration default so
-        #     resolver-skip paths (graded propagation axis) never
+        #     resolver-skip paths (a ladder crossing a grading ramp) never
         #     overrun the feed.
         #   _msl_auto_probe_lengths: port name -> the two LENGTHS the
         #     automatic probe defaults are counted from at registration,
@@ -798,6 +798,9 @@ class Simulation(
         topology: str = "overlap_z_slab",
     ) -> "Simulation":
         """Add a z-axis refinement region for SBP-SAT subgridding.
+
+        Refinement acts only through ``run()`` on a uniform mesh. Other
+        solve entry points, including ``forward()`` and optimization, refuse it.
 
         The promoted production runner covers the specified z-range across the
         full x/y interior at ``dx_fine = dx_coarse / ratio``.  ``xy_margin``
@@ -1142,8 +1145,9 @@ class Simulation(
         waveform : excitation pulse (default: GaussianPulse)
         amplitude_kind : 'field' | 'current' | None
             Threaded through to every internal :meth:`add_source` call —
-            see ``add_source`` for the semantics and the ``None``
-            deprecation (issue #571).
+            see ``add_source`` for the semantics. ``None`` resolves to
+            ``'current'`` and warns once per simulation; pass the kind explicitly
+            to silence the warning.
         """
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
@@ -1404,7 +1408,7 @@ class Simulation(
             as does a shape with no ``mask_on_coords`` or no bounding box.
             The rasterized one-layer and non-empty checks need the grid, so
             they raise at build time, on BOTH lanes (the legacy DC path
-            keeps its NU warn-and-skip for non-Box shapes).
+            also refuses non-Box shapes on a non-uniform mesh).
 
         Notes
         -----
@@ -1458,7 +1462,7 @@ class Simulation(
             # #674: any shape that can rasterize itself is allowed — the
             # fold is per occupied cell and shape-agnostic. Two structural
             # requirements survive, and both fail loud on BOTH lanes rather
-            # than inherit the NU warn-and-skip (the #369
+            # than repeat the former NU warn-and-skip (the #369
             # silently-vaporized-metal class: a sheet that vanishes on one
             # lane is a wrong answer, not a degraded one).
             if not callable(getattr(shape, "mask_on_coords", None)):
@@ -1819,6 +1823,10 @@ class Simulation(
             → passive matched termination only.
         n_probe_offset : int, optional
             Distance (cells) from the feed plane to the first probe plane.
+            Automatic offset and spacing counts are recomputed at driver time
+            in the cells under the port, including graded runways, uniform
+            ``dy_profile`` different from ``dx``, and auto meshes. A ladder
+            crossing a grading ramp retains counts based on scalar ``dx``.
             When ``None``, bound to the LARGER of two near-field clearances:
             (a) the wavelength reactive far-field (issue #80 Fix B),
             ``round(0.5 * lam_min_eff / (2*pi) / dx)`` with
@@ -1841,7 +1849,9 @@ class Simulation(
             adjusted); ``< 5*h_sub/dx`` triggers a preflight near-field
             warning.
         n_probe_spacing : int, optional
-            Distance (cells) between consecutive probe planes. When ``None``,
+            Distance (cells) between consecutive probe planes. Automatic
+            counts use the same driver-time runway recount as the offset.
+            When ``None``,
             bound so the total N-probe array span stays ~``lam_min_eff/8``
             independent of ``n_probes``:
             ``round(lam_min_eff / 8 / (n_probes - 1) / dx)``. For
@@ -1940,7 +1950,7 @@ class Simulation(
                     eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
         lam_min_eff = C0 / self._freq_max / math.sqrt(eps_r_sub_estimate)
         # Probe 0 must clear BOTH near-field scales of the MSL launch:
-        #  (a) λ/(2π) reactive far-field of the quasi-TEM mode, and
+        #  (a) λ/(4π) reactive far-field of the quasi-TEM mode, and
         #  (b) the SOURCE FRINGING transient, which decays over a few
         #      substrate thicknesses (~5·h_sub), NOT over λ.  For a thin
         #      high-εr substrate (b) dominates; clearing only (a) leaves

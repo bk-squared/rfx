@@ -577,9 +577,8 @@ class _ExecuteMixin:
 
         ``until_decay`` (issue #383) is threaded through to
         ``run_nonuniform_path`` only when the caller has already gated on
-        absorbing boundaries — ``run()`` passes ``None`` (warn-and-drop)
-        for closed-boundary NU sims, where the interior energy does not
-        decay. ``decay_monitor_component`` / ``decay_monitor_position``
+        absorbing boundaries. ``run()`` refuses ``until_decay`` for
+        closed-boundary NU sims, where the interior energy does not decay. ``decay_monitor_component`` / ``decay_monitor_position``
         are NOT threaded: they parameterize the uniform lane's
         closed/PEC point-field fallback, which has no NU counterpart.
         """
@@ -1691,7 +1690,8 @@ class _ExecuteMixin:
         # callers never carry a refinement (run() sends one to the subgridded
         # lane, compute_mixed_s_matrix refuses it first).
         self._require_no_refinement_without_a_subgrid(
-            "forward()/optimize()/topology_optimize()")
+            "forward()/optimize()/topology_optimize()/"
+            "compute_lumped_wire_s_matrix_via_scan()")
 
         from rfx.simulation import (
             run as _run,
@@ -3325,10 +3325,13 @@ class _ExecuteMixin:
         """Select the execution lane and reject unsupported config combos.
 
         The single decision-and-rejection point consumed by both
-        :meth:`run` and :meth:`forward` (W6.3). All lane-rejection guards
-        (``NotImplementedError`` for unsupported combinations,
-        distributed-lane ``ValueError`` guardrails) live here so there is
-        exactly one place that decides a lane and refuses an impossible one.
+        :meth:`run` and :meth:`forward` (W6.3). Shared routing guards
+        (``NotImplementedError`` for unsupported combinations and
+        distributed-lane ``ValueError`` guardrails) run here. Individual
+        entry points and runners apply additional admission checks.
+        In particular, non-uniform meshes refuse refinement and unsupported
+        dimensional modes before dispatch. Uniform forward entry points also
+        refuse refinement when entering their material-based solve.
 
         ``mode`` is ``"forward"`` or ``"run"``. The two modes share the
         ``is_nonuniform`` boolean and the NU ``n_steps`` formula but have
@@ -4244,6 +4247,7 @@ class _ExecuteMixin:
 
         Notes
         -----
+        ``forward()`` refuses refinement: it has no subgridded solve.
         ``forward()`` can be called inside ``jax.jit``, so an optimisation
         step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
         compiles on its first call and reuses the program afterwards, while
@@ -4348,8 +4352,9 @@ class _ExecuteMixin:
              "fwd_nonuniform": "non-uniform forward",
              "fwd_distributed_nu": "distributed non-uniform forward",
              }.get(plan.lane, plan.lane),
-            entry="Simulation.forward()",
-            instead="use run() on a uniform mesh")
+            entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
+            instead="use a supported uniform-mesh forward configuration for optimization; "
+                    "use run() on a uniform mesh for run-only features")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(
@@ -4739,8 +4744,8 @@ class _ExecuteMixin:
             interior-energy stop runs on absorbing (``cpml``/``upml``)
             boundaries via a chunked host loop over the NU scan step
             (dV-weighted energy — per-cell ``dx*dy*dz`` — so graded cells
-            are weighted faithfully). Closed-boundary NU sims warn and run
-            the fixed ``n_steps`` (no point-field fallback on the NU lane).
+            are weighted faithfully). Closed-boundary NU sims refuse
+            ``until_decay`` (no point-field fallback on the NU lane).
             On the NU decay path all step-sized buffers are allocated at
             ``decay_max_steps`` and flux monitors must keep the default
             rectangular DFT window. (The non-uniform runner additionally
@@ -4796,8 +4801,8 @@ class _ExecuteMixin:
         devices : list of jax.Device or None
             When a list with len > 1 is provided, run the simulation
             distributed across those devices using 1D slab decomposition
-            along the x-axis (via ``jax.pmap``).  Phase 1 supports PEC
-            boundary, soft sources, and point probes.
+            along the x-axis via ``shard_map``. Supported combinations are
+            listed in ``docs/guides/support_matrix.md``.
         exchange_interval : int, optional
             Ghost exchange interval in timesteps; only integer 1 is supported.
         report_every : int or None
@@ -5010,8 +5015,7 @@ class _ExecuteMixin:
                 raise NotImplementedError(
                     "add_dft_plane_probe() is not supported on the "
                     "distributed multi-device run() path (issue #579); "
-                    "neither rfx.runners.distributed_v2 nor "
-                    "rfx.runners.distributed accumulates DFT-plane fields, "
+                    "rfx.runners.distributed_v2 does not accumulate DFT-plane fields, "
                     "so a registered plane would be silently dropped. Drop "
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."

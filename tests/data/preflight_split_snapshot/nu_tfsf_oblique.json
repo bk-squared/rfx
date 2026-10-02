@@ -4,7 +4,7 @@
       {
         "code": "nonuniform_tfsf",
         "loc": null,
-        "message": "ERROR: TFSF oblique incidence is not yet supported on nonuniform z mesh. Use angle_deg=0.",
+        "message": "ERROR: TFSF oblique incidence is not yet supported on a nonuniform mesh. Use angle_deg=0 with a uniform x axis.",
         "severity": "error",
         "source": "_validate_cfg_nonuniform_limitations"
       }

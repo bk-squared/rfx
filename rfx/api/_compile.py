@@ -714,8 +714,8 @@ class _CompileMixin:
         This helper drops ``pec_mask`` by construction — its callers
         (the coaxial reflection / two-port lanes in
         ``rfx/sparams/coax.py``) drive ``_run`` with materials only, and
-        their conductors are the sigma-fill coax shell and pin that
-        design note §1.8 fences out of the ownership contract.  A
+        their coax shell and pin are realized separately as shorted PEC edges
+        by the coaxial lane. A
         declared PEC SHEET or WIRE has no material to fall back on: it
         would simply not exist in the run.  Refuse it here rather than
         let the lane report an S-matrix for geometry it did not solve.
@@ -726,8 +726,8 @@ class _CompileMixin:
         volume" as the remedy for a sheet, which on this path buys the
         user nothing: measured, a one-cell PEC Box through here returns
         eps_r == 1 and sigma == 0 everywhere, i.e. vacuum.  The remedies
-        that actually work are a sigma FILL (what the coax stamp does for
-        its own shell and pin) or a lane that realizes the declaration.
+        are an explicit finite-conductivity material fill or a lane that
+        realizes the declared PEC geometry. The coax stamp itself uses PEC edges.
         """
         _bm_sheets: list = []
         _bm_wires: list = []
@@ -749,17 +749,14 @@ class _CompileMixin:
                 "the coaxial S-parameter lanes (compute_coaxial_line_reflection, "
                 "compute_coaxial_two_port) "
                 "do not realize declared PEC geometry of ANY kind (#931): "
-                "they step from material arrays only, so the cell mask is "
-                "discarded and a sheet or a wire owns no cell to begin "
+                "this material-only builder discards the cell mask, and "
+                "a sheet or a wire owns no cell to begin "
                 f"with. Declared here: {', '.join(_declared)} — all of it "
                 "would be absent from the solve. Redrawing a sheet as a "
                 "volume does NOT help on this path (a one-cell PEC Box "
                 "comes back as eps_r = 1, sigma = 0). Either model the "
-                "conductor the way this lane models its own coax shell and "
-                "pin — a sigma fill, stamp_coaxial_line() or "
-                "rasterize(..., sigma=1e7), which §1.8 fences out of the "
-                "ownership contract precisely because it is a material and "
-                "not an edge rule — or solve the model with run() / "
+                "conductor as an explicit finite-conductivity material fill "
+                "(which is not a PEC edge rule), or solve the model with run() / "
                 "forward(), which realize the declaration.")
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,

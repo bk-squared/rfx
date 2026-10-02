@@ -238,9 +238,8 @@ def compute_waveguide_s_matrix(
 
         This enables junction measurements UNDER the documented
         discipline; it does NOT make arbitrary compact junctions
-        valid. See the skipped ``test_api.py`` T-junction reciprocity test
-        and the companion evidence gate test
-        ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
+        valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
+        the current waveguide evidence and scope.
     """
     if not normalize:
         import warnings

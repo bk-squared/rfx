@@ -402,8 +402,7 @@ def differentiable_material_fit(
         ports, plain/TFSF sources, lumped RLC, periodic overrides, Kerr,
         conformal walls, point ports on PEC edges, and non-default solver,
         precision, stencil or interface settings. Refinements, non-uniform
-        meshes, and surface-impedance
-        sheets retain their existing refusals.
+        meshes, and surface-impedance sheets retain their existing refusals.
     s_measured : (n_ports, n_ports, n_freqs) complex array
         Measured S-parameter matrix.
     freqs : (n_freqs,) array in Hz

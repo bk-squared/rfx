@@ -1427,7 +1427,7 @@ def test_a_lane_that_drops_volume_pec_does_not_recommend_drawing_a_volume():
             sim._build_materials(grid)
     msg = str(excinfo.value)
     assert "PEC volume" in msg, msg
-    assert "sigma fill" in msg or "sigma=" in msg, msg
+    assert "finite-conductivity material fill" in msg, msg
     assert "does NOT help" in msg, (
         "the refusal must say that redrawing as a volume is not a remedy "
         "on this path")

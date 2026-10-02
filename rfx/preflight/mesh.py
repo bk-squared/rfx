@@ -1034,29 +1034,24 @@ def _validate_cfg_nonuniform_limitations(
     # grid builder, read off the RESOLVED mesh, so a profile that arrives by
     # auto-meshing or a design-document round trip counts too.
     if self._uses_nonuniform_mesh:
-        # The two messages below still say "nonuniform z mesh". Since the
-        # gate above, they also reach an x- or y-only mesh, which has no z
-        # profile to name. The committed preflight snapshot pins this text, so
-        # the wording is left for the documentation pass (rfx #1171) rather
-        # than moved here.
         # P2.3: TFSF on nonuniform mesh — narrowed scope.
         # Axis-aligned ±x incidence with angle_deg=0 runs the 1D
-        # auxiliary along the uniform x axis and is supported. The
+        # auxiliary along x and is supported only when x is uniform. The
         # z-directed and oblique cases would need a z-nonuniform 1D
         # aux (resp. nonuniform 2D aux) and are deferred.
         if self._tfsf is not None:
             if self._tfsf.direction in ("+z", "-z"):
                 raise PreflightConfigError(
                     "TFSF z-directed incidence is not yet supported on "
-                    "nonuniform z mesh. Axis-aligned incidence along x "
-                    "(direction='+x' or '-x') is supported.",
+                    "a nonuniform mesh. Axis-aligned incidence along x "
+                    "(direction='+x' or '-x') is supported only when x is uniform.",
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )
             if abs(self._tfsf.angle_deg) > 0.01:
                 raise PreflightConfigError(
                     "TFSF oblique incidence is not yet supported on "
-                    "nonuniform z mesh. Use angle_deg=0.",
+                    "a nonuniform mesh. Use angle_deg=0 with a uniform x axis.",
                     code="nonuniform_tfsf",
                     source="_validate_cfg_nonuniform_limitations",
                 )

@@ -354,8 +354,8 @@ def _validate_cfg_compute_cpml_thickness(
 ) -> tuple[list[float], list[float], set]:
     """Per-face CPML thickness (2026-04). Mirrors Grid._face_pad:
     pec_faces / pmc_faces / periodic-axis faces consume 0 cells;
-    remaining faces get the axis CPML thickness (non-uniform z
-    aggregates the leading dz_profile entries). Under asymmetric
+    remaining faces get their CPML thickness from that face's own cells
+    on each axis, including non-uniform profiles. Under asymmetric
     composition (half-symmetric PMC + CPML, one-sided reflector)
     the lo and hi sides of a single axis can differ — the legacy
     symmetric scalar forced both sides to the max and produced
