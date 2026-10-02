@@ -261,7 +261,7 @@ def test_simulation_adi_run_high_level():
         solver="adi",
         adi_cfl_factor=5.0,
     )
-    sim.add_source((0.01, 0.01, 0.0), "ez")
+    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
     sim.add_probe((0.01, 0.01, 0.0), "hx")
 
@@ -282,7 +282,7 @@ def test_simulation_adi_forward_contract():
         mode="2d_tmz",
         solver="adi",
     )
-    sim.add_source((0.01, 0.01, 0.0), "ez")
+    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
 
     result = sim.forward(n_steps=20)
@@ -318,7 +318,7 @@ def test_simulation_adi_default_refuses_internal_pec_geometry():
         dx=dx,
     )
     sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.01)), material="pec")
-    sim.add_source((0.01, 0.01, 0.0), "ez")
+    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
 
     # Build-time (no solve): drawn extent == realized extent in x and y.
@@ -348,27 +348,22 @@ def test_simulation_adi_cpml_boundary():
         freq_max=10e9, domain=(0.02, 0.02, 0.01),
         boundary="cpml", mode="2d_tmz", solver="adi",
     )
-    sim.add_source((0.01, 0.01, 0.0), "ez")
+    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
     sim.add_probe((0.012, 0.01, 0.0), "ez")
     result = sim.run(n_steps=20)
     assert not jnp.any(jnp.isnan(result.time_series))
 
 
-@pytest.mark.parametrize("amplitude_kind", [None, "current", "field"])
-def test_simulation_adi_lossy_material(amplitude_kind):
-    """Lossy ADI stepping works; an unverified current drive is refused (#1373)."""
+def test_simulation_adi_lossy_material():
+    """ADI with lossy material should work (implicit sigma in tridiagonal)."""
     sim = Simulation(
         freq_max=10e9, domain=(0.02, 0.02, 0.01),
         boundary="pec", mode="2d_tmz", solver="adi",
     )
     sim.add_material("lossy", eps_r=2.2, sigma=0.1)
     sim.add(Box((0.005, 0.005, 0.0), (0.015, 0.015, 0.01)), material="lossy")
-    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind=amplitude_kind)
+    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
-    if amplitude_kind != "field":
-        with pytest.raises(ValueError, match="amplitude unverified in a lossy cell on ADI"):
-            sim.run(n_steps=20)
-        return
     result = sim.run(n_steps=20)
     assert not jnp.any(jnp.isnan(result.time_series))
 
@@ -531,7 +526,7 @@ class TestADI3DCavityPhysics:
             mode="3d", solver="adi", dx=2e-3,
         )
         sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.02)), material="pec")
-        sim.add_source((0.005, 0.01, 0.01), "ez")
+        sim.add_source((0.005, 0.01, 0.01), "ez", amplitude_kind="field")
         sim.add_probe((0.015, 0.01, 0.01), "ez")
         assert sim._adi_cfl_factor == 5.0
         for entrypoint in (sim.run, sim.forward):
@@ -551,7 +546,8 @@ def test_simulation_adi_3d_run():
         dx=0.003,
     )
     sim.add_source((0.01, 0.01, 0.015), "ez",
-                    waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2))
+                    waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2),
+                    amplitude_kind="field")
     sim.add_probe((0.02, 0.02, 0.015), "ez")
     result = sim.run(n_steps=100)
 
@@ -559,8 +555,7 @@ def test_simulation_adi_3d_run():
     assert isinstance(result.state, ADIState3D)
     assert not jnp.any(jnp.isnan(result.state.ez))
     max_ez = float(jnp.max(jnp.abs(result.state.ez)))
-    # #1373: measured factor 1.1962794e8 equals predicted Cb_ADI/dV.
-    assert max_ez < 100.0 * 119627941.4041027, f"3D ADI fields diverged: max|Ez| = {max_ez:.2e}"
+    assert max_ez < 100.0, f"3D ADI fields diverged: max|Ez| = {max_ez:.2e}"
 
 
 def test_simulation_adi_3d_cpml():
@@ -576,11 +571,11 @@ def test_simulation_adi_3d_cpml():
         cpml_layers=6,
     )
     sim.add_source((0.015, 0.015, 0.015), "ez",
-                    waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2))
+                    waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2),
+                    amplitude_kind="field")
     sim.add_probe((0.02, 0.02, 0.015), "ez")
     result = sim.run(n_steps=100)
 
     assert not jnp.any(jnp.isnan(result.state.ez))
     max_ez = float(jnp.max(jnp.abs(result.state.ez)))
-    # #1373: measured factor 1.1962794e8 equals predicted Cb_ADI/dV.
-    assert max_ez < 100.0 * 119627941.4041027, f"3D ADI+CPML diverged: max|Ez| = {max_ez:.2e}"
+    assert max_ez < 100.0, f"3D ADI+CPML diverged: max|Ez| = {max_ez:.2e}"

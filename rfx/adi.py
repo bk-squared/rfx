@@ -148,31 +148,6 @@ def _apply_pec_2d(ez: jnp.ndarray, ez_pec_mask: jnp.ndarray | None = None) -> jn
     return ez
 
 
-def adi_current_coefficient(eps_r, sigma, dt):
-    """Full-step current coefficient, admitted only in lossless source cells.
-
-    Each E sub-step uses (dt/2)/(epsilon + sigma*dt/4). The soft drive
-    is injected before the split update. Its lossy amplitude is unverified;
-    the API refuses current declarations in cells with sigma > 0.
-    """
-    return dt / (EPS_0 * eps_r + sigma * dt / 4.0)
-
-
-def require_lossless_current_source(sigma):
-    """Refuse an ADI current drive when losslessness cannot be established."""
-    from rfx.core.jax_utils import is_tracer
-
-    if is_tracer(sigma):
-        raise ValueError(
-            "ADI 'current' amplitude is verified only in a lossless source cell; "
-            "a traced sigma_override can make it lossy. Declare "
-            "amplitude_kind='field', or use the Yee solver.")
-    if float(sigma) > 0:
-        raise ValueError(
-            "current source amplitude unverified in a lossy cell on ADI; "
-            "declare it in a lossless cell, or use the Yee solver.")
-
-
 def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
                 eps_r: jnp.ndarray, sigma: jnp.ndarray,
                 dt: float, dx: float, dy: float,
@@ -235,11 +210,8 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     damping = eps_minus / eps_plus  # < 1 when sigma > 0
 
     # Courant-like coupling coefficient for the implicit direction
-    # Factor before division: the combined tiny denominator's reverse-mode
-    # reciprocal square overflows for current-moment drives (#1373).
-    coupling = (half_dt / mu_abs) * (half_dt / eps_plus)
-    Cx = coupling / (dx * dx)  # (Nx, Ny)
-    Cy = coupling / (dy * dy)  # (Nx, Ny)
+    Cx = half_dt * half_dt / (mu_abs * eps_plus * dx * dx)  # (Nx, Ny)
+    Cy = half_dt * half_dt / (mu_abs * eps_plus * dy * dy)  # (Nx, Ny)
 
     # ===================================================================
     # Half-step 1: implicit in x, explicit in y
@@ -861,8 +833,7 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
 
     ce = half_dt / eps_plus          # Ampère explicit-curl factor
     ch = half_dt / mu_abs              # Faraday factor (no magnetic loss)
-    # Avoid the combined small denominator's division-VJP overflow (#1373).
-    cc = ch * ce                    # substituted mixed-term factor
+    cc = half_dt * half_dt / (mu_abs * eps_plus)  # substituted mixed-term factor
     Cx = cc / (dx * dx)              # tridiagonal coupling per axis
     Cy = cc / (dy * dy)
     Cz = cc / (dz * dz)

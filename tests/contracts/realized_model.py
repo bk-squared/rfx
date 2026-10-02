@@ -53,11 +53,10 @@ for lane in LANES:
     TABLE["sat"][lane] = (Cell(issue="#1373", note="per-cell SAT face epsilon")
                           if lane == "run_subgridded" else Cell("not reachable",
                           note="no coarse/fine interface on this lane"))
-    # None compares with the lane's explicit current operand. ADI's explicit
-    # current still departs from the shared Yee edge-material reference.
+    # ADI admits only explicit field declarations (#1373).
     if lane in ("run_adi", "fwd_adi"):
-        TABLE["soft_current"][lane] = Cell(
-            issue="#1373", note="ADI current uses per-cell E material")
+        for source in ("soft_none", "open_none", "soft_current", "open_current"):
+            TABLE[source][lane] = Cell("refuses", note="ADI implements only field sources")
     for kind in ("field", "current", "none"):
         TABLE["open_" + kind]["run_subgridded"] = Cell("refuses",
             note="all-face absorber outside subgrid production envelope")

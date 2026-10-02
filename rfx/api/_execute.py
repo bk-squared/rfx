@@ -1408,8 +1408,6 @@ class _ExecuteMixin:
 
         grid_out = copy.copy(grid)
         grid_out.dt = dt
-        from rfx.adi import adi_current_coefficient, require_lossless_current_source
-        from rfx.api._source_semantics import needs_scale, source_amplitude_scale
 
         # ---- 3D path ----
         if self._mode == "3d":
@@ -1433,12 +1431,6 @@ class _ExecuteMixin:
             for pe in self._ports:
                 i, j, k = grid.position_to_index(pe.position)
                 waveform = jax.vmap(pe.waveform)(times)
-                if needs_scale(pe.amplitude_kind, "raw"):
-                    if pe.amplitude_kind == "current":
-                        require_lossless_current_source(sigma_3d[i, j, k])
-                    cb = adi_current_coefficient(eps_r_3d[i, j, k], sigma_3d[i, j, k], dt)
-                    waveform = waveform * source_amplitude_scale(
-                        pe.amplitude_kind, "raw", cb=cb, dV=float(grid.cells("x")[i])**3)
                 sources_3d.append((i, j, k, pe.component, waveform))
 
             shape = grid.shape
@@ -1498,12 +1490,6 @@ class _ExecuteMixin:
         for pe in self._ports:
             i, j, _ = grid.position_to_index(pe.position)
             waveform = jax.vmap(pe.waveform)(times)
-            if needs_scale(pe.amplitude_kind, "raw"):
-                if pe.amplitude_kind == "current":
-                    require_lossless_current_source(sigma_2d[i, j])
-                cb = adi_current_coefficient(eps_r_2d[i, j], sigma_2d[i, j], dt)
-                waveform = waveform * source_amplitude_scale(
-                    pe.amplitude_kind, "raw", cb=cb, dV=float(grid.cells("x")[i])**3)
             sources.append((i, j, waveform))
 
         # The 2-D TMz lane carries only Ez, so its realized PEC mask is

@@ -1079,8 +1079,8 @@ class Simulation(
 
             - ``'current'``: the amplitude is a current moment I(t) in A·m,
               realized as ``E += Cb * I / dV`` on every path and boundary
-              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``; ADI uses
-              ``dt/eps`` in lossless source cells and refuses lossy current drives,
+              (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``; ADI refuses
+              ``'current'`` and requires explicit ``'field'``,
               ``dV`` = local cell volume). Resolution-independent injected
               power; Meep's convention; the declaration default.
             - ``'field'``: the amplitude is a raw E-field increment per
