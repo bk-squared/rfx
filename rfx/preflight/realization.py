@@ -482,7 +482,8 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
-                solved = continued_conductor_shape(sim, self.grid, entry.shape, entry=entry)
+                solved = continued_conductor_shape(
+                    sim, self.grid, entry.shape, entry=entry, unextendable=[])
                 cells, sheet, wire = classify_pec_entry(
                     solved,
                     self.coords, self.centres, self.cell_sizes,
@@ -524,7 +525,8 @@ class _CampaignStaticsContext:
                     lo=lo, hi=hi))
                 continue
             try:
-                solved = continued_conductor_shape(sim, self.grid, tc.shape, entry=tc)
+                solved = continued_conductor_shape(
+                    sim, self.grid, tc.shape, entry=tc, unextendable=[])
                 sheet = sheet_spec_from_shape(
                     solved,
                     self.coords, self.cell_sizes, name=label,
@@ -734,7 +736,7 @@ def _campaign_ctx(self):
         id(sim._dz_profile), tuple(sim._domain),
         getattr(sim, "_periodic_axes", None), sim._cpml_layers,
         id(getattr(sim, "_refinement", None)),
-        tuple(sorted(sim._materials)),
+        tuple(sorted((name, id(spec)) for name, spec in sim._materials.items())),
     )
     cached = getattr(self, "_pf_campaign_ctx", None)
     if cached is not None and cached[0] == key:

@@ -43,6 +43,8 @@ class EntityGeometry:
     declared_bounds_m: tuple | None = None
     continued_faces: tuple[str, ...] = ()
     mask_error: str | None = None
+    # Refused occupancy is diagnostic only; no edges were assembled.
+    occupancy_role: str = "solved"
 
 
 @dataclass(frozen=True)
@@ -122,6 +124,14 @@ def _freeze(value):
 
 
 def _assembly(sim, ctx):
+    """The host audit does not duplicate the runner's continuation warning."""
+    import warnings
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Conducting geometry reaches an absorbing face")
+        return _assembly_impl(sim, ctx)
+
+
+def _assembly_impl(sim, ctx):
     """Reuse production assembly; retain refused-model audit evidence too."""
     assembled = ctx.realized()
     if assembled is not None:
@@ -189,9 +199,13 @@ def _build_record(sim, ctx):
             mask = interior_lattice_mask(
                 assembled.geometry_masks[id(sim._thin_conductors[index - len(sim._geometry)])], ctx.grid)
         else:
-            # A refused declaration has no production occupancy to report.
-            mask = None
-            mask_error = e.error or "ValueError: declaration not represented by the production assembly"
+            # Retain the refused declaration's diagnostic occupancy once.
+            # It is explicitly NOT a solved conductor and contributes no edges.
+            try:
+                mask = ctx.rasterize(shape)
+            except Exception as exc:
+                mask = None
+                mask_error = f"{type(exc).__name__}: {exc}"
         axes = []
         if mask is not None and mask.any():
             occ = np.where(mask)
@@ -232,7 +246,7 @@ def _build_record(sim, ctx):
             plane, walls, None if mask is None else _readonly(mask), edges,
             None if e is None else e.error, _freeze(sheet),
             None if bounds is None else tuple(tuple(float(v) for v in b) for b in bounds[:2]),
-            continued, mask_error))
+            continued, mask_error, "diagnostic" if kind == "refused" else "solved"))
     domain = []
     for a, axis in enumerate('xyz'):
         plo = int(getattr(ctx.grid, f'pad_{axis}_lo'))

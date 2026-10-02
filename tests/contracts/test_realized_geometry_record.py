@@ -120,3 +120,40 @@ def test_result_keeps_the_pre_run_object_without_stepping(monkeypatch):
     sim.add(Box((0.001, 0.001, 0.006), (0.002, 0.002, 0.007)), material="slab")
     assert sim.realized_geometry() is not record
     assert len(result.realized_geometry.entities) == 4
+
+
+def test_cached_record_builds_once_across_readers(monkeypatch):
+    import rfx.realized_geometry as records
+    from tests._realized_geometry import realized
+    sim = _model()
+    calls = []
+    build = records._build_record
+
+    def counted(*args):
+        calls.append(args[0])
+        return build(*args)
+
+    monkeypatch.setattr(records, "_build_record", counted)
+    record = sim.realized_geometry()
+    sim.fidelity_report(print_report=False)
+    assert realized(sim).edge_masks is record.edge_masks
+    assert sim.realized_geometry() is record
+    assert calls == [sim]
+    sim.add_material("slab", eps_r=4.0)
+    assert sim.realized_geometry() is not record
+    assert calls == [sim, sim]
+
+
+def test_refused_occupancy_is_diagnostic_and_cached():
+    sim = _model()
+    sim.add(Box((0.001, 0.001, 0.001), (0.0011, 0.0011, 0.002)), material="pec")
+    record = sim.realized_geometry()
+    refused = record.entities[-1]
+    assert refused.kind == "refused"
+    assert refused.occupancy_role == "diagnostic"
+    assert refused.mask.any()
+    assert all(not edge.any() for edge in refused.edge_masks)
+    row = next(r for r in sim.fidelity_report(print_report=False)
+               if r["entity"].startswith(refused.label))
+    assert "refused-by-contract" in [f["kind"] for f in row["findings"]]
+    assert sim.realized_geometry() is record

@@ -8769,7 +8769,7 @@
             "kind": "pec"
           },
           "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 254.00 um (1310 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "realization": "PEC sheet on node plane z = 254.00 um (1315 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         },
         "geometry|ro4350b|0.000,0.000,0.000um->33200.000,20696.000,254.000um": {
           "axes": {

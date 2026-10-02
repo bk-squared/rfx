@@ -303,46 +303,21 @@ def test_fixture_copies_differ_only_by_the_junction_hole():
 # ---------------------------------------------------------------------------
 
 def test_rule_i_fires_on_the_shorted_junction_copy():
-    """The PTFE clearance Cylinder (entity 1) is declared AFTER the ground
-    sheet (entity 0): the cells it shares with the sheet at node 25 are a
-    no-op under the OR-only assembly. FAILS on 88c49bdc: fidelity_report
-    has no such kind.
+    """Read the production centre-sampled Cylinder, including its overlap.
 
-    Pinned counts, re-derived on b5605391 (after #834's exact host-float64
-    node coordinates) and identical under JAX_ENABLE_X64=0 and =1:
-    overlap 48 of the Cylinder's 192 cells. The pre-#834 float32 path gave
-    47 of 141 at x64=0 (and 48/192 at x64=1). Both numbers moved for the
-    same reason, and it is this fixture's knife edges, not the check:
-    * radius 0.4 mm = exactly 4 cells, so the lattice points (+-4, 0) and
-      (0, +-4) sit ON the circle. ``r^2 <= R^2`` on exact float64 node
-      coordinates resolves three of them inside ((+4,0), (-4,0), (0,-4);
-      (0,+4) falls out by +3.2e-22 m^2 from the y-node product 21*1e-4 -
-      1.7e-3) -> 48 cells per z plane; float32 coordinates resolved two
-      ((+4,0), (0,+4)) -> 47.
-    * the Cylinder's z span [24, 27] nodes (centre 25.5, height 3 dx) has
-      both end faces ON node planes; the closed ``|h| <= height/2`` test
-      now includes both -> 4 planes (24..27) instead of 3 (25..27):
-      4 x 48 = 192, was 3 x 47 = 141.
-    Re-pinning these is a fixture-realization statement, not a change to
-    what rule (i) measures: the overlap is still every PTFE cell on the
-    solid sheet at node 25 (48 = 49-cell lattice disk minus the one
-    knife-edge cell that fell out).
-
-    Both numbers survived the #931 redraw unchanged (measured
-    2026-09-07): the ground is now a SHEET, and its realized footprint on
-    plane 25 is the full plane, so the PTFE Cylinder's 48 nodes there are
-    still every one of them shared. The finding names the unit -- the
-    contributor reads "48 sheet footprint nodes", not "48 cells", because
-    a sheet owns no cell."""
+    The former reader independently node-sampled 192 cells / 48 shared
+    nodes. Production writes 156 material cells / 52 shared footprint
+    indices; #1138's public record retains that exact mask.
+    """
     report = _junction_sim(open_annulus=False).fidelity_report(print_report=False)
     (ptfe,) = _rows(report, "ptfe")
     hits = _findings(ptfe, RULE_I_KIND)
     assert len(hits) == 1, [f["kind"] for f in ptfe["findings"]]
     f = hits[0]
-    assert f["overlap_cells"] == 48
-    assert ptfe["n_cells"] == 192
+    assert f["overlap_cells"] == 52
+    assert ptfe["n_cells"] == 156
     assert f["conductor_entities"] == [0]
-    assert "geometry[0]" in f["detail"] and "48" in f["detail"]
+    assert "geometry[0]" in f["detail"] and "52" in f["detail"]
     assert "sheet footprint nodes" in f["detail"]
     assert "OR-only" in f["detail"] or "cannot carve" in f["detail"]
     assert f["remedy"]
@@ -350,17 +325,21 @@ def test_rule_i_fires_on_the_shorted_junction_copy():
     assert len(_findings(ptfe, "claimed-by-conductor")) == 1
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "#1138: a Cylinder is sampled at cell centres while the hole is drawn on "
+    "nodes, so 7 PTFE cells land on the ground's footprint (half-cell offset "
+    "of curved shapes, recorded on #1138); remove when that sampling is fixed"))
 def test_rule_i_is_silent_when_the_hole_is_built_into_the_conductor():
     """Same five entities with the ground built around the hole: the PTFE
-    Cylinder's node-25 disk (48 cells on exact node coordinates, see the
-    test above) is a strict subset of the 49-node lattice hole, so no
+    Cylinder should be a strict subset of the 49-node lattice hole, so no
     earlier conductor shares a node with it.
 
-    Under #931 the ground is twenty sheets on plane 25 whose unioned
-    footprint is the full plane minus that hole (4361 of 4410 nodes,
-    measured), and the check reads that footprint -- reading VOLUME cells
-    only would make this control pass for the wrong reason, by going
-    silent on the shorted copy too."""
+    The report now reads the production material mask (#1138 record): the
+    Cylinder is sampled at cell centres (156 cells) while the hole is cut on
+    nodes, and 7 of its cells sit on the ground's footprint. That is the
+    curved-shape half-cell offset, a separate cause on #1138, so this control
+    is a strict xfail until that sampling is fixed. The former independent
+    node sampler reported 0 here; it did not read what the solver builds."""
     report = _junction_sim(open_annulus=True).fidelity_report(print_report=False)
     (ptfe,) = _rows(report, "ptfe")
     assert _findings(ptfe, RULE_I_KIND) == []

@@ -54,40 +54,15 @@ from rfx.realized_geometry import _node_arrays
 
 
 def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
-    """The cells this entity occupies, sampled the way the SOLVE samples it.
-
-    ``pec_volume=True`` is the lattice-ownership contract's VOLUME sampler
-    (#931 §1.1): a PEC volume's occupancy is read at primal-cell CENTRES,
-    half-open ``lo <= c < hi``. The report used to read every entity at
-    NODE coordinates, which is the DIELECTRIC sampler (§1.1, unchanged) —
-    for a conductor drawn off-lattice the two disagree by a cell, so the
-    per-entity cell count and realized extents in this report could differ
-    from what the solve actually built. Two samplers, one report: the
-    report is only honest if the PEC rows read the PEC sampler.
-
-    Dielectrics keep the node sampler, because that is what the assembly
-    writes their ``eps_r`` / ``sigma`` with.
-    """
-    from rfx.geometry.smoothing import continued_conductor_shape
-    from rfx.geometry.rasterize_grid import interior_lattice_mask
-    shape = entry.shape
-    if pec_volume or hasattr(entry, "sigma_bulk"):
-        shape = continued_conductor_shape(sim, grid, shape, entry=entry)
-    if pec_volume:
-        from rfx.geometry.rasterize_grid import (
-            cell_centres_from_nodes, pec_volume_cell_mask)
-        coords, sizes = _contract_coords(sim, grid, nonuniform)
-        centres = cell_centres_from_nodes(coords, sizes)
-        return interior_lattice_mask(pec_volume_cell_mask(shape, centres, sizes, grid=grid), grid,
-                                     cell_axes=(True, True, True))
-    if nonuniform:
-        from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-        c = coords_from_nonuniform_grid(grid)
-        mask = np.asarray(shape.mask_on_coords(c.x, c.y, c.z), dtype=bool)
-    else:
-        mask = np.asarray(shape.mask(grid), dtype=bool)
-    return (interior_lattice_mask(mask, grid)
-            if hasattr(entry, "sigma_bulk") else mask)
+    """Compatibility accessor for the cached public record; never rasterizes."""
+    collection = sim._thin_conductors if hasattr(entry, "sigma_bulk") else sim._geometry
+    prefix = "thin_conductor" if hasattr(entry, "sigma_bulk") else "geometry"
+    index = next(i for i, candidate in enumerate(collection) if candidate is entry)
+    row = next(row for row in sim.realized_geometry().entities
+               if row.label == f"{prefix}[{index}]")
+    if row.mask_error is not None:
+        raise ValueError(row.mask_error)
+    return row.mask
 
 
 def _declared_material(sim, name):
@@ -492,7 +467,7 @@ def fidelity_report(sim, print_report: bool = True):
                         import builtins
                         cls, message = geometry.mask_error.split(": ", 1)
                         raise getattr(builtins, cls, ValueError)(message)
-                    nb_mask = geometry.mask
+                    nb_mask = _entity_mask(entry, sim, grid, nonuniform)
                 except Exception as exc:
                     pec_unrasterized.append((i, name, type(exc).__name__))
                     nb_item["findings"].append(dict(
@@ -526,7 +501,8 @@ def fidelity_report(sim, print_report: bool = True):
         # disagree by a cell on any off-lattice conductor. Sheets carry no
         # cell (sheet_fp above) and a refused entry never reaches the
         # assembly, so both keep the node sampler.
-        mask = (geometry.mask if geometry.mask is not None else np.zeros(eps.shape, bool))
+        mask = _entity_mask(entry, sim, grid, nonuniform)
+        mask = mask if mask is not None else np.zeros(eps.shape, bool)
         item = dict(entity=name, material=_declared_material(sim, mat_name),
                     declared_lo=tuple(float(v) for v in lo),
                     declared_hi=tuple(float(v) for v in hi),
