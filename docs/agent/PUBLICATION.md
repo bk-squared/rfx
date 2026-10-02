@@ -14,7 +14,7 @@ Excluded sources:
 - `recipe-waveguide-sparams.mdx`: names VESSL run evidence; use the public
   sources/ports guide and support matrix instead.
 - `gpu-throughput.mdx`: lab hardware benchmark measurements.
-- `PUBLICATION.md` and `VERIFICATION.md`: publication-maintenance and test records.
+- `PUBLICATION.md`: this publication-maintenance note.
 
 README.md links to `working-on-rfx.mdx` and `repo-map.mdx` (line 103 at the
 starting commit). No docs/public page links to these excluded sources.
