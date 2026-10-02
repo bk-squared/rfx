@@ -5,10 +5,10 @@ substrate on a 0.5 mm mesh. The port is a current source in parallel with its
 50 ohm load, and both sit on the same three Ez edges: the load is a
 conductance ``sigma_port = n * d / (Z0 * d_perp1 * d_perp2)`` = 120 S/m
 stamped into the edges' update coefficient ``Cb = dt / (eps + sigma*dt/2)``,
-and the drive is the declared current pushed through that same Cb. The graded
+and the voltage drive is ``Cb * w / (n * d_par)``. The graded
 lane built the drive from a copy of the materials taken BEFORE the load was
 stamped, so its Cb lacked sigma_port and the edges received
-``1 + sigma_port*dt/(2*eps)`` times the declared current -- 2.911 at this
+``1 + sigma_port*dt/(2*eps)`` times the voltage-drive increment -- 2.911 at this
 board's Courant step. The factor carries dt, so the absolute field per unit
 drive changed with the time step (x0.850 for a step 0.772 times shorter), and
 it carries the dual cell sizes at the feed through sigma_port. On this board
@@ -41,17 +41,8 @@ What is checked, at 4 GHz, below the patch resonance:
 5. end to end, a 0.3 pF capacitor across the middle edge of the wire port:
    the two lanes agree on |S11| at 2 and 4 GHz within 1e-4.
 
-The two lanes read a port waveform in different units, and (1) converts
-between them. The uniform lane adds ``Cb * w / (n * d_par)`` per step per live
-cell (``rfx.simulation.make_wire_port_sources``); the graded lane adds
-``Cb * w / (n * dV)`` with ``dV = d_par * d_perp1 * d_perp2``
-(``rfx.nonuniform.make_current_source``, the current convention of
-``rfx.api._source_semantics``). On the same board and step the graded field
-is therefore the uniform one divided by ``d_perp1 * d_perp2`` = dx**2 here --
-a geometric constant with no material and no dt in it, so it cannot absorb
-the defect. That the same ``add_port(waveform=...)`` gives fields dx**2
-apart on the two lanes is a pre-existing difference this test records, not
-one it fixes.
+Both lanes use the shared voltage drive ``Cb * w / (n * d_par)`` (#1266).
+Lane parity compares the absolute fields directly, without a unit conversion.
 """
 
 from __future__ import annotations
@@ -90,7 +81,9 @@ DT_RATIO = 0.772                    # the issue's 0.59613 / 0.77228 ps
 SIGMA_PORT = N_SUB * DX / (Z0 * DX * DX)
 
 # Pre-declared gates.
-LANE_PARITY_RTOL = 1e-3
+# Direct graded/uniform error 1.34e-7 at DX=0.5 mm; 2x, rounded up
+# to one significant digit. This tightens the former 1e-3 gate.
+LANE_PARITY_RTOL = 3e-7
 DT_FIELD_RTOL = 1e-2
 DT_S11_RTOL = 1e-3
 
@@ -191,16 +184,16 @@ _STRIP = {"sigma": _strip_lumped_sigma, "eps": _strip_lumped_eps}
 
 
 def _unstamped_drive(strip="sigma"):
-    """Mutation (b): the runner still calls ``make_current_source`` exactly
+    """Mutation (b): the runner still calls ``port_drive_waveform`` exactly
     as it does; only the materials it hands over lose the port's own load
     (``strip="sigma"``) or the capacitor's fold (``strip="eps"``)."""
-    real = _nu_runner.make_current_source
+    real = _nu_runner.port_drive_waveform
     _cut = _STRIP[strip]
 
     def _pre_fix(grid, ijk, comp, wf, n, materials, *a, **kw):
         return real(grid, ijk, comp, wf, n, _cut(materials), *a, **kw)
 
-    return mock.patch.object(_nu_runner, "make_current_source", _pre_fix)
+    return mock.patch.object(_nu_runner, "port_drive_waveform", _pre_fix)
 
 
 def _dft_at_bin(ts, dt):
@@ -247,9 +240,7 @@ def _lane_ratio(mutated):
     dt_u, e_u, _ = _solve("uniform")
     dt_g, e_g, _ = _solve("graded", 1.0, mutated)
     assert dt_g == dt_u, f"the two lanes ran at {dt_g} and {dt_u} s"
-    # graded field * d_perp1 * d_perp2 is in the uniform lane's units
-    # (module docstring).
-    return e_g * DX * DX / e_u, dt_u
+    return e_g / e_u, dt_u
 
 
 def _dt_ratios(mutated):
@@ -265,8 +256,8 @@ def _dt_ratios(mutated):
 
 def test_graded_and_uniform_lanes_give_the_same_field_per_unit_drive():
     ratio, dt = _lane_ratio(mutated=False)
-    print(f"[lane] dt = {dt:.6e} s  graded*dx^2/uniform at {F_BIN/1e9:g} GHz"
-          f" = {ratio:.7f}")
+    print(f"[lane] dt = {dt:.6e} s  graded/uniform at {F_BIN/1e9:g} GHz"
+          f" = {ratio:.12g}; |ratio-1|={abs(ratio-1):.12g}")
     assert abs(ratio - 1.0) <= LANE_PARITY_RTOL, (
         f"graded field per unit drive is {ratio:.6f} x the uniform lane's; "
         f"a drive built without the port's own load reads "
@@ -334,7 +325,7 @@ def _drive_and_stepper_materials(sim, *, strip=None):
     """
     handed = []
     import rfx.sources.msl_port as _msl
-    real_cs = _nu_runner.make_current_source
+    real_cs = _nu_runner.port_drive_waveform
     real_msl = _msl.make_msl_port_sources
 
     def _in(materials):
@@ -343,7 +334,7 @@ def _drive_and_stepper_materials(sim, *, strip=None):
     def _cs(grid, ijk, comp, wf, n, materials, *a, **kw):
         m = _in(materials)
         out = real_cs(grid, ijk, comp, wf, n, m, *a, **kw)
-        handed.append(((out[0], out[1], out[2]), out[3], m))
+        handed.append((tuple(ijk), comp, m))
         return out
 
     def _msl_src(grid, port, materials, *a, **kw):
@@ -359,7 +350,7 @@ def _drive_and_stepper_materials(sim, *, strip=None):
         stepped["dt"] = float(grid.dt)
         raise _Built
 
-    with mock.patch.object(_nu_runner, "make_current_source", _cs), \
+    with mock.patch.object(_nu_runner, "port_drive_waveform", _cs), \
             mock.patch.object(_msl, "make_msl_port_sources", _msl_src), \
             mock.patch.object(_nu_runner, "run_nonuniform", _scan):
         with pytest.raises(_Built):

@@ -191,6 +191,7 @@ def _pre_override_drive(drawn):
     fix. With no override it is the materials the builder already gets.
     Wraps whatever builders are installed when it is entered."""
     import rfx.sources.msl_port as _msl
+    inner_port = _nu_runner.port_drive_waveform
     inner_cs = _nu_runner.make_current_source
     inner_msl = _msl.make_msl_port_sources
 
@@ -201,13 +202,17 @@ def _pre_override_drive(drawn):
             eps_r=drawn.eps_r if eps_l is None else drawn.eps_r + eps_l,
             sigma=drawn.sigma if sig_l is None else drawn.sigma + sig_l)
 
+    def _port(grid, ijk, comp, wf, n, materials, *a, **kw):
+        return inner_port(grid, ijk, comp, wf, n, _back(materials), *a, **kw)
+
     def _cs(grid, ijk, comp, wf, n, materials, *a, **kw):
         return inner_cs(grid, ijk, comp, wf, n, _back(materials), *a, **kw)
 
     def _msl_src(grid, port, materials, *a, **kw):
         return inner_msl(grid, port, _back(materials), *a, **kw)
 
-    with mock.patch.object(_nu_runner, "make_current_source", _cs), \
+    with mock.patch.object(_nu_runner, "port_drive_waveform", _port), \
+            mock.patch.object(_nu_runner, "make_current_source", _cs), \
             mock.patch.object(_msl, "make_msl_port_sources", _msl_src):
         yield
 
@@ -285,9 +290,15 @@ def _built_up_to_the_scan(sim, eps_override=None, mutate_from=None):
     ``[(cell, component, drive materials)], stepper materials, dt``."""
     import rfx.sources.msl_port as _msl
     handed = []
+    real_port = _nu_runner.port_drive_waveform
     real_cs = _nu_runner.make_current_source
     real_msl = _msl.make_msl_port_sources
     stepped = {}
+
+    def _port(grid, ijk, comp, wf, n, materials, *a, **kw):
+        out = real_port(grid, ijk, comp, wf, n, materials, *a, **kw)
+        handed.append((tuple(ijk), comp, materials))
+        return out
 
     def _cs(grid, ijk, comp, wf, n, materials, *a, **kw):
         out = real_cs(grid, ijk, comp, wf, n, materials, *a, **kw)
@@ -306,7 +317,8 @@ def _built_up_to_the_scan(sim, eps_override=None, mutate_from=None):
 
     # the mutation is entered LAST, so it wraps the recorder and the
     # recorder sees what the real builder receives
-    with mock.patch.object(_nu_runner, "make_current_source", _cs), \
+    with mock.patch.object(_nu_runner, "port_drive_waveform", _port), \
+            mock.patch.object(_nu_runner, "make_current_source", _cs), \
             mock.patch.object(_msl, "make_msl_port_sources", _msl_src), \
             mock.patch.object(_nu_runner, "run_nonuniform", _scan):
         ctx = (_pre_override_drive(mutate_from) if mutate_from is not None

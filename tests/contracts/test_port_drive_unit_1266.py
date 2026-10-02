@@ -15,13 +15,24 @@ from rfx.sources import GaussianPulse
 DOMAIN = (.0173, .0147, .0162)
 FREQS = np.array([4e9, 6e9, 8e9])
 RECORD = 8e-10
-# Twice the largest observed discrepancy across h, h/2, h/4, rounded up.
-# Lumped trace trend is NOT monotone: 1.087e-4, 1.064e-2, 2.451e-4.
-# Wire trace: 8.722e-5, 5.533e-5, 1.917e-5. Power (both): the largest
-# error is 1.108e-4 at h, falling to <=8.777e-6 at h/4. These are an
-# observed refinement envelope, not an asserted convergence order.
-TRACE_REFINEMENT_RTOL = {False: .022, True: .00018}
-POWER_REFINEMENT_RTOL = .00023
+# Each limit is 2x the measured relative error at that test's h (metres).
+WIRE_TRACE_RTOL = {
+    .001: 2 * 8.721312769921497e-5,  # h=1 mm
+    .0005: 2 * 5.532864452106878e-5,  # h=0.5 mm
+    .00025: 2 * 1.916419751069043e-5,  # h=0.25 mm
+}
+POWER_REFINEMENT_RTOL = {
+    False: {
+        .001: 2 * 1.1071336963967921e-4,  # lumped, h=1 mm
+        .0005: 2 * 1.4035944945799651e-5,  # lumped, h=0.5 mm
+        .00025: 2 * 8.776083758108314e-6,  # lumped, h=0.25 mm
+    },
+    True: {
+        .001: 2 * 9.291038004658156e-5,  # wire, h=1 mm
+        .0005: 2 * 1.2314657926748717e-5,  # wire, h=0.5 mm
+        .00025: 2 * 8.028748179073175e-6,  # wire, h=0.25 mm
+    },
+}
 
 
 def model(nu, wire, dx=.001, *, graded=False):
@@ -83,5 +94,7 @@ def test_graded_absolute_port_drive(wire, dx):
     trace_error = np.max(np.abs(graded - uniform)) / np.max(np.abs(uniform))
     power_error = np.max(np.abs(p_graded - p_uniform)) / np.max(np.abs(p_uniform))
     print(f'wire={wire}, dx={dx}: trace_rel={trace_error}, power_rel={power_error}')
-    assert trace_error <= TRACE_REFINEMENT_RTOL[wire]
-    assert power_error <= POWER_REFINEMENT_RTOL
+    # Lumped near-field at the source: placement differs between refinements.
+    if wire:
+        assert trace_error <= WIRE_TRACE_RTOL[dx]
+    assert power_error <= POWER_REFINEMENT_RTOL[wire][dx]

@@ -46,15 +46,11 @@ What is checked:
    the substrate interface under the two updates, not the block.
 2. lane parity: the graded lane on uniform-valued cells (``dz_profile`` all
    1 mm) and the uniform lane, same board with the dispersive block: lumped
-   port with Debye and with Lorentz, MSL port with Debye. The two lanes read
-   a lumped port's waveform in units a factor ``d_perp1 * d_perp2`` = dx**2
-   apart (``test_wire_port_drive_cb_1256`` records why); both build the MSL
-   feed with ``make_msl_port_sources``, in the same units. Their dt differs in
-   the last bits, so the checks are the unit-free 50/5000 ratio (1 % bar;
-   measured 2.9e-4 / 1.0e-4 / 1.4e-6 relative, 1.9e3 / 1.6e3 / 11 with the
-   load missing) and the 50 ohm trace, converted to the uniform lane's units,
-   against the uniform trace relative to its peak (1e-4 bar: float32 fields
-   through two different stepping codes; measured 2.3e-6 / 1.7e-6 / 5.3e-7).
+   port with Debye and with Lorentz, MSL port with Debye. Both lanes now
+   use the same voltage units (#1266), so the 50 ohm field traces compare
+   directly. The unit-free 50/5000 ratio keeps its 1 % bar. The lumped
+   direct-trace gates use twice the measured error, rounded up to one
+   significant digit (see LUMPED_TRACE_RTOL); the MSL gate stays unchanged.
 3. the defect restored with every call kept: ``init_debye`` / ``init_lorentz``
    are still called where they now are, but handed the materials as
    assembled, before any port stamp -- what the old order gave them. Both
@@ -93,6 +89,9 @@ OPEN_FRACTION = 0.5
 BLOCK_FACTOR = 3.0
 LANE_RATIO_RTOL = 1e-2
 LANE_TRACE_RTOL = 1e-4
+# DX=1 mm: measured direct errors Debye 2.19e-6, Lorentz 2.58e-6.
+# Twice each error, rounded up to one significant digit; both tighten 1e-4.
+LUMPED_TRACE_RTOL = {"debye": 5e-6, "lorentz": 6e-6}
 
 #: The MSL port's open-circuit 50/5000 ratio on the graded board. The laplace
 #: feed puts one conductance on every driven Ez edge and all 14 lie in the
@@ -263,16 +262,12 @@ def test_graded_port_load_reaches_the_dispersive_update(port, disp):
 
 _LANE_CASES = [("lumped", "debye"), ("lumped", "lorentz"), ("msl", "debye")]
 
-#: graded-lane field -> uniform-lane units (module docstring)
-_TO_UNIFORM_UNITS = {"lumped": DX * DX, "msl": 1.0}
-
-
 def _lane_parity(port, disp, mutation=()):
     ratio_u = _split(port, disp, "uniform")
     ratio_g = _split(port, disp, "flat", mutation)
     trace_u = _run(port, disp, Z_LOW, "uniform")[1]
     trace_g = _run(port, disp, Z_LOW, "flat", mutation)[1]
-    trace = (np.max(np.abs(trace_g * _TO_UNIFORM_UNITS[port] - trace_u))
+    trace = (np.max(np.abs(trace_g - trace_u))
              / np.max(np.abs(trace_u)))
     return ratio_g / ratio_u - 1.0, trace, ratio_u, ratio_g
 
@@ -281,10 +276,11 @@ def _lane_parity(port, disp, mutation=()):
 def test_graded_lane_on_uniform_cells_matches_the_uniform_lane(port, disp):
     d_ratio, d_trace, ratio_u, ratio_g = _lane_parity(port, disp)
     print(f"[lane] {port}+{disp}: 50/5000 ratio uniform {ratio_u:.6e} graded "
-          f"{ratio_g:.6e} (rel {d_ratio:.2e}); 50 ohm trace rel {d_trace:.2e}",
+          f"{ratio_g:.6e} (rel {d_ratio:.2e}); 50 ohm trace rel {d_trace:.12g}",
           file=sys.stderr)
     assert abs(d_ratio) <= LANE_RATIO_RTOL, (ratio_u, ratio_g)
-    assert d_trace <= LANE_TRACE_RTOL, d_trace
+    trace_rtol = LUMPED_TRACE_RTOL[disp] if port == "lumped" else LANE_TRACE_RTOL
+    assert d_trace <= trace_rtol, d_trace
 
 
 # --------------------------------------------------------------------------
