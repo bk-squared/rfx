@@ -1360,8 +1360,9 @@ class RingdownRun:
 
     Built by ``Simulation.run`` once the lane, the step count and the grid are
     known; :meth:`run` wraps the lane's runner call. Everything that can refuse
-    the request does so here, before the run; after the run nothing raises: a
-    failed check returns the plain result unchanged with the reason in
+    the request does so here, before the run. A malformed time-series shape
+    can still raise after the run; other failed completion checks return the
+    plain result unchanged with the reason in
     ``Result.ringdown.report`` and a warning.
     """
 
