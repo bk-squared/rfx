@@ -528,7 +528,7 @@ def compute_mixed_s_matrix(
     if not skip_preflight:
         # One preflight for the full registration (run() would fire it
         # per drive run — 2*n_ports repeats of the same advisories).
-        self._auto_preflight(context="compute_mixed_s_matrix")
+        self._auto_preflight(context="compute_mixed_s_matrix", check_ntff="advisory")
 
     if magnitude_channel not in ("flux", "wave"):
         raise ValueError(

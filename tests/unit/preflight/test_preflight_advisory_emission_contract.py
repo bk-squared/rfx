@@ -22,10 +22,6 @@ internally with no ``skip_preflight=True`` (``rfx/api/_sparams.py:3223,
 preflight at all. ``EMISSION_CLASSIFICATION`` below records this
 per-method, measured, not assumed from the one cited comment.
 
-#1138 update: compute_coax_msl_transition now calls _auto_preflight and
-is AUTO. Earlier DIAGNOSTIC_ONLY commentary below describes the historical
-emission audit; the current per-entry classification is in the table.
-
 This file is NOT a retrofit -- it does not wire preflight into those
 paths, and it does not attempt to reconcile every one of the ~74 advisory
 kinds against every script that could trigger them (out of scope, #737's
@@ -599,9 +595,9 @@ EMISSION_CLASSIFICATION = {
         DIAGNOSTIC_ONLY,
         "measured: no preflight()/_auto_preflight() call in this method"),
     "Simulation.compute_coax_msl_transition": (
-        AUTO,
-        "#1138: calls self._auto_preflight(skip=skip_preflight) directly, "
-        "rfx/sparams/coax.py"),
+        DIAGNOSTIC_ONLY,
+        "measured: no preflight()/_auto_preflight() call in this method; "
+        "EXPERIMENTAL per its own docstring"),
     "Simulation.compute_s_matrix": (
         AUTO,
         "issue #980 Phase 1 dispatcher (rfx/sparams/dispatch.py): calls no "
@@ -612,7 +608,7 @@ EMISSION_CLASSIFICATION = {
         "self.compute_msl_s_matrix()/self.compute_mixed_s_matrix() branches "
         "of its own if-chain (both AUTO above), so _reaches_preflight is "
         "True. READ IT AS: preflight runs on SOME lanes this method can "
-        "select, not on all of them. On the waveguide and the two other coaxial "
+        "select, not on all of them. On the waveguide and the three coaxial "
         "lanes -- each DIAGNOSTIC_ONLY in its own row above -- routing "
         "through compute_s_matrix() adds no preflight, exactly as calling "
         "them directly adds none. The dispatch is deliberately written as "

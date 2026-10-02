@@ -44,6 +44,7 @@ from rfx.sparams._common import (
     _validate_extra_flux_monitor_entries,
     _warn_if_ringdown_truncated,
     _finalize_sparam_result,
+    _warn_ntff_box_dropped,
     _assemble_coaxial_two_port_from_voltages,
     _ladder_split_witness,
     _assemble_coax_msl_transition_from_voltages,
@@ -1395,8 +1396,6 @@ def compute_coax_msl_transition(
     from rfx.runners.uniform import build_flux_monitor_cfgs
     from rfx.simulation import run as _run, ProbeSpec
 
-    self._auto_preflight(skip=skip_preflight, context="compute_coax_msl_transition")
-
     _validate_extra_flux_monitor_entries(
         extra_flux_monitors, self._domain, "compute_coax_msl_transition"
     )
@@ -1762,9 +1761,10 @@ def compute_coax_msl_transition(
     # port's own feed plane AND the reference plane at the junction.
     #
     # Emitted with ``warnings.warn``, deliberately NOT by constructing a
-    # PreflightWarning: this is a method-argument diagnostic, separate
-    # from the automatic preflight above. The emission-site freeze in
-    # tests/unit/preflight/test_preflight_advisory_emission_contract.py
+    # PreflightWarning: this is not a preflight check (this method never
+    # calls preflight — it is DIAGNOSTIC_ONLY in
+    # tests/unit/preflight/test_preflight_advisory_emission_contract.py's
+    # EMISSION_CLASSIFICATION) and the emission-site freeze in that file
     # counts PreflightWarning/PreflightErrorWarning/PreflightIssue/
     # PreflightConfigError constructions only.
     #
