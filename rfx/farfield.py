@@ -146,7 +146,7 @@ class FarFieldResult(NamedTuple):
     """Far-field radiation result.
 
     E_theta, E_phi : (n_freqs, n_theta, n_phi) complex
-        Angular far-field components (V·m, omitting 1/r factor).
+        Angular far-field components (V·s: the accumulator weights each sample by dt; the 1/r factor is omitted).
     theta : (n_theta,) radians
     phi : (n_phi,) radians
     freqs : (n_freqs,) Hz
