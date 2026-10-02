@@ -119,7 +119,7 @@ def realized(sim, *, nonuniform: bool | None = None) -> Realization:
         sim._campaign_ctx().realized(strict=True)
         record = sim.realized_geometry()
     return Realization(sim._campaign_ctx().grid, record.pec_mask,
-                       record.sheets, record.wires, record.edge_masks)
+                       list(record.sheets), list(record.wires), record.edge_masks)
 
 
 def domain_wall_positions(grid, axis: int) -> tuple[float, float]:

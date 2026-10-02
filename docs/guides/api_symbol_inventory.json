@@ -397,7 +397,9 @@
         "materials",
         "pec_mask",
         "sheet_specs",
-        "sheets"
+        "sheets",
+        "geometry_masks",
+        "geometry_key"
       ]
     },
     "apply_thirds_rule": {
@@ -2834,6 +2836,7 @@
       "normalize",
       "include_general"
     ],
+    "realized_geometry": [],
     "run": [
       "n_steps",
       "num_periods",
