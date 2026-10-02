@@ -57,7 +57,10 @@ def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
             if hasattr(module, helper):
                 stack.enter_context(patch.object(module, helper, witness))
         call()
-    assert len(seen) == expected_calls, f"E update bypassed shared {helper}: {len(seen)} != {expected_calls}"
+    assert len(seen) == expected_calls, (
+        f"E update bypassed shared {helper}: {len(seen)} != {expected_calls} "
+        "(the count is per trace of the step body; a JAX change that traces it "
+        "a different number of times moves this without any routing defect)")
     return seen[0]
 
 
