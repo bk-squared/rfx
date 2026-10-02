@@ -18,10 +18,29 @@ The website identifies its source version; select the release matching your inst
 | Use rfx with a coding assistant | [Machine-readable documentation](https://remilab.ai/rfx/llms.txt) |
 | Check whether a result is supported | [Support matrix](docs/guides/support_matrix.md) · [S-parameter limits](docs/guides/sparameter_support_matrix.md) · [known limitations](docs/guides/known_limitations.md) |
 
+## Release status: 2.0 release candidate
+
+`2.0.0rc1` is the first release candidate of rfx 2.0. What 2.0 changes for a user:
+
+- **An input a solver path does not implement is refused, never dropped.** If `run()`,
+  `forward()` or an S-parameter calculator routes your model to a path that does not
+  solve a declared input (a conformal wall, subpixel smoothing, a lumped element, a port,
+  a dispersive material, a solver or precision request), it raises before the first time
+  step and names the input and a remedy. It does not run a different model silently.
+- **Results are judged by a stated accuracy bar** on a converged mesh: magnitudes within
+  2 dB, resonances and cutoffs within 1 %, electrical length within 1 % of the reference.
+  What is supported, and within which limits, is in the
+  [support matrix](docs/guides/support_matrix.md); what is currently wrong is in
+  [known limitations](docs/guides/known_limitations.md).
+- **Python 3.11 or newer**, with JAX 0.10. Python 3.10 users stay on 1.8.x.
+- Multi-device (distributed) execution is not part of 2.0's supported set; it is planned
+  for 2.1.
+
 ## Install
 
 ```bash
-pip install rfx-fdtd
+pip install rfx-fdtd            # latest stable release
+pip install --pre rfx-fdtd      # 2.0 release candidate
 ```
 
 For GPU execution, use a compatible JAX/CUDA installation:

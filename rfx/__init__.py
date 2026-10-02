@@ -2,7 +2,7 @@
 # The runtime guard must execute before the public JAX-dependent imports.
 # ruff: noqa: F401, E402
 
-__version__ = "1.8.0"
+__version__ = "2.0.0rc1"
 
 import sys as _sys
 
