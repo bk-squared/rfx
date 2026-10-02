@@ -137,6 +137,9 @@ port to use for a discrete feed, a probe feed, or a component's terminals.
 - With `extent`, it is a **wire port** that spans `extent` metres along its
   component axis, from `position` to `position + extent`. Use it to bridge a
   gap between two conductors, such as a probe feed through a substrate.
+- `radius=` declares the wire port's probe-pin radius, within the local
+  thin-probe mesh restrictions. If omitted, the effective pin radius follows
+  the mesh and its series inductance changes under refinement.
 
 ```python
 sim = Simulation(freq_max=6e9, domain=(0.05, 0.05, 0.02), dx=2.5e-3,

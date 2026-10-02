@@ -47,6 +47,8 @@ python examples/quickstart/hello_world.py
 Most finish in seconds to a few minutes on a CPU. Steps 4 and 10 take tens of
 minutes.
 
+The [machine-readable index](https://github.com/bk-squared/rfx/blob/main/examples/index.json) lists builders and output files.
+
 ## The learning path
 
 | # | Script | What it teaches | Ports and boundaries |
@@ -59,7 +61,7 @@ minutes.
 | 6 | [`tutorials/run_control_and_fields.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/run_control_and_fields.py) | `n_steps` vs `num_periods` vs `until_decay`, the truncation warning, reading field slices | CPML; point source and probe |
 | 7 | [`tutorials/ports_and_sparams_101.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/ports_and_sparams_101.py) | which port fits which structure, `S11` basics, and the bins the extractor marks unreliable | lumped, microstrip, waveguide and coaxial ports, and `add_lumped_rlc`; CPML and PEC |
 | 8 | [`tutorials/resonance_harminv.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/resonance_harminv.py) | ring-down resonance extraction, picking a mode by its physics rather than its amplitude, record length vs resolution | closed PEC cavity; point source and probe; no port, which would load the cavity |
-| 9 | [`tutorials/antenna_farfield_pattern.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/antenna_farfield_pattern.py) | placing a far-field box at least half a wavelength from the radiator, and checking directivity against the textbook short dipole | CPML; `add_ntff_box`; point source |
+| 9 | [`tutorials/antenna_farfield_pattern.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/antenna_farfield_pattern.py) | placing a far-field box at least half a wavelength from the radiator, and checking directivity against the textbook short dipole; writes `output/short_dipole_e_plane.csv` | CPML; `add_ntff_box`; point source |
 | 10 | [`tutorials/patch_antenna_demo.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/patch_antenna_demo.py) | a real antenna end to end: a stack registered to the built mesh, copper as sheets, the radiating mode picked by its far field, a settling check and an error budget against openEMS | CPML; graded `dz_profile`; `add_ntff_box`; point source and probe |
 | 11 | [`tutorials/rcs_scattering.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/rcs_scattering.py) | radar cross section with `subtract_incident_reference=True` | CPML; plane wave and an empty reference run |
 | 12 | [`inverse_design/differentiable_s11_design.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/inverse_design/differentiable_s11_design.py) | `jax.grad` through `compute_waveguide_s_matrix`, checked against central finite differences | CPML; two WR-90 waveguide ports |
@@ -74,7 +76,7 @@ the wrong cells, a run cut off before the field rang down.
 | Script | What it shows | Ports and boundaries |
 |---|---|---|
 | [`tutorials/adi_solver_demo.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/adi_solver_demo.py) | the ADI solver's time-step vs accuracy trade, against an exact cavity; see [ADI Solver](/rfx/guide/adi-solver/) | closed PEC cavity; point source and probe |
-| [`tutorials/cad_mesh_import_demo.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/cad_mesh_import_demo.py) | importing an STL part with `MeshShape` and a mm → m `scale`. Needs the `rfx-fdtd[cad]` extra and exits cleanly without it | CPML; point source |
+| [`tutorials/cad_mesh_import_demo.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/tutorials/cad_mesh_import_demo.py) | importing an STL part with `MeshShape` and a mm → m `scale`. Needs the `rfx-fdtd[cad]` extra and exits cleanly without it; exposes `build_simulation()` | CPML; point source |
 | [`inverse_design/multilayer_ar_coating.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/inverse_design/multilayer_ar_coating.py) | a three-layer anti-reflection coating optimized through `forward(eps_override=...)`, checked against the transfer-matrix optimum | CPML on x, periodic y and z; point source and two probes |
 | [`inverse_design/field_observable_shielding.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/inverse_design/field_observable_shielding.py) | pooling two DFT plane probes into one worst-case leakage objective with `field_softmax` | CPML; plane wave; two DFT planes |
 | [`inverse_design/progressive_demo.py`](https://github.com/bk-squared/rfx/blob/a9054338616b91bb1364699882c2530fa29a0048/examples/inverse_design/progressive_demo.py) | `progressive_optimize` running a design over increasing mesh resolutions. A minimal API demo with a trivial optimum | CPML; point source and probe |
