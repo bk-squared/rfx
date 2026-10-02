@@ -183,6 +183,7 @@ def assemble_materials_nu(
     pec_sheets: list | None = None,
     pec_wires: list | None = None,
     geometry_masks: list | None = None,
+    assembly_entries: list | None = None,
 ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
     """Build material arrays and dispersion specs for non-uniform grid.
 
@@ -228,6 +229,7 @@ def assemble_materials_nu(
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
         pole_geometry_entries=sim._geometry,
         geometry_masks=geometry_masks,
+        assembly_entries=assembly_entries,
         centres=centres,
         cell_sizes=cell_sizes,
         sheets=_pec_sheets,
@@ -299,6 +301,8 @@ def assemble_materials_nu(
             _pec_sheets.append(sheet_spec_from_shape(
                 tc.shape, coords, cell_sizes, name="thin_conductor",
                 lane="non-uniform", refuse_thick=True))
+            if assembly_entries is not None:
+                assembly_entries.append((conductor_keys[id(tc)], None, _pec_sheets[-1], None, tc.shape))
         # #373: lossy (non-PEC) thin conductors fold into sigma using the LOCAL
         # spacing NORMAL to the sheet, not a uniform grid.dx. The sheet has
         # bulk conductivity sigma_bulk and physical thickness t but is realized
@@ -921,9 +925,16 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _sheet_specs: list = []
     _pec_sheets: list = []
     _pec_wires: list = []
+    _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(
         sim, grid, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
-        pec_wires=_pec_wires)
+        pec_wires=_pec_wires, geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
+    from rfx.realized_geometry import record_from_assembly
+    geometry_record = (record_from_assembly(
+        sim, grid, materials, pec_mask, _pec_sheets, _pec_wires,
+        _geometry_masks, _assembly_entries, lane="run_nonuniform")
+        if lane == "run_nonuniform" else None)
+    del _geometry_masks, _assembly_entries
     if getattr(sim, "_interface_eps", "sampled") == "dual_average" and (
             debye_spec is not None or lorentz_spec is not None):
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
@@ -1901,6 +1912,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         )
 
     return Result(
+        realized_geometry=geometry_record,
         state=r["state"],
         time_series=r["time_series"],
         s_params=s_params,

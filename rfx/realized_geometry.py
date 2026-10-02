@@ -45,6 +45,9 @@ class EntityGeometry:
     mask_error: str | None = None
     # Refused occupancy is diagnostic only; no edges were assembled.
     occupancy_role: str = "solved"
+    node_count: int = 0
+    edge_counts: tuple[int, ...] = ()
+    edge_ranges: tuple = ()
 
 
 @dataclass(frozen=True)
@@ -72,12 +75,15 @@ class PortGeometry:
 
 @dataclass(frozen=True)
 class RealizedGeometry:
-    """One immutable host record shared by build-time readers and Result.
+    """Immutable geometry metadata with optional build-time diagnostic arrays.
 
     ``entities`` are in geometry then thin-conductor declaration order.
     ``nodes`` include the far face of the last stored cell. ``edge_masks``
     are the assembled PEC edges before any driven port edge is cleared.
-    ``ports`` identifies the driven edges separately.
+    ``ports`` identifies the driven edges separately. Result records omit
+    dense masks, materials and sheet/wire specs; entity edge counts/ranges
+    summarize the interior solver geometry. Request diagnostic arrays through
+    ``Simulation.realized_geometry()``. ``lane`` names the execution lane.
     """
 
     entities: tuple[EntityGeometry, ...]
@@ -94,10 +100,14 @@ class RealizedGeometry:
     refused: tuple[tuple[int, str], ...] = ()
     refused_thin_conductors: tuple[tuple[int, str], ...] = ()
     pad_fill_findings: tuple = ()
+    lane: str = "uniform"
+    limitations: tuple[str, ...] = ()
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
         from rfx.boundaries.pec import realized_wall_planes
+        if not self.edge_masks:
+            raise ValueError("Dense wall query requires Simulation.realized_geometry()")
         kwargs.setdefault("periodic", self.periodic)
         return realized_wall_planes(self.edge_masks, axis, **kwargs)
 
@@ -124,7 +134,7 @@ def _freeze(value):
 
 
 def _assembly(sim, ctx):
-    """The host audit does not duplicate the runner's continuation warning."""
+    """Suppress the assembly duplicate; diagnostic entry classification warns."""
     import warnings
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", message="Conducting geometry reaches an absorbing face")
@@ -162,7 +172,7 @@ def _assembly_impl(sim, ctx):
     return assembled, refused, refused_tc, findings
 
 
-def _build_record(sim, ctx):
+def _build_record(sim, ctx, *, compact=False):
     from rfx.mesh_edges import solved_sheet_span
     from rfx.preflight.realization import _shape_bounds
 
@@ -227,7 +237,10 @@ def _build_record(sim, ctx):
                     'xyz'[a], (i0, i1 if cell_range is None else i1 + 1), cell_range,
                     declared, (rlo, rhi), rhi - rlo, residual,
                     float(np.mean(sizes[a][i0:i1 + 1]))))
-        edges = () if e is None else tuple(_readonly(m) for m in e.edges(ctx.periodic, ctx.grid.shape))
+        raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
+        edge_counts = tuple(int(m.sum()) for m in raw_edges)
+        edge_ranges = tuple(_mask_ranges(m) for m in raw_edges)
+        edges = () if compact else tuple(_readonly(m) for m in raw_edges)
         walls = (() if e is None else tuple(tuple(e.wall_planes(a, ctx.periodic, ctx.grid.shape))
                                            for a in range(3)))
         plane = (None if sheet is None else
@@ -243,10 +256,14 @@ def _build_record(sim, ctx):
         entities.append(EntityGeometry(
             label, name, kind, tuple(axes),
             int(mask.sum()) if mask is not None and kind not in ("sheet", "wire") else 0,
-            plane, walls, None if mask is None else _readonly(mask), edges,
-            None if e is None else e.error, _freeze(sheet),
+            plane, walls, None if compact or mask is None else _readonly(mask), edges,
+            None if e is None else e.error, None if compact else _freeze(sheet),
             None if bounds is None else tuple(tuple(float(v) for v in b) for b in bounds[:2]),
-            continued, mask_error, "diagnostic" if kind == "refused" else "solved"))
+            continued, mask_error, "diagnostic" if kind == "refused" else "solved",
+            int(mask.sum()) if mask is not None and kind in ("sheet", "wire") else 0,
+            edge_counts, edge_ranges))
+        if compact and e is not None:
+            e._edges = None
     domain = []
     for a, axis in enumerate('xyz'):
         plo = int(getattr(ctx.grid, f'pad_{axis}_lo'))
@@ -257,20 +274,21 @@ def _build_record(sim, ctx):
         domain.append(DomainAxisGeometry(axis, end - plo,
                                         float(nodes[a][end] - nodes[a][plo]),
                                         (plo, phi), float(sim._domain[a])))
-    entities.extend(_pinned_entities(sim, ctx, assembled, nodes, sizes))
+    entities.extend(_pinned_entities(sim, ctx, assembled, nodes, sizes, compact=compact))
     return RealizedGeometry(tuple(entities), _ports(sim, ctx, assembled), tuple(domain),
                             tuple(_readonly(n) for n in nodes), tuple(_readonly(s) for s in sizes),
-                            tuple(_readonly(m) for m in assembled.edges),
-                            None if assembled.pec_mask is None else _readonly(assembled.pec_mask),
-                            _freeze(assembled.sheets), _freeze(assembled.wires),
-                            _freeze(assembled.materials), tuple(ctx.periodic),
+                            () if compact else tuple(_readonly(m) for m in assembled.edges),
+                            None if compact or assembled.pec_mask is None else _readonly(assembled.pec_mask),
+                            () if compact else _freeze(assembled.sheets), () if compact else _freeze(assembled.wires),
+                            None if compact else _freeze(assembled.materials), tuple(ctx.periodic),
                             tuple(refused.items()), tuple(refused_tc.items()),
-                            tuple(tuple(row.items()) for row in pad_findings))
+                            tuple(tuple(row.items()) for row in pad_findings), ctx.lane)
 
 
-def _pinned_entities(sim, ctx, assembled, nodes, sizes):
+def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):
     """Read the pinned specs appended by both production assemblers."""
     from rfx.preflight.realization import _realized_edges_np
+    from rfx.boundaries.pec import realized_wall_planes
     declarations = getattr(sim, "_pinned_sheets", ())
     specs = assembled.sheets[len(assembled.sheets) - len(declarations):] if declarations else ()
     rows = []
@@ -285,11 +303,15 @@ def _pinned_entities(sim, ctx, assembled, nodes, sizes):
             axes.append(AxisGeometry('xyz'[a], (lo, hi), None, None, bounds,
                                      bounds[1] - bounds[0], None, float(sizes[a][lo])))
         a, k = int(sheet.normal_axis), int(sheet.plane)
+        edges = _realized_edges_np(None, [sheet], [], ctx.periodic, ctx.grid.shape)
+        walls = tuple(tuple(realized_wall_planes(edges, axis, periodic=ctx.periodic)) for axis in range(3))
         rows.append(EntityGeometry(
             f"pinned_sheet[{i}]", declaration.name or "pinned_sheet", "sheet", tuple(axes),
-            0, (a, k, float(nodes[a][k])), (), _readonly(fp),
-            tuple(_readonly(m) for m in _realized_edges_np(None, [sheet], [], ctx.periodic, ctx.grid.shape)),
-            sheet=_freeze(sheet)))
+            0, (a, k, float(nodes[a][k])), walls, None if compact else _readonly(fp),
+            () if compact else tuple(_readonly(m) for m in edges),
+            sheet=None if compact else _freeze(sheet), node_count=int(fp.sum()),
+            edge_counts=tuple(int(m.sum()) for m in edges),
+            edge_ranges=tuple(_mask_ranges(m) for m in edges)))
     return rows
 
 
@@ -402,3 +424,37 @@ def _node_arrays(sim, grid, nonuniform):
                   for line, d in zip(lines, sizes))
     return sizes, nodes
 
+
+def _mask_ranges(mask):
+    indices = np.where(mask)
+    return tuple((int(i.min()), int(i.max())) for i in indices) if indices[0].size else ()
+
+
+def record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
+                         geometry_masks, assembly_entries, *, lane):
+    """Summarize the run's classifier outputs; never consult preflight caches."""
+    from dataclasses import replace
+    from rfx.preflight.realization import _CampaignStaticsContext, _EntryRealization, _RealizedPEC
+    ctx = object.__new__(_CampaignStaticsContext)
+    ctx.sim, ctx.grid = sim, grid
+    ctx.lane = "nonuniform" if hasattr(grid, "dx_arr") else "uniform"
+    ctx.periodic = tuple(sim._periodic_flags()) if ctx.lane == "uniform" else (False, False, False)
+    ctx.assembly_error = ctx._assembly_exception = None
+    ctx._realized = _RealizedPEC(lane=ctx.lane, grid=grid, materials=materials,
+                                pec_mask=pec_mask, sheets=sheets, wires=wires,
+                                periodic=ctx.periodic, geometry_masks=geometry_masks)
+    products = {key: (cells, sheet, wire, shape) for key, cells, sheet, wire, shape in assembly_entries}
+    ctx._entries = []
+    for collection, prefix in ((sim._geometry, "geometry"), (sim._thin_conductors, "thin_conductor")):
+        for i, entry in enumerate(collection):
+            label = f"{prefix}[{i}]"
+            if id(entry) in products:
+                cells, sheet, wire, shape = products[id(entry)]
+                kind = "volume" if cells is not None else "sheet" if sheet is not None else "wire"
+                ctx._entries.append(_EntryRealization(label=label, name=getattr(entry, "material_name", label),
+                    shape=entry.shape, solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire))
+            elif prefix == "thin_conductor":
+                ctx._entries.append(_EntryRealization(label=label, name=label, shape=entry.shape, kind="lossy"))
+    record = _build_record(sim, ctx, compact=True)
+    return replace(record, lane=lane, limitations=("refined region not represented",)
+                   if lane == "run_subgridded" else ())

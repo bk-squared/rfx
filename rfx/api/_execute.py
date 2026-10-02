@@ -4913,10 +4913,6 @@ class _ExecuteMixin:
             exchange_interval=exchange_interval,
         )
         n_steps = plan.n_steps
-        geometry_record = self.realized_geometry()
-        # The diagnostic build owns warning suppression; execution must still
-        # propagate its cached production refusal before entering any runner.
-        self._campaign_ctx().realized(strict=True)
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if ringdown is not None:
@@ -5031,7 +5027,7 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res._replace(realized_geometry=geometry_record)
+            return _res
 
         # ---- Non-uniform mesh lane ----
         if plan.lane == "run_nonuniform":
@@ -5126,15 +5122,22 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res._replace(realized_geometry=geometry_record)
+            return _res
 
         grid = self._build_grid()
         _run_sheet_specs: list = []
         _run_pec_sheets: list = []
         _run_pec_wires: list = []
+        _geometry_masks, _assembly_entries = [], []
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(
             grid, sheet_specs=_run_sheet_specs,
-            pec_sheets=_run_pec_sheets, pec_wires=_run_pec_wires)
+            pec_sheets=_run_pec_sheets, pec_wires=_run_pec_wires,
+            geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
+        from rfx.realized_geometry import record_from_assembly
+        geometry_record = record_from_assembly(
+            self, grid, base_materials, pec_mask, _run_pec_sheets, _run_pec_wires,
+            _geometry_masks, _assembly_entries, lane=plan.lane)
+        del _geometry_masks, _assembly_entries
 
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets

@@ -303,43 +303,25 @@ def test_fixture_copies_differ_only_by_the_junction_hole():
 # ---------------------------------------------------------------------------
 
 def test_rule_i_fires_on_the_shorted_junction_copy():
-    """Read the production centre-sampled Cylinder, including its overlap.
-
-    The former reader independently node-sampled 192 cells / 48 shared
-    nodes. Production writes 156 material cells / 52 shared footprint
-    indices; #1138's public record retains that exact mask.
-    """
+    """Both adjacent layers have 52 material cells bounded by solid metal."""
     report = _junction_sim(open_annulus=False).fidelity_report(print_report=False)
     (ptfe,) = _rows(report, "ptfe")
     hits = _findings(ptfe, RULE_I_KIND)
     assert len(hits) == 1, [f["kind"] for f in ptfe["findings"]]
     f = hits[0]
-    assert f["overlap_cells"] == 52
+    assert f["overlap_cells"] == 104
     assert ptfe["n_cells"] == 156
     assert f["conductor_entities"] == [0]
-    assert "geometry[0]" in f["detail"] and "52" in f["detail"]
-    assert "sheet footprint nodes" in f["detail"]
+    assert "geometry[0]" in f["detail"] and "104" in f["detail"]
+    assert "sheet-contact cells" in f["detail"]
     assert "OR-only" in f["detail"] or "cannot carve" in f["detail"]
     assert f["remedy"]
     # the pre-existing order-blind finding is untouched (it fires here too)
     assert len(_findings(ptfe, "claimed-by-conductor")) == 1
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "#1138: a Cylinder is sampled at cell centres while the hole is drawn on "
-    "nodes, so 7 PTFE cells land on the ground's footprint (half-cell offset "
-    "of curved shapes, recorded on #1138); remove when that sampling is fixed"))
 def test_rule_i_is_silent_when_the_hole_is_built_into_the_conductor():
-    """Same five entities with the ground built around the hole: the PTFE
-    Cylinder should be a strict subset of the 49-node lattice hole, so no
-    earlier conductor shares a node with it.
-
-    The report now reads the production material mask (#1138 record): the
-    Cylinder is sampled at cell centres (156 cells) while the hole is cut on
-    nodes, and 7 of its cells sit on the ground's footprint. That is the
-    curved-shape half-cell offset, a separate cause on #1138, so this control
-    is a strict xfail until that sampling is fixed. The former independent
-    node sampler reported 0 here; it did not read what the solver builds."""
+    """Material cells inside the clearance meet no complete metal face."""
     report = _junction_sim(open_annulus=True).fidelity_report(print_report=False)
     (ptfe,) = _rows(report, "ptfe")
     assert _findings(ptfe, RULE_I_KIND) == []

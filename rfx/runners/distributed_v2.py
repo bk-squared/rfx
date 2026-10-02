@@ -748,24 +748,32 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     sim._pf_campaign_ctx = None
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
+    _geometry_masks, _assembly_entries = [], []
     if is_nu:
         # dz-profile synthesis happens locally inside
         # _build_nonuniform_grid() — no sim-state mutation here.
         grid = sim._build_nonuniform_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask = (
             sim._assemble_materials_nu(grid, pec_sheets=_d_pec_sheets,
-                                       pec_wires=_d_pec_wires)
+                                       pec_wires=_d_pec_wires,
+                                       geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
         )
         pec_shapes = None
     else:
         grid = sim._build_grid()
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
             sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
-                                    pec_wires=_d_pec_wires)
+                                    pec_wires=_d_pec_wires,
+                                       geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
         )
         # The rest (Kerr chi3 among it, refused above) is unused on this lane;
         # drop it now so no whole-domain array stays alive through the loop.
         del _assembly_rest
+    from rfx.realized_geometry import record_from_assembly
+    geometry_record = record_from_assembly(
+        sim, grid, base_materials, pec_mask, _d_pec_sheets, _d_pec_wires,
+        _geometry_masks, _assembly_entries, lane="run_distributed")
+    del _geometry_masks, _assembly_entries
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
     if _d_pec_sheets or _d_pec_wires:
@@ -1735,6 +1743,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         ntff_data = ntff_layout.assemble(buffer)
 
     return Result(
+        realized_geometry=geometry_record,
         ntff_data=ntff_data, ntff_box=ntff_box,
         state=final_state,
         time_series=time_series,

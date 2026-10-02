@@ -8705,12 +8705,12 @@
               ],
               "face_residual_um": [
                 0.0,
-                74.0
+                53.0
               ],
-              "realized_extent_um": 33274.0,
+              "realized_extent_um": 33147.0,
               "realized_um": [
                 0.0,
-                33274.0
+                33147.0
               ],
               "sub_cell": false
             },
@@ -8753,12 +8753,6 @@
           },
           "findings": [
             {
-              "axis": "x",
-              "detail": "the realized body extends beyond the declared domain on x \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
-            },
-            {
               "axis": "y",
               "detail": "PLACEMENT off by 47.5 um (7.92% of the declared 600.0 um extent); SIZE 596.9 um (-3.1 um, -0.52%)",
               "kind": "off-lattice-face",
@@ -8769,7 +8763,7 @@
             "kind": "pec"
           },
           "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 254.00 um (1315 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "realization": "PEC sheet on node plane z = 254.00 um (1310 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         },
         "geometry|ro4350b|0.000,0.000,0.000um->33200.000,20696.000,254.000um": {
           "axes": {

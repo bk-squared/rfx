@@ -108,7 +108,7 @@ def test_comparison_rejects_corrupted_reader(mutation):
         _compare(sim, record, report)
 
 
-def test_result_keeps_the_pre_run_object_without_stepping(monkeypatch):
+def test_result_keeps_its_compact_run_record_without_stepping(monkeypatch):
     from rfx import Result
     import rfx.runners.uniform
     sim = _model()
@@ -116,7 +116,9 @@ def test_result_keeps_the_pre_run_object_without_stepping(monkeypatch):
     monkeypatch.setattr(rfx.runners.uniform, "run_uniform", lambda *a, **k: Result(None, np.zeros((0, 0)), None, None))
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
-    assert result.realized_geometry is record
+    assert result.realized_geometry is not record
+    assert result.realized_geometry.entities[1].axes == record.entities[1].axes
+    assert result.realized_geometry.entities[1].mask is None
     sim.add(Box((0.001, 0.001, 0.006), (0.002, 0.002, 0.007)), material="slab")
     assert sim.realized_geometry() is not record
     assert len(result.realized_geometry.entities) == 4
@@ -184,3 +186,198 @@ def test_frozen_unresolved_volume_still_refuses_execution(entry, diagnostic_firs
     assert later.shape == grid.shape
     for axis in "xyz":
         np.testing.assert_array_equal(later.cells(axis), grid.cells(axis))
+
+
+def _terminated_trace(nonuniform):
+    # Reviewer's synth.py: prime the record BEFORE registering the MSL ports.
+    d = 127e-6
+    kw = {"dz_profile": np.full(10, d)} if nonuniform else {}
+    sim = Simulation(freq_max=20e9, domain=(60.4*d, 30*d, 10*d), dx=d,
+                     boundary="cpml", cpml_layers=8, **kw)
+    sim.add_material("sub", eps_r=3.66)
+    sim.add(Box((0, 0, 0), (60.4*d, 30*d, 2*d)), material="sub")
+    sim.add(Box((0, 13*d, 2*d), (60.4*d, 17*d, 2*d)), material="pec")
+    sim.add(Box((0, 0, 0), (60.4*d, 30*d, 0)), material="pec")
+    before = sim.realized_geometry()
+    for x, direction in ((10, "+x"), (50, "-x")):
+        sim.add_msl_port(position=(x*d, 15*d, 0), width=4*d, height=2*d,
+                         direction=direction, impedance=50)
+    return sim, before
+
+
+def _assert_runner_sheet(record, captured, grid):
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
+    from dataclasses import replace
+    sheet = captured["pec_sheets"][0]
+    sheet = replace(sheet, footprint=interior_lattice_mask(sheet.footprint, grid))
+    fp = np.asarray(sheet.footprint)
+    row = record.entities[1]
+    indices = np.where(fp)
+    assert tuple(a.node_range for a in row.axes) == tuple((int(i.min()), int(i.max())) for i in indices)
+    assert row.node_count == int(fp.sum())
+    edges = realized_pec_edge_masks(None, sheets=[sheet], wires=(), periodic=(False,)*3)
+    assert row.edge_counts == tuple(int(np.asarray(m).sum()) for m in edges)
+    ranges = []
+    for edge in edges:
+        indices = np.where(np.asarray(edge))
+        ranges.append(tuple((int(i.min()), int(i.max())) for i in indices) if indices[0].size else ())
+    assert row.edge_ranges == tuple(ranges)
+
+
+@pytest.mark.parametrize("nonuniform", [False, True])
+@pytest.mark.parametrize("poison_context", [False, True])
+def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poison_context):
+    from rfx import Result
+    import rfx.runners.uniform as uniform
+    import rfx.runners.nonuniform as nu
+    sim, before = _terminated_trace(nonuniform)
+    before_ctx = sim._pf_campaign_ctx
+    after = sim.realized_geometry()
+    assert after is not before
+    assert sim._pf_campaign_ctx[1] is not before_ctx[1]
+    # The unheld line extends into the pad; the port holds the declaration.
+    assert int(before.sheets[0].footprint.sum()) > int(after.sheets[0].footprint.sum())
+    assembly_calls = []
+    owner, name = (nu, "assemble_materials_nu") if nonuniform else (sim, "_assemble_materials")
+    assemble = getattr(owner, name)
+    def counted_assembly(*args, **kwargs):
+        assembly_calls.append(True)
+        return assemble(*args, **kwargs)
+    monkeypatch.setattr(owner, name, counted_assembly)
+    cap = {}
+    if nonuniform:
+        def fake(grid, materials, n_steps, **kwargs):
+            cap.update(kwargs, grid=grid)
+            return {"state": None, "time_series": np.zeros((0, 0))}
+        monkeypatch.setattr(nu, "run_nonuniform", fake)
+    else:
+        def fake(*args, **kwargs):
+            cap.update(kwargs)
+            return Result(None, np.zeros((0, 0)), None, None)
+        monkeypatch.setattr(uniform, "run_uniform", fake)
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    context_reads = []
+    if poison_context:
+        # A run must not read ANY preflight context, even if one is stale.
+        def stale_context():
+            context_reads.append(True)
+            return before_ctx[1]
+        monkeypatch.setattr(sim, "_campaign_ctx", stale_context)
+        monkeypatch.setattr(sim, "realized_geometry", lambda: before)
+    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    record = result.realized_geometry
+    assert record.lane == ("run_nonuniform" if nonuniform else "run_uniform")
+    _assert_runner_sheet(record, cap, cap["grid"])
+    _assert_runner_sheet(after, cap, cap["grid"])
+    assert context_reads == []
+    assert assembly_calls == [True]
+    assert record.pec_mask is None and record.edge_masks == () and record.materials is None
+    assert record.sheets == () and record.wires == ()
+    assert all(e.mask is None and not e.edge_masks and e.sheet is None for e in record.entities)
+
+
+def test_material_collection_order_is_not_declaration_order(monkeypatch):
+    sim = _model()
+    original = sim._assemble_materials
+    def reordered(*args, **kwargs):
+        result = original(*args, **kwargs)
+        masks = kwargs.get("geometry_masks")
+        if masks is not None:
+            masks.reverse()
+        return result
+    monkeypatch.setattr(sim, "_assemble_materials", reordered)
+    record = sim.realized_geometry()
+    # Independent known boxes: 3*5*2 and 3*2*2 cells, separated in z.
+    assert record.entities[0].n_cells == 30
+    assert record.entities[3].n_cells == 12
+    np.testing.assert_allclose(record.entities[0].axes[2].bounds_m, (.002, .004))
+    np.testing.assert_allclose(record.entities[3].axes[2].bounds_m, (.006, .008))
+
+
+def test_subgrid_record_names_unrepresented_refinement(monkeypatch):
+    from rfx import Result
+    sim = Simulation(freq_max=10e9, domain=(.012, .012, .012), dx=.001, boundary="pec")
+    sim.add(Box((.002, .002, .002), (.004, .004, .004)), material="pec")
+    sim.add_refinement(z_range=(.004, .008), ratio=2)
+    monkeypatch.setattr(sim, "_run_subgridded", lambda *a, **k: Result(None, np.zeros((0, 0)), None, None))
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    assert result.realized_geometry.lane == "run_subgridded"
+    assert result.realized_geometry.limitations == ("refined region not represented",)
+
+
+@pytest.mark.parametrize("nonuniform", [False, True])
+def test_asymmetric_entities_against_runner_witness(monkeypatch, nonuniform):
+    from rfx import Result
+    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
+    from rfx.geometry.rasterize_grid import interior_lattice_mask
+    from dataclasses import replace
+    import rfx.runners.uniform as uniform
+    import rfx.runners.nonuniform as nu
+    sim = _model(nonuniform)
+    from rfx import PolylineWire
+    sim.add(PolylineWire(((.003, .005, .007), (.005, .005, .007)), radius=0.), material="pec")
+    sim.add_pinned_sheet(plane_index=8, i_range=(2, 4), j_range=(2, 4))
+    cap = {}
+    if nonuniform:
+        def fake(grid, materials, n_steps, **kwargs):
+            cap.update(kwargs, grid=grid)
+            return {"state": None, "time_series": np.zeros((0, 0))}
+        monkeypatch.setattr(nu, "run_nonuniform", fake)
+    else:
+        def fake(*args, **kwargs):
+            cap.update(kwargs)
+            return Result(None, np.zeros((0, 0)), None, None)
+        monkeypatch.setattr(uniform, "run_uniform", fake)
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    def no_preflight():
+        raise AssertionError("run must use its own assembly, not preflight")
+    monkeypatch.setattr(sim, "_campaign_ctx", no_preflight)
+    record = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False).realized_geometry
+    grid = cap["grid"]
+    assert record.entities[0].n_cells == 30
+    assert record.entities[3].n_cells == 12
+    for index, cells, sheets in (
+        (1, None, [replace(cap["pec_sheets"][0], footprint=interior_lattice_mask(cap["pec_sheets"][0].footprint, grid))]),
+        (2, interior_lattice_mask(cap["pec_mask"], grid, cell_axes=(True,)*3), []),
+    ):
+        row = record.entities[index]
+        edges = realized_pec_edge_masks(cells, sheets=sheets, wires=(), periodic=(False,)*3)
+        assert row.edge_counts == tuple(int(np.asarray(e).sum()) for e in edges)
+        assert row.wall_planes == tuple(tuple(realized_wall_planes(edges, a)) for a in range(3))
+        occupancy = cells if cells is not None else sheets[0].footprint
+        indices = np.where(occupancy)
+        assert tuple(a.node_range for a in row.axes) == tuple(
+            (int(i.min()), int(i.max()) + (cells is not None)) for i in indices)
+        assert (row.n_cells if cells is not None else row.node_count) == int(np.asarray(occupancy).sum())
+
+
+    wire = record.entities[4]
+    edges = realized_pec_edge_masks(None, sheets=(), wires=cap["pec_wires"], periodic=(False,)*3)
+    assert wire.kind == "wire"
+    assert wire.edge_counts == tuple(int(np.asarray(e).sum()) for e in edges)
+    ranges = []
+    for edge in edges:
+        indices = np.where(np.asarray(edge))
+        ranges.append(tuple((int(i.min()), int(i.max())) for i in indices) if indices[0].size else ())
+    assert wire.edge_ranges == tuple(ranges)
+    pinned = record.entities[5]
+    edges = realized_pec_edge_masks(None, sheets=[cap["pec_sheets"][-1]], wires=(), periodic=(False,)*3)
+    assert pinned.label == "pinned_sheet[0]"
+    assert pinned.node_count == 9
+    assert pinned.edge_counts == tuple(int(np.asarray(e).sum()) for e in edges)
+    assert pinned.wall_planes == tuple(tuple(realized_wall_planes(edges, a)) for a in range(3))
+
+
+@pytest.mark.parametrize("reader", ["preflight", "fidelity_report", "realized_geometry"])
+def test_unextendable_conductor_warning_is_present(reader, capsys):
+    import warnings
+    from rfx import Sphere
+    sim = Simulation(freq_max=1e9, domain=(.008,)*3, dx=.001, boundary="cpml", cpml_layers=4)
+    sim.add(Sphere((.001, .004, .004), .001), material="pec")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        getattr(sim, reader)()
+    assert (any("Conducting geometry reaches" in str(w.message) for w in caught)
+            or "Conducting geometry reaches" in capsys.readouterr().out)

@@ -195,6 +195,7 @@ class _CompileMixin:
         pec_wires: list | None = None,
         pad_fill_findings: list | None = None,
         geometry_masks: list | None = None,
+        assembly_entries: list | None = None,
     ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
 
@@ -342,6 +343,8 @@ class _CompileMixin:
                 cells, sheet, wire = classify_pec_entry(
                     solved_shape, _coords, _centres, _cell_sizes,
                     name=entry.material_name, grid=grid)
+                if assembly_entries is not None:
+                    assembly_entries.append((id(entry), cells, sheet, wire, solved_shape))
                 if cells is not None:
                     pec_mask = pec_mask | cells
                     has_pec_cells = True
@@ -467,6 +470,8 @@ class _CompileMixin:
                     sheet_specs=sheet_specs, sheets=_pec_sheets,
                     geometry_masks=geometry_masks, geometry_key=geometry_key)
                 if tc.is_pec:
+                    if assembly_entries is not None:
+                        assembly_entries.append((geometry_key, None, _pec_sheets[-1], None, tc.shape))
                     pec_shapes.append(tc.shape)
 
         # Node-pinned PEC sheets (add_pinned_sheet): built from node indices,
@@ -924,12 +929,13 @@ class _CompileMixin:
         self, grid: NonUniformGrid, sheet_specs: list | None = None,
         pec_sheets: list | None = None, pec_wires: list | None = None,
         geometry_masks: list | None = None,
+        assembly_entries: list | None = None,
     ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
         """Build material arrays and dispersion specs for non-uniform grid."""
         from rfx.runners.nonuniform import assemble_materials_nu
         return assemble_materials_nu(self, grid, sheet_specs=sheet_specs,
                                      pec_sheets=pec_sheets, pec_wires=pec_wires,
-                                     geometry_masks=geometry_masks)
+                                     geometry_masks=geometry_masks, assembly_entries=assembly_entries)
 
     def _pos_to_nu_index(self, grid: NonUniformGrid, pos):
         """Convert physical (x, y, z) to non-uniform grid indices."""

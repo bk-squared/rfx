@@ -489,7 +489,7 @@ class _CampaignStaticsContext:
             lo, hi = _bounds(entry.shape)
             try:
                 solved = continued_conductor_shape(
-                    sim, self.grid, entry.shape, entry=entry, unextendable=[])
+                    sim, self.grid, entry.shape, entry=entry)
                 cells, sheet, wire = classify_pec_entry(
                     solved,
                     self.coords, self.centres, self.cell_sizes,
@@ -532,7 +532,7 @@ class _CampaignStaticsContext:
                 continue
             try:
                 solved = continued_conductor_shape(
-                    sim, self.grid, tc.shape, entry=tc, unextendable=[])
+                    sim, self.grid, tc.shape, entry=tc)
                 sheet = sheet_spec_from_shape(
                     solved,
                     self.coords, self.cell_sizes, name=label,
@@ -738,6 +738,8 @@ def _campaign_ctx(self):
         tuple(id(e) for e in sim._geometry),
         tuple(id(tc) for tc in getattr(sim, "_thin_conductors", ())),
         tuple(id(ps) for ps in getattr(sim, "_pinned_sheets", ())),
+        *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
+          ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")),
         id(sim._dx), id(sim._dx_profile), id(sim._dy_profile),
         id(sim._dz_profile), tuple(sim._domain),
         getattr(sim, "_periodic_axes", None), sim._cpml_layers,

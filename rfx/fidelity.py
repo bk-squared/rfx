@@ -105,40 +105,6 @@ def _contract_coords(sim, grid, nonuniform):
             cell_sizes_from_uniform_grid(grid))
 
 
-def _pec_sheet_spec(sim, entry, kind_src, grid, nonuniform):
-    """The :class:`SheetSpec` this entry realizes as under #931, or None
-    when the entry is not a sheet declaration (a PEC volume, a dielectric,
-    a lossy sheet)."""
-    from rfx.geometry.rasterize_grid import interior_lattice_mask, sheet_spec_from_shape
-    if kind_src == "thin_conductor":
-        if not getattr(entry, "is_pec", False):
-            return None
-        normal = None
-    else:
-        if not _assembled_as_pec(sim, entry):
-            return None
-        lo = getattr(entry.shape, "corner_lo", None)
-        hi = getattr(entry.shape, "corner_hi", None)
-        if lo is None or hi is None:
-            return None
-        zero = [i for i in range(3) if float(hi[i]) - float(lo[i]) == 0.0]
-        if len(zero) != 1:
-            return None
-        normal = zero[0]
-    coords, sizes = _contract_coords(sim, grid, nonuniform)
-    try:
-        from dataclasses import replace
-        from rfx.geometry.smoothing import continued_conductor_shape
-        sheet = sheet_spec_from_shape(
-            continued_conductor_shape(sim, grid, entry.shape, entry=entry), coords, sizes, normal_axis=normal,
-            name=getattr(entry, "material_name", kind_src),
-            refuse_thick=(kind_src == "thin_conductor"), grid=grid)
-        return replace(sheet, footprint=jnp.asarray(
-            interior_lattice_mask(sheet.footprint, grid)))
-    except ValueError:
-        return None
-
-
 def _contract_refusals(sim, grid, nonuniform):
     """PEC geometry entries the #931 classifier refuses (sub-cell Box, a
     line/point Box, a zero-cell volume): ``{index: message}``.  The report
@@ -159,33 +125,6 @@ def _contract_refusals(sim, grid, nonuniform):
                                name=entry.material_name, grid=grid)
         except ValueError as exc:
             out[i] = str(exc)
-    return out
-
-
-def _wall_plane_rows(mask, nodes, periodic):
-    """Per-axis realized wall planes of ONE conductor entity (#931 §1.9).
-
-    The planes come from the contract's own realization
-    (:func:`rfx.boundaries.pec.realized_pec_edge_masks` +
-    :func:`~rfx.boundaries.pec.realized_wall_planes`) applied to this
-    entity's cells alone, so the report cannot drift from the solve by
-    re-deriving the rule. Returns ``{axis_name: {"planes": [...],
-    "planes_um": [...]}}``.
-
-    A conductor drawn ``z_a -> z_b`` on node planes realizes walls at BOTH,
-    which is the fact the drawn-vs-realized table exists to show: under the
-    pre-#931 sheet rule the ``hi`` face was never a wall at any thickness.
-    """
-    from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
-    edges = realized_pec_edge_masks(jnp.asarray(np.asarray(mask, dtype=bool)),
-                                    periodic=periodic)
-    out = {}
-    for a in range(3):
-        planes = realized_wall_planes(edges, a)
-        out[_axis_names()[a]] = dict(
-            planes=planes,
-            planes_um=[float(nodes[a][k]) * 1e6 for k in planes
-                       if k < len(nodes[a])])
     return out
 
 
@@ -590,7 +529,7 @@ def fidelity_report(sim, print_report: bool = True):
                 who = ", ".join(
                     f"geometry[{m}] '{sim._geometry[m].material_name}' "
                     f"({n_m} "
-                    f"{'sheet footprint nodes' if m in pec_sheet_entities else 'cells'})"
+                    f"{'sheet-contact cells' if m in pec_sheet_entities else 'cells'})"
                     for m, n_m in contributors)
                 # A VOLUME claims the cell, so the eps written there is
                 # discarded and "no-op" is literally true. A SHEET owns no
@@ -650,18 +589,12 @@ def fidelity_report(sim, print_report: bool = True):
                             "that conductor is still possible"),
                     remedy="fix that conductor's shape so it rasterizes, "
                            "then re-run fidelity_report"))
-        # The REALIZED conductor footprint of this entity, in the same
-        # node-indexed array the dielectric rows are sampled on: a volume's
-        # cells, a SHEET's footprint nodes. A sheet owns no cell (#931
-        # §1.3) and writes no eps — which is why ``claimed-by-conductor``,
-        # an eps-fraction finding, correctly ignores it — but #589 is not
-        # about eps ownership: a dielectric declared after a conductor
-        # cannot carve it, and a sheet is no more carvable than a slab.
-        # Reading VOLUME cells only made the ordered finding go silent
-        # under a sheet ground, i.e. on the exact fixture it was written
-        # for (docs/design_notes/931_migration/T1-fidelity-sheet-overlap.md).
+        # Accumulate conductor contact on the MATERIAL CELL lattice. Volumes
+        # occupy cells; sheets contact both cells bounded by a complete metal
+        # face (four in-plane metal nodes). A sheet owns no cell and writes no
+        # eps, but a later dielectric cannot carve clearance through it.
         if pec_assembled:
-            realized_fp = mask if sheet_fp is None else sheet_fp
+            realized_fp = mask if sheet_fp is None else _sheet_contact_cells(sheet_fp, int(geometry.plane[0]))
             pec_before |= realized_fp
             pec_cells_by_entity[i] = np.flatnonzero(realized_fp)
             if sheet_fp is not None:
@@ -1082,3 +1015,25 @@ def _print(report):
             print(f"    ! [{f['kind']}]{ax} {f['detail']}")
             print(f"      remedy: {f['remedy']}")
         print()
+
+
+def _sheet_contact_cells(footprint, normal):
+    """Cells bounded by the sheet plane with all four in-plane corners metal.
+
+    This requires a complete metal face, not a single coincident index.
+    Both cells adjacent to the plane are included; open edges never wrap.
+    """
+    metal = np.asarray(footprint, bool).copy()
+    for a in range(3):
+        if a == normal:
+            continue
+        shifted = np.zeros_like(metal)
+        low, high = [slice(None)]*3, [slice(None)]*3
+        low[a], high[a] = slice(None, -1), slice(1, None)
+        shifted[tuple(low)] = metal[tuple(high)]
+        metal &= shifted
+    previous = np.zeros_like(metal)
+    low, high = [slice(None)]*3, [slice(None)]*3
+    low[normal], high[normal] = slice(None, -1), slice(1, None)
+    previous[tuple(low)] = metal[tuple(high)]
+    return metal | previous

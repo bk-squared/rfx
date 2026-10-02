@@ -1043,8 +1043,9 @@ class Simulation(
         """Return the immutable host record of this configuration's built geometry.
 
         Build only: entities, solved sheet spans, signed face residuals in
-        metres, domain padding, and driven port edges. The same object is
-        attached as ``Result.realized_geometry`` by ``run()``.
+        metres, domain padding, and driven port edges. Dense diagnostic arrays
+        are built on request here. ``run()`` attaches a compact record built
+        independently from its own assembly as ``Result.realized_geometry``.
         """
         from rfx.realized_geometry import realized_geometry
         return realized_geometry(self)
