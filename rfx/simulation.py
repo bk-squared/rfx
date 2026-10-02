@@ -2131,7 +2131,7 @@ def core_step_invariants(ctx: _StepContext) -> dict:
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,
-                   *, design_hook=None):
+                   *, design_hook=None, magnetic_hook=None):
     """Build the shared per-step Yee kernel from an explicit context.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
@@ -2143,6 +2143,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
     ``design_hook``, when supplied by the design adjoint, observes the
     pre-update fields and can inject a local E perturbation immediately after
     the design update. It returns ``(state, record)``; the record is an extra.
+    ``magnetic_hook(state)`` injects after H sources and before the E update.
     With no hook the production operations are unchanged.
 
     ``invariants`` is :func:`core_step_invariants`'s dict (built from ``ctx``
@@ -2264,6 +2265,9 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                     h_field = h_field.at[mi, mj, mk].add(
                         mag_src_vals[idx_m].astype(h_field.dtype))
                     st = st._replace(**{mc: h_field})
+
+            if magnetic_hook is not None:
+                st = magnetic_hook(st)
 
             # Snapshot E^n before the linear E-update for the reactive Kerr
             # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).

@@ -49,6 +49,16 @@ DC/Nyquist/out-of-band bins.
 The remaining run lets the wavelet response decay. Storage is design
 edges × components × bins, plus monitor bins and ordinary field carries.
 
+Magnetic increments
+-------------------
+Let z = exp(i w dt), D = dt/mu, and stamp both E and H at (n+1)dt.
+The H equation is (1-z^-1) H = -D z^-1 curl E + p. Eliminating H
+puts curl^T p/(1-z^-1) on the electric right-hand side. Transposing an
+H-sample objective instead gives -curl^T D z^-1 b/(1-z^-1). Therefore
+inject the magnetic increment with DFT(p) = -D z^-1 b, before the E
+update. The minus sign is mixed reciprocity; z^-1 includes the two
+half-step registers for an H plane stamped at the E timestamp.
+
 Gates, measurements and the refusal table: issue #1424 and PR #1430.
 """
 from dataclasses import replace
@@ -132,6 +142,12 @@ def _wavelet_coefficients(freqs, dt, length, target):
     return jnp.linalg.solve(a - jnp.matmul(b, cross, precision=HIGHEST), rhs).reshape(target.shape)
 
 
+def _magnetic_target(freqs, dt, target):
+    """Mixed reciprocity for H sampled with the post-E timestamp."""
+    phase = -jnp.exp(-2j * jnp.pi * freqs * dt)
+    return phase.reshape((-1,) + (1,) * (target.ndim - 1)) * target
+
+
 def design_adjoint_scan(ctx, initial, xs):
     """Two ordinary forward scans with frequency-sized local residuals.
 
@@ -140,7 +156,7 @@ def design_adjoint_scan(ctx, initial, xs):
     """
     import numpy as np
     from rfx.core.jax_utils import recorded_scan
-    from rfx.core.yee import curl_h, e_component_coeffs
+    from rfx.core.yee import curl_h, e_component_coeffs, component_h_materials, MU_0
     from rfx.simulation import make_core_step, core_step_invariants
 
     unsupported = ("use_debye", "use_lorentz", "use_kerr", "use_upml",
@@ -160,11 +176,9 @@ def design_adjoint_scan(ctx, initial, xs):
     if dtype not in (jnp.float32, jnp.float64) or ctx.stencil_order != 2:
         raise NotImplementedError("gradient='adjoint' requires float32/float64 and stencil_order=2")
     if not ctx.dft_meta:
-        raise NotImplementedError("gradient='adjoint' requires E DFT monitors; time-domain objectives unsupported")
+        raise NotImplementedError("gradient='adjoint' requires DFT monitors; time-domain objectives unsupported")
     freqs_host = []
     for meta in ctx.dft_meta:
-        if meta[0] not in ("ex", "ey", "ez"):
-            raise NotImplementedError("gradient='adjoint' does not support H DFT planes")
         f = np.asarray(meta[3])
         if (not np.all(np.isfinite(f)) or np.any(f <= 0)
                 or np.any(f >= 0.5 / ctx.dt) or len(np.unique(f)) != len(f)):
@@ -199,27 +213,37 @@ def design_adjoint_scan(ctx, initial, xs):
                             use_dft_planes=False, dft_meta=(), prb_meta=())
             monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic)[1])
             monitor_cb = [a.at[sl].set(b) for a, b in zip(monitor_cb, coeffs[1])]
+            monitor_ch = tuple(ctx.dt / (MU_0 * m) for m in component_h_materials(ctx.materials))
+            targets = [(_magnetic_target(freqs, ctx.dt, t) if m[0].startswith("h") else t)
+                       for m, t in zip(ctx.dft_meta, targets)]
             weights = [_wavelet_coefficients(jnp.asarray(m[3], dtype=dtype), ctx.dt,
                                              wavelet_length, t)
                        for m, t in zip(ctx.dft_meta, targets)]
+
+        def inject(state, magnetic):
+            n = state.step if magnetic else state.step - 1
+            for m, w in zip(ctx.dft_meta, weights):
+                c = m[0]
+                if c.startswith("h") != magnetic:
+                    continue
+                slot = _plane_slice(m, ctx.grid.shape)
+                basis = _wavelet_basis(freqs, ctx.dt, wavelet_length, n.astype(dtype))
+                value = 2 * jnp.real(jnp.einsum("f,fij->ij", basis, w, precision=HIGHEST))
+                components = ("hx", "hy", "hz") if magnetic else ("ex", "ey", "ez")
+                coefficient = (monitor_ch if magnetic else monitor_cb)[components.index(c)][slot]
+                state = state._replace(**{c: getattr(state, c).at[slot].add((coefficient*value).astype(dtype))})
+            return state
 
         def hook(prev, state):
             e = tuple(getattr(prev, c)[sl] for c in ("ex", "ey", "ez"))
             curl = tuple(v[sl] for v in curl_h(prev.hx, prev.hy, prev.hz,
                                             ctx.dx, ctx.periodic, ctx.stencil_order, ctx.bloch))
             if targets is not None:
-                n = prev.step
-                for m, w in zip(ctx.dft_meta, weights):
-                    c = m[0]
-                    slot = _plane_slice(m, ctx.grid.shape)
-                    basis = _wavelet_basis(jnp.asarray(m[3], dtype=dtype), ctx.dt,
-                                           wavelet_length, n.astype(dtype))
-                    value = 2 * jnp.real(jnp.einsum('f,fij->ij', basis, w, precision=HIGHEST))
-                    cb = monitor_cb[("ex", "ey", "ez").index(c)][slot]
-                    state = state._replace(**{c: getattr(state, c).at[slot].add((cb*value).astype(dtype))})
+                state = inject(state, False)
             return state, (e, curl)
 
-        core = make_core_step(local, {**invariants, "ctx": local}, design_hook=hook if recording else None)
+        core = make_core_step(local, {**invariants, "ctx": local}, design_hook=hook if recording else None,
+                              magnetic_hook=(lambda st: inject(st, True)) if targets is not None else None)
         def step(carry, row):
             state, acc_e, acc_h, peak, last_e = carry
             state, probes, extras = core(state, *row)
@@ -267,7 +291,7 @@ def design_adjoint_scan(ctx, initial, xs):
             if name != "dft_planes" and any(not isinstance(v, symbolic) for v in jax.tree.leaves(bar)):
                 raise NotImplementedError("gradient='adjoint' does not support final-field/time-domain objectives")
         if any(not isinstance(v, symbolic) for v in jax.tree.leaves(outputs_bar)):
-            raise NotImplementedError("gradient='adjoint' does not support time-domain objectives; register E DFT bins")
+            raise NotImplementedError("gradient='adjoint' does not support time-domain objectives; register DFT bins")
         targets = [jnp.zeros_like(a) if isinstance(b, symbolic) else b
                    for a, b in zip(initial["dft_planes"], last_bar["dft_planes"])]
         (_, adj, _), _ = run(coeffs, targets=targets, recording=True)

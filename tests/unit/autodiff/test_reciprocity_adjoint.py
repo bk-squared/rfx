@@ -202,7 +202,7 @@ def test_g5_mutation(precision):
 @pytest.mark.parametrize("path", ["graded", "distributed", "ringdown", "ports",
     "debye", "lorentz", "kerr", "upml", "occupancy", "whole_grid", "missing_box",
     "tfsf", "precision", "solver", "invalid", "sheet", "current_moments", "stencil",
-    "ntff", "h_plane", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
+    "ntff", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
     "different_bins", "time_domain"])
 def test_g5_refusals(path):
     sim, eps = fixture("float32")
@@ -256,8 +256,6 @@ def test_g5_refusals(path):
         match = "gradient must"
     elif path == "ntff":
         sim.add_ntff_box((2e-3, 2e-3, 2e-3), (22e-3, 18e-3, 14e-3), freqs=jnp.array([F0]))
-    elif path == "h_plane":
-        sim._dft_planes[0] = replace(sim._dft_planes[0], component="hz")
     elif path == "no_bins":
         sim._dft_planes.clear()
     elif path == "boundary_plane":
@@ -413,3 +411,31 @@ def test_adjoint_settling(precision, steps):
         assert witness.shape == ()
         assert np.all(np.isfinite(grad))
         assert witness < 1e-5 if steps == STEPS else witness > 1e-1
+
+
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("lossy", [False, True])
+def test_n1_h_plane(precision, lossy):
+    import rfx.adjoint as adjoint
+    with enable_x64() if precision == "float64" else nullcontext():
+        sim, eps = fixture(precision, point=False)
+        sim._dft_planes[0] = replace(sim._dft_planes[0], component="hy")
+        if lossy:
+            sim.add_material("fixed_loss", eps_r=1., sigma=0.2)
+            sim.add(Box((6e-3, 4e-3, 2e-3), (18e-3, 16e-3, 14e-3)), material="fixed_loss")
+        settling = decay(sim, eps, None)
+        reference = jax.jit(jax.grad(objective(sim)))(eps, None)
+        longer = jax.jit(jax.grad(objective(sim, steps=2*STEPS)))(eps, None)
+        stability = errors(reference, longer)[0]
+        actual = jax.jit(jax.grad(objective(sim, mode="adjoint")))(eps, None)
+        error = errors(actual, reference)[0]
+        original = adjoint._magnetic_target
+        with patch.object(adjoint, "_magnetic_target", lambda *args: -original(*args)):
+            mutated = jax.jit(jax.grad(objective(sim, mode="adjoint")))(eps, None)
+        mutation = errors(mutated, reference)[0]
+        print(f"N1 {precision=} {lossy=} {settling=} reference_2x_movement={stability} {error=} sign_flip_error={mutation}", flush=True)
+        assert settling["decay_db"] >= 100
+        bar = 1e-5 if precision == "float64" else 1e-4
+        assert stability <= bar
+        assert error <= bar
+        assert mutation > bar
