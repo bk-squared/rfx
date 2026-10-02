@@ -148,6 +148,15 @@ def _apply_pec_2d(ez: jnp.ndarray, ez_pec_mask: jnp.ndarray | None = None) -> jn
     return ez
 
 
+def adi_current_coefficient(eps_r, sigma, dt):
+    """Full-step current coefficient: twice ADI's half-step Ampere factor.
+
+    Each E sub-step uses (dt/2)/(epsilon + sigma*dt/4). The soft drive
+    is injected before the split update, so its propagation follows ADI.
+    """
+    return dt / (EPS_0 * eps_r + sigma * dt / 4.0)
+
+
 def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
                 eps_r: jnp.ndarray, sigma: jnp.ndarray,
                 dt: float, dx: float, dy: float,

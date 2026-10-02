@@ -1408,16 +1408,12 @@ class _ExecuteMixin:
 
         grid_out = copy.copy(grid)
         grid_out.dt = dt
+        from rfx.adi import adi_current_coefficient
+        from rfx.api._source_semantics import needs_scale, source_amplitude_scale
 
         # ---- 3D path ----
         if self._mode == "3d":
             from rfx.adi import run_adi_3d, ADIState3D, make_adi_absorbing_sigma_3d
-
-            sources_3d = []
-            for pe in self._ports:
-                i, j, k = grid.position_to_index(pe.position)
-                waveform = jax.vmap(pe.waveform)(times)
-                sources_3d.append((i, j, k, pe.component, waveform))
 
             probes_3d = []
             for pe in self._probes:
@@ -1432,6 +1428,16 @@ class _ExecuteMixin:
                 absorb_sigma = make_adi_absorbing_sigma_3d(
                     nx, ny, nz, self._cpml_layers, grid.dx, grid.dx, grid.dx)
                 sigma_3d = sigma_3d + absorb_sigma
+
+            sources_3d = []
+            for pe in self._ports:
+                i, j, k = grid.position_to_index(pe.position)
+                waveform = jax.vmap(pe.waveform)(times)
+                if needs_scale(pe.amplitude_kind, "raw"):
+                    cb = adi_current_coefficient(eps_r_3d[i, j, k], sigma_3d[i, j, k], dt)
+                    waveform = waveform * source_amplitude_scale(
+                        pe.amplitude_kind, "raw", cb=cb, dV=grid.dx**3)
+                sources_3d.append((i, j, k, pe.component, waveform))
 
             shape = grid.shape
             if _realized.ACTIVE is not None:
@@ -1470,12 +1476,6 @@ class _ExecuteMixin:
             )
 
         # ---- 2D TMz path ----
-        sources = []
-        for pe in self._ports:
-            i, j, _ = grid.position_to_index(pe.position)
-            waveform = jax.vmap(pe.waveform)(times)
-            sources.append((i, j, waveform))
-
         probes = []
         for pe in self._probes:
             i, j, _ = grid.position_to_index(pe.position)
@@ -1491,6 +1491,16 @@ class _ExecuteMixin:
             absorb_sigma = make_adi_absorbing_sigma(
                 nx_2d, ny_2d, self._cpml_layers, grid.dx)
             sigma_2d = sigma_2d + absorb_sigma
+
+        sources = []
+        for pe in self._ports:
+            i, j, _ = grid.position_to_index(pe.position)
+            waveform = jax.vmap(pe.waveform)(times)
+            if needs_scale(pe.amplitude_kind, "raw"):
+                cb = adi_current_coefficient(eps_r_2d[i, j], sigma_2d[i, j], dt)
+                waveform = waveform * source_amplitude_scale(
+                    pe.amplitude_kind, "raw", cb=cb, dV=grid.dx**3)
+            sources.append((i, j, waveform))
 
         # The 2-D TMz lane carries only Ez, so its realized PEC mask is
         # the Mz plane (#931 §1.7).

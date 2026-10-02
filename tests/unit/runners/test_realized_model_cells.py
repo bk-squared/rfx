@@ -47,8 +47,8 @@ def model(lane, row):
     sim = Simulation(**kw)
     if sg:
         sim.add_refinement(z_range=(0., 14*MM), ratio=2)
-    if row in ("eps", "sigma", "mu", "conformal", "sat", "override_drive", "soft_current"):
-        mat = {"eps_r": 4.} if row in ("eps", "conformal", "sat", "override_drive", "soft_current") else (
+    if row in ("eps", "sigma", "mu", "conformal", "sat", "override_drive", "soft_current", "soft_none"):
+        mat = {"eps_r": 4.} if row in ("eps", "conformal", "sat", "override_drive", "soft_current", "soft_none") else (
             {"sigma": 0.2} if row == "sigma" else {"mu_r": 4.})
         sim.add_material("block", **mat)
         hi = (8*MM, 9*MM, (20 if row == "sat" else 10)*MM)
@@ -170,6 +170,18 @@ def drive_pairs(dump, row):
     records = [r for r in dump.records if "drive_scale" in r]
     if not records:
         raise RuntimeError(f"no record at source site: {dump.lane} {row}")
+    if row in ("soft_none", "open_none"):
+        # The default's reference is this lane's explicit current declaration,
+        # including ADI's own coefficient and remaining material convention.
+        current = measured(dump.lane, row.replace("_none", "_current"))
+        references = [r for r in current.records if "drive_scale" in r]
+        if len(records) != len(references):
+            raise RuntimeError("default/current source records differ")
+        for got, ref in zip(records, references):
+            assert got["cells"] == ref["cells"]
+            yield np.asarray(got["drive_scale"], dtype=np.float32), np.asarray(
+                ref["drive_scale"], dtype=np.float32)
+        return
     for r in records:
         grid, pe = r["grid"], r["declaration"]
         # Main's helper includes add_lumped_eps on the stamped component;

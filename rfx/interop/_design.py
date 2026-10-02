@@ -1731,6 +1731,10 @@ def simulation_from_design(document: Any) -> Any:
             f"design document must be a mapping, got {type(document).__name__}"
         )
     _require_exact_keys(document, _TOP_LEVEL_KEYS, what="design document")
+    # Compare the canonical declaration on round-trip without changing the
+    # caller's document. None is now the current default, not stored state.
+    import copy
+    document = copy.deepcopy(document)
 
     schema = check_text(document["schema"], what="schema")
     if schema != DESIGN_SCHEMA_VERSION:
@@ -1899,10 +1903,12 @@ def simulation_from_design(document: Any) -> Any:
             _SOFT_SOURCE_FIELDS,
             what=f"excitations.soft_sources[{index}]",
         )
+        # add_source validates/resolves None at the declaration storage site.
         sim.add_source(
             values["position"], values["component"], waveform=values["waveform"],
             amplitude_kind=values["amplitude_kind"],
         )
+        payload["amplitude_kind"] = sim._ports[-1].amplitude_kind
 
     for index, payload in enumerate(
         _entry_list(excitations, "lumped_ports", what="excitations")

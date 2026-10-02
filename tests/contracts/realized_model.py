@@ -53,14 +53,11 @@ for lane in LANES:
     TABLE["sat"][lane] = (Cell(issue="#1373", note="per-cell SAT face epsilon")
                           if lane == "run_subgridded" else Cell("not reachable",
                           note="no coarse/fine interface on this lane"))
-    for prefix in ("soft", "open"):
-        if lane in ("run_adi", "fwd_adi"):
-            TABLE[prefix + "_current"][lane] = Cell("refuses")
-        if lane in ("run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu"):
-            TABLE[prefix + "_none"][lane] = Cell(issue="#1373", note="graded legacy Cb/dV")
-    TABLE["soft_none"]["fwd_uniform"] = Cell(issue="#1373", note="forward legacy Cb")
-    for adi in ("run_adi", "fwd_adi"):
-        TABLE["open_none"][adi] = Cell(issue="#1373", note="ADI legacy raw waveform")
+    # None compares with the lane's explicit current operand. ADI's explicit
+    # current still departs from the shared Yee edge-material reference.
+    if lane in ("run_adi", "fwd_adi"):
+        TABLE["soft_current"][lane] = Cell(
+            issue="#1373", note="ADI current uses per-cell E material")
     for kind in ("field", "current", "none"):
         TABLE["open_" + kind]["run_subgridded"] = Cell("refuses",
             note="all-face absorber outside subgrid production envelope")

@@ -447,7 +447,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_thin_conductors", "surface_impedance"): _NO_SHEETS,
     ("_pinned_sheets", "pec_sheet"): _NO_SHEETS,
     ("_ports", "source"): _ALL,
-    ("_ports", "amplitude_kind"): _ALL - _ADI,
+    ("_ports", "amplitude_kind"): _ALL,
     ("_ports", "lumped_port"): _ALL - _ADI - {"fwd_distributed_nu"},
     ("_ports", "passive_port"): _ALL - _ADI - {"run_distributed", "fwd_distributed_nu"},
     ("_ports", "wire_port"): _ALL - _ADI - {"run_distributed", "fwd_distributed_nu"},

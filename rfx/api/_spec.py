@@ -1239,7 +1239,7 @@ class _PortEntry:
     # path either way.
     reference_plane_cells: int | None = None
     # Soft-source amplitude semantics (issue #571, option 4):
-    # 'field' | 'current' | None (= legacy per-path default, deprecated).
+    # add_source stores 'field' or 'current' (None resolves to 'current').
     # Only meaningful when impedance == 0.0 (add_source soft sources); port
     # entries (impedance > 0) keep their own port-normalized waveform
     # contract and never set this. Defaulted so every non-add_source
