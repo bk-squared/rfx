@@ -110,7 +110,7 @@ CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
 # allowed to appear without a citation line;
 # a number that is neither cited nor listed here fails the test below, which is
 # what makes the exception a decision rather than a gap.
-RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1381, 1419})
+RESOLVED_REFERENCES = frozenset({726, 830, 838, 1100, 1122, 1181, 1186, 1255, 1381, 1419})
 # #1419 (weak-port ring-down gradient) is closed by the PR that added the
 # identification-probe option; the entry stays because port-only identification
 # is still the default, and names the issue as provenance.

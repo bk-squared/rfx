@@ -134,6 +134,19 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
+**A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port,
+and the end-of-run witness can miss it.** A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
+port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the port is its only loss.
+On a plain 12 ns record, |S11| reads 0.975–1.009 around the mode (largest deviation 0.025);
+24 / 60 / 120 ns records: deviation 0.042 / 0.032 / 0.026. The end-of-run witness read −64 dB
+and passed: its reference peak was the direct response, and the weakly coupled mode rings below it.
+On the same 12 ns record, one-cell wire-port completion restores |S11| to 1 within 1e-3 (measured about 1e-6) with passing witnesses
+(`tests/unit/sparams/test_sparam.py::test_wire_port_pec_cavity_s11_around_the_first_mode`).
+`run(ringdown=...)` currently refuses one-cell lumped ports.
+What to do: record well past the slowest mode's decay, or use a one-cell wire port
+(`add_port(..., extent=dx)`) with `run(ringdown=...)`.
+#1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
+
 ## Absorbing boundaries
 
 **A magnetic symmetry wall lies half a cell inside its declared face.**
