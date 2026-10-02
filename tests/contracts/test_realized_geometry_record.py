@@ -384,7 +384,7 @@ def test_unextendable_conductor_warning_is_present(reader, capsys):
 
 
 @pytest.mark.parametrize("nonuniform", [False, True])
-def test_record_failure_does_not_stop_run(monkeypatch, nonuniform):
+def test_concrete_record_failure_propagates(monkeypatch, nonuniform):
     import rfx.realized_geometry as records
     import rfx.runners.uniform as uniform
     import rfx.runners.nonuniform as nu
@@ -406,9 +406,9 @@ def test_record_failure_does_not_stop_run(monkeypatch, nonuniform):
     monkeypatch.setattr(nu if nonuniform else uniform,
                         "run_nonuniform" if nonuniform else "run_uniform", runner)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
-    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
-    assert calls == ["record", "runner"]
-    assert result.realized_geometry is None
+    with pytest.raises(ValueError, match="diagnostic aperture unavailable"):
+        sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    assert calls == ["record"]
 
 
 @pytest.mark.parametrize("nonuniform", [False, True])
@@ -427,3 +427,71 @@ def test_lossy_run_record_retains_assembly_continuation(monkeypatch, nonuniform)
     record = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False).realized_geometry
     assert record.entities[0].kind == "lossy"
     assert record.entities[0].continued_faces == ("x-lo", "x-hi", "y-lo", "y-hi")
+
+
+@pytest.mark.parametrize("normal", ["x", "y", "z"])
+@pytest.mark.parametrize("ranged", [False, True])
+def test_graded_waveguide_record_matches_runner_aperture(monkeypatch, normal, ranged):
+    import rfx.runners.nonuniform as nu
+
+    graded_axis = "y" if normal == "z" else "z"
+    ramp = np.linspace(.0004, .0008, 20)
+    profile = np.concatenate((ramp, ramp[::-1]))
+    domain = [.03, .02286, .02286]
+    domain["xyz".index(graded_axis)] = float(profile.sum())
+    sim = Simulation(freq_max=20e9, domain=tuple(domain), dx=.001,
+                     boundary=BoundarySpec(**{axis: "cpml" if axis == normal else "pec"
+                                              for axis in "xyz"}),
+                     cpml_layers=2, **{f"d{graded_axis}_profile": profile})
+    value_range = (.002, .0072) if ranged else None
+    sim.add_waveguide_port(.01, direction=f"+{normal}", mode=(1, 0),
+                           f0=15e9, freqs=np.array([15e9]),
+                           **{f"{graded_axis}_range": value_range})
+    before = sim.realized_geometry()
+    captured = {}
+
+    def runner(grid, materials, n_steps, **kwargs):
+        captured.update(kwargs, grid=grid)
+        return {"state": None, "time_series": np.zeros((0, 0))}
+
+    monkeypatch.setattr(nu, "run_nonuniform", runner)
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
+    cfg, = captured["waveguide_ports"]
+    # The runner consumes half-open CELL slices; their endpoints are the
+    # inclusive NODE endpoints recorded for the aperture.
+    transverse = iter(((cfg.u_lo, cfg.u_hi), (cfg.v_lo, cfg.v_hi)))
+    expected = tuple((cfg.x_index, cfg.x_index) if axis == normal else next(transverse)
+                     for axis in "xyz")
+    assert before.ports[0].aperture == expected
+    assert result.realized_geometry.ports[0].aperture == expected
+    if ranged:
+        # Independent nearest-node witness on the declared float64 spine.
+        nodes = np.concatenate(([0.], np.cumsum(profile)))
+        endpoints = tuple(int(np.argmin(abs(nodes - value))) for value in value_range)
+        assert expected["xyz".index(graded_axis)] == endpoints
+
+
+@pytest.mark.parametrize("axis", ["dx_arr", "dy_arr", "dz"])
+def test_record_skips_only_traced_mesh_coordinates(monkeypatch, axis):
+    from types import SimpleNamespace
+    import jax
+    import jax.numpy as jnp
+    import rfx.realized_geometry as records
+
+    def fail_record(*args, **kwargs):
+        raise ValueError("concrete record defect")
+
+    monkeypatch.setattr(records, "_record_from_assembly", fail_record)
+
+    def traced(profile):
+        grid = SimpleNamespace(dx_arr=np.ones(3), dy_arr=np.ones(3), dz=np.ones(3))
+        setattr(grid, axis, profile)
+        assert records.record_from_assembly(None, grid) is None
+        # A tracer in materials is not permission to swallow record errors.
+        setattr(grid, axis, np.ones(3))
+        with pytest.raises(ValueError, match="concrete record defect"):
+            records.record_from_assembly(None, grid, materials=profile)
+        return profile.sum()
+
+    jax.make_jaxpr(traced)(jnp.ones(3))

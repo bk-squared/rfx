@@ -490,6 +490,39 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     return result["cell_slice"]
 
 
+def _range_to_slice_nu(grid, axis, value_range):
+    """Runner node aperture and physical span, shared with the geometry record."""
+    d_arr_jnp = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
+    n_axis = grid.shape["xyz".index(axis)]
+    pad_lo = getattr(grid, f"pad_{axis}_lo")
+    pad_hi = getattr(grid, f"pad_{axis}_hi")
+    d_np = np.asarray(d_arr_jnp)
+    # Cell-edge positions in physical coords (interior only, edge=0 at first
+    # interior face). Length = n_interior + 1.
+    interior = interior_cells(d_np, pad_lo, pad_hi)
+    edges = np.insert(np.cumsum(interior), 0, 0.0)
+    if value_range is None:
+        return (pad_lo, n_axis - pad_hi), float(edges[-1])
+    lo, hi = value_range
+    # Each end on the node pos_to_nu_index names (the #1295 tie rule),
+    # as the uniform builder puts it on round(lo/dx).
+    from rfx.nonuniform import _axis_position_to_index
+    lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
+    hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
+    if hi_local <= lo_local:
+        raise ValueError(
+            f"range {value_range!r} does not resolve to a valid aperture on the NU grid"
+        )
+    lo_idx = lo_local + pad_lo
+    hi_idx = hi_local + pad_lo + 1
+    actual_span = float(edges[hi_local] - edges[lo_local])
+    if actual_span <= 0.0:
+        raise ValueError(
+            f"range {value_range!r} resolves to invalid aperture span {actual_span}"
+        )
+    return (lo_idx, hi_idx), actual_span
+
+
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
                                      freqs: jnp.ndarray, n_steps: int):
     """NU-aware waveguide port config builder.
@@ -510,50 +543,15 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     pos_vec[axis_idx] = entry.x_position
     x_index = pos_to_nu_index(grid, tuple(pos_vec))[axis_idx]
 
-    # Per-face NU allocation (2026-04): pass (pad_lo, pad_hi) for each axis.
-    pads_lo_hi = {
-        "x": (grid.pad_x_lo, grid.pad_x_hi),
-        "y": (grid.pad_y_lo, grid.pad_y_hi),
-        "z": (grid.pad_z_lo, grid.pad_z_hi),
-    }
-
-    def _range_to_slice_nu(value_range, d_arr_jnp, n_axis, pad_lo, pad_hi,
-                           axis):
-        d_np = np.asarray(d_arr_jnp)
-        # Cell-edge positions in physical coords (interior only, edge=0 at first
-        # interior face). Length = n_interior + 1.
-        interior = interior_cells(d_np, pad_lo, pad_hi)
-        edges = np.insert(np.cumsum(interior), 0, 0.0)
-        if value_range is None:
-            return (pad_lo, n_axis - pad_hi), float(edges[-1])
-        lo, hi = value_range
-        # Each end on the node pos_to_nu_index names (the #1295 tie rule),
-        # as the uniform builder puts it on round(lo/dx).
-        from rfx.nonuniform import _axis_position_to_index
-        lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
-        hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
-        if hi_local <= lo_local:
-            raise ValueError(
-                f"range {value_range!r} does not resolve to a valid aperture on the NU grid"
-            )
-        lo_idx = lo_local + pad_lo
-        hi_idx = hi_local + pad_lo + 1
-        actual_span = float(edges[hi_local] - edges[lo_local])
-        if actual_span <= 0.0:
-            raise ValueError(
-                f"range {value_range!r} resolves to invalid aperture span {actual_span}"
-            )
-        return (lo_idx, hi_idx), actual_span
-
     if normal_axis == "x":
-        u_slice, a_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"], "y")
-        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"], "z")
+        u_slice, a_span = _range_to_slice_nu(grid, "y", entry.y_range)
+        v_slice, b_span = _range_to_slice_nu(grid, "z", entry.z_range)
     elif normal_axis == "y":
-        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"], "x")
-        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"], "z")
+        u_slice, a_span = _range_to_slice_nu(grid, "x", entry.x_range)
+        v_slice, b_span = _range_to_slice_nu(grid, "z", entry.z_range)
     else:
-        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"], "x")
-        v_slice, b_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"], "y")
+        u_slice, a_span = _range_to_slice_nu(grid, "x", entry.x_range)
+        v_slice, b_span = _range_to_slice_nu(grid, "y", entry.y_range)
 
     # NODE span -> CELL span, same conversion and same reason as the uniform
     # builder (issue #868): ``_range_to_slice_nu`` reports the aperture as
@@ -571,7 +569,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         d_axis_np = np.asarray(grid.dy_arr)
     else:
         d_axis_np = np.asarray(grid.dz)
-    _pad_lo_axis, _pad_hi_axis = pads_lo_hi[normal_axis]
+    _pad_lo_axis = getattr(grid, f"pad_{normal_axis}_lo")
+    _pad_hi_axis = getattr(grid, f"pad_{normal_axis}_hi")
     _interior = interior_cells(d_axis_np, _pad_lo_axis, _pad_hi_axis)
     _edges_axis = np.insert(np.cumsum(_interior), 0, 0.0)
     _local_axis = max(0, min(x_index - _pad_lo_axis, len(_edges_axis) - 1))

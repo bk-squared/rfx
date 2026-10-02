@@ -355,8 +355,12 @@ def _ports(sim, ctx, assembled):
             if b == a:
                 aperture.append((k, k))
             else:
-                sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
-                                            grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b])
+                if ctx.lane == "nonuniform":
+                    from rfx.runners.nonuniform import _range_to_slice_nu
+                    sl, _ = _range_to_slice_nu(grid, axis, getattr(pe, f'{axis}_range'))
+                else:
+                    sl, _ = sim._range_to_slice(getattr(pe, f'{axis}_range'), sim._domain[b],
+                                                grid.boundary_cell(b, "lo"), grid.shape[b], grid.axis_pads[b])
                 aperture.append((int(sl[0]), int(sl[1] - 1)))
         rows.append(PortGeometry(f"waveguide_port[{i}]", "waveguide", None, (), tuple(aperture)))
     for attr, kind in (("_msl_ports", "msl"), ("_coaxial_ports", "coaxial"),
@@ -460,17 +464,15 @@ def _record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
                    if lane == "run_subgridded" else ())
 
 
-def record_from_assembly(*args, **kwargs):
-    """Best-effort run metadata; assembly/solver refusals remain outside this guard.
+def record_from_assembly(sim, grid, *args, **kwargs):
+    """Skip host metadata only for traced mesh coordinates; other errors propagate."""
+    from rfx.core.jax_utils import is_tracer
 
-    Host inspection can fail for traced coordinates or unsupported diagnostic
-    geometry. In that case the run has no record; its assembly still runs and
-    raises normally before this function is called.
-    """
-    try:
-        return _record_from_assembly(*args, **kwargs)
-    except Exception:
+    # These are the inputs to coords_from_nonuniform_grid's node coordinates.
+    # Inspect them before any host conversion or record construction.
+    if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
         return None
+    return _record_from_assembly(sim, grid, *args, **kwargs)
 
 
 def attach_record(result, record):
