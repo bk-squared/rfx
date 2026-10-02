@@ -2,7 +2,7 @@
 
 **A differentiable 3-D electromagnetic simulator for RF and microwave engineering, built in JAX.**
 
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](https://github.com/bk-squared/rfx/blob/main/LICENSE)
 [![Tests](https://github.com/bk-squared/rfx/actions/workflows/pr-tests.yml/badge.svg)](https://github.com/bk-squared/rfx/actions)
 [![PyPI](https://img.shields.io/pypi/v/rfx-fdtd)](https://pypi.org/project/rfx-fdtd/)
 
@@ -13,10 +13,10 @@ The website identifies its source version; select the release matching your inst
 | You want to… | Start here |
 |---|---|
 | See results computed with the current code | [Showcase](https://remilab.ai/rfx/showcase/) · [visual archive](https://remilab.ai/rfx/gallery/) |
-| Run a first model | [First run](https://remilab.ai/rfx/guide/first-run/) · [runnable examples](examples/README.md) |
+| Run a first model | [First run](https://remilab.ai/rfx/guide/first-run/) · [runnable examples](https://github.com/bk-squared/rfx/blob/main/examples/README.md) |
 | Look up an argument or result | [API reference](https://remilab.ai/rfx/api/) |
 | Use rfx with a coding assistant | [Machine-readable documentation](https://remilab.ai/rfx/llms.txt) |
-| Check whether a result is supported | [Support matrix](docs/guides/support_matrix.md) · [S-parameter limits](docs/guides/sparameter_support_matrix.md) · [known limitations](docs/guides/known_limitations.md) |
+| Check whether a result is supported | [Support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md) · [S-parameter limits](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md) · [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) |
 
 ## Release status: 2.0 release candidate
 
@@ -31,9 +31,9 @@ The website identifies its source version; select the release matching your inst
   magnitudes within 2 dB, resonances and cutoffs within 1 %, electrical length within 1 %
   of the reference. This is the bar the project tests against, not a guarantee for every
   model. What is supported, and within which limits, is in the
-  [support matrix](docs/guides/support_matrix.md); what is currently wrong is in
-  [known limitations](docs/guides/known_limitations.md).
-- **Python 3.11 or newer**, with JAX 0.10. Python 3.10 users stay on 1.8.x.
+  [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md); what is currently wrong is in
+  [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md).
+- **Python 3.11 or newer**, with JAX and jaxlib 0.10.2 or newer. Python 3.10 users stay on 1.8.x.
 - Multi-device (distributed) execution is not part of 2.0's supported set; it is planned
   for 2.1.
 
@@ -57,7 +57,7 @@ The [installation guide](https://remilab.ai/rfx/guide/installation/) covers opti
 
 A pulse in a small closed PEC box checks your installation. It records one field
 probe; it does not measure a device's S-parameters, resonance accuracy, or Q.
-This code is generated from [hello_world.py](examples/quickstart/hello_world.py),
+This code is generated from [hello_world.py](https://github.com/bk-squared/rfx/blob/main/examples/quickstart/hello_world.py),
 the same runnable example tested by CI.
 
 <!-- rfx-hello-world:start -->
@@ -100,8 +100,8 @@ The [accuracy guide](https://remilab.ai/rfx/guide/validation/) explains the chec
 [benchmarks](https://remilab.ai/rfx/guide/benchmarks/) link results to their scope.
 
 Contributor workflow and repository navigation live in
-[Working on rfx](docs/agent/working-on-rfx.mdx) and the [repo map](docs/agent/repo-map.mdx).
-Release changes are in [CHANGELOG.md](CHANGELOG.md).
+[Working on rfx](https://github.com/bk-squared/rfx/blob/main/docs/agent/working-on-rfx.mdx) and the [repo map](https://github.com/bk-squared/rfx/blob/main/docs/agent/repo-map.mdx).
+Release changes are in [CHANGELOG.md](https://github.com/bk-squared/rfx/blob/main/CHANGELOG.md).
 
 ## Citation
 
@@ -128,5 +128,5 @@ The software itself:
 }
 ```
 
-MIT License — see [LICENSE](LICENSE). Developed at the
+MIT License — see [LICENSE](https://github.com/bk-squared/rfx/blob/main/LICENSE). Developed at the
 [Radar & ElectroMagnetic Intelligence Laboratory](https://remilab.cnu.ac.kr).
