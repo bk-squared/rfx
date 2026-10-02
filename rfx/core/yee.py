@@ -380,6 +380,9 @@ def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None):
     the exact discrete adjoint of the forward stagger.  See ``_diff_fwd_o``."""
     if boundary is not None:
         periodic = boundary.periodic
+    if order != 2 and boundary is not None and boundary.pmc_faces:
+        raise NotImplementedError("PMC magnetic image: yee._diff_bwd_o far neighbors "
+                                  "require stencil_order=2")
     back = h_neighbor(arr, axis, periodic=periodic, boundary=boundary)
     if order == 2:
         if periodic[axis] and bloch is not None:
@@ -475,8 +478,7 @@ class CurlBoundary(NamedTuple):
     """Realized terminal walls and periodic axes of an E-update stencil.
 
     Built from ``resolve_wall_faces`` by each single-device step setup.
-    B3a carries the magnetic faces without changing their legacy sampling;
-    the face image belongs to the subsequent physics change.
+    Tangential H is read with an odd image across each magnetic face.
     """
 
     pec_faces: frozenset = frozenset()
@@ -486,25 +488,44 @@ class CurlBoundary(NamedTuple):
 
 def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
                index=None):
-    """Backward tangential-H neighbour, whole array or one port-loop sample.
+    """Backward operand for a tangential-H difference at an E node.
 
-    No magnetic image yet. Indexed length-one axes retain the port readers'
-    invariant-axis convention; full arrays use the step's periodic flags.
+    With N cells, physical H indices are 0..N-1 and the stored high ghost
+    is N. PMC requires D_H[0]=2H[0] and D_H[N]=-2H[N-1]. The high operand
+    includes H[N] to cancel the stored ghost at consumption, including any
+    source/absorber change since canonicalization. No physical H is zeroed.
+    Periodic and indexed invariant-axis conventions take precedence.
     """
     if boundary is not None:
         periodic = boundary.periodic
-    if index is None:
-        return jnp.roll(h, 1, axis) if periodic[axis] else _shift_bwd(h, axis)
     n = h.shape[axis]
+    from rfx.boundaries.pmc import magnetic_image_faces
+    faces = magnetic_image_faces(boundary.pmc_faces, h.shape, periodic) if boundary is not None else frozenset()
+    lo = f"{'xyz'[axis]}_lo" in faces
+    hi = f"{'xyz'[axis]}_hi" in faces
+    if index is None:
+        back = jnp.roll(h, 1, axis) if periodic[axis] else _shift_bwd(h, axis)
+        edge = [slice(None)] * h.ndim
+        if lo:
+            edge[axis] = 0
+            back = back.at[tuple(edge)].set(-h[tuple(edge)])
+        if hi:
+            edge[axis] = -1
+            inner = list(edge)
+            inner[axis] = -2
+            back = back.at[tuple(edge)].set(h[tuple(edge)] + 2 * h[tuple(inner)])
+        return back
     i = int(index[axis])
     if n == 1 or periodic[axis]:
         back = list(index)
         back[axis] = (i - 1) % n
         return h[tuple(back)]
     if i == 0:
-        return jnp.zeros_like(h[index])
+        return -h[index] if lo else jnp.zeros_like(h[index])
     back = list(index)
     back[axis] = i - 1
+    if hi and i == n - 1:
+        return h[index] + 2 * h[tuple(back)]
     return h[tuple(back)]
 
 

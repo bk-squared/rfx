@@ -195,8 +195,8 @@ NUMBER_FREE_LANES: frozenset[str] = frozenset()
 # STATUS_TOKENS. Most lanes need only one anchor (the section states its own
 # status once). The coaxial-port lane needs two: its one .md section and one
 # json entry bundle TWO sub-APIs with independently evolving status
-# (compute_coaxial_s_matrix, deprecated; compute_coaxial_two_port,
-# experimental) -- see the module docstring for why scanning only one of
+# (compute_coaxial_line_reflection and compute_coaxial_two_port; the
+# former compute_coaxial_s_matrix was removed, #1212) -- see the module docstring for why scanning only one of
 # the two, or the whole section, both failed review.
 #
 # Anchors are deliberately chosen to NOT themselves contain any STATUS_TOKENS
@@ -226,7 +226,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
         "The calculation remains",
     ),
     "add_coaxial_port(...)": (
-        "The older `compute_coaxial_s_matrix(...)` path is deprecated and",
+        "Use `compute_coaxial_line_reflection(...)` for the documented TEM-line result.",
         "every DUT it can currently gate against",
     ),
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)": (
@@ -289,7 +289,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
 # warns about, instead of a clean status-disagreement report.
 LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
     "add_coaxial_port(...)": (
-        "compute_coaxial_s_matrix(...) remains",
+        "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
         "an external openEMS referee (VESSL run-3 369367251629",
     ),
 }
@@ -333,7 +333,7 @@ API_SUMMARY_ROW_ANCHORS: dict[str, tuple[str, ...]] = {
         "`add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)`",
     ),
     "add_coaxial_port(...)": (
-        "`add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)`",
+        "`add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)`",
         "`add_coaxial_port(...)` | `compute_coaxial_two_port(...)`",
     ),
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)": (

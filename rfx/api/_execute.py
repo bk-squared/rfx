@@ -32,6 +32,21 @@ from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in mo
 from rfx.materials.debye import init_debye  # noqa: F401  (local import in moved bodies)
 from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in moved bodies)
 from rfx.adi import ADIState2D, run_adi_2d
+
+
+@jax.custom_jvp
+def _refuse_adi_2d_material_derivative(x):
+    """Identity on the 2-D ADI material arrays; differentiating it raises."""
+    return x
+
+
+@_refuse_adi_2d_material_derivative.defjvp
+def _refuse_adi_2d_material_derivative_jvp(primals, tangents):
+    raise NotImplementedError(
+        "solver='adi' in 2-D cannot differentiate with respect to the "
+        "permittivity or conductivity (eps_override / sigma_override): the "
+        "2-D ADI update's derivative is NaN in float32 (#1373). The value "
+        "runs; for a gradient use solver='yee', or mode='3d' with ADI.")
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
 from rfx.ringdown import RingdownSpec  # noqa: F401  (run() signature type-hint)
@@ -456,10 +471,27 @@ class _ExecuteMixin:
         a CRITICAL correctness failure. This single guard, called at the top
         of every run/forward entry BEFORE any dispatch, guarantees order=4
         can never reach an unsupported runner even if a per-path fence is
-        missed. order=2 (the default) is unaffected.
+        missed. Magnetic images also require a single-device second-order
+        kernel, so distributed PMC requests are rejected here for either order.
         """
+        from rfx.boundaries.pmc import refuse_waveguide_pmc
+        refuse_waveguide_pmc(self)
+        magnetic_faces = sorted(self._boundary_spec.pmc_faces())
+        if magnetic_faces and distributed:
+            graded = any(getattr(self, f"_{a}_profile", None) is not None
+                         for a in ("dx", "dy", "dz"))
+            kernel = "distributed_nu" if graded else "distributed_v2"
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)}: {kernel} "
+                "does not implement the declared-face magnetic image; use a "
+                "single-device Yee run/forward until B4.")
         if getattr(self, "_stencil_order", 2) != 4:
             return
+        if magnetic_faces:
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)} with stencil_order=4: "
+                "yee._diff_bwd_o far neighbors do not implement the magnetic image; "
+                "use stencil_order=2.")
         unsupported = []
         is_nonuniform = (
             self._dz_profile is not None
@@ -1413,12 +1445,6 @@ class _ExecuteMixin:
         if self._mode == "3d":
             from rfx.adi import run_adi_3d, ADIState3D, make_adi_absorbing_sigma_3d
 
-            sources_3d = []
-            for pe in self._ports:
-                i, j, k = grid.position_to_index(pe.position)
-                waveform = jax.vmap(pe.waveform)(times)
-                sources_3d.append((i, j, k, pe.component, waveform))
-
             probes_3d = []
             for pe in self._probes:
                 i, j, k = grid.position_to_index(pe.position)
@@ -1432,6 +1458,12 @@ class _ExecuteMixin:
                 absorb_sigma = make_adi_absorbing_sigma_3d(
                     nx, ny, nz, self._cpml_layers, grid.dx, grid.dx, grid.dx)
                 sigma_3d = sigma_3d + absorb_sigma
+
+            sources_3d = []
+            for pe in self._ports:
+                i, j, k = grid.position_to_index(pe.position)
+                waveform = jax.vmap(pe.waveform)(times)
+                sources_3d.append((i, j, k, pe.component, waveform))
 
             shape = grid.shape
             if _realized.ACTIVE is not None:
@@ -1470,19 +1502,17 @@ class _ExecuteMixin:
             )
 
         # ---- 2D TMz path ----
-        sources = []
-        for pe in self._ports:
-            i, j, _ = grid.position_to_index(pe.position)
-            waveform = jax.vmap(pe.waveform)(times)
-            sources.append((i, j, waveform))
-
         probes = []
         for pe in self._probes:
             i, j, _ = grid.position_to_index(pe.position)
             probes.append((i, j, pe.component))
 
-        eps_r_2d = materials.eps_r[:, :, 0]
-        sigma_2d = materials.sigma[:, :, 0]
+        # A derivative with respect to eps or sigma through the 2-D ADI update
+        # is NaN in forward and reverse mode while central differences are
+        # finite (3-D is finite; cause not confirmed, #1373), so it is refused
+        # when one is requested; the value, also under jax.jit, is unaffected.
+        eps_r_2d = _refuse_adi_2d_material_derivative(materials.eps_r[:, :, 0])
+        sigma_2d = _refuse_adi_2d_material_derivative(materials.sigma[:, :, 0])
 
         # Add implicit absorbing sigma layer for CPML boundary
         if self._boundary == "cpml" and self._cpml_layers > 0:
@@ -1491,6 +1521,12 @@ class _ExecuteMixin:
             absorb_sigma = make_adi_absorbing_sigma(
                 nx_2d, ny_2d, self._cpml_layers, grid.dx)
             sigma_2d = sigma_2d + absorb_sigma
+
+        sources = []
+        for pe in self._ports:
+            i, j, _ = grid.position_to_index(pe.position)
+            waveform = jax.vmap(pe.waveform)(times)
+            sources.append((i, j, waveform))
 
         # The 2-D TMz lane carries only Ez, so its realized PEC mask is
         # the Mz plane (#931 §1.7).
@@ -1814,6 +1850,9 @@ class _ExecuteMixin:
                                   pe.waveform, n_steps, materials,
                                   amplitude_kind=pe.amplitude_kind)
                 )
+                from rfx.api._source_semantics import guard_float16_source_increment
+                sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
+                    sources[-1].waveform, self._resolve_field_dtype(), pe.amplitude_kind))
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.
@@ -4186,6 +4225,10 @@ class _ExecuteMixin:
             ``None`` (default) leaves every output and the traced program as
             they were.
 
+        **_removed_kwargs
+            Rejection shim for removed keywords, providing migration errors;
+            it does not accept additional simulation options.
+
         Returns
         -------
         ForwardResult
@@ -4492,7 +4535,11 @@ class _ExecuteMixin:
             pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
         if n_steps is None:
-            n_steps = grid.num_timesteps(num_periods=num_periods)
+            if self._solver == "adi":
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+            else:
+                n_steps = grid.num_timesteps(num_periods=num_periods)
 
         # #677: node-thin sheet ctx against the realized PEC edges of this
         # forward run (PEC wins on overlapping edges).  #931: the PEC
@@ -4720,6 +4767,21 @@ class _ExecuteMixin:
             interior-energy checks required before stopping (default ``2``;
             ``>= 2`` mandatory — the interior energy is not null-free and a
             single check can false-fire on a transient inter-packet dip).
+        radiated_flux_box : tuple or None
+            Physical lower/upper corners of a closed box enclosing the radiator,
+            clear of CPML. Selects outgoing-flux decay instead of interior-energy
+            decay on absorbing boundaries; None keeps the energy criterion.
+        flux_env_checks : int
+            Number of recent checks whose maximum absolute flux forms the
+            radiated-flux envelope (default 4).
+        snapshot : SnapshotSpec or None
+            Field snapshot schedule and selection; None disables snapshots.
+        subpixel_smoothing : bool or str
+            Material-interface smoothing rule; False disables smoothing.
+            True enables dielectric smoothing; "kottke_pec" selects the
+            unified PEC occupancy rule on supported lanes.
+        skip_preflight : bool
+            Skip advisory preflight checks. Runtime admission guards still apply.
         decay_monitor_component : str
             Field component to monitor (default ``"ez"``). Used only by the
             closed/PEC point-field fallback stop.
@@ -5153,7 +5215,8 @@ class _ExecuteMixin:
                 **({} if report_every is None else {"report_every": report_every}),
             }, instead="use the default solver='yee'")
             if n_steps is None:
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
             _res = self._run_adi_from_materials(
                 grid,
                 base_materials,

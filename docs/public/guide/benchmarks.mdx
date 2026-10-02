@@ -56,10 +56,6 @@ or `slow`.
 | Structure | Compared with | Test |
 |---|---|---|
 | Microstrip open-stub notch filter, `\|S21\|` | openEMS tutorial result and Palace FEM | `tests/crossval/msl_notch_filter/` |
-| Stepped-impedance microstrip low-pass filter, `\|S21\|` | openEMS, same box | `tests/crossval/sheen_lpf/` |
-| Probe-fed patch (openEMS Simple Patch Antenna geometry), far field | openEMS thirds-rule mesh | `tests/crossval/test_patch_canonical_farfield_e4.py` |
-| PEC cube, radar cross section | a boundary-element solver | `tests/crossval/test_rcs_cube_bem_gates.py` |
-| Rectangular waveguides across several bands, S-parameters | frozen Meep, openEMS and Palace records | `tests/crossval/test_waveguide_broad_e5.py` |
 
 On the notch filter, the notch frequency on a uniform mesh converges to within
 0.090 % of the openEMS tutorial result, and to within 0.03 % on a band-graded

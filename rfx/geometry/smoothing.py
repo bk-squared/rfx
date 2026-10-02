@@ -1640,3 +1640,51 @@ def kottke_inv_eps_from_occupancy(
     inv_yy = ((1.0 - m_y) * inv_yy_b).astype(jnp.float32)
     inv_zz = ((1.0 - m_z) * inv_zz_b).astype(jnp.float32)
     return inv_xx, inv_yy, inv_zz
+
+
+def refuse_pmc_smoothing(sim, grid):
+    """Refuse a normal material interface inside a PMC face's half-cell.
+
+    The current smoother samples the declared SDF, not its even extension.
+    A shape reaching at least a cell through the face has no normal
+    interface in this ribbon and is supported. Test the actual face lattice
+    and the two half-cell samples; tangential surfaces with equal SDF on
+    both sides do not request an unimplemented normal extension.
+    """
+    faces = sim._boundary_spec.pmc_faces()
+    if not faces or not sim._geometry:
+        return
+    import numpy as np
+    from rfx.geometry.rasterize_grid import (coords_from_uniform_grid,
+                                            coords_from_nonuniform_grid)
+    graded = hasattr(grid, "dx_arr")
+    coords = (coords_from_nonuniform_grid(grid) if graded
+              else coords_from_uniform_grid(grid))
+    nodes = [np.asarray(v) for v in (coords.x, coords.y, coords.z)]
+    for face in sorted(faces):
+        axis = "xyz".index(face[0])
+        hi = face.endswith("hi")
+        plane = nodes[axis][-1 if hi else 0]
+        d = (abs(nodes[axis][-1] - nodes[axis][-2]) if hi
+             else abs(nodes[axis][1] - nodes[axis][0]))
+        face_nodes = list(nodes)
+        face_nodes[axis] = np.array([plane])
+        xyz = np.meshgrid(*face_nodes, indexing="ij")
+        lower, upper = list(xyz), list(xyz)
+        lower[axis] = xyz[axis] - d / 2
+        upper[axis] = xyz[axis] + d / 2
+        for entry in sim._geometry:
+            shape = entry.shape
+            sdf_fn = _get_sdf_fn(shape)
+            if sdf_fn is None:
+                continue  # This shape uses a staircase, not subpixel smoothing.
+            sdf = np.asarray(sdf_fn(*xyz, shape, xp=np))
+            delta = (np.asarray(sdf_fn(*lower, shape, xp=np))
+                     - np.asarray(sdf_fn(*upper, shape, xp=np)))
+            if np.any((abs(sdf) <= d / 2) &
+                      (abs(delta) > d * 8 * np.finfo(np.float32).eps)):
+                raise NotImplementedError(
+                    f"subpixel smoothing at PMC magnetic face {face}: material "
+                    f"{entry.material_name!r} has a surface within half a cell; "
+                    "the smoother has no even magnetic extension. Extend the "
+                    "material at least one cell beyond the face or disable smoothing.")

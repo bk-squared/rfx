@@ -30,6 +30,7 @@ import jax
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.harminv import harminv
 from rfx.sources import GaussianPulse
 
@@ -50,7 +51,8 @@ def _build_sim(*, dx=_DX) -> Simulation:
     # #1138: patch x solved +1.25% at dx=0.5 mm; this checks physics bit identity.
     sim = Simulation(snap="declared",
         freq_max=_F_MAX, domain=_DOMAIN, dx=dx,
-        boundary="cpml", cpml_layers=round(0.004 / dx), pec_faces={"z_lo"},
+        boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
+        cpml_layers=round(0.004 / dx),
     )
     sim.add_material("fr4", eps_r=_FR4_EPS)
     sim.add(Box((0., 0., 0.), (_DOMAIN[0], _DOMAIN[1], _SUB_T)), material="fr4")

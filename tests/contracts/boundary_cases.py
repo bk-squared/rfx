@@ -26,6 +26,7 @@ def build(case,entry):
     elif case=='floquet':
         sim.add_floquet_port(.003,freqs=np.array([10e9]),f0=10e9)
         sim.add_floquet_port(.013,freqs=np.array([10e9]),f0=10e9,amplitude=0)
+    elif entry=='adi': sim.add_source((.010,.010,.004),'ez',amplitude_kind='field')
     elif entry!='wire-fast': sim.add_source((.010,.010,.004),'ez')
     if entry=='wire-fast': sim.add_port((.010,.010,.004),'ez',extent=.002)
     sim.add_probe((.014,.011,.005),'ez')

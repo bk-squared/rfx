@@ -15,6 +15,7 @@ uses the per-axis CPML thickness so periodic axes (which now have
 """
 
 from __future__ import annotations
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 import numpy as np
 import pytest
@@ -29,9 +30,8 @@ def _build_absorber_sim():
         domain=(0.01, 0.01, 0.02),
         dx=5e-4,
         cpml_layers=4,
-        boundary="cpml",
+        boundary=BoundarySpec(x="periodic", y="periodic", z="cpml"),
     )
-    sim.set_periodic_axes("xy")
     return sim
 
 
@@ -148,9 +148,8 @@ def test_build_grid_honors_arbitrary_periodic_axis_sets(axes):
         domain=(0.01, 0.01, 0.01),
         dx=5e-4,
         cpml_layers=4,
-        boundary="cpml",
+        boundary=BoundarySpec(**{axis: "periodic" if axis in (axes or "") else "cpml" for axis in "xyz"}),
     )
-    sim.set_periodic_axes(axes)
     grid = sim._build_grid()
     expected = "".join(ax for ax in "xyz" if ax not in axes)
     assert grid.cpml_axes == expected, (

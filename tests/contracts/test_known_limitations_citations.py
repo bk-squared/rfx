@@ -103,7 +103,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # was already CLOSED (PR #1283, tests/unit/nonuniform/test_dispersive_port_load_1257.py)
 # -- `gh issue view 1257 --json state` read CLOSED that day. With the entry gone
 # the page no longer names #1236 either.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230})
+CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1441})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are

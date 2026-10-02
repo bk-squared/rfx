@@ -710,6 +710,7 @@ class FluxMonitor(NamedTuple):
     hi1: int = -1         # end index (exclusive); -1 = full extent
     lo2: int = 0          # start index in second tangential dimension
     hi2: int = -1         # end index (exclusive); -1 = full extent
+    dA2: jnp.ndarray | None = None  # second staggered E/H product on graded or PMC-cut planes
 
 
 # Tangential field component names for each normal axis
@@ -734,6 +735,8 @@ def init_flux_monitor(
     hi1: int = -1,
     lo2: int = 0,
     hi2: int = -1,
+    pmc_faces: frozenset = frozenset(),
+    staggered_area: bool = False,
 ) -> FluxMonitor:
     """Create a Poynting flux monitor on a (possibly finite-size) plane region.
 
@@ -743,10 +746,15 @@ def init_flux_monitor(
     ``d1`` / ``d2`` are the cell sizes along the two tangential axes of
     the monitor plane (axis-1 / axis-2 of ``_FLUX_COMPONENTS``). Each may
     be a scalar (uniform mesh) or a per-cell 1-D array (non-uniform). The
+    With ``staggered_area=True``, nodal axes use adjacent-cell dual widths
+    and each E/H product has its own area. PMC face nodes have half weight;
+    unused high cell-centered ghosts have zero weight. Otherwise the
     flux area element is ``dA = d1 * d2`` — for an x-normal plane that is
     ``dy * dz``, etc. (PROBE-C1 fix: the old API took a single scalar
     ``dx`` and assumed a cubic cell.)
     """
+    from rfx.boundaries.pmc import magnetic_image_faces
+    pmc_faces = magnetic_image_faces(pmc_faces, grid_shape)
     if axis == 0:
         full1, full2 = grid_shape[1], grid_shape[2]
     elif axis == 1:
@@ -769,17 +777,38 @@ def init_flux_monitor(
     # outer-multiplied to (n1, n2). jnp.reshape(scalar, (-1,1)) -> (1,1).
     w1 = jnp.asarray(d1, dtype=jnp.float32)
     w2 = jnp.asarray(d2, dtype=jnp.float32)
-    if w1.ndim > 0:
-        w1 = w1[lo1:hi1]
-    if w2.ndim > 0:
-        w2 = w2[lo2:hi2]
-    dA = jnp.reshape(w1, (-1, 1)) * jnp.reshape(w2, (1, -1))
+    # The two products live at distinct transverse Yee locations. An E
+    # component is half-cell shifted on its own axis and nodal on the other.
+    # Only nodal samples receive the half dual-cell weight at a PMC face.
+    tangential = [a for a in range(3) if a != axis]
+    def face_weights(w, size, lo, hi, a, component):
+        nodal = component != a
+        if w.ndim > 0:
+            if staggered_area and nodal:
+                # Node-centered dual length versus edge-centered primal
+                # length. Transform before slicing to retain the left cell.
+                w = jnp.concatenate((w[:1], .5 * (w[:-1] + w[1:])))
+            w = w[lo:hi]
+        if not any(f"{'xyz'[a]}_{side}" in pmc_faces for side in ("lo", "hi")):
+            return w
+        w = jnp.broadcast_to(w, (hi - lo,))
+        if nodal and lo == 0 and f"{'xyz'[a]}_lo" in pmc_faces:
+            w = w.at[0].multiply(0.5)
+        if hi == size and f"{'xyz'[a]}_hi" in pmc_faces:
+            w = w.at[-1].multiply(0.5 if nodal else 0.)
+        return w
+    def area(component):
+        a = face_weights(w1, full1, lo1, hi1, tangential[0], component)
+        b = face_weights(w2, full2, lo2, hi2, tangential[1], component)
+        return jnp.reshape(a, (-1, 1)) * jnp.reshape(b, (1, -1))
+    dA = area("xyz".index(_FLUX_COMPONENTS[axis][0][1]))
+    dA2 = area("xyz".index(_FLUX_COMPONENTS[axis][1][1])) if pmc_faces or staggered_area else None
 
     return FluxMonitor(
         e1_dft=zeros, e2_dft=zeros,
         h1_dft=zeros, h2_dft=zeros,
         freqs=freqs, axis=axis, index=index,
-        dA=dA,
+        dA=dA, dA2=dA2,
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
@@ -862,11 +891,20 @@ def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
         h2 = np.asarray(mon.h2_dft, dtype=np.complex128)
         integrand = e1 * np.conj(h2) - e2 * np.conj(h1)
         dA = np.asarray(mon.dA, dtype=np.float64)
-        return np.real(np.sum(integrand * dA, axis=(-2, -1)))
+        if mon.dA2 is None:
+            return np.real(np.sum(integrand * dA, axis=(-2, -1)))
+        dA2 = np.asarray(mon.dA2, dtype=np.float64)
+        return np.real(np.sum(e1 * np.conj(h2) * dA - e2 * np.conj(h1) * dA2,
+                              axis=(-2, -1)))
     # Poynting: S_n = E1*H2* - E2*H1* (cyclic cross product).
     # mon.dA is the axis-aware area weight (scalar or (n1,n2)).
     integrand = mon.e1_dft * jnp.conj(mon.h2_dft) - mon.e2_dft * jnp.conj(mon.h1_dft)
-    flux = jnp.real(jnp.sum(integrand * mon.dA, axis=(-2, -1)))
+    if mon.dA2 is None:
+        flux = jnp.real(jnp.sum(integrand * mon.dA, axis=(-2, -1)))
+    else:
+        flux = jnp.real(jnp.sum(mon.e1_dft * jnp.conj(mon.h2_dft) * mon.dA
+                               - mon.e2_dft * jnp.conj(mon.h1_dft) * mon.dA2,
+                               axis=(-2, -1)))
     _warn_if_flux_subnormal_flush(mon, flux)
     return flux
 
@@ -900,11 +938,11 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
     h1 = np.asarray(mon.h1_dft, dtype=np.complex128)
     h2 = np.asarray(mon.h2_dft, dtype=np.complex128)
     dA = np.asarray(mon.dA, dtype=np.float64)
-    f64 = np.real(np.sum(
-        (e1.astype(np.complex128) * np.conj(h2)
-         - e2.astype(np.complex128) * np.conj(h1)) * dA,
-        axis=(-2, -1),
-    ))
+    term1 = e1.astype(np.complex128) * np.conj(h2)
+    term2 = e2.astype(np.complex128) * np.conj(h1)
+    weighted = ((term1 - term2) * dA if mon.dA2 is None else
+                term1 * dA - term2 * np.asarray(mon.dA2, dtype=np.float64))
+    f64 = np.real(np.sum(weighted, axis=(-2, -1)))
     if not np.any(f64 != 0.0):
         return  # float64 agrees the flux is zero — no artefact
     import warnings

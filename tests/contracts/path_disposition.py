@@ -560,14 +560,12 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=carries("'current' and 'field' scale the waveform differently (#571)"),
             run_nonuniform=carries(),
             run_subgridded=carries(),
-            run_adi=admission("a soft source with amplitude_kind='current'", RUN_ADI, "both kinds injected the same waveform, a raw E "
-                              "increment (#1308)"),
+            run_adi=refuses("ADI implements only field sources (#1373)", raises="amplitude_kind"),
             run_distributed=carries(),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
-            fwd_adi=admission("a soft source with amplitude_kind='current'", FWD_ADI, "both kinds injected the same waveform, a raw E "
-                              "increment (#1308)"),
+            fwd_adi=refuses("ADI implements only field sources (#1373)", raises="amplitude_kind"),
         ),
         "lumped_port": lanes(
             run_uniform=carries("drive and 50 Ω load"),
@@ -780,21 +778,17 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     # Magnetic walls on the x faces, electric on y and z.
     "_boundary_spec": {
         "pmc_face": lanes(
-            run_uniform=carries("the magnetic wall sits half a cell inside its face "
-                                "(test_realized_boundary.py pmc-pec--run)", wrong="#1221"),
-            run_nonuniform=carries("half a cell inside (pmc-pec--nonuniform)", wrong="#1221"),
-            run_subgridded=admission("a PMC (magnetic wall) face", RUN_SG, "it was solved as electric walls although "
-                                     "production validation passes (#1311)"),
-            run_adi=admission("a PMC (magnetic wall) face", RUN_ADI, "it was solved as electric walls (pmc-pec--adi, "
-                              "#1221)"),
-            run_distributed=carries("tangential E held at zero on the x faces "
-                                    "(pmc-pec--distributed)", wrong="#1221"),
-            fwd_uniform=carries("half a cell inside (pmc-pec--forward)", wrong="#1221"),
-            fwd_nonuniform=carries("the kernel of run_nonuniform; test_realized_boundary.py does not "
-                                   "run this entry"),
-            fwd_distributed_nu=carries("test_realized_boundary.py does not run this entry"),
-            fwd_adi=admission("a PMC (magnetic wall) face", FWD_ADI, "it was solved as electric walls, as on run_adi "
-                              "(#1221)"),
+            run_uniform=carries("odd H image on the declared E-node face (#1221 B3b)"),
+            run_nonuniform=carries("graded shared curl carries the declared-face image"),
+            run_subgridded=admission("a PMC (magnetic wall) face", RUN_SG, "no magnetic image"),
+            run_adi=admission("a PMC (magnetic wall) face", RUN_ADI, "no magnetic image"),
+            run_distributed=refuses("distributed_v2 has no declared-face image until B4",
+                                    raises="does not implement the declared-face magnetic image"),
+            fwd_uniform=carries(),
+            fwd_nonuniform=carries(),
+            fwd_distributed_nu=refuses("distributed_nu has no declared-face image until B4",
+                                      raises="does not implement the declared-face magnetic image"),
+            fwd_adi=admission("a PMC (magnetic wall) face", FWD_ADI, "no magnetic image"),
         ),
         "conformal": lanes(
             run_uniform=carries("Dey-Mittra weights on every PEC shape, including direct run_uniform() by default; conformal_pec=False requests staircase PEC"),
@@ -1457,7 +1451,7 @@ CALCULATOR_CELLS = {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
         'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
-        'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
+        'waveguide_s_matrix': refuses('waveguide_port.init_waveguide_port has no magnetic aperture mode', raises='PMC.*magnetic'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PMC (magnetic wall) face'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a PMC (magnetic wall) face'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a PMC (magnetic wall) face'),

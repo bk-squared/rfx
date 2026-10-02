@@ -1,5 +1,7 @@
 # E4 expansion: every crossval case × every external solver class — inventory and lane plan
 
+> Documentation update (2026-10-03): The builder and gate paths below describe the historical plan. Current cross-solver cases live in `tests/crossval/`; the retired `validation/crossval/` scripts are not runnable entry points.
+
 > cv04, cv17, cv22, cv23, cv24 and cv26 were removed on 2026-09-21; the artifacts cited here are at commit b4cf8f29.
 
 > **SUPERSEDED IN PART by #931 (the lattice ownership contract), 2026-09-07.**

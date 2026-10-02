@@ -1,6 +1,6 @@
 """Touchstone (.sNp) S-parameter file I/O.
 
-Reads and writes the legacy rfx Touchstone v1-compatible format plus a bounded
+Reads and writes standard Touchstone 1.0, explicit legacy rfx layout, and a bounded
 metadata-aware Touchstone 2.0 S-parameter subset for interoperability with ADS,
 CST, HFSS, scikit-rf-style workflows, and other RF tools.
 
@@ -19,8 +19,9 @@ Legacy rfx multi-port layout:
   frequency, continuation lines are indented without a frequency column.
   Column-major order: S11, S21, ..., SN1, S12, ..., SNN.
 
-Standard Touchstone layout is available with ``layout="standard"`` or
-``version="2.0"`` and uses row-wise 3+ port full matrices.
+Standard Touchstone layout is the default for writing: row-major for 3+
+ports, S11 S21 S12 S22 for 2 ports. Readers detect old unmarked rfx v1
+exports automatically. An explicit ``layout`` overrides detection.
 """
 
 from __future__ import annotations
@@ -231,8 +232,8 @@ def write_touchstone(
         writes Touchstone 2.0 metadata keywords for the supported S-parameter
         subset.
     layout : "legacy-rfx", "standard", or None
-        Multi-port order.  ``None`` means historical legacy layout for
-        Touchstone 1.0 output and standard layout for Touchstone 2.0 output.
+        Multi-port order.  ``None`` means standard layout for both
+        Touchstone 1.0 and 2.0 output.
         The legacy rfx layout is column-major for all port counts.  The
         standard layout is row-major for 3+ ports.  Two-port standard order is
         controlled by ``two_port_order``.
@@ -275,7 +276,7 @@ def write_touchstone(
             "with [Number of Ports] metadata"
         )
     if layout is None:
-        layout = "standard" if version == "2.0" else "legacy-rfx"
+        layout = "standard"
     layout = layout.lower()
     fmt = fmt.upper()
     matrix_format = matrix_format.capitalize()
@@ -300,6 +301,7 @@ def write_touchstone(
     with open(filepath, "w") as f:
         # Comments
         f.write("! rfx Touchstone export\n")
+        f.write(f"! rfx layout: {layout}\n")
         f.write(f"! {n_ports}-port, {n_freqs} frequencies\n")
         if comments:
             for c in comments:
@@ -344,32 +346,20 @@ def write_touchstone(
                     tokens.extend([p1, p2])
                 f.write(" ".join(tokens) + "\n")
             else:
-                # 3+ ports: first line has freq + up to 4 pairs,
-                # continuation lines have up to 4 pairs each.
-                idx = 0
-                first_line_tokens = [f"{freq_scaled:.9e}"]
-                for _ in range(min(_MAX_PAIRS_PER_LINE, len(pairs))):
-                    p1, p2 = pairs[idx]
-                    first_line_tokens.extend([p1, p2])
-                    idx += 1
-                f.write(" ".join(first_line_tokens) + "\n")
-
-                # Continuation lines
-                while idx < len(pairs):
-                    chunk_end = min(idx + _MAX_PAIRS_PER_LINE, len(pairs))
-                    cont_tokens: list[str] = []
-                    while idx < chunk_end:
-                        p1, p2 = pairs[idx]
-                        cont_tokens.extend([p1, p2])
-                        idx += 1
-                    # Indent continuation lines to distinguish from freq lines
-                    f.write("  " + " ".join(cont_tokens) + "\n")
+                # Start each matrix row on a new line, with at most four pairs.
+                for row_start in range(0, len(pairs), n_ports):
+                    for start in range(row_start, row_start + n_ports, _MAX_PAIRS_PER_LINE):
+                        chunk = pairs[start:min(start + _MAX_PAIRS_PER_LINE, row_start + n_ports)]
+                        tokens = [f"{freq_scaled:.9e}"] if start == 0 else []
+                        for p1, p2 in chunk:
+                            tokens.extend([p1, p2])
+                        f.write(("" if start == 0 else "  ") + " ".join(tokens) + "\n")
 
         if version == "2.0":
             f.write("[End]\n")
 
 
-def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float]:
+def read_touchstone(filepath: str | Path, *, layout: str = "auto") -> tuple[np.ndarray, np.ndarray, float]:
     """Read S-parameters from a Touchstone file.
 
     This legacy compatibility API returns a scalar reference impedance.  If a
@@ -379,6 +369,9 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     Parameters
     ----------
     filepath : str or Path
+    layout : str
+        Auto-detect old unmarked rfx v1 exports; otherwise use standard order.
+        An explicit layout overrides detection.
 
     Returns
     -------
@@ -386,7 +379,7 @@ def read_touchstone(filepath: str | Path) -> tuple[np.ndarray, np.ndarray, float
     freqs : (n_freqs,) float in Hz
     z0 : float reference impedance
     """
-    data = read_touchstone_full(filepath)
+    data = read_touchstone_full(filepath, layout=layout)
     scalar_z0 = _uniform_reference_or_none(data.reference)
     if scalar_z0 is None:
         raise ValueError(
@@ -408,9 +401,9 @@ def read_touchstone_full(filepath: str | Path, *,
     - Touchstone 2.0 information blocks preserved as raw lines
     - Full matrix data only
 
-    For backwards compatibility, Touchstone 1-style files default to the
-    historical rfx multi-port layout.  Touchstone 2.0 files default to the
-    standard full-matrix row-wise layout for 3+ ports.
+    ``layout="auto"`` detects legacy column-major order for unmarked rfx
+    v1 exports with 3+ ports. Marked exports and external files use standard
+    order. Two-port and v2 files are unaffected; explicit layouts override.
     """
     filepath = Path(filepath)
 
@@ -623,7 +616,19 @@ def read_touchstone_full(filepath: str | Path, *,
     freqs = np.array(freqs_list)
 
     if layout == "auto":
-        resolved_layout = "standard" if has_v2_keywords else "legacy-rfx"
+        marked = [c.split(":", 1)[1].strip().lower() for c in comments
+                  if c.lower().startswith("rfx layout:")]
+        if marked:
+            # The marker the writer emits names the layout it used.
+            resolved_layout = "legacy-rfx" if marked[-1] == "legacy-rfx" else "standard"
+        else:
+            # An unmarked rfx v1 export with 3+ ports predates the marker
+            # and was written column-major (#1448).
+            legacy_export = (
+                version == "1.0" and n_ports >= 3
+                and "rfx Touchstone export" in comments
+            )
+            resolved_layout = "legacy-rfx" if legacy_export else "standard"
     else:
         resolved_layout = layout.lower()
 

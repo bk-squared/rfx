@@ -91,7 +91,8 @@ def resolve_wall_faces(grid, periodic, pec_axes=None):
                 pmc.add(face)
             elif face in declared_pec or axis_default:
                 pec.add(face)
-    return frozenset(pec), frozenset(pmc)
+    from rfx.boundaries.pmc import magnetic_image_faces
+    return frozenset(pec), magnetic_image_faces(pmc, grid.shape, periodic)
 
 
 def apply_pec_faces(state, faces: set[str]) -> object:

@@ -1,5 +1,7 @@
 # The open-boundary contract: what touches an absorbing face, and what the absorber may end
 
+> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+
 Status: **decided** (PI, 2026-09-21). Option A of section 5 is adopted; option B is the next task, not a
 rejected one. This note is the rule; the code that implements it lands in later changes and cites it.
 Every number here is read from a record under `scripts/diagnostics/open_boundary_contract/` (file and
@@ -86,12 +88,11 @@ the face. To end an object near a face a user leaves a gap. Preflight reports, p
 face, which of the two it is, in those words. The present finding that "geometry inside the absorber
 is physically meaningless" (#61) is withdrawn and rewritten accordingly.
 
-**C2 — What continues is the realized model, not a list of arrays.** At each absorbing face, every
-quantity the time stepping reads in the last interior plane is extruded along the normal through all
-absorber cells: permittivity, permeability, conductivity and their smoothed tensors; PEC volume cells;
-PEC sheet and wire edges; thin-conductor sheets. One function in one place, called by every lane that
-assembles a model (uniform, non-uniform, smoothed, the waveguide S-parameter lane, the differentiable
-lanes), identical on lo and hi faces. Exceptions are listed by name, each with the measurement that
+**C2 — What continues is the realized model, not a list of arrays.** At each absorbing face, the
+geometry touching the face continues along the normal through the absorber before rasterization
+and smoothing. Copying finished material arrays would repeat a smoothed interface cell instead of
+continuing the geometry. This continuation applies on lo and hi faces to material volumes, PEC
+volumes, sheet and wire edges, and thin-conductor sheets. Exceptions are listed by name, each with the measurement that
 justifies it. Today there are two: dispersive poles (#636) and the line segment of C5.
 *Invariant, to become an always-on contract test over the audited examples:* in every absorber cell
 column the realized model equals the realized model of the adjacent face plane, for every array the

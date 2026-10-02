@@ -31,7 +31,7 @@ ADI_INTERIOR_PEC_MESSAGE = (
     "adi_interior_pec_unsupported: solver='adi' cannot safely carry interior "
     "PEC sheets, wires, or volumes in 3D or 2D TMz. The current internal "
     "PEC projection has measured growing solutions, including at "
-    "adi_cfl_factor=1 and the default 5; no general stable factor is "
+    "adi_cfl_factor=1 and the former default 5; no general stable factor is "
     "established. Use solver='yee' with the declared conductors retained. "
     "Lowering or clamping adi_cfl_factor is not a supported remedy. "
     "Domain-boundary PEC without interior PEC remains supported."

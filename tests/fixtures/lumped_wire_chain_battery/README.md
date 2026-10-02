@@ -57,13 +57,12 @@ number of cells from the port, and because the lattice's numerical dispersion at
 the coarsest rung is of the same size as the difference. The replay test reads
 the realized-length reference, which is the one the `deviations` block names.
 
-## Both port kinds are here, and one of them is red
+## Both port kinds are measured
 
 The battery runs the lumped port and the wire port through the same assertions
-on the same channel. The wire leg passes them; the lumped leg does not, and its
-records are here because that is the measurement, not despite it. Nothing about
-the lumped leg is loosened, xfailed or skipped: the replay test asserts the
-pre-declared bar on both and reports what it finds.
+on the same channel. The replay test asserts the pre-declared bar on both;
+read the current fixture and replay result rather than the earlier failing
+lumped-port measurement.
 
 `port_kind_ab` is the sharpest form of it — one cell, three loads whose
 reflection is an exact number, and the port declared two ways with `extent=dx`

@@ -36,7 +36,6 @@ from __future__ import annotations
 
 from typing import Callable
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -327,38 +326,26 @@ def maximize_directivity(
     log_ratio : bool, optional
         Default ``True``: optimize ``-(log U - log P)`` — the full, sign-correct
         quotient gradient ``U'/U - P'/P`` that is right for every degree of
-        freedom (including power-changing ones). ``log_ratio=False`` selects the
-        legacy ``-U/stop_gradient(P)`` mode, kept for back-compat only; it is
-        WRONG-SIGN for any DoF that changes total radiated power — see the
-        warning below. (The default was flipped to ``True`` after GitHub #129.)
+        freedom (including power-changing ones). ``log_ratio=False`` is refused
+        because it gives wrong-sign gradients for power-changing variables.
     eps : float, optional
         Floor for the ``log_ratio`` log arguments (default 1e-37). It only
         guards ``log(0)``; the log-ratio gradient ``U'/U`` is scale-invariant, so
         eps must be BELOW the working U/P magnitude (rfx spectral NTFF U,P are
         ~1e-27 in full antenna runs, ~1e-32 in small/early sims). A floor at or
         above U/P (e.g. the old 1e-30 on a 1e-32 sim) clamps the log argument and
-        zeros the gradient — keep eps well below min(U, P). (The legacy path's
-        denominator floor is hardcoded 1e-30 and is unaffected by this.)
+        zeros the gradient — keep eps well below min(U, P).
 
     Notes
     -----
-    In the legacy (``log_ratio=False``) mode, ``stop_gradient`` is applied to
-    the P_rad denominator: the ratio is scale-invariant, so a shape-preserving
-    scaling leaves the directivity unchanged, and letting the denominator carry
-    gradient would add noise + NaN risk when P_rad is near zero.
-
-    WARNING (GitHub #129): that legacy mode drops the ``-U*P'/P^2`` quotient-rule
-    term, so it yields WRONG-SIGN gradients for any DoF that changes total
-    radiated power — conductors / PEC topology (``topology_optimize(material_fg=
-    "pec")``, Yagi director/reflector offsets+lengths, parasitics), lossy/sigma
-    DoFs, and (magnitude-only) dielectric reshaping. It is correct ONLY for pure
-    shape-preserving DoFs (the original #32 target, ``P_rad ~ const``). For
-    power-changing DoFs pass ``log_ratio=True``: the full quotient
-    ``grad = U'/U - P'/P`` is sign-correct, still scale-invariant (preserving the
-    #32 property), monotone in the directivity (same optimum), and NaN-safe via
-    independent ``eps`` floors (each log argument is O(1), avoiding the
-    1e-27/1e-30 backward blow-up of a naive full quotient).
+    The removed ``log_ratio=False`` mode omitted the denominator derivative,
+    giving wrong-sign gradients for power-changing variables. Use the default.
     """
+    if not log_ratio:
+        raise ValueError(
+            "maximize_directivity(log_ratio=False) gives wrong-sign gradients "
+            "for power-changing variables; use the default log_ratio=True."
+        )
     theta_arr = np.array([theta_target])
     phi_arr = np.array([phi_target])
     # Full sphere [0, pi] x [0, 2pi] so P_rad is the TRUE total radiated power
@@ -401,23 +388,10 @@ def maximize_directivity(
         p_rad = integrate_radiated_power(
             u_sphere, theta_sphere, phi_full, jax_trapezoid=True)
 
-        if log_ratio:
-            # Full, NaN-safe quotient: grad = U'/U - P'/P (== true dD/dθ up to
-            # the positive factor 1/D, so sign-correct + monotone). Floors are
-            # applied INDEPENDENTLY so each log argument is O(1) — a single
-            # shared 1e-30 floor on U/P (the ~1e-27 spectral NTFF scale) makes
-            # the backward pass NaN. No stop_gradient -> correct sign for
-            # power-changing DoFs (GitHub #129).
-            log_dir = (jnp.log(jnp.maximum(u_target, eps))
-                       - jnp.log(jnp.maximum(p_rad, eps)))
-            return -jnp.mean(log_dir)
-        # Legacy scale-invariant ratio. CORRECT ONLY for shape-preserving DoFs;
-        # WRONG-SIGN for power-changing DoFs (see #129 warning above). The 1e-30
-        # denominator floor is hardcoded here for exact back-compat (the `eps`
-        # param tunes the log_ratio floor only).
-        directivity = u_target / (jax.lax.stop_gradient(p_rad) + 1e-30)
-        # Minimizing -D = maximizing directivity; average across freqs
-        return -jnp.mean(directivity)
+        # Full quotient gradient U'/U - P'/P; independent floors avoid log(0).
+        log_dir = (jnp.log(jnp.maximum(u_target, eps))
+                   - jnp.log(jnp.maximum(p_rad, eps)))
+        return -jnp.mean(log_dir)
 
     return objective
 
@@ -438,12 +412,11 @@ def maximize_directivity_logratio(
 ) -> Callable:
     """Directivity objective with the full, sign-correct quotient gradient.
 
-    Equivalent to ``maximize_directivity(..., log_ratio=True)``: optimizes
-    ``-(log U - log P)`` so the gradient ``U'/U - P'/P`` carries the
-    ``-U*P'/P^2`` term the legacy ``stop_gradient`` mode drops. PREFER this for
-    any power-changing DoF (PEC / topology / lossy / dielectric reshaping); the
-    legacy default gives wrong-sign gradients for those (GitHub #129). See
-    :func:`maximize_directivity` for the full warning and parameters.
+    .. deprecated:: 2.0
+        Use :func:`maximize_directivity`; its default already uses the full,
+        sign-correct log-ratio gradient. This wrapper remains until 3.0.
+
+    Equivalent to ``maximize_directivity(..., log_ratio=True)``.
     """
     return maximize_directivity(
         theta_target, phi_target,
@@ -512,106 +485,12 @@ def minimize_reflected_energy(
     return objective
 
 
-def minimize_s11_at_freq(
-    target_freq: float,
-    port_probe_idx: int = 0,
-    *,
-    incident_fraction: float = 0.25,
-    dt: float | None = None,
-) -> Callable:
-    """Single-frequency |S11|² proxy for the differentiable ``forward()`` path.
-
-    Unlike :func:`minimize_s11` (which requires S-parameters from ``run()``)
-    this objective works on the time-series output of ``forward()``, so it
-    composes with ``optimize()`` / ``topology_optimize()``. Issue #50.
-
-    Method
-    ------
-    At the target frequency ω, split the DFT of the port probe into an
-    incident component (``X_inc``) and a reflected component (``X_refl``)
-    using a time-gating heuristic:
-
-        X_inc  = DFT(ts[:q],  ω)        # source-only window (zero-padded)
-        X_tot  = DFT(ts[:N], ω)         # full window
-        X_refl = X_tot − X_inc          # by linearity of DFT
-
-    When (a) the source pulse has decayed by sample ``q`` and (b) the
-    first reflection does not arrive before sample ``q``, the split is
-    clean and ``|X_refl / X_inc|² ≈ |S11(ω)|²``. Violating either
-    assumption causes overlap contamination and biases the estimate.
-    Callers controlling strongly resonant / long-round-trip structures
-    should either enlarge the simulation window, narrow the source
-    bandwidth to compress the pulse, or prefer a wave-decomposition
-    (V/I) probe which is exact.
-
-    Previously this objective returned ``|X_tot/X_inc|² = |1+S11|²``
-    (fixed 2026-04, commit 1923db2)
-    (see regression test ``tests/unit/autodiff/test_minimize_s11_at_freq_physical.py``),
-    which minimises toward ``S11 = −1`` (perfect short) rather than
-    ``S11 = 0`` (matched load). Fixed on branch
-    ``fix/lumped-port-s11-at-freq``.
-
-    Parameters
-    ----------
-    target_freq : float
-        Frequency of interest (Hz).
-    port_probe_idx : int
-        Index into ``result.time_series`` for the port-co-located probe.
-    incident_fraction : float
-        Fraction of the leading time series treated as incident-only
-        (default 0.25). Shorten for large DUTs with quick round-trip,
-        lengthen for slow resonators.
-    dt : float, optional
-        Time step. If None, read from ``result.dt`` at call time.
-
-    Returns
-    -------
-    callable(Result) -> scalar (JAX-differentiable)
-
-    .. deprecated::
-        The time-gating heuristic fails for short-round-trip antennas
-        (DRA, thin-substrate patches) where source pulse and reflection
-        overlap. Prefer :func:`minimize_s11_at_freq_wave_decomp` together
-        with ``Simulation.forward(port_s11_freqs=...)`` (issue #72).
-    """
-    import warnings as _w
-    _w.warn(
-        "minimize_s11_at_freq uses a time-gating heuristic that is biased "
-        "for short-round-trip antennas (issue #72). Prefer "
-        "minimize_s11_at_freq_wave_decomp + "
-        "Simulation.forward(port_s11_freqs=...). "
-        "It will be removed in rfx v2.0.",
-        DeprecationWarning,
-        stacklevel=2,
+def minimize_s11_at_freq(*args, **kwargs):
+    """Retired time-gated objective; fail immediately with its replacement."""
+    raise AttributeError(
+        "minimize_s11_at_freq was removed; use minimize_s11_at_freq_wave_decomp "
+        "with forward(port_s11_freqs=...)."
     )
-
-    def objective(result) -> jnp.ndarray:
-        _require_time_series(result, "minimize_s11_at_freq")
-        ts = result.time_series[:, port_probe_idx]
-        n = ts.shape[0]
-        _dt = float(result.dt) if dt is None else float(dt)
-        t = jnp.arange(n) * _dt
-        omega = 2.0 * jnp.pi * float(target_freq)
-        cos_t = jnp.cos(omega * t)
-        sin_t = jnp.sin(omega * t)
-        # X_tot: DFT over the full window (incident + reflection).
-        X_tot_re = jnp.sum(ts * cos_t)
-        X_tot_im = jnp.sum(ts * sin_t)
-        # X_inc: DFT over the leading window (source-only, zero-padded
-        # elsewhere). Because DFT is linear in the sample sequence, this
-        # equals DFT(ts_windowed, full N) and is directly subtractable
-        # from X_tot to recover the reflected-wave DFT.
-        q = max(1, int(n * float(incident_fraction)))
-        X_inc_re = jnp.sum(ts[:q] * cos_t[:q])
-        X_inc_im = jnp.sum(ts[:q] * sin_t[:q])
-        # X_refl = X_tot − X_inc. Divide by |X_inc|² to get |S11|².
-        X_refl_re = X_tot_re - X_inc_re
-        X_refl_im = X_tot_im - X_inc_im
-        power_refl = X_refl_re ** 2 + X_refl_im ** 2
-        power_inc = X_inc_re ** 2 + X_inc_im ** 2
-        return power_refl / (power_inc + 1e-30)
-
-    return objective
 
 
 def minimize_s11_at_freq_wave_decomp(
@@ -632,7 +511,7 @@ def minimize_s11_at_freq_wave_decomp(
     is exact: there is no source-pulse-vs-reflection separability
     assumption, so it works for short-round-trip antennas (DRA,
     thin-substrate patches) where the legacy
-    :func:`minimize_s11_at_freq` is biased.
+    the removed time-gating objective was biased.
 
     Parameters
     ----------

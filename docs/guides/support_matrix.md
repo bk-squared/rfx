@@ -55,6 +55,51 @@ materials, and the dispersive subsets covered by the applicable validation
 tests. Optimization examples are evidence for their named objective only; they
 do not validate every result produced by the same simulation.
 
+Microstrip performance depends on the board, mesh and differentiation tape.
+The current microstrip chain battery recommends 100 µm cells for its board
+(`tests/oracle/test_msl_chain_battery.py`,
+`test_the_ladder_converges_and_sets_a_recommended_cell_size`). Its quarter-wave
+notch formula omits open-end extension and is not the physical notch reference.
+The chain-battery measurements in `tests/fixtures/msl_chain_battery/fixture.json`
+include memory and runtime observations: finer meshes can exceed device memory
+and reduce throughput. They are performance observations, not accuracy evidence.
+The graded-notch runtime measurements are in
+`validation/research/multiband_nu/results/msl_notch_graded_fz_after_1213.json`.
+The earlier substrate-cell recommendation predates the material-interface
+correction and must not be used as a current mesh rule; use the measured ladder
+for the named board rather than extrapolating below its coarsest solved rung.
+
+The absorber measurements in
+`scripts/diagnostics/open_boundary_contract/option_b/` characterize CPML as a
+line termination and changes to its alpha profile. Lines should end at their
+ports (`terminates=`), not in the absorber. Increasing alpha can degrade the
+low band; the measured Option B was not adopted.
+
+For lumped/wire pairs, S21 phase is referenced a combined half cell inside the
+port separation (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
+
+Current-moment far fields have a tested envelope on thin planar boards with
+wire or lumped ports. Radiating geometry must lie strictly inside the monitor
+slab; its extent and material/boundary refusals still apply. See
+`tests/unit/farfield/test_current_moment_monitor.py`.
+
+The edge-fed patch resonance has a measured mesh ladder against openEMS in
+`tests/locks/test_patch_edgefed_resonance_harminv.py`.
+Its substrate-resolution requirement is specific to that board and observable.
+Oblique TF/SF validation has an angular limit; near grazing incidence the
+injected-wave error is not characterized, and the auxiliary-grid instrument's
+reading must not be interpreted as a PML reflection coefficient. See
+`tests/unit/sources/test_tfsf_aux_absorber_reflection.py`.
+
+An outer `jax.jit` retains forward setup arrays in the device cache until
+`jax.clear_caches()`. It adds compilation cost and can add iteration overhead;
+see the internal record 20261001-1364-jit-farfield-bench.
+`run(devices=...)` is for capacity first. It divides cells equally along x,
+also on graded meshes. Measured speedups depend on the boundary and device
+count; the internal record 20261002-distributed-split-rule
+uses a fitted single-device baseline rather than a direct single-device timing
+for the large box.
+
 ## S-parameter API routing
 
 - Lumped and wire `add_port(...)` simulations use
@@ -103,7 +148,7 @@ result is accurate.
 | DFT plane or full-plane flux + graded z | **experimental** | The calculation runs, but no general RF-accuracy statement is documented. |
 | Finite-region `add_flux_monitor(size=...)` + graded (`dz_profile`/`dy_profile`/`dx_profile`) mesh | **experimental** | Runs on uniform and graded grids. A shared geometry resolver selects a half-open CELL window inside the physical interior; neither CPML cells nor the trailing bounding-node slot are included. Every requested endpoint outside the interior emits a clamp warning, including sub-cell overflow. Empty windows are rejected. NU selection and metre bounds use the canonical float64 node spine; area weights retain the actual per-axis cell sizes. `preflight().flux_regions` reports requested/realized bounds and indices as metadata, separate from findings, so aligned inputs do not become strict-mode failures. `size` and `center` must each contain exactly two finite tangential values, with positive sizes. `size=None` retains the legacy full allocated plane. Tests cover physical windows/area, finite-versus-restricted integration, graded fields, and material AD through the raw port hook. These checks do not establish general RF accuracy; the existing graded-normal-axis H co-location (0.5/0.5) limitation remains. See [finite flux regions](flux_regions.md). |
 | TFSF + graded z | **experimental** | Only normal incidence along `+x` or `-x` (`angle_deg=0`) runs. Oblique incidence and incidence along `+z` or `-z` raise. This qualification requires a uniform injection axis x; grading x triggers the `nonuniform_tfsf` advisory because the incident line and grid waves no longer match. |
-| Rectangular-waveguide S-matrix + nonuniform mesh (`dx_profile`/`dy_profile`/`dz_profile`) | **experimental** | Single-mode `normalize=True` and `normalize="flux"` run. Port injection reads the local primal cell width for its H correction and the local dual spacing for its E correction. Old boundary-cell-derived injection readings do not apply to ports inside a refined band. Analytic fixtures cover grading ratios 1--3 and relative permittivity 2 and 4. A passed Palace magnitude comparison covers `normalize="flux"`, a graded-`dy` ratio of 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz (`max_mag_abs_diff=0.008529`, improved from `0.07009` when the lane's absorber stopped being 0.33 of a guide wavelength — #576). Other profiles, bands, phase, multimode operation, and arbitrary junctions are not validated. `eps_override` and `sigma_override` differentiation is available only with `normalize="flux"`; only `eps_override` has a nonuniform AD-vs-FD regression test. Neither AD check establishes RF accuracy. Dispatch history: until #811 (fixed 2026-09-01) this API reached the nonuniform lane only for `dx_profile`/`dy_profile` — a `dz_profile`-only simulation was silently solved on the uniform grid built from the scalar `dx` while preflight described the graded mesh (dz-only meshes with different `dt` returned bit-identical S in the falsifier baseline, `scripts/diagnostics/wr90_dz_dispatch_falsifier.py`). A `dz_profile` now dispatches here under the same restrictions, but NO dz-graded accuracy evidence exists yet (#810): dz-graded waveguide S-parameters are dispatch-correct and unvalidated. The lane emits the same energy-based ring-down settling witness (`settling_db`, -40 dB aggregate warning) as the uniform single-mode lane (#827 waveguide instance). Phase envelope on this lane (derived arithmetic, not a measurement): the reference-plane shift `exp(-/+ jβΔ)` and the modal impedance evaluate β at the grid's BOUNDARY cell (`NonUniformGrid.dx`), not the cell the plane sits in. `Z_TE` does not depend on the cell size at all (the discrete `sin(β·dx/2)` equals `s_x·dx/2`), and the β difference is the second-order Yee correction `(β·dx)²/24` at the two sizes: for the committed WR-90 fixture (boundary 1.5 mm, fine 0.75 mm, discrete cutoff 6.650 GHz; `tests/fixtures/waveguide_nu_beta_cell_size_envelope.json`, replayed by `tests/unit/sparams/test_waveguide_nu_beta_cell_size_envelope.py`) Δβ = 0.057 / 0.271 / 0.652 rad/m at 8 / 10 / 12 GHz, i.e. 0.07° / 0.31° / 0.75° over a 20 mm plane offset (0.86° worst at 12.4 GHz) and 0.02° over that fixture's own 0.5 mm applied shift. Both of that fixture's port-to-reference spans lie in uniform 1.5 mm cells, so the two evaluations coincide there and the fixture cannot exercise the difference. A span that crosses cells of more than one size now raises `ValueError` (`tests/unit/sparams/test_waveguide_nu_grading_zone.py`) instead of applying a single β; a fixture with a reference plane inside the graded region, and β integration over the span, are deferred to #854 item 1. This bounds one mechanism; it is not a phase validation of the lane. |
+| Rectangular-waveguide S-matrix + nonuniform mesh (`dx_profile`/`dy_profile`/`dz_profile`) | **experimental** | Single-mode `normalize=True` and `normalize="flux"` run. Port injection reads the local primal cell width for its H correction and the local dual spacing for its E correction. Old boundary-cell-derived injection readings do not apply to ports inside a refined band. Analytic fixtures cover grading ratios 1--3 and relative permittivity 2 and 4. A passed Palace magnitude comparison covers `normalize="flux"`, a graded-`dy` ratio of 2, WR-90 empty/PEC-short/dielectric-slab cases, and 8.2--12.4 GHz (`max_mag_abs_diff=0.008529`, improved from `0.07009` when the lane's absorber stopped being 0.33 of a guide wavelength — #576). Other profiles, bands, phase, multimode operation, and arbitrary junctions are not validated. `eps_override` and `sigma_override` differentiation is available only with `normalize="flux"`; only `eps_override` has a nonuniform AD-vs-FD regression test. Neither AD check establishes RF accuracy. Dispatch history: until #811 (fixed 2026-09-01) this API reached the nonuniform lane only for `dx_profile`/`dy_profile` — a `dz_profile`-only simulation was silently solved on the uniform grid built from the scalar `dx` while preflight described the graded mesh (dz-only meshes with different `dt` returned bit-identical S in the falsifier baseline, `scripts/diagnostics/wr90_dz_dispatch_falsifier.py`). A `dz_profile` now dispatches here under the same restrictions, and the WR-90 graded-propagation control is recorded by #1083. This is scoped evidence, not validation of arbitrary dz profiles. The lane emits the same energy-based ring-down settling witness (`settling_db`, -40 dB aggregate warning) as the uniform single-mode lane (#827 waveguide instance). Phase envelope on this lane (derived arithmetic, not a measurement): the reference-plane shift `exp(-/+ jβΔ)` and the modal impedance evaluate β at the grid's BOUNDARY cell (`NonUniformGrid.dx`), not the cell the plane sits in. `Z_TE` does not depend on the cell size at all (the discrete `sin(β·dx/2)` equals `s_x·dx/2`), and the β difference is the second-order Yee correction `(β·dx)²/24` at the two sizes: for the committed WR-90 fixture (boundary 1.5 mm, fine 0.75 mm, discrete cutoff 6.650 GHz; `tests/fixtures/waveguide_nu_beta_cell_size_envelope.json`, replayed by `tests/unit/sparams/test_waveguide_nu_beta_cell_size_envelope.py`) Δβ = 0.057 / 0.271 / 0.652 rad/m at 8 / 10 / 12 GHz, i.e. 0.07° / 0.31° / 0.75° over a 20 mm plane offset (0.86° worst at 12.4 GHz) and 0.02° over that fixture's own 0.5 mm applied shift. Both of that fixture's port-to-reference spans lie in uniform 1.5 mm cells, so the two evaluations coincide there and the fixture cannot exercise the difference. A span that crosses cells of more than one size now raises `ValueError` (`tests/unit/sparams/test_waveguide_nu_grading_zone.py`) instead of applying a single β; a fixture with a reference plane inside the graded region, and β integration over the span, are deferred to #854 item 1. This bounds one mechanism; it is not a phase validation of the lane. |
 | Lumped-port S-parameters + nonuniform mesh | **limited** | Single-device `forward(port_s11_freqs=...)` accepts requested bins for lumped and wire ports, including their V/I accumulators. This does not establish arbitrary full-matrix support; distributed forward still refuses explicit port frequencies. |
 | MSL S-matrix + nonuniform mesh | **experimental** | `mode="laplace"` and `mode="uniform"` have internal settled-S11 regression coverage only. There is no external nonuniform comparison. `mode="eigenmode"` raises. |
 | Coaxial port + nonuniform mesh | **unsupported** | The request must fail. |

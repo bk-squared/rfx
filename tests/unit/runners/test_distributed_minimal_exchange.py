@@ -100,8 +100,10 @@ def _reference(patch, *, exchange=True, probes=True):
 
 def _build_model(boundary, n_devices, model="composed"):
     layers = 1 if boundary == "cpml" else 0
+    # PEC retains a reflecting face and all seam/material/halo checks;
+    # these tests measure exchange, not the deferred distributed PMC image.
     spec = boundary if model == "plain" else BoundarySpec(
-        x=boundary, y=Boundary(lo="pmc", hi=boundary), z=boundary)
+        x=boundary, y=Boundary(lo="pec", hi=boundary), z=boundary)
     sim = Simulation(freq_max=15e9, domain=((16 - 2 * layers) * 1e-3, 4e-3, 4e-3),
                      dx=1e-3, boundary=spec, cpml_layers=layers)
     grid = sim._build_grid()

@@ -28,7 +28,7 @@ A repository surface should stay out of public user guides until it has a public
 | Conformal PEC | `rfx/geometry/conformal.py`, `conformal=True` / conformal boundary support | outside public support scope | demonstrate a stable accuracy envelope before publication |
 | ADI solver | `rfx/adi.py`, top-level ADI imports, `docs/public/guide/adi-solver.mdx` | public experimental guide; outside the validated default solver lane | retain the explicit-Yee recommendation until a maintained 3D accuracy envelope exists |
 | Distributed / multi-GPU execution | `devices=...` run paths, distributed/nonuniform code paths, `jax.pmap` usage | outside public support scope | add maintained examples and support-combination checks |
-| Deprecated coaxial S-matrix path | `Simulation.compute_coaxial_s_matrix(...)`, `CoaxialSMatrixResult`, low-level coaxial plane helpers | outside coaxial claim surface | keep public coaxial claims on `compute_coaxial_line_reflection(...)` unless a new envelope is validated |
+| Removed coaxial S-matrix path | Former `Simulation.compute_coaxial_s_matrix(...)` and `CoaxialSMatrixResult` | removed | use `compute_coaxial_line_reflection(...)` or `compute_coaxial_two_port(...)` within its documented envelope |
 | Generalized planar ports | stripline/CPW/microstrip-to-coax planning diagnostics and support-matrix future-family entries | outside public support scope | implement public APIs and external validation per family |
 | AMR and surrogate export | `rfx/amr.py`, `rfx/surrogate.py` | outside public guide scope | add a supported user workflow and examples |
 | Streamlit dashboard | `rfx/dashboard/**` | public experimental workflow | maintain the optional install/test path and keep solver/physics claims inside the normal support contracts |

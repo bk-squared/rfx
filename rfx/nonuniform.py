@@ -2588,7 +2588,8 @@ def _build_nu_scan(
     # this is the six faces ``apply_pec`` zeroed before, plane for plane.
     from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
     _pec_faces_frozen, _pmc_faces_frozen = _resolve_walls(
-        SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ())),
+        SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ()),
+                        shape=(grid.nx, grid.ny, grid.nz)),
         (False, False, False), None)
     from rfx.core.yee import CurlBoundary
     curl_boundary = CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen)
@@ -2887,7 +2888,7 @@ def _build_nu_scan(
             cpml_new = None
         if use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
-            st = apply_pmc_faces(st, _pmc_faces_frozen)
+            st = apply_pmc_faces(st, _pmc_faces_frozen, image=True)
         if use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)

@@ -363,13 +363,8 @@ def test_domain_row_is_cells_on_every_pad_mesh_and_uniformity():
     assert not bad, f"domain row counted NODES as cells: {bad}"
 
 
-def test_pmc_face_reports_the_half_cell_realized_wall():
-    """Q2 (#722 ninth surface, decided 2026-08-28): apply_pmc_faces zeros
-    H_tan a half-cell INSIDE the declared wall on every PMC face
-    (rfx/boundaries/pmc.py, pinned by tests/unit/boundaries/test_boundary_pmc_hi_faces.py
-    -- untouched here). The domain row must report that realized H_tan
-    wall, not the raw mesh line, with a finding naming the convention so a
-    PMC-mirror script cannot ship the offset silently."""
+def test_pmc_face_reports_the_declared_node_plane():
+    """B3b's odd H image is centered on E nodes, not physical H samples."""
     from rfx.boundaries.spec import Boundary, BoundarySpec
 
     dx = 1e-3
@@ -385,29 +380,13 @@ def test_pmc_face_reports_the_half_cell_realized_wall():
     dom = _dom(sim.fidelity_report(print_report=False))
     x, y, z = dom["axes"]
 
-    # x_hi is pmc: the realized hi wall sits dx/2 (500 um) inside the
-    # 20000.0 um mesh line; x_lo (pec) is untouched.
-    assert x["realized_um"][0] == 0.0
-    assert abs(x["realized_um"][1] - (20000.0 - 500.0)) < 1e-6
-    assert abs(x["mesh_extent_um"] - 20000.0) < 1e-6
-    assert abs(x["face_residual_um"][1] - 500.0) < 1e-6
-
-    # y_lo is pmc: the realized lo wall sits dx/2 inside 0.0, i.e. at
-    # +500 um; y_hi (pec) is untouched.
-    assert abs(y["realized_um"][0] - 500.0) < 1e-6
-    assert abs(y["realized_um"][1] - 10000.0) < 1e-6
-    assert abs(y["face_residual_um"][0] - 500.0) < 1e-6
-
-    # z has no pmc face: unaffected, no finding.
-    assert abs(z["realized_um"][0] - 0.0) < 1e-6
-    assert abs(z["realized_um"][1] - 10000.0) < 1e-6
-
-    kinds_by_axis = {f["axis"]: f["kind"] for f in dom["findings"]}
-    assert kinds_by_axis.get("x") == "pmc-wall-half-cell-inside"
-    assert kinds_by_axis.get("y") == "pmc-wall-half-cell-inside"
-    assert "z" not in kinds_by_axis
-    for f in dom["findings"]:
-        assert "CONVENTION" in f["detail"]
+    assert x["realized_um"] == (0.0, 20000.0)
+    assert x["realized_extent_um"] == 20000.0
+    assert x["face_residual_um"] == (0.0, 0.0)
+    assert y["realized_um"] == (0.0, 10000.0)
+    assert y["face_residual_um"] == (0.0, 0.0)
+    assert z["realized_um"] == (0.0, 10000.0)
+    assert not dom["findings"]
 
 
 def test_pmc_face_finding_skips_the_axis_not_solved_2d_z():

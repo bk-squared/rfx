@@ -35,7 +35,7 @@ a, b, d = 24e-3, 12e-3, 36e-3
 f_te101 = C0 / 2 * np.sqrt((1 / a) ** 2 + (1 / d) ** 2)
 
 
-def cavity(solver, factor=5.0):
+def cavity(solver, factor=2.0):
     sim = Simulation(freq_max=12e9, domain=(a, b, d), dx=1.5e-3,
                      boundary="pec", solver=solver, adi_cfl_factor=factor)
     sim.add_source((0.37 * a, 0.41 * b, 0.20 * d), "ey",
@@ -75,12 +75,12 @@ On a lossless PEC cavity at about 15 cells per wavelength:
 
 | `adi_cfl_factor` | eigenfrequency error |
 |---|---|
-| 2 | −1.4 % |
+| 2 (default) | −1.4 % |
 | 3 | −2.8 % |
-| 5 (default) | −6.7 % |
+| 5 (explicit) | −6.7 % |
 
 **Use `adi_cfl_factor <= 2` when a frequency must be accurate.** The default
-of 5 is a throughput setting for stiff meshes. The error shrinks with finer
+is 2; explicitly selecting 5 trades accuracy for larger steps on stiff meshes. The error shrinks with finer
 cells, as the example shows.
 
 ## What ADI can model

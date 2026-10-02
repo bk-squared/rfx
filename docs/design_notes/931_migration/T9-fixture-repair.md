@@ -1,5 +1,7 @@
 # Repair the physical premise before comparing historical outputs
 
+> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+
 Historical repair/handoff record. Live follow-up and superseding dispositions:
 [T10 fixture qualification](T10-fixture-live-qualification.md).
 

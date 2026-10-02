@@ -78,7 +78,7 @@ The detailed port-family contract is versioned in
 - Coaxial line reflection is promoted only through
   `compute_coaxial_line_reflection(...)` and only inside its documented
   one-port transmission-line envelope; the older `compute_coaxial_s_matrix(...)`
-  single-plane path remains deprecated / experimental.
+  single-plane path has been removed.
 - Floquet has modal helper/replay and analytic slab diagnostics only; source,
   TFSF, probe, and flux-monitor surfaces are not implied S-parameter
   calculators.
@@ -88,14 +88,13 @@ Unsupported combinations must **hard-fail** instead of silently degrading, mutat
 
 ## Immediate evidence floor
 The current reference lane should remain tied to concrete reproducible evidence, including:
-- `python -m pytest tests/contracts/test_crossval_manifest_contract.py -q`
-- `PYTHONPATH=. python scripts/run_crossval_cpu.py`
+- Cross-solver cases under `tests/crossval/`, using each case's documented pytest command.
 - `JAX_PLATFORM_NAME=cpu python -m pytest tests/unit/api/test_api.py tests/unit/nonuniform/test_nonuniform_api.py tests/oracle/test_nonuniform_convergence.py -q`
 - `vessl run create -f scripts/vessl_gpu_suite.yaml`
 
-The scheduled external-reference membership is also read from
-`validation/crossval/manifest.json` by `.github/workflows/validation.yml`; do not
-maintain a second script list here.
+The former `validation/crossval/manifest.json` and script runner were removed.
+Full comparison ladders use the `crossval_ladder` marker and the
+`.github/workflows/crossval-ladder.yml` workflow.
 
 ## Shadow-lane relationship
 The nonuniform graded-z lane is preserved, but it is not claims-bearing until its own contract and benchmark ladder exist.
