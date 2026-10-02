@@ -272,7 +272,7 @@ class _EntryRealization:
             if self.kind == "volume":
                 centres = cell_centres_from_nodes(coords, ctx.cell_sizes)
                 cells = interior_lattice_mask(
-                    pec_volume_cell_mask(self.solved_shape, centres, grid=ctx.grid), ctx.grid,
+                    pec_volume_cell_mask(self.solved_shape, centres, ctx.cell_sizes, grid=ctx.grid), ctx.grid,
                     cell_axes=(True, True, True))
                 if not cells.any():
                     return None

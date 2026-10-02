@@ -242,12 +242,6 @@ def compute_waveguide_s_matrix(
         and the companion evidence gate test
         ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
     """
-    if self._solver != "yee":
-        raise NotImplementedError(
-            "compute_waveguide_s_matrix() does not support "
-            f"solver={self._solver!r} (#1300). Use solver='yee'."
-        )
-
     if not normalize:
         import warnings
         warnings.warn(
@@ -341,13 +335,21 @@ def compute_waveguide_s_matrix(
         if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
             raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
 
+    if (any(profile is not None for profile in
+            (self._dx_profile, self._dy_profile, self._dz_profile))
+            and self._interface_eps == "dual_average"):
+        raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
+    from rfx.runners._admission import admit
+    admit(self, "waveguide_s_matrix")
+    if port_reference_sims is not None:
+        for reference in port_reference_sims:
+            admit(reference, "waveguide_s_matrix")
+
     if (
         self._dz_profile is not None
         or self._dx_profile is not None
         or self._dy_profile is not None
     ):
-        if self._interface_eps == "dual_average":
-            raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
         if checkpoint_segments is not None and checkpoint_segments < 1:
             raise ValueError(
                 f"checkpoint_segments must be >= 1, got {checkpoint_segments}"

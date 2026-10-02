@@ -435,6 +435,8 @@ class WirePort:
     component : str — E-field component ("ex", "ey", or "ez")
     impedance : float — total port impedance in ohms (default 50)
     excitation : callable — source waveform
+    radius : float or None — opt-in thin-probe radius in metres; None keeps
+        the historical mesh-sized filament. See ``Simulation.add_port``.
     """
 
     start: tuple[float, float, float]
@@ -442,6 +444,11 @@ class WirePort:
     component: str
     impedance: float = 50.0
     excitation: object = None  # GaussianPulse or similar
+    radius: float | None = None
+
+    def __post_init__(self):
+        from rfx.sources.wire_radius import validate_radius
+        validate_radius(self.radius)
 
 
 def _wire_port_cells(grid, port):
@@ -478,6 +485,9 @@ def _wire_port_cells(grid, port):
     if np.sum(nonzero) != 1:
         raise ValueError("WirePort start and end must be axis-aligned")
     axis = int(np.argmax(nonzero))
+
+    if port.radius is not None and port.component != ("ex", "ey", "ez")[axis]:
+        raise ValueError("a radius wire port's component must follow its start/end axis")
 
     from rfx._periodic import interval_indices
     idx_s, idx_e = interval_indices(grid, tuple(s), tuple(e))
@@ -610,6 +620,11 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None):
     """
     cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
 
+    if port.radius is not None:
+        from rfx.sources.wire_radius import stamp_wire_radius
+        materials = stamp_wire_radius(
+            grid, materials, port.component, port.radius,
+            [c for c, live in zip(cells, live_flags) if live])
     for cell, live in zip(cells, live_flags):
         if not live:
             continue

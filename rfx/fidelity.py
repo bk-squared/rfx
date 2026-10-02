@@ -120,7 +120,7 @@ def _entity_mask(entry, sim, grid, nonuniform, *, pec_volume: bool = False):
             cell_centres_from_nodes, pec_volume_cell_mask)
         coords, sizes = _contract_coords(sim, grid, nonuniform)
         centres = cell_centres_from_nodes(coords, sizes)
-        return interior_lattice_mask(pec_volume_cell_mask(shape, centres, grid=grid), grid,
+        return interior_lattice_mask(pec_volume_cell_mask(shape, centres, sizes, grid=grid), grid,
                                      cell_axes=(True, True, True))
     if nonuniform:
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
@@ -954,8 +954,9 @@ def fidelity_report(sim, print_report: bool = True):
                 kind="refused-by-contract",
                 detail=refused[i],
                 remedy="declare a sheet (a zero-thickness Box, or "
-                       "add_thin_conductor), a PolylineWire for a filament, "
-                       "or resolve the thickness with the mesh"))
+                       "add_thin_conductor), a radius=0 PolylineWire for a "
+                       "legacy filament, or resolve the thickness and any "
+                       "positive wire radius with the mesh (a >= 0.5*d for wires)"))
         if kind_src == "thin_conductor" and i in refused_tc:
             item["findings"].append(dict(
                 kind="refused-by-run",

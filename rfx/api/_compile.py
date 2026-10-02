@@ -10,6 +10,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 import math  # noqa: F401  (used by moved method bodies)
 from dataclasses import replace
 
@@ -386,7 +388,7 @@ class _CompileMixin:
                 pole_mask = _material_cell_mask(entry.shape, _coords, _centres, grid=grid)
                 if mat.sigma >= self._PEC_SIGMA_THRESHOLD and cells is not None:
                     from rfx.geometry.rasterize_grid import pec_volume_cell_mask
-                    pole_mask = pec_volume_cell_mask(entry.shape, _centres, grid=grid)
+                    pole_mask = pec_volume_cell_mask(entry.shape, _centres, _cell_sizes, grid=grid)
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
@@ -764,8 +766,8 @@ class _CompileMixin:
         if value_range is None:
             return (axis_pad, grid_size - axis_pad), domain_max
         lo, hi = value_range
-        lo_idx = int(round(lo / dx)) + axis_pad
-        hi_idx = int(round(hi / dx)) + axis_pad + 1
+        lo_idx = nearest_uniform_index(lo / dx) + axis_pad
+        hi_idx = nearest_uniform_index(hi / dx) + axis_pad + 1
         if lo_idx < axis_pad or hi_idx > grid_size - axis_pad or hi_idx - lo_idx < 2:
             raise ValueError(
                 f"range {value_range!r} does not resolve to a valid aperture on the current grid"

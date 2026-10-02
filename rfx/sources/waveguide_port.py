@@ -1213,7 +1213,9 @@ def apply_waveguide_port_h(state, cfg: WaveguidePortConfig,
     safe_step = jnp.clip(jnp.asarray(step, dtype=jnp.int32),
                          0, table_size - 1)
     src_val = cfg.src_amp * table[safe_step]
-    coeff = dt / (MU_0 * dx)
+    from rfx.core.yee import MaterialArrays, component_h_materials
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    coeff = dt / (mu_abs * dx)
 
     # For a "+axis" port the source's backward emission travels in "−axis";
     # the Yee H-curl stencil that reads the injected E lives one half-cell

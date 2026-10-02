@@ -40,6 +40,8 @@ from __future__ import annotations
 
 from functools import partial
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -51,6 +53,7 @@ from rfx.core.yee import (
     FDTDState,
     MaterialArrays,
     MU_0,
+    component_h_materials,
     EPS_0,
     _shift_fwd,
     _shift_bwd,
@@ -1637,7 +1640,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     # Same per-face slicing as the E kernel; vacuum scalar dt/mu_0 when
     # mu_r is None (bit-identical to pre-#205).
     if mu_r is not None:
-        _ch = dt / (mu_r * MU_0)  # (nx_local + 2*ghost, ny, nz)
+        _mu = component_h_materials(MaterialArrays(None, None, mu_r))
+        _ch = dt / (_mu[0] * MU_0)  # (nx_local + 2*ghost, ny, nz)
         ch_xlo = _ch[xlo, :, :]
         ch_xhi = _ch[xhi, :, :]
         ch_ylo = _ch[:, :n_ylo, :]
@@ -2118,6 +2122,8 @@ def run_nonuniform_distributed_pec(
         override when there is one, traced when it is -- by
         :func:`material_drive_scales`.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(sharded_materials, lane="distributed_nu", unsupported=True)
     if n_devices != sharded_grid.n_devices:
         raise ValueError(
             f"n_devices={n_devices} != sharded_grid.n_devices="
@@ -2936,6 +2942,8 @@ def run_nonuniform_distributed_pec(
             materials = invariants[0]
             scales = material_drive_scales(
                 materials.eps_r, materials.sigma, mesh, drives, dt)
+            if _realized.ACTIVE is not None:
+                scales = _realized.runtime_drive(scales, tuple(drive_columns))
             if warmup_xs is not None:
                 warmup_xs = _drive_xs(warmup_xs, scales)
             opt_xs = _drive_xs(opt_xs, scales)

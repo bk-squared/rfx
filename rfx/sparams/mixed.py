@@ -318,6 +318,10 @@ def compute_mixed_s_matrix(
         )
 
     n_lw = len(lw_entries)
+    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
+    _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
+    from rfx.runners._admission import admit
+    admit(self, "mixed_s_matrix")
     grid = self._build_grid()
 
     if freqs is None:
@@ -438,8 +442,6 @@ def compute_mixed_s_matrix(
 
     # One materials assembly shared by the HJ eps anchor AND every
     # drive run (materials do not depend on excite flags).
-    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
-    _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
     _mx_pec_sheets: list = []
     _mx_pec_wires: list = []
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
@@ -587,12 +589,19 @@ def compute_mixed_s_matrix(
         _witness_base = len(self._probes)
         _witness_total = 0
         for pe_w, pxs_w in zip(entries, probe_xs):
+            # This calculator-created midpoint is not a declaration. Keep
+            # its historical half-to-even node when the substrate has an
+            # odd number of cells; user port/source coordinates still use
+            # the shared lower-node tie rule.
+            witness_z = float(pe_w.position[2]) + 0.5 * float(pe_w.height)
+            dz = float(grid.cells(2)[0])   # uniform mesh (refused graded above)
+            witness_z = int(round(witness_z / dz)) * dz
             for _x_w in pxs_w:
                 self.add_probe(
                     position=(
                         float(_x_w),
                         float(pe_w.position[1]),
-                        float(pe_w.position[2]) + 0.5 * float(pe_w.height),
+                        witness_z,
                     ),
                     component="ez",
                 )

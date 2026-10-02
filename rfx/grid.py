@@ -8,6 +8,8 @@ from fractions import Fraction
 from math import lcm
 
 from rfx._grid_metric import (
+    NODE_TIE_REL,
+    nearest_uniform_index,
     axis_name as _axis_name,
     dual_spacings_from_cells as _dual_spacings_from_cells,
     normalize_axis as _normalize_axis,
@@ -16,25 +18,9 @@ from rfx._grid_metric import (
 # Speed of light in vacuum (m/s)
 C0 = 299_792_458.0
 
-#: How many machine epsilons of ``length/dx`` count as float dust rather than
-#: as declared sub-cell intent (issue #1070).
-#:
-#: A declared domain length is an ARITHMETIC EXPRESSION, not a literal: the
-#: rig in #1070 writes ``38*h + 2*(pad*h)``, and the #801 patch fixture,
-#: the WR-90 lanes and the MSL boards all build theirs the same way. Each
-#: multiply, each add and the division itself rounds, and each rounding costs
-#: at most half an ULP of the result. Eight of them is a generous bound on a
-#: handful of summed terms -- the rig above spends three -- and the tolerance
-#: it buys is ``8 * eps * max(1, r)``, which at r = 232 is 4.12e-13, or 14.5
-#: ULP of r. So the rule absorbs a deviation of up to 14 ULP there and takes
-#: 15 as real.
-#:
-#: The distance to the nearest case anyone could MEAN is the reason this is
-#: safe: a domain one part in 1e6 longer than 232 cells sits 8.2e9 ULP away,
-#: nine orders of magnitude outside the band. An ABSOLUTE tolerance has no
-#: such separation at either end of the useful range -- ``round(r, 9)`` is
-#: coarser than an ULP for a million-cell domain and finer than one for a
-#: domain of a few cells -- which is why this is relative.
+#: Arithmetic-dust budget in machine epsilons of ``length/dx`` (#1070).
+#: ``cells_spanning`` keeps this as a floor under the shared NODE_TIE_REL
+#: band: at very large ratios the ULP budget exceeds 1e-9 of one cell.
 CELL_COUNT_ULP_BUDGET = 8
 
 # Adopt a common spacing only within this fraction of the planner request.
@@ -144,8 +130,10 @@ def cells_spanning(length: float, dx: float, *,
     """Cells needed to span *length* at cell size *dx* (issue #1070).
 
     ``ceil(length / dx)``, except that a ratio sitting within
-    ``ulp_budget * eps * max(1, r)`` of an integer is taken to BE that
-    integer. Plain ``ceil`` buys a whole extra cell for one ULP of float
+    ``max(NODE_TIE_REL, ulp_budget * eps * max(1, abs(r)))`` of an integer
+    is taken to BE that integer. The shared on-lattice band keeps sizing
+    and Box faces on the same node (#1138); the existing ULP rule remains
+    a floor for very large cell counts. Plain ``ceil`` buys an extra cell for float
     dust, and nothing downstream fills it: it lies outside every declared
     Box, so it rasterizes as vacuum, and at a face that abuts an absorber
     the pad extension then replicates that vacuum outward (#1070, the
@@ -157,14 +145,16 @@ def cells_spanning(length: float, dx: float, *,
     """
     ratio = length / dx
     nearest = round(ratio)
-    if abs(ratio - nearest) <= ulp_budget * float(np.finfo(float).eps) * max(
-            1.0, abs(ratio)):
+    tolerance = max(
+        NODE_TIE_REL,
+        ulp_budget * float(np.finfo(float).eps) * max(1.0, abs(ratio)))
+    if abs(ratio - nearest) <= tolerance:
         cells = int(nearest)
     else:
         cells = int(np.ceil(ratio))
     # A POSITIVE length always needs a cell (review of PR #1136, G). Zero is
     # the one integer the dust band can reach from above while the length is
-    # still real: for 0 < r < 8*eps the nearest integer is 0, and snapping
+    # still real: for 0 < r <= NODE_TIE_REL the nearest integer is 0, and snapping
     # there would return fewer cells than the declared length needs, where
     # every other snap returns one fewer cell than a ratio that did not need
     # it. ``ceil`` gave 1 and so does this.
@@ -391,7 +381,7 @@ class Grid:
 
     def _rounded_index(self, axis: int, ratio, *, wrap=True) -> int:
         """Round the caller's quotient without changing its scalar dtype."""
-        idx = int(round(ratio)) + self.axis_pads[axis]
+        idx = nearest_uniform_index(ratio) + self.axis_pads[axis]
         if wrap and _axis_name(axis) in self.periodic_axes:
             if ratio < -0.5 or ratio >= self.shape[axis] + 0.5:
                 # Let each public API issue its historical out-of-grid message.
@@ -471,8 +461,8 @@ class Grid:
     def index_of(self, axis, x: float) -> int:
         """Padded index of the node nearest physical coordinate ``x``.
 
-        Retains the historical ``round(float(x)/dx) + pad_lo`` arithmetic;
-        ``position_to_index`` instead divides in the input scalar's dtype.
+        Divides in float64 before applying the shared lower-node tie rule.
+        ``position_to_index`` retains its input scalar's division dtype.
         Declared periodic axes wrap modulo their node count. In 2-D
         mode the z axis holds one cell and the answer is always 0, which is
         what ``position_to_index`` returns there.

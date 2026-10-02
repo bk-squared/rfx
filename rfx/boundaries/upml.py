@@ -188,7 +188,10 @@ def init_upml(
     sEy, sHy = _get_sigma("y")
     sEz, sHz = _get_sigma("z")
 
-    mu_abs = materials.mu_r * jnp.float32(MU_0)
+    from rfx.core.yee import component_h_materials
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(materials, lane="UPML", unsupported=True)
+    mu_abs = tuple(m * jnp.float32(MU_0) for m in component_h_materials(materials))
     # #1236: a lumped element (a port's load, an RLC R or C) loads its own E
     # edge only. This lane's E coefficients stay CELL-owned for the volume --
     # #1210's four-cell edge average was not carried into UPML, and doing it
@@ -255,16 +258,16 @@ def init_upml(
     sigma_perp_hy = sHx + sHz
     sigma_perp_hz = sHx + sHy
 
-    def _h_coeffs(sigma_perp):
+    def _h_coeffs(sigma_perp, mu):
         loss = sigma_perp * dt / (jnp.float32(2.0) * eps_0)
         denom = jnp.float32(1.0) + loss
         da = (jnp.float32(1.0) - loss) / denom
-        db = (dt / mu_abs) / denom
+        db = (dt / mu) / denom
         return da.astype(jnp.float32), db.astype(jnp.float32)
 
-    da_hx, db_hx = _h_coeffs(sigma_perp_hx)
-    da_hy, db_hy = _h_coeffs(sigma_perp_hy)
-    da_hz, db_hz = _h_coeffs(sigma_perp_hz)
+    da_hx, db_hx = _h_coeffs(sigma_perp_hx, mu_abs[0])
+    da_hy, db_hy = _h_coeffs(sigma_perp_hy, mu_abs[1])
+    da_hz, db_hz = _h_coeffs(sigma_perp_hz, mu_abs[2])
 
     return UPMLCoeffs(
         ca_ex=ca_ex, ca_ey=ca_ey, ca_ez=ca_ez,

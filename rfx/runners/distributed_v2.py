@@ -42,6 +42,8 @@ from functools import partial
 
 from rfx.runners._exchange_interval import validate_exchange_interval
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 from jax import lax
@@ -149,6 +151,8 @@ def _shard_field_state(state: FDTDState, mesh: Mesh) -> FDTDState:
 
 
 def _shard_materials(materials: MaterialArrays, mesh: Mesh) -> MaterialArrays:
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(materials, lane="distributed_v2 material shard", unsupported=True)
     shd = _x_sharding(mesh)
     return MaterialArrays(
         eps_r=jax.device_put(materials.eps_r, shd),
@@ -494,7 +498,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
     Periodic/Bloch boundaries, extended or passive ports, Kerr materials,
     lumped RLC elements, MSL ports, subgridding, and surface monitors (flux,
-    NTFF, DFT planes). ``tests/unit/runners/test_distributed_admission_refusals.py``
+    DFT planes; NTFF on graded meshes). ``tests/unit/runners/test_distributed_admission_refusals.py``
     holds the disposition of every Simulation attribute on these lanes.
 
     Call after the TFSF and waveguide single-device fallbacks, before sharding.
@@ -576,7 +580,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     monitors = []
     if getattr(sim, "_flux_monitors", None):
         monitors.append("add_flux_monitor() (flux monitors)")
-    if getattr(sim, "_ntff", None) is not None:
+    if getattr(sim, "_ntff", None) is not None and sim._uses_nonuniform_mesh:
         monitors.append("add_ntff_box() (NTFF box)")
     if getattr(sim, "_dft_planes", None):
         # The run() dispatch refuses these first with its own message; this
@@ -593,7 +597,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
 
 def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
-                    **kwargs):
+                    _source_port_indices=None, _record_probes=None, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -614,6 +618,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         If None, use all available devices.
     exchange_interval : int, optional
         Ghost exchange interval in timesteps; only integer 1 is supported.
+
+    _source_port_indices : tuple[int, ...] or None
+        Optional excited lumped-port indices; all terminations remain present.
+        Selects the S driver's source assembly (including impedance-0 sources).
+        The numerical step is shared with the main run.
+    _record_probes : tuple or None
+        Optional global-cell probes in place of the model probes.
 
     Returns
     -------
@@ -755,6 +766,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # The rest (Kerr chi3 among it, refused above) is unused on this lane;
         # drop it now so no whole-domain array stays alive through the loop.
         del _assembly_rest
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
     if _d_pec_sheets or _d_pec_wires:
         _d_declared = []
         if _d_pec_sheets:
@@ -927,16 +940,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 component=pe.component,
             ))
     else:
+        port_idx = -1
         for pe in sim._ports:
             if pe.impedance > 0.0 and pe.extent is None:
+                port_idx += 1
                 lp = LumpedPort(
                     position=pe.position, component=pe.component,
                     impedance=pe.impedance, excitation=pe.waveform,
                 )
                 materials = setup_lumped_port(grid, lp, materials)
-                sources.append(make_port_source(grid, lp, materials, n_steps))
+                if _source_port_indices is None or port_idx in _source_port_indices:
+                    sources.append(make_port_source(grid, lp, materials, n_steps))
             elif pe.impedance == 0.0:
-                # issue #571: thread amplitude_kind; helper stays boundary-selected.
                 if sim._boundary == "cpml":
                     sources.append(make_j_source(grid, pe.position, pe.component,
                                                  pe.waveform, n_steps, materials,
@@ -946,8 +961,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                                                pe.waveform, n_steps,
                                                materials=materials,
                                                amplitude_kind=pe.amplitude_kind))
-        for pe in sim._probes:
-            probes.append(make_probe(grid, pe.position, pe.component))
+        if _record_probes is None:
+            for pe in sim._probes:
+                probes.append(make_probe(grid, pe.position, pe.component))
+        else:
+            # Global cells enter the ordinary owner mapping below independently.
+            probes.extend(_record_probes)
 
     # Map source/probe global indices to (device_id, local_index)
     src_device_ids = []
@@ -966,6 +985,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         prb_device_ids.append(dev_id)
         prb_local_specs.append((local_i, p.j, p.k, p.component))
 
+    if _realized.ACTIVE is not None:
+        _realized.sources(grid, materials, sources, "distributed.sources")
     # Precompute source waveforms: (n_steps, n_sources)
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
@@ -1333,6 +1354,15 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             px_prev=nl_pxp, py_prev=nl_pyp, pz_prev=nl_pzp)
         return new_st, new_db_st, new_lr_st
 
+    ntff_box = None
+    ntff_layout = None
+    if sim._ntff is not None:
+        from rfx.farfield import make_ntff_box
+        from ._distributed_ntff import SlabNTFF
+        ntff_box = make_ntff_box(grid, *sim._ntff)
+        ntff_layout = SlabNTFF(ntff_box, grid.shape, nx_per, mesh,
+                              sharded_state.ex.dtype)
+
     # ------------------------------------------------------------------
     # Step function (operates on sharded arrays)
     # ------------------------------------------------------------------
@@ -1398,7 +1428,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             e_slab=(nx_per, nx), e_materials=e_materials,
             separate_x_terms=has_debye or has_lorentz)
 
-        # 6. Source injection
         st = _inject_sources_shmap(st, src_vals)
 
         # A mixed wall/absorber box still enforces its declared electric walls.
@@ -1456,8 +1485,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 8. Probe sampling
         probe_out = _sample_probes_shmap(st)
 
-        return {"fdtd": st, "cpml": cpml_st,
-                "debye": db_st, "lorentz": lr_st}, probe_out
+        updated = {"fdtd": st, "cpml": cpml_st,
+                   "debye": db_st, "lorentz": lr_st}
+        if ntff_layout is not None:
+            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx)
+        return updated, probe_out
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1501,7 +1533,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             debye_coeffs_arg, db_st,
             lorentz_coeffs_arg, lr_st, e_materials)
 
-        # 4. Source injection
         st = _inject_sources_shmap(st, src_vals)
 
         # 5. PEC boundaries (domain faces only; a declared PEC VOLUME is
@@ -1514,7 +1545,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    PEC face, where the tangential E is zeroed in the same step it
         #    is injected. #1041 measured no such fixture and did not change
         #    it -- a source on a PEC face is its own question.
-        st = _apply_pec_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x)
+        st = _apply_pec_shmap(
+            st, mesh, n_devices, nx_local, pad_x=pad_x)
 
         # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
         #     immediately before the E ghost exchange -- distributed_nu's
@@ -1549,7 +1581,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 7. Probe sampling
         probe_out = _sample_probes_shmap(st)
 
-        return {"fdtd": st, "debye": db_st, "lorentz": lr_st}, probe_out
+        updated = {"fdtd": st, "debye": db_st, "lorentz": lr_st}
+        if ntff_layout is not None:
+            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx)
+        return updated, probe_out
 
     # ------------------------------------------------------------------
     # Build step indices and waveform scan inputs
@@ -1572,6 +1607,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
+        if ntff_layout is not None:
+            carry_init["ntff"] = ntff_layout.initial()
         def _run_cpml(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             cpml_params_arg, pec_mask_arg,
@@ -1608,6 +1645,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "debye": debye_state_sharded,
             "lorentz": lorentz_state_sharded,
         }
+        if ntff_layout is not None:
+            carry_init["ntff"] = ntff_layout.initial()
         def _run_pec(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             pec_mask_arg,
@@ -1688,7 +1727,15 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     else:
         time_series = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
+    ntff_data = None
+    if ntff_layout is not None:
+        buffer = final_carry["ntff"]
+        if multi_process:
+            buffer = multihost_utils.process_allgather(buffer, tiled=True)
+        ntff_data = ntff_layout.assemble(buffer)
+
     return Result(
+        ntff_data=ntff_data, ntff_box=ntff_box,
         state=final_state,
         time_series=time_series,
         s_params=None,

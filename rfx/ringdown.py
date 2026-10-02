@@ -109,6 +109,13 @@ _HARMINV_DEFAULTS = {
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])
 HARMINV_MAX_MODES = int(_HARMINV_DEFAULTS["max_modes"])
 
+# The largest kept count across the ringdown fixtures is 431, from a seeded-noise
+# record's 900-sample window. Measured cavities keep 38-44 poles on 10,000-70,000
+# step windows. A budget of 512 preserves all these completions without new NaNs
+# and bounds the traced fit storage by O(M * 512) for M window samples. Larger
+# identifications return NaN with STATUS_OVER_BUDGET and a count/budget reason.
+TRACED_POLE_BUDGET = 512
+
 __all__ = [
     "RingdownSpec",
     "RingdownModel",
@@ -141,6 +148,11 @@ class RingdownSpec:
 
     Parameters
     ----------
+    identification_probes : tuple of (position, component) pairs
+        Read-only field channels appended after port V/I for pole identification.
+        Positions are physical (x, y, z); components are ex/ey/ez/hx/hy/hz.
+        Port residues and S assembly retain their original channels. These
+        extra channels have no W0-style accumulator witness.
     window_start : float
         Start of the identification window as a fraction of the record; the
         window is ``[window_start * T, T]``. The source must be off there
@@ -176,8 +188,18 @@ class RingdownSpec:
     unit_tol: float = 1.0e-6
     passivity_tol: float = 1.0e-3
     source_off_tol: float = 1.0e-6
+    identification_probes: tuple = ()
 
     def __post_init__(self):
+        probes = []
+        for position, component in self.identification_probes:
+            position = tuple(float(v) for v in position)
+            if len(position) != 3 or not all(math.isfinite(v) for v in position):
+                raise ValueError("identification probe position must have three finite coordinates")
+            if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
+                raise ValueError(f"invalid identification probe component: {component!r}")
+            probes.append((position, component))
+        object.__setattr__(self, "identification_probes", tuple(probes))
         if not (0.0 < float(self.window_start) < float(self.split) < 1.0):
             raise ValueError(
                 "RingdownSpec needs 0 < window_start < split < 1 (the two "
@@ -313,6 +335,12 @@ class RingdownReport:
     which grows with the record. ``w0_relative`` holds W0's judged number per
     array (``max |rebuilt - run| / max |run|``); ``w0_ulps`` the same
     differences in ULPs at each array's peak, as information.
+    ``identification_channels`` lists the extra (component, snapped index)
+    channels. ``identification_amplitude_shares`` has one row per ``poles``
+    entry and one column per extra channel: |residue| / window RMS. This
+    includes any TM pole the user identifies by frequency; no mode type or
+    observability threshold is inferred. These channels have no W0-style
+    accumulator witness; the shares are information only.
     """
 
     n_record: int
@@ -343,6 +371,9 @@ class RingdownReport:
     slowest_decay_over_window: float | None = None
     discarded_growth_max: float | None = None
     discarded_growth_f_hz: float | None = None
+    # Information only: no W0-style witness, and no TM-mode classification.
+    identification_channels: tuple = ()
+    identification_amplitude_shares: tuple = ()
 
     @property
     def completed(self) -> bool:
@@ -1442,6 +1473,18 @@ class RingdownRun:
                                 "where the graded lane's probes cannot be placed. "
                                 "Move the port at least one cell inside.")
                         add(hname, back)
+        identification_keys = []
+        for position, component in self.spec.identification_probes:
+            # Refuse clamping as well as absorber samples before calling a lane.
+            for ax, coord in enumerate(position):
+                lo = pads[ax]
+                hi = self.grid.shape[ax] - int(getattr(self.grid, f"pad_{'xyz'[ax]}_hi", 0))
+                if not (self.grid.node_of(ax, lo) <= coord <= self.grid.node_of(ax, hi - 1)):
+                    raise ValueError("identification probe position is outside the probeable interior (absorber pad or domain)")
+            idx = tuple(int(v) for v in resolve(position))
+            identification_keys.append((component, idx))
+            add(component, idx)
+        self.identification_keys = tuple(identification_keys)
         for comp, idx in keys:
             pos = _node_position(self.grid, idx)
             got = tuple(int(v) for v in resolve(pos))
@@ -1450,6 +1493,13 @@ class RingdownRun:
                     f"port-channel probe {comp}{idx}: its node position {pos} "
                     f"resolves to {got}")
         return tuple(keys)
+
+    def _identification_columns(self):
+        return [self.probe_keys.index(key) for key in self.identification_keys]
+
+    def _append_identification(self, Y, ts_all, n_user):
+        columns = [n_user + j for j in self._identification_columns()]
+        return np.concatenate((Y, np.asarray(ts_all[:, columns], dtype=np.float64)), axis=1)
 
     # -- the run -------------------------------------------------------------
 
@@ -1703,6 +1753,7 @@ class RingdownRun:
 
         # ---- the rebuilt record, float64 ------------------------------------
         Y = _rebuild_channels(self.lane, pms, e_cols, h_cols)
+        Y = self._append_identification(Y, ts_all, n_user)
         f_bins, to_s = _s_observable(self.lane, pms, freqs32, dt)
 
         # ---- W1: the channels fed to the completion are the ones W0 checked --
@@ -1793,7 +1844,12 @@ class RingdownRun:
             slowest = math.inf if a_min <= 0 else 1.0 / a_min / window_s
         else:
             slowest = 0.0
+        rms = np.where(model.window_rms > 0, model.window_rms, 1.0)
+        shares = np.abs(model.c[:, 2 * len(pms):]) / rms[None, 2 * len(pms):]
+        shares = shares[np.argsort(-np.nan_to_num(amp, nan=-1.0), kind="stable")]
         extra = dict(
+            identification_channels=self.identification_keys,
+            identification_amplitude_shares=tuple(tuple(float(v) for v in row) for row in shares),
             decimation_factors=model.factors, rank=model.rank,
             n_kept=int(model.s.size),
             n_growing_discarded=model.n_growing_discarded,
@@ -2389,6 +2445,7 @@ class RingdownStop:
         ref_hz = max(rr.freq_max, float(np.max(np.asarray(partial.freqs,
                                                           dtype=np.float64))))
         Y = _rebuild_channels(self.lane, pms, e_cols, h_cols)
+        Y = rr._append_identification(Y, ts_all, self.n_user)
         f_bins, to_s = _s_observable(self.lane, pms, pms[0].freqs, dt)
         driven = [p for p, pm in enumerate(pms) if pm.excite]
         return finish(sources_off=True, source_ratio_long=ratio_long,
@@ -2465,8 +2522,8 @@ def static_pole_bound(n_window: int, n_channels: int, dt: float, freq_max: float
     The pencil's eigenvalue count is its rank, at most ``min(M, C L)`` for the
     stacked ``M x (C L)`` Hankel matrix of ``C`` channels; ``L`` and ``M``
     follow from the decimation plan and harminv's pencil shape, functions of
-    the window length alone. ``forward(ringdown=...)`` pads its poles to this
-    count, because a traced program needs a fixed shape.
+    the window length alone. ``forward(ringdown=...)`` pads to the smaller of
+    this algebraic bound and :data:`TRACED_POLE_BUDGET` for a fixed traced shape.
     """
     _factors, kept = decimation_plan(int(n_window), float(dt), float(freq_max))
     L = int(_harminv._pencil_columns(int(kept), PENCIL_PARAMETER))
@@ -2492,7 +2549,8 @@ _GRADIENT_WITNESSES = {
 
 
 def gradient_witness(grad, grad_other, *, against: str = "early_start",
-                     ringdown=None, bar: float = GRADIENT_WITNESS_BAR) -> RingdownWitness:
+                     ringdown=None, bar: float = GRADIENT_WITNESS_BAR,
+                     bin_axis: int | None = None) -> RingdownWitness:
     """The witness of a completed gradient: two gradients of one objective, compared.
 
     ``grad`` is the gradient of an objective through
@@ -2517,8 +2575,12 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
       same model on a record 1.5-2x longer.
 
     Both gradients are pytrees of the same structure (the parameters). The
-    value is ``max |grad - grad_other| / max |grad|``, each maximum over every
-    leaf and element; ``ok`` when it is at or below ``bar``.
+    value is the worst leaf's ``max |grad - grad_other| / max |grad|``.
+    Pass ``bin_axis`` when a gradient carries a frequency axis: each bin of
+    each leaf is normalized by its own reference maximum over remaining axes,
+    and the worst bin is returned. Exactly zero reference bins are skipped
+    and counted in ``note``; no nonzero bins means the witness is not judged.
+    A scalar objective's gradient is already per objective. NaNs fail the check.
 
     One forward pass serves both gradients of the early-start form::
 
@@ -2536,6 +2598,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     if against not in _GRADIENT_WITNESSES:
         raise ValueError(f"against must be one of {sorted(_GRADIENT_WITNESSES)}, "
                          f"got {against!r}")
+    if bin_axis is not None and not isinstance(bin_axis, (int, np.integer)):
+        raise ValueError("bin_axis must be an integer or None")
     name, rule = _GRADIENT_WITNESSES[against]
     if against == "early_start":
         if not isinstance(ringdown, RingdownForwardResult):
@@ -2555,8 +2619,10 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
                       if int(code) != rj.STATUS_OK]
             if failed:
                 reasons = "; ".join(
-                    f"{w}: {_status_reason(code)}"
-                    for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), st)
+                    f"{w}: {_status_reason(code, kept_count=count, pole_budget=budget)}"
+                    for w, code, count, budget in zip(
+                        ("[window_start T, T]", "[window_start/2 T, T]"), st,
+                        np.asarray(ringdown._pole_counts), np.asarray(ringdown._pole_budgets))
                     if int(code) != rj.STATUS_OK)
                 return RingdownWitness(
                     name, math.nan, float(bar), False, rule,
@@ -2579,33 +2645,42 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     if tree_a != tree_b:
         raise ValueError(f"the two gradients have different structures: {tree_a} "
                          f"and {tree_b}")
-    nums, dens = [0.0], [0.0]
+    values, skipped = [], 0
     for a, b in zip(leaves_a, leaves_b):
-        a = np.asarray(a)
-        b = np.asarray(b)
+        a, b = np.asarray(a), np.asarray(b)
         if a.shape != b.shape:
             raise ValueError(f"gradient leaves of shapes {a.shape} and {b.shape}")
-        if a.size:
-            a64 = a.astype(np.complex128)
-            nums.append(float(np.max(np.abs(a64 - b.astype(np.complex128)))))
-            dens.append(float(np.max(np.abs(a64))))
-    # np.max, not max(): a NaN anywhere must reach the value and fail it
-    num, den = float(np.max(nums)), float(np.max(dens))
-    if den > 0.0 or math.isnan(den):
-        value = num / den
-    else:
-        value = 0.0 if num == 0.0 else math.inf
-    return RingdownWitness(name, float(value), float(bar), bool(value <= bar), rule)
+        if bin_axis is not None and not -a.ndim <= bin_axis < a.ndim:
+            raise ValueError(f"bin_axis={bin_axis} outside gradient leaf shape {a.shape}")
+        if not a.size:
+            continue
+        a, b = a.astype(np.complex128), b.astype(np.complex128)
+        axes = None if bin_axis is None else tuple(i for i in range(a.ndim) if i != bin_axis % a.ndim)
+        num, den = np.max(np.abs(a - b), axis=axes), np.max(np.abs(a), axis=axes)
+        if not np.all(np.isfinite(a)) or not np.all(np.isfinite(b)):
+            values.append(math.nan)
+        elif bin_axis is None:
+            values.append(float(num / den) if den > 0 else (0.0 if num == 0 else math.inf))
+        else:
+            skipped += int(np.count_nonzero(den == 0))
+            values.extend(np.asarray(num / np.where(den > 0, den, 1.0))[den > 0].ravel())
+    value = float(np.max(values)) if values else math.nan
+    rule += "; normalized independently per leaf" + (" and per bin" if bin_axis is not None else "")
+    note = f"skipped {skipped} zero-reference bins" if bin_axis is not None else ""
+    return RingdownWitness(name, value, float(bar), bool(value <= bar), rule, note,
+                           judged=bool(values))
 
 
-def _status_reason(code: int, consistency=None) -> str:
+def _status_reason(code: int, consistency=None, *, kept_count, pole_budget) -> str:
     """Why a traced completion is NaN, from its status code."""
     from rfx import _ringdown_jax as rj
     code = int(code)
     if code == rj.STATUS_FAILED:
         return "the host identification failed"
     if code == rj.STATUS_OVER_BUDGET:
-        return "the identification kept more poles than the static count"
+        return (f"the identification kept {int(kept_count)} poles, more than the "
+                f"{int(pole_budget)} slots the traced completion reserves for this window "
+                f"(min of the pencil's capacity and TRACED_POLE_BUDGET = {TRACED_POLE_BUDGET})")
     if code == rj.STATUS_INCONSISTENT:
         c = "" if consistency is None else f" (read {float(consistency):.3g}, bar {CONSISTENCY_BAR:g})"
         return ("the in-program consistency check failed: the rebuilt port V/I "
@@ -2647,8 +2722,10 @@ class _ForwardReportContext:
         nan_note = ""
         if not np.all(np.isfinite(S_traced)):
             nan_note = "the traced completion is NaN: " + "; ".join(
-                f"{w}: {_status_reason(code, c_now)}"
-                for w, code in zip(("[window_start T, T]", "[window_start/2 T, T]"), status)
+                f"{w}: {_status_reason(code, c_now, kept_count=count, pole_budget=budget)}"
+                for w, code, count, budget in zip(
+                    ("[window_start T, T]", "[window_start/2 T, T]"), status,
+                    np.asarray(res._pole_counts), np.asarray(res._pole_budgets))
                 if int(code) != 0) if np.any(status != 0) else "the traced completion is NaN"
         tol = float(plan.spec.witness_tol)
         rule = ("max |S| difference between the traced completion (the one jax.grad "
@@ -2699,10 +2776,11 @@ class RingdownForwardResult:
     """
 
     __slots__ = ("s_params", "s_params_long", "freqs", "_channels", "_accs",
-                 "_s_plain", "_status", "_consistency", "_ctx", "_report")
+                 "_s_plain", "_status", "_consistency", "_pole_counts", "_pole_budgets",
+                 "_ctx", "_report")
 
     def __init__(self, s_params, s_params_long, freqs, channels, accs, s_plain,
-                 status, consistency, ctx):
+                 status, consistency, pole_counts, pole_budgets, ctx):
         self.s_params = s_params
         self.s_params_long = s_params_long
         self.freqs = freqs
@@ -2711,12 +2789,15 @@ class RingdownForwardResult:
         self._s_plain = s_plain
         self._status = status
         self._consistency = consistency
+        self._pole_counts = pole_counts
+        self._pole_budgets = pole_budgets
         self._ctx = ctx
         self._report = None
 
     def tree_flatten(self):
         return ((self.s_params, self.s_params_long, self.freqs, self._channels,
-                 self._accs, self._s_plain, self._status, self._consistency), self._ctx)
+                 self._accs, self._s_plain, self._status, self._consistency,
+                 self._pole_counts, self._pole_budgets), self._ctx)
 
     @classmethod
     def tree_unflatten(cls, ctx, children):
@@ -2843,11 +2924,13 @@ class RingdownForward(RingdownRun):
             nan = result.s_params * jnp.nan
             return RingdownForwardResult(nan, nan, result.freqs, channels, accs,
                                          result.s_params, status_fail,
-                                         jnp.asarray(jnp.nan, dtype=_rdt_nan(result)), ctx)
+                                         jnp.asarray(jnp.nan, dtype=_rdt_nan(result)),
+                                         jnp.full(2, -1, jnp.int32), jnp.zeros(2, jnp.int32), ctx)
         pms = [pm._replace(accs=None) for pm in pms]      # no tracer in a host closure
         acc_dtype = jnp.result_type(accs[0][3])
         used = sorted({j for e_cols, h_cells in layouts for j in e_cols}
-                      | {j for e_cols, h_cells in layouts for _h, _l, j in h_cells})
+                      | {j for e_cols, h_cells in layouts for _h, _l, j in h_cells}
+                      | set(self._identification_columns()))
         pos = {j: i for i, j in enumerate(used)}
         local = [([pos[j] for j in e_cols], [(h, lidx, pos[j]) for h, lidx, j in h_cells])
                  for e_cols, h_cells in layouts]
@@ -2868,6 +2951,8 @@ class RingdownForward(RingdownRun):
                 h[hname] = h[hname].at[a, b, c].set(raw[:, j].astype(rdt))
             _v, v_port, i_val = _port_vi(lane, pm, pm.f64, e, h["hx"], h["hy"], h["hz"])
             cols += [v_port, i_val]
+        identification_cols = [pos[j] for j in self._identification_columns()]
+        cols += [raw[:, j].astype(rdt) for j in identification_cols]
         Y = jnp.stack(cols, axis=1)
 
         def identify_window(w_raw):
@@ -2875,6 +2960,7 @@ class RingdownForward(RingdownRun):
             arrays = [_port_arrays(w_raw, lay) for lay in local]
             Yw = _rebuild_channels(lane, pms, [a[0] for a in arrays],
                                    [a[1] for a in arrays])
+            Yw = np.concatenate((Yw, np.asarray(w_raw[:, identification_cols], dtype=np.float64)), axis=1)
             return identify(Yw, dt, 0, Yw.shape[0], freq_max=ref_hz, guard=spec.guard,
                             sv_rel=spec.sv_rel, unit_tol=spec.unit_tol).s
 
@@ -2905,16 +2991,20 @@ class RingdownForward(RingdownRun):
                                  jnp.real(theirs).dtype).tiny))
         consistency = jax.lax.stop_gradient(jnp.max(jnp.stack(worst)))
         consistent = consistency <= CONSISTENCY_BAR
-        out, status = [], []
+        out, status, pole_counts, pole_budgets = [], [], [], []
         for n0 in (self.n_start, self.n_long):
-            k_max = static_pole_bound(n - n0, Y.shape[1], dt, ref_hz)
-            s0, mask, st, tail_arg = rj.host_poles(identify_window, raw[n0:], k_max,
-                                                   dt, f_bins)
+            k_max = min(static_pole_bound(n - n0, Y.shape[1], dt, ref_hz),
+                        TRACED_POLE_BUDGET)
+            s0, mask, st, tail_arg, count = rj.host_poles(
+                identify_window, raw[n0:], k_max, dt, f_bins)
             spectra = rj.completion(Y, dt, f_bins, n0, s0, mask, tail_arg, plain=plain)
             S = to_s(spectra)
             st = jnp.where(consistent, st, rj.STATUS_INCONSISTENT)
             # a failure reaches the value AND the gradient
             out.append(S * jnp.where(st == rj.STATUS_OK, 1.0, jnp.nan).astype(S.real.dtype))
             status.append(st)
+            pole_counts.append(count)
+            pole_budgets.append(k_max)
         return RingdownForwardResult(out[0], out[1], result.freqs, channels, accs,
-                                     result.s_params, jnp.stack(status), consistency, ctx)
+                                     result.s_params, jnp.stack(status), consistency,
+                                     jnp.stack(pole_counts), jnp.asarray(pole_budgets), ctx)

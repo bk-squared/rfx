@@ -21,6 +21,8 @@ import platform
 import sys
 from importlib import metadata
 
+from rfx._runtime_floor import MIN_PYTHON, check
+
 # ---------------------------------------------------------------------------
 # Report primitives
 # ---------------------------------------------------------------------------
@@ -65,14 +67,13 @@ def _version_of(dist: str) -> str:
 def _check_python(report: _Report) -> None:
     v = sys.version_info
     detail = f"{v.major}.{v.minor}.{v.micro} ({platform.python_implementation()})"
-    # pyproject requires-python = ">=3.10".
-    if (v.major, v.minor) >= (3, 10):
+    if (v.major, v.minor) >= MIN_PYTHON:
         report.record(PASS, "Python version", detail, critical=True)
     else:
         report.record(
             FAIL,
             "Python version",
-            f"{detail} — rfx requires Python >= 3.10",
+            f"{detail} — rfx requires Python >= {'.'.join(map(str, MIN_PYTHON))}",
             critical=True,
         )
 
@@ -101,9 +102,11 @@ def _check_rfx_import(report: _Report) -> None:
 def _check_jax(report: _Report) -> None:
     try:
         import jax
+        import jaxlib
 
-        jax_v = _version_of("jax")
-        jaxlib_v = _version_of("jaxlib")
+        jax_v = jax.__version__
+        jaxlib_v = jaxlib.__version__
+        check(sys.version_info, jax_v, jaxlib_v)
         report.record(
             PASS,
             "jax / jaxlib",

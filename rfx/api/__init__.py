@@ -1631,6 +1631,7 @@ class Simulation(
         impedance: float = 50.0,
         waveform: GaussianPulse | None = None,
         extent: float | None = None,
+        radius: float | None = None,
         excite: bool = True,
         direction: str | None = None,
         reference_plane_cells: int | None = None,
@@ -1650,6 +1651,15 @@ class Simulation(
             axis by this distance (metres), creating a multi-cell WirePort.
             For example ``component="ez", extent=0.0015`` spans the port
             from ``z`` to ``z + 0.0015``.
+        radius : float or None
+            Opt-in thin-probe radius in metres (requires ``extent``).
+            ``None`` preserves the legacy filament, whose effective radius
+            is approximately 0.20 times the transverse cell size. The
+            local self-field model requires a square, locally uniform
+            transverse mesh, uniform spacing along the pin, and radius
+            <= 0.2 times the transverse spacing. Supported
+            on single-device, nondispersive 3-D second-order Yee run/forward;
+            unsupported solvers and material updates raise before stepping.
         excite : bool (default True)
             When True the port has BOTH a resistive termination AND a
             time-domain source (legacy behaviour).
@@ -1716,6 +1726,10 @@ class Simulation(
             )
         if component not in ("ex", "ey", "ez"):
             raise ValueError(f"component must be ex/ey/ez, got {component!r}")
+        from rfx.sources.wire_radius import validate_radius
+        validate_radius(radius)
+        if radius is not None and extent is None:
+            raise ValueError("radius requires a wire port: provide extent=...")
         if impedance <= 0:
             raise ValueError(f"impedance must be positive, got {impedance}")
         if direction is not None and direction not in ("+x", "-x", "+y", "-y"):
@@ -1770,6 +1784,7 @@ class Simulation(
             position=position, component=component,
             impedance=impedance, waveform=waveform,
             extent=extent, excite=excite, direction=direction,
+            radius=radius,
             reference_plane_cells=reference_plane_cells,
             terminates=terminated,
         ))
@@ -2824,6 +2839,7 @@ class Simulation(
         freqs: jnp.ndarray | None = None,
         n_freqs: int = 50,
         name: str | None = None,
+        region: tuple[int, int, int, int] | None = None,
     ) -> "Simulation":
         """Add a frequency-domain 2D plane probe.
 
@@ -2839,6 +2855,9 @@ class Simulation(
             Probe frequencies in Hz. Default: linspace(freq_max/10, freq_max, n_freqs).
         n_freqs : int
             Number of frequencies if freqs is None.
+        region : tuple or None
+            Half-open transverse array-index crop (lo1, hi1, lo2, hi2).
+            A 1 by 1 crop is a point DFT at that Yee component.
         name : str or None
             Optional result key.
         """
@@ -2868,6 +2887,10 @@ class Simulation(
             freqs=freqs_arr,
             n_freqs=n_freqs,
         ))
+        if region is not None:
+            if not hasattr(self, "_dft_plane_regions"):
+                self._dft_plane_regions = {}
+            self._dft_plane_regions[name] = tuple(region)
         return self
 
     def add_flux_monitor(

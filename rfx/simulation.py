@@ -12,11 +12,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
+from rfx.core.jax_utils import recorded_scan
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
@@ -328,6 +331,7 @@ class SimResult(NamedTuple):
     dt: float | None = None
     current_moment_data: object = None
     current_moment_monitor: object = None
+    adjoint_settling: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -1353,6 +1357,13 @@ def _build_step_setup(
     with its own driver-specific ``_StepContext`` fields before constructing
     the context.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(
+        materials, lane="uniform Yee with dispersion/UPML/tensor or design-box updates",
+        unsupported=(debye is not None or lorentz is not None or boundary == "upml"
+                     or aniso_eps is not None or aniso_inv_eps is not None
+                     or stencil_order != 2 or design_box is not None
+                     or design_occupancy is not None or kerr_chi3 is not None))
     dt = grid.dt
     dx = grid.dx
 
@@ -2116,7 +2127,8 @@ def core_step_invariants(ctx: _StepContext) -> dict:
             "sheet_coeffs": _sheet_coeffs}
 
 
-def make_core_step(ctx: _StepContext, invariants: dict | None = None):
+def make_core_step(ctx: _StepContext, invariants: dict | None = None,
+                   *, design_hook=None):
     """Build the shared per-step Yee kernel from an explicit context.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
@@ -2124,6 +2136,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
     optional per-step outputs each caller needs:
       * ``extras["snap_fields"]`` — snapshot field list (``use_snapshot``).
       * ``extras["monitor_val"]`` — monitored scalar (``use_monitor``).
+
+    ``design_hook``, when supplied by the design adjoint, observes the
+    pre-update fields and can inject a local E perturbation immediately after
+    the design update. It returns ``(state, record)``; the record is an extra.
+    With no hook the production operations are unchanged.
 
     ``invariants`` is :func:`core_step_invariants`'s dict (built from ``ctx``
     when omitted); a jitted caller passes one whose per-cell arrays are its
@@ -2298,6 +2315,9 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     boundary=ctx.curl_boundary,
                 )
 
+            if design_hook is not None:
+                st, design_record = design_hook(st_prev_design, st)
+
             # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff (#437).
             if ctx.use_kerr:
                 st = ctx.apply_kerr_ade(st, e_prev_kerr, ctx.kerr_chi3, materials.eps_r)
@@ -2430,7 +2450,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
-            from rfx.probes.probes import _ampere_loop
+            from rfx.probes.probes import _ampere_loop, _port_voltage_value
+            from rfx.core.dft_utils import port_dft_phase
             # Both families advance their H-derived current by dt/2 to the
             # E time level; one import for both blocks.
             from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
@@ -2456,9 +2477,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
                 v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_ref_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                v_ref_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
+                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt)
                 new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
@@ -2583,7 +2603,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     new_lumped_refs):
                 v_dft_l, i_dft_l = accs[0], accs[1]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
+                v_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
                 # #692: shared loop — see the wire-port block above.
                 i_val_l = _ampere_loop(
                     st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
@@ -2779,6 +2799,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
         if ctx.use_lumped_rlc:
             new_carry["rlc_states"] = tuple(new_rlc_states)
 
+        if design_hook is not None:
+            extras["design_record"] = design_record
         return new_carry, probe_out, extras
 
     return core_step
@@ -2805,6 +2827,7 @@ def run(
     current_moments: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
+    gradient: str = "autodiff",
     checkpoint_segments: int | None = None,
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
@@ -2839,6 +2862,10 @@ def run(
     grid : Grid
     materials : MaterialArrays
     n_steps : int
+    gradient : {"autodiff", "adjoint"}
+        Adjoint requires a uniform real-valued design box. It stores local
+        DFTs instead of checkpoints; checkpoint options are unused.
+        See the module docstring of ``rfx.adjoint``.
     boundary : "pec", "cpml", or "upml"
     cpml_axes : axes string for CPML (default "xyz")
     pec_axes : axes string or None
@@ -2986,6 +3013,9 @@ def run(
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
+    if gradient not in ("autodiff", "adjoint"):
+        raise ValueError("gradient must be 'autodiff' or 'adjoint'")
+
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
         grid=grid,
@@ -3121,6 +3151,8 @@ def run(
     snap_in_body = use_snapshot and snap_interval == 1
     snap_by_block = use_snapshot and snap_interval > 1
 
+    if _realized.ACTIVE is not None:
+        _realized.sources(grid, materials, sources, "uniform.sources")
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
@@ -3209,7 +3241,7 @@ def run(
                 a, b = piece.start, piece.start + piece.length
                 rows = jax.tree_util.tree_map(lambda x: x[a:b], xs_seg)
                 if piece.kind == "plain":
-                    carry, (p,) = jax.lax.scan(body, carry, rows)
+                    carry, (p,) = recorded_scan(body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         frame_parts.append(
@@ -3218,11 +3250,11 @@ def run(
                     nb = piece.length // m
                     blocks = jax.tree_util.tree_map(
                         lambda x: x.reshape(nb, m, *x.shape[1:]), rows)
-                    carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
+                    carry, (p, f) = recorded_scan(block_body, carry, blocks)
                     probe_parts.append(p.reshape(nb * m, *p.shape[2:]))
                     frame_parts.append(list(f))
                 else:  # "rec"
-                    carry, (p, f) = jax.lax.scan(rec_body, carry, rows)
+                    carry, (p, f) = recorded_scan(rec_body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         idx = jnp.asarray(piece.frame_rows, dtype=jnp.int32)
@@ -3230,7 +3262,7 @@ def run(
 
             if not probe_parts:
                 # n == 0: the zero-length scan the other paths return.
-                carry, (p,) = jax.lax.scan(body, carry, xs_seg)
+                carry, (p,) = recorded_scan(body, carry, xs_seg)
                 probe_parts.append(p)
             probes = (probe_parts[0] if len(probe_parts) == 1
                       else jnp.concatenate(probe_parts, axis=0))
@@ -3256,7 +3288,13 @@ def run(
             "a snapshot's frame axes and checkpoint_segments' segment lengths "
             "are fixed from n_steps before it (issue #1254).")
 
-    if checkpoint_segments is None:
+    if gradient == "adjoint":
+        if snapshot is not None or stop_fn is not None or report_every is not None:
+            raise NotImplementedError(
+                "gradient='adjoint' does not support snapshots, stopping or progress")
+        from rfx.adjoint import design_adjoint_scan
+        final_carry, outputs = design_adjoint_scan(_step_ctx, carry_init, xs)
+    elif checkpoint_segments is None:
         # Legacy path: optional per-step rematerialisation only. The scan
         # itself still keeps every step's carry, so peak memory grows
         # linearly with n_steps.
@@ -3293,7 +3331,7 @@ def run(
         elif report_every is None and snap_by_block:
             final_carry, outputs = _make_recorder(body)(carry_init, xs, 0)
         elif report_every is None:
-            final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+            final_carry, outputs = recorded_scan(body, carry_init, xs)
         else:
             # Issue #667: same scan, driven from the host in chunks so a
             # multi-hour solve emits progress. The carry threads through
@@ -3384,7 +3422,7 @@ def run(
 
         seg_body_ckpt = jax.checkpoint(
             segment_body, prevent_cse=False) if checkpoint else segment_body
-        final_carry, seg_outputs = jax.lax.scan(
+        final_carry, seg_outputs = recorded_scan(
             seg_body_ckpt, carry_init, xs_segmented)
         # seg_outputs leaves: (K, per-segment rows, ...). Flatten back to
         # (K * rows, ...): n_steps for the probe rows (and for per-step
@@ -3488,6 +3526,7 @@ def run(
         dt=dt,
         current_moment_data=final_carry.get("current_moments"),
         current_moment_monitor=current_moments,
+        adjoint_settling=final_carry.get("adjoint_settling"),
     )
 
 

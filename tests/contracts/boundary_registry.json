@@ -388,6 +388,11 @@
     },
     {
       "file": "rfx/current_moments.py",
+      "function": "_index_window",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/current_moments.py",
       "function": "slab_curl_h",
       "kind": "difference"
     },
@@ -400,6 +405,11 @@
       "file": "rfx/floquet.py",
       "function": "apply_bloch_periodic_x._wrap",
       "kind": "boundary"
+    },
+    {
+      "file": "rfx/geometry/csg.py",
+      "function": "Box._axis_masks_on_coords._axis_mask",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/geometry/csg.py",
@@ -496,7 +506,7 @@
       "file": "rfx/probes/probes.py",
       "function": "_ampere_loop",
       "kind": "neighbour",
-      "count": 6
+      "count": 2
     },
     {
       "file": "rfx/probes/probes.py",
@@ -711,6 +721,11 @@
       "file": "rfx/sources/_waveguide_modes.py",
       "function": "_cell_centred_gradient",
       "kind": "difference"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "_coaxial_tem_edge_profile",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/sources/coaxial_port.py",

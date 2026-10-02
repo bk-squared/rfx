@@ -25,6 +25,30 @@ Use `exchange_interval=1`.
 
 ## Ports and extraction
 
+**The default wire port is a mesh-sized probe.** `add_port(..., extent=...)`
+with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
+square transverse mesh. Refinement therefore changes its series inductance;
+it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
+the local thin-probe model, within `radius <= 0.20 * dx` and a locally uniform
+square transverse stencil and uniform spacing along the pin. Axial grading
+across the port refuses this model. It is carried by single-device,
+nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
+Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
+Resolve larger wire ports geometrically with a coax feed or a volume wire.
+
+**Positive subcell PEC filament radii are unsupported.** A PEC `PolylineWire`
+with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
+volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
+cell at its vertices. The existing volume-wire rule and legacy `radius=0`
+filament ownership remain; zero does not declare a physical wire radius.
+The attempted filament correction failed its independent uncorrected-main
+reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
+8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
+11.3 GHz was 2.58 Ω (limits 2% and 1 Ω). The correction is removed.
+That one-edge feed has nonuniform longitudinal current, so the full-height
+wire-port Hankel oracle does not establish its accuracy. The port radius
+model and its full-height oracle remain separate.
+
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power
@@ -95,7 +119,7 @@ blended pole, and the completion from any window of that record makes the same
 blend. The error witness WE then agrees while the completed S can be several
 percent off near the pair. What to do: record longer. In the measured case, a
 pair 0.03 % apart was resolved at about a fifth of its decay time.
-→ [#1381](https://github.com/bk-squared/rfx/issues/1381)
+#1381 was closed as a stated limit (PI decision, 2026-09-30); this is a standing limitation.
 
 **The early stop can end the run before a weak unresolved high-Q pair is
 resolved.** The rule is `run(..., until_identified=True)`: stop once WE agrees
@@ -109,7 +133,6 @@ Stronger or single weak modes do hold the stop. What to do: where weak high-Q
 features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
-→ [#1381](https://github.com/bk-squared/rfx/issues/1381)
 
 ## Absorbing boundaries
 
@@ -143,6 +166,28 @@ cell except the outermost row on the +x and +y faces.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
 ## Gradients and optimization
+
+**Port-only ring-down completion can miss the gradient of a weakly coupled
+high-Q resonance.** A pole and the completed S-parameter can be accurate while
+its material derivative is tens of percent wrong at the resonance bin. Add
+interior field channels with
+`RingdownSpec(identification_probes=(((x, y, z), "ez"),))` on `run()` or
+`forward()`. They inform pole identification; S still uses the port V/I
+residues. The report lists snapped identification channels and per-pole
+residue/RMS shares as information, without an observability threshold or a
+W0-style accumulator witness for these channels.
+
+Judge completed gradients with `gradient_witness(g, g_early, ringdown=result.ringdown,
+bin_axis=k)` when axis `k` carries frequency: it normalizes each bin of each
+parameter leaf independently and returns the worst bin, so pass only the bins
+your objective reads (a near-zero gradient at an unused band edge reads large). Exactly zero reference
+bins are skipped and counted. Without `bin_axis`, normalization is per leaf;
+a scalar objective's gradient is already per objective. A passing value witness
+does not establish a passing gradient witness. Where the early-start witness
+cannot be formed, compare against a record 1.5–2 times longer.
+The weak-port cavity contract is in
+`tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
+identification-probe option; port-only identification remains the default).
 
 **A gradient can be wrong by tens of percent on a record whose value is
 converged.** Every frequency-domain quantity rfx differentiates is a DFT of a

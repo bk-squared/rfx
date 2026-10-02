@@ -7,9 +7,8 @@ function, on the same node line the conductors are rasterized on, so a port
 declared on a sheet or a wire lands on it. Before this change the NU lane
 also took the lower node, but through its own float32 edge search, which put
 a coordinate within float32 roundoff of a half node on either node. The
-uniform lane rounds a point's tie to the EVEN node (``round(x/dx)``) until
-#1342; the two lanes agree off ties, and agreement at ties is a strict xfail
-against #1342 so it turns into an XPASS when #1342 lands.
+uniform lane also takes the lower node under #1342; the two lanes agree
+both off ties and at ties.
 
 What is pinned here:
 
@@ -36,8 +35,6 @@ from rfx.runners.nonuniform import pos_to_nu_index
 
 DX = 1e-3
 AXES = ("x", "y", "z")
-ISSUE_1342 = ("#1342: the uniform lane rounds a point feature's tie to the even "
-              "node; the non-uniform lane and every conductor round it down")
 
 # (cells per axis, boundary). 239 cells is the kernel-timing 13M y axis whose
 # half-domain source exposed the split; the CPML case puts a pad in front of
@@ -124,7 +121,6 @@ def test_a_point_lands_on_the_node_a_sheet_at_the_same_coordinate_takes(case):
     assert counts["off_tie"] and counts["tie_lower_odd"]
 
 
-@pytest.mark.xfail(strict=True, reason=ISSUE_1342)
 def test_at_a_tie_both_lanes_put_a_point_on_the_same_node():
     for case in sorted(LANE_CASES):
         cells, boundary = LANE_CASES[case]
@@ -139,8 +135,8 @@ def test_float_quotient_cases():
     """``0.1195 / 1e-3 = 119.49999999999999`` is a tie on the node line, and
     both lanes put it on 119. The kernel-timing source at ``0.5 * (239 *
     1e-3)`` and a feed at 9.5 mm go to the lower node (119, 9) on the NU
-    lane, where a sheet at the same coordinate lands; the uniform lane puts
-    them on 120 and 10 until #1342."""
+    lane, where a sheet at the same coordinate lands; the uniform lane now
+    takes the same lower nodes under #1342."""
     uniform, nu, domain = _both_lanes((239, 12, 10), "pec")
     line = np.asarray(coords_from_nonuniform_grid(nu).x, dtype=np.float64)
     for x, node in ((0.1195, 119), (0.5 * domain[0], 119), (0.0095, 9),
@@ -263,15 +259,14 @@ def test_a_source_on_a_node_gives_the_same_trace_on_both_lanes():
 def test_a_half_node_source_goes_to_the_lower_node_on_the_nu_lane():
     """With 19 cells along y the source is at y = 9.5 mm, midway between
     nodes 9 and 10. The NU lane puts it on 9, where a sheet at 9.5 mm lands;
-    the uniform lane on 10 (#1342)."""
+    the uniform lane now also puts it on 9 (#1342)."""
     uniform, nu, domain = _both_lanes((20, 19, 17), "pec")
     src = (0.30 * domain[0], 0.50 * domain[1], 0.70 * domain[2])
     assert src[1] / DX == 9.5
     assert pos_to_nu_index(nu, src)[1] == 9
-    assert uniform.position_to_index(src)[1] == 10
+    assert uniform.position_to_index(src)[1] == 9
 
 
-@pytest.mark.xfail(strict=True, reason=ISSUE_1342)
 def test_a_half_node_source_gives_the_same_trace_on_both_lanes():
     """The kernel-timing box scaled down, with its source on the half node.
     On main the gap was 8.3e-2 of the peak, the one-cell feed shift; it

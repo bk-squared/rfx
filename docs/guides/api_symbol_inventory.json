@@ -489,8 +489,10 @@
         "field_scale",
         "magnetic_ratio",
         "reference_plane_axial_index_offset",
+        "plane_axial_index",
         "eps_r",
-        "shell_inner_radius"
+        "shell_inner_radius",
+        "pec_cell_mask"
       ]
     },
     "build_runtime_report": {
@@ -1857,6 +1859,7 @@
         "current_moments",
         "snapshot",
         "checkpoint",
+        "gradient",
         "checkpoint_segments",
         "aniso_eps",
         "aniso_inv_eps",
@@ -2475,7 +2478,8 @@
       "component",
       "freqs",
       "n_freqs",
-      "name"
+      "name",
+      "region"
     ],
     "add_floquet_port": [
       "position",
@@ -2564,6 +2568,7 @@
       "impedance",
       "waveform",
       "extent",
+      "radius",
       "excite",
       "direction",
       "reference_plane_cells",
@@ -2777,6 +2782,7 @@
       "n_steps",
       "num_periods",
       "checkpoint",
+      "gradient",
       "checkpoint_segments",
       "emit_time_series",
       "checkpoint_every",

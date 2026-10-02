@@ -40,7 +40,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 from rfx.sources.sources import CustomWaveform
 
 
@@ -579,6 +579,7 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     so that numerical dispersion matches the 3D grid along the oblique
     propagation direction.
     """
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
     dx_1d = cfg.dx_1d
@@ -587,17 +588,17 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     #   Ez/Hy  ->  +sign
     #   Ey/Hz  ->  -sign
     de = (jnp.concatenate([e1d[1:], jnp.zeros(1)]) - e1d) / dx_1d
-    h1d = h1d + cfg.curl_sign * (dt / MU_0) * de
+    h1d = h1d + cfg.curl_sign * (dt / mu_abs) * de
 
     # H CPML lo end
     psi_h_lo = cfg.magnetic_lo.b * st.psi_h_lo + cfg.magnetic_lo.c * de[:n]
-    h1d = h1d.at[:n].add(cfg.curl_sign * (dt / MU_0) * psi_h_lo)
+    h1d = h1d.at[:n].add(cfg.curl_sign * (dt / mu_abs) * psi_h_lo)
 
     # H CPML hi end
     b_hi = jnp.flip(cfg.magnetic_hi.b)
     c_hi = jnp.flip(cfg.magnetic_hi.c)
     psi_h_hi = b_hi * st.psi_h_hi + c_hi * de[-n:]
-    h1d = h1d.at[-n:].add(cfg.curl_sign * (dt / MU_0) * psi_h_hi)
+    h1d = h1d.at[-n:].add(cfg.curl_sign * (dt / mu_abs) * psi_h_hi)
 
     return st._replace(h1d=h1d, psi_h_lo=psi_h_lo, psi_h_hi=psi_h_hi)
 
@@ -793,6 +794,7 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
 
     Dispatches to 2D auxiliary grid version for oblique incidence.
     """
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     # Dispatch to open-domain oblique Method B (real float32, 4-edge box).
     if is_tfsf_methodB(cfg):
         from rfx.sources.tfsf_oblique_open import apply_methodB_h
@@ -803,7 +805,7 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
         return apply_tfsf_2d_h(state, cfg, tfsf_st, dx, dt)
     if getattr(cfg, "closed_box", False):
         return _apply_closed_box_h(state, cfg, tfsf_st, dx, dt)
-    coeff = dt / (MU_0 * dx)
+    coeff = dt / (mu_abs * dx)
     i0 = cfg.i0
 
     # ---- Normal incidence: direct 1D grid lookup ----
@@ -857,10 +859,11 @@ def _apply_closed_box_h(state, cfg, incident, dx, dt):
     The transverse face extents include the edge/corner samples exactly
     once, as in the full mask-curl commutator.
     """
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     xs = slice(cfg.x_lo, cfg.x_hi + 1)
     ys = slice(cfg.y_lo, cfg.y_hi + 1)
     zs = slice(cfg.z_lo, cfg.z_hi + 1)
-    coeff = cfg.curl_sign * dt / (MU_0 * dx)
+    coeff = cfg.curl_sign * dt / (mu_abs * dx)
     e = incident.e1d
     n = cfg.x_hi - cfg.x_lo + 1
     h = getattr(state, cfg.magnetic_component)

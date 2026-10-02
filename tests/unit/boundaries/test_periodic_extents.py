@@ -61,7 +61,7 @@ def test_filament_ending_at_period_owns_last_edge_under_jit():
     import jax
     from rfx import PolylineWire
     sim = model()
-    sim.add(PolylineWire([(.009, .003, .002), (.010, .003, .002)], radius=.0001),
+    sim.add(PolylineWire([(.009, .003, .002), (.010, .003, .002)], radius=0.),
             material='pec')
     sim.add_source((.007, .002, .002), 'ex', amplitude_kind='field')
     sim.add_probe((.005, .003, .002), 'ex')
@@ -77,6 +77,22 @@ def test_filament_ending_at_period_owns_last_edge_under_jit():
         np.testing.assert_array_equal(realized[0], expected)
         assert not np.asarray(realized[1]).any()
         assert not np.asarray(realized[2]).any()
+
+
+@pytest.mark.parametrize('jit', [False, True])
+def test_positive_subcell_filament_radius_at_period_refuses(jit):
+    import jax
+    from rfx import PolylineWire
+    sim = model()
+    sim.add(PolylineWire([(.009, .003, .002), (.010, .003, .002)], radius=.0001),
+            material='pec')
+    grid = sim._build_grid()
+
+    def assemble():
+        return sim._assemble_materials(grid)
+
+    with pytest.raises(ValueError, match='resolve the wire as a volume'):
+        (jax.jit(assemble) if jit else assemble)()
 
 
 def test_microstrip_plane_and_substrate_endpoint_at_period():
@@ -265,7 +281,8 @@ def test_out_of_period_point_is_refused(x, kind):
 def test_point_admission_is_half_open(n):
     from rfx.grid import Grid
     g = Grid(20e9, (n * .001, .006, .004), dx=.001, cpml_layers=0, periodic_axes='x')
-    assert g.index_of('x', -.0005) == 0
+    assert g.index_of('x', -.0005) == n - 1
+    assert g.index_of('x', n * .001 - .0005) == n - 1
     for x in (-.0005001, n * .001 + .0005):
         with pytest.raises(ValueError, match='outside this axis'):
             g.index_of('x', x)

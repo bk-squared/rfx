@@ -282,19 +282,12 @@ def test_the_conductor_is_not_written_into_sigma():
 
 @pytest.mark.parametrize("dx", CELL_SIZES_M)
 def test_the_tem_source_injects_over_the_annulus_the_stamper_actually_built(dx):
-    """The source's outer injection radius IS the stamper's dielectric edge.
+    """The source realizes the stamper's annulus and avoids its PEC edges.
 
-    ``build_coaxial_tem_plane_source_specs`` selects its cells with
-    ``pin_radius <= r <= shell_inner_radius`` and normalises the 1/r mode with
-    ``log(outer_radius / pin_radius)``. Those two have to describe the same
-    annulus. They did not: the builder carried its own copy of the wall
-    formula the stamper used to use (``b - min(dz, (b-a)/2)``), so once the
-    wall moved out to ``b`` the builder kept injecting over ``[a, b-dx]`` while
-    normalising over ``ln(b/a)`` -- one ring of dielectric excited by nothing,
-    against a mode normalised as though it were.
-
-    No solve: this compares the radius the builder resolves against the radius
-    the stamper returned, at four cell sizes, plus the cells each admits.
+    The default and explicit wall radii must produce the same TEM support.
+    The stale inward wall formula must reduce that support or, on the
+    coarsest grid, be refused because the realized pin shorts to the wall.
+    This checks the source construction without running time steps.
     """
     from rfx.sources.coaxial_port import build_coaxial_tem_plane_source_specs
 
@@ -324,20 +317,22 @@ def test_the_tem_source_injects_over_the_annulus_the_stamper_actually_built(dx):
     stale = float(port.outer_radius) - min(
         float(grid.dx),
         0.5 * (float(port.outer_radius) - float(port.pin_radius)))
-    spec_stale = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=port, n_steps=8, shell_inner_radius=stale)
-    assert int(spec_stale.source_cell_count) < n_default, (
-        f"the pre-fix radius {stale*1e6:.3f} um admits "
-        f"{int(spec_stale.source_cell_count)} cells and the stamper's "
-        f"{shell_inner*1e6:.3f} um admits {n_default}; if these are equal this "
-        "test is not discriminating and the comparison above proves nothing")
+    try:
+        spec_stale = build_coaxial_tem_plane_source_specs(
+            grid=grid, port=port, n_steps=8, shell_inner_radius=stale)
+    except ValueError as exc:
+        assert "no separate outer conductor" in str(exc)
+    else:
+        assert int(spec_stale.source_cell_count) < n_default, (
+            f"the pre-fix radius {stale*1e6:.3f} um admits "
+            f"{int(spec_stale.source_cell_count)} cells and the stamper's "
+            f"{shell_inner*1e6:.3f} um admits {n_default}; if these are equal this "
+            "test is not discriminating and the comparison above proves nothing")
 
-    # Every cell the source injects on must be dielectric, not conductor.
-    k = int(grid.shape[2]) // 2
-    r = _radius(grid)
-    admitted = (r >= float(port.pin_radius)) & (r <= shell_inner)
-    assert not (admitted & cells[:, :, k]).any(), (
-        "the source injects on a cell the stamper realized as conductor")
+    masks = dict(zip(("ex", "ey", "ez"), realized_pec_edge_masks(cells)))
+    for source in spec.electric_sources:
+        assert not masks[source.component][source.i, source.j, source.k], (
+            "the source injects on an edge the stamper realized as conductor")
 
 
 class _Captured(Exception):

@@ -431,6 +431,10 @@ def step_subgrid_3d(
     pec_mask_c, pec_mask_f : array or None
         Boolean PEC masks for coarse/fine grids.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    for mats in (mats_c, mats_f):
+        if mats is not None:
+            require_radius_update(mats, lane="subgridded reference step", unsupported=True)
     dt = config.dt
 
     # === Step 1: H update (Faraday) on both grids ===

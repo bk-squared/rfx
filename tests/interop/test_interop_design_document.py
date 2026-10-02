@@ -1555,7 +1555,9 @@ def test_schema_entry_fields_match_the_emitter_registry(
     registry = getattr(_design, registry_name)
     node = _schema_at(published_schema, path)
 
-    assert set(node["required"]) == set(registry), (
+    # Radius is opt-in: old wire-port documents have no radius key.
+    optional = {"radius"} if path == "excitations.lumped_ports" else set()
+    assert set(node["required"]) == set(registry) - optional, (
         f"{path}: schema required={sorted(node['required'])} but the emitter "
         f"records {sorted(registry)}"
     )

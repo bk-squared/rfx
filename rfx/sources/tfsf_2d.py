@@ -49,7 +49,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
-from rfx.core.yee import EPS_0, MU_0
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
 
 
 # ---------------------------------------------------------------------------
@@ -402,9 +402,10 @@ def _apply_cpml_e(cfg, st, dhy_dx, ez, coeff_e):
 
 def _update_h_tmz(cfg, st, dx, dt):
     """TMz H update: Hx -= (dt/mu0)*dEz/dy,  Hy += (dt/mu0)*dEz/dx."""
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     ez = st.ez_2d
     hx, hy = st.hx_2d, st.hy_2d
-    coeff_h = dt / MU_0
+    coeff_h = dt / mu_abs
 
     # dEz/dy -- Bloch field-transform (#404): plain roll + exp(-j k_y dx) on the
     # forward neighbour. k_y=0 (normal) -> pshift=1 -> ordinary periodic diff.
@@ -474,10 +475,11 @@ def _update_e_tmz(cfg, st, dx, dt, t):
 
 def _update_h_tez(cfg, st, dx, dt):
     """TEz H update: Hx += (dt/mu0)*dEy/dz,  Hz -= (dt/mu0)*dEy/dx."""
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     ey = st.ez_2d   # Ey stored in ez_2d slot
     hx = st.hx_2d   # Hx
     hz = st.hy_2d   # Hz stored in hy_2d slot
-    coeff_h = dt / MU_0
+    coeff_h = dt / mu_abs
 
     # dEy/dz -- Bloch field-transform (#404): plain roll + exp(-j k_z dz) on the
     # forward neighbour (transverse axis is z here; k_z=0 -> plain periodic diff).
@@ -747,7 +749,8 @@ def apply_tfsf_2d_h(state, cfg: TFSF2DConfig, tfsf_st: TFSF2DState,
     H_mag[x_lo-1, ...] -= curl_sign * coeff * E_aux[x_lo, ...]
     H_mag[x_hi, ...]   += curl_sign * coeff * E_aux[x_hi+1, ...]
     """
-    coeff = dt / (MU_0 * dx)
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+    coeff = dt / (mu_abs * dx)
     i0 = cfg.i0_x
     h_ref = getattr(state, cfg.magnetic_component)
     ny_3d = h_ref.shape[1]

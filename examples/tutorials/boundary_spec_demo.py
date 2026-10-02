@@ -34,8 +34,9 @@ conductor there is exactly one of three things, and the declaration says which:
     zeroed.  A drawn slab therefore realizes walls on BOTH of its faces with
     the interior shorted, and realized thickness = drawn thickness.  This is
     the declaration for a plate, an iris, a post, a machined cavity wall.
-  * a **wire** — ``PolylineWire`` thinner than half a cell — the E edges of a
-    lattice path.
+  * a **wire** — a legacy ``PolylineWire(radius=0)`` — the E edges of a
+    lattice path. A positive PEC radius must be resolved as a volume
+    (radius at least half the smallest local cell); subcell radii refuse.
 
 The two worked contrasts, on the same 1 mm mesh:
 

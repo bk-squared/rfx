@@ -555,6 +555,7 @@ _LUMPED_PORT_FIELDS: dict[str, _F] = {
     "impedance": _NUM,
     "waveform": _opt(_WAVEFORM),
     "extent": _opt(_NUM),
+    "radius": _opt(_NUM),
     "excite": _BOOL,
     "direction": _opt(_STR),
     "reference_plane_cells": _opt(_INT),
@@ -797,10 +798,12 @@ def _dump_entry(
 
 
 def _load_entry(
-    payload: Any, fields: dict[str, _F], *, what: str
+    payload: Any, fields: dict[str, _F], *, what: str, defaults=None
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise _refuse(f"{what} must be a mapping, got {type(payload).__name__}")
+    if defaults:
+        payload = {**defaults, **payload}
     _require_exact_keys(payload, set(fields), what=what)
     return {
         name: field.load(payload[name], f"{what}.{name}")
@@ -1114,6 +1117,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
 
 _SOFT_SOURCE_PINNED_DEFAULTS: dict[str, Any] = {
     "extent": None,
+    "radius": None,
     "excite": True,
     "direction": None,
     "reference_plane_cells": None,
@@ -1178,6 +1182,7 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
                 {
                     name: field.dump(getattr(entry, name), f"{what}.{name}")
                     for name, field in _LUMPED_PORT_FIELDS.items()
+                    if name != "radius" or entry.radius is not None
                 }
             )
     return soft, lumped
@@ -1906,6 +1911,7 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _LUMPED_PORT_FIELDS,
             what=f"excitations.lumped_ports[{index}]",
+            defaults={"radius": None},
         )
         values["terminates"] = _termination_inputs(sim, values["terminates"])
         sim.add_port(

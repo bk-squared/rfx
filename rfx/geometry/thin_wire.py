@@ -9,6 +9,8 @@ Reference: Holland & Simpson, IEEE TEMC 23(2), 88-97, 1981.
 
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 from typing import NamedTuple
 
 import numpy as np
@@ -71,14 +73,14 @@ def compute_thin_wire_correction(
 
     # Wire position in transverse plane (grid indices)
     trans_axes = [i for i in range(3) if i != axis]
-    t0_idx = int(round(s[trans_axes[0]] / dx)) + int(pad[trans_axes[0]])
-    t1_idx = int(round(s[trans_axes[1]] / dx)) + int(pad[trans_axes[1]])
+    t0_idx = nearest_uniform_index(s[trans_axes[0]] / dx) + int(pad[trans_axes[0]])
+    t1_idx = nearest_uniform_index(s[trans_axes[1]] / dx) + int(pad[trans_axes[1]])
 
     # Wire extent along its axis
     lo = min(s[axis], e[axis])
     hi = max(s[axis], e[axis])
-    lo_idx = int(round(lo / dx)) + int(pad[axis])
-    hi_idx = int(round(hi / dx)) + int(pad[axis])
+    lo_idx = nearest_uniform_index(lo / dx) + int(pad[axis])
+    hi_idx = nearest_uniform_index(hi / dx) + int(pad[axis])
     if getattr(grid, 'periodic_axes', ''):
         start_idx, end_idx = grid.interval_to_indices(tuple(s), tuple(e))
         t0_idx, t1_idx = (start_idx[t] for t in trans_axes)

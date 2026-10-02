@@ -23,6 +23,8 @@ from types import SimpleNamespace
 
 from typing import NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -37,7 +39,7 @@ from rfx.boundaries.pec import (
     apply_pec_occupancy,
     realized_pec_edge_masks,
 )
-from rfx.core.jax_utils import is_tracer
+from rfx.core.jax_utils import is_tracer, recorded_scan
 from rfx._grid_metric import (
     DECLARED_SPAN_TOL_M,
     axis_name as _axis_name,
@@ -1193,8 +1195,7 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
     Each axis resolves through ``_axis_position_to_index``: the node
     ``index_of`` names, clamped into the interior. On a constant axis, for a
     coordinate inside the interior that is not a tie, that is the uniform
-    ``Grid``'s ``round(pos/cell) + pad_{axis}_lo``. At a tie this takes the
-    lower node and the uniform grid the even one, until #1342. Outside the
+    ``Grid`` lookup. Both lanes take the lower node within the tie band. Outside the
     interior this clamps to the end node, while the uniform grid returns a
     pad index or refuses.
     """
@@ -2507,7 +2508,14 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(
+        materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
+        unsupported=(debye is not None or lorentz is not None
+                     or aniso_eps is not None or design_box is not None))
     sources = sources or []
+    if _realized.ACTIVE is not None:
+        _realized.sources(grid, materials, sources, "graded.sources")
     probes = probes or []
     wire_ports = wire_ports or []
     dft_planes = dft_planes or []
@@ -3403,7 +3411,7 @@ def run_nonuniform(
             )
         warmup_steps = jnp.arange(n_warmup, dtype=jnp.int32)
         warmup_xs = (warmup_steps, src_waveforms[:n_warmup])
-        warmup_final, warmup_ys = jax.lax.scan(step_fn, carry_init, warmup_xs)
+        warmup_final, warmup_ys = recorded_scan(step_fn, carry_init, warmup_xs)
         carry_init = jax.tree_util.tree_map(
             jax.lax.stop_gradient, warmup_final
         )
@@ -3451,14 +3459,14 @@ def run_nonuniform(
             return jax.lax.scan(step_fn, carry, segment_xs)
 
         seg_body = jax.checkpoint(segment_body)
-        final, segment_ys = jax.lax.scan(
+        final, segment_ys = recorded_scan(
             seg_body, carry_init, (seg_steps, seg_src)
         )
         flat = segment_ys.reshape((n_segments * chunk,) + segment_ys.shape[2:])
         opt_ys = flat[:n_steps_opt]
     else:
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
-        final, opt_ys = jax.lax.scan(body, carry_init, xs)
+        final, opt_ys = recorded_scan(body, carry_init, xs)
     # Merge warmup + optimize outputs back into one time_series so the
     # downstream result shape stays (n_steps, n_probes).
     if warmup_ys is not None:

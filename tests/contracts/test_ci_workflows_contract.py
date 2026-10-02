@@ -20,12 +20,14 @@ from __future__ import annotations
 import importlib.util
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 import yaml
+from packaging.requirements import Requirement
 
 REPO = Path(__file__).resolve().parents[2]
 WORKFLOW_DIR = REPO / ".github" / "workflows"
@@ -47,7 +49,7 @@ HEAVY_JOBS = ("guards-and-preflight", "fast-suite")
 
 
 def workflow_files() -> list[Path]:
-    return sorted(WORKFLOW_DIR.glob("*.yml"))
+    return sorted([*WORKFLOW_DIR.glob("*.yml"), *WORKFLOW_DIR.glob("*.yaml")])
 
 
 def load(path: Path) -> dict:
@@ -156,10 +158,77 @@ def test_the_required_job_names_still_exist() -> None:
 def test_the_fast_suite_still_reports_six_groups_under_the_protected_names() -> None:
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
     assert fast["strategy"]["matrix"]["group"] == [1, 2, 3, 4, 5, 6]
-    # The 3.10 entry must render as `fast-suite (<group>)`; a plain matrix over
-    # two python versions would render `fast-suite (3.10, 1)` and unreport every
-    # required context.
-    assert "format('fast-suite ({0})', matrix.group)" in fast["name"]
+    assert fast["name"] == "fast-suite (${{ matrix.group }})"
+
+
+def test_the_fast_suite_uses_only_python_311_on_both_events() -> None:
+    matrix = load(PR_TESTS)["jobs"]["fast-suite"]["strategy"]["matrix"]
+    assert matrix == {"python-version": ["3.11"], "group": [1, 2, 3, 4, 5, 6]}
+
+
+@pytest.mark.parametrize("path", workflow_files(), ids=lambda p: p.name)
+def test_enabled_workflow_python_versions_exclude_310(path: Path) -> None:
+    def check(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "python-version":
+                    assert not re.search(r"(?<![0-9])3[.]10(?![0-9])", str(value)), (
+                        f"{path.name}: unsupported python-version {value!r} (#1429)"
+                    )
+                check(value)
+        elif isinstance(node, list):
+            for value in node:
+                check(value)
+    check(load(path))
+
+
+JAX_PINS = {"jax": "==0.10.2", "jaxlib": "==0.10.2"}
+
+
+@pytest.mark.parametrize(
+    ("workflow", "job_name", "python_version", "extras", "expected_pins"),
+    [
+        ("pr-tests.yml", "fast-suite", "3.11", "dev,cad", JAX_PINS),
+        ("pr-tests.yml", "guards-and-preflight", "3.11", "dev", JAX_PINS),
+        ("validation.yml", "slow-tests", "3.11", "dev", JAX_PINS),
+        ("regen-durations.yml", "fast", "3.11", "dev,cad", JAX_PINS),
+        ("regen-durations.yml", "slow", "3.11", "dev", JAX_PINS),
+    ],
+    ids=["required-fast", "guards", "weekly-slow", "durations-fast", "durations-slow"],
+)
+def test_cpu_suite_python_and_jax_pins(
+    workflow: str, job_name: str, python_version: str, extras: str, expected_pins: dict,
+) -> None:
+    """Pins must constrain the actual package install, including both JAX wheels.
+
+    Both pins must be unconditional arguments to the package install: a pin
+    only in a comment or a version-print step cannot satisfy this.
+    """
+    steps = load(WORKFLOW_DIR / workflow)["jobs"][job_name]["steps"]
+    versions = [
+        step.get("with", {}).get("python-version") for step in steps
+        if str(step.get("uses", "")).startswith("actions/setup-python@")
+    ]
+    assert versions == [
+        "${{ matrix.python-version }}" if job_name == "fast-suite" else python_version
+    ]
+    installs = [step["run"] for step in steps if "pip install" in step.get("run", "")]
+    assert len(installs) == 1, installs
+    args = shlex.split(installs[0], comments=True)
+    assert args[:4] == ["pip", "install", "-e", f".[{extras}]"], installs[0]
+    requirements = [Requirement(arg) for arg in args[4:]]
+    assert all(requirement.marker is None for requirement in requirements), installs[0]
+    assert len(requirements) == len(expected_pins), installs[0]
+    assert {r.name: str(r.specifier) for r in requirements} == expected_pins, installs[0]
+
+
+def test_fast_suite_records_the_resolved_versions() -> None:
+    steps = load(PR_TESTS)["jobs"]["fast-suite"]["steps"]
+    records = [s for s in steps if s.get("name", "").startswith("Record the resolved JAX/numpy versions")]
+    assert len(records) == 1
+    assert records[0].get("if") == WORK_IF
+    for package in ("jax", "jaxlib", "numpy"):
+        assert f"{package}.__version__" in records[0]["run"]
 
 
 def test_the_changes_job_exists_and_publishes_the_verdict() -> None:

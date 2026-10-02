@@ -10,10 +10,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-try:
-    from jax import enable_x64
-except ImportError:
-    from jax.experimental import enable_x64
+from jax import enable_x64
 
 from rfx.grid import Grid
 from rfx.nonuniform import make_nonuniform_grid
