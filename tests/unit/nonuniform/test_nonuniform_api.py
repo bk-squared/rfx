@@ -635,7 +635,7 @@ class TestFluxMonitorOnNonUniform:
         flux = np.asarray(flux_spectrum(mon))
         assert np.all(np.isfinite(flux))
 
-    def test_finite_region_flux_monitor_z_normal_on_dy_graded_mesh_matches_full_plane_window(self):
+    def test_finite_region_flux_monitor_z_normal_on_dy_graded_mesh_matches_full_plane_window(self, record_property):
         """Value-asserting replacement for the removed raises-test.
 
         It replaces ``test_finite_region_flux_monitor_on_nu_run_raises``,
@@ -696,13 +696,19 @@ class TestFluxMonitorOnNonUniform:
             n_x = mon_fin.hi1 - mon_fin.lo1
             n_y = mon_fin.hi2 - mon_fin.lo2
 
-            # (a) the face-area weights are the realized graded cell widths of
-            #     the selected window, in the (x, y) order a z-normal plane
-            #     needs. Recomputed here from the grid, not from mon.dA.
+            # (a) Ex*Hy is edge-centered in x and nodal in y; Ey*Hx is
+            # edge-centered in y and nodal in x. Nodal control volumes run
+            # between adjacent cell centers, so the two areas differ on a
+            # graded mesh. This is quadrature bookkeeping, not a mode oracle.
             dx_arr = np.asarray(grid.dx_arr)
             dy_arr = np.asarray(grid.dy_arr)
+            dual_x = np.r_[dx_arr[0], .5 * (dx_arr[:-1] + dx_arr[1:])]
+            dual_y = np.r_[dy_arr[0], .5 * (dy_arr[:-1] + dy_arr[1:])]
             exp_dA = float(np.sum(np.outer(dx_arr[mon_fin.lo1:mon_fin.hi1],
-                                           dy_arr[mon_fin.lo2:mon_fin.hi2])))
+                                           dual_y[mon_fin.lo2:mon_fin.hi2])))
+            exp_dA2 = np.outer(dual_x[mon_fin.lo1:mon_fin.hi1],
+                               dy_arr[mon_fin.lo2:mon_fin.hi2])
+            np.testing.assert_allclose(mon_fin.dA2, exp_dA2, rtol=1e-6, atol=0)
             got_dA = float(np.sum(np.asarray(mon_fin.dA)))
             rel_dA = abs(got_dA - exp_dA) / max(exp_dA, 1e-300)
             print(f"\n[z-normal dA] window=({mon_fin.lo1}:{mon_fin.hi1},"
@@ -733,9 +739,24 @@ class TestFluxMonitorOnNonUniform:
             dA_full = np.asarray(mon_full.dA)
             w1 = slice(mon_fin.lo1, mon_fin.hi1)
             w2 = slice(mon_fin.lo2, mon_fin.hi2)
-            ref = np.real(np.sum(integrand[:, w1, w2] * dA_full[w1, w2][None],
-                                 axis=(-2, -1)))
+            old_ref = np.real(np.sum(integrand[:, w1, w2] * dA_full[w1, w2][None],
+                                     axis=(-2, -1)))
+            dA2_full = np.asarray(mon_full.dA2)
+            # Restrict each Yee product with its own control-volume area.
+            # A shared dA incorrectly weights Ey*Hx by the nodal-y width.
+            ref = np.real(np.sum(
+                (e1 * np.conj(h2))[:, w1, w2] * dA_full[w1, w2][None]
+                - (e2 * np.conj(h1))[:, w1, w2] * dA2_full[w1, w2][None],
+                axis=(-2, -1)))
+            for name in ("e1_dft", "e2_dft", "h1_dft", "h2_dft"):
+                np.testing.assert_array_equal(getattr(mon_fin, name),
+                                              np.asarray(getattr(mon_full, name))[:, w1, w2])
+            np.testing.assert_array_equal(mon_fin.dA, dA_full[w1, w2])
+            np.testing.assert_array_equal(mon_fin.dA2, dA2_full[w1, w2])
+            record_property("old_shared_area_flux", old_ref.tolist())
+            record_property("restricted_two_area_flux", ref.tolist())
             fin = np.asarray(flux_spectrum(mon_fin))
+            record_property("finite_flux", fin.tolist())
             scale = max(np.max(np.abs(fin)), np.max(np.abs(ref)), 1e-300)
             reldev = float(np.max(np.abs(fin - ref) / scale))
             print(f"[z-normal window] max reldev={reldev:.3e} "

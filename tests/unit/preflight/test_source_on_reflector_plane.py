@@ -199,26 +199,18 @@ def test_message_states_the_lane_split():
     ("z_hi", (0.01, CY, DOMAIN[2]), "ey"),
 ])
 def test_tangential_e_on_magnetic_plane_reports_coupling(face, position, component):
-    """The advisory distinguishes propagation on the plane from into the volume."""
+    """The image couples the wall's own tangential E nodes to the interior."""
     sim = _sim(BoundarySpec.uniform("pmc"), position, component)
     msg = _issue(sim, "source_decoupled")
     assert f"at {position} m (component={component})" in msg
     assert f"sits on the magnetic-wall plane {face}" in msg
-    assert "On a single-device Yee run the wall is solved half a cell inside this face" in msg
-    assert "E nodes on the plane form a sheet coupled only to itself" in msg
-    assert "a line drawn entirely in the plane (a one-cell-wide model) carries its wave" in msg
-    assert "nothing launched here reaches the volume off the plane" in msg
-    assert "including the half of a line that the plane cuts along its centre" in msg
-    assert (
-        "The distributed lanes do not realise a magnetic wall: with no absorbing "
-        "face the plane is shorted, and with absorbing faces the cells next to "
-        "it absorb, so a source one cell off reaches the volume 65–75 dB low; "
-        "use a single-device run."
-    ) in msg
-    assert "To radiate into the volume, place the source one cell (1mm) off the plane" in msg
-    assert "no wave radiates" not in msg
-    assert "silent zero field" not in msg
-    assert "#1221" not in msg
+    assert "single-device Yee magnetic image keeps tangential E" in msg
+    assert "on the declared face coupled to the interior" in msg
+    assert "Face sources and lumped/wire ports describe the full symmetric object" in msg
+    assert "Distributed kernels refuse magnetic faces" in msg
+    assert "Waveguide ports refuse them" in msg
+    assert "half a cell inside" not in msg
+    assert "one cell (1mm) off the plane" not in msg
 
 
 def test_adi_tangential_e_on_magnetic_plane_reports_electric_wall():
@@ -261,20 +253,30 @@ def test_source_one_fine_cell_inside_graded_magnetic_face_is_silent(axis, side):
     """A source 0.25 mm inside a fine face is in the volume, not on the face."""
     sim = _graded_magnetic_face_sim(axis, side, on_plane=False)
     assert "source_decoupled" not in _codes(sim)
+    profile = getattr(sim, f"_d{axis}_profile")
+    face_cell = profile[0 if side == "lo" else -1]
+    plane = 0.0 if side == "lo" else sim._domain["xyz".index(axis)]
+    offset = abs(sim._ports[0].position["xyz".index(axis)] - plane)
+    assert offset == pytest.approx(face_cell)
+    assert face_cell == pytest.approx(.25e-3)
+    # A stale nominal/coarse 1 mm tolerance would report this 0.25 mm
+    # offset as on-face. Silence above pins the actual fine face cell.
+
 
 
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 @pytest.mark.parametrize("side", ["lo", "hi"])
-def test_source_on_graded_magnetic_face_quotes_adjacent_cell(axis, side):
-    """The fine-face source remedy is 0.25 mm on every graded axis and side."""
+def test_source_on_graded_magnetic_face_reports_node_coupling(axis, side):
+    """Grading does not move the image plane away from the declared E node."""
     sim = _graded_magnetic_face_sim(axis, side, on_plane=True)
     msg = _issue(sim, "source_decoupled")
     assert f"sits on the magnetic-wall plane {axis}_{side}" in msg
-    assert "one cell (250µm) off the plane" in msg
+    assert "on the declared face coupled to the interior" in msg
+    assert "off the plane" not in msg
 
 
 def test_source_one_cell_inside_magnetic_plane_is_silent():
-    """The volume-launch remedy clears the source-placement advisory."""
+    """An interior source needs no face-symmetry advisory."""
     sim = _sim(BoundarySpec.uniform("pmc"), (DX, CY, CZ), "ez")
     assert "source_decoupled" not in _codes(sim)
 

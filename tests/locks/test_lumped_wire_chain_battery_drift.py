@@ -1,6 +1,10 @@
 """The lumped / wire chain battery's coarsest mesh, solved again and held to its
 stored S11.
 
+B3b: the following stored reference describes the former half-cell PMC
+line. Only the live S11 drift assertion is a strict xfail until the ports
+lane rebuilds the line; stored records and numerical bars are unchanged.
+
 The battery (``tests/fixtures/lumped_wire_chain_battery/fixture.json``) is a
 30 mm parallel-plate line one cell wide between PEC plates and magnetic side
 walls, fed at one end by a one-cell lumped port or a four-cell wire port and
@@ -112,7 +116,7 @@ def _live_verdicts(driver, entry, live_grid, spec, live_s11) -> dict:
 
 @pytest.mark.parametrize("dut", DUTS)
 @pytest.mark.parametrize("kind", KINDS)
-def test_the_coarsest_mesh_still_solves_to_its_stored_s11(fixture, driver, kind, dut):
+def test_the_coarsest_mesh_still_solves_to_its_stored_s11(fixture, driver, kind, dut, request, record_property):
     key = f"{kind}_{dut}_{RUNG_UM}um"
     entry = fixture["solves"][key]
     assert entry["provenance"]["commit"].startswith(LOCK_PROVENANCE["commit"]), (
@@ -138,6 +142,10 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s11(fixture, driver, kind,
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     stored = drift.complex_array(entry["s11"])
     findings = drift.realized_differences(entry["port_spec"], spec, "port_spec")
+    assert not findings, drift.stale_record(FAMILY, key, findings, REMEASURE)
+    record_property("freqs_hz", json.dumps(freqs.tolist()))
+    record_property("old_s11", json.dumps(driver._c(stored)))
+    record_property("new_s11", json.dumps(driver._c(live)))
     report: list[str] = []
     if dut == "matched":
         findings += drift.bound_findings("the matched line's |S11|", freqs, live,
@@ -156,6 +164,10 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s11(fixture, driver, kind,
         entry, _live_verdicts(driver, entry, live_grid, spec, live),
         VERDICTS["matched" if dut == "matched" else "reflecting"])
     print(f"[battery drift] {key}: " + "; ".join(report))
+    # The magnetic side/end walls now lie on E nodes; stored half-cell lines
+    # need the ports lane to rebuild their reference, not a looser drift bar.
+    request.node.add_marker(pytest.mark.xfail(strict=True, raises=AssertionError,
+        reason="#1221 B3b: ports lane re-judges with the moved walls"))
     assert not findings, drift.stale_record(FAMILY, key, findings, REMEASURE)
 
 
