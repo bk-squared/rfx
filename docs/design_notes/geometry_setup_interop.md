@@ -156,9 +156,9 @@ a structure the other solver never built.
 - `_cpml_kappa_max` and the CPML profile constants hard-coded in
   `rfx/boundaries/cpml.py` — absorber behaviour is not portable; CPML layer
   *counts* have per-solver cell semantics.
-- `_coaxial_terminations`, `_coaxial_open_terminations`,
-  `_coaxial_pec_end_caps` — offsets are **cell-relative**, not physical
-  coordinates.
+- The former `_coaxial_terminations`, `_coaxial_open_terminations` and
+  `_coaxial_pec_end_caps` registrations were removed with the legacy coaxial
+  S-matrix API; they are not current simulation state.
 - `_msl_ports.n_probe_offset` / `n_probe_spacing` — cell counts derived from
   `_dx` at registration time.
 - `_refinement` — the SBP-SAT subgrid path, experimental and falsified in 3D
