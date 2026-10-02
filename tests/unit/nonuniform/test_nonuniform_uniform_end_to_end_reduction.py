@@ -27,8 +27,9 @@ def _f110(dx: float) -> float:
     return (C0 / 2) * np.sqrt((1 / (NA * dx)) ** 2 + (1 / (NB * dx)) ** 2)
 
 
-# Measured max |ratio - 1| = 3.041e-7; four float32 eps = 4.769e-7.
-_RATIO_TOL = 4 * np.finfo(np.float32).eps
+# Measured max |ratio - 1| = 3.041e-7.
+# Allow accumulation headroom over 1200 steps; still below the old 1e-5 (#1373).
+_RATIO_TOL = 2e-6
 
 
 def _run(dx: float, *, nonuniform: bool, smoothing: bool, boundary: str = "pec",

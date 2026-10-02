@@ -239,7 +239,7 @@ def test_kind_none_warns_once_per_sim_naming_the_concrete_meaning(
         f"Simulation, got {len(dep)}")
     assert str(dep[0].message) == (
         "add_source(..., amplitude_kind=None) now means 'current' "
-        "(E += Cb*I/dV, I in amperes) on every path. "
+        "(E += Cb*I/dV, I is a current moment in A·m) on every path. "
         "Pass amplitude_kind explicitly to silence this warning."
     )
     # a NEW Simulation warns again (per-sim, not per-process)

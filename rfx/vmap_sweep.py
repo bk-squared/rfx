@@ -762,8 +762,6 @@ def _build_full_scan_fn(
     for pe in sim._ports:
         if pe.impedance == 0.0:
             # amplitude_kind (issue #571) routing:
-            #   None      -> legacy per-boundary routing, bit-identical
-            #               (cpml: dynamic-Cb J-source; else raw make_source)
             #   'field'   -> raw make_source on EVERY boundary (E += w has
             #               no material dependence, so no dynamic path)
             #   'current' -> dynamic-Cb J-source on EVERY boundary, with the
@@ -772,8 +770,7 @@ def _build_full_scan_fn(
             if pe.amplitude_kind == "field":
                 sources.append(make_source(grid, pe.position, pe.component,
                                            pe.waveform, n_steps))
-            elif pe.amplitude_kind == "current" or (
-                    pe.amplitude_kind is None and boundary == "cpml"):
+            elif pe.amplitude_kind == "current":
                 idx = grid.position_to_index(pe.position)
                 j_source_meta.append((idx[0], idx[1], idx[2], pe.component))
             else:
@@ -1072,9 +1069,8 @@ def vmap_material_sweep(
         # field evolution below remains vmapped (#1373).
         from rfx.simulation import make_j_source
         dynamic_sources = [
-            pe for pe in sim._ports if pe.impedance == 0.0 and (
-                pe.amplitude_kind == "current" or (
-                    pe.amplitude_kind is None and sim._boundary == "cpml"))
+            pe for pe in sim._ports
+            if pe.impedance == 0.0 and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
         make_drive = make_j_source if sim._boundary == "cpml" else make_source

@@ -149,10 +149,11 @@ def _apply_pec_2d(ez: jnp.ndarray, ez_pec_mask: jnp.ndarray | None = None) -> jn
 
 
 def adi_current_coefficient(eps_r, sigma, dt):
-    """Full-step current coefficient: twice ADI's half-step Ampere factor.
+    """Full-step current coefficient, admitted only in lossless source cells.
 
     Each E sub-step uses (dt/2)/(epsilon + sigma*dt/4). The soft drive
-    is injected before the split update, so its propagation follows ADI.
+    is injected before the split update. Its lossy amplitude is unverified;
+    the API refuses current declarations in cells with sigma > 0.
     """
     return dt / (EPS_0 * eps_r + sigma * dt / 4.0)
 

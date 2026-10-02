@@ -470,7 +470,7 @@ def run_uniform(
                                            amplitude_kind=pe.amplitude_kind))
             from rfx.api._source_semantics import guard_float16_source_increment
             sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
-                sources[-1].waveform, field_dtype))
+                sources[-1].waveform, field_dtype, pe.amplitude_kind))
             continue
         if pe.extent is not None:
             # Multi-cell wire port

@@ -354,16 +354,21 @@ def test_simulation_adi_cpml_boundary():
     assert not jnp.any(jnp.isnan(result.time_series))
 
 
-def test_simulation_adi_lossy_material():
-    """ADI with lossy material should work (implicit sigma in tridiagonal)."""
+@pytest.mark.parametrize("amplitude_kind", [None, "current", "field"])
+def test_simulation_adi_lossy_material(amplitude_kind):
+    """Lossy ADI stepping works; an unverified current drive is refused (#1373)."""
     sim = Simulation(
         freq_max=10e9, domain=(0.02, 0.02, 0.01),
         boundary="pec", mode="2d_tmz", solver="adi",
     )
     sim.add_material("lossy", eps_r=2.2, sigma=0.1)
     sim.add(Box((0.005, 0.005, 0.0), (0.015, 0.015, 0.01)), material="lossy")
-    sim.add_source((0.01, 0.01, 0.0), "ez")
+    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind=amplitude_kind)
     sim.add_probe((0.01, 0.01, 0.0), "ez")
+    if amplitude_kind != "field":
+        with pytest.raises(ValueError, match="amplitude unverified in a lossy cell on ADI"):
+            sim.run(n_steps=20)
+        return
     result = sim.run(n_steps=20)
     assert not jnp.any(jnp.isnan(result.time_series))
 

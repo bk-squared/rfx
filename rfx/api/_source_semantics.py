@@ -3,10 +3,10 @@
 Two named, boundary- and mesh-INDEPENDENT amplitude kinds:
 
 ``'current'``
-    The waveform is a current I(t) in amperes; realized as
+    The waveform is a current moment I(t) in A·m; realized as
     ``E += Cb * I / dV`` on every path and boundary
-    (Yee: ``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``; ADI: twice its
-    half-step Ampere coefficient, ``dt/(eps + sigma*dt/4)``;
+    (Yee: ``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))``; ADI: ``dt/eps``
+    in lossless source cells; lossy current drives are refused;
     ``dV`` = local cell volume). This is the non-uniform path's native convention
     (Meep-style, resolution-independent injected power) and the declaration default.
 
@@ -91,7 +91,7 @@ def validate_amplitude_kind(kind) -> None:
 
 
 def resolve_amplitude_kind(kind) -> str:
-    """Validate a soft-source declaration and resolve its default to amperes."""
+    """Validate a soft-source declaration and resolve its default to current moments."""
     validate_amplitude_kind(kind)
     return "current" if kind is None else kind
 
@@ -149,14 +149,14 @@ def source_amplitude_scale(kind, native, *, cb, dV):
 
 def legacy_kind_description(is_nonuniform: bool, boundary: str) -> str:
     """Description of the declaration default, independent of mesh/boundary."""
-    return "'current' (E += Cb*I/dV, I in amperes) on every path"
+    return "'current' (E += Cb*I/dV, I is a current moment in A·m) on every path"
 
 
-def guard_float16_source_increment(waveform, field_dtype):
+def guard_float16_source_increment(waveform, field_dtype, amplitude_kind=None):
     """Refuse an oversized, fully scaled soft-source increment before stepping.
 
     ``waveform`` already includes the native drive coefficient and kind scaling.
-    A traced build uses an ordered host check whose returned token is a data
+    A traced build uses a host check whose returned token is a data
     dependency of the source samples, so stepping cannot precede the check.
     """
     import numpy as np
@@ -174,14 +174,15 @@ def guard_float16_source_increment(waveform, field_dtype):
         if not np.isfinite(peak) or peak > limit:
             raise ValueError(
                 f"float16 soft-source one-step increment {peak:g} exceeds "
-                f"float16.max/16 ({limit:g}); scale the waveform or declare "
-                "amplitude_kind='field'.")
+                f"float16.max/16 ({limit:g}); scale the waveform"
+                + ("." if amplitude_kind == "field" else
+                   " or declare amplitude_kind='field'."))
         return np.int32(0)
 
     if isinstance(waveform, jax.core.Tracer):
         from jax.experimental import io_callback
         token = io_callback(check, jax.ShapeDtypeStruct((), jnp.int32),
-                            jax.lax.stop_gradient(waveform), ordered=True)
+                            jax.lax.stop_gradient(waveform), ordered=False)
         return waveform + token.astype(waveform.dtype)
     check(waveform)
     return waveform

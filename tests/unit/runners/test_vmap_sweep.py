@@ -30,7 +30,8 @@ def _make_dielectric_sim(eps_r: float = 4.0, amplitude_kind=None):
     return sim
 
 
-def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False, amplitude_kind=None):
+def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False,
+                   amplitude_kind=None, boundary="cpml"):
     """Create a CPML-bounded sim with a dielectric slab and probe.
 
     ``thin_conductor`` adds a NON-PEC lossy conductor spanning the full x
@@ -58,7 +59,7 @@ def _make_cpml_sim(eps_r: float = 4.0, thin_conductor: bool = False, amplitude_k
     sim = Simulation(
         freq_max=5e9,
         domain=(0.02, 0.02, 0.02),
-        boundary="cpml",
+        boundary=boundary,
         cpml_layers=6,
         dx=0.002,
     )
@@ -317,4 +318,26 @@ def test_explicit_current_sweep_is_bit_identical_to_run(build, monkeypatch):
         reference = build(eps_r=float(eps), amplitude_kind="current").run(n_steps=200)
         assert np.asarray(reference.time_series).dtype == np.float32
         assert np.max(np.abs(reference.time_series)) > 0
+        npt.assert_array_equal(result.time_series[idx], reference.time_series)
+
+
+def test_explicit_current_upml_sweep_fallback_is_bit_identical_to_run(monkeypatch):
+    from rfx import vmap_sweep
+
+    original = vmap_sweep._sequential_fallback
+    calls = []
+
+    def record_fallback(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(vmap_sweep, "_sequential_fallback", record_fallback)
+    values = np.array([2., 6.])
+    result = vmap_material_sweep(
+        _make_cpml_sim(amplitude_kind="current", boundary="upml"),
+        "substrate.eps_r", values, n_steps=200)
+    assert calls == [True]
+    for idx, eps in enumerate(values):
+        reference = _make_cpml_sim(eps_r=float(eps), amplitude_kind="current",
+                                   boundary="upml").run(n_steps=200)
         npt.assert_array_equal(result.time_series[idx], reference.time_series)

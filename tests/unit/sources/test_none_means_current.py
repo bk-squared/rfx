@@ -83,3 +83,35 @@ def test_adi_current_agrees_with_yee_as_dt_decreases(mode):
     # Yee injects after E. The time-stagger/splitting residual shrinks with dt.
     assert residuals[-1] < .005, residuals
     assert residuals[-1] < .6 * residuals[0], residuals
+
+
+@pytest.mark.parametrize("mode", ["3d", "2d_tmz"])
+@pytest.mark.parametrize("kind", [None, "current"])
+@pytest.mark.parametrize("sigma", [5., 50.])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_adi_refuses_current_in_lossy_source_cell(mode, kind, sigma, entry):
+    from rfx import Box
+
+    sim = Simulation(freq_max=1e10, domain=(.01, .01, .01 if mode == "3d" else .001),
+                     dx=.001, boundary="pec", mode=mode, solver="adi")
+    sim.add_material("loss", eps_r=4., sigma=sigma)
+    sim.add(Box((.003, .003, 0.), (.008, .008, .009)), material="loss")
+    sim.add_source((.005, .005, .005 if mode == "3d" else 0.),
+                   amplitude_kind=kind)
+    with pytest.raises(ValueError, match=(
+            "amplitude unverified in a lossy cell on ADI; "
+            "declare it in a lossless cell, or use the Yee solver")):
+        getattr(sim, entry)(n_steps=2, skip_preflight=True)
+
+
+@pytest.mark.parametrize("mode", ["3d", "2d_tmz"])
+@pytest.mark.parametrize("dx", [.001, .002, .003])
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+def test_adi_cell_volume_lookup_bit_identity(mode, dx, boundary):
+    sim = Simulation(freq_max=1e10, domain=(.03, .03, .03 if mode == "3d" else dx),
+                     dx=dx, boundary=boundary, mode=mode, solver="adi")
+    grid = sim._build_grid()
+    old = np.float64(grid.dx**3)
+    for i in (0, grid.shape[0] // 2, grid.shape[0] - 1):
+        new = np.float64(float(grid.cells("x")[i])**3)
+        assert old.tobytes() == new.tobytes()

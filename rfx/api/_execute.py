@@ -1434,9 +1434,13 @@ class _ExecuteMixin:
                 i, j, k = grid.position_to_index(pe.position)
                 waveform = jax.vmap(pe.waveform)(times)
                 if needs_scale(pe.amplitude_kind, "raw"):
+                    if pe.amplitude_kind == "current" and float(sigma_3d[i, j, k]) > 0:
+                        raise ValueError(
+                            "current source amplitude unverified in a lossy cell on ADI; "
+                            "declare it in a lossless cell, or use the Yee solver.")
                     cb = adi_current_coefficient(eps_r_3d[i, j, k], sigma_3d[i, j, k], dt)
                     waveform = waveform * source_amplitude_scale(
-                        pe.amplitude_kind, "raw", cb=cb, dV=grid.dx**3)
+                        pe.amplitude_kind, "raw", cb=cb, dV=float(grid.cells("x")[i])**3)
                 sources_3d.append((i, j, k, pe.component, waveform))
 
             shape = grid.shape
@@ -1497,9 +1501,13 @@ class _ExecuteMixin:
             i, j, _ = grid.position_to_index(pe.position)
             waveform = jax.vmap(pe.waveform)(times)
             if needs_scale(pe.amplitude_kind, "raw"):
+                if pe.amplitude_kind == "current" and float(sigma_2d[i, j]) > 0:
+                    raise ValueError(
+                        "current source amplitude unverified in a lossy cell on ADI; "
+                        "declare it in a lossless cell, or use the Yee solver.")
                 cb = adi_current_coefficient(eps_r_2d[i, j], sigma_2d[i, j], dt)
                 waveform = waveform * source_amplitude_scale(
-                    pe.amplitude_kind, "raw", cb=cb, dV=grid.dx**3)
+                    pe.amplitude_kind, "raw", cb=cb, dV=float(grid.cells("x")[i])**3)
             sources.append((i, j, waveform))
 
         # The 2-D TMz lane carries only Ez, so its realized PEC mask is
@@ -1826,7 +1834,7 @@ class _ExecuteMixin:
                 )
                 from rfx.api._source_semantics import guard_float16_source_increment
                 sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
-                    sources[-1].waveform, self._resolve_field_dtype()))
+                    sources[-1].waveform, self._resolve_field_dtype(), pe.amplitude_kind))
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.

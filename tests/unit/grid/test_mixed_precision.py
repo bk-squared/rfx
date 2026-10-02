@@ -409,3 +409,37 @@ def test_mixed_precision_refuses_oversized_current_before_stepping(boundary, lan
             assert np.isfinite(np.asarray(getattr(result.state, component))).all()
     assert np.isfinite(np.asarray(result.time_series)).all()
     assert np.max(np.abs(result.time_series)) > 0
+
+
+def test_vmap_mixed_forward_field_source():
+    import jax
+    import jax.numpy as jnp
+
+    sim = Simulation(freq_max=5e9, domain=(.02, .02, .02),
+                     boundary="cpml", precision="mixed")
+    sim.add_source((.01, .01, .01), "ez",
+                   waveform=GaussianPulse(f0=5e9, amplitude=1e-3),
+                   amplitude_kind="field")
+    sim.add_probe((.015, .01, .01), "ez")
+    shape = sim._build_grid().shape
+
+    def energy(eps):
+        trace = sim.forward(eps_override=jnp.ones(shape) * eps,
+                            n_steps=60, skip_preflight=True).time_series
+        return jnp.sum(trace.astype(jnp.float32)**2)
+
+    eps = jnp.array([1.5, 2.])
+    got = np.asarray(jax.vmap(energy)(eps))
+    expected = np.asarray([energy(e) for e in eps])
+    print(f"mixed forward vmap energies={got}, max difference={np.max(np.abs(got - expected))}")
+    assert np.isfinite(got).all()
+    assert (got > 0).all()
+    np.testing.assert_array_equal(got, expected)
+
+
+def test_oversized_field_remedy_only_suggests_scaling():
+    from rfx.api._source_semantics import guard_float16_source_increment
+
+    with pytest.raises(ValueError, match="scale the waveform") as caught:
+        guard_float16_source_increment(np.array([5000.]), np.float16, "field")
+    assert "declare" not in str(caught.value)

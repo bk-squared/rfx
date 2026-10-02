@@ -1077,10 +1077,10 @@ class Simulation(
             What the waveform amplitude MEANS — issue #571. Boundary- and
             mesh-independent once explicit:
 
-            - ``'current'``: the amplitude is a current I(t) in amperes,
+            - ``'current'``: the amplitude is a current moment I(t) in A·m,
               realized as ``E += Cb * I / dV`` on every path and boundary
               (Yee ``Cb = (dt/eps)/(1 + sigma*dt/(2*eps))``; ADI uses
-              ``dt/(eps + sigma*dt/4)`` at the source cell,
+              ``dt/eps`` in lossless source cells and refuses lossy current drives,
               ``dV`` = local cell volume). Resolution-independent injected
               power; Meep's convention; the declaration default.
             - ``'field'``: the amplitude is a raw E-field increment per
@@ -1096,7 +1096,8 @@ class Simulation(
             ``(d[k-1]+d[k])/2`` on the two transverse axes (issue #672);
             the two coincide on a uniform profile.
 
-            ``None`` means ``'current'`` on every path and emits one
+            ``None`` means ``'current'`` (E += Cb*I/dV, I is a current moment in A·m)
+            on every path and emits one
             :class:`DeprecationWarning` per Simulation. Pass the kind
             explicitly to silence it.
 
