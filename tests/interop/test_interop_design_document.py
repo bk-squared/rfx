@@ -1,7 +1,8 @@
 """Contract tests for the ``rfx-design-ir/v2`` design document.
 
-These tests are pure: they build ``Simulation`` objects with the real public
-API, serialise them, rebuild them, and compare builder state.  No FDTD runs.
+These tests build ``Simulation`` objects with the real public API, serialise
+them, rebuild them, and compare builder state. The current-drive meaning
+witness also compares probe traces after reconstruction.
 
 The load-bearing test is :func:`test_round_trip_is_structurally_identical`,
 which compares the rebuilt simulation to the original **attribute by
@@ -487,7 +488,9 @@ def _canonical(value):
 
 def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None:
     """Diff two simulations attribute by attribute over the census inventory."""
-    assert set(vars(original)) == set(vars(rebuilt)), (
+    # #1373: canonical current declarations do not replay a None warning.
+    diagnostic_attrs = {"_amplitude_kind_warned"}
+    assert set(vars(original)) - diagnostic_attrs == set(vars(rebuilt)) - diagnostic_attrs, (
         "the rebuilt simulation carries a different attribute set: "
         f"only in original={sorted(set(vars(original)) - set(vars(rebuilt)))}, "
         f"only in rebuilt={sorted(set(vars(rebuilt)) - set(vars(original)))}"
@@ -507,7 +510,7 @@ def assert_designs_equivalent(original: Simulation, rebuilt: Simulation) -> None
     # registration lengths follow the same rule: the rebuilt port's are
     # re-derived by add_msl_port from the rebuilt geometry.
     skip_attrs = {"_msl_auto_offset_min", "_msl_auto_probe_spacing",
-                  "_msl_auto_probe_lengths", "_msl_ports"}
+                  "_msl_auto_probe_lengths", "_msl_ports"} | diagnostic_attrs
     for name in sorted(set(vars(original)) - skip_attrs):
         left = _canonical(getattr(original, name))
         right = _canonical(getattr(rebuilt, name))
@@ -1344,6 +1347,26 @@ def test_round_trip_preserves_soft_source_amplitude_kind():
     assert document["excitations"]["soft_sources"][0]["amplitude_kind"] == "current"
     restored = simulation_from_design(document)
     assert restored._ports[0].amplitude_kind == "current"
+
+
+@pytest.mark.parametrize("kind", [None, "current"])
+def test_document_soft_source_preserves_current_meaning(kind):
+    sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.01), dx=1e-3, boundary="pec")
+    sim.add_source((0.005, 0.005, 0.005), "ez",
+                   waveform=GaussianPulse(f0=5e9), amplitude_kind="current")
+    sim.add_probe((0.006, 0.005, 0.005), "ez")
+    document = design_to_dict(sim)
+    document["excitations"]["soft_sources"][0]["amplitude_kind"] = kind
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", DeprecationWarning)
+        restored = simulation_from_design(document)
+    assert len(caught) == (1 if kind is None else 0)
+    assert document["excitations"]["soft_sources"][0]["amplitude_kind"] is kind
+    assert restored._ports[0].amplitude_kind == "current"
+    expected = sim.run(n_steps=100, compute_s_params=False, skip_preflight=True)
+    actual = restored.run(n_steps=100, compute_s_params=False, skip_preflight=True)
+    assert np.max(np.abs(expected.time_series)) > 0
+    np.testing.assert_array_equal(actual.time_series, expected.time_series)
 
 
 def test_refuses_lumped_port_carrying_amplitude_kind():
