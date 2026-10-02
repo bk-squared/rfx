@@ -449,8 +449,27 @@ class SolvedSheetSpan(NamedTuple):
         return lo, hi
 
 
+def sheet_continuation_masks(entries, periodic, shape):
+    """Sheet nodes and volume edges from the reports' realized PEC entries.
+
+    Volume continuation occupies the segment leaving the sheet end, not
+    merely the next node: a one-cell vacuum gap must remain a free end.
+    """
+    union = None
+    volume_edges = None
+    for entry in entries:
+        if entry.sheet is not None:
+            fp = np.asarray(entry.sheet.footprint, dtype=bool)
+            union = fp.copy() if union is None else union | fp
+        elif entry.kind == "volume":
+            edges = entry.edges(periodic, shape)
+            volume_edges = (tuple(m.copy() for m in edges) if volume_edges is None
+                            else tuple(a | b for a, b in zip(volume_edges, edges)))
+    return union, volume_edges
+
+
 def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
-                      declared_hi: float, domain_hi: float, *, union=None,
+                      declared_hi: float, domain_hi: float, *, union=None, volume_edges=None,
                       edge_offset: float = EDGE_OFFSET, periodic: bool = False):
     """The solved extent of a PEC sheet along one of its in-plane axes.
 
@@ -463,7 +482,8 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     module docstring). An end that is not a free edge adds nothing: an end drawn at
     or past the domain boundary (a wall, or a continuation into the absorber
     pad), and an end whose whole row continues into other sheet metal in
-    ``union`` (a seam inside one conductor).
+    ``union`` (a seam inside one conductor), or into realized PEC volume
+    edges in ``volume_edges``.
 
     ``footprint`` is the sheet's node mask restricted to the domain interior
     (``interior_lattice_mask``), ``nodes`` the axis node coordinates in domain
@@ -488,13 +508,17 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     i0, i1 = int(idx[0]), int(idx[-1])
 
     def _continues(i_end, i_next):
-        if union is None:
-            return False
+        edge_index = min(i_end, i_next)
         if periodic:
             i_end, i_next = i_end % fp.shape[axis], i_next % fp.shape[axis]
+            edge_index %= fp.shape[axis]
         end = np.take(fp, i_end, axis=axis)
-        return bool(end.any()) and bool(
-            np.take(np.asarray(union, dtype=bool), i_next, axis=axis)[end].all())
+        continuation = np.zeros_like(end)
+        if union is not None:
+            continuation |= np.take(np.asarray(union, dtype=bool), i_next, axis=axis)
+        if volume_edges is not None:
+            continuation |= np.take(volume_edges[axis], edge_index, axis=axis)
+        return bool(end.any()) and bool(continuation[end].all())
 
     free_lo = bool(i0 > 0 and float(declared_lo) > tol
                    and not _continues(i0, i0 - 1))

@@ -418,7 +418,8 @@ def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
     -----
     Preflight behaviour is inherited from the chosen lane and is not uniform
     across the table: ``compute_msl_s_matrix`` and ``compute_mixed_s_matrix``
-    run preflight automatically, the waveguide and coaxial lanes do not. See
+    and ``compute_coax_msl_transition`` run preflight automatically;
+    the waveguide and other coaxial lanes do not. See
     each delegate's row in
     ``tests/unit/preflight/test_preflight_advisory_emission_contract.py``.
 

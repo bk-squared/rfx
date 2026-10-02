@@ -258,3 +258,56 @@ def test_config_carries_snap():
     cfg["snap"] = "invalid"
     with pytest.raises(ValueError, match="snap must be"):
         Simulation(**_build_simulation_kwargs(cfg))
+
+
+@pytest.mark.parametrize("side", ["lo", "hi"])
+@pytest.mark.parametrize("gap", [0, 1, 2])
+@pytest.mark.parametrize("face_shift", [0.0, 0.0002])
+def test_realized_volume_join_and_vacuum_gap(monkeypatch, side, gap, face_shift):
+    calls = _stub_runners(monkeypatch)
+    # x stays uniform: the free end is 0.35 cell beyond its last node.
+    lo, hi = 0.00465, 0.012 - gap * DX
+    block_lo, block_hi = 0.012 + face_shift, 0.015
+    if side == "lo":
+        lo, hi = DOMAIN[0] - hi, DOMAIN[0] - lo
+        block_lo, block_hi = DOMAIN[0] - block_hi, DOMAIN[0] - block_lo
+    sheet = Box((lo, 0.0083, 0.003), (hi, 0.0117, 0.003))
+    block = Box((block_lo, 0.006, 0), (block_hi, 0.014, DOMAIN[2]))
+    profiles = edge_aware_profiles(DOMAIN, DX, sheets=[sheet], axes="y")
+    sim = Simulation(10e9, DOMAIN, dx=DX, boundary="pec", **profiles)
+    sim.add(sheet, material="pec")
+    sim.add(block, material="pec")
+    sim.add_source((0.002, 0.002, 0.002), component="ez")
+    record = sim.realized_geometry()
+    axis = record.entities[0].axes[0]
+    expected = (True, True) if gap else ((True, False) if side == "hi" else (False, True))
+    assert axis.free_ends == expected
+    ctx = sim._campaign_ctx()
+    span = next(span for e, a, span in _sheet_solved_spans(ctx, ctx.interior_pec_entries()) if a == 0)
+    assert (span.free_lo, span.free_hi) == axis.free_ends
+    assert (span.lo, span.hi) == axis.bounds_m
+    assert span.comparison_bounds(lo, hi, DOMAIN[0]) == axis.comparison_bounds_m
+    assert bool(sim.preflight().by_code(CODE)) == bool(gap)
+    if gap:
+        with pytest.raises(ValueError, match="conductor sheet dimension"):
+            sim.run(n_steps=1, compute_s_params=False)
+        assert not calls
+    else:
+        with pytest.raises(_ReachedRunner):
+            sim.run(n_steps=1, compute_s_params=False)
+        assert calls == [True]
+
+
+def test_vertical_sheet_refusal_names_z_profile_remedy():
+    domain = (0.02, 0.02, 0.02)
+    sheet = Box((0.012, 0.008, 0.006), (0.012, 0.012, 0.014))
+    sim = Simulation(10e9, domain, dx=DX, boundary="pec")
+    sim.add(sheet, material="pec")
+    row, = sim.preflight().by_code(CODE)
+    assert ' z: drawn ' in str(row)
+    assert 'axes="xyz"' in str(row)
+    assert "dz_profile=" in str(row)
+    aligned = Simulation(10e9, domain, dx=DX, boundary="pec",
+                         **edge_aware_profiles(domain, DX, sheets=[sheet], axes="xyz"))
+    aligned.add(sheet, material="pec")
+    assert not aligned.preflight().by_code(CODE)

@@ -183,18 +183,15 @@ def _assembly_impl(sim, ctx):
 
 
 def _build_record(sim, ctx, *, compact=False):
-    from rfx.mesh_edges import solved_sheet_span
+    from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
     from rfx.preflight.realization import _shape_bounds
 
     assembled, refused, refused_tc, pad_findings = _assembly(sim, ctx)
     sizes, nodes = _node_arrays(sim, ctx.grid, ctx.lane == "nonuniform")
     conductors = {e.label: e for e in ctx.entry_realizations()}
     interior = {e.label: e for e in ctx.interior_pec_entries()}
-    union = None
-    for e in interior.values():
-        if e.sheet is not None:
-            fp = np.asarray(e.sheet.footprint, dtype=bool)
-            union = fp.copy() if union is None else union | fp
+    union, volume_edges = sheet_continuation_masks(
+        interior.values(), ctx.periodic, ctx.grid.shape)
     declarations = [(f"geometry[{i}]", e.material_name, e.shape)
                     for i, e in enumerate(sim._geometry)]
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
@@ -238,7 +235,7 @@ def _build_record(sim, ctx, *, compact=False):
                 if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
                     span = solved_sheet_span(
                         mask, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
-                        float(sim._domain[a]), union=union,
+                        float(sim._domain[a]), union=union, volume_edges=volume_edges,
                         periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
                     if span is not None:
                         rlo, rhi = span.lo, span.hi
