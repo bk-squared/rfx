@@ -130,15 +130,9 @@ def test_strict_preflight_raises_on_whole_boundary_pec_face():
 
 
 # ---------------------------------------------------------------------------
-# Regressions: the two spellings that already worked must keep working
+# Regression: the per-face BoundarySpec spelling must keep working (the
+# pec_faces= keyword was removed in #1448; tests/contracts/test_api_1448.py)
 # ---------------------------------------------------------------------------
-
-def test_pec_faces_kwarg_still_fires():
-    """The deprecated ``pec_faces=`` kwarg path, unchanged by #1075."""
-    sim = _sim("cpml", (0.01, CY, 0.0), "ex",
-               cpml_layers=6, pec_faces={"z_lo"})
-    assert "source_decoupled" in _codes(sim)
-
 
 def test_per_face_boundary_spec_still_fires():
     """The per-face ``BoundarySpec`` path, unchanged by #1075."""
