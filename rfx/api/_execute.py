@@ -4850,7 +4850,7 @@ class _ExecuteMixin:
             of each spectrum is added in closed form. The result is
             ``Result.ringdown`` (``.s_params`` on the bins of
             ``Result.s_params``, ``.report`` with the window, the poles and
-            the witnesses: the two-window difference ``W2``, no growing
+            the witnesses: ``WE`` when available (otherwise ``W2``), no growing
             pole, passivity, source off). Every other output is the one the
             same run gives without ``ringdown=``. Wire ports
             (``add_port(..., extent=...)``) on the uniform (one port) and
