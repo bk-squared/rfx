@@ -21,7 +21,10 @@ or optimization only after the selected lane is understood.
 5. **Optimize:** only optimize a metric whose differentiability and physics
    support boundaries are documented for the selected lane.
 
-## Sweep skeleton
+## Sweep template
+
+Supply `make_simulation(width, eps_r)` for your device; it must return a
+configured `Simulation`. This block is not a standalone program.
 
 ```python
 from rfx.batch import ParameterSweep, run_batch

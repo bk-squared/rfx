@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import yaml
 
@@ -180,6 +180,19 @@ def clean_markdown(text: str, *, route: str, base_url: str, source_sha: str) -> 
         url = version_url(html.unescape(url), base_url, source_sha)
         if url.startswith("#") or urlsplit(url).scheme:
             return url
+        if route.startswith("agent/") and not url.startswith("/"):
+            # Agent sources use repository-relative links, not site routes.
+            resolved = urlsplit(urljoin(f"https://source/docs/{route}.mdx", url))
+            path = PurePosixPath(resolved.path.removeprefix("/"))
+            if path.parent == PurePosixPath("docs/agent"):
+                filename = path.with_suffix(".mdx").name
+                if filename not in PUBLIC_AGENT_PAGES:
+                    raise ValueError(f"public agent page links to excluded source: {url}")
+                return urlunsplit((*urlsplit(base_url)[:2],
+                                  urlsplit(base_url).path + f"/markdown/agent/{path.stem}.md",
+                                  resolved.query, resolved.fragment))
+            return f"{SOURCE_REPOSITORY}/blob/{source_sha}/{path}" + (
+                f"#{resolved.fragment}" if resolved.fragment else "")
         return urljoin(page_url, url)
 
     # Code fences are copied verbatim: removing tags/imports inside Python or

@@ -21,7 +21,7 @@ believing a scalar pass/fail.
 Canonical trap: the `|S11|` magnitude dip of a directly edge-fed patch is
 easy to read as "the resonance". It is not — for a high-impedance edge-fed
 patch the dip is the off-resonance match point. The true resonance comes
-from a ring-down probe
+from a source-off probe trace
 (`Result.find_resonances()`, see the
 [resonance extraction recipe](./recipe-resonance-extraction)) and agreed
 with the analytic value all along. The gate was re-specified, not the
@@ -60,7 +60,7 @@ question and is not addressed by this extractor.
 
 ### B. Resonance / dip location looks wrong
 
-Measure the resonance with a ring-down probe first (Step 0). Then:
+Measure the resonance with a source-off probe trace first (Step 0). Then:
 
 **STOP — refining the mesh to move the microstrip patch dip.** The dip
 location decelerates toward an asymptote outside the expected band; pushing
