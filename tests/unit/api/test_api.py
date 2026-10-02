@@ -1192,7 +1192,7 @@ def test_five_line_patch_workflow():
 
     Uses a coarse grid (dx=5mm) and few steps for fast CI execution.
     """
-    # #1138: geometry[0] y solved -59.48 % off; this test checks five line patch workflow.
+    # #1138: geometry[0] y solved -18.97 % off its domain-clipped drawing; this test checks five line patch workflow.
     sim = rfx.Simulation(snap="declared",
         freq_max=4e9, domain=(0.08, 0.06, 0.02),
         boundary="cpml", cpml_layers=8, dx=5e-3,

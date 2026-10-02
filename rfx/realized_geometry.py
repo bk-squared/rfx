@@ -13,7 +13,12 @@ import numpy as np
 
 @dataclass(frozen=True)
 class AxisGeometry:
-    """One entity axis, including signed (solved minus declared) residuals."""
+    """One entity axis, including signed (solved minus declared) residuals.
+
+    Sheet in-plane axes also expose ``comparison_bounds_m`` (the drawing
+    clipped at non-free domain ends) and ``free_ends`` for size verdicts.
+    ``declared_bounds_m`` and ``face_residual_m`` retain the original drawing.
+    """
 
     axis: str
     node_range: tuple[int, int]
@@ -23,6 +28,9 @@ class AxisGeometry:
     extent_m: float
     face_residual_m: tuple[float, float] | None
     cell_size_m: float
+    # Sheet-size verdict compares against these domain-clipped drawn bounds.
+    comparison_bounds_m: tuple[float, float] | None = None
+    free_ends: tuple[bool, bool] | None = None
 
 
 @dataclass(frozen=True)
@@ -226,6 +234,7 @@ def _build_record(sim, ctx, *, compact=False):
                 cell_range = None if kind in ("sheet", "wire") else (i0, i1 + 1)
                 rlo = float(nodes[a][i0])
                 rhi = float(nodes[a][i1 if cell_range is None else i1 + 1])
+                comparison = free_ends = None
                 if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
                     span = solved_sheet_span(
                         mask, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
@@ -233,12 +242,14 @@ def _build_record(sim, ctx, *, compact=False):
                         periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
                     if span is not None:
                         rlo, rhi = span.lo, span.hi
+                        comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
+                        free_ends = (span.free_lo, span.free_hi)
                 declared = None if bounds is None else (float(bounds[0][a]), float(bounds[1][a]))
                 residual = None if declared is None else (rlo - declared[0], rhi - declared[1])
                 axes.append(AxisGeometry(
                     'xyz'[a], (i0, i1 if cell_range is None else i1 + 1), cell_range,
                     declared, (rlo, rhi), rhi - rlo, residual,
-                    float(np.mean(sizes[a][i0:i1 + 1]))))
+                    float(np.mean(sizes[a][i0:i1 + 1])), comparison, free_ends))
         raw_edges = () if e is None else e.edges(ctx.periodic, ctx.grid.shape)
         edge_counts = tuple(int(m.sum()) for m in raw_edges)
         edge_ranges = tuple(_mask_ranges(m) for m in raw_edges)

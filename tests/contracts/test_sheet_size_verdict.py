@@ -102,12 +102,13 @@ def test_verdict_spans_equal_public_record_per_entity_axis(inset, aligned):
                 if e.kind == "sheet" for a in e.axes if a.axis != "xyz"[e.plane[0]]}
     assert actual.keys() == expected.keys()
     for key in actual:
-        np.testing.assert_allclose(actual[key], expected[key], rtol=0, atol=1e-15)
+        assert actual[key] == expected[key], key
     findings = sim.preflight().by_code(CODE)
     offenders = []
     for e in record.entities:
         for a in e.axes:
-            drawn = a.declared_bounds_m[1] - a.declared_bounds_m[0]
+            bounds = a.comparison_bounds_m or a.declared_bounds_m
+            drawn = bounds[1] - bounds[0]
             if drawn <= 0 or a.axis == "xyz"[e.plane[0]]:
                 continue
             residual = (a.extent_m - drawn) / drawn
@@ -130,3 +131,46 @@ def test_verdict_spans_equal_public_record_per_entity_axis(inset, aligned):
 def test_snap_validation(value):
     with pytest.raises(ValueError, match="snap must be"):
         Simulation(10e9, DOMAIN, snap=value)
+
+
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+@pytest.mark.parametrize("side", ["lo", "hi"])
+@pytest.mark.parametrize("outside", [0.0, 0.001])
+def test_domain_face_ends_compare_only_the_drawing_inside_domain(monkeypatch, boundary, side, outside):
+    calls = _stub_runners(monkeypatch)
+    lo, hi = ((-outside, 0.015) if side == "lo" else (0.005, DOMAIN[0] + outside))
+    sheet = Box((lo, 0.005, 0.003), (hi, 0.015, 0.003))
+    profiles = edge_aware_profiles(DOMAIN, DX, sheets=[sheet])
+    sim = Simulation(10e9, DOMAIN, dx=DX, boundary=boundary, cpml_layers=2, **profiles)
+    sim.add(sheet, material="pec")
+    sim.add_source((0.002, 0.002, 0.002), component="ez")
+    record = sim.realized_geometry()
+    axis = record.entities[0].axes[0]
+    assert axis.declared_bounds_m == (lo, hi)
+    assert axis.comparison_bounds_m == (max(lo, 0), min(hi, DOMAIN[0]))
+    assert axis.free_ends == ((False, True) if side == "lo" else (True, False))
+    drawn = axis.comparison_bounds_m[1] - axis.comparison_bounds_m[0]
+    assert axis.extent_m == pytest.approx(drawn, abs=1e-15)
+    ctx = sim._campaign_ctx()
+    for e, a, span in _sheet_solved_spans(ctx, ctx.interior_pec_entries()):
+        public = record.entities[0].axes[a]
+        assert span.comparison_bounds(e.lo[a], e.hi[a], sim._domain[a]) == public.comparison_bounds_m
+        assert (span.free_lo, span.free_hi) == public.free_ends
+    assert not sim.preflight().by_code(CODE)
+    with pytest.raises(_ReachedRunner):
+        sim.run(n_steps=1, compute_s_params=False)
+    assert calls == [True]
+
+
+def test_five_line_patch_reports_only_in_domain_free_edge_residuals():
+    sim = Simulation(4e9, (0.08, 0.06, 0.02), boundary="cpml", cpml_layers=8, dx=0.005)
+    sim.add(Box((-0.019, -0.0145, 0.0008), (0.019, 0.0145, 0.0008)), material="pec")
+    row, = sim.preflight().by_code(CODE)
+    assert row.severity == "error"
+    assert f"drawn {_fmt_len(0.019)}" in str(row)
+    assert f"drawn {_fmt_len(0.0145)}" in str(row)
+    assert "-11.84%" in str(row)
+    assert "-18.97%" in str(row)
+    axes = sim.realized_geometry().entities[0].axes
+    assert axes[0].extent_m == pytest.approx(0.01675)
+    assert axes[1].extent_m == pytest.approx(0.01175)

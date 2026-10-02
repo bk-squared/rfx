@@ -1153,14 +1153,18 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
     sees is ``covered node span + EDGE_OFFSET * (cell beyond each end)``.
     Reported in input units against the drawn size; an end that lies on the
-    domain wall is a wall, not an edge, and adds nothing. This fires for a
+    domain wall is a wall, not an edge, and adds nothing. At non-free ends,
+    exclude the drawing outside the domain from the comparison. This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
     rows = []
     for e, a, span in _sheet_solved_spans(ctx, boxes):
         if not (span.free_lo or span.free_hi):
             continue
-        ext = float(e.hi[a] - e.lo[a])
+        drawn_lo, drawn_hi = span.comparison_bounds(e.lo[a], e.hi[a], ctx.sim._domain[a])
+        ext = drawn_hi - drawn_lo
+        if ext <= 0.0:
+            continue
         nodes = np.asarray(ctx.nodes[a], dtype=float)
         if span.i1 == nodes.size:  # unwrapped periodic endpoint N is at L
             nodes = np.append(nodes, float(ctx.sim._domain[a]))

@@ -436,6 +436,17 @@ class SolvedSheetSpan(NamedTuple):
     free_lo: bool
     free_hi: bool
 
+    def comparison_bounds(self, declared_lo: float, declared_hi: float,
+                          domain_hi: float) -> tuple[float, float]:
+        """Drawn bounds inside the domain at non-free ends.
+
+        Preserve internal seams and free edges. Only the portion past a
+        domain face is excluded from the size being judged.
+        """
+        lo = float(declared_lo) if self.free_lo else max(0.0, float(declared_lo))
+        hi = float(declared_hi) if self.free_hi else min(float(domain_hi), float(declared_hi))
+        return lo, hi
+
 
 def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
                       declared_hi: float, domain_hi: float, *, union=None,
