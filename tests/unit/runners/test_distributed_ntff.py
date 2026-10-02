@@ -115,13 +115,13 @@ def _ghost_hx_invariant(monkeypatch):
     samples = []
     original = owner.SlabNTFF.update
 
-    def observe(self, buffer, state, dt, step):
+    def observe(self, buffer, state, dt, step, *, ranks=None):
         width = state.hx.shape[0] // self.n_devices
         # All internal right ghosts and their owners, at the real sampler.
         jax.debug.callback(lambda ghost, real: samples.append(
             (np.array(ghost), np.array(real))),
             state.hx[width - 1:-1:width], state.hx[width + 1::width])
-        return original(self, buffer, state, dt, step)
+        return original(self, buffer, state, dt, step, ranks=ranks)
 
     monkeypatch.setattr(owner.SlabNTFF, "update", observe)
     result = sim.run(n_steps=160, devices=jax.devices("cpu")[:2], skip_preflight=True)
@@ -185,7 +185,7 @@ def test_lumped_patch_s_and_ntff():
 def test_mutations(monkeypatch, mutation):
     from rfx.runners import _distributed_ntff as owner
     if mutation == "skip":
-        monkeypatch.setattr(owner.SlabNTFF, "update", lambda self, buffer, *args: buffer)
+        monkeypatch.setattr(owner.SlabNTFF, "update", lambda self, buffer, *args, **kwargs: buffer)
     elif mutation == "duplicate":
         # The wrong rank writes the x face; y/z ownership uses clipped ranges.
         import inspect

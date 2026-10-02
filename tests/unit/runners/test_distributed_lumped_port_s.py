@@ -327,10 +327,10 @@ def test_drive_only_order_mutation(monkeypatch):
     import inspect
     from rfx.runners import distributed_v2 as runner
     source = inspect.getsource(runner.run_distributed)
-    source = source.replace("        st = _inject_sources_shmap(st, src_vals)",
-                            "        if _source_port_indices is None:\n            st = _inject_sources_shmap(st, src_vals)")
-    source = source.replace("        # 7. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals)\n\n        # 7. Exchange E ghost cells")
-    source = source.replace("        # 6. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals)\n\n        # 6. Exchange E ghost cells")
+    source = source.replace("        st = _inject_sources_shmap(st, src_vals, ranks=ranks)",
+                            "        if _source_port_indices is None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)")
+    source = source.replace("        # 7. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)\n\n        # 7. Exchange E ghost cells")
+    source = source.replace("        # 6. Exchange E ghost cells", "        if _source_port_indices is not None:\n            st = _inject_sources_shmap(st, src_vals, ranks=ranks)\n\n        # 6. Exchange E ghost cells")
     namespace = dict(vars(runner))
     exec(compile(source, "<drive-only-order-mutation>", "exec"), namespace)
     monkeypatch.setattr(runner, "run_distributed", namespace["run_distributed"])

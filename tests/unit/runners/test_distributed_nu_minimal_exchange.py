@@ -175,10 +175,10 @@ def _install_poison(patch, live=False):
     for name in ("_exchange_h_ghosts_nu", "_exchange_e_ghosts_nu"):
         original = getattr(runner, name)
 
-        def exchange(st, mesh, n_devices, original=original):
+        def exchange(st, mesh, n_devices, original=original, *, ranks=None):
             # Poison every INTERIOR slot the old exchange wrote and the new
             # one leaves alone; physical-boundary ghosts were never exchanged.
-            return _poison(original(st, mesh, n_devices), mesh, n_devices, live=live)
+            return _poison(original(st, mesh, n_devices, ranks=ranks), mesh, n_devices, live=live)
 
         patch.setattr(runner, name, exchange)
 
@@ -273,7 +273,7 @@ def _collectives(grad=False):
             return entry
 
         def run(*a, **k):
-            captured.append((entry, a))
+            captured.append((entry, a, k))
             return entry(*a, **k)
         return run
 
@@ -281,22 +281,22 @@ def _collectives(grad=False):
         patch.setattr(runner, "jax", SimpleNamespace(**{**vars(jax), "jit": capture_jit}))
         _forward(sim, designs)
     assert len(captured) == 1
-    entry, args = captured[0]
+    entry, args, kwargs = captured[0]
     if grad:
         c0, invariants, warmup, opt = args
         materials, mask, occupancy, debye, lorentz, cpml, spacings = invariants
 
-        def loss(eps, sigma, occ, db, lr):
+        def loss(eps, sigma, occ, db, lr, ranks):
             # These are the loop inputs reached by the three design gradients;
             # replicated spacings/CPML coefficients are constants in that AD.
             inv = (materials._replace(eps_r=eps, sigma=sigma), mask, occ,
                    db, lr, cpml, spacings)
-            return jnp.sum(entry(c0, inv, warmup, opt)[1] ** 2)
+            return jnp.sum(entry(c0, inv, warmup, opt, ranks=ranks)[1] ** 2)
 
         compiled = jax.jit(jax.grad(loss, argnums=(0, 1, 2, 3, 4))).lower(
-            materials.eps_r, materials.sigma, occupancy, debye, lorentz).compile()
+            materials.eps_r, materials.sigma, occupancy, debye, lorentz, kwargs["ranks"]).compile()
     else:
-        compiled = entry.lower(*args).compile()
+        compiled = entry.lower(*args, **kwargs).compile()
     hlo = compiled.as_text()
     counts = _loop_counts(hlo)
     _report("collectives", grad=grad, loops=counts)
@@ -332,8 +332,8 @@ def _long_run(patch, sharded=True):
         for name in ("_exchange_h_ghosts_nu", "_exchange_e_ghosts_nu"):
             original = getattr(runner, name)
 
-            def measured(st, mesh, n_devices, original=original):
-                st = original(st, mesh, n_devices)
+            def measured(st, mesh, n_devices, original=original, *, ranks=None):
+                st = original(st, mesh, n_devices, ranks=ranks)
                 jax.debug.callback(observe, *(getattr(st, c) for c in _FIELDS))
                 return st
 
@@ -401,7 +401,7 @@ def test_long_run_finite_gradients_and_dead_ghosts(devices):
 
 @pytest.mark.slow
 def test_mutations_trip_gates(monkeypatch):
-    def missing_ez(st, mesh, n_devices):
+    def missing_ez(st, mesh, n_devices, *, ranks=None):
         @partial(shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"), check_rep=False)
         def only_ey(ey):
             received = lax.ppermute(ey[1], "x", [(i, i - 1) for i in range(1, n_devices)])

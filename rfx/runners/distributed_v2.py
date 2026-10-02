@@ -49,7 +49,7 @@ import jax.numpy as jnp
 from jax import lax
 import numpy as np
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
-from jax.experimental.shard_map import shard_map
+from rfx.runners._rank import mesh_ranks, rank_shard_map
 
 from rfx.core.yee import (
     FDTDState,
@@ -198,7 +198,7 @@ _apply_pmc_shmap = apply_pmc_face_shmap
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
-                         e_slab=None, e_materials=None, separate_x_terms=False):
+                         e_slab=None, e_materials=None, separate_x_terms=False, *, ranks=None):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -221,7 +221,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     """
 
     @partial(
-        shard_map,
+        rank_shard_map,
         mesh=mesh,
         in_specs=(
             P("x"),   # ex
@@ -249,7 +249,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
                 psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
                 psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi,
-                mat_slab, means):
+                mat_slab, means, *, rank):
         # Reconstruct minimal state and cpml_state objects
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
@@ -258,7 +258,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         elif means is not None:
             eps_r_slab = means[0]
         else:
-            eps_r_slab = slab_e_component_materials(mat_slab, *e_slab)[0]
+            eps_r_slab = slab_e_component_materials(mat_slab, *e_slab, rank=rank)[0]
         _cs = cpml_state._replace(
             psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
             psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
@@ -270,7 +270,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         new_st, new_cs = _apply_cpml_e_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
             n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab,
-            pad_x=pad_x, separate_x_terms=separate_x_terms)
+            pad_x=pad_x, separate_x_terms=separate_x_terms, rank=rank)
         return (
             new_st.ex, new_st.ey, new_st.ez,
             new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -285,7 +285,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
      psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
      psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
      psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi) = _cpml_e(
-        state.ex, state.ey, state.ez,
+        (mesh_ranks(mesh) if ranks is None else ranks), state.ex, state.ey, state.ez,
         state.hx, state.hy, state.hz,
         cpml_state.psi_ey_xlo, cpml_state.psi_ey_xhi,
         cpml_state.psi_ez_xlo, cpml_state.psi_ez_xhi,
@@ -309,7 +309,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, mu_r=None, pad_x=0,
-                         separate_x_terms=False):
+                         separate_x_terms=False, *, ranks=None):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -325,7 +325,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
     """
 
     @partial(
-        shard_map,
+        rank_shard_map,
         mesh=mesh,
         in_specs=(
             P("x"),   # ex
@@ -351,7 +351,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_hy_xlo, psi_hy_xhi, psi_hz_xlo, psi_hz_xhi,
                 psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
                 psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi,
-                mu_r_slab):
+                mu_r_slab, *, rank):
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
         _cs = cpml_state._replace(
@@ -365,7 +365,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         new_st, new_cs = _apply_cpml_h_distributed(
             _st, cpml_params, _cs, n_cpml, dt, dx,
             n_devices, ghost=ghost, axis_name="x", mu_r=mu_r_slab,
-            pad_x=pad_x, separate_x_terms=separate_x_terms)
+            pad_x=pad_x, separate_x_terms=separate_x_terms, rank=rank)
         return (
             new_st.hx, new_st.hy, new_st.hz,
             new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
@@ -380,7 +380,7 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
      psi_hy_xlo, psi_hy_xhi, psi_hz_xlo, psi_hz_xhi,
      psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
      psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi) = _cpml_h(
-        state.ex, state.ey, state.ez,
+        (mesh_ranks(mesh) if ranks is None else ranks), state.ex, state.ey, state.ez,
         state.hx, state.hy, state.hz,
         cpml_state.psi_hy_xlo, cpml_state.psi_hy_xhi,
         cpml_state.psi_hz_xlo, cpml_state.psi_hz_xhi,
@@ -1186,7 +1186,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     n_prb = len(probes)
     _exchange_interval = int(exchange_interval)
 
-    def _exchange(exchange, components, st, step_idx):
+    def _exchange(exchange, components, st, step_idx, *, ranks):
         # The entry refuses any interval but 1, so production steps always
         # run the minimal exchange. The skipping branch is reachable only when
         # a test bypasses validate_exchange_interval (the K=2 negative control,
@@ -1194,11 +1194,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # legacy all-component exchange whose stale-seam growth that test
         # measures.
         if _exchange_interval == 1:
-            return exchange(st, mesh, n_devices)
+            return exchange(st, mesh, n_devices, ranks=ranks)
 
         def _legacy(s):
             return s._replace(**{
-                name: _exchange_component_shmap(getattr(s, name), mesh, n_devices)
+                name: _exchange_component_shmap(getattr(s, name), mesh, n_devices, ranks=ranks)
                 for name in components
             })
 
@@ -1209,26 +1209,27 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Per-device source/probe injection via shard_map
     # ------------------------------------------------------------------
 
-    def _inject_sources_shmap(st, src_vals_step):
+    def _inject_sources_shmap(st, src_vals_step, *, ranks=None):
         """Inject sources on their owning device using shard_map."""
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,
-        )
+            ranks=ranks)
 
-    def _sample_probes_shmap(st):
+    def _sample_probes_shmap(st, *, ranks=None):
         """Keep masked samples local until the scan has finished."""
         return sample_probes_shmap(
             st, mesh, n_prb, prb_local_specs, prb_device_ids,
             reduce_devices=False,
-        )
+            ranks=ranks)
 
     # ------------------------------------------------------------------
     # H and E local updates via shard_map
     # ------------------------------------------------------------------
 
-    def _update_h_shmap(st, mat):
+    def _update_h_shmap(st, mat, spacings=None, *, ranks):
         if is_nu:
+            (invdx, invdy, invdz, invdxh, invdyh, invdzh) = spacings
             # #1038 leg 4: this branch held a renamed copy (`_h_nu`) of
             # distributed_nu.py's own `_h` wrapper -- inventory §2.4, 0.884
             # similarity, the def name plus one re-wrapped argument list. One
@@ -1236,12 +1237,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             # and the `is_nu` dispatch itself are untouched.
             return update_h_nu_shmap(
                 st, mat, mesh, dt,
-                inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-                inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
-            )
+                invdx, invdy, invdz, invdxh, invdyh, invdzh,
+                ranks=ranks)
 
         @partial(
-            shard_map,
+            rank_shard_map,
             mesh=mesh,
             in_specs=(
                 P("x"), P("x"), P("x"),  # ex, ey, ez
@@ -1252,18 +1252,18 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             out_specs=(P("x"), P("x"), P("x"), P()),  # hx, hy, hz, step
             check_rep=False,
         )
-        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r):
+        def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
             new_st = _update_h_local(_st, _mat, dt, dx)
             return new_st.hx, new_st.hy, new_st.hz, new_st.step
 
         hx, hy, hz, step = _h(
-            st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
+            (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
             mat.eps_r, mat.sigma, mat.mu_r)
         return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
-    def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st, e_materials):
+    def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st, e_materials, spacings=None, *, ranks):
         """E update (with optional dispersion) via shard_map."""
         if is_nu:
             # NU path: no dispersion (blocked upstream).
@@ -1275,13 +1275,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             # untouched.
             new_st = update_e_nu_shmap(
                 st, mat, mesh, dt,
-                inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx,
-            )
+                *spacings[:3], nx_per, nx,
+                ranks=ranks)
             # db_st / lr_st are passthrough (dummies) in NU path.
             return new_st, db_st, lr_st
 
         @partial(
-            shard_map,
+            rank_shard_map,
             mesh=mesh,
             in_specs=(
                 P("x"), P("x"), P("x"),  # ex, ey, ez
@@ -1313,7 +1313,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                d_ca, d_cb, d_cc, d_alpha, d_beta,
                d_px, d_py, d_pz,
                l_ca, l_cb, l_cc, l_a, l_b, l_c,
-               l_px, l_py, l_pz, l_px_prev, l_py_prev, l_pz_prev):
+               l_px, l_py, l_pz, l_px_prev, l_py_prev, l_pz_prev, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
                                   sigma_lumped=sigma_lumped,
@@ -1326,7 +1326,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                    if has_lorentz else None
             new_st, new_db, new_lr = _update_e_local_with_dispersion(
                 _st, _mat, dt, dx, debye=_db, lorentz=_lr,
-                slab=(nx_per, nx), e_materials=means)
+                slab=(nx_per, nx), e_materials=means, rank=rank)
             # Unpack debye
             if new_db is not None:
                 nd_px, nd_py, nd_pz = new_db.px, new_db.py, new_db.pz
@@ -1348,7 +1348,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
          nd_px, nd_py, nd_pz,
          nl_px, nl_py, nl_pz,
          nl_pxp, nl_pyp, nl_pzp) = _e(
-            st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
+            (mesh_ranks(mesh) if ranks is None else ranks), st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
             mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped, e_materials,
             db_coeffs.ca, db_coeffs.cb, db_coeffs.cc, db_coeffs.alpha, db_coeffs.beta,
             db_st.px, db_st.py, db_st.pz,
@@ -1378,6 +1378,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
         cpml_params_arg, pec_mask_arg, e_materials,
+        *, ranks,
     ):
         """Single FDTD step (CPML path) operating on sharded arrays.
 
@@ -1404,28 +1405,28 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         lr_st = carry["lorentz"]
 
         # 1. H update
-        st = _update_h_shmap(st, materials_arg)
+        st = _update_h_shmap(st, materials_arg, ranks=ranks)
 
         # 2. CPML H correction (material-aware, #205)
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
-            pad_x=pad_x, separate_x_terms=has_debye or has_lorentz)
+            pad_x=pad_x, separate_x_terms=has_debye or has_lorentz, ranks=ranks)
 
         # 3. Exchange the live H ghosts (entry validates interval == 1)
-        st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx)
+        st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
         # 3b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
         #     OQ9: after H ghost exchange, before E update. PMC must
         #     fire before the next E-update reads H via curl.
         st = _apply_pmc_shmap(
-            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x)
+            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
         # 4. E update
         st, db_st, lr_st = _update_e_shmap(
             st, materials_arg,
             debye_coeffs_arg, db_st,
-            lorentz_coeffs_arg, lr_st, e_materials)
+            lorentz_coeffs_arg, lr_st, e_materials, ranks=ranks)
 
         # 5. CPML E correction (material-aware, #205), with the permittivity
         #    the E update just used (#1043): each component's edge mean.
@@ -1434,14 +1435,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             mesh, n_devices, ghost=ghost, materials=materials_arg,
             pad_x=pad_x,
             e_slab=(nx_per, nx), e_materials=e_materials,
-            separate_x_terms=has_debye or has_lorentz)
+            separate_x_terms=has_debye or has_lorentz, ranks=ranks)
 
-        st = _inject_sources_shmap(st, src_vals)
+        st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # A mixed wall/absorber box still enforces its declared electric walls.
         st = _apply_pec_shmap(
             st, mesh, n_devices, nx_local, pad_x=pad_x,
-            pec_faces=e_wall_faces)
+            pec_faces=e_wall_faces, ranks=ranks)
 
         # 6b. Realized-PEC cell mask (#1053). Geometry PEC is distinct from
         #     the declared domain faces above. Each rank realizes the
@@ -1461,7 +1462,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #     7.773e-08 in this order.
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
-                st, pec_mask_arg, mesh, n_devices, nx_local)
+                st, pec_mask_arg, mesh, n_devices, nx_local, ranks=ranks)
 
         # 7. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,
@@ -1488,20 +1489,21 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    that is exactly where every distributed_v2_* fixture of the
         #    #1038 bit-identity lock puts its source, which is why that lock
         #    stays 13/13 green through this change.
-        st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx)
+        st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx, ranks=ranks)
 
         # 8. Probe sampling
-        probe_out = _sample_probes_shmap(st)
+        probe_out = _sample_probes_shmap(st, ranks=ranks)
 
         updated = {"fdtd": st, "cpml": cpml_st,
                    "debye": db_st, "lorentz": lr_st}
         if ntff_layout is not None:
-            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx)
+            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx, ranks=ranks)
         return updated, probe_out
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        pec_mask_arg, e_materials,
+        pec_mask_arg, e_materials, spacings,
+        *, ranks,
     ):
         """Single FDTD step (PEC path) operating on sharded arrays.
 
@@ -1525,23 +1527,23 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         lr_st = carry["lorentz"]
 
         # 1. H update
-        st = _update_h_shmap(st, materials_arg)
+        st = _update_h_shmap(st, materials_arg, spacings, ranks=ranks)
 
         # 2. Exchange H ghost cells
-        st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx)
+        st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
         # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
         #     OQ9: after H ghost exchange, before E update.
         st = _apply_pmc_shmap(
-            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x)
+            st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
         # 3. E update
         st, db_st, lr_st = _update_e_shmap(
             st, materials_arg,
             debye_coeffs_arg, db_st,
-            lorentz_coeffs_arg, lr_st, e_materials)
+            lorentz_coeffs_arg, lr_st, e_materials, spacings, ranks=ranks)
 
-        st = _inject_sources_shmap(st, src_vals)
+        st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 5. PEC boundaries (domain faces only; a declared PEC VOLUME is
         #    realized at stage 5b below, and declared sheets/wires are
@@ -1554,7 +1556,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    is injected. #1041 measured no such fixture and did not change
         #    it -- a source on a PEC face is its own question.
         st = _apply_pec_shmap(
-            st, mesh, n_devices, nx_local, pad_x=pad_x)
+            st, mesh, n_devices, nx_local, pad_x=pad_x, ranks=ranks)
 
         # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
         #     immediately before the E ghost exchange -- distributed_nu's
@@ -1568,7 +1570,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #     goes here and not next to it.
         if pec_mask_arg is not None:
             st = apply_pec_mask_shmap(
-                st, pec_mask_arg, mesh, n_devices, nx_local)
+                st, pec_mask_arg, mesh, n_devices, nx_local, ranks=ranks)
 
         # 6. Exchange E ghost cells -- LAST stage of the E half-step, so a
         #    ghost row is a copy of the owner's FINISHED real row (#1041,
@@ -1584,14 +1586,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    zeroes the y/z faces on every x row INCLUDING the ghosts, and
         #    its x_lo / x_hi faces act on rank 0's first and rank N-1's last
         #    real cell, whose exchanged copies the receiving rank discards.
-        st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx)
+        st = _exchange(_exchange_e_ghosts_shmap, ("ex", "ey", "ez"), st, _step_idx, ranks=ranks)
 
         # 7. Probe sampling
-        probe_out = _sample_probes_shmap(st)
+        probe_out = _sample_probes_shmap(st, ranks=ranks)
 
         updated = {"fdtd": st, "debye": db_st, "lorentz": lr_st}
         if ntff_layout is not None:
-            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx)
+            updated["ntff"] = ntff_layout.update(carry["ntff"], st, dt, _step_idx, ranks=ranks)
         return updated, probe_out
 
     # ------------------------------------------------------------------
@@ -1620,14 +1622,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         def _run_cpml(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
             cpml_params_arg, pec_mask_arg,
+            *, ranks,
         ):
-            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx)
+            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks)
                            if has_debye or has_lorentz else None)
             final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_cpml(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
                     cpml_params_arg, pec_mask_arg, e_materials,
+                    ranks=ranks,
                 ),
                 carry,
                 scan_xs,
@@ -1645,7 +1649,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry_init, xs, sharded_materials,
             debye_coeffs_sharded, lorentz_coeffs_sharded,
             cpml_params, sharded_pec_mask,
-        )
+            ranks=mesh_ranks(mesh))
         final_state_sharded = final_carry["fdtd"]
     else:
         carry_init = {
@@ -1657,15 +1661,17 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry_init["ntff"] = ntff_layout.initial()
         def _run_pec(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-            pec_mask_arg,
+            pec_mask_arg, spacings,
+            *, ranks,
         ):
-            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx)
+            e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks)
                            if has_debye or has_lorentz else None)
             final_carry, local_probe_ts = lax.scan(
                 lambda scan_carry, scan_inputs: step_fn_pec(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    pec_mask_arg, e_materials,
+                    pec_mask_arg, e_materials, spacings,
+                    ranks=ranks,
                 ),
                 carry,
                 scan_xs,
@@ -1683,7 +1689,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry_init, xs, sharded_materials,
             debye_coeffs_sharded, lorentz_coeffs_sharded,
             sharded_pec_mask,
-        )
+            (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
+             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep),
+            ranks=mesh_ranks(mesh))
         final_state_sharded = final_carry["fdtd"]
 
     if multi_process:
