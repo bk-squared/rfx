@@ -150,3 +150,38 @@ def source_amplitude_scale(kind, native, *, cb, dV):
 def legacy_kind_description(is_nonuniform: bool, boundary: str) -> str:
     """Description of the declaration default, independent of mesh/boundary."""
     return "'current' (E += Cb*I/dV, I in amperes) on every path"
+
+
+def guard_float16_source_increment(waveform, field_dtype):
+    """Refuse an oversized, fully scaled soft-source increment before stepping.
+
+    ``waveform`` already includes the native drive coefficient and kind scaling.
+    A traced build uses an ordered host check whose returned token is a data
+    dependency of the source samples, so stepping cannot precede the check.
+    """
+    import numpy as np
+
+    if field_dtype is None or np.dtype(field_dtype) != np.dtype(np.float16):
+        return waveform
+
+    import jax
+    import jax.numpy as jnp
+
+    limit = float(np.finfo(np.float16).max) / 16
+
+    def check(samples):
+        peak = float(np.max(np.abs(np.asarray(samples)), initial=0))
+        if not np.isfinite(peak) or peak > limit:
+            raise ValueError(
+                f"float16 soft-source one-step increment {peak:g} exceeds "
+                f"float16.max/16 ({limit:g}); scale the waveform or declare "
+                "amplitude_kind='field'.")
+        return np.int32(0)
+
+    if isinstance(waveform, jax.core.Tracer):
+        from jax.experimental import io_callback
+        token = io_callback(check, jax.ShapeDtypeStruct((), jnp.int32),
+                            jax.lax.stop_gradient(waveform), ordered=True)
+        return waveform + token.astype(waveform.dtype)
+    check(waveform)
+    return waveform

@@ -1824,6 +1824,9 @@ class _ExecuteMixin:
                                   pe.waveform, n_steps, materials,
                                   amplitude_kind=pe.amplitude_kind)
                 )
+                from rfx.api._source_semantics import guard_float16_source_increment
+                sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
+                    sources[-1].waveform, self._resolve_field_dtype()))
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.
