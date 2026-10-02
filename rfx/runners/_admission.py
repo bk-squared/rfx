@@ -497,7 +497,7 @@ for _row in (
     ("_thin_conductors", "surface_impedance"), ("_pinned_sheets", "pec_sheet"),
     ("_waveguide_ports", "waveguide_port"),
     ("_boundary", "cpml"), ("_pec_faces", "pec_face"),
-    ("_boundary_spec", "pmc_face"), ("_boundary_spec", "conformal"),
+    ("_boundary_spec", "conformal"),
     ("_boundary_spec", "absorbing_lid"),
     ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"),
     ("_dx_profile", "graded"), ("_dy_profile", "graded"), ("_dz_profile", "graded"),

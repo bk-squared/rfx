@@ -63,10 +63,7 @@ EXPECTED += [pytest.param(case, entry, face, code,
              for case in ("pmc-pec", "pmc-cpml")
              for entry in ("run", "forward", "nonuniform", "wire-fast", "gpu-query")
              for face in ("x_lo", "x_hi") for code in ("b1", "h")]
-EXPECTED += [pytest.param("waveguide-pmc", entry, face, code,
-                          id=f"waveguide-pmc--{entry}--{face}--{code}")
-             for entry in ("run", "forward", "nonuniform", "sweep", "gpu-query")
-             for face in ("y_lo", "y_hi", "z_lo", "z_hi") for code in ("b1", "h")]
+# Waveguide PMC now refuses; test_no_unlisted_departures pins that status.
 EXPECTED += [pytest.param("periodic-xy", entry, face, "e",
                           id=f"periodic-xy--{entry}--{face}--e",
                           marks=pytest.mark.xdist_group(f"periodic-xy--{entry}"))

@@ -28,7 +28,7 @@ def compare_faces(expected, actual):
 def test_per_face_wall_sets(tokens):
     spec = BoundarySpec(**dict(zip("xyz", tokens)))
     model = resolve_kinds(spec, mode="3d", features=Features())
-    grid = SimpleNamespace(pec_faces=spec.pec_faces(), pmc_faces=spec.pmc_faces())
+    grid = SimpleNamespace(pec_faces=spec.pec_faces(), pmc_faces=spec.pmc_faces(), shape=(5, 5, 5))
     expected_e = frozenset(f"{a}_{s}" for a, t in zip("xyz", tokens)
                            for s in ("lo", "hi") if t in ("pec", "cpml"))
     expected_h = frozenset(f"{a}_{s}" for a, t in zip("xyz", tokens)

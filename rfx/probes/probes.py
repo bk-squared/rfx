@@ -753,6 +753,8 @@ def init_flux_monitor(
     ``dy * dz``, etc. (PROBE-C1 fix: the old API took a single scalar
     ``dx`` and assumed a cubic cell.)
     """
+    from rfx.boundaries.pmc import magnetic_image_faces
+    pmc_faces = magnetic_image_faces(pmc_faces, grid_shape)
     if axis == 0:
         full1, full2 = grid_shape[1], grid_shape[2]
     elif axis == 1:

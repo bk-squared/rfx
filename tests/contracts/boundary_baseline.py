@@ -146,6 +146,12 @@ def validate_class_changes(previous, cells):
     for row in cells:
         cell = row["case"], row["entry"]
         old = old_lookup[cell]
+        if cell[0] == "waveguide-pmc" and cell[1] in (
+                "run", "forward", "nonuniform", "sweep", "gpu-query", "distributed", "subgridded"):
+            assert row["status"] == "REFUSED"
+            assert row["exception"] == "NotImplementedError"
+            assert row["message_prefix"] == "PMC magnetic face(s)"
+            continue
         magnetic = cell[0] in ("pmc-pec", "pmc-cpml", "waveguide-pmc")
         if magnetic and cell[1] == "distributed":
             assert row["status"] == "REFUSED"

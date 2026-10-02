@@ -1393,6 +1393,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     flux_monitor_objs = []
     if getattr(sim, "_flux_monitors", None):
         from rfx.probes.probes import init_flux_monitor
+        from rfx.boundaries.pmc import magnetic_image_faces
         axis_to_index = {"x": 0, "y": 1, "z": 2}
         # Per-axis tangential cell-size arrays for dA.
         _d_arr = {
@@ -1432,7 +1433,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     dft_window=getattr(pe, "dft_window", "rect"),
                     dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
                     lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
-                    pmc_faces=frozenset(sim._boundary_spec.pmc_faces()), staggered_area=True,
+                    pmc_faces=magnetic_image_faces(sim._boundary_spec.pmc_faces(),
+                                                   (grid.nx, grid.ny, grid.nz)), staggered_area=True,
                 )
             )
 
@@ -1511,6 +1513,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     wg_flux_monitors = []
     if attach_waveguide_flux and waveguide_port_cfgs:
         from rfx.probes.probes import init_flux_monitor
+        from rfx.boundaries.pmc import magnetic_image_faces
         _axis_idx = {"x": 0, "y": 1, "z": 2}
         _tang_arrs = {
             0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
@@ -1531,7 +1534,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     dft_total_steps=sizing_n,
                     lo1=cfg.u_lo, hi1=cfg.u_hi,
                     lo2=cfg.v_lo, hi2=cfg.v_hi,
-                    pmc_faces=frozenset(sim._boundary_spec.pmc_faces()), staggered_area=True,
+                    pmc_faces=magnetic_image_faces(sim._boundary_spec.pmc_faces(),
+                                                   (grid.nx, grid.ny, grid.nz)), staggered_area=True,
                 )
             )
 

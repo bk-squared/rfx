@@ -499,9 +499,10 @@ def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
     if boundary is not None:
         periodic = boundary.periodic
     n = h.shape[axis]
-    faces = boundary.pmc_faces if boundary is not None else frozenset()
-    lo = f"{'xyz'[axis]}_lo" in faces and not periodic[axis] and n > 1
-    hi = f"{'xyz'[axis]}_hi" in faces and not periodic[axis] and n > 1
+    from rfx.boundaries.pmc import magnetic_image_faces
+    faces = magnetic_image_faces(boundary.pmc_faces, h.shape, periodic) if boundary is not None else frozenset()
+    lo = f"{'xyz'[axis]}_lo" in faces
+    hi = f"{'xyz'[axis]}_hi" in faces
     if index is None:
         back = jnp.roll(h, 1, axis) if periodic[axis] else _shift_bwd(h, axis)
         edge = [slice(None)] * h.ndim

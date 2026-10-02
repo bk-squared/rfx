@@ -1450,7 +1450,7 @@ CALCULATOR_CELLS = {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
         'mixed_s_matrix': carries('rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials'),
         'topology_optimize': carries('rfx/topology.py: base assembly and the objective forward solve'),
-        'waveguide_s_matrix': carries('rfx/sparams/waveguide.py: device extractors; graded run_nonuniform_path, with its existing conditional guards'),
+        'waveguide_s_matrix': refuses('waveguide_port.init_waveguide_port has no magnetic aperture mode', raises='PMC.*magnetic'),
         'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='a PMC (magnetic wall) face'),
         'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='a PMC (magnetic wall) face'),
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='a PMC (magnetic wall) face'),

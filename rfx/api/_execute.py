@@ -459,6 +459,8 @@ class _ExecuteMixin:
         missed. Magnetic images also require a single-device second-order
         kernel, so distributed PMC requests are rejected here for either order.
         """
+        from rfx.boundaries.pmc import refuse_waveguide_pmc
+        refuse_waveguide_pmc(self)
         magnetic_faces = sorted(self._boundary_spec.pmc_faces())
         if magnetic_faces and distributed:
             graded = any(getattr(self, f"_{a}_profile", None) is not None

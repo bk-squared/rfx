@@ -151,9 +151,10 @@ What to do: record well past the slowest mode's decay, or use a one-cell wire po
 
 **Magnetic faces require the single-device second-order Yee image.**
 Uniform and graded run/forward place the wall on the declared E-node face.
-Distributed kernels, subgridded and ADI lanes refuse magnetic faces. The
-fourth-order stencil also refuses them because its far neighbors have no
-magnetic image. Subpixel smoothing refuses a material surface within half
+Distributed kernels, subgridded and ADI lanes refuse magnetic faces.
+Waveguide-port execution also refuses magnetic faces: its aperture mode solver
+implements PEC walls only. The fourth-order stencil refuses them because
+its far neighbors have no magnetic image. Subpixel smoothing refuses a material surface within half
 an adjacent cell of a magnetic face when the smoother would need the
 material's even extension; extending the material at least a cell beyond
 the face is supported. These refusals remain until the corresponding

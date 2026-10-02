@@ -19,7 +19,7 @@ Codes: a magnetic→electric; b1 dead face node; b2 shorted face node; c electri
 | periodic-xy | pass | REFUSED | f | pass | REFUSED | REFUSED | REFUSED | REFUSED | pass |
 | tfsf | f,feature | REFUSED | f,feature | f,feature | pass | REFUSED | f,feature | REFUSED | f,feature |
 | waveguide-cpml | f,feature | REFUSED | f,feature | f,feature | pass | REFUSED | f,feature | REFUSED | f,feature |
-| waveguide-pmc | f | REFUSED | f | f | pass | REFUSED | REFUSED | REFUSED | f |
+| waveguide-pmc | REFUSED | REFUSED | REFUSED | REFUSED | REFUSED | REFUSED | REFUSED | REFUSED | REFUSED |
 | waveguide-pec | f | REFUSED | f | f | pass | REFUSED | f | REFUSED | f |
 | floquet | f,feature | REFUSED | f,feature | f,feature | REFUSED | REFUSED | REFUSED | REFUSED | f,feature |
 
@@ -45,12 +45,12 @@ Codes: a magnetic→electric; b1 dead face node; b2 shorted face node; c electri
 - pec-zlo / distributed: z_lo A -> E.
 - periodic-xy / nonuniform: MEASURED -> REFUSED.
 - tfsf / distributed: HARNESS CORRECTION (Addendum 4): use the recorded full grid without slab stripping; B1 x_lo/x_hi E backings absent -> present; (x_lo,f)/(x_hi,f) removed; not a change on main.
-- waveguide-pmc / run: y_lo EH -> -; y_hi EH -> -; z_lo EH -> -; z_hi EH -> -.
-- waveguide-pmc / forward: y_lo EH -> -; y_hi EH -> -; z_lo EH -> -; z_hi EH -> -.
-- waveguide-pmc / sweep: y_lo EH -> -; y_hi EH -> -; z_lo EH -> -; z_hi EH -> -.
-- waveguide-pmc / nonuniform: y_lo EH -> -; y_hi EH -> -; z_lo EH -> -; z_hi EH -> -.
+- waveguide-pmc / run: MEASURED -> REFUSED.
+- waveguide-pmc / forward: MEASURED -> REFUSED.
+- waveguide-pmc / sweep: MEASURED -> REFUSED.
+- waveguide-pmc / nonuniform: MEASURED -> REFUSED.
 - waveguide-pmc / distributed: MEASURED -> REFUSED.
-- waveguide-pmc / gpu-query: y_lo EH -> -; y_hi EH -> -; z_lo EH -> -; z_hi EH -> -.
+- waveguide-pmc / gpu-query: MEASURED -> REFUSED.
 
 ## Stopped comparisons
 
