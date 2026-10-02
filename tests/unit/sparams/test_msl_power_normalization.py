@@ -15,10 +15,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-try:
-    from jax import enable_x64
-except ImportError:
-    from jax.experimental import enable_x64
+from jax import enable_x64
 
 from rfx import Box, Simulation
 # #980 Phase 2 moved compute_msl_s_matrix verbatim into rfx/sparams/msl.py, so

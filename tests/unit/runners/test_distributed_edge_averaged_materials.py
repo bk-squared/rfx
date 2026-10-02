@@ -917,10 +917,6 @@ def _worker(address, rank, output):
 def test_two_processes_give_the_one_process_records(tmp_path):
     if sys.platform != "linux":
         pytest.skip("requires Linux: jax.distributed gRPC bind fails on macOS")
-    if tuple(int(v) for v in jax.__version__.split(".")[:2]) < (0, 5):
-        pytest.skip("JAX 0.4.x: 'Multiprocess computations aren't implemented on "
-                    "the CPU backend' (test_distributed_multihost.py's two-process "
-                    "test fails the same way there)")
     env = {**os.environ, "JAX_PLATFORMS": "cpu", "OMP_NUM_THREADS": "1",
            "PYTHONPATH": str(ROOT)}
     env = {k: v for k, v in env.items() if not k.lower().endswith("_proxy")}

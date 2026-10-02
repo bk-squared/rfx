@@ -8,7 +8,7 @@ version = "1.8.0"
 description = "JAX-native 3D FDTD electromagnetic simulator for RF engineering"
 readme = "README.md"
 license = {text = "MIT"}
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [{name = "REMI Lab", email = "byungkwan.kim@cnu.ac.kr"}]
 keywords = ["fdtd", "electromagnetics", "jax", "rf", "simulation"]
 classifiers = [
@@ -19,14 +19,13 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Physics",
 ]
 dependencies = [
-    "jax>=0.4.20",
-    "jaxlib>=0.4.20",
+    "jax>=0.10.2",
+    "jaxlib>=0.10.2",
     "numpy>=1.24",
     "scipy>=1.11",
     "matplotlib>=3.7",
@@ -53,7 +52,7 @@ dashboard = ["streamlit>=1.30", "pandas"]
 # exact contiguous-grouping behavior (PR regenerating .test_durations, #533/#545); an
 # unpinned minor bump changing either would silently invalidate the balance without a
 # code-visible signal.
-dev = ["pytest>=7.0", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "build>=1,<2", "tomli>=2; python_version < '3.11'"]
+dev = ["pytest>=7.0", "pytest-xdist", "pytest-split>=0.11,<0.12", "ruff>=0.15,<0.16", "mypy>=1.10,<2", "build>=1,<2"]
 all = ["rfx-fdtd[optimization,visualization,dashboard,cad,dev]"]
 
 [project.urls]
@@ -83,7 +82,7 @@ markers = [
 ]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 ignore_missing_imports = true
 follow_imports = "skip"
 check_untyped_defs = true

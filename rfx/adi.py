@@ -24,6 +24,7 @@ import jax.numpy as jnp
 
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import EPS_0, MU_0, MaterialArrays, component_h_materials
+from rfx.core.jax_utils import recorded_scan
 
 
 ADI_INTERIOR_PEC_MESSAGE = (
@@ -643,7 +644,7 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
             return (ez_s, hx_s, hy_s, cs), probe_vals
 
         init_state = (ez, hx, hy, cpml_state)
-        (ez_f, hx_f, hy_f, _), probe_data = jax.lax.scan(
+        (ez_f, hx_f, hy_f, _), probe_data = recorded_scan(
             step_fn, init_state, jnp.arange(n_steps))
     else:
         def step_fn(state, step_idx):
@@ -678,7 +679,7 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
             return (ez_s, hx_s, hy_s), probe_vals
 
         init_state = (ez, hx, hy)
-        (ez_f, hx_f, hy_f), probe_data = jax.lax.scan(
+        (ez_f, hx_f, hy_f), probe_data = recorded_scan(
             step_fn, init_state, jnp.arange(n_steps))
 
     if n_prb == 0:
@@ -1041,7 +1042,7 @@ def run_adi_3d(
         return (ex_, ey_, ez_, hx_, hy_, hz_), sample_vec
 
     carry_init = (ex, ey, ez, hx, hy, hz)
-    final_carry, probe_data = jax.lax.scan(
+    final_carry, probe_data = recorded_scan(
         step_fn, carry_init, jnp.arange(n_steps))
     ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = final_carry
 

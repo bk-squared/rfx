@@ -923,11 +923,39 @@ def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
         raise NotImplementedError(message(lane, rows, sim, run_args))
 
 
+def refuse_plain_sources_s_matrix(sim, *, main_record=False):
+    """A port drive must be the only excitation of a lumped/wire S solve.
+
+    Routes that build S drive by drive (the scan driver, run()'s scan S, the
+    multi-device S, subgridding) drive EVERY impedance port, passive ones too,
+    so any plain source fires in every drive: refused whenever an impedance port
+    exists. Routes that read S from the main run's own record (``main_record``:
+    forward(port_s11_freqs=), the graded wire path, the uniform single-wire fast
+    path) drive only excite=True ports; a passive port lit by a plain source there
+    is the termination diagnostic and stays admitted (#1420).
+    """
+    ports = [p for p in sim._ports if p.impedance != 0.0]
+    if not ports or not any(p.impedance == 0.0 for p in sim._ports):
+        return
+    if main_record and not any(getattr(p, "excite", True) for p in ports):
+        return
+    raise NotImplementedError(
+        "Lumped/wire S-matrix requests do not support plain sources / "
+        "0-ohm ports (add_source, add_polarized_source or "
+        "add_port(impedance=0)): they fire in every port drive. "
+        "Remove the plain source, or call run(compute_s_params=False) "
+        "to get raw port waves with the source included."
+    )
+
+
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
                        distributed=False):
     """Check the requested scan extraction before run() starts its field solve."""
     uses_scan = (any(p.impedance != 0.0 for p in sim._ports)
                  if distributed else _s_matrix_ports(sim))
+    if compute_s_params is not False:
+        # Without the scan, S is read from the main run's own record.
+        refuse_plain_sources_s_matrix(sim, main_record=not uses_scan)
     if compute_s_params is False or not uses_scan:
         return
     try:

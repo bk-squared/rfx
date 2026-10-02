@@ -2839,6 +2839,7 @@ class Simulation(
         freqs: jnp.ndarray | None = None,
         n_freqs: int = 50,
         name: str | None = None,
+        region: tuple[int, int, int, int] | None = None,
     ) -> "Simulation":
         """Add a frequency-domain 2D plane probe.
 
@@ -2854,6 +2855,9 @@ class Simulation(
             Probe frequencies in Hz. Default: linspace(freq_max/10, freq_max, n_freqs).
         n_freqs : int
             Number of frequencies if freqs is None.
+        region : tuple or None
+            Half-open transverse array-index crop (lo1, hi1, lo2, hi2).
+            A 1 by 1 crop is a point DFT at that Yee component.
         name : str or None
             Optional result key.
         """
@@ -2883,6 +2887,10 @@ class Simulation(
             freqs=freqs_arr,
             n_freqs=n_freqs,
         ))
+        if region is not None:
+            if not hasattr(self, "_dft_plane_regions"):
+                self._dft_plane_regions = {}
+            self._dft_plane_regions[name] = tuple(region)
         return self
 
     def add_flux_monitor(

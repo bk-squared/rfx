@@ -75,7 +75,7 @@ docs/design_notes/geometry_setup_interop.md):
         exponential blow-up on a dielectric).
 ``D5``  Off-grid ports are silently dropped by openEMS ("Unused primitive",
         ``uf_inc == 0``, all-NaN S).  Port coordinates are snapped exactly the
-        way ``Grid.position_to_index`` snaps them (``round(pos/dx)``), so they
+        way ``Grid.position_to_index`` snaps them (``nearest_uniform_index(pos/dx)``), so they
         land on mesh lines by construction; the emitter then *verifies* it and
         the generated script carries the runtime excitation guard.
 ``D6``  ``priority`` has no rfx counterpart and is synthesised from paint
@@ -168,7 +168,7 @@ PEC_SIGMA_THRESHOLD = 1.0e6
 _ABSORBING = ("cpml", "upml")
 
 #: Tolerance for "this coordinate is already a mesh line", relative to ``dx``.
-#: Snapped coordinates are ``round(pos/dx) * dx``, so the residual is float
+#: Snapped coordinates are ``nearest_uniform_index(pos/dx) * dx``, so the residual is float
 #: noise (~1e-16 relative); anything larger means a genuine off-grid feature.
 _LINE_TOL_REL = 1.0e-9
 
@@ -815,9 +815,10 @@ def _plan_ports(
     direction_drops: list[str] = []
 
     def snap(value_m: float, label: str) -> float:
-        cells = int(round(value_m / dx_m))
+        from rfx._grid_metric import nearest_uniform_index
+        cells = nearest_uniform_index(value_m / dx_m)
         snapped = cells * dx_m
-        # Grid.position_to_index uses round(pos/dx); reporting the shift makes
+        # Grid.position_to_index uses nearest_uniform_index(pos/dx); reporting the shift makes
         # the rasterisation visible rather than silent.
         if abs(snapped - value_m) > _LINE_TOL_REL * dx_m:
             snap_shifts.append(
@@ -1090,7 +1091,7 @@ def _plan_ports(
     if snap_shifts:
         notes.append(
             "port coordinates were snapped to the mesh the way "
-            "Grid.position_to_index snaps them (round(pos/dx)), so the emitted "
+            "Grid.position_to_index snaps them (nearest_uniform_index(pos/dx)), so the emitted "
             "port sits where rfx rasterises it, not at the metres the user "
             "typed: " + "; ".join(snap_shifts)
         )
@@ -1384,7 +1385,7 @@ def plan_openems_projection(
         f"(SetDeltaUnit({UNIT_M!r}))."
     )
     notes.append(
-        "[D5] port edge coordinates are snapped with round(pos/dx), the same "
+        "[D5] port edge coordinates are snapped with nearest_uniform_index(pos/dx), the same "
         "rule Grid.position_to_index uses, so every port edge coincides with a "
         "mesh line — an off-grid port is silently dropped by openEMS ('Unused "
         "primitive', uf_inc=0, all-NaN S). Geometry faces are deliberately NOT "

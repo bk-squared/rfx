@@ -108,6 +108,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     differ (per-cell impedance normalization for wire) and cross-family
     coupling is out of Stage-1 scope.
     """
+    from rfx.runners._admission import refuse_plain_sources_s_matrix
+    refuse_plain_sources_s_matrix(sim)
     if devices is not None:
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")

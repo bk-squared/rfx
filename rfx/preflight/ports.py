@@ -799,14 +799,9 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     nodes go to the LOWER node (#931; ``wire_vertex_nodes``,
     ``_nearest_plane``). On the non-uniform lane a port, source or probe
     there does too (``rfx._grid_metric.nearest_node_index``, #1295). The
-    uniform ``Grid`` still rounds a point feature's tie to the EVEN node
-    (``round(x/dx)``) until #1342, so where the lower node is odd a feed
-    declared on a wire, or a port declared to end on a sheet, lands one cell
-    off the conductor it was drawn on: a gap-fed dipole whose port and arms
-    sit at y = 9.5 mm on 1 mm cells drives the Ez edge beside the gap (gap
-    field -23 dB). On either lane, two coordinates a hair apart that
-    straddle a half node split the same way (a port end at float32(3.5 mm)
-    against a sheet at 3.5 mm).
+    uniform lane now shares that rule (#1342). On either lane, distinct
+    coordinates outside the tie band can still straddle a half node (a
+    port end at float32(3.5 mm) against a sheet at 3.5 mm).
 
     Compares, per axis, every port position (and a wire port's far end),
     source and probe with every sub-cell wire vertex and PEC sheet plane
@@ -995,8 +990,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
                 f"{int(idx[a])} ({_mm(node_axes[a][int(idx[a])])}), the "
                 f"conductor on node {node} ({_mm(node_axes[a][node])}). A "
                 "wire vertex or a sheet plane at a half node goes to the "
-                "lower node. On the uniform lane a port, source or probe "
-                "there goes to the even node until #1342; on either lane two "
+                "lower node (#1342), as do point features. On either lane two "
                 "coordinates a float step apart that straddle the half node "
                 "split the same way. The feature sits one cell off the "
                 "conductor it was drawn on and does not drive or sample it. "
@@ -1004,11 +998,87 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     return findings
 
 
-def _validate_cfg_half_node_split(self, _w) -> None:
-    """ERROR: a port, source or probe and a wire vertex or PEC sheet declared
-    at the same half-node coordinate land one cell apart (#1295, #1342).
+def trace_far_end_findings(sim, grid=None) -> list[str]:
+    """Refuse a port end whose realized node misses its declared trace.
 
-    Both lanes. ``half_node_split_findings`` holds the rule and the text; the
+    Both tangential ends are included in the declared pairing. Admission
+    depends on the realized footprint, not whether a declared edge rounds.
+    """
+    from rfx._grid_metric import NODE_TIE_REL
+    from rfx.geometry.rasterize_grid import (
+        _local_cell, cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
+        coords_from_nonuniform_grid, coords_from_uniform_grid, sheet_spec_from_shape,
+    )
+    from rfx.materials.thin_conductor import sheet_bounds
+    from rfx.nonuniform import NonUniformGrid
+    ports = [pe for pe in sim._ports if float(pe.impedance) > 0]
+    if not ports:
+        return []
+    shapes = [(e.shape, e.material_name) for e in sim._geometry
+              if e.material_name == "pec"
+              and getattr(e.shape, "corner_lo", None) is not None
+              and sum(a == b for a, b in zip(e.shape.corner_lo, e.shape.corner_hi)) == 1]
+    shapes.extend((tc.shape, "thin_conductor") for tc in sim._thin_conductors)
+    if not shapes:
+        return []
+    if grid is None:
+        grid = sim._build_realized_grid()
+    nu = isinstance(grid, NonUniformGrid)
+    coords = (coords_from_nonuniform_grid(grid) if nu else coords_from_uniform_grid(grid))
+    from rfx.core.jax_utils import is_tracer
+    if any(is_tracer(getattr(coords, a)) for a in "xyz"):
+        return []  # No concrete sheet footprint on a traced mesh.
+    sizes = (cell_sizes_from_nonuniform_grid(grid) if nu else cell_sizes_from_uniform_grid(grid))
+    nodes = [np.asarray(getattr(coords, a), dtype=float) for a in "xyz"]
+    messages = []
+    for shape, name in shapes:
+        lo, hi = sheet_bounds(shape)
+        if lo is None or hi is None:
+            continue
+        normal = min(range(3), key=lambda a: hi[a] - lo[a])
+        plane = .5 * (lo[normal] + hi[normal])
+        tangent = [a for a in range(3) if a != normal]
+        for pe in ports:
+            if "xyz".index(pe.component[-1]) != normal:
+                continue
+            start = float(pe.position[normal])
+            end = start + (float(pe.extent) if pe.extent is not None
+                           else _local_cell(nodes[normal], sizes[normal], start))
+            tol = NODE_TIE_REL * _local_cell(nodes[normal], sizes[normal], plane)
+            if min(abs(start - plane), abs(end - plane)) > tol:
+                continue
+            # A port declared within the tie band of a trace edge (e.g. one float
+            # step outside it through a float sum) still touches that trace.
+            if any(not (lo[a] - NODE_TIE_REL * _local_cell(nodes[a], sizes[a], lo[a])
+                        <= float(pe.position[a])
+                        <= hi[a] + NODE_TIE_REL * _local_cell(nodes[a], sizes[a], hi[a]))
+                   for a in tangent):
+                continue
+            sheet = sheet_spec_from_shape(shape, coords, sizes, name=name, grid=grid)
+            occupied = np.nonzero(np.asarray(sheet.footprint))
+            if not occupied[0].size:
+                continue
+            if nu:
+                from rfx.nonuniform import position_to_index
+                port_node = position_to_index(grid, pe.position)
+            else:
+                port_node = grid.position_to_index(pe.position)
+            for dimension, a in enumerate(tangent):
+                first, last = int(occupied[dimension].min()), int(occupied[dimension].max())
+                if not first <= port_node[a] <= last:
+                    messages.append(
+                        f"Port at {pe.position} touches trace {name!r}, but its realized "
+                        f"{'xyz'[a]} node {port_node[a]} is outside the trace footprint "
+                        f"nodes {first}..{last}. Move the port and the trace end "
+                        "onto the same mesh node, extend the trace past the port, "
+                        "or refine the mesh to put a node at the declared end (#1342).")
+    return messages
+
+
+def _validate_cfg_half_node_split(self, _w) -> None:
+    """ERROR: a point splits from its conductor or a port misses its trace.
+
+    Both lanes. The finding functions hold the rules and the text; the
     run-time refusal (``Simulation._require_no_half_node_split``, called from
     ``_dispatch_plan``) reads the same function, so ``skip_preflight=True``
     does not bypass it.
@@ -1018,6 +1088,16 @@ def _validate_cfg_half_node_split(self, _w) -> None:
             PreflightErrorWarning(
                 message,
                 code="half_node_split",
+                source="_validate_cfg_half_node_split",
+            ),
+            stacklevel=3,
+        )
+
+    for message in trace_far_end_findings(self):
+        _w.warn(
+            PreflightErrorWarning(
+                message,
+                code="trace_port_footprint",
                 source="_validate_cfg_half_node_split",
             ),
             stacklevel=3,

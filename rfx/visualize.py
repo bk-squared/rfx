@@ -544,7 +544,10 @@ def plot_rasterized_slice(
                     f"[{lo_c:g}, {hi_c:g}] m. Clamping it would have drawn a "
                     "plausible empty CPML plane, which is how a metre/mm slip "
                     "reads as a clean result.")
-            k = int(np.argmin(np.abs(coords[axis] - pos)))
+            from rfx._grid_metric import nearest_node_index
+            from rfx.geometry.rasterize_grid import _local_cell
+            k = nearest_node_index(coords[axis], pos,
+                                   _local_cell(coords[axis], grid.cells(axis), pos))
             # Physical radius, not a fixed +/-1 INDEX: on a graded axis the
             # cell touching k can be a fraction of its neighbour's size (a
             # 100 um / 250 um grading transition measured 2.5x), so an
@@ -855,8 +858,14 @@ def plot_stack_profile(
                          "\u03b5 structure)")
     else:
         from rfx._periodic import plane_coordinate
-        i0 = int(np.argmin(np.abs(coords[keep[0]] - plane_coordinate(grid, keep[0], float(at[0])))))
-        i1 = int(np.argmin(np.abs(coords[keep[1]] - plane_coordinate(grid, keep[1], float(at[1])))))
+        from rfx._grid_metric import nearest_node_index
+        from rfx.geometry.rasterize_grid import _local_cell
+        picked = []
+        for a, value in zip(keep, at):
+            pos = plane_coordinate(grid, a, float(value))
+            picked.append(nearest_node_index(coords[a], pos,
+                          _local_cell(coords[a], grid.cells(a), pos)))
+        i0, i1 = picked
     take = [0, 0, 0]
     take[keep[0]], take[keep[1]], take[axis] = i0, i1, slice(None)
     eps_col = eps[tuple(take)]

@@ -1012,14 +1012,15 @@ def compute_far_field(
     -------
     FarFieldResult
     """
-    # Auto-detect JAX tracing context and dispatch to differentiable version
+    # Dispatch on the inputs themselves: any traced leaf (the six faces, the
+    # box's frequencies, the angles, a graded grid's spacings) takes the
+    # jnp implementation, and an error there is the caller's to see. The
+    # host path below reads every one of them with numpy (#1364).
     import jax
-    try:
-        if any(isinstance(getattr(ntff_data, f, None), jax.core.Tracer)
-               for f in ('x_lo', 'x_hi', 'y_lo')):
-            return compute_far_field_jax(ntff_data, box, grid, theta, phi)
-    except Exception:
-        pass
+    from rfx.core.jax_utils import is_tracer
+    if any(is_tracer(leaf) for leaf in
+           jax.tree_util.tree_leaves((ntff_data, box, grid, theta, phi))):
+        return compute_far_field_jax(ntff_data, box, grid, theta, phi)
     theta = np.asarray(theta, dtype=np.float64)
     phi = np.asarray(phi, dtype=np.float64)
     freqs = np.asarray(box.freqs, dtype=np.float64)
@@ -1316,7 +1317,9 @@ def compute_far_field_jax(
             if _shape is not None and len(_shape) >= 3:
                 n_cells = max(n_cells, int(_shape[1]) * int(_shape[2]))
         if n_cells > 0:
-            n_freqs = int(np.asarray(box.freqs).shape[0])
+            # The count is static even when the frequencies are traced
+            # (a box built inside the caller's jit, #1364).
+            n_freqs = int(np.shape(box.freqs)[0])
             n_ph = int(jnp.asarray(phi).shape[0])
             per_theta = max(1.0, n_freqs * n_ph * n_cells * 16.0)
             # At least one theta per pass: when a single direction already

@@ -13,7 +13,6 @@ module level (that leaks into every same-process shard).
 
 from __future__ import annotations
 
-import contextlib
 import warnings
 
 import jax
@@ -21,21 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-try:
-    from jax import enable_x64 as _enable_x64  # jax >= 0.8: top-level, takes a bool
-except ImportError:
-    try:
-        from jax.experimental import enable_x64 as _enable_x64  # jax 0.6.x (CI pin)
-    except ImportError:  # neither: same semantics, scoped flip with restore
-
-        @contextlib.contextmanager
-        def _enable_x64(flag: bool):
-            prev = bool(jax.config.read("jax_enable_x64"))
-            jax.config.update("jax_enable_x64", flag)
-            try:
-                yield
-            finally:
-                jax.config.update("jax_enable_x64", prev)
+from jax import enable_x64 as _enable_x64
 
 from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec, Boundary

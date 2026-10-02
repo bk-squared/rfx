@@ -281,7 +281,8 @@ def test_out_of_period_point_is_refused(x, kind):
 def test_point_admission_is_half_open(n):
     from rfx.grid import Grid
     g = Grid(20e9, (n * .001, .006, .004), dx=.001, cpml_layers=0, periodic_axes='x')
-    assert g.index_of('x', -.0005) == 0
+    assert g.index_of('x', -.0005) == n - 1
+    assert g.index_of('x', n * .001 - .0005) == n - 1
     for x in (-.0005001, n * .001 + .0005):
         with pytest.raises(ValueError, match='outside this axis'):
             g.index_of('x', x)
