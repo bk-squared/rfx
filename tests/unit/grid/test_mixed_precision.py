@@ -441,5 +441,5 @@ def test_oversized_field_remedy_only_suggests_scaling():
     from rfx.api._source_semantics import guard_float16_source_increment
 
     with pytest.raises(ValueError, match="scale the waveform") as caught:
-        guard_float16_source_increment(np.array([5000.]), np.float16, "field")
+        guard_float16_source_increment(np.array([1e5]), np.float16, "field")
     assert "declare" not in str(caught.value)

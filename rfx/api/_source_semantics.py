@@ -167,14 +167,17 @@ def guard_float16_source_increment(waveform, field_dtype, amplitude_kind=None):
     import jax
     import jax.numpy as jnp
 
-    limit = float(np.finfo(np.float16).max) / 16
+    # Refuse only an increment that overflows float16 on its own, in one
+    # step: an explicit 'current' source with a one-step increment of ~4e4
+    # ran finite before this guard existed and must still run (#1442).
+    limit = float(np.finfo(np.float16).max)
 
     def check(samples):
         peak = float(np.max(np.abs(np.asarray(samples)), initial=0))
         if not np.isfinite(peak) or peak > limit:
             raise ValueError(
                 f"float16 soft-source one-step increment {peak:g} exceeds "
-                f"float16.max/16 ({limit:g}); scale the waveform"
+                f"the float16 maximum ({limit:g}); scale the waveform"
                 + ("." if amplitude_kind == "field" else
                    " or declare amplitude_kind='field'."))
         return np.int32(0)
