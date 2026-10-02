@@ -80,23 +80,23 @@ port separation (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
 
 Current-moment far fields have a tested envelope on thin planar boards with
 wire or lumped ports. Radiating geometry must lie strictly inside the monitor
-slab; its extent and material/boundary refusals still apply. See the
-[rfx-archive monitor record](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260925-current-moment-monitor/).
+slab; its extent and material/boundary refusals still apply. See
+`tests/unit/farfield/test_current_moment_monitor.py`.
 
 The edge-fed patch resonance has a measured mesh ladder against openEMS in
-[rfx-archive](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260927-1292-locked-results/).
+`tests/locks/test_patch_edgefed_resonance_harminv.py`.
 Its substrate-resolution requirement is specific to that board and observable.
 Oblique TF/SF validation has an angular limit; near grazing incidence the
 injected-wave error is not characterized, and the auxiliary-grid instrument's
-reading must not be interpreted as a PML reflection coefficient. See the
-[auxiliary-absorber record](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260928-1234-aux-absorbers/).
+reading must not be interpreted as a PML reflection coefficient. See
+`tests/unit/sources/test_tfsf_aux_absorber_reflection.py`.
 
 An outer `jax.jit` retains forward setup arrays in the device cache until
 `jax.clear_caches()`. It adds compilation cost and can add iteration overhead;
-see the [jit benchmark record](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20261001-1364-jit-farfield-bench/).
+see the internal record 20261001-1364-jit-farfield-bench.
 `run(devices=...)` is for capacity first. It divides cells equally along x,
 also on graded meshes. Measured speedups depend on the boundary and device
-count; the [distributed split record](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20261002-distributed-split-rule/)
+count; the internal record 20261002-distributed-split-rule
 uses a fitted single-device baseline rather than a direct single-device timing
 for the large box.
 

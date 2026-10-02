@@ -119,7 +119,7 @@
         "not a general multi-port coaxial network solver",
         "requires mode='3d', solver='yee', precision='float32', stencil_order=2, and a uniform grid",
         "requires boundary='cpml' with cpml_layers > 0",
-        "requires positive CPML on both z faces, cpml_axes='z', CPML tokens on all six BoundarySpec faces, and no periodic boundary axes",
+        "requires CPML tokens with positive thickness on all six BoundarySpec faces, cpml_axes='xyz' (the only accepted value), and no periodic boundary axes",
         "constructs its own line, source, DFT planes, and termination; separate geometry, RLC elements, monitors, and termination helpers are unsupported",
         "derives the axial layout internally; the port z position, pin_length, and impedance do not set layout or loads; use feed_impedance= and use dut_impedance= only with termination='matched'",
         "requires an integer probe_count of at least three and enough z-domain length for every requested probe plane",

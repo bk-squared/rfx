@@ -1,6 +1,6 @@
 # Palace FEM referee — cv06b MSL open-stub notch (WP 1-B)
 
-> Documentation update (2026-10-03): The generated meshes are not shipped here. Regenerate them with the mesh scripts in this directory or retrieve them from [rfx-archive](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260924-moved-from-rfx/). Solver input decks remain in the tree.
+> Documentation update (2026-10-03): The generated meshes are not shipped here. Regenerate them with the mesh scripts in this directory or retrieve them from internal record 20260924-moved-from-rfx. Solver input decks remain in the tree.
 
 Run tooling that produced the **independent-method referee** for the committed
 cv06b rfx-vs-openEMS notch split.

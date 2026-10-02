@@ -77,8 +77,10 @@ a preflight warning. Far-field and RCS use is covered in
 
 ### Lumped and wire ports
 
-The S21 phase of a lumped/wire pair is referenced a combined half cell inside
-the port separation; it is not the phase across the full drawn separation.
+For the matched air-line fixture in
+`tests/unit/ports/test_lumped_two_port_matched_line.py`, the S21 phase of a
+lumped/wire pair is referenced a combined half cell inside the realized port
+separation; it is not the phase across the full realized separation.
 
 ```text
 add_port(position, component="ez", *, impedance=50.0, waveform=None,

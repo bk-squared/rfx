@@ -1,6 +1,6 @@
 # One realized boundary for every kernel — pre-declaration
 
-> Documentation update (2026-10-03): Records moved by #1294 are in [rfx-archive, `rfx/records/20260924-moved-from-rfx/`](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260924-moved-from-rfx/). Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
 
 **Status:** pre-declaration for the boundary-model campaign, the PI's request of 2026-09-22 ("설계 자체를
 다시 고민해봐 … 시뮬레이터로서 일반화가 제한적인 영역에서 가능해야해"). The draft had three independent

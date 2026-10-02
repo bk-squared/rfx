@@ -1,6 +1,6 @@
 # Issue #498 / #517 — PREDECLARATION: mixed-lane reference-plane measurement + openEMS referee
 
-> Documentation update (2026-10-03): Records moved by #1294 are in [rfx-archive, `rfx/records/20260924-moved-from-rfx/`](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260924-moved-from-rfx/). Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
 
 > The coax thru-line case, the phase-identity evidence builder and the coax job files this note names were removed on 2026-09-21; they are at rfx commit 3883a836.
 

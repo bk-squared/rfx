@@ -943,9 +943,9 @@ This API is not a general multi-port coaxial-network solver and does not cover
 arbitrary launches, mixed port families, nonuniform meshes, TFSF, Floquet, or
 SBP-SAT. PEC, UPML, zero-layer CPML, ADI, two-dimensional, and fourth-order
 configurations are also unsupported. Mixed precision is unsupported.
-Boundary specifications without positive CPML on both z faces, non-z
-`cpml_axes` selections, mixed boundary-face tokens, and periodic axes are
-unsupported. `run()` and `forward()` reject high-level coaxial S-parameter
+Boundary specifications require CPML tokens with positive thickness on all six
+faces and `cpml_axes="xyz"` (the only accepted value); mixed boundary-face
+tokens and periodic axes are unsupported. `run()` and `forward()` reject high-level coaxial S-parameter
 requests.
 The older `compute_coaxial_s_matrix(...)` path has been removed.
 

@@ -1,6 +1,6 @@
 # Issue #831 — cv03's far-end return: pre-declared hypotheses, arms and gates
 
-> Documentation update (2026-10-03): Records moved by #1294 are in [rfx-archive, `rfx/records/20260924-moved-from-rfx/`](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260924-moved-from-rfx/). Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
 
 Written 2026-09-15 (KST), **before any measurement in this lane**. Frozen here
 so every verdict below is judged against a threshold that existed before the

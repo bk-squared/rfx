@@ -144,6 +144,13 @@ patch dimensions without rounding them to a uniform lattice. Read
 `sim.fidelity_report()` and the preflight findings to check that realization;
 registration does not replace a mesh-convergence study.
 
+This edge-aware in-plane grading raises four `nu_grading_reaches_absorber`
+advisories because the interior cells adjacent to the x/y absorber faces are
+not uniform. The grading changes the discrete medium normal to the boundary
+where the absorber starts, leaving no interior runway to separate the
+transition’s reflection from the absorber’s, so this example is outside the
+validated multi-band accuracy envelope.
+
 Treat preflight warnings as part of your result. Use `preflight(strict=True)`
 only for models you expect to have no findings at all, because strict mode turns
 every finding into an error.

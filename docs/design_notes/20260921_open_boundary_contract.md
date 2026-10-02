@@ -1,6 +1,6 @@
 # The open-boundary contract: what touches an absorbing face, and what the absorber may end
 
-> Documentation update (2026-10-03): Records moved by #1294 are in [rfx-archive, `rfx/records/20260924-moved-from-rfx/`](https://github.com/bk-squared/rfx-archive/tree/main/rfx/records/20260924-moved-from-rfx/). Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
 
 Status: **decided** (PI, 2026-09-21). Option A of section 5 is adopted; option B is the next task, not a
 rejected one. This note is the rule; the code that implements it lands in later changes and cites it.
