@@ -77,7 +77,7 @@ def test_zero_post_source_channels_have_zero_share(monkeypatch, source_end):
 
 
 @pytest.mark.parametrize('source_end', [0, 40])
-def test_all_zero_post_source_group_is_undetermined(monkeypatch, source_end):
+def test_all_zero_post_source_group_passes(monkeypatch, source_end):
     import rfx.ringdown as ringdown
 
     def unexpected(*args, **kwargs):
@@ -88,9 +88,9 @@ def test_all_zero_post_source_group_is_undetermined(monkeypatch, source_end):
     y[:source_end] = 1.
     result = tail_share_witness([('zero', y)], 1., source_end,
                                 [.07, .12], freq_max=.15)
-    assert result.status == 'undetermined'
-    assert result.reason == 'zero: no ringing to identify'
-    assert np.isnan(result.db)
+    assert result.status == 'pass'
+    assert result.reason == 'zero: no post-source variation'
+    assert result.db <= -40
     np.testing.assert_array_equal(result.share_per_bin, [0., 0.])
 
 

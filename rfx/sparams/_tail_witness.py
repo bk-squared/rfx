@@ -95,6 +95,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
     if not np.isfinite(dt) or dt <= 0 or not np.isfinite(freq_max) or freq_max <= 0 or not np.isfinite(bins).all():
         return unavailable('undetermined', 'invalid time step, read bins, or identification freq_max')
     reasons = []
+    zero_reasons = []
     groups = {}
     for name, raw in sorted(records, key=lambda item: item[0]):
         if _record_results is not None:
@@ -117,26 +118,44 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
         try:
             if int(source_end) != source_end or not 0 <= source_end < n:
                 raise ValueError("source end outside record")
-            group = [(name, array[:, np.any(array[int(source_end):] != 0, axis=0)])
-                     for name, array in group]
-            y = np.concatenate([array for _, array in group], axis=1)
-            if y.shape[1] == 0:
-                raise ValueError("no ringing to identify")
-            scale = np.max(np.maximum(np.abs(y.real), np.abs(y.imag)), axis=0)
-            y = y / scale
             start = max(int(source_end), round(.5 * n))
             use_earlier = start // 2 >= source_end
             check_start = start // 2 if use_earlier else start
             check_stop = n if use_earlier else start + round(.9 * (n - start))
             if min(n - start, check_stop - check_start) < 10:
                 raise ValueError("post-source window too short for the identification check")
-            main = identify(y, dt, start, n, freq_max=max(freq_max, float(np.max(bins))))
-            other = identify(y, dt, check_start, check_stop, freq_max=max(freq_max, float(np.max(bins))))
+            group = [(name, array[:, np.any(array[int(source_end):] != array[int(source_end)], axis=0)])
+                     for name, array in group]
+            y = np.concatenate([array for _, array in group], axis=1)
+            if y.shape[1] == 0:
+                zero_reasons.append(f"{label}: no post-source variation")
+                if _record_results is not None:
+                    for name, _ in group:
+                        _record_results[name] = float("-inf")
+                continue
+            scale = np.max(np.maximum(np.abs(y.real), np.abs(y.imag)), axis=0)
+            y = y / scale
             denom = np.abs(plain_dft(y, dt, bins))
-            for model in (main, other):
+
+            def identify_window(lo, hi):
+                centered = y - np.mean(y[lo:hi], axis=0)
+                active = np.any(centered[lo:hi] != 0, axis=0)
+                if not np.any(active):
+                    raise ValueError("no post-source variation in identification window only")
+                model = identify(centered[:, active], dt, lo, hi,
+                                 freq_max=max(freq_max, float(np.max(bins))))
+                residues = np.zeros((len(model.s), y.shape[1]), dtype=complex)
+                residues[:, active] = model.c
+                model = replace(model, c=residues)
+                return model, centered, np.where(active, denom, np.inf)
+
+            main, main_series, main_denom = identify_window(start, n)
+            other, other_series, other_denom = identify_window(check_start, check_stop)
+            for model, series, window_denom in ((main, main_series, main_denom),
+                                                 (other, other_series, other_denom)):
                 if not len(model.s):
                     reasons.append(f"{label}: no kept poles identified")
-                for rule, value in _pole_contributions(model, y, bins, denom, n*dt).items():
+                for rule, value in _pole_contributions(model, series, bins, window_denom, n*dt).items():
                     contributions[rule] = np.maximum(contributions.get(rule, np.zeros(len(bins))), value)
                     for k in np.flatnonzero((value > 1e-2) | ~np.isfinite(value)):
                         comparison = '> 1e-2' if np.isfinite(value[k]) else 'is non-finite'
@@ -152,9 +171,9 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
             tail = tail_dft(main, n - 1, bins)
             alt = tail_dft(other, n - 1, bins)
             with np.errstate(divide="ignore", invalid="ignore"):
-                per_channel = np.abs(tail) / denom
-                other_channel = np.abs(alt) / denom
-                err_channel = np.abs(tail - alt) / denom
+                per_channel = np.abs(tail) / main_denom
+                other_channel = np.abs(alt) / other_denom
+                err_channel = np.abs(tail - alt) / np.minimum(main_denom, other_denom)
             if not np.isfinite(per_channel).all() or not np.isfinite(err_channel).all() or not np.isfinite(other_channel).all():
                 reasons.append(f"{label}: non-finite tail or zero in-record DFT")
                 continue
@@ -182,7 +201,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
     worst = int(np.argmax(share))
     db = float(20 * np.log10(max(share[worst], np.finfo(float).tiny)))
     return TailShareWitness(db, share, float(bins[worst]),
-                            'pass' if share[worst] <= 1e-2 else 'fail', '', error, contributions)
+                            'pass' if share[worst] <= 1e-2 else 'fail', '; '.join(zero_reasons), error, contributions)
 
 
 def result_read_bins(result):
