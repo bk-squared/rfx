@@ -22,7 +22,9 @@ from rfx.sources.waveguide_port import (
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
-from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
+from rfx.core.yee import (
+    add_lumped_eps, edge_mean_components, permittivity_without_lumped,
+)
 
 
 def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
@@ -365,28 +367,14 @@ def run_uniform(
         w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, conformal_min_weight)
         conformal_weights = (w_ex, w_ey, w_ez)
 
-        # Compute conformal eps correction
-        eps_base = permittivity_without_lumped(materials)
-        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(eps_base, w_ex, w_ey, w_ez)
-
-        if aniso_eps is not None:
-            # Merge: conformal PEC overrides smoothed eps at PEC boundary cells
-            s_ex, s_ey, s_ez = aniso_eps
-            boundary_ex = w_ex < 1.0
-            boundary_ey = w_ey < 1.0
-            boundary_ez = w_ez < 1.0
-            eps_ex_c = jnp.where(boundary_ex, eps_ex_c, s_ex)
-            eps_ey_c = jnp.where(boundary_ey, eps_ey_c, s_ey)
-            eps_ez_c = jnp.where(boundary_ez, eps_ez_c, s_ez)
-
-        aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
-
+        # The 1/w permittivity is formed below, once the run's final
+        # periodic flags are known (#1373).
         # Conformal replaces binary pec_mask
         pec_mask = None
 
-    # Complete the volume tensor before adding edge-owned capacitors:
-    # conformal weights must act on the volume, never on a lumped C.
-    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+    # Edge-owned capacitors go onto the Stage-2 inverse tensor here; the
+    # Stage-1 / smoothed tensor gets them below, after the conformal
+    # correction, so a conformal weight never divides a lumped C.
     aniso_inv_eps = add_lumped_eps(
         aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
@@ -791,6 +779,30 @@ def run_uniform(
                 comp = "ez"
         from rfx.simulation import make_source as _make_src
         sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
+
+    # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
+    # edge mean of the volume permittivity the plain E update uses, on the
+    # run's final periodic flags (after the TFSF / 2-D overrides), divided
+    # by the edge's open fraction w. On an edge no PEC touches (w == 1) it
+    # is the plain path's value exactly.
+    if conformal_weights is not None:
+        w_ex, w_ey, w_ez = conformal_weights
+        eps_mean = edge_mean_components(
+            permittivity_without_lumped(materials),
+            _simulation.resolve_periodic(grid, periodic))
+        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
+            eps_mean, w_ex, w_ey, w_ez)
+        if aniso_eps is not None:
+            # Merge: conformal PEC overrides smoothed eps at PEC boundary cells
+            s_ex, s_ey, s_ez = aniso_eps
+            eps_ex_c = jnp.where(w_ex < 1.0, eps_ex_c, s_ex)
+            eps_ey_c = jnp.where(w_ey < 1.0, eps_ey_c, s_ey)
+            eps_ez_c = jnp.where(w_ez < 1.0, eps_ez_c, s_ez)
+        aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
+
+    # Complete the volume tensor before adding edge-owned capacitors:
+    # conformal weights must act on the volume, never on a lumped C.
+    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
 
     # Thread the field storage dtype into the ADE carry (issue #656), the
     # same way ``rfx.simulation.run`` threads it into the CPML psi / NTFF /

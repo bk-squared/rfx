@@ -822,7 +822,15 @@ def compute_waveguide_s_matrix(
         # Per-component conformal-corrected eps. Merge with the
         # smoothed eps (if any): conformal overrides at boundary
         # cells, smoothed survives in the interior.
-        eps_base = materials.eps_r
+        # #1373: the plain E update's four-cell edge mean of the volume
+        # permittivity, then 1/w -- never the per-cell array.
+        from rfx.core.yee import (
+            edge_mean_components, permittivity_without_lumped,
+        )
+        from rfx.simulation import resolve_periodic
+        eps_base = edge_mean_components(
+            permittivity_without_lumped(materials),
+            resolve_periodic(grid, None))
         eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
             eps_base, w_ex, w_ey, w_ez,
         )
@@ -839,7 +847,7 @@ def compute_waveguide_s_matrix(
         # walls, so the conformal eps correction applies equally.
         # Build it from the ref vacuum eps so the only difference
         # ref-vs-device is the obstacle in ``materials.eps_r``.
-        ref_eps_base = jnp.ones_like(eps_base)
+        ref_eps_base = jnp.ones_like(materials.eps_r)
         ref_ex, ref_ey, ref_ez = conformal_eps_correction(
             ref_eps_base, w_ex, w_ey, w_ez,
         )

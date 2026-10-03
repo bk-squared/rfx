@@ -329,8 +329,12 @@ def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):
 
     Parameters
     ----------
-    eps_r : jnp.ndarray or float
-        Background relative permittivity (scalar or array).
+    eps_r : tuple of three jnp.ndarray, jnp.ndarray or float
+        Volume relative permittivity per E component, already averaged
+        onto the Yee edges (``rfx.core.yee.edge_mean_components``), or one
+        scalar / array shared by all three components. A heterogeneous
+        cell-centred array must be edge-averaged first (#1373), and a
+        lumped capacitor is added afterwards, never divided by ``w``.
     w_ex, w_ey, w_ez : jnp.ndarray
         Clamped conformal weights.
 
@@ -341,4 +345,8 @@ def conformal_eps_correction(eps_r, w_ex, w_ey, w_ez):
     safe_wx = jnp.where(w_ex > 0, w_ex, 1.0)
     safe_wy = jnp.where(w_ey > 0, w_ey, 1.0)
     safe_wz = jnp.where(w_ez > 0, w_ez, 1.0)
-    return eps_r / safe_wx, eps_r / safe_wy, eps_r / safe_wz
+    if isinstance(eps_r, tuple):
+        eps_x, eps_y, eps_z = eps_r
+    else:
+        eps_x = eps_y = eps_z = eps_r
+    return eps_x / safe_wx, eps_y / safe_wy, eps_z / safe_wz
