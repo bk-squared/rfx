@@ -253,9 +253,14 @@ def test_mutations(monkeypatch, mutation):
                               lambda f, dt: jnp.ones_like(f, dtype=jnp.complex64))
                 return original_dft(*args)
         monkeypatch.setattr(driver, "_lumped_recording_dfts", dft)
-    with pytest.raises(AssertionError, match="S parity|trace parity"):
+    # Without the load stamp a port has no source impedance to drive behind
+    # (#1463: the drive is the stamped conductance times the source field), so
+    # that mutation is refused before stepping instead of reaching the parity.
+    expected = ((RuntimeError, "no stamped load") if mutation == "no_stamps"
+                else (AssertionError, "S parity|trace parity"))
+    with pytest.raises(expected[0], match=expected[1]):
         _parity("ex")
-    print(f"wire mutation={mutation}: parity RED")
+    print(f"wire mutation={mutation}: RED")
 
 
 @pytest.mark.parametrize("case,planes", [("ez", False), ("ez", True), ("lumped", False), ("lumped_distributed", False)])

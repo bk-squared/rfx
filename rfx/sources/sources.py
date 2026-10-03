@@ -423,14 +423,14 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
 
     E[port] += Cb * V_src / (R * transverse_dual_area)
     """
-    from rfx.sources.port_drive import port_drive_waveform
+    from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
     idx = grid.position_to_index(port.position)
     i, j, k = idx
     increment = port_drive_waveform(
         grid, idx, port.component, port.excitation, None, materials,
-        sigma_port=port._drive_stamps[tuple(idx)][0],
-        unit_field=port._drive_stamps[tuple(idx)][1], time=t)
+        sigma_port=stamped_drive(port, idx)[0],
+        unit_field=stamped_drive(port, idx)[1], time=t)
 
     field = getattr(state, port.component)
     field = field.at[i, j, k].add(increment)
@@ -669,7 +669,7 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
     injection — pre-#318 they accumulated phantom EMF on an edge whose
     only discharge path was the port sigma folded at that cell.
     """
-    from rfx.sources.port_drive import port_drive_waveform
+    from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
     cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
 
@@ -680,8 +680,8 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
         i, j, k = cell
         increment = port_drive_waveform(
             grid, cell, port.component, port.excitation, None, materials,
-            sigma_port=port._drive_stamps[tuple(cell)][0],
-            unit_field=port._drive_stamps[tuple(cell)][1], time=t)
+            sigma_port=stamped_drive(port, cell)[0],
+            unit_field=stamped_drive(port, cell)[1], time=t)
         field = field.at[i, j, k].add(increment)
 
     return state._replace(**{port.component: field})

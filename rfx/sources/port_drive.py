@@ -6,6 +6,23 @@ import jax.numpy as jnp
 from rfx.core.yee import cell_component_e_coeffs
 
 
+def stamped_drive(port, cell):
+    """The ``(sigma_port, unit_field)`` the port's setup stamped at ``cell``.
+
+    A port is driven through the load its setup stamped; a drive built for a
+    cell with no stamp would have no source impedance to stand behind, so it
+    is refused with a message naming the missing step.
+    """
+    try:
+        return port._drive_stamps[tuple(int(c) for c in cell)]
+    except KeyError:
+        raise RuntimeError(
+            f"port drive at cell {tuple(int(c) for c in cell)} has no stamped "
+            "load: the port's setup (setup_lumped_port / setup_wire_port / "
+            "setup_msl_port) must stamp its conductance before its drive is "
+            "built") from None
+
+
 def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
                         *, sigma_port, unit_field, time=None):
     """Return ``Cb * sigma_port * unit_field * w(t)`` for one live edge.

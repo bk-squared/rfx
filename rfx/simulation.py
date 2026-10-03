@@ -461,14 +461,14 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     The port impedance must already be folded into *materials* via
     ``setup_lumped_port()``.
     """
-    from rfx.sources.port_drive import port_drive_waveform
+    from rfx.sources.port_drive import stamped_drive, port_drive_waveform
     idx = grid.position_to_index(port.position)
     i, j, k = idx
 
     waveform = port_drive_waveform(
         grid, idx, port.component, port.excitation, n_steps, materials,
-        sigma_port=port._drive_stamps[tuple(idx)][0],
-        unit_field=port._drive_stamps[tuple(idx)][1])
+        sigma_port=stamped_drive(port, idx)[0],
+        unit_field=stamped_drive(port, idx)[1])
     return SourceSpec(i=i, j=j, k=k,
                       component=port.component, waveform=waveform)
 
@@ -488,7 +488,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
     from rfx.sources.sources import _wire_port_live_cells
 
     cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
-    from rfx.sources.port_drive import port_drive_waveform
+    from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
     specs = []
     for cell, live in zip(cells, live_flags):
@@ -497,8 +497,8 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
         i, j, k = cell
         waveform = port_drive_waveform(
             grid, cell, port.component, port.excitation, n_steps, materials,
-            sigma_port=port._drive_stamps[tuple(cell)][0],
-            unit_field=port._drive_stamps[tuple(cell)][1])
+            sigma_port=stamped_drive(port, cell)[0],
+            unit_field=stamped_drive(port, cell)[1])
         specs.append(SourceSpec(i=i, j=j, k=k,
                                 component=port.component, waveform=waveform))
     return specs
