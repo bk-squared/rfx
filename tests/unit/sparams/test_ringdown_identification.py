@@ -161,7 +161,6 @@ def test_identification_node_that_resolves_elsewhere_refuses(monkeypatch):
                        lane="uniform", n_steps=600, grid=grid)
 
 
-@pytest.mark.xfail(strict=True, reason="#1458 ring-down gradient error moves under a pure source rescaling; the port-unit change rescales this source by 20")
 def test_weak_port_resonance_gradient_needs_an_identification_probe():
     """A short corner wire weakly observes TM110 in a lossy PEC box.
 
