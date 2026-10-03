@@ -359,7 +359,8 @@ class TestMultiModeSMatrix:
         assert cfgs_out[0].src_amp != 0.0
         assert cfgs_out[1].src_amp == 0.0
 
-    def test_multimode_s_matrix_shape(self, waveguide_setup):
+    @pytest.mark.parametrize("normalization", ["direct", "flux"])
+    def test_multimode_s_matrix_shape(self, waveguide_setup, normalization):
         """Multi-mode S-matrix should be (N_total, N_total, n_freqs)."""
         grid, dx, freqs, port_in, port_out, nc = waveguide_setup
         n_steps = grid.num_timesteps(num_periods=10)
@@ -375,16 +376,27 @@ class TestMultiModeSMatrix:
 
         port_mode_cfgs = [cfgs_in, cfgs_out]  # 2 ports x 2 modes = 4 total
 
-        s_matrix, mode_map = extract_multimode_s_matrix(
-            grid,
-            init_materials(grid.shape),
+        from rfx.sources.waveguide_port import extract_multimode_s_matrix_flux
+
+        extractor = (extract_multimode_s_matrix_flux if normalization == "flux"
+                     else extract_multimode_s_matrix)
+        args = [grid, init_materials(grid.shape)]
+        if normalization == "flux":
+            args.append(init_materials(grid.shape))
+        details = []
+        s_matrix, mode_map = extractor(
+            *args,
             port_mode_cfgs,
             n_steps,
             boundary="cpml",
             cpml_axes="x",
             pec_axes="yz",
+            settling_details=details,
         )
 
+        assert len(details) == 4
+        assert all(row['status'] in {'pass', 'fail', 'undetermined'} for row in details)
+        assert all(row['share_per_bin'].shape == (len(freqs),) for row in details)
         n_total = 4  # 2 ports x 2 modes
         n_freqs = len(freqs)
         assert s_matrix.shape == (n_total, n_total, n_freqs), (

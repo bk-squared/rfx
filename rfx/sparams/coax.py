@@ -44,7 +44,6 @@ from rfx.sparams._common import (
     _validate_extra_flux_monitor_entries,
     _warn_if_ringdown_truncated,
     _finalize_sparam_result,
-    _warn_ntff_box_dropped,
     _assemble_coaxial_two_port_from_voltages,
     _ladder_split_witness,
     _assemble_coax_msl_transition_from_voltages,
@@ -919,11 +918,7 @@ def compute_coaxial_two_port(
     n_top = len(probes_top)
     all_probes_z = list(probes_bot) + list(probes_top)
 
-    # Settling witness: one point probe per array (ex, mid-annulus on the
-    # +x ray), at each array's middle plane. Same worst end/peak E^2 (dB)
-    # convention as the MSL/mixed lanes (rfx.api._sparams module docstring
-    # of _warn_if_ringdown_truncated); -40 dB is the project's ring-down
-    # settling rule (docs/guides/simulation_methodology.md).
+    # Point probes at the middle plane of each array.
     x_mid = center_xy[0] + 0.5 * (a + b)
     i_probe = int(round(x_mid / dz)) + int(grid.pad_x_lo)
     j_probe = int(grid.pad_y_lo) + int(round(center_xy[1] / dz))
@@ -953,6 +948,7 @@ def compute_coaxial_two_port(
         v_bot_by_drive = np.zeros((2, n_bot, n_f), dtype=np.complex128)
         v_top_by_drive = np.zeros((2, n_top, n_f), dtype=np.complex128)
     settling_db = np.full(2, np.nan, dtype=np.float64)
+    settling_details = [{"status": "undetermined", "reason": "traced or unavailable S channels"} for _ in range(2)]
 
     # drive_idx 0 drives port 1 (top); drive_idx 1 drives port 2 (bot).
     for drive_idx, spec in enumerate((spec_top, spec_bot)):
@@ -976,7 +972,7 @@ def compute_coaxial_two_port(
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
             sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
-            probes=witness_probes, dft_planes=planes,
+            probes=witness_probes, dft_planes=planes, record_dft=True,
             pec_edge_masks=_coax_edges, return_state=False,
             **_flux_run_kwargs,
         )
@@ -1049,15 +1045,23 @@ def compute_coaxial_two_port(
                 axis=0,
             )  # (n_top, n_freqs)
 
-            ts = np.asarray(result.time_series, dtype=float)
+            ts = np.asarray(result.time_series)
             if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-                power = ts ** 2
-                tail = max(1, power.shape[0] // 10)
-                end = power[-tail:, :].mean(axis=0)
-                peak = power.max(axis=0)
-                tiny = np.finfo(float).tiny
-                ratio_db = 10.0 * np.log10((end + tiny) / (peak + tiny))
-                settling_db[drive_idx] = float(np.max(ratio_db))
+                from rfx.probes.settling import sampled_source_end_step
+                from rfx.sources.waveguide_port import settling_db_from_named_records
+                source_end = sampled_source_end_step(
+                    (*spec.electric_sources, *spec.magnetic_sources), witness_probes, grid, len(ts))
+                _plane_records = getattr(result, "dft_time_records", None)
+                _channels = [(f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
+                    grid, _plane_records[2*pi], _plane_records[2*pi+1],
+                    center_xy=center_xy, pin_radius=a, outer_radius=b)))
+                    for pi in range(len(all_probes_z))] if _plane_records else []
+                if _channels:
+                    _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
+                settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
+                    _channels, source_end_index=source_end,
+                    dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True)
+
 
     if _traced_eps:
         v_bot_by_drive = jnp.stack(v_bot_list, axis=0)
@@ -1095,7 +1099,7 @@ def compute_coaxial_two_port(
         fit_residual=fit_resid,
         gamma=gamma,
         annulus_cells=annulus_cells,
-        settling_db=settling_db,
+        settling_db=settling_db, settling_witness=tuple(settling_details),
         status=status,
         flux_monitors=(flux_by_drive if extra_flux_monitors else None),
     )
@@ -1105,6 +1109,7 @@ def compute_coaxial_two_port(
     # host-side numpy on every path, so no tracer is branched on here).
     _warn_if_ringdown_truncated(
         settling_db, ("port1", "port2"), n_steps=int(n_steps),
+        witnesses=None if _traced_eps else settling_details,
     )
     return _finalize_sparam_result(
         result_obj,
@@ -1857,6 +1862,7 @@ def compute_coax_msl_transition(
     v_coax_by_drive = np.zeros((2, len(probes_coax), n_f), dtype=np.complex128)
     v_msl_by_drive = np.zeros((2, len(xs_sorted), n_f), dtype=np.complex128)
     settling_db = np.full(2, np.nan, dtype=np.float64)
+    settling_details = [{"status": "undetermined", "reason": "traced or unavailable S channels"} for _ in range(2)]
 
     x_mid_coax = center_xy[0] + 0.5 * (a + b)
     i_probe_coax = int(round(x_mid_coax / dz)) + int(grid.pad_x_lo)
@@ -1911,7 +1917,7 @@ def compute_coax_msl_transition(
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
             sources=sources, mag_sources=mag_sources, probes=witness_probes,
-            dft_planes=planes,
+            dft_planes=planes, record_dft=True,
             pec_edge_masks=_coax_pec_edge_masks(
                 coax_pec_cells, merge_with=_cx_pec_edge_masks),
             return_state=False,
@@ -1946,16 +1952,29 @@ def compute_coax_msl_transition(
             )
             v_msl_by_drive[drive_idx, pi, :] = np.asarray(v_q)
 
-        ts = np.asarray(result.time_series, dtype=float)
+        ts = np.asarray(result.time_series)
         if ts.ndim == 2 and ts.shape[0] >= 10 and ts.shape[1] == len(witness_probes):
-            power = ts ** 2
-            tail = max(1, power.shape[0] // 10)
-            end = power[-tail:, :].mean(axis=0)
-            peak = power.max(axis=0)
-            tiny = np.finfo(float).tiny
-            settling_db[drive_idx] = float(np.max(
-                10.0 * np.log10((end + tiny) / (peak + tiny))
-            ))
+            from rfx.probes.settling import sampled_source_end_step
+            from rfx.sources.waveguide_port import settling_db_from_named_records
+            source_end = sampled_source_end_step(
+                (*sources, *mag_sources), witness_probes, grid, len(ts))
+            _plane_records = getattr(result, "dft_time_records", None)
+            _channels = []
+            if _plane_records:
+                _channels.extend((f"coax/plane{pi}/V", np.asarray(coaxial_line_plane_voltage(
+                    grid, _plane_records[2*pi], _plane_records[2*pi+1],
+                    center_xy=center_xy, pin_radius=a, outer_radius=b)))
+                    for pi in range(len(probes_coax)))
+                _channels.extend((f"msl/plane{pi}/V", np.asarray(msl_modal_voltage(
+                    _plane_records[n_coax_planes+pi], j_centre=j_centre_msl,
+                    k_lo=k_lo_msl, k_hi=k_trace_lo, dz_arr=dz_arr, dtype=_complex_dtype)))
+                    for pi in range(len(xs_sorted)))
+            if _channels:
+                _channels.extend((f"probe{i}", ts[:, i]) for i in range(ts.shape[1]))
+            settling_db[drive_idx], settling_details[drive_idx] = settling_db_from_named_records(
+                _channels, source_end_index=source_end,
+                dt=result.dt, freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
+
 
     s_params, cond_a, cond_a_equilibrated, rec_resid, fit_resid, gamma, a_inc, b_out = \
         _assemble_coax_msl_transition_from_voltages(
@@ -2025,7 +2044,7 @@ def compute_coax_msl_transition(
         gamma=gamma,
         a_inc=a_inc,
         b_out=b_out,
-        settling_db=settling_db,
+        settling_db=settling_db, settling_witness=tuple(settling_details),
         ladder_split_gamma_dev=ladder_split_gamma_dev,
         ladder_split_reflection_decades=ladder_split_reflection_decades,
         status="experimental",
@@ -2036,7 +2055,7 @@ def compute_coax_msl_transition(
     # the RESOLVED record length (num_periods was folded into it above), and
     # it is the knob that overrides num_periods, so it is the actionable one.
     _warn_if_ringdown_truncated(
-        settling_db, ("coax", "msl"), n_steps=int(n_steps),
+        settling_db, ("coax", "msl"), n_steps=int(n_steps), witnesses=settling_details,
     )
     try:
         return _finalize_sparam_result(

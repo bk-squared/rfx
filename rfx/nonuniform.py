@@ -3056,6 +3056,7 @@ def _build_nu_scan(
         if use_wire_ports:
             from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
             new_wire_sp = []
+            port_samples = []
             for (v_dft, i_dft, vinc_dft, v_port_dft), \
                 (mi, mj, mk, comp, z0, dxi, dyj,
                  _excite, _dir, dual_xi, dual_yj,
@@ -3088,6 +3089,7 @@ def _build_nu_scan(
                 # (`dft_utils.half_step_current_phase`).
                 i_phase = phase * _half_i_phase(
                     sp_freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                port_samples.append(jnp.stack((v, i_val, v_port)))
                 new_wire_sp.append((
                     v_dft + v * phase,
                     i_dft + i_val * i_phase,
@@ -3100,6 +3102,7 @@ def _build_nu_scan(
         if use_dft_planes:
             t_plane = step_idx.astype(jnp.float32) * dt
             new_dft_planes = []
+            plane_samples = []
             for acc, (component, axis, index, freqs, region) in zip(
                 carry["dft_planes"], dft_meta
             ):
@@ -3121,6 +3124,7 @@ def _build_nu_scan(
                 else:
                     plane = field[lo1:hi1, lo2:hi2, index]
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
+                plane_samples.append(plane)
                 new_dft_planes.append(
                     acc + plane[None, :, :] * phase[:, None, None] * dt
                 )
@@ -3200,6 +3204,14 @@ def _build_nu_scan(
             probe_out = jnp.zeros(0)
 
         new_carry = {"fdtd": st}
+        if "dft_time_records" in carry:
+            new_carry["dft_time_records"] = tuple(
+                jax.lax.stop_gradient(record.at[step_idx].set(sample))
+                for record, sample in zip(carry["dft_time_records"], plane_samples))
+        if "sparam_time_records" in carry:
+            new_carry["sparam_time_records"] = tuple(
+                jax.lax.stop_gradient(record.at[step_idx].set(sample))
+                for record, sample in zip(carry["sparam_time_records"], port_samples))
         if use_cpml:
             new_carry["cpml"] = cpml_new
         if use_debye and debye_new is not None:
@@ -3284,6 +3296,7 @@ def run_nonuniform(
     aniso_eps: tuple | None = None,
     sheet_impedance=None,
     design_box=None,
+    record_dft: bool = False,
 ) -> dict:
     """Run non-uniform FDTD via jax.lax.scan.
 
@@ -3332,6 +3345,13 @@ def run_nonuniform(
     )
     step_fn = setup.step_fn
     carry_init = setup.carry_init
+    if record_dft and dft_planes:
+        carry_init["dft_time_records"] = tuple(
+            jnp.zeros((n_steps,) + p.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
+            for p in dft_planes)
+    if "wire_sparams" in carry_init:
+        carry_init["sparam_time_records"] = tuple(
+            jnp.zeros((n_steps, 3), dtype=carry_init["fdtd"].ex.dtype) for _ in carry_init["wire_sparams"])
     src_waveforms = setup.src_waveforms
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
@@ -3478,7 +3498,7 @@ def run_nonuniform(
     return _assemble_nu_result(setup, final, time_series)
 
 
-def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
+def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series, n_record=None) -> dict:
     """Assemble the NU result dict (pure code motion from run_nonuniform,
     #383). Shared by :func:`run_nonuniform` and
     :func:`run_nonuniform_until_decay` so the two paths return the exact
@@ -3499,6 +3519,7 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
     use_waveguide_ports = setup.use_waveguide_ports
 
     result = {
+        "dft_time_records": tuple(r[:n_record] for r in final.get("dft_time_records", ())),
         "state": final["fdtd"],
         "time_series": time_series,
         "dt": dt,
@@ -3741,6 +3762,8 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series) -> dict:
         # v_port_dft), surfaced for diagnostics/validation harnesses
         # (issue #764; mirrors the uniform lane's raw-acc access via
         # forward()'s wire_port_sparams).
+        result["sparam_time_records"] = tuple(
+            record[:n_record] for record in final.get("sparam_time_records", ()))
         result["wire_sparams_raw"] = final["wire_sparams"]
         # The static per-port metadata those accumulators were recorded
         # with, in the same order (:func:`_build_wp_meta` slots). The
@@ -3795,6 +3818,7 @@ def run_nonuniform_until_decay(
     sheet_impedance=None,
     design_box=None,
     stop_fn=None,
+    record_dft: bool = False,
 ) -> dict:
     """Run non-uniform FDTD until the interior-domain energy decays (#383).
 
@@ -3906,6 +3930,13 @@ def run_nonuniform_until_decay(
         design_box=design_box,
     )
     carry = setup.carry_init
+    if record_dft and dft_planes:
+        carry["dft_time_records"] = tuple(
+            jnp.zeros((max_steps,) + p.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
+            for p in dft_planes)
+    if "wire_sparams" in carry:
+        carry["sparam_time_records"] = tuple(
+            jnp.zeros((max_steps, 3), dtype=carry["fdtd"].ex.dtype) for _ in carry["wire_sparams"])
 
     # Source table: pad/truncate to max_steps so every chunk slice is
     # full-length (mirrors the uniform run_until_decay pad/truncate).
@@ -4057,7 +4088,7 @@ def run_nonuniform_until_decay(
         if stop_fn is not None:
             from rfx.progress import concat_chunks
             if stop_fn(steps_done, lambda: _assemble_nu_result(
-                    setup, carry, concat_chunks(ys_chunks))):
+                    setup, carry, concat_chunks(ys_chunks), n_record=steps_done)):
                 if reporter is not None and reporter.last_reported != steps_done:
                     reporter.report(steps_done)
                 break
@@ -4078,6 +4109,6 @@ def run_nonuniform_until_decay(
     # because each chunk emits (this_chunk, 0).
     time_series = jnp.concatenate(ys_chunks, axis=0)
 
-    result = _assemble_nu_result(setup, carry, time_series)
+    result = _assemble_nu_result(setup, carry, time_series, n_record=steps_done)
     result["decay_checks"] = decay_checks
     return result

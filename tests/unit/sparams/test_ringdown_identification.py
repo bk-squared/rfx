@@ -1,4 +1,5 @@
 """Identification channels and frequency-local gradient judgments."""
+import inspect
 import sys
 
 import numpy as np
@@ -43,9 +44,11 @@ def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, mon
     original = rd.identify
 
     def identify(series, *args, **kwargs):
-        seen.append(np.asarray(series).copy())
+        completion_call = inspect.currentframe().f_back.f_code.co_filename == rd.__file__
         model = original(series, *args, **kwargs)
-        models.append(model)
+        if completion_call:
+            seen.append(np.asarray(series).copy())
+            models.append(model)
         return model
 
     monkeypatch.setattr(rd, "identify", identify)

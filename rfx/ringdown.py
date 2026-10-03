@@ -615,16 +615,23 @@ def _to_original_rate(lam_dec: np.ndarray, D: int, dt: float, guard):
     return np.log(lam_dec) / (int(D) * float(dt)), n_guard
 
 
-def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float) -> np.ndarray:
-    """Least-squares residues at the original rate, poles fixed, referred to the window start."""
+def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
+                  column_reference: bool = False) -> np.ndarray:
+    """Fit bounded exponential columns and return start- or column-referenced residues."""
     if s.size == 0:
         return np.zeros((0, Y_win.shape[1]), dtype=np.complex128)
     m = np.arange(Y_win.shape[0], dtype=np.float64) * float(dt)
-    basis = np.exp(np.outer(m, s))
+    growing = s.real > 0
+    exponents = np.outer(m, s)
+    exponents[:, growing] = np.outer(m - m[-1], s[growing])
+    basis = np.exp(exponents)
     norms = np.linalg.norm(basis, axis=0)
     norms = np.where(norms > 0, norms, 1.0)
     coef = np.linalg.lstsq(basis / norms, Y_win.astype(np.complex128), rcond=None)[0]
-    return coef / norms[:, None]
+    residues = coef / norms[:, None]
+    if not column_reference:
+        residues[growing] *= np.exp(-m[-1] * s[growing])[:, None]
+    return residues
 
 
 def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
@@ -659,9 +666,9 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     s_grow = np.log(np.asarray(lam_grow, dtype=np.complex128)) / (D * dt)
     g = np.zeros(s_grow.size)
     if s_grow.size:
-        c_joint = _fit_residues(win, np.concatenate([s, s_grow]), dt)[s.size:]
-        n_end = win.shape[0] - 1
-        at_end = np.abs(c_joint) * np.exp(s_grow.real * dt * n_end)[:, None]
+        c_joint = _fit_residues(
+            win, np.concatenate([s, s_grow]), dt, column_reference=True)[s.size:]
+        at_end = np.abs(c_joint)
         g = np.max(at_end / rms_safe[None, :], axis=1)
     return RingdownModel(
         s=s, c=c, n_ref=n_start, dt=dt, freq_max=freq_max,
@@ -1407,18 +1414,17 @@ class RingdownRun:
         ``(rows, largest ratio over WE's window [n_long, n_steps))``; only
         the main window refuses.
         """
-        import jax
-        import jax.numpy as jnp
+        from rfx.probes.settling import source_end_step
 
-        times = jnp.arange(self.n_steps, dtype=jnp.float32) * self.dt
+        entries = [pe for pe in self.sim._ports
+                   if (float(pe.impedance) == 0.0 or bool(pe.excite))
+                   and pe.waveform is not None]
+        _, samples = source_end_step(
+            [(pe.waveform, 0.) for pe in entries], self.n_steps, self.dt,
+            tolerance=self.spec.source_off_tol, return_detail=True)
         rows = []
         ratio_long = 0.0
-        for pe in self.sim._ports:
-            driven = float(pe.impedance) == 0.0 or bool(pe.excite)
-            if not driven or pe.waveform is None:
-                continue
-            w = np.abs(np.asarray(jax.vmap(pe.waveform)(times), dtype=np.float64))
-            peak = float(np.max(w)) if w.size else 0.0
+        for pe, (w, peak, _) in zip(entries, samples):
             ratio = 0.0 if peak == 0.0 else float(np.max(w[self.n_start:]) / peak)
             kind = "source" if float(pe.impedance) == 0.0 else "wire port"
             label = f"{kind} at {tuple(float(v) for v in pe.position)} ({pe.component})"
@@ -2366,22 +2372,17 @@ class RingdownStop:
         n_off`` (:func:`_first_check_record`). Condition (a) is still
         evaluated at every check.
         """
-        import jax
-        import jax.numpy as jnp
+        from rfx.probes.settling import source_end_step
 
-        times = jnp.arange(self.n_max, dtype=jnp.float32) * self.base.dt
-        n_off = 0
-        for pe in self.sim._ports:
-            driven = float(pe.impedance) == 0.0 or bool(pe.excite)
-            if not driven or pe.waveform is None:
-                continue
-            w = np.abs(np.asarray(jax.vmap(pe.waveform)(times), dtype=np.float64))
-            peak = float(np.max(w)) if w.size else 0.0
-            if peak == 0.0:
-                continue
-            on = np.nonzero(w > float(self.spec.source_off_tol) * peak)[0]
-            if on.size:
-                n_off = max(n_off, int(on[-1]) + 1)
+        _, samples = source_end_step(
+            [(pe.waveform, 0.) for pe in self.sim._ports
+             if (float(pe.impedance) == 0.0 or bool(pe.excite))
+             and pe.waveform is not None],
+            self.n_max, self.base.dt, tolerance=self.spec.source_off_tol,
+            return_detail=True)
+        # Scheduling retains n_max for a drive still on at the final sample;
+        # the settling witness instead reports no source end in that case.
+        n_off = max((off for _, _, off in samples), default=0)
         return _first_check_record(n_off, self.spec.window_start, self.chunk)
 
     # -- the run -------------------------------------------------------------

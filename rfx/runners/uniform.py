@@ -915,6 +915,7 @@ def run_uniform(
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,
+            record_dft=bool(getattr(sim, "_internal_probe_indices", ())),
             flux_monitors=flux_monitors,
             waveguide_ports=waveguide_ports,
             ntff=ntff_box,
@@ -951,6 +952,7 @@ def run_uniform(
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,
+            record_dft=bool(getattr(sim, "_internal_probe_indices", ())),
             flux_monitors=flux_monitors,
             waveguide_ports=waveguide_ports,
             ntff=ntff_box,
@@ -998,6 +1000,7 @@ def run_uniform(
 
     s_params = None
     freqs_out = None
+    s_settling = None
 
     _single_wire_fastpath = (
         compute_s_params
@@ -1084,9 +1087,10 @@ def run_uniform(
         from rfx.probes.sparam_driver import (
             compute_lumped_wire_s_matrix_via_scan,
         )
-        s_params, _ = compute_lumped_wire_s_matrix_via_scan(
+        s_params, _, s_settling = compute_lumped_wire_s_matrix_via_scan(
             sim, s_param_freqs, n_steps=sp_n_steps,
             conformal_pec=conformal_pec,
+            return_settling=True,
         )
 
     waveguide_ports_result = (
@@ -1187,6 +1191,11 @@ def run_uniform(
         # grid.dt, and every time / frequency read from this Result
         # (find_resonances, an FFT of time_series) needs the real one.
         dt=sim_result.dt,
+        sparam_time_records=sim_result.sparam_time_records,
+        dft_time_records={entry.name: rec for entry, rec in zip(
+            sim._dft_planes, sim_result.dft_time_records or ())},
+        settling_db=s_settling["db"] if s_settling else None,
+        settling_witness=s_settling,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
         wire_port_sparams=(sim_result.wire_port_sparams
                            if keep_wire_port_sparams else None),

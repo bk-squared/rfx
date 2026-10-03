@@ -853,6 +853,7 @@ def compute_waveguide_s_matrix(
             "sheet operator ctx, so the runs would silently simulate "
             "NO sheet. Use n_modes=1 ports or drop the f0 sheet.")
     if has_multimode:
+        settling_details_mm = []
         # Multi-mode path: each raw_cfg is a list of WaveguidePortConfig
         port_mode_cfgs: list[list] = []
         for entry, raw in zip(entries, raw_cfgs):
@@ -895,6 +896,7 @@ def compute_waveguide_s_matrix(
                 aniso_inv_eps=aniso_inv_eps,
                 pec_edge_masks=_wg_pec_edge_masks,
                 field_dtype=self._resolve_field_dtype(),
+                settling_details=settling_details_mm,
             )
         elif normalize:
             # The two-run normalized extractor divides each receiving
@@ -929,6 +931,7 @@ def compute_waveguide_s_matrix(
                 aniso_inv_eps=aniso_inv_eps,
                 pec_edge_masks=_wg_pec_edge_masks,
                 field_dtype=self._resolve_field_dtype(),
+                settling_details=settling_details_mm,
             )
         # Report the ABSOLUTE de-embed target plane (matches the single-mode + coax paths and
         # the WaveguideSMatrixResult schema), NOT the relative shift ref_shifts_mm — that is the
@@ -941,12 +944,17 @@ def compute_waveguide_s_matrix(
             entry = entries[port_idx]
             port_names_mm.append(f"{entry.name}_mode{mode_idx}_{mtype}{m_n[0]}{m_n[1]}")
             port_directions_mm.append(entry.direction)
+        settling_db_mm = np.asarray([row['db'] for row in settling_details_mm])
+        _warn_if_ringdown_truncated(
+            settling_db_mm, tuple(port_names_mm), num_periods=float(num_periods),
+            witnesses=settling_details_mm)
         _res_mm = WaveguideSMatrixResult(
             s_params=s_params,
             freqs=jnp.asarray(freqs),
             port_names=tuple(port_names_mm),
             port_directions=tuple(port_directions_mm),
             reference_planes=reference_planes,
+            settling_db=settling_db_mm, settling_witness=tuple(settling_details_mm),
         )
         return _finalize_sparam_result(
             _res_mm,
@@ -1033,6 +1041,7 @@ def compute_waveguide_s_matrix(
     # 2026-06-08 accuracy verdicts on the four conformal methods were taken
     # with the defect present and are still to be re-measured.
 
+    settling_details = []
     if normalize == "flux":
         from rfx.core.yee import init_materials as _init_vacuum_materials
         ref_materials = _init_vacuum_materials(grid.shape)
@@ -1059,7 +1068,7 @@ def compute_waveguide_s_matrix(
             pec_edge_masks=_wg_pec_edge_masks,
             ref_pec_edge_masks_per_port=ref_pec_edge_masks_per_port,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True,
+            return_settling=True, settling_details=settling_details,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -1088,7 +1097,7 @@ def compute_waveguide_s_matrix(
             ref_aniso_inv_eps=ref_aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True,
+            return_settling=True, settling_details=settling_details,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -1110,7 +1119,7 @@ def compute_waveguide_s_matrix(
             aniso_inv_eps=aniso_inv_eps,
             pec_edge_masks=_wg_pec_edge_masks,
             checkpoint_segments=checkpoint_segments,
-            return_settling=True,
+            return_settling=True, settling_details=settling_details,
             sheet_impedance=_wg_sheet_ctx,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -1134,7 +1143,7 @@ def compute_waveguide_s_matrix(
     # mask; the array itself is always attached for the record.
     settling_db = np.asarray(settling_db, dtype=float)
     _warn_if_ringdown_truncated(
-        settling_db, _port_names, num_periods=float(num_periods),
+        settling_db, _port_names, num_periods=float(num_periods), witnesses=settling_details,
     )
     # Post-solve discretization witness (post-v1.8 plan item 5): one
     # banner line after the settling line. Report-only.
@@ -1147,7 +1156,7 @@ def compute_waveguide_s_matrix(
         port_names=_port_names,
         port_directions=tuple(entry.direction for entry in entries),
         reference_planes=reference_planes,
-        settling_db=settling_db,
+        settling_db=settling_db, settling_witness=tuple(settling_details),
         s21_phase_residual_deg_rms=_ph_rms,
         s21_phase_residual_meta=_ph_meta,
     )
@@ -1319,7 +1328,8 @@ def _compute_waveguide_s_matrix_nu(
 
     # jnp-functional: collect per-drive columns; stack after loop
     s_columns: list[list] = []  # s_columns[drive_idx] = list of (n_freqs,) jnp arrays over recv_idx
-    settling_runs: list[float] = []  # per-drive ring-down witness (#827)
+    settling_runs: list[float] = []
+    settling_details = []
     ref_shifts: tuple[float, ...] | None = None
     reference_planes_out: np.ndarray | None = None
     final_cfgs: list | None = None
@@ -1409,13 +1419,15 @@ def _compute_waveguide_s_matrix_nu(
             # truncation corrupts the same S values (same composition as
             # the uniform normalized/flux lanes, #538). NaN under tracing
             # propagates instead of being max()-eaten.
-            _sd_dev = settling_db_from_port_records(
-                [dev_wg[e.name] for e in original_entries])
-            _sd_ref = settling_db_from_port_records(
-                [ref_wg[e.name] for e in original_entries])
+            _sd_dev, _detail_dev = settling_db_from_port_records(
+                [dev_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
+            _sd_ref, _detail_ref = settling_db_from_port_records(
+                [ref_wg[e.name] for e in original_entries], freq_max=self._freq_max, return_detail=True)
             settling_runs.append(
                 float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
                 else max(_sd_dev, _sd_ref))
+            from rfx.sparams._tail_witness import combine_witness_details
+            settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
 
             # Compute ref_shifts from the first drive's configs (same
             # measured planes for every drive / run).
@@ -1561,7 +1573,7 @@ def _compute_waveguide_s_matrix_nu(
     # is always attached for the record.
     settling_db = np.asarray(settling_runs, dtype=float)
     _warn_if_ringdown_truncated(
-        settling_db, tuple(e.name for e in original_entries),
+        settling_db, tuple(e.name for e in original_entries), witnesses=settling_details,
         num_periods=float(num_periods),
     )
     _s_params_nu = jnp.stack(
@@ -1590,7 +1602,7 @@ def _compute_waveguide_s_matrix_nu(
         port_names=tuple(e.name for e in original_entries),
         port_directions=tuple(e.direction for e in original_entries),
         reference_planes=_reference_planes_nu,
-        settling_db=settling_db,
+        settling_db=settling_db, settling_witness=tuple(settling_details),
         s21_phase_residual_deg_rms=_ph_rms_nu,
         s21_phase_residual_meta=_ph_meta_nu,
     )

@@ -1,7 +1,6 @@
 """Host diagnostics for already-recorded user probes, shared by run/forward."""
 from __future__ import annotations
 
-import warnings
 
 import jax
 import numpy as np
@@ -15,13 +14,181 @@ _COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
 SOURCE_DOMINATED_QUALIFIER = (
     "SOURCE-DOMINATED: every scored record sits on a registered "
-    "source/port drive cell, so its peak is the drive pulse and its "
-    "end/peak ratio measures how far the SOURCE has turned off, not how "
-    "far the structure has rung down. This number is not an independent "
-    "ring-down witness and does not become one by running longer; add a "
+    "source/port drive cell; not an independent ring-down witness. Add a "
     "probe away from every drive cell, somewhere the field is live "
     "(issue #1090)."
 )
+
+
+def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
+                    return_detail=False):
+    """Last active drive sample + 1 + free-space transit, or no source end.
+
+    ``drives`` contains ``(waveform_or_samples, distance_metres)`` pairs.
+    Callables are sampled exactly like the runners: float32(n) * dt.
+    Precomputed incident tables use the same threshold on their own peak.
+    Detail retains the sampled magnitudes for ringdown's window checks;
+    those checks intentionally retain their configurable tolerance and no
+    transit delay. An all-zero drive ends at step zero.
+    """
+    import jax.numpy as jnp
+    from rfx.grid import C0
+
+    if dt is None or is_tracer(dt) or not np.isfinite(dt) or dt <= 0:
+        return (None, []) if return_detail else None
+    times = None
+    rows = []
+    end = 0
+    available = True
+    for waveform, distance in drives:
+        if callable(waveform):
+            with jax.ensure_compile_time_eval():
+                if times is None:
+                    times = jnp.arange(n_steps, dtype=jnp.float32) * dt
+                samples = jax.vmap(waveform)(times)
+        else:
+            samples = waveform
+        if samples is None or is_tracer(samples):
+            available = False
+            continue
+        raw = np.asarray(samples)
+        w = (np.abs(raw.astype(np.complex128)) if np.iscomplexobj(raw)
+             else np.abs(np.asarray(raw, dtype=np.float64)))
+        if w.ndim != 1 or len(w) != n_steps:
+            available = False
+            continue
+        if not np.isfinite(w).all():
+            available = False
+        peak = float(np.max(w)) if w.size else 0.0
+        on = np.flatnonzero(w > float(tolerance) * peak)
+        off = int(on[-1]) + 1 if on.size else 0
+        rows.append((w, peak, off))
+        if off >= n_steps and peak > 0:
+            available = False
+        if distance is None or not np.isfinite(distance) or distance < 0:
+            available = False
+        else:
+            end = max(end, off + int(np.ceil(float(distance) / (C0 * float(dt)))))
+    value = end if available else None
+    return (value, rows) if return_detail else value
+
+
+def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
+                               waveguide_configs=None):
+    """Source end for registered point drives and selected physical probes.
+
+    Unknown plane/volume drives must not silently disappear from coverage.
+    TF/SF uses its waveform and box diagonal in addition to point drives.
+    """
+    from rfx.sources.sources import GaussianPulse
+
+    if dt is None or is_tracer(dt):
+        return None
+    records = tuple(records)
+    positions = [getattr(p, "position", None) for p in records]
+    if not positions or any(p is None for p in positions):
+        return None
+    for record in records:
+        if getattr(record, "extent", None):
+            end = np.asarray(record.position, dtype=float).copy()
+            end[_COMPONENT_AXIS[record.component]] += record.extent
+            positions.append(end)
+    drives = []
+    if getattr(sim, "_waveguide_ports", ()):
+        if not waveguide_configs:
+            return None
+        for cfg in waveguide_configs.values():
+            if cfg.src_amp:
+                axis = "xyz".index(cfg.normal_axis)
+                distance = max(abs(float(p[axis]) - float(cfg.source_x_m))
+                               for p in positions)
+                drives.append((cfg.v_inc_t, distance))
+    for pe in (*getattr(sim, "_ports", ()), *getattr(sim, "_msl_ports", ())):
+        if getattr(pe, "impedance", None) != 0 and not getattr(pe, "excite", True):
+            continue
+        waveform = pe.waveform
+        if waveform is None:
+            waveform = GaussianPulse(f0=sim._freq_max / 2, bandwidth=0.8)
+        if getattr(pe, "position", None) is None:
+            return None
+        starts = [np.asarray(pe.position, dtype=float)]
+        if getattr(pe, "extent", None):
+            end = starts[0].copy()
+            end[_COMPONENT_AXIS[pe.component]] += pe.extent
+            starts.append(end)
+        distance = max(float(np.linalg.norm(start - p))
+                       for start in starts for p in positions)
+        drives.append((waveform, distance))
+    for pe in getattr(sim, "_floquet_ports", ()):
+        waveform = GaussianPulse(
+            f0=pe.f0 if pe.f0 is not None else sim._freq_max / 2,
+            bandwidth=pe.bandwidth, amplitude=pe.amplitude)
+        center = np.asarray(sim._domain, dtype=float) / 2
+        center["xyz".index(pe.axis)] = pe.position
+        distance = max(float(np.linalg.norm(center - p)) for p in positions)
+        drives.append((waveform, distance))
+    tf = getattr(sim, "_tfsf", None)
+    if tf is not None:
+        if grid is None:
+            return None
+        from rfx.sources.tfsf import init_tfsf
+        cfg, _ = init_tfsf(
+            grid.nx, grid.boundary_cell("x", "lo"), dt, cpml_layers=grid.cpml_layers,
+            ny=grid.ny, nz=grid.nz, tfsf_margin=tf.margin,
+            f0=tf.f0 if tf.f0 is not None else sim._freq_max / 2,
+            bandwidth=tf.bandwidth, amplitude=tf.amplitude,
+            polarization=tf.polarization, direction=tf.direction,
+            angle_deg=tf.angle_deg, waveform=tf.waveform,
+            method=tf.method, closed_box=tf.closed_box)
+        drives.append(tfsf_source_drive(cfg, grid))
+    return source_end_step(drives, n_steps, dt) if drives else None
+
+
+def tfsf_source_drive(cfg, grid):
+    """TF/SF source waveform and transit across its box diagonal."""
+    import jax.numpy as jnp
+
+    def waveform(t):
+        custom = getattr(cfg, "custom_waveform", None)
+        if custom is not None:
+            return cfg.src_amp * custom(t)
+        arg = (t - cfg.src_t0) / cfg.src_tau
+        env = jnp.exp(-(arg ** 2))
+        kind = getattr(cfg, "src_waveform", "analytic")
+        if kind == "modulated_gaussian":
+            return cfg.src_amp * env * jnp.cos(2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        if kind == "continuous_wave":
+            ramp = .5 * (1 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0., 1.)))
+            return cfg.src_amp * ramp * jnp.sin(2 * jnp.pi * cfg.src_fcen * t)
+        if kind == "analytic":
+            return cfg.src_amp * env * jnp.exp(-1j * 2 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        return cfg.src_amp * (-2 * arg) * env
+
+    lengths = []
+    for axis in "xyz":
+        lo = getattr(cfg, axis + "_lo", 0)
+        hi = getattr(cfg, axis + "_hi", grid.shape["xyz".index(axis)] - 1)
+        # A slab has no transverse box indices (both default to zero),
+        # but the illumination spans the transverse domain.
+        if axis != "x" and hi == lo and grid.shape["xyz".index(axis)] > 1:
+            lo, hi = 0, grid.shape["xyz".index(axis)] - 1
+        lengths.append(grid.node_of(axis, hi) - grid.node_of(axis, lo))
+    return waveform, float(np.linalg.norm(lengths))
+
+
+def sampled_source_end_step(sources, probes, grid, n_steps):
+    """Already sampled E/H drive tables and low-level probe indices."""
+    def position(entry):
+        return np.array([grid.node_of(axis, getattr(entry, idx))
+                         for axis, idx in zip("xyz", "ijk")])
+
+    if not sources or not probes:
+        return None
+    positions = [position(p) for p in probes]
+    return source_end_step(
+        [(src.waveform, max(float(np.linalg.norm(position(src) - p))
+                            for p in positions)) for src in sources],
+        n_steps, grid.dt)
 
 
 def _cell_of(grid, position):
@@ -134,7 +301,8 @@ def probe_record_info(time_series, entries, internal_indices=(),
     return tuple(result)
 
 
-def probe_record_settling_witness(time_series, probe_info=None, *, warn=True):
+def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
+                                  source_end_index=None, dt=None, freqs=None, freq_max=None):
     """Return (dB or None, provenance) using the canonical record arithmetic.
 
     None provenance selects all columns with unknown component labels; an
@@ -145,10 +313,9 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True):
 
     Records flagged source-dominated (issue #1090 -- the probe shares a Yee
     cell with a registered drive) do not carry the verdict while any
-    independent scored record exists. When they are the only scored records
-    the status and the number are unchanged and ``qualifier`` /
-    ``source_dominated`` say the witness measures source turn-off rather
-    than the structure's ring-down.
+    independent scored record exists. When they are the only scored records,
+    ``qualifier`` / ``source_dominated`` retain that spatial coverage caveat.
+    sensitivities are judged by a separate witness
     """
     from rfx.sources.waveguide_port import settling_db_from_named_records
 
@@ -168,7 +335,7 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True):
               "independent witness (#1090) — and retain its time series, or "
               "use run(until_decay=...) to bound the ring-down through its "
               "stop criterion")
-    if is_tracer(time_series) or any(is_tracer(leaf) for leaf in jax.tree_util.tree_leaves(probe_info)):
+    if is_tracer(source_end_index) or is_tracer(time_series) or any(is_tracer(leaf) for leaf in jax.tree_util.tree_leaves(probe_info)):
         return absent("probe records or their selection are traced; inspect "
                       "the concrete result after JIT/AD evaluation")
     if time_series is None:
@@ -197,49 +364,17 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True):
         named.append((name, series[:, col]))
         if flag:
             dominated_names.add(name)
-    with warnings.catch_warnings():
-        if not warn:
-            warnings.filterwarnings("ignore", message="ring-down settling witness has (NO COVERAGE|INVALID RECORDS)", category=UserWarning)
-        worst, detail = settling_db_from_named_records(
-            named, record_noun="probe records", return_detail=True,
-            _warn_stacklevel=4,
-        )
-    skipped = list(detail["skipped_records"])
-    per_record = dict(detail["per_record_db"])
-    invalid = detail.get("invalid_records", {})
-    if invalid:
-        value, witness = absent(
-            "selected probe records are invalid: "
-            + "; ".join(f"{name}: {reason}" for name, reason in invalid.items())
-            + "; fix the non-finite result before using a settling verdict", skipped)
-        witness["invalid_records"] = dict(invalid)
-        return value, witness
-    if not np.isfinite(worst):
-        return absent(
-            "no probe record carries a witnessable ring-down (records below "
-            "the underflow floor are skipped rather than scored: "
-            f"{', '.join(skipped) or 'none'}; records shorter than 10 samples "
-            "are also unwitnessable): " + advice, skipped,
-        )
-    # #1090 selection rule. A record on a drive cell peaks on the drive
-    # pulse, so its end/peak ratio is a source turn-off measurement and is
-    # uninformative about the ring-down in BOTH directions -- it can neither
-    # earn a pass nor justify a fail. It therefore does not carry the
-    # verdict while any independent scored record exists; its dB stays
-    # visible in ``per_record_db`` and its name in
-    # ``source_dominated_records``. When every scored record is dominated
-    # the arithmetic and the status are left exactly as before and the
-    # qualifier says the number is not an independent witness.
-    independent = {name: value for name, value in per_record.items()
-                   if name not in dominated_names}
-    scored = independent or per_record
-    worst_record = max(scored, key=lambda key: scored[key])
+    independent = [(name, record) for name, record in named if name not in dominated_names]
+    selected = independent or named
+    worst, detail = settling_db_from_named_records(
+        selected, return_detail=True, dt=dt, freqs=freqs, freq_max=freq_max,
+        source_end_index=source_end_index)
+    per_record = detail["per_record_db"]
+    finite = {name: value for name, value in per_record.items() if np.isfinite(value)}
     qualifier = "" if independent else SOURCE_DOMINATED_QUALIFIER
-    return float(scored[worst_record]), {
-        "status": "measured", "route": "probe_records",
-        "worst_record": worst_record,
-        "per_record_db": per_record,
-        "skipped_records": skipped, "reason": "",
+    return worst, {
+        **detail, "route": "probe_records",
+        "worst_record": max(finite, key=finite.get) if finite else None,
         "source_dominated": bool(qualifier),
         "source_dominated_records": sorted(dominated_names),
         "qualifier": qualifier}

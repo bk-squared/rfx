@@ -54,6 +54,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     sim, freqs, *, n_steps=None, return_vi_dump=False,
     return_refplane_diagnostics=False, conformal_pec=None, devices=None,
     _main_wire_record=False,
+    return_settling=False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -249,6 +250,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     plane_offsets = np.zeros(n_ports, dtype=np.int64)
     plane_outboard = np.zeros(n_ports, dtype=np.int64)
 
+    settling_runs = []
     for j in range(n_ports):
         if devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
@@ -273,6 +275,24 @@ def compute_lumped_wire_s_matrix_via_scan(
                 conformal_pec=conformal_pec,
             )
 
+        if return_settling:
+            from rfx.probes.settling import simulation_source_end_step
+            from rfx.sparams._tail_witness import port_record_witness
+            from copy import copy
+            from dataclasses import replace
+            driven_sim = copy(sim)
+            driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
+                                 if pe.impedance != 0 else pe for pe in sim._ports]
+            receivers = list(eligible)
+            for rp, _ in raw.get("wire_refplane") or ():
+                pe = eligible[rp.port_index]
+                position = list(pe.position)
+                position[rp.line_axis] += rp.outboard_sign * rp.n_cells_outboard * grid.dx
+                receivers.append(replace(pe, position=tuple(position)))
+            end = simulation_source_end_step(driven_sim, n_steps, grid.dt, receivers, grid=grid)
+            settling_runs.append(port_record_witness(
+                raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
+                end, freqs, freq_max=sim._freq_max))
         accs = raw["wire"] if wire_mode else raw["lumped"]
         if accs is None or len(accs) != n_ports:
             raise RuntimeError(
@@ -352,6 +372,11 @@ def compute_lumped_wire_s_matrix_via_scan(
         if return_refplane_diagnostics:
             S, diag = out
             return np.asarray(S, dtype=np.complex64), freqs, diag
+        if return_settling:
+            missing = [item for item in settling_runs if not np.isfinite(item[0])]
+            worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
+            return np.asarray(out, dtype=np.complex64), freqs, {
+                **worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
         return np.asarray(out, dtype=np.complex64), freqs
 
     if wire_mode:
@@ -411,6 +436,10 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     if return_refplane_diagnostics:
         return S, freqs, None
+    if return_settling:
+        missing = [item for item in settling_runs if not np.isfinite(item[0])]
+        worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
+        return S, freqs, {**worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
     return S, freqs
 
 

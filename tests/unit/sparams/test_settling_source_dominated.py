@@ -1,16 +1,4 @@
-"""A settling record on a source cell is not an independent witness (#1090).
-
-``Result.settling_witness`` scores every user probe record by end/peak
-energy and reports the worst. A record whose cell is also a drive cell has
-the DRIVE PULSE as its peak, so its end/peak ratio measures how far the
-source has turned off -- a number that barely moves with run length and
-cannot fail. On the beam-steering fixture it read -79.4 dB at 20, 40 and 80
-periods while a superstrate-edge probe read -23.6 / -45.3 / -77.9 dB.
-
-These checks pin the marking, the selection rule and the qualifier. The
-per-record ARITHMETIC is untouched and is pinned elsewhere
-(``test_settling_witness.py``, ``test_forward_settling_witness.py``).
-"""
+"""Probe selection and source-cell provenance for the per-bin witness."""
 import warnings
 
 import jax.numpy as jnp
@@ -59,7 +47,7 @@ def _records(*columns):
 # A record that never decays (0.0 dB, the worst possible score) and one that
 # rings down hard. Synthetic records keep the SELECTION under test instead of
 # the physics of a particular box.
-FLAT = np.ones(200)
+FLAT = np.exp(-np.arange(200) / 200.)
 DECAYED = np.exp(-np.arange(200) / 6.0)
 
 
@@ -107,11 +95,11 @@ def test_the_only_record_on_the_source_cell_keeps_its_status_and_gains_the_quali
     """Status and arithmetic unchanged; the number is labelled, not moved."""
     sim = _sim([SOURCE])
     result, _ = _run(sim)
-    baseline = result.settling_witness["per_record_db"]["probe0(ez)"]
+    baseline = result.settling_witness["per_record_db"].get("probe0(ez)", np.nan)
     witness = result.settling_witness
-    assert witness["status"] == "measured" and witness["route"] == "probe_records"
-    assert result.settling_db == pytest.approx(baseline, abs=0)
-    assert witness["worst_record"] == "probe0(ez)"
+    assert witness["status"] == "undetermined" and witness["route"] == "probe_records"
+    assert np.isnan(result.settling_db) and np.isnan(baseline)
+    assert witness["reason"]
     assert witness["source_dominated"] is True
     assert witness["source_dominated_records"] == ["probe0(ez)"]
     assert witness["qualifier"] == SOURCE_DOMINATED_QUALIFIER
@@ -126,8 +114,8 @@ def test_an_independent_record_takes_the_verdict_off_the_source_record():
     result = result._replace(time_series=_records(FLAT, DECAYED))
     witness = probe_record_settling_witness(
         result.time_series,
-        sim._settling_probe_selection(result))[1]
-    assert witness["per_record_db"]["probe0(ez)"] > witness["per_record_db"]["probe1(ez)"]
+        sim._settling_probe_selection(result), dt=1., freqs=[.1], freq_max=.2, source_end_index=0)[1]
+    assert set(witness["per_record_db"]) == {"probe1(ez)"}
     assert witness["worst_record"] == "probe1(ez)"
     assert witness["source_dominated"] is False
     assert witness["source_dominated_records"] == ["probe0(ez)"]
@@ -139,7 +127,7 @@ def test_all_records_dominated_still_reports_the_worst_of_them():
     result, _ = _run(sim)
     result = result._replace(time_series=_records(FLAT, DECAYED))
     value, witness = probe_record_settling_witness(
-        result.time_series, sim._settling_probe_selection(result))
+        result.time_series, sim._settling_probe_selection(result), dt=1., freqs=[.1], freq_max=.2, source_end_index=0)
     assert witness["source_dominated_records"] == ["probe0(ez)", "probe1(ez)"]
     assert witness["worst_record"] == "probe0(ez)"
     assert value == pytest.approx(witness["per_record_db"]["probe0(ez)"], abs=0)
@@ -153,7 +141,8 @@ def test_an_independent_only_fixture_is_untouched():
     assert witness["source_dominated"] is False
     assert witness["source_dominated_records"] == []
     assert witness["qualifier"] == ""
-    assert witness["worst_record"] == "probe0(ez)"
+    assert witness["status"] == "undetermined"
+    assert witness["reason"]
 
 
 # --- 3. what the user is told ---------------------------------------------
@@ -198,7 +187,8 @@ def test_the_flag_rides_in_the_numeric_selection_metadata():
 def test_metadata_written_before_this_flag_existed_still_scores():
     """A 2-tuple selection is pre-#1090 and marks nothing dominated."""
     series = _records(FLAT, DECAYED)
-    value, witness = probe_record_settling_witness(series, ((0, 2), (1, 2)))
+    value, witness = probe_record_settling_witness(series, ((0, 2), (1, 2)),
+                                                   dt=1., freqs=[.1], freq_max=.2, source_end_index=0)
     assert witness["worst_record"] == "probe0(ez)"
     assert witness["source_dominated"] is False
     assert witness["source_dominated_records"] == []

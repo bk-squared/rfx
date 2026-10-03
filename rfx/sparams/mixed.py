@@ -661,6 +661,7 @@ def compute_mixed_s_matrix(
             dtype=np.complex128,
         )
         settling_db_runs = np.full(n_runs, np.nan)
+        settling_details = [{"status": "undetermined", "reason": "traced or unavailable S channels"} for _ in range(n_runs)]
         # Signed per-run flux accountings (magnitude_channel="flux"):
         # box_lw[run, p]  = net OUTWARD box flux at lumped/wire port p
         # plane_msl[run, p] = raw +x-directed flux at MSL port p's plane
@@ -794,24 +795,39 @@ def compute_mixed_s_matrix(
                         flux_spectrum(fmon[nm]), dtype=np.float64
                     )
 
-            # Settling witness from the probe time series (worst
-            # end/peak Ez^2 across the MSL probe planes).
+            # Score recorded S channels and witness probes.
             _ts = raw.get("time_series")
             if _ts is not None and not is_tracer(_ts):
                 _ts_np = np.asarray(
                     _ts[:, _witness_base:_witness_base + _witness_total],
-                    dtype=float,
                 )
                 if (_ts_np.shape[0] >= 10
                         and _ts_np.shape[1] == _witness_total):
-                    _p = _ts_np ** 2
-                    _tail = max(1, _p.shape[0] // 10)
-                    _end = _p[-_tail:, :].mean(axis=0)
-                    _peak = _p.max(axis=0)
-                    _tiny = np.finfo(float).tiny
-                    settling_db_runs[run_idx] = float(np.max(
-                        10.0 * np.log10((_end + _tiny) / (_peak + _tiny))
-                    ))
+                    from rfx.probes.settling import simulation_source_end_step
+                    from rfx.sources.waveguide_port import settling_db_from_named_records
+                    _source_end = simulation_source_end_step(
+                        self, _ts_np.shape[0], raw.get("dt", grid.dt),
+                        self._probes[_witness_base:_witness_base + _witness_total], grid=grid)
+                    from rfx.sparams._tail_witness import msl_time_channels
+                    _plane_records = raw.get("dft_time_records")
+                    _channels = msl_time_channels(
+                        _plane_records,
+                        [[name + f"_ez{q}" for q in range(len(probe_xs[p]))]
+                         for p, name in enumerate(names)],
+                        h_names, h_stencils,
+                        [{**meta, "dy_arr": dy_arr} for meta in port_idx_meta],
+                        trace_k_per_port, dz_arr, [port.direction for port in msl_ports],
+                    ) if _plane_records else []
+                    _channels.extend((f"wire{p}/V_I", record) for p, record in
+                                     enumerate(raw.get("sparam_time_records") or ()))
+                    if _channels:
+                        _channels.extend((f"probe{i}", _ts_np[:, i])
+                                         for i in range(_ts_np.shape[1]))
+                    settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(
+                        _channels, source_end_index=_source_end, dt=raw.get("dt", grid.dt),
+                        freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
+
+
 
             # MSL line V (probe-0 plane) + closed-loop I, with the
             # leapfrog E/H half-step correction (mirrors
@@ -1053,7 +1069,7 @@ def compute_mixed_s_matrix(
             port_names=port_names,
             port_families=port_families,
             z0_ref=z0_ref,
-            settling_db=settling_db_runs,
+            settling_db=settling_db_runs, settling_witness=tuple(settling_details),
             s21_power_witness=s21_power,
             reliable=reliable,
             S_raw=s_raw,
@@ -1064,7 +1080,7 @@ def compute_mixed_s_matrix(
             probe_clearance=probe_clearance,
         )
         _warn_if_ringdown_truncated(
-            settling_db_runs, port_names, num_periods=num_periods,
+            settling_db_runs, port_names, num_periods=num_periods, witnesses=settling_details,
         )
         if passivity_correction is not None and not is_tracer(passivity_correction):
             _warn_if_passivity_projected(passivity_correction, freqs_arr)

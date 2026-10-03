@@ -1896,220 +1896,72 @@ def _settling_db_for_record(peak_power: float,
     return float(10.0 * np.log10((end_power + tiny) / (peak_power + tiny)))
 
 
-def settling_db_from_named_records(named_records,
-                                   *,
-                                   record_noun: str = "port records",
-                                   return_detail: bool = False,
-                                   _warn_stacklevel: int = 2):
-    """Worst end/peak ring-down ratio, in dB, over a set of NAMED records.
+def settling_db_from_named_records(named_records, *, dt=None, freqs=None,
+                                   freq_max=None, source_end_index=None,
+                                   record_noun="port records", return_detail=False,
+                                   _warn_stacklevel=2):
+    """Adapt the per-bin pole-tail value witness to legacy dB report fields.
 
-    The ONE implementation of this project's energy ring-down arithmetic
-    (issues #538, #869, #885). Callers supply an iterable of
-    ``(name, array-like)``: the S-parameter lanes pass their per-port V/I
-    records (:func:`settling_db_from_port_records`) and the ``run()`` lane
-    passes the user probe time series (``rfx/api/_execute.py``). No caller
-    may re-derive the tail window or the underflow floor -- a second copy of
-    this arithmetic is exactly how the #869 class (a float32-underflowed
-    record scored as a hard-fail 0.00 dB) got in.
+    sensitivities are judged by a separate witness
+    """
+    from rfx.sparams._tail_witness import tail_share_witness
 
-    Per record: peak power over the whole record, mean power over the last
-    tenth, ``10*log10(end/peak)``; records below
-    :func:`_settling_record_floor_amplitude` are SKIPPED (not scored) and
-    named. Powers are normalized before reduction to keep the ratio
-    independent of amplitude units and avoid squared-value overflow or
-    underflow. The return is the WORST (largest) surviving ratio.
+    named = tuple(named_records)
+    per_record = {}
+    result = tail_share_witness(named, dt, source_end_index, freqs, freq_max=freq_max,
+                                _record_results=per_record if return_detail else None)
+    if not return_detail:
+        return result.db
+    return result.db, {**result._asdict(), "per_record_db": per_record,
+                       "n_witnessed": int(sum(np.isfinite(v) for v in per_record.values())),
+                       "worst_record": max(per_record, key=per_record.get) if per_record else None,
+                       "skipped_records": [], "floor_amplitude": float("nan")}
 
-    Returns NaN when the witness has no coverage at all: a traced record, a
-    record shorter than 10 samples, any invalid selected record, or every
-    record under the floor. Invalid records are named separately from
-    underflow skips and make the whole witness unavailable, with a warning.
-    NaN is the "no witness value" state and must never be read
-    as a pass -- route every comparison through
-    ``rfx.api._sparams.settling_verdict``.
 
-    ``return_detail=True`` returns ``(worst_db, detail)`` with
-    ``skipped_records``, ``n_witnessed``, ``floor_amplitude`` and
-    ``per_record_db`` (name -> dB for every scored record). Invalid input
-    additionally supplies ``invalid_records`` (name -> reason).
+def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
+                                   return_detail: bool = False):
+    """Per-bin pole-tail value witness over the four modal records per port.
+
+    sensitivities are judged by a separate witness
     """
     from rfx.core.jax_utils import is_tracer
+    from rfx.probes.settling import source_end_step
 
-    invalid_records = {}
-
-    def _out(value, skipped, n_witnessed, floor, per_record):
-        if not return_detail:
-            return value
-        detail = {"skipped_records": skipped,
-                  "n_witnessed": n_witnessed,
-                  "floor_amplitude": floor,
-                  "per_record_db": per_record}
-        if invalid_records:
-            detail["invalid_records"] = dict(invalid_records)
-        return value, detail
-
-    worst = -np.inf
-    skipped: list[str] = []
-    per_record: dict[str, float] = {}
-    n_witnessed = 0
-    floor = float("nan")
-    for record_name, ts in named_records:
-        if is_tracer(ts):
-            return _out(float("nan"), skipped, n_witnessed, floor, per_record)
-        raw = np.asarray(ts)
-        if raw.ndim == 0 or raw.shape[0] < 10:
-            return _out(float("nan"), skipped, n_witnessed, floor, per_record)
-        floor = _settling_record_floor_amplitude(np.finfo(raw.dtype).tiny)
-        if not np.isfinite(raw).all():
-            invalid_records[record_name] = "non-finite samples"
-            continue
-        # Complex Bloch/TFSF records carry both quadratures. Widen before
-        # taking the magnitude so a global phase cannot change coverage or
-        # ring-down; casting to real first discards physical signal content.
-        dtype = np.complex128 if np.iscomplexobj(raw) else np.float64
-        with np.errstate(over="ignore", invalid="ignore"):
-            wide = raw.astype(dtype)
-        if not np.isfinite(wide).all():
-            invalid_records[record_name] = "samples exceed the diagnostic precision range"
-            continue
-        complex_record = np.iscomplexobj(wide)
-        scale = float(np.max(np.abs(wide.real)))
-        if complex_record:
-            scale = max(scale, float(np.max(np.abs(wide.imag))))
-        # Use a component scale so even a finite complex record whose
-        # magnitude exceeds float64 max remains representable. A value
-        # below this bound cannot clear the amplitude floor on either
-        # quadrature, so subnormal division is unnecessary.
-        if scale == 0.0 or scale < floor / (np.sqrt(2.) if complex_record else 1.):
-            skipped.append(record_name)
-            continue
-        p = (wide.real / scale)**2
-        if complex_record:
-            p = p + (wide.imag / scale)**2
-        peak = float(p.max())
-        if scale < floor / np.sqrt(peak):
-            skipped.append(record_name)
-            continue
-        tail = max(1, p.shape[0] // 10)
-        ratio = float((p[-tail:] / peak).mean())
-        db = _settling_db_for_record(1., ratio, 0.)
-        if db is None or not np.isfinite(db):
-            invalid_records[record_name] = "non-finite power-ratio calculation"
-            continue
-        n_witnessed += 1
-        per_record[record_name] = db
-        worst = max(worst, db)
-
-    if invalid_records:
-        import warnings
-        warnings.warn(
-            "ring-down settling witness has INVALID RECORDS: "
-            + "; ".join(f"{name}: {reason}" for name, reason in invalid_records.items())
-            + ". The witness is unavailable; other records cannot establish a pass.",
-            stacklevel=_warn_stacklevel,
-        )
-        return _out(float("nan"), skipped, n_witnessed, floor, per_record)
-
-    if n_witnessed == 0:
-        import warnings
-        warnings.warn(
-            f"ring-down settling witness has NO COVERAGE on this run: 0 of "
-            f"{len(skipped)} {record_noun} clear the {floor:.4g} peak-amplitude "
-            "floor (the storage format's smallest normal, scaled so the -40 dB "
-            "decision itself is representable), so no ring-down ratio can be "
-            "established. settling_db is NaN and must NOT be read as a pass. "
-            "Records: " + (", ".join(skipped) or "(none recorded)"),
-            stacklevel=_warn_stacklevel,
-        )
-        return _out(float("nan"), skipped, n_witnessed, floor, per_record)
-    return _out(float(worst), skipped, n_witnessed, floor, per_record)
-
-
-def settling_db_from_port_records(final_cfgs, *, return_detail: bool = False):
-    """Energy ring-down witness for ONE driven waveguide run (issue #538).
-
-    Worst end/peak tail ratio, in dB, over ALL FOUR recorded per-port time
-    series -- ``v_probe_t``, ``v_ref_t``, ``i_probe_t``, ``i_ref_t`` -- for
-    every port of the run, restricted to the records that carry a
-    witnessable signal (see below). The review of the first implementation
-    measured why one series is not enough: the plain/normalized extraction
-    DFTs the REF-plane records, and on an iris-resonator fixture the
-    ``v_probe_t``-only witness read 8.3 dB more settled than the worst
-    record the extraction actually consumes (a V-node/I-antinode standing
-    wave at one plane makes a single-quantity witness a false pass at the
-    -40 dB line). End/peak is self-normalized per series, so V and I mix
-    unit-free; the same end/peak arithmetic as the lumped/MSL witness
-    (``rfx/api/_sparams.py``), which takes its worst over multiple planes
-    for the same reason. NO run-side change: pure host-side post-processing
-    of arrays the extractors already return, so it cannot perturb S.
-    Returns NaN when the records are tracers (eps_override AD path) --
-    skipped rather than concretised, mirroring MSL.
-
-    Underflowed and subnormal records (issue #869)
-    ----------------------------------------------
-    A record whose peak amplitude is below
-    :func:`_settling_record_floor_amplitude` is SKIPPED, not scored, and is
-    named in the detail dict. Behind a PEC short the far-port records fall
-    off the bottom of float32 and the unrestricted worst-over-records failed
-    in BOTH directions. Measured by the WR-90 chain battery (VESSL run
-    369367257823, ``tests/fixtures/waveguide_chain_battery/fixture.json``,
-    key ``cells[].settling_records``):
-
-    * fine rung, dx = 0.635 mm, 8-cell PEC short: the four far-port records
-      are exactly zero (``peak = 0.0``, ``n_nonzero = 0`` of 2849 steps), so
-      ``(end + tiny)/(peak + tiny)`` evaluated to exactly 1 and the witness
-      reported **0.00 dB** -- a hard fail -- for a run whose signal-carrying
-      records ring down to -99.98 / -101.20 dB at 40 periods and -113.91 /
-      -114.48 dB at 80, and whose S moves by at most 7.3e-6 between the two
-      record lengths (``settling_rerun.max_abs_s_shift_vs_40_periods``).
-    * mid rung, dx = 1.27 mm, 4-cell PEC short: the same four records are
-      float32 subnormals (peak amplitudes 1.58e-37 ... 2.97e-40) and the
-      witness **passed at -40.85 / -40.91 dB**, 0.9 dB inside the bar, on
-      the worst of them, while the records that carry signal read -94.62 /
-      -94.55 dB. Their tail means -- the quantity the -40 dB decision reads
-      -- have rms amplitudes 5.8e-41 ... 2.7e-42, i.e. tens to thousands of
-      subnormal quanta. A margin quoted from those is noise.
-    * coarse rung, dx = 2.54 mm: the far-port records sit at peak
-      amplitudes 3.15e-20 / 5.5e-23 with tails at 5.5e-25 rms -- normal
-      float32 throughout. They are KEPT and the cell's number does not
-      move (-84.44 / -81.25 dB).
-
-    Over all 18 battery cells and both record lengths this floor skips
-    exactly the records whose tail rms is subnormal and keeps every record
-    whose tail rms is normal: no record is misclassified in either
-    direction. The two rungs above are replayed from the stored records in
-    ``tests/unit/sparams/test_settling_witness.py``.
-
-    When EVERY record of the run is below the floor the witness has no
-    coverage at all. It then returns NaN **and warns**: NaN is the "no
-    witness value" state the differentiable lanes already use, and the
-    aggregate warner skips NaN by design, so a silent NaN here would be the
-    same silent-pass defect this guard removes.
-
-    ``return_detail=True`` returns ``(worst_db, detail)`` with ``detail``
-    carrying ``skipped_records`` (``"port<i>/<record>"`` names),
-    ``n_witnessed`` and ``floor_amplitude`` so a caller can see where the
-    witness lost coverage. Default ``False`` keeps the float-only return.
-
-    Scope: the witness covers the MODAL port records; non-modal power
-    ringing through the port/flux planes is orthogonal-projected out of
-    these series and is not witnessed. The peak includes the incident
-    pulse (global record max), so a weakly-port-coupled high-Q interior
-    resonance can pass the witness while its narrowband S feature is
-    still under-resolved -- the witness bounds truncation of the port
-    records, not interior stored energy (same limitation as the MSL
-    implementation it mirrors).
-    """
+    final_cfgs = tuple(final_cfgs)
+    timing_fields = ("v_inc_t", "src_amp", "source_x_m", "reference_x_m", "probe_x_m", "dt")
+    timing_available = all(
+        hasattr(cfg, name) and not is_tracer(getattr(cfg, name))
+        for cfg in final_cfgs for name in timing_fields)
+    drives = []
+    source_end = None
+    if (final_cfgs and timing_available
+            and len({getattr(cfg, "normal_axis", "x") for cfg in final_cfgs}) == 1):
+        # Use the recorded incident pulse with the same amplitude threshold.
+        # Include free-space travel to every scored plane.
+        for cfg in final_cfgs:
+            if not cfg.src_amp:
+                continue
+            distance = max(abs(float(cfg.source_x_m) - float(x))
+                           for other in final_cfgs
+                           for x in (other.reference_x_m, other.probe_x_m))
+            drives.append((cfg.v_inc_t, distance))
+        if drives:
+            source_end = source_end_step(
+                drives, len(final_cfgs[0].v_inc_t), final_cfgs[0].dt)
     named = [
         (f"port{port_index}/{name}", getattr(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
         for name in _SETTLING_RECORD_NAMES
     ]
+    bins = freqs if freqs is not None else (
+        getattr(final_cfgs[0], "freqs", None) if final_cfgs else None)
+    if freq_max is None and bins is not None and not is_tracer(bins):
+        freq_max = float(np.max(bins)) if np.size(bins) else None
     return settling_db_from_named_records(
-        named,
-        record_noun="port records",
-        return_detail=return_detail,
-        _warn_stacklevel=3,
-    )
+        named, source_end_index=source_end,
+        dt=getattr(final_cfgs[0], "dt", None) if final_cfgs else None,
+        freqs=bins, freq_max=freq_max, record_noun="port records",
+        return_detail=return_detail, _warn_stacklevel=3)
 
 
 def _s_matrix_dtypes(field_dtype, port_cfgs):
@@ -2154,6 +2006,7 @@ def extract_waveguide_s_matrix(
     aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
+    settling_details: list | None = None,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
@@ -2176,7 +2029,7 @@ def extract_waveguide_s_matrix(
 
 
     ``return_settling=True`` (issue #538) additionally returns the
-    per-driven-run energy ring-down witness: ``(S, settling_db)`` with
+    per-driven-run pole-tail amplitude witness: ``(S, settling_db)`` with
     ``settling_db`` shape ``(n_ports,)`` from
     :func:`settling_db_from_port_records` (NaN per run under tracing).
     Default ``False`` keeps the legacy single-array return for existing
@@ -2254,7 +2107,13 @@ def extract_waveguide_s_matrix(
         if len(final_cfgs) != n_ports:
             raise RuntimeError("waveguide S-matrix extraction expected one final config per port")
         if return_settling:
-            settling_runs.append(settling_db_from_port_records(final_cfgs))
+            value, detail = settling_db_from_port_records(
+                final_cfgs, freq_max=getattr(grid, "freq_max", None),
+                return_detail=True)
+            settling_runs.append(value)
+            if settling_details is not None:
+                settling_details.append(detail)
+
         # NB: run() stamps grid.dt onto every returned waveguide cfg, so the
         # post-scan rect-DFT extractor below uses the correct Δt even when the
         # cfgs were built via init_waveguide_port without dt=.
@@ -2310,6 +2169,7 @@ def extract_waveguide_s_matrix_flux(
     ref_pec_edge_masks_per_port: "list | None" = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
+    settling_details: list | None = None,
     field_dtype=None,
 ) -> "jnp.ndarray | tuple[jnp.ndarray, np.ndarray]":
     """Hybrid power-flux magnitude + modal phase waveguide S-matrix.
@@ -2529,11 +2389,16 @@ def extract_waveguide_s_matrix_flux(
             # feed P_inc/a_inc, so its truncation corrupts the same S values
             # (review finding — max is the conservative composition; NaN
             # from a traced run propagates instead of being max()-eaten)
-            _sd_dev = settling_db_from_port_records(dev_final_cfgs)
-            _sd_ref = settling_db_from_port_records(ref_final_cfgs)
+            _sd_dev, _detail_dev = settling_db_from_port_records(
+                dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+            _sd_ref, _detail_ref = settling_db_from_port_records(
+                ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
             settling_runs.append(
                 float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
                 else max(_sd_dev, _sd_ref))
+            if settling_details is not None:
+                from rfx.sparams._tail_witness import combine_witness_details
+                settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
 
         F_dev_drive = flux_spectrum(dev_final_mons[drive_idx])
 
@@ -2604,6 +2469,7 @@ def extract_waveguide_s_params_normalized(
     ref_aniso_inv_eps: tuple | None = None,
     checkpoint_segments: int | None = None,
     return_settling: bool = False,
+    settling_details: list | None = None,
     sheet_impedance: object | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
@@ -2796,11 +2662,16 @@ def extract_waveguide_s_params_normalized(
         if return_settling:
             # worst over BOTH runs of the pair (same reasoning as the flux
             # variant: the reference run produces the normalization records)
-            _sd_dev = settling_db_from_port_records(dev_final_cfgs)
-            _sd_ref = settling_db_from_port_records(ref_final_cfgs)
+            _sd_dev, _detail_dev = settling_db_from_port_records(
+                dev_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
+            _sd_ref, _detail_ref = settling_db_from_port_records(
+                ref_final_cfgs, freq_max=getattr(grid, "freq_max", None), return_detail=True)
             settling_runs.append(
                 float("nan") if (np.isnan(_sd_dev) or np.isnan(_sd_ref))
                 else max(_sd_dev, _sd_ref))
+            if settling_details is not None:
+                from rfx.sparams._tail_witness import combine_witness_details
+                settling_details.append(combine_witness_details(_detail_dev, _detail_ref))
 
         for recv_idx, cfg in enumerate(dev_final_cfgs):
             _, b_recv_dev = _s_matrix_port_waves(
@@ -3100,6 +2971,7 @@ def extract_multimode_s_matrix(
     aniso_inv_eps: tuple | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
+    settling_details: list | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Assemble a multi-mode waveguide S-matrix.
 
@@ -3202,6 +3074,10 @@ def extract_multimode_s_matrix(
             field_dtype=field_dtype,
         )
         final_cfgs = result.waveguide_ports or ()
+        if settling_details is not None:
+            _, detail = settling_db_from_port_records(
+                final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+            settling_details.append(detail)
         if len(final_cfgs) != n_total:
             raise RuntimeError(
                 f"Expected {n_total} final waveguide configs, got {len(final_cfgs)}"
@@ -3270,6 +3146,7 @@ def extract_multimode_s_matrix_flux(
     ref_aniso_inv_eps: tuple | None = None,
     pec_edge_masks: tuple | None = None,
     field_dtype=None,
+    settling_details: list | None = None,
 ) -> tuple[jnp.ndarray, list[tuple[int, int, str, tuple[int, int]]]]:
     """Power-flux multi-mode waveguide S-matrix.
 
@@ -3410,6 +3287,13 @@ def extract_multimode_s_matrix_flux(
             **common_run_kw,
         )
         dev_final_cfgs = dev_result.waveguide_ports or ()
+        if settling_details is not None:
+            from rfx.sparams._tail_witness import combine_witness_details
+            _, ref_detail = settling_db_from_port_records(
+                ref_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+            _, dev_detail = settling_db_from_port_records(
+                dev_final_cfgs, freq_max=getattr(grid, 'freq_max', None), return_detail=True)
+            settling_details.append(combine_witness_details(dev_detail, ref_detail))
         if len(dev_final_cfgs) != n_total:
             raise RuntimeError("multimode flux extraction expected one final config per channel")
 

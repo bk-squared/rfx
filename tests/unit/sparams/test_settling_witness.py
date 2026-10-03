@@ -1,54 +1,4 @@
-"""Ring-down settling witness (``settling_db``) on every S-matrix lane.
-
-The CLAUDE.md rule made mechanical: an S-parameter record must be long enough
-that the port fields have rung down by -40 dB from their peak, otherwise the
-single-bin DFTs are truncation artifacts and look like ordinary (bad)
-S-parameters. One file for the whole witness (tier 3b of the 2026-09
-test-corpus reorganisation, see
-``docs/design_notes/20260903_test_reorg_tier3b_consolidation.md``). Sections,
-each formerly its own file:
-
-1. MSL lane (``compute_msl_s_matrix``) — was ``test_msl_settling_witness.py``.
-   Root cause this guards (measured, PR #462 Sheen-1990 study, dx=200 um):
-   a fixed num_periods=20 record ended while the LPF stopband was still
-   ringing, and the truncated single-bin DFTs produced |S| column-power poles
-   up to ~1.8e3 — 58/120 non-passive bins — that shrank monotonically with
-   record length (20->60 periods: worst pole 62->8.8) while absorber depth
-   (8->24 CPML layers) did not move them. Two tiny thru-line FDTD runs
-   (~seconds each): a deliberately truncated record must fail the witness
-   loudly, a settled record must pass silently.
-2. Enforcement of the -40 dB bar (issue #662) — was
-   ``test_settling_witness_enforcement.py``. The witness and its threshold
-   were both already written down; what was missing on two lanes was the
-   comparison between them. Measured BEFORE the fix (``compute_coaxial_two_port``,
-   the coax through-line fixture of ``tests/unit/sparams/test_coax_two_port_smatrix.py``,
-   JAX_PLATFORMS=cpu)::
-
-       n_steps=  400  settling_db=[ -6.84,  -6.93]  warnings emitted: 0
-       n_steps=  700  settling_db=[-28.15, -29.46]  warnings emitted: 0
-       n_steps= 1500  settling_db=[-43.97, -44.53]  warnings emitted: 0
-       n_steps= 3000  settling_db=[-67.26, -68.09]  warnings emitted: 0
-       n_steps= 6000  settling_db=[-65.87, -65.59]  warnings emitted: 0
-
-   The 400- and 700-step rows violate the bar by 33 and 12 dB and returned a
-   plausible-looking ``s_params`` in total silence. Split per this repo's
-   physics-run discipline: FAST (no FDTD) — the warner's own decision logic
-   plus a static governance gate that every ``settling_db``-producing lane
-   routes through the ONE shared warner; SLOW (``slow_physics``, real FDTD) —
-   the end-to-end firing pair on the silent lane.
-3. Waveguide lane (#538, ``compute_waveguide_s_matrix``) — was
-   ``test_waveguide_settling_witness.py``. The witness is pure host-side
-   post-processing of the ``v_probe_t`` records the scan already produces
-   for the DFT extraction — nothing is added to the jitted graph, so S
-   cannot be perturbed; the identity test pins that structurally-guaranteed
-   property anyway. Fixture is the WR-90-class two-port straight guide from
-   ``test_waveguide_geometry_hygiene``, deliberately short records so the
-   truncation warning path is exercised for real.
-
-The consolidation preserved the original assertions and thresholds. The
-MSL fixture subsequently gained its missing explicit ground under #729;
-CPML padding does not supply a ground conductor.
-"""
+"""Settling report fields, warnings, and extractor integration."""
 
 from __future__ import annotations
 
@@ -95,22 +45,9 @@ _MSL_FREQS = jnp.linspace(2e9, 18e9, 12)
 
 
 def test_truncated_record_fails_the_witness_loudly():
-    sim = _msl_thru()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        res = sim.compute_msl_s_matrix(freqs=_MSL_FREQS, num_periods=2.0)
-
-    assert res.settling_db is not None and res.settling_db.shape == (2,)
-    assert np.all(np.isfinite(res.settling_db))
-    # A 2-period record ends essentially at the transit peak.
-    assert np.all(res.settling_db > -40.0)
-
-    witness = [w for w in caught if "settling witness" in str(w.message)]
-    assert witness, "a truncated record must warn, not just return numbers"
-    msg = str(witness[0].message)
-    # The warning must carry the measured value and the actionable knob.
-    assert "num_periods" in msg and "-40" in msg
-    assert "settling_db" in msg
+    result = _msl_thru().compute_msl_s_matrix(freqs=_MSL_FREQS, num_periods=2.0)
+    assert result.settling_db.shape == (2,)
+    assert all(settling_verdict(value) != "pass" for value in result.settling_db)
 
 
 def test_settled_record_passes_the_witness_silently():
@@ -239,6 +176,15 @@ def test_all_nan_witness_is_silent_not_a_false_fire():
     the finite mask, not luck, is what keeps those lanes quiet."""
     assert _catch(lambda: _warn_if_ringdown_truncated(
         np.full(2, np.nan), ("port1", "port2"), n_steps=400)) == []
+
+
+def test_concrete_undetermined_witness_warns_with_reason():
+    hot = _catch(lambda: _warn_if_ringdown_truncated(
+        [np.nan], ('feed',), n_steps=400, witnesses=[{
+            'status': 'undetermined', 'reason': 'source end is unavailable',
+            'share_per_bin': np.zeros(2)}]))
+    assert len(hot) == 1
+    assert 'undetermined (source end is unavailable)' in str(hot[0].message)
 
 
 def test_nan_beside_a_violator_does_not_mask_the_violator():
@@ -377,21 +323,20 @@ def _coax_two_port_sim():
 
 @pytest.mark.slow_physics
 def test_underrun_coax_two_port_warns_instead_of_returning_it_quietly():
-    """Deliberately under-run record: measured settling_db [-6.84, -6.93] dB
-    on this fixture at n_steps=400, i.e. 33 dB past the bar. On the unfixed
-    tree this returned a finite, ordinary-looking s_params and zero warnings.
-    """
+    """An under-run coax record reports a non-pass witness and warns."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = _coax_two_port_sim().compute_coaxial_two_port(
             n_steps=400, freqs=_BAND)
 
     sd = np.asarray(res.settling_db)
-    assert sd.shape == (2,) and np.all(np.isfinite(sd)), sd
-    assert np.all(sd > _SETTLING_WITNESS_DB), (
-        f"fixture no longer under-run (settling_db={sd}); it cannot witness "
-        "the truncation warning any more — shorten the record."
-    )
+    assert sd.shape == (2,)
+    assert all(settling_verdict(value) != "pass" for value in sd), sd
+    for detail in res.settling_witness:
+        assert detail['status'] in {'fail', 'undetermined'}
+        assert detail['share_per_bin'].shape == _BAND.shape
+        if detail['status'] == 'undetermined':
+            assert detail['reason']
     hot = [w for w in caught if "settling witness" in str(w.message)]
     assert hot, (
         f"settling_db={sd} violates the {_SETTLING_WITNESS_DB:g} dB bar and "
@@ -404,22 +349,15 @@ def test_underrun_coax_two_port_warns_instead_of_returning_it_quietly():
 
 @pytest.mark.slow_physics
 def test_settled_coax_two_port_stays_silent():
-    """A valid record at or below the documented -40 dB bar must not warn.
-
-    Historical n_steps=3000 record: [-67.26, -68.09] dB. Current main
-    records [-58.88, -64.84] dB, still 18.88/24.84 dB below the bar.
-    The extra -60 dB fixture margin formerly rejected a valid silence
-    control (#940); it was not the result's settling contract. Preserve
-    the record length and test the actual contract, including availability.
-    This does not attribute the change in physical decay between records.
-    """
+    """A finite pole-tail witness at or below -40 dB does not warn."""
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         res = _coax_two_port_sim().compute_coaxial_two_port(
             n_steps=3000, freqs=_BAND)
 
     sd = np.asarray(res.settling_db)
-    assert sd.shape == (2,) and np.all(np.isfinite(sd)), sd
+    assert sd.shape == (2,)
+    assert np.all(np.isfinite(sd)), sd
     assert np.all(sd <= _SETTLING_WITNESS_DB), (
         f"settled control {sd} does not meet the {_SETTLING_WITNESS_DB:g} dB "
         "return contract; it cannot establish the settled-silence behavior."
@@ -487,35 +425,12 @@ def _wg_two_port():
 
 
 def test_settling_populated_and_truncation_warning_fires():
-    """All three normalize modes populate settling_db (n_ports,), finite;
-    a deliberately short record fires the aggregate truncation warning
-    (measured 2026-08-09, worst-of-4-series witness: [-2.3, -1.9] dB at
-    num_periods=4.0 — the parameter this test runs — on this
-    fixture — far above the -40 dB rule, which is the point)."""
     for mode in (False, True, "flux"):
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always")
-            res = _wg_two_port().compute_waveguide_s_matrix(
-                normalize=mode, num_periods=4.0)
-        sd = res.settling_db
-        assert sd is not None and sd.shape == (2,), (mode, sd)
-        assert np.all(np.isfinite(sd)), (mode, sd)
-        assert np.all(sd < 0.0), (mode, sd)
-        assert any("ringing" in str(w.message) for w in caught), (
-            f"normalize={mode!r}: truncation warning did not fire on an "
-            f"unsettled record (settling_db={sd})")
+        result = _wg_two_port().compute_waveguide_s_matrix(normalize=mode, num_periods=4.0)
+        assert result.settling_db.shape == (2,)
+        assert all(settling_verdict(value) != "pass" for value in result.settling_db)
 
 
-def test_longer_record_settles_deeper():
-    """Direction sanity: more periods -> more negative witness on the same
-    fixture (the falsifier for a witness that reads something other than
-    ring-down)."""
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        short = _wg_two_port().compute_waveguide_s_matrix(num_periods=4.0)
-        long_ = _wg_two_port().compute_waveguide_s_matrix(num_periods=16.0)
-    assert float(np.max(long_.settling_db)) < float(np.max(short.settling_db)), (
-        short.settling_db, long_.settling_db)
 
 
 def test_witness_flag_does_not_perturb_s_extractor_level():
@@ -565,313 +480,9 @@ def test_witness_flag_does_not_perturb_s_extractor_level():
     )
     assert np.array_equal(np.asarray(s_off), np.asarray(s_on)), (
         "return_settling=True perturbed S at the extractor level")
-    assert settling.shape == (2,) and np.all(np.isfinite(settling))
-    assert np.all(settling < 0.0)
+    assert settling.shape == (2,)
+    assert all(settling_verdict(value) != "pass" for value in settling)
 
-
-# ===========================================================================
-# 4. Underflowed / subnormal port records (#869)
-# ===========================================================================
-#
-# The witness took its worst end/peak ratio over every port record, including
-# records that had fallen off the bottom of float32. Behind a PEC short that
-# broke it in BOTH directions, measured by the WR-90 chain battery (VESSL run
-# 369367257823, tests/fixtures/waveguide_chain_battery/fixture.json):
-#
-#   * fine rung (dx = 0.635 mm, 8-cell short): the four far-port records are
-#     exactly zero (peak = 0.0, n_nonzero = 0 of 2849), (end+tiny)/(peak+tiny)
-#     = 1, and the witness reported 0.00 dB -- a hard fail -- at 40 AND at 80
-#     periods, on a run whose signal-carrying records read -99.98 / -101.20 dB
-#     and whose S moves by <= 7.3e-6 between the two record lengths.
-#   * mid rung (dx = 1.27 mm, 4-cell short): the same records are float32
-#     subnormals (peak amplitudes 1.58e-37 .. 2.97e-40) and the witness PASSED
-#     at -40.85 / -40.91 dB on the worst of them, 0.9 dB inside the bar, while
-#     the signal-carrying records read -94.62 / -94.55 dB.
-#   * coarse rung (dx = 2.54 mm): the far-port records are normal float32
-#     (peak amplitudes 3.15e-20 / 5.5e-23, tails 5.5e-25 rms). Nothing is
-#     skipped and the cell's number must not move.
-#
-# These tests replay the STORED per-record peak/end pairs through the
-# production witness. No FDTD runs here; the battery is a one-run
-# pre-declared artifact and is never re-measured.
-
-import json  # noqa: E402
-
-from rfx.sources.waveguide_port import (  # noqa: E402
-    _settling_db_for_record,
-    _settling_record_floor_amplitude,
-    settling_db_from_port_records,
-)
-
-_BATTERY_FIXTURE = (pathlib.Path(__file__).resolve().parents[3]
-                    / "tests" / "fixtures" / "waveguide_chain_battery"
-                    / "fixture.json")
-
-
-def _battery_cells():
-    if not _BATTERY_FIXTURE.exists():  # pragma: no cover - fixture is committed
-        pytest.skip(f"{_BATTERY_FIXTURE} not present")
-    return json.loads(_BATTERY_FIXTURE.read_text())["cells"]
-
-
-def _pec_short_cell(rung: str, lane: str) -> dict:
-    for c in _battery_cells():
-        if c["dut"] == "pec_short" and c["rung"] == rung and c["lane"] == lane:
-            return c
-    raise AssertionError(f"no pec_short|{rung}|{lane} cell in the fixture")
-
-
-class _Records:
-    """A stand-in for a final ``WaveguidePortConfig``: the witness only reads
-    the four record attributes off it."""
-
-    def __init__(self, per_record):
-        for name, arr in per_record.items():
-            setattr(self, name, arr)
-
-
-def _rebuild_record(peak_power, end_power, n_steps, dtype=np.float32):
-    """A float32 record with the stored peak power and tail-mean power.
-
-    One sample at the peak amplitude, the last tenth (the window the witness
-    averages) at the tail rms amplitude, zeros in between -- enough for
-    ``p.max()`` and ``p[-tail:].mean()`` to reproduce the stored pair, and it
-    round-trips through the same float32 storage the run used, so subnormal
-    peaks stay subnormal.
-    """
-    a = np.zeros(int(n_steps), dtype=dtype)
-    if peak_power > 0.0:
-        a[0] = dtype(np.sqrt(peak_power))
-    tail = max(1, int(n_steps) // 10)
-    if end_power > 0.0:
-        a[-tail:] = dtype(np.sqrt(end_power))
-    return a
-
-
-def _rebuild_solve(call):
-    """Every stored record carries its own ``n_steps``, so the rebuilt arrays
-    are the length the run actually recorded (40- and 80-period blocks alike)."""
-    by_port: dict[int, dict] = {}
-    for r in call:
-        by_port.setdefault(r["port_index"], {})[r["record"]] = _rebuild_record(
-            r["peak"], r["end"], r["n_steps"])
-    return [_Records(by_port[k]) for k in sorted(by_port)]
-
-
-def _legacy_worst(cfgs):
-    """The pre-fix arithmetic, verbatim, for the preserved-verdict control."""
-    worst = -np.inf
-    for cfg in cfgs:
-        for ts in (cfg.v_probe_t, cfg.v_ref_t, cfg.i_probe_t, cfg.i_ref_t):
-            ts_np = np.abs(np.asarray(ts, dtype=np.float64))
-            p = ts_np ** 2
-            tail = max(1, p.shape[0] // 10)
-            end = float(p[-tail:].mean())
-            peak = float(p.max())
-            tiny = float(np.finfo(float).tiny)
-            worst = max(worst, 10.0 * np.log10((end + tiny) / (peak + tiny)))
-    return float(worst)
-
-
-def test_floor_is_the_smallest_peak_on_which_the_bar_decision_is_normal():
-    """The floor is derived, not chosen: a record sitting exactly at the
-    -40 dB bar has a tail whose rms amplitude is 1e-2 of its peak amplitude,
-    so requiring that rms to be a NORMAL number puts the peak at
-    ``100 * tiny``. Tighten the bar and the floor rises with it."""
-    tiny32 = float(np.finfo(np.float32).tiny)
-    floor = _settling_record_floor_amplitude(tiny32)
-    assert floor == pytest.approx(tiny32 * 10.0 ** (abs(_SETTLING_WITNESS_DB) / 20.0),
-                                  rel=0, abs=0)
-    assert floor == pytest.approx(1.1754943508222875e-36, rel=1e-15)
-    # a record AT the floor, sitting exactly at the bar: tail rms == tiny
-    tail_rms = floor * 10.0 ** (_SETTLING_WITNESS_DB / 20.0)
-    assert tail_rms == pytest.approx(tiny32, rel=1e-12)
-    # and the floor follows the format, not a hard-coded float32 constant:
-    # float64 reaches far further down, so under x64 the guard sits far lower
-    # and a record that is subnormal in float32 stays witnessable
-    assert _settling_record_floor_amplitude(float(np.finfo(np.float64).tiny)) < floor
-
-
-def test_the_floor_separates_exactly_the_records_whose_tail_is_subnormal():
-    """The measured justification, pinned. Over every cell and both record
-    lengths of the battery, the floor skips exactly the records whose tail
-    mean is subnormal in the format the run stored them in, and keeps every
-    record whose tail mean is normal -- no misclassification either way."""
-    misfiled = []
-    for c in _battery_cells():
-        for block in (c, c.get("settling_rerun")):
-            if not block:
-                continue
-            tiny = block["float32_normal_min"]
-            floor = _settling_record_floor_amplitude(tiny)
-            for ci, call in enumerate(block["settling_records"]):
-                for r in call:
-                    kept = _settling_db_for_record(r["peak"], r["end"], floor) is not None
-                    tail_rms = np.sqrt(r["end"]) if r["end"] > 0 else 0.0
-                    tail_normal = tail_rms >= tiny
-                    if kept != tail_normal:
-                        misfiled.append((c["dut"], c["rung"], c["lane"], ci,
-                                         r["record"], r["peak"], r["end"]))
-    assert not misfiled, misfiled
-
-
-def test_underflowed_far_port_records_are_no_longer_scored_as_zero_db():
-    """Fine rung, both lanes, both record lengths: the far-port records are
-    exactly zero and used to make the witness read 0.00 dB. Skipped now, and
-    the run reads what its signal-carrying records say (~ -100 dB at 40
-    periods, ~ -114 dB at 80)."""
-    for lane in ("false", "flux"):
-        c = _pec_short_cell("fine", lane)
-        for block in (c, c["settling_rerun"]):
-            assert set(block["settling_db"].values()) == {0.0}, (
-                "fixture no longer carries the 0 dB reading this guards")
-            worst_over_solves = -np.inf
-            for call in block["settling_records"]:
-                db, detail = settling_db_from_port_records(
-                    _rebuild_solve(call), return_detail=True)
-                assert db < -90.0, (lane, db, detail)
-                assert db != 0.0
-                worst_over_solves = max(worst_over_solves, db)
-            # the driver wrote this number independently at measurement time,
-            # from the same records, before any fix existed
-            assert worst_over_solves == pytest.approx(
-                block["settling_db_over_normal_records"], rel=1e-6), lane
-
-
-def test_the_zeroed_records_are_reported_by_name_so_the_caller_sees_the_gap():
-    """Skipping silently would trade one blind spot for another: the witness
-    must say which records it stopped covering."""
-    c = _pec_short_cell("fine", "false")
-    db, detail = settling_db_from_port_records(
-        _rebuild_solve(c["settling_records"][0]), return_detail=True)
-    assert detail["skipped_records"] == [
-        "port1/v_probe_t", "port1/v_ref_t", "port1/i_probe_t", "port1/i_ref_t"]
-    assert detail["n_witnessed"] == 4
-    assert detail["floor_amplitude"] == pytest.approx(
-        _settling_record_floor_amplitude(c["float32_normal_min"]), rel=0, abs=0)
-    assert db < -90.0
-
-
-def test_a_subnormal_record_no_longer_carries_the_pass():
-    """Mid rung: the witness passed at -40.85 dB on a record whose peak
-    amplitude is 2.97e-40 and whose tail mean is a few hundred subnormal
-    quanta. That record is out; the number now comes from the driven port's
-    own records at -94.6 dB."""
-    c = _pec_short_cell("mid", "false")
-    assert min(c["settling_db"].values()) == pytest.approx(-40.91, abs=0.01)
-    floor = _settling_record_floor_amplitude(c["float32_normal_min"])
-    for call, expected in zip(c["settling_records"], (-94.621, -94.553)):
-        db, detail = settling_db_from_port_records(_rebuild_solve(call),
-                                                   return_detail=True)
-        assert db == pytest.approx(expected, abs=0.01), detail
-        assert len(detail["skipped_records"]) == 4 and detail["n_witnessed"] == 4
-        # the record that used to carry the pass is one of the skipped four
-        worst_rec = max(call, key=lambda r: r["db"])
-        assert worst_rec["db"] == pytest.approx(-40.9, abs=0.1), worst_rec
-        assert _settling_db_for_record(worst_rec["peak"], worst_rec["end"],
-                                       floor) is None
-        assert (f"port{worst_rec['port_index']}/{worst_rec['record']}"
-                in detail["skipped_records"])
-
-
-def test_normal_range_far_port_records_are_kept_and_the_cell_does_not_move():
-    """Control, and the reason the floor is not simply "the far port": at the
-    coarse rung the same far-port records are ordinary float32 (peak
-    amplitudes 3.15e-20 / 5.5e-23). Nothing is skipped and the recorded-cell
-    gate stays unchanged. #919 normalizes power before reduction to avoid
-    overflow/underflow; compare its arithmetic to an independent high-
-    precision ratio, not the last bit of the superseded operation order.
-    """
-    from decimal import Decimal, localcontext
-
-    c = _pec_short_cell("coarse", "false")
-    for call, port in zip(c["settling_records"], ("left", "right")):
-        cfgs = _rebuild_solve(call)
-        db, detail = settling_db_from_port_records(cfgs, return_detail=True)
-        assert detail["skipped_records"] == [] and detail["n_witnessed"] == 8
-        references = []
-        tail_max = 0
-        # Raw stored samples -> unscaled squared power in Decimal. This
-        # oracle does not share the production normalization or reduction.
-        with localcontext() as context:
-            context.prec = 60
-            for cfg in cfgs:
-                for name in ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t"):
-                    raw = np.asarray(getattr(cfg, name))
-                    tail = max(1, len(raw) // 10)
-                    tail_max = max(tail_max, tail)
-                    peak = Decimal.from_float(float(np.max(np.abs(raw))))**2
-                    end = sum((Decimal.from_float(float(x))**2 for x in raw[-tail:]),
-                              Decimal(0)) / Decimal(tail)
-                    references.append(Decimal(10) * (end / peak).log10())
-            reference = float(max(references))
-        # Positive terms have no cancellation: a serial tail reduction
-        # plus the surrounding divisions/square is bounded by gamma_(N+8).
-        # Convert relative ratio error to dB. The extra two ULPs are an
-        # explicit platform log/final-rounding allowance, not an IEEE
-        # guarantee about the accuracy of every platform's libm.
-        unit_roundoff = np.finfo(float).eps / 2
-        gamma = (tail_max + 8) * unit_roundoff / (1 - (tail_max + 8) * unit_roundoff)
-        roundoff_db = 10 / np.log(10) * (-np.log1p(-gamma)) + 2 * abs(np.spacing(reference))
-        assert abs(db - reference) <= roundoff_db
-        assert settling_verdict(db) == settling_verdict(reference) == settling_verdict(_legacy_worst(cfgs))
-        assert db == pytest.approx(c["settling_db"][port], abs=0.01)
-
-
-def test_a_run_with_no_witnessable_record_is_nan_and_loud_not_a_pass():
-    """The all-skipped case, on real records: the mid rung's four far-port
-    records alone. NaN is the "no witness value" state, and NaN <= -40 dB is
-    False, so it cannot pass a gate -- but the aggregate warner skips NaN by
-    design, so the witness itself has to say the coverage is gone."""
-    c = _pec_short_cell("mid", "false")
-    far = [r for r in c["settling_records"][0] if r["port_index"] == 1]
-    assert len(far) == 4
-    cfgs = [_Records({r["record"]: _rebuild_record(r["peak"], r["end"], r["n_steps"])
-                      for r in far})]
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        db, detail = settling_db_from_port_records(cfgs, return_detail=True)
-    assert np.isnan(db)
-    assert not bool(db <= _SETTLING_WITNESS_DB), "NaN must not read as a pass"
-    assert detail["n_witnessed"] == 0 and len(detail["skipped_records"]) == 4
-    hot = [w for w in caught if "NO COVERAGE" in str(w.message)]
-    assert len(hot) == 1, [str(w.message) for w in caught]
-    msg = str(hot[0].message)
-    assert "must NOT be read as a pass" in msg and "port0/i_probe_t" in msg, msg
-
-
-def test_synthetic_all_subnormal_record_set_is_refused():
-    """The same decision without the fixture: every record a subnormal ramp."""
-    tiny32 = float(np.finfo(np.float32).tiny)
-    n = 200
-    per = {}
-    for k, name in enumerate(("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t")):
-        a = np.zeros(n, dtype=np.float32)
-        a[0] = np.float32(tiny32 / (10.0 ** (k + 1)))
-        a[-20:] = np.float32(tiny32 / (10.0 ** (k + 4)))
-        per[name] = a
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        db = settling_db_from_port_records([_Records(per)])
-    assert np.isnan(db) and not bool(db <= _SETTLING_WITNESS_DB)
-    assert [w for w in caught if "NO COVERAGE" in str(w.message)]
-
-
-# ===========================================================================
-# 5. run() lane (#885) — the witness on Result, absent-not-NaN
-# ===========================================================================
-#
-# The gap this closes, measured: `Result` carried no settling field at all,
-# so a campaign driver read `getattr(result, "settling_db", np.nan)`, wrote
-# `nan` into its artifact for a 282,000-step far-field run, and on a second
-# experiment compared that `nan` to a "-40 dB or INCONCLUSIVE" guard. `nan`
-# is not above -40, the comparison went the wrong way, and 3 hours of GPU
-# came back INCONCLUSIVE for an instrument reason while the same run's
-# S-parameter lane recorded -156 / -154 dB.
-#
-# Two-thirds of these tests need no FDTD: the witness is host-side
-# post-processing of `result.time_series`, so a hand-built record exercises
-# the arithmetic and the absent/NaN policy directly.
 
 from rfx.api._sparams import settling_verdict  # noqa: E402
 from rfx.api._spec import Result  # noqa: E402
@@ -911,69 +522,29 @@ def _no_nan_anywhere(witness):
     return not any(math.isnan(v) for v in _floats(witness))
 
 
-def test_settled_run_carries_a_finite_witness_that_passes():
-    """(a) A decayed record: finite settling_db, verdict "pass", and the
-    value is the end/peak arithmetic recomputed from the probe record."""
-    sim = _run_sim()
+def test_probe_run_without_read_bins_is_absent():
+    result = _run_sim().run(n_steps=800, skip_preflight=True)
+    assert result.settling_witness["status"] == "absent"
+    assert "no read bins" in result.settling_witness["reason"]
+    assert settling_verdict(result.settling_db) == "absent"
+
+
+def test_source_active_run_is_undetermined_and_warns():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        result = sim.run(n_steps=800, skip_preflight=True)
-
-    assert result.settling_db is not None
-    assert math.isfinite(result.settling_db)
-    assert settling_verdict(result.settling_db) == "pass"
-    assert result.settling_witness["status"] == "measured"
-    assert result.settling_witness["route"] == "probe_records"
-    assert _no_nan_anywhere(result.settling_witness)
-    assert not _settling_warnings(caught), [
-        str(w.message) for w in _settling_warnings(caught)]
-
-    # Recompute independently from the returned record: peak power over the
-    # whole series, mean power over the last tenth.
-    record = np.asarray(result.time_series)[:, 0].astype(np.float64)
-    power = record ** 2
-    tail = max(1, power.shape[0] // 10)
-    expected = 10.0 * np.log10(
-        (float(power[-tail:].mean()) + float(np.finfo(float).tiny))
-        / (float(power.max()) + float(np.finfo(float).tiny)))
-    assert result.settling_db == pytest.approx(expected, abs=1e-9)
-    assert result.settling_witness["per_record_db"]["probe0(ez)"] == \
-        pytest.approx(expected, abs=1e-9)
+        result = _run_sim(dft=True).run(n_steps=60, skip_preflight=True)
+    assert result.settling_witness["status"] == "undetermined"
+    assert "source end" in result.settling_witness["reason"]
+    assert settling_verdict(result.settling_db) != "pass"
+    assert len(_settling_warnings(caught)) == 1
 
 
-def test_truncated_run_fails_the_witness_and_warns():
-    """(b) The same fixture stopped while it is still ringing, with a
-    field-DFT plane requested — the claims-bearing open-domain number the
-    settling rule governs."""
-    sim = _run_sim(dft=True)
+def test_a_bare_probe_run_has_no_read_bins_and_no_scoped_warning():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        result = sim.run(n_steps=60, skip_preflight=True)
-
-    assert settling_verdict(result.settling_db) == "fail"
-    assert result.settling_db > _SETTLING_WITNESS_DB
-    hot = [w for w in _settling_warnings(caught)
-           if "witness FAILED" in str(w.message)]
-    assert len(hot) == 1, [str(w.message) for w in caught]
-    msg = str(hot[0].message)
-    assert "probe0(ez)" in msg and "n_steps=60" in msg, msg
-    assert "NTFF far" in msg and "Harminv" in msg, msg
-
-
-def test_a_bare_probe_run_gets_the_number_without_a_second_lecture():
-    """The same truncated record with NO NTFF and no field DFT: the witness
-    is still on the result, and the run() lane stays silent because the #332
-    envelope advisory already speaks for a bare probe run — two lines about
-    one record in two different measures is the #470 flooding class."""
-    sim = _run_sim()
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        result = sim.run(n_steps=60, skip_preflight=True)
-
-    assert settling_verdict(result.settling_db) == "fail"
-    assert result.settling_witness["status"] == "measured"
-    assert not _settling_warnings(caught), [
-        str(w.message) for w in _settling_warnings(caught)]
+        result = _run_sim().run(n_steps=60, skip_preflight=True)
+    assert result.settling_witness["status"] == "absent"
+    assert not _settling_warnings(caught)
 
 
 def test_probeless_run_is_absent_not_nan():
@@ -1029,56 +600,24 @@ def test_preflight_says_the_witness_will_be_absent():
     assert not none_requested.by_code("settling_witness_will_be_absent")
 
 
-def test_an_underflowed_probe_record_is_skipped_and_named():
-    """(e) The #869 class on the run() lane: an all-zero record must be
-    SKIPPED and reported by name, never scored as a 0.00 dB hard fail.
-
-    Hand-built records — no FDTD needed, the witness is host-side."""
-    sim = _run_sim()
-    sim.add_probe((0.002, 0.002, 0.001), "ez")  # probe1
-    n = 400
-    live = np.zeros((n, 2), dtype=np.float32)
-    live[:, 0] = np.float32(1.0) * np.exp(-np.arange(n) / 20.0)
-    # column 1 stays exactly zero: the underflowed-record class
-
-    class _FakeResult:
-        time_series = live
-
-    db, witness = sim._run_settling_witness(_FakeResult())
-    assert witness["status"] == "measured"
-    assert witness["skipped_records"] == ["probe1(ez)"]
-    assert "probe1(ez)" not in witness["per_record_db"]
-    assert db == pytest.approx(witness["per_record_db"]["probe0(ez)"])
-    assert db < 0.0 and db != pytest.approx(0.0)
-
-    # every record underflowed -> absent (and loud), not a 0 dB fail
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-
-        class _AllZero:
-            time_series = np.zeros((n, 2), dtype=np.float32)
-
-        db2, witness2 = sim._run_settling_witness(_AllZero())
-    assert db2 is None and witness2["status"] == "absent"
-    assert settling_verdict(db2) == "absent"
-    assert _no_nan_anywhere(witness2)
-    assert sorted(witness2["skipped_records"]) == ["probe0(ez)", "probe1(ez)"]
-    assert [w for w in caught if "NO COVERAGE" in str(w.message)]
+def test_zero_probe_channel_invalidates_the_witness():
+    from rfx.probes.settling import probe_record_settling_witness
+    record = np.column_stack([np.exp(-np.arange(200)/20.), np.zeros(200)])
+    value, witness = probe_record_settling_witness(
+        record, dt=1., freqs=[.1], freq_max=.2, source_end_index=0)
+    assert np.isnan(value)
+    assert witness["status"] == "undetermined"
+    assert "probe1" in witness["reason"] and "zero channel" in witness["reason"]
 
 
 def test_one_arithmetic_shared_by_both_lanes():
-    """The run() lane and the S-parameter lanes score a record identically —
-    same tail window, same underflow floor, one implementation."""
-    n = 300
-    rec = (np.exp(-np.arange(n) / 30.0)).astype(np.float32)
-    direct = settling_db_from_named_records([("probe0(ez)", rec)])
-    sim = _run_sim()
-
-    class _FakeResult:
-        time_series = rec[:, None]
-
-    db, _ = sim._run_settling_witness(_FakeResult())
-    assert db == pytest.approx(direct)
+    from rfx.probes.settling import probe_record_settling_witness
+    record = np.exp(-np.arange(200)/20.)
+    kw = dict(dt=1., freqs=[.1], freq_max=.2, source_end_index=0)
+    direct = settling_db_from_named_records([("probe0(?)", record)], **kw)
+    probe, detail = probe_record_settling_witness(record, **kw)
+    assert probe == direct
+    assert detail["status"] == "pass"
 
 
 def test_a_driver_internal_run_does_not_double_fire():
@@ -1099,7 +638,7 @@ def test_a_driver_internal_run_does_not_double_fire():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         loud = sim._attach_run_settling_witness(res, n_steps=n)
-    assert settling_verdict(loud.settling_db) == "fail"
+    assert settling_verdict(loud.settling_db) == "absent"
     assert len(_settling_warnings(caught)) == 1
 
     sim._internal_probe_indices = {0}

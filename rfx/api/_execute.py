@@ -694,33 +694,56 @@ class _ExecuteMixin:
             )
 
     def _run_settling_witness(self, result):
-        """Energy ring-down settling witness for the ``run()`` path (#885).
+        """Judge retained records at the result's spectral read bins.
 
-        ROUTE: the USER probe time series the run already records, scored
-        with the SAME end/peak arithmetic and the same #869 underflow floor
-        as every S-parameter lane
-        (``rfx.sources.waveguide_port.settling_db_from_named_records``),
-        worst over probes. Nothing is added to the jitted graph -- this is
-        host-side post-processing of an array ``run()`` already returns -- so
-        it cannot perturb the fields.
-
-        Why probes and NOT total field energy: the fixed-step scan keeps no
-        running energy record. ``until_decay`` computes an interior
-        sum-of-squares proxy only while it is enabled, and the final
-        ``state`` alone gives an END value with no post-source PEAK to divide
-        it by. A one-sided end energy is not a ring-down ratio, so a
-        probe-less run reports the witness ABSENT rather than inventing a
-        number.
-
-        Returns ``(settling_db, witness)``. ``settling_db`` is ``None``
-        whenever the status is ``"absent"`` -- never NaN, because a NaN
-        reaching a ``> -40`` comparison is the entire failure this closes.
+        sensitivities are judged by a separate witness
         """
         from rfx.probes.settling import probe_record_settling_witness
+        from rfx.sparams._tail_witness import result_read_bins
 
+        if not isinstance(result, ForwardResult) and getattr(result, "settling_witness", None):
+            return result.settling_db, result.settling_witness
+        port_records = getattr(result, "sparam_time_records", None)
+        if port_records:
+            from rfx.sparams._tail_witness import port_record_witness
+            return port_record_witness(
+                port_records, getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None),
+                self._settling_source_end(result, records=self._ports),
+                result_read_bins(result), freq_max=self._freq_max)
+        if getattr(result, "waveguide_ports", None):
+            from rfx.sources.waveguide_port import settling_db_from_port_records
+            return settling_db_from_port_records(
+                result.waveguide_ports.values(), freqs=result_read_bins(result),
+                freq_max=self._freq_max, return_detail=True)
         series = getattr(result, "time_series", None)
         return probe_record_settling_witness(
-            series, self._settling_probe_selection(result))
+            series, self._settling_probe_selection(result),
+            source_end_index=self._settling_source_end(result),
+            dt=getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None),
+            freqs=result_read_bins(result), freq_max=self._freq_max)
+
+    def _settling_source_end(self, result, records=None):
+        from rfx.probes.settling import simulation_source_end_step
+
+        series = getattr(result, "time_series", None)
+        shape = getattr(series, "shape", ())
+        port_records = getattr(result, "sparam_time_records", None)
+        if port_records:
+            series = port_records[0]
+            shape = series.shape
+        if not shape:
+            return None
+        grid = getattr(result, "grid", None)
+        dt = getattr(result, "dt", None)
+        if dt is None:
+            dt = getattr(grid, "dt", None)
+        if records is None:
+            internal = getattr(self, "_internal_probe_indices", ()) or ()
+            count = 1 if len(shape) == 1 else shape[1]
+            records = [p for i, p in enumerate(self._probes[:count]) if i not in internal]
+        return simulation_source_end_step(
+            self, series.shape[0], dt, records, grid=grid,
+            waveguide_configs=getattr(result, "waveguide_ports", None))
 
     def _settling_probe_selection(self, result):
         """Numeric probe selection metadata, with the #1090 drive flag.
@@ -750,48 +773,15 @@ class _ExecuteMixin:
 
     def _attach_run_settling_witness(self, result, *, n_steps=None,
                                      num_periods=None, context="run"):
-        """Expose the shared run/forward probe witness and enforce its bar.
-
-        A ForwardResult carries numeric probe selection metadata and derives
-        its host diagnostic lazily from the concrete record. This keeps
-        descriptive strings and host reductions out of JAX result trees and
-        permits inspection of concrete JIT-produced records. Other result
-        fields keep their existing JIT restrictions. The eager forward
-        entry point still evaluates the diagnostic here to emit its warning.
-
-        The -40 dB comparison itself is NOT made here: it goes through
-        ``settling_verdict``, the one helper every path shares, so no caller
-        can compare a missing witness (``None``/NaN) with ``>`` and read a
-        pass out of it.
-
-        Two warnings, both one line, neither of them per-probe (#470), and
-        BOTH scoped to a run that requests NTFF or a field-DFT plane --
-        the claims-bearing open-domain DFT numbers the settling rule
-        governs. FAILED routes through the SAME aggregate warner the
-        S-parameter lanes use (``_warn_if_ringdown_truncated``, #662) with
-        this lane's consequence text; ABSENT says the guard is missing.
-
-        A run that requests neither gets the witness ON THE RESULT and no
-        warning: for a bare probe run the older envelope advisory (#332,
-        ``_warn_postrun_energy_witness``) already speaks about the same
-        record, and a second line saying the same thing in a different
-        measure is the #470 flooding class. The witness is attached
-        unconditionally, so a caller who wants the number always has it.
-
-        Both warnings are SILENT on a library-internal driver run. The MSL
-        S-matrix driver drives each port through ``self.run()`` and registers
-        its own internal witness probes and DFT planes; that run's ring-down
-        is judged by ``MSLSMatrixResult.settling_db``, which enforces the
-        same bar through the same warner. Speaking here too would double-fire
-        on one record -- the #470 advisory-flooding lesson -- and would
-        lecture a caller who never asked for this run. The witness is still
-        attached to the intermediate result; only the warnings defer.
-        """
+        """Attach the value witness and warn for requested spectral outputs."""
         forward_result = isinstance(result, ForwardResult)
         if forward_result:
             from rfx.core.jax_utils import is_tracer
             result = result._replace(
-                settling_probe_info=self._settling_probe_selection(result))
+                settling_probe_info=self._settling_probe_selection(result),
+                settling_freq_max=self._freq_max,
+                settling_source_end_index=self._settling_source_end(
+                    result, records=self._ports if result.sparam_time_records else None))
             if is_tracer(result.time_series):
                 return result
         elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
@@ -808,7 +798,22 @@ class _ExecuteMixin:
             settling_verdict,
         )
 
-        if self._ntff is None and not self._dft_planes:
+        has_s = (getattr(result, 's_params', None) is not None
+                  or bool(getattr(result, 'waveguide_sparams', None)))
+        if self._ntff is None and not self._dft_planes and not has_s:
+            return result
+
+        if has_s and witness['status'] in {'fail', 'undetermined'}:
+            from rfx.sparams._tail_witness import result_read_bins
+            bins = result_read_bins(result)
+            worst = witness['worst_freq_hz']
+            bin_label = (f"worst bin {worst:.9g} Hz" if np.isfinite(worst)
+                         else f"worst bin undetermined; read bins {bins.tolist()} Hz")
+            _warn_if_ringdown_truncated(
+                [settling_db], (), witnesses=[witness],
+                n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
+                drive_labels=(f"S-channel {bin_label}",),
+                consequence="S-parameter truncation is suspect")
             return result
 
         operation = "forward() call" if context == "forward" else "run"
@@ -2502,6 +2507,7 @@ class _ExecuteMixin:
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             dft_planes=dft_planes if dft_planes else None,
+            record_dft=bool(getattr(self, "_internal_probe_indices", ())),
             flux_monitors=flux_monitor_cfgs if flux_monitor_cfgs else None,
             return_state=False,
             stencil_order=self._stencil_order,
@@ -2524,6 +2530,9 @@ class _ExecuteMixin:
             return {
                 "lumped": result.lumped_port_sparams,
                 "wire": result.wire_port_sparams,
+                "sparam_time_records": result.sparam_time_records,
+                "dft_time_records": {entry.name: rec for entry, rec in zip(
+                    self._dft_planes, result.dft_time_records or ())},
                 "wire_refplane": result.wire_refplane_sparams,
                 "freqs": _raw_freqs,
                 # Mixed-family S-matrix hook (issue #488): the DFT plane
@@ -2544,6 +2553,7 @@ class _ExecuteMixin:
                     if self._dft_planes else None
                 ),
                 "time_series": getattr(result, "time_series", None),
+                "dt": getattr(result, "dt", grid.dt),
                 # Flux monitors for the issue-#488 arch-A magnitude channel
                 # (same name-keyed contract the runner uses for run()).
                 "flux_monitors": (
@@ -2654,6 +2664,9 @@ class _ExecuteMixin:
             s_params=s_params_out,
             freqs=freqs_out,
             lumped_port_sparams=result.lumped_port_sparams,
+            sparam_time_records=result.sparam_time_records,
+            dft_time_records={entry.name: rec for entry, rec in zip(
+                self._dft_planes, result.dft_time_records or ())},
             wire_port_sparams=result.wire_port_sparams,
             dft_planes=dft_planes_out,
             # The scan's own step: stencil_order=4 derates it below grid.dt.
@@ -2674,6 +2687,8 @@ class _ExecuteMixin:
         freqs=None,
         dft_planes=None,
         wire_port_sparams=None,
+        sparam_time_records=None,
+        dft_time_records=None,
         dt=None,
         current_moment_data=None,
         current_moment_monitor=None,
@@ -2704,6 +2719,8 @@ class _ExecuteMixin:
             freqs=freqs,
             dft_planes=dft_planes,
             wire_port_sparams=wire_port_sparams,
+            sparam_time_records=sparam_time_records,
+            dft_time_records=dft_time_records,
             dt=dt,
             current_moment_data=current_moment_data,
             current_moment_monitor=current_moment_monitor,
@@ -2793,6 +2810,8 @@ class _ExecuteMixin:
             freqs=getattr(result, "freqs", None),
             dft_planes=getattr(result, "dft_planes", None),
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
+            sparam_time_records=getattr(result, "sparam_time_records", None),
+            dft_time_records=getattr(result, "dft_time_records", None),
             dt=getattr(result, "dt", None),
             current_moment_data=getattr(result, "current_moment_data", None),
             current_moment_monitor=getattr(

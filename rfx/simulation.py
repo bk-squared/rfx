@@ -24,7 +24,7 @@ from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
-    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, curl_h, CurlBoundary,
+    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, curl_h, CurlBoundary, _shift_bwd,
     map_lumped, lumped_components, lumped_total,
     precompute_coeffs, update_he_fast,
 )
@@ -332,6 +332,8 @@ class SimResult(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     adjoint_settling: object = None
+    sparam_time_records: tuple | None = None
+    dft_time_records: tuple | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -2450,6 +2452,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
             from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
         if ctx.use_wire_sparams:
             new_wire_refs = []
+            wire_ref_samples = []
             for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
                 v_ref_dft = accs[4]
                 mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
@@ -2457,6 +2460,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
+                wire_ref_samples.append(v_ref)
 
         # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
         # PRE-injection slot (issue #72): the #308 off-diagonal incident
@@ -2467,12 +2471,14 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
         # the wire-port block above (issue #683).
         if ctx.use_lumped_sparams:
             new_lumped_refs = []
+            lumped_ref_samples = []
             for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
                 v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
                 v_ref_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
                 phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt)
                 new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
+                lumped_ref_samples.append(v_ref_l)
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
         # rect-DFT kernel as the port-cell channels.  This slot is before
@@ -2483,10 +2489,12 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
         if ctx.use_wire_refplanes:
             from rfx.probes.refplane import wire_refplane_step_vi
             new_refplane_accs = []
+            refplane_samples = []
             for accs, rp_meta in zip(carry["wire_refplane_accs"],
                                      ctx.wire_refplane_meta):
                 v_dft_r, im_dft_r, ip_dft_r = accs
                 v_r, im_r, ip_r = wire_refplane_step_vi(st, rp_meta, dx)
+                refplane_samples.append(jnp.stack((v_r, im_r, ip_r)))
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase_r = jnp.exp(-1j * 2.0 * jnp.pi * rp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 new_refplane_accs.append((
@@ -2521,6 +2529,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
         # bit-identically to the old slot.  This also makes the uniform
         # lane agree with the NU lane (rfx/nonuniform.py), whose
         # post-injection slot the #683 run validated.
+        port_samples = []
         if ctx.use_wire_sparams:
             new_wire_accs = []
             for accs, wp_meta, (v_ref_new, phase) in zip(
@@ -2567,6 +2576,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 # E-derived channels keep the uncorrected `phase`.
                 i_phase = phase * _half_i_phase(
                     wp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                port_samples.append(jnp.stack((v, i_val, v_port,
+                                                wire_ref_samples[len(new_wire_accs)])))
                 new_wire_accs.append((
                     v_dft + v * phase,
                     i_dft + i_val * i_phase,
@@ -2606,6 +2617,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 # premise (2026-09-05 scope note).
                 i_phase_l = phase_l * _half_i_phase(
                     lp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                port_samples.append(jnp.stack((v_l, i_val_l,
+                                                lumped_ref_samples[len(new_lumped_accs)])))
                 new_lumped_accs.append((
                     v_dft_l + v_l * phase_l,
                     i_dft_l + i_val_l * i_phase_l,
@@ -2672,6 +2685,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
         if ctx.use_dft_planes:
             t_plane = st.step * dt
             new_dft_planes = []
+            plane_samples = []
             for acc, (component, axis, index, freqs, region) in zip(
                 carry["dft_planes"], ctx.dft_meta
             ):
@@ -2693,6 +2707,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 else:
                     plane = field[lo1:hi1, lo2:hi2, index]
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
+                plane_samples.append(plane)
                 new_dft_planes.append(
                     acc + plane[None, :, :] * phase[:, None, None] * dt
                 )
@@ -2765,6 +2780,16 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
 
         # Rebuild carry
         new_carry: dict = {"fdtd": st}
+        if "dft_time_records" in carry:
+            new_carry["dft_time_records"] = tuple(
+                jax.lax.stop_gradient(record.at[step_idx].set(sample))
+                for record, sample in zip(carry["dft_time_records"], plane_samples))
+        if ctx.use_wire_refplanes:
+            port_samples.extend(refplane_samples)
+        if "sparam_time_records" in carry:
+            new_carry["sparam_time_records"] = tuple(
+                jax.lax.stop_gradient(record.at[step_idx].set(sample))
+                for record, sample in zip(carry["sparam_time_records"], port_samples))
         if ctx.use_cpml:
             new_carry["cpml"] = cpml_new
         if ctx.use_debye:
@@ -2847,6 +2872,7 @@ def run(
     design_occupancy: DesignOccupancySpec | None = None,
     stop_fn: Callable | None = None,
     stop_interval: int = 250,
+    record_dft: bool = False,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -3049,6 +3075,15 @@ def run(
         design_occupancy=design_occupancy,
     )
     carry_init = _setup.carry_init
+    if record_dft and dft_planes:
+        carry_init["dft_time_records"] = tuple(
+            jnp.zeros((n_steps,) + plane.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
+            for plane in dft_planes)
+    if wire_port_sparams or lumped_port_sparams:
+        carry_init["sparam_time_records"] = tuple(
+            jnp.zeros((n_steps, count), dtype=field_dtype)
+            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)
+                          + [3] * len(wire_refplane_sparams)))
     dt = _setup.dt
     dx = _setup.dx
     periodic = _setup.periodic
@@ -3511,6 +3546,10 @@ def run(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
+        sparam_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
+                                   for r in final_carry.get("sparam_time_records", ())),
+        dft_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
+                                for r in final_carry.get("dft_time_records", ())),
         snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,
@@ -3630,6 +3669,7 @@ def run_until_decay(
     report_every: int | None = None,
     report_label: str = "",
     sheet_impedance: object | None = None,
+    record_dft: bool = False,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -3804,6 +3844,14 @@ def run_until_decay(
         sheet_impedance=sheet_impedance,
     )
     carry = _setup.carry_init
+    if record_dft and dft_planes:
+        carry["dft_time_records"] = tuple(
+            jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
+            for plane in dft_planes)
+    if wire_port_sparams or lumped_port_sparams:
+        carry["sparam_time_records"] = tuple(
+            jnp.zeros((max_steps, count), dtype=field_dtype)
+            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)))
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -4238,6 +4286,8 @@ def run_until_decay(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
+        sparam_time_records=tuple(r[:actual_steps] for r in carry.get("sparam_time_records", ())),
+        dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
         snapshots=snapshots,
         ntff_box=ntff,
         grid=grid,

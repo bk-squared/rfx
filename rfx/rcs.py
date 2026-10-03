@@ -70,6 +70,8 @@ class RCSResult(NamedTuple):
     rcs_dbsm: np.ndarray
     rcs_linear: np.ndarray
     monostatic_rcs: np.ndarray
+    settling_db: float | None = None
+    settling_witness: dict | None = None
 
 
 class ScatteringResponse(NamedTuple):
@@ -723,6 +725,12 @@ def compute_rcs(
     mono_linear = 4.0 * np.pi * power_back / safe_power_inc
     monostatic_rcs = 10.0 * np.log10(np.maximum(mono_linear, 1e-30))
 
+    from rfx.probes.settling import source_end_step, tfsf_source_drive
+    source_end = source_end_step([tfsf_source_drive(tfsf_cfg, grid)], n_steps, grid.dt)
+    settling_db = None
+    settling_witness = {"status": "absent", "source_end_index": source_end, "reason":
+                        "no time-domain record; add an identification probe"}
+
     rcs = RCSResult(
         freqs=freqs_arr,
         theta=theta_obs,
@@ -730,6 +738,7 @@ def compute_rcs(
         rcs_dbsm=rcs_dbsm,
         rcs_linear=rcs_linear,
         monostatic_rcs=monostatic_rcs,
+        settling_db=settling_db, settling_witness=settling_witness,
     )
     if reference_index is None:
         return rcs

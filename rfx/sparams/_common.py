@@ -384,42 +384,17 @@ def _warn_if_ringdown_truncated(
     drive_labels: tuple | None = None,
     consequence: str | None = None,
     quoted_thing: str = "any S value",
+    witnesses: list | tuple | None = None,
 ) -> None:
-    """Emit one aggregate warning when a driven run's record is truncated.
-
-    The witness makes the project's ring-down settling rule mechanical
-    (docs/guides/simulation_methodology.md): end/peak
-    Ez^2 at the port probe planes, per driven run. Above −40 dB the fixed
-    record ended while the structure was still ringing, so
-    the single-bin DFTs underlying V/I — and every S value of that run —
-    integrate a truncated transient. Measured consequence on the Sheen-1990
-    LPF (dx=200 µm, resonant stopband): num_periods=20 left the witness hot
-    and produced |S| column-power poles up to ~1.8e3 that shrank
-    monotonically as the record grew (20→60 periods: worst pole 62→8.8),
-    while absorber depth (8→24 CPML layers) did not move them.
-
-    Every lane that computes ``settling_db`` must route it through here
-    (issue #662: the coax two-port and coax<->MSL transition lanes computed
-    the witness, documented the −40 dB bar in their result docstrings, and
-    never compared the two — a caller reading ``.s_params`` got a
-    plausible-looking truncation artifact in silence). Pass whichever
-    record-length knob the lane is actually driven by: ``num_periods`` for
-    the waveguide/MSL/mixed lanes, ``n_steps`` for the coax lanes — the
-    warning names that knob so its remedy is directly actionable.
-
-    NaN entries are skipped by the finite mask, which is what keeps the
-    differentiable paths quiet: they leave ``settling_db`` NaN on purpose
-    (the witness needs a concrete time series, and a traced one cannot be
-    Python-branched on). All callers pass a concrete host-side NumPy array,
-    so nothing here branches on a tracer.
-
-    All violating drives are named, not just the worst: the record length is
-    a per-drive property with a per-drive remedy, and naming only the worst
-    would hide a second drive needing the same fix. It stays ONE warning per
-    call (issue #470: per-probe advisory flooding buried the genuine ones).
-    """
+    """Warn for excessive pole tails or concrete undetermined witnesses."""
     values = np.atleast_1d(np.asarray(settling_db, dtype=float))
     hot = np.array([settling_verdict(v) == "fail" for v in values], dtype=bool)
+    unknown = np.zeros(len(values), dtype=bool)
+    if witnesses is not None:
+        for i, row in enumerate(witnesses):
+            if i < len(values) and 'share_per_bin' in row and 'traced' not in row['reason']:
+                unknown[i] = row['status'] in {'undetermined', 'absent'}
+    hot |= unknown
     if not bool(np.any(hot)):
         return
 
@@ -437,21 +412,17 @@ def _warn_if_ringdown_truncated(
         return f"port {port_names[i] if i < len(port_names) else i} driven"
 
     per_run = ", ".join(
-        f"{_label(i)}: {values[i]:+.1f} dB" for i in np.flatnonzero(hot)
+        (f"{_label(i)}: {witnesses[i]['status']} ({witnesses[i]['reason']})"
+         if unknown[i] else f"{_label(i)}: {values[i]:+.1f} dB")
+        for i in np.flatnonzero(hot)
     )
-    if consequence is None:
-        consequence = (
-            "the DFT-based S-parameters of the affected run(s) are "
-            "truncation artifacts wherever the structure is resonant — expect "
-            "spurious |S| poles and passivity violations"
-        )
+    consequence_text = f" {consequence}." if consequence else ""
     warnings.warn(
-        "ring-down settling witness FAILED (end/peak energy above "
+        "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
         f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
-        "record ended while the structure was still "
-        f"ringing, so {consequence}. Increase "
-        f"{knob} until the witness is below −40 dB before quoting "
-        f"{quoted_thing} (see the result's settling_db field).",
+        f"record has no passing value witness.{consequence_text} Increase "
+        f"{knob} and check identification before quoting "
+        f"{quoted_thing} (see the result's settling_db and settling_witness fields).",
         stacklevel=2,
     )
 

@@ -559,16 +559,7 @@ def compute_msl_s_matrix(
         wave_a: list[list] = [[None] * n_ports for _ in range(n_ports)]
         wave_b: list[list] = [[None] * n_ports for _ in range(n_ports)]
 
-        # Ring-down settling witness (project rule: fixed-length
-        # open-domain records must quote end/peak energy before any
-        # claims-bearing number). Point Ez time-series probes at EVERY
-        # port probe plane, mid-substrate under the trace — a single
-        # plane is standing-wave-node sensitive (measured on the thru
-        # fixture at num_periods=6: 18.1 dB spread across planes, i.e.
-        # PASS at one plane and FAIL at another for the same record), so
-        # the witness takes the WORST plane. For the PASSIVE ports of a
-        # run the whole record is response, so end/peak there is the
-        # textbook ring-down witness.
+        # Point probes at every port observation plane.
         _witness_base = len(self._probes)
         _witness_counts: list[int] = []
         for pe_w, pxs_w, meta_w in zip(entries, probe_xs, port_idx_meta):
@@ -597,6 +588,7 @@ def compute_msl_s_matrix(
             range(_witness_base, _witness_base + _witness_total)
         )
         settling_db_runs = np.full(n_ports, np.nan)
+        settling_details = [{"status": "undetermined", "reason": "traced or unavailable S channels"} for _ in range(n_ports)]
 
         for driven in range(n_ports):
             # Re-instantiate a clean simulation by mutating in place:
@@ -714,27 +706,34 @@ def compute_msl_s_matrix(
                 planes = result.dft_planes or {}
                 _ts_result = result
 
-            # Settling witness for this driven run: worst end/peak
-            # Ez^2 ratio across the per-port witness probes. Host-side
-            # numpy on concrete values only — on the eps_override AD
-            # path time_series may be a tracer, in which case the
-            # witness is skipped (NaN) rather than concretised.
+            # Score recorded S channels and witness probes.
             _ts = getattr(_ts_result, "time_series", None)
             if _ts is not None and not is_tracer(_ts):
                 _ts_np = np.asarray(
                     _ts[:, _witness_base:_witness_base + _witness_total],
-                    dtype=float,
                 )
                 if _ts_np.shape[0] >= 10 and _ts_np.shape[1] == _witness_total:
-                    _p = _ts_np ** 2
-                    _tail = max(1, _p.shape[0] // 10)
-                    _end = _p[-_tail:, :].mean(axis=0)
-                    _peak = _p.max(axis=0)
-                    _tiny = np.finfo(float).tiny
-                    _ratio_db = 10.0 * np.log10(
-                        (_end + _tiny) / (_peak + _tiny)
-                    )
-                    settling_db_runs[driven] = float(np.max(_ratio_db))
+                    from rfx.probes.settling import simulation_source_end_step
+                    from rfx.sources.waveguide_port import settling_db_from_named_records
+                    _source_end = simulation_source_end_step(
+                        self, _ts_np.shape[0], getattr(_ts_result, "dt", None) or grid.dt,
+                        self._probes[_witness_base:_witness_base + _witness_total], grid=grid)
+                    from rfx.sparams._tail_witness import msl_time_channels
+                    _plane_records = getattr(_ts_result, "dft_time_records", None)
+                    _channels = msl_time_channels(
+                        _plane_records, ez_probe_names, h_probe_names, h_stencils,
+                        port_idx_meta, trace_k_per_port, dz_arr,
+                        [port.direction for port in msl_ports], regions=self._dft_plane_regions,
+                    ) if _plane_records else []
+                    if _channels:
+                        _channels.extend((f"probe{i}", _ts_np[:, i])
+                                         for i in range(_ts_np.shape[1]))
+                    settling_db_runs[driven], settling_details[driven] = settling_db_from_named_records(
+                        _channels, source_end_index=_source_end,
+                        dt=getattr(_ts_result, "dt", None) or grid.dt,
+                        freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
+
+
 
             # Helper: integrate V and I per port from the recorded planes.
             v_per_port: list[list[np.ndarray]] = []
@@ -1365,7 +1364,7 @@ def compute_msl_s_matrix(
             beta=beta_first,
             port_names=tuple(pe.name for pe in entries),
             reliable=reliable,
-            settling_db=settling_db_runs,
+            settling_db=settling_db_runs, settling_witness=tuple(settling_details),
             S_raw=s_raw,
             passivity_correction=passivity_correction,
             sigma_max_excess=sigma_max_excess,
@@ -1378,7 +1377,7 @@ def compute_msl_s_matrix(
         _warn_if_ringdown_truncated(
             settling_db_runs,
             tuple(pe.name for pe in entries),
-            num_periods=num_periods,
+            num_periods=num_periods, witnesses=settling_details,
         )
         if passivity_correction is not None and not is_tracer(passivity_correction):
             _warn_if_passivity_projected(passivity_correction, freqs_arr)

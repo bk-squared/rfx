@@ -706,30 +706,11 @@ class Result(NamedTuple):
     grid : Grid or None
         Grid metadata for post-processing helpers and advanced objectives.
     settling_db : float or None
-        Energy ring-down settling witness for this run (issue #885): the
-        WORST (largest) end/peak power ratio in dB over the user probe time
-        series, i.e. how far the record had rung down when it ended. Below
-        -40 dB the record is settled; above it, every DFT-derived quantity of
-        the run (NTFF far fields, field-DFT planes, Harminv modes) integrates
-        a cut transient. ``None`` -- never NaN -- when no witness could be
-        established; see ``settling_witness`` for why, and read the decision
-        through ``rfx.api._sparams.settling_verdict`` rather than comparing
-        to -40 yourself (a ``getattr(result, "settling_db", np.nan) > -40``
-        is how a missing witness twice became a silent pass).
+        Worst identified pole-tail share over recorded channels and read bins,
+        in amplitude dB. Missing identification yields a non-pass witness.
     settling_witness : dict or None
-        Provenance for ``settling_db``: ``status`` (``"measured"`` /
-        ``"absent"``), ``route`` (``"probe_records"`` or ``None``),
-        ``worst_record``, ``per_record_db`` (per-probe dB),
-        ``skipped_records`` (records below the #869 underflow floor, skipped
-        rather than scored), ``reason`` (what would make an absent witness
-        measurable), ``source_dominated_records`` (probes sharing a Yee cell
-        with a registered source/port drive), ``source_dominated`` and
-        ``qualifier``. A source-dominated record peaks on the drive pulse,
-        so its end/peak ratio measures source turn-off rather than
-        ring-down; it never carries the verdict while an independent scored
-        record exists, and when every scored record is dominated the
-        qualifier says the number is not an independent witness (#1090).
-        ``None`` only on lanes that never attach it.
+        Status, reason, per-bin tail shares and identification errors, and
+        selected-record provenance for the value witness.
     """
     state: object
     time_series: jnp.ndarray
@@ -790,6 +771,8 @@ class Result(NamedTuple):
     #: Filled by run_uniform, run_adi, run_subgridded, run_distributed (uniform), and run_nonuniform; None on other lanes.
     #: Also None for traced mesh coordinates; other record errors propagate.
     realized_geometry: object = None
+    sparam_time_records: tuple | None = None
+    dft_time_records: object = None
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
@@ -1109,7 +1092,10 @@ class ForwardResult(NamedTuple):
     concrete result, not as gradient objectives. Numeric
     ``settling_probe_info`` preserves the selected columns, component
     labels and the #1090 source-dominated flag as integers, without
-    inserting strings into a JAX result tree. These lazy properties are
+    inserting strings into a JAX result tree. ``settling_source_end_index``
+    carries the first post-source sample, including free-space transit;
+    missing timing or insufficient post-source samples yields no witness.
+    These lazy properties are
     not stored fields in ``_asdict()``. ``wire_port_sparams`` is a tuple of
     ``(meta, accs)`` pairs on both lanes; the lane-specific type of ``meta``
     and the accumulator channels are documented on :class:`Result`.
@@ -1172,6 +1158,10 @@ class ForwardResult(NamedTuple):
     current_moment_data: object = None
     current_moment_monitor: object = None
     adjoint_settling: object = None
+    settling_source_end_index: object = None
+    settling_freq_max: object = None
+    sparam_time_records: tuple | None = None
+    dft_time_records: object = None
 
     @property
     def settling_db(self) -> float | None:
@@ -1184,15 +1174,33 @@ class ForwardResult(NamedTuple):
         Use ``settling_verdict`` to judge the diagnostic.
         """
         from rfx.probes.settling import probe_record_settling_witness
+        from rfx.sparams._tail_witness import result_read_bins
+        bins = result_read_bins(self)
+        if self.sparam_time_records:
+            from rfx.sparams._tail_witness import port_record_witness
+            return port_record_witness(
+                self.sparam_time_records, self.dt, self.settling_source_end_index,
+                bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[0]
         return probe_record_settling_witness(
-            self.time_series, self.settling_probe_info, warn=False)[0]
+            self.time_series, self.settling_probe_info, warn=False,
+            source_end_index=self.settling_source_end_index, dt=self.dt,
+            freqs=bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[0]
 
     @property
     def settling_witness(self) -> dict:
         """Provenance for ``settling_db``, without string leaves in JAX trees."""
         from rfx.probes.settling import probe_record_settling_witness
+        from rfx.sparams._tail_witness import result_read_bins
+        bins = result_read_bins(self)
+        if self.sparam_time_records:
+            from rfx.sparams._tail_witness import port_record_witness
+            return port_record_witness(
+                self.sparam_time_records, self.dt, self.settling_source_end_index,
+                bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[1]
         return probe_record_settling_witness(
-            self.time_series, self.settling_probe_info, warn=False)[1]
+            self.time_series, self.settling_probe_info, warn=False,
+            source_end_index=self.settling_source_end_index, dt=self.dt,
+            freqs=bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[1]
 
 
 # ---------------------------------------------------------------------------
@@ -1361,22 +1369,10 @@ class WaveguideSParamResult(NamedTuple):
 class WaveguideSMatrixResult(NamedTuple):
     """Waveguide scattering result assembled one driven port at a time.
 
-    ``settling_db`` (issue #538) is the per-driven-run energy ring-down
-    witness: worst end/peak tail ratio over ALL FOUR recorded per-port
-    time series (``v_probe_t``/``v_ref_t``/``i_probe_t``/``i_ref_t`` —
-    single-series witnesses measured up to 8.3 dB optimistic vs the
-    records the extraction actually consumes) for each driven run, in dB;
-    two-run variants (flux/normalized) take the worst of the device AND
-    reference runs. Rule: below −40 dB, same ``_SETTLING_WITNESS_DB``
-    threshold and aggregate warning as the lumped/MSL path. Scope limits
-    (modal records only; peak includes the incident pulse): see
-    ``settling_db_from_port_records``. ``None`` on the one path that has
-    not adopted the witness: the uniform multimode branch
-    (``extract_multimode_s_matrix*``) — tracked on the issue. The NU
-    sibling (``_compute_waveguide_s_matrix_nu``) carries it since the
-    issue #827 waveguide-instance fix. NaN
-    entries mean the run was traced (AD path) and the host-side witness
-    was skipped rather than concretised.
+    ``settling_db`` records the worst per-bin pole-tail amplitude share
+    across modal V/I records for each drive. Paired extractions include
+    device and reference runs. ``settling_witness`` carries identification
+    status, reasons, and per-bin shares and errors.
 
     ``s21_phase_residual_deg_rms`` is the post-solve discretization witness
     (#894, post-v1.8 plan item 5): the RMS over the measured bins of
@@ -1414,6 +1410,7 @@ class WaveguideSMatrixResult(NamedTuple):
     settling_db: np.ndarray | None = None
     s21_phase_residual_deg_rms: float | None = None
     s21_phase_residual_meta: dict | None = None
+    settling_witness: tuple | None = None
 
 
 class CoaxialLineReflectionResult(NamedTuple):
@@ -1520,15 +1517,8 @@ class CoaxialTwoPortResult:
     line attenuation without averaging across all 4 (2 arrays x 2 drives)
     measurements. ``annulus_cells`` is the shared resolution metric (same
     convention as the 1-port method, below ~3.5 cells is under-resolved).
-    ``settling_db`` is a per-drive ring-down witness (worst end/peak E^2 ratio,
-    dB, over one point probe per array — same convention as the MSL/mixed
-    lanes; above -40 dB suggests the fixed-length record may have been
-    truncated before the structure rang down). Since issue #662 that bar is
-    ENFORCED, not just documented: a violating drive emits a
-    ``UserWarning`` naming the drive and its measured value, so a truncated
-    record can no longer return a plausible-looking ``s_params`` in silence.
-    It stays a warning, never an exception — short diagnostic runs are a
-    legitimate use of this method.
+    ``settling_db`` is the per-drive pole-tail amplitude share in dB over
+    recorded voltage ladders and witness probes at the extraction bins.
 
     **``eps_scale`` (differentiable) path** (:meth:`compute_coaxial_two_port`'s
     own ``eps_scale`` parameter, issue #489 leg 3): ``status`` takes a FOURTH
@@ -1579,6 +1569,7 @@ class CoaxialTwoPortResult:
     settling_db: np.ndarray
     status: str
     flux_monitors: dict | None = None
+    settling_witness: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -1715,19 +1706,8 @@ class MSLSMatrixResult:
         ``rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`` is the single text
         every warning about this condition embeds.
     settling_db : (n_ports,) float, optional
-        Ring-down settling witness per driven-port run: the WORST (largest)
-        over ALL port probe planes of ``10*log10(mean Ez^2 over the last 10%
-        of the record / peak Ez^2)``. Multiple planes per port are sampled
-        because a single plane is standing-wave-node sensitive — measured
-        18.1 dB spread across planes on the same under-settled record, i.e.
-        a one-point witness can PASS at a node while the record is hot. Values above −40 dB mean the
-        fixed-length record was truncated before the structure rang down, and
-        the DFT-derived S-parameters of that run are suspect (measured on the
-        Sheen-1990 LPF: num_periods=20 left the stopband ring unsettled and
-        produced |S| column-power poles up to ~1.8e3 that shrank monotonically
-        with record length). Compare against the project's −40 dB ring-down
-        settling rule (docs/guides/simulation_methodology.md) before quoting
-        any S value from this result.
+        Per-drive pole-tail amplitude share in dB over modal voltage,
+        loop-current, and witness-probe records at the extraction bins.
     S_raw : (n_ports, n_ports, n_freqs) complex, optional
         The S-matrix exactly as extracted, BEFORE passivity projection.
         ``None`` on the default path, where ``S`` already IS that matrix;
@@ -1821,6 +1801,7 @@ class MSLSMatrixResult:
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     reference_impedances: np.ndarray | None = None
     sigma_max_excess: np.ndarray | None = None
+    settling_witness: tuple | None = None
 
 
 @dataclass
@@ -1853,9 +1834,8 @@ class MixedSMatrixResult:
         Power-wave reference impedance per port: the registered port
         impedance for lumped/wire, analytic Hammerstad-Jensen Z0 for MSL.
     settling_db : (n_ports,) float, optional
-        Ring-down settling witness per driven-port run (worst end/peak
-        Ez^2 over the MSL probe planes, dB; above -40 dB = truncation
-        suspect, same convention as :class:`MSLSMatrixResult`).
+        Per-drive pole-tail amplitude share in dB over recorded S channels
+        and witness probes at the extraction bins.
     s21_power_witness : np.ndarray | None
         (n_msl, n_lw, n_freqs) real — extractor-independent |S21|
         cross-check for lumped/wire-driven columns: the MSL arriving
@@ -1904,6 +1884,7 @@ class MixedSMatrixResult:
     magnitude_channel: str = "wave"
     # MSL records only, in MSL registration order (as with reliable/beta_railed).
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
+    settling_witness: tuple | None = None
 
 
 @dataclass
@@ -2194,11 +2175,8 @@ class CoaxMSLTransitionResult:
         (#589) — so a bar tight enough to catch the MSL ladder would refuse
         the coax ladder for a different defect.
     settling_db : (2,) float
-        Ring-down settling witness per drive (worst end/peak field-energy
-        ratio, dB; above -40 dB = truncation suspect — see repo ring-down
-        convention). Since issue #662 that bar is ENFORCED, not just
-        documented: a violating drive emits a ``UserWarning`` (never an
-        exception) naming the drive and its measured value.
+        Per-drive pole-tail amplitude share in dB over recorded voltage
+        ladders and witness probes at the extraction bins.
     status : str
         ``"experimental"`` always (this lane makes no pass/fail physics
         claim beyond what the calling test's own predeclared gate states;
@@ -2263,6 +2241,7 @@ class CoaxMSLTransitionResult:
     status: str = "experimental"
     flux_monitors: dict | None = None
     ladder_voltages: dict | None = None
+    settling_witness: tuple | None = None
 
 
 __all__ = [
