@@ -14,11 +14,14 @@ UM_ATOL = 1e-9
 MESSAGE_RTOL = 1e-9
 MESSAGE_ATOL = 1e-12
 _NUMBER = re.compile(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?")
+# numpy >= 2 prints scalars as ``np.float64(0.005)``, numpy 1 as ``0.005``;
+# strip the wrapper first so the type's digits are not read as a number.
+_NUMPY_SCALAR = re.compile(r"np\.(?:float|int|uint|complex|bool_?)\d*\(([^()]*)\)")
 
 
 def message_numbers(message):
     """Numeric tokens in emission order, including signed/scientific values."""
-    return [float(token) for token in _NUMBER.findall(message)]
+    return [float(token) for token in _NUMBER.findall(_NUMPY_SCALAR.sub(r"\1", message))]
 
 
 def without_prose(value):
