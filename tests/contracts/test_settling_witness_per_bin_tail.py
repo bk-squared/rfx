@@ -422,7 +422,7 @@ def test_precomputed_s_witness_aligns_with_additional_dft_bins(monkeypatch):
     assert repeated is detail
 
 
-def dc_mode_record(q, amplitude=None, dtype=np.float64):
+def dc_mode_record(q, amplitude=None, dtype=np.float64, *, kind="dc"):
     n, dt, source_end = 1600, 25e-12, 80
     ix = np.arange(n)
     u = np.maximum(ix - source_end, 0)*dt
@@ -431,9 +431,13 @@ def dc_mode_record(q, amplitude=None, dtype=np.float64):
                      * np.cos(2*np.pi*3e9*(ix - source_end)*dt), 0.)
     mode = np.where(ix >= source_end,
                     np.real(np.exp((-np.pi*3e9/q + 2j*np.pi*3e9)*u)), 0.)
+    t = ix*dt
+    background = {"dc": np.ones(n), "slow": np.exp(-1e6*t),
+                  "lf": np.exp(-1e6*t)*np.cos(2*np.pi*50e6*t)}[kind]
     if amplitude is None:
-        amplitude = np.sqrt(.97/.03*np.mean(mode[n//2:]**2))
-    return (pulse + mode + amplitude).astype(dtype), dt, source_end
+        amplitude = np.sqrt(.97/.03*np.sum(mode[n//2:]**2)
+                            / np.sum(background[n//2:]**2))
+    return (pulse + mode + amplitude*background).astype(dtype), dt, source_end
 
 
 @pytest.mark.parametrize('dtype', [np.float32, np.float64])
@@ -445,8 +449,9 @@ def test_strong_dc_rank_ringing_fails_mode_bin(dtype):
     assert result.share_per_bin[2] > 1e-2
 
 
-def test_oob_dc_97_settled_passes():
-    y, dt, source_end = dc_mode_record(30)
+@pytest.mark.parametrize("kind", ["dc", "slow", "lf"])
+def test_oob_97_settled_passes(kind):
+    y, dt, source_end = dc_mode_record(30, kind=kind)
     bins = np.array([2.7, 2.85, 3., 3.15, 3.3])*1e9
     result = tail_share_witness([('dc_mode', y)], dt, source_end, bins, freq_max=3.6e9)
     assert result.status == 'pass', result
@@ -472,3 +477,13 @@ def test_constant_identification_windows_do_not_hide_post_source_variation():
     result = witness(y)
     assert result.status == 'undetermined', result
     assert 'identification window only' in result.reason
+
+
+@pytest.mark.parametrize("kind", ["slow", "lf"])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_strong_slow_or_low_frequency_background_fails_mode_bin(kind, dtype):
+    y, dt, source_end = dc_mode_record(500, amplitude=1e6, dtype=dtype, kind=kind)
+    bins = np.array([2.7, 2.85, 3., 3.15, 3.3])*1e9
+    result = tail_share_witness([('background_mode', y)], dt, source_end, bins, freq_max=3.6e9)
+    assert result.status == 'fail', result
+    assert result.share_per_bin[2] > 1e-2
