@@ -54,7 +54,7 @@ def test_graded_lumped_port_default_is_no_s_request():
     assert graded().run(n_steps=N_STEPS).s_params is None
     with pytest.raises(NotImplementedError) as exc:
         graded().run(n_steps=N_STEPS, devices=_devices())
-    assert "lumped / wire ports" in str(exc.value)
+    assert "lumped / wire ports" in str(exc.value).lower()
     assert "compute_s_params" not in str(exc.value)
 
 

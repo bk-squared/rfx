@@ -18,16 +18,16 @@ import numpy as np
 from rfx import Box, DebyePole, LorentzPole, Simulation
 
 
-# Graded run+CPML and extended wire ports refuse before compilation.
+# Extended wire ports refuse before compilation.
 # Distributed forward admits uniform spacing through an explicit NU profile.
 CASES = [
     (lane, mode, boundary)
     for lane in ("uniform", "graded")
     for mode in ("run", "forward", "gradient")
     for boundary in ("pec", "cpml")
-    if (lane, mode, boundary) != ("graded", "run", "cpml")
 ] + [("uniform", mode, "cpml") for mode in ("ntff", "debye", "lumped")] + [
     ("uniform", "lorentz", "cpml"),
+    ("graded", "run-debye", "cpml"),
     ("graded", "forward-debye", "cpml"),
     ("graded", "gradient-debye", "cpml"),
     ("graded", "gradient-lorentz", "cpml"),

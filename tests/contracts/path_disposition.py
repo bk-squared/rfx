@@ -446,7 +446,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                     "production validation; research/off drop it, see _refinement "
                                     "'relaxed_validation'"),
             run_adi=ADI_DISPERSIVE,
-            run_distributed=carries(),
+            run_distributed=carries("uniform v2 and graded NU ADE; shared forward staging (#1461)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
@@ -572,8 +572,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("the drive is read in other units, 1/dx² of run_uniform's", wrong="#1266"),
             run_subgridded=carries("inside the refined slab"),
             run_adi=ADI_SOFT_SOURCES,
-            run_distributed=carries("single-cell excited ports: fields and full S-matrix; "
-                                    "owning-cell recordings feed the shared extractor"),
+            run_distributed=carries("uniform single-cell excited ports: fields and full S-matrix; "
+                                    "owning-cell recordings feed the shared extractor; graded run refuses ports (#1461)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries("the drive is read in other units, 1/dx² of run_uniform's", wrong="#1266"),
             fwd_distributed_nu=DIST_FWD_PORTS,
@@ -735,7 +735,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
             run_adi=carries("a graded conductivity layer, not a CPML (test_realized_boundary.py "
                             "cpml--adi)", wrong="#1221"),
-            run_distributed=carries(),
+            run_distributed=carries("uniform v2 and graded NU slab-aware CPML (#1461)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
@@ -850,7 +850,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
         run_adi=admission("cpml_kappa_max != 1", RUN_ADI, "it was dropped: ADI's absorber is not a CPML "
                           "(cpml--adi, #1221)"),
-        run_distributed=carries(),
+        run_distributed=carries("uniform only; graded shared staging refuses nondefault kappa (#1461)"),
         fwd_uniform=carries("CPML carries kappa; UPML refuses cpml_kappa_max != 1 before stepping"),
         fwd_nonuniform=admission("cpml_kappa_max != 1", FWD_NU, "it was dropped (#1310)"),
         fwd_distributed_nu=admission("cpml_kappa_max != 1", FWD_DNU, "it was dropped (#1310)"),
@@ -879,7 +879,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=GRADED_REFINEMENT,
         run_adi=ADI_GRADED,
-        run_distributed=carries("the distributed graded runner, grading up to 5:1"),
+        run_distributed=carries("shared NU run/forward staging, grading up to 5:1 (#1461)"),
         fwd_uniform=not_reachable("a dx/dy/dz profile sends the model to the graded lane"),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=carries(),
@@ -928,7 +928,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=carries("inside the refined slab, clear of its artificial interface"),
         run_adi=_adi("NTFF", "does not support NTFF accumulation"),
-        run_distributed=carries("uniform mesh; owner-partitioned surface record"),
+        run_distributed=carries("uniform mesh; owner-partitioned surface record; graded run refuses NTFF (#1461)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=admission("an NTFF box", FWD_DNU, "ntff_data came back None (#1313)"),
