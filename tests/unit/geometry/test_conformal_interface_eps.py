@@ -8,10 +8,14 @@ import pytest
 from rfx import Box, GaussianPulse, Simulation, simulation
 from rfx.boundaries.pec import apply_pec_faces, resolve_wall_faces
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.core.yee import component_e_materials, init_state
+from rfx.core.yee import (
+    component_e_materials, edge_mean_components, init_state, lumped_components,
+    permittivity_without_lumped,
+)
 
 
-def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False):
+def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False,
+         cut_capacitor=False):
     # Binary-exact dx and x walls avoid a nearly-one SDF weight caused by
     # coordinate roundoff. y/z lengths are not integral numbers of cells.
     # A periodic axis must hold a whole number of cells (16 along y).
@@ -30,6 +34,11 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False):
     if loaded:
         sim.add_lumped_rlc((.007, .006, .010), component="ez", C=1e-13,
                            R=100, topology="parallel")
+    if cut_capacitor:
+        # An Ez capacitor on the node just outside the cut x wall (x = 6 dx),
+        # where the Ez weight is fractional (0 < w < 1).
+        sim.add_lumped_rlc((6/1024, 8/1024, 10.5/1024), component="ez",
+                           C=1e-13, topology="parallel")
     sim.add_source((.007, .005, .008), "ez", amplitude_kind="field",
                    waveform=GaussianPulse(f0=5e9, bandwidth=.8))
     sim.add_probe((.009, .007, .012), "ez")
@@ -51,6 +60,11 @@ def _run(conformal, *, cut=False, smooth=False, loaded=False, periodic_y=False):
         live = apply_pec_faces(init_state(grid.shape)._replace(
             ex=jnp.ones(grid.shape), ey=jnp.ones(grid.shape),
             ez=jnp.ones(grid.shape)), faces)
+        stamps = lumped_components(getattr(materials, "eps_r_lumped", None))
+        seen["lumped_eps"] = np.asarray([np.zeros(grid.shape) if st is None
+                                         else np.asarray(st) for st in stamps])
+        seen["volume_mean"] = np.asarray(edge_mean_components(
+            permittivity_without_lumped(materials), periodic))
         seen.update(eps=np.asarray(eps), plain=np.asarray(plain),
                     realized=np.asarray((realized.ex, realized.ey, realized.ez)),
                     live=np.asarray((live.ex, live.ey, live.ez), dtype=bool),
@@ -114,6 +128,23 @@ def test_cut_dielectric_edges_keep_mean_over_weight(smooth):
         smoothed = _run(False, cut=True, smooth=True)
         free = result["weights"] == 1
         _compare_arrays(result["eps"][free], smoothed["eps"][free])
+
+
+def test_capacitor_on_a_cut_edge_is_added_after_the_weight_division():
+    # A lumped C is a device on its edge, not volume: the conformal 1/w
+    # scales the volume mean only, and the capacitor is added afterwards.
+    result = _run(True, cut=True, cut_capacitor=True)
+    eps, w = result["eps"][2], result["weights"][2]
+    f32 = np.float32
+    mean = result["volume_mean"][2].astype(f32)
+    stamp = result["lumped_eps"][2].astype(f32)
+    w = w.astype(f32)
+    on_cut = (stamp != 0) & (w > 0) & (w < 1) & result["live"][2]
+    assert np.count_nonzero(on_cut) == 1
+    expected = mean / w + stamp
+    _compare_arrays(eps[on_cut], expected[on_cut])
+    # The opposite order, (mean + C) / w, is a different number here.
+    assert np.all(((mean + stamp) / w)[on_cut] != expected[on_cut])
 
 
 def test_loss_and_edge_owned_lumped_materials_match_plain():
