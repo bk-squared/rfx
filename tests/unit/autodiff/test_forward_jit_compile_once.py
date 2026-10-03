@@ -298,13 +298,7 @@ def test_a_realistic_record_jitted_sums_stay_within_1e_4_of_the_peak(lane):
     assert max(rel.values()) <= MAX_REL_SUMMED, rel
 
 
-@pytest.mark.parametrize("lane", [
-    "uniform",
-    pytest.param("graded", marks=pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-        "#1320: since ed3a3d9d (#1317, the graded drive's Cb built inside the "
-        "program) the jitted graded probe series reads 15-22 ULP at the peak "
-        "after 4000 steps (0.0 with that commit reverted)"))),
-])
+@pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_a_realistic_record_jitted_probe_series_stay_within_9_ulp(lane):
     """Per-step quantities (the probe series) of the jitted call: within 9
     float32 ULP at the peak of the plain call's (PI 2026-09-23)."""
