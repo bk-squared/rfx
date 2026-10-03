@@ -13,6 +13,32 @@ from rfx.probes.settling import probe_record_settling_witness
 from rfx.sparams._tail_witness import result_read_bins
 
 
+@pytest.mark.parametrize("missing", ["traced", "none", "empty", "unselected"])
+def test_absent_probe_witness_has_canonical_per_bin_fields(missing):
+    from rfx.sources.waveguide_port import settling_db_from_named_records
+
+    freqs = np.array([1., 2.])
+    _, canonical = settling_db_from_named_records((), freqs=freqs, return_detail=True)
+
+    def check(series, selection):
+        db, detail = probe_record_settling_witness(series, selection, freqs=freqs)
+        assert db is None
+        assert detail["status"] == "absent"
+        assert canonical.keys() <= detail.keys()
+        assert np.isnan(detail["db"])
+        assert np.isnan(detail["worst_freq_hz"])
+        for key in ("share_per_bin", "error_per_bin"):
+            np.testing.assert_array_equal(detail[key], np.zeros(2))
+        return series
+
+    if missing == "traced":
+        jax.jit(lambda series: check(series, ((0, 2, 0),)))(jnp.ones((20, 1)))
+    else:
+        series = {"none": None, "empty": np.empty((20, 0)),
+                  "unselected": np.ones((20, 1))}[missing]
+        check(series, () if missing == "unselected" else None)
+
+
 def _sim(*, probe=True, dft=False):
     sim = Simulation(freq_max=10e9, domain=(.004,)*3, dx=.001,
                      boundary='cpml', cpml_layers=4)

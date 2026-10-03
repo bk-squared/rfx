@@ -78,7 +78,8 @@ def _record_metrics(got, ref, record_property, *, comparison):
 
 
 def _run(
-    branch, driver, monkeypatch, *, cap=241, interval=17, snapshot_interval=7, report_every=None
+    branch, driver, monkeypatch, *, cap=241, interval=17, snapshot_interval=7, report_every=None,
+    record_dft=False,
 ):
     sim = _loaded_sim("pec" if branch in ("point", "min-cap", "zero-cap") else "cpml")
     freqs = np.array([2e9, 4e9])
@@ -100,6 +101,8 @@ def _run(
     captured = {}
 
     def capture(*args, **kwargs):
+        if record_dft:
+            kwargs["record_dft"] = True
         captured["grid"], captured["materials"] = args[:2]
         captured["low"] = driver(*args, **kwargs)
         return captured["low"]
@@ -277,6 +280,15 @@ def test_decay_chunk_boundaries_and_snapshots_match_old_loop(
     _assert_contract(got, ref, record_property)
     assert got[0].time_series.shape[0] == cap
     assert got[0].snapshots["ez"].shape[0] == cap // snapshot_interval
+
+
+def test_decay_reference_retains_requested_dft_records(monkeypatch, record_property):
+    kw = dict(cap=15, record_dft=True)
+    got = _run("min-cap", simulation.run_until_decay, monkeypatch, **kw)
+    ref = _run("min-cap", run_until_decay_reference, monkeypatch, **kw)
+    assert got[1].dft_time_records and ref[1].dft_time_records
+    assert got[1].dft_time_records[0].shape[0] == 15
+    _assert_contract(got, ref, record_property)
 
 
 def test_until_decay_with_probes_costs_less_than_ten_fixed_scans(record_property):

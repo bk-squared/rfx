@@ -320,10 +320,12 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
     from rfx.sources.waveguide_port import settling_db_from_named_records
 
     def absent(reason, skipped=()):
+        _, detail = settling_db_from_named_records(
+            (), dt=dt, freqs=freqs, freq_max=freq_max, return_detail=True)
         # ``source_dominated``/``qualifier`` describe the record that
         # CARRIES the verdict; an absent witness has none, so they are
         # empty here rather than describing records nothing rests on.
-        return None, {"status": "absent", "route": None,
+        return None, {**detail, "status": "absent", "route": None,
                       "worst_record": None, "per_record_db": {},
                       "skipped_records": list(skipped), "reason": reason,
                       "source_dominated": False,

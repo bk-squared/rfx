@@ -1,8 +1,9 @@
 """Frozen uniform decay loop from origin/main 4725b748, before #1322.
 
 Captured with ast.parse/ast.unparse (docstrings/comments removed only).
-The setup and step kernel are shared; the driver, checks and assembly below
+The setup and step kernel are shared; the driver and stop checks below
 are the original implementation, independent of the chunked driver.
+Retained DFT and S-parameter records follow the current runner interface.
 """
 
 from __future__ import annotations
@@ -79,6 +80,7 @@ def run_until_decay_reference(
     report_every: int | None = None,
     report_label: str = "",
     sheet_impedance: object | None = None,
+    record_dft: bool = False,
 ) -> SimResult:
     if checkpoint_segments is not None:
         raise NotImplementedError(
@@ -129,6 +131,14 @@ def run_until_decay_reference(
         sheet_impedance=sheet_impedance,
     )
     carry = _setup.carry_init
+    if record_dft and dft_planes:
+        carry["dft_time_records"] = tuple(
+            jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
+            for plane in dft_planes)
+    if wire_port_sparams or lumped_port_sparams:
+        carry["sparam_time_records"] = tuple(
+            jnp.zeros((max_steps, count), dtype=field_dtype)
+            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)))
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -393,4 +403,6 @@ def run_until_decay_reference(
         dt=_setup.dt,
         current_moment_data=carry.get("current_moments"),
         current_moment_monitor=current_moments,
+        dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
+        sparam_time_records=tuple(r[:actual_steps] for r in carry.get("sparam_time_records", ())),
     )

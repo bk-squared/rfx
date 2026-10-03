@@ -971,7 +971,8 @@
         "conformal_weights",
         "aniso_inv_eps",
         "pec_edge_masks",
-        "field_dtype"
+        "field_dtype",
+        "settling_details"
       ]
     },
     "extract_s_matrix_wire": {
@@ -1032,6 +1033,7 @@
         "aniso_inv_eps",
         "checkpoint_segments",
         "return_settling",
+        "settling_details",
         "sheet_impedance",
         "pec_edge_masks",
         "field_dtype"
@@ -1893,7 +1895,8 @@
         "design_box",
         "design_occupancy",
         "stop_fn",
-        "stop_interval"
+        "stop_interval",
+        "record_dft"
       ]
     },
     "run_adi_2d": {
@@ -1994,7 +1997,8 @@
         "n_warmup",
         "aniso_eps",
         "sheet_impedance",
-        "design_box"
+        "design_box",
+        "record_dft"
       ]
     },
     "run_until_decay": {
@@ -2047,7 +2051,8 @@
         "stencil_order",
         "report_every",
         "report_label",
-        "sheet_impedance"
+        "sheet_impedance",
+        "record_dft"
       ]
     },
     "save_experiment_report": {

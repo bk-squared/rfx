@@ -155,10 +155,15 @@ def test_wg_smatrix_golden_equivalence_float64(mode_name, normalize):
     # WHY: #1012 samples the magnetic CPML profile at the Yee half cell, so the absorber behind both ports reflects less.
     # This 4-period snapshot has no oracle of its own; the settled run of the same empty matched guide above is the
     # oracle, and it moves toward it: max|S11| 0.155 -> 0.0096, column power 1.022 -> 1.0015 (normalize=False).
+    # Re-pinned for #1426 (PR #1464): a waveguide port's record wrote its last sample one step late (the E update
+    # advances state.step before the port samples, and the clamp put step n's sample into slot n-1). The write past
+    # the record is now dropped. This 4-period snapshot ends while the pulse is still in the record, so its last
+    # sample is large and the snapshot moves: max|d| normalize=False 3.792437e-3, flux 1.130798e-2; normalize=True
+    # unchanged (max|d| 0, SHA unchanged).
     _EXPECTED_SHA = {
-        "false": "c41da23dd1101dfac23b96216026e90d0381b5f6ee8ff326806b347dd7f702b8",
+        "false": "b818166dfa70d0af82ba6a6a99a3fdd6999696902cde2e6331c628495efe4734",
         "true":  "82ec3bb49a51332d25dae8c772130b3c9253e6949c8010bbad112175606bca2e",
-        "flux":  "c7d33426227c187d9da14d729240d8409f9c4067ebe5f8e54253bda116fe7fce",
+        "flux":  "c2e6b69cef05473d26b0dd69748bc1ec6362893244e13689baf3b6cc60d76c2d",
     }
     assert sha == _EXPECTED_SHA[mode_name], (
         f"Golden fixture sha256 mismatch for normalize={normalize}: "
