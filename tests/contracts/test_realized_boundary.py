@@ -40,6 +40,12 @@ def compare_departures(problems):
 @pytest.mark.parametrize("cell", [pytest.param(c, id=f"{c['case']}--{c['entry']}",
                                               marks=pytest.mark.xdist_group(f"{c['case']}--{c['entry']}")) for c in CELLS])
 def test_no_unlisted_departures(cell):
+    # #1465 supersedes B1's subgrid refusal reason; the two construction /
+    # preflight refusals still occur before lane admission. Keep B1 immutable.
+    if cell["entry"] == "subgridded" and cell["case"] not in ("upml", "waveguide-pmc"):
+        with pytest.raises(NotImplementedError, match="subgridded lane is unstable and unverified"):
+            measured(cell["case"], cell["entry"])
+        return
     if cell["status"] == "REFUSED":
         exception_type = {"ValueError": ValueError, "NotImplementedError": NotImplementedError}[cell["exception"]]
         with pytest.raises(exception_type) as exc:

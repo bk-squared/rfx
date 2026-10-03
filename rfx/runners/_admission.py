@@ -459,7 +459,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_lumped_rlc", "R"): _NO_SHEETS,
     ("_lumped_rlc", "series_RL"): _NO_SHEETS,
     ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform"}),
-    ("_refinement", "slab"): frozenset({"run_subgridded"}),
+    ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
     ("_boundary", "cpml"): _ALL - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
@@ -803,7 +803,11 @@ def _waveguide_profiled(sim, grid) -> bool:
 
 
 LANE_GATES: dict[str, dict[Row, Callable]] = {
-    "run_subgridded": {row: _guarded_lid for row in _LID_ROWS},
+    "run_subgridded": {
+        **{row: _guarded_lid for row in _LID_ROWS},
+        ("_refinement", "slab"): lambda sim, grid: (
+            sim._refinement.get("validation", "production") in {"research", "off"}),
+    },
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
         ("_dt_pin", ""), ("_dt_min_cell", ""))},
 }
@@ -847,6 +851,9 @@ LANE_SELECTORS = frozenset({("_solver", ""), ("_dx_profile", "graded"), ("_dy_pr
 def message(lane: str, rows, sim, run_args=None) -> str:
     """The refusal, derived from the same table: each input the lane does not
     carry, and the lanes that carry every other input of this model."""
+    if lane == "run_subgridded" and ("_refinement", "slab") in rows:
+        from rfx.subgridding._notice import SUBGRID_NOTICE
+        return SUBGRID_NOTICE
     if lane in CALCULATORS:
         lines = ([] if lane == "material_fit" else
                  [f"  - {ROW_WORDS[row]}" for row in rows])

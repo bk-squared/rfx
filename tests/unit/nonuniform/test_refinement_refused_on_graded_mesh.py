@@ -287,7 +287,8 @@ def _lumped_port_box(refine, eps_r=2.0):
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
     sim.add_probe((0.008, 0.006, 0.004), "ez")
     if refine:
-        sim.add_refinement(z_range=(0.0, 0.008), ratio=2)
+        # #1465: the sequential fallback exercises experimental subgridding.
+        sim.add_refinement(z_range=(0.0, 0.008), ratio=2, validation="research")
     return sim
 
 

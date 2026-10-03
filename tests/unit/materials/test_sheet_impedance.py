@@ -884,7 +884,8 @@ def test_fence_adi_forward():
 def test_fence_subgridded_run():
     def go():
         sim = _cube()
-        sim.add_refinement((8e-3, 12e-3), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement((8e-3, 12e-3), ratio=2, validation="research")
         sim.run(n_steps=4, skip_preflight=True)
     _fence(go, where=("_execute.py", "run"),
            match=r"on the subgridded \(SBP-SAT\) run\(\) lane")

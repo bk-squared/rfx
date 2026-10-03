@@ -811,7 +811,7 @@ class Simulation(
         Refinement acts only through ``run()`` on a uniform mesh. Other
         solve entry points, including ``forward()`` and optimization, refuse it.
 
-        The promoted production runner covers the specified z-range across the
+        The experimental runner covers the specified z-range across the
         full x/y interior at ``dx_fine = dx_coarse / ratio``.  ``xy_margin``
         enables an experimental research-only local x/y window whose fine
         region is inset from the physical x/y boundaries by that distance.
@@ -832,11 +832,11 @@ class Simulation(
             SAT penalty coefficient (default 0.5). Higher values give
             stronger coupling but more dissipation.
         validation : {"production", "research", "off"}
-            Validation envelope for the run path. ``"production"`` rejects
-            unsupported material/interface/source configurations before FDTD
-            execution. ``"research"`` preserves the experimental legacy lane
-            for internal diagnostics. ``"off"`` is reserved for low-level
-            debugging and should not be used for claims-bearing results.
+            Production refuses the unstable, unverified subgridded lane before
+            stepping (#1465). An empty PEC cavity's first resonance is 8 % high
+            and its field grows. Use dx/dy/dz profiles for local resolution.
+            Explicit ``"research"`` or ``"off"`` runs with a warning; neither
+            mode establishes physics support.
         topology : {"overlap_z_slab", "stage2_disjoint_3d"}
             Internal topology selector. ``"overlap_z_slab"`` is the current
             public runner. ``"stage2_disjoint_3d"`` records the selected
@@ -911,12 +911,9 @@ class Simulation(
     def validate_subgrid(self, *, mode: str | None = None):
         """Return the production-envelope validation report for subgridding.
 
-        This is a physics-support report, not a numerical smoke test.  It checks
-        whether the configured refinement lies inside the currently derived
-        guarded one-sided z-slab support envelope: static materials,
-        source/probe or single-cell lumped-port observables, no
-        material/PEC discontinuity at artificial coarse/fine interfaces, and
-        no unsupported RF post-processing features.
+        Production reports the subgridded lane as unsupported because it is
+        unstable and unverified (#1465). Experimental envelope checks remain
+        available for research diagnostics.
         """
         self._require_uniform_mesh("validate_subgrid")
         # #931 §1.9: sheets and wires own no cell, so a validator handed

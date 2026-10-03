@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
 """Research example: guarded subgrid material-validation demonstration.
 
-This example is intentionally conservative.  The current production subgrid
-API is validated only for a guarded one-sided z-slab refinement envelope.  It
-does **not** use centered/two-interface material subgridding as a production
-claim: material cases outside the guarded envelope are rejected until their
-observable and external-crossval evidence is promoted.
+Production subgridding is unstable and unverified and is refused (#1465),
+including the formerly admitted one-sided vacuum slab.
 
 The script demonstrates both sides:
 
-1. a guarded one-sided vacuum source/probe z-slab refinement is accepted by
+1. a guarded one-sided vacuum source/probe z-slab refinement is rejected by
    ``Simulation.validate_subgrid()``,
 2. a centered homogeneous dielectric cavity is rejected by production
    validation with precise fail-closed reasons,
@@ -41,7 +38,7 @@ ARTIFACT_PATH = REPO_ROOT / "docs" / "research_notes" / "subgrid_material_valida
 CAVITY_A = CAVITY_B = 40e-3
 CAVITY_D = 24e-3
 DIELECTRIC_EPS_R = 2.25
-# The guarded one-sided z slab that production subgrid validation accepts.
+# The formerly admitted one-sided z slab, now refused under #1465.
 GUARDED_Z_RANGE = (2e-3, CAVITY_D)
 # The centered slab that production validation must REJECT.
 CENTERED_Z_RANGE = (8e-3, 16e-3)
@@ -138,7 +135,8 @@ def run_example() -> MaterialValidationExampleResult:
     err_pct = 100.0 * abs(peak - f_ref) / f_ref
 
     gates = (
-        vacuum_report.supported
+        not vacuum_report.supported
+        and "subgrid_unstable_unverified" in [i.code for i in vacuum_report.errors]
         and not dielectric_report.supported
         and "material_weighted_sat_missing" in rejection_codes
         and err_pct < 1.0
@@ -152,8 +150,8 @@ def run_example() -> MaterialValidationExampleResult:
         dielectric_uniform_peak_hz=peak,
         dielectric_uniform_error_pct=float(err_pct),
         claim_scope=(
-            "production subgrid validates only guarded one-sided z slabs; this "
-            "example keeps centered material subgridding fail-closed and uses "
+            "production subgridding is unstable and unverified (#1465); this "
+            "example refuses both subgrid configurations and uses "
             "a uniform analytic reference for the material setup"
         ),
     )

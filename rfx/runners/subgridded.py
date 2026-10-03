@@ -27,6 +27,7 @@ def _run_subgridded_once(
     pec_mask_coarse,
     n_steps,
     *,
+    _warn_experimental=True,
     diagnostic_lumped_sparam_freqs_override=None,
     diagnostic_lumped_sparam_driven_index_override=None,
     conformal_pec=None,
@@ -50,6 +51,10 @@ def _run_subgridded_once(
     -------
     Result
     """
+    from rfx.subgridding._notice import require_experimental, warn_experimental
+    require_experimental(sim)
+    if _warn_experimental:
+        warn_experimental()
     from rfx.sources.tfsf import _refuse_extended_tfsf
     _refuse_extended_tfsf(sim._tfsf, "the subgridded runner")
     from rfx.api import Result
@@ -744,12 +749,14 @@ def run_subgridded_path(
 ):
     """Run simulation using SBP-SAT subgridding (JIT-compiled).
 
-    Inside the guarded one-sided PEC/no-CPML production envelope, explicit
-    ``compute_s_params=True`` uses the same V/I replay machinery as the private
-    diagnostic to populate a full single-cell lumped-port S-matrix.  Unsupported
-    subgrid S-parameter configurations are rejected by the public request and
-    validation layers before this runner is reached.
+    Production is refused (#1465). With explicit research/off opt-in,
+    ``compute_s_params=True`` uses the V/I replay machinery to populate an
+    experimental single-cell lumped-port S-matrix. This does not establish
+    physics support. One instability warning covers the run and its replays.
     """
+    from rfx.subgridding._notice import require_experimental, warn_experimental
+    require_experimental(sim)
+    warn_experimental()
     from rfx.current_moments import refuse_current_moment_monitor
     refuse_current_moment_monitor(sim, "subgridded lane")
     main_result = _run_subgridded_once(
@@ -758,6 +765,7 @@ def run_subgridded_path(
         base_materials_coarse,
         pec_mask_coarse,
         n_steps,
+        _warn_experimental=False,
         conformal_pec=conformal_pec,
     )
 
@@ -813,6 +821,7 @@ def run_subgridded_path(
                 base_materials_coarse,
                 pec_mask_coarse,
                 sp_n_steps,
+                _warn_experimental=False,
                 diagnostic_lumped_sparam_freqs_override=freqs,
                 diagnostic_lumped_sparam_driven_index_override=driven,
                 conformal_pec=conformal_pec,

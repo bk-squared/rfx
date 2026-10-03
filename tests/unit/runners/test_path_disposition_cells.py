@@ -111,7 +111,8 @@ def _base(lane, *, ref=False, source="field", refine=True, **ctor):
         sim.add_source(mm(4, 6, 6), "ez", waveform=WAVEFORM, amplitude_kind=source)
     sim.add_probe(mm(8, 6, 6), "ez")
     if subgrid and refine:
-        sim.add_refinement(z_range=(0.0, 14e-3), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement(z_range=(0.0, 14e-3), ratio=2, validation="research")
     return sim
 
 
@@ -212,7 +213,8 @@ def _board(lane, on, ref=False):
                          impedance=50.0, waveform=GaussianPulse(f0=7e9, bandwidth=0.8))
     sim.add_probe(mm(12, 6, 2.5), "ez")
     if subgrid:
-        sim.add_refinement(z_range=(0.0, 7e-3), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement(z_range=(0.0, 7e-3), ratio=2, validation="research")
     return sim
 
 
@@ -229,7 +231,8 @@ def _guide(lane, on, ref=False):
                                probe_offset=4, ref_offset=2)
     sim.add_probe(mm(20, 6, 3), "ez")
     if lane == "run_subgridded" and not ref:
-        sim.add_refinement(z_range=(0.0, 3e-3), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
     return sim
 
 
@@ -239,7 +242,8 @@ def _plane_wave(lane, on, ref=False):
         sim.add_tfsf_source(f0=5e9, bandwidth=0.5, margin=3)
     sim.add_probe(mm(14, 3, 3), "ez")
     if lane == "run_subgridded" and not ref:
-        sim.add_refinement(z_range=(0.0, 3e-3), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
     return sim
 
 
@@ -253,7 +257,8 @@ def _floquet_cell(scan_theta):
             sim.add_floquet_port(4e-3, axis="z", f0=5e9, scan_theta=scan_theta if on else 0.0)
         sim.add_probe(mm(3, 3, 14), "ez")
         if lane == "run_subgridded" and not ref:
-            sim.add_refinement(z_range=(0.0, 3e-3), ratio=2)
+            # #1465: explicitly opt in to exercise the experimental subgrid lane.
+            sim.add_refinement(z_range=(0.0, 3e-3), ratio=2, validation="research")
         return sim
     return build
 
@@ -277,9 +282,12 @@ def _s_params(result):
 
 
 def _refinement(lane, on, ref=False):
-    """The refusal lanes reuse #1282's box; run_subgridded carries the slab."""
+    """The refusal lanes reuse #1282's box; production subgridding refuses."""
     if lane == "run_subgridded":
-        return _base(lane, ref=ref, refine=on)
+        sim = _base(lane, ref=ref, refine=on)
+        if sim._refinement is not None:
+            sim._refinement["validation"] = "production"
+        return sim
     return _refined_box_1282(on, graded=lane in GRADED,
                              solver="adi" if lane in ADI else "yee")
 
@@ -309,16 +317,16 @@ def _mode(lane, on, ref=False):
     sim.add_source(mm(4, 6, thick // 2), "ez", waveform=WAVEFORM, amplitude_kind="field")
     sim.add_probe(mm(8, 6, thick // 2), "ez")
     if lane == "run_subgridded" and not ref:
-        sim.add_refinement(z_range=(0.0, 1e-3), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement(z_range=(0.0, 1e-3), ratio=2, validation="research")
     return sim
 
 
-def _lid(lane, on, ref=False, *, lid="cpml", validation="production", z_top=10.0, kappa=1.0):
+def _lid(lane, on, ref=False, *, lid="cpml", validation="research", z_top=10.0, kappa=1.0):
     """A closed 12 x 12 x 16 mm PEC box with an absorbing lid on z_hi (on) or
     a PEC one (off), the base source and probe at z = 6 mm. On the subgridded
     lane the refined slab covers z = 0 to ``z_top`` mm and touches the PEC
-    floor: at 10 mm, the guarded envelope production subgrid validation
-    accepts."""
+    floor. #1465: opt in to the experimental lane for the boundary checks."""
     spec = BoundarySpec(x=Boundary(lo="pec", hi="pec"), y=Boundary(lo="pec", hi="pec"),
                         z=Boundary(lo="pec", hi=lid if on else "pec"))
     sim = _simulation(lane, (12, 12, 16), ref=ref, boundary=spec, cpml_kappa_max=kappa)
@@ -444,7 +452,13 @@ def _run(sim, lane, feature, *, entry=None):
 def _build(feature, lane, on, ref=False):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return feature.build(lane, on, ref)
+        sim = feature.build(lane, on, ref)
+        if lane == "run_subgridded" and sim._refinement is not None:
+            for (attr, key), spec in FEATURES.items():
+                if spec is feature and T.cell(attr, key, lane).raises == "The subgridded lane is unstable and unverified":
+                    sim._refinement["validation"] = "production"
+                    break
+        return sim
 
 
 _RESULTS: dict = {}
@@ -751,13 +765,15 @@ def test_relaxed_subgrid_validation_refuses_an_absorbing_box(mode, absorber, wor
 
 
 @pytest.mark.parametrize("validation", ["production", "research", "off"])
-def test_the_guarded_lid_runs_in_every_validation_mode(validation):
+def test_the_guarded_lid_requires_experimental_validation(validation):
     """A CPML lid on a closed PEC box, the refined slab on the PEC floor:
-    production validation's guarded envelope. It runs in every validation
-    mode, and in each the lid moves the record against a PEC lid (production
-    runs the slab's boundary-terminated interface, research and off do not,
-    so the modes do not give the same record). A UPML lid, which this lane
-    runs as CPML, is refused in every mode."""
+    formerly production validation's guarded envelope. Production now refuses
+    (#1465); in research/off the lid moves the record against a PEC lid.
+    A UPML lid, which this lane runs as CPML, remains refused."""
+    if validation == "production":
+        with pytest.raises(NotImplementedError, match="unstable and unverified"):
+            _lid("run_subgridded", True, validation=validation).run(n_steps=2, skip_preflight=True)
+        return
     spec = Feature(lambda lane, on, ref=False: None, steps=lambda lane: LID_STEPS)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -787,6 +803,10 @@ def test_a_slab_reaching_the_lid_is_refused_in_every_validation_mode(validation)
     validation refuses (subgrid_overlaps_absorber). research and off do not
     widen that envelope: lane admission refuses the absorber. The slab to
     10 mm, the guarded case, runs."""
+    if validation == "production":
+        with pytest.raises(NotImplementedError, match="unstable and unverified"):
+            _lid("run_subgridded", True, validation=validation, z_top=15.99).run(n_steps=2, skip_preflight=True)
+        return
     spec = Feature(lambda lane, on, ref=False: None, steps=lambda lane: LID_STEPS)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

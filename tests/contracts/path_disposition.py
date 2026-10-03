@@ -25,6 +25,10 @@ issue is closed. For such a cell the disposition is the rule's minimum
 (``refuses``) when today's behaviour is a drop, and ``carries`` when the path
 solves the input but gets it wrong.
 
+The subgridded column is refused by default through the refinement/slab row
+(#1465). Its other carried cells describe explicit research/off execution,
+not production support; earlier production-envelope refusals remain refused.
+
 Where the cells are checked
 ---------------------------
 * ``tests/contracts/test_path_disposition.py``: every attribute of a fresh
@@ -175,7 +179,8 @@ def every_path(cell):
 # One helper per refusal that recurs; each names a fragment of its message.
 
 def _subgrid(code, note="production validation"):
-    return refuses(f"{note} ({code})", raises=f"[{code}]")
+    return refuses(f"production refused (#1465); earlier envelope: {note} ({code})",
+                   raises="The subgridded lane is unstable and unverified")
 
 
 def _adi(what, fragment):
@@ -249,6 +254,8 @@ GUARDED_LID = ("rfx/subgridding/validation.py _guarded_boundary_production_allow
 LANE_GATES = {("run_subgridded", row): GUARDED_LID for row in (
     ("_boundary", "cpml"), ("_pec_faces", "pec_face"), ("_cpml_layers", "layers"),
     ("_cpml_kappa_max", "kappa"))}
+
+LANE_GATES[("run_subgridded", ("_refinement", "slab"))] = "explicit research/off opt-in (#1465)"
 
 
 def _conformal(lane_words):
@@ -707,7 +714,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         "slab": lanes(
             run_uniform=not_reachable("a refinement sends run() on a uniform mesh to run_subgridded"),
             run_nonuniform=GRADED_REFINEMENT,
-            run_subgridded=carries("the SBP-SAT fine slab"),
+            run_subgridded=refuses("production is unstable and unverified (#1465); research/off opt in with a warning",
+                                   raises="The subgridded lane is unstable and unverified"),
             run_adi=_adi("subgridding", "does not support subgridding"),
             run_distributed=refuses("refinement refused (#1241)", raises="add_refinement() (subgridding)"),
             fwd_uniform=refuses("forward() has no subgridded lane (#1282)", raises="is refused on forward()"),

@@ -84,7 +84,8 @@ def _subgrid_sim(pec=False):
     def build():
         sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                          dx=1e-3, boundary="pec")
-        sim.add_refinement((0.012, 0.02), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement((0.012, 0.02), ratio=2, validation="research")
         if pec:
             sim.add(Box((0.002, 0.002, 0.002), (0.005, 0.005, 0.005)),
                     material="pec")

@@ -1,23 +1,8 @@
 """Production-envelope validation for the public subgridding API.
 
-The current promoted support surface is deliberately narrow.  The numerical
-runner is a z-slab refinement path: the fine grid covers the full x/y interior
-and refines a bounded z interval.  The validation below encodes the physical
-assumptions required by that SBP-SAT closure instead of relying on smoke tests:
-
-* production support is limited to guarded one-sided PEC/no-CPML full-x/y
-  z slabs whose observables stay away from the remaining artificial interface,
-* artificial coarse/fine interfaces must not coincide with a material or PEC
-  discontinuity,
-* all source/probe plus lumped/wire impedance-port observables handled by the
-  runner must live on the fine grid,
-* NTFF/far-field boxes are limited to the same guarded fine-grid envelope;
-  other unsupported RF post-processing/features are rejected before execution,
-* dispersive/nonlinear material models are rejected because this runner receives
-  only static eps/sigma/mu arrays.
-
-The report is user-facing so examples and CI can show why a case is inside or
-outside the production validation envelope.
+Production runs are refused: this lane is unstable and unverified (#1465).
+The remaining checks describe experimental configurations, not evidence of
+physics support. Research/off are explicit diagnostic opt-ins.
 """
 
 from __future__ import annotations
@@ -603,6 +588,10 @@ def validate_subgrid_setup(
     if mode not in {"production", "research", "off"}:
         issues.append(_issue("error", "bad_validation_mode", f"unknown mode {mode!r}"))
 
+    from rfx.subgridding._notice import SUBGRID_NOTICE
+    issues.append(_issue("error" if mode == "production" else "warning",
+                         "subgrid_unstable_unverified", SUBGRID_NOTICE))
+
     topology = ref.get("topology", "overlap_z_slab")
     if topology not in {"overlap_z_slab", "stage2_disjoint_3d"}:
         issues.append(
@@ -1153,6 +1142,9 @@ def validate_subgrid_setup(
         support_level = "production-z-slab-guarded-boundary-vacuum-envelope"
     else:
         support_level = "unsupported-production-z-slab"
+
+    if mode == "production":
+        support_level = "unsupported-unstable-unverified"
 
     supported = not any(issue.severity == "error" for issue in issues)
     if supported and is_stage2_disjoint_topology:

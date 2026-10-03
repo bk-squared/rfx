@@ -46,7 +46,8 @@ def model(lane, row):
             y=Boundary(lo="pec", hi="pec"), z=Boundary(lo="pec", hi="pec"))
     sim = Simulation(**kw)
     if sg:
-        sim.add_refinement(z_range=(0., 14*MM), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement(z_range=(0., 14*MM), ratio=2, validation="research")
     if row in ("eps", "sigma", "mu", "conformal", "sat", "override_drive", "soft_current", "soft_none"):
         mat = {"eps_r": 4.} if row in ("eps", "conformal", "sat", "override_drive", "soft_current", "soft_none") else (
             {"sigma": 0.2} if row == "sigma" else {"mu_r": 4.})

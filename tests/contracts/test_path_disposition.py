@@ -319,3 +319,17 @@ def test_lane_gates_are_the_listed_ones():
     assert gated == set(T.LANE_GATES), sorted(gated ^ set(T.LANE_GATES))
     for lane, (attr, feature) in gated:
         assert T.cell(attr, feature, lane).kind == T.REFUSES, (lane, attr, feature)
+
+
+def test_subgridded_production_disposition_requires_explicit_opt_in():
+    """#1465: a carried feature never grants production admission."""
+    row = ("_refinement", "slab")
+    assert T.cell(*row, "run_subgridded").kind == T.REFUSES
+    assert row not in A.ADMITS["run_subgridded"]
+    assert ("run_subgridded", row) in T.LANE_GATES
+    sim = Simulation(freq_max=10e9, domain=(.008, .008, .016), dx=.002, boundary="pec")
+    sim.add_refinement((0., .012), ratio=2)
+    assert row in A.refused(sim, "run_subgridded")
+    for mode in ("research", "off"):
+        sim._refinement["validation"] = mode
+        assert row not in A.refused(sim, "run_subgridded")

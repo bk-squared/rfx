@@ -324,7 +324,8 @@ def test_the_subgridded_lane_refuses_a_sheet_it_cannot_realize():
         sim.add(Box((FOOT_LO[0], FOOT_LO[1], Z_PLANE),
                     (FOOT_HI[0], FOOT_HI[1], Z_PLANE)), material="pec")
         sim.add_source(position=SRC, component="ez")
-        sim.add_refinement(z_range=(6e-3, 14e-3), ratio=2)
+        # #1465: explicitly opt in to exercise the experimental subgrid lane.
+        sim.add_refinement(z_range=(6e-3, 14e-3), ratio=2, validation="research")
         with pytest.raises(NotImplementedError, match="PEC sheets"):
             sim.run(n_steps=4, skip_preflight=True)
 

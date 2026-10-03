@@ -526,6 +526,8 @@ class _ExecuteMixin:
         conformal_pec=None,
     ):
         """Run simulation using SBP-SAT subgridding (JIT-compiled)."""
+        from rfx.subgridding._notice import require_experimental
+        require_experimental(self)
         self._reject_refplane_ports_off_uniform_lane("subgridded (SBP-SAT)",
                                                      compute_s_params)
         from rfx.runners.subgridded import run_subgridded_path
@@ -4966,6 +4968,9 @@ class _ExecuteMixin:
             exchange_interval=exchange_interval,
         )
         n_steps = plan.n_steps
+        if plan.lane == "run_subgridded":
+            from rfx.subgridding._notice import require_experimental
+            require_experimental(self)
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if ringdown is not None:
