@@ -517,12 +517,12 @@ def _captured_drives(graded):
     seen = []
     if graded:
         from rfx.runners import nonuniform as _nu
-        real = _nu.make_current_source
+        real = _nu.port_drive_waveform
 
-        def _cs(grid, ijk, comp, wf, n, materials, *a, **kw):
+        def _drive(grid, ijk, comp, wf, n, materials, *a, **kw):
             seen.append((tuple(int(v) for v in ijk), comp, materials))
             return real(grid, ijk, comp, wf, n, materials, *a, **kw)
-        with mock.patch.object(_nu, "make_current_source", _cs):
+        with mock.patch.object(_nu, "port_drive_waveform", _drive):
             yield seen
         return
     real_lp = _sim_mod.make_port_source
