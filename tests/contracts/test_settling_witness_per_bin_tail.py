@@ -317,12 +317,14 @@ def test_single_pole_share_is_geometric_tail_at_record_end():
     np.testing.assert_allclose(result.share_per_bin, [expected], rtol=1e-6, atol=0)
 
 
-def test_all_zero_post_source_group_is_undetermined():
+@pytest.mark.parametrize("post_source", [0., 2.])
+def test_all_constant_post_source_group_passes(post_source):
     y = np.ones((100, 2))
-    y[25:] = 0
+    y[25:] = post_source
     result = witness(y, source_end=25)
-    assert result.status == 'undetermined'
-    assert 'no ringing to identify' in result.reason
+    assert result.status == 'pass', result
+    np.testing.assert_array_equal(result.share_per_bin, 0.)
+    assert 'no post-source variation' in result.reason
 
 
 @pytest.mark.parametrize('precomputed', [False, True])
@@ -418,3 +420,70 @@ def test_precomputed_s_witness_aligns_with_additional_dft_bins(monkeypatch):
     attached = result._replace(settling_db=detail['db'], settling_witness=detail)
     _, repeated = sim._run_settling_witness(attached)
     assert repeated is detail
+
+
+def dc_mode_record(q, amplitude=None, dtype=np.float64, *, kind="dc"):
+    n, dt, source_end = 1600, 25e-12, 80
+    ix = np.arange(n)
+    u = np.maximum(ix - source_end, 0)*dt
+    pulse = np.where(ix < source_end,
+                     np.exp(-.5*((ix - 40)/12)**2)
+                     * np.cos(2*np.pi*3e9*(ix - source_end)*dt), 0.)
+    mode = np.where(ix >= source_end,
+                    np.real(np.exp((-np.pi*3e9/q + 2j*np.pi*3e9)*u)), 0.)
+    t = ix*dt
+    background = {"dc": np.ones(n), "slow": np.exp(-1e6*t),
+                  "lf": np.exp(-1e6*t)*np.cos(2*np.pi*50e6*t)}[kind]
+    if amplitude is None:
+        amplitude = np.sqrt(.97/.03*np.sum(mode[n//2:]**2)
+                            / np.sum(background[n//2:]**2))
+    return (pulse + mode + amplitude*background).astype(dtype), dt, source_end
+
+
+@pytest.mark.parametrize('dtype', [np.float32, np.float64])
+def test_strong_dc_rank_ringing_fails_mode_bin(dtype):
+    y, dt, source_end = dc_mode_record(500, amplitude=1e6, dtype=dtype)
+    bins = np.array([2.7, 2.85, 3., 3.15, 3.3])*1e9
+    result = tail_share_witness([('dc_mode', y)], dt, source_end, bins, freq_max=3.6e9)
+    assert result.status == 'fail', result
+    assert result.share_per_bin[2] > 1e-2
+
+
+@pytest.mark.parametrize("kind", ["dc", "slow", "lf"])
+def test_oob_97_settled_passes(kind):
+    y, dt, source_end = dc_mode_record(30, kind=kind)
+    bins = np.array([2.7, 2.85, 3., 3.15, 3.3])*1e9
+    result = tail_share_witness([('dc_mode', y)], dt, source_end, bins, freq_max=3.6e9)
+    assert result.status == 'pass', result
+    assert np.all(result.share_per_bin <= 1e-2)
+
+
+@pytest.mark.parametrize('constant', [0., 2.])
+def test_constant_window_channel_has_zero_tail_share(constant):
+    y = modes(1000)
+    quiet = np.zeros(1000, dtype=complex)
+    quiet[150] = 1.
+    quiet[250:] = constant
+    expected = witness(y)
+    result = witness(np.column_stack([quiet, y]))
+    assert result.status == expected.status == 'fail', result
+    np.testing.assert_allclose(result.share_per_bin, expected.share_per_bin, rtol=1e-8)
+    np.testing.assert_allclose(result.error_per_bin, expected.error_per_bin, atol=1e-8)
+
+
+def test_constant_identification_windows_do_not_hide_post_source_variation():
+    y = np.ones(1000)
+    y[SOURCE_END:250] = 2.
+    result = witness(y)
+    assert result.status == 'undetermined', result
+    assert 'identification window only' in result.reason
+
+
+@pytest.mark.parametrize("kind", ["slow", "lf"])
+@pytest.mark.parametrize("dtype", [np.float32, np.float64])
+def test_strong_slow_or_low_frequency_background_fails_mode_bin(kind, dtype):
+    y, dt, source_end = dc_mode_record(500, amplitude=1e6, dtype=dtype, kind=kind)
+    bins = np.array([2.7, 2.85, 3., 3.15, 3.3])*1e9
+    result = tail_share_witness([('background_mode', y)], dt, source_end, bins, freq_max=3.6e9)
+    assert result.status == 'fail', result
+    assert result.share_per_bin[2] > 1e-2

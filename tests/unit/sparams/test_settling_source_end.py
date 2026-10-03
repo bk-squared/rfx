@@ -40,14 +40,20 @@ def test_missing_source_end_or_tail_is_never_a_pass(end):
     assert detail['reason']
 
 
-def test_unidentifiable_post_source_record_is_not_a_pass():
-    record = np.full(100, 1e-100)
+@pytest.mark.parametrize("constant", [False, True])
+def test_post_source_variation_with_large_drive(constant):
+    record = np.full(100, 1e-100) if constant else np.linspace(1e-100, 2e-100, 100)
     record[0] = 1e200
     value, detail = settling_db_from_named_records(
         [('p', record)], source_end_index=1, dt=1., freqs=[.1], freq_max=.1, return_detail=True)
-    assert np.isnan(value)
-    assert detail['status'] == 'undetermined'
-    assert detail['reason']
+    if constant:
+        assert value <= -40
+        assert detail['status'] == 'pass'
+        assert 'no post-source variation' in detail['reason']
+    else:
+        assert np.isnan(value)
+        assert detail['status'] == 'undetermined'
+        assert detail['reason']
 
 
 def test_registered_drives_include_farthest_record_and_skip_passive_ports():
