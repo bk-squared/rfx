@@ -146,7 +146,7 @@ def test_other_components(component):
 
 @pytest.mark.parametrize("kind, message", [("wire", "reference_plane_cells"),
                                             ("passive", "passive port"),
-                                            ("graded", "Phase B distributed\\+NU")])
+                                            ("graded", "[Ll]umped / wire ports")])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_refusals(kind, message, explicit):
     kwargs = {"dz_profile": np.array([1e-3] * 3 + [0.5e-3] * 6)} if kind == "graded" else {}

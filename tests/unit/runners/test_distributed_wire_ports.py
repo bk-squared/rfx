@@ -198,7 +198,7 @@ def test_single_wire_zero_wave():
 
 @pytest.mark.parametrize("kind,message", [
     ("planes", "reference_plane_cells"), ("radius", "radius"),
-    ("passive", "passive port"), ("graded", "Phase B"), ("pmc", "PMC")])
+    ("passive", "passive port"), ("graded", "(?i)lumped / wire ports"), ("pmc", "PMC")])
 @pytest.mark.parametrize("compute_s", [None, True, False])
 def test_refusals(kind, message, compute_s):
     from rfx.boundaries.spec import Boundary, BoundarySpec

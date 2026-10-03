@@ -99,8 +99,6 @@ from rfx.runners._distributed_common import (
     stage_dispersion_slabs,
     split_array_x,
     unstack_and_gather,
-    update_e_nu_shmap,
-    update_h_nu_shmap,
 )
 
 
@@ -705,14 +703,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     # Build grid and materials (full domain)
     # ------------------------------------------------------------------
-    # Phase B: non-uniform grid detection. When any axis profile is
-    # present on ``sim`` we build a NonUniformGrid and route updates
-    # through the NU kernels in ``distributed_nu.py``.
-    is_nu = (
-        getattr(sim, "_dz_profile", None) is not None
-        or getattr(sim, "_dx_profile", None) is not None
-        or getattr(sim, "_dy_profile", None) is not None
-    )
+    if sim._uses_nonuniform_mesh:
+        raise NotImplementedError(
+            "distributed_v2 is a uniform-grid runner; use sim.run(devices=...) "
+            "for a non-uniform grid (shared distributed NU staging).")
     # Declared PEC on this lane, after #1053: VOLUMES are realized, SHEETS
     # and WIRES are not.
     #
@@ -748,26 +742,15 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     _geometry_masks, _assembly_entries = [], []
-    if is_nu:
-        # dz-profile synthesis happens locally inside
-        # _build_nonuniform_grid() — no sim-state mutation here.
-        grid = sim._build_nonuniform_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask = (
-            sim._assemble_materials_nu(grid, pec_sheets=_d_pec_sheets,
-                                       pec_wires=_d_pec_wires,
-                                       geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
-        )
-        pec_shapes = None
-    else:
-        grid = sim._build_grid()
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
-            sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
-                                    pec_wires=_d_pec_wires,
-                                       geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
-        )
-        # The rest (Kerr chi3 among it, refused above) is unused on this lane;
-        # drop it now so no whole-domain array stays alive through the loop.
-        del _assembly_rest
+    grid = sim._build_grid()
+    base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
+        sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
+                                pec_wires=_d_pec_wires,
+                                   geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
+    )
+    # The rest (Kerr chi3 among it, refused above) is unused on this lane;
+    # drop it now so no whole-domain array stays alive through the loop.
+    del _assembly_rest
     from rfx.realized_geometry import record_from_assembly
     geometry_record = record_from_assembly(
         sim, grid, base_materials, pec_mask, _d_pec_sheets, _d_pec_wires,
@@ -803,7 +786,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
     materials = base_materials
     wire_edges = None
-    if not is_nu and any(pe.extent is not None for pe in sim._ports):
+    if any(pe.extent is not None for pe in sim._ports):
         from rfx.boundaries.pec import realized_pec_edge_masks
         if pec_mask is not None:
             wire_edges = realized_pec_edge_masks(pec_mask, periodic=sim._periodic_flags())
@@ -855,60 +838,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     use_cpml = sim._boundary == "cpml" and grid.cpml_layers > 0
     n_cpml = grid.cpml_layers if use_cpml else 0
 
-    # Phase B: NU + CPML + distributed is not implemented yet.
-    # The api.py-level guardrail already blocks this combination; assert
-    # here as a defensive backstop in case a future caller bypasses it.
-    if is_nu and use_cpml:
-        raise NotImplementedError(
-            "Phase B supports non-uniform grids on the distributed path "
-            "with PEC boundaries only. boundary='cpml' with dx/dy/dz "
-            "profile is unsupported on this runner, including a direct one-device call."
-        )
-    if is_nu and debye_spec is not None:
-        raise NotImplementedError(
-            "Phase B does not support Debye dispersion on the NU "
-            "distributed path yet."
-        )
-    if is_nu and lorentz_spec is not None:
-        raise NotImplementedError(
-            "Phase B does not support Lorentz dispersion on the NU "
-            "distributed path yet."
-        )
-    if is_nu and multi_process:
-        # The NU update bodies (_distributed_common.update_{h,e}_nu_shmap)
-        # still close over the eight sharded/replicated spacing arrays
-        # (inv_dx*, inv_dy*, inv_dz*), which is illegal when the mesh spans
-        # another process. Refuse rather than fail inside the jitted scan.
-        raise NotImplementedError(
-            "A non-uniform grid (dx/dy/dz profile) is not supported on the "
-            "distributed path when the device mesh spans more than one JAX "
-            "process; only uniform grids run across processes. Use devices "
-            "of this process only, or a uniform grid."
-        )
-
     dt = grid.dt
     dx = grid.dx
-
-    # Phase B: pre-computed per-device inv-dx arrays for NU path.
-    # Inner kernels receive the full-axis inv_dy/inv_dz replicated and
-    # the per-device slab of inv_dx / inv_dx_h (length nx_local = nx_per
-    # + 2*ghost constructed below).
-    if is_nu:
-        from rfx.runners.distributed_nu import (
-            _build_sharded_inv_dx_arrays,
-            split_1d_with_ghost as _split_1d_with_ghost_helper,
-        )
-        inv_dx_global, inv_dx_h_global, _dx_padded = (
-            _build_sharded_inv_dx_arrays(grid, n_devices, pad_x=pad_x)
-        )
-        inv_dy_full = np.asarray(grid.inv_dy, dtype=np.float32)
-        inv_dy_h_full = np.asarray(grid.inv_dy_h, dtype=np.float32)
-        inv_dz_full = np.asarray(grid.inv_dz, dtype=np.float32)
-        inv_dz_h_full = np.asarray(grid.inv_dz_h, dtype=np.float32)
-    else:
-        inv_dx_global = inv_dx_h_global = None
-        inv_dy_full = inv_dy_h_full = None
-        inv_dz_full = inv_dz_h_full = None
 
     # ------------------------------------------------------------------
     # Create mesh
@@ -920,74 +851,42 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     sources = []
     probes = []
-    if is_nu:
-        # NU source/probe build uses cumulative position lookup and the
-        # same dV-normalised current-source waveform as the single-device
-        # NU runner (rfx.nonuniform.make_current_source) so distributed
-        # and single-device results agree.
-        from rfx.nonuniform import (
-            position_to_index as _nu_pos_to_idx,
-            make_current_source as _nu_make_current_source,
-        )
-        from rfx.simulation import SourceSpec, ProbeSpec
-        for pe in sim._ports:
-            if pe.impedance > 0.0:
-                raise NotImplementedError(
-                    "Phase B distributed+NU does not support lumped / wire "
-                    "ports yet. Use single-device for ports on NU meshes."
-                )
-            if pe.impedance == 0.0:
-                idx = _nu_pos_to_idx(grid, pe.position)
-                si, sj, sk, sc, wf = _nu_make_current_source(
-                    grid, idx, pe.component, pe.waveform, n_steps, materials,
-                    amplitude_kind=pe.amplitude_kind)
-                sources.append(SourceSpec(
-                    i=int(si), j=int(sj), k=int(sk),
-                    component=sc, waveform=jnp.asarray(wf),
-                ))
+    port_idx = -1
+    for pe in sim._ports:
+        if pe.impedance > 0.0 and pe.extent is None:
+            port_idx += 1
+            lp = LumpedPort(
+                position=pe.position, component=pe.component,
+                impedance=pe.impedance, excitation=pe.waveform,
+            )
+            materials = setup_lumped_port(grid, lp, materials)
+            if _source_port_indices is None or port_idx in _source_port_indices:
+                sources.append(make_port_source(grid, lp, materials, n_steps))
+        elif pe.impedance > 0.0 and pe.extent is not None:
+            from rfx.sources.sources import wire_port_from_entry, setup_wire_port
+            from rfx.simulation import make_wire_port_sources
+            port_idx += 1
+            wp = wire_port_from_entry(pe)
+            materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
+            if _source_port_indices is None or port_idx in _source_port_indices:
+                sources.extend(make_wire_port_sources(
+                    grid, wp, materials, n_steps, pec_edge_masks=wire_edges))
+        elif pe.impedance == 0.0:
+            if sim._boundary == "cpml":
+                sources.append(make_j_source(grid, pe.position, pe.component,
+                                             pe.waveform, n_steps, materials,
+                                             amplitude_kind=pe.amplitude_kind))
+            else:
+                sources.append(make_source(grid, pe.position, pe.component,
+                                           pe.waveform, n_steps,
+                                           materials=materials,
+                                           amplitude_kind=pe.amplitude_kind))
+    if _record_probes is None:
         for pe in sim._probes:
-            idx = _nu_pos_to_idx(grid, pe.position)
-            probes.append(ProbeSpec(
-                i=int(idx[0]), j=int(idx[1]), k=int(idx[2]),
-                component=pe.component,
-            ))
+            probes.append(make_probe(grid, pe.position, pe.component))
     else:
-        port_idx = -1
-        for pe in sim._ports:
-            if pe.impedance > 0.0 and pe.extent is None:
-                port_idx += 1
-                lp = LumpedPort(
-                    position=pe.position, component=pe.component,
-                    impedance=pe.impedance, excitation=pe.waveform,
-                )
-                materials = setup_lumped_port(grid, lp, materials)
-                if _source_port_indices is None or port_idx in _source_port_indices:
-                    sources.append(make_port_source(grid, lp, materials, n_steps))
-            elif pe.impedance > 0.0 and pe.extent is not None:
-                from rfx.sources.sources import wire_port_from_entry, setup_wire_port
-                from rfx.simulation import make_wire_port_sources
-                port_idx += 1
-                wp = wire_port_from_entry(pe)
-                materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
-                if _source_port_indices is None or port_idx in _source_port_indices:
-                    sources.extend(make_wire_port_sources(
-                        grid, wp, materials, n_steps, pec_edge_masks=wire_edges))
-            elif pe.impedance == 0.0:
-                if sim._boundary == "cpml":
-                    sources.append(make_j_source(grid, pe.position, pe.component,
-                                                 pe.waveform, n_steps, materials,
-                                                 amplitude_kind=pe.amplitude_kind))
-                else:
-                    sources.append(make_source(grid, pe.position, pe.component,
-                                               pe.waveform, n_steps,
-                                               materials=materials,
-                                               amplitude_kind=pe.amplitude_kind))
-        if _record_probes is None:
-            for pe in sim._probes:
-                probes.append(make_probe(grid, pe.position, pe.component))
-        else:
-            # Global cells enter the ordinary owner mapping below independently.
-            probes.extend(_record_probes)
+        # Global cells enter the ordinary owner mapping below independently.
+        probes.extend(_record_probes)
 
     del wire_edges
 
@@ -1041,32 +940,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # as split_array_x + shard_stacked, including False boundary mask ghosts.
     shd = _x_sharding(mesh)
     rep = _rep_sharding(mesh)
-
-    # Phase B: shard per-device inv_dx / inv_dx_h slabs for NU updates.
-    if is_nu:
-        # Split the 1-D padded global arrays into per-device slabs with
-        # ghost cells, matching the field slabbing convention.
-        # inv_dx uses cell-local values (ghost cells at the domain
-        # boundary carry the neighbour-cell value to avoid divide-by-zero
-        # in update kernels); inv_dx_h uses mean-spacing values which
-        # straddle adjacent cells.
-        _inv_dx_slabs = _split_1d_with_ghost_helper(
-            inv_dx_global, n_devices, nx_per, nx_local, ghost, pad_value=1.0)
-        _inv_dx_h_slabs = _split_1d_with_ghost_helper(
-            inv_dx_h_global, n_devices, nx_per, nx_local, ghost, pad_value=0.0)
-        # Shard to (n_devices * nx_local,) along P("x")
-        inv_dx_sharded = jax.device_put(
-            _inv_dx_slabs.reshape(n_devices * nx_local), shd)
-        inv_dx_h_sharded = jax.device_put(
-            _inv_dx_h_slabs.reshape(n_devices * nx_local), shd)
-        inv_dy_rep = jax.device_put(inv_dy_full, rep)
-        inv_dy_h_rep = jax.device_put(inv_dy_h_full, rep)
-        inv_dz_rep = jax.device_put(inv_dz_full, rep)
-        inv_dz_h_rep = jax.device_put(inv_dz_h_full, rep)
-    else:
-        inv_dx_sharded = inv_dx_h_sharded = None
-        inv_dy_rep = inv_dy_h_rep = None
-        inv_dz_rep = inv_dz_h_rep = None
 
     field_shape = (n_devices * nx_local, ny, nz)
     sharded_state = FDTDState(
@@ -1242,18 +1115,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # H and E local updates via shard_map
     # ------------------------------------------------------------------
 
-    def _update_h_shmap(st, mat, spacings=None, *, ranks):
-        if is_nu:
-            (invdx, invdy, invdz, invdxh, invdyh, invdzh) = spacings
-            # #1038 leg 4: this branch held a renamed copy (`_h_nu`) of
-            # distributed_nu.py's own `_h` wrapper -- inventory §2.4, 0.884
-            # similarity, the def name plus one re-wrapped argument list. One
-            # shared body now, in _distributed_common; the uniform branch below
-            # and the `is_nu` dispatch itself are untouched.
-            return update_h_nu_shmap(
-                st, mat, mesh, dt,
-                invdx, invdy, invdz, invdxh, invdyh, invdzh,
-                ranks=ranks)
+    def _update_h_shmap(st, mat, *, ranks):
 
         @partial(
             rank_shard_map,
@@ -1278,22 +1140,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             mat.eps_r, mat.sigma, mat.mu_r)
         return st._replace(hx=hx, hy=hy, hz=hz, step=step)
 
-    def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st, e_materials, spacings=None, *, ranks):
+    def _update_e_shmap(st, mat, db_coeffs, db_st, lr_coeffs, lr_st, e_materials, *, ranks):
         """E update (with optional dispersion) via shard_map."""
-        if is_nu:
-            # NU path: no dispersion (blocked upstream).
-            # #1038 leg 4: this branch held a renamed copy (`_e_nu`) of
-            # distributed_nu.py's own `_e` wrapper -- inventory §2.4, 0.947
-            # similarity, the def name and nothing else. One shared body now,
-            # in _distributed_common; the `is_nu` dispatch, the dispersive
-            # branch below and the (state, db_st, lr_st) return shape are
-            # untouched.
-            new_st = update_e_nu_shmap(
-                st, mat, mesh, dt,
-                *spacings[:3], nx_per, nx,
-                ranks=ranks)
-            # db_st / lr_st are passthrough (dummies) in NU path.
-            return new_st, db_st, lr_st
 
         @partial(
             rank_shard_map,
@@ -1517,7 +1365,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def step_fn_pec(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-        pec_mask_arg, e_materials, spacings,
+        pec_mask_arg, e_materials,
         *, ranks,
     ):
         """Single FDTD step (PEC path) operating on sharded arrays.
@@ -1542,7 +1390,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         lr_st = carry["lorentz"]
 
         # 1. H update
-        st = _update_h_shmap(st, materials_arg, spacings, ranks=ranks)
+        st = _update_h_shmap(st, materials_arg, ranks=ranks)
 
         # 2. Exchange H ghost cells
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
@@ -1556,7 +1404,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         st, db_st, lr_st = _update_e_shmap(
             st, materials_arg,
             debye_coeffs_arg, db_st,
-            lorentz_coeffs_arg, lr_st, e_materials, spacings, ranks=ranks)
+            lorentz_coeffs_arg, lr_st, e_materials, ranks=ranks)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -1676,7 +1524,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry_init["ntff"] = ntff_layout.initial()
         def _run_pec(
             carry, scan_xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
-            pec_mask_arg, spacings,
+            pec_mask_arg,
             *, ranks,
         ):
             e_materials = (slab_e_materials_shmap(materials_arg, mesh, nx_per, nx, ranks=ranks)
@@ -1685,7 +1533,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 lambda scan_carry, scan_inputs: step_fn_pec(
                     scan_carry, scan_inputs, materials_arg,
                     debye_coeffs_arg, lorentz_coeffs_arg,
-                    pec_mask_arg, e_materials, spacings,
+                    pec_mask_arg, e_materials,
                     ranks=ranks,
                 ),
                 carry,
@@ -1704,8 +1552,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             carry_init, xs, sharded_materials,
             debye_coeffs_sharded, lorentz_coeffs_sharded,
             sharded_pec_mask,
-            (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep),
             ranks=mesh_ranks(mesh))
         final_state_sharded = final_carry["fdtd"]
 

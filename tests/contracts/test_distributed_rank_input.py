@@ -18,16 +18,16 @@ import numpy as np
 from rfx import Box, DebyePole, LorentzPole, Simulation
 
 
-# Graded run+CPML and extended wire ports refuse before compilation.
+# Extended wire ports refuse before compilation.
 # Distributed forward admits uniform spacing through an explicit NU profile.
 CASES = [
     (lane, mode, boundary)
     for lane in ("uniform", "graded")
     for mode in ("run", "forward", "gradient")
     for boundary in ("pec", "cpml")
-    if (lane, mode, boundary) != ("graded", "run", "cpml")
-] + [("uniform", mode, "cpml") for mode in ("ntff", "debye", "lumped")] + [
+] + [("uniform", mode, "cpml") for mode in ("ntff", "debye", "lumped")] + [("uniform", "wire", "pec")] + [
     ("uniform", "lorentz", "cpml"),
+    ("graded", "run-debye", "cpml"),
     ("graded", "forward-debye", "cpml"),
     ("graded", "gradient-debye", "cpml"),
     ("graded", "gradient-lorentz", "cpml"),
@@ -47,6 +47,8 @@ def model(lane, mode, boundary):
     pos = (6e-3, 3e-3, 3e-3)
     if mode == "lumped":
         sim.add_port(pos, "ez", impedance=50)
+    elif mode == "wire":
+        sim.add_port(pos, "ez", impedance=50, extent=2e-3)
     else:
         amplitude = 1e-9 if material_kind == "sharded" else 1.
         sim.add_source(pos, "ez", amplitude_kind=("current" if material_kind == "sharded" else "field"),
@@ -103,7 +105,7 @@ def exercise_programs():
             assert all(np.isfinite(np.asarray(a)).all() for a in
                        jax.tree.leaves((value, differentiated)))
         else:
-            if mode == "lumped":
+            if mode in ("lumped", "wire"):
                 kwargs.update(compute_s_params=True, s_param_freqs=[5e9],
                               s_param_n_steps=4)
             result = sim.run(**kwargs)

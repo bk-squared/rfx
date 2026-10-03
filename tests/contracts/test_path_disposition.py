@@ -38,6 +38,8 @@ KERNEL_CALLERS = {
     "rfx/api/_execute.py:_ExecuteMixin._forward_nonuniform_from_materials": "internal to fwd_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._forward_distributed_nonuniform_from_materials":
         "internal to fwd_distributed_nu",
+    "rfx/api/_execute.py:_ExecuteMixin._execute_distributed_nonuniform_from_materials":
+        "internal to run_distributed, fwd_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin._run_adi_from_materials": "internal to run_adi, fwd_adi",
     "rfx/api/_execute.py:_ExecuteMixin._run_nonuniform": "internal to run_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._run_subgridded": "internal to run_subgridded",
@@ -95,6 +97,7 @@ FIELD_STEPPERS = {
 _KERNELS = {
     "_forward_from_materials", "_forward_nonuniform_from_materials",
     "_forward_distributed_nonuniform_from_materials", "_run_adi_from_materials",
+    "_execute_distributed_nonuniform_from_materials",
     "_run_nonuniform", "_run_subgridded", "run_uniform", "run_nonuniform_path",
     "run_subgridded_path", "run_disjoint_stage2_path", "run_distributed",
     "run_nonuniform_distributed_pec", "run_subgridded_jit", "run_adi_2d",

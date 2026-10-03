@@ -977,7 +977,6 @@ _SHARED_HELPER_BINDINGS = (
     # fixture 9 (distributed_v2_nu_branch) and fixtures 11-12 are what say the
     # arrays did not move with it.
     ("update_h_nu_shmap", "rfx.runners.distributed_nu", "update_h_nu_shmap"),
-    ("update_h_nu_shmap", "rfx.runners.distributed_v2", "update_h_nu_shmap"),
     # #1038 leg 4 -- the NU E shard wrapper, the other half of inventory §2.4.
     # The two inner kernels (`_e` / `_e_nu`) differed in the def name and
     # NOTHING else: their statement bodies were byte-identical before the
@@ -986,7 +985,6 @@ _SHARED_HELPER_BINDINGS = (
     # (state, db_st, lr_st) with the polarisation state passed straight
     # through -- the shared body returns the state only.
     ("update_e_nu_shmap", "rfx.runners.distributed_nu", "update_e_nu_shmap"),
-    ("update_e_nu_shmap", "rfx.runners.distributed_v2", "update_e_nu_shmap"),
     # #1303 -- the slab view of the four-cell edge mean. Not a de-duplication:
     # one definition that both runners' CPML E corrections call (the E
     # updates reach it through the shared kernels above), so the psi

@@ -2862,7 +2862,7 @@ class _ExecuteMixin:
 
         return jax.make_array_from_callback(shape, sharding, slab)
 
-    def _forward_distributed_nonuniform_from_materials(
+    def _execute_distributed_nonuniform_from_materials(
         self,
         *,
         eps_override: jnp.ndarray | None = None,
@@ -2877,24 +2877,12 @@ class _ExecuteMixin:
         devices: list | None = None,
         exchange_interval: int = 1,
         skip_preflight: bool = False,
-    ) -> ForwardResult:
-        """Phase 3 (issue #44): differentiable forward on the **distributed**
-        non-uniform mesh path.
+        gather_final_state: bool = False,
+    ):
+        """Stage and execute the graded distributed solve shared by run/forward.
 
-        The single-device sibling :meth:`_forward_nonuniform_from_materials`
-        delegates the whole pipeline to ``run_nonuniform_path``; this lane
-        instead inlines material assembly + sharding because the sharded
-        runner (``rfx.runners.distributed_nu.run_nonuniform_distributed_pec``)
-        takes pre-sharded inputs. The two lanes share only the final
-        ``ForwardResult`` assembly, factored into
-        :meth:`_pack_nu_forward_result`. This lane uses x-axis 1-D slab
-        decomposition across ``devices``.  Performs
-        the V3 §M4 distributed-specific preflight (5 checks) before any
-        trace build, then assembles materials, builds the
-        :class:`ShardedNUGrid`, shards every input array, and calls the
-        Phase 2F runner.
-
-        See :meth:`forward` for the public-facing kwarg semantics.
+        Run requests gathered fields and an assembly record; forward keeps the
+        fields sharded. Sources, materials, ADE, CPML and PEC staging are shared.
         """
         from rfx.runners.distributed_v2 import refuse_distributed_periodic
         refuse_distributed_periodic(self, lane="distributed non-uniform forward()")
@@ -3076,12 +3064,24 @@ class _ExecuteMixin:
                         "Local whole-domain overrides are supported only in one process.")
 
         # ---- Assemble full-domain materials ----
+        if gather_final_state:
+            self._pf_campaign_ctx = None
+        _geometry_masks = [] if gather_final_state else None
+        _assembly_entries = [] if gather_final_state else None
         _dnu_pec_sheets: list = []
         _dnu_pec_wires: list = []
         materials, debye_spec, lorentz_spec, pec_mask = (
             self._assemble_materials_nu(
-                grid, pec_sheets=_dnu_pec_sheets, pec_wires=_dnu_pec_wires)
+                grid, pec_sheets=_dnu_pec_sheets, pec_wires=_dnu_pec_wires,
+                geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
         )
+        geometry_record = None
+        if gather_final_state:
+            from rfx.realized_geometry import record_from_assembly
+            geometry_record = record_from_assembly(
+                self, grid, materials, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
+                _geometry_masks, _assembly_entries, lane="run_distributed")
+        del _geometry_masks, _assembly_entries
         if _dnu_pec_sheets or _dnu_pec_wires:
             # #931: this lane shards a CELL mask along x and realizes it
             # per slab.  A sheet and a sub-cell wire own no cell, so they
@@ -3265,11 +3265,16 @@ class _ExecuteMixin:
             checkpoint_every=checkpoint_every,
             n_warmup=n_warmup,
             emit_time_series=emit_time_series,
-            gather_final_state=False,
+            gather_final_state=gather_final_state,
             pmc_faces=frozenset(self._boundary_spec.pmc_faces()),
             material_drive=tuple(material_drive),
         )
 
+        return grid, result, geometry_record
+
+    def _forward_distributed_nonuniform_from_materials(self, **kwargs) -> ForwardResult:
+        """Pack the shared distributed graded solve for differentiable callers."""
+        grid, result, _ = self._execute_distributed_nonuniform_from_materials(**kwargs)
         # ---- Repackage into ForwardResult via the shared lane helper.
         # Both the distributed runner and the single-device NU runner
         # return time_series with layout ``(n_steps, n_probes)``; we
@@ -3517,11 +3522,8 @@ class _ExecuteMixin:
         if self._boundary == "upml" and distributed_run:
             raise ValueError("boundary='upml' does not support distributed execution")
 
-        # ---- Distributed + nonuniform (Phase B guardrail).
-        # Phase B permits the combination for PEC boundary with grading
-        # ratio <= 5 and no TFSF. The distributed_v2 runner dispatches to
-        # the NU kernels in distributed_nu.py; dispersion and CPML on the
-        # distributed NU path are Phase C items and still raise below.
+        # Distributed graded meshes share forward's NU runner and staging.
+        # Keep the run() grading/TFSF admission before either runner starts.
         if distributed_run and is_nonuniform:
             import warnings as _wmod
             # Grading ratio check (shared single dt) across provided profiles.
@@ -5083,12 +5085,35 @@ class _ExecuteMixin:
             from rfx.runners._admission import admit_run_s_matrix
             admit_run_s_matrix(self, compute_s_params=compute_s_params,
                                conformal_pec=conformal_pec, distributed=True)
-            from rfx.runners.distributed_v2 import run_distributed
-            _res = run_distributed(
-                self, n_steps=n_steps, devices=devices,
-                exchange_interval=exchange_interval,
-                conformal_pec=conformal_pec,
-            )
+            if self._uses_nonuniform_mesh:
+                from rfx.runners.distributed_v2 import _spans_other_processes
+                if devices is not None and _spans_other_processes(devices):
+                    # The graded runner does not gather the final fields
+                    # across processes (#1461 review), so run() could not
+                    # return them; forward(distributed=True) can.
+                    raise NotImplementedError(
+                        "run(devices=...) on a non-uniform mesh does not support "
+                        "devices from more than one JAX process: the final fields "
+                        "are not gathered across processes. Use devices from one "
+                        "process, or forward(distributed=True) for the probe traces.")
+                grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
+                    n_steps=n_steps, devices=devices,
+                    exchange_interval=exchange_interval,
+                    skip_preflight=skip_preflight, gather_final_state=True,
+                )
+                _res = Result(
+                    state=result["final_state"], time_series=result["time_series"],
+                    s_params=None, freqs=None, grid=grid, dt=grid.dt,
+                    freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
+                    realized_geometry=geometry_record,
+                )
+            else:
+                from rfx.runners.distributed_v2 import run_distributed
+                _res = run_distributed(
+                    self, n_steps=n_steps, devices=devices,
+                    exchange_interval=exchange_interval,
+                    conformal_pec=conformal_pec,
+                )
             if compute_s_params:
                 from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
                 if s_param_freqs is None:
