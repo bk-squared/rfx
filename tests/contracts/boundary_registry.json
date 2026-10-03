@@ -189,7 +189,7 @@
     },
     {
       "file": "rfx/api/_execute.py",
-      "function": "_ExecuteMixin._forward_distributed_nonuniform_from_materials",
+      "function": "_ExecuteMixin._execute_distributed_nonuniform_from_materials",
       "kind": "boundary"
     },
     {

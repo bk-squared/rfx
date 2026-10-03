@@ -33,8 +33,16 @@ from rfx.probes.probes import (
 
 
 def refuse_distributed_lumped_s_pmc(sim):
-    """The distributed wall rule cannot supply lumped S on magnetic faces."""
+    """Refuse lumped S and wire loads/drives under the distributed PMC rule."""
     faces = sorted(sim._boundary_spec.pmc_faces())
+    if faces and any(pe.impedance != 0 and pe.extent is not None for pe in sim._ports):
+        raise NotImplementedError(
+            f"Wire ports with magnetic (PMC) face(s) {', '.join(faces)} "
+            "are not supported with devices=...; the multi-device main run "
+            "zeroes tangential E on a declared PMC face, so nearby wire loads "
+            "and drives would be wrong even with compute_s_params=False "
+            "(rfx #1221, B3b). Use one device (omit devices=...)."
+        )
     if faces and any(pe.impedance != 0 for pe in sim._ports):
         raise NotImplementedError(
             f"Lumped-port S-parameters with magnetic (PMC) face(s) {', '.join(faces)} "
@@ -45,6 +53,7 @@ def refuse_distributed_lumped_s_pmc(sim):
 def compute_lumped_wire_s_matrix_via_scan(
     sim, freqs, *, n_steps=None, return_vi_dump=False,
     return_refplane_diagnostics=False, conformal_pec=None, devices=None,
+    _main_wire_record=False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -81,9 +90,10 @@ def compute_lumped_wire_s_matrix_via_scan(
         (R5 inspection surface).  ``(S, freqs, None)`` when no port
         opted in.
     devices : list or None
-        Uniform distributed scan devices. Single-cell excited ports only.
-        Records five owning-cell field samples per step and receive port;
-        host DFTs feed the same decomposer and replay bundle below.
+        Uniform distributed scan devices. Excited lumped/wire ports without planes.
+        Records the live E line and four midpoint H samples per receive port;
+        host DFTs feed the same decomposer. return_vi_dump=True is refused
+        because pre-injection drive reference voltages are not recorded.
     conformal_pec : bool or None
         As in ``run()``: ``None`` reads ``Boundary(conformal=True)``. The
         production scan has no conformal update, so a conformal request on a
@@ -101,16 +111,18 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     Notes
     -----
-    Stage 1 supports a homogeneous all-lumped **or** all-wire port set (the
-    eager ``extract_s_matrix`` / ``extract_s_matrix_wire`` are likewise
-    called per-family).  A mixed lumped+wire set raises ``NotImplementedError``
-    because the lumped and wire off-diagonal wave-decomposition conventions
-    differ (per-cell impedance normalization for wire) and cross-family
-    coupling is out of Stage-1 scope.
+    Mixed lumped + wire port sets are not supported.
     """
+    # A plain source fires in every port drive, so it is refused here (#1420).
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim)
     if devices is not None:
+        if return_vi_dump and any(pe.impedance > 0 and pe.extent is not None
+                                  for pe in sim._ports):
+            raise NotImplementedError(
+                "return_vi_dump=True is not supported with devices=... for wire "
+                "ports; their pre-injection drive reference voltages are not recorded. "
+                "Use one device (omit devices=...).")
         from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
         refuse_unsupported_distributed_features(sim, lane="distributed S-matrix scan")
         refuse_distributed_lumped_s_pmc(sim)
@@ -168,7 +180,14 @@ def compute_lumped_wire_s_matrix_via_scan(
             "decomposition conventions differ).  Use a homogeneous all-lumped "
             "or all-wire port set."
         )
-    wire_mode = all(is_wire)
+    wire_mode = any(is_wire)
+    if wire_mode and devices is not None:
+        # Geometry only: release the assembled materials before any scan stages slabs.
+        from rfx.boundaries.pec import realized_pec_edge_masks
+        assembled = sim._assemble_materials(grid)
+        _pec_edge_masks = (realized_pec_edge_masks(assembled[3], periodic=sim._periodic_flags())
+                           if assembled[3] is not None else None)
+        del assembled
 
     n_ports = len(eligible)
     z0 = np.asarray([pe.impedance for pe in eligible], dtype=np.float64)
@@ -186,6 +205,9 @@ def compute_lumped_wire_s_matrix_via_scan(
         axis_map = {"ex": 0, "ey": 1, "ez": 2}
         port_cell_counts = np.zeros(n_ports, dtype=np.int64)
         for idx, pe in enumerate(eligible):
+            if pe.extent is None:
+                port_cell_counts[idx] = 1
+                continue
             end = list(pe.position)
             end[axis_map[pe.component]] += pe.extent
             wp = WirePort(
@@ -198,14 +220,17 @@ def compute_lumped_wire_s_matrix_via_scan(
             port_cell_counts[idx] = _wire_port_live_cells(
                 grid, wp, _pec_edge_masks)[2]
 
+    distributed_cells = None
+    if devices is not None and wire_mode:
+        distributed_cells = _distributed_port_cells(grid, eligible, _pec_edge_masks)
+        del _pec_edge_masks
+
     # FDTD-sign V/I phasors per (drive j, receive i).
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     i_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
     # Whole-port gap-voltage phasors (issue #764, wire mode): V_port =
-    # sum over LIVE wire cells of -E_c*dx per (drive j, receive i).  Only
-    # the driven diagonal vp_all[j, j] is consumed by the decomposer —
-    # every diagonal entry here is a driven reading by construction (row j
-    # comes from the drive run of port j).
+    # sum over LIVE wire cells of -E_c*dx per (drive j, receive i).
+    # The whole-port decomposer consumes both diagonal and off-diagonal V.
     vp_all = (np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
               if wire_mode else None)
     # PRE-injection drive-sample reference phasors (wire: issue #683 x
@@ -227,7 +252,9 @@ def compute_lumped_wire_s_matrix_via_scan(
     for j in range(n_ports):
         if devices is not None:
             raw = _distributed_lumped_accumulators(sim, grid, eligible, freqs,
-                                                  n_steps, devices, j)
+                                                  n_steps, devices,
+                                                  None if _main_wire_record else j,
+                                                  distributed_cells)
         else:
             raw = sim._forward_from_materials(
                 grid,
@@ -266,10 +293,12 @@ def compute_lumped_wire_s_matrix_via_scan(
             v_dft, i_dft = vi[0], vi[1]
             v_all[j, i, :] = np.asarray(v_dft, dtype=np.complex128)
             i_all[j, i, :] = np.asarray(i_dft, dtype=np.complex128)
-            if wire_mode:
+            if wire_mode and is_wire[i]:
                 vp_all[j, i, :] = np.asarray(vi[3], dtype=np.complex128)
                 vref_all[j, i, :] = np.asarray(vi[4], dtype=np.complex128)
             else:
+                if wire_mode:
+                    vp_all[j, i, :] = v_all[j, i, :]
                 vref_all[j, i, :] = np.asarray(vi[2], dtype=np.complex128)
 
         rp_accs = raw.get("wire_refplane")
@@ -330,11 +359,18 @@ def compute_lumped_wire_s_matrix_via_scan(
         # gap-voltage channel feeds BOTH (frame-consistent whole-port
         # wave pair; the per-cell #308 frame is refuted physics kept only
         # on the legacy v_port=None path).
-        S = np.asarray(
-            decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
-                                    v_port=vp_all, v_ref=vref_all),
-            dtype=np.complex64,
-        )
+        if _main_wire_record:
+            # Match run_uniform's one-wire fast path, including a vanishing wave.
+            from rfx.probes.probes import driven_port_reflection
+            S = np.asarray(driven_port_reflection(
+                jnp.asarray(vp_all[0, 0]), jnp.asarray(i_all[0, 0]), z0[0]),
+                dtype=np.complex64)[None, None, :]
+        else:
+            S = np.asarray(
+                decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
+                                        v_port=vp_all, v_ref=vref_all),
+                dtype=np.complex64,
+            )
         if return_vi_dump:
             # Mirror ``extract_s_matrix_wire``'s WirePortVIReplayBundle
             # field-for-field.  The wire dump stores the FDTD-sign midpoint V
@@ -378,8 +414,8 @@ def compute_lumped_wire_s_matrix_via_scan(
     return S, freqs
 
 
-def _lumped_recording_probes(grid, ports):
-    """Five global sample cells per port; backward samples keep their owner.
+def _lumped_recording_probes(grid, ports, live_cells=None):
+    """Live E line plus four midpoint H cells; every sample keeps its owner.
 
     A nonperiodic outside neighbour is recorded at a valid placeholder cell
     and zeroed on the host. Length-one axes wrap, exactly as _bwd_h does.
@@ -388,9 +424,11 @@ def _lumped_recording_probes(grid, ports):
     from rfx.simulation import ProbeSpec
 
     probes, zero_columns = [], []
-    for pe in ports:
-        idx = tuple(int(i) for i in grid.position_to_index(pe.position))
-        probes.append(ProbeSpec(*idx, pe.component))
+    for p, pe in enumerate(ports):
+        cells = (live_cells[p] if live_cells is not None else
+                 (tuple(int(i) for i in grid.position_to_index(pe.position)),))
+        idx = cells[len(cells) // 2]
+        probes.extend(ProbeSpec(*cell, pe.component) for cell in cells)
         a, axis_a, b, axis_b = _ampere_loop_components(pe.component)
         for component, axis in ((a, axis_a), (b, axis_b)):
             probes.append(ProbeSpec(*idx, component))
@@ -431,12 +469,31 @@ def _lumped_recording_dfts(samples, freqs, dt, dx):
     return vd, id_
 
 
-def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, drive):
+def _distributed_port_cells(grid, ports, pec_edge_masks=None):
+    """Static live cells; release whole-domain geometry before staging scans."""
+    live_cells = []
+    for pe in ports:
+        if pe.extent is None:
+            cells = (tuple(int(i) for i in grid.position_to_index(pe.position)),)
+        else:
+            from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
+            all_cells, flags, _ = _wire_port_live_cells(
+                grid, wire_port_from_entry(pe), pec_edge_masks)
+            cells = tuple(c for c, live in zip(all_cells, flags) if live)
+        live_cells.append(cells)
+    return live_cells
+
+
+def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, drive,
+                                    live_cells=None):
     from rfx.runners.distributed_v2 import run_distributed
 
-    probes, zeros = _lumped_recording_probes(grid, ports)
+    if live_cells is None:
+        live_cells = _distributed_port_cells(grid, ports)
+    probes, zeros = _lumped_recording_probes(grid, ports, live_cells)
     result = run_distributed(sim, n_steps=n_steps, devices=devices,
-                             _source_port_indices=(drive,), _record_probes=probes)
+                             _source_port_indices=None if drive is None else (drive,),
+                             _record_probes=probes)
     samples = np.array(result.time_series)
     samples[:, zeros] = 0
     # The cell width along each port's own E component, asked per cell.
@@ -445,6 +502,26 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
         float(grid.cells(axis_of[pe.component])[
             int(grid.position_to_index(pe.position)[axis_of[pe.component]])])
         for pe in ports])
+    if any(pe.extent is not None for pe in ports):
+        raw = {"lumped": [], "wire": []}
+        offset = 0
+        for pe, cells, dx in zip(ports, live_cells, dx_ports):
+            n = len(cells)
+            line = samples[:, offset:offset+n]
+            h = samples[:, offset+n:offset+n+4]
+            # Reuse the five-sample DFT (and its shared phase helpers) for
+            # midpoint V/I and the whole live E line. Each cell kept its owner.
+            mid = np.column_stack((line[:, n // 2], h))
+            v, i = _lumped_recording_dfts(mid, freqs, grid.dt, dx)
+            if pe.extent is None:
+                raw["lumped"].append((None, (v[0], i[0], np.zeros_like(v[0]))))
+            else:
+                whole = np.column_stack((np.sum(line, axis=1), h))
+                vp, _ = _lumped_recording_dfts(whole, freqs, grid.dt, dx)
+                raw["wire"].append((None, (v[0], i[0], np.zeros_like(v[0]),
+                                          vp[0], np.zeros_like(v[0]))))
+            offset += n + 4
+        return raw
     v, i = _lumped_recording_dfts(samples, freqs, grid.dt, dx_ports)
     # The current decomposer uses ONLY presence of v_ref to select the
     # post-injection convention. These zeros are NOT measured pre-injection V.

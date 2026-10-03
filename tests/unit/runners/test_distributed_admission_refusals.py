@@ -1,6 +1,6 @@
 """Refuse the input classes the distributed lanes would drop or get wrong.
 
-Periodic/Bloch boundaries, extended and passive ports, surface monitors
+Periodic/Bloch boundaries, reference-plane and passive ports, surface monitors
 (flux, DFT planes), Kerr materials, lumped RLC elements, subgridding.
 
 Exercise the public dispatch and the shard_map runner entry with two CPU
@@ -120,11 +120,11 @@ def test_periodic_boundaries_are_refused(entry, declaration):
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
-def test_extended_lumped_port_is_refused(entry):
-    """A 3 mm, 50 ohm port requires both its source and resistive termination."""
-    sim = _build(entry=entry, port={"impedance": 50.0, "extent": 3e-3})
-    _assert_refused(sim, entry, "extended lumped port", "extent=",
-                    "neither a source nor its resistive termination")
+def test_reference_plane_wire_port_is_refused(entry):
+    sim = _build(entry=entry, port={"impedance": 50.0, "extent": 3e-3,
+                                   "reference_plane_cells": 2, "direction": "+x"})
+    with pytest.raises(NotImplementedError, match="reference_plane_cells.*V_ref.*one device"):
+        _run(sim, entry)
 
 
 @pytest.mark.parametrize("entry", ENTRIES)

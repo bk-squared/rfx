@@ -136,8 +136,8 @@ def test_single_process_scan_uses_explicit_array_arguments(boundary, monkeypatch
     assert len(entries) == 1
     entries[0].assert_called_once()
     # carry, xs, materials, Debye, Lorentz, [CPML parameters], PEC mask,
-    # plus PEC spacings and an explicit sharded rank argument.
-    assert len(entries[0].call_args.args) == 7
+    # and an explicit sharded rank argument. Uniform PEC needs no NU spacings.
+    assert len(entries[0].call_args.args) == (7 if boundary == "cpml" else 6)
     assert set(entries[0].call_args.kwargs) == {"ranks"}
     np.testing.assert_array_equal(entries[0].call_args.kwargs["ranks"], [0, 1])
 
@@ -178,7 +178,7 @@ def test_multi_process_topology_is_decided_by_devices_not_process_count(monkeypa
     gather.assert_not_called()
 
 
-def test_non_uniform_grid_is_refused_across_processes(monkeypatch):
+def test_v2_direct_non_uniform_grid_is_refused(monkeypatch):
     devices = _cpu_devices()
     runner_jax = SimpleNamespace(**{**vars(jax), "process_index": lambda: 1})
     monkeypatch.setattr(distributed_v2, "jax", runner_jax)
@@ -189,8 +189,8 @@ def test_non_uniform_grid_is_refused_across_processes(monkeypatch):
     runner_lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": scan})
     monkeypatch.setattr(distributed_v2, "lax", runner_lax)
     with pytest.raises(NotImplementedError, match="non-uniform grid") as exc:
-        sim.run(n_steps=3, devices=devices)
-    assert "more than one JAX process" in str(exc.value)
+        distributed_v2.run_distributed(sim, n_steps=3, devices=devices)
+    assert "use sim.run(devices=...)" in str(exc.value)
     scan.assert_not_called()
 
 

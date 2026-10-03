@@ -61,8 +61,7 @@ for lane in LANES:
         TABLE["open_" + kind]["run_subgridded"] = Cell("refuses",
             note="all-face absorber outside subgrid production envelope")
     for port in ("lumped", "wire"):
-        if lane in ("run_adi", "fwd_adi", "fwd_distributed_nu") or (
-                port == "wire" and lane == "run_distributed"):
+        if lane in ("run_adi", "fwd_adi", "fwd_distributed_nu"):
             TABLE[port + "_none"][lane] = Cell("refuses")
         elif lane in ("run_nonuniform", "fwd_nonuniform"):
             TABLE[port + "_none"][lane] = Cell(issue="#1266", note="Cb/dV rather than Cb/d_parallel")

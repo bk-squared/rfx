@@ -26,7 +26,7 @@ from rfx import Box, DebyePole, Simulation
 from rfx.core.yee import EPS_0, MaterialArrays
 from rfx.materials.debye import DebyeCoeffs
 from rfx.materials.lorentz import LorentzCoeffs, lorentz_pole
-from rfx.runners import distributed_v2
+from rfx.runners import distributed_nu, distributed_v2
 from rfx.runners import _distributed_common as common
 from rfx.runners._distributed_common import shard_stacked, shard_x_slabs, split_array_x
 
@@ -85,7 +85,8 @@ def _measure(case, multi_process):
     grid = sim._build_nonuniform_grid() if case == "nu" else sim._build_grid()
     cells = int(np.prod(grid.shape))
     records = []
-    scan = distributed_v2.lax.scan
+    runner = distributed_nu if case == "nu" else distributed_v2
+    scan = runner.lax.scan
     boundary_ghosts_true = None
     hlo_constants = []
     hlo_constants_parsed = []
@@ -232,15 +233,17 @@ def _measure(case, multi_process):
                     whole.append((str(shard.device), arr.shape, str(arr.dtype),
                                   type(arr.sharding).__name__))
         # Both topologies capture coefficient tuples with JIT-tracer leaves.
-        coeffs = {
+        if case == "nu":
+            assert "debye" not in carry and "lorentz" not in carry
+        coeffs = {} if case == "nu" else {
             type(value).__name__: value
             for value in inspect.getclosurevars(body).nonlocals.values()
             if isinstance(value, (DebyeCoeffs, LorentzCoeffs))
         }
-        assert set(coeffs) == {"DebyeCoeffs", "LorentzCoeffs"}
+        assert set(coeffs) == (set() if case == "nu" else {"DebyeCoeffs", "LorentzCoeffs"})
         placeholder_shapes = {}
         for material, coeff_type in (("debye", "DebyeCoeffs"), ("lorentz", "LorentzCoeffs")):
-            if material in _dispersion_kinds(case):  # real arrays, not placeholders
+            if case == "nu" or material in _dispersion_kinds(case):  # NU has no dummy ADE carry
                 continue
             for slot, value in (("state", carry[material]), ("coeffs", coeffs[coeff_type])):
                 for name, array in zip(value._fields, value):
@@ -253,12 +256,12 @@ def _measure(case, multi_process):
                         "pec_mask_boundary_ghosts_true": boundary_ghosts_true})
         return scan(body, carry, *args, **kwargs)
 
-    distributed_v2.lax = SimpleNamespace(**{**vars(distributed_v2.lax), "scan": traced_scan})
+    runner.lax = SimpleNamespace(**{**vars(runner.lax), "scan": traced_scan})
     runner_jax = SimpleNamespace(**{**vars(jax), "jit": traced_jit})
     if multi_process:
         # Exercise the multi-process topology without starting jax.distributed.
         runner_jax.process_index = lambda: 1
-    distributed_v2.jax = runner_jax
+    runner.jax = runner_jax
     result = sim.run(n_steps=3, devices=devices)
     jax.block_until_ready(result.time_series)
     assert records, "the memory gate must observe the time-stepping scan"
@@ -296,7 +299,8 @@ def test_time_loop_holds_only_local_slabs(case, multi_process):
         assert max(sizes) <= 1.25 * min(sizes), f"unbalanced device bytes: {record['bytes']}"
         shapes = record["placeholders"]
         kinds = _dispersion_kinds(case)
-        expected_slots = 20 - (8 if "debye" in kinds else 0) - (12 if "lorentz" in kinds else 0)
+        expected_slots = (0 if case == "nu" else
+                          20 - (8 if "debye" in kinds else 0) - (12 if "lorentz" in kinds else 0))
         assert len(shapes) == expected_slots
         for name, shape in shapes.items():
             assert np.prod(shape) <= 2, f"per-cell placeholder {name}: {shape}"
