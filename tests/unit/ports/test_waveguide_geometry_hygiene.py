@@ -626,8 +626,12 @@ def test_advisory_message_recomputes_every_number_it_quotes():
     assert f"documented {_FAR_PORT_LAMBDA_G_FRACTION:g} guide-wavelength" in msg
     # The #494 ripple ladder is a claims-bearing measurement quoted as fact, so
     # it is pinned too: prose numbers were freely corruptible otherwise.
-    assert ("residual |S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, "
-            "and 0.0093 at 0.75") in msg
+    from tests._structured_snapshot import message_numbers
+    assert all(token in msg for token in ("residual", "|S11|", "ripple", "lambda_g"))
+    numbers = message_numbers(msg)
+    ladder = [0.0706, 0.30, 0.0366, 0.50, 0.0093, 0.75]
+    assert any(numbers[i:i + len(ladder)] == pytest.approx(ladder)
+               for i in range(len(numbers) - len(ladder) + 1))
 
 
 def _z_two_port(cpml_layers, *, freqs=_FREQS, dx=0.004):

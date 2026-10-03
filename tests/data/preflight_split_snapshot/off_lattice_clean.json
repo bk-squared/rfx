@@ -4,21 +4,33 @@
       {
         "code": "mesh_resolution",
         "loc": null,
-        "message": "PEC 'pec' y-extent 3mm = 3.0 cells \u2014 volume under-resolved (a PEC volume's curved/edge features need \u22655 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).",
+        "numbers": [
+          3.0,
+          3.0,
+          5.0,
+          1.0,
+          -2.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
-        "message": "PEC 'pec' z-extent 3mm = 3.0 cells \u2014 volume under-resolved (a PEC volume's curved/edge features need \u22655 cells; a 1-2 cell slab is realized as drawn, with walls on both faces).",
+        "numbers": [
+          3.0,
+          3.0,
+          5.0,
+          1.0,
+          -2.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "no_sources",
         "loc": null,
-        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       }

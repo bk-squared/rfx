@@ -52,6 +52,7 @@ structure (rfx #1254, R-i). It needs the sources off over its window too; when
 they are not, the two-window witness ``W2`` (the shorter window
 ``[n_start, split * N)``, which read the actual error 0.003-22x there) is
 judged in its place. Otherwise ``W2`` is reported, not judged.
+``W2`` is a consistency diagnostic, not an error bound.
 
 What this module does inside ``Simulation.run(..., ringdown=RingdownSpec())``
 --------------------------------------------------------------------------
@@ -225,6 +226,7 @@ class RingdownPole(NamedTuple):
     Signed frequency, loaded Q, amplitude decay rate, ``|lambda|`` per step,
     and its amplitude: the largest ``|residue|`` over the channels at the
     window's first sample, relative to that channel's RMS over the window.
+    Channels include identification probes when requested, as well as ports.
     """
 
     f_hz: float
@@ -341,6 +343,11 @@ class RingdownReport:
     includes any TM pole the user identifies by frequency; no mode type or
     observability threshold is inferred. These channels have no W0-style
     accumulator witness; the shares are information only.
+
+    ``tail_share`` takes its maximum over the identification-probe channels
+    as well as the port channels when ``identification_probes`` is set.
+    Pole ``amplitude`` and the strong-pole set used for
+    ``slowest_decay_over_window`` use those channels too.
     """
 
     n_record: int
@@ -568,7 +575,7 @@ def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float):
     if np.any(rms <= 0) or not np.all(np.isfinite(rms)):
         raise ValueError(
             f"a channel has zero or non-finite RMS over the window ({rms}); "
-            "the port saw no ringing to identify")
+            "the identification channel saw no ringing to identify")
     b0, b1 = [], []
     for ch in range(C):
         y = Yd[:, ch].astype(np.complex128) / rms[ch]
@@ -1359,9 +1366,11 @@ class RingdownRun:
 
     Built by ``Simulation.run`` once the lane, the step count and the grid are
     known; :meth:`run` wraps the lane's runner call. Everything that can refuse
-    the request does so here, before the run; after the run nothing raises: a
-    failed check returns the plain result unchanged with the reason in
-    ``Result.ringdown.report`` and a warning.
+    the request does so here, before the run. A malformed time-series shape
+    can still raise after the run. A completion that cannot be formed returns
+    the plain result unchanged; a formed completion whose judged witness fails
+    still carries its completed S in ``Result.ringdown.s_params``. Either way
+    the reason is in ``Result.ringdown.report`` with a warning.
     """
 
     #: The entry point named in refusal messages.
@@ -2580,7 +2589,9 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     each leaf is normalized by its own reference maximum over remaining axes,
     and the worst bin is returned. Exactly zero reference bins are skipped
     and counted in ``note``; no nonzero bins means the witness is not judged.
-    A scalar objective's gradient is already per objective. NaNs fail the check.
+    A scalar objective's gradient is already per objective. Near a stationary
+    point its reference maximum can be tiny, making this relative comparison
+    misleading; inspect the gradient magnitude too. NaNs fail the check.
 
     One forward pass serves both gradients of the early-start form::
 

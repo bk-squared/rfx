@@ -357,9 +357,8 @@ def build_simulation():
     # plane, so that face sits 6 mm below the ground and preflight flags it (the
     # warning is quoted in the run output).  The ground plane sits between the
     # radiator and that face, and the placement is cross-checked against openEMS
-    # at the design-mode bin: |D_rfx - D_openEMS| = 0.0659 dB on the
-    # committed #931 sheet-board measurement, inside the committed
-    # 1.0 dB envelope lock.
+    # at the design-mode bin.  The former sheet-board lock used a different
+    # board; its directivity reading and envelope do not gate this model.
     box_lo = (pad, pad, max(pad, z_gnd - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)
@@ -487,28 +486,11 @@ def main():
 
     sim = build_simulation()
 
-    # Preflight prints each advisory verbatim.  Expected on this fixture:
-    #
-    #   * the close bottom NTFF face (see build_simulation) — a condition to
-    #     interpret, not to suppress;
-    #   * a line naming the realized PEC sheets and whether each landed on
-    #     the plane it declared (#931 §1.3) — preflight collects sheets, so a
-    #     sheet-declared conductor is visible to it;
-    #   * the small-ground-plane pattern advisory (60 mm = 0.56 lambda at
-    #     f_max, so edge diffraction shapes the pattern) — expected physics,
-    #     shared with the openEMS reference, not a solver defect;
-    #   * the off-lattice conductor-face residual on the patch and ground
-    #     outlines (0.7 mm: the graded x/y mesh puts the last node 0.35 cell
-    #     inside every sheet edge on purpose, #1375).
-    #   Measured 2026-09-29 (VESSL 369367265975): three advisories -- the
-    #   NTFF face, the small ground plane and the off-lattice residual.
-    #   An earlier revision of this comment said preflight could not see a
-    #   sheet and that those two went silent; that was true only of the branch
-    #   state before the collectors were threaded.
-    #
-    # The sub-cell PEC advisories that used to head this list are gone for a
-    # real reason: nothing here is a sub-cell conductor any more.  The foils
-    # are sheets, which is what they physically are.
+    # Preflight prints each advisory verbatim.  Expected on this registered
+    # board: ntff_near_field for the close bottom NTFF face, and
+    # ntff_small_ground_plane for finite-ground diffraction.  The sheet
+    # outlines are registered to their solved edges, so an off-lattice
+    # conductor-face residual is not an expected advisory.
     report = sim.preflight()
     print(f"preflight advisories: {len(list(report))}")
 
@@ -607,18 +589,15 @@ def main():
     print(
         f"  f_res {radiating.freq / 1e9:.4f} GHz vs openEMS "
         f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.1f}% — the design mode "
-        "reads HIGH at dx = 2 mm. The committed lock "
-        "(tests/crossval/test_patch_canonical_farfield_e4.py) solves its "
-        "own copy of the pre-#1375 board, so this number is not checked "
-        "against a gate. "
-        "Two coarse-grid mechanisms compete here (substrate under-resolved "
-        "in z reads high, staircased patch edge reads low) and are not "
-        "separated, so finer dx is not a predictable direction."
+        "is measured on the registered board. The former far-field lock "
+        "used a different board and does not gate this result. "
+        "The patch is solved at its drawn size; refine the mesh to measure "
+        "the remaining discretization error."
     )
     print(
         f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "
-        f"({d_dbi[k_star] - OPENEMS_D_DBI:+.2f} dB) — the far field is the "
-        "observable that agrees, inside the committed 1.0 dB envelope."
+        f"({d_dbi[k_star] - OPENEMS_D_DBI:+.2f} dB) — this is a comparison, "
+        "not a pass against the former board's envelope."
     )
 
     # ---- Save the far-field cuts ----

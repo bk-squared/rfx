@@ -4,21 +4,53 @@
       {
         "code": "geometry_in_absorber",
         "loc": "geometry[#0 lo 1mm]",
-        "message": "Material 'diel' (geometry entry #0, Box) extends into CPML region along z-axis: bbox lo face at -1mm is 1mm past the z-lo absorber boundary at 0mm. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).",
+        "numbers": [
+          0.0,
+          -1.0,
+          1.0,
+          0.0,
+          61.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_geometry_in_cpml"
       },
       {
         "code": "lossless_q",
         "loc": null,
-        "message": "all dielectric(s) ['diel'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "numbers": [
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-        "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "numbers": [
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          1.0,
+          1272.0,
+          1346.0,
+          4.0,
+          -20.0,
+          2.0,
+          -23.0,
+          10.0,
+          -17.0,
+          30.0,
+          -6.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

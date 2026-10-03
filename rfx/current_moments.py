@@ -769,13 +769,8 @@ def end_of_record_moments(monitor: CurrentMomentMonitor, state, n_steps, dt):
 #                                                 after update_e)
 #   rfx/nonuniform.py      t = step_idx * dt  ->  n dt
 #
-# One full timestep apart, measured 2026-09-21 on the patch fixture: the block
-# moments extracted from the two disagreed by exactly |exp(-j w dt) - 1|
-# (1.527e-2 at 2.0 GHz, 1.832e-2 at 2.4, 2.137e-2 at 2.8, against w*dt =
-# 1.527e-2 / 1.832e-2 / 2.137e-2). It cancels out of a magnitude spectrum,
-# which is why it has gone unnoticed, but any quantity that combines E with H
-# carries it. The constants below let a caller say which record it is holding
-# rather than guess.
+# These stamps differ by a full timestep. The constants let callers state
+# which record they hold rather than guess; see the recording expressions above.
 UNIFORM_PLANE_STAMP_STEPS = 1.0
 NONUNIFORM_PLANE_STAMP_STEPS = 0.0
 
@@ -956,13 +951,8 @@ def current_moment_far_field(result, theta, phi):
 def weight_dtype_for(sim):
     """Storage type for the monitor's weights, from the run's precision.
 
-    Measured 2026-09-22: with ``precision="float64"`` the block
-    accumulator is complex128 while these weights stayed float32, and the
-    reduction they multiply quantized the moments at float32. The far field
-    taken from them then matched a float64 central difference only to 1e-6 to
-    2e-4, with the difference ladder's plateau stuck at a step of 1e-3, while
-    the Huygens box on the same runs reached 1e-9 with a plateau at 1e-5. The
-    default is unchanged for a float32 run, so those stay bit-identical.
+    Float64 runs use float64 weights so their reduction does not quantize
+    the moments at float32. Float32 runs retain float32 weights.
     """
     return (np.float64
             if getattr(sim, "_precision", "float32") == "float64"
@@ -1104,10 +1094,12 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
       edge is not inside the slab. Its current is real and never read. The
       slab's outermost edge layer counts as outside.
 
-    Measured on what the solve realizes: the material arrays assembled from
+    Checked on the staircase material arrays assembled from
     the model (evaluated at trace time even under an outer ``jax.jit``) with
     the edge rule the E update uses, the realized PEC edges, the realized
-    port and source cells. ``overrides`` (``eps_r``, ``sigma``, ``mu_r``,
+    port and source cells. Subpixel smoothing, conformal PEC and dual-average
+    interfaces are not reproduced here; the slab-edge cell buffer covers
+    those interfaces. ``overrides`` (``eps_r``, ``sigma``, ``mu_r``,
     ``pec_mask``, ``pec_occupancy``, ``design_box``, ``design_occupancy``,
     ``design_region``)
     are what ``forward()`` replaces the model's own arrays with: a concrete
@@ -1171,7 +1163,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
             raise NotImplementedError(
                 f"the current-moment monitor is not supported with the "
                 f"microstrip port {pe.name!r} in mode='eigenmode': that "
-                "launch adds a magnetic source on the H edges of its plane, "
+                "mode is unsupported by this monitor, including passive ports. "
+                "An active eigenmode launch adds a magnetic source on its H edges, "
                 "which J = curl_h H - eps0 dE/dt does not contain. "
                 "mode='laplace' (the default) drives E only and is "
                 "supported.")

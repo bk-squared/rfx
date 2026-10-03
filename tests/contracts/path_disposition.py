@@ -392,6 +392,9 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     )},
 
     # --------------------------------------------------------- bookkeeping
+    "_snap": {"": every_path(ignorable(
+        "preflight acceptance policy (#1138): run()/forward() gate sheet-size findings "
+        "before stepping and realized geometry records the choice; no field update changes"))},
     "_internal_probe_indices": {"": every_path(ignorable("probe bookkeeping"))},
     "_msl_auto_offset_min": {"": every_path(ignorable("MSL port data, read with the port; the _msl_ports row decides it"))},
     "_msl_auto_probe_spacing": {"": every_path(ignorable("MSL port data, read with the port; the _msl_ports row decides it"))},
@@ -592,7 +595,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("shared voltage drive agrees with run_uniform"),
             run_subgridded=carries("inside the refined slab"),
             run_adi=ADI_SOFT_SOURCES,
-            run_distributed=refuses("extended ports refused (#1241)", raises="(extended lumped port)"),
+            run_distributed=carries("uniform live wire drive/load and whole-port S; planes/radius refused"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries("shared voltage drive agrees with run_uniform"),
             fwd_distributed_nu=DIST_FWD_PORTS,
@@ -957,7 +960,7 @@ ROW_CLASS: dict[str, str] = {
         "_solver", "_adi_cfl_factor", "_stencil_order", "_mode")},
     **{attr: BOOKKEEPING for attr in (
         "_internal_probe_indices", "_msl_auto_offset_min",
-        "_msl_auto_probe_spacing", "_msl_auto_probe_lengths", "_boundary_model")},
+        "_msl_auto_probe_spacing", "_msl_auto_probe_lengths", "_boundary_model", "_snap")},
     **{attr: OBSERVER for attr in (
         "_probes", "_dft_planes", "_flux_monitors", "_ntff", "_current_moments")},
     **{attr: PHYSICS for attr in (

@@ -27,7 +27,8 @@ FREQS = jnp.linspace(2e9, 18e9, 8)
 
 
 def _thru():
-    sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
+    # #1138: geometry[2] y solved +11.67 % off; this test checks witness probes produce no probe advisories and no 332.
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")

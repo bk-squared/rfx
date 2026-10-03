@@ -17,7 +17,7 @@ from rfx.runners.distributed_nu import _apply_cpml_h_local_nu
 @pytest.mark.parametrize("apply", [_apply_cpml_e_distributed, _apply_cpml_h_distributed])
 def test_distributed_cpml_rejects_bare_profile(apply):
     with pytest.raises(TypeError, match="CPMLAxisParams"):
-        apply(None, CPMLParams(*(np.ones(1) for _ in range(5))), None, 1, 1e-12, 1e-3, 2)
+        apply(None, CPMLParams(*(np.ones(1) for _ in range(5))), None, 1, 1e-12, 1e-3, 2, rank=0)
 
 
 @pytest.mark.parametrize("axis", [0, 1, 2])
@@ -39,18 +39,16 @@ def test_distributed_cpml_uses_native_staggered_h_profiles(axis: int, nu: bool) 
         native)
     params, auxiliary = _init_cpml_distributed(grid, grid.nx + 2, 1)
     if nu:
-        # main gates the x faces with ``lax.axis_index("x")`` (the research
-        # branch's ``rank_index=`` kwarg is part of a separate lane), so the
-        # local applier must be called inside a named-axis map.
+        # This test owns a single slab, so its rank input is zero.
         mapped = jax.pmap(
             lambda state, aux: _apply_cpml_h_local_nu(
-                state, native_params, aux, 4, float(grid.dt), 1, 1),
+                state, native_params, aux, 4, float(grid.dt), 1, 1, rank=0),
             axis_name="x", devices=jax.devices()[:1])
         actual, _ = mapped(jax.tree_util.tree_map(lambda value: value[None], slab), auxiliary)
     else:
         mapped = jax.pmap(
             lambda state, aux: _apply_cpml_h_distributed(
-                state, params, aux, 4, float(grid.dt), h, 1),
+                state, params, aux, 4, float(grid.dt), h, 1, rank=0),
             axis_name="devices", devices=jax.devices()[:1])
         actual, _ = mapped(jax.tree_util.tree_map(lambda value: value[None], slab), auxiliary)
     component = "h" + "xyz"[(axis + 1) % 3]

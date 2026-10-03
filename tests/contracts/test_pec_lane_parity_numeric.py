@@ -252,7 +252,7 @@ def test_adi_default_refuses_interior_pec_even_without_preflight(mode, kind, ent
     factor is inferred from these short conductor-realization witnesses.
     """
     sim = _adi_conductor(kind, mode)
-    assert sim._adi_cfl_factor == 5.0
+    assert sim._adi_cfl_factor == 2.0  # #1448 ADI default CFL 5 -> 2
     with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
         getattr(sim, entrypoint)(n_steps=4, skip_preflight=True)
 

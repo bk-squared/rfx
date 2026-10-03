@@ -62,7 +62,7 @@ is accurate (AD↔FD relative error 9.21e-5 on the last run of
 exposing `.s_params` / `.freqs`.
 
 **Watch for a run-length-growth trap in the waveguide source `f0` default.**
-If `f0` (`freq_max/2`) lands below the mode cutoff, the launch is evanescent
+If an explicitly supplied `f0` lands below the mode cutoff, the launch is evanescent
 and the extracted S grows with `n_steps`. `f0=None` defaults to the center
 of the requested band, and preflight flags `port_source_below_cutoff` /
 `port_freqs_below_cutoff`. Always pass measurement `freqs` (and ideally an
@@ -148,9 +148,7 @@ before reaching for it:
   `distributed=True` (with a registered DFT-plane probe) both raise
   `NotImplementedError` via `forward()`'s own pre-existing checks
   (`n_warmup` used to be a measured silent no-op on this lane — issue
-  #626 turned that into a fail-loud fence instead; `design_mask` was
-  removed from every public surface entirely by issue #625, so it is no
-  longer a `jacobian_fwd`-specific fence). `checkpoint`/
+  #626 turned that into a fail-loud fence instead). `checkpoint`/
   `checkpoint_segments` are measured exactly neutral under forward mode —
   no raise to catch, so it stays a documented trap in `jacobian_fwd`'s
   own docstring rather than being plumbed through.
@@ -200,3 +198,14 @@ Full contract, fence reasoning, and gates:
   optimizing.
 - [Failed-gate triage](./recipe-failed-gate-triage) — when the validation
   verdict fails.
+
+## JIT and the adjoint path
+
+`forward()` works inside an outer `jax.jit` for every single-device model
+(witness: `tests/unit/autodiff/test_forward_jit_contract.py`).
+For design permittivity on the uniform path with E-DFT objectives,
+`forward(gradient="adjoint")` is available
+(witness: `tests/unit/autodiff/test_reciprocity_adjoint.py`); NTFF objectives
+are outside this adjoint contract.
+`maximize_directivity` requires its default `log_ratio=True`; passing
+`log_ratio=False` raises (source: `rfx/optimize_objectives.py::maximize_directivity`).

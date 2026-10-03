@@ -14,15 +14,9 @@ a committed test pins the fix, not when someone believes it is better.
 Nothing here is a substitute for the repo's standing rule: a warning's absence is
 not an accuracy guarantee, and a preflight pass is not a convergence study.
 
+Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not judged by `sheet_effective_size` (`rfx/materials/thin_conductor.py::ThinConductor.is_pec`, `rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`).
+
 ---
-
-## Distributed runs: a CPML model on two or more real GPUs fails to run
-
-`sim.run(devices=...)` on two or more real GPUs, for any model with a CPML boundary, stops on its first call with `JaxRuntimeError: INTERNAL: CUDA error: Failed to add memset node to a CUDA graph` (JAX 0.10.2).
-No result is returned, so nothing is silently wrong. PEC models on several GPUs and CPML models on one GPU are not affected.
-The failure is in XLA's capture of the multi-device CPML program into a CUDA graph; the cause inside that program is not yet located.
-Until it is fixed, set `XLA_FLAGS=--xla_gpu_enable_command_buffer=` in the environment before JAX is imported. With it, the two- and three-GPU results agree with one GPU to float32 rounding.
-→ [#1441](https://github.com/bk-squared/rfx/issues/1441)
 
 ## Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
 
@@ -49,6 +43,8 @@ with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
 volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
 cell at its vertices. The existing volume-wire rule and legacy `radius=0`
 filament ownership remain; zero does not declare a physical wire radius.
+A positive-radius PEC `PolylineWire` also refuses when the mesh cell sizes
+are traced; its geometric radius check requires concrete cell metrics.
 The attempted filament correction failed its independent uncorrected-main
 reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
 8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
@@ -56,6 +52,8 @@ reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
 That one-edge feed has nonuniform longitudinal current, so the full-height
 wire-port Hankel oracle does not establish its accuracy. The port radius
 model and its full-height oracle remain separate.
+
+`compute_coax_msl_transition` runs no automatic preflight (`rfx/sparams/coax.py::compute_coax_msl_transition`).
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the
@@ -89,8 +87,9 @@ cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), not as gain.
 `enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
 the raw S is gated: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch at its 25 µm claims rung (1.0103 measured; the
-thru line 1.0030), in `tests/oracle/test_msl_chain_battery.py`. Coarser meshes are
+or below 1.02 on the open-stub notch at its 25 µm claims rung, in
+`tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
+measured notch and thru values. Coarser meshes are
 reported, not gated.
 
 **The fitted microstrip propagation constant sits 1.0 to 1.3 % above the

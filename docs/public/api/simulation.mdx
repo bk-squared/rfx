@@ -15,10 +15,10 @@ mental model behind them is in [Core Concepts](/rfx/guide/concepts/).
 
 ```text
 Simulation(freq_max, domain, *, boundary="cpml", cpml_layers=16,
-           cpml_kappa_max=1.0, pec_faces=None, dx=None, mode="3d",
+           cpml_kappa_max=1.0, dx=None, mode="3d",
            dz_profile=None, dx_profile=None, dy_profile=None, dt=None,
            dt_min_cell=None, precision="float32", solver="yee",
-           adi_cfl_factor=5.0, stencil_order=2, interface_eps="sampled")
+           adi_cfl_factor=2.0, stencil_order=2, interface_eps="sampled")
 ```
 
 ```python
@@ -48,7 +48,7 @@ sim = Simulation(
 | `stencil_order` | `2` (default) or `4`. Order 4 only runs on a uniform, PEC or periodic, non-dispersive model. |
 | `dt`, `dt_min_cell` | Pin the time step on a graded mesh (for mesh-as-design-variable work). Refused on a uniform mesh. |
 
-`pec_faces=` is deprecated. Put PEC faces in a `BoundarySpec` instead. Neither
+Put PEC faces in a `BoundarySpec`. Neither
 is a finite ground plane: for that, draw a sheet with `add_thin_conductor()`.
 
 ## Building the model
@@ -268,7 +268,7 @@ These are documented in the [generated reference](/rfx/api/generated/):
 `explain_ad_memory` (reverse-mode memory, see
 [Memory Reduction](/rfx/guide/memory-reduction/)); `export_scene`,
 `export_artifact_bundle` and `artifact_report` (saving a model and its
-results); `set_periodic_axes`; `conductor_mask`.
+results); `conductor_mask`.
 
 ## Limits
 

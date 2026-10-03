@@ -26,8 +26,6 @@ from rfx import (
     Box,
     GaussianPulse,
     Simulation,
-    realized_pec_edge_masks,
-    realized_wall_planes,
 )
 
 
@@ -113,18 +111,53 @@ def run_generic_s11(*, add_component: bool) -> np.ndarray:
 
 def build_microstrip_ports() -> Simulation:
     """Build a short, lossy microstrip line with the correct modal ports."""
+    from rfx.mesh_edges import edge_aware_profiles
+
+    domain = (0.044, 0.034, 0.004)
+    dx = 0.25e-3
+    margin = 12e-3
+    ground = Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 1.25e-3))
+    substrate = Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3))
+    trace = Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.25e-3))
+    # Translate the board and ports together to leave 12 mm extra margin.
+    # Eight interior cells beside each absorber retain the 0.25 mm target.
+    def shifted(box):
+        return Box(tuple(v + margin if a < 2 else v for a, v in enumerate(box.corner_lo)),
+                   tuple(v + margin if a < 2 else v for a, v in enumerate(box.corner_hi)))
+
+    ground, substrate, trace = map(shifted, (ground, substrate, trace))
+    edge_dx = dx
+    # #1138: register solved edges and port planes to the drawing.
+    pad = 8 * edge_dx
+
+    def interior_box(box):
+        return Box(tuple(v - pad if a < 2 else v for a, v in enumerate(box.corner_lo)),
+                   tuple(v - pad if a < 2 else v for a, v in enumerate(box.corner_hi)))
+
+    # Build the graded interior separately, then attach exactly eight uniform
+    # cells at each end. All declarations below stay at their drawn coordinates.
+    profiles = edge_aware_profiles(
+        (domain[0] - 2 * pad, domain[1] - 2 * pad, domain[2]), 0.25e-3, boundary_cell=edge_dx,
+        sheets=[interior_box(ground), interior_box(trace)],
+        solids=[interior_box(substrate)],
+        faces={"x": [4e-3 + margin - pad, 16e-3 + margin - pad], "y": [5e-3 + margin - pad]}, axes="xy",
+    )
+    profiles = {key: np.concatenate((np.full(8, edge_dx), cells, np.full(8, edge_dx)))
+                for key, cells in profiles.items()}
     sim = Simulation(
         freq_max=6.0e9,
-        domain=(0.020, 0.010, 0.004),
-        dx=0.25e-3,
+        domain=domain,
+        dx=dx,
+        dz_profile=np.full(16, 0.25e-3),
+        **profiles,
         boundary="cpml",
         cpml_layers=3,
     )
     sim.add_material("substrate", eps_r=3.2, sigma=0.01)
 
     # The metal and dielectric end before the absorbing cells.  The 1 mm
-    # substrate has four cells through its height, and the side clearance is
-    # greater than twice that height, so preflight should pass cleanly.
+    # substrate has x/y faces 23–43 µm off nodes where sheet-edge registration
+    # takes precedence; side clearance exceeds twice the substrate height.
     #
     # FOIL IS A SHEET, A PLATE IS A VOLUME.  A microstrip ground plane and its
     # trace are etched copper foil — tens of microns on a 1 mm board — so they
@@ -141,20 +174,13 @@ def build_microstrip_ports() -> Simulation:
     # for foil.  Both of these conductors used to be drawn as 0.5 mm PEC slabs
     # (two cells each), which put 1 mm of solid metal into a 2 mm stack-up.
     # Lattice ownership contract, #931 §1.1-§1.3.
-    sim.add_thin_conductor(
-        Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 1.25e-3))
-    )
+    sim.add_thin_conductor(ground)
     sim.add(
-        Box((0.75e-3, 0.75e-3, 1.25e-3), (19.25e-3, 9.25e-3, 2.25e-3)),
+        substrate,
         material="substrate",
     )
-    # A sheet Box footprint is sampled CLOSED on its two in-plane axes, so the
-    # drawn 1.0 mm trace width is realized as 1.0 mm (nodes 4.50 .. 5.50 mm at
-    # dx = 0.25 mm).  The half-open node sampling this file used to get gave
-    # 0.75 mm of realized trace against a 1.0 mm declaration.
-    sim.add_thin_conductor(
-        Box((0.75e-3, 4.50e-3, 2.25e-3), (19.25e-3, 5.50e-3, 2.25e-3))
-    )
+    # The 1 mm drawn trace is 1 mm at its solved free edges.
+    sim.add_thin_conductor(trace)
 
     common = {
         "width": 1.0e-3,
@@ -162,13 +188,13 @@ def build_microstrip_ports() -> Simulation:
         "eps_r_sub": 3.2,
     }
     sim.add_msl_port(
-        (4.0e-3, 5.0e-3, 1.25e-3),
+        (4.0e-3 + margin, 5.0e-3 + margin, 1.25e-3),
         direction="+x",
         name="left",
         **common,
     )
     sim.add_msl_port(
-        (16.0e-3, 5.0e-3, 1.25e-3),
+        (16.0e-3 + margin, 5.0e-3 + margin, 1.25e-3),
         direction="-x",
         name="right",
         **common,
@@ -270,17 +296,12 @@ def main() -> None:
     # are needed here; a settled microstrip S-matrix costs much more than the
     # small generic-port demonstrations above.
     #
-    # The general report is NOT empty on this model and readiness is read off
-    # report.ok (no error-severity finding), the same way the waveguide leg
-    # below does it.  What it draws is one advisory, twice: preflight
-    # assembles the material arrays without a PEC-sheet collector, so the
-    # sheet-declared ground and trace are absent from the cell mask it reads
-    # and rfx says so instead of quietly dropping them.  That is a gap in
-    # preflight's own plumbing (#931 §6), not a finding about this geometry —
-    # the realized planes were checked at build time in
-    # build_microstrip_ports() and are exactly the two declared foils.  When
-    # preflight reads the realized edge set the advisory goes away and the
-    # report is empty again.
+    # The edge-aware propagation mesh reports that the automatic downstream
+    # reflector-clearance solve is skipped on graded cells. Both short feeds
+    # also report insufficient probe clearance; fitted Z0/beta are unreadable.
+    # The three-layer
+    # absorber also remains advisory. This section only builds the setup; it
+    # does not quote a settled microstrip S-matrix.
     microstrip_report = microstrip.preflight()
     microstrip_route = microstrip.preflight_sparameters(calculator="msl")
     print(

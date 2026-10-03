@@ -213,7 +213,8 @@ def _thru_sim(axis: str, lane: str):
         thi = (lat_c + _AG_W_TRACE / 2, _AG_L_PROP, _AG_H_SUB)
         p0, p1, d0, d1 = ((lat_c, _AG_PORT_MARGIN, 0.0),
                           (lat_c, _AG_PORT_MARGIN + _AG_L_LINE, 0.0), "+y", "-y")
-    sim = Simulation(freq_max=_AG_F_MAX, domain=domain, dx=_AG_DX, cpml_layers=8,
+    # #1138: geometry[1] transverse x/y solved +8.656% off; this tests sparse/full-plane extraction parity.
+    sim = Simulation(snap="declared", freq_max=_AG_F_MAX, domain=domain, dx=_AG_DX, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")), **kw)
     sim.add_material("ro4350b", eps_r=_AG_EPS_R)

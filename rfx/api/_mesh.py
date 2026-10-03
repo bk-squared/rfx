@@ -168,8 +168,8 @@ class _MeshMixin:
         without the caller passing a profile.
 
         * ``2d_tmz`` on ONE z cell between PEC walls is solved as that 3-D
-          box, whose record differs from the uniform lane's 2-D solve of the
-          same declaration by 0.34 of the probe peak (#1340). One declaration
+          box, with a different timestep from the uniform lane's 2-D solve
+          (#1340); equal step counts compare different physical times. One declaration
           cannot mean both, so it is refused, and the message names the 3-D
           box to declare instead (``mode="3d"``, one cell, PEC z walls). On a
           thicker z stack every amplitude scales with the z cell count.

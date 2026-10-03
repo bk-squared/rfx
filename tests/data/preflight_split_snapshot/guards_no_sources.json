@@ -4,7 +4,7 @@
       {
         "code": "no_sources",
         "loc": null,
-        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       }

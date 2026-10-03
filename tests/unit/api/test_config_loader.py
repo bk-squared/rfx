@@ -70,9 +70,9 @@ _CFG = {
 }
 
 
-def _build_direct() -> Simulation:
+def _build_direct(*, snap="strict") -> Simulation:
     """Build the equivalent Simulation via the builder API directly."""
-    sim = Simulation(
+    sim = Simulation(snap=snap,
         freq_max=12e9,
         domain=(0.020, 0.012, 0.006),
         boundary="cpml",
@@ -97,6 +97,33 @@ def _build_direct() -> Simulation:
 # --------------------------------------------------------------------------
 # Construction equivalence — the primary gate.
 # --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("snap", ["strict", "declared"])
+def test_config_carries_snap_to_record_and_preflight(snap, tmp_path):
+    """#1138: config acceptance changes severity, not the solved sheet."""
+    import yaml
+
+    path = tmp_path / "sheet-snap.yaml"
+    path.write_text(yaml.safe_dump({**_CFG, "snap": snap}))
+    sim = simulation_from_yaml(path)
+    strict = simulation_from_dict(_CFG)
+    record = sim.realized_geometry()
+    assert record.snap == snap
+    findings = sim.preflight().by_code("sheet_effective_size")
+    assert findings
+    assert {finding.severity for finding in findings} == {
+        "warning" if snap == "declared" else "error"
+    }
+    assert [entity.axes for entity in record.entities] == [
+        entity.axes for entity in strict.realized_geometry().entities
+    ]
+
+
+def test_config_rejects_invalid_snap():
+    with pytest.raises(ValueError, match="snap"):
+        simulation_from_dict({**_CFG, "snap": "silent"})
+
 
 def test_dict_vs_direct_equivalence():
     sim_cfg = simulation_from_dict(_CFG)
@@ -327,8 +354,9 @@ def test_soft_source_without_amplitude_kind_means_current():
 @pytest.mark.slow
 def test_full_run_matches_direct():
     run_kwargs = execution_to_run_kwargs(_CFG["execution"])
-    sim_cfg = simulation_from_dict(_CFG)
-    sim_dir = _build_direct()
+    # #1138: trace x/y solved +4.375%/+35% off; this tests config/direct run parity.
+    sim_cfg = simulation_from_dict({**_CFG, "snap": "declared"})
+    sim_dir = _build_direct(snap="declared")
     res_cfg = sim_cfg.run(**run_kwargs)
     res_dir = sim_dir.run(**run_kwargs)
     assert res_cfg.s_params.shape == res_dir.s_params.shape

@@ -49,12 +49,12 @@ def _full_exchange_component(field, mesh, n_devices):
     return exchange(field)
 
 
-def _full_h(st, mesh, n_devices):
+def _full_h(st, mesh, n_devices, *, ranks=None):
     return st._replace(**{c: _full_exchange_component(getattr(st, c), mesh, n_devices)
                           for c in ("hx", "hy", "hz")})
 
 
-def _full_e(st, mesh, n_devices):
+def _full_e(st, mesh, n_devices, *, ranks=None):
     return st._replace(**{c: _full_exchange_component(getattr(st, c), mesh, n_devices)
                           for c in ("ex", "ey", "ez")})
 
@@ -194,8 +194,8 @@ def _install_poison(patch, *, live=False):
     for name in ("_exchange_h_ghosts_shmap", "_exchange_e_ghosts_shmap"):
         original = getattr(runner, name)
 
-        def poisoned(st, mesh, n_devices, original=original):
-            return _poison(original(st, mesh, n_devices), mesh, n_devices, live=live)
+        def poisoned(st, mesh, n_devices, original=original, *, ranks=None):
+            return _poison(original(st, mesh, n_devices, ranks=ranks), mesh, n_devices, live=live)
 
         patch.setattr(runner, name, poisoned)
 
@@ -344,8 +344,8 @@ def test_collective_gate_rejects_mutations(monkeypatch, mutation):
 def test_bit_gate_rejects_missing_ez(monkeypatch):
     original = runner._exchange_e_ghosts_shmap
 
-    def missing_ez(st, mesh, n_devices):
-        return original(st, mesh, n_devices)._replace(ez=st.ez)
+    def missing_ez(st, mesh, n_devices, *, ranks=None):
+        return original(st, mesh, n_devices, ranks=ranks)._replace(ez=st.ez)
 
     monkeypatch.setattr(runner, "_exchange_e_ghosts_shmap", missing_ez)
     with pytest.raises(AssertionError, match="trace"):
@@ -375,7 +375,9 @@ def test_exchange_preserves_physical_ghosts_and_packs_both_fields(n_devices):
         (common.exchange_h_yee_shmap, ("hy", "hz"), 0, -2, range(1, n_devices)),
         (common.exchange_e_yee_shmap, ("ey", "ez"), -1, 1, range(n_devices - 1)),
     ):
-        result = jax.jit(lambda s: exchange(s, mesh, n_devices))(st)
+        from rfx.runners._rank import mesh_ranks
+        result = jax.jit(lambda s, r: exchange(s, mesh, n_devices, ranks=r))(
+            st, mesh_ranks(mesh))
         for c in _FIELDS:
             expected = original[c].copy()
             if c in components:

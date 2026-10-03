@@ -1,4 +1,4 @@
-"""Committed advisory-text snapshot lock for the #980 split of
+"""Committed structured advisory snapshot lock for the #980 split of
 ``rfx/api/_preflight.py``.
 
 Issue #980 Phase 3 breaks the 9 376-line ``rfx/api/_preflight.py`` into an
@@ -10,90 +10,16 @@ look right".
 
 This module is that witness for preflight.
 
-Why a TEXT snapshot rather than array bit identity
---------------------------------------------------
-``tests/locks/test_sparams_split_bit_identity.py`` pins raw S arrays, which
-are host- and XLA-dependent, so its baseline is deliberately NOT committed.
-Preflight has no such dependence: its observable is a report of strings.
-``PreflightIssue`` is a ``str`` subclass carrying ``severity``/``code``/
-``loc``/``source``; ``PreflightReport`` is a ``list`` subclass, so the report
-PRESERVES EMISSION ORDER; and ``PreflightReport.to_dict()`` serialises both.
-Emission order is the property a code-motion split most easily breaks --
-``_validate_simulation_config``'s ordered call sequence IS the composition
-point -- so the order is exactly what this lock pins.
+Structured snapshot policy
+--------------------------
+Pin report codes, locations, counts, severity, source and emission order.
+Keep each message's numeric tokens in order, but omit its wording so editorial
+changes do not rewrite committed snapshots. Numeric token counts are exact;
+values are compared with tests._structured_snapshot's numeric tolerance.
+The baseline data below retains the historical code-motion coverage.
 
-That makes the baseline committable, and it is committed. Measured before
-writing it (see "Determinism", below), the snapshot text is invariant under
-``PYTHONHASHSEED``, JAX device count and ``JAX_ENABLE_X64``, so the file holds
-what the report said, byte for byte, and only the numpy version's scalar repr
-is read through (the numpy-scalar paragraph below).
-
-The baseline was captured at ``8586f549`` (what ``LOCK_PROVENANCE`` records)
-and re-verified byte-unchanged at ``13fb003c``, i.e. across #1009 and #1010 --
-two real ``rfx/api/_sparams.py`` -> ``rfx/sparams/`` code-motion merges. So the
-lock is specific to preflight behaviour rather than sensitive to any nearby
-refactor, which is the property that makes a red here worth stopping for.
-
-What a red here means
----------------------
-A diff in this file is a BEHAVIOUR CHANGE -- different advisory text, a
-different code, a different severity, or the same findings in a different
-ORDER. The #980 split is supposed to move code, not change any of those. So a
-red is not something to regenerate past: root-cause it first, and if the
-change is intended, regenerate WITH a written justification in the PR body
-naming which fixture changed and why. Regenerating quietly defeats the only
-gate this refactor has.
-
-Update command (from the repo root, on the tree whose output is correct)::
-
-    RFX_PREFLIGHT_SNAPSHOT_UPDATE=1 \\
-    pytest -p no:cacheprovider tests/locks/test_preflight_split_snapshot.py
-
-Every parametrised case then SKIPS with the path it rewrote; commit the
-resulting ``tests/data/preflight_split_snapshot/*.json`` alongside the change.
-
-Determinism (measured 2026-09-14 on this pod before the baseline was written)
-----------------------------------------------------------------------------
-The fixtures below were generated in four separate processes and the JSON
-compared byte for byte across all four:
-
-* ``PYTHONHASHSEED=1`` vs ``PYTHONHASHSEED=987654`` -- identical. (Sets ARE
-  formatted into some messages, e.g. ``pec_faces={y_hi, y_lo, z_hi, z_lo}``;
-  they are sorted at the check site, so hash order does not leak.)
-* 1 JAX device vs ``XLA_FLAGS=--xla_force_host_platform_device_count=2``
-  (what the repo-root ``conftest.py`` sets for a pytest run) -- identical.
-* ``JAX_ENABLE_X64=0`` vs ``1`` -- identical.
-
-Also scanned for and found ABSENT in the whole snapshot corpus: repository
-absolute paths, ``<... object at 0x...>`` reprs, and timestamps. No field is
-dropped and no text is rewritten.
-
-TWO host/flag-dependent inputs have been found, and both are pinned at the
-fixture rather than normalised out of the report.
-``preflight(check_ad_memory=True)`` with ``available_memory_gb=None`` sizes
-its budget from ``jax.local_devices()[..].memory_stats()["bytes_limit"]``,
-which decides whether the ``ad_memory`` advisory fires at all -- silent on
-this CPU pod, potentially firing on a GPU host. The ``ad_memory_sane``
-fixture therefore passes an explicit 0.5 GB, which fires the advisory
-everywhere. Leg 3 found the second: a waveguide port's measurement band is
-stored as ``jnp.asarray`` gives it, so its dtype follows ``JAX_ENABLE_X64``,
-and three per cent above cutoff ``lambda_g = lambda_0 / sqrt(1 - (f_c/f)^2)``
-divides by 0.057 and amplifies float32 rounding into the 7th printed digit.
-``waveguide_layout_near_cutoff`` therefore injects its band as an explicit
-float64 numpy array -- the value three of the four (dtype x x64) combinations
-already agree on; ``waveguide_setup_thru``, an octave further from cutoff, is
-x64-invariant either way and is left alone. Pinning the INPUT keeps the whole
-report observable in both cases; dropping the field would have hidden the
-check instead.
-
-Seven messages embed a numpy scalar repr (``np.float64(0.005)``) because a
-declared bbox tuple is interpolated straight into the text. numpy 2 prints it
-that way and numpy 1 as ``0.005``, so two fixtures failed under numpy 1.26
-with the report otherwise unchanged (#1289). The full-text step therefore
-reads a numpy scalar repr as the number inside it, on both sides, and compares
-everything else exactly. The numbers themselves are reprs of declared inputs
-or arithmetic on them (measured deterministic above), so they are not given a
-tolerance: a repr's last digit is not a stated precision.
+Update with RFX_PREFLIGHT_SNAPSHOT_UPDATE=1 only after an intentional change
+to those structured observables; each updated case skips visibly.
 
 Coverage, measured -- and what it does NOT cover
 ------------------------------------------------
@@ -421,15 +347,15 @@ LOCK_PROVENANCE = {
     "pinned_until": "2027-03-14",
 }
 
-import difflib
 import json
 import os
-import re
 import warnings
 from pathlib import Path
 
 import numpy as np
 import pytest
+
+from tests._structured_snapshot import assert_structured_close, without_prose
 
 
 _HERE = Path(__file__).resolve()
@@ -1066,7 +992,11 @@ def _coax_msl_instrument_sim():
 def _rasterization(name, *args, **kwargs):
     import tests.unit.preflight.test_preflight_rasterization as mod
 
-    return getattr(mod, name)(*args, **kwargs)
+    sim = getattr(mod, name)(*args, **kwargs)
+    if name in {"_slot_sim", "_cavity_sim"}:
+        # #1138: this lock checks strict verdicts; the advisory tests opt in.
+        sim._snap = "strict"
+    return sim
 
 
 def _absorber(name, *args, **kwargs):
@@ -1690,6 +1620,7 @@ def _refplane_near_field_sim():
     """
     from tests.locks.test_refplane_port_waves import _build_thru
 
+    # #1138: trace x/y +2.06%/+7%; this snapshot pins reference-plane advice.
     return _build_thru(reference_plane_cells=3)
 
 
@@ -1840,7 +1771,7 @@ def _wire_port_end_gap_sim():
     ``tests/unit/preflight/test_wire_port_gap_distance.py:9``'s
     ``_model(2, -1, 2)``, IMPORTED -- the ``z``/``lower``/``gap=2`` cell of
     that file's 24-way parametrisation, whose assertions are the
-    behavioural gate on the text this snapshot pins. The fifth and last
+    behavioural gate on message contents omitted by this snapshot. The fifth and last
     code of ``_validate_cfg_port_inside_pec``; the body itself was already
     witnessed three times over, so this closes a CODE rather than a body.
     """
@@ -1987,6 +1918,8 @@ _FIXTURES = (
      {"check_ad_memory": True, "n_steps_for_memory": 1000,
       "available_memory_gb": 0.5}, None),
     # -- 25-28. ADI / non-uniform grading / flux windows / PEC-to-wall ------
+    # #1448 ADI default CFL 5 -> 2: measured adi_3d_accuracy count 1 -> 0.
+    # The retained conductor refusal now calls factor 5 the former default.
     ("adi_conductor_sheet", _adi_conductor_sim, {}, None),
     ("nu_grading_beyond_cap",
      lambda: _nu_grading_sim(np.array([1, 1, 1, 2, 2, 2, 1, 1, 1]) * _MM),
@@ -2159,7 +2092,7 @@ assert len(set(_IDS)) == len(_IDS), "duplicate fixture id in _FIXTURES"
 
 
 def _render(fixture_id, build, kwargs, calculator) -> str:
-    """Build the sim, run preflight, return the canonical snapshot text.
+    """Build the sim, run preflight, return canonical structured JSON.
 
     ``warnings.simplefilter("ignore")`` so the RETURNED REPORT is the only
     channel measured -- the warning stream itself is pinned by the behavioural
@@ -2168,11 +2101,26 @@ def _render(fixture_id, build, kwargs, calculator) -> str:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim = build()
+        # #1138: these fixtures pin other advisory codes, not sheet-size refusal.
+        # Residuals below are the strict audit's free-end span differences.
+        declared_advisories = {
+            "coax_msl_instrument": "signal x +5.83%, arms y +2.69%, trace y +11.67%",
+            "stack_snapped_patch": "patch x/y +11.67%",
+            "tie_stack": "sheets x/y +5.83%",
+            "adi_conductor_sheet": "sheet x +5.83%",
+            "msl_conductor_plane_mismatch": "trace y +17.5%",
+            "coax_junction_short": "trace y +11.67%",
+            "refplane_near_field": "trace x/y +2.06%/+7%",
+            "refplane_partial_optin": "trace x/y +2.06%/+7%",
+            "wire_port_dead_cell_nu": "trace y -5.46%",
+        }
+        if fixture_id in declared_advisories:
+            sim._snap = "declared"
         payload = {"preflight": sim.preflight(**kwargs).to_dict()}
         if calculator is not None:
             payload["preflight_sparameters"] = sim.preflight_sparameters(
                 calculator=calculator).to_dict()
-    return json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    return json.dumps(without_prose(payload), sort_keys=True, indent=2) + "\n"
 
 
 def _codes(text: str) -> list[str]:
@@ -2188,26 +2136,12 @@ def _updating() -> bool:
     return os.environ.get(_UPDATE_ENV, "").strip() not in ("", "0", "false")
 
 
-def _unified(expected: str, got: str, fixture_id: str, limit: int = 60) -> str:
-    lines = list(difflib.unified_diff(
-        expected.splitlines(), got.splitlines(),
-        fromfile=f"committed/{fixture_id}.json",
-        tofile=f"this tree/{fixture_id}.json",
-        lineterm="", n=2,
-    ))
-    head = "\n".join(lines[:limit])
-    if len(lines) > limit:
-        head += f"\n... ({len(lines) - limit} more diff lines suppressed)"
-    return head
-
-
 @pytest.mark.parametrize("fixture_id,build,kwargs,calculator", _FIXTURES,
                          ids=_IDS)
 def test_preflight_report_matches_the_committed_snapshot(
     fixture_id, build, kwargs, calculator,
 ):
-    """The report's codes, severities, text AND ORDER are pinned; only a
-    numpy scalar's repr is read as the number it prints.
+    """The report's structured fields and emission order are pinned.
 
     Order first: ``PreflightReport`` is a ``list``, so the sequence below is
     ``_validate_simulation_config``'s own call order made observable. A
@@ -2251,23 +2185,9 @@ def test_preflight_report_matches_the_committed_snapshot(
         f"{_UPDATE_HINT}"
     )
 
-    # 3. Full text -- message wording, severity, loc, source, flux_regions --
-    # with a numpy scalar read as the number it prints: np.float64(0.005)
-    # under numpy 2, 0.005 under numpy 1.
-    want, have = _numpy_scalars_as_numbers(expected), _numpy_scalars_as_numbers(got)
-    assert have == want, (
-        f"{fixture_id}: the preflight report text differs from the committed "
-        f"snapshot ({path.relative_to(_REPO)}).\n"
-        f"{_unified(want, have, fixture_id)}\n"
-        f"{_UPDATE_HINT}"
-    )
-
-
-_NUMPY_SCALAR = re.compile(r"np\.(?:float|int|uint|complex)\d*\(([^()]*)\)")
-
-
-def _numpy_scalars_as_numbers(text: str) -> str:
-    return _NUMPY_SCALAR.sub(r"\1", text)
+    # Counts and numeric metadata remain binding; message prose does not.
+    assert_structured_close(without_prose(json.loads(got)),
+                            without_prose(json.loads(expected)), fixture_id)
 
 
 def test_every_committed_snapshot_still_has_a_fixture():
@@ -2285,3 +2205,65 @@ def test_every_committed_snapshot_still_has_a_fixture():
         f"{_SNAPSHOT_DIR.relative_to(_REPO)} holds snapshots with no fixture "
         f"in _FIXTURES: {orphans}. Delete the file or restore the fixture."
     )
+
+
+@pytest.mark.parametrize("mutation", ["wording", "remove_code", "count", "order", "number", "number_count"])
+def test_structured_split_snapshot_mutations(monkeypatch, tmp_path, mutation):
+    from copy import deepcopy
+
+    expected = {"preflight": {"n_issues": 2, "issues": [
+        {"code": "first", "loc": "x", "message": "old wording 2 cells"},
+        {"code": "second", "loc": "y", "message": "another warning"},
+    ]}}
+    actual = deepcopy(expected)
+    if mutation == "wording":
+        actual["preflight"]["issues"][0]["message"] = "new wording 2 cells"
+    elif mutation == "number":
+        actual["preflight"]["issues"][0]["message"] = "old wording 1 cells"
+    elif mutation == "number_count":
+        actual["preflight"]["issues"][0]["message"] = "old wording 2 cells 3"
+    elif mutation == "remove_code":
+        actual["preflight"]["issues"].pop()
+    elif mutation == "count":
+        actual["preflight"]["n_issues"] += 1
+    else:
+        actual["preflight"]["issues"].reverse()
+    (tmp_path / "mutation.json").write_text(json.dumps(expected))
+    monkeypatch.setitem(test_preflight_report_matches_the_committed_snapshot.__globals__,
+                        "_SNAPSHOT_DIR", tmp_path)
+    monkeypatch.setitem(test_preflight_report_matches_the_committed_snapshot.__globals__,
+                        "_render", lambda *args: json.dumps(actual))
+    monkeypatch.delenv(_UPDATE_ENV, raising=False)
+    if mutation == "wording":
+        test_preflight_report_matches_the_committed_snapshot("mutation", None, None, None)
+    else:
+        with pytest.raises(AssertionError):
+            test_preflight_report_matches_the_committed_snapshot("mutation", None, None, None)
+
+
+@pytest.mark.parametrize("replacement,red", [
+    ("{gap/(2*cell):.1f}", True),
+    ("{gap/cell:.1f}", False),
+])
+def test_reported_cell_count_mutation_trips_split_lock(monkeypatch, replacement, red):
+    """Review mutation: halve only the reported count in mesh.py's PEC gap."""
+    import inspect
+    import rfx.preflight.mesh as mesh
+    from rfx.api._preflight import _PreflightMixin
+
+    fixture = next(row for row in _FIXTURES if row[0] == "congruence_off_lattice")
+    monkeypatch.delenv(_UPDATE_ENV, raising=False)
+    test_preflight_report_matches_the_committed_snapshot(*fixture)
+    source = inspect.getsource(mesh._validate_mesh_quality)
+    assert source.count("{gap/cell:.1f}") == 1
+    source = source.replace("{gap/cell:.1f}", replacement)
+    source = source.replace("Gap between PEC structures:", "PEC separation:")
+    namespace = dict(vars(mesh))
+    exec(compile(source, mesh.__file__, "exec"), namespace)
+    monkeypatch.setattr(_PreflightMixin, "_validate_mesh_quality",
+                        namespace["_validate_mesh_quality"])
+    if red:
+        with pytest.raises(AssertionError, match=r"issues\[.*numbers"):
+            test_preflight_report_matches_the_committed_snapshot(*fixture)
+    else:
+        test_preflight_report_matches_the_committed_snapshot(*fixture)

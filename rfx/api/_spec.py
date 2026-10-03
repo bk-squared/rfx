@@ -683,7 +683,9 @@ class Result(NamedTuple):
         Probe recordings over time.
     s_params : (n_ports, n_ports, n_freqs) complex or None
         S-parameter matrix (computed only when ports are present and
-        ``compute_s_params=True``).
+        ``compute_s_params=True``). With no driven port, passive-port ratios
+        from the main record are termination diagnostics, not an S-matrix
+        of the structure under independent port drives.
     freqs : (n_freqs,) float or None
         Frequency array for S-parameters.
     ntff_data : NTFFData or None
@@ -825,7 +827,10 @@ class Result(NamedTuple):
             ts = ts[:, probe_idx]
         ts = ts.ravel()
         if self.dt is None:
-            raise ValueError("dt not available in Result — run with store_dt=True")
+            raise ValueError(
+                "dt not available in Result — Simulation.run() populates dt "
+                "automatically; supply dt when constructing Result manually."
+            )
         fr = freq_range
         if fr is None:
             fr = self.freq_range
@@ -1061,7 +1066,8 @@ class Result(NamedTuple):
         """Plot the probe time series.
 
         Thin wrapper over :func:`rfx.visualize.plot_time_series`. Requires
-        ``dt`` to be present (run with ``store_dt=True``).
+        ``dt`` to be present. ``Simulation.run()`` populates it automatically;
+        supply ``dt`` when constructing a Result manually.
 
         Parameters
         ----------
@@ -1083,8 +1089,8 @@ class Result(NamedTuple):
 
         if self.dt is None:
             raise ValueError(
-                "no dt in this Result — run with store_dt=True to plot the "
-                "time series"
+                "no dt in this Result — Simulation.run() populates dt "
+                "automatically; supply dt when constructing Result manually."
             )
         ts = np.asarray(self.time_series)
         if ts.ndim == 1:
@@ -1693,7 +1699,7 @@ class MSLSMatrixResult:
         that quarter-wave open-stub notch has. Both sit ABOVE unity on a
         passive structure, by 0.31 % and 0.21 %, which is never reported here
         as physics: they are raw, unprojected values carrying the coherent
-        power excess tracked as #838. Their 0.009 dB difference is one
+        power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one
         fixture (cv06b), one bin (3.77125 GHz), an arm-to-arm difference —
         NOT a bound on ``S`` — and the comparison's producer verdict was
         ``not_read``. What it does show is that ``S`` moves far less than the

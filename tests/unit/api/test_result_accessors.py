@@ -183,7 +183,7 @@ def test_plot_no_freqs_raises():
 def test_plot_time_series_no_dt_raises():
     r = Result(state=None, time_series=np.zeros((10, 2)),
                s_params=None, freqs=None, dt=None)
-    with pytest.raises(ValueError, match="store_dt=True"):
+    with pytest.raises(ValueError, match=r"Simulation.run\(\).*supply dt"):
         r.plot_time_series()
 
 

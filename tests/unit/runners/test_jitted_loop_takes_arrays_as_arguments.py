@@ -56,8 +56,10 @@ def _model(kind: str, dispersive: bool = False):
     zdom = {"graded": 8.65e-3, "uniform": 9e-3, "thin": 1e-3, "2d": 1e-3}[kind]
     if kind == "2d":
         kw["mode"] = "2d_tmz"
+    # #1138: the stub sheet is solved -15 % / +7.8 % off its drawing; this test
+    # checks what the compiled loop closes over, not sheet size.
     sim = Simulation(freq_max=12e9, domain=(14e-3, 11e-3, zdom), dx=dx,
-                     boundary="cpml", cpml_layers=4, **kw)
+                     boundary="cpml", cpml_layers=4, snap="declared", **kw)
     if kind in ("thin", "2d"):
         z = 0.0 if kind == "2d" else 0.5e-3
         sim.add_material("sub", eps_r=3.66, sigma=0.004,

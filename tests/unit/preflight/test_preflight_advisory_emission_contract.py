@@ -569,8 +569,7 @@ EMISSION_CLASSIFICATION = {
         MANUAL, "is the preflight entry point itself"),
     "Simulation.compute_mixed_s_matrix": (
         AUTO,
-        "calls self.preflight() directly when not skip_preflight, "
-        "rfx/api/_sparams.py:4206"),
+        "calls self._auto_preflight() when not skip_preflight, rfx/sparams/mixed.py"),
     "Simulation.compute_waveguide_s_matrix": (
         DIAGNOSTIC_ONLY,
         "rfx/api/_sparams.py:1265 -- \"the functional entry points run no "

@@ -397,19 +397,19 @@ CONFORMAL_PATHS = {
     "forward-uniform": (
         lambda: _conformal_cavity(True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True),
-        "Simulation.forward()", "uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "forward-nonuniform": (
         lambda: _conformal_cavity(True, nonuniform=True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True),
-        "Simulation.forward()", "non-uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "non-uniform forward"),
     "forward-distributed-nonuniform": (
         lambda: _conformal_cavity(True, nonuniform=True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True,
             distributed=True, devices=_devices()),
-        "Simulation.forward()", "distributed non-uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "distributed non-uniform forward"),
     "optimize": (
         lambda: _optimize(_conformal_cavity(True), skip_preflight=True),
-        "Simulation.forward()", "uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "waveguide-nonuniform": (
         lambda: _wr90_sim(debye=False, conformal=True,
                           dz=np.full(4, 0.00254)).compute_waveguide_s_matrix(
@@ -426,7 +426,10 @@ def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
         call()
     msg = str(info.value)
     assert msg.startswith(f"{entry} refuses"), msg
-    assert "drop Boundary(conformal=True)" in msg, msg
+    assert msg.count("drop Boundary(conformal=True)") == 1, msg
+    if path != "waveguide-nonuniform":
+        assert ("use run() on a uniform mesh to keep conformal PEC "
+                "for a forward-only result") in msg, msg
 
 
 @pytest.mark.parametrize("nonuniform", [False, True],

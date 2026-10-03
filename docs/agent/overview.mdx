@@ -8,8 +8,8 @@ sidebar:
 rfx is useful with AI coding agents, but public RF/FDTD claims still need the
 same support-boundary checks as human-authored code. Treat this page as the
 agent-facing entry point for safe, reproducible rfx work.
-This Git-repository-public guidance is for external LLM agents; it is site-private
-and excluded from `remilab.ai` navigation, export, deployment snapshots, and gitops.
+The reviewed external-agent pages are available as Markdown alternates in the
+[LLM index](/rfx/llms.txt), alongside the typed API inventory and support contracts.
 
 ## Agent operating rules
 
@@ -31,8 +31,8 @@ and excluded from `remilab.ai` navigation, export, deployment snapshots, and git
 
 - [Quick Start](/rfx/guide/quickstart/)
 - [Sources and Ports](/rfx/guide/sources-ports/)
-- [Working on rfx — the coordination contract](./working-on-rfx.mdx)
-- [Repo Map & Feature Discovery](./repo-map.mdx)
+- [Port and source selection](./port-selection)
+- [Design loop](./recipe-design-loop)
 - [Probes and S-Parameters](/rfx/guide/probes-sparams/)
 - [Support Boundaries](/rfx/api/support-boundaries/)
 - [Validation](/rfx/validation/)
@@ -48,3 +48,15 @@ says another lane is supported. Build from the closest public example, run the
 smallest smoke check, and report support status, commands, and artifacts. Do not
 claim broad validation for experimental lanes.
 ```
+
+## Current API defaults
+
+Source amplitude defaults to `amplitude_kind="current"`; specify it explicitly
+when adapting older examples (witness: `tests/unit/sources/test_source_amplitude_kind.py`).
+`write_touchstone` uses standard Touchstone ordering
+(witness: `tests/unit/api/test_touchstone_interop.py`).
+The ADI default is `adi_cfl_factor=2.0`
+(source: `rfx/api/__init__.py::Simulation.__init__`).
+Matrix products use `jax.lax.Precision.HIGHEST`
+(witness: `tests/contracts/test_matmul_precision.py`).
+Use `BoundarySpec` (`from rfx.boundaries.spec import BoundarySpec, Boundary`) through `Simulation(boundary=...)` to select boundary faces.

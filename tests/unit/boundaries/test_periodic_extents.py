@@ -10,8 +10,9 @@ from rfx import Box, Simulation
 from rfx.boundaries.spec import BoundarySpec
 
 
-def model(dx=.001):
-    return Simulation(20e9, (.010, .006, .004), dx=dx, cpml_layers=0,
+def model(dx=.001, *, snap="strict"):
+    # #1138: geometry[0]/thin_conductor[0] solved up to +35 % off; this test checks periodic seam fields.
+    return Simulation(20e9, (.010, .006, .004), dx=dx, cpml_layers=0, snap=snap,
                       boundary=BoundarySpec(x='periodic', y='pec', z='pec'))
 
 
@@ -109,12 +110,15 @@ def test_microstrip_plane_and_substrate_endpoint_at_period():
     assert msl_h_plane_stencil(grid, port(.010), .010) == msl_h_plane_stencil(grid, port(0.), 0.)
 
 
-@pytest.mark.parametrize('kind', ['pec', 'surface_impedance', 'dc'])
-def test_thin_sheet_at_period_has_zero_plane_edges(kind):
+@pytest.mark.parametrize('kind,snap', [
+    ('pec', 'strict'), ('pec', 'declared'),
+    ('surface_impedance', 'strict'), ('dc', 'strict'),
+])
+def test_thin_sheet_at_period_has_zero_plane_edges(kind, snap):
     from rfx.boundaries.pec import realized_pec_edge_masks
     footprints = []
     for x in (0., .010):
-        sim = model()
+        sim = model(snap=snap)
         options = {'surface_impedance_f0': 10e9} if kind == 'surface_impedance' else {}
         if kind == 'dc':
             options = {'sigma_bulk': 1e4}
@@ -122,7 +126,12 @@ def test_thin_sheet_at_period_has_zero_plane_edges(kind):
                                thickness=35e-6, **options)
         sim.add_source((.003, .002, .002), 'ez', amplitude_kind='field')
         sim.add_probe((.005, .003, .002), 'ez')
-        sim.run(n_steps=8, compute_s_params=False)
+        if kind == "pec" and snap == "strict":
+            assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
+            with pytest.raises(ValueError, match="conductor sheet dimension"):
+                sim.run(n_steps=8, compute_s_params=False)
+        else:
+            sim.run(n_steps=8, compute_s_params=False)
         sheets, impedance = [], []
         materials = sim._assemble_materials(sim._build_grid(), pec_sheets=sheets, sheet_specs=impedance)[0]
         if kind == 'pec':
@@ -136,12 +145,18 @@ def test_thin_sheet_at_period_has_zero_plane_edges(kind):
         np.testing.assert_array_equal(a, b)
 
 
-def _sheet(x):
-    sim = model()
+def _sheet(x, snap):
+    sim = model(snap=snap)
     sim.add(Box((x, .001, .001), (x, .005, .003)), material='pec')
     sim.add_source((.003, .002, .002), 'ez', amplitude_kind='field')
     sim.add_probe((.005, .003, .002), 'ez')
-    trace = np.asarray(sim.run(n_steps=32, compute_s_params=False).time_series)
+    if snap == "strict":
+        assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
+        with pytest.raises(ValueError, match="conductor sheet dimension"):
+            sim.run(n_steps=32, compute_s_params=False)
+        trace = None
+    else:
+        trace = np.asarray(sim.run(n_steps=32, compute_s_params=False).time_series)
     sheets = []
     sim._assemble_materials(sim._build_grid(), pec_sheets=sheets)
     from rfx.boundaries.pec import realized_pec_edge_masks
@@ -157,8 +172,9 @@ def _check_sheet(actual, reference):
     np.testing.assert_array_equal(actual[0], reference[0])
 
 
-def test_sheet_at_period_is_the_zero_plane():
-    _check_sheet(_sheet(.010), _sheet(0.))
+@pytest.mark.parametrize("snap", ["strict", "declared"])
+def test_sheet_at_period_is_the_zero_plane(snap):
+    _check_sheet(_sheet(.010, snap), _sheet(0., snap))
 
 
 def _check_sheet_extent(actual, expected):
@@ -168,11 +184,15 @@ def _check_sheet_extent(actual, expected):
 
 
 @pytest.mark.parametrize('start', [.001, .009])
-@pytest.mark.parametrize('kind', ['box', 'thin', 'surface_impedance', 'pinned'])
-def test_sheet_tangential_interval_keeps_last_edge_without_wrapping_its_start(start, kind):
+@pytest.mark.parametrize('kind,snap', [
+    ('box', 'strict'), ('box', 'declared'),
+    ('thin', 'strict'), ('thin', 'declared'),
+    ('surface_impedance', 'strict'), ('pinned', 'strict'),
+])
+def test_sheet_tangential_interval_keeps_last_edge_without_wrapping_its_start(start, kind, snap):
     from rfx.boundaries.pec import realized_pec_edge_masks
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    sim = model()
+    sim = model(snap=snap)
     shape = Box((start, .001, .002), (.010, .005, .002))
     if kind == 'box':
         sim.add(shape, material='pec')
@@ -184,7 +204,12 @@ def test_sheet_tangential_interval_keeps_last_edge_without_wrapping_its_start(st
         sim.add_thin_conductor(shape, **options)
     sim.add_source((.007, .002, .001), 'ex', amplitude_kind='field')
     sim.add_probe((.005, .003, .001), 'ex')
-    sim.run(n_steps=8, compute_s_params=False)
+    if kind in ("box", "thin") and snap == "strict":
+        assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
+        with pytest.raises(ValueError, match="conductor sheet dimension"):
+            sim.run(n_steps=8, compute_s_params=False)
+    else:
+        sim.run(n_steps=8, compute_s_params=False)
     grid = sim._build_grid()
     sheets, impedance = [], []
     sim._assemble_materials(grid, pec_sheets=sheets, sheet_specs=impedance)

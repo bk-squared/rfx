@@ -71,7 +71,8 @@ def _waveguide_sim() -> Simulation:
 
 def _msl_sim() -> Simulation:
     """``_thru()`` of ``tests/unit/sparams/test_msl_passivity_enforcement.py``."""
-    sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
+    # #1138: trace y solved +11.667% off; this tests S-matrix dispatch parity.
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")

@@ -317,6 +317,10 @@ class Simulation(
     mode : str
         ``"3d"`` (default), ``"2d_tmz"`` (Ez, Hx, Hy), or
         ``"2d_tez"`` (Hz, Ex, Ey).
+    snap : {"strict", "declared"}
+        Strict (default) refuses PEC sheets solved more than 1% off their
+        drawn in-plane size. "declared" accepts the difference as a warning
+        and records the choice in realized geometry; no solved numbers change.
     dt : float or None
         Concrete time step (s) for the NON-UNIFORM lane, used instead of
         the Courant step derived from the smallest cell. ``None`` (the
@@ -405,7 +409,7 @@ class Simulation(
         wavelength-scale accuracy for stiff-mesh throughput.
     adi_cfl_factor : float
         Timestep multiplier relative to the grid's Yee CFL timestep when
-        ``solver="adi"``. Default 5.0; for quantitative wavelength-scale
+        ``solver="adi"``. Default 2.0; for quantitative wavelength-scale
         3D results prefer <= 2.0 (see ``solver``).
     stencil_order : int
         Spatial finite-difference order for the explicit Yee update: ``2``
@@ -428,7 +432,6 @@ class Simulation(
         boundary: str | BoundarySpec | dict = DEFAULT_BOUNDARY,
         cpml_layers: int = 16,
         cpml_kappa_max: float = 1.0,
-        pec_faces: set[str] | list[str] | None = None,
         dx: float | None = None,
         mode: str = "3d",
         dz_profile: np.ndarray | None = None,
@@ -438,12 +441,27 @@ class Simulation(
         dt_min_cell: float | None = None,
         precision: str = "float32",
         solver: str = "yee",
-        adi_cfl_factor: float = 5.0,
+        adi_cfl_factor: float = 2.0,
         stencil_order: int = 2,
         interface_eps: str = "sampled",
+        snap: str = "strict",
+        **_removed_kwargs,
     ):
+        if "pec_faces" in _removed_kwargs:
+            raise TypeError(
+                "Simulation(pec_faces=...) was removed; use BoundarySpec PEC faces "
+                "via boundary=BoundarySpec(...)."
+            )
+        if _removed_kwargs:
+            raise TypeError(
+                f"Simulation() got unexpected keyword arguments: {sorted(_removed_kwargs)}"
+            )
         from rfx.boundaries.spec import normalize_boundary
         from rfx.runners.nonuniform import INTERFACE_EPS_RULES
+
+        if snap not in ("strict", "declared"):
+            raise ValueError(f"snap must be 'strict' or 'declared', got {snap!r}")
+        self._snap = snap
 
         if interface_eps not in INTERFACE_EPS_RULES:
             raise ValueError(f"interface_eps must be one of {INTERFACE_EPS_RULES}, got {interface_eps!r}")
@@ -451,22 +469,16 @@ class Simulation(
 
         # T7-B: accept BoundarySpec directly or normalise a legacy scalar
         # boundary=<str>. A BoundarySpec provided here is authoritative;
-        # concurrent legacy kwargs (pec_faces) conflict with it.
+        # removed keywords are rejected above.
         _explicit_spec = isinstance(boundary, (BoundarySpec, dict))
         _boundary_origin = "default" if boundary is DEFAULT_BOUNDARY else "declared"
         if boundary is DEFAULT_BOUNDARY:
             boundary = "cpml"
         if _explicit_spec:
-            if pec_faces is not None:
-                raise ValueError(
-                    "pec_faces= cannot be combined with a BoundarySpec "
-                    "boundary= argument; encode PEC faces inside the "
-                    "BoundarySpec (e.g. z=Boundary(lo='pec', hi='cpml'))."
-                )
             spec = normalize_boundary(boundary)
         else:
             # Legacy scalar path — validated below, lifted to BoundarySpec
-            # after pec_faces / set_periodic_axes() have been resolved.
+            # after scalar boundary fields have been resolved.
             if boundary not in ("pec", "cpml", "upml"):
                 raise ValueError(
                     f"boundary must be 'pec', 'cpml', or 'upml', got {boundary!r}"
@@ -587,7 +599,6 @@ class Simulation(
                         stacklevel=2,
                     )
 
-        _valid_faces = {"x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"}
         if _explicit_spec:
             # BoundarySpec is authoritative; derive the legacy views so
             # downstream code that has not migrated continues to work.
@@ -598,29 +609,7 @@ class Simulation(
                 legacy_boundary = "pec"
             boundary = legacy_boundary  # feed the rest of __init__
         else:
-            if pec_faces is not None:
-                import warnings as _w
-                _w.warn(
-                    "pec_faces= kwarg is deprecated; encode PEC faces in "
-                    "BoundarySpec instead (e.g. "
-                    "boundary=BoundarySpec(x='cpml', y='cpml', "
-                    "z=Boundary(lo='pec', hi='cpml'))). The kwarg will be "
-                    "removed in rfx v2.0.",
-                    DeprecationWarning, stacklevel=2,
-                )
-            self._pec_faces = set(pec_faces) if pec_faces else set()
-        if self._pec_faces - _valid_faces:
-            raise ValueError(
-                f"pec_faces must be subset of {_valid_faces}, "
-                f"got invalid: {self._pec_faces - _valid_faces}")
-        # Legacy guard: pec_faces= kwarg alongside boundary="pec" is
-        # redundant in the pre-BoundarySpec API. The explicit-spec path
-        # (T7) bypasses this — a BoundarySpec with z=Boundary(lo='pmc',
-        # hi='pec') legitimately derives self._pec_faces={"z_hi"} even
-        # when the effective scalar boundary is 'pec' (no cpml/upml
-        # face anywhere).
-        if not _explicit_spec and boundary == "pec" and self._pec_faces:
-            raise ValueError("pec_faces is only meaningful with boundary='cpml' or boundary='upml'")
+            self._pec_faces = set()
 
         # Non-uniform xy profiles require an explicit dx (boundary cell
         # size) so the CPML profiles have a defined edge spacing.
@@ -714,7 +703,7 @@ class Simulation(
         #     _resolve_msl_auto_offsets widens the auto spacing toward
         #     span = (N-1)*lambda_g(f_max)/4 where the geometry allows;
         #     the entry keeps the conservative registration default so
-        #     resolver-skip paths (graded propagation axis) never
+        #     resolver-skip paths (a ladder crossing a grading ramp) never
         #     overrun the feed.
         #   _msl_auto_probe_lengths: port name -> the two LENGTHS the
         #     automatic probe defaults are counted from at registration,
@@ -735,11 +724,7 @@ class Simulation(
         self._lumped_rlc: list[LumpedRLCSpec] = []
         self._floquet_ports: list[_FloquetPortEntry] = []
 
-        # T7-B: canonical BoundarySpec. When the caller supplies a
-        # BoundarySpec directly it is authoritative; otherwise compose
-        # one from the legacy triad (scalar boundary + pec_faces +
-        # periodic_axes='' at construction). set_periodic_axes() and any
-        # future legacy mutation rebuilds via _build_spec_from_legacy.
+        # Canonical BoundarySpec, with scalar boundary compatibility.
         if _explicit_spec:
             self._boundary_spec = spec
             self._periodic_axes = spec.periodic_axes()
@@ -752,7 +737,7 @@ class Simulation(
             features=Features(layers=cpml_layers,
                               absorber_parameters=(("kappa_max", cpml_kappa_max),),
                               explicit_faces=_explicit_spec, origin=_boundary_origin,
-                              face_origins=tuple((face, "declared") for face in (pec_faces or ())),
+                              face_origins=(),
                               domain=domain),
         )
 
@@ -822,6 +807,9 @@ class Simulation(
         topology: str = "overlap_z_slab",
     ) -> "Simulation":
         """Add a z-axis refinement region for SBP-SAT subgridding.
+
+        Refinement acts only through ``run()`` on a uniform mesh. Other
+        solve entry points, including ``forward()`` and optimization, refuse it.
 
         The promoted production runner covers the specified z-range across the
         full x/y interior at ``dx_fine = dx_coarse / ratio``.  ``xy_margin``
@@ -1166,8 +1154,9 @@ class Simulation(
         waveform : excitation pulse (default: GaussianPulse)
         amplitude_kind : 'field' | 'current' | None
             Threaded through to every internal :meth:`add_source` call —
-            see ``add_source`` for the semantics and the ``None``
-            deprecation (issue #571).
+            see ``add_source`` for the semantics. ``None`` resolves to
+            ``'current'`` and warns once per simulation; pass the kind explicitly
+            to silence the warning.
         """
         if waveform is None:
             waveform = GaussianPulse(f0=self._freq_max / 2, bandwidth=0.8)
@@ -1428,7 +1417,7 @@ class Simulation(
             as does a shape with no ``mask_on_coords`` or no bounding box.
             The rasterized one-layer and non-empty checks need the grid, so
             they raise at build time, on BOTH lanes (the legacy DC path
-            keeps its NU warn-and-skip for non-Box shapes).
+            also refuses non-Box shapes on a non-uniform mesh).
 
         Notes
         -----
@@ -1482,7 +1471,7 @@ class Simulation(
             # #674: any shape that can rasterize itself is allowed — the
             # fold is per occupied cell and shape-agnostic. Two structural
             # requirements survive, and both fail loud on BOTH lanes rather
-            # than inherit the NU warn-and-skip (the #369
+            # than repeat the former NU warn-and-skip (the #369
             # silently-vaporized-metal class: a sheet that vanishes on one
             # lane is a wrong answer, not a degraded one).
             if not callable(getattr(shape, "mask_on_coords", None)):
@@ -1843,6 +1832,10 @@ class Simulation(
             → passive matched termination only.
         n_probe_offset : int, optional
             Distance (cells) from the feed plane to the first probe plane.
+            Automatic offset and spacing counts are recomputed at driver time
+            in the cells under the port, including graded runways, uniform
+            ``dy_profile`` different from ``dx``, and auto meshes. A ladder
+            crossing a grading ramp retains counts based on scalar ``dx``.
             When ``None``, bound to the LARGER of two near-field clearances:
             (a) the wavelength reactive far-field (issue #80 Fix B),
             ``round(0.5 * lam_min_eff / (2*pi) / dx)`` with
@@ -1865,7 +1858,9 @@ class Simulation(
             adjusted); ``< 5*h_sub/dx`` triggers a preflight near-field
             warning.
         n_probe_spacing : int, optional
-            Distance (cells) between consecutive probe planes. When ``None``,
+            Distance (cells) between consecutive probe planes. Automatic
+            counts use the same driver-time runway recount as the offset.
+            When ``None``,
             bound so the total N-probe array span stays ~``lam_min_eff/8``
             independent of ``n_probes``:
             ``round(lam_min_eff / 8 / (n_probes - 1) / dx)``. For
@@ -1964,7 +1959,7 @@ class Simulation(
                     eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
         lam_min_eff = C0 / self._freq_max / math.sqrt(eps_r_sub_estimate)
         # Probe 0 must clear BOTH near-field scales of the MSL launch:
-        #  (a) λ/(2π) reactive far-field of the quasi-TEM mode, and
+        #  (a) λ/(4π) reactive far-field of the quasi-TEM mode, and
         #  (b) the SOURCE FRINGING transient, which decays over a few
         #      substrate thicknesses (~5·h_sub), NOT over λ.  For a thin
         #      high-εr substrate (b) dominates; clearing only (a) leaves
@@ -2581,8 +2576,7 @@ class Simulation(
     def _build_spec_from_legacy(self):
         """T7-B: compose a canonical BoundarySpec from the legacy triad.
 
-        Called once at ``__init__`` time and whenever the legacy fields
-        change (``set_periodic_axes``, mutation of ``pec_faces``). The
+        Called once at ``__init__`` time for scalar boundaries. The
         spec is the single source of truth for T7-D preflight and
         T7-C / T7-E runner integration; the legacy fields remain as
         derived views for code that has not yet migrated.
@@ -2599,54 +2593,13 @@ class Simulation(
                 axes[axis_name] = Boundary(lo=lo_tok, hi=hi_tok)
         return BoundarySpec(x=axes["x"], y=axes["y"], z=axes["z"])
 
-    def set_periodic_axes(self, axes: str = "xyz") -> "Simulation":
-        """Set periodic boundary axes for high-level runs.
-
-        .. deprecated:: 1.6.3
-            Encode periodic axes directly in :class:`BoundarySpec`:
-            ``boundary=BoundarySpec(x='periodic', y='cpml', z='cpml')``.
-            This method will be removed in v2.0.
-
-        Parameters
-        ----------
-        axes : str
-            Any combination of ``x``, ``y``, ``z``. Empty string disables
-            manual periodic overrides.
-        """
-        import warnings as _w
-        _w.warn(
-            "Simulation.set_periodic_axes() is deprecated; pass a "
-            "BoundarySpec to Simulation(..., boundary=BoundarySpec(...)) "
-            "with periodic tokens on the desired axes instead. "
-            "The method will be removed in rfx v2.0.",
-            DeprecationWarning, stacklevel=2,
-        )
-        normalized = "".join(axis for axis in "xyz" if axis in axes)
-        invalid = sorted(set(axes) - set("xyz"))
-        if invalid:
-            raise ValueError(f"periodic axes must be drawn from 'xyz', got invalid axes {invalid}")
-        if self._tfsf is not None:
-            raise ValueError("Manual periodic-axis overrides are not supported together with TFSF")
-        if self._waveguide_ports:
-            raise ValueError("Manual periodic-axis overrides are not supported together with waveguide ports")
-        previous_periodic_axes = self._periodic_axes
-        self._periodic_axes = normalized
-        # Rebuild the canonical BoundarySpec so downstream code that
-        # consults it (T7-C/D/E) sees the updated periodic axes.
-        self._boundary_spec = self._build_spec_from_legacy()
-        from dataclasses import replace
-        from rfx.boundaries.model import resolve_kinds
-        self._boundary_model = resolve_kinds(
-            self._boundary_spec, mode=self._mode,
-            features=replace(
-                self._boundary_model.declaration,
-                face_origins=tuple(
-                    (face.name, "declared" if (face.name[0] in normalized) !=
-                     (face.name[0] in previous_periodic_axes) else face.origin)
-                    for face in self._boundary_model.faces),
-            ),
-        )
-        return self
+    def __getattr__(self, name):
+        if name == "set_periodic_axes":
+            raise AttributeError(
+                "Simulation.set_periodic_axes was removed; use BoundarySpec "
+                "per-face periodic via boundary=BoundarySpec(x='periodic', ...)."
+            )
+        raise AttributeError(f"{type(self).__name__!s} has no attribute {name!r}")
 
     def boundary_model(self, *, rcs: bool = False):
         """Return the B1 face declaration with the current feature requirements.

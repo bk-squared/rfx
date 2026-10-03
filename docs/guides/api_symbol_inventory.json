@@ -106,6 +106,9 @@
     "FluxMonitor": {
       "kind": "class"
     },
+    "ForwardResult": {
+      "kind": "class"
+    },
     "GaussianPulse": {
       "kind": "class"
     },
@@ -1776,7 +1779,8 @@
     "read_touchstone": {
       "kind": "function",
       "params": [
-        "filepath"
+        "filepath",
+        "layout"
       ]
     },
     "read_touchstone_full": {
@@ -2869,9 +2873,6 @@
     ],
     "s_matrix_lane": [
       "lane"
-    ],
-    "set_periodic_axes": [
-      "axes"
     ],
     "shard_distributed_override": [
       "array",

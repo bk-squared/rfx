@@ -71,7 +71,8 @@ from tests._realized_geometry import assert_sheet_planes, assert_wall_planes
 # ===========================================================================
 
 def _msl_thru(domain_y=0.008, y_c=0.004):
-    sim = Simulation(freq_max=20e9, domain=(0.012, domain_y, 0.0032),
+    # #1138: geometry[2] y solved +11.67 % off; this test checks truncated record fails the witness loudly.
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, domain_y, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")

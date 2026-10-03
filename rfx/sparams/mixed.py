@@ -12,7 +12,7 @@ bound-method behaviour, and every call site is unaffected.
 module-level ``def`` whose first parameter is ``self``, not a free function with
 a different contract. It writes ``self._ports`` / ``self._probes`` /
 ``self._dft_planes`` / ``self._flux_monitors`` / ``self._msl_ports`` /
-``self._internal_probe_indices`` and calls ``self.preflight()``,
+``self._internal_probe_indices`` and calls ``self._auto_preflight()``,
 ``self.add_flux_monitor()`` and ``self._resolve_msl_probe_entries()`` exactly as
 it did as a method. A thin class wrapper may follow in a later #980 step; this
 step adds none.
@@ -528,7 +528,7 @@ def compute_mixed_s_matrix(
     if not skip_preflight:
         # One preflight for the full registration (run() would fire it
         # per drive run — 2*n_ports repeats of the same advisories).
-        self.preflight()
+        self._auto_preflight(context="compute_mixed_s_matrix", check_ntff="advisory")
 
     if magnitude_channel not in ("flux", "wave"):
         raise ValueError(

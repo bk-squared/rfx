@@ -17,14 +17,14 @@ a large factor is a throughput setting, not an accuracy setting.
 The guarantee does NOT extend to a conductor inside the domain.  A declared
 sheet, wire or PEC volume is REFUSED on this lane, at every factor
 (``adi_interior_pec_unsupported``), because it was measured to diverge: at the
-default factor 5 a sheet reaches 4.1e30 with non-finite samples, and even at
+former default factor 5 a sheet reaches 4.1e30 with non-finite samples, and even at
 factor 1 it grows to 4.3e6 over 4,000 steps.  Use ``solver="yee"`` for a model
 with interior metal.  Measurement and reasoning:
 ``docs/design_notes/20260908_adi_interior_pec_guard.md``.
 
 This tutorial resonates a closed vacuum PEC cavity -- an exact analytic
 oracle -- and reads TE101 three ways: explicit Yee, ADI at ``adi_cfl_factor=2``
-(the accuracy setting), and ADI at ``adi_cfl_factor=5`` (the default throughput
+(the default accuracy setting), and ADI at ``adi_cfl_factor=5`` (an explicit throughput
 setting).  It prints the frequency error each way so the accuracy-vs-timestep
 trade is visible rather than asserted.
 
@@ -37,7 +37,7 @@ Scope, stated plainly:
     wavelength).  Its *throughput advantage on a genuinely stiff mesh* is not
     yet demonstrated -- do not read this demo as a speed claim.
   - Use ``adi_cfl_factor <= 2`` for quantitative wavelength-scale results.  The
-    default ``5.0`` is a stiff-mesh throughput default and carries a visible
+    explicit ``5.0`` is a stiff-mesh throughput setting and carries a visible
     wavelength-scale error (shown below).  On THIS geometry large factors stay
     bounded but are quantitative only for features much coarser than the
     timestep; with interior metal the lane refuses rather than running.
@@ -142,7 +142,7 @@ def main() -> None:
 
     yee = run_and_read("yee", "yee", 5.0)          # adi_cfl_factor ignored for yee
     adi2 = run_and_read("adi cfl=2 (accuracy)", "adi", 2.0)
-    adi5 = run_and_read("adi cfl=5 (default)", "adi", 5.0)
+    adi5 = run_and_read("adi cfl=5 (explicit)", "adi", 5.0)
 
     def e(mode: HarminvMode) -> float:
         return 100.0 * (mode.freq - F_TE101) / F_TE101
@@ -151,12 +151,12 @@ def main() -> None:
     print("Summary -- accuracy is traded for timestep; the CFL limit is not:")
     print(f"  explicit Yee                : {e(yee):+.2f}%  (CFL-limited dt)")
     print(f"  ADI, adi_cfl_factor = 2     : {e(adi2):+.2f}%  (2x dt, accuracy setting)")
-    print(f"  ADI, adi_cfl_factor = 5     : {e(adi5):+.2f}%  (5x dt, default throughput)")
+    print(f"  ADI, adi_cfl_factor = 5     : {e(adi5):+.2f}%  (5x dt, explicit throughput)")
     print("-" * 70)
     print("Both ADI runs stay bounded at their enlarged timestep.  That holds")
     print("for THIS cavity -- homogeneous, lossless, PEC on the domain faces and")
     print("no conductor inside; a conductor inside is refused on this lane.  The")
-    print("cfl=5 error is the documented wavelength-scale cost of the default;")
+    print("cfl=5 error is the documented wavelength-scale cost of factor 5;")
     print("drop to <=2 when the resonance frequency, not the timestep, is what")
     print("you need to be accurate.")
     print("ADI is an experimental lane; its stiff-mesh throughput advantage is a")

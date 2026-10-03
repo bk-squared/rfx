@@ -14,8 +14,8 @@ blanket warning: dispersion error of the implicit scheme grows ~dt^2, so at
 ~15 cells/wavelength the <2% eigenfrequency envelope holds only up to ~2x
 CFL. The ``adi_3d_accuracy`` warning must fire on ``solver='adi'`` + a 3D
 grid when ``adi_cfl_factor > 2`` (note the constructor DEFAULTS are
-``mode='3d'`` and ``adi_cfl_factor=5.0``, so a bare ``Simulation(
-solver='adi')`` is advised), and stay silent at ``adi_cfl_factor <= 2``, on
+``mode='3d'`` and ``adi_cfl_factor=2.0``, so a bare ``Simulation(
+solver='adi')`` is inside the envelope), and stay silent at ``adi_cfl_factor <= 2``, on
 the validated 2D TMz path, and on the explicit Yee solver.
 """
 
@@ -53,15 +53,15 @@ def test_adi_3d_large_cfl_fires_envelope_advisory():
     assert severities["adi_3d_accuracy"] == "warning"
 
 
-def test_adi_default_cfl_factor_fires_envelope_advisory():
-    """Defaults are mode='3d' AND adi_cfl_factor=5.0 -> must still advise."""
+def test_adi_default_cfl_factor_is_inside_envelope():
+    """Default factor 2 is inside the accuracy envelope."""
     sim = Simulation(
         freq_max=5e9, domain=(0.06, 0.06, 0.06), dx=5e-3,
         boundary="pec", solver="adi",
     )
     sim.add_source((0.03, 0.03, 0.03), "ez")
     issues = sim.preflight()
-    assert "adi_3d_accuracy" in _codes(issues)
+    assert "adi_3d_accuracy" not in _codes(issues)  # #1448 ADI default CFL 5 -> 2
 
 
 def test_adi_3d_within_envelope_is_silent():
@@ -131,7 +131,7 @@ def _conductor_sim(mode="3d", kind="sheet", **kwargs):
 def test_default_adi_conductor_is_named_error_and_cannot_solve(mode, kind, monkeypatch):
     """No factor argument: pin the shipped default, including skipped preflight."""
     sim = _conductor_sim(mode, kind)
-    assert sim._adi_cfl_factor == 5.0
+    assert sim._adi_cfl_factor == 2.0  # #1448 ADI default CFL 5 -> 2
     issues = [i for i in sim.preflight() if i.code == GUARD]
     assert len(issues) == 1
     assert issues[0].severity == "error"
@@ -215,7 +215,8 @@ def test_low_level_adi_refuses_masks_before_scan_or_step(mode):
 
 
 def test_accuracy_advisory_scopes_the_stability_guarantee():
-    sim = _conductor_sim()
+    # #1448 ADI default CFL 5 -> 2: request the large-step advisory explicitly.
+    sim = _conductor_sim(adi_cfl_factor=5.0)
     accuracy = next(i for i in sim.preflight() if i.code == "adi_3d_accuracy")
     assert "homogeneous, lossless" in accuracy
     assert "interior PEC projection (refused)" in accuracy

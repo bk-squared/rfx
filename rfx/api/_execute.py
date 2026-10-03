@@ -32,6 +32,21 @@ from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in mo
 from rfx.materials.debye import init_debye  # noqa: F401  (local import in moved bodies)
 from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in moved bodies)
 from rfx.adi import ADIState2D, run_adi_2d
+
+
+@jax.custom_jvp
+def _refuse_adi_2d_material_derivative(x):
+    """Identity on the 2-D ADI material arrays; differentiating it raises."""
+    return x
+
+
+@_refuse_adi_2d_material_derivative.defjvp
+def _refuse_adi_2d_material_derivative_jvp(primals, tangents):
+    raise NotImplementedError(
+        "solver='adi' in 2-D cannot differentiate with respect to the "
+        "permittivity or conductivity (eps_override / sigma_override): the "
+        "2-D ADI update's derivative is NaN in float32 (#1373). The value "
+        "runs; for a gradient use solver='yee', or mode='3d' with ADI.")
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
 from rfx.ringdown import RingdownSpec  # noqa: F401  (run() signature type-hint)
@@ -562,9 +577,8 @@ class _ExecuteMixin:
 
         ``until_decay`` (issue #383) is threaded through to
         ``run_nonuniform_path`` only when the caller has already gated on
-        absorbing boundaries — ``run()`` passes ``None`` (warn-and-drop)
-        for closed-boundary NU sims, where the interior energy does not
-        decay. ``decay_monitor_component`` / ``decay_monitor_position``
+        absorbing boundaries. ``run()`` refuses ``until_decay`` for
+        closed-boundary NU sims, where the interior energy does not decay. ``decay_monitor_component`` / ``decay_monitor_position``
         are NOT threaded: they parameterize the uniform lane's
         closed/PEC point-field fallback, which has no NU counterpart.
         """
@@ -1492,8 +1506,12 @@ class _ExecuteMixin:
             i, j, _ = grid.position_to_index(pe.position)
             probes.append((i, j, pe.component))
 
-        eps_r_2d = materials.eps_r[:, :, 0]
-        sigma_2d = materials.sigma[:, :, 0]
+        # A derivative with respect to eps or sigma through the 2-D ADI update
+        # is NaN in forward and reverse mode while central differences are
+        # finite (3-D is finite; cause not confirmed, #1373), so it is refused
+        # when one is requested; the value, also under jax.jit, is unaffected.
+        eps_r_2d = _refuse_adi_2d_material_derivative(materials.eps_r[:, :, 0])
+        sigma_2d = _refuse_adi_2d_material_derivative(materials.sigma[:, :, 0])
 
         # Add implicit absorbing sigma layer for CPML boundary
         if self._boundary == "cpml" and self._cpml_layers > 0:
@@ -1672,7 +1690,8 @@ class _ExecuteMixin:
         # callers never carry a refinement (run() sends one to the subgridded
         # lane, compute_mixed_s_matrix refuses it first).
         self._require_no_refinement_without_a_subgrid(
-            "forward()/optimize()/topology_optimize()")
+            "forward()/optimize()/topology_optimize()/"
+            "compute_lumped_wire_s_matrix_via_scan()")
 
         from rfx.simulation import (
             run as _run,
@@ -3306,10 +3325,13 @@ class _ExecuteMixin:
         """Select the execution lane and reject unsupported config combos.
 
         The single decision-and-rejection point consumed by both
-        :meth:`run` and :meth:`forward` (W6.3). All lane-rejection guards
-        (``NotImplementedError`` for unsupported combinations,
-        distributed-lane ``ValueError`` guardrails) live here so there is
-        exactly one place that decides a lane and refuses an impossible one.
+        :meth:`run` and :meth:`forward` (W6.3). Shared routing guards
+        (``NotImplementedError`` for unsupported combinations and
+        distributed-lane ``ValueError`` guardrails) run here. Individual
+        entry points and runners apply additional admission checks.
+        In particular, non-uniform meshes refuse refinement and unsupported
+        dimensional modes before dispatch. Uniform forward entry points also
+        refuse refinement when entering their material-based solve.
 
         ``mode`` is ``"forward"`` or ``"run"``. The two modes share the
         ``is_nonuniform`` boolean and the NU ``n_steps`` formula but have
@@ -4206,6 +4228,10 @@ class _ExecuteMixin:
             ``None`` (default) leaves every output and the traced program as
             they were.
 
+        **_removed_kwargs
+            Rejection shim for removed keywords, providing migration errors;
+            it does not accept additional simulation options.
+
         Returns
         -------
         ForwardResult
@@ -4221,6 +4247,7 @@ class _ExecuteMixin:
 
         Notes
         -----
+        ``forward()`` refuses refinement: it has no subgridded solve.
         ``forward()`` can be called inside ``jax.jit``, so an optimisation
         step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
         compiles on its first call and reuses the program afterwards, while
@@ -4325,8 +4352,9 @@ class _ExecuteMixin:
              "fwd_nonuniform": "non-uniform forward",
              "fwd_distributed_nu": "distributed non-uniform forward",
              }.get(plan.lane, plan.lane),
-            entry="Simulation.forward()",
-            instead="use run() on a uniform mesh")
+            entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
+            instead="use run() on a uniform mesh to keep conformal PEC "
+                    "for a forward-only result")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(
@@ -4512,7 +4540,11 @@ class _ExecuteMixin:
             pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
         if n_steps is None:
-            n_steps = grid.num_timesteps(num_periods=num_periods)
+            if self._solver == "adi":
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+            else:
+                n_steps = grid.num_timesteps(num_periods=num_periods)
 
         # #677: node-thin sheet ctx against the realized PEC edges of this
         # forward run (PEC wins on overlapping edges).  #931: the PEC
@@ -4712,8 +4744,8 @@ class _ExecuteMixin:
             interior-energy stop runs on absorbing (``cpml``/``upml``)
             boundaries via a chunked host loop over the NU scan step
             (dV-weighted energy — per-cell ``dx*dy*dz`` — so graded cells
-            are weighted faithfully). Closed-boundary NU sims warn and run
-            the fixed ``n_steps`` (no point-field fallback on the NU lane).
+            are weighted faithfully). Closed-boundary NU sims refuse
+            ``until_decay`` (no point-field fallback on the NU lane).
             On the NU decay path all step-sized buffers are allocated at
             ``decay_max_steps`` and flux monitors must keep the default
             rectangular DFT window. (The non-uniform runner additionally
@@ -4740,6 +4772,21 @@ class _ExecuteMixin:
             interior-energy checks required before stopping (default ``2``;
             ``>= 2`` mandatory — the interior energy is not null-free and a
             single check can false-fire on a transient inter-packet dip).
+        radiated_flux_box : tuple or None
+            Physical lower/upper corners of a closed box enclosing the radiator,
+            clear of CPML. Selects outgoing-flux decay instead of interior-energy
+            decay on absorbing boundaries; None keeps the energy criterion.
+        flux_env_checks : int
+            Number of recent checks whose maximum absolute flux forms the
+            radiated-flux envelope (default 4).
+        snapshot : SnapshotSpec or None
+            Field snapshot schedule and selection; None disables snapshots.
+        subpixel_smoothing : bool or str
+            Material-interface smoothing rule; False disables smoothing.
+            True enables dielectric smoothing; "kottke_pec" selects the
+            unified PEC occupancy rule on supported lanes.
+        skip_preflight : bool
+            Skip advisory preflight checks. Runtime admission guards still apply.
         decay_monitor_component : str
             Field component to monitor (default ``"ez"``). Used only by the
             closed/PEC point-field fallback stop.
@@ -4754,8 +4801,8 @@ class _ExecuteMixin:
         devices : list of jax.Device or None
             When a list with len > 1 is provided, run the simulation
             distributed across those devices using 1D slab decomposition
-            along the x-axis (via ``jax.pmap``).  Phase 1 supports PEC
-            boundary, soft sources, and point probes.
+            along the x-axis via ``shard_map``. Supported combinations are
+            listed in ``docs/guides/support_matrix.md``.
         exchange_interval : int, optional
             Ghost exchange interval in timesteps; only integer 1 is supported.
         report_every : int or None
@@ -4803,7 +4850,7 @@ class _ExecuteMixin:
             of each spectrum is added in closed form. The result is
             ``Result.ringdown`` (``.s_params`` on the bins of
             ``Result.s_params``, ``.report`` with the window, the poles and
-            the witnesses: the two-window difference ``W2``, no growing
+            the witnesses: ``WE`` when available (otherwise ``W2``), no growing
             pole, passivity, source off). Every other output is the one the
             same run gives without ``ringdown=``. Wire ports
             (``add_port(..., extent=...)``) on the uniform (one port) and
@@ -4968,8 +5015,7 @@ class _ExecuteMixin:
                 raise NotImplementedError(
                     "add_dft_plane_probe() is not supported on the "
                     "distributed multi-device run() path (issue #579); "
-                    "neither rfx.runners.distributed_v2 nor "
-                    "rfx.runners.distributed accumulates DFT-plane fields, "
+                    "rfx.runners.distributed_v2 does not accumulate DFT-plane fields, "
                     "so a registered plane would be silently dropped. Drop "
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
@@ -5010,6 +5056,17 @@ class _ExecuteMixin:
                     devices=devices,
                 )
             if compute_s_params:
+                _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
+                if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
+                    self._refuse_unsupported_run_kwargs(
+                        "uniform single-wire-port S-parameter", {
+                            "s_param_n_steps": self._s_param_n_steps_off_record(
+                                s_param_n_steps, n_steps, until_decay),
+                        }, instead=None,
+                        reason_overrides={"s_param_n_steps":
+                            "this lane computes S11 with a second full distributed "
+                            "run with all sources on, using the main run's "
+                            "n_steps and source convention"})
                 from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
                 refuse_distributed_lumped_s_pmc(self)
 
@@ -5040,6 +5097,8 @@ class _ExecuteMixin:
                     self, s_param_freqs,
                     n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
                     devices=devices,
+                    **({"_main_wire_record": True} if len(_dist_ports) == 1
+                       and _dist_ports[0].extent is not None else {}),
                 )
                 _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
             _res = self._attach_run_settling_witness(
@@ -5173,7 +5232,8 @@ class _ExecuteMixin:
                 **({} if report_every is None else {"report_every": report_every}),
             }, instead="use the default solver='yee'")
             if n_steps is None:
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
             _res = self._run_adi_from_materials(
                 grid,
                 base_materials,

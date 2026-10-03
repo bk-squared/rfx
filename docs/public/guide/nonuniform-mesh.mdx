@@ -25,7 +25,7 @@ and 1.5 mm cells in the air, and leaves x and y alone.
 |---|---|
 | substrate much thinner than a wavelength | graded z |
 | a stack of several thin layers | graded z, one fine band per layer |
-| patch or trace edges whose size matters | in-plane profiles from `edge_aware_profiles` |
+| patch or trace edges whose size matters | in-plane profiles from `edge_aware_profiles`, required unless `snap="declared"` |
 | bulk 3-D structure, no thin features | uniform |
 | far field or RCS of a bulk object | uniform |
 
@@ -85,22 +85,32 @@ Two alternatives:
 
 ```python
 from rfx import Box, Simulation
+from rfx.mesh_edges import edge_aware_profiles
+
+sub_lo, sub_hi = below, below + h
+board = Box((0.01, 0.01, sub_lo), (0.09, 0.07, sub_hi))
+ground = Box((0.01, 0.01, sub_lo), (0.09, 0.07, sub_lo))
+# This horizontal sheet needs x/y registration; keep the layered z profile.
+profiles = edge_aware_profiles(
+    (0.10, 0.08, float(np.sum(dz_profile))), 1e-3,
+    sheets=[ground], solids=[board], axes="xy",
+)
 
 sim = Simulation(
     freq_max=4e9,
     domain=(0.10, 0.08, 0.0),     # z = 0: use sum(dz_profile)
     dx=1e-3,
     dz_profile=dz_profile,
+    **profiles,
     boundary="cpml",
     cpml_layers=8,
 )
 
 z_edges = np.concatenate(([0.0], np.cumsum(dz_profile)))
-sub_lo, sub_hi = below, below + h
 assert np.isclose(z_edges, sub_lo).any() and np.isclose(z_edges, sub_hi).any()
 
-sim.add(Box((0.01, 0.01, sub_lo), (0.09, 0.07, sub_hi)), material="fr4")
-sim.add_thin_conductor(Box((0.01, 0.01, sub_lo), (0.09, 0.07, sub_lo)))  # ground
+sim.add(board, material="fr4")
+sim.add_thin_conductor(ground)
 
 report = sim.preflight()
 print(report.format())
@@ -130,10 +140,25 @@ bands away from absorbing faces, or close those faces with PEC.
 
 A PEC sheet's in-plane edge is solved about 0.35 of a cell beyond its last
 grid node, so a patch or trace comes out slightly larger than drawn.
-Preflight reports the difference as `sheet_effective_size`; the ground sheet
-in the example above triggers it. `edge_aware_profiles` builds x and y profiles that
-place each sheet edge where it solves at the drawn size, and each solid face
-on a node:
+A PEC sheet whose free-edge size is solved more than 1 % off its drawing
+is refused by `run()`, `forward()` and `compute_mixed_s_matrix()`.
+Preflight reports this as a `sheet_effective_size` error.
+
+Build profiles with `edge_aware_profiles` to place sheet edges where they solve
+at their drawn size. Use `axes="xyz"` and pass the returned `dz_profile` too
+for vertical sheets; the horizontal ground above only needs x/y registration
+and keeps its layered z profile. Alternatively, `Simulation(snap="declared")`
+accepts the difference as a warning and records the choice on
+`Simulation.realized_geometry()`; it changes neither the mesh nor the solved
+geometry.
+
+Ends at seams, overlaps and T-joins with other sheet metal, at or past a
+domain face, or joined to a realized PEC volume are not judged. A gap of one
+cell or more to a block still leaves a free edge. These rules and the tolerance
+are implemented in `rfx/mesh_edges.py::solved_sheet_span` and
+`rfx/preflight/pec_geometry.py::_warn_sheet_effective_size`.
+
+For a patch and board:
 
 ```python
 from rfx.mesh_edges import edge_aware_profiles

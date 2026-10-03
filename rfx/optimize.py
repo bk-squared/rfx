@@ -274,6 +274,9 @@ def optimize(
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
+    Refuses simulations with refinement, as the underlying ``forward()``
+    path has no subgridded solve.
+
     Parameters
     ----------
     sim : Simulation

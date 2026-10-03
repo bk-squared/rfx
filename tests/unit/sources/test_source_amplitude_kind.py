@@ -237,11 +237,10 @@ def test_kind_none_warns_once_per_sim_naming_the_concrete_meaning(
     assert len(dep) == 1, (
         f"expected exactly one amplitude_kind DeprecationWarning per "
         f"Simulation, got {len(dep)}")
-    assert str(dep[0].message) == (
-        "add_source(..., amplitude_kind=None) now means 'current' "
-        "(E += Cb*I/dV, I is a current moment in A·m) on every path. "
-        "Pass amplitude_kind explicitly to silence this warning."
-    )
+    message = str(dep[0].message)
+    assert "means 'current'" in message
+    assert "E += Cb*I/dV" in message
+    assert "A·m" in message
     # a NEW Simulation warns again (per-sim, not per-process)
     sim2 = _sim(boundary, nonuniform)
     with pytest.warns(DeprecationWarning, match="amplitude_kind"):

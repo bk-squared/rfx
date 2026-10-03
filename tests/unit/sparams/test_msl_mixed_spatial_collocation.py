@@ -149,3 +149,20 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     np.testing.assert_allclose(reference.S[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
     np.testing.assert_allclose(bypassed.S[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
     assert np.max(np.abs(bypassed.S - reference.S)) > 0.05
+
+
+@pytest.mark.parametrize("entry", ["compute_mixed_s_matrix", "compute_s_matrix"])
+def test_strict_mixed_preflight_refuses_before_runner(monkeypatch, entry):
+    sim, _ = _case("+x")
+    assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
+    calls = []
+
+    def runner(*args, **kwargs):
+        calls.append(True)
+        raise AssertionError("runner reached despite strict preflight error")
+
+    monkeypatch.setattr(sim, "_forward_from_materials", runner)
+    with pytest.raises(ValueError, match="conductor sheet dimension"):
+        getattr(sim, entry)(freqs=FREQS, n_steps=1, num_periods=1,
+                            magnitude_channel="wave", enforce_passivity=False)
+    assert not calls

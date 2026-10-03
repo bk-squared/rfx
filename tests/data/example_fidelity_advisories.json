@@ -66,24 +66,6 @@
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default"
   },
   {
-   "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 1mm, worst face residual 87.5\u00b5m (8.75% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 8.5mm, worst face residual 87.5\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:97 | https://github.com/bk-squared/rfx/issues/1138",
-   "rows": 1,
-   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
-  },
-  {
-   "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.175mm (+17.50%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.675mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.175mm (+17.50%) -- is what build_microstrip_ports actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
-   "ref": "examples/tutorials/ports_and_sparams_101.py:97 | https://github.com/bk-squared/rfx/issues/1138",
-   "rows": 1,
-   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
-  },
-  {
    "code": "geometry_in_absorber",
    "disposition": "intended",
    "reason": "The slab Box is drawn (-1 m, -1 m) to (1 m, 1 m) transversally ON PURPOSE and the code says why: 'The material Box must span the full transverse extent (incl. CPML padding): with TFSF the transverse axes are periodic, so any cell outside the material mask breaks the plane-wave assumption (detail (c)).' The advisory measures the declared face at -1 m, which is an over-draw that the domain clips, not material sitting in the absorber by accident.",
@@ -149,9 +131,8 @@
   },
   {
    "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
@@ -166,9 +147,8 @@
   },
   {
    "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_fix_t actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
@@ -183,9 +163,8 @@
   },
   {
    "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
@@ -200,9 +179,8 @@
   },
   {
    "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_fix_t actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/issue770_offdiag_adjudication.py:93 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
@@ -257,9 +235,8 @@
   },
   {
    "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
@@ -274,18 +251,16 @@
   },
   {
    "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_thru actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
   },
   {
    "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
@@ -300,18 +275,16 @@
   },
   {
    "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_thru actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/thru_feedpost_deembed.py:75 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
   },
   {
    "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 21mm, worst face residual 175\u00b5m (0.83% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 21mm, worst face residual 175\u00b5m (0.83% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
@@ -334,9 +307,8 @@
   },
   {
    "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%) -- is what build_singlepost actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for the closed investigation. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/research/thru_feedpost_twoseg_extraction.py:216 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
@@ -351,18 +323,16 @@
   },
   {
    "code": "off_lattice_design_edges",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "Same condition as this variant's sheet_effective_size row, measured face by face: the census reads each sheet face at its SOLVED edge (0.35 of the outside cell beyond its last node, rfx.mesh_edges.solved_sheet_span; #1375), the same number fidelity_report prints as face_residual_um. Here: geometry[0] 'pec' (sheet) x: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent); geometry[0] 'pec' (sheet) y: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent). The sheets are drawn with nodes on (or near) their edges, so each free edge is solved about 0.35 cell beyond the drawing; the mesh-side remedy is rfx.mesh_edges.edge_aware_profiles. Left as drawn here, tracked with the sheet_effective_size row on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for projected targets. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) x: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent); geometry[0] 'pec' (sheet) y: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
   },
   {
    "code": "sheet_effective_size",
-   "disposition": "defect-open",
-   "issue": 1138,
-   "reason": "The builder draws its conductor sheets without regard to where a PEC sheet's edge is solved, and this mesh realizes them off their drawn size: geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%). A sheet end strictly inside the domain is solved about 0.35 cell beyond its last PEC node (measured, scripts/diagnostics/pec_sheet_edge_offset.py), so the worst row here -- geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%) -- is what build_problem actually solves, not a rounding note. Nothing in the script compensates for it; the mesh-side remedy (rfx.mesh_edges.edge_aware_profiles) postdates the script. Left as drawn here: changing a published or gated model's mesh is its owner's decision, tracked on the rasterization issue.",
+   "disposition": "intended",
+   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for projected targets. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%).  The mesh and numerical targets are retained, with this residual visible to the user.",
    "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
@@ -526,6 +496,14 @@
    "ref": "validation/research/metal_edge/m6_wire_port_ad.py:194-206 | https://github.com/bk-squared/rfx/issues/1272",
    "rows": 1,
    "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "msl_port_geometry",
+   "disposition": "intended",
+   "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The two short-feed probe-clearance warnings and skipped automatic offset solve are reported without claiming fitted Z0/beta or a settled S-matrix.",
+   "ref": "examples/tutorials/ports_and_sparams_101.py:114-148,315-321",
+   "rows": 3,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   }
  ]
 }

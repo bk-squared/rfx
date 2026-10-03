@@ -5,9 +5,9 @@ sidebar:
   order: 8
 ---
 
-Use this recipe when you need broadband complex R(f) / T(f) spectra of a slab,
+Use this recipe when you need broadband power R(f) / T(f) spectra of a slab,
 thin-film stack, periodic surface, or other scatterer. For guided-mode
-S-parameters in a bounded waveguide, see [recipe-waveguide-sparams](./recipe-waveguide-sparams)
+S-parameters in a bounded waveguide, see [the sources and ports guide](/rfx/guide/sources-ports/)
 instead.
 
 ## When to use
@@ -53,7 +53,11 @@ spectrum.
 Run once without the scatterer (reference run) and once with it (sample run).
 Subtract the DFT accumulators at the field level before computing the power flux.
 
-## Canonical two-run pattern
+## Two-run template
+
+This template requires domain dimensions, frequency samples, source settings,
+monitor coordinates and a Lorentz pole supplied by the caller; the complete
+`examples/tutorials/slab_rt_flux_monitor.py` is the runnable reference.
 
 ```python
 import numpy as np
@@ -215,4 +219,4 @@ necessarily a usage error in either tool.
   mode patterns and near-field maps.
 - `add_ntff_box` — near-to-far-field transform for 3D scatterers.
 - `compute_waveguide_s_matrix` — S-parameters in bounded waveguides (not
-  plane-wave); see [recipe-waveguide-sparams](./recipe-waveguide-sparams).
+  plane-wave); see [the sources and ports guide](/rfx/guide/sources-ports/).

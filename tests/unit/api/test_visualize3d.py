@@ -27,7 +27,8 @@ def simple_sim():
     the substrate into the pad, which puts laminate on BOTH sides of the ground
     plane and (correctly) trips the buried-sheet warning.
     """
-    sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=0.001)
+    # #1138: geometry[2] x solved +7 % off; this test checks save screenshot with field.
+    sim = Simulation(snap="declared", freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=0.001)
     sim.add_material("substrate", eps_r=4.4, sigma=0.01)
     sim.add(Box((0, 0, 0.001), (0.02, 0.02, 0.001)), material="pec")
     sim.add(Box((0, 0, 0.001), (0.02, 0.02, 0.003)), material="substrate")

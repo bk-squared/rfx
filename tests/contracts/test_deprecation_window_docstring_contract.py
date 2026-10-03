@@ -1,7 +1,7 @@
 """Docstrings and runtime warnings must state the same contract.
 
 The source default now names a meaning (#1373), not a future version window.
-The periodic-axis deprecation still names its removal version (#954).
+Removed periodic/PEC/time-gating APIs are covered by test_api_1448.py (#1448).
 """
 
 import inspect
@@ -10,7 +10,6 @@ import warnings
 
 from rfx import Simulation
 
-_REMOVED_IN = r"removed in (?:rfx )?v?(\d+\.\d+)"
 
 
 def _normalize(text: str) -> str:
@@ -53,24 +52,3 @@ def test_add_source_docstring_and_warning_state_the_same_meaning():
     assert len(doc_meaning) == len(warning_meaning) == 1
     assert doc_meaning == warning_meaning
     assert doc_meaning == ["'current' (E += Cb*I/dV, I is a current moment in A·m)"]
-
-
-def test_set_periodic_axes_docstring_and_warning_state_the_same_removal():
-    doc, body = _docstring_and_body(Simulation.set_periodic_axes)
-
-    doc_removed = _versions(doc, _REMOVED_IN)
-    warn_removed = _versions(body, _REMOVED_IN)
-
-    assert len(doc_removed) == 1, (
-        "set_periodic_axes docstring must state 'removed in vX.Y'; "
-        f"found {doc_removed}"
-    )
-    assert len(warn_removed) == 1, (
-        "set_periodic_axes DeprecationWarning must state 'removed in vX.Y'; "
-        f"found {warn_removed}"
-    )
-    assert doc_removed == warn_removed, (
-        "set_periodic_axes docstring and DeprecationWarning disagree on the "
-        f"removal version: docstring {doc_removed[0]}, warning "
-        f"{warn_removed[0]} (issue #954)"
-    )

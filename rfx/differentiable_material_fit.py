@@ -345,7 +345,7 @@ def _require_supported_fixture(sim) -> None:
     if any(axis != "z" or sim._mode == "3d" for axis in sim._periodic_axes):
         raise NotImplementedError(
             "differentiable_material_fit() does not support periodic axes "
-            "(set_periodic_axes() or BoundarySpec) (#1290). Remove the "
+            "(BoundarySpec per-face periodic declarations) (#1290). Remove the "
             "periodic-axis override from sim_factory; use Simulation.forward() "
             "with a custom loss to retain it.")
 
@@ -402,8 +402,7 @@ def differentiable_material_fit(
         ports, plain/TFSF sources, lumped RLC, periodic overrides, Kerr,
         conformal walls, point ports on PEC edges, and non-default solver,
         precision, stencil or interface settings. Refinements, non-uniform
-        meshes, and surface-impedance
-        sheets retain their existing refusals.
+        meshes, and surface-impedance sheets retain their existing refusals.
     s_measured : (n_ports, n_ports, n_freqs) complex array
         Measured S-parameter matrix.
     freqs : (n_freqs,) array in Hz

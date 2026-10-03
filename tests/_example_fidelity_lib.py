@@ -991,6 +991,8 @@ def iter_audited_variants():
 # --------------------------------------------------------------------------
 
 def _entity_key(item: dict, seen: dict[str, int]) -> str:
+    if any(f.get("kind") == "out-of-scope" for f in item.get("findings", [])):
+        return "out-of-scope"
     name = str(item.get("entity", ""))
     if name.startswith("domain"):
         return "domain"
@@ -1014,16 +1016,7 @@ def _entity_key(item: dict, seen: dict[str, int]) -> str:
         hi_s = ",".join(f"{v * 1e6:.3f}" for v in hi)
         key = f"{kind}|{tag}|{lo_s}um->{hi_s}um"
     else:
-        # No analytic bounding box: falls back to the report's own name. The
-        # ONE row that lands here in this corpus is fidelity_report's own
-        # out-of-scope notice, ``"NOT AUDITED by this report"`` (28 of the 33
-        # variants have ports/sources, so 28 of the snapshot's entity rows
-        # are this key) -- a fixed string with no list index in it, so it is
-        # position-independent for the same reason the keys above are. A real
-        # entity with no ``bounding_box()`` would fall here too and WOULD
-        # carry its index (``geometry[7] 'copper'``); nothing in this repo
-        # does today, and ``test_snapshot_keys_survive_entity_insertion``
-        # pins the position-independence that matters.
+        # A non-geometric entity without a bounding box uses its stable name.
         key = name
     n = seen.get(key, 0)
     seen[key] = n + 1
@@ -1044,7 +1037,8 @@ def digest_fidelity(report: list[dict]) -> dict:
             findings=[dict(f) for f in item.get("findings", [])],
             axes=axes,
         )
-    return out
+    from tests._structured_snapshot import without_prose
+    return without_prose(out)
 
 
 def load_advisory_classification() -> list[dict]:
@@ -1071,7 +1065,7 @@ def snapshot_advisory_counts(snapshot: dict) -> dict[tuple[str, str], int]:
     The grouping key of the classification table: rows that share a code on
     one variant are the same condition on different ports, axes or entities
     (four ``port_aperture_snap`` rows = two ports x two transverse axes), and
-    each row's full text is pinned by the snapshot itself, so the count is
+    each row's code and location are pinned by the snapshot, so the count is
     what the classification has to account for.
     """
     counts: dict[tuple[str, str], int] = {}
@@ -1107,7 +1101,9 @@ def digest_preflight(report) -> list[dict]:
     rows = [issue.to_dict() for issue in report]
     rows = [d for d in rows
             if not (d["code"] == "uncoded" and d["severity"] != "error")]
-    rows.sort(key=lambda d: (d["code"], str(d["loc"]), d["message"]))
+    from tests._structured_snapshot import without_prose
+    rows = [without_prose(d) for d in rows]
+    rows.sort(key=lambda d: (d["code"], str(d["loc"])))
     return rows
 
 

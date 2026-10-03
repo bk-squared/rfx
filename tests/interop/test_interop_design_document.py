@@ -283,42 +283,23 @@ def _mixed_face_boundaries() -> Simulation:
 
 
 def _legacy_pec_faces() -> Simulation:
-    """Deprecated ``pec_faces=`` kwarg on the legacy scalar-boundary path."""
-    with pytest.warns(DeprecationWarning):
-        return Simulation(
-            freq_max=10e9,
-            domain=(0.020, 0.020, 0.020),
-            dx=1e-3,
-            boundary="cpml",
-            cpml_layers=6,
-            pec_faces={"z_lo"},
-        )
+    """PEC-face design expressed with the supported constructor."""
+    return Simulation(freq_max=10e9, domain=(.020, .020, .020), dx=1e-3,
+                      boundary=BoundarySpec(x="cpml", y="cpml",
+                                            z=Boundary(lo="pec", hi="cpml")), cpml_layers=6)
 
 
 def _legacy_periodic_axes() -> Simulation:
-    """Deprecated ``set_periodic_axes()``: _boundary disagrees with the spec."""
-    sim = Simulation(
-        freq_max=10e9, domain=(0.020, 0.020, 0.020), dx=1e-3, boundary="cpml", cpml_layers=6
-    )
-    with pytest.warns(DeprecationWarning):
-        sim.set_periodic_axes("xy")
-    return sim
+    return Simulation(freq_max=10e9, domain=(.020, .020, .020), dx=1e-3,
+                      boundary=BoundarySpec(x="periodic", y="periodic", z="cpml"), cpml_layers=6)
 
 
 def _legacy_all_periodic() -> Simulation:
-    """The one design where the spec path cannot reproduce the legacy views.
-
-    ``set_periodic_axes("xyz")`` leaves ``_boundary == "cpml"`` and
-    ``_cpml_layers == 16``, but the all-periodic spec has no absorbing face, so
-    rebuilding through ``boundary=BoundarySpec(...)`` would derive
-    ``_boundary == "pec"`` and ``_cpml_layers == 0``.  The importer has to
-    reproduce the legacy construction path, not just the spec.
-    """
-    sim = Simulation(
-        freq_max=10e9, domain=(0.020, 0.020, 0.020), dx=1e-3, boundary="cpml", cpml_layers=16
-    )
-    with pytest.warns(DeprecationWarning):
-        sim.set_periodic_axes("xyz")
+    """Historical serialized state: preserve old scalar views without the removed API."""
+    sim = Simulation(freq_max=10e9, domain=(.020, .020, .020), dx=1e-3,
+                     boundary=BoundarySpec.uniform("periodic"))
+    sim._boundary = "cpml"
+    sim._cpml_layers = 16
     return sim
 
 
@@ -667,8 +648,7 @@ def test_all_periodic_legacy_design_keeps_its_absorber_fields():
     assert (original._boundary, original._cpml_layers) == ("cpml", 16)
     assert original._boundary_spec.absorber_type is None
 
-    with pytest.warns(DeprecationWarning):
-        rebuilt = simulation_from_design(design_to_dict(original))
+    rebuilt = simulation_from_design(design_to_dict(original))
     assert_designs_equivalent(original, rebuilt)
 
 

@@ -4,21 +4,56 @@
       {
         "code": "mesh_resolution",
         "loc": null,
-        "message": "'pec' z-extent 200\u00b5m = 0.4 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
+        "numbers": [
+          200.0,
+          0.4,
+          1.0,
+          931.0,
+          1.2,
+          1.5
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "pec_box_subcell",
         "loc": null,
-        "message": "geometry[0] 'pec' cannot be realized on this lattice and run()/forward() will raise: PEC Box 'pec' is thinner than one cell along z (0.0002 m against a local cell of 0.0005 m): a Box passed to sim.add() is a VOLUME; declare a sheet (a zero-thickness Box or add_thin_conductor) or resolve the thickness. Nothing is inferred from raster thickness or drawing direction (lattice ownership contract \u00a71.5). (lattice ownership contract #931 \u00a71.5; preflight reports it here so the whole configuration is audited before the raise).",
+        "numbers": [
+          0.0,
+          0.0002,
+          0.0005,
+          1.5,
+          931.0,
+          1.5
+        ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-        "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
+        "numbers": [
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          1.0,
+          1272.0,
+          1346.0,
+          4.0,
+          -20.0,
+          2.0,
+          -23.0,
+          10.0,
+          -17.0,
+          30.0,
+          -6.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

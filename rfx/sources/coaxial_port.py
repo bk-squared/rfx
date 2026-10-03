@@ -4,7 +4,9 @@ Models an SMA connector as:
   - PEC outer conductor (cylinder shell)
   - PTFE dielectric fill (eps_r=2.1) between outer and inner conductors
   - PEC center pin (solid cylinder)
-  - Lumped excitation gap at the base (cavity wall interface)
+
+The removed ``setup_coaxial_port`` API also built a lumped excitation gap.
+The remaining coaxial-line helpers use TEM excitation and PEC edge conductors.
 
 Standard SMA dimensions:
   - Center pin diameter: 1.27 mm (radius 0.635 mm)

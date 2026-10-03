@@ -1,6 +1,6 @@
 """Refuse the input classes the distributed lanes would drop or get wrong.
 
-Periodic/Bloch boundaries, extended and passive ports, surface monitors
+Periodic/Bloch boundaries, reference-plane and passive ports, surface monitors
 (flux, DFT planes), Kerr materials, lumped RLC elements, subgridding.
 
 Exercise the public dispatch and the shard_map runner entry with two CPU
@@ -44,9 +44,8 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
         warnings.simplefilter("ignore", UserWarning)
         warnings.simplefilter("ignore", DeprecationWarning)
         sim = Simulation(freq_max=15e9, domain=(domain_x, 12e-3, 12e-3),
-                         dx=1e-3, boundary=boundary)
-        if periodic:
-            sim.set_periodic_axes(periodic)
+                         dx=1e-3, boundary=(BoundarySpec(**{axis: "periodic" if axis in periodic else boundary
+                                                   for axis in "xyz"}) if periodic else boundary))
         if port is None:
             sim.add_source(position=(6e-3, 6e-3, 6e-3), component="ez",
                            amplitude_kind="field")
@@ -121,11 +120,11 @@ def test_periodic_boundaries_are_refused(entry, declaration):
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
-def test_extended_lumped_port_is_refused(entry):
-    """A 3 mm, 50 ohm port requires both its source and resistive termination."""
-    sim = _build(entry=entry, port={"impedance": 50.0, "extent": 3e-3})
-    _assert_refused(sim, entry, "extended lumped port", "extent=",
-                    "neither a source nor its resistive termination")
+def test_reference_plane_wire_port_is_refused(entry):
+    sim = _build(entry=entry, port={"impedance": 50.0, "extent": 3e-3,
+                                   "reference_plane_cells": 2, "direction": "+x"})
+    with pytest.raises(NotImplementedError, match="reference_plane_cells.*V_ref.*one device"):
+        _run(sim, entry)
 
 
 @pytest.mark.parametrize("entry", ENTRIES)

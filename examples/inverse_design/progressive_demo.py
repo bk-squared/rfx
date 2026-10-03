@@ -34,9 +34,10 @@ the design: the per-stage percentages below are identical with and without it.
 
 The scale does decide whether this demo optimizes at all.  Adam's update is
 ``lr * m / (sqrt(v) + 1e-8)`` (``eps_adam``, ``rfx/optimize.py``).  Passing
-``amplitude_kind=None`` selects the legacy per-path amplitude convention —
-deprecated since #571, still the default in 1.7 and 1.8 with a
-DeprecationWarning.  Under it the loss is ~1e-8 and its gradient ~1e-12, so
+``amplitude_kind=None`` now resolves to ``"current"``; see
+``tests/unit/sources/test_source_amplitude_kind.py``. The following is a
+historical measurement of the pre-2.0 legacy per-path convention.
+Under that convention the loss was ~1e-8 and its gradient ~1e-12, so
 ``eps_adam`` dominates the denominator and the latent barely moves.  Measured
 2026-09-05, 64-core CPU, 10 iterations:
 

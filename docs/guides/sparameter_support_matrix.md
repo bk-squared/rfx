@@ -82,7 +82,7 @@ guard. An absent warning therefore cannot be compared across port families.
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited** — broad magnitude evidence for documented uniform single-mode rectangular guides; phase and junction evidence are narrower; nonuniform configurations outside the passed Palace `normalize=flux` WR-90 cases remain experimental; chain-closed (v1.8) for uniform single-mode S on the differentiable lanes after three pre-declared chain-battery runs (VESSL run 369367257823 / 369367258205 / 369367258638; criterion 1 and 3(a) read under x64 on the flux lane, forward default float32; a float32 gradient pipeline on the flux lane is outside the declaration) — still limited, not supported |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited diagnostic** — per-port output, not the full multi-port matrix API |
 | `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited** — exactly one `face="top"` port; broad-E5 analytic and broad-E4 MEEP evidence for the documented TEM-line result |
-| `add_coaxial_port(...)` | `compute_coaxial_s_matrix(...)` | `CoaxialSMatrixResult` | **experimental and deprecated** — older single-plane V/I path; can produce non-physical `\|S11\| > 1` for a lossless short |
+| `add_coaxial_port(...)` | former `compute_coaxial_s_matrix(...)` | former `CoaxialSMatrixResult` | **removed** — use the line-reflection or two-port calculator within its documented scope |
 | `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **validated with scope** (issue #489, PI decision 2026-08-06) — two-drive through-line 2-port solve on one coax geometry family; bracketed by an external openEMS referee (VESSL run-3 `369367251629` + VESSL `369367252220`) on `\|S21\|` and, via the port's own measured `beta`, phase, plus a mesh-refinement convergence witness (VESSL `369367251845`, `p ~= 1.5`) and a `GRAD_SAFE` `eps_scale` AD gate; every DUT it can currently gate against is still azimuthally symmetric (TM0n only) — coax<->planar transitions are the separate `compute_coax_msl_transition(...)` lane (own row below, own status, unaffected by this promotion) |
 | `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental, diagnostic-only** (issue #489 leg 4) — coax-to-microstrip transition, two-drive. The attempt-2 readings this row used to quote (91.4% reciprocity worst deviation, ~99% of the MSL-driven column power missing at 6/8 GHz, both from VESSL `369367252283`) were taken through three instrument defects that are now fixed: a fixture that was a short (the predeclared clearance hole was never realized, PR #804), inverted wave-role labels making `S_code = inv(S_true)` (#822), and an MSL fit window inside the port's near field (#823). Do not cite those numbers. On the corrected-label settled runs (VESSL `369367257613` / `369367257614`, PR #837, 2026-09-01) the junction is an ordinary low-loss transition: a six-face flux box closes to ≤0.2% and 91-98% of the net power crosses the junction, and ONE diagonal port renormalization `k ≈ 0.57` (flat to 1.2% over 6-10 GHz) restores reciprocity, giving `\|S21\|` 0.981/0.972/0.952 and column powers within 3.5% of unity. What is left is one named defect: the MSL side's power-wave normalization over-reads power by ~3x, measured by two instruments (the S-matrix's own reciprocity asymmetry and a Poynting flux box) — issue #838, isolated, mechanism unresolved, not fixed. Those column powers are the RENORMALIZED reading; as returned, unrenormalized, the matrix is not passive, so this lane refuses it by default (`strict_passivity=True`, raising `ValueError`) and `strict_passivity=False` returns it with a `UserWarning` instead, and the "Corrected settled reading" block in this file's Coax<->MSL transition section carries that reading and its witnesses in full. Scope: cross-family transition lanes are not pursued further before 2.0 (PI decision 2026-09-20), so this over-read will not be attributed or fixed — for a validated result use the single-family extractors separately, `compute_msl_s_matrix(...)` for the microstrip line and `compute_coaxial_two_port(...)` / `compute_coaxial_line_reflection(...)` for the coax. The flux-adjudication lane is under a PI hard stop (2026-08-07). The section below is this lane's history and has NOT been re-baselined against the corrections — do not treat as a validated transition |
 | `add_port(...)` + `add_msl_port(...)` | `compute_mixed_s_matrix(...)` | `MixedSMatrixResult` | **experimental**, diagnostic, not in the validated set — off-diagonal magnitudes from Poynting flux; internal reciprocity witness 9.0% (flux channel) vs 55% (wave channel) on the probe-fed MSL fixture; absolute \|S\| is NOT validated (no external-solver referee has been run); with `enforce_passivity=True` (default) the returned diagonal is a joint SVD-projected value — read `S_raw`/`passivity_correction` for what was measured |
@@ -128,11 +128,10 @@ define an S-parameter port.
   are **synthetic algebra**: they feed the extractor constructed V/I phasors and
   confirm it reproduces the circuit formula. They exercise no solved field, so
   they did not detect the extraction defect the known-load line above found.
-- A real two-port V/I replay covers 9 frequencies and 2 ports with
-  `max_abs_diff 1.13e-7` against `9.84e-7`.
-- A three-case uniform-grid replay/passivity/reciprocity check has maximum replay
-  difference `1.58e-7`, maximum column power `0.971`, and maximum reciprocity
-  difference `3.02e-7`.
+- Real two-port V/I replay and a uniform-grid replay/passivity/reciprocity
+  sweep check the driven-port extraction. The formerly quoted measurements
+  predated the extraction correction; consult the current replay records
+  before citing numerical residuals.
 - The rfx/OpenEMS PEC-box magnitude checks cover three port-position cases. The
   largest per-case linear-magnitude differences are `0.11835` maximum and
   `0.06466` mean. These cases do not cover a broad matched/open/short/load set.
@@ -383,8 +382,8 @@ record compatibility, and the assumptions needed to interpret V/I as power.
   openEMS realizes (substrate 300 um,
   `regate_evidence.json::cv20.eps_eff_hammerstad_jensen_realized_board`), the
   latter against the board rfx realizes (250 um, `…rfx_board_post_931`).
-  See `validation/crossval/20_msl_phase_referee.py` (manifest entry
-  `20_msl_phase_referee`), `tests/crossval/test_msl_phase_referee_header.py`, and
+  The former `validation/crossval/20_msl_phase_referee.py` and its header
+  test were removed. The historical measurement is described in
   `docs/design_notes/issue812_phase_identity_predeclaration.md`.
 
 `MSLSMatrixResult.reliable` is available during normal execution and is `None`
@@ -780,9 +779,9 @@ Dispatch history (#811, fixed 2026-09-01): until that fix
 `dx_profile` or `dy_profile` was set — a `dz_profile`-only simulation was
 silently solved on the uniform grid built from the scalar `dx` while
 preflight described the graded mesh. A `dz_profile` now dispatches here
-under the same restrictions. No dz-graded accuracy evidence exists yet
-(#810): the Palace comparison above is graded-`dy` only, so dz-graded
-results are dispatch-correct and unvalidated. The nonuniform lane emits
+under the same restrictions. The WR-90 graded-propagation control in #1083
+adds scoped dz-graded evidence; the Palace comparison above is graded-`dy`
+only, and neither establishes accuracy for arbitrary dz profiles. The nonuniform lane emits
 the same `settling_db` ring-down witness and -40 dB aggregate warning as
 the uniform single-mode lane (#827 waveguide instance).
 
@@ -906,9 +905,9 @@ The simulation must contain exactly one coaxial port, it must use `face="top"`,
 and no other port family may be registered. It also requires `mode="3d"`,
 `solver="yee"`, `precision="float32"`, `stencil_order=2`, a uniform grid, and
 `boundary="cpml"` with `cpml_layers > 0`. Other settings raise before grid
-construction. Both z faces must have positive CPML thickness, the method must
-use its default `cpml_axes="z"`, all six `BoundarySpec` face tokens must be
-`cpml`, and periodic boundary axes are unsupported.
+construction. Every boundary face must be a `cpml` token with positive
+thickness, `cpml_axes="xyz"` is the default and the only accepted value
+(`"z"` raises, #1218), and periodic boundary axes are unsupported.
 The calculator constructs the line, TEM source, DFT planes, and termination.
 Do not register separate geometry, thin conductors, lumped RLC elements,
 probes, field monitors, NTFF boxes, or `add_coaxial_*` termination helpers.
@@ -920,7 +919,7 @@ and all requested planes must fit between the DUT and source. Increase the z
 domain or reduce the count, start, or spacing if the method reports that they
 do not fit; it does not silently use fewer planes.
 
-**RF evidence (broad-E5 analytic, broad-E4 external):**
+**RF evidence (broad-E5 analytic, broad-E4 external), measured before #1218 with `cpml_axes="z"` and not re-measured under `"xyz"`; #1218 moved every coaxial S slightly:**
 
 - The analytic check covers 4--12 GHz, short/open/matched/resistive 25 and
   100 ohm terminations, characteristic impedances 48.6 and 63 ohm, and a mesh
@@ -944,11 +943,11 @@ This API is not a general multi-port coaxial-network solver and does not cover
 arbitrary launches, mixed port families, nonuniform meshes, TFSF, Floquet, or
 SBP-SAT. PEC, UPML, zero-layer CPML, ADI, two-dimensional, and fourth-order
 configurations are also unsupported. Mixed precision is unsupported.
-Boundary specifications without positive CPML on both z faces, non-z
-`cpml_axes` selections, mixed boundary-face tokens, and periodic axes are
-unsupported. `run()` and `forward()` reject high-level coaxial S-parameter
+Boundary specifications require CPML tokens with positive thickness on all six
+faces and `cpml_axes="xyz"` (the only accepted value); mixed boundary-face
+tokens and periodic axes are unsupported. `run()` and `forward()` reject high-level coaxial S-parameter
 requests.
-The older `compute_coaxial_s_matrix(...)` path is deprecated and experimental.
+The older `compute_coaxial_s_matrix(...)` path has been removed.
 
 `compute_coaxial_two_port(...)` (issue #489 stage 2) extends the same
 transmission-line method to two ports: it builds a single through line with a
