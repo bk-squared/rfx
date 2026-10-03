@@ -415,14 +415,15 @@ def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
 def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) -> object:
     """Inject source voltage at the port cell. Call AFTER update_e().
 
-    E[port] += Cb * V_src / d_parallel
+    E[port] += Cb * V_src / (R * transverse_dual_area)
     """
     from rfx.sources.port_drive import port_drive_waveform
 
     idx = grid.position_to_index(port.position)
     i, j, k = idx
     increment = port_drive_waveform(
-        grid, idx, port.component, port.excitation, None, materials, time=t)
+        grid, idx, port.component, port.excitation, None, materials,
+        impedance=port.impedance, time=t)
 
     field = getattr(state, port.component)
     field = field.at[i, j, k].add(increment)
@@ -660,7 +661,7 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
         i, j, k = cell
         increment = port_drive_waveform(
             grid, cell, port.component, port.excitation, None, materials,
-            n_live=n_live, time=t)
+            impedance=port.impedance, n_live=n_live, time=t)
         field = field.at[i, j, k].add(increment)
 
     return state._replace(**{port.component: field})

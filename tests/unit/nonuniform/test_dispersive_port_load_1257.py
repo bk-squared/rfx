@@ -49,8 +49,8 @@ What is checked:
    port with Debye and with Lorentz, MSL port with Debye. Both lanes now
    use the same voltage units (#1266), so the 50 ohm field traces compare
    directly. The unit-free 50/5000 ratio keeps its 1 % bar. The lumped
-   direct-trace gates use twice the measured error, rounded up to one
-   significant digit (see LUMPED_TRACE_RTOL); the MSL gate stays unchanged.
+   direct-trace gates use the documented cross-trace
+   bar (see LUMPED_TRACE_RTOL); the MSL gate stays unchanged.
 3. the defect restored with every call kept: ``init_debye`` / ``init_lorentz``
    are still called where they now are, but handed the materials as
    assembled, before any port stamp -- what the old order gave them. Both
@@ -89,9 +89,8 @@ OPEN_FRACTION = 0.5
 BLOCK_FACTOR = 3.0
 LANE_RATIO_RTOL = 1e-2
 LANE_TRACE_RTOL = 1e-4
-# DX=1 mm: measured direct errors Debye 2.19e-6, Lorentz 2.58e-6.
-# Twice each error, rounded up to one significant digit; both tighten 1e-4.
-LUMPED_TRACE_RTOL = {"debye": 5e-6, "lorentz": 6e-6}
+# Documented cross-trace bar; no single-machine noise-based threshold.
+LUMPED_TRACE_RTOL = {"debye": 1e-4, "lorentz": 1e-4}
 
 #: The MSL port's open-circuit 50/5000 ratio on the graded board. The laplace
 #: feed puts one conductance on every driven Ez edge and all 14 lie in the

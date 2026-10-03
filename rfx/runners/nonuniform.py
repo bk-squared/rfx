@@ -1275,7 +1275,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         continue
                     waveform = port_drive_waveform(
                         grid, cell_ijk, pe.component, pe.waveform, sizing_n,
-                        materials_drive, n_live=n_live)
+                        materials_drive, impedance=pe.impedance, n_live=n_live)
                     sources.append((*cell_ijk, pe.component, waveform))
 
             # Wire port S-param spec — include excite/direction so the
@@ -1341,7 +1341,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     pec_edge_masks, [(i, j, k)], component=pe.component)
             if pe.excite:
                 waveform = port_drive_waveform(
-                    grid, idx, pe.component, pe.waveform, sizing_n, materials_drive)
+                    grid, idx, pe.component, pe.waveform, sizing_n, materials_drive,
+                    impedance=pe.impedance)
                 sources.append((*idx, pe.component, waveform))
 
             # Explicit bins opt lumped ports into the same V/I accumulators

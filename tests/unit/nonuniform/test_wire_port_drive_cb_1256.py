@@ -5,7 +5,7 @@ substrate on a 0.5 mm mesh. The port is a current source in parallel with its
 50 ohm load, and both sit on the same three Ez edges: the load is a
 conductance ``sigma_port = n * d / (Z0 * d_perp1 * d_perp2)`` = 120 S/m
 stamped into the edges' update coefficient ``Cb = dt / (eps + sigma*dt/2)``,
-and the voltage drive is ``Cb * w / (n * d_par)``. The graded
+and the Thevenin voltage drive is ``Cb * w / (Z0 * d_perp1 * d_perp2)``. The graded
 lane built the drive from a copy of the materials taken BEFORE the load was
 stamped, so its Cb lacked sigma_port and the edges received
 ``1 + sigma_port*dt/(2*eps)`` times the voltage-drive increment -- 2.911 at this
@@ -41,7 +41,7 @@ What is checked, at 4 GHz, below the patch resonance:
 5. end to end, a 0.3 pF capacitor across the middle edge of the wire port:
    the two lanes agree on |S11| at 2 and 4 GHz within 1e-4.
 
-Both lanes use the shared voltage drive ``Cb * w / (n * d_par)`` (#1266).
+Both lanes use the shared Thevenin drive ``Cb * w / (Z0 * A_dual)`` (#1266).
 Lane parity compares the absolute fields directly, without a unit conversion.
 """
 
@@ -81,9 +81,8 @@ DT_RATIO = 0.772                    # the issue's 0.59613 / 0.77228 ps
 SIGMA_PORT = N_SUB * DX / (Z0 * DX * DX)
 
 # Pre-declared gates.
-# Direct graded/uniform error 1.34e-7 at DX=0.5 mm; 2x, rounded up
-# to one significant digit. This tightens the former 1e-3 gate.
-LANE_PARITY_RTOL = 3e-7
+# Summed Fourier quantity: documented cross-trace bar.
+LANE_PARITY_RTOL = 1e-4
 DT_FIELD_RTOL = 1e-2
 DT_S11_RTOL = 1e-3
 

@@ -459,7 +459,7 @@ def _run_subgridded_once(
                     i, j, k = cell
                     waveform = port_drive_waveform(
                         fine_grid, cell, pe.component, pe.waveform, n_steps,
-                        mats_f, n_live=n_cells)
+                        mats_f, impedance=pe.impedance, n_live=n_cells)
                     sources_f.append((i, j, k, pe.component, np.array(waveform)))
         else:
             # Lumped port
@@ -473,7 +473,8 @@ def _run_subgridded_once(
 
             if pe.excite and pe.waveform is not None:
                 waveform = port_drive_waveform(
-                    fine_grid, idx, pe.component, pe.waveform, n_steps, mats_f)
+                    fine_grid, idx, pe.component, pe.waveform, n_steps, mats_f,
+                    impedance=pe.impedance)
                 sources_f.append((i, j, k, pe.component, np.array(waveform)))
 
     # Build probes on fine grid

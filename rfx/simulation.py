@@ -466,7 +466,8 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     i, j, k = idx
 
     waveform = port_drive_waveform(
-        grid, idx, port.component, port.excitation, n_steps, materials)
+        grid, idx, port.component, port.excitation, n_steps, materials,
+        impedance=port.impedance)
     return SourceSpec(i=i, j=j, k=k,
                       component=port.component, waveform=waveform)
 
@@ -474,11 +475,9 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
 def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
     """Create a list of SourceSpec for a multi-cell WirePort.
 
-    Each LIVE cell in the wire gets its own SourceSpec with the
-    Cb-corrected waveform scaled by 1/n_live (issue #318: dead extent
-    cells inside PEC get no source — pre-#318 they accumulated phantom
-    EMF).  With ``pec_edge_masks=None`` (or no dead cells) this is the
-    historical all-cells 1/N_cells behaviour.  The port impedance must
+    Each LIVE cell gets a Thevenin source voltage w/n_live and resistance
+    R/n_live: its Norton current is w/R. Dead extent cells inside PEC get
+    no source (issue #318). The port impedance must
     already be folded into *materials* via ``setup_wire_port()``.
 
     Returns
@@ -497,7 +496,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
         i, j, k = cell
         waveform = port_drive_waveform(
             grid, cell, port.component, port.excitation, n_steps, materials,
-            n_live=n_live)
+            impedance=port.impedance, n_live=n_live)
         specs.append(SourceSpec(i=i, j=j, k=k,
                                 component=port.component, waveform=waveform))
     return specs
