@@ -425,11 +425,12 @@ def test_o3_loss_ladder_strictly_decreasing():
             f"{s21[a]:.6f} -> {s21[b]:.6f}")
 
 
-#: Drift lock (issue 1292): in-band mean |S21| of this fixture on the tree of
-#: 2026-09-27 (a55ec1e7 and 1d10ee45 give the same digits), VESSL CPU, JAX 0.6.2,
-#: float32. The tolerance is the largest difference measured between runs of the
+#: Drift lock (issues 1292/1266): re-captured on 90f2603e, 2026-10-03,
+#: Mac CPU, Python 3.11.2 / JAX 0.10.2, float32, after the port source rescale.
+#: The tolerance is the largest difference measured between runs of the
 #: same tree under different run conditions, see test_o3_mean_s21_drift_lock.
-O3_MEAN_S21 = {"rs_tiny": 0.999206511, "rs1": 0.996431813, "rs5": 0.996240028}
+O3_MEAN_S21 = {"rs_tiny": 0.9992086291313171,
+               "rs1": 0.9964331388473511, "rs5": 0.9962416887283325}
 O3_DRIFT_TOL = 4e-7
 
 
@@ -437,6 +438,8 @@ O3_DRIFT_TOL = 4e-7
 def test_o3_mean_s21_drift_lock():
     """The O3 ladder's values, locked. A code change that moves the in-band mean |S21|
     of this board at Rs0 = 1e-6, 1 or 5 ohm/sq by more than O3_DRIFT_TOL turns this red.
+
+    #1266 rescaled this source by 76.568 (port drive = stamped conductance × source field); main with the same pure rescale reads the same values, so the re-pin carries no physics change; a rescale alone moves these values by up to 2.1e-6 (×76.6) and 3e-7 (×64).
 
     Tolerance: the largest difference measured between runs of this fixture on one tree
     (1d10ee45, 2026-09-27) across run conditions, rounded up to one significant figure.
