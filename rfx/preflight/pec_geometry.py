@@ -262,8 +262,9 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     ctx = self._campaign_ctx()
     if ctx.error == "traced-mesh":
         _w.warn(PreflightWarning(
-            "The sheet-size verdict and the other conductor-realization "
-            "checks could NOT run on a traced mesh: concrete node positions "
+            "The conductor-realization checks (PEC volume faces, the "
+            "sheet-size verdict and the others) could NOT run on a traced "
+            "mesh: concrete node positions "
             "are unavailable. This means 'not evaluated', not 'clean'. "
             "Run the same geometry once with concrete (non-traced) profiles, "
             "or build them with rfx.mesh_edges.edge_aware_profiles.",

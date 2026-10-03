@@ -38,7 +38,7 @@ def test_traced_sheet_warns_once_per_preflight(axis):
         assert hits[0].source == "_validate_cfg_campaign_statics"
         message = str(hits[0])
         assert "sheet-size verdict" in message
-        assert "other conductor-realization checks could NOT run" in message
+        assert "could NOT run on a traced" in message
         assert "concrete (non-traced) profiles" in message
         assert "rfx.mesh_edges.edge_aware_profiles" in message
 
@@ -59,3 +59,20 @@ def test_traced_mesh_without_conductor_has_no_warning():
     jax.grad(loss)(jnp.full(20, 0.001))
     assert len(reports) == 1
     assert reports[0].by_code(CODE) == []
+
+
+def test_traced_pec_volume_warns():
+    """The model that actually runs on a traced mesh carries PEC volumes."""
+    reports = []
+
+    def loss(profile):
+        sim = Simulation(domain=(0.02, 0.02, 0.02), dx=0.001, freq_max=10e9,
+                         boundary="pec", dz_profile=profile)
+        sim.add(Box((0.004, 0.004, 0.006), (0.014, 0.014, 0.008)), material="pec")
+        reports.append(sim.preflight())
+        return jnp.sum(profile)
+
+    jax.grad(loss)(jnp.full(20, 0.001))
+    hits = reports[0].by_code(CODE)
+    assert len(hits) == 1
+    assert "PEC volume faces" in str(hits[0])

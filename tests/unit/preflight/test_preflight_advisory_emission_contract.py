@@ -459,6 +459,7 @@ _FROZEN_TOTAL_SITES = 125
 # 78 -> 79 (#1272): thin_absorber, including vacuum and graded meshes.
 # 79 -> 80 (#1342): ``trace_port_footprint`` -- see the note on
 # _FROZEN_TOTAL_SITES above.
+# 80 -> 81 (#1138 rc2): ``campaign_statics_traced_mesh``.
 _FROZEN_LITERAL_CODE_COUNT = 81
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
