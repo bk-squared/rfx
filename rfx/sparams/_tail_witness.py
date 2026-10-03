@@ -65,12 +65,14 @@ class TailShareWitness(NamedTuple):
 
 
 def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_results=None):
-    """Judge pole tails and identification error at every read bin.
+    """Judge per-bin pole tails by agreement between two source-free windows.
 
     sensitivities are judged by a separate witness
     """
+    from dataclasses import replace
+
     from rfx.core.jax_utils import is_tracer
-    from rfx.ringdown import identify, plain_dft, tail_dft
+    from rfx.ringdown import identify, plain_dft, tail_dft, _static_pole
 
     records = tuple(records)
     if is_tracer(freqs):
@@ -123,13 +125,13 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
             scale = np.max(np.maximum(np.abs(y.real), np.abs(y.imag)), axis=0)
             y = y / scale
             start = max(int(source_end), round(.5 * n))
-            longer = max(int(source_end), start // 2)
-            check_start = longer if longer < start else start
-            check_stop = n if longer < start else start + round(.9 * (n - start))
+            use_earlier = start // 2 >= source_end
+            check_start = start // 2 if use_earlier else start
+            check_stop = n if use_earlier else start + round(.9 * (n - start))
             if min(n - start, check_stop - check_start) < 10:
                 raise ValueError("post-source window too short for the identification check")
-            main = identify(y, dt, start, n, freq_max=freq_max)
-            other = identify(y, dt, check_start, check_stop, freq_max=freq_max)
+            main = identify(y, dt, start, n, freq_max=max(freq_max, float(np.max(bins))))
+            other = identify(y, dt, check_start, check_stop, freq_max=max(freq_max, float(np.max(bins))))
             denom = np.abs(plain_dft(y, dt, bins))
             for model in (main, other):
                 if not len(model.s):
@@ -141,17 +143,24 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
                         reasons.append(
                             f"{label}: {rule} pole at read bin {bins[k]:.12g} Hz; "
                             f"identification-window term DFT / whole-record DFT = {value[k]:.12g} {comparison}")
+            def without_static(model):
+                keep = np.array([not _static_pole(model.pole(k), n*dt, 1e-6)
+                                 for k in range(len(model.s))], dtype=bool)
+                return replace(model, s=model.s[keep], c=model.c[keep])
+
+            main, other = without_static(main), without_static(other)
             tail = tail_dft(main, n - 1, bins)
             alt = tail_dft(other, n - 1, bins)
             with np.errstate(divide="ignore", invalid="ignore"):
                 per_channel = np.abs(tail) / denom
+                other_channel = np.abs(alt) / denom
                 err_channel = np.abs(tail - alt) / denom
-            if not np.isfinite(per_channel).all() or not np.isfinite(err_channel).all():
+            if not np.isfinite(per_channel).all() or not np.isfinite(err_channel).all() or not np.isfinite(other_channel).all():
                 reasons.append(f"{label}: non-finite tail or zero in-record DFT")
                 continue
             share = np.maximum(share, per_channel.max(axis=1))
             error = np.maximum(error, err_channel.max(axis=1))
-            uncertain = (err_channel > 1e-2) & (per_channel + err_channel > 1e-2)
+            uncertain = (per_channel > 1e-2) != (other_channel > 1e-2)
             if _record_results is not None and len(reasons) == n_reasons:
                 offset = 0
                 for name, array in group:
@@ -160,19 +169,18 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
                         continue
                     columns = slice(offset, offset + array.shape[1])
                     peak = np.max(per_channel[:, columns])
-                    if peak > 0 and not np.any(uncertain[:, columns]):
-                        _record_results[name] = float(20*np.log10(peak))
+                    if not np.any(uncertain[:, columns]):
+                        _record_results[name] = float(20*np.log10(max(peak, np.finfo(float).tiny)))
                     offset += array.shape[1]
             if np.any(uncertain):
-                reasons.append(f"{label}: identification error > 1e-2 where share + error > 1e-2")
+                for k in np.flatnonzero(np.any(uncertain, axis=1)):
+                    reasons.append(f"{label}: identification windows disagree at {bins[k]:.12g} Hz")
         except (ValueError, np.linalg.LinAlgError, FloatingPointError) as exc:
             reasons.append(f"{label}: {exc}")
     if reasons:
         return unavailable('undetermined', '; '.join(reasons))
     worst = int(np.argmax(share))
-    if share[worst] == 0:
-        return unavailable("undetermined", "identified tail is zero at every read bin")
-    db = float(20 * np.log10(share[worst]))
+    db = float(20 * np.log10(max(share[worst], np.finfo(float).tiny)))
     return TailShareWitness(db, share, float(bins[worst]),
                             'pass' if share[worst] <= 1e-2 else 'fail', '', error, contributions)
 

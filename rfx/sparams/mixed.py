@@ -820,9 +820,8 @@ def compute_mixed_s_matrix(
                     ) if _plane_records else []
                     _channels.extend((f"wire{p}/V_I", record) for p, record in
                                      enumerate(raw.get("sparam_time_records") or ()))
-                    if _channels:
-                        _channels.extend((f"probe{i}", _ts_np[:, i])
-                                         for i in range(_ts_np.shape[1]))
+                    _channels.extend((f"probe{i}", _ts_np[:, i])
+                                     for i in range(_ts_np.shape[1]))
                     settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(
                         _channels, source_end_index=_source_end, dt=raw.get("dt", grid.dt),
                         freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)

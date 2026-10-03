@@ -75,9 +75,15 @@ def test_missing_metadata_is_never_pass(missing):
 def test_invalid_selected_channel_invalidates_companion(bad, reverse):
     y = np.column_stack([np.exp(-np.arange(200)/20.), np.full(200, bad)])
     result = synthetic(time_series=y[:, ::-1] if reverse else y)
-    assert result.settling_witness['status'] == 'undetermined'
-    assert result.settling_witness['reason']
-    assert np.isnan(result.settling_db)
+    if bad == 0:
+        assert result.settling_witness['status'] == 'pass'
+        assert result.settling_db <= -40
+        zero = 0 if reverse else 1
+        assert result.settling_witness['per_record_db'][f'probe{zero}(?)'] == -np.inf
+    else:
+        assert result.settling_witness['status'] == 'undetermined'
+        assert result.settling_witness['reason']
+        assert np.isnan(result.settling_db)
 
 
 def test_empty_selection_excludes_backend_fallback_record():
@@ -169,7 +175,7 @@ def test_reference_plane_drive_channels_and_source_selection(monkeypatch):
     assert detail['status'] == 'undetermined'
 
 
-def test_s_only_undetermined_warning_names_bin_and_reason(monkeypatch):
+def test_s_only_undetermined_warning_names_only_worst_bin_and_share(monkeypatch):
     from rfx.api._spec import Result
 
     sim = _sim(probe=False)
@@ -178,6 +184,26 @@ def test_s_only_undetermined_warning_names_bin_and_reason(monkeypatch):
     monkeypatch.setattr(sim, '_run_settling_witness', lambda result: (np.nan, detail))
     result = Result(state=None, time_series=None, s_params=np.zeros((1, 1, 1)),
                     freqs=np.array([2e9]))
-    with pytest.warns(UserWarning, match=r'worst bin 2e\+09 Hz.*undetermined.*identification error'):
+    with pytest.warns(UserWarning, match=r'worst bin 2e\+09 Hz, share 0.02.*undetermined') as caught:
         attached = sim._attach_run_settling_witness(result, n_steps=20)
     assert attached.settling_witness['status'] == 'undetermined'
+    assert attached.settling_witness['reason'] == 'identification error'
+    assert all('identification error' not in str(row.message) for row in caught)
+
+
+def test_probe_source_end_uses_probe_count_when_port_channels_are_present(monkeypatch):
+    import rfx.probes.settling as settling
+
+    sim = _sim()
+    sim.add_probe((.003, .003, .003), 'ez')
+    selected = []
+
+    def source_end(simulation, n_steps, dt, records, **kwargs):
+        selected.extend(records)
+        return 10
+
+    monkeypatch.setattr(settling, 'simulation_source_end_step', source_end)
+    result = SimpleNamespace(time_series=np.ones((200, 2)), dt=1.,
+                             sparam_time_records=(np.ones((200, 1)),))
+    assert sim._settling_source_end(result) == 10
+    assert selected == sim._probes

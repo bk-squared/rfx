@@ -1,5 +1,6 @@
 Frozen records copied without cropping or downsampling from
-`/private/tmp/claude-501/-Users-byungkwankim-rfx-research-rfx-ports/6a795cf5-0882-4b1b-9af5-4758368329b0/scratchpad/dc_check/`.
+rfx-archive `rfx/records/20261002-settling-witness-1426-audit/` @ `5ea04b56`
+(`measure.py`, `analyze.py`, and the npz files there).
 
 | File | Bytes | Read bins | Identification freq_max | Source end |
 |---|---:|---|---:|---:|
@@ -7,5 +8,6 @@ Frozen records copied without cropping or downsampling from
 | waveguide_worst.npz | 48,408 | 17 bins, 8.4–11.6 GHz | 11.6 GHz | 503 |
 
 Read-bin provenance: `tests/locks/test_ntff_directivity_validation_battery.py`
-and `tests/_waveguide_chain_battery_fixture.py`. The contract reads
+`hw9mm` and `tests/oracle/test_waveguide_chain_battery_closure.py`
+`measure_closure_witness`. The contract reads
 `selected_record`, `metadata_json`, and the original time step.

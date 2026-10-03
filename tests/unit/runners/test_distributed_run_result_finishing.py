@@ -8,7 +8,6 @@ from rfx import Simulation
 
 
 N_STEPS = 40
-# Measured max one/two-device difference: 0 dB for both probes and the worst.
 SETTLING_ATOL_DB = 1e-5
 
 
@@ -66,19 +65,32 @@ def test_lumped_port_can_opt_out_of_s_params():
 
 
 def test_portless_default_run_returns_matching_settling_witness():
-    single = _model().run(n_steps=N_STEPS, devices=_devices()[:1])
-    multi = _model().run(n_steps=N_STEPS, devices=_devices())
+    from dataclasses import replace
+    import jax.numpy as jnp
+
+    steps = 160
+    single_sim, multi_sim = _model(), _model()
+    for sim in (single_sim, multi_sim):
+        sim._ports[0] = replace(sim._ports[0], waveform=lambda t: jnp.where(t == 0, 1., 0.))
+    single = single_sim.run(n_steps=steps, devices=_devices()[:1])
+    multi = multi_sim.run(n_steps=steps, devices=_devices())
+    single_sim.add_dft_plane_probe(axis="z", coordinate=.006, component="ez", n_freqs=3)
+    plane_run = single_sim.run(n_steps=steps, devices=_devices()[:1])
+    single = single_sim._attach_run_settling_witness(
+        single._replace(dft_planes=plane_run.dft_planes, settling_witness=None))
+    multi_sim.add_dft_plane_probe(axis="z", coordinate=.006, component="ez", n_freqs=3)
+    multi = multi_sim._attach_run_settling_witness(
+        multi._replace(dft_planes=plane_run.dft_planes, settling_witness=None))
     assert multi.s_params is None
     assert single.settling_db is not None and multi.settling_db is not None
     assert single.settling_witness is not None and multi.settling_witness is not None
-    assert np.isnan(single.settling_db) and np.isnan(multi.settling_db)
     for result in (single, multi):
         detail = result.settling_witness
-        assert detail["status"] == "absent"
-        assert detail["reason"] == "no records or no read bins"
-        assert detail["per_record_db"] == {}
-        assert detail["share_per_bin"].size == 0
-        assert result.time_series.shape == (N_STEPS, 2)
+        assert detail["status"] == "undetermined"
+        assert "source end" not in detail["reason"]
+        assert set(detail["per_record_db"]) == {"probe0(ez)", "probe1(ez)"}
+        assert detail["share_per_bin"].size == 3
+        assert result.time_series.shape == (steps, 2)
     np.testing.assert_equal(multi.settling_witness, single.settling_witness)
     np.testing.assert_array_equal(multi.time_series, single.time_series)
 

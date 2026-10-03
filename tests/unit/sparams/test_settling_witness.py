@@ -600,14 +600,14 @@ def test_preflight_says_the_witness_will_be_absent():
     assert not none_requested.by_code("settling_witness_will_be_absent")
 
 
-def test_zero_probe_channel_invalidates_the_witness():
+def test_zero_probe_channel_is_excluded_from_the_witness():
     from rfx.probes.settling import probe_record_settling_witness
     record = np.column_stack([np.exp(-np.arange(200)/20.), np.zeros(200)])
     value, witness = probe_record_settling_witness(
         record, dt=1., freqs=[.1], freq_max=.2, source_end_index=0)
-    assert np.isnan(value)
-    assert witness["status"] == "undetermined"
-    assert "probe1" in witness["reason"] and "zero channel" in witness["reason"]
+    assert value <= -40
+    assert witness["status"] == "pass"
+    assert witness["per_record_db"]["probe1(?)"] == -np.inf
 
 
 def test_one_arithmetic_shared_by_both_lanes():

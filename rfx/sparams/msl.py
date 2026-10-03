@@ -725,9 +725,8 @@ def compute_msl_s_matrix(
                         port_idx_meta, trace_k_per_port, dz_arr,
                         [port.direction for port in msl_ports], regions=self._dft_plane_regions,
                     ) if _plane_records else []
-                    if _channels:
-                        _channels.extend((f"probe{i}", _ts_np[:, i])
-                                         for i in range(_ts_np.shape[1]))
+                    _channels.extend((f"probe{i}", _ts_np[:, i])
+                                     for i in range(_ts_np.shape[1]))
                     settling_db_runs[driven], settling_details[driven] = settling_db_from_named_records(
                         _channels, source_end_index=_source_end,
                         dt=getattr(_ts_result, "dt", None) or grid.dt,

@@ -48,7 +48,7 @@ def test_static_offset_and_minus_95_db_residual():
     y[125:] = 1. + 10**(-95/20)*np.exp((-.1 + 2j*np.pi*.5)*t[:875])
     result = witness(y, bins=[.5])
     assert result.status == 'pass', result
-    assert .005 < result.share_per_bin[0] < 1e-2
+    assert result.share_per_bin[0] < 1e-10
 
 
 def test_steady_sinusoid_is_undetermined():
@@ -86,10 +86,7 @@ def test_frozen_record(name, bins, fmax):
         meta = json.loads(str(data['metadata_json']))
         result = tail_share_witness([('selected_record', data['selected_record'])],
                                     meta['dt'], meta['source_end'], bins, freq_max=fmax)
-    print(f'{name}: db={result.db}, status={result.status}, bin={result.worst_freq_hz}, reason={result.reason}')
     assert result.status == 'pass', result
-    print('pole contributions:', {key: float(np.max(value))
-                                 for key, value in result.pole_contributions.items()})
     assert max(np.max(value) for value in result.pole_contributions.values()) <= 1e-2
 
 
@@ -152,14 +149,11 @@ def test_weakly_coupled_pec_waveguide_cavity(mode_removed):
     k = int(np.argmin(np.abs(bins - (8.2e9 if mode_removed else mode_hz))))
     db, detail = settling_db_from_port_records([cfg], freqs=bins[k:k+1],
                                               freq_max=12e9, return_detail=True)
-    magnitude = float(abs(result.waveguide_sparams['p'].s11[k]))
-    print(f'WR90 cavity mode_removed={mode_removed}: FFT mode={mode_hz}, read bin={bins[k]}, |S11|={magnitude}, '
-          f'db={db}, status={detail["status"]}, reason={detail["reason"]}')
     if mode_removed:
         assert detail['status'] == 'pass', detail
     else:
         assert np.sqrt(np.mean(tail[-100:]**2)) / np.max(np.abs(tail)) > .1
-        assert detail['status'] in {'fail', 'undetermined'}
+        assert detail['status'] == 'fail'
     assert detail['share_per_bin'].shape == (1,)
     if detail['status'] == 'undetermined':
         assert detail['reason']
@@ -207,13 +201,9 @@ def test_issue_1451_scaled_s_only_cavity_warns_at_worst_bin():
     messages = [str(w.message) for w in caught if 'settling witness' in str(w.message)]
     assert len(messages) == 1
     assert f"worst bin {witness['worst_freq_hz']:.9g} Hz" in messages[0]
-    assert witness['status'] in {'fail', 'undetermined'}
-    assert detail['status'] in {'fail', 'undetermined'}
+    assert witness['status'] == 'fail'
+    assert detail['status'] == 'fail'
     assert detail['worst_freq_hz'] == bins[peak]
-    print(f"#1451 scaled: |S11|={magnitude[peak]}, peak_bin={bins[peak]}, "
-          f"resonance_db={db}, resonance_status={detail['status']}, "
-          f"run_db={result.settling_db}, run_status={witness['status']}, "
-          f"worst_bin={witness['worst_freq_hz']}")
 
 
 def test_wire_s_only_resonance_warns_without_internal_double_fire():
@@ -226,8 +216,8 @@ def test_wire_s_only_resonance_warns_without_internal_double_fire():
         result = sim.run(n_steps=1500, s_param_freqs=FREQS, skip_preflight=True)
     assert result.s_params is not None
     witness = result.settling_witness
-    assert witness['route'] == 's_channels'
-    assert witness['status'] in {'fail', 'undetermined'}
+    assert any(row['route'] == 's_channels' for row in witness['runs'])
+    assert witness['status'] == 'fail'
     assert np.isfinite(witness['worst_freq_hz'])
     messages = [str(w.message) for w in caught if 'settling witness' in str(w.message)]
     assert len(messages) == 1
@@ -237,8 +227,6 @@ def test_wire_s_only_resonance_warns_without_internal_double_fire():
         warnings.simplefilter('always')
         sim._attach_run_settling_witness(result, n_steps=1500)
     assert not [w for w in internal if 'settling witness' in str(w.message)]
-    print(f"wire S-only: db={result.settling_db}, status={witness['status']}, "
-          f"worst_bin={witness['worst_freq_hz']}")
 
 
 @pytest.mark.parametrize('after_source', [True, False])
@@ -252,3 +240,181 @@ def test_non_decaying_term_exceeds_read_bin_contribution(after_source):
     assert 'non-decaying sinusoidal pole at read bin 0.5 Hz' in result.reason
     assert result.pole_contributions['non-decaying sinusoidal'][0] > 1e-2
     assert 'whole-record plain DFT' in result.pole_rule
+
+
+def test_second_window_uses_shorter_window_when_source_ends_after_quarter(monkeypatch):
+    import rfx.ringdown as rd
+
+    windows = []
+    original = rd.identify
+
+    def capture(series, dt, start, stop, **kwargs):
+        windows.append((start, stop))
+        return original(series, dt, start, stop, **kwargs)
+
+    monkeypatch.setattr(rd, 'identify', capture)
+    witness(modes(1000), source_end=350)
+    assert windows == [(500, 1000), (500, 950)]
+
+
+def test_read_bin_above_requested_identification_band_still_fails():
+    dt = .02
+    t = np.arange(20000)*dt
+    y = (np.real(np.exp((-.2 + 2j*np.pi*.5)*t))
+         + np.real(np.exp((-.002 + 2j*np.pi*3.)*t)))
+    result = tail_share_witness([('r', y)], dt, 200, [.5, 3.], freq_max=1.)
+    assert result.status == 'fail', result
+    assert result.share_per_bin[1] > 1e-2
+
+
+@pytest.mark.parametrize('ringing', [False, True])
+def test_short_drive_static_offset_excludes_only_static_poles(ringing):
+    t = np.arange(1000)*DT
+    y = np.exp(2j*np.pi*.5*t)
+    y[25:] = 1.
+    if ringing:
+        y[25:] += np.exp((-.001 + 2j*np.pi*.5)*t[:975])
+    result = witness(y, bins=[.5], source_end=25)
+    from rfx.api._sparams import settling_verdict
+
+    assert result.status == ('fail' if ringing else 'pass'), result
+    assert settling_verdict(result.db) == result.status
+    assert (result.share_per_bin[0] > 1e-2) == ringing
+
+
+def test_two_modes_still_ring_at_both_own_bins():
+    t = np.arange(1000)*DT
+    y = np.exp((-.001 + 2j*np.pi*.5)*t) + .2*np.exp((-.002 + 2j*np.pi)*t)
+    result = witness(y, source_end=0)
+    assert result.status == 'fail', result
+    assert np.all(result.share_per_bin > 1e-2)
+
+
+def test_no_kept_poles_has_explicit_reason(monkeypatch):
+    from dataclasses import replace
+    import rfx.ringdown as rd
+
+    original = rd.identify
+
+    def empty(*args, **kwargs):
+        model = original(*args, **kwargs)
+        return replace(model, s=model.s[:0], c=model.c[:0], s_growing=np.array([]))
+
+    monkeypatch.setattr(rd, 'identify', empty)
+    result = witness(modes(1000))
+    assert result.status == 'undetermined'
+    assert 'no kept poles identified' in result.reason
+
+
+def test_single_pole_share_is_geometric_tail_at_record_end():
+    n, dt, f = 800, .2, .7
+    pole = -.013 + 2j*np.pi*f
+    y = np.exp(pole*np.arange(n)*dt)
+    ratio = np.exp(-.013*dt)
+    expected = ratio**n / (1 - ratio**n)
+    result = tail_share_witness([('r', y)], dt, 0, [f], freq_max=1.)
+    assert result.status == 'fail', result
+    np.testing.assert_allclose(result.share_per_bin, [expected], rtol=1e-6, atol=0)
+
+
+def test_all_zero_post_source_group_is_undetermined():
+    y = np.ones((100, 2))
+    y[25:] = 0
+    result = witness(y, source_end=25)
+    assert result.status == 'undetermined'
+    assert 'no ringing to identify' in result.reason
+
+
+@pytest.mark.parametrize('precomputed', [False, True])
+@pytest.mark.parametrize('family', ['wire', 'waveguide'])
+@pytest.mark.parametrize('readout', ['s', 'ntff', 'dft'])
+def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout, family, precomputed):
+    from types import SimpleNamespace
+    from rfx import Simulation
+    from rfx.api._spec import Result
+    from rfx.sparams._tail_witness import port_record_witness
+
+    sim = Simulation(freq_max=1., domain=(1.,)*3, dx=.1)
+    sim.add_probe((.5,)*3, 'ez')
+    t = np.arange(1000)*DT
+    fast = np.exp((-.1 + 2j*np.pi*.5)*t)
+    slow = np.exp((-.001 + 2j*np.pi*.5)*t)
+    port = fast + 1e-6*slow
+    _, port_detail = port_record_witness([port], DT, 0, [.5], freq_max=1.)
+    assert port_detail['status'] == 'pass', port_detail
+    fields = {'s': dict(freqs=np.array([.5])),
+              'ntff': dict(freqs=None, ntff_box=SimpleNamespace(freqs=np.array([.5]))),
+              'dft': dict(freqs=None, dft_planes={'e': SimpleNamespace(freqs=np.array([.5]))})}
+    if family == 'wire':
+        ports = dict(sparam_time_records=(port,))
+    else:
+        incident = np.zeros(len(t))
+        incident[0] = 1.
+        cfg = SimpleNamespace(
+            v_probe_t=port, i_probe_t=port, v_ref_t=port, i_ref_t=port,
+            dt=DT, freqs=np.array([.5]), src_amp=1., v_inc_t=incident,
+            source_x_m=0., reference_x_m=0., probe_x_m=0.)
+        ports = dict(waveguide_ports={'p': cfg})
+    result = Result(state=None, s_params=None, dt=DT, time_series=slow[:, None],
+                    **ports, **fields[readout])
+    if precomputed:
+        result = result._replace(settling_witness=port_detail, settling_db=port_detail['db'])
+    monkeypatch.setattr(sim, '_settling_source_end', lambda *a, **kw: 0)
+    _, detail = sim._run_settling_witness(result)
+    assert detail['status'] == 'fail', detail
+    assert detail['worst_record'] == 'probe0(ez)'
+    assert len(detail['runs']) == (3 if precomputed else 2)
+
+
+def test_two_window_disagreement_below_old_error_threshold():
+    t = np.arange(600)*DT
+    y = (np.exp((-.02 + 2j*np.pi*.5)*t)
+         + .001*np.exp((-.003 + 2j*np.pi*.50001)*t)
+         + np.random.default_rng(2).normal(size=len(t))*1e-4)
+    y[:SOURCE_END] = (.7006421340669209 - 1.988701943155169e-5j)*np.exp(
+        2j*np.pi*.5*t[:SOURCE_END])
+    result = witness(y, bins=[.5])
+    assert result.status == 'undetermined', result
+    assert result.reason == 'modes: identification windows disagree at 0.5 Hz'
+    assert result.share_per_bin[0] < 1e-2
+    assert result.error_per_bin[0] < 1e-2
+
+
+def test_both_windows_above_threshold_fail_even_with_large_error():
+    t = np.arange(600)*DT
+    y = (np.exp((-.02 + 2j*np.pi*.5)*t)
+         + .001*np.exp((-.003 + 2j*np.pi*.50001)*t)
+         + np.random.default_rng(2).normal(size=len(t))*1e-4)
+    y[:SOURCE_END] = (-.3 - 1.988701943155169e-5j)*np.exp(
+        2j*np.pi*.5*t[:SOURCE_END])
+    result = witness(y, bins=[.5])
+    assert result.status == 'fail', result
+    assert result.share_per_bin[0] > 1e-2
+    assert result.error_per_bin[0] > 1e-2
+
+
+def test_precomputed_s_witness_aligns_with_additional_dft_bins(monkeypatch):
+    from types import SimpleNamespace
+    from rfx import Simulation
+    from rfx.api._spec import Result
+    from rfx.sparams._tail_witness import port_record_witness
+
+    sim = Simulation(freq_max=1., domain=(1.,)*3, dx=.1)
+    sim.add_probe((.5,)*3, 'ez')
+    t = np.arange(1000)*DT
+    port = np.exp((-.1 + 2j*np.pi*.5)*t)
+    slow = np.exp((-.001 + 2j*np.pi*.8)*t)
+    _, prior = port_record_witness([port], DT, 0, [.5], freq_max=1.)
+    result = Result(state=None, s_params=None, freqs=np.array([.5]), dt=DT,
+                    time_series=slow[:, None], sparam_time_records=(port,),
+                    dft_planes={'e': SimpleNamespace(freqs=np.array([.8]))},
+                    settling_db=prior['db'], settling_witness=prior)
+    monkeypatch.setattr(sim, '_settling_source_end', lambda *a, **kw: 0)
+    _, detail = sim._run_settling_witness(result)
+    assert detail['status'] == 'fail', detail
+    assert detail['share_per_bin'].shape == (2,)
+    np.testing.assert_array_equal(detail['runs'][0]['share_per_bin'],
+                                  [prior['share_per_bin'][0], 0.])
+    attached = result._replace(settling_db=detail['db'], settling_witness=detail)
+    _, repeated = sim._run_settling_witness(attached)
+    assert repeated is detail

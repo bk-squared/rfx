@@ -699,28 +699,60 @@ class _ExecuteMixin:
         sensitivities are judged by a separate witness
         """
         from rfx.probes.settling import probe_record_settling_witness
-        from rfx.sparams._tail_witness import result_read_bins
+        from rfx.sparams._tail_witness import (
+            combine_witness_details, port_record_witness, result_read_bins,
+        )
+        from rfx.sources.waveguide_port import settling_db_from_port_records
 
-        if not isinstance(result, ForwardResult) and getattr(result, "settling_witness", None):
-            return result.settling_db, result.settling_witness
+        prior = (getattr(result, "settling_witness", None)
+                 if not isinstance(result, ForwardResult) else None)
+        if prior and prior.get("run_records_scored"):
+            return result.settling_db, prior
+
+        bins = result_read_bins(result)
+        dt = getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None)
+        rows = []
+        if prior:
+            prior_bins = np.asarray(getattr(result, "freqs", None), dtype=float).reshape(-1)
+            if len(prior['share_per_bin']) != bins.size:
+                aligned = {}
+                for key in ('share_per_bin', 'error_per_bin'):
+                    values = np.zeros(bins.size)
+                    np.maximum.at(values, np.searchsorted(bins, prior_bins), prior[key])
+                    aligned[key] = values
+                prior = {**prior, **aligned}
+            rows.append(prior)
         port_records = getattr(result, "sparam_time_records", None)
         if port_records:
-            from rfx.sparams._tail_witness import port_record_witness
-            return port_record_witness(
-                port_records, getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None),
+            _, detail = port_record_witness(
+                port_records, dt,
                 self._settling_source_end(result, records=self._ports),
-                result_read_bins(result), freq_max=self._freq_max)
+                bins, freq_max=self._freq_max)
+            rows.append(detail)
         if getattr(result, "waveguide_ports", None):
-            from rfx.sources.waveguide_port import settling_db_from_port_records
-            return settling_db_from_port_records(
-                result.waveguide_ports.values(), freqs=result_read_bins(result),
+            _, detail = settling_db_from_port_records(
+                result.waveguide_ports.values(), freqs=bins,
                 freq_max=self._freq_max, return_detail=True)
+            rows.append(detail)
         series = getattr(result, "time_series", None)
-        return probe_record_settling_witness(
-            series, self._settling_probe_selection(result),
+        selection = self._settling_probe_selection(result)
+        probe_db, probe_detail = probe_record_settling_witness(
+            series, selection,
             source_end_index=self._settling_source_end(result),
-            dt=getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None),
-            freqs=result_read_bins(result), freq_max=self._freq_max)
+            dt=dt, freqs=bins, freq_max=self._freq_max)
+        if selection:
+            rows.append(probe_detail)
+        if not rows:
+            return probe_db, {**probe_detail, 'run_records_scored': True}
+        detail = combine_witness_details(*rows) if len(rows) > 1 else rows[0]
+        if len(rows) > 1 and bins.size:
+            shares = np.maximum.reduce([row['share_per_bin'] for row in rows])
+            errors = np.maximum.reduce([row['error_per_bin'] for row in rows])
+            detail = {**detail, 'share_per_bin': shares, 'error_per_bin': errors,
+                      'worst_freq_hz': (float(bins[np.argmax(shares)])
+                                        if np.any(shares) or detail['status'] == 'pass'
+                                        else float('nan'))}
+        return detail['db'], {**detail, 'run_records_scored': True}
 
     def _settling_source_end(self, result, records=None):
         from rfx.probes.settling import simulation_source_end_step
@@ -728,7 +760,7 @@ class _ExecuteMixin:
         series = getattr(result, "time_series", None)
         shape = getattr(series, "shape", ())
         port_records = getattr(result, "sparam_time_records", None)
-        if port_records:
+        if port_records and (records is not None or not shape):
             series = port_records[0]
             shape = series.shape
         if not shape:
@@ -804,15 +836,16 @@ class _ExecuteMixin:
             return result
 
         if has_s and witness['status'] in {'fail', 'undetermined'}:
-            from rfx.sparams._tail_witness import result_read_bins
-            bins = result_read_bins(result)
             worst = witness['worst_freq_hz']
             bin_label = (f"worst bin {worst:.9g} Hz" if np.isfinite(worst)
-                         else f"worst bin undetermined; read bins {bins.tolist()} Hz")
+                         else "worst bin undetermined")
+            shares = np.asarray(witness["share_per_bin"])
+            peak = float(np.max(shares)) if shares.size else float("nan")
+            warning_witness = {**witness, "reason": f"share {peak:.9g}"}
             _warn_if_ringdown_truncated(
-                [settling_db], (), witnesses=[witness],
+                [settling_db], (), witnesses=[warning_witness],
                 n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
-                drive_labels=(f"S-channel {bin_label}",),
+                drive_labels=(f"S-channel {bin_label}, share {peak:.9g}",),
                 consequence="S-parameter truncation is suspect")
             return result
 
