@@ -646,76 +646,13 @@ def _raise_face_inside_injected_region(box, axis, face, idx, required,
         plane_lo=p_lo, plane_hi=p_hi)
 
 
-def accumulate_ntff(
-    ntff_data: NTFFData,
-    state,
-    box: NTFFBox,
-    dt: float,
-    step_idx,
-    *,
-    x_offset: int = 0,
-    owned_x: tuple[int, int] | None = None,
-    owned_x_faces: tuple[bool, bool] = (True, True),
-) -> NTFFData:
-    """Accumulate one timestep of tangential field DFTs on all 6 faces.
-
-    Called from the scan body.  ``step_idx`` comes from the scan xs.
-    Slab callers may select a global half-open ``owned_x`` range for y/z
-    faces and ``owned_x_faces`` for the two x planes. ``x_offset`` maps
-    global x indices to the local array (including ghosts). They validate
-    the global sampling margin before partitioning; absent x faces have
-    zero-sized arrays. The stencil, phases and Kahan operations are shared.
-
-    On a Yee lattice the four tangential components of a face do not sit on
-    top of each other: the two E components straddle the face cell along
-    different in-plane edges, and the two H components sit half a cell OFF
-    the face along its normal. With ``box.collocation == "face_centre"``
-    each one is moved to the centre of its face cell before it enters the
-    running DFT — an exact midpoint average between two nodes in the plane,
-    and a linear interpolation across the face along the normal — so the
-    surface integral downstream is a midpoint rule and the transform is
-    second order in the cell size. ``"node"`` keeps the legacy layout: every
-    component taken where the lattice stores it and treated as if it sat at
-    the cell's lower-corner node.
-
-    Time stamps: the runners call this after the E update, so the state
-    holds E at ``(n+1)*dt`` and H at ``(n+1/2)*dt``. Each field is stamped
-    with its own sample time, which makes the half-step register between
-    them exact. (Before this was fixed E was stamped at ``n*dt`` — a full
-    step early, so E ran half a step BEHIND H instead of half a step ahead.)
-    """
-    # Phase arithmetic is pinned to the ACCUMULATOR's dtype (issue #646), not
-    # to a literal float32/complex64. ``dt`` arrives as a numpy float64 scalar
-    # (``grid.dt``); numpy scalars are strongly typed in JAX, so leaving it
-    # uncast makes this body return complex128 under x64 while the carry was
-    # allocated complex64 — a lax.scan carry-type mismatch. Casting it to the
-    # accumulator's real dtype is a no-op with x64 off (JAX already clamped
-    # float64 -> float32 there), so the default path stays bit-identical.
-    # Kahan summation still supplies the precision, as before.
-    _cdtype = ntff_data.x_lo.dtype
-    _rdtype = jnp.finfo(_cdtype).dtype
-    _dt = jnp.asarray(dt, dtype=_rdtype)
-    t = jnp.asarray(step_idx, dtype=_rdtype) * _dt
-    freqs_hi = jnp.asarray(box.freqs, dtype=_rdtype)
-    omega = jnp.asarray(2 * jnp.pi, dtype=_rdtype) * freqs_hi
-    _mj = jnp.asarray(-1j, dtype=_cdtype)
-    # The state handed to this function is post-E-update: E is the field at
-    # (n+1)*dt, H the half-step behind it at (n+1/2)*dt.
-    phase_e = jnp.exp(_mj * omega * (t + _dt)) * _dt
-    phase_h = jnp.exp(_mj * omega * (t + _dt * 0.5)) * _dt
-    # Stack [E_phase, E_phase, H_phase, H_phase] for the 4 tangential components
-    ph = jnp.stack([phase_e, phase_e, phase_h, phase_h], axis=-1)
-    ph = ph[:, None, None, :]  # (nf, 1, 1, 4)
-
-    # Slab callers validate the global box before selecting owned cells.
-    # x_offset maps global indices into the slab, including its left ghost.
+def _ntff_face_samples(state, box, axis, idx, w_lo, *, x_offset=0, owned_x=None):
+    """Tangential samples of one face, shared by accumulation and its transpose."""
     i0, i1 = (box.i_lo, box.i_hi) if owned_x is None else owned_x
     i0, i1 = i0 - x_offset, i1 - x_offset
     j0, j1 = box.j_lo, box.j_hi
     k0, k1 = box.k_lo, box.k_hi
     face_centre = bool(getattr(box, "face_centre", False))
-    if face_centre and owned_x is None:
-        _require_face_centre_margin(box, state.ex.shape)
 
     def _x_face(idx, w_lo):
         if not face_centre:
@@ -815,6 +752,76 @@ def accumulate_ntff(
             w_lo * hy_lo + (1.0 - w_lo) * hy_hi,
         ], axis=-1)
 
+    return (_x_face, _y_face, _z_face)[axis](idx, w_lo)
+
+
+def accumulate_ntff(
+    ntff_data: NTFFData,
+    state,
+    box: NTFFBox,
+    dt: float,
+    step_idx,
+    *,
+    x_offset: int = 0,
+    owned_x: tuple[int, int] | None = None,
+    owned_x_faces: tuple[bool, bool] = (True, True),
+) -> NTFFData:
+    """Accumulate one timestep of tangential field DFTs on all 6 faces.
+
+    Called from the scan body.  ``step_idx`` comes from the scan xs.
+    Slab callers may select a global half-open ``owned_x`` range for y/z
+    faces and ``owned_x_faces`` for the two x planes. ``x_offset`` maps
+    global x indices to the local array (including ghosts). They validate
+    the global sampling margin before partitioning; absent x faces have
+    zero-sized arrays. The stencil, phases and Kahan operations are shared.
+
+    On a Yee lattice the four tangential components of a face do not sit on
+    top of each other: the two E components straddle the face cell along
+    different in-plane edges, and the two H components sit half a cell OFF
+    the face along its normal. With ``box.collocation == "face_centre"``
+    each one is moved to the centre of its face cell before it enters the
+    running DFT — an exact midpoint average between two nodes in the plane,
+    and a linear interpolation across the face along the normal — so the
+    surface integral downstream is a midpoint rule and the transform is
+    second order in the cell size. ``"node"`` keeps the legacy layout: every
+    component taken where the lattice stores it and treated as if it sat at
+    the cell's lower-corner node.
+
+    Time stamps: the runners call this after the E update, so the state
+    holds E at ``(n+1)*dt`` and H at ``(n+1/2)*dt``. Each field is stamped
+    with its own sample time, which makes the half-step register between
+    them exact. (Before this was fixed E was stamped at ``n*dt`` — a full
+    step early, so E ran half a step BEHIND H instead of half a step ahead.)
+    """
+    # Phase arithmetic is pinned to the ACCUMULATOR's dtype (issue #646), not
+    # to a literal float32/complex64. ``dt`` arrives as a numpy float64 scalar
+    # (``grid.dt``); numpy scalars are strongly typed in JAX, so leaving it
+    # uncast makes this body return complex128 under x64 while the carry was
+    # allocated complex64 — a lax.scan carry-type mismatch. Casting it to the
+    # accumulator's real dtype is a no-op with x64 off (JAX already clamped
+    # float64 -> float32 there), so the default path stays bit-identical.
+    # Kahan summation still supplies the precision, as before.
+    _cdtype = ntff_data.x_lo.dtype
+    _rdtype = jnp.finfo(_cdtype).dtype
+    _dt = jnp.asarray(dt, dtype=_rdtype)
+    t = jnp.asarray(step_idx, dtype=_rdtype) * _dt
+    freqs_hi = jnp.asarray(box.freqs, dtype=_rdtype)
+    omega = jnp.asarray(2 * jnp.pi, dtype=_rdtype) * freqs_hi
+    _mj = jnp.asarray(-1j, dtype=_cdtype)
+    # The state handed to this function is post-E-update: E is the field at
+    # (n+1)*dt, H the half-step behind it at (n+1/2)*dt.
+    phase_e = jnp.exp(_mj * omega * (t + _dt)) * _dt
+    phase_h = jnp.exp(_mj * omega * (t + _dt * 0.5)) * _dt
+    # Stack [E_phase, E_phase, H_phase, H_phase] for the 4 tangential components
+    ph = jnp.stack([phase_e, phase_e, phase_h, phase_h], axis=-1)
+    ph = ph[:, None, None, :]  # (nf, 1, 1, 4)
+
+    # Slab callers validate the global box before selecting owned cells.
+    # x_offset maps global indices into the slab, including its left ghost.
+    face_centre = bool(getattr(box, "face_centre", False))
+    if face_centre and owned_x is None:
+        _require_face_centre_margin(box, state.ex.shape)
+
     # Kahan compensated summation: maintains near-float64 precision in float32.
     # For each face: y = val - comp; t = sum + y; comp = (t - sum) - y; sum = t
     def _kahan_add(s, c, val):
@@ -824,14 +831,18 @@ def accumulate_ntff(
         new_c = (t - s) - y
         return t, new_c
 
-    xl_val = (ph * _x_face(box.i_lo - x_offset, box.w_x_lo)[None]
+    def sample(axis, index, weight):
+        return _ntff_face_samples(state, box, axis, index, weight,
+                                  x_offset=x_offset, owned_x=owned_x)[None]
+
+    xl_val = (ph * sample(0, box.i_lo - x_offset, box.w_x_lo)
               if owned_x_faces[0] else jnp.zeros_like(ntff_data.x_lo))
-    xh_val = (ph * _x_face(box.i_hi - x_offset, box.w_x_hi)[None]
+    xh_val = (ph * sample(0, box.i_hi - x_offset, box.w_x_hi)
               if owned_x_faces[1] else jnp.zeros_like(ntff_data.x_hi))
-    yl_val = ph * _y_face(j0, box.w_y_lo)[None]
-    yh_val = ph * _y_face(j1, box.w_y_hi)[None]
-    zl_val = ph * _z_face(k0, box.w_z_lo)[None]
-    zh_val = ph * _z_face(k1, box.w_z_hi)[None]
+    yl_val = ph * sample(1, box.j_lo, box.w_y_lo)
+    yh_val = ph * sample(1, box.j_hi, box.w_y_hi)
+    zl_val = ph * sample(2, box.k_lo, box.w_z_lo)
+    zh_val = ph * sample(2, box.k_hi, box.w_z_hi)
 
     # Get compensation arrays (default to zeros for backward compat)
     c_xl = ntff_data.c_x_lo if ntff_data.c_x_lo is not None else jnp.zeros_like(ntff_data.x_lo)
