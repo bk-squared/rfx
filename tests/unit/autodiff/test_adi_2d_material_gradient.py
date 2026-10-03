@@ -1,7 +1,7 @@
 """The 2-D ADI eps/sigma derivatives are finite after the unit fix (#1357).
 
 The SI coupling's reverse pass squared a denominator near 1e-23, producing
-NaN at every objective scale. #1373 refused that derivative pending a fix;
+NaN at every objective scale. #1450 refused that derivative (refs #1373);
 the shared eps_r-unit coefficient helper now removes the cause.
 """
 
@@ -15,6 +15,7 @@ import numpy as np
 import pytest
 
 from rfx import GaussianPulse, Simulation
+from tests._x64_compat import enable_x64
 
 
 def _sim(solver="adi", mode="2d_tmz"):
@@ -40,10 +41,12 @@ def _energy(sim, **override):
 def test_adi_2d_material_gradient_matches_finite_difference(which):
     sim, shape = _sim()
     if which == "eps":
-        f = lambda s: _energy(sim, eps_override=jnp.ones(shape) * s)
+        def f(s):
+            return _energy(sim, eps_override=jnp.ones(shape) * s)
         x0, h = 1.0, 1e-3
     else:
-        f = lambda s: _energy(sim, sigma_override=jnp.zeros(shape) + s)
+        def f(s):
+            return _energy(sim, sigma_override=jnp.zeros(shape) + s)
         # A 1e-4 step loses digits when subtracting the float32 energies.
         x0, h = 0.01, 1e-3
     grad = float(jax.grad(f)(x0))
@@ -68,3 +71,52 @@ def test_other_solvers_still_differentiate(solver, mode):
     sim, shape = _sim(solver, mode)
     g = float(jax.grad(lambda s: _energy(sim, eps_override=jnp.ones(shape) * s))(1.0))
     assert np.isfinite(g) and g != 0.0
+
+
+@pytest.mark.parametrize("which", ["eps", "sigma"])
+def test_adi_2d_bin_gradients_match_fd_and_a_twice_longer_record(which):
+    """A settled lossy record: each material parameter, each physical bin.
+
+    The 40-step tests above check a finite-record derivative; their source
+    has not finished. This separate witness uses eps_r=1.5, sigma=0.2 S/m
+    and 1024/2048 steps. Fixed 3, 5 and 7 GHz quadrature bins and a fixed
+    integration weight make the two record lengths comparable. Float64
+    SI-primal differences avoid cancellation of the small sigma response.
+    Both comparisons retain the existing 3e-3 relative FD tolerance.
+    """
+    sim, shape = _sim()
+    dt = float(sim._build_grid().dt)
+    index = 0 if which == "eps" else 1
+    point = np.array([1.5, 0.2], dtype=np.float32)
+
+    def objective_for(n_steps):
+        phase = jnp.exp(
+            -2j * jnp.pi * jnp.arange(n_steps, dtype=jnp.float32)[:, None]
+            * jnp.asarray(np.array([3e9, 5e9, 7e9]) * dt,
+                          dtype=jnp.float32)[None, :])
+
+        def objective(parameter):
+            params = jnp.asarray(point, dtype=parameter.dtype).at[index].set(parameter)
+            ts = sim.forward(
+                n_steps=n_steps, skip_preflight=True,
+                eps_override=jnp.ones(shape, parameter.dtype) * params[0],
+                sigma_override=jnp.ones(shape, parameter.dtype) * params[1],
+            ).time_series[:, 0]
+            spectrum = (dt / 1e-9) * jnp.sum(ts[:, None] * phase, axis=0)
+            return jnp.concatenate((jnp.sum(ts ** 2)[None],
+                                    jnp.real(spectrum * jnp.conj(spectrum))))
+
+        return objective
+
+    short, long = objective_for(1024), objective_for(2048)
+    parameter = jnp.asarray(point[index])
+    gradient = np.asarray(jax.jacrev(short)(parameter))
+    longer_gradient = np.asarray(jax.jacrev(long)(parameter))
+    assert np.all(np.isfinite(gradient)) and np.all(gradient != 0)
+    np.testing.assert_allclose(longer_gradient, gradient, rtol=3e-3, atol=0)
+
+    with enable_x64():
+        parameter64 = jnp.asarray(float(point[index]), dtype=jnp.float64)
+        h = 1e-3 if which == "eps" else 1e-4
+        fd = np.asarray((short(parameter64 + h) - short(parameter64 - h)) / (2 * h))
+    np.testing.assert_allclose(gradient, fd, rtol=3e-3, atol=0)
