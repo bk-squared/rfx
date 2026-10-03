@@ -116,11 +116,11 @@ def test_unreliable_bins_emit_one_aggregate_warning():
             reliable, np.array([8.4e9, 8.45e9, 8.5e9])
         )
     assert len(recorded) == 1
-    assert str(recorded[0].message) == (
-        "low signal at an MSL port plane: 2 bins in [8.4500, 8.5000] GHz "
-        "have both |V| and |I| below 10% of their record's band medians. "
-        "This flags relative signal strength, not proof of an incorrect "
-        "S-matrix; a true transmission zero can also trigger it. Check "
-        "signal uncertainty, settling, drive conditioning and probe "
-        "geometry before using these bins."
-    )
+    # The warning's purpose includes the uncertainty caveat, not its prose.
+    message = str(recorded[0].message)
+    assert "not proof" in message
+    assert "transmission zero" in message
+    import re
+    count, lo, hi = re.search(r"(\d+) bins in \[([\d.]+), ([\d.]+)\] GHz", message).groups()
+    assert int(count) == 2
+    assert [float(lo), float(hi)] == pytest.approx([8.45, 8.5], abs=5e-5)

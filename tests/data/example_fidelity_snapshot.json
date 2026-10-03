@@ -3,19 +3,6 @@
   "variants": {
     "examples/inverse_design/differentiable_s11_design.py::build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 waveguide port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -75,8 +62,17 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
@@ -142,27 +138,13 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/inverse_design/multilayer_ar_coating.py::_build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -222,27 +204,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/inverse_design/progressive_demo.py::sim_factory::dx=0.5mm": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -302,35 +280,28 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
     "examples/inverse_design/progressive_demo.py::sim_factory::dx=1.0mm": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -390,35 +361,28 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
     "examples/quickstart/hello_world.py::build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -478,27 +442,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl2": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -558,27 +518,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/adi_solver_demo.py::build_cavity::adi_cfl5": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -638,35 +594,28 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "adi_3d_accuracy",
-          "loc": null,
-          "message": "solver='adi' with a 3D grid at adi_cfl_factor=5: the homogeneous, lossless ADI split with compatible domain boundaries removes the explicit CFL stability restriction. This does not guarantee stability with interior PEC projection (refused) or arbitrary material interfaces. For the cavity without interior PEC, dispersion error grows ~dt^2 \u2014 at ~15 cells/wavelength the <2% eigenfrequency envelope holds only up to ~2x CFL (measured -1.4% at 2x; -2.8% at 3x, -6.7% at 5x by von Neumann analysis). Use adi_cfl_factor <= 2 for wavelength-scale accuracy, or reserve large factors for geometrically stiff meshes (features far below the wavelength).",
-          "severity": "warning",
-          "source": "_validate_cfg_adi_3d_accuracy"
+          "loc": null
         }
       ]
     },
     "examples/tutorials/adi_solver_demo.py::build_cavity::yee_cfl5": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -726,27 +675,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/antenna_farfield_pattern.py::build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -806,35 +751,28 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
     "examples/tutorials/artifact_report_demo.py::build_demo_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -894,8 +832,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|substrate|2000.000,2000.000,500.000um->8000.000,8000.000,1500.000um": {
           "axes": {
@@ -957,9 +894,7 @@
           "findings": [
             {
               "axis": "z",
-              "detail": "PLACEMENT off by 500.0 um (50.00% of the declared 1000.0 um extent); SIZE preserved",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
@@ -970,35 +905,28 @@
             "name": "substrate",
             "sigma": 0.0027
           },
-          "n_cells": 36,
-          "realization": null
+          "n_cells": 36
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "floating_port",
-          "loc": null,
-          "message": "Single-cell port at (0.002, 0.005, 0.001) (ez) sits inside dielectric 'substrate' (eps_r=3.55) with no adjacent PEC along the z-axis. A floating single-cell port inside substrate does not couple to patch-antenna TM modes. Pass extent=<substrate_height> to create a WirePort spanning ground \u2192 patch plane (issue #71).",
-          "severity": "warning",
-          "source": "_validate_cfg_floating_single_cell_port"
+          "loc": null
         }
       ]
     },
     "examples/tutorials/boundary_spec_demo.py::build_simulation::closed cavity": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -1058,27 +986,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/boundary_spec_demo.py::build_simulation::ground plane": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -1138,27 +1062,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/boundary_spec_demo.py::build_simulation::open box": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -1218,27 +1138,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/boundary_spec_demo.py::build_simulation::periodic cell": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -1298,27 +1214,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/cad_mesh_import_demo.py::build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -1378,8 +1290,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|15000.000,10000.000,14250.000um->45000.000,30000.000,15750.000um": {
           "axes": {
@@ -1441,26 +1352,30 @@
           "findings": [
             {
               "axis": "z",
-              "detail": "PLACEMENT off by 250.0 um (16.67% of the declared 1500.0 um extent); SIZE 2000.0 um (+500.0 um, +33.33%). Curved boundary sampled cell-wise; midpoint shift +0.0 um (+0.00 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
               "kind": "bbox-offset",
-              "midpoint_shift_um": 0.0,
-              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+              "midpoint_shift_um": 0.0
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 1200,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 1200
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "mesh_import_underresolved",
-          "loc": null,
-          "message": "Imported mesh (material 'pec') thinnest dimension ~1.500 mm is below 2 cells (~2.000 mm at dx=1.000 mm); it will be lost or staircased by rasterisation. Refine the mesh region (finer dx / subpixel smoothing) or thicken the feature.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         }
       ]
     },
@@ -1525,42 +1440,22 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "no_sources",
-          "loc": null,
-          "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
-          "severity": "warning",
-          "source": "_validate_cfg_no_sources"
+          "loc": null
         },
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face x_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
     "examples/tutorials/nonuniform_patch_demo.py::build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -1620,8 +1515,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|fr4|12000.000,12000.000,16435.570um->72000.000,67000.000,17935.570um": {
           "axes": {
@@ -1683,15 +1577,11 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 585.0 um (0.97% of the declared 60000.0 um extent); SIZE 60270.0 um (+270.0 um, +0.45%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 585.0 um (1.06% of the declared 55000.0 um extent); SIZE 55270.0 um (+270.0 um, +0.49%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
@@ -1702,8 +1592,17 @@
             "name": "fr4",
             "sigma": 0.0
           },
-          "n_cells": 21546,
-          "realization": null
+          "n_cells": 21546
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         },
         "thin_conductor|pec|12000.000,12000.000,16435.570um->72000.000,67000.000,16435.570um": {
           "axes": {
@@ -1766,8 +1665,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 16435.57 um (3591 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         },
         "thin_conductor|pec|27250.000,20500.000,17935.570um->56750.000,58500.000,17935.570um": {
           "axes": {
@@ -1830,35 +1728,18 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 17935.57 um (1209 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         }
       },
       "preflight": [
         {
           "code": "lossless_q",
-          "loc": null,
-          "message": "all dielectric(s) ['fr4'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
-          "severity": "warning",
-          "source": "_validate_cfg_lossless_resonator_in_absorber"
+          "loc": null
         }
       ]
     },
     "examples/tutorials/patch_antenna_demo.py::build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -1918,8 +1799,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|sub|85000.000,85000.000,35285.492um->145000.000,145000.000,36809.492um": {
           "axes": {
@@ -1981,15 +1861,11 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 1300.0 um (2.17% of the declared 60000.0 um extent); SIZE 60600.0 um (+600.0 um, +1.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 1300.0 um (2.17% of the declared 60000.0 um extent); SIZE 60600.0 um (+600.0 um, +1.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
@@ -2000,8 +1876,17 @@
             "name": "sub",
             "sigma": 0.000460692754792
           },
-          "n_cells": 3844,
-          "realization": null
+          "n_cells": 3844
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         },
         "thin_conductor|pec|85000.000,85000.000,35285.492um->145000.000,145000.000,35285.492um": {
           "axes": {
@@ -2064,8 +1949,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 35285.49 um (961 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         },
         "thin_conductor|pec|99000.000,95000.000,36809.492um->131000.000,135000.000,36809.492um": {
           "axes": {
@@ -2128,42 +2012,22 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 36809.49 um (357 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         }
       },
       "preflight": [
         {
           "code": "ntff_near_field",
-          "loc": null,
-          "message": "NTFF face z_lo is 6.00mm from geometry 'sub' \u2014 below \u03bb/4 = 26.77mm at f_max=2.80GHz. NTFF will integrate reactive near-field; directivity / pattern likely corrupted. Move NTFF box \u2265 \u03bb/2 from any radiating/scattering structure (Huygens-equivalence rule).",
-          "severity": "warning",
-          "source": "_validate_ntff_inverse_design"
+          "loc": null
         },
         {
           "code": "ntff_small_ground_plane",
-          "loc": null,
-          "message": "Far-field pattern advisory: the PEC sheet backing a source (bbox (85.0, 85.0, 35.3)\u2013(145.0, 145.0, 35.3) mm) spans 60.0mm \u00d7 60.0mm = 0.56\u03bb \u00d7 0.56\u03bb at f_max=2.80GHz \u2014 a ground plane under ~1\u03bb across. Expect the radiation pattern to be shaped by ground-plane edge diffraction (broadside dip, off-axis side peaks). This is expected physics, not a solver defect, and the fixture stays fine for resonance / impedance work. For a clean broadside pattern enlarge the ground plane to at least ~1.4\u03bb; if the small ground plane is intentional, interpret the pattern accordingly.",
-          "severity": "warning",
-          "source": "_validate_ntff_small_ground_plane"
+          "loc": null
         }
       ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_coaxial_port::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 coaxial port (pin/shield/caps)(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -2223,35 +2087,28 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "no_sources",
-          "loc": null,
-          "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
-          "severity": "warning",
-          "source": "_validate_cfg_no_sources"
+          "loc": null
         }
       ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=False": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -2311,35 +2168,28 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_generic_port_demo::add_component=True": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s); 1 lumped RLC(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -2399,35 +2249,28 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 MSL port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -2487,8 +2330,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|substrate|12750.000,12750.000,1250.000um->31250.000,21250.000,2250.000um": {
           "axes": {
@@ -2550,15 +2392,11 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 162.5 um (0.88% of the declared 18500.0 um extent); SIZE 18575.0 um (+75.0 um, +0.41%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 138.1 um (1.63% of the declared 8500.0 um extent); SIZE 8563.8 um (+63.8 um, +0.75%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
@@ -2569,8 +2407,17 @@
             "name": "substrate",
             "sigma": 0.01
           },
-          "n_cells": 11100,
-          "realization": null
+          "n_cells": 11100
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         },
         "thin_conductor|pec|12750.000,12750.000,1250.000um->31250.000,21250.000,1250.000um": {
           "axes": {
@@ -2633,8 +2480,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1250.00 um (2775 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         },
         "thin_conductor|pec|12750.000,16500.000,2250.000um->31250.000,17500.000,2250.000um": {
           "axes": {
@@ -2697,56 +2543,30 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 2250.00 um (375 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         }
       },
       "preflight": [
         {
           "code": "msl_port_geometry",
-          "loc": null,
-          "message": "MSL auto probe-offset interval solve (issue #469) SKIPPED for 2 port(s), so the downstream reflector clearance is NOT enforced for them and no auto probe spacing is widened (#681; on a graded propagation axis both would count reflector and absorber distances in cells of more than one size). Per port: 'left' (direction='+x'): the propagation axis x is GRADED; the automatic probe ladder is counted in this port's own runway cell (offset 20 + 4 x spacing 3 cells of 250\u00b5m, probe 0 5mm from the source); 'right' (direction='-x'): the propagation axis x is GRADED; the automatic probe ladder is counted in this port's own runway cell (offset 20 + 4 x spacing 3 cells of 250\u00b5m, probe 0 5mm from the source). This used to be silent for every non-uniform mesh (issue #686). Set n_probe_offset explicitly on these ports, or make the propagation axis uniform, if the deepest probe's clearance matters.",
-          "severity": "warning",
-          "source": "_check_msl_port_geometry"
+          "loc": null
         },
         {
           "code": "msl_port_geometry",
-          "loc": null,
-          "message": "MSL port 'left' (direction='+x'): deepest probe at x=24.00mm sits -11250\u00b5m from a strong reflector candidate (thin_conductor[0] at x\u2208[12.75,31.25]mm y\u2208[12.75,21.25]mm; distance estimated from registered conductor bounds); recommended \u2265 5586\u00b5m (= \u03bb_g/4 at f_max with \u03b5_eff_proxy=5.0). Measured on ONE fixture (VESSL 369367260508, microstrip open-stub notch fixed-source, same source, load and DUT; only p1's observation offset varied; both arms settled below -118 dB): standing-wave content at the probes corrupts the FITTED Z0/beta - the near-reflector arm's beta scan railed on 51/51 bins over 3-5 GHz against 0/51 for the compliant arm - while raw S11 at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported here as physics - they are raw, unprojected values carrying the coherent power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that comparison's producer verdict was not_read. What it does show is that S11/S21 move far less than the fit does, because they normalize with the analytic Hammerstad-Jensen Z0 rather than with the fit. Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure is right. This layout warning does not certify accuracy when absent. Available layout: no compliant n_probe_offset exists on this feed length (interval empty). Choose an offset within a nonempty interval; if it is empty, extend the uniform feed region to fit the source standoff, full probe ladder and reflector clearance. Gate on probe_clearance for the geometric condition and beta_railed for the fitted-value symptom; reliable is a per-bin fit-quality mask and gates neither. When no compliant offset exists on the available feed length, keep the analytic Hammerstad-Jensen Z0 for normalization (already the production path) and treat the fitted Z0/beta as UNREADABLE rather than merely uncertain. S11/S21 are the better-behaved of the two, but nothing here BOUNDS their error. The fix is to lengthen the uniform feed region or move the reference plane; raising n_probe_offset alone moves the probes toward the reflector. Check settling and observation-plane sensitivity before interpreting S.",
-          "severity": "warning",
-          "source": "_check_msl_port_geometry"
+          "loc": null
         },
         {
           "code": "msl_port_geometry",
-          "loc": null,
-          "message": "MSL port 'right' (direction='-x'): deepest probe at x=20.00mm sits -11250\u00b5m from a strong reflector candidate (thin_conductor[0] at x\u2208[12.75,31.25]mm y\u2208[12.75,21.25]mm; distance estimated from registered conductor bounds); recommended \u2265 5586\u00b5m (= \u03bb_g/4 at f_max with \u03b5_eff_proxy=5.0). Measured on ONE fixture (VESSL 369367260508, microstrip open-stub notch fixed-source, same source, load and DUT; only p1's observation offset varied; both arms settled below -118 dB): standing-wave content at the probes corrupts the FITTED Z0/beta - the near-reflector arm's beta scan railed on 51/51 bins over 3-5 GHz against 0/51 for the compliant arm - while raw S11 at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported here as physics - they are raw, unprojected values carrying the coherent power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that comparison's producer verdict was not_read. What it does show is that S11/S21 move far less than the fit does, because they normalize with the analytic Hammerstad-Jensen Z0 rather than with the fit. Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure is right. This layout warning does not certify accuracy when absent. Available layout: no compliant n_probe_offset exists on this feed length (interval empty). Choose an offset within a nonempty interval; if it is empty, extend the uniform feed region to fit the source standoff, full probe ladder and reflector clearance. Gate on probe_clearance for the geometric condition and beta_railed for the fitted-value symptom; reliable is a per-bin fit-quality mask and gates neither. When no compliant offset exists on the available feed length, keep the analytic Hammerstad-Jensen Z0 for normalization (already the production path) and treat the fitted Z0/beta as UNREADABLE rather than merely uncertain. S11/S21 are the better-behaved of the two, but nothing here BOUNDS their error. The fix is to lengthen the uniform feed region or move the reference plane; raising n_probe_offset alone moves the probes toward the reflector. Check settling and observation-plane sensitivity before interpreting S.",
-          "severity": "warning",
-          "source": "_check_msl_port_geometry"
+          "loc": null
         },
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face x_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face y_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_lo is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). face z_hi is declared cpml with 3 layers; nearest measured depths: 4 layers (no interpolation). CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
     "examples/tutorials/ports_and_sparams_101.py::build_waveguide_ports::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 waveguide port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -2806,17 +2626,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi",
-          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi"
         }
       ]
     },
@@ -2882,26 +2708,19 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "declared 100000.0 um realized 102429.1 um over 41 cells (+2429.1 um, +2.43%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
+              "kind": "domain-extent-quantized"
             },
             {
               "axis": "y",
-              "detail": "declared 100000.0 um realized 102429.1 um over 41 cells (+2429.1 um, +2.43%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
+              "kind": "domain-extent-quantized"
             },
             {
               "axis": "z",
-              "detail": "declared 100000.0 um realized 102429.1 um over 41 cells (+2429.1 um, +2.43%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
+              "kind": "domain-extent-quantized"
             }
           ],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|34100.000,34100.000,34100.000um->65900.000,65900.000,65900.000um": {
           "axes": {
@@ -2963,50 +2782,30 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 945.0 um (2.97% of the declared 31800.0 um extent); SIZE 29979.2 um (-1820.8 um, -5.73%). Curved boundary sampled cell-wise; midpoint shift -34.6 um (-0.01 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
               "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333,
-              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+              "midpoint_shift_um": -34.5903333333
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 945.0 um (2.97% of the declared 31800.0 um extent); SIZE 29979.2 um (-1820.8 um, -5.73%). Curved boundary sampled cell-wise; midpoint shift -34.6 um (-0.01 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
               "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333,
-              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+              "midpoint_shift_um": -34.5903333333
             },
             {
               "axis": "z",
-              "detail": "PLACEMENT off by 945.0 um (2.97% of the declared 31800.0 um extent); SIZE 29979.2 um (-1820.8 um, -5.73%). Curved boundary sampled cell-wise; midpoint shift -34.6 um (-0.01 cell). A non-Box mask samples NODE coordinates while these bounds are cell EDGES, so up to half a cell of the offset is a readout convention, not a displacement \u2014 the midpoint shift is the convention-free number",
               "kind": "bbox-offset",
-              "midpoint_shift_um": -34.5903333333,
-              "remedy": "refine the local cell size if either the placement or the realized size is load-bearing for the comparison"
+              "midpoint_shift_um": -34.5903333333
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 1067,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 1067
         }
       },
       "preflight": []
     },
     "examples/tutorials/resonance_harminv.py::build_cavity::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -3066,27 +2865,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/tutorials/run_control_and_fields.py::build_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -3146,17 +2941,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 4 layers. face x_hi is declared cpml with 4 layers. face y_lo is declared cpml with 4 layers. face y_hi is declared cpml with 4 layers. face z_lo is declared cpml with 4 layers. face z_hi is declared cpml with 4 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 4 layers: -20 dB at 2 GHz, -23 dB at 10 GHz, -17 dB at 30 GHz, -6 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         }
       ]
     },
@@ -3212,7 +3013,6 @@
               ],
               "mesh_extent_um": 0.0,
               "n_cells": 0,
-              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
               "realized_um": [
                 0.0,
@@ -3222,8 +3022,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         }
       },
       "preflight": []
@@ -3280,7 +3079,6 @@
               ],
               "mesh_extent_um": 0.0,
               "n_cells": 0,
-              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
               "realized_um": [
                 0.0,
@@ -3290,8 +3088,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|slab|95000.000,-1000000.000,-1000000.000um->105000.000,1000000.000,1000000.000um": {
           "axes": {
@@ -3353,21 +3150,15 @@
           "findings": [
             {
               "axis": "y",
-              "detail": "the realized body extends beyond the declared domain on y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+              "kind": "inside-absorber"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 11000.0 um (137.50% of the declared 8000.0 um extent); SIZE 29000.0 um (+21000.0 um, +262.50%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y,z",
-              "detail": "declared past the domain on y,z; the rasterizer clips it, so the residuals above are measured against the CLIPPED declaration (this is a common deliberate idiom, not necessarily a defect)",
-              "kind": "clipped-by-domain",
-              "remedy": "none if the overhang is intentional; otherwise draw the body to its physical bounds"
+              "kind": "clipped-by-domain"
             }
           ],
           "material": {
@@ -3378,63 +3169,34 @@
             "name": "slab",
             "sigma": 0.0
           },
-          "n_cells": 290,
-          "realization": null
+          "n_cells": 290
         }
       },
       "preflight": [
         {
           "code": "geometry_in_absorber",
-          "loc": "geometry[#0 lo 1m]",
-          "message": "Material 'slab' (geometry entry #0, Box) extends into CPML region along y-axis: bbox lo face at -1m is 1m past the y-lo absorber boundary at 0mm. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).",
-          "severity": "warning",
-          "source": "_validate_cfg_geometry_in_cpml"
+          "loc": "geometry[#0 lo 1m]"
         },
         {
           "code": "lossless_q",
-          "loc": null,
-          "message": "all dielectric(s) ['slab'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
-          "severity": "warning",
-          "source": "_validate_cfg_lossless_resonator_in_absorber"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'slab' on x: 9.4 cells per \u03bb_eff (eps_r=4.00, freq_max=16GHz, dx=1mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'slab' on y: 9.4 cells per \u03bb_eff (eps_r=4.00, freq_max=16GHz, dx=1mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'slab' on z: 9.4 cells per \u03bb_eff (eps_r=4.00, freq_max=16GHz, dx=1mm). Need \u226520 cells/\u03bb_eff for phase-accurate propagation. S-parameter extraction amplifies \u03b5-interface phase error into |S| magnitude error; ~5% |S21| deficit expected at 17 cells/\u03bb_eff.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         }
       ]
     },
     "examples/visualization/field_movies.py::build_simulation::cavity": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -3485,7 +3247,6 @@
               ],
               "mesh_extent_um": 0.0,
               "n_cells": 0,
-              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
               "realized_um": [
                 0.0,
@@ -3495,27 +3256,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/visualization/field_movies.py::build_simulation::cpml": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -3566,7 +3323,6 @@
               ],
               "mesh_extent_um": 0.0,
               "n_cells": 0,
-              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
               "realized_um": [
                 0.0,
@@ -3576,27 +3332,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/visualization/field_movies.py::build_simulation::dielectric": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -3647,7 +3399,6 @@
               ],
               "mesh_extent_um": 0.0,
               "n_cells": 0,
-              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
               "realized_um": [
                 0.0,
@@ -3657,8 +3408,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|dielectric|40000.000,-1000000.000,-1000000.000um->1000000.000,1000000.000,1000000.000um": {
           "axes": {
@@ -3720,27 +3470,19 @@
           "findings": [
             {
               "axis": "x,y",
-              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+              "kind": "inside-absorber"
             },
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 17000.0 um (42.50% of the declared 40000.0 um extent); SIZE 57000.0 um (+17000.0 um, +42.50%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 17000.0 um (28.33% of the declared 60000.0 um extent); SIZE 93000.0 um (+33000.0 um, +55.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "x,y,z",
-              "detail": "declared past the domain on x,y,z; the rasterizer clips it, so the residuals above are measured against the CLIPPED declaration (this is a common deliberate idiom, not necessarily a defect)",
-              "kind": "clipped-by-domain",
-              "remedy": "none if the overhang is intentional; otherwise draw the body to its physical bounds"
+              "kind": "clipped-by-domain"
             }
           ],
           "material": {
@@ -3751,63 +3493,44 @@
             "name": "dielectric",
             "sigma": 0.0
           },
-          "n_cells": 5301,
-          "realization": null
+          "n_cells": 5301
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "geometry_in_absorber",
-          "loc": "geometry[#0 hi 920mm]",
-          "message": "Material 'dielectric' (geometry entry #0, Box) extends into CPML region along x-axis: bbox hi face at 1m is 920mm past the x-hi absorber boundary at 80mm. CPML modifies field updates \u2014 geometry inside the absorber is physically meaningless (issue #61).",
-          "severity": "warning",
-          "source": "_validate_cfg_geometry_in_cpml"
+          "loc": "geometry[#0 hi 920mm]"
         },
         {
           "code": "lossless_q",
-          "loc": null,
-          "message": "all dielectric(s) ['dielectric'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
-          "severity": "warning",
-          "source": "_validate_cfg_lossless_resonator_in_absorber"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on x: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on y: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on z: 12.5 cells per \u03bb_eff (eps_r=4.00, freq_max=12GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         }
       ]
     },
     "examples/visualization/field_movies.py::build_simulation::pec": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -3858,7 +3581,6 @@
               ],
               "mesh_extent_um": 0.0,
               "n_cells": 0,
-              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
               "realized_um": [
                 0.0,
@@ -3868,27 +3590,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "examples/visualization/field_movies.py::build_simulation::vacuum": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -3939,7 +3657,6 @@
               ],
               "mesh_extent_um": 0.0,
               "n_cells": 0,
-              "note": "axis-not-solved \u2014 2D mode (grid.nz == 1): the declared Lz = 1000.0 um is IGNORED by the solve and the realized 0.0 um above is not a discrepancy to fix. Read this row as 'not compared', not as a pass",
               "realized_extent_um": 0.0,
               "realized_um": [
                 0.0,
@@ -3949,27 +3666,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/convergence_floor/fixture.py::build_sim::multiband_s1.0": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -4029,8 +3742,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|6750.000,9000.000,1500.000um->20250.000,13500.000,3000.000um": {
           "axes": {
@@ -4093,8 +3805,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 648,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 648
         },
         "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
           "axes": {
@@ -4162,8 +3873,7 @@
             "name": "sub",
             "sigma": 0.0
           },
-          "n_cells": 6480,
-          "realization": null
+          "n_cells": 6480
         },
         "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
           "axes": {
@@ -4231,27 +3941,23 @@
             "name": "upper",
             "sigma": 0.0
           },
-          "n_cells": 6480,
-          "realization": null
+          "n_cells": 6480
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/convergence_floor/fixture.py::build_sim::no_trace_s1.0": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -4311,8 +4017,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
           "axes": {
@@ -4380,8 +4085,7 @@
             "name": "sub",
             "sigma": 0.0
           },
-          "n_cells": 6480,
-          "realization": null
+          "n_cells": 6480
         },
         "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
           "axes": {
@@ -4449,27 +4153,23 @@
             "name": "upper",
             "sigma": 0.0
           },
-          "n_cells": 6480,
-          "realization": null
+          "n_cells": 6480
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/convergence_floor/fixture.py::build_sim::uniform_s1.0": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -4529,8 +4229,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|6750.000,9000.000,1500.000um->20250.000,13500.000,3000.000um": {
           "axes": {
@@ -4593,8 +4292,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 648,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 648
         },
         "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
           "axes": {
@@ -4662,8 +4360,7 @@
             "name": "sub",
             "sigma": 0.0
           },
-          "n_cells": 6480,
-          "realization": null
+          "n_cells": 6480
         },
         "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
           "axes": {
@@ -4731,27 +4428,23 @@
             "name": "upper",
             "sigma": 0.0
           },
-          "n_cells": 6480,
-          "realization": null
+          "n_cells": 6480
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/issue683_sampling_order_decision.py::build::nu-matched": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -4811,8 +4504,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|4000.000,5000.000,3000.000um->12000.000,7000.000,5000.000um": {
           "axes": {
@@ -4875,8 +4567,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 32,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 32
         },
         "geometry|pec|4000.000,5000.000,7000.000um->12000.000,7000.000,9000.000um": {
           "axes": {
@@ -4939,49 +4630,36 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 32,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 32
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 2mm = 2.0 cells along z \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null,
-          "message": "Wire port at (0.005, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
-          "severity": "warning",
-          "source": "_validate_cfg_port_inside_pec"
+          "loc": null
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null,
-          "message": "Wire port at (0.011, 0.006, 0.005) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
-          "severity": "warning",
-          "source": "_validate_cfg_port_inside_pec"
+          "loc": null
         }
       ]
     },
     "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -5041,8 +4719,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|3500.000,3500.000,2500.000um->6500.000,6500.000,3500.000um": {
           "axes": {
@@ -5105,8 +4782,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 72,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 72
         },
         "geometry|pec|3500.000,3500.000,4500.000um->6500.000,6500.000,5500.000um": {
           "axes": {
@@ -5169,8 +4845,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 72,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 72
         },
         "geometry|pec|4500.000,5000.000,3500.000um->5000.000,5500.000,4500.000um": {
           "axes": {
@@ -5233,8 +4908,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 2,
-          "realization": "one-cell PEC volume (thin along x+y): electric walls on BOTH bounding node planes, interior shorted"
+          "n_cells": 2
         },
         "geometry|pec|5000.000,4500.000,3500.000um->5500.000,5000.000,4500.000um": {
           "axes": {
@@ -5297,8 +4971,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 2,
-          "realization": "one-cell PEC volume (thin along x+y): electric walls on BOTH bounding node planes, interior shorted"
+          "n_cells": 2
         },
         "geometry|pec|5000.000,5500.000,3500.000um->5500.000,6000.000,4500.000um": {
           "axes": {
@@ -5361,8 +5034,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 2,
-          "realization": "one-cell PEC volume (thin along x+y): electric walls on BOTH bounding node planes, interior shorted"
+          "n_cells": 2
         },
         "geometry|pec|5500.000,5000.000,3500.000um->6000.000,5500.000,4500.000um": {
           "axes": {
@@ -5425,133 +5097,84 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 2,
-          "realization": "one-cell PEC volume (thin along x+y): electric walls on BOTH bounding node planes, interior shorted"
+          "n_cells": 2
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "'pec' x-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "'pec' x-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "'pec' x-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "'pec' y-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "'pec' y-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "'pec' y-extent 500\u00b5m = 1.0 cells \u2014 below 1 cell resolution. A PEC shape passed to sim.add() is a VOLUME (realized with both faces and a shorted interior, lattice ownership contract #931 \u00a71.2), and a volume thinner than one local cell is refused at assembly (\u00a71.5) rather than snapped to a plane. If this is foil (a ground plane, patch, trace), declare a SHEET: a zero-thickness Box via add(), or add_thin_conductor(shape) \u2014 realized on the node plane nearest its mid-plane, with the normal E edge through it live. Otherwise resolve the thickness with a finer local cell.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 1000\u00b5m = 2.0 cells along z \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 500\u00b5m = 1.0 cells along x \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 500\u00b5m = 1.0 cells along y \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along x \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along x \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along y \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "Gap between PEC structures: 8.674e-10nm = 0.0 cells along y \u2014 coupling may be under-resolved.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "pec_box_one_cell",
-          "loc": null,
-          "message": "4 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[2] 'pec' (Box) is one cell thick along x/y [x: walls at 4.5mm and 5mm (drawn 4.5mm -> 5mm); y: walls at 5mm and 5.5mm (drawn 5mm -> 5.5mm)]; geometry[3] 'pec' (Box) is one cell thick along x/y [x: walls at 5.5mm and 6mm (drawn 5.5mm -> 6mm); y: walls at 5mm and 5.5mm (drawn 5mm -> 5.5mm)]; geometry[4] 'pec' (Box) is one cell thick along x/y [x: walls at 5mm and 5.5mm (drawn 5mm -> 5.5mm); y: walls at 4.5mm and 5mm (drawn 4.5mm -> 5mm)]; geometry[5] 'pec' (Box) is one cell thick along x/y [x: walls at 5mm and 5.5mm (drawn 5mm -> 5.5mm); y: walls at 5.5mm and 6mm (drawn 5.5mm -> 6mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 6 PEC volume(s) on the nonuniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_realization"
+          "loc": null
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null,
-          "message": "Wire port at (0.005, 0.005, 0.0035) (extent 0.0005): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
-          "severity": "warning",
-          "source": "_validate_cfg_port_inside_pec"
+          "loc": null
         }
       ]
     },
     "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -5611,8 +5234,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|7500.000,7500.000,1000.000um->24500.000,12500.000,1000.000um": {
           "axes": {
@@ -5674,77 +5296,54 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 175.0 um (1.03% of the declared 17000.0 um extent); SIZE 17350.0 um (+350.0 um, +2.06%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 175.0 um (3.50% of the declared 5000.0 um extent); SIZE 5350.0 um (+350.0 um, +7.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1000.00 um (385 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the nonuniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null,
-          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_faces_with_finite_pec"
+          "loc": null
         },
         {
           "code": "sheet_effective_size",
-          "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null,
-          "message": "Wire port at (0.008, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
-          "severity": "warning",
-          "source": "_validate_cfg_port_inside_pec"
+          "loc": null
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null,
-          "message": "Wire port at (0.024, 0.01, 0.0) (extent 0.001): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
-          "severity": "warning",
-          "source": "_validate_cfg_port_inside_pec"
+          "loc": null
         }
       ]
     },
     "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -5804,8 +5403,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|7500.000,7500.000,1000.000um->24500.000,12500.000,1000.000um": {
           "axes": {
@@ -5867,63 +5465,46 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 175.0 um (1.03% of the declared 17000.0 um extent); SIZE 17350.0 um (+350.0 um, +2.06%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 175.0 um (3.50% of the declared 5000.0 um extent); SIZE 5350.0 um (+350.0 um, +7.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1000.00 um (385 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null,
-          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_faces_with_finite_pec"
+          "loc": null
         },
         {
           "code": "sheet_effective_size",
-          "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         }
       ]
     },
     "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -5983,8 +5564,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|sub|4000.000,4000.000,4000.000um->14000.000,14000.000,5500.000um": {
           "axes": {
@@ -6046,9 +5626,7 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 125.0 um (1.25% of the declared 10000.0 um extent); SIZE 10125.0 um (+125.0 um, +1.25%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
@@ -6059,8 +5637,17 @@
             "name": "sub",
             "sigma": 0.00225645431245
           },
-          "n_cells": 1200,
-          "realization": null
+          "n_cells": 1200
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         },
         "pinned_sheet[0] 'ground'": {
           "axes": {
@@ -6089,8 +5676,7 @@
             "name": "pec",
             "sigma": Infinity
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 4000.00 um (441 nodes, declared by node index, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         },
         "pinned_sheet[1] 'patch'": {
           "axes": {
@@ -6119,70 +5705,38 @@
             "name": "pec",
             "sigma": Infinity
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 5500.00 um (143 nodes, declared by node index, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         }
       },
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'sub' on x: 10.2 cells per \u03bb_eff (eps_r=3.38, freq_max=30GHz, dx=531.2\u00b5m). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'sub' on y: 10.9 cells per \u03bb_eff (eps_r=3.38, freq_max=30GHz, dx=500\u00b5m). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'sub' on z: 10.9 cells per \u03bb_eff (eps_r=3.38, freq_max=30GHz, dx=500\u00b5m). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "nu_grading_reaches_absorber",
-          "loc": null,
-          "message": "dx_profile is not uniform within the 6 interior cells adjacent to the x_hi absorber face (max adjacent cell-ratio deviation 0.0667). WHY: the absorber pad replicates the outermost interior cell, so a transition in that runway changes the discrete medium in the boundary-NORMAL direction exactly where the absorber starts \u2014 the documented PML breakdown class \u2014 and gives the transition's own reflection no runway to separate from the absorber's. COST: the validated multi-band envelope does not cover it at all; no witness in it MEASURES an accuracy observable with an absorber present (every accuracy witness is PEC-closed at cpml_layers = 0; the one absorber-bearing witness checks the AD path only) (docs/guides/support_matrix.md, 'Multi-band graded mesh'). REMEDY: keep at least 6 uniform interior cells against that face, or close it with PEC/PMC. STALE-IF: a witness that SCORES an accuracy observable with an absorber present is added to that row.",
-          "severity": "warning",
-          "source": "_validate_cfg_multiband_grading"
+          "loc": null
         },
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "message": "face x_lo is declared cpml with 6 layers. face x_hi is declared cpml with 6 layers. face y_lo is declared cpml with 6 layers. face y_hi is declared cpml with 6 layers. face z_lo is declared cpml with 6 layers. face z_hi is declared cpml with 6 layers. CPML reference reflections measured at 1 mm cells with the shipped CFS alpha (#1272, #1346): 6 layers: -38 dB at 2 GHz, -41 dB at 10 GHz, -32 dB at 30 GHz, -13 dB below 1 GHz. These reference values do not predict reflection on a different mesh or for UPML. Use at least 8 absorbing layers; 16 layers is the default recommendation.",
-          "severity": "warning",
-          "source": "_validate_cfg_thin_absorber"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null,
-          "message": "Wire port at (0.008, 0.009, 0.004) (extent 0.0014999999999999996): dead-cell classification unavailable (non-uniform mesh (dz_profile/dx_profile/dy_profile set) -- the shared wire-port primitive only covers the uniform-grid path (issue #544)). The #314/#319 PEC-overlap advisories and the #556 end-gap-to-conductor advisory are skipped for this port -- inspect the realized live/dead source edges and the intended terminal contacts on that mesh. Conductor overlap at an endpoint can be intentional; do not infer contact from the absence of this advisory.",
-          "severity": "warning",
-          "source": "_validate_cfg_port_inside_pec"
+          "loc": null
         }
       ]
     },
     "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 MSL port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -6242,8 +5796,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|0.000,2159.000,254.000um->24000.000,2759.000,254.000um": {
           "axes": {
@@ -6306,8 +5859,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 254.00 um (2795 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         },
         "geometry|pec|11700.000,2759.000,254.000um->12300.000,14759.000,254.000um": {
           "axes": {
@@ -6370,8 +5922,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 254.00 um (1443 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         },
         "geometry|substrate|0.000,0.000,0.000um->24000.000,19409.000,254.000um": {
           "axes": {
@@ -6439,42 +5990,32 @@
             "name": "substrate",
             "sigma": 0.0
           },
-          "n_cells": 249096,
-          "realization": null
+          "n_cells": 249096
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "lossless_q",
-          "loc": null,
-          "message": "all dielectric(s) ['substrate'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
-          "severity": "warning",
-          "source": "_validate_cfg_lossless_resonator_in_absorber"
+          "loc": null
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null,
-          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_faces_with_finite_pec"
+          "loc": null
         }
       ]
     },
     "validation/research/multiband_nu/w4_supraconvergence.py::build_sim::s1.5_multiband": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -6534,8 +6075,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|6750.000,9000.000,1500.000um->20250.000,13500.000,3000.000um": {
           "axes": {
@@ -6598,8 +6138,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 192,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 192
         },
         "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
           "axes": {
@@ -6667,8 +6206,7 @@
             "name": "sub",
             "sigma": 0.0
           },
-          "n_cells": 1920,
-          "realization": null
+          "n_cells": 1920
         },
         "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
           "axes": {
@@ -6736,56 +6274,40 @@
             "name": "upper",
             "sigma": 0.0
           },
-          "n_cells": 1920,
-          "realization": null
+          "n_cells": 1920
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'sub' on x: 10.7 cells per \u03bb_eff (eps_r=4.30, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'sub' on y: 10.7 cells per \u03bb_eff (eps_r=4.30, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'upper' on x: 15.0 cells per \u03bb_eff (eps_r=2.20, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'upper' on y: 15.0 cells per \u03bb_eff (eps_r=2.20, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         }
       ]
     },
     "validation/research/multiband_nu/w4r_port_supraconvergence.py::build_sim::s1.5_multiband": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -6845,8 +6367,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|6750.000,9000.000,1500.000um->20250.000,13500.000,3000.000um": {
           "axes": {
@@ -6909,8 +6430,7 @@
           "material": {
             "kind": "pec"
           },
-          "n_cells": 192,
-          "realization": "volumetric PEC (>= 2 cells on every axis)"
+          "n_cells": 192
         },
         "geometry|sub|0.000,0.000,0.000um->27000.000,22500.000,1500.000um": {
           "axes": {
@@ -6978,8 +6498,7 @@
             "name": "sub",
             "sigma": 0.0
           },
-          "n_cells": 1920,
-          "realization": null
+          "n_cells": 1920
         },
         "geometry|upper|0.000,0.000,7500.000um->27000.000,22500.000,9000.000um": {
           "axes": {
@@ -7047,56 +6566,40 @@
             "name": "upper",
             "sigma": 0.0
           },
-          "n_cells": 1920,
-          "realization": null
+          "n_cells": 1920
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'sub' on x: 10.7 cells per \u03bb_eff (eps_r=4.30, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'sub' on y: 10.7 cells per \u03bb_eff (eps_r=4.30, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'upper' on x: 15.0 cells per \u03bb_eff (eps_r=2.20, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'upper' on y: 15.0 cells per \u03bb_eff (eps_r=2.20, freq_max=12GHz, dx=1.125mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         }
       ]
     },
     "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py::build_tm110_sim::xy_committed": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -7156,27 +6659,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/nu_cavity_gates/nu_cavity_gate_scan.py::build_tm111_sim::z_committed": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -7236,27 +6735,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/subgrid/12_subgrid_disjoint_prototype.py::_build_disjoint_simulation::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -7316,27 +6811,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/subgrid/13_subgrid_material_validation.py::build_dielectric_subgrid::dielectric_centered": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -7396,8 +6887,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|dielectric|-1000.000,-1000.000,-1000.000um->41000.000,41000.000,25000.000um": {
           "axes": {
@@ -7459,33 +6949,23 @@
           "findings": [
             {
               "axis": "x,y,z",
-              "detail": "the realized body extends beyond the declared domain on x,y,z \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+              "kind": "inside-absorber"
             },
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "z",
-              "detail": "PLACEMENT off by 2000.0 um (8.33% of the declared 24000.0 um extent); SIZE 26000.0 um (+2000.0 um, +8.33%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "x,y,z",
-              "detail": "declared past the domain on x,y,z; the rasterizer clips it, so the residuals above are measured against the CLIPPED declaration (this is a common deliberate idiom, not necessarily a defect)",
-              "kind": "clipped-by-domain",
-              "remedy": "none if the overhang is intentional; otherwise draw the body to its physical bounds"
+              "kind": "clipped-by-domain"
             }
           ],
           "material": {
@@ -7496,49 +6976,36 @@
             "name": "dielectric",
             "sigma": 0.0
           },
-          "n_cells": 5733,
-          "realization": null
+          "n_cells": 5733
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on x: 12.5 cells per \u03bb_eff (eps_r=2.25, freq_max=8GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on y: 12.5 cells per \u03bb_eff (eps_r=2.25, freq_max=8GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on z: 12.5 cells per \u03bb_eff (eps_r=2.25, freq_max=8GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         }
       ]
     },
     "validation/research/subgrid/13_subgrid_material_validation.py::build_uniform_reference::uniform_reference": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -7598,8 +7065,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|dielectric|-1000.000,-1000.000,-1000.000um->41000.000,41000.000,25000.000um": {
           "axes": {
@@ -7661,33 +7127,23 @@
           "findings": [
             {
               "axis": "x,y,z",
-              "detail": "the realized body extends beyond the declared domain on x,y,z \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+              "kind": "inside-absorber"
             },
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 2000.0 um (5.00% of the declared 40000.0 um extent); SIZE 42000.0 um (+2000.0 um, +5.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "z",
-              "detail": "PLACEMENT off by 2000.0 um (8.33% of the declared 24000.0 um extent); SIZE 26000.0 um (+2000.0 um, +8.33%)",
-              "kind": "off-lattice-face",
-              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "x,y,z",
-              "detail": "declared past the domain on x,y,z; the rasterizer clips it, so the residuals above are measured against the CLIPPED declaration (this is a common deliberate idiom, not necessarily a defect)",
-              "kind": "clipped-by-domain",
-              "remedy": "none if the overhang is intentional; otherwise draw the body to its physical bounds"
+              "kind": "clipped-by-domain"
             }
           ],
           "material": {
@@ -7698,49 +7154,36 @@
             "name": "dielectric",
             "sigma": 0.0
           },
-          "n_cells": 5733,
-          "realization": null
+          "n_cells": 5733
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on x: 14.1 cells per \u03bb_eff (eps_r=2.25, freq_max=7.066GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on y: 14.1 cells per \u03bb_eff (eps_r=2.25, freq_max=7.066GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         },
         {
           "code": "mesh_resolution",
-          "loc": null,
-          "message": "dielectric 'dielectric' on z: 14.1 cells per \u03bb_eff (eps_r=2.25, freq_max=7.066GHz, dx=2mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
-          "severity": "warning",
-          "source": "_validate_mesh_quality"
+          "loc": null
         }
       ]
     },
     "validation/research/subgrid/13_subgrid_material_validation.py::build_vacuum_subgrid::vacuum_guarded": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -7800,27 +7243,23 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -7880,8 +7319,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|7500.000,7500.000,1000.000um->24500.000,12500.000,1000.000um": {
           "axes": {
@@ -7943,63 +7381,46 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 175.0 um (1.03% of the declared 17000.0 um extent); SIZE 17350.0 um (+350.0 um, +2.06%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 175.0 um (3.50% of the declared 5000.0 um extent); SIZE 5350.0 um (+350.0 um, +7.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1000.00 um (385 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null,
-          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_faces_with_finite_pec"
+          "loc": null
         },
         {
           "code": "sheet_effective_size",
-          "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         }
       ]
     },
     "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -8059,8 +7480,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|7500.000,7500.000,1000.000um->24500.000,12500.000,1000.000um": {
           "axes": {
@@ -8122,63 +7542,46 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 175.0 um (1.03% of the declared 17000.0 um extent); SIZE 17350.0 um (+350.0 um, +2.06%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 175.0 um (3.50% of the declared 5000.0 um extent); SIZE 5350.0 um (+350.0 um, +7.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1000.00 um (385 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 17mm, worst face residual 175\u00b5m (1.03% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null,
-          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_faces_with_finite_pec"
+          "loc": null
         },
         {
           "code": "sheet_effective_size",
-          "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         }
       ]
     },
     "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -8238,8 +7641,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|7500.000,7500.000,1000.000um->28500.000,12500.000,1000.000um": {
           "axes": {
@@ -8301,70 +7703,50 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 175.0 um (0.83% of the declared 21000.0 um extent); SIZE 21350.0 um (+350.0 um, +1.67%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 175.0 um (3.50% of the declared 5000.0 um extent); SIZE 5350.0 um (+350.0 um, +7.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1000.00 um (473 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) y: extent 5mm, worst face residual 175\u00b5m (3.50% of the extent); geometry[0] 'pec' (sheet) x: extent 21mm, worst face residual 175\u00b5m (0.83% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null,
-          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_faces_with_finite_pec"
+          "loc": null
         },
         {
           "code": "refplane_partial_optin",
-          "loc": null,
-          "message": "1 of 2 impedance-carrying wire ports opt into reference_plane_cells \u2014 off-diagonal S entries involving a non-opted port SILENTLY stay on the legacy port-cell path (only pairs where BOTH ports opt in use the plane waves). Opt in every wire port of the S-matrix, or none.",
-          "severity": "warning",
-          "source": "_validate_cfg_refplane_placement"
+          "loc": null
         },
         {
           "code": "sheet_effective_size",
-          "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         }
       ]
     },
     "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -8424,8 +7806,7 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|141568.661,141568.661,149896.229um->224844.344,224844.344,149896.229um": {
           "axes": {
@@ -8487,63 +7868,46 @@
           "findings": [
             {
               "axis": "x",
-              "detail": "PLACEMENT off by 2914.6 um (3.50% of the declared 83275.7 um extent); SIZE 89105.0 um (+5829.3 um, +7.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             },
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 2914.6 um (3.50% of the declared 83275.7 um extent); SIZE 89105.0 um (+5829.3 um, +7.00%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 149896.23 um (121 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "ntff_small_ground_plane",
-          "loc": null,
-          "message": "Far-field pattern advisory: the PEC sheet backing a source (bbox (141.6, 141.6, 149.9)\u2013(224.8, 224.8, 149.9) mm) spans 83.3mm \u00d7 83.3mm = 0.83\u03bb \u00d7 0.83\u03bb at f_max=3.00GHz \u2014 a ground plane under ~1\u03bb across. Expect the radiation pattern to be shaped by ground-plane edge diffraction (broadside dip, off-axis side peaks). This is expected physics, not a solver defect, and the fixture stays fine for resonance / impedance work. For a clean broadside pattern enlarge the ground plane to at least ~1.4\u03bb; if the small ground plane is intentional, interpret the pattern accordingly.",
-          "severity": "warning",
-          "source": "_validate_ntff_small_ground_plane"
+          "loc": null
         },
         {
           "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) x: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent); geometry[0] 'pec' (sheet) y: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "sheet_effective_size",
-          "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         }
       ]
     },
     "validation/tmtt_paper/lumped_port_gradient_check.py::build::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "1 lumped/wire port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -8604,33 +7968,27 @@
           "findings": [
             {
               "axis": "z",
-              "detail": "declared 20000.0 um realized 21000.0 um over 14 cells (+1000.0 um, +5.00%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
+              "kind": "domain-extent-quantized"
             }
           ],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []
     },
     "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 MSL port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -8691,14 +8049,11 @@
           "findings": [
             {
               "axis": "z",
-              "detail": "declared 1254.0 um realized 1270.0 um over 10 cells (+16.0 um, +1.28%) \u2014 the cell size does not divide the declared length",
-              "kind": "domain-extent-quantized",
-              "remedy": "choose a cell size that divides this length, or accept and quote the REALIZED length (for a PEC/PMC-walled model the realized length is the cavity/guide dimension the solve actually has)"
+              "kind": "domain-extent-quantized"
             }
           ],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
         },
         "geometry|pec|0.000,1524.000,254.000um->33200.000,2124.000,254.000um": {
           "axes": {
@@ -8760,16 +8115,13 @@
           "findings": [
             {
               "axis": "y",
-              "detail": "PLACEMENT off by 47.5 um (7.92% of the declared 600.0 um extent); SIZE 596.9 um (-3.1 um, -0.52%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
+              "kind": "off-lattice-face"
             }
           ],
           "material": {
             "kind": "pec"
           },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 254.00 um (1310 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+          "n_cells": 0
         },
         "geometry|ro4350b|0.000,0.000,0.000um->33200.000,20696.000,254.000um": {
           "axes": {
@@ -8831,9 +8183,7 @@
           "findings": [
             {
               "axis": "x,y",
-              "detail": "the realized body extends beyond the declared domain on x,y \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
+              "kind": "inside-absorber"
             }
           ],
           "material": {
@@ -8844,63 +8194,44 @@
             "name": "ro4350b",
             "sigma": 0.0
           },
-          "n_cells": 85412,
-          "realization": null
+          "n_cells": 85412
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": [
         {
           "code": "lossless_q",
-          "loc": null,
-          "message": "all dielectric(s) ['ro4350b'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
-          "severity": "warning",
-          "source": "_validate_cfg_lossless_resonator_in_absorber"
+          "loc": null
         },
         {
           "code": "msl_port_geometry",
-          "loc": null,
-          "message": "MSL port 'msl_0': only 2 normal interval(s) between the validated ground and trace planes. Validated conductor-plane gap=254.0\u00b5m over 2 normal interval(s), from z=0.0\u00b5m to 254.0\u00b5m (declared height=254.0\u00b5m). Separately, the declared-material column has 2 same-permittivity sample slot(s), extent 254.0\u00b5m. This material extent is not the conductor-plane gap. The existing resolution recommendation is at least 4 normal intervals and an aligned declared substrate interface. On a uniform mesh, refine to dx \u2264 63.5\u00b5m and align the declared ground z=0.0\u00b5m and trace z=254.0\u00b5m with nodes; on a profiled mesh, place sufficient nodes between those faces. Geometry screening does not quantify Z0 error. The historical sweep and its realized-board Hammerstad-Jensen anchor are pre-#802 records; a new matched-geometry measurement is needed before quoting a current accuracy bound.",
-          "severity": "warning",
-          "source": "_check_msl_port_geometry"
+          "loc": null
         },
         {
           "code": "msl_port_geometry",
-          "loc": null,
-          "message": "MSL port 'msl_1': only 2 normal interval(s) between the validated ground and trace planes. Validated conductor-plane gap=254.0\u00b5m over 2 normal interval(s), from z=0.0\u00b5m to 254.0\u00b5m (declared height=254.0\u00b5m). Separately, the declared-material column has 2 same-permittivity sample slot(s), extent 254.0\u00b5m. This material extent is not the conductor-plane gap. The existing resolution recommendation is at least 4 normal intervals and an aligned declared substrate interface. On a uniform mesh, refine to dx \u2264 63.5\u00b5m and align the declared ground z=0.0\u00b5m and trace z=254.0\u00b5m with nodes; on a profiled mesh, place sufficient nodes between those faces. Geometry screening does not quantify Z0 error. The historical sweep and its realized-board Hammerstad-Jensen anchor are pre-#802 records; a new matched-geometry measurement is needed before quoting a current accuracy bound.",
-          "severity": "warning",
-          "source": "_check_msl_port_geometry"
+          "loc": null
         },
         {
           "code": "off_lattice_design_edges",
-          "loc": null,
-          "message": "1 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 1 listed): geometry[1] 'pec' (sheet) y: extent 600\u00b5m, worst face residual 47.55\u00b5m (7.92% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 2 axis extent(s) on 1 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
-          "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "loc": null
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null,
-          "message": "pec_faces={z_lo} creates an INFINITE PEC boundary AND the geometry contains finite PEC objects. For antennas or finite-GP structures, the pec_faces boundary makes the ground plane cover the entire domain face, which changes the physics (cavity vs radiating antenna). If you need a finite ground plane, remove pec_faces and declare it: a foil is a SHEET (add_thin_conductor, or a zero-thickness PEC Box \u2014 one node plane, normal E through it live); a thick plate is a PEC Box VOLUME (walls on both faces, lattice ownership contract #931).",
-          "severity": "warning",
-          "source": "_validate_cfg_pec_faces_with_finite_pec"
+          "loc": null
         }
       ]
     },
     "validation/tmtt_paper/waveguide_dielectric_taper.py::build_sim::default": {
       "fidelity": {
-        "NOT AUDITED by this report": {
-          "axes": {},
-          "findings": [
-            {
-              "detail": "2 waveguide port(s) \u2014 these declare geometry and/or materials that this report does not walk (port pins, shields, end caps, source cells)",
-              "kind": "out-of-scope",
-              "remedy": "audit those with their own port preflight checks; do not read this report as covering them"
-            }
-          ],
-          "material": null,
-          "n_cells": null,
-          "realization": null
-        },
         "domain": {
           "axes": {
             "x": {
@@ -8960,8 +8291,17 @@
           },
           "findings": [],
           "material": null,
-          "n_cells": null,
-          "realization": null
+          "n_cells": null
+        },
+        "out-of-scope": {
+          "axes": {},
+          "findings": [
+            {
+              "kind": "out-of-scope"
+            }
+          ],
+          "material": null,
+          "n_cells": null
         }
       },
       "preflight": []

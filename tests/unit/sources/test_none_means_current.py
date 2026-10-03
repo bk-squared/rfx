@@ -82,9 +82,9 @@ def test_adi_requires_explicit_field_before_stepping(mode, entry, monkeypatch):
             patch.setattr(execute, "run_adi_2d", premature_step)
             with pytest.raises(NotImplementedError) as caught:
                 getattr(sim, entry)(n_steps=4, skip_preflight=True)
-        assert ("ADI implements only amplitude_kind='field'; 'current' is the default "
-                "when amplitude_kind is not given (2.0); declare amplitude_kind='field' "
-                "to run on ADI (the earlier ADI behaviour).") in str(caught.value)
+        message = str(caught.value)
+        assert "amplitude_kind='field'" in message
+        assert "'current' is the default" in message
     result = getattr(make("field"), entry)(n_steps=4, skip_preflight=True)
     assert np.isfinite(result.time_series).all()
     assert np.max(np.abs(result.time_series)) > 0

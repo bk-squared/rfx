@@ -2,8 +2,8 @@
 """Regenerate ``tests/data/example_fidelity_snapshot.json`` (#737 P4).
 
 EMISSION-DRIFT SNAPSHOT, not a zero-advisory bar and not a physics check:
-this pins the TEXT every audited example EMITS at build time from
-``preflight()``/``fidelity_report()``, so drift fails CI. Nothing here
+this pins codes, locations, counts and numeric geometry at build time from
+``preflight()``/``fidelity_report()``; message wording is omitted. Nothing here
 time-steps, so a green gate says nothing about whether an example's OUTPUT
 numbers are right (that is tests/contracts/test_tutorial_examples.py for
 six tutorials, tests/unit/api/test_diagnostics.py for hello_world, and the

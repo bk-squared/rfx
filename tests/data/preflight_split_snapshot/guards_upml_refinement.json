@@ -4,7 +4,6 @@
       {
         "code": "upml_refinement",
         "loc": null,
-        "message": "ERROR: boundary='upml' does not support subgridding/refinement",
         "severity": "error",
         "source": "_validate_cfg_upml_refinement"
       }

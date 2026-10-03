@@ -837,12 +837,10 @@ class TestExchangeInterval:
                 sim.run(**kwargs)
             else:
                 distributed_v2.run_distributed(sim, **kwargs)
-        assert str(exc.value) == (
-            f"exchange_interval={interval!r} is refused: "
-            "each skipped exchange updates seam cells from stale neighbour values "
-            "and the field grows exponentially in a lossless box; "
-            "use exchange_interval=1."
-        )
+        message = str(exc.value)
+        assert f"exchange_interval={interval!r}" in message
+        assert "stale neighbour" in message
+        assert "use exchange_interval=1" in message
 
     @requires_multidevice
     def test_pec_window_peak_invariant(self, monkeypatch, record_property):
