@@ -61,23 +61,23 @@ class Shape(Protocol):
 
 
 def _grid_coords(grid: Grid):
-    """Extract 1D physical node-coordinate arrays from a uniform Grid.
+    """Extract the grid's own per-axis physical node coordinates.
 
     HOST float64, exact and independent of ``jax_enable_x64`` (#802). This
     used to be ``(jnp.arange(n) - pad) * dx`` in JAX's default dtype, so
     under x64=0 every node was the double-rounded ``f32(f32(i)*f32(dx))``,
     ~1e-10 m off the exact value — enough to flip the documented half-open
     ``[lo, hi)`` inclusion at node-aligned faces and change realized cells
-    by whole node planes between x64 settings. The traced coordinate path
-    exists only for traced NU profiles and never comes through here.
+    by whole node planes between x64 settings. The shared NU provider uses
+    the exact per-cell spine (or traced arithmetic for a traced profile).
+    Constant axes retain the original ``(i - pad) * dx`` formula bit for bit.
     """
-    from rfx.geometry.rasterize_grid import _uniform_axis_nodes
-    nx, ny, nz = grid.shape
-    dx = grid.dx
-    pad_x, pad_y, pad_z = grid.axis_pads
-    return (_uniform_axis_nodes(nx, pad_x, dx),
-            _uniform_axis_nodes(ny, pad_y, dx),
-            _uniform_axis_nodes(nz, pad_z, dx))
+    from rfx.geometry.rasterize_grid import (
+        coords_from_nonuniform_grid, coords_from_uniform_grid,
+    )
+    coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
+              else coords_from_uniform_grid(grid))
+    return coords.x, coords.y, coords.z
 
 
 def _periodic_grid_mask(shape, grid):
