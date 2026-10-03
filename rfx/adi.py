@@ -17,18 +17,22 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
-from rfx.core.yee import EPS_0, MU_0, si_value_eps_r_grad
+from rfx.core.yee import (EPS_0, MU_0, MaterialArrays, component_h_materials,
+                          si_value_eps_r_grad)
+from rfx.core.jax_utils import recorded_scan
 
 
 ADI_INTERIOR_PEC_MESSAGE = (
     "adi_interior_pec_unsupported: solver='adi' cannot safely carry interior "
     "PEC sheets, wires, or volumes in 3D or 2D TMz. The current internal "
     "PEC projection has measured growing solutions, including at "
-    "adi_cfl_factor=1 and the default 5; no general stable factor is "
+    "adi_cfl_factor=1 and the former default 5; no general stable factor is "
     "established. Use solver='yee' with the declared conductors retained. "
     "Lowering or clamping adi_cfl_factor is not a supported remedy. "
     "Domain-boundary PEC without interior PEC remains supported."
@@ -258,6 +262,8 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     -------
     ez_new, hx_new, hy_new : updated fields
     """
+    # This API accepts no magnetic materials; radius declarations are refused upstream.
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     _validate_interior_pec(ez_pec_mask)
     Nx, Ny = ez.shape
     half_dt = dt / 2.0
@@ -277,7 +283,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     # Hx[i,j] at (i, j+1/2): dEz/dy = (Ez[i,j+1] - Ez[i,j]) / dy
     dez_dy = jnp.zeros_like(ez)
     dez_dy = dez_dy.at[:, :-1].set((ez[:, 1:] - ez[:, :-1]) / dy)
-    hx_half = hx - (half_dt / MU_0) * dez_dy
+    hx_half = hx - (half_dt / mu_abs) * dez_dy
 
     # Step 1b: Build tridiagonal for Ez^{n+1/2} along x.
     #
@@ -338,7 +344,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     dez_dx_half = dez_dx_half.at[:-1, :].set(
         (ez_half[1:, :] - ez_half[:-1, :]) / dx
     )
-    hy_half = hy + (half_dt / MU_0) * dez_dx_half
+    hy_half = hy + (half_dt / mu_abs) * dez_dx_half
 
     # ===================================================================
     # Half-step 2: implicit in y, explicit in x
@@ -350,7 +356,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     dez_dx_half2 = dez_dx_half2.at[:-1, :].set(
         (ez_half[1:, :] - ez_half[:-1, :]) / dx
     )
-    hy_new = hy_half + (half_dt / MU_0) * dez_dx_half2
+    hy_new = hy_half + (half_dt / mu_abs) * dez_dx_half2
 
     # Step 2b: Build tridiagonal for Ez^{n+1} along y.
     # Same derivation as half-step 1, but with x<->y swapped.
@@ -393,7 +399,7 @@ def adi_step_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     dez_dy_new = dez_dy_new.at[:, :-1].set(
         (ez_new[:, 1:] - ez_new[:, :-1]) / dy
     )
-    hx_new = hx_half - (half_dt / MU_0) * dez_dy_new
+    hx_new = hx_half - (half_dt / mu_abs) * dez_dy_new
 
     return ez_new, hx_new, hy_new
 
@@ -524,6 +530,8 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     Updates psi auxiliary variables and adds corrections to fields
     in the CPML boundary strips.
     """
+    # This API accepts no magnetic materials; radius declarations are refused upstream.
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     n = cpml_params.n_cpml
     bx, cx = cpml_params.bx, cpml_params.cx
     by, cy = cpml_params.by, cpml_params.cy
@@ -538,25 +546,25 @@ def apply_adi_cpml_2d(ez, hx, hy, cpml_params, cpml_state, eps_r, dt, dx, dy):
     # xlo: forward diff dEz/dx at half-integer x in strip [0, n)
     dez_dx_xlo = (ez[1:n + 1, :] - ez[:n, :]) / dx
     psi_hyx_xlo = mxlo.b[:, None] * cpml_state.psi_hyx_xlo + mxlo.c[:, None] * dez_dx_xlo
-    hy = hy.at[:n, :].add((dt / MU_0) * psi_hyx_xlo)
+    hy = hy.at[:n, :].add((dt / mu_abs) * psi_hyx_xlo)
 
     # Hy[i] lives at i+1/2, including in the high-face strip.
     dez_dx_xhi = (jnp.pad(ez, ((0, 1), (0, 0)))[-n:, :] - ez[-n:, :]) / dx
     bx_hi = jnp.flip(bx)
     cx_hi = jnp.flip(cx)
     psi_hyx_xhi = jnp.flip(mxhi.b)[:, None] * cpml_state.psi_hyx_xhi + jnp.flip(mxhi.c)[:, None] * dez_dx_xhi
-    hy = hy.at[-n:, :].add((dt / MU_0) * psi_hyx_xhi)
+    hy = hy.at[-n:, :].add((dt / mu_abs) * psi_hyx_xhi)
 
     # === Hx correction from dEz/dy (y-CPML) ===
     dez_dy_ylo = (ez[:, 1:n + 1] - ez[:, :n]) / dy
     psi_hxy_ylo = mylo.b[None, :] * cpml_state.psi_hxy_ylo + mylo.c[None, :] * dez_dy_ylo
-    hx = hx.at[:, :n].add(-(dt / MU_0) * psi_hxy_ylo)  # negative: Faraday sign
+    hx = hx.at[:, :n].add(-(dt / mu_abs) * psi_hxy_ylo)  # negative: Faraday sign
 
     dez_dy_yhi = (jnp.pad(ez, ((0, 0), (0, 1)))[:, -n:] - ez[:, -n:]) / dy
     by_hi = jnp.flip(by)
     cy_hi = jnp.flip(cy)
     psi_hxy_yhi = jnp.flip(myhi.b)[None, :] * cpml_state.psi_hxy_yhi + jnp.flip(myhi.c)[None, :] * dez_dy_yhi
-    hx = hx.at[:, -n:].add(-(dt / MU_0) * psi_hxy_yhi)
+    hx = hx.at[:, -n:].add(-(dt / mu_abs) * psi_hxy_yhi)
 
     # === Ez correction from dHy/dx (x-CPML) ===
     # Ez[i] and its integer-node profile share the strip [0, n).
@@ -708,7 +716,7 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
             return (ez_s, hx_s, hy_s, cs), probe_vals
 
         init_state = (ez, hx, hy, cpml_state)
-        (ez_f, hx_f, hy_f, _), probe_data = jax.lax.scan(
+        (ez_f, hx_f, hy_f, _), probe_data = recorded_scan(
             step_fn, init_state, jnp.arange(n_steps))
     else:
         def step_fn(state, step_idx):
@@ -743,7 +751,7 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
             return (ez_s, hx_s, hy_s), probe_vals
 
         init_state = (ez, hx, hy)
-        (ez_f, hx_f, hy_f), probe_data = jax.lax.scan(
+        (ez_f, hx_f, hy_f), probe_data = recorded_scan(
             step_fn, init_state, jnp.arange(n_steps))
 
     if n_prb == 0:
@@ -879,7 +887,13 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     -------
     ex, ey, ez, hx, hy, hz : updated fields
     """
+    # This API accepts no magnetic materials; radius declarations are refused upstream.
+    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     _validate_interior_pec(pec_edge_masks)
+    if _realized.ACTIVE is not None:
+        observed = _realized.scalar_electric(
+            MaterialArrays(eps_r, sigma, jnp.ones_like(eps_r)), "adi.E")
+        eps_r, sigma = observed.eps_r, observed.sigma
     half_dt = dt / 2.0
 
     # Damping, the explicit-curl factor ce, the mixed-term factor cc and the
@@ -888,7 +902,7 @@ def adi_step_3d(ex, ey, ez, hx, hy, hz,
     # by (MU_0*eps_plus)**-2 ~ 8e33.
     damping, ce, cc, Cx, Cy, Cz = si_value_eps_r_grad(
         _adi_3d_coeffs_si, _adi_3d_coeffs_eps_r, eps_r, sigma, dt, dx, dy, dz)
-    ch = half_dt / MU_0              # Faraday factor (no magnetic loss)
+    ch = half_dt / mu_abs              # Faraday factor (no magnetic loss)
 
     def _fwd(arr, ax):
         pw = [(0, 0)] * 3
@@ -1094,7 +1108,7 @@ def run_adi_3d(
         return (ex_, ey_, ez_, hx_, hy_, hz_), sample_vec
 
     carry_init = (ex, ey, ez, hx, hy, hz)
-    final_carry, probe_data = jax.lax.scan(
+    final_carry, probe_data = recorded_scan(
         step_fn, carry_init, jnp.arange(n_steps))
     ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = final_carry
 

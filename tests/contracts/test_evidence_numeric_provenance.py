@@ -690,6 +690,7 @@ SYMBOL_SPAN_PARSER_SCOPE = "symbol-span-parser-scope"
 CLASSIFIED_DOC_DIRS = ("docs/public/**/*.mdx", "docs/design_notes/*.md")
 
 CLASSIFICATION: dict[str, str] = {
+    "docs/design_notes/20260928_model_assembly_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/public/api/generated/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/api/machine-readable.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/gallery/waveguide-taper.mdx": NO_ARTIFACT_REFERENCE,
@@ -896,6 +897,7 @@ CLASSIFICATION: dict[str, str] = {
     # and from grid builds, not out of a committed JSON key, so it carries no
     # `<path>.json::<key>` span for this gate to resolve.
     "docs/design_notes/coax_conductor_realization.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/realized_geometry_record.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv10_pmc_realization_regate.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/cv14_rect_cavity_gate_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/design_notes/estimator_resolution_regate.md": GATED,

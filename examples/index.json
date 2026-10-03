@@ -127,7 +127,7 @@
           "contains": "the same cut's 73 samples, one row per polar angle from 0.57 to 179.43 degrees, phi = 0 on every row; columns theta_deg, phi_deg, E_theta_mag, E_theta_phase_deg, E_phi_mag, E_phi_phase_deg, gain_dBi",
           "units": {
             "theta_deg, phi_deg": "degree",
-            "E_theta_mag, E_phi_mag": "far-field magnitude as rfx.compute_far_field returns it, 1/r factor omitted; the level follows the source drive, so read it relative to the peak",
+            "E_theta_mag, E_phi_mag": "V·s (the NTFF accumulator weights each sample by dt), far-field magnitude as rfx.compute_far_field returns it, 1/r factor omitted; the level follows the source drive, so read it relative to the peak",
             "E_theta_phase_deg, E_phi_phase_deg": "degree",
             "gain_dBi": "dB relative to the peak of |E_theta|^2 + |E_phi|^2 over this cut (0 dB at the peak, no floor); not an absolute gain, despite the column name"
           }

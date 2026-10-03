@@ -12,7 +12,7 @@ bound-method behaviour, and every call site is unaffected.
 module-level ``def`` whose first parameter is ``self``, not a free function with
 a different contract. It writes ``self._ports`` / ``self._probes`` /
 ``self._dft_planes`` / ``self._flux_monitors`` / ``self._msl_ports`` /
-``self._internal_probe_indices`` and calls ``self.preflight()``,
+``self._internal_probe_indices`` and calls ``self._auto_preflight()``,
 ``self.add_flux_monitor()`` and ``self._resolve_msl_probe_entries()`` exactly as
 it did as a method. A thin class wrapper may follow in a later #980 step; this
 step adds none.
@@ -318,6 +318,10 @@ def compute_mixed_s_matrix(
         )
 
     n_lw = len(lw_entries)
+    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
+    _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
+    from rfx.runners._admission import admit
+    admit(self, "mixed_s_matrix")
     grid = self._build_grid()
 
     if freqs is None:
@@ -429,7 +433,7 @@ def compute_mixed_s_matrix(
     dz_arr = _msl_cell_profile(grid, "z", grid.nz)
     port_idx_meta = []
     for mp in msl_ports:
-        span = msl_cross_section_span(grid, mp)
+        span = msl_cross_section_span(grid, mp, require_contiguous_width=True)
         port_idx_meta.append(dict(
             j_lo=span["w_lo"], j_hi=span["w_hi"],
             k_lo=span["n_lo"], k_hi=span["n_hi"],
@@ -438,8 +442,6 @@ def compute_mixed_s_matrix(
 
     # One materials assembly shared by the HJ eps anchor AND every
     # drive run (materials do not depend on excite flags).
-    from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
-    _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
     _mx_pec_sheets: list = []
     _mx_pec_wires: list = []
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
@@ -526,7 +528,7 @@ def compute_mixed_s_matrix(
     if not skip_preflight:
         # One preflight for the full registration (run() would fire it
         # per drive run — 2*n_ports repeats of the same advisories).
-        self.preflight()
+        self._auto_preflight(context="compute_mixed_s_matrix", check_ntff="advisory")
 
     if magnitude_channel not in ("flux", "wave"):
         raise ValueError(
@@ -587,12 +589,19 @@ def compute_mixed_s_matrix(
         _witness_base = len(self._probes)
         _witness_total = 0
         for pe_w, pxs_w in zip(entries, probe_xs):
+            # This calculator-created midpoint is not a declaration. Keep
+            # its historical half-to-even node when the substrate has an
+            # odd number of cells; user port/source coordinates still use
+            # the shared lower-node tie rule.
+            witness_z = float(pe_w.position[2]) + 0.5 * float(pe_w.height)
+            dz = float(grid.cells(2)[0])   # uniform mesh (refused graded above)
+            witness_z = int(round(witness_z / dz)) * dz
             for _x_w in pxs_w:
                 self.add_probe(
                     position=(
                         float(_x_w),
                         float(pe_w.position[1]),
-                        float(pe_w.position[2]) + 0.5 * float(pe_w.height),
+                        witness_z,
                     ),
                     component="ez",
                 )

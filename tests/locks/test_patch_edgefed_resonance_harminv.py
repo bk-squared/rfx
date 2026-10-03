@@ -342,7 +342,8 @@ def _build(fed: bool):
     interior Ez dipole (unfed). Domain, mesh, stack, patch and probes are identical, so
     Leg B is a clean fed-minus-unfed difference and Leg A never sees the feed.
     """
-    sim = Simulation(freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
+    # #1138: patch x/y solved -2.255%/-1.518%, feed y -4.904%; this locks resonance.
+    sim = Simulation(snap="declared", freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
                      dx=DX, cpml_layers=8, boundary="cpml")
     # The stack, in the words the contract reads (#931 §1.3, §6): the laminate
     # is the only body with a thickness, and each foil is a ZERO-THICKNESS sheet

@@ -1,7 +1,7 @@
 """Refuse the input classes the distributed lanes would drop or get wrong.
 
 Periodic/Bloch boundaries, extended and passive ports, surface monitors
-(flux, NTFF, DFT planes), Kerr materials, lumped RLC elements, subgridding.
+(flux, DFT planes), Kerr materials, lumped RLC elements, subgridding.
 
 Exercise the public dispatch and the shard_map runner entry with two CPU
 devices. The pmap runner entry went with that runner (#1296).
@@ -44,9 +44,8 @@ def _build(*, entry="api", periodic="", boundary="pec", port=None,
         warnings.simplefilter("ignore", UserWarning)
         warnings.simplefilter("ignore", DeprecationWarning)
         sim = Simulation(freq_max=15e9, domain=(domain_x, 12e-3, 12e-3),
-                         dx=1e-3, boundary=boundary)
-        if periodic:
-            sim.set_periodic_axes(periodic)
+                         dx=1e-3, boundary=(BoundarySpec(**{axis: "periodic" if axis in periodic else boundary
+                                                   for axis in "xyz"}) if periodic else boundary))
         if port is None:
             sim.add_source(position=(6e-3, 6e-3, 6e-3), component="ez",
                            amplitude_kind="field")
@@ -142,10 +141,10 @@ def test_passive_port_is_refused(entry, waveform):
 
 @pytest.mark.parametrize("entry", ENTRIES)
 @pytest.mark.parametrize("monitor,feature", (
-    ("flux", "add_flux_monitor()"), ("ntff", "add_ntff_box()"),
+    ("flux", "add_flux_monitor()"),
 ))
 def test_surface_monitor_is_refused(entry, monitor, feature):
-    """Flux planes and NTFF boxes request surface fields from the driven box."""
+    """Flux planes remain refused on this lane."""
     sim = _build(entry=entry, **{monitor: True})
     _assert_refused(sim, entry, feature, "would be None")
 
@@ -226,7 +225,9 @@ def test_lumped_port_with_debye_block_matches_native(entry):
     """
     sim = _build(entry=entry, port={"impedance": 50.0}, debye=True)
     native = np.asarray(sim.run(n_steps=N_STEPS).time_series)
-    multi = np.asarray(_run(sim, entry).time_series)
+    multi = np.asarray(_run(
+        sim, entry, **({"compute_s_params": False} if entry == "api" else {})
+    ).time_series)
     assert np.max(np.abs(native)) > 0
     relative = np.max(np.abs(native - multi)) / np.max(np.abs(native))
     assert relative < 1e-4, f"{entry}: relative Ez difference {relative:.9e}"
@@ -242,7 +243,9 @@ def test_default_pec_model_matches_native(source):
         assert not sim._flux_monitors and sim._ntff is None
         assert all(p.extent is None and p.excite for p in sim._ports)
         native = np.asarray(sim.run(n_steps=N_STEPS).time_series)
-        multi = np.asarray(_run(sim, entry).time_series)
+        multi = np.asarray(_run(
+            sim, entry, **({"compute_s_params": False} if entry == "api" else {})
+        ).time_series)
         assert native.shape == multi.shape == (N_STEPS, 2)
         assert np.max(np.abs(native)) > 0
         relative = np.max(np.abs(native - multi)) / (np.max(np.abs(native)) + 1e-30)

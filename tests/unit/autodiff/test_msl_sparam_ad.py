@@ -132,7 +132,8 @@ def _build_aligned_e2e_sim(*, refinement=1) -> Simulation:
         for axis, length, step in zip("xyz", E2E_DOMAIN, spacing)
     }
     profiles["dz_profile"] = np.repeat(E2E_DZ_PROFILE / refinement, refinement)
-    sim = Simulation(
+    # #1138: trace y solved +5.83% (1x), +2.92% (2x); this tests the AD golden pair.
+    sim = Simulation(snap="declared",
         freq_max=F_MAX, domain=E2E_DOMAIN, dx=min(spacing),
         cpml_layers=16 * refinement,
         boundary=BoundarySpec(x="cpml", y="cpml",

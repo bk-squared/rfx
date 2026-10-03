@@ -34,8 +34,7 @@ def validate_flux_region_inputs(size, center):
 def resolve_flux_axis(edges, pad_lo, center, size, *, indices=None):
     """Nearest-edge finite CELL slice, clamped to the physical interior.
 
-    ``indices`` preserves the uniform lane's existing round-to-even rule.
-    Otherwise nearest cumulative edges are used, with the lower edge at a tie.
+    ``indices`` may supply uniform indices; both lanes use the shared tie rule.
     """
     edges = np.asarray(edges, dtype=float)
     if edges.ndim != 1 or edges.size < 2 or not np.isfinite(edges).all() or np.any(np.diff(edges) <= 0):
@@ -51,7 +50,11 @@ def resolve_flux_axis(edges, pad_lo, center, size, *, indices=None):
     if not np.isfinite(requested).all():
         raise ValueError("flux monitor endpoints must be finite")
     if indices is None:
-        indices = [int(np.argmin(abs(edges - endpoint))) for endpoint in requested]
+        from rfx._grid_metric import nearest_node_index
+        from rfx.geometry.rasterize_grid import _local_cell
+        cells = np.diff(edges)
+        indices = [nearest_node_index(edges, endpoint,
+                   _local_cell(edges, cells, endpoint)) for endpoint in requested]
     lo, hi = (max(0, min(int(i), edges.size - 1)) for i in indices)
     if hi <= lo:
         raise ValueError("flux monitor resolves to a degenerate aperture with no interior cell; widen size or move center")
@@ -116,11 +119,17 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
         else:
             # The collapsed z direction in 2D is one extruded integration
             # cell, not a pair of stored bounding nodes.
-            cells = 1 if getattr(grid, "is_2d", False) and t == 2 else grid.shape[t] - pad_lo - pad_hi - 1
+            if getattr(grid, "is_2d", False) and t == 2:
+                cells = 1
+            else:
+                cells = grid.shape[t] - pad_lo - pad_hi - (letter not in getattr(grid, "periodic_axes", ""))
             edges = np.arange(cells + 1, dtype=float) * grid.dx
             c = float(domain[t]) / 2 if c is None else c
-            indices = (round(c / grid.dx - size[n] / (2 * grid.dx)),
-                       round(c / grid.dx + size[n] / (2 * grid.dx)))
+            from rfx._periodic import interval_coordinates
+            interval_coordinates(grid, t, c - size[n] / 2, c + size[n] / 2)
+            from rfx._grid_metric import nearest_uniform_index
+            indices = (nearest_uniform_index(c / grid.dx - size[n] / (2 * grid.dx)),
+                       nearest_uniform_index(c / grid.dx + size[n] / (2 * grid.dx)))
         axes.append(resolve_flux_axis(edges, pad_lo, c, size[n], indices=indices))
     record = dict(
         name=entry.name, axis=entry.axis, lane="nonuniform" if nonuniform else "uniform",

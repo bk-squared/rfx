@@ -1,22 +1,7 @@
-"""T8 (2026-04) — sharded PMC runtime smoke tests.
+"""B3b public distributed PMC refusal and the deferred B4 kernel rule.
 
-Covers the two sharded runners:
-  - ``rfx/runners/distributed_nu.py``   — NU path, reached via direct
-                                          call to
-                                          ``run_nonuniform_distributed_pec``
-                                          (the PRD-intended route; the
-                                          stateless ``ForwardResult`` from
-                                          ``sim.forward(distributed=True)``
-                                          does not carry ``state``).
-  - ``rfx/runners/distributed_v2.py``  — default uniform distributed,
-                                          reached via
-                                          ``sim.run(..., devices=...)``.
-  (``rfx/runners/distributed.py``, the legacy pmap path, was removed in
-  #1296; its mixed PMC + PEC case 3 now runs on distributed_v2.)
-
-Case 2 includes a NEGATIVE assertion that non-owning ranks' x-face
-slabs are NOT zeroed — catches "zero everywhere" bugs that pass the
-positive assertion.
+The direct non-uniform kernel still pins its legacy physical H-zero plane.
+Public multi-device execution refuses the declared-face image until B4.
 """
 # Simulate 2 devices on CPU. Must be set BEFORE importing JAX.
 import os  # noqa: I001
@@ -176,125 +161,15 @@ def test_pmc_distributed_nu_z_lo():
 # Case 2 — distributed_v2 (uniform), x_lo PMC — owning + non-owning
 # ---------------------------------------------------------------------------
 
-def test_pmc_distributed_v2_x_lo_owner_and_non_owner():
-    """PMC on x_lo via ``sim.run(..., devices=...)`` -> distributed_v2.
-
-    Rank 0 owns x_lo: ``hy[0, :, :]`` and ``hz[0, :, :]`` must be zero
-    on the gathered full-domain state (global index 0 is rank 0's first
-    real cell).
-
-    Negative assertion: an interior global-x index that lives on rank 1
-    (``nx // 2 + 2``) must NOT be zeroed. A "zero everywhere" bug would
-    pass the positive assertion and fail this one.
-    """
+@pytest.mark.parametrize("face", ["x_lo", "z_lo"])
+@pytest.mark.parametrize("skip_preflight", [False, True])
+def test_pmc_distributed_v2_refuses_declared_face(face, skip_preflight):
+    """Public distributed kernels retain the half-cell rule and refuse until B4."""
     devices = _require_two_devices()
-
-    dx = 5e-3
-    nx, ny, nz = 16, 8, 8
-    sim = Simulation(
-        freq_max=5e9,
-        domain=(nx * dx, ny * dx, nz * dx),
-        dx=dx,
-        boundary=BoundarySpec(
-            x=Boundary(lo="pmc", hi="cpml"),
-            y="cpml", z="cpml",
-        ),
-    )
-    sim.add_source(
-        (nx // 2 * dx, ny // 2 * dx, nz // 2 * dx), "ez"
-    )
-    sim.add_probe(
-        ((nx // 2 + 1) * dx, ny // 2 * dx, nz // 2 * dx), "ez"
-    )
-    # Drive long enough for H at interior cells on rank 1 to be nonzero.
-    result = sim.run(n_steps=30, devices=devices)
-    hy = np.asarray(result.state.hy)
-    hz = np.asarray(result.state.hz)
-
-    # Owning rank (rank 0) — global x index 0 is the first real cell.
-    assert np.allclose(hy[0, :, :], 0.0), (
-        f"x_lo owning rank hy not zeroed: max |hy| = "
-        f"{float(np.max(np.abs(hy[0, :, :]))):.3e}"
-    )
-    assert np.allclose(hz[0, :, :], 0.0), (
-        f"x_lo owning rank hz not zeroed: max |hz| = "
-        f"{float(np.max(np.abs(hz[0, :, :]))):.3e}"
-    )
-
-    # Non-owning rank (rank 1) — interior index well inside its slab.
-    # Under 2-device x-slab decomposition rank 1 owns x in [nx//2, nx).
-    non_owner_idx = nx // 2 + 2
-    max_hy = float(np.max(np.abs(hy[non_owner_idx, :, :])))
-    max_hz = float(np.max(np.abs(hz[non_owner_idx, :, :])))
-    # At least one tangential H component must be nonzero on rank 1 —
-    # otherwise a "zero every rank's x_lo face" bug would pass silently.
-    assert max_hy > 1e-20 or max_hz > 1e-20, (
-        f"non-owning rank (x={non_owner_idx}) has both |hy|={max_hy:.3e} "
-        f"and |hz|={max_hz:.3e} at zero — x_lo PMC over-reaches across "
-        f"ranks (catches 'zero everywhere' bug)"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Case 3 — distributed_v2 (uniform), mixed PMC + PEC on z
-# ---------------------------------------------------------------------------
-
-def test_pmc_distributed_v2_mixed_z():
-    """Mixed PMC (z_lo) + PEC (z_hi) via ``sim.run(..., devices=...)`` ->
-    distributed_v2.
-
-    Ran on the legacy pmap runner at one device until #1296 removed it; the
-    assertions are unchanged. z faces are rank-invariant under x-slab
-    decomposition, so two ranks see the same faces one rank did.
-
-    Assertions:
-      - z_lo PMC: tangential H (hx, hy) at k=0 is zero.
-      - z_hi PEC: tangential E (ex, ey) at k=-1 is zero.
-      - No interference between PMC and PEC hooks (different axis
-        ends, different field types).
-    """
-    devices = _require_two_devices()
-
-    dx = 5e-3
-    nx, ny, nz = 16, 8, 24
-    sim = Simulation(
-        freq_max=5e9,
-        domain=(nx * dx, ny * dx, nz * dx),
-        dx=dx,
-        boundary=BoundarySpec(
-            x="cpml", y="cpml",
-            z=Boundary(lo="pmc", hi="pec"),
-        ),
-    )
-    sim.add_source(
-        (nx // 2 * dx, ny // 2 * dx, nz // 2 * dx), "ex"
-    )
-    sim.add_probe(
-        ((nx // 2 + 1) * dx, ny // 2 * dx, nz // 2 * dx), "ex"
-    )
-
-    result = sim.run(n_steps=30, devices=devices)
-
-    hx = np.asarray(result.state.hx)
-    hy = np.asarray(result.state.hy)
-    ex = np.asarray(result.state.ex)
-    ey = np.asarray(result.state.ey)
-
-    # z_lo PMC: tangential H = 0
-    assert np.allclose(hx[:, :, 0], 0.0), (
-        f"z_lo PMC failed on hx: max |hx| = "
-        f"{float(np.max(np.abs(hx[:, :, 0]))):.3e}"
-    )
-    assert np.allclose(hy[:, :, 0], 0.0), (
-        f"z_lo PMC failed on hy: max |hy| = "
-        f"{float(np.max(np.abs(hy[:, :, 0]))):.3e}"
-    )
-    # z_hi PEC: tangential E = 0
-    assert np.allclose(ex[:, :, -1], 0.0), (
-        f"z_hi PEC failed on ex: max |ex| = "
-        f"{float(np.max(np.abs(ex[:, :, -1]))):.3e}"
-    )
-    assert np.allclose(ey[:, :, -1], 0.0), (
-        f"z_hi PEC failed on ey: max |ey| = "
-        f"{float(np.max(np.abs(ey[:, :, -1]))):.3e}"
-    )
+    spec = BoundarySpec(x=Boundary("pmc", "cpml") if face == "x_lo" else "cpml",
+                        y="cpml", z=Boundary("pmc", "pec") if face == "z_lo" else "cpml")
+    sim = Simulation(freq_max=5e9, domain=(.08, .04, .12), dx=.005, boundary=spec)
+    sim.add_source((.04, .02, .06), "ex")
+    sim.add_probe((.045, .02, .06), "ex")
+    with pytest.raises(NotImplementedError, match=face + ".*distributed_v2.*magnetic image"):
+        sim.run(n_steps=30, devices=devices, skip_preflight=skip_preflight)

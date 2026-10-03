@@ -84,6 +84,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
     """
     axis_to_index = {"x": 0, "y": 1, "z": 2}
     from rfx.probes.flux_region import resolve_flux_region
+    from rfx.boundaries.pec import resolve_wall_faces
     flux_monitors = []
     if entries is None:
         entries = getattr(sim, '_flux_monitors', [])
@@ -122,6 +123,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
                 dft_window=getattr(pe, 'dft_window', 'rect'),
                 dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
                 lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
+                pmc_faces=resolve_wall_faces(grid, sim._periodic_flags())[1],
             )
         )
     return flux_monitors
@@ -146,7 +148,7 @@ def run_uniform(
     s_param_n_steps=None,
     snapshot=None,
     subpixel_smoothing: bool | str = False,
-    conformal_pec: bool = False,
+    conformal_pec: bool | None = None,
     conformal_min_weight: float = 0.1,
     pec_shapes=None,
     # pre-built grid and materials passed in from Simulation.run()
@@ -185,8 +187,9 @@ def run_uniform(
         PEC sheets (#931 §1.3) and sub-cell wires (§1.4) collected by the
         assembler; they own no cell, so they reach the stepper only
         through the realized edge masks built here.
-    conformal_pec : bool
-        Enable Dey-Mittra conformal PEC (default False).
+    conformal_pec : bool or None
+        Enable Dey-Mittra conformal PEC. None reads Boundary(conformal=True);
+        an explicit False requests staircase PEC.
     conformal_min_weight : float
         Minimum conformal weight for CFL stability (default 0.1).
     pec_shapes : list or None
@@ -210,6 +213,9 @@ def run_uniform(
     Result
     """
     from rfx.api import Result, WaveguideSParamResult
+
+    if conformal_pec is None:
+        conformal_pec = bool(sim._boundary_spec.conformal_faces())
 
     # run() sends a refined model to the subgridded lane; a direct call must
     # not solve it here without the refinement (#1240).
@@ -240,6 +246,10 @@ def run_uniform(
                 "not supported (#677 v1): the sheet operator would "
                 "silently override the ADE dispersion update at its "
                 "edges. Remove the dispersive material or the f0 sheet.")
+
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(sim, grid)
 
     # A Debye/Lorentz E update reads neither the smoothed permittivity
     # tensor nor the Dey-Mittra eps correction
@@ -464,6 +474,9 @@ def run_uniform(
                                            pe.waveform, n_steps,
                                            materials=materials,
                                            amplitude_kind=pe.amplitude_kind))
+            from rfx.api._source_semantics import guard_float16_source_increment
+            sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
+                sources[-1].waveform, field_dtype, pe.amplitude_kind))
             continue
         if pe.extent is not None:
             # Multi-cell wire port
@@ -475,6 +488,7 @@ def run_uniform(
                 start=pe.position, end=tuple(end),
                 component=pe.component,
                 impedance=pe.impedance, excitation=pe.waveform,
+                radius=pe.radius,
             )
             wire_ports.append(wp)
             wire_port_excites.append(bool(pe.excite))
@@ -701,19 +715,8 @@ def run_uniform(
         )
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        # Open-domain oblique Method B: k̂ in the xy-plane, so the transverse
-        # y-axis must be OPEN (CPML) and z stays thin-periodic. Every other TFSF
-        # (normal 1D-aux + Bloch 2D-aux) keeps the historical open-x / periodic-yz.
-        from rfx.sources.tfsf import is_tfsf_methodB as _is_methodB_ru
-        if sim._tfsf.closed_box:
-            periodic = (False, False, False)
-            cpml_axes = "xyz"
-        elif _is_methodB_ru(tfsf[0]):
-            periodic = (False, False, True)
-            cpml_axes = "xy"
-        else:
-            periodic = (False, True, True)
-            cpml_axes = "x"
+        from rfx.sources.tfsf import tfsf_boundary_flags
+        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0])
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
@@ -798,7 +801,10 @@ def run_uniform(
     # (float16) gets the float32 accumulation floor it promises.
     _, debye, lorentz = sim._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
-        field_dtype=field_dtype if field_dtype is not None else jnp.float32)
+        field_dtype=field_dtype if field_dtype is not None else jnp.float32,
+        # The run's flags after the TFSF override above (#1260: the edge
+        # mean wraps on a periodic axis, as the E update's does).
+        periodic=_simulation.resolve_periodic(grid, periodic))
 
     # NTFF box
     ntff_box = None
@@ -860,6 +866,9 @@ def run_uniform(
     from rfx.runners._admission import admit
     admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
                                         "conformal_pec": conformal_pec})
+    from rfx.runners._admission import admit_run_s_matrix
+    admit_run_s_matrix(sim, compute_s_params=compute_s_params,
+                       conformal_pec=conformal_pec)
     # Issue #1254: the early stop reads the record so far through the scan's
     # chunk hook, with the bins the single-wire fast path below reports.
     _stop_kwargs = {}
@@ -1077,6 +1086,7 @@ def run_uniform(
         )
         s_params, _ = compute_lumped_wire_s_matrix_via_scan(
             sim, s_param_freqs, n_steps=sp_n_steps,
+            conformal_pec=conformal_pec,
         )
 
     waveguide_ports_result = (

@@ -53,6 +53,8 @@ def _fixture(case, eps_inf, debye_poles, lorentz_poles):
         kwargs["stencil_order"] = 4
     elif case == "interface":
         kwargs["interface_eps"] = "dual_average"
+    if case == "periodic":
+        kwargs["boundary"] = BoundarySpec(x="periodic", y="cpml", z="cpml")
     sim = Simulation(freq_max=5e9, domain=(.012, .010, .008), dx=.002, **kwargs)
     sim.add_material("dut", eps_r=eps_inf, debye_poles=debye_poles,
                      lorentz_poles=lorentz_poles, chi3=1e-20 if case == "kerr" else 0.)
@@ -87,8 +89,6 @@ def _fixture(case, eps_inf, debye_poles, lorentz_poles):
         sim.add_coaxial_port((.006, .004, .008), pin_length=.002)
     elif case == "floquet":
         sim.add_floquet_port(.002, freqs=np.array([2e9, 3e9, 4e9]))
-    elif case == "periodic":
-        sim.set_periodic_axes("x")
     return sim
 
 

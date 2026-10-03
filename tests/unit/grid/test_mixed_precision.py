@@ -117,7 +117,7 @@ class TestSimulationMixedPrecision:
             boundary="pec",
             precision="mixed",
         )
-        sim.add_source(position=(0.01, 0.01, 0.01), component="ez")
+        sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=100)
         assert result is not None
         # Fields should be float16
@@ -143,11 +143,11 @@ class TestSimulationMixedPrecision:
         n_steps = 50
 
         sim32 = Simulation(**kwargs, precision="float32")
-        sim32.add_source(position=(0.01, 0.01, 0.01), component="ez")
+        sim32.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         r32 = sim32.run(n_steps=n_steps)
 
         sim16 = Simulation(**kwargs, precision="mixed")
-        sim16.add_source(position=(0.01, 0.01, 0.01), component="ez")
+        sim16.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         r16 = sim16.run(n_steps=n_steps)
 
         # Compare Ez field L2 norms
@@ -168,7 +168,7 @@ class TestSimulationMixedPrecision:
             boundary="pec",
             precision="mixed",
         )
-        sim.add_source(position=(0.01, 0.01, 0.01), component="ez")
+        sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         sim.add_probe(position=(0.015, 0.01, 0.01), component="ez")
         result = sim.run(n_steps=50)
         ts = np.array(result.time_series).ravel()
@@ -185,7 +185,7 @@ class TestSimulationMixedPrecision:
             boundary="pec",
             precision="mixed",
         )
-        sim.add_source(position=(0.01, 0.01, 0.01), component="ez")
+        sim.add_source(position=(0.01, 0.01, 0.01), component="ez", amplitude_kind="field")
         result = sim.run(n_steps=10)
         st = result.state
         # Each field component should be float16 (2 bytes per element)
@@ -380,3 +380,66 @@ class TestMixedPrecisionCPML:
         unsafe = [str(w.message) for w in caught
                   if "cannot safely cast" in str(w.message)]
         assert not unsafe, f"unsafe-cast warning(s) still emitted: {unsafe}"
+
+
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+@pytest.mark.parametrize("lane", ["run", "forward"])
+def test_mixed_precision_refuses_oversized_current_before_stepping(boundary, lane, monkeypatch):
+    from rfx import simulation as kernels
+
+    def make_sim(amplitude):
+        sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.02),
+                         boundary=boundary, precision="mixed")
+        with pytest.warns(DeprecationWarning, match="now means 'current'"):
+            sim.add_source((0.01, 0.01, 0.01), "ez",
+                           waveform=GaussianPulse(f0=5e9, amplitude=amplitude))
+        sim.add_probe((0.015, 0.01, 0.01), "ez")
+        return sim
+
+    def premature_step(*args, **kwargs):
+        pytest.fail("the compiled runner was entered before source validation")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(kernels, "run", premature_step)
+        with pytest.raises(ValueError, match="scale the waveform or declare amplitude_kind='field'"):
+            getattr(make_sim(1.0), lane)(n_steps=100, skip_preflight=True)
+    result = getattr(make_sim(1e-6), lane)(n_steps=100, skip_preflight=True)
+    if lane == "run":
+        for component in ("ex", "ey", "ez", "hx", "hy", "hz"):
+            assert np.isfinite(np.asarray(getattr(result.state, component))).all()
+    assert np.isfinite(np.asarray(result.time_series)).all()
+    assert np.max(np.abs(result.time_series)) > 0
+
+
+def test_vmap_mixed_forward_field_source():
+    import jax
+    import jax.numpy as jnp
+
+    sim = Simulation(freq_max=5e9, domain=(.02, .02, .02),
+                     boundary="cpml", precision="mixed")
+    sim.add_source((.01, .01, .01), "ez",
+                   waveform=GaussianPulse(f0=5e9, amplitude=1e-3),
+                   amplitude_kind="field")
+    sim.add_probe((.015, .01, .01), "ez")
+    shape = sim._build_grid().shape
+
+    def energy(eps):
+        trace = sim.forward(eps_override=jnp.ones(shape) * eps,
+                            n_steps=60, skip_preflight=True).time_series
+        return jnp.sum(trace.astype(jnp.float32)**2)
+
+    eps = jnp.array([1.5, 2.])
+    got = np.asarray(jax.vmap(energy)(eps))
+    expected = np.asarray([energy(e) for e in eps])
+    print(f"mixed forward vmap energies={got}, max difference={np.max(np.abs(got - expected))}")
+    assert np.isfinite(got).all()
+    assert (got > 0).all()
+    np.testing.assert_array_equal(got, expected)
+
+
+def test_oversized_field_remedy_only_suggests_scaling():
+    from rfx.api._source_semantics import guard_float16_source_increment
+
+    with pytest.raises(ValueError, match="scale the waveform") as caught:
+        guard_float16_source_increment(np.array([1e5]), np.float16, "field")
+    assert "declare" not in str(caught.value)

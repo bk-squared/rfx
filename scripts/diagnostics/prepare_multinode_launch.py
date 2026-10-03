@@ -51,8 +51,8 @@ def main():
                              "difference gives the per-step cost without compilation (0 = off)")
     # No '=' in the default: the experiment CLI splits hyperparameters on it.
     parser.add_argument("--pip-jax", default="jax[cuda12]>0.6.1,<0.6.3",
-                        help="pip requirement installed over the image's JAX (default: 0.6.2, the version "
-                             "CI's Python 3.10 lane resolves; PI 2026-09-24). '' keeps the image's JAX")
+                        help="pip requirement installed over the image's JAX (default: 0.6.2, the "
+                             "legacy Python 3.10 image pin; rendering is blocked by #1429). '' keeps the image's JAX")
     parser.add_argument("--ref-b", help="second solver ref run after --ref in the same job (A/B on the same nodes)")
     parser.add_argument("--tooling-sha-b", help="full commit SHA that --ref-b must resolve to")
     parser.add_argument("--two", action="append", type=int, metavar="NX_PER_RANK",
@@ -66,6 +66,12 @@ def main():
     parser.add_argument("--job-suffix", default="",
                         help="appended to every job name (e.g. -cap); oracle names also get the preset")
     args = parser.parse_args()
+    parser.error(
+        "#1429: these jobs import rfx from the checkout on the image's Python 3.10; "
+        "rfx requires Python >= 3.11 and JAX >= 0.10.2. Adopt the Python 3.11 venv "
+        "pattern in scripts/vessl_gpu_suite.yaml (uv venv, then run through $PY) "
+        "before rendering multinode jobs."
+    )
     explicit_oracles = args.oracle is not None
     oracles = []
     for item in (args.oracle or ["gpu-rtx4090:200", "gpu-rtx4090:400", "gpu-rtx4090:800"]):

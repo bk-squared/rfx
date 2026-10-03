@@ -539,10 +539,11 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
     seen = []
     orig = _nu.wire_port_current
 
-    def spy(hx, hy, hz, comp, mi, mj, mk, dual_x, dual_y, dual_z):
+    def spy(hx, hy, hz, comp, mi, mj, mk, dual_x, dual_y, dual_z, **kw):
+        # **kw forwards the realized-boundary metadata (#1221 B3a).
         seen.append((comp, int(mi), int(mj), int(mk),
                      float(dual_x), float(dual_y), float(dual_z)))
-        return orig(hx, hy, hz, comp, mi, mj, mk, dual_x, dual_y, dual_z)
+        return orig(hx, hy, hz, comp, mi, mj, mk, dual_x, dual_y, dual_z, **kw)
 
     monkeypatch.setattr(_nu, "wire_port_current", spy)
 

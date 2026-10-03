@@ -109,6 +109,10 @@ CPML sigma / kappa         ``boundaries.cpml._grid_spacings`` and     x and y: t
 waveguide-port injection   ``nonuniform``                            PRIMAL at the H plane, DUAL at
                            ``._waveguide_port_axis_metrics``, used    the E plane, on the port's own
                            by ``run_nonuniform``'s H/E apply steps    propagation axis
+periodic uniform axis      ``grid.Grid``; ``core.yee`` roll           N=L/dx cells, no pads or duplicate
+                                                                      endpoint; PRIMAL=DUAL=dx, including
+                                                                      the seam. Full-period sums count N;
+                                                                      index_of wraps modulo N (L -> 0).
 =========================  =========================================  ==================================
 
 The CPML row is the one open defect left in this table; it is listed as what
@@ -205,12 +209,25 @@ def axis_name(axis) -> str:
 
 #: Two node distances within this fraction of the local cell are a TIE. The
 #: sheet snap (``rfx.geometry.rasterize_grid._nearest_plane``) and the point
-#: lookups read the same constant through :func:`nearest_node_index`. Equal to
-#: ``rasterize_grid._REL_TOL``, its "on the lattice" tolerance.
+#: lookups read the same constant through :func:`nearest_node_index`. Box
+#: volume faces and closed sheet footprints use the same on-lattice band.
 NODE_TIE_REL = 1e-9
 
 
-def nearest_node_index(nodes, x: float, d_local: float) -> int:
+def half_open_volume_mask(coords, lo, hi, d_local):
+    """Half-open Box volume window with an on-lattice band (#1138).
+
+    Shift both faces down by ``NODE_TIE_REL * d_local``: a low face a few
+    ULP above its sample includes it, and a high face a few ULP above its
+    sample excludes it. ``d_local`` is the caller's local cell width (a
+    scalar or one width per sample). Arithmetic stays in numpy or traced
+    JAX according to the input arrays; no host conversion is performed.
+    """
+    tol = NODE_TIE_REL * d_local
+    return (coords >= lo - tol) & (coords < hi - tol)
+
+
+def nearest_node_index(nodes, x: float, d_local: float, *, xp=None) -> int:
     """Index of the node nearest ``x`` -- the one tie rule (#1295, #1342).
 
     ``nodes`` is an ascending node line (any origin); the answer indexes it.
@@ -221,20 +238,35 @@ def nearest_node_index(nodes, x: float, d_local: float) -> int:
     is the sheet snap's rule (#931, ``_nearest_plane`` calls this function),
     so a port, source or probe and a sheet declared at the same coordinate
     land on the same node bit for bit, on a constant axis and a graded one.
-    A PolylineWire vertex (``wire_vertex_nodes``) takes ``argmin``, which is
-    the same node at an exact tie and differs only inside the 1e-9-cell band
-    around one. Always a valid index: a coordinate outside the line gets the
-    end node.
-
-    The uniform grid's point lookup rounds an exact tie to the EVEN node
-    (``round(x/dx)``) until #1342 moves it onto this rule.
+    Always a valid index: a coordinate outside the line gets the end node.
+    ``xp`` supplies the array backend for traced geometry; the default host
+    path uses float64 distances and returns a Python integer.
     """
+    if xp is not None:
+        line = xp.asarray(nodes)
+        dist = xp.abs(line - x)
+        k = xp.argmin(dist)
+        prev = xp.maximum(k - 1, 0)
+        return xp.where((k > 0) & (xp.abs(dist[prev] - dist[k])
+                                  <= NODE_TIE_REL * d_local), prev, k)
     line = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(line - float(x))
     k = int(np.argmin(dist))
     if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= NODE_TIE_REL * float(d_local):
         k -= 1
     return k
+
+
+def nearest_uniform_index(ratio) -> int:
+    """Snap an already-divided coordinate, preserving the caller's division.
+
+    Use the same distance comparison as a graded node line, without a
+    finite line's endpoint clamp. Padding and periodic wrapping belong to
+    the caller. Conversion happens only after the input-dtype division.
+    """
+    from math import floor
+    lower = floor(ratio)
+    return lower + nearest_node_index((0., 1.), float(ratio) - lower, 1.)
 
 
 def dual_spacings_from_cells(cells: np.ndarray) -> np.ndarray:

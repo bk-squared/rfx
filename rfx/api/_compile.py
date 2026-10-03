@@ -10,6 +10,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 import math  # noqa: F401  (used by moved method bodies)
 from dataclasses import replace
 
@@ -18,7 +20,7 @@ import jax.numpy as jnp
 import numpy as np  # noqa: F401  (used by moved method bodies)
 
 from rfx.core.jax_utils import is_tracer
-from rfx.grid import Grid, C0  # noqa: F401  (used by moved method bodies)
+from rfx.grid import Grid, C0, _periodic_resolution  # noqa: F401  (used by moved method bodies)
 from rfx.core.yee import MaterialArrays  # noqa: F401
 from rfx.geometry.csg import Box, _grid_coords
 # NOTE: import from _pole_keying, NOT rfx.geometry.rasterize_grid — importing
@@ -91,14 +93,26 @@ class _CompileMixin:
         # Uniform-only consumers must never silently approximate an auto or
         # explicit profiled mesh. General consumers use _build_realized_grid.
         self._require_uniform_mesh("uniform grid construction")
+        # B2 changes declared periods only. The legacy TF/SF transverse
+        # wrap (including its pads) is a feature rewrite owned by B5.
+        periodic_axes = "".join(a for a, yes in zip("xyz", self._periodic_flags()) if yes)
+        dx = self._dx
+        if dx is not None and self._declared_mesh["_dx"] is None:
+            from rfx.grid import _wall_closed_axes
+            physical_axes = periodic_axes.replace("z", "") if self._mode.startswith("2d") else periodic_axes
+            dx = _periodic_resolution(
+                self._domain, physical_axes, dx, automatic=True,
+                wall_axes=_wall_closed_axes(
+                    self._boundary_spec.pec_faces(), self._boundary_spec.pmc_faces(),
+                    is_2d=self._mode.startswith("2d")))
         # Remove periodic axes from CPML allocation — CPML on a periodic
         # axis fights the wrap-around and corrupts the physics
         # (issue #68). Default is "xyz"; the waveguide-port path overrides
         # with a port-normal-PEC filter.
         def _filter_periodic(axes: str) -> str:
-            if not self._periodic_axes:
+            if not periodic_axes:
                 return axes
-            return "".join(ax for ax in axes if ax not in self._periodic_axes)
+            return "".join(ax for ax in axes if ax not in periodic_axes)
 
         face_layers = self._resolve_face_layers()
 
@@ -109,7 +123,7 @@ class _CompileMixin:
             return Grid(
                 freq_max=self._freq_max,
                 domain=self._domain,
-                dx=self._dx,
+                dx=dx,
                 cpml_layers=self._cpml_layers,
                 cpml_axes=cpml_axes,
                 mode=self._mode,
@@ -118,11 +132,12 @@ class _CompileMixin:
                 pmc_faces=self._boundary_spec.pmc_faces(),
                 face_layers=face_layers,
                 conformal_faces=self._boundary_spec.conformal_faces(),
+                periodic_axes=periodic_axes,
             )
         return Grid(
             freq_max=self._freq_max,
             domain=self._domain,
-            dx=self._dx,
+            dx=dx,
             cpml_layers=self._cpml_layers,
             cpml_axes=_filter_periodic("xyz"),
             mode=self._mode,
@@ -131,6 +146,7 @@ class _CompileMixin:
             pmc_faces=self._boundary_spec.pmc_faces(),
             face_layers=face_layers,
             conformal_faces=self._boundary_spec.conformal_faces(),
+            periodic_axes=periodic_axes,
         )
 
     def _resolve_face_layers(self) -> dict:
@@ -178,6 +194,8 @@ class _CompileMixin:
         pec_sheets: list | None = None,
         pec_wires: list | None = None,
         pad_fill_findings: list | None = None,
+        geometry_masks: list | None = None,
+        assembly_entries: list | None = None,
     ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
 
@@ -324,7 +342,9 @@ class _CompileMixin:
                 # vacuum values either way.
                 cells, sheet, wire = classify_pec_entry(
                     solved_shape, _coords, _centres, _cell_sizes,
-                    name=entry.material_name)
+                    name=entry.material_name, grid=grid)
+                if assembly_entries is not None:
+                    assembly_entries.append((id(entry), cells, sheet, wire, solved_shape))
                 if cells is not None:
                     pec_mask = pec_mask | cells
                     has_pec_cells = True
@@ -362,6 +382,9 @@ class _CompileMixin:
                 sigma = jnp.where(mask, mat.sigma, sigma)
                 mu_r = jnp.where(mask, mat.mu_r, mu_r)
 
+            if geometry_masks is not None and mat.sigma < self._PEC_SIGMA_THRESHOLD:
+                geometry_masks.append((id(entry), mask))
+
             if mat.chi3 != 0.0:
                 chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
                 has_kerr = True
@@ -372,7 +395,7 @@ class _CompileMixin:
                 pole_mask = _material_cell_mask(entry.shape, _coords, _centres, grid=grid)
                 if mat.sigma >= self._PEC_SIGMA_THRESHOLD and cells is not None:
                     from rfx.geometry.rasterize_grid import pec_volume_cell_mask
-                    pole_mask = pec_volume_cell_mask(entry.shape, _centres)
+                    pole_mask = pec_volume_cell_mask(entry.shape, _centres, _cell_sizes, grid=grid)
 
             if mat.debye_poles:
                 for pole in mat.debye_poles:
@@ -439,11 +462,16 @@ class _CompileMixin:
         # ``include_thin_conductors`` in this method's docstring (#642).
         if include_thin_conductors:
             for tc in self._thin_conductors:
+                geometry_key = id(tc)
                 tc = replace(tc, shape=continued_conductor_shape(
                     self, grid, tc.shape, entry=tc, unextendable=conductor_findings))
                 materials, pec_mask = apply_thin_conductor(
                     grid, tc, materials, pec_mask=pec_mask,
-                    sheet_specs=sheet_specs, sheets=_pec_sheets)
+                    sheet_specs=sheet_specs, sheets=_pec_sheets,
+                    geometry_masks=geometry_masks, geometry_key=geometry_key)
+                if assembly_entries is not None:
+                    assembly_entries.append((geometry_key, None,
+                                             _pec_sheets[-1] if tc.is_pec else None, None, tc.shape))
                 if tc.is_pec:
                     pec_shapes.append(tc.shape)
 
@@ -562,6 +590,7 @@ class _CompileMixin:
         lorentz_spec: _LorentzSpec | None,
         *,
         field_dtype=None,
+        periodic=(False, False, False),
     ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Initialize Debye/Lorentz coefficients for the given materials.
 
@@ -569,18 +598,22 @@ class _CompileMixin:
         driven by; the P carry is allocated at
         ``ade_state_dtype(field_dtype)`` (issue #656). Callers that leave it
         ``None`` get the ambient default float with a float32 floor.
+
+        ``periodic`` is the run's per-axis flags, as its E update takes them:
+        the coefficients are per E component, averaged over each edge's four
+        cells (#1260), and a periodic axis wraps that average.
         """
         debye = None
         if debye_spec is not None:
             debye_poles, debye_masks = debye_spec
             debye = init_debye(debye_poles, materials, dt, mask=debye_masks,
-                               field_dtype=field_dtype)
+                               field_dtype=field_dtype, periodic=periodic)
 
         lorentz = None
         if lorentz_spec is not None:
             lorentz_poles, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
-                                   field_dtype=field_dtype)
+                                   field_dtype=field_dtype, periodic=periodic)
 
         return materials, debye, lorentz
 
@@ -681,8 +714,8 @@ class _CompileMixin:
         This helper drops ``pec_mask`` by construction — its callers
         (the coaxial reflection / two-port lanes in
         ``rfx/sparams/coax.py``) drive ``_run`` with materials only, and
-        their conductors are the sigma-fill coax shell and pin that
-        design note §1.8 fences out of the ownership contract.  A
+        their coax shell and pin are realized separately as shorted PEC edges
+        by the coaxial lane. A
         declared PEC SHEET or WIRE has no material to fall back on: it
         would simply not exist in the run.  Refuse it here rather than
         let the lane report an S-matrix for geometry it did not solve.
@@ -693,8 +726,8 @@ class _CompileMixin:
         volume" as the remedy for a sheet, which on this path buys the
         user nothing: measured, a one-cell PEC Box through here returns
         eps_r == 1 and sigma == 0 everywhere, i.e. vacuum.  The remedies
-        that actually work are a sigma FILL (what the coax stamp does for
-        its own shell and pin) or a lane that realizes the declaration.
+        are an explicit finite-conductivity material fill or a lane that
+        realizes the declared PEC geometry. The coax stamp itself uses PEC edges.
         """
         _bm_sheets: list = []
         _bm_wires: list = []
@@ -716,20 +749,18 @@ class _CompileMixin:
                 "the coaxial S-parameter lanes (compute_coaxial_line_reflection, "
                 "compute_coaxial_two_port) "
                 "do not realize declared PEC geometry of ANY kind (#931): "
-                "they step from material arrays only, so the cell mask is "
-                "discarded and a sheet or a wire owns no cell to begin "
+                "this material-only builder discards the cell mask, and "
+                "a sheet or a wire owns no cell to begin "
                 f"with. Declared here: {', '.join(_declared)} — all of it "
                 "would be absent from the solve. Redrawing a sheet as a "
                 "volume does NOT help on this path (a one-cell PEC Box "
                 "comes back as eps_r = 1, sigma = 0). Either model the "
-                "conductor the way this lane models its own coax shell and "
-                "pin — a sigma fill, stamp_coaxial_line() or "
-                "rasterize(..., sigma=1e7), which §1.8 fences out of the "
-                "ownership contract precisely because it is a material and "
-                "not an edge rule — or solve the model with run() / "
+                "conductor as an explicit finite-conductivity material fill "
+                "(which is not a PEC edge rule), or solve the model with run() / "
                 "forward(), which realize the declaration.")
         _, debye, lorentz = self._init_dispersion(
-            materials, grid.dt, debye_spec, lorentz_spec)
+            materials, grid.dt, debye_spec, lorentz_spec,
+            periodic=self._periodic_flags())
         return materials, debye, lorentz
 
     @staticmethod
@@ -744,8 +775,8 @@ class _CompileMixin:
         if value_range is None:
             return (axis_pad, grid_size - axis_pad), domain_max
         lo, hi = value_range
-        lo_idx = int(round(lo / dx)) + axis_pad
-        hi_idx = int(round(hi / dx)) + axis_pad + 1
+        lo_idx = nearest_uniform_index(lo / dx) + axis_pad
+        hi_idx = nearest_uniform_index(hi / dx) + axis_pad + 1
         if lo_idx < axis_pad or hi_idx > grid_size - axis_pad or hi_idx - lo_idx < 2:
             raise ValueError(
                 f"range {value_range!r} does not resolve to a valid aperture on the current grid"
@@ -895,11 +926,14 @@ class _CompileMixin:
     def _assemble_materials_nu(
         self, grid: NonUniformGrid, sheet_specs: list | None = None,
         pec_sheets: list | None = None, pec_wires: list | None = None,
+        geometry_masks: list | None = None,
+        assembly_entries: list | None = None,
     ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
         """Build material arrays and dispersion specs for non-uniform grid."""
         from rfx.runners.nonuniform import assemble_materials_nu
         return assemble_materials_nu(self, grid, sheet_specs=sheet_specs,
-                                     pec_sheets=pec_sheets, pec_wires=pec_wires)
+                                     pec_sheets=pec_sheets, pec_wires=pec_wires,
+                                     geometry_masks=geometry_masks, assembly_entries=assembly_entries)
 
     def _pos_to_nu_index(self, grid: NonUniformGrid, pos):
         """Convert physical (x, y, z) to non-uniform grid indices."""

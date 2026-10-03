@@ -604,15 +604,13 @@ def test_graded_edge_volumes_are_primal_times_midpoint_spans():
     assert worst < 1e-6, worst
 
 
-def test_realized_window_is_the_nearest_node_to_each_corner():
-    """Metres to indices: the nearest node at each corner.
+def test_realized_window_takes_the_lower_node_at_half_node_corners():
+    """Metres to indices: half-node corners take the lower node.
 
     The tutorial patch's board edges land halfway between two nodes, which is
-    the case where a rule can go either way, so the corners here are placed
-    halfway on purpose. Which node is nearer is then decided by the last bit
-    of the two distances, so the rule is stated here on the grid's own node
-    line: ``argmin |node - corner|`` at both ends, widened by the margin,
-    half-open at the top.
+    the case fixed by #1342, so the corners here are placed halfway on
+    purpose. The shared tie band takes the lower node at both ends despite
+    roundoff in the distances, widened by the margin, half-open at the top.
     """
     grid = Grid(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, 2.4e-2), dx=DX,
                 cpml_layers=6)
@@ -625,9 +623,7 @@ def test_realized_window_is_the_nearest_node_to_each_corner():
         grid, corner_lo=(lo_m, lo_m, float(nodes[2][11])),
         corner_hi=(hi_m, hi_m, float(nodes[2][13])),
         block_size=3 * DX, freqs=FREQS, margin_cells=(2, 2, 0))
-    near_lo = int(np.argmin(np.abs(nodes[0] - lo_m)))
-    near_hi = int(np.argmin(np.abs(nodes[0] - hi_m)))
-    assert near_lo in (10, 11) and near_hi in (14, 15)
+    near_lo, near_hi = 10, 14
     want = (near_lo - 2, near_hi + 2 + 1)
     assert (monitor.i_lo, monitor.i_hi) == want
     assert (monitor.j_lo, monitor.j_hi) == want
@@ -1416,11 +1412,11 @@ def test_refuses_a_periodic_declaration():
 
 def test_graded_lane_hands_the_monitor_the_declared_periodic_axes():
     from rfx import Simulation
+    from rfx.boundaries.spec import BoundarySpec
 
     dz = np.full(10, DX)
     sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, float(dz.sum())),
-                     dx=DX, dz_profile=dz, cpml_layers=6, boundary="cpml")
-    sim.set_periodic_axes("x")
+                     dx=DX, dz_profile=dz, cpml_layers=6, boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"))
     sim.add_source(position=(1.2e-2, 1.2e-2, 1.0e-2), component="ez")
     sim.add_current_moment_monitor(
         corner_lo=(0.6e-2, 0.6e-2, 0.8e-2), corner_hi=(1.8e-2, 1.8e-2, 1.2e-2),
@@ -1542,7 +1538,7 @@ def _guard_sim(**kw):
 
 
 def _guard_runs(sim, **kw):
-    return sim.run(n_steps=4, skip_preflight=True, **kw)
+    return sim.run(n_steps=4, skip_preflight=True, compute_s_params=False, **kw)
 
 
 def _block(sim, lo_mm, hi_mm, material="diel"):
@@ -1882,9 +1878,10 @@ def _kerr(sim, inside):
 
 def _pec_wire(sim, inside):
     from rfx.geometry.csg import PolylineWire
-    y = 12e-3 if inside else 3e-3
+    # Legacy filament; the monitor's conductor guard is independent of radius.
+    y = 12e-3 if inside else 4e-3
     sim.add(PolylineWire(points=((10e-3, y, 12e-3), (14e-3, y, 12e-3)),
-                         radius=1e-4), material="pec")
+                         radius=0.), material="pec")
 
 
 GUARD_BRANCHES = {

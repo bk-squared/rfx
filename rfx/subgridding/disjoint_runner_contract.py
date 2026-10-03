@@ -10,6 +10,8 @@ until the research smoke runner passes waveform/crossval gates.
 
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 from dataclasses import dataclass
 from math import prod
 from typing import Literal
@@ -98,7 +100,7 @@ def _map_position(
     dx_f: float,
 ) -> DisjointPointMapping:
     idx = tuple(
-        int(round((float(coord) - float(off)) / dx_f))
+        nearest_uniform_index((float(coord) - float(off)) / dx_f)
         for coord, off in zip(position, origin)
     )
     if not all(0 <= value < upper for value, upper in zip(idx, shape_f)):

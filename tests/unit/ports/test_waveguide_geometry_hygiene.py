@@ -351,25 +351,24 @@ def test_half_cell_outward_offset_opens_one_cell_too_wide(cells, d_mm):
 
 
 def test_the_knife_edge_moved_from_the_node_plane_to_the_cell_centre():
-    """Why "draw on node planes" replaces "draw on cell midpoints".
+    """PEC centre ownership is stable within the #1138 1e-9-cell band.
 
-    A PEC volume is decided by ``lo <= centre < hi`` at CELL CENTRES, so
-    the ULP-wide knife edge sits at a cell centre now, not at a node
-    plane: a face one ULP either side of a centre owns a different number
-    of cells. A face ON a node plane is half a cell from either centre and
-    is immune — the exact inverse of the pre-#931 advice, and the reason
-    the migration draws boards and irises on node lines.
+    Draw on node planes for cell-boundary walls; moving a centre-aligned
+    face beyond the band still changes ownership by one cell.
     """
     y, dx = _real_node_coords(30)
     centre = float(y[8]) + 0.5 * dx
     ulp = float(np.nextafter(centre, 1.0) - centre)
     assert 0 < ulp < 1e-15, "the comparison runs in host float64 (#802)"
 
-    below = _occupied(float(np.nextafter(centre, 0.0)), 30)
-    above = _occupied(float(np.nextafter(centre, 1.0)), 30)
-
-    assert below[-1] == 7
-    assert above[-1] == 8, "one ULP across a cell centre flips the footprint"
+    assert ulp < 0.5e-9 * dx
+    for face in (float(np.nextafter(centre, 0.0)), centre,
+                 float(np.nextafter(centre, 1.0)), centre + 0.5e-9 * dx):
+        np.testing.assert_array_equal(_occupied(face, 30), np.arange(8))
+        assert _occupied_hi(face, 30)[0] == 8
+    for face in (centre + 2e-9 * dx, centre + 0.5 * dx):
+        np.testing.assert_array_equal(_occupied(face, 30), np.arange(9))
+        assert _occupied_hi(face, 30)[0] == 9
     node = float(y[8])
     assert _occupied(node, 30)[-1] == _occupied(node + 8 * ulp, 30)[-1]
 
@@ -627,8 +626,12 @@ def test_advisory_message_recomputes_every_number_it_quotes():
     assert f"documented {_FAR_PORT_LAMBDA_G_FRACTION:g} guide-wavelength" in msg
     # The #494 ripple ladder is a claims-bearing measurement quoted as fact, so
     # it is pinned too: prose numbers were freely corruptible otherwise.
-    assert ("residual |S11| ripple was 0.0706 at 0.30 lambda_g, 0.0366 at 0.50, "
-            "and 0.0093 at 0.75") in msg
+    from tests._structured_snapshot import message_numbers
+    assert all(token in msg for token in ("residual", "|S11|", "ripple", "lambda_g"))
+    numbers = message_numbers(msg)
+    ladder = [0.0706, 0.30, 0.0366, 0.50, 0.0093, 0.75]
+    assert any(numbers[i:i + len(ladder)] == pytest.approx(ladder)
+               for i in range(len(numbers) - len(ladder) + 1))
 
 
 def _z_two_port(cpml_layers, *, freqs=_FREQS, dx=0.004):

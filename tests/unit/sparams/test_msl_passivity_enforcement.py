@@ -155,9 +155,7 @@ def test_projection_preserves_nonfinite_bins_for_the_finiteness_audit(bad_value)
 def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
     with enable_x64():
         raw = jnp.asarray([[[.2], [1.]], [[1.], [.2]]], dtype=jnp.complex128)
-    disabled = (jax.enable_x64(False) if hasattr(jax, "enable_x64")
-                else jax.experimental.disable_x64())
-    with disabled:
+    with jax.enable_x64(False):
         projected, correction = _project_passive(raw)
         assert not jax.config.x64_enabled
         assert projected.dtype == np.dtype(np.complex128)
@@ -172,7 +170,8 @@ def test_projection_preserves_f64_arrays_after_their_creation_context_exits():
 # ---------------------------------------------------------------------------
 
 def _thru():
-    sim = Simulation(freq_max=20e9, domain=(0.012, 0.008, 0.0032),
+    # #1138: geometry[2] y solved +11.67 % off; this test checks enforced result is strictly passive and loud.
+    sim = Simulation(snap="declared", freq_max=20e9, domain=(0.012, 0.008, 0.0032),
                      dx=2e-4, boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")

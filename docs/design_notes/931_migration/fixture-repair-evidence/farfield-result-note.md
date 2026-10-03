@@ -1,5 +1,7 @@
 # Graded farfield fixture repair: hold the radiator lattice fixed
 
+> Documentation update (2026-10-03): Records moved by #1294 are in internal record 20260924-moved-from-rfx. Historical paths below refer to that archive; reproduction commands that read those records need the archived files.
+
 Named run: **local-931-fixture-repair-farfield-600**, 2026-09-08, CPU,
 `JAX_PLATFORMS=cpu PYTHONPATH=$PWD`. Source HEAD was
 `949e1845b84b26826d4e5309363bea4c2ffa5920`, with the fixture repair uncommitted.

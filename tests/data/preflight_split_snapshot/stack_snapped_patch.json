@@ -4,84 +4,212 @@
       {
         "code": "mesh_resolution",
         "loc": null,
-        "message": "dielectric 'core' on x: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "numbers": [
+          15.0,
+          4.0,
+          10.0,
+          1.0,
+          15.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
-        "message": "dielectric 'core' on y: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "numbers": [
+          15.0,
+          4.0,
+          10.0,
+          1.0,
+          15.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
-        "message": "dielectric 'core' on z: 15.0 cells per \u03bb_eff (eps_r=4.00, freq_max=10GHz, dx=1mm). Need \u226515 cells/\u03bb_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at \u03b5 interfaces.",
+        "numbers": [
+          15.0,
+          4.0,
+          10.0,
+          1.0,
+          15.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
-        "message": "Gap between PEC structures: 2.3mm = 2.3 cells along z \u2014 coupling may be under-resolved.",
+        "numbers": [
+          2.3,
+          2.3
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "uncoded",
         "loc": null,
-        "message": "PEC sheet pec realizes on node plane 21 of axis z, and the cells on BOTH sides of that plane carry the same dielectric (eps_r = 4) over 36 of its footprint nodes. The sheet is therefore buried half a cell inside the dielectric instead of lying on its interface, so the realized cavity carries half a cell of the wrong medium in series (#931; the #702 measurement was 17 % on a 127 um stack). Draw the dielectric bodies up to the sheet plane, or move the sheet to the interface. Nothing is re-sampled.",
+        "numbers": [
+          21.0,
+          4.0,
+          36.0,
+          931.0,
+          702.0,
+          17.0,
+          127.0
+        ],
         "severity": "warning",
         "source": null
       },
       {
         "code": "no_sources",
         "loc": null,
-        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       },
       {
         "code": "lossless_q",
         "loc": null,
-        "message": "all dielectric(s) ['core'] are perfectly lossless in an open (CPML) domain. If you are measuring Q / resonance, this gives an ARTIFICIALLY infinite Q (design-guide Anti-Pattern #1, an R5 surface-metric trap) \u2014 add loss, e.g. sigma = 2*pi*f*eps0*eps_r*tan_delta. (Harmless if you are not measuring Q.)",
+        "numbers": [
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
         "code": "pec_box_one_cell",
         "loc": null,
-        "message": "1 PEC volume(s) are exactly ONE cell thick along some axis and are realized as a filled slab with walls on BOTH faces (every E edge between the two faces is shorted; lattice ownership contract #931 \u00a71.2): geometry[0] 'pec' (Box) is one cell thick along z [z: walls at 2mm and 3mm (drawn 2mm -> 3mm)]. If this is foil (a ground plane, patch or trace), declare it as a SHEET \u2014 add_thin_conductor(shape), or a zero-thickness Box via add() \u2014 which realizes on ONE node plane with the normal E edge through it live; a slab and a sheet are different conductors on this lattice. If it is a plate, an iris or a wall drawn one cell thick on purpose, no action is needed (report-only). COVERAGE: examined 1 PEC volume(s) on the uniform lane through rfx.boundaries.pec.realized_wall_planes. STALE IF: realized_wall_planes on the named entry's own edge masks returns planes more than one index apart.",
+        "numbers": [
+          1.0,
+          931.0,
+          1.2,
+          0.0,
+          2.0,
+          3.0,
+          2.0,
+          3.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_realization"
       },
       {
         "code": "sheet_plane_realized",
         "loc": null,
-        "message": "1 PEC sheet(s) realized (lattice ownership contract #931 \u00a71.3: one node plane each, closed footprint, normal E through the plane live), 1 of them off their declared mid-plane; worst first: geometry[2] 'pec' normal z: declared mid-plane 5.3mm, realized node plane 21 at 5mm (offset -0.300 cell = 300\u00b5m). A sheet snaps to the node plane nearest its declared mid-plane (an exact half-cell tie resolves LOWER); an offset means the declared plane \u2014 a laminate face, a ground level \u2014 is not on this mesh's node line, and the conductor sits that far from where it was drawn. REMEDY when the offset matters: put a mesh node on the declared plane (dx = h/N for an interface at height h, or a preserved region on the non-uniform lane). COVERAGE: every sheet declaration on the uniform lane (zero-thickness PEC Boxes via add() and PEC add_thin_conductor entries). STALE IF: the named sheet's SheetSpec.plane is not the printed node.",
+        "numbers": [
+          1.0,
+          931.0,
+          1.3,
+          1.0,
+          2.0,
+          5.3,
+          21.0,
+          5.0,
+          -0.3,
+          300.0
+        ],
         "severity": "info",
         "source": "_validate_cfg_pec_realization"
       },
       {
         "code": "sheet_effective_size",
         "loc": null,
-        "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[2] 'pec' x: drawn 6mm, nodes cover 6mm, solved as 6.7mm (+11.67%); geometry[2] 'pec' y: drawn 6mm, nodes cover 6mm, solved as 6.7mm (+11.67%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+        "numbers": [
+          2.0,
+          1.0,
+          2.0,
+          2.0,
+          6.0,
+          6.0,
+          6.7,
+          11.67,
+          2.0,
+          6.0,
+          6.0,
+          6.7,
+          11.67,
+          0.35
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "off_lattice_design_edges",
         "loc": null,
-        "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[2] 'pec' (sheet) x: extent 6mm, worst face residual 350\u00b5m (5.83% of the extent); geometry[2] 'pec' (sheet) y: extent 6mm, worst face residual 350\u00b5m (5.83% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 5 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 1 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+        "numbers": [
+          2.0,
+          0.5,
+          2.0,
+          2.0,
+          6.0,
+          350.0,
+          5.83,
+          2.0,
+          6.0,
+          350.0,
+          5.83,
+          931.0,
+          1.1,
+          1.3,
+          703.0,
+          8.0,
+          -10.0,
+          50.0,
+          50.0,
+          5.0,
+          2.0,
+          1.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "sheet_cavity_electrical_thickness",
         "loc": null,
-        "message": "1 conductor-bounded cavit(y/ies) differ from the physical stack by more than 1% in electrical thickness: [z] geometry[0] (volume, plane k=19 at 3mm, declared face 3mm, snap +0mm)/geometry[2] (sheet, k=21 at 5mm, declared face 5.3mm, snap -300\u00b5m) at in-plane column (21,21): sum(d/eps) mesh 500\u00b5m vs physical 575\u00b5m (-13.0%); sum(d*sqrt(eps)) mesh 4mm vs physical 4.6mm (-13.0%); plane-to-plane 2mm vs face-to-face 2.3mm; the capacitance measure (sum d/eps) governs (gap << lambda at freq_max). OBSERVED: mesh sums run over the cells strictly between two adjacent REALIZED wall planes (rfx.boundaries.pec.realized_wall_planes on each conductor's own edges) on the run's own spacings and assembled eps_r; physical sums run between the DECLARED faces through the geometry Box spans at the pair's shared column. The difference is exactly the printed per-plane snap (a declared face that is not on a node realizes on the nearest node plane; a sheet realizes on one plane, so a foil declared with two faces reads its thickness as cavity \u2014 the sheet model's honest cost) plus any vacuum cell the drawing left at a sheet plane. WHY BOTH MEASURES: the same defect class measured 17.3% as a series capacitance and 3.2% as phase length (#703) \u2014 a bare percentage invites 'correcting' a right number into a wrong one, so both are printed and the governing one is named. REMEDY: put the declared faces on mesh nodes (dx = h/N, or preserved regions on the non-uniform lane) and, for a foil, declare the sheet ON the interface it bounds so no snap is resolved for you; a vacuum cell is fixed by extending the dielectric to the sheet plane. Nothing else is a defect: a plane-to-plane cavity that equals the declared stack is what the contract promises. COVERAGE: examined 1 adjacent plane pair(s) from 2 conductor(s) on the uniform lane (a sheet's normal plane, a volume's two faces per axis; coplanar sheet rims are not paired); physical stack computed from Box entries only \u2014 0 non-Box dielectric entr(y/ies) ignored (said so, per #703); 0 pair(s) skipped (conductor cell between). STALE IF: re-summing the printed column disagrees with these numbers, or realized_wall_planes on the named entries does not return the printed planes.",
+        "numbers": [
+          1.0,
+          1.0,
+          0.0,
+          19.0,
+          3.0,
+          3.0,
+          0.0,
+          2.0,
+          21.0,
+          5.0,
+          5.3,
+          -300.0,
+          21.0,
+          21.0,
+          500.0,
+          575.0,
+          -13.0,
+          4.0,
+          4.6,
+          -13.0,
+          2.0,
+          2.3,
+          17.3,
+          3.2,
+          703.0,
+          1.0,
+          2.0,
+          0.0,
+          703.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_sheet_cavity_thickness"
       }

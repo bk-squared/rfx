@@ -190,7 +190,8 @@ def test_msl_thru_line_passive_gate():
     h_sub/4 (84.7 / 63.5 µm), which preflight already recommends.
     """
 
-    sim = Simulation(
+    # #1138: trace y solved +8.656% off; this tests the passive MSL gate.
+    sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(LX, LY, LZ),
         dx=DX,
@@ -324,7 +325,8 @@ def test_msl_thru_line_eigenmode_gate():
     (the underlying physical floor is mesh-limited at this resolution).
     """
 
-    sim = Simulation(
+    # #1138: trace y solved +8.656% off; this tests the eigenmode source gate.
+    sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(LX, LY, LZ),
         dx=DX,
@@ -411,7 +413,8 @@ def _run_msl_thru(l_line: float):
     length-invariance test can sweep it. ``LY``/``LZ`` are length-independent.
     """
     lx = l_line + 2 * PORT_MARGIN
-    sim = Simulation(
+    # #1138: trace y solved +8.656% off; this tests Z0 length invariance.
+    sim = Simulation(snap="declared",
         freq_max=F_MAX,
         domain=(lx, LY, LZ),
         dx=DX,

@@ -85,6 +85,18 @@ Typical choices:
 
 ## Check the gradient first
 
+The [periodic multilayer slab example](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/multilayer_ar_coating.py)
+uses the public `Simulation.freeze_mesh()` accessor and prints a
+`gradient_record_length_witness` result for its reflection objective. Run its
+smallest workflow without optimization or plotting:
+
+```bash
+JAX_PLATFORMS=cpu python examples/inverse_design/multilayer_ar_coating.py --gradient-witness-only
+```
+
+A passing record-length witness compares gradients at two run lengths; it
+does not establish mesh convergence or agreement with an external solver.
+
 Before you optimize a new setup, compare the autodiff gradient with a central
 finite difference at one cell. The model below is a small closed PEC box, so
 every grid index is a physical cell and nothing lands in an absorber. The mesh

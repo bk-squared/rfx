@@ -9,6 +9,8 @@ from __future__ import annotations
 from functools import partial
 from typing import NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 
@@ -60,8 +62,8 @@ class MaterialArrays(NamedTuple):
     The lanes whose volume is still CELL-owned (the distributed slab update,
     UPML) take :func:`cell_owned_component_materials`: the cell total minus
     the other components' stamps. The dispersive Debye/Lorentz coefficients
-    still apply the cell total to all three components (#1260) and warn
-    (:func:`warn_lumped_on_cell_owned_lane`).
+    take :func:`component_e_materials` per component like the plain update
+    (#1260; until then they applied the cell total to all three).
     """
 
     # Relative permittivity (Nx, Ny, Nz) — used in E update
@@ -74,6 +76,27 @@ class MaterialArrays(NamedTuple):
     # a 3-tuple (x, y, z) of per-component arrays / None (#1236)
     sigma_lumped: object = None
     eps_r_lumped: object = None
+    # H-component-owned permeability increments (port and PEC filament contours).
+    # None preserves the historical scalar/cell-owned H update exactly.
+    mu_r_wire: object = None
+
+
+def component_h_materials(materials, periodic=(False, False, False)):
+    """Relative permeability at Hx, Hy, Hz, including local wire contours.
+
+    H has no volume averaging convention here. A contour stamp belongs to
+    one H component and must never change the other two at the same index.
+    ``periodic`` is accepted for parity with :func:`component_e_materials`;
+    it is unused until a separate volume-averaging rule is chosen.
+    Every H coefficient builder reads this owner.
+    """
+    parts = getattr(materials, "mu_r_wire", None)
+    if parts is None:
+        return (materials.mu_r,) * 3
+    if not isinstance(parts, (tuple, list)) or len(parts) != 3:
+        raise TypeError("mu_r_wire must be None or a (Hx, Hy, Hz) tuple of arrays/None")
+    return tuple(materials.mu_r if p is None else materials.mu_r + p
+                 for p in parts)
 
 
 _LUMPED_AXIS = {"ex": 0, "ey": 1, "ez": 2}
@@ -159,41 +182,6 @@ def map_lumped(record, fn):
         return None
     return tuple(None if part is None else fn(part)
                  for part in lumped_components(record))
-
-
-def warn_lumped_on_cell_owned_lane(materials, lane):
-    """Say so when a CELL-owned coefficient builder meets a lumped record.
-
-    The Debye/Lorentz E updates take ONE coefficient per cell from the cell
-    total (``materials.sigma`` / ``eps_r``) and apply it to all three
-    components; #1210's per-edge rule does not reach them (#1260), and a
-    dispersive material ANYWHERE in the model puts the whole grid on them. A
-    lumped element folded into that total (a port's load, an RLC R or C),
-    wherever it sits, therefore loads the two other E edges at its node as
-    well -- the defect #1236 removed from the per-component lanes. This warns instead of refusing: a port on a
-    dispersive model is a supported workflow (material fitting), and the
-    error is bounded by the transverse field at the node (none where those
-    edges lie on a PEC plane; a dipole's feed gap moved +0.34 % in resonance
-    at lambda/43).
-    """
-    has = any(part is not None
-              for rec in (getattr(materials, "sigma_lumped", None),
-                          getattr(materials, "eps_r_lumped", None))
-              for part in lumped_components(rec))
-    if not has:
-        return
-    import warnings
-    warnings.warn(
-        f"{lane}: a Debye/Lorentz material anywhere in the model puts the "
-        "WHOLE grid on an E update that takes one coefficient per cell for "
-        "all three components (#1260), so every lumped element in this model "
-        "(a lumped/wire/MSL port's load, an RLC R or C), wherever it sits, "
-        "also loads the two other E edges at its node, not only its own "
-        "(#1236). Where the node carries a transverse field (a dipole's feed "
-        "gap) this shifts the result (+0.34 % resonance on a dipole at "
-        "lambda/43); where those edges lie on a PEC plane it does nothing. "
-        "Models with no dispersive material load the element's own edge only.",
-        UserWarning, stacklevel=3)
 
 
 def cell_owned_component_materials(materials):
@@ -382,7 +370,7 @@ def _diff_fwd_o(arr, axis, periodic, order, bloch=None):
     return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
 
 
-def _diff_bwd_o(arr, axis, periodic, order, bloch=None):
+def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None):
     """Backward staggered first difference (f[i]-f[i-1] family), at i-1/2; the
     caller divides by dx. order=2 is byte-identical to ``arr-_shift_bwd(arr)``
     when ``bloch is None``.
@@ -390,19 +378,23 @@ def _diff_bwd_o(arr, axis, periodic, order, bloch=None):
     For the Bloch field-transformation (#404) the BACKWARD-rolled neighbour
     carries the CONJUGATE phase ``exp(+j·k_axis·dx)`` (``bloch[axis].conjugate()``),
     the exact discrete adjoint of the forward stagger.  See ``_diff_fwd_o``."""
+    if boundary is not None:
+        periodic = boundary.periodic
+    if order != 2 and boundary is not None and boundary.pmc_faces:
+        raise NotImplementedError("PMC magnetic image: yee._diff_bwd_o far neighbors "
+                                  "require stencil_order=2")
+    back = h_neighbor(arr, axis, periodic=periodic, boundary=boundary)
     if order == 2:
-        if periodic[axis]:
-            prv = jnp.roll(arr, 1, axis)
-            if bloch is not None:
-                prv = prv * bloch[axis].conjugate()
-            return arr - prv
-        return arr - _shift_bwd(arr, axis)
+        if periodic[axis] and bloch is not None:
+            back = back * bloch[axis].conjugate()
+        return arr - back
+
     # order == 4:  c1*(f[i]-f[i-1]) + c2*(f[i+1]-f[i-2])
     if periodic[axis]:
-        near = arr - jnp.roll(arr, 1, axis)
+        near = arr - back
         far = jnp.roll(arr, -1, axis) - jnp.roll(arr, 2, axis)
         return _C4_NEAR * near + _C4_FAR * far
-    near = arr - _shift_bwd(arr, axis)
+    near = arr - back
     far = _shift_fwd(arr, axis) - _shift_bwd(_shift_bwd(arr, axis), axis)
     return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
 
@@ -430,6 +422,8 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     so = stencil_order
     if so not in (2, 4):
         raise ValueError(f"stencil_order must be 2 or 4, got {so}")
+    if materials.mu_r_wire is not None and so != 2:
+        raise NotImplementedError("wire-port radius requires the second-order Yee stencil")
     if bloch is not None and so != 2:
         raise ValueError(
             f"bloch phase (oblique-periodic BC, #404) requires stencil_order=2, got {so}"
@@ -450,7 +444,11 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu = materials.mu_r * MU_0
+    mu = component_h_materials(materials, periodic)
+    if _realized.ACTIVE is not None:
+        mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic)
+    mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     # curl E components via forward staggered differences (order=2 byte-identical)
     # dEz/dy - dEy/dz
@@ -469,63 +467,106 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
         - _diff_fwd_o(ex, 1, periodic, so, bloch) / dx
     )
 
-    hx = (state.hx.astype(_cdtype) - (dt / mu) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - (dt / mu) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - (dt / mu) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-def curl_h(hx, hy, hz, dx: float, periodic: tuple,
-           stencil_order: int = 2, bloch: tuple | None = None):
-    """curl(H) at the E edges on a uniform grid (backward staggered diffs).
+class CurlBoundary(NamedTuple):
+    """Realized terminal walls and periodic axes of an E-update stencil.
 
-    Factored out of :func:`update_e` (#677) so the surface-impedance sheet
-    operator and the E-update kernel share ONE stencil — any drift between
-    the two would silently violate the sheet operator's G3 free-space
-    identity gate. Callers pass H components already cast to the compute
-    dtype; the expressions are byte-identical to the pre-#677 inline code.
+    Built from ``resolve_wall_faces`` by each single-device step setup.
+    Tangential H is read with an odd image across each magnetic face.
     """
-    so = stencil_order
-    # dHz/dy - dHy/dz
-    curl_x = (
-        _diff_bwd_o(hz, 1, periodic, so, bloch) / dx
-        - _diff_bwd_o(hy, 2, periodic, so, bloch) / dx
-    )
-    # dHx/dz - dHz/dx
-    curl_y = (
-        _diff_bwd_o(hx, 2, periodic, so, bloch) / dx
-        - _diff_bwd_o(hz, 0, periodic, so, bloch) / dx
-    )
-    # dHy/dx - dHx/dy
-    curl_z = (
-        _diff_bwd_o(hy, 0, periodic, so, bloch) / dx
-        - _diff_bwd_o(hx, 1, periodic, so, bloch) / dx
-    )
-    return curl_x, curl_y, curl_z
+
+    pec_faces: frozenset = frozenset()
+    pmc_faces: frozenset = frozenset()
+    periodic: tuple = (False, False, False)
 
 
-def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz):
-    """curl(H) at the E edges on a non-uniform grid (backward diffs).
+def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
+               index=None):
+    """Backward operand for a tangential-H difference at an E node.
 
-    Factored out of :func:`update_e_nu` (#677) for the same shared-stencil
-    reason as :func:`curl_h`. ``inv_dx/inv_dy/inv_dz`` are the E-update
-    inverse spacings ``inv_d_e`` from
-    ``rfx.nonuniform._profile_to_inv_arrays``.
+    With N cells, physical H indices are 0..N-1 and the stored high ghost
+    is N. PMC requires D_H[0]=2H[0] and D_H[N]=-2H[N-1]. The high operand
+    includes H[N] to cancel the stored ghost at consumption, including any
+    source/absorber change since canonicalization. No physical H is zeroed.
+    Periodic and indexed invariant-axis conventions take precedence.
     """
-    curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
-    )
-    curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
-    )
-    curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
-    )
-    return curl_x, curl_y, curl_z
+    if boundary is not None:
+        periodic = boundary.periodic
+    n = h.shape[axis]
+    from rfx.boundaries.pmc import magnetic_image_faces
+    faces = magnetic_image_faces(boundary.pmc_faces, h.shape, periodic) if boundary is not None else frozenset()
+    lo = f"{'xyz'[axis]}_lo" in faces
+    hi = f"{'xyz'[axis]}_hi" in faces
+    if index is None:
+        back = jnp.roll(h, 1, axis) if periodic[axis] else _shift_bwd(h, axis)
+        edge = [slice(None)] * h.ndim
+        if lo:
+            edge[axis] = 0
+            back = back.at[tuple(edge)].set(-h[tuple(edge)])
+        if hi:
+            edge[axis] = -1
+            inner = list(edge)
+            inner[axis] = -2
+            back = back.at[tuple(edge)].set(h[tuple(edge)] + 2 * h[tuple(inner)])
+        return back
+    i = int(index[axis])
+    if n == 1 or periodic[axis]:
+        back = list(index)
+        back[axis] = (i - 1) % n
+        return h[tuple(back)]
+    if i == 0:
+        return -h[index] if lo else jnp.zeros_like(h[index])
+    back = list(index)
+    back[axis] = i - 1
+    if hi and i == n - 1:
+        return h[index] + 2 * h[tuple(back)]
+    return h[tuple(back)]
+
+
+def curl_h(hx, hy, hz, dx: float | None, periodic: tuple,
+           stencil_order: int = 2, bloch: tuple | None = None, *,
+           boundary=None, scale_after=False, inv_spacing=None):
+    """The uniform E-update curl, with the realized terminal boundary.
+
+    ``scale_after`` preserves ADE's subtraction-before-division arithmetic;
+    ``dx=None`` preserves baked coefficients (which already contain 1/dx).
+    UPML passes its broadcast inverse metrics via ``inv_spacing``. These
+    forms preserve the pre-B3a floating-point operation order, not different
+    boundary stencils. H is cast to the caller's compute dtype beforehand.
+    """
+    if boundary is not None:
+        periodic = boundary.periodic
+
+    def component(ha, a, hb, b):
+        da = _diff_bwd_o(ha, a, periodic, stencil_order, bloch, boundary=boundary)
+        db = _diff_bwd_o(hb, b, periodic, stencil_order, bloch, boundary=boundary)
+        if inv_spacing is not None:
+            return da * inv_spacing[a] - db * inv_spacing[b]
+        if dx is None:
+            return da - db
+        if scale_after:
+            return (da - db) / dx
+        return da / dx - db / dx
+
+    return (component(hz, 1, hy, 2), component(hx, 2, hz, 0),
+            component(hy, 0, hx, 1))
+
+
+def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None):
+    """Graded E-update curl using the same boundary neighbour convention.
+
+    Inverse spacings are the E-update dual metrics, unchanged by B3a.
+    """
+    return curl_h(
+        hx, hy, hz, None, (False, False, False), boundary=boundary,
+        inv_spacing=(inv_dx[:, None, None], inv_dy[None, :, None],
+                     inv_dz[None, None, :]))
 
 
 def _material_bwd_neighbour(arr, ax, periodic):
@@ -590,16 +631,29 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
     exactly in binary floating point. That is what keeps every vacuum fixture
     and every uniform-dielectric lock byte-for-byte where it was.
     """
-    def mean4(arr, t1, t2):
+    return (edge_mean_components(eps_r, periodic),
+            edge_mean_components(sigma, periodic))
+
+
+def edge_mean_components(arr, periodic=(False, False, False)):
+    """``(mean_x, mean_y, mean_z)``: a cell array averaged over each E edge's
+    four incident cells -- the arithmetic of :func:`edge_averaged_materials`,
+    which calls it for ``eps_r`` and ``sigma``.
+
+    Also the rule for a dispersive pole (#1260): a pole's susceptibility is
+    parallel along the edge exactly as a conductivity is, so the edge carries
+    ``delta_eps`` times the fraction of its four cells that hold the pole. The
+    caller passes the pole's cell mask as a float array and gets that fraction
+    back, per component (0, 0.25, 0.5, 0.75 or 1, each exact).
+    """
+    def mean4(t1, t2):
         a1 = _material_bwd_neighbour(arr, t1, periodic)
         a2 = _material_bwd_neighbour(arr, t2, periodic)
         a12 = _material_bwd_neighbour(a1, t2, periodic)
         # Pairwise, so the homogeneous sum is exact (F4/#1210).
         return ((arr + a1) + (a2 + a12)) * 0.25
 
-    eps = tuple(mean4(eps_r, *[t for t in range(3) if t != c]) for c in range(3))
-    sig = tuple(mean4(sigma, *[t for t in range(3) if t != c]) for c in range(3))
-    return eps, sig
+    return tuple(mean4(*[t for t in range(3) if t != c]) for c in range(3))
 
 
 def component_e_materials(materials, periodic=(False, False, False)):
@@ -718,6 +772,8 @@ def e_component_coeffs(materials, dt, periodic=(False, False, False)):
     entry every grid-wide E update uses.
     """
     eps, sig = component_e_materials(materials, periodic)
+    if _realized.ACTIVE is not None:
+        eps, sig = _realized.electric(materials, eps, sig, "yee.E", periodic=periodic)
     pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
     return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
 
@@ -854,7 +910,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
                  periodic: tuple = (False, False, False),
                  stencil_order: int = 2,
                  bloch: tuple | None = None,
-                 inv_d: tuple | None = None) -> FDTDState:
+                 inv_d: tuple | None = None, *, boundary=None) -> FDTDState:
     """Redo the E update inside one index box with its own Ca/Cb (#1179).
 
     ``prev`` is the state BEFORE the grid-wide E update of this timestep. It
@@ -917,11 +973,12 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     if inv_d is None:
         curl_x, curl_y, curl_z = curl_h(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
-            prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch)
+            prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch,
+            boundary=boundary)
     else:
         curl_x, curl_y, curl_z = curl_h_nu(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
-            prev.hz.astype(_cdtype), *inv_d)
+            prev.hz.astype(_cdtype), *inv_d, boundary=boundary)
 
     def _comp(v, c):
         """``v`` for every component, or the c-th entry of a 3-sequence."""
@@ -941,11 +998,11 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     )
 
 
-@partial(jax.jit, static_argnums=(4, 5, 6))
+@partial(jax.jit, static_argnames=("periodic", "stencil_order", "bloch", "boundary"))
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
-             bloch: tuple | None = None) -> FDTDState:
+             bloch: tuple | None = None, *, boundary=None) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -993,7 +1050,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, periodic)
 
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch)
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch, boundary=boundary)
 
     ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
     ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)
@@ -1031,7 +1088,11 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu = materials.mu_r * MU_0
+    mu = component_h_materials(materials)
+    if _realized.ACTIVE is not None:
+        mu = _realized.magnetic(materials, mu, "yee.H")
+    mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
+    ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
     # Forward differences with same shape (zero-pad via _shift_fwd)
     curl_x = (
@@ -1047,16 +1108,16 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         - (_shift_fwd(ex, 1) - ex) * inv_dy_h[None, :, None]
     )
 
-    hx = (state.hx.astype(_cdtype) - (dt / mu) * curl_x).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - (dt / mu) * curl_y).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - (dt / mu) * curl_z).astype(_fdtype)
+    hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - ch_y * curl_y).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - ch_z * curl_z).astype(_fdtype)
 
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
 def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                ) -> FDTDState:
+                *, boundary=None) -> FDTDState:
     """E update for non-uniform Yee grid.
 
     The E-curl differences two H cell-centres, whose separation is the
@@ -1081,13 +1142,13 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     # box on a graded mesh builds the SAME Ca/Cb from its own permittivity
     # (#1183). #1210: per component, from the mean over the four cells
     # incident to the edge. Non-periodic: the graded-mesh lane installs no
-    # periodic BC (``curl_h_nu`` has no wrap), the same assumption
+    # periodic BC (the NU boundary carries no periodic axes), the same assumption
     # ``update_e_box``'s ``inv_d`` branch documents.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, (False, False, False))
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
-    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz)
+    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
 
     ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
     ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)
@@ -1109,8 +1170,8 @@ class UpdateCoeffs(NamedTuple):
 
     Use :func:`precompute_coeffs` to build.
     """
-    # H-field coefficient: dt / (mu_r * MU_0 * dx)  — shape (Nx, Ny, Nz)
-    ch: jnp.ndarray
+    # H coefficient: one grid array, or (Hx, Hy, Hz) arrays with wire stamps.
+    ch: object
     # E-field decay coefficient  — per-component (Nx, Ny, Nz)
     ca_ex: jnp.ndarray
     ca_ey: jnp.ndarray
@@ -1153,12 +1214,24 @@ def precompute_coeffs(
     -------
     UpdateCoeffs
     """
-    ch = jnp.float32(dt / (MU_0 * dx)) / materials.mu_r
+    mu = component_h_materials(materials, periodic)
+    if _realized.ACTIVE is not None:
+        mu = _realized.magnetic(materials, mu, "precompute.H", periodic=periodic)
+    # Preserve the historical scalar-array bake, including its f32 numerator.
+    ch = jnp.float32(dt / (MU_0 * dx)) / mu[0]
+    if materials.mu_r_wire is not None:
+        ch = tuple((dt / (MU_0 * dx)) / m for m in mu)
+    elif _realized.ACTIVE is not None:
+        # Replay each component with the no-record float32 bake.
+        ch = tuple(jnp.float32(dt / (MU_0 * dx)) / m for m in mu)
 
     # #1210: per-component eps/sigma, the mean over the four cells incident
     # to each component's edge. The arithmetic below is unchanged, so a
     # homogeneous grid bakes the same bits it baked before.
     _eps_c, _sig_c = component_e_materials(materials, periodic)
+    if _realized.ACTIVE is not None:
+        _eps_c, _sig_c = _realized.electric(
+            materials, _eps_c, _sig_c, "precompute.E", periodic=periodic)
 
     def _bake_si(eps_r_c, sigma_c, dt, dx):
         eps = eps_r_c * jnp.float32(EPS_0)
@@ -1214,7 +1287,7 @@ def precompute_coeffs(
     )
 
 
-def update_h_fast(state: FDTDState, ch: jnp.ndarray) -> FDTDState:
+def update_h_fast(state: FDTDState, ch: jnp.ndarray | tuple) -> FDTDState:
     """H update using pre-computed coefficient ``ch = dt/(mu*dx)``.
 
     Avoids recomputing material coefficients each timestep.
@@ -1227,9 +1300,10 @@ def update_h_fast(state: FDTDState, ch: jnp.ndarray) -> FDTDState:
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    hx = (state.hx.astype(_cdtype) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
+    cx, cy, cz = ch if isinstance(ch, tuple) else (ch,) * 3
+    hx = (state.hx.astype(_cdtype) - cx * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - cy * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - cz * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
@@ -1237,6 +1311,7 @@ def update_e_fast(
     state: FDTDState,
     ca_ex: jnp.ndarray, ca_ey: jnp.ndarray, ca_ez: jnp.ndarray,
     cb_ex: jnp.ndarray, cb_ey: jnp.ndarray, cb_ez: jnp.ndarray,
+    *, boundary=None,
 ) -> FDTDState:
     """E update using pre-computed per-component coefficients.
 
@@ -1253,13 +1328,15 @@ def update_e_fast(
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2)))).astype(_fdtype)
-    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0)))).astype(_fdtype)
-    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1)))).astype(_fdtype)
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, None, (False, False, False), boundary=boundary)
+    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * curl_z).astype(_fdtype)
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
-def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
+def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs, *, boundary=None) -> FDTDState:
     """Combined H + E update using pre-computed :class:`UpdateCoeffs`.
 
     Performs a full leapfrog step (H half-step then E full-step) with
@@ -1277,27 +1354,30 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
     ch = coeffs.ch
-    hx = (state.hx.astype(_cdtype) - ch * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
-    hy = (state.hy.astype(_cdtype) - ch * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
-    hz = (state.hz.astype(_cdtype) - ch * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
+    cx, cy, cz = ch if isinstance(ch, tuple) else (ch,) * 3
+    hx = (state.hx.astype(_cdtype) - cx * ((_shift_fwd(ez, 1) - ez) - (_shift_fwd(ey, 2) - ey))).astype(_fdtype)
+    hy = (state.hy.astype(_cdtype) - cy * ((_shift_fwd(ex, 2) - ex) - (_shift_fwd(ez, 0) - ez))).astype(_fdtype)
+    hz = (state.hz.astype(_cdtype) - cz * ((_shift_fwd(ey, 0) - ey) - (_shift_fwd(ex, 1) - ex))).astype(_fdtype)
     # --- E update (with PEC baked into coefficients) ---
     # Upcast newly computed H fields back to _cdtype for curl computation
     hx_f = hx.astype(_cdtype)
     hy_f = hy.astype(_cdtype)
     hz_f = hz.astype(_cdtype)
-    ex = (coeffs.ca_ex * ex + coeffs.cb_ex * ((hz_f - _shift_bwd(hz_f, 1)) - (hy_f - _shift_bwd(hy_f, 2)))).astype(_fdtype)
-    ey = (coeffs.ca_ey * ey + coeffs.cb_ey * ((hx_f - _shift_bwd(hx_f, 2)) - (hz_f - _shift_bwd(hz_f, 0)))).astype(_fdtype)
-    ez = (coeffs.ca_ez * ez + coeffs.cb_ez * ((hy_f - _shift_bwd(hy_f, 0)) - (hx_f - _shift_bwd(hx_f, 1)))).astype(_fdtype)
+    curl_x, curl_y, curl_z = curl_h(
+        hx_f, hy_f, hz_f, None, (False, False, False), boundary=boundary)
+    ex = (coeffs.ca_ex * ex + coeffs.cb_ex * curl_x).astype(_fdtype)
+    ey = (coeffs.ca_ey * ey + coeffs.cb_ey * curl_y).astype(_fdtype)
+    ez = (coeffs.ca_ez * ez + coeffs.cb_ez * curl_z).astype(_fdtype)
     return FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
                      step=state.step + 1)
 
 
-@jax.jit
+@partial(jax.jit, static_argnames=("boundary",))
 def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
                       eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                       dt: float,
                       inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                      ) -> FDTDState:
+                      *, boundary=None) -> FDTDState:
     """Non-uniform E update with per-component anisotropic permittivity.
 
     Same backward-difference structure as :func:`update_e_nu` (E-update
@@ -1330,18 +1410,7 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
     # Backward differences with per-cell inv-spacing (mirrors update_e_nu)
-    curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
-    )
-    curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
-    )
-    curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
-    )
+    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
@@ -1367,11 +1436,11 @@ def _ca_cb_inv_eps_r_units(inv, sigma, dt):
     return _ca_cb_eps_r_units(inv, sigma, dt, inverse=True)
 
 
-@partial(jax.jit, static_argnums=(7,))
+@partial(jax.jit, static_argnames=("periodic", "boundary"))
 def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
                        inv_xx: jnp.ndarray, inv_yy: jnp.ndarray, inv_zz: jnp.ndarray,
                        dt: float, dx: float,
-                       periodic: tuple = (False, False, False)) -> FDTDState:
+                       periodic: tuple = (False, False, False), *, boundary=None) -> FDTDState:
     """Electric field update with per-component **inverse** permittivity.
 
     Stage 2 production form: takes the diagonal of the inverse-eps
@@ -1413,11 +1482,6 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     dt, dx : float
     periodic : tuple of 3 bools
     """
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     # Compute dtype: max(state dtype, float32) -- byte-identical for float32
     # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
@@ -1445,18 +1509,7 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
         _e_update_coeffs_inv_si, _ca_cb_inv_eps_r_units, inv_zz, sigma_ez, dt)
 
     # curl H (identical to update_e and update_e_aniso).
-    curl_x = (
-        (hz - bwd(hz, 1)) / dx
-        - (hy - bwd(hy, 2)) / dx
-    )
-    curl_y = (
-        (hx - bwd(hx, 2)) / dx
-        - (hz - bwd(hz, 0)) / dx
-    )
-    curl_z = (
-        (hy - bwd(hy, 0)) / dx
-        - (hx - bwd(hx, 1)) / dx
-    )
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
@@ -1471,7 +1524,7 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                    dt: float, dx: float,
-                   periodic: tuple = (False, False, False)) -> FDTDState:
+                   periodic: tuple = (False, False, False), *, boundary=None) -> FDTDState:
     """Electric field update with per-component anisotropic permittivity.
 
     Same as :func:`update_e` but uses separate permittivity arrays for
@@ -1489,11 +1542,6 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     dt, dx : float
     periodic : tuple of 3 bools
     """
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     # Compute dtype: max(state dtype, float32) -- byte-identical for float32
     # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
@@ -1510,6 +1558,11 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     # runs keep their bytes.
     sigma_ex, sigma_ey, sigma_ez = component_e_materials(materials, periodic)[1]
 
+    if _realized.ACTIVE is not None:
+        (eps_ex, eps_ey, eps_ez), (sigma_ex, sigma_ey, sigma_ez) = _realized.electric(
+            materials, (eps_ex, eps_ey, eps_ez),
+            (sigma_ex, sigma_ey, sigma_ez), "aniso.E", periodic=periodic)
+
     # Per-component lossy update coefficients: the arithmetic of
     # e_update_coeffs, so one spelling (and its #1357 eps_r-unit
     # derivative) serves both.
@@ -1518,18 +1571,7 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     ca_ez, cb_ez = e_update_coeffs(eps_ez, sigma_ez, dt)
 
     # curl H (same as update_e)
-    curl_x = (
-        (hz - bwd(hz, 1)) / dx
-        - (hy - bwd(hy, 2)) / dx
-    )
-    curl_y = (
-        (hx - bwd(hx, 2)) / dx
-        - (hz - bwd(hz, 0)) / dx
-    )
-    curl_z = (
-        (hy - bwd(hy, 0)) / dx
-        - (hx - bwd(hx, 1)) / dx
-    )
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)

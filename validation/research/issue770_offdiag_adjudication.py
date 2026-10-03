@@ -95,7 +95,8 @@ def build_fix_t(*, nu: bool, drive: int | None, pulse=None):
     (None = both excite=True, the uniform battery fixture verbatim)."""
     from rfx.boundaries.spec import Boundary, BoundarySpec
     kw = {"dz_profile": np.full(NZ, DX)} if nu else {}
-    sim = Simulation(freq_max=FREQ_MAX, domain=DOMAIN, dx=DX,
+    # #1138: geometry[0] x/y solved +2.059/+7 % off the domain-clipped drawing; retain closed-investigation geometry.
+    sim = Simulation(snap="declared",freq_max=FREQ_MAX, domain=DOMAIN, dx=DX,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")),
                      cpml_layers=CPML_LAYERS, **kw)

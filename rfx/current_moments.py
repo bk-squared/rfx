@@ -74,6 +74,8 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
+from rfx._precision import HIGHEST
+
 from rfx.core.yee import EPS_0
 
 C0 = 299_792_458.0
@@ -444,29 +446,16 @@ def build_current_moment_monitor(
 
 
 def _index_window(nodes, lo_m, hi_m, n_axis, margin_cells=0):
-    """Nearest node index to each corner, plus a cell margin, inclusive.
+    """Declared window corners use the shared node tie rule, plus a margin.
 
-    ``np.argmin`` at BOTH ends, so a corner that lands exactly halfway
-    between two nodes resolves to the lower one at either end. Breaking that
-    tie outwards instead is defensible on its own and WOULD put the window
-    one cell wider on an exact tie at a high corner. On the tutorial patch
-    the exact ties are at the low corners and the high corners are strict
-    minima by 2.8e-17 m, so the slab there is 25,920 edges at 2 mm and
-    84,500 at 1 mm.
-
-    This function does not clamp to ``[1, n_axis - 1]``; the builder below
-    refuses such a window instead of moving it.
-
-    Away from an exact tie what decides the window is that ``nodes`` comes
-    from ``coords_from_nonuniform_grid`` (see :func:`_axis_arrays`) rather
-    than from a second cumsum here. A node line recomputed locally landed
-    2e-16 m away, which turned the tutorial patch's halfway board edge into
-    a strict minimum on the other side and moved the slab by a cell — 24,500
-    edges instead of 25,920.
+    The builder refuses a window outside its admitted range; no clamp here.
     """
+    from rfx._grid_metric import nearest_node_index
+    from rfx.geometry.rasterize_grid import _local_cell
     nodes = np.asarray(nodes)[:n_axis]
-    lo = int(np.argmin(np.abs(nodes - float(lo_m))))
-    hi = int(np.argmin(np.abs(nodes - float(hi_m))))
+    cells = np.diff(nodes)
+    lo = nearest_node_index(nodes, lo_m, _local_cell(nodes, cells, lo_m))
+    hi = nearest_node_index(nodes, hi_m, _local_cell(nodes, cells, hi_m))
     return lo - int(margin_cells), hi + int(margin_cells)
 
 
@@ -499,7 +488,8 @@ def current_moment_monitor_from_grid(
 
     Refuses what it has not been shown to be right on.
     """
-    if periodic is not None and any(bool(p) for p in periodic):
+    if (getattr(grid, 'periodic_axes', '')
+            or periodic is not None and any(bool(p) for p in periodic)):
         raise NotImplementedError(
             "the current-moment monitor reads Ampere's law at the slab's own "
             "edges; on a periodic or Bloch axis the curl stencil wraps and "
@@ -651,7 +641,7 @@ def _reduce_to_blocks(monitor: CurrentMomentMonitor, jx, jy, jz):
     m = monitor
     out = []
     for w, j in ((m.w_ex, jx), (m.w_ey, jy), (m.w_ez, jz)):
-        per_ij = jnp.einsum("wijk,ijk->ijw", w, j.astype(w.dtype))
+        per_ij = jnp.einsum("wijk,ijk->ijw", w, j.astype(w.dtype), precision=HIGHEST)
         out.append(jax.ops.segment_sum(
             per_ij.reshape(-1, w.shape[0]), m.seg,
             num_segments=m.n_blocks, indices_are_sorted=False))
@@ -779,13 +769,8 @@ def end_of_record_moments(monitor: CurrentMomentMonitor, state, n_steps, dt):
 #                                                 after update_e)
 #   rfx/nonuniform.py      t = step_idx * dt  ->  n dt
 #
-# One full timestep apart, measured 2026-09-21 on the patch fixture: the block
-# moments extracted from the two disagreed by exactly |exp(-j w dt) - 1|
-# (1.527e-2 at 2.0 GHz, 1.832e-2 at 2.4, 2.137e-2 at 2.8, against w*dt =
-# 1.527e-2 / 1.832e-2 / 2.137e-2). It cancels out of a magnitude spectrum,
-# which is why it has gone unnoticed, but any quantity that combines E with H
-# carries it. The constants below let a caller say which record it is holding
-# rather than guess.
+# These stamps differ by a full timestep. The constants let callers state
+# which record they hold rather than guess; see the recording expressions above.
 UNIFORM_PLANE_STAMP_STEPS = 1.0
 NONUNIFORM_PLANE_STAMP_STEPS = 0.0
 
@@ -847,18 +832,19 @@ def block_far_field_jax(theta, phi, centres, P, Q, T, k, order, eta=ETA_0):
     th_hat = jnp.asarray(th_hat)
     ph_hat = jnp.asarray(ph_hat)
     centres = jnp.asarray(centres)
-    ph = jnp.exp(1j * k * (r_hat @ centres.T))          # (n_dir, n_blocks)
-    N = ph @ jnp.asarray(P)
+    ph = jnp.exp(1j * k * jnp.matmul(r_hat, centres.T, precision=HIGHEST))  # (n_dir, n_blocks)
+    N = jnp.matmul(ph, jnp.asarray(P), precision=HIGHEST)
     if order >= 1 and Q is not None:
         Qj = jnp.asarray(Q)
         for a in range(3):
-            N = N + 1j * k * r_hat[:, a, None] * (ph @ Qj[:, a, :])
+            N = N + 1j * k * r_hat[:, a, None] * jnp.matmul(ph, Qj[:, a, :], precision=HIGHEST)
     if order >= 2 and T is not None:
         Tj = jnp.asarray(T)
         for a in range(3):
             for b in range(3):
                 N = N + (-(k ** 2) / 2.0) * (
-                    r_hat[:, a, None] * r_hat[:, b, None] * (ph @ Tj[:, a, b, :]))
+                    r_hat[:, a, None] * r_hat[:, b, None]
+                    * jnp.matmul(ph, Tj[:, a, b, :], precision=HIGHEST))
     jk4pi = 1j * k / (4.0 * np.pi)
     e_th = -jk4pi * eta * jnp.sum(N * th_hat, axis=1)
     e_ph = -jk4pi * eta * jnp.sum(N * ph_hat, axis=1)
@@ -965,13 +951,8 @@ def current_moment_far_field(result, theta, phi):
 def weight_dtype_for(sim):
     """Storage type for the monitor's weights, from the run's precision.
 
-    Measured 2026-09-22: with ``precision="float64"`` the block
-    accumulator is complex128 while these weights stayed float32, and the
-    reduction they multiply quantized the moments at float32. The far field
-    taken from them then matched a float64 central difference only to 1e-6 to
-    2e-4, with the difference ladder's plateau stuck at a step of 1e-3, while
-    the Huygens box on the same runs reached 1e-9 with a plateau at 1e-5. The
-    default is unchanged for a float32 run, so those stay bit-identical.
+    Float64 runs use float64 weights so their reduction does not quantize
+    the moments at float32. Float32 runs retain float32 weights.
     """
     return (np.float64
             if getattr(sim, "_precision", "float32") == "float64"
@@ -1113,10 +1094,12 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
       edge is not inside the slab. Its current is real and never read. The
       slab's outermost edge layer counts as outside.
 
-    Measured on what the solve realizes: the material arrays assembled from
+    Checked on the staircase material arrays assembled from
     the model (evaluated at trace time even under an outer ``jax.jit``) with
     the edge rule the E update uses, the realized PEC edges, the realized
-    port and source cells. ``overrides`` (``eps_r``, ``sigma``, ``mu_r``,
+    port and source cells. Subpixel smoothing, conformal PEC and dual-average
+    interfaces are not reproduced here; the slab-edge cell buffer covers
+    those interfaces. ``overrides`` (``eps_r``, ``sigma``, ``mu_r``,
     ``pec_mask``, ``pec_occupancy``, ``design_box``, ``design_occupancy``,
     ``design_region``)
     are what ``forward()`` replaces the model's own arrays with: a concrete
@@ -1180,7 +1163,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
             raise NotImplementedError(
                 f"the current-moment monitor is not supported with the "
                 f"microstrip port {pe.name!r} in mode='eigenmode': that "
-                "launch adds a magnetic source on the H edges of its plane, "
+                "mode is unsupported by this monitor, including passive ports. "
+                "An active eigenmode launch adds a magnetic source on its H edges, "
                 "which J = curl_h H - eps0 dE/dt does not contain. "
                 "mode='laplace' (the default) drives E only and is "
                 "supported.")
@@ -1276,7 +1260,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         if getattr(pe, "extent", None) is not None:
             end = list(pe.position)
             end[c] = end[c] + float(pe.extent)
-            stop = _index(grid, tuple(end))
+            from rfx._periodic import interval_indices
+            start, stop = interval_indices(grid, tuple(pe.position), tuple(end))
         idx = list(start)
         for n in range(start[c], max(stop[c], start[c] + 1)):
             idx[c] = n

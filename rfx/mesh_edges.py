@@ -369,7 +369,7 @@ def edge_aware_profiles(
             if len(thin) != 1:
                 raise ValueError(
                     "a sheet must be a Box with exactly one zero-thickness "
-                    f"axis; got extents {tuple(h - l for l, h in zip(lo, hi))}")
+                    f"axis; got extents {tuple(upper - lower for lower, upper in zip(lo, hi))}")
             n = thin[0]
             if k == n:
                 axis_faces.append(lo[k])
@@ -425,7 +425,7 @@ def edge_aware_profiles(
 class SolvedSheetSpan(NamedTuple):
     """Where a PEC sheet's in-plane ends are SOLVED along one axis."""
 
-    #: first and last footprint node index along the axis
+    #: first and last unwrapped footprint node index (period endpoint may be N)
     i0: int
     i1: int
     #: solved end coordinates (m): the end node, moved ``edge_offset`` of the
@@ -436,10 +436,41 @@ class SolvedSheetSpan(NamedTuple):
     free_lo: bool
     free_hi: bool
 
+    def comparison_bounds(self, declared_lo: float, declared_hi: float,
+                          domain_hi: float) -> tuple[float, float]:
+        """Comparison bounds whose residual counts only free ends.
+
+        A seam, overlap, or domain end has no independently solved edge.
+        Use its solved coordinate so that it contributes zero residual.
+        ``domain_hi`` is retained for callers using the shared span API.
+        """
+        lo = float(declared_lo) if self.free_lo else self.lo
+        hi = float(declared_hi) if self.free_hi else self.hi
+        return lo, hi
+
+
+def sheet_continuation_masks(entries, periodic, shape):
+    """Sheet nodes and volume edges from the reports' realized PEC entries.
+
+    Volume continuation occupies the segment leaving the sheet end, not
+    merely the next node: a one-cell vacuum gap must remain a free end.
+    """
+    union = None
+    volume_edges = None
+    for entry in entries:
+        if entry.sheet is not None:
+            fp = np.asarray(entry.sheet.footprint, dtype=bool)
+            union = fp.copy() if union is None else union | fp
+        elif entry.kind == "volume":
+            edges = entry.edges(periodic, shape)
+            volume_edges = (tuple(m.copy() for m in edges) if volume_edges is None
+                            else tuple(a | b for a, b in zip(volume_edges, edges)))
+    return union, volume_edges
+
 
 def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
-                      declared_hi: float, domain_hi: float, *, union=None,
-                      edge_offset: float = EDGE_OFFSET):
+                      declared_hi: float, domain_hi: float, *, union=None, volume_edges=None,
+                      edge_offset: float = EDGE_OFFSET, periodic: bool = False):
     """The solved extent of a PEC sheet along one of its in-plane axes.
 
     The one place the solved-edge model is written. Three reports read it:
@@ -451,11 +482,14 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     module docstring). An end that is not a free edge adds nothing: an end drawn at
     or past the domain boundary (a wall, or a continuation into the absorber
     pad), and an end whose whole row continues into other sheet metal in
-    ``union`` (a seam inside one conductor).
+    ``union`` (a seam inside one conductor), or into realized PEC volume
+    edges in ``volume_edges``.
 
     ``footprint`` is the sheet's node mask restricted to the domain interior
     (``interior_lattice_mask``), ``nodes`` the axis node coordinates in domain
     metres, indexed like the mask (extra trailing entries are ignored).
+    On a periodic axis, an interval ending at L keeps the endpoint at index
+    N even though the closed footprint stores that node at index 0.
     Returns ``None`` when the footprint is empty.
     """
     fp = np.asarray(footprint, dtype=bool)
@@ -464,15 +498,27 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     if idx.size == 0:
         return None
     nodes = np.asarray(nodes, dtype=float)[:fp.shape[axis]]
-    i0, i1 = int(idx[0]), int(idx[-1])
     tol = 1e-9 * max(float(domain_hi), 1e-12)
+    if (periodic and abs(float(declared_hi) - float(domain_hi)) <= tol
+            and float(declared_lo) >= -tol and idx[0] == 0):
+        # Lift the closing node out of the stored [0, N) footprint. For a
+        # full-period sheet it represents both ends of the directed span.
+        idx = np.append(idx[1:] if float(declared_lo) > tol else idx, fp.shape[axis])
+        nodes = np.append(nodes, float(domain_hi))
+    i0, i1 = int(idx[0]), int(idx[-1])
 
     def _continues(i_end, i_next):
-        if union is None:
-            return False
+        edge_index = min(i_end, i_next)
+        if periodic:
+            i_end, i_next = i_end % fp.shape[axis], i_next % fp.shape[axis]
+            edge_index %= fp.shape[axis]
         end = np.take(fp, i_end, axis=axis)
-        return bool(end.any()) and bool(
-            np.take(np.asarray(union, dtype=bool), i_next, axis=axis)[end].all())
+        continuation = np.zeros_like(end)
+        if union is not None:
+            continuation |= np.take(np.asarray(union, dtype=bool), i_next, axis=axis)
+        if volume_edges is not None:
+            continuation |= np.take(volume_edges[axis], edge_index, axis=axis)
+        return bool(end.any()) and bool(continuation[end].all())
 
     free_lo = bool(i0 > 0 and float(declared_lo) > tol
                    and not _continues(i0, i0 - 1))

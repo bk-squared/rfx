@@ -107,7 +107,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import math
 from typing import Any, Callable, NamedTuple
 
 import jax
@@ -555,6 +554,7 @@ _LUMPED_PORT_FIELDS: dict[str, _F] = {
     "impedance": _NUM,
     "waveform": _opt(_WAVEFORM),
     "extent": _opt(_NUM),
+    "radius": _opt(_NUM),
     "excite": _BOOL,
     "direction": _opt(_STR),
     "reference_plane_cells": _opt(_INT),
@@ -797,10 +797,12 @@ def _dump_entry(
 
 
 def _load_entry(
-    payload: Any, fields: dict[str, _F], *, what: str
+    payload: Any, fields: dict[str, _F], *, what: str, defaults=None
 ) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise _refuse(f"{what} must be a mapping, got {type(payload).__name__}")
+    if defaults:
+        payload = {**defaults, **payload}
     _require_exact_keys(payload, set(fields), what=what)
     return {
         name: field.load(payload[name], f"{what}.{name}")
@@ -861,6 +863,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_probes",
     "_refinement",
     "_solver",
+    "_snap",
     "_stencil_order",
     "_dt_pin",
     "_dt_min_cell",
@@ -1006,18 +1009,19 @@ def _dump_boundary(sim: Any) -> dict[str, Any]:
 
 
 class _BoundaryPlan(NamedTuple):
-    """Constructor kwargs plus an optional deprecated periodic-axes call."""
+    """Constructor kwargs plus validated historical scalar views."""
 
     kwargs: dict[str, Any]
-    set_periodic_axes: str | None
+    legacy_views: dict | None
 
 
 def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
     """Choose the construction path that reproduces a recorded boundary state.
 
     ``Simulation`` accepts either a ``BoundarySpec`` (authoritative; the
-    legacy views are then derived from it) or the legacy
-    ``boundary=<scalar> + pec_faces`` triad.  The two paths do **not** produce
+    legacy views are then derived from it) or a scalar boundary. Historical
+    documents also record the removed ``pec_faces``/periodic setter triad.
+    These paths do **not** produce
     the same attributes for the same physics: a legacy ``boundary="pec"`` cavity
     keeps ``_pec_faces == set()`` while the equivalent all-PEC ``BoundarySpec``
     derives ``_pec_faces`` = all six faces.  Reproducing the recorded state
@@ -1080,24 +1084,24 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
     ):
         return _BoundaryPlan(
             kwargs={"boundary": spec, "cpml_layers": cpml_layers, **common},
-            set_periodic_axes=None,
+            legacy_views=None,
         )
 
-    # Fallback: reproduce the legacy triad. ``_build_spec_from_legacy`` folds
+    # Fallback: validate the historical triad. ``_build_spec_from_legacy`` folds
     # ``_periodic_axes`` into the spec, so try both the empty value (Floquet
     # side effect, applied later by the builder) and the recorded value
-    # (an explicit deprecated set_periodic_axes call).
+    # (a historical periodic setter call).
     if not (scalar == "pec" and pec_faces):
         for axes in ("", periodic):
             if _predict_legacy_spec(scalar, pec_faces, axes) == spec:
                 return _BoundaryPlan(
                     kwargs={
-                        "boundary": scalar,
+                        "boundary": scalar if not pec_faces and not axes else spec,
                         "cpml_layers": cpml_layers,
-                        "pec_faces": set(pec_faces) or None,
                         **common,
                     },
-                    set_periodic_axes=axes or None,
+                    legacy_views={"_boundary": scalar, "_cpml_layers": cpml_layers,
+                                  "_pec_faces": set(pec_faces), "_periodic_axes": axes},
                 )
 
     raise _refuse(
@@ -1114,6 +1118,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
 
 _SOFT_SOURCE_PINNED_DEFAULTS: dict[str, Any] = {
     "extent": None,
+    "radius": None,
     "excite": True,
     "direction": None,
     "reference_plane_cells": None,
@@ -1178,6 +1183,7 @@ def _dump_ports(sim: Any) -> tuple[list[dict], list[dict]]:
                 {
                     name: field.dump(getattr(entry, name), f"{what}.{name}")
                     for name, field in _LUMPED_PORT_FIELDS.items()
+                    if name != "radius" or entry.radius is not None
                 }
             )
     return soft, lumped
@@ -1507,6 +1513,7 @@ def design_to_dict(sim: Any) -> dict[str, Any]:
         },
         "boundary": _dump_boundary(sim),
         "solver": {
+            "snap": check_text(sim._snap, what="_snap"),
             "precision": check_text(sim._precision, what="_precision"),
             "solver": check_text(sim._solver, what="_solver"),
             "adi_cfl_factor": check_number(sim._adi_cfl_factor, what="_adi_cfl_factor"),
@@ -1726,6 +1733,10 @@ def simulation_from_design(document: Any) -> Any:
             f"design document must be a mapping, got {type(document).__name__}"
         )
     _require_exact_keys(document, _TOP_LEVEL_KEYS, what="design document")
+    # Compare the canonical declaration on round-trip without changing the
+    # caller's document. None is now the current default, not stored state.
+    import copy
+    document = copy.deepcopy(document)
 
     schema = check_text(document["schema"], what="schema")
     if schema != DESIGN_SCHEMA_VERSION:
@@ -1762,7 +1773,7 @@ def simulation_from_design(document: Any) -> Any:
     _require_exact_keys(
         solver,
         {"precision", "solver", "adi_cfl_factor", "stencil_order", "interface_eps",
-         "dt_pin", "dt_min_cell"},
+         "dt_pin", "dt_min_cell"} | ({"snap"} & set(solver)),
         what="solver",
     )
 
@@ -1807,6 +1818,7 @@ def simulation_from_design(document: Any) -> Any:
             if mesh["dz_profile"] is None
             else _array_from_dict(mesh["dz_profile"], what="mesh.dz_profile")
         ),
+        snap=check_text(solver.get("snap", "strict"), what="solver.snap"),
         precision=check_text(solver["precision"], what="solver.precision"),
         solver=check_text(solver["solver"], what="solver.solver"),
         adi_cfl_factor=check_number(solver["adi_cfl_factor"], what="solver.adi_cfl_factor"),
@@ -1819,8 +1831,11 @@ def simulation_from_design(document: Any) -> Any:
         ),
         **plan.kwargs,
     )
-    if plan.set_periodic_axes is not None:
-        sim.set_periodic_axes(plan.set_periodic_axes)
+    if plan.legacy_views is not None:
+        # Validated historical documents retain their recorded derived views.
+        # All new declarations use BoundarySpec; no removed public API is called.
+        for name, value in plan.legacy_views.items():
+            setattr(sim, name, value)
 
     for name, spec in materials.items():
         sim.add_material(
@@ -1894,10 +1909,12 @@ def simulation_from_design(document: Any) -> Any:
             _SOFT_SOURCE_FIELDS,
             what=f"excitations.soft_sources[{index}]",
         )
+        # add_source validates/resolves None at the declaration storage site.
         sim.add_source(
             values["position"], values["component"], waveform=values["waveform"],
             amplitude_kind=values["amplitude_kind"],
         )
+        payload["amplitude_kind"] = sim._ports[-1].amplitude_kind
 
     for index, payload in enumerate(
         _entry_list(excitations, "lumped_ports", what="excitations")
@@ -1906,6 +1923,7 @@ def simulation_from_design(document: Any) -> Any:
             payload,
             _LUMPED_PORT_FIELDS,
             what=f"excitations.lumped_ports[{index}]",
+            defaults={"radius": None},
         )
         values["terminates"] = _termination_inputs(sim, values["terminates"])
         sim.add_port(
@@ -2063,6 +2081,9 @@ def _first_difference(left: Any, right: Any, path: str = "") -> str | None:
 
 def _assert_round_trip(sim: Any, document: dict) -> None:
     rebuilt = design_to_dict(sim)
+    # Documents written before snap was exported use the strict default.
+    if "snap" not in document["solver"]:
+        document = {**document, "solver": {**document["solver"], "snap": "strict"}}
     if _equal(rebuilt, document):
         return
     where = _first_difference(rebuilt, document) or "<unknown>"

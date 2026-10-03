@@ -225,7 +225,7 @@ def _adi_conductor(kind, mode="3d", **kwargs):
         warnings.simplefilter("ignore")
         if kind == "wire":
             sim.add(PolylineWire(((10e-3, 10e-3, 8e-3),
-                                  (10e-3, 10e-3, 14e-3)), radius=0.2e-3),
+                                  (10e-3, 10e-3, 14e-3)), radius=0.),
                     material="pec")
         else:
             thickness = {"sheet": 0, "volume": DX, "thick_volume": 3 * DX}[kind]
@@ -252,7 +252,7 @@ def test_adi_default_refuses_interior_pec_even_without_preflight(mode, kind, ent
     factor is inferred from these short conductor-realization witnesses.
     """
     sim = _adi_conductor(kind, mode)
-    assert sim._adi_cfl_factor == 5.0
+    assert sim._adi_cfl_factor == 2.0  # #1448 ADI default CFL 5 -> 2
     with pytest.raises(ValueError, match="adi_interior_pec_unsupported"):
         getattr(sim, entrypoint)(n_steps=4, skip_preflight=True)
 
@@ -356,7 +356,7 @@ def test_the_forward_lossy_sheet_ctx_knows_about_a_pec_wire():
             sim = Simulation(freq_max=15e9, domain=F0_DOM, dx=F0_DX,
                              boundary="pec")
             sim.add(PolylineWire(((4e-3, 6e-3, 6e-3), (8e-3, 6e-3, 6e-3)),
-                                 radius=0.2e-3), material="pec")
+                                 radius=0.), material="pec")  # legacy PEC filament
             sim.add_thin_conductor(
                 Box((2e-3, 2e-3, 6e-3), (10e-3, 10e-3, 6e-3)),
                 sigma_bulk=5.8e7, surface_impedance_f0=10e9)

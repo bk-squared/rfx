@@ -1,5 +1,5 @@
 """A point pulse illuminates one PEC/PMC wall with CPML on the other faces.
-The wall must reflect and the multi-device probe records must match one device.
+PEC walls reflect with multi-device parity; PMC rows refuse until B4.
 Probe distances are 3 and 12 mm on a 1 mm boundary mesh, away from box symmetry.
 """
 
@@ -74,6 +74,19 @@ def test_probe_records_match_single_device(lane, wall, face, n_devices, x_cells,
     devices = jax.devices("cpu")[:n_devices]
     if len(devices) != n_devices:
         pytest.skip(f"requires XLA_FLAGS=--xla_force_host_platform_device_count={n_devices}")
+    if wall == "pmc":
+        # #1235's magnetic rows now pin admission, independent of slab width.
+        sim = _build(lane, wall, face, x_cells)
+        kernel = "distributed_v2" if lane == "uniform" else "distributed_nu"
+        for bypass in (False, True):
+            with pytest.raises(NotImplementedError,
+                               match=rf"PMC magnetic face.*{face}.*{kernel}.*magnetic image"):
+                if lane == "uniform":
+                    sim.run(n_steps=240, devices=devices, skip_preflight=bypass)
+                else:
+                    sim.forward(n_steps=240, distributed=True, devices=devices,
+                                skip_preflight=bypass)
+        return
     steps = 240
     with jax.default_device(devices[0]):
         single_sim = _build(lane, wall, face, x_cells)

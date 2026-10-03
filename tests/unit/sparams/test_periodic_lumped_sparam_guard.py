@@ -13,6 +13,7 @@ the preflight now fails loudly -- mirroring the non-uniform + lumped-port
 NotImplementedError guard. These tests pin that contract and confirm the guard
 does not over-fire on the ordinary non-periodic path.
 """
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 import numpy as np
 import pytest
@@ -24,10 +25,8 @@ from rfx.sources.sources import GaussianPulse
 def _sim(periodic_axes, extent=None):
     sim = Simulation(
         freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1.0e-3,
-        boundary="cpml", cpml_layers=4,
+        boundary=BoundarySpec(**{axis: "periodic" if axis in (periodic_axes or "") else "cpml" for axis in "xyz"}), cpml_layers=4,
     )
-    if periodic_axes:
-        sim.set_periodic_axes(periodic_axes)
     sim.add_port(
         position=(0.01, 0.01, 0.01), component="ez", impedance=50.0,
         waveform=GaussianPulse(f0=5e9, bandwidth=0.9), extent=extent,

@@ -592,15 +592,19 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
             if thin.is_pec or thin.surface_impedance_f0 is not None:
                 name = f"thin_conductor[{sim._thin_conductors.index(thin)}]"
                 sheet = sheet_spec_from_shape(
-                    shape, coords, sizes, name=name, refuse_thick=True)
+                    shape, coords, sizes, name=name, refuse_thick=True, grid=grid)
                 return [(np.asarray(sheet.footprint), (False, False, False))]
+            if getattr(grid, 'periodic_axes', ''):
+                from rfx.materials.thin_conductor import _thin_conductor_cell_mask
+                return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),
+                         (False, False, False))]
             return [(np.asarray(shape.mask_on_coords(coords.x, coords.y, coords.z)),
                      (False, False, False))]
         centres = cell_centres_from_nodes(coords, sizes)
         name = next((e.material_name for e in getattr(sim, "_geometry", ())
                      if e.shape is shape), None)
         cells, sheet, wire = classify_pec_entry(
-            shape, coords, centres, sizes, name=name)
+            shape, coords, centres, sizes, name=name, grid=grid)
         if cells is not None:
             return [(np.asarray(cells), (True, True, True))]
         if sheet is not None:
@@ -1078,7 +1082,7 @@ def _fallback_masks(shapes, mask_fn) -> dict:
     return {id(s): mask_fn(s) for s in shapes if not _has_sdf(s)}
 
 
-def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks):
+def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks, *, grid=None):
     """Kottke-average ``shapes`` into the per-component permittivity arrays.
 
     This is the ONE smoothing body; the uniform and non-uniform public
@@ -1137,8 +1141,10 @@ def _kottke_smooth(xp, shapes, sample_coords, cell_len, eps, masks):
             best_nx = best_ny = best_nz = None
 
             for shape in sdf_shapes:
-                s = _get_sdf_fn(shape)(Xc, Yc, Zc, shape, xp=xp)
-                n_x, n_y, n_z = _get_normal_fn(shape)(Xc, Yc, Zc, shape, xp=xp)
+                from rfx._periodic import periodic_sdf
+                s, (n_x, n_y, n_z) = periodic_sdf(
+                    grid, shape, (Xc, Yc, Zc), _get_sdf_fn(shape), xp=xp,
+                    normal_fn=_get_normal_fn(shape))
 
                 if sdf_union is None:
                     sdf_union = s
@@ -1189,6 +1195,7 @@ def _smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks):
     eps = tuple(xp.full(grid.shape, background_eps, dtype=acc_dtype) for _ in range(3))
     return _kottke_smooth(
         xp, shapes, _uniform_sample_coords(xp, coords, grid.dx), grid.dx, eps, masks,
+        grid=grid,
     )
 
 
@@ -1521,8 +1528,10 @@ def compute_inv_eps_tensor_diag(
         promoted = True
         for i, comp in enumerate(("ex", "ey", "ez")):
             Xc, Yc, Zc = sample[comp]
-            sdf = _get_sdf_fn(pec_shape)(Xc, Yc, Zc, pec_shape, xp=xp)
-            n_x, n_y, n_z = _get_normal_fn(pec_shape)(Xc, Yc, Zc, pec_shape, xp=xp)
+            from rfx._periodic import periodic_sdf
+            sdf, (n_x, n_y, n_z) = periodic_sdf(
+                grid, pec_shape, (Xc, Yc, Zc), _get_sdf_fn(pec_shape), xp=xp,
+                normal_fn=_get_normal_fn(pec_shape))
 
             f = xp.clip(0.5 - sdf / grid.dx, 0.0, 1.0)
             inv_c = _kottke_inv_eps_diag(
@@ -1631,3 +1640,51 @@ def kottke_inv_eps_from_occupancy(
     inv_yy = ((1.0 - m_y) * inv_yy_b).astype(jnp.float32)
     inv_zz = ((1.0 - m_z) * inv_zz_b).astype(jnp.float32)
     return inv_xx, inv_yy, inv_zz
+
+
+def refuse_pmc_smoothing(sim, grid):
+    """Refuse a normal material interface inside a PMC face's half-cell.
+
+    The current smoother samples the declared SDF, not its even extension.
+    A shape reaching at least a cell through the face has no normal
+    interface in this ribbon and is supported. Test the actual face lattice
+    and the two half-cell samples; tangential surfaces with equal SDF on
+    both sides do not request an unimplemented normal extension.
+    """
+    faces = sim._boundary_spec.pmc_faces()
+    if not faces or not sim._geometry:
+        return
+    import numpy as np
+    from rfx.geometry.rasterize_grid import (coords_from_uniform_grid,
+                                            coords_from_nonuniform_grid)
+    graded = hasattr(grid, "dx_arr")
+    coords = (coords_from_nonuniform_grid(grid) if graded
+              else coords_from_uniform_grid(grid))
+    nodes = [np.asarray(v) for v in (coords.x, coords.y, coords.z)]
+    for face in sorted(faces):
+        axis = "xyz".index(face[0])
+        hi = face.endswith("hi")
+        plane = nodes[axis][-1 if hi else 0]
+        d = (abs(nodes[axis][-1] - nodes[axis][-2]) if hi
+             else abs(nodes[axis][1] - nodes[axis][0]))
+        face_nodes = list(nodes)
+        face_nodes[axis] = np.array([plane])
+        xyz = np.meshgrid(*face_nodes, indexing="ij")
+        lower, upper = list(xyz), list(xyz)
+        lower[axis] = xyz[axis] - d / 2
+        upper[axis] = xyz[axis] + d / 2
+        for entry in sim._geometry:
+            shape = entry.shape
+            sdf_fn = _get_sdf_fn(shape)
+            if sdf_fn is None:
+                continue  # This shape uses a staircase, not subpixel smoothing.
+            sdf = np.asarray(sdf_fn(*xyz, shape, xp=np))
+            delta = (np.asarray(sdf_fn(*lower, shape, xp=np))
+                     - np.asarray(sdf_fn(*upper, shape, xp=np)))
+            if np.any((abs(sdf) <= d / 2) &
+                      (abs(delta) > d * 8 * np.finfo(np.float32).eps)):
+                raise NotImplementedError(
+                    f"subpixel smoothing at PMC magnetic face {face}: material "
+                    f"{entry.material_name!r} has a surface within half a cell; "
+                    "the smoother has no even magnetic extension. Extend the "
+                    "material at least one cell beyond the face or disable smoothing.")

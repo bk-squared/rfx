@@ -12,15 +12,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Callable, NamedTuple
 
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from rfx.grid import Grid
+from rfx.core.jax_utils import recorded_scan
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
-    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, _shift_bwd,
+    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, curl_h, CurlBoundary,
     map_lumped, lumped_components, lumped_total,
     precompute_coeffs, update_he_fast,
 )
@@ -35,7 +39,7 @@ from rfx.boundaries.pec import (
     realized_pec_edge_masks,
 )
 from rfx.progress import (
-    ProgressReporter, check_not_traced, scan_with_progress,
+    ProgressReporter, check_not_traced, concat_chunks, scan_with_progress,
     validate_report_every,
 )
 from rfx.snapshots import (
@@ -327,6 +331,7 @@ class SimResult(NamedTuple):
     dt: float | None = None
     current_moment_data: object = None
     current_moment_monitor: object = None
+    adjoint_settling: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -525,6 +530,7 @@ def _update_e_with_optional_dispersion(
     aniso_inv_eps: tuple | None = None,
     stencil_order: int = 2,
     bloch: tuple | None = None,
+    boundary=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -549,20 +555,20 @@ def _update_e_with_optional_dispersion(
         if aniso_inv_eps is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
-                                      dt, dx, periodic=periodic), None, None
+                                      dt, dx, periodic=periodic, boundary=boundary), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                  dt, dx, periodic=periodic), None, None
+                                  dt, dx, periodic=periodic, boundary=boundary), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch), None, None
+                        stencil_order=stencil_order, bloch=bloch, boundary=boundary), None, None
 
     if debye is not None and lorentz is None:
         from rfx.materials.debye import update_e_debye
 
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
-            state, debye_coeffs, debye_state, dt, dx, periodic=periodic)
+            state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
@@ -570,7 +576,7 @@ def _update_e_with_optional_dispersion(
 
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
-            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic)
+            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz update.
@@ -579,11 +585,6 @@ def _update_e_with_optional_dispersion(
 
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lorentz_state = lorentz
-
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
 
     # Narrow every output back to the dtype of the carry it came from
     # (issue #656) — same policy as the single-model bodies in
@@ -594,61 +595,45 @@ def _update_e_with_optional_dispersion(
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
-    curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
-    curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
-    curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
 
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
-    # Explicit Lorentz polarization update first.
-    px_l_new = (
-        lorentz_coeffs.a * lorentz_state.px
-        + lorentz_coeffs.b * lorentz_state.px_prev
-        + lorentz_coeffs.c * ex_old[None]
-    ).astype(_lpdtype)
-    py_l_new = (
-        lorentz_coeffs.a * lorentz_state.py
-        + lorentz_coeffs.b * lorentz_state.py_prev
-        + lorentz_coeffs.c * ey_old[None]
-    ).astype(_lpdtype)
-    pz_l_new = (
-        lorentz_coeffs.a * lorentz_state.pz
-        + lorentz_coeffs.b * lorentz_state.pz_prev
-        + lorentz_coeffs.c * ez_old[None]
-    ).astype(_lpdtype)
+    # Explicit Lorentz polarization update first (per component, #1260).
+    from rfx.materials.debye import per_component
+    from rfx.materials.lorentz import (
+        lorentz_p_component, mixed_e_component_coeffs,
+    )
+    e_old = (ex_old, ey_old, ez_old)
+    curls = (curl_x, curl_y, curl_z)
+    p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
+    p_l_prev = (lorentz_state.px_prev, lorentz_state.py_prev,
+                lorentz_state.pz_prev)
+    p_d = (debye_state.px, debye_state.py, debye_state.pz)
+    p_l_new = tuple(
+        lorentz_p_component(lorentz_coeffs, c, e_old[c], p_l[c], p_l_prev[c],
+                            _lpdtype)
+        for c in range(3))
+    px_l_new, py_l_new, pz_l_new = p_l_new
 
-    dpx_l = jnp.sum(px_l_new - lorentz_state.px, axis=0)
-    dpy_l = jnp.sum(py_l_new - lorentz_state.py, axis=0)
-    dpz_l = jnp.sum(pz_l_new - lorentz_state.pz, axis=0)
-
-    beta_sum = jnp.sum(debye_coeffs.beta, axis=0)
-    gamma_base = 1.0 / lorentz_coeffs.cc
-    gamma_total = jnp.maximum(gamma_base + beta_sum, EPS_0 * 1e-10)
-    numer_base = lorentz_coeffs.ca * gamma_base
-
-    ca = (numer_base - beta_sum) / gamma_total
-    cb = dt / gamma_total
-    cc_debye = (1.0 - debye_coeffs.alpha) / gamma_total
-    cc_lorentz = 1.0 / gamma_total
-
-    ex_new = (
-        ca * ex_old
-        + cb * curl_x
-        + jnp.sum(cc_debye * debye_state.px, axis=0)
-        - cc_lorentz * dpx_l
-    ).astype(_fdtype)
-    ey_new = (
-        ca * ey_old
-        + cb * curl_y
-        + jnp.sum(cc_debye * debye_state.py, axis=0)
-        - cc_lorentz * dpy_l
-    ).astype(_fdtype)
-    ez_new = (
-        ca * ez_old
-        + cb * curl_z
-        + jnp.sum(cc_debye * debye_state.pz, axis=0)
-        - cc_lorentz * dpz_l
-    ).astype(_fdtype)
+    e_new, p_d_new = [], []
+    for c in range(3):
+        dp_l = jnp.sum(p_l_new[c] - p_l[c], axis=0)
+        ca, cb, cc_debye, cc_lorentz = mixed_e_component_coeffs(
+            debye_coeffs, lorentz_coeffs, c, dt)
+        e_c = (
+            ca * e_old[c]
+            + cb * curls[c]
+            + jnp.sum(cc_debye * p_d[c], axis=0)
+            - cc_lorentz * dp_l
+        ).astype(_fdtype)
+        e_new.append(e_c)
+        beta_c = per_component(debye_coeffs.beta, "beta")[c]
+        p_d_new.append((debye_coeffs.alpha * p_d[c]
+                        + beta_c * (e_c[None] + e_old[c][None])
+                        ).astype(_dpdtype))
+    ex_new, ey_new, ez_new = e_new
 
     new_fdtd = state._replace(
         ex=ex_new,
@@ -656,14 +641,7 @@ def _update_e_with_optional_dispersion(
         ez=ez_new,
         step=state.step + 1,
     )
-    new_debye = DebyeState(
-        px=(debye_coeffs.alpha * debye_state.px
-            + debye_coeffs.beta * (ex_new[None] + ex_old[None])).astype(_dpdtype),
-        py=(debye_coeffs.alpha * debye_state.py
-            + debye_coeffs.beta * (ey_new[None] + ey_old[None])).astype(_dpdtype),
-        pz=(debye_coeffs.alpha * debye_state.pz
-            + debye_coeffs.beta * (ez_new[None] + ez_old[None])).astype(_dpdtype),
-    )
+    new_debye = DebyeState(px=p_d_new[0], py=p_d_new[1], pz=p_d_new[2])
     new_lorentz = LorentzState(
         px=px_l_new,
         py=py_l_new,
@@ -759,7 +737,8 @@ def _suggest_checkpoint_segments(n_steps: int) -> int:
 #     (use_flux_window=False).  Unifying decay onto windowed DFT is a
 #     deliberate future task.
 #   * ``use_fast_he`` / ``fast_coeffs`` — ``run()`` only; decay path is a
-#     Python loop and the GPU fast-path is not applicable.
+#     chunked scan with the fast path deliberately OFF to preserve its
+#     standalone-step arithmetic (no GPU fast-path change in #1322).
 
 class _SimSetup(NamedTuple):
     """Shared setup artefacts returned by ``_build_step_setup``.
@@ -1378,6 +1357,13 @@ def _build_step_setup(
     with its own driver-specific ``_StepContext`` fields before constructing
     the context.
     """
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(
+        materials, lane="uniform Yee with dispersion/UPML/tensor or design-box updates",
+        unsupported=(debye is not None or lorentz is not None or boundary == "upml"
+                     or aniso_eps is not None or aniso_inv_eps is not None
+                     or stencil_order != 2 or design_box is not None
+                     or design_occupancy is not None or kerr_chi3 is not None))
     dt = grid.dt
     dx = grid.dx
 
@@ -1881,6 +1867,7 @@ def _build_step_setup(
         ntff=ntff,
         pec_faces_frozen=_pec_faces_frozen,
         pmc_faces_frozen=_pmc_faces_frozen,
+        curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
         src_meta=tuple(src_meta),
         mag_src_meta=tuple(mag_src_meta),
         prb_meta=tuple(prb_meta),
@@ -1933,14 +1920,14 @@ def _build_step_setup(
 # Shared Yee scan body (W6.1)
 # ---------------------------------------------------------------------------
 #
-# ``run()`` (jax.lax.scan) and ``run_until_decay()`` (Python loop + jax.jit)
+# ``run()`` and ``run_until_decay()`` (formerly Python loop + jax.jit)
 # ran two ~85%-identical copies of the per-step Yee kernel.  ``make_core_step``
 # is the single source of truth.  Both call sites build a ``_StepContext`` from
 # their own setup code, then:
 #   * ``run()``           wraps ``core`` in a scan body that unpacks ``xs`` and
 #                         assembles the scan output tuple (probe + snapshot).
-#   * ``run_until_decay`` calls ``core`` directly inside its Python loop and
-#                         reads ``extras["monitor_val"]`` for the decay check.
+#   * ``run_until_decay`` scans ``core`` in chunks and reads every step
+#                         of ``extras["monitor_val"]`` at chunk boundaries.
 #
 # Every free variable of the old closures is passed explicitly via the context
 # (no capture of caller locals) so the builder is unit-testable.  Numerics,
@@ -2028,6 +2015,7 @@ class _StepContext:
     # every existing caller's context is unchanged.
     use_current_moments: bool = False
     current_moments: Any = None
+    curl_boundary: Any = None
     pec_faces_frozen: Any = frozenset()
     pmc_faces_frozen: Any = frozenset()
 
@@ -2112,16 +2100,18 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     # that threaded the subpixel arrays threads this one; where the pad is
     # homogeneous the mean IS ``materials.eps_r``, so those runs keep their
     # bytes.
+    #
+    # #1260 made the DISPERSIVE update per-component as well: its ε_∞ is the
+    # same ``component_e_materials`` mean, so a dispersive run threads the same
+    # array. (It used to fall back to the cell's ``materials.eps_r``.)
     _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
     if _aniso_is_live and aniso_inv_eps is not None:
         cpml_inv_eps_r = aniso_inv_eps
     elif _aniso_is_live and aniso_eps is not None:
         cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
-    elif _aniso_is_live:
+    else:
         _eps_edge, _ = component_e_materials(materials, periodic)
         cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge)
-    else:
-        cpml_inv_eps_r = None
 
     # #677 surface-impedance sheet: Holland exponential-stepping A/B built
     # once from the FINAL run materials (background eps_r/sigma at the sheet
@@ -2137,7 +2127,8 @@ def core_step_invariants(ctx: _StepContext) -> dict:
             "sheet_coeffs": _sheet_coeffs}
 
 
-def make_core_step(ctx: _StepContext, invariants: dict | None = None):
+def make_core_step(ctx: _StepContext, invariants: dict | None = None,
+                   *, design_hook=None):
     """Build the shared per-step Yee kernel from an explicit context.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
@@ -2145,6 +2136,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
     optional per-step outputs each caller needs:
       * ``extras["snap_fields"]`` — snapshot field list (``use_snapshot``).
       * ``extras["monitor_val"]`` — monitored scalar (``use_monitor``).
+
+    ``design_hook``, when supplied by the design adjoint, observes the
+    pre-update fields and can inject a local E perturbation immediately after
+    the design update. It returns ``(state, record)``; the record is an extra.
+    With no hook the production operations are unchanged.
 
     ``invariants`` is :func:`core_step_invariants`'s dict (built from ``ctx``
     when omitted); a jitted caller passes one whose per-cell arrays are its
@@ -2195,7 +2191,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             # Fast path: combined H+E update with PEC baked into
             # pre-computed coefficients — eliminates separate apply_pec(),
             # coefficient recomputation, and reduces XLA scatter ops.
-            st = update_he_fast(st, ctx.fast_coeffs)
+            st = update_he_fast(st, ctx.fast_coeffs, boundary=ctx.curl_boundary)
         else:
             # H update
             if ctx.use_upml:
@@ -2248,7 +2244,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     )
             if ctx.use_pmc_faces:
                 from rfx.boundaries.pmc import apply_pmc_faces
-                st = apply_pmc_faces(st, ctx.pmc_faces_frozen)
+                st = apply_pmc_faces(st, ctx.pmc_faces_frozen, image=True)
             if ctx.use_tfsf:
                 if ctx.tfsf_is_2d:
                     tfsf_h_state = ctx.update_tfsf_2d_h(ctx.tfsf_cfg, carry["tfsf"], dx, dt)
@@ -2283,7 +2279,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             if ctx.use_upml:
                 if ctx.use_debye or ctx.use_lorentz:
                     raise ValueError("boundary='upml' does not yet support dispersion")
-                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic)
+                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic,
+                                      boundary=ctx.curl_boundary)
                 debye_new = None
                 lorentz_new = None
             else:
@@ -2299,6 +2296,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
+                    boundary=ctx.curl_boundary,
                 )
 
             # #1179 design box: redo the E update at the design cells with
@@ -2314,7 +2312,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     periodic=periodic,
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
+                    boundary=ctx.curl_boundary,
                 )
+
+            if design_hook is not None:
+                st, design_record = design_hook(st_prev_design, st)
 
             # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff (#437).
             if ctx.use_kerr:
@@ -2330,7 +2332,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 st, cpml_new = ctx.apply_cpml_e(
                     st, ctx.cpml_params, cpml_new, grid, ctx.cpml_axes,
                     materials=materials,
-                    inv_eps_r_update=cpml_inv_eps_r)
+                    inv_eps_r_update=cpml_inv_eps_r,
+                    boundary=ctx.curl_boundary)
             # Re-enforce Kottke-frozen E cells after CPML-E correction.
             # CPML adds a psi-driven correction that can thaw cells
             # where inv_eps==0; re-zero them here so the frozen
@@ -2403,7 +2406,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 _curls = _curl_h(
                     st.hx.astype(_scd), st.hy.astype(_scd),
                     st.hz.astype(_scd), dx, periodic,
-                    ctx.stencil_order, ctx.bloch)
+                    ctx.stencil_order, ctx.bloch, boundary=ctx.curl_boundary)
                 st = _apply_sheet_e(
                     st, e_prev_sheet, _curls, ctx.sheet_impedance,
                     _sheet_coeffs)
@@ -2447,7 +2450,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
-            from rfx.probes.probes import _ampere_loop
+            from rfx.probes.probes import _ampere_loop, _port_voltage_value
+            from rfx.core.dft_utils import port_dft_phase
             # Both families advance their H-derived current by dt/2 to the
             # E time level; one import for both blocks.
             from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
@@ -2473,9 +2477,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
                 v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_ref_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_l = jnp.exp(-1j * 2.0 * jnp.pi * lp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                v_ref_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
+                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt)
                 new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
@@ -2563,7 +2566,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 # increment at driven cells, which #683's gate G2 measured
                 # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
-                    st, (mi, mj, mk), wp_meta.component, dx, periodic)
+                    st, (mi, mj, mk), wp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
                 # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
                 # E-derived (E^{n+1}); advance the current sample by dt/2 so
                 # both DFT channels share a reference time
@@ -2600,10 +2603,10 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     new_lumped_refs):
                 v_dft_l, i_dft_l = accs[0], accs[1]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = -getattr(st, lp_meta.component)[li, lj, lk] * dx
+                v_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
                 # #692: shared loop — see the wire-port block above.
                 i_val_l = _ampere_loop(
-                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                    st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
                 # Yee half-step: I is H-derived (H^{n+1/2}), V is E-derived
                 # (E^{n+1}).  Withheld on this lane until the slot above
                 # was post-injection, because that is the correction's
@@ -2750,11 +2753,13 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 else:
                     kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
                     kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
+                # Preserve the declared storage when x64 phase arithmetic
+                # is wider than this monitor's complex64 accumulators.
                 new_flux_accs.append((
-                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
-                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
-                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
-                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
+                    (e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e).astype(e1_acc.dtype),
+                    (e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e).astype(e2_acc.dtype),
+                    (h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h).astype(h1_acc.dtype),
+                    (h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h).astype(h2_acc.dtype),
                 ))
 
         # ---- per-step extras (caller-specific outputs) ----
@@ -2794,6 +2799,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
         if ctx.use_lumped_rlc:
             new_carry["rlc_states"] = tuple(new_rlc_states)
 
+        if design_hook is not None:
+            extras["design_record"] = design_record
         return new_carry, probe_out, extras
 
     return core_step
@@ -2820,6 +2827,7 @@ def run(
     current_moments: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
+    gradient: str = "autodiff",
     checkpoint_segments: int | None = None,
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
@@ -2854,6 +2862,10 @@ def run(
     grid : Grid
     materials : MaterialArrays
     n_steps : int
+    gradient : {"autodiff", "adjoint"}
+        Adjoint requires a uniform real-valued design box. It stores local
+        DFTs instead of checkpoints; checkpoint options are unused.
+        See the module docstring of ``rfx.adjoint``.
     boundary : "pec", "cpml", or "upml"
     cpml_axes : axes string for CPML (default "xyz")
     pec_axes : axes string or None
@@ -3001,6 +3013,9 @@ def run(
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
 
+    if gradient not in ("autodiff", "adjoint"):
+        raise ValueError("gradient must be 'autodiff' or 'adjoint'")
+
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
         grid=grid,
@@ -3136,6 +3151,8 @@ def run(
     snap_in_body = use_snapshot and snap_interval == 1
     snap_by_block = use_snapshot and snap_interval > 1
 
+    if _realized.ACTIVE is not None:
+        _realized.sources(grid, materials, sources, "uniform.sources")
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
     if sources:
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
@@ -3224,7 +3241,7 @@ def run(
                 a, b = piece.start, piece.start + piece.length
                 rows = jax.tree_util.tree_map(lambda x: x[a:b], xs_seg)
                 if piece.kind == "plain":
-                    carry, (p,) = jax.lax.scan(body, carry, rows)
+                    carry, (p,) = recorded_scan(body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         frame_parts.append(
@@ -3233,11 +3250,11 @@ def run(
                     nb = piece.length // m
                     blocks = jax.tree_util.tree_map(
                         lambda x: x.reshape(nb, m, *x.shape[1:]), rows)
-                    carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
+                    carry, (p, f) = recorded_scan(block_body, carry, blocks)
                     probe_parts.append(p.reshape(nb * m, *p.shape[2:]))
                     frame_parts.append(list(f))
                 else:  # "rec"
-                    carry, (p, f) = jax.lax.scan(rec_body, carry, rows)
+                    carry, (p, f) = recorded_scan(rec_body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         idx = jnp.asarray(piece.frame_rows, dtype=jnp.int32)
@@ -3245,7 +3262,7 @@ def run(
 
             if not probe_parts:
                 # n == 0: the zero-length scan the other paths return.
-                carry, (p,) = jax.lax.scan(body, carry, xs_seg)
+                carry, (p,) = recorded_scan(body, carry, xs_seg)
                 probe_parts.append(p)
             probes = (probe_parts[0] if len(probe_parts) == 1
                       else jnp.concatenate(probe_parts, axis=0))
@@ -3271,7 +3288,13 @@ def run(
             "a snapshot's frame axes and checkpoint_segments' segment lengths "
             "are fixed from n_steps before it (issue #1254).")
 
-    if checkpoint_segments is None:
+    if gradient == "adjoint":
+        if snapshot is not None or stop_fn is not None or report_every is not None:
+            raise NotImplementedError(
+                "gradient='adjoint' does not support snapshots, stopping or progress")
+        from rfx.adjoint import design_adjoint_scan
+        final_carry, outputs = design_adjoint_scan(_step_ctx, carry_init, xs)
+    elif checkpoint_segments is None:
         # Legacy path: optional per-step rematerialisation only. The scan
         # itself still keeps every step's carry, so peak memory grows
         # linearly with n_steps.
@@ -3308,7 +3331,7 @@ def run(
         elif report_every is None and snap_by_block:
             final_carry, outputs = _make_recorder(body)(carry_init, xs, 0)
         elif report_every is None:
-            final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+            final_carry, outputs = recorded_scan(body, carry_init, xs)
         else:
             # Issue #667: same scan, driven from the host in chunks so a
             # multi-hour solve emits progress. The carry threads through
@@ -3399,7 +3422,7 @@ def run(
 
         seg_body_ckpt = jax.checkpoint(
             segment_body, prevent_cse=False) if checkpoint else segment_body
-        final_carry, seg_outputs = jax.lax.scan(
+        final_carry, seg_outputs = recorded_scan(
             seg_body_ckpt, carry_init, xs_segmented)
         # seg_outputs leaves: (K, per-segment rows, ...). Flatten back to
         # (K * rows, ...): n_steps for the probe rows (and for per-step
@@ -3503,11 +3526,12 @@ def run(
         dt=dt,
         current_moment_data=final_carry.get("current_moments"),
         current_moment_monitor=current_moments,
+        adjoint_settling=final_carry.get("adjoint_settling"),
     )
 
 
 # ---------------------------------------------------------------------------
-# Field-decay-based stopping criterion (Python loop + JIT step)
+# Field-decay-based stopping criterion (host checks + compiled scan chunks)
 # ---------------------------------------------------------------------------
 
 def _warn_static_remnant_cap_hit(state, materials, grid) -> None:
@@ -3616,8 +3640,8 @@ def run_until_decay(
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
-    Uses a Python loop calling a JIT-compiled single-step function so
-    that dynamic termination is possible without ``jax.lax.while_loop``.
+    Runs compiled scan chunks with host-side decay checks at the historical
+    step indices (0, check_interval, ...).
 
     Parameters
     ----------
@@ -3661,8 +3685,8 @@ def run_until_decay(
         the domain.
     checkpoint_segments : int or None
         **Not supported** on the decay path.  ``run_until_decay`` uses a
-        Python loop (not ``jax.lax.scan``), so scan-level gradient
-        checkpointing does not apply.  Passing a non-None value raises
+        host-driven early stop, so scan-level gradient checkpointing does
+        not apply.  Passing a non-None value raises
         ``NotImplementedError``.
 
     Notes
@@ -3677,7 +3701,7 @@ def run_until_decay(
       the frame does not touch the stepped state.
     * ``checkpoint`` (``jax.checkpoint`` gradient tape) is accepted but
       **silently ignored** — gradient checkpointing has no effect on the
-      Python-loop path.
+      host-driven decay path.
     * Flux-monitor DFT accumulation uses a rectangular (no-window) weight
       instead of the streaming Hann window used by :func:`run`.  Flux values
       from the two paths are therefore not numerically identical even for
@@ -3714,10 +3738,10 @@ def run_until_decay(
          :func:`run`.
     report_every : int or None
         Issue #667. When set, emit one ``  [PROGRESS] ...`` line every *N*
-        steps plus a final line at the actual stop step. ``None`` (default)
-        is OFF. This lane is already a Python loop, so the tick is a pure
-        addition on Python ints — it never reads a field value and cannot
-        perturb the result. The denominator is ``max_steps``, i.e. a CAP:
+        steps, at the first decay-chunk boundary at or past the interval,
+        plus a final line at the actual stop step. ``None`` (default) is OFF.
+        Reporting never changes the chunks or the decay-check cadence.
+        The denominator is ``max_steps``, i.e. a CAP:
         the line marks it ``(cap)`` and the ETA is an upper bound, because a
         decay stop can fire at any check.
     report_label : str
@@ -3731,11 +3755,15 @@ def run_until_decay(
     if checkpoint_segments is not None:
         raise NotImplementedError(
             "checkpoint_segments is not supported by run_until_decay: "
-            "this function uses a Python loop, not jax.lax.scan, so "
+            "this function uses a host-driven early stop, so "
             "scan-level gradient checkpointing does not apply. "
             "Use run() with checkpoint_segments if you need scan-level "
             "checkpointing."
         )
+    if check_interval < 1:
+        raise ValueError(f"check_interval must be >= 1, got {check_interval}")
+    if max_steps < 1:
+        raise ValueError(f"max_steps must be >= 1, got {max_steps}")
     sources = sources or []
     probes = probes or []
     dft_planes = dft_planes or []
@@ -3803,7 +3831,7 @@ def run_until_decay(
         monitor_position = (cx, cy, cz)
     mon_idx = grid.position_to_index(monitor_position)
 
-    # ---- JIT-compiled single step (shared kernel; W6.1 + W6.2 setup) ----
+    # ---- shared kernel (W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
     # historical rect (no-window) flux DFT: use_flux_window=False keeps the
     # 8-field flux_meta and skips the streaming window weight so decay-path
@@ -3836,11 +3864,67 @@ def run_until_decay(
             carry_in, step_idx, src_vals, mag_src_vals)
         return new_carry, probe_out, extras["monitor_val"]
 
-    # #1258: frames are read from the carry after every interval-th step.
+    # #1258: keep only frames at GLOBAL multiples of the interval, even
+    # when an interval does not divide the decay/progress chunk. The scan
+    # carries a bounded frame buffer, not a full field history.
     if snapshot is not None:
         snap_interval = validate_snapshot_spec(snapshot)
         _take_snapshot = snapshot_extractor(snapshot)
-        snap_frames: list = []
+        snap_shapes = jax.eval_shape(_take_snapshot, carry["fdtd"])
+        snap_chunks = []
+
+    def step_fn(carry_in, xs):
+        step_idx, src_vals, mag_src_vals = xs
+        new_carry, probe_out, monitor_val = _single_step(
+            carry_in, step_idx, src_vals, mag_src_vals, _inv_args)
+        return new_carry, (probe_out, monitor_val)
+
+    def step_with_previous(carries, xs):
+        # A one-step tail is joined to the preceding scan, as in
+        # scan_with_progress. Keep its penultimate carry so the check at
+        # that step can still stop BEFORE the cap. No padded/masked steps.
+        state, _previous = carries
+        state_out, out = step_fn(state, xs)
+        return (state_out, state), out
+
+    def _make_chunk_runner(*, keep_previous=False):
+        body = step_with_previous if keep_previous else step_fn
+
+        def record(c, x):
+            state, frames, first_frame = c
+            state, out = body(state, x)
+            done = x[0] + 1
+
+            def take(frames):
+                row = done // snap_interval - first_frame - 1
+                fdtd = (state[0] if keep_previous else state)["fdtd"]
+                return tuple(buf.at[row].set(frame) for buf, frame in
+                             zip(frames, _take_snapshot(fdtd)))
+
+            frames = jax.lax.cond(done % snap_interval == 0, take,
+                                  lambda f: f, frames)
+            return (state, frames, first_frame), out
+
+        def run_chunk(carry_in, xs):
+            if keep_previous:
+                carry_in = (carry_in, carry_in)
+            if snapshot is None:
+                return jax.lax.scan(body, carry_in, xs), None
+            # At most ceil(chunk_length / interval) frames, independent of
+            # the starting phase. Keep record's identity across chunks so
+            # lax.scan reuses its executable, as run()'s recorder does.
+            n_frames = (xs[0].shape[0] + snap_interval - 1) // snap_interval
+            frames = tuple(jnp.zeros((n_frames,) + f.shape, f.dtype)
+                           for f in snap_shapes)
+            first_frame = xs[0][0] // snap_interval
+            (carry_out, frames, _), out = jax.lax.scan(
+                record, (carry_in, frames, first_frame), xs)
+            return (carry_out, out), frames
+
+        return run_chunk
+
+    _run_chunk = _make_chunk_runner()
+    _run_tail_chunk = _make_chunk_runner(keep_previous=True)
 
     # ---- precompute source waveforms up to max_steps ----
     if sources:
@@ -3858,7 +3942,7 @@ def run_until_decay(
     else:
         mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
-    # ---- Python loop with decay check ----
+    # ---- host chunk loop with decay check ----
     # Stop criterion depends on the boundary (issue #169):
     #   * absorbing (cpml/upml): TOTAL interior-domain energy decay. The energy
     #     leaves through the absorber, so U -> 0 and the criterion is a genuine
@@ -3902,8 +3986,8 @@ def run_until_decay(
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
     use_flux_stop = radiated_flux_box is not None and use_absorbing
     if use_flux_stop:
-        _flo = grid.position_to_index(radiated_flux_box[0])
-        _fhi = grid.position_to_index(radiated_flux_box[1])
+        from rfx._periodic import interval_indices
+        _flo, _fhi = interval_indices(grid, *radiated_flux_box)
         _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
                min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
                min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
@@ -3917,6 +4001,10 @@ def run_until_decay(
         il, ih, jl, jh, kl, kh = _bl
         jj, kk = slice(jl, jh), slice(kl, kh)
         ii = slice(il, ih)
+        # Normal planes wrap; the tangential cell slices keep endpoint N.
+        il, ih = il % grid.nx, ih % grid.nx
+        jl, jh = jl % grid.ny, jh % grid.ny
+        kl, kh = kl % grid.nz, kh % grid.nz
         # +x/-x faces: S_x = Ey·Hz - Ez·Hy
         p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
         p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
@@ -3935,14 +4023,11 @@ def run_until_decay(
     flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
     flux_hist: list[float] = []   # recent |P| samples for the max-envelope
     decayed_fired = False  # #388: did the energy criterion fire (vs silently cap-hit)?
-    all_probes = []
+    probe_chunks = []
     actual_steps = 0
 
-    # Issue #667 progress ticker. This lane is already a host loop, so the
-    # tick is a pure addition: it reads Python ints (``actual_steps``,
-    # ``report_every``) and never touches a traced value or a field value,
-    # so it cannot perturb the result. ``max_steps`` is a CAP, not a known
-    # length — the line says so and the ETA is an upper bound.
+    # Match scan_with_progress(stop_fn=...): report at existing boundaries,
+    # never split a scan to print. max_steps is a CAP.
     _reporter = None
     if report_every is not None:
         _report_every = validate_report_every(report_every, n_steps=max_steps)
@@ -3956,19 +4041,53 @@ def run_until_decay(
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)
 
-    for step in range(max_steps):
-        step_idx = jnp.array(step, dtype=jnp.int32)
-        src_vals = src_waveforms[step]
-        mag_src_vals = mag_src_waveforms[step]
-        carry, probe_out, monitor_val = _single_step(
-            carry, step_idx, src_vals, mag_src_vals, _inv_args)
+    # Like scan_with_progress, call lax.scan directly: full chunks share
+    # its executable and only the ragged tail needs another length. The
+    # initial one-step check is required by the historical stop cadence.
+    pending_tail = None
+    while actual_steps < max_steps:
+        # The old loop checked step % interval == 0 AFTER stepping: completed
+        # steps 1, interval + 1, ... . In particular, the first chunk has one
+        # step. Reporting never changes these boundaries.
+        lo = actual_steps
+        next_check = 1 if lo == 0 else ((lo - 1) // check_interval + 1) * check_interval + 1
+        if pending_tail is not None:
+            carry, probe_out, monitor_vals, frames = pending_tail
+            pending_tail = None
+            hi = max_steps
+        else:
+            this = min(next_check - lo, max_steps - lo)
+            keep_previous = max_steps - lo - this == 1
+            if keep_previous:
+                # Copy scan_with_progress's one-step-tail rule. Unlike its
+                # generic stop_fn, decay must inspect the penultimate step.
+                this += 1
+            hi = lo + this
+            xs = (jnp.arange(lo, hi, dtype=jnp.int32), src_waveforms[lo:hi],
+                  mag_src_waveforms[lo:hi])
+            chunk_scan = _run_tail_chunk if keep_previous else _run_chunk
+            (carry, (probe_out, monitor_vals)), frames = chunk_scan(carry, xs)
+            if keep_previous:
+                final_carry, carry = carry
+                tail_frames = None
+                if snapshot is not None:
+                    n_before = (hi - 1) // snap_interval - lo // snap_interval
+                    tail_frames = tuple(f[n_before:] for f in frames)
+                    frames = tuple(f[:n_before] for f in frames)
+                pending_tail = (final_carry, probe_out[-1:], monitor_vals[-1:], tail_frames)
+                probe_out, monitor_vals = probe_out[:-1], monitor_vals[:-1]
+                hi -= 1
+        probe_chunks.append(probe_out)
+        actual_steps = hi
+        step = hi - 1
+        if snapshot is not None:
+            n_frames = hi // snap_interval - lo // snap_interval
+            if n_frames:
+                snap_chunks.append(tuple(f[:n_frames] for f in frames))
 
-        all_probes.append(probe_out)
-        actual_steps = step + 1
-        if snapshot is not None and actual_steps % snap_interval == 0:
-            snap_frames.append(_take_snapshot(carry["fdtd"]))
-
-        if _reporter is not None and actual_steps % _report_every == 0:
+        if _reporter is not None and (
+                actual_steps - _reporter.last_reported >= _report_every
+                or actual_steps >= max_steps):
             # Block first: JAX dispatch is asynchronous, so an unsynchronised
             # tick would report the host's dispatch rate, not the solve rate.
             jax.block_until_ready(carry["fdtd"])
@@ -4029,9 +4148,14 @@ def run_until_decay(
         else:
             # Closed/PEC fallback — BYTE-IDENTICAL to the pre-#169 point stop.
             # Decay check
-            val_sq = float(monitor_val) ** 2
-            if val_sq > peak_sq:
-                peak_sq = val_sq
+            # One transfer per chunk; square in host float64 just as
+            # float(monitor_val) ** 2 did for EVERY step of the old loop.
+            # Reading only the final sample loses peaks between checks.
+            values_sq = np.asarray(monitor_vals, dtype=np.float64) ** 2
+            chunk_peak = np.max(values_sq, where=~np.isnan(values_sq), initial=0.0)
+            if chunk_peak > peak_sq:
+                peak_sq = float(chunk_peak)
+            val_sq = float(values_sq[-1])
 
             if actual_steps >= min_steps and step % check_interval == 0 and peak_sq > 0.0:
                 if val_sq < decay_by * peak_sq:
@@ -4051,7 +4175,7 @@ def run_until_decay(
         _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
 
     # ---- assemble result ----
-    time_series = jnp.stack(all_probes, axis=0)
+    time_series = concat_chunks(probe_chunks)
 
     final_dft_planes = None
     if use_dft_planes:
@@ -4101,10 +4225,8 @@ def run_until_decay(
 
     snapshots = snap_axes = None
     if snapshot is not None:
-        if snap_frames:
-            snapshots = {
-                comp: jnp.stack([frame[i] for frame in snap_frames])
-                for i, comp in enumerate(snapshot.components)}
+        if snap_chunks:
+            snapshots = dict(zip(snapshot.components, concat_chunks(snap_chunks)))
         else:
             snapshots = {
                 comp: jnp.zeros((0,) + s.shape, s.dtype)

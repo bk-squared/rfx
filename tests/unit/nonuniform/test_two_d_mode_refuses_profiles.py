@@ -96,15 +96,21 @@ def test_the_way_out_named_in_the_message_carries_tez_fields():
             boundary=BoundarySpec(x="pec", y="pec",
                                   z=Boundary(lo="pmc", hi="pmc")),
             dy_profile=DY)
-        sim.add_source((0.0063, 0.0031, (cells - 1) * DX), component="ey",
-                       amplitude_kind="field")
+        # The imaged thin box has a full width cells*DX. A source on only
+        # one face is localized in z; excite every node for a TEz invariant
+        # field, including both magnetic face nodes.
+        for k in range(cells + 1):
+            sim.add_source((0.0063, 0.0031, k * DX), component="ey",
+                           amplitude_kind="field")
         sim.add_probe((0.0137, 0.0069, (cells - 1) * DX), component="ey")
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             return np.asarray(sim.run(n_steps=200, compute_s_params=False)
                               .time_series)[:, 0]
-    assert np.max(np.abs(solve(2))) > 0.0
-    assert np.max(np.abs(solve(1))) > 0.0
+    one, two = solve(1), solve(2)
+    assert np.max(np.abs(one)) > 0.0
+    np.testing.assert_allclose(one, two, rtol=200*np.finfo(np.float32).eps,
+                               atol=200*np.finfo(np.float32).eps*np.max(np.abs(one)))
 
 
 def test_a_two_d_mode_on_a_uniform_mesh_is_untouched():

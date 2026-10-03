@@ -137,6 +137,7 @@ from rfx import (
     realized_wall_planes,
     smooth_grading,
 )
+from rfx._radiated_power import integrate_radiated_power
 from rfx.mesh_edges import EDGE_OFFSET, edge_aware_profiles
 
 C0 = 2.998e8
@@ -194,27 +195,9 @@ OUTPUT_PATH = Path(__file__).with_name("output") / "patch_antenna_cuts.png"
 
 
 def realized_z_wall_planes(sim):
-    """Node planes along z where THIS run will zero tangential E.
-
-    Read from the contract's own realization — ``realized_pec_edge_masks``
-    then ``realized_wall_planes`` (#931 §1.7) — applied to the very arrays
-    the assembly hands the stepper, so what this reports and what the solve
-    applies cannot drift apart.  Build only: no field is stepped.
-
-    ``_assemble_materials_nu`` is private because the realized edge set has
-    no public accessor yet; the two functions it feeds are public
-    (``from rfx import realized_pec_edge_masks, realized_wall_planes``).
-    """
-    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-
-    grid = sim._build_nonuniform_grid()
-    sheets: list = []
-    _materials, _debye, _lorentz, pec_mask = sim._assemble_materials_nu(
-        grid, pec_sheets=sheets)
-    edges = realized_pec_edge_masks(pec_mask, sheets=sheets,
-                                    periodic=sim._periodic_flags())
-    z_nodes = np.asarray(coords_from_nonuniform_grid(grid).z, dtype=float)
-    return z_nodes, sheets, realized_wall_planes(edges, 2)
+    """Read realized wall planes and sheets from the public build-time record."""
+    record = sim.realized_geometry()
+    return record.nodes[2], record.sheets, record.wall_planes(2)
 
 
 def realized_in_plane(sim, planes, feed):
@@ -229,35 +212,18 @@ def realized_in_plane(sim, planes, feed):
     the point source on (``position_to_index``, the non-uniform runner's
     own lookup).
     """
-    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-    from rfx.nonuniform import position_to_index
-
-    grid = sim._build_nonuniform_grid()
-    sheets: list = []
-    materials, _debye, _lorentz, pec_mask = sim._assemble_materials_nu(
-        grid, pec_sheets=sheets)
-    ex, ey, _ez = (np.asarray(m) for m in realized_pec_edge_masks(
-        pec_mask, sheets=sheets, periodic=sim._periodic_flags()))
-    coords = coords_from_nonuniform_grid(grid)
-    x = np.asarray(coords.x, dtype=float)
-    y = np.asarray(coords.y, dtype=float)
-
-    def solved(nodes, a0, a1):
-        return (nodes[a0] - EDGE_OFFSET * (nodes[a0] - nodes[a0 - 1]),
-                nodes[a1] + EDGE_OFFSET * (nodes[a1 + 1] - nodes[a1]))
-
+    record = sim.realized_geometry()
     nodes_span, solved_span = {}, {}
     for k in planes:
-        i = np.flatnonzero(ex[:, :, k].any(axis=1))
-        j = np.flatnonzero(ey[:, :, k].any(axis=0))
-        i0, i1, j0, j1 = i[0], i[-1] + 1, j[0], j[-1] + 1
-        nodes_span[k] = (x[i0], x[i1], y[j0], y[j1])
-        solved_span[k] = solved(x, i0, i1) + solved(y, j0, j1)
-    cells = np.argwhere(np.asarray(materials.eps_r) > 1.0)
-    lo, hi = cells.min(axis=0), cells.max(axis=0)
-    substrate = (x[lo[0]], x[hi[0] + 1], y[lo[1]], y[hi[1] + 1])
-    i_f, j_f, _k = position_to_index(grid, feed)
-    return nodes_span, solved_span, substrate, (x[i_f], y[j_f])
+        sheet = next(e for e in record.entities if e.plane is not None and e.plane[:2] == (2, k))
+        nodes_span[k] = tuple(float(record.nodes[a][i])
+                              for a in (0, 1) for i in sheet.axes[a].node_range)
+        solved_span[k] = tuple(v for a in sheet.axes[:2] for v in a.bounds_m)
+    substrate = next(e for e in record.entities if e.kind == "material")
+    substrate = tuple(v for a in substrate.axes[:2] for v in a.bounds_m)
+    port = record.ports[0]
+    i_f, j_f, _k = port.edges[0]
+    return nodes_span, solved_span, substrate, (record.nodes[0][i_f], record.nodes[1][j_f])
 
 
 def build_simulation():
@@ -391,9 +357,8 @@ def build_simulation():
     # plane, so that face sits 6 mm below the ground and preflight flags it (the
     # warning is quoted in the run output).  The ground plane sits between the
     # radiator and that face, and the placement is cross-checked against openEMS
-    # at the design-mode bin: |D_rfx - D_openEMS| = 0.0659 dB on the
-    # committed #931 sheet-board measurement, inside the committed
-    # 1.0 dB envelope lock.
+    # at the design-mode bin.  The former sheet-board lock used a different
+    # board; its directivity reading and envelope do not gate this model.
     box_lo = (pad, pad, max(pad, z_gnd - 3 * DX))
     box_hi = (dom_x - pad, dom_y - pad, z_total - pad)
     sim.add_ntff_box(corner_lo=box_lo, corner_hi=box_hi, freqs=NTFF_FREQS)
@@ -521,28 +486,11 @@ def main():
 
     sim = build_simulation()
 
-    # Preflight prints each advisory verbatim.  Expected on this fixture:
-    #
-    #   * the close bottom NTFF face (see build_simulation) — a condition to
-    #     interpret, not to suppress;
-    #   * a line naming the realized PEC sheets and whether each landed on
-    #     the plane it declared (#931 §1.3) — preflight collects sheets, so a
-    #     sheet-declared conductor is visible to it;
-    #   * the small-ground-plane pattern advisory (60 mm = 0.56 lambda at
-    #     f_max, so edge diffraction shapes the pattern) — expected physics,
-    #     shared with the openEMS reference, not a solver defect;
-    #   * the off-lattice conductor-face residual on the patch and ground
-    #     outlines (0.7 mm: the graded x/y mesh puts the last node 0.35 cell
-    #     inside every sheet edge on purpose, #1375).
-    #   Measured 2026-09-29 (VESSL 369367265975): three advisories -- the
-    #   NTFF face, the small ground plane and the off-lattice residual.
-    #   An earlier revision of this comment said preflight could not see a
-    #   sheet and that those two went silent; that was true only of the branch
-    #   state before the collectors were threaded.
-    #
-    # The sub-cell PEC advisories that used to head this list are gone for a
-    # real reason: nothing here is a sub-cell conductor any more.  The foils
-    # are sheets, which is what they physically are.
+    # Preflight prints each advisory verbatim.  Expected on this registered
+    # board: ntff_near_field for the close bottom NTFF face, and
+    # ntff_small_ground_plane for finite-ground diffraction.  The sheet
+    # outlines are registered to their solved edges, so an off-lattice
+    # conductor-face residual is not an expected advisory.
     report = sim.preflight()
     print(f"preflight advisories: {len(list(report))}")
 
@@ -594,12 +542,7 @@ def main():
     d_dbi = directivity(ff)
 
     power = np.abs(np.asarray(ff.E_theta)) ** 2 + np.abs(np.asarray(ff.E_phi)) ** 2
-    dth = np.gradient(theta)
-    dph = np.gradient(phi)
-    p_rad = np.sum(
-        power * np.sin(theta)[None, :, None] * dth[None, :, None] * dph[None, None, :],
-        axis=(1, 2),
-    )
+    p_rad = integrate_radiated_power(power, theta, phi)
     p_rel_db = 10 * np.log10(p_rad / p_rad.max())
     peak_theta_deg = np.degrees(theta[np.argmax(np.max(power, axis=2), axis=1)])
 
@@ -646,18 +589,15 @@ def main():
     print(
         f"  f_res {radiating.freq / 1e9:.4f} GHz vs openEMS "
         f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.1f}% — the design mode "
-        "reads HIGH at dx = 2 mm. The committed lock "
-        "(tests/crossval/test_patch_canonical_farfield_e4.py) solves its "
-        "own copy of the pre-#1375 board, so this number is not checked "
-        "against a gate. "
-        "Two coarse-grid mechanisms compete here (substrate under-resolved "
-        "in z reads high, staircased patch edge reads low) and are not "
-        "separated, so finer dx is not a predictable direction."
+        "is measured on the registered board. The former far-field lock "
+        "used a different board and does not gate this result. "
+        "The patch is solved at its drawn size; refine the mesh to measure "
+        "the remaining discretization error."
     )
     print(
         f"  D {d_dbi[k_star]:.2f} dBi vs openEMS {OPENEMS_D_DBI:.2f} dBi "
-        f"({d_dbi[k_star] - OPENEMS_D_DBI:+.2f} dB) — the far field is the "
-        "observable that agrees, inside the committed 1.0 dB envelope."
+        f"({d_dbi[k_star] - OPENEMS_D_DBI:+.2f} dB) — this is a comparison, "
+        "not a pass against the former board's envelope."
     )
 
     # ---- Save the far-field cuts ----

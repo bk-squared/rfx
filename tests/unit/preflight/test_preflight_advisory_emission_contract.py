@@ -433,7 +433,11 @@ def _enumerate_emission_sites():
 # ``half_node_split`` -- a port, source or probe that lands one cell off a
 # wire vertex or PEC sheet declared at the same half-node coordinate. run()
 # and forward() refuse the same pairs at dispatch when preflight is skipped.
-_FROZEN_TOTAL_SITES = 122
+# 122 -> 123 (#1272): one aggregated realized-depth absorber warning.
+# 123 -> 124 (#1342): one ``PreflightIssue`` error, ``trace_port_footprint`` -- a
+# lumped/wire port whose realized node falls outside the realized footprint
+# of the trace it is declared on (rfx/preflight/ports.py).
+_FROZEN_TOTAL_SITES = 124
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -451,7 +455,10 @@ _FROZEN_TOTAL_SITES = 122
 # _FROZEN_TOTAL_SITES above.
 # 77 -> 78, 2026-09-28 (#1295/#1342): ``half_node_split`` -- see the note on
 # _FROZEN_TOTAL_SITES above.
-_FROZEN_LITERAL_CODE_COUNT = 78
+# 78 -> 79 (#1272): thin_absorber, including vacuum and graded meshes.
+# 79 -> 80 (#1342): ``trace_port_footprint`` -- see the note on
+# _FROZEN_TOTAL_SITES above.
+_FROZEN_LITERAL_CODE_COUNT = 80
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -562,8 +569,7 @@ EMISSION_CLASSIFICATION = {
         MANUAL, "is the preflight entry point itself"),
     "Simulation.compute_mixed_s_matrix": (
         AUTO,
-        "calls self.preflight() directly when not skip_preflight, "
-        "rfx/api/_sparams.py:4206"),
+        "calls self._auto_preflight() when not skip_preflight, rfx/sparams/mixed.py"),
     "Simulation.compute_waveguide_s_matrix": (
         DIAGNOSTIC_ONLY,
         "rfx/api/_sparams.py:1265 -- \"the functional entry points run no "

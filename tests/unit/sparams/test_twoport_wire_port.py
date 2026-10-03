@@ -31,6 +31,7 @@ artifact-anchored, issue #339).
 """
 
 from __future__ import annotations
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 import numpy as np
 import jax.numpy as jnp
@@ -61,14 +62,15 @@ def _build_line(with_port2_excite: bool = False, with_direction: bool = True):
     dom_y = 6e-3
     port_margin = 4e-3     # 4 mm > cpml thickness (8 * 0.5mm)
 
-    sim = Simulation(
+    # #1138: geometry[1] y solved -30 % off; this test checks direction does not change the s matrix.
+    sim = Simulation(snap="declared",
         freq_max=8e9,
         domain=(dom_x, dom_y, 0),
         dx=dx,
         dz_profile=dz_profile,
-        boundary="cpml",
+        boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
         cpml_layers=8,
-        pec_faces={"z_lo"},
+
     )
     sim.add_material("sub", eps_r=3.0)
     sim.add(Box((0, 0, 0), (dom_x, dom_y, substrate_thickness)), material="sub")

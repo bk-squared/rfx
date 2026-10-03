@@ -117,7 +117,8 @@ def _solve_live(fixture, driver, key: str, dut: str):
     # the same trace rows (and, on the notch, stub columns and open end), the
     # same substrate cells under the strip, the same port feed and probe planes,
     # the same drive.
-    sim = driver.build_sim(dx, dut, drive=entry["drive"])
+    # #1138: trace y/stub x solved +11.667% off; this locks stored S-parameters.
+    sim = driver.build_sim(dx, dut, drive=entry["drive"], snap="declared")
     live_geometry = driver.assert_realized(sim, dx, dut)
     moved = drift.realized_differences(entry["realized"], live_geometry)
     assert not moved, drift.stale_record(

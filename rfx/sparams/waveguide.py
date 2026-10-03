@@ -82,6 +82,10 @@ def compute_waveguide_s_matrix(
 ) -> WaveguideSMatrixResult:
     """Compute a theoretically clean axis-normal boundary-aperture waveguide S-matrix.
 
+    Requires ``solver="yee"``. On a uniform mesh, ``precision`` selects
+    field storage for every device and reference run, as on ``run()``.
+    A non-uniform mesh supports only ``precision="float32"``.
+
     Parameters
     ----------
     num_periods : float
@@ -125,11 +129,13 @@ def compute_waveguide_s_matrix(
         in S11 and the round-trip dispersion error in the
         ``normalize=True`` diagonal formula.  Costs 2 × N_ports
         FDTD runs (same as ``normalize=True``).  On the
-        differentiable chain like ``False``.  The result dtype
-        follows the ``freqs`` precision — complex64 by default,
-        complex128 under ``JAX_ENABLE_X64`` — the same rule as
-        ``False`` (a hard complex64 cast on this lane was removed
-        in v1.8).
+        differentiable chain like ``False``. On the uniform lane the
+        result promotes field, frequency, and JAX default float precision,
+        like ``False``: complex64 with x64 off and at least complex128 with
+        x64 on, including explicit float32 frequencies and float32/mixed fields.
+        Modal records retain at least the frequency and default float precision.
+        The non-uniform lane's result follows the ``freqs`` precision:
+        complex64 by default, complex128 under ``JAX_ENABLE_X64``.
 
         **Reference impedance.**  On ``False`` and ``True`` each
         S_ij is the modal voltage-wave ratio ``b_i / a_j``, where
@@ -232,9 +238,8 @@ def compute_waveguide_s_matrix(
 
         This enables junction measurements UNDER the documented
         discipline; it does NOT make arbitrary compact junctions
-        valid. See the skipped ``test_api.py`` T-junction reciprocity test
-        and the companion evidence gate test
-        ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
+        valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
+        the current waveguide evidence and scope.
     """
     if not normalize:
         import warnings
@@ -329,13 +334,24 @@ def compute_waveguide_s_matrix(
         if entry_freqs.shape != freqs.shape or not np.allclose(np.asarray(entry_freqs), np.asarray(freqs)):
             raise ValueError("waveguide S-matrix requires matching frequency grids on all ports")
 
+    if (any(profile is not None for profile in
+            (self._dx_profile, self._dy_profile, self._dz_profile))
+            and self._interface_eps == "dual_average"):
+        raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
+    from rfx.boundaries.pmc import refuse_waveguide_pmc
+    refuse_waveguide_pmc(self)
+    from rfx.runners._admission import admit
+    admit(self, "waveguide_s_matrix")
+    if port_reference_sims is not None:
+        for reference in port_reference_sims:
+            refuse_waveguide_pmc(reference)
+            admit(reference, "waveguide_s_matrix")
+
     if (
         self._dz_profile is not None
         or self._dx_profile is not None
         or self._dy_profile is not None
     ):
-        if self._interface_eps == "dual_average":
-            raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
         if checkpoint_segments is not None and checkpoint_segments < 1:
             raise ValueError(
                 f"checkpoint_segments must be >= 1, got {checkpoint_segments}"
@@ -612,7 +628,9 @@ def compute_waveguide_s_matrix(
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
-    _, debye, lorentz = self._init_dispersion(materials, grid.dt, debye_spec, lorentz_spec)
+    _, debye, lorentz = self._init_dispersion(
+        materials, grid.dt, debye_spec, lorentz_spec,
+        periodic=self._periodic_flags())
 
     # Build configs — may be a single config or a list of configs per port
     has_multimode = any(entry.n_modes > 1 for entry in entries)
@@ -705,6 +723,9 @@ def compute_waveguide_s_matrix(
     # device and reference (vacuum) runs see the same boundary-
     # face PEC walls, so the inverse-permittivity tensor is
     # computed twice (once per material context).
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(self, grid)
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
     aniso_eps = None
     aniso_inv_eps = None
@@ -873,6 +894,7 @@ def compute_waveguide_s_matrix(
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 pec_edge_masks=_wg_pec_edge_masks,
+                field_dtype=self._resolve_field_dtype(),
             )
         elif normalize:
             # The two-run normalized extractor divides each receiving
@@ -906,6 +928,7 @@ def compute_waveguide_s_matrix(
                 conformal_weights=conformal_weights,
                 aniso_inv_eps=aniso_inv_eps,
                 pec_edge_masks=_wg_pec_edge_masks,
+                field_dtype=self._resolve_field_dtype(),
             )
         # Report the ABSOLUTE de-embed target plane (matches the single-mode + coax paths and
         # the WaveguideSMatrixResult schema), NOT the relative shift ref_shifts_mm — that is the
@@ -1038,6 +1061,7 @@ def compute_waveguide_s_matrix(
             checkpoint_segments=checkpoint_segments,
             return_settling=True,
             sheet_impedance=_wg_sheet_ctx,
+            field_dtype=self._resolve_field_dtype(),
         )
         s_params, settling_db = s_params
     elif normalize:
@@ -1066,6 +1090,7 @@ def compute_waveguide_s_matrix(
             checkpoint_segments=checkpoint_segments,
             return_settling=True,
             sheet_impedance=_wg_sheet_ctx,
+            field_dtype=self._resolve_field_dtype(),
         )
         s_params, settling_db = s_params
     else:
@@ -1087,6 +1112,7 @@ def compute_waveguide_s_matrix(
             checkpoint_segments=checkpoint_segments,
             return_settling=True,
             sheet_impedance=_wg_sheet_ctx,
+            field_dtype=self._resolve_field_dtype(),
         )
     reference_planes = np.array(
         [

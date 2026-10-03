@@ -353,7 +353,7 @@ def test_the_measured_evidence_carries_its_witness_and_every_number():
     not stripped. Each number below is from the run the witness names."""
     effect = preflight_msl.MSL_PROBE_CLEARANCE_EFFECT
     assert preflight_msl.MSL_PROBE_CLEARANCE_WITNESS in effect
-    for token in ("369367260508", "cv06b", "51/51", "0/51", "3.77125",
+    for token in ("369367260508", "microstrip open-stub notch", "51/51", "0/51", "3.77125",
                   "+0.026895", "+0.018065", "0.009 dB", "-118 dB",
                   "not_read"):
         assert token in effect, f"{token!r} left the measured evidence"

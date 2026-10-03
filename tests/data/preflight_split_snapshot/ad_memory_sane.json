@@ -4,7 +4,11 @@
       {
         "code": "ad_memory",
         "loc": null,
-        "message": "AD memory estimate 0.72 GB (non-checkpointed) exceeds 85% of 0.50 GB available VRAM. Use plan_ad_memory() to choose a segmented checkpoint setting, reduce grid size, or reduce n_steps.",
+        "numbers": [
+          0.72,
+          85.0,
+          0.5
+        ],
         "severity": "warning",
         "source": null
       }

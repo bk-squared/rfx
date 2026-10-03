@@ -4,7 +4,7 @@
       {
         "code": "floquet_nonuniform",
         "loc": null,
-        "message": "ERROR: Floquet ports do not support non-uniform z mesh (dz_profile). Use the uniform reference lane and set dx explicitly.",
+        "numbers": [],
         "severity": "error",
         "source": "_validate_cfg_floquet_nonuniform"
       }

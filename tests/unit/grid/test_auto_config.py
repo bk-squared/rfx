@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from rfx.auto_config import auto_configure, SimConfig
+from rfx.auto_config import auto_configure
 
 
 def test_auto_configure_source_recommendation_cpml():
@@ -365,6 +365,7 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
     top face z = 0.002 = node plane k = 1.
     """
     import warnings
+    import pytest
     from rfx import Simulation, Box, GaussianPulse
     from tests._realized_geometry import (
         assert_sheet_planes, assert_wall_planes, node_index, realized)
@@ -397,9 +398,10 @@ def test_thin_pec_is_a_sheet_that_owns_no_cell_and_changes_no_material():
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        result = sim.run(n_steps=10)
-
-    assert result is not None
+        # #1138: the sheet still owns no cells; its -3% size error blocks run.
+        assert sim.preflight().by_code("sheet_effective_size")[0].severity == "error"
+        with pytest.raises(ValueError, match="conductor sheet dimension"):
+            sim.run(n_steps=10)
 
 
 def test_auto_mesh_thin_conductor_only_configures_dx():
@@ -471,7 +473,6 @@ def test_auto_configure_waveform_default_byte_identical():
     """waveform=None (and a cutoff=3 waveform at the internal f_center /
     bw=0.8) reproduce the historical 6*tau n_steps exactly."""
     import math
-    import pytest
     from rfx import GaussianPulse
 
     f1, f2 = 1e9, 3e9

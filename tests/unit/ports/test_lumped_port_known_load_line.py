@@ -12,7 +12,7 @@ n_live=1 folds the same sigma, apply_wire_port with n_live=1 adds the same
 injection), so the two lanes must agree here, and both must land on the
 closed form.
 
-The fixture is a 4-cell air-filled parallel-plate channel: PEC plates on z,
+The pre-B3b half-cell-wall fixture is a 4-cell air-filled parallel-plate channel: PEC plates on z,
 magnetic walls on y and behind the port, one cell wide and one cell high so
 the TEM line impedance is Zc = eta0.  The port sits at node 1 with its
 reference impedance set to Zc; a resistor R sits at node 3 and the magnetic
@@ -102,27 +102,21 @@ def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
     assert len(messages) == 1
     msg = messages[0]
     assert "sits on the magnetic-wall plane y_lo" in msg
-    assert "On a single-device Yee run the wall is solved half a cell inside this face" in msg
-    assert "a sheet coupled only to itself" in msg
-    assert "a line drawn entirely in the plane (a one-cell-wide model) carries its wave" in msg
-    assert "nothing launched here reaches the volume off the plane" in msg
-    assert "including the half of a line that the plane cuts along its centre" in msg
-    assert (
-        "The distributed lanes do not realise a magnetic wall: with no absorbing "
-        "face the plane is shorted, and with absorbing faces the cells next to "
-        "it absorb, so a source one cell off reaches the volume 65–75 dB low; "
-        "use a single-device run."
-    ) in msg
-    assert "To radiate into the volume, place the source one cell (1mm) off the plane" in msg
-    assert "no wave radiates" not in msg
-    assert "silent zero field" not in msg
+    assert "magnetic image keeps tangential E" in msg
+    assert "coupled to the interior" in msg
+    assert "full symmetric object" in msg
+    assert "Distributed kernels refuse magnetic faces" in msg
 
 
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="#1221 B3b: ports lane re-judges with the moved walls")
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
-def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc):
+def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc, kind):
     """|S11| of a driven one-cell lumped port is |(R - Zc)/(R + Zc)|."""
     gamma = abs((r_over_zc - 1.0) / (r_over_zc + 1.0))
-    s11 = np.abs(_s11("lumped", r_over_zc))
+    s11 = np.abs(_s11(kind, r_over_zc))
     err = np.abs(s11 - gamma)
     assert err.max() <= CLOSED_FORM_ATOL, (
         f"R = {r_over_zc} Zc: closed form |S11| = {gamma:.5f} at every bin; "

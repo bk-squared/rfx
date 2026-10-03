@@ -29,11 +29,9 @@ Finite and scale-exact is not the same as right, so each builder's float32
 tangent is also compared with its SI spelling's derivative in float64
 (``test_builder_tangent_is_the_si_derivative``).
 
-Rows that still overflow are strict xfails naming #1357 and #1325: the
-Debye/Lorentz ADE builders and the mixed Debye+Lorentz update are rewritten
-by open PR #1325, and are routed through the helper after it merges. The
-builders are listed, and every other reader of ``EPS_0`` in ``rfx/`` is
-accounted for, in ``tests/contracts/test_eps_r_unit_coefficient_builders.py``.
+Debye/Lorentz ADE builders and the mixed update share the same routing,
+including the distributed in-loop builders introduced by #1325. Every reader
+of EPS_0 is accounted for in the coefficient-builder contract.
 """
 from __future__ import annotations
 
@@ -75,18 +73,6 @@ SCALES = {"uniform": (0, 90), "upml": (0, 90), "walls": (0, 90),
           "nu": (-40, 40), "distributed_nu": (-40, 40),
           "adi_2d": (0, 60), "adi_3d": (0, 60)}
 
-DEFERRED_1325 = pytest.mark.xfail(
-    strict=True, raises=AssertionError,
-    reason="#1357: this lane/material still divides by SI eps in the reverse "
-           "pass; its builders are rewritten by open PR #1325 and are routed "
-           "through si_value_eps_r_grad after it merges")
-# The deferred behaviour rows run in the slow lane (about 15 s on CPU). The
-# always-on signal for them is the contract's DEFERRED rows
-# (tests/contracts/test_eps_r_unit_coefficient_builders.py), which XPASS, and
-# so fail, the moment #1325's builders are routed.
-DEFERRED_1325_SLOW = [DEFERRED_1325, pytest.mark.slow]
-
-
 def _model(lane, material):
     kw = {"boundary": "cpml"}
     if lane in ("nu", "distributed_nu"):
@@ -106,7 +92,7 @@ def _model(lane, material):
             sim.add_material("m", eps_r=2.0, sigma=0.2)
             sim.add(Box((7e-3, 2e-3, 0.0), (10e-3, 10e-3, 12e-3 if three_d else DX)),
                     material="m")
-        sim.add_source((5e-3, 6e-3, z), "ez")
+        sim.add_source((5e-3, 6e-3, z), "ez", amplitude_kind="field")
         sim.add_probe((8e-3, 6e-3, z), "ez")
         return sim
     sim = Simulation(freq_max=15e9, domain=(6e-3, 6e-3, 6e-3), dx=DX,
@@ -119,7 +105,8 @@ def _model(lane, material):
             mat["lorentz_poles"] = [lorentz_pole(2.0, 2 * np.pi * 10e9, 1e9)]
         sim.add_material("m", **mat)
         sim.add(Box((3.2e-3, 0.0, 0.0), (6e-3, 6e-3, 6e-3)), material="m")
-    sim.add_source((2e-3, 3e-3, 3e-3), "ez")
+    sim.add_source((2e-3, 3e-3, 3e-3), "ez",
+                   amplitude_kind="current" if lane in ("nu", "distributed_nu") else "field")
     sim.add_probe((4e-3, 3e-3, 3e-3), "ez")
     return sim
 
@@ -179,9 +166,7 @@ def test_issue_1357_fixture_gradient_is_finite():
 
 # Each model is half vacuum (sigma = 0, where 0*inf became NaN) and half a
 # lossy or dispersive slab, inside CPML (or UPML, or PEC/PMC and CPML faces).
-# The dispersive rows are split by pole kind so that, once #1325 lands and
-# init_debye / init_lorentz are routed, a row that starts passing names the
-# builder that did it: a Debye-only or Lorentz-only model uses that builder's
+# The dispersive rows are split by pole kind to identify each builder: a Debye-only or Lorentz-only model uses that builder's
 # own ca/cb, a model with both uses the mixed update (dt/gamma_total).
 @pytest.mark.parametrize("lane, material", [
     ("uniform", "sigma"),
@@ -191,10 +176,13 @@ def test_issue_1357_fixture_gradient_is_finite():
     ("adi_2d", "sigma"),
     ("adi_3d", "sigma"),
     ("distributed_nu", "sigma"),
-    pytest.param("uniform", "debye", marks=DEFERRED_1325_SLOW),
-    pytest.param("uniform", "lorentz", marks=DEFERRED_1325_SLOW),
-    pytest.param("uniform", "debye+lorentz", marks=DEFERRED_1325_SLOW),
-    pytest.param("nu", "debye+lorentz", marks=DEFERRED_1325_SLOW),
+    pytest.param("uniform", "debye", marks=pytest.mark.slow),
+    pytest.param("uniform", "lorentz", marks=pytest.mark.slow),
+    pytest.param("uniform", "debye+lorentz", marks=pytest.mark.slow),
+    pytest.param("nu", "debye+lorentz", marks=pytest.mark.slow),
+    pytest.param("distributed_nu", "debye", marks=pytest.mark.slow),
+    pytest.param("distributed_nu", "lorentz", marks=pytest.mark.slow),
+    pytest.param("distributed_nu", "debye+lorentz", marks=pytest.mark.slow),
 ])
 def test_gradient_is_scale_invariant(lane, material, request):
     kw = {}
@@ -214,6 +202,62 @@ def _materials(rng, shape):
         sigma=jnp.asarray(np.where(rng.uniform(size=shape) > 0.5,
                                    rng.uniform(0.0, 20.0, shape), 0.0), jnp.float32),
         mu_r=jnp.ones(shape, jnp.float32))
+
+
+DISPERSION_BUILDERS = (
+    "init_debye", "init_lorentz", "debye_e_coeffs", "lorentz_e_coeffs",
+    "mixed_e_component_coeffs",
+)
+
+
+def _dispersion_cases(dtype):
+    """Two masked poles, component means, and the mixed update's SI input.
+
+    Float32-rounded inputs are shared by the float32 and float64 rows.
+    Initialization and in-loop builders are both exercised: the distributed
+    runners call the latter directly instead of repeating initialization.
+    """
+    rng = np.random.default_rng(13251357)
+    shape, dt = (5, 6, 7), 1.9e-12
+
+    def arr(a):
+        return jnp.asarray(np.asarray(a, np.float32), dtype)
+
+    m = MaterialArrays(arr(rng.uniform(1.0, 6.0, shape)),
+                       arr(np.where(rng.uniform(size=shape) > 0.5,
+                                    rng.uniform(0.0, 20.0, shape), 0.0)),
+                       arr(np.ones(shape)))
+    masks = [jnp.asarray(rng.uniform(size=shape) > .5) for _ in range(2)]
+    debye, lorentz = rfx.materials.debye, rfx.materials.lorentz
+    dp = [DebyePole(2.0, 8e-12), DebyePole(.7, 20e-12)]
+    lp = [lorentz_pole(2.0, 2 * np.pi * 10e9, 1e9),
+          lorentz_pole(.7, 2 * np.pi * 15e9, 2e9)]
+
+    def debye_coeffs(e, s):
+        return debye.init_debye(dp, m._replace(eps_r=e, sigma=s), dt, masks)[0]
+
+    def lorentz_coeffs(e, s):
+        return lorentz.init_lorentz(lp, m._replace(eps_r=e, sigma=s), dt, masks)[0]
+
+    dc, lc = debye_coeffs(m.eps_r, m.sigma), lorentz_coeffs(m.eps_r, m.sigma)
+
+    def components(e, s):
+        return rfx.core.yee.component_e_materials(m._replace(eps_r=e, sigma=s))
+
+    def mixed(e, s):
+        dc, lc = debye_coeffs(e, s), lorentz_coeffs(e, s)
+        return tuple(lorentz.mixed_e_component_coeffs(dc, lc, c, dt) for c in range(3))
+
+    fns = {
+        "init_debye": debye_coeffs,
+        "init_lorentz": lorentz_coeffs,
+        "debye_e_coeffs": lambda e, s: debye.debye_e_coeffs(
+            components(e, s), dt, dc.alpha, dc.beta),
+        "lorentz_e_coeffs": lambda e, s: lorentz.lorentz_e_coeffs(
+            components(e, s), dt, lc.a, lc.b, lc.c),
+        "mixed_e_component_coeffs": mixed,
+    }
+    return {name: (fn, m.eps_r, m.sigma) for name, fn in fns.items()}
 
 
 def _builder_cases():
@@ -241,6 +285,8 @@ def _builder_cases():
                            boundary="upml", cpml_layers=3)._build_grid()
     m3 = _materials(rng, upml_grid.shape)
     return {
+        **{name: (lambda e, fn=fn, sigma=sigma: fn(e, sigma), eps, 1e24)
+           for name, (fn, eps, sigma) in _dispersion_cases(jnp.float32).items()},
         "e_update_coeffs": (
             lambda e: rfx.core.yee.e_update_coeffs(e, mats.sigma, dt), mats.eps_r, 1e24),
         "precompute_coeffs": (
@@ -276,7 +322,7 @@ def _builder_cases():
 @pytest.mark.parametrize("name", [
     "e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv",
     "adi_step_2d", "adi_step_3d", "apply_adi_cpml_2d", "sheet_update_coeffs",
-    "edge_update_denominator", "init_upml"])
+    "edge_update_denominator", "init_upml", *DISPERSION_BUILDERS])
 def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
     """The builder's eps VJP at a cotangent past its SI overflow is finite
     and is exactly ``2**100`` times the VJP at ``2**-100`` of it."""
@@ -304,7 +350,8 @@ def test_builder_vjp_is_finite_at_any_cotangent_scale(name):
 # The modules that import the helper by name. The distributed runners import
 # it inside their CPML functions, from rfx.core.yee, at call time.
 _IMPORTERS = (rfx.core.yee, rfx.boundaries.cpml, rfx.boundaries.upml, rfx.adi,
-              rfx.materials.thin_conductor, rfx.lumped)
+              rfx.materials.thin_conductor, rfx.lumped,
+              rfx.materials.debye, rfx.materials.lorentz)
 
 
 def _si_only(si_fn, eps_r_fn, *args):
@@ -449,6 +496,7 @@ def _jvp_cases(dtype):
     cstate = jax.tree.map(lambda a: arr(rng.standard_normal(a.shape)), cstate)
     yee = rfx.core.yee
     return {
+        **_dispersion_cases(dtype),
         "e_update_coeffs": (
             lambda e, s: yee.e_update_coeffs(e, s, dt), m.eps_r, m.sigma),
         "precompute_coeffs": (
@@ -539,7 +587,7 @@ def si_float64_jvp(monkeypatch):
     "e_update_coeffs", "precompute_coeffs", "update_e_aniso", "update_e_aniso_inv",
     "adi_step_2d", "adi_step_3d", "apply_adi_cpml_2d", "apply_cpml_e",
     "apply_cpml_e[inv_eps_r_update]", "sheet_update_coeffs",
-    "edge_update_denominator", "init_upml"])
+    "edge_update_denominator", "init_upml", *DISPERSION_BUILDERS])
 def test_builder_tangent_is_the_si_derivative(name, si_float64_jvp):
     """float32 JVP (eps_r spelling) == float64 JVP of the SI spelling, to
     9 float32 ULP of each output's tangent peak."""

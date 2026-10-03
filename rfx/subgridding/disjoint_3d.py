@@ -27,15 +27,18 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import EPS_0, MU_0, FDTDState, init_materials, update_e, update_h
+from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, init_materials,
+                          component_h_materials, update_e, update_h)
 from rfx.boundaries.pec import apply_pec
 from rfx.subgridding.jit_runner import (
     _prolong_node_aligned_2d,
     _restrict_node_aligned_2d,
 )
 
-C0 = 1.0 / np.sqrt(EPS_0 * MU_0)
-Z0 = np.sqrt(MU_0 / EPS_0)
+# This research topology accepts vacuum fields only, with no material input.
+_VACUUM_MU = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
+C0 = 1.0 / np.sqrt(EPS_0 * _VACUUM_MU)
+Z0 = np.sqrt(_VACUUM_MU / EPS_0)
 
 
 class DisjointSubgridConfig3D(NamedTuple):

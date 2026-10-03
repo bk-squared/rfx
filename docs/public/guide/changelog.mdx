@@ -224,8 +224,9 @@ compare against a 1.x number.
   path instead of solving on a uniform grid (#811).
 - `add_port(reference_plane_cells=N)` rejects reference planes outside the
   uniform line or inside a microstrip port's probe ladder.
-- The `amplitude_kind` deprecation moved one release: the argument becomes
-  required in 1.9, with `'current'` the default in 2.0.
+- At this release, the `amplitude_kind` plan deferred the required argument
+  to 1.9. The shipped 2.0 behavior resolves omission and `None` to `'current'`
+  (#1442; `tests/unit/sources/test_source_amplitude_kind.py`).
 
 ## v1.7.0 — September 1, 2026
 

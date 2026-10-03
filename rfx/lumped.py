@@ -77,6 +77,7 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
+from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import EPS_0, si_value_eps_r_grad
 
 
@@ -272,7 +273,7 @@ def edge_update_denominator(materials, cell, component, dt,
     from rfx.core.yee import cell_component_e_materials
     eps_r, sigma = cell_component_e_materials(materials, cell, component,
                                               periodic)
-    if as_float:
+    if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
         # Python floats: host arithmetic, nothing on a tape.
         return _denominator_si(float(eps_r), float(sigma), dt)
     # #1357: these bits; the derivative with EPS_0/dt grouped as one factor,

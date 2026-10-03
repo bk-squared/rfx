@@ -14,13 +14,10 @@ The fix is one helper, ``rfx.core.yee.si_value_eps_r_grad(si_fn, eps_r_fn,
 *args)``. It returns the SI spelling's value bit for bit and takes the
 derivative from the same coefficients written in eps_r units.
 
-Three tables, and a discovery step that holds them to the code:
+Two tables, and a discovery step that holds them to the code:
 
 * ``BUILDERS`` names each routed builder. Each must call the helper, or
-  ``e_update_coeffs``, which calls it.
-* ``DEFERRED`` names the builders that still divide by SI eps and sit inside
-  open PR #1325's rewrite. They are strict xfails naming #1357: a row that
-  starts passing fails as XPASS, and the builder then moves to ``BUILDERS``.
+  a shared coefficient builder, which calls it.
 * ``NOT_A_TRACED_EPS_COEFFICIENT`` names every other function in ``rfx/`` that
   reads ``EPS_0``, with the reason no traced permittivity is divided through
   it there (host arithmetic, a vacuum constant, a profile, a pad value, a lane
@@ -28,7 +25,7 @@ Three tables, and a discovery step that holds them to the code:
 
 Discovery: every function in ``rfx/`` whose own body reads ``EPS_0`` (or an
 import alias of it) must be a SPELLING -- a function handed to the helper, or
-one such a function calls in its module -- or a ``DEFERRED`` row, or a
+one such a function calls in its module -- or a
 ``NOT_A_TRACED_EPS_COEFFICIENT`` row. A new builder written in SI units fails
 here until someone routes it or says why it is not one (UPML's ``_e_coeffs``
 was missed this way before discovery existed). A routed builder may not read
@@ -89,23 +86,22 @@ BUILDERS = {
         "sim.run(devices=...) CPML psi coefficient dt/eps (_ce)",
     ("rfx/runners/distributed_nu.py", "_apply_cpml_e_local_nu"):
         "forward(distributed=True) CPML psi coefficient dt/eps (_ce)",
-}
-
-# Still SI in eps, and inside open PR #1325's rewrite (Debye/Lorentz ADE
-# coefficients, and the mixed update PR #1325 moves into
-# lorentz.mixed_e_component_coeffs).
-DEFERRED = {
-    ("rfx/materials/debye.py", "init_debye"): "Debye ADE ca/cb/cc",
-    ("rfx/materials/lorentz.py", "init_lorentz"): "Lorentz ADE ca/cb/cc",
+    ("rfx/materials/debye.py", "init_debye"): "Debye initialization",
+    ("rfx/materials/debye.py", "debye_e_coeffs"):
+        "Debye ADE ca/cb/cc, including distributed in-loop builders",
+    ("rfx/materials/lorentz.py", "init_lorentz"): "Lorentz initialization",
+    ("rfx/materials/lorentz.py", "lorentz_e_coeffs"):
+        "Lorentz ADE ca/cb/cc, including distributed in-loop builders",
+    ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"):
+        "mixed Debye+Lorentz ca/cb/cc on every supported lane",
     ("rfx/simulation.py", "_update_e_with_optional_dispersion"):
-        "uniform mixed Debye+Lorentz ca/cb = dt/gamma_total",
+        "uniform mixed Debye+Lorentz update",
     ("rfx/nonuniform.py", "_update_e_nu_dispersive"):
-        "graded-mesh mixed Debye+Lorentz ca/cb = dt/gamma_total",
+        "graded mixed Debye+Lorentz update",
 }
 
 _HOST = "host arithmetic on Python/NumPy values"
 _VACUUM = "a vacuum constant: EPS_0 divides no permittivity"
-_PAD = "a vacuum pad value 1/EPS_0 for ghost/pad cells"
 _C0 = "host: c0 or the wave impedance from EPS_0 and MU_0"
 _ENERGY = "a diagnostic energy: EPS_0 multiplies fields, divides nothing"
 _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
@@ -115,6 +111,10 @@ _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
 # (file, qualified function) -> why no traced permittivity is divided through
 # EPS_0 here. May only shrink (ALLOWLIST_CEILING).
 NOT_A_TRACED_EPS_COEFFICIENT = {
+    ("rfx/materials/debye.py", "debye_pole_coeffs"):
+        "material-independent ADE beta: EPS_0 multiplies the pole strength",
+    ("rfx/materials/lorentz.py", "lorentz_pole_coeffs"):
+        "material-independent ADE c: EPS_0 multiplies the pole strength",
     ("rfx/adi.py", "init_adi_cpml_2d"): _C0,
     ("rfx/adi.py", "make_adi_absorbing_sigma"): _C0,
     ("rfx/adi.py", "make_adi_absorbing_sigma_3d"): _C0,
@@ -138,12 +138,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         "the drive Cb: its traced branch is already in eps_r units (#1317), "
         "its float branch is host arithmetic",
     ("rfx/ris.py", "RISUnitCell._build_sim"): _HOST,
-    ("rfx/runners/_distributed_common.py", "_split_lorentz_coeffs"): _PAD,
     ("rfx/runners/_distributed_common.py", "cpml_coeff_e_vacuum"): _VACUUM,
-    ("rfx/runners/_distributed_common.py", "stage_dispersion_slabs.stage_slab.place"):
-        _PAD,
-    ("rfx/runners/distributed_nu.py", "shard_lorentz_coeffs_x_slab"): _PAD,
-    ("rfx/runners/distributed_nu.py", "stage_forward_dispersion_x_slab.local"): _PAD,
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): _C0,
     ("rfx/simulation.py", "_warn_static_remnant_cap_hit"): _ENERGY,
     ("rfx/sources/coaxial_port.py", "build_coaxial_tem_plane_source_specs"):
@@ -185,10 +180,16 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 51
+ALLOWLIST_CEILING = 49
 
 HELPER = "si_value_eps_r_grad"
-ROUTES = {HELPER, "e_update_coeffs"}
+SHARED_ROUTES = {
+    ("rfx/core/yee.py", "e_update_coeffs"),
+    ("rfx/materials/debye.py", "debye_e_coeffs"),
+    ("rfx/materials/lorentz.py", "lorentz_e_coeffs"),
+    ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"),
+}
+ROUTES = {HELPER} | {name for _, name in SHARED_ROUTES}
 _EPS_0 = "EPS_0"
 
 
@@ -313,7 +314,7 @@ def eps_0_readers(mods: dict[str, _Module]) -> set[tuple[str, str]]:
 
 def unclassified(mods: dict[str, _Module]) -> list[str]:
     """``file::function`` readers of EPS_0 that no table accounts for."""
-    known = spellings(mods) | set(DEFERRED) | set(NOT_A_TRACED_EPS_COEFFICIENT)
+    known = spellings(mods) | set(NOT_A_TRACED_EPS_COEFFICIENT)
     return sorted(f"{rel}::{qual}" for rel, qual in eps_0_readers(mods) - known)
 
 
@@ -350,9 +351,11 @@ def mods():
 
 # --- the gates -------------------------------------------------------------
 
-def test_e_update_coeffs_is_itself_routed(mods):
-    """``e_update_coeffs`` counts as a route only because it calls the helper."""
-    assert HELPER in _called_names(mods["rfx/core/yee.py"].defs["e_update_coeffs"])
+@pytest.mark.parametrize("row", sorted(SHARED_ROUTES))
+def test_shared_coefficient_route_is_itself_routed(row, mods):
+    """A shared builder counts as a route only because it calls the helper."""
+    rel, name = row
+    assert HELPER in _called_names(mods[rel].defs[name])
 
 
 @pytest.mark.parametrize("row", sorted(BUILDERS), ids=lambda r: f"{r[0]}::{r[1]}")
@@ -360,19 +363,9 @@ def test_builder_is_routed_through_the_eps_r_unit_helper(row, mods):
     assert unrouted(mods, [row]) == [], BUILDERS[row]
 
 
-@pytest.mark.parametrize("row", [
-    pytest.param(r, marks=pytest.mark.xfail(
-        strict=True, raises=AssertionError,
-        reason="#1357: still SI eps in the reverse pass; rewritten by open "
-               "PR #1325, routed through si_value_eps_r_grad after it merges"))
-    for r in sorted(DEFERRED)], ids=lambda r: f"{r[0]}::{r[1]}")
-def test_deferred_builder_is_routed_through_the_eps_r_unit_helper(row, mods):
-    assert unrouted(mods, [row]) == [], DEFERRED[row]
-
-
 def test_every_eps_0_reader_is_accounted_for(mods):
     """Discovery: a function that reads EPS_0 is a spelling handed to the
-    helper, a deferred row, or an allow-listed non-coefficient."""
+    helper or an allow-listed non-coefficient."""
     missing = unclassified(mods)
     assert not missing, (
         "these functions read EPS_0 and no table accounts for them:\n  "
@@ -392,8 +385,8 @@ def test_the_tables_are_not_stale(mods):
         "allow-listed but no longer reading EPS_0 (delete the row and lower "
         "ALLOWLIST_CEILING):\n  " + "\n  ".join(stale))
     assert len(NOT_A_TRACED_EPS_COEFFICIENT) <= ALLOWLIST_CEILING
-    both = sorted(set(BUILDERS) & (set(DEFERRED) | set(NOT_A_TRACED_EPS_COEFFICIENT)))
-    assert not both, f"a routed builder cannot also be deferred or allow-listed: {both}"
+    both = sorted(set(BUILDERS) & set(NOT_A_TRACED_EPS_COEFFICIENT))
+    assert not both, f"a routed builder cannot also be allow-listed: {both}"
 
 
 # --- falsifiers: the defects planted in the parsed text --------------------

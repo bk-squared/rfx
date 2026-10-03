@@ -163,6 +163,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.runners._rank import mesh_ranks
 from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
 _BASELINE_ENV = "RFX_RUNNER_BASELINE_DIR"
@@ -509,9 +510,9 @@ def _f_distributed_nu_pec_mask_seam():
     live = state._replace(ex=one, ey=one, ez=one)
     return {
         "hard": _apply_pec_mask_nu_shmap(live, jnp.asarray(hard_slabs), mesh,
-                                         n_devices, nx_local),
+                                         n_devices, nx_local, ranks=mesh_ranks(mesh)),
         "soft": _apply_pec_occupancy_nu_shmap(live, jnp.asarray(soft_slabs),
-                                              mesh, n_devices, nx_local),
+                                              mesh, n_devices, nx_local, ranks=mesh_ranks(mesh)),
     }
 
 
@@ -567,7 +568,7 @@ def _f_distributed_v2_pec_body(gmask):
     live = state._replace(ex=one, ey=one, ez=one)
     return {
         "hard": _apply_pec_mask_nu_shmap(live, jnp.asarray(slabs), mesh,
-                                         n_devices, nx_local),
+                                         n_devices, nx_local, ranks=mesh_ranks(mesh)),
     }
 
 

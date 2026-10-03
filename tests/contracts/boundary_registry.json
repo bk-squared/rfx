@@ -14,7 +14,15 @@
     },
     {
       "file": "rfx/core/yee.py",
+      "function": "curl_h.component"
+    },
+    {
+      "file": "rfx/core/yee.py",
       "function": "curl_h_nu"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "h_neighbor"
     },
     {
       "file": "rfx/core/yee.py",
@@ -127,9 +135,18 @@
     {
       "file": "rfx/subgridding/sbp_sat_2d.py",
       "function": "_update_hy_2d"
+    },
+    {
+      "file": "rfx/core/yee.py",
+      "function": "_diff_bwd_o"
     }
   ],
   "sites": [
+    {
+      "file": "rfx/_radiated_power.py",
+      "function": "integrate_radiated_power",
+      "kind": "roll/diff"
+    },
     {
       "file": "rfx/adi.py",
       "function": "_apply_pec_2d",
@@ -187,11 +204,6 @@
     },
     {
       "file": "rfx/boundaries/cpml.py",
-      "function": "apply_cpml_e",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/boundaries/cpml.py",
       "function": "apply_cpml_h",
       "kind": "neighbour"
     },
@@ -209,6 +221,11 @@
       "file": "rfx/boundaries/pec.py",
       "function": "_shift",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/boundaries/pec.py",
+      "function": "_unwrapped_sheet_edge_masks",
+      "kind": "neighbour"
     },
     {
       "file": "rfx/boundaries/pec.py",
@@ -252,28 +269,6 @@
     },
     {
       "file": "rfx/boundaries/upml.py",
-      "function": "apply_upml_e",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/boundaries/upml.py",
-      "function": "apply_upml_e",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/boundaries/upml.py",
-      "function": "apply_upml_e.bwd",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/boundaries/upml.py",
-      "function": "apply_upml_e.bwd",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/boundaries/upml.py",
       "function": "apply_upml_h",
       "kind": "difference",
       "count": 6
@@ -297,17 +292,14 @@
     {
       "file": "rfx/core/yee.py",
       "function": "_diff_bwd_o",
-      "kind": "difference"
+      "kind": "neighbour",
+      "count": 3
     },
     {
       "file": "rfx/core/yee.py",
       "function": "_diff_bwd_o",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "_diff_bwd_o",
-      "kind": "roll/diff"
+      "kind": "roll/diff",
+      "count": 2
     },
     {
       "file": "rfx/core/yee.py",
@@ -331,94 +323,26 @@
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "curl_h",
+      "function": "curl_h.component",
       "kind": "neighbour",
-      "count": 6
+      "count": 2
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "curl_h_nu",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "curl_h_nu",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "edge_averaged_materials.mean4",
+      "function": "edge_mean_components.mean4",
       "kind": "neighbour"
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "update_e_aniso",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_aniso",
+      "function": "h_neighbor",
       "kind": "neighbour",
-      "count": 6
+      "count": 1
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "update_e_aniso.bwd",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_aniso.bwd",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_aniso_inv",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_aniso_inv",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_aniso_inv.bwd",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_aniso_inv.bwd",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_fast",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_fast",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_nu_aniso",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_e_nu_aniso",
-      "kind": "neighbour",
-      "count": 6
+      "function": "h_neighbor",
+      "kind": "roll/diff",
+      "count": 1
     },
     {
       "file": "rfx/core/yee.py",
@@ -454,13 +378,18 @@
       "file": "rfx/core/yee.py",
       "function": "update_he_fast",
       "kind": "difference",
-      "count": 12
+      "count": 6
     },
     {
       "file": "rfx/core/yee.py",
       "function": "update_he_fast",
       "kind": "neighbour",
-      "count": 12
+      "count": 6
+    },
+    {
+      "file": "rfx/current_moments.py",
+      "function": "_index_window",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/current_moments.py",
@@ -476,6 +405,11 @@
       "file": "rfx/floquet.py",
       "function": "apply_bloch_periodic_x._wrap",
       "kind": "boundary"
+    },
+    {
+      "file": "rfx/geometry/csg.py",
+      "function": "Box._axis_masks_on_coords._axis_mask",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/geometry/csg.py",
@@ -498,50 +432,6 @@
       "kind": "difference"
     },
     {
-      "file": "rfx/materials/debye.py",
-      "function": "update_e_debye",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/materials/debye.py",
-      "function": "update_e_debye",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/materials/debye.py",
-      "function": "update_e_debye.bwd",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/materials/debye.py",
-      "function": "update_e_debye.bwd",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/materials/lorentz.py",
-      "function": "update_e_lorentz",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/materials/lorentz.py",
-      "function": "update_e_lorentz",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/materials/lorentz.py",
-      "function": "update_e_lorentz.bwd",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/materials/lorentz.py",
-      "function": "update_e_lorentz.bwd",
-      "kind": "roll/diff"
-    },
-    {
       "file": "rfx/mesh_edges.py",
       "function": "_build",
       "kind": "difference"
@@ -560,18 +450,6 @@
       "file": "rfx/nonuniform.py",
       "function": "_build_nu_scan.step_fn",
       "kind": "boundary"
-    },
-    {
-      "file": "rfx/nonuniform.py",
-      "function": "_curl_h_nu",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/nonuniform.py",
-      "function": "_curl_h_nu",
-      "kind": "neighbour",
-      "count": 6
     },
     {
       "file": "rfx/nonuniform.py",
@@ -628,7 +506,7 @@
       "file": "rfx/probes/probes.py",
       "function": "_ampere_loop",
       "kind": "neighbour",
-      "count": 6
+      "count": 2
     },
     {
       "file": "rfx/probes/probes.py",
@@ -638,6 +516,11 @@
     {
       "file": "rfx/probes/probes.py",
       "function": "extract_s_matrix_wire",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/probes/probes.py",
+      "function": "init_flux_monitor.face_weights",
       "kind": "boundary"
     },
     {
@@ -653,6 +536,11 @@
     {
       "file": "rfx/runners/_distributed_common.py",
       "function": "_init_cpml_distributed",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_slab_x_lo_view",
       "kind": "boundary"
     },
     {
@@ -760,11 +648,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "slab_e_component_materials.x_lo_replicated",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/runners/distributed_nu.py",
       "function": "_apply_cpml_e_local_nu",
       "kind": "neighbour"
@@ -831,28 +714,6 @@
     },
     {
       "file": "rfx/simulation.py",
-      "function": "_update_e_with_optional_dispersion",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/simulation.py",
-      "function": "_update_e_with_optional_dispersion",
-      "kind": "neighbour",
-      "count": 6
-    },
-    {
-      "file": "rfx/simulation.py",
-      "function": "_update_e_with_optional_dispersion.bwd",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/simulation.py",
-      "function": "_update_e_with_optional_dispersion.bwd",
-      "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/simulation.py",
       "function": "make_core_step.core_step",
       "kind": "boundary"
     },
@@ -865,6 +726,11 @@
       "file": "rfx/sources/_waveguide_modes.py",
       "function": "_cell_centred_gradient",
       "kind": "difference"
+    },
+    {
+      "file": "rfx/sources/coaxial_port.py",
+      "function": "_coaxial_tem_edge_profile",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/sources/coaxial_port.py",

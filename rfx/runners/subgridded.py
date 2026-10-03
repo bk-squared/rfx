@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 from dataclasses import replace
 
 import numpy as np
+from rfx import _realized
+
 import jax
 import jax.numpy as jnp
 
@@ -24,6 +28,7 @@ def _run_subgridded_once(
     *,
     diagnostic_lumped_sparam_freqs_override=None,
     diagnostic_lumped_sparam_driven_index_override=None,
+    conformal_pec=None,
 ):
     """Run one SBP-SAT subgrid simulation, optionally collecting one S-column.
 
@@ -63,8 +68,8 @@ def _run_subgridded_once(
     # Map z_range to coarse grid indices
     pad_z_lo = int(getattr(grid_coarse, "pad_z_lo", grid_coarse.cpml_layers))
     pad_z_hi = int(getattr(grid_coarse, "pad_z_hi", grid_coarse.cpml_layers))
-    fk_lo = max(int(round(z_lo / dx_c)) + pad_z_lo, pad_z_lo)
-    fk_hi = min(int(round(z_hi / dx_c)) + pad_z_lo + 1, grid_coarse.nz - pad_z_hi)
+    fk_lo = max(nearest_uniform_index(z_lo / dx_c) + pad_z_lo, pad_z_lo)
+    fk_hi = min(nearest_uniform_index(z_hi / dx_c) + pad_z_lo + 1, grid_coarse.nz - pad_z_hi)
 
     # Fine region covers full x/y by default.  A finite xy_margin enables a
     # research-only local x/y window inset from the physical x/y boundaries;
@@ -78,21 +83,21 @@ def _run_subgridded_once(
     else:
         margin = float(xy_margin)
         fi_lo = max(
-            int(round(margin / dx_c)) + grid_coarse.pad_x_lo,
+            nearest_uniform_index(margin / dx_c) + grid_coarse.pad_x_lo,
             grid_coarse.pad_x_lo,
         )
         fi_hi = min(
-            int(round((sim._domain[0] - margin) / dx_c))
+            nearest_uniform_index((sim._domain[0] - margin) / dx_c)
             + grid_coarse.pad_x_lo
             + 1,
             grid_coarse.nx - grid_coarse.pad_x_hi,
         )
         fj_lo = max(
-            int(round(margin / dx_c)) + grid_coarse.pad_y_lo,
+            nearest_uniform_index(margin / dx_c) + grid_coarse.pad_y_lo,
             grid_coarse.pad_y_lo,
         )
         fj_hi = min(
-            int(round((sim._domain[1] - margin) / dx_c))
+            nearest_uniform_index((sim._domain[1] - margin) / dx_c)
             + grid_coarse.pad_y_lo
             + 1,
             grid_coarse.ny - grid_coarse.pad_y_hi,
@@ -149,7 +154,7 @@ def _run_subgridded_once(
     # every validation mode, after the production refusals above and before
     # the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_subgridded", grid=grid_coarse)
+    admit(sim, "run_subgridded", run_args={"conformal_pec": conformal_pec}, grid=grid_coarse)
 
     topology = ref.get("topology", "overlap_z_slab")
     if topology != "overlap_z_slab":
@@ -230,9 +235,9 @@ def _run_subgridded_once(
     # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos):
         idx = (
-            int(round((pos[0] - x_off) / dx_f)),
-            int(round((pos[1] - y_off) / dx_f)),
-            int(round((pos[2] - z_off) / dx_f)),
+            nearest_uniform_index((pos[0] - x_off) / dx_f),
+            nearest_uniform_index((pos[1] - y_off) / dx_f),
+            nearest_uniform_index((pos[2] - z_off) / dx_f),
         )
         # Bounds check — source/probe outside fine grid causes garbage results.
         # JAX scatter/gather can otherwise silently drop or clamp OOB indices,
@@ -482,9 +487,7 @@ def _run_subgridded_once(
     ntff_box_f = None
     ntff_data_f = None
     if sim._ntff is not None:
-        from rfx.farfield import (
-            NTFFBox, init_ntff_data, _raise_face_centre_margin,
-        )
+        from rfx.farfield import NTFFBox, init_ntff_data
 
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = _pos_to_fine_idx(corner_lo)
@@ -494,7 +497,8 @@ def _run_subgridded_once(
                 "subgrid NTFF box corners must map to a non-empty fine-grid "
                 f"box; got lo={lo_idx}, hi={hi_idx}"
             )
-        ntff_box_f = NTFFBox(
+        ntff_box_f = NTFFBox.from_grid(
+            fine_grid,
             i_lo=lo_idx[0],
             i_hi=hi_idx[0],
             j_lo=lo_idx[1],
@@ -502,17 +506,7 @@ def _run_subgridded_once(
             k_lo=lo_idx[2],
             k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-            # Accumulate at the centre of each face cell (second-order
-            # surface integral). The fine grid is uniform, so the half-cell
-            # interpolation weights for the tangential H are the default 1/2
-            # on every face.
-            face_centre=True,
         )
-        # A face flush with the fine-grid boundary has no cell on one side
-        # of it, so the half-cell averages cannot be formed. Refuse here,
-        # beside the non-empty-box check and before the scan, rather than
-        # inside the traced body.
-        _raise_face_centre_margin(ntff_box_f, (nx_f, ny_f, nz_f))
         ntff_data_f = init_ntff_data(ntff_box_f)
 
     diagnostic_lumped_sparam_freqs = diagnostic_lumped_sparam_freqs_override
@@ -558,6 +552,10 @@ def _run_subgridded_once(
                 ),
             )
 
+    if _realized.ACTIVE is not None:
+        from types import SimpleNamespace
+        _realized.sources(SimpleNamespace(dx=dx_f, dt=dt),
+                          mats_f, sources_f, "subgrid.sources")
     sg_opts = SubgridRunOptions(
         pec_mask_c=pec_mask_coarse,
         pec_mask_f=pec_mask_f if has_pec_f else None,
@@ -740,6 +738,7 @@ def run_subgridded_path(
     compute_s_params=None,
     s_param_freqs=None,
     s_param_n_steps=None,
+    conformal_pec=None,
 ):
     """Run simulation using SBP-SAT subgridding (JIT-compiled).
 
@@ -757,6 +756,7 @@ def run_subgridded_path(
         base_materials_coarse,
         pec_mask_coarse,
         n_steps,
+        conformal_pec=conformal_pec,
     )
 
     requested_sparams = (
@@ -813,6 +813,7 @@ def run_subgridded_path(
                 sp_n_steps,
                 diagnostic_lumped_sparam_freqs_override=freqs,
                 diagnostic_lumped_sparam_driven_index_override=driven,
+                conformal_pec=conformal_pec,
             )
             if column_result.s_params is None:
                 raise RuntimeError(

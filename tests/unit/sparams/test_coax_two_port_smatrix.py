@@ -585,9 +585,8 @@ def test_absorbing_on_z_only_is_refused():
 
 
 def test_periodic_axes_rejected():
-    sim = _sim()
-    with pytest.warns(DeprecationWarning):
-        sim.set_periodic_axes("x")
+    from rfx.boundaries.spec import BoundarySpec
+    sim = _sim(boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"))
     # A periodic lateral axis has no absorber, so the all-six-faces absorber
     # requirement (issue 1218) is the refusal that fires first.
     with pytest.raises(ValueError, match="positive CPML thickness on all six faces"):

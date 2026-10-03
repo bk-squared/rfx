@@ -52,6 +52,10 @@ class CurvedPatch:
         else:
             return ((cx - hw, cy - hl, cz), (cx + hw, cy + hl, cz + z_arc))
 
+    def _mask_components(self, dx):
+        """Expose child masks for the shared periodic image fold."""
+        return self.to_staircase(dx)
+
     def mask_on_coords(self, x, y, z):
         """Evaluate curved patch occupancy via staircase decomposition."""
         dx_est = float(x[1] - x[0]) if len(x) > 1 else 1e-3
@@ -61,6 +65,11 @@ class CurvedPatch:
         return result
 
     def mask(self, grid):
+        if getattr(grid, 'periodic_axes', ''):
+            result = jnp.zeros(grid.shape, dtype=jnp.bool_)
+            for box in self.to_staircase(grid.cells(0)[0]):
+                result = result | box.mask(grid)
+            return result
         from rfx.geometry.csg import _grid_coords
         x, y, z = _grid_coords(grid)
         return self.mask_on_coords(x, y, z)

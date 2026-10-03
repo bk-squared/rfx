@@ -16,9 +16,10 @@ beam_steering_superstrate.py declares it in OPTIONAL_DEPENDENCIES and
 skips rather than failing -- that is CI's configuration.
 
 EMISSION-DRIFT PIN PLUS A ZERO-*UNEXPLAINED*-ADVISORY BAR -- STILL NOT A
-PHYSICS CHECK. Nothing here time-steps: what is pinned is the TEXT each example
-EMITS at build time (its preflight rows and its fidelity/realization
-report), so a green run says "this example's declared geometry and its
+PHYSICS CHECK. Nothing here time-steps: the pin covers advisory codes,
+locations and multiplicities plus structured fidelity measurements with
+tolerance. Message wording and descriptive report prose are omitted, so a
+green run says "this example's declared geometry and its
 build-time advisories did not change since the snapshot was taken." It
 says nothing about whether the example's OUTPUT numbers are right, and
 nothing about whether today's advisories are correct or the examples are
@@ -187,12 +188,13 @@ from __future__ import annotations
 import sys
 import hashlib
 from pathlib import Path
-from typing import Any
 
 import jax
 import re
 
 import pytest
+
+from tests._structured_snapshot import assert_structured_close, without_prose
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import _example_fidelity_lib as lib  # noqa: E402
@@ -351,48 +353,6 @@ def _flat_variants() -> list[tuple[str, str, lib.Builder, lib.Variant]]:
 _FLAT_VARIANTS = _flat_variants()
 
 
-def _diff_message(key: str, expected: dict, actual: dict) -> str:
-    """Which dimension of which entity moved -- not a raw dict repr (the
-    thing required change #2 exists to make possible)."""
-    lines = [f"snapshot drift for {key}:"]
-    exp_f: dict[str, Any] = expected.get("fidelity", {})
-    act_f: dict[str, Any] = actual.get("fidelity", {})
-    added = sorted(set(act_f) - set(exp_f))
-    removed = sorted(set(exp_f) - set(act_f))
-    for e in added:
-        lines.append(f"  + entity added: {e}")
-    for e in removed:
-        lines.append(f"  - entity removed: {e}")
-    for e in sorted(set(exp_f) & set(act_f)):
-        exp_item, act_item = exp_f[e], act_f[e]
-        if exp_item == act_item:
-            continue
-        exp_axes = exp_item.get("axes", {})
-        act_axes = act_item.get("axes", {})
-        for ax in sorted(set(exp_axes) | set(act_axes)):
-            if exp_axes.get(ax) != act_axes.get(ax):
-                lines.append(f"  ~ {e} axis {ax}: "
-                             f"expected {exp_axes.get(ax)} "
-                             f"actual {act_axes.get(ax)}")
-        if exp_item.get("n_cells") != act_item.get("n_cells"):
-            lines.append(f"  ~ {e} n_cells: expected {exp_item.get('n_cells')} "
-                         f"actual {act_item.get('n_cells')}")
-        if exp_item.get("findings") != act_item.get("findings"):
-            lines.append(f"  ~ {e} findings: expected {exp_item.get('findings')} "
-                         f"actual {act_item.get('findings')}")
-    exp_p, act_p = expected.get("preflight", []), actual.get("preflight", [])
-    if exp_p != act_p:
-        lines.append(f"  preflight: expected {len(exp_p)} issue(s), "
-                     f"actual {len(act_p)} issue(s)")
-        for row in act_p:
-            if row not in exp_p:
-                lines.append(f"    + {row['code']} {row['loc']}: {row['message']}")
-        for row in exp_p:
-            if row not in act_p:
-                lines.append(f"    - {row['code']} {row['loc']}: {row['message']}")
-    return "\n".join(lines)
-
-
 @pytest.mark.parametrize(
     "key,relpath,builder,variant", _FLAT_VARIANTS,
     ids=[row[0] for row in _FLAT_VARIANTS],
@@ -423,7 +383,7 @@ def test_example_matches_snapshot(
     import json
     actual = json.loads(json.dumps(lib.digest_variant(sim)))
     expected = snapshot[key]
-    assert actual == expected, _diff_message(key, expected, actual)
+    assert_structured_close(without_prose(actual), without_prose(expected), key)
 
 
 def test_every_pinned_advisory_row_is_classified() -> None:
@@ -652,8 +612,7 @@ def test_snapshot_keys_survive_entity_insertion() -> None:
         "one inserted entity must add exactly one key, got "
         f"{sorted(set(grown) - set(base))}")
     for key in base:
-        assert grown[key] == base[key], (
-            f"{key} changed when an unrelated entity was inserted")
+        assert_structured_close(grown[key], base[key], key)
 
 
 def test_foreign_warnings_are_not_pinned_by_the_digest() -> None:
@@ -701,3 +660,89 @@ def test_foreign_warnings_are_not_pinned_by_the_digest() -> None:
     assert polluted == clean, (
         "a foreign warning changed the pinned digest:\n"
         f"  without: {clean}\n  with:    {polluted}")
+
+
+@pytest.mark.parametrize("mutation", ["wording", "remove_code", "count", "number", "number_count", "severity", "source"])
+def test_snapshot_contract_mutations(monkeypatch, mutation):
+    """Exercise the actual contract entry point with controlled emissions."""
+    from copy import deepcopy
+    from rfx.preflight._common import PreflightIssue
+
+    key, relpath, builder, variant = _FLAT_VARIANTS[0]
+    issues = [PreflightIssue("original wording 2 cells", code="mesh_resolution", loc="x")]
+    expected = {"preflight": lib.digest_preflight(issues), "fidelity": {}}
+    changed = deepcopy(expected)
+    if mutation == "wording":
+        issues = [PreflightIssue("entirely revised warning 2 cells", code="mesh_resolution", loc="x")]
+        changed["preflight"] = lib.digest_preflight(issues)
+        assert "message" not in changed["preflight"][0]
+    elif mutation == "number":
+        changed["preflight"][0]["numbers"][0] /= 2
+    elif mutation == "number_count":
+        changed["preflight"][0]["numbers"].append(3.0)
+    elif mutation in {"severity", "source"}:
+        changed["preflight"][0][mutation] = "changed"
+    elif mutation == "remove_code":
+        changed["preflight"].clear()
+    else:
+        changed["preflight"].append(deepcopy(changed["preflight"][0]))
+    monkeypatch.setattr(lib, "load_module", lambda _: None)
+    monkeypatch.setattr(lib, "call_builder", lambda *args: None)
+    monkeypatch.setattr(lib, "digest_variant", lambda _: changed)
+    monkeypatch.setitem(test_example_matches_snapshot.__globals__, "_load_snapshot",
+                        lambda: {key: expected})
+    if mutation == "wording":
+        test_example_matches_snapshot(key, relpath, builder, variant)
+    else:
+        with pytest.raises(AssertionError):
+            test_example_matches_snapshot(key, relpath, builder, variant)
+
+
+@pytest.mark.parametrize("field", [
+    "declared_um", "declared_extent_um", "realized_um", "realized_extent_um",
+    "mesh_extent_um", "cell_um", "face_residual_um", "midpoint_shift_um",
+    "realized_lo_um", "realized_hi_um",
+])
+def test_snapshot_numeric_tolerance(field):
+    assert_structured_close({field: [0.5e-9, 1000.0 + 5e-9]},
+                            {field: [0.0, 1000.0]})
+    with pytest.raises(AssertionError):
+        assert_structured_close({field: [0.0, 1000.01]},
+                                {field: [0.0, 1000.0]})
+
+
+def test_um_tolerance_uses_only_the_field_name():
+    # An ancestor entity/path mentioning um must not relax eps_r or numbers.
+    for field in ("eps_r", "numbers", "not_um_units"):
+        with pytest.raises(AssertionError):
+            assert_structured_close({"parent_um": {field: [5e-10]}},
+                                    {"parent_um": {field: [0.0]}})
+
+
+def test_message_numeric_tokens_and_tolerance():
+    from tests._structured_snapshot import message_numbers, without_prose
+
+    assert message_numbers("2 cells, -3.5 µm, +.25, 6., 1e-9, -2.5E+3") == [
+        2.0, -3.5, .25, 6.0, 1e-9, -2500.0]
+    assert without_prose({"message": "no quantities"}) == {"numbers": []}
+    assert_structured_close({"numbers": [2.0 + 1e-9, 5e-13]},
+                            {"numbers": [2.0, 0.0]})
+    for numbers in ([1.0, 0.0], [2.0], [0.0, 2.0], [2.0, 5e-11]):
+        with pytest.raises(AssertionError):
+            assert_structured_close({"numbers": numbers}, {"numbers": [2.0, 0.0]})
+
+
+@pytest.mark.parametrize("field,value", [("count", 1), ("class", "MSL port")])
+def test_out_of_scope_count_and_class_are_pinned(field, value):
+    from copy import deepcopy
+    report = [{"entity": "NOT AUDITED by this report", "findings": [{
+        "kind": "out-of-scope", "detail": "2 waveguide port(s)",
+        "entities": [{"count": 2, "class": "waveguide port"}],
+    }]}]
+    expected = lib.digest_fidelity(report)
+    changed = deepcopy(report)
+    changed[0]["findings"][0]["detail"] = "rewritten description"
+    assert_structured_close(lib.digest_fidelity(changed), expected)
+    changed[0]["findings"][0]["entities"][0][field] = value
+    with pytest.raises(AssertionError):
+        assert_structured_close(lib.digest_fidelity(changed), expected)

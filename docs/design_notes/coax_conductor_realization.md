@@ -1,5 +1,7 @@
 # How the coax lanes realize their conductors, and what the old way cost
 
+> Documentation update (2026-10-03): The first row of the old-geometry impedance table below has inconsistent radius and impedance entries. Do not use that row as a quantitative reference; it has not been remeasured here.
+
 Status: the record behind the change that moved the coaxial pin and outer
 conductor from `sigma = PEC_SIGMA` per node to PEC edge masks. Every number here
 was measured before the product code moved, by two pre-declared diagnostics whose

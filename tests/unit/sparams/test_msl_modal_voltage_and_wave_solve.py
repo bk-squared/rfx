@@ -37,11 +37,7 @@ import jax
 import numpy as np
 import pytest
 
-try:
-    # Modern JAX (scoped x64 context manager promoted to top-level).
-    from jax import enable_x64
-except ImportError:  # older JAX — jax.experimental.enable_x64 removed in 0.8
-    from tests._x64_compat import enable_x64
+from jax import enable_x64
 
 from rfx.api._sparams import msl_modal_voltage, msl_solve_s_from_waves
 

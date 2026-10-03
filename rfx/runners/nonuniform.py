@@ -182,6 +182,8 @@ def assemble_materials_nu(
     sheet_specs: list | None = None,
     pec_sheets: list | None = None,
     pec_wires: list | None = None,
+    geometry_masks: list | None = None,
+    assembly_entries: list | None = None,
 ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
     """Build material arrays and dispersion specs for non-uniform grid.
 
@@ -226,6 +228,8 @@ def assemble_materials_nu(
         coords,
         pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
         pole_geometry_entries=sim._geometry,
+        geometry_masks=geometry_masks,
+        assembly_entries=assembly_entries,
         centres=centres,
         cell_sizes=cell_sizes,
         sheets=_pec_sheets,
@@ -287,6 +291,8 @@ def assemble_materials_nu(
         conductors = [replace(tc, shape=continued_conductor_shape(
                         sim, grid, tc.shape, entry=tc, unextendable=conductor_findings))
                       for tc in sim._thin_conductors]
+        conductor_keys = {id(tc): id(original)
+                          for tc, original in zip(conductors, sim._thin_conductors, strict=True)}
         pec_tcs = [tc for tc in conductors
                    if getattr(tc, "is_pec", False)]
         lossy_tcs = [tc for tc in conductors
@@ -295,6 +301,8 @@ def assemble_materials_nu(
             _pec_sheets.append(sheet_spec_from_shape(
                 tc.shape, coords, cell_sizes, name="thin_conductor",
                 lane="non-uniform", refuse_thick=True))
+            if assembly_entries is not None:
+                assembly_entries.append((conductor_keys[id(tc)], None, _pec_sheets[-1], None, tc.shape))
         # #373: lossy (non-PEC) thin conductors fold into sigma using the LOCAL
         # spacing NORMAL to the sheet, not a uniform grid.dx. The sheet has
         # bulk conductivity sigma_bulk and physical thickness t but is realized
@@ -323,6 +331,8 @@ def assemble_materials_nu(
         # and jnp.where keeps the sigma field (an AD-live material)
         # differentiable.
         for tc in lossy_tcs:
+            if assembly_entries is not None:
+                assembly_entries.append((conductor_keys[id(tc)], None, None, None, tc.shape))
             _f0 = getattr(tc, "surface_impedance_f0", None)
             if _f0 is not None:
                 # #674: a surface-impedance sheet may be ANY
@@ -384,6 +394,8 @@ def assemble_materials_nu(
                 # sheet normal, so the rasterized sheet must occupy exactly
                 # one layer there — and must not have vaporized.
                 check_sheet_occupancy(m, n_axis, lane="non-uniform")
+                if geometry_masks is not None:
+                    geometry_masks.append((conductor_keys[id(tc)], m))
                 # Leontovich band-centre surface-impedance mode (#669/#677):
                 # since #677 the sheet does NOT fold into materials.sigma
                 # (that realized it as a full-cell slab and moved resonances
@@ -416,6 +428,8 @@ def assemble_materials_nu(
                         sigma_sheet=sigma_sheet, plane=_plane))
                 continue
             m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
+            if geometry_masks is not None:
+                geometry_masks.append((conductor_keys[id(tc)], m))
             sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
             materials = materials._replace(
                 eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
@@ -476,6 +490,39 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     return result["cell_slice"]
 
 
+def _range_to_slice_nu(grid, axis, value_range):
+    """Runner node aperture and physical span, shared with the geometry record."""
+    d_arr_jnp = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
+    n_axis = grid.shape["xyz".index(axis)]
+    pad_lo = getattr(grid, f"pad_{axis}_lo")
+    pad_hi = getattr(grid, f"pad_{axis}_hi")
+    d_np = np.asarray(d_arr_jnp)
+    # Cell-edge positions in physical coords (interior only, edge=0 at first
+    # interior face). Length = n_interior + 1.
+    interior = interior_cells(d_np, pad_lo, pad_hi)
+    edges = np.insert(np.cumsum(interior), 0, 0.0)
+    if value_range is None:
+        return (pad_lo, n_axis - pad_hi), float(edges[-1])
+    lo, hi = value_range
+    # Each end on the node pos_to_nu_index names (the #1295 tie rule),
+    # as the uniform builder puts it on round(lo/dx).
+    from rfx.nonuniform import _axis_position_to_index
+    lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
+    hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
+    if hi_local <= lo_local:
+        raise ValueError(
+            f"range {value_range!r} does not resolve to a valid aperture on the NU grid"
+        )
+    lo_idx = lo_local + pad_lo
+    hi_idx = hi_local + pad_lo + 1
+    actual_span = float(edges[hi_local] - edges[lo_local])
+    if actual_span <= 0.0:
+        raise ValueError(
+            f"range {value_range!r} resolves to invalid aperture span {actual_span}"
+        )
+    return (lo_idx, hi_idx), actual_span
+
+
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
                                      freqs: jnp.ndarray, n_steps: int):
     """NU-aware waveguide port config builder.
@@ -496,50 +543,15 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     pos_vec[axis_idx] = entry.x_position
     x_index = pos_to_nu_index(grid, tuple(pos_vec))[axis_idx]
 
-    # Per-face NU allocation (2026-04): pass (pad_lo, pad_hi) for each axis.
-    pads_lo_hi = {
-        "x": (grid.pad_x_lo, grid.pad_x_hi),
-        "y": (grid.pad_y_lo, grid.pad_y_hi),
-        "z": (grid.pad_z_lo, grid.pad_z_hi),
-    }
-
-    def _range_to_slice_nu(value_range, d_arr_jnp, n_axis, pad_lo, pad_hi,
-                           axis):
-        d_np = np.asarray(d_arr_jnp)
-        # Cell-edge positions in physical coords (interior only, edge=0 at first
-        # interior face). Length = n_interior + 1.
-        interior = interior_cells(d_np, pad_lo, pad_hi)
-        edges = np.insert(np.cumsum(interior), 0, 0.0)
-        if value_range is None:
-            return (pad_lo, n_axis - pad_hi), float(edges[-1])
-        lo, hi = value_range
-        # Each end on the node pos_to_nu_index names (the #1295 tie rule),
-        # as the uniform builder puts it on round(lo/dx).
-        from rfx.nonuniform import _axis_position_to_index
-        lo_local = _axis_position_to_index(grid, axis, lo) - pad_lo
-        hi_local = _axis_position_to_index(grid, axis, hi) - pad_lo
-        if hi_local <= lo_local:
-            raise ValueError(
-                f"range {value_range!r} does not resolve to a valid aperture on the NU grid"
-            )
-        lo_idx = lo_local + pad_lo
-        hi_idx = hi_local + pad_lo + 1
-        actual_span = float(edges[hi_local] - edges[lo_local])
-        if actual_span <= 0.0:
-            raise ValueError(
-                f"range {value_range!r} resolves to invalid aperture span {actual_span}"
-            )
-        return (lo_idx, hi_idx), actual_span
-
     if normal_axis == "x":
-        u_slice, a_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"], "y")
-        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"], "z")
+        u_slice, a_span = _range_to_slice_nu(grid, "y", entry.y_range)
+        v_slice, b_span = _range_to_slice_nu(grid, "z", entry.z_range)
     elif normal_axis == "y":
-        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"], "x")
-        v_slice, b_span = _range_to_slice_nu(entry.z_range, grid.dz, grid.nz, *pads_lo_hi["z"], "z")
+        u_slice, a_span = _range_to_slice_nu(grid, "x", entry.x_range)
+        v_slice, b_span = _range_to_slice_nu(grid, "z", entry.z_range)
     else:
-        u_slice, a_span = _range_to_slice_nu(entry.x_range, grid.dx_arr, grid.nx, *pads_lo_hi["x"], "x")
-        v_slice, b_span = _range_to_slice_nu(entry.y_range, grid.dy_arr, grid.ny, *pads_lo_hi["y"], "y")
+        u_slice, a_span = _range_to_slice_nu(grid, "x", entry.x_range)
+        v_slice, b_span = _range_to_slice_nu(grid, "y", entry.y_range)
 
     # NODE span -> CELL span, same conversion and same reason as the uniform
     # builder (issue #868): ``_range_to_slice_nu`` reports the aperture as
@@ -557,7 +569,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         d_axis_np = np.asarray(grid.dy_arr)
     else:
         d_axis_np = np.asarray(grid.dz)
-    _pad_lo_axis, _pad_hi_axis = pads_lo_hi[normal_axis]
+    _pad_lo_axis = getattr(grid, f"pad_{normal_axis}_lo")
+    _pad_hi_axis = getattr(grid, f"pad_{normal_axis}_hi")
     _interior = interior_cells(d_axis_np, _pad_lo_axis, _pad_hi_axis)
     _edges_axis = np.insert(np.cumsum(_interior), 0, 0.0)
     _local_axis = max(0, min(x_index - _pad_lo_axis, len(_edges_axis) - 1))
@@ -717,7 +730,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         design_box=None,
                         lane: str = "run_nonuniform",
                         stop_fn=None,
-                        stop_interval: int = 250):
+                        stop_interval: int = 250,
+                        conformal_pec=None):
     """Run simulation on non-uniform grid with graded dz.
 
     Parameters
@@ -802,6 +816,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     -------
     Result
     """
+    if (lane == "run_nonuniform" and compute_s_params is not False
+            and any(p.impedance != 0.0 and p.extent is not None for p in sim._ports)):
+        from rfx.runners._admission import refuse_plain_sources_s_matrix
+        refuse_plain_sources_s_matrix(sim, main_record=True)
+
     # every single-device non-uniform solve (run AND forward) enters here
     from rfx.sources.tfsf import _refuse_extended_tfsf
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
@@ -907,9 +926,16 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _sheet_specs: list = []
     _pec_sheets: list = []
     _pec_wires: list = []
+    _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
     materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(
         sim, grid, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
-        pec_wires=_pec_wires)
+        pec_wires=_pec_wires, geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
+    from rfx.realized_geometry import record_from_assembly
+    geometry_record = (record_from_assembly(
+        sim, grid, materials, pec_mask, _pec_sheets, _pec_wires,
+        _geometry_masks, _assembly_entries, lane="run_nonuniform")
+        if lane == "run_nonuniform" else None)
+    del _geometry_masks, _assembly_entries
     if getattr(sim, "_interface_eps", "sampled") == "dual_average" and (
             debye_spec is not None or lorentz_spec is not None):
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
@@ -1024,6 +1050,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                                wires=_pec_wires)
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
 
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(sim, grid)
+
     # ── Subpixel smoothing on non-uniform mesh ─────────────────────────
     # Builds Kottke tensor-averaged ε per E-component using per-axis
     # cell-size arrays. Only the non-dispersive scan branch consumes
@@ -1077,6 +1107,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     sources = []
     probes = []
     wire_port_specs = []
+    lumped_port_specs = []
 
     # Domain extents (for auto-detecting port direction).
     dom_lx = float(sim._domain[0])
@@ -1228,6 +1259,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 c for c, live in zip(_cells_ijk, live_flags) if live)
             mid_cell = list(_live_cells[len(_live_cells) // 2])
 
+            if pe.radius is not None:
+                from rfx.sources.wire_radius import stamp_wire_radius
+                materials = stamp_wire_radius(
+                    grid, materials, pe.component, pe.radius, _live_cells)
+                materials_drive = stamp_wire_radius(
+                    grid, materials_drive, pe.component, pe.radius, _live_cells)
+
             if pe.excite:
                 for cell_ijk, live in zip(_cells_ijk, live_flags):
                     # Dead extent cells get no source (issue #318).
@@ -1313,6 +1351,25 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     grid, idx, pe.component, pe.waveform, sizing_n, materials_drive)
                 sources.append(src)
 
+            # Explicit bins opt lumped ports into the same V/I accumulators
+            # as a one-cell wire port (#1410). Graded forward returns a
+            # driven-column matrix (n, n, nf); uniform lumped forward
+            # returns per-port diagonals (n, nf), squeezed for one port.
+            # Leave the historical default (wire ports only) unchanged.
+            if lane == "fwd_nonuniform" and s_param_freqs is not None:
+                lumped_port_specs.append({
+                    'mid_i': i, 'mid_j': j, 'mid_k': k,
+                    'component': pe.component,
+                    'impedance': pe.impedance,
+                    'excite': bool(pe.excite),
+                    'direction': pe.direction or _auto_direction(pe.position),
+                    'live_cells': ((i, j, k),),
+                    'n_live': 1,
+                })
+
+    # Preserve wire indices when explicit bins also include lumped ports.
+    wire_port_specs.extend(lumped_port_specs)
+
     for pe in sim._probes:
         idx = pos_to_nu_index(grid, pe.position)
         probes.append((*idx, pe.component))
@@ -1356,6 +1413,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     flux_monitor_objs = []
     if getattr(sim, "_flux_monitors", None):
         from rfx.probes.probes import init_flux_monitor
+        from rfx.boundaries.pmc import magnetic_image_faces
         axis_to_index = {"x": 0, "y": 1, "z": 2}
         # Per-axis tangential cell-size arrays for dA.
         _d_arr = {
@@ -1395,6 +1453,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     dft_window=getattr(pe, "dft_window", "rect"),
                     dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
                     lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
+                    pmc_faces=magnetic_image_faces(sim._boundary_spec.pmc_faces(),
+                                                   (grid.nx, grid.ny, grid.nz)), staggered_area=True,
                 )
             )
 
@@ -1473,6 +1533,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     wg_flux_monitors = []
     if attach_waveguide_flux and waveguide_port_cfgs:
         from rfx.probes.probes import init_flux_monitor
+        from rfx.boundaries.pmc import magnetic_image_faces
         _axis_idx = {"x": 0, "y": 1, "z": 2}
         _tang_arrs = {
             0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
@@ -1493,6 +1554,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     dft_total_steps=sizing_n,
                     lo1=cfg.u_lo, hi1=cfg.u_hi,
                     lo2=cfg.v_lo, hi2=cfg.v_hi,
+                    pmc_faces=magnetic_image_faces(sim._boundary_spec.pmc_faces(),
+                                                   (grid.nx, grid.ny, grid.nz)), staggered_area=True,
                 )
             )
 
@@ -1548,34 +1611,19 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     ntff_box = None
     ntff_data_init = None
     if sim._ntff is not None:
-        from rfx.farfield import (
-            NTFFBox, init_ntff_data, with_face_centre_collocation,
-        )
+        from rfx.farfield import NTFFBox, init_ntff_data
         corner_lo, corner_hi, ntff_freqs = sim._ntff
         lo_idx = pos_to_nu_index(grid, corner_lo)
         hi_idx = pos_to_nu_index(grid, corner_hi)
-        # Per-face CPML depths must come from THIS grid's pads. A
-        # non-uniform grid carries no `face_layers`, so both the previous
-        # direct construction and NTFFBox.from_grid fall back to the scalar
-        # `cpml_layers` on every face — wrong whenever the pads are
-        # asymmetric, which they are for any non-absorbing face. Measured:
-        # a z_lo PEC face gives pad_z_lo = 0 while the scalar is 6, so
-        # every NTFF face coordinate was displaced by six cells in z, and
-        # the pattern came back with no warning (#743).
-        ntff_box = NTFFBox(
+        # Share realized padding and graded face-centre weights with the
+        # uniform and RCS constructors, including zero-cell PEC/PMC faces.
+        ntff_box = NTFFBox.from_grid(
+            grid,
             i_lo=lo_idx[0], i_hi=hi_idx[0],
             j_lo=lo_idx[1], j_hi=hi_idx[1],
             k_lo=lo_idx[2], k_hi=hi_idx[2],
             freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-            cpml_lo_x=int(grid.pad_x_lo),
-            cpml_lo_y=int(grid.pad_y_lo),
-            cpml_lo_z=int(grid.pad_z_lo),
         )
-        # Accumulate at the centre of each face cell (second-order surface
-        # integral). The half-cell interpolation weights for the tangential
-        # H come from this grid's own cell widths, so a graded axis gets the
-        # right pair instead of a flat 1/2.
-        ntff_box = with_face_centre_collocation(ntff_box, grid)
         ntff_data_init = init_ntff_data(ntff_box)
 
     # In-loop block current moments (rfx.current_moments), realized against
@@ -1627,7 +1675,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, lane)
+    admit(sim, lane, run_args={"conformal_pec": conformal_pec,
+                               "compute_s_params": compute_s_params})
 
     _shared_run_kwargs = dict(
         design_box=design_box,
@@ -1874,6 +1923,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         )
 
     return Result(
+        realized_geometry=geometry_record,
         state=r["state"],
         time_series=r["time_series"],
         s_params=s_params,

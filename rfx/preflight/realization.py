@@ -157,7 +157,8 @@ class _RealizedPEC:
     """
 
     def __init__(self, *, lane, grid, materials, pec_mask, sheets, wires,
-                 periodic, sheet_specs=()):
+                 periodic, sheet_specs=(), geometry_masks=()):
+        self.geometry_masks = dict(geometry_masks)
         self.lane = lane
         self.grid = grid
         self.materials = materials
@@ -272,7 +273,7 @@ class _EntryRealization:
             if self.kind == "volume":
                 centres = cell_centres_from_nodes(coords, ctx.cell_sizes)
                 cells = interior_lattice_mask(
-                    pec_volume_cell_mask(self.solved_shape, centres), ctx.grid,
+                    pec_volume_cell_mask(self.solved_shape, centres, ctx.cell_sizes, grid=ctx.grid), ctx.grid,
                     cell_axes=(True, True, True))
                 if not cells.any():
                     return None
@@ -280,7 +281,7 @@ class _EntryRealization:
             elif self.kind == "sheet":
                 sp = sheet_spec_from_shape(
                     self.solved_shape, coords, ctx.cell_sizes,
-                    normal_axis=int(self.sheet.normal_axis), name=self.name)
+                    normal_axis=int(self.sheet.normal_axis), name=self.name, grid=ctx.grid)
                 sp = replace(sp, footprint=interior_lattice_mask(sp.footprint, ctx.grid))
                 edges = _realized_edges_np(None, [sp], (), ctx.periodic, shape)
             else:
@@ -331,6 +332,7 @@ class _CampaignStaticsContext:
         self._realized = None
         self._entries = None
         self.assembly_error: str | None = None
+        self._assembly_exception: Exception | None = None
         self._build()
 
     def _build(self) -> None:
@@ -391,16 +393,21 @@ class _CampaignStaticsContext:
     # The realized conductor set (whole model) and per-entry realization
     # ------------------------------------------------------------------
 
-    def realized(self):
+    def realized(self, *, strict=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         #931 sheet/wire collectors), once; ``None`` when the assembly
-        raised (``assembly_error`` says why)."""
+        raised (``assembly_error`` says why). Strict execution/build readers
+        re-raise the original exception, including after a diagnostic read.
+        """
         if self._realized is None and self.assembly_error is None:
             try:
                 self._realized = self.sim._assemble_realized(
                     self.grid, nonuniform=(self.lane == "nonuniform"))
             except self._NARROW_EXCS as exc:
                 self.assembly_error = f"{type(exc).__name__}: {exc}"
+                self._assembly_exception = exc
+        if strict and self._assembly_exception is not None:
+            raise self._assembly_exception
         return self._realized
 
     def assembled(self):
@@ -459,6 +466,8 @@ class _CampaignStaticsContext:
                 return None, None
             a = int(sheet.normal_axis)
             mid = 0.5 * (float(lo[a]) + float(hi[a]))
+            from rfx._periodic import plane_coordinate
+            mid = plane_coordinate(self.grid, a, mid)
             nodes = self.nodes[a]
             d_local = _rasterize_local_cell(nodes, self.cell_sizes[a], mid)
             k = int(sheet.plane)
@@ -479,11 +488,12 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
-                solved = continued_conductor_shape(sim, self.grid, entry.shape, entry=entry)
+                solved = continued_conductor_shape(
+                    sim, self.grid, entry.shape, entry=entry)
                 cells, sheet, wire = classify_pec_entry(
                     solved,
                     self.coords, self.centres, self.cell_sizes,
-                    name=entry.material_name)
+                    name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 # A shape that cannot be rasterized is a FINDING, not a
                 # crash: preflight's job is to report. One unplaceable
@@ -518,14 +528,16 @@ class _CampaignStaticsContext:
             if not getattr(tc, "is_pec", False):
                 out.append(_EntryRealization(
                     label=label, name=label, shape=tc.shape, kind="lossy",
-                    lo=lo, hi=hi))
+                    lo=lo, hi=hi, solved_shape=continued_conductor_shape(
+                        sim, self.grid, tc.shape, entry=tc)))
                 continue
             try:
-                solved = continued_conductor_shape(sim, self.grid, tc.shape, entry=tc)
+                solved = continued_conductor_shape(
+                    sim, self.grid, tc.shape, entry=tc)
                 sheet = sheet_spec_from_shape(
                     solved,
                     self.coords, self.cell_sizes, name=label,
-                    lane=self.lane or "", refuse_thick=True)
+                    lane=self.lane or "", refuse_thick=True, grid=self.grid)
             except ValueError as exc:
                 out.append(_EntryRealization(
                     label=label, name=label, shape=tc.shape, kind="refused",
@@ -644,18 +656,20 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
     sheets: list = []
     wires: list = []
     sheet_specs: list = []
+    geometry_masks: list = []
     if nonuniform:
         mats, _, _, pec_mask = self._assemble_materials_nu(
             grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires)
+            pec_wires=wires, geometry_masks=geometry_masks)
     else:
         mats, _, _, pec_mask, _, _, _ = self._assemble_materials(
             grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires)
+            pec_wires=wires, geometry_masks=geometry_masks)
     return _RealizedPEC(
         lane="nonuniform" if nonuniform else "uniform", grid=grid,
         materials=mats, pec_mask=pec_mask, sheets=sheets, wires=wires,
-        periodic=self._periodic_flags(), sheet_specs=sheet_specs)
+        periodic=self._periodic_flags(), sheet_specs=sheet_specs,
+        geometry_masks=geometry_masks)
 
 def _port_realized_edges(self, grid):
     """:class:`_RealizedPEC` for the uniform lane, or ``None``.
@@ -725,11 +739,13 @@ def _campaign_ctx(self):
         tuple(id(e) for e in sim._geometry),
         tuple(id(tc) for tc in getattr(sim, "_thin_conductors", ())),
         tuple(id(ps) for ps in getattr(sim, "_pinned_sheets", ())),
+        *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
+          ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")),
         id(sim._dx), id(sim._dx_profile), id(sim._dy_profile),
         id(sim._dz_profile), tuple(sim._domain),
         getattr(sim, "_periodic_axes", None), sim._cpml_layers,
         id(getattr(sim, "_refinement", None)),
-        tuple(sorted(sim._materials)),
+        tuple(sorted((name, id(spec)) for name, spec in sim._materials.items())),
     )
     cached = getattr(self, "_pf_campaign_ctx", None)
     if cached is not None and cached[0] == key:

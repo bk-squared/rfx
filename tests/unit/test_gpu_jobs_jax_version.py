@@ -17,6 +17,8 @@ job's run block.
 import importlib.util
 import re
 import string
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -90,15 +92,17 @@ def test_gpu_job_runs_jax_0102_in_a_python_311_venv(path):
     assert not stray, f"{path}: run pytest as \"$PY\" -m pytest: {stray}"
 
 
-def test_multinode_launcher_defaults_to_jax_062():
-    """The multi-node probe still installs over the image's python 3.10, where 0.10.2 cannot go."""
-    requirements = pytest.importorskip("packaging.requirements")
-    source = (ROOT / "scripts/diagnostics/prepare_multinode_launch.py").read_text(encoding="utf-8")
-    match = re.search(r'"--pip-jax", default="([^"]*)"', source)
-    assert match, "the launcher's --pip-jax default is not a literal string"
-    requirement = requirements.Requirement(match[1])
-    assert requirement.name == "jax" and "cuda12" in requirement.extras
-    releases = ["0.4.33", "0.4.35", "0.4.36", "0.6.1", "0.6.2", "0.7.0"]
-    assert list(requirement.specifier.filter(releases)) == ["0.6.2"], match[1]
-    # The VESSL experiment CLI splits each hyperparameter on every '='.
-    assert "=" not in match[1]
+@pytest.mark.parametrize("pip_jax", [None, "", "jax[cuda12]>0.10.1,<0.10.3"])
+def test_multinode_launcher_refuses_python_310_jobs(tmp_path, pip_jax):
+    output = tmp_path / "rendered"
+    args = [sys.executable, str(ROOT / "scripts/diagnostics/prepare_multinode_launch.py"),
+            "--tooling-sha", "a" * 40, "--mirror", str(tmp_path / "mirror"),
+            "--artifact-root", str(tmp_path / "artifacts"), "--output", str(output)]
+    if pip_jax is not None:
+        args.extend(["--pip-jax", pip_jax])
+    result = subprocess.run(args, capture_output=True, text=True, check=False)
+    assert result.returncode == 2
+    for message in ("#1429", "Python 3.10", "Python >= 3.11", "JAX >= 0.10.2",
+                    "scripts/vessl_gpu_suite.yaml", "uv venv", "$PY"):
+        assert message in result.stderr
+    assert not output.exists(), "refuse before writing any launch artifacts"

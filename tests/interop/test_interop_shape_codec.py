@@ -391,12 +391,12 @@ def test_a_polyline_wire_round_trips_on_both_sides_of_the_filament_threshold():
 
     ``PolylineWire`` is the one primitive whose OWNERSHIP KIND depends on a
     parameter rather than on the shape's degeneracy: a radius of at least
-    half the local cell is a centre-sampled VOLUME tube, and anything below
-    that is a FILAMENT — the E edges of the axis-aligned lattice path
-    joining the nearest nodes of consecutive vertices. The codec carries
+    half the local cell is a centre-sampled VOLUME tube. Zero is a legacy
+    FILAMENT — the E edges of the axis-aligned lattice path — while positive
+    subcell radii refuse realization. The codec carries
     ``radius`` as a plain float and has no idea which side of the line a
-    given wire falls on, so the round trip is where a silent kind change
-    would hide: serialize a 0.4-cell wire, rebuild it, and get a tube.
+    given wire falls on, so a round trip must preserve both ownership and
+    refusal rather than silently changing a radius.
 
     ``test_scene_artifact_really_does_lose_what_the_codec_keeps`` above
     already round-trips a wire at exactly the threshold (radius 5e-5 at
@@ -426,10 +426,12 @@ def test_a_polyline_wire_round_trips_on_both_sides_of_the_filament_threshold():
             sim.add(rebuilt, material="pec")
             return realized(sim)
 
-    filament = _rebuild_and_realize(0.4 * dx / 2)
+    with pytest.raises(ValueError, match="resolve the wire as a volume"):
+        _rebuild_and_realize(0.4 * dx / 2)
+    filament = _rebuild_and_realize(0.)
     assert filament.pec_mask is None or not bool(
         np.asarray(filament.pec_mask).any()), (
-        "a sub-half-cell wire is a filament: it owns no cell")
+        "a legacy radius=0 filament owns no cell")
     assert filament.wires and not filament.sheets
     mx, my, mz = (np.asarray(m) for m in filament.edge_masks)
     assert int(mx.sum()) == len(points) - 1, int(mx.sum())

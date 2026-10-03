@@ -63,7 +63,8 @@ def _build_msl_sim() -> Simulation:
     ly = _MSL_W_TRACE + 2 * (2 * _MSL_H_SUB + 8 * _MSL_DX)
     lz = _MSL_H_SUB + 0.5e-3  # thin air layer above substrate
 
-    sim = Simulation(
+    # #1138: thin_conductor[0] y solved +8.656 % off; this test checks msl s matrix ad end to end.
+    sim = Simulation(snap="declared",
         freq_max=_MSL_F_MAX,
         domain=(lx, ly, lz),
         dx=_MSL_DX,

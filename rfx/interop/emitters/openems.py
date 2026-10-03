@@ -75,7 +75,7 @@ docs/design_notes/geometry_setup_interop.md):
         exponential blow-up on a dielectric).
 ``D5``  Off-grid ports are silently dropped by openEMS ("Unused primitive",
         ``uf_inc == 0``, all-NaN S).  Port coordinates are snapped exactly the
-        way ``Grid.position_to_index`` snaps them (``round(pos/dx)``), so they
+        way ``Grid.position_to_index`` snaps them (``nearest_uniform_index(pos/dx)``), so they
         land on mesh lines by construction; the emitter then *verifies* it and
         the generated script carries the runtime excitation guard.
 ``D6``  ``priority`` has no rfx counterpart and is synthesised from paint
@@ -117,19 +117,10 @@ docs/design_notes/geometry_setup_interop.md):
         numpy is 2.x and ``openEMS.ports.MSLPort`` itself uses ``np.int``.
 ``D16`` Metal thickness is taken verbatim from the rfx shape; the emitter does
         not choose between a sheet and a one-cell box.
-``D17`` PMC-face wall position (issue #722 ninth surface, decided
-        2026-08-28). rfx realizes a PMC face's H_tan wall a half-cell
-        (0.5*dx) INSIDE the declared mesh line (``rfx/boundaries/pmc.py``,
-        pinned by ``tests/unit/boundaries/test_boundary_pmc_hi_faces.py``), while this
-        emitter maps a ``pmc`` face straight to openEMS's ``'PMC'`` string
-        (``pad=0``) sitting ON the emitted mesh line — see the ``token ==
-        "pmc"`` branch above. An rfx-vs-openEMS comparison on a PMC-faced
-        structure therefore compares rfx's realized wall (declared - dx/2
-        per PMC face) against openEMS's wall at the declared mesh line
-        unless the rfx side is declared REALIZE-DECLARED (plane + dx/2 per
-        PMC face). Not
-        translated here: this is a projection-fidelity NOTE about a
-        difference the emitter faithfully carries over, not a refusal.
+``D17`` PMC-face wall position (#1221 B3b). Single-device Yee paths center
+        the odd tangential-H image on the E-node mesh plane. The emitter
+        maps a ``pmc`` face to openEMS's ``'PMC'`` on that same mesh line;
+        no half-cell compensation is needed.
 
 Status: **provisional**.
 """
@@ -168,7 +159,7 @@ PEC_SIGMA_THRESHOLD = 1.0e6
 _ABSORBING = ("cpml", "upml")
 
 #: Tolerance for "this coordinate is already a mesh line", relative to ``dx``.
-#: Snapped coordinates are ``round(pos/dx) * dx``, so the residual is float
+#: Snapped coordinates are ``nearest_uniform_index(pos/dx) * dx``, so the residual is float
 #: noise (~1e-16 relative); anything larger means a genuine off-grid feature.
 _LINE_TOL_REL = 1.0e-9
 
@@ -815,9 +806,10 @@ def _plan_ports(
     direction_drops: list[str] = []
 
     def snap(value_m: float, label: str) -> float:
-        cells = int(round(value_m / dx_m))
+        from rfx._grid_metric import nearest_uniform_index
+        cells = nearest_uniform_index(value_m / dx_m)
         snapped = cells * dx_m
-        # Grid.position_to_index uses round(pos/dx); reporting the shift makes
+        # Grid.position_to_index uses nearest_uniform_index(pos/dx); reporting the shift makes
         # the rasterisation visible rather than silent.
         if abs(snapped - value_m) > _LINE_TOL_REL * dx_m:
             snap_shifts.append(
@@ -829,6 +821,12 @@ def _plan_ports(
     for index, entry in enumerate(lumped):
         payload = _require_mapping(entry, f"excitations.lumped_ports[{index}]")
         what = f"excitations.lumped_ports[{index}]"
+        if payload.get("radius") is not None:
+            raise _refuse(
+                f"{what} radius={payload['radius']!r}",
+                "the declared-radius wire self-field model has no openEMS "
+                "projection; resolve the pin geometrically instead",
+            )
         component = str(_get(payload, "component", what))
         if component not in _COMPONENT_AXIS:
             raise _refuse(
@@ -1084,7 +1082,7 @@ def _plan_ports(
     if snap_shifts:
         notes.append(
             "port coordinates were snapped to the mesh the way "
-            "Grid.position_to_index snaps them (round(pos/dx)), so the emitted "
+            "Grid.position_to_index snaps them (nearest_uniform_index(pos/dx)), so the emitted "
             "port sits where rfx rasterises it, not at the metres the user "
             "typed: " + "; ".join(snap_shifts)
         )
@@ -1378,7 +1376,7 @@ def plan_openems_projection(
         f"(SetDeltaUnit({UNIT_M!r}))."
     )
     notes.append(
-        "[D5] port edge coordinates are snapped with round(pos/dx), the same "
+        "[D5] port edge coordinates are snapped with nearest_uniform_index(pos/dx), the same "
         "rule Grid.position_to_index uses, so every port edge coincides with a "
         "mesh line — an off-grid port is silently dropped by openEMS ('Unused "
         "primitive', uf_inc=0, all-NaN S). Geometry faces are deliberately NOT "

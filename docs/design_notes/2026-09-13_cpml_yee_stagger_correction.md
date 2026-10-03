@@ -1,5 +1,7 @@
 # CPML coefficient placement on Yee nodes
 
+> Documentation update (2026-10-03): The high-face E-profile limitation recorded below was corrected by #1012: the distributed nonuniform lane reads the actual high-face profiles. The measurement below describes the earlier implementation and does not establish current support for other boundary combinations.
+
 Ported from research branch commit 7b6c33d5 (2026-09-13, omo pod lane,
 `accel/pod-distributed-usable-20260912`). The two tests were relocated into
 main's layout (`tests/unit/boundaries/test_cpml_yee_stagger.py`,

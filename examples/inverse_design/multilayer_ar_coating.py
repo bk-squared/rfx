@@ -45,6 +45,8 @@ both reach the same cost.  The cost-level agreement is the meaningful
 cross-validation; the per-layer εr is not.
 
 Run: python examples/inverse_design/multilayer_ar_coating.py
+Gradient-only CPU smoke: JAX_PLATFORMS=cpu python -B \
+    examples/inverse_design/multilayer_ar_coating.py --gradient-witness-only
 """
 
 from __future__ import annotations
@@ -63,7 +65,7 @@ import jax
 import jax.numpy as jnp
 from scipy.optimize import minimize as _scimin
 
-from rfx import Simulation, GaussianPulse
+from rfx import Simulation, GaussianPulse, gradient_record_length_witness
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -128,7 +130,7 @@ def _build_simulation() -> Simulation:
 
 # Build once to read grid metadata
 _SIM_PROBE = _build_simulation()
-_GRID = _SIM_PROBE._build_grid()
+_GRID = _SIM_PROBE.freeze_mesh()
 NX = _GRID.shape[0]
 DT = float(_GRID.dt)
 N_STEPS = int(round(N_PERIODS / F0 / DT))
@@ -246,8 +248,46 @@ def tmm_band_cost(layer_eps: np.ndarray, eps_sub: float = EPS_SUB) -> float:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+def record_length_check():
+    """Print the coating reflection gradient's record-length witness.
+
+    Uses the existing smallest transverse domain (one cell per periodic
+    axis). The tolerance is a demonstration choice, not an accuracy claim.
+    Both records use the same frequency samples and their own vacuum reference.
+    """
+    sim_ref = _build_simulation()
+    sim_design = _build_simulation()
+    nfft = int(2 ** np.ceil(np.log2(N_STEPS)))
+    bins = np.fft.rfftfreq(nfft, d=DT)
+    freqs = jnp.asarray(bins[(bins >= F_LO) & (bins <= F_HI)])
+
+    def objective(layer_eps, n_steps):
+        incident = sim_ref.forward(
+            eps_override=_vacuum_eps_array(), n_steps=n_steps,
+            skip_preflight=True).time_series[:, 0]
+        total = sim_design.forward(
+            eps_override=_render_design_eps(layer_eps), n_steps=n_steps,
+            skip_preflight=True).time_series[:, 0]
+        phase = jnp.exp(-2j * jnp.pi * freqs[:, None]
+                        * (jnp.arange(n_steps) * DT)[None, :])
+        inc = phase @ incident
+        scattered = phase @ (total - incident)
+        return jnp.mean((jnp.abs(scattered) / (jnp.abs(inc) + 1e-30)) ** 2)
+
+    layer_eps = jnp.asarray([
+        EPS_SUB ** ((i + 1) / (N_LAYERS + 1)) for i in range(N_LAYERS)
+    ], dtype=jnp.float32)
+    witness = gradient_record_length_witness(
+        objective, layer_eps, N_STEPS, tol=0.05)
+    print(f"record-length witness: n_steps={N_STEPS}, "
+          f"passed={witness.passed}, gradient change={witness.worst:.6g}, "
+          f"value change={witness.worst_value_rel_change:.6g}")
+    return witness
+
+
 def main() -> int:
     _print_setup()
+    record_length_check()
 
     # ---- TMM optimum ------------------------------------------------------
     print("\n[TMM] L-BFGS-B optimisation against analytic R(f)...")
@@ -507,4 +547,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    if "--gradient-witness-only" in sys.argv:
+        _print_setup()
+        record_length_check()
+    else:
+        sys.exit(main())

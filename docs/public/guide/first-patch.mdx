@@ -55,8 +55,9 @@ sizes from bottom to top, so you can use fine cells only where you need them:
 
 ```python
 from rfx import Box, GaussianPulse, Simulation
+from rfx.mesh_edges import edge_aware_profiles
 
-dx = 1.0e-3          # x and y cell size
+dx = 1.0e-3          # nominal x and y cell size
 dz_sub = h / 6       # 6 cells through the substrate
 
 # Grade 1.0 mm -> 0.25 mm with each neighbour ratio below 1.3.
@@ -69,11 +70,27 @@ z_sub_lo = float(lower_air.sum())     # substrate bottom
 z_sub_hi = z_sub_lo + h               # substrate top
 
 dom_x, dom_y = 0.100, 0.095
+gx_lo, gx_hi = 0.020, 0.080
+gy_lo, gy_hi = 0.020, 0.075
+px0, px1 = dom_x / 2 - L / 2, dom_x / 2 + L / 2
+py0, py1 = dom_y / 2 - W / 2, dom_y / 2 + W / 2
+ground = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_lo))
+substrate = Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi))
+patch = Box((px0, py0, z_sub_hi), (px1, py1, z_sub_hi))
+feed_x, feed_y = px0 + 8e-3, dom_y / 2
+probe_x, probe_y = dom_x / 2 + 5e-3, dom_y / 2 + 5e-3
+profiles = edge_aware_profiles(
+    (dom_x, dom_y, float(dz_profile.sum())), dx,
+    sheets=[ground, patch], solids=[substrate],
+    faces={"x": [feed_x, probe_x], "y": [feed_y, probe_y]},
+    axes="xy",
+)
 sim = Simulation(
     freq_max=4e9,
     domain=(dom_x, dom_y, 0.0),   # z size comes from sum(dz_profile)
     dx=dx,
     dz_profile=dz_profile,
+    **profiles,
     boundary="cpml",
     cpml_layers=8,
 )
@@ -97,25 +114,16 @@ of zero thickness on one grid plane (see [Core Concepts](/rfx/guide/concepts/)):
 ```python
 sim.add_material("fr4_design", eps_r=eps_r, sigma=sigma_fr4)
 
-gx_lo, gx_hi = 0.020, 0.080
-gy_lo, gy_hi = 0.020, 0.075
-sim.add(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_hi)),
-        material="fr4_design")
-
-# Ground: zero thickness at the substrate bottom.
-sim.add_thin_conductor(Box((gx_lo, gy_lo, z_sub_lo), (gx_hi, gy_hi, z_sub_lo)))
-
-# Patch: zero thickness at the substrate top, centred on the board.
-px0, px1 = dom_x / 2 - L / 2, dom_x / 2 + L / 2
-py0, py1 = dom_y / 2 - W / 2, dom_y / 2 + W / 2
-sim.add_thin_conductor(Box((px0, py0, z_sub_hi), (px1, py1, z_sub_hi)))
+sim.add(substrate, material="fr4_design")
+sim.add_thin_conductor(ground)
+sim.add_thin_conductor(patch)
 
 # A soft source under the patch, 8 mm in from the edge, and an offset probe.
 src_z = z_sub_lo + 2.5 * dz_sub
-sim.add_source((px0 + 8e-3, dom_y / 2, src_z), "ez",
+sim.add_source((feed_x, feed_y, src_z), "ez",
                waveform=GaussianPulse(f0=f0, bandwidth=0.8),
                amplitude_kind="current")
-sim.add_probe((dom_x / 2 + 5e-3, dom_y / 2 + 5e-3, src_z), "ez")
+sim.add_probe((probe_x, probe_y, src_z), "ez")
 
 report = sim.preflight()
 print(report.format())
@@ -130,20 +138,18 @@ Q or efficiency, pass `surface_impedance_f0=f0`. The sheet is then modelled as
 a resistive sheet with copper's surface resistance at `f0`, on the same
 footprint, instead of as PEC.
 
-Preflight then gives two warnings about the patch size:
+The in-plane `edge_aware_profiles` mesh registers the ground and patch to
+their solved edges and the feed and probe to grid nodes. This keeps the drawn
+patch dimensions without rounding them to a uniform lattice. Read
+`sim.fidelity_report()` and the preflight findings to check that realization;
+registration does not replace a mesh-convergence study.
 
-- `off_lattice_design_edges`: L and W are not whole numbers of 1 mm cells, so
-  each patch edge lands on the nearest grid plane, up to half a cell (here
-  495 µm) from where you drew it.
-- `sheet_effective_size`: the size the solver effectively sees differs from
-  the drawn size by more than 1 %. For the patch length it reports 29.46 mm
-  drawn, 28 mm covered by grid nodes, and about 28.7 mm solved (−2.6 %). A
-  shorter patch resonates higher, so the solved resonance moves up from what
-  the drawn size implies.
-
-Don't round L and W to the grid to silence these warnings, because that changes
-the antenna. Refine `dx` so the error shrinks, and include it in your
-convergence study.
+This edge-aware in-plane grading raises four `nu_grading_reaches_absorber`
+advisories because the interior cells adjacent to the x/y absorber faces are
+not uniform. The grading changes the discrete medium normal to the boundary
+where the absorber starts, leaving no interior runway to separate the
+transition’s reflection from the absorber’s, so this example is outside the
+validated multi-band accuracy envelope.
 
 Treat preflight warnings as part of your result. Use `preflight(strict=True)`
 only for models you expect to have no findings at all, because strict mode turns

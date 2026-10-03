@@ -45,7 +45,8 @@ H_SUB = 0.000794
 
 def _sim_with_feed_and_patch(patch_x0=0.012466, patch_x1=0.015006,
                              **port_kw):
-    sim = Simulation(freq_max=20e9, domain=DOMAIN, dx=DX,
+    # #1138: geometry[2] x solved -2.447 % (default) / -4.262 % (short feed), y -3.753 % off the domain-clipped drawing; this test checks driver applies the solve end to end.
+    sim = Simulation(snap="declared", freq_max=20e9, domain=DOMAIN, dx=DX,
                      boundary="cpml", cpml_layers=8)
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (DOMAIN[0], DOMAIN[1], H_SUB)), material="sub")

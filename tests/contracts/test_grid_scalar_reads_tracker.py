@@ -122,7 +122,6 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/boundaries/upml.py": 1,
     "rfx/checkpoint.py": 2,
     "rfx/farfield.py": 6,
-    "rfx/fidelity.py": 1,
     "rfx/geometry/conformal.py": 2,
     "rfx/geometry/csg.py": 1,
     "rfx/geometry/rasterize_grid.py": 4,
@@ -147,7 +146,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/runners/subgridded.py": 1,
     "rfx/runners/uniform.py": 6,
     "rfx/simulation.py": 6,
-    "rfx/sources/coaxial_port.py": 15,  # 27 until #1212 removed its lane helpers
+    "rfx/sources/coaxial_port.py": 14,  # #1356 replaces two radial-grid reads with one Laplace spacing
     "rfx/sources/msl_eigenmode.py": 2,
     "rfx/sources/msl_port.py": 5,
     "rfx/sources/sources.py": 3,

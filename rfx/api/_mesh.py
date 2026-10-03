@@ -168,8 +168,8 @@ class _MeshMixin:
         without the caller passing a profile.
 
         * ``2d_tmz`` on ONE z cell between PEC walls is solved as that 3-D
-          box, whose record differs from the uniform lane's 2-D solve of the
-          same declaration by 0.34 of the probe peak (#1340). One declaration
+          box, with a different timestep from the uniform lane's 2-D solve
+          (#1340); equal step counts compare different physical times. One declaration
           cannot mean both, so it is refused, and the message names the 3-D
           box to declare instead (``mode="3d"``, one cell, PEC z walls). On a
           thicker z stack every amplitude scales with the z cell count.
@@ -229,16 +229,15 @@ class _MeshMixin:
         vertex or PEC sheet declared at the same half-node coordinate.
 
         Wire vertices and sheet planes round a tie to the lower node, and so
-        do point features on the non-uniform lane; on the uniform lane point
-        features round it to the even node until #1342. The preflight finding
+        do point features on both lanes (#1342). The preflight finding
         ``half_node_split`` says the same thing; this is the refusal
         ``skip_preflight=True`` does not bypass, as for #1240. Features are
         paired on their DECLARED coordinates first, so a model with no port,
         source or probe at a conductor's coordinate returns without building
         a grid.
         """
-        from rfx.preflight.ports import half_node_split_findings
-        findings = half_node_split_findings(self)
+        from rfx.preflight.ports import half_node_split_findings, trace_far_end_findings
+        findings = half_node_split_findings(self) + trace_far_end_findings(self)
         if findings:
             raise ValueError(" ".join(findings))
 

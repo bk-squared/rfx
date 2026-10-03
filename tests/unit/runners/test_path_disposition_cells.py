@@ -352,7 +352,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_geometry", "pec_volume"): _plus(lambda s, _: s.add(Box(mm(5, 3, 3), mm(7, 9, 9)), material="pec")),
     ("_geometry", "pec_sheet"): _plus(lambda s, _: s.add(Box(mm(6, 3, 3), mm(6, 9, 9)), material="pec")),
     ("_geometry", "pec_wire"): _plus(lambda s, _: s.add(
-        PolylineWire((mm(6, 6, 3), mm(6, 6, 9)), radius=0.2e-3), material="pec")),
+        PolylineWire((mm(6, 6, 3), mm(6, 6, 9)), radius=0.0), material="pec")),
     ("_thin_conductors", "lossy_sheet"): _plus(lambda s, _: s.add_thin_conductor(
         Box(mm(6, 3, 3), mm(6, 9, 9)), sigma_bulk=1e3, thickness=1e-4)),
     ("_thin_conductors", "pec_sheet"): _plus(lambda s, _: s.add_thin_conductor(
@@ -383,7 +383,9 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_boundary", "cpml"): _boundary({"boundary": "cpml"}, adi_layers=4,
                                      boundary={lane: ("cpml", "adi") for lane in ADI}),
     ("_boundary", "upml"): _boundary({"boundary": "upml"}),
-    ("_pec_faces", "pec_face"): _boundary({"boundary": "cpml", "pec_faces": {"z_lo"}}, cpml_off=True),
+    ("_pec_faces", "pec_face"): _boundary(
+        {"boundary": BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))},
+        cpml_off=True),
     ("_boundary_spec", "pmc_face"): _boundary({"boundary": _PMC_X}, boundary={
         "run_uniform": ("pmc-pec", "run"), "run_nonuniform": ("pmc-pec", "nonuniform"),
         "fwd_uniform": ("pmc-pec", "forward"), "run_distributed": ("pmc-pec", "distributed"),
@@ -429,7 +431,10 @@ def _run(sim, lane, feature, *, entry=None):
         if entry.startswith("run_"):
             if entry == "run_distributed":
                 kwargs["devices"] = _devices()
-            return sim.run(**kwargs, **feature.run_kwargs(entry))
+            # These cells compare field records; S-request cells opt in below.
+            kwargs.update(compute_s_params=False)
+            kwargs.update(feature.run_kwargs(entry))
+            return sim.run(**kwargs)
         kwargs["checkpoint"] = False
         if entry == "fwd_distributed_nu":
             kwargs.update(distributed=True, devices=_devices())
@@ -594,6 +599,11 @@ def _carried(name, feature, lane, *, parity, first_only=False):
         return problems
     if lane in feature.boundary:
         departures = _boundary_departures(*feature.boundary[lane])
+        if name == "_periodic_axes/periodic":
+            # The periodic row judges the periodic faces. The forward lane's
+            # absorber backing on z remains independently held by the B1
+            # face contract (B3); it is not a periodic-period departure.
+            departures = [d for d in departures if d["code"] in ("d", "e")]
         if departures:
             problems.append(f"test_realized_boundary.py {feature.boundary[lane]} departs: "
                             + "; ".join(f"{d['face']} {d['code']}" for d in departures))
@@ -793,8 +803,9 @@ def test_a_slab_reaching_the_lid_is_refused_in_every_validation_mode(validation)
 
 def _band_wire(lane, x_mm):
     """A graded x mesh of 1 mm cells with a 0.25 mm band over x = 3-4 mm, and
-    a PEC PolylineWire of radius 0.3 mm along z at ``x_mm``: a filament in the
-    1 mm cells (0.3 < 0.5), a volume in the band (0.3 >= 0.125)."""
+    a PEC PolylineWire of radius 0.3 mm along z at ``x_mm``: in the refused
+    filament band in 1 mm cells (0 < 0.3 < 0.5), a volume in the fine
+    band (0.3 >= 0.125)."""
     profile = np.array([1e-3] * 3 + [0.25e-3] * 4 + [1e-3] * 8)
     sim = _simulation(lane, (12, 12, 12), dx_profile=profile)
     sim.add(PolylineWire((mm(x_mm, 6.5, 3), mm(x_mm, 6.5, 9)), radius=0.3e-3), material="pec")
@@ -815,6 +826,10 @@ def test_a_wire_is_judged_by_the_cells_at_its_own_vertices(x_mm, kind):
         sim = _band_wire("run_nonuniform", x_mm)
         grid = sim._build_nonuniform_grid()
         sheets, wires = [], []
+        if kind == "pec_wire":
+            with pytest.raises(ValueError, match="resolve the wire as a volume"):
+                sim._assemble_materials_nu(grid, pec_sheets=sheets, pec_wires=wires)
+            return
         sim._assemble_materials_nu(grid, pec_sheets=sheets, pec_wires=wires)
     assert len(wires) == (1 if kind == "pec_wire" else 0)
     assert A.DETECTORS["_geometry", kind](sim)
@@ -933,6 +948,67 @@ def test_the_rows_detector_fires_on_the_cells_model(attr, feature, lane):
     sim = _build(FEATURES[attr, feature], lane, True)
     assert A.DETECTORS[attr, feature](sim), (
         f"{attr}/{feature} is declared on the {lane} cell's model, but its detector does not see it")
+
+
+def _calculator_declarations():
+    for attr, feature in FEATURES:
+        for calculator in T.CALCULATORS:
+            disposition = T.cell(attr, feature, calculator)
+            if disposition.kind == T.NOT_REACHABLE:
+                continue
+            yield pytest.param(attr, feature, calculator,
+                               id=f"{attr}-{feature}-{calculator}")
+
+
+@pytest.mark.parametrize("attr,feature,calculator", list(_calculator_declarations()))
+def test_calculator_declaration_admission_cell(attr, feature, calculator, monkeypatch):
+    """Exercise the cell on a real declaration, without executing a kernel.
+
+    Public entry wiring and the migrated guard rows are exercised separately
+    in test_calculator_admission.py. Numerical calculator outputs remain in
+    the calculator-specific tests; this check isolates the named input even
+    when the common declaration contains another unsupported source or port.
+    """
+    sim = _build(FEATURES[attr, feature], "fwd_uniform", True)
+    row = (attr, feature)
+    assert A.DETECTORS[row](sim), row
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("admission started lax.scan")
+
+    monkeypatch.setattr(jax.lax, "scan", forbidden)
+    disposition = T.cell(attr, feature, calculator)
+    refused = A.refused(sim, calculator)
+    if disposition.kind == T.REFUSES:
+        assert row in refused, (calculator, row, refused)
+        with pytest.raises(NotImplementedError) as caught:
+            A.admit(sim, calculator)
+        assert A.ROW_WORDS[row] in str(caught.value)
+    else:
+        assert disposition.kind in (T.CARRIES, T.IGNORABLE)
+        assert row not in refused, (calculator, row, refused)
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason="#1293: vmap's auto-mesh fallback holds the step count while dt changes")
+def test_vmap_auto_mesh_cell_covers_the_requested_time_for_each_value():
+    """The _dx calculator cell remains a carry with a measured duration defect."""
+    from rfx.vmap_sweep import vmap_material_sweep
+
+    def model(eps):
+        sim = Simulation(freq_max=10e9, domain=mm(12, 12, 12), boundary="pec")
+        sim.add_material("diel", eps_r=eps)
+        sim.add(Box(mm(0, 0, 0), mm(12, 12, 4)), material="diel")
+        sim.add_port(mm(4, 6, 6), "ez", impedance=50., waveform=WAVEFORM)
+        sim.add_probe(mm(8, 6, 6), "ez")
+        return sim
+
+    values = (2., 3.)
+    swept = vmap_material_sweep(model(values[0]), "diel.eps_r", values, num_periods=2.)
+    grids = [model(value)._build_grid() for value in values]
+    covered = np.array([swept.time_series.shape[1] * float(grid.dt) for grid in grids])
+    requested = 2. / 10e9
+    assert np.all(covered >= requested), (covered, requested)
 
 
 @pytest.mark.parametrize("mode,name", [(m, n) for m, n in (p.values for p in _relaxed_params())])

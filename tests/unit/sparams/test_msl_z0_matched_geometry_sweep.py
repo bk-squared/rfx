@@ -214,6 +214,8 @@ def test_actual_consumed_plan_guard_rejects_upstream_drift_without_fields(
     monkeypatch,
     mutation,
 ):
+    # #1138: geometry[1] y solved +10 % off; this test checks consumed-plan drift.
+    monkeypatch.setattr(driver, "Simulation", functools.partial(driver.Simulation, snap="declared"))
     import rfx.runners.uniform as uniform
 
     signature = inspect.signature(engine.run)

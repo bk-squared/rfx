@@ -1,5 +1,7 @@
 # Chain-closure contract (v2.0 per-family definition)
 
+> Documentation update (2026-10-03): The dated status table below predates the raw-MSL passivity gate on the reflecting notch DUT in `tests/oracle/test_msl_chain_battery.py`. Read that test and its fixture for the current gate; the table remains a historical inventory.
+
 > The WR-90 inductive iris case was removed on 2026-09-22; the artifacts cited here are at commit e367e7bf.
 
 Status: contract document, the first v1.8 deliverable

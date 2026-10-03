@@ -101,7 +101,7 @@ def _adi_sim(pec=False):
         if pec:
             sim.add(Box((0.002, 0.002, 0.0), (0.004, 0.004, 0.01)),
                     material="pec")
-        sim.add_source((0.01, 0.01, 0.0), "ez")
+        sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
         sim.add_probe((0.012, 0.01, 0.0), "ez")
         return sim
     return _quiet(build)
@@ -397,19 +397,19 @@ CONFORMAL_PATHS = {
     "forward-uniform": (
         lambda: _conformal_cavity(True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True),
-        "Simulation.forward()", "uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "forward-nonuniform": (
         lambda: _conformal_cavity(True, nonuniform=True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True),
-        "Simulation.forward()", "non-uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "non-uniform forward"),
     "forward-distributed-nonuniform": (
         lambda: _conformal_cavity(True, nonuniform=True).forward(
             n_steps=8, checkpoint=False, skip_preflight=True,
             distributed=True, devices=_devices()),
-        "Simulation.forward()", "distributed non-uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "distributed non-uniform forward"),
     "optimize": (
         lambda: _optimize(_conformal_cavity(True), skip_preflight=True),
-        "Simulation.forward()", "uniform forward"),
+        "the differentiable forward solve (forward/optimize or an S-matrix override)", "uniform forward"),
     "waveguide-nonuniform": (
         lambda: _wr90_sim(debye=False, conformal=True,
                           dz=np.full(4, 0.00254)).compute_waveguide_s_matrix(
@@ -426,7 +426,10 @@ def test_paths_without_dey_mittra_refuse_a_conformal_boundary(path):
         call()
     msg = str(info.value)
     assert msg.startswith(f"{entry} refuses"), msg
-    assert "drop Boundary(conformal=True)" in msg, msg
+    assert msg.count("drop Boundary(conformal=True)") == 1, msg
+    if path != "waveguide-nonuniform":
+        assert ("use run() on a uniform mesh to keep conformal PEC "
+                "for a forward-only result") in msg, msg
 
 
 @pytest.mark.parametrize("nonuniform", [False, True],
@@ -963,3 +966,41 @@ def test_uniform_grid_asymmetric_pmc_allocation():
     assert g.position_to_index((0.0, 0.0, 0.0))[1] == 0
     # Shape: ny = interior + pad_y_hi (no lo padding).
     assert g.shape[1] == int(np.ceil(10e-3 / 1e-3)) + 1 + 8
+
+
+# forward() CALL ARGUMENTS: graded carries fixed by #1410. Numerical carry
+# witnesses live in nonuniform/test_nu_forward_port_freqs.py.
+FORWARD_CALL_ARGUMENTS = {
+    "port_s11_freqs": {
+        "uniform": "carries",
+        "graded": "carries",
+        "distributed_uniform": "refuses",
+        "distributed_graded": "refuses",
+    },
+}
+
+
+@pytest.mark.parametrize("lane,disposition", FORWARD_CALL_ARGUMENTS["port_s11_freqs"].items())
+def test_forward_port_s11_freqs_disposition(lane, disposition, monkeypatch):
+    graded = "graded" in lane
+    sim = Simulation(freq_max=10e9, domain=(8e-3,) * 3, dx=1e-3,
+                     boundary="pec",
+                     **({"dz_profile": np.linspace(0.8e-3, 1.2e-3, 8)} if graded else {}))
+    sim.add_port(position=(4e-3, 4e-3, 3e-3), component="ez",
+                 impedance=50, extent=2e-3)
+    # Refusals must happen at dispatch, before any runner/material helper.
+    def no_step(*args, **kwargs):
+        pytest.fail("port_s11_freqs refusal reached a forward runner")
+
+    for helper in ("_forward_from_materials", "_forward_nonuniform_from_materials",
+                   "_forward_distributed_nonuniform_from_materials"):
+        monkeypatch.setattr(sim, helper, no_step)
+    kwargs = dict(mode="forward", n_steps=1, num_periods=1, port_s11_freqs=[2e9],
+                  distributed=lane.startswith("distributed"))
+    if disposition == "refuses":
+        with pytest.raises(NotImplementedError, match="port_s11_freqs.*single-device"):
+            sim.forward(n_steps=1, port_s11_freqs=[2e9], distributed=True,
+                        skip_preflight=True)
+    else:
+        assert sim._dispatch_plan(**kwargs).lane == (
+            "fwd_nonuniform" if graded else "fwd_uniform")

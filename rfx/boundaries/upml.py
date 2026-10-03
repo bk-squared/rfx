@@ -33,7 +33,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.boundaries.cpml import _get_axis_cell_sizes
-from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, _shift_bwd,
+from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, curl_h,
                           _shift_fwd, cell_owned_component_materials,
                           si_value_eps_r_grad)
 
@@ -208,6 +208,11 @@ def init_upml(
     Separate σ_E / σ_H with half-cell offset for impedance matching.
     No n/2 scaling — textbook σ_max.
     """
+    if getattr(grid, "kappa_max", None) not in (None, 1):
+        raise NotImplementedError(
+            "cpml_kappa_max != 1 is not supported when building the UPML absorber: "
+            "UPML does not read kappa. Use boundary='cpml', or set cpml_kappa_max=1."
+        )
     z32 = jnp.zeros(grid.shape, dtype=jnp.float32)
 
     def _get_sigma(axis):
@@ -219,7 +224,10 @@ def init_upml(
     sEy, sHy = _get_sigma("y")
     sEz, sHz = _get_sigma("z")
 
-    mu_abs = materials.mu_r * jnp.float32(MU_0)
+    from rfx.core.yee import component_h_materials
+    from rfx.sources.wire_radius import require_radius_update
+    require_radius_update(materials, lane="UPML", unsupported=True)
+    mu_abs = tuple(m * jnp.float32(MU_0) for m in component_h_materials(materials))
     # #1236: a lumped element (a port's load, an RLC R or C) loads its own E
     # edge only. This lane's E coefficients stay CELL-owned for the volume --
     # #1210's four-cell edge average was not carried into UPML, and doing it
@@ -282,17 +290,17 @@ def init_upml(
     sigma_perp_hy = sHx + sHz
     sigma_perp_hz = sHx + sHy
 
-    def _h_coeffs(sigma_perp):
+    def _h_coeffs(sigma_perp, mu):
         eps_0 = jnp.float32(EPS_0)
         loss = sigma_perp * dt / (jnp.float32(2.0) * eps_0)
         denom = jnp.float32(1.0) + loss
         da = (jnp.float32(1.0) - loss) / denom
-        db = (dt / mu_abs) / denom
+        db = (dt / mu) / denom
         return da.astype(jnp.float32), db.astype(jnp.float32)
 
-    da_hx, db_hx = _h_coeffs(sigma_perp_hx)
-    da_hy, db_hy = _h_coeffs(sigma_perp_hy)
-    da_hz, db_hz = _h_coeffs(sigma_perp_hz)
+    da_hx, db_hx = _h_coeffs(sigma_perp_hx, mu_abs[0])
+    da_hy, db_hy = _h_coeffs(sigma_perp_hy, mu_abs[1])
+    da_hz, db_hz = _h_coeffs(sigma_perp_hz, mu_abs[2])
 
     return UPMLCoeffs(
         ca_ex=ca_ex, ca_ey=ca_ey, ca_ez=ca_ez,
@@ -338,24 +346,17 @@ def apply_upml_e(
     state: FDTDState,
     coeffs: UPMLCoeffs,
     periodic: tuple = (False, False, False),
+    boundary=None,
 ) -> FDTDState:
     """E-field update using precomputed UPML coefficients."""
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     _fdtype = state.ex.dtype
     hx = state.hx.astype(jnp.float32)
     hy = state.hy.astype(jnp.float32)
     hz = state.hz.astype(jnp.float32)
 
-    curl_x = ((hz - bwd(hz, 1)) * coeffs.inv_dy
-              - (hy - bwd(hy, 2)) * coeffs.inv_dz)
-    curl_y = ((hx - bwd(hx, 2)) * coeffs.inv_dz
-              - (hz - bwd(hz, 0)) * coeffs.inv_dx)
-    curl_z = ((hy - bwd(hy, 0)) * coeffs.inv_dx
-              - (hx - bwd(hx, 1)) * coeffs.inv_dy)
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, None, periodic, boundary=boundary,
+        inv_spacing=(coeffs.inv_dx, coeffs.inv_dy, coeffs.inv_dz))
 
     ex = (coeffs.ca_ex * state.ex.astype(jnp.float32) + coeffs.cb_ex * curl_x).astype(_fdtype)
     ey = (coeffs.ca_ey * state.ey.astype(jnp.float32) + coeffs.cb_ey * curl_y).astype(_fdtype)

@@ -64,7 +64,8 @@ def test_lorentz_coefficients():
 
     assert abs(float(coeffs.a[0, 2, 2, 2]) - a_exp) < 1e-6
     assert abs(float(coeffs.b[0, 2, 2, 2]) - b_exp) < 1e-6
-    assert abs(float(coeffs.c[0, 2, 2, 2]) - c_exp) / abs(c_exp) < 1e-4
+    for comp in range(3):   # c is per E component since #1260
+        assert abs(float(coeffs.c[comp][0, 2, 2, 2]) - c_exp) / abs(c_exp) < 1e-4
 
     # State should be zeros
     assert float(jnp.max(jnp.abs(lstate.px))) == 0.0
@@ -231,7 +232,9 @@ def test_lorentz_poles_stay_scoped_to_their_material():
     ia = tuple(np.argwhere(np.array(mask_a))[0])
     ib = tuple(np.argwhere(np.array(mask_b))[0])
 
-    assert float(coeffs.c[0][ia]) > 0.0
-    assert float(coeffs.c[1][ia]) == 0.0
-    assert float(coeffs.c[0][ib]) == 0.0
-    assert float(coeffs.c[1][ib]) > 0.0
+    for comp in range(3):   # c is per E component since #1260
+        c = coeffs.c[comp]
+        assert float(c[0][ia]) > 0.0
+        assert float(c[1][ia]) == 0.0
+        assert float(c[0][ib]) == 0.0
+        assert float(c[1][ib]) > 0.0

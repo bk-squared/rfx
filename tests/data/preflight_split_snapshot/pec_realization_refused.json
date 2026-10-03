@@ -4,14 +4,18 @@
       {
         "code": "no_sources",
         "loc": null,
-        "message": "No sources, ports, TFSF, or waveguide/Floquet/MSL ports configured. Simulation will produce zero fields.",
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       },
       {
         "code": "pec_realization_refused",
         "loc": null,
-        "message": "geometry[0] 'pec' cannot be realized on this lattice and run()/forward() will raise: PEC Box 'pec' has zero extent along y/z: a line or a point is not a conductor. A filament is a PolylineWire; a sheet has exactly one zero-extent axis. (lattice ownership contract #931 \u00a71.5; preflight reports it here so the whole configuration is audited before the raise).",
+        "numbers": [
+          0.0,
+          931.0,
+          1.5
+        ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"
       }

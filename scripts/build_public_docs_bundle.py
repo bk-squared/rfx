@@ -21,7 +21,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path, PurePosixPath
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import yaml
 
@@ -33,7 +33,14 @@ SUPPORT_FILES = ("support_matrix.json", "sparameter_support_matrix.json")
 # (hashed with the other generated files), which also indexes it in llms.txt.
 SHOWCASE_CATALOG = "showcase/showcase.json"
 FORBIDDEN_PARTS = {"agent", "agent-memory", "agent_memory", "research_notes", ".env", ".omx", ".omc"}
-GENERATOR_VERSION = 1
+# Explicitly reviewed external-agent guidance; new files are private by default.
+PUBLIC_AGENT_PAGES = frozenset({
+    "overview.mdx", "auto-config.mdx", "design-workflows.mdx",
+    "port-selection.mdx", "prompt-templates.mdx", "recipe-design-loop.mdx",
+    "recipe-failed-gate-triage.mdx", "recipe-parameter-sweeps.mdx",
+    "recipe-resonance-extraction.mdx", "recipe-rt-measurement.mdx",
+})
+GENERATOR_VERSION = 2
 GENERATOR_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -67,7 +74,10 @@ def safe_relative(name: str) -> PurePosixPath:
     path = PurePosixPath(name)
     if path.is_absolute() or ".." in path.parts or "\\" in name or not path.parts:
         raise ValueError(f"unsafe bundle path: {name}")
-    if any(part.startswith(".") or part in FORBIDDEN_PARTS for part in path.parts):
+    agent_alternate = (len(path.parts) == 3 and path.parts[:2] == ("markdown", "agent")
+                       and path.suffix == ".md" and path.with_suffix(".mdx").name in PUBLIC_AGENT_PAGES)
+    if any(part.startswith(".") or (part in FORBIDDEN_PARTS and not
+           (part == "agent" and agent_alternate)) for part in path.parts):
         raise ValueError(f"excluded publication path: {name}")
     return path
 
@@ -109,11 +119,13 @@ def allowed_artifact(name: str) -> bool:
 
 
 def source_inputs(root: Path) -> list[Path]:
-    tracked = get_tracked_files(root, "docs/public", "rfx", "docs/pdoc_templates", "docs/guides", "pyproject.toml")
+    tracked = get_tracked_files(root, "docs/agent", "docs/public", "rfx", "docs/pdoc_templates", "docs/guides", "pyproject.toml")
     result = []
     for path in sorted(tracked):
         rel = path.relative_to(root)
         if rel.parts[:2] in {("docs", "public"), ("docs", "pdoc_templates")}:
+            result.append(path)
+        elif rel.parent == Path("docs/agent") and rel.name in PUBLIC_AGENT_PAGES:
             result.append(path)
         elif rel.parts[0] == "rfx" and path.suffix == ".py":
             result.append(path)
@@ -126,10 +138,10 @@ def check_source(root: Path, source_sha: str | None = None) -> str:
     sha = git(root, "rev-parse", "HEAD")
     if source_sha and git(root, "rev-parse", source_sha) != sha:
         raise ValueError("source SHA must be the checked-out HEAD")
-    paths = ["docs/public", "rfx", "docs/pdoc_templates", "docs/guides", "pyproject.toml"]
+    paths = ["docs/agent", "docs/public", "rfx", "docs/pdoc_templates", "docs/guides", "pyproject.toml"]
     if git(root, "status", "--porcelain", "--untracked-files=no", "--", *paths):
         raise ValueError("commit source inputs before building a SHA-pinned bundle")
-    for rel in ("docs/public", "rfx", "docs/pdoc_templates"):
+    for rel in ("docs/agent", "docs/public", "rfx", "docs/pdoc_templates"):
         check_no_symlinks(root / rel)
     check_no_symlinks(root / "pyproject.toml")
     for name in SUPPORT_FILES:
@@ -168,6 +180,19 @@ def clean_markdown(text: str, *, route: str, base_url: str, source_sha: str) -> 
         url = version_url(html.unescape(url), base_url, source_sha)
         if url.startswith("#") or urlsplit(url).scheme:
             return url
+        if route.startswith("agent/") and not url.startswith("/"):
+            # Agent sources use repository-relative links, not site routes.
+            resolved = urlsplit(urljoin(f"https://source/docs/{route}.mdx", url))
+            path = PurePosixPath(resolved.path.removeprefix("/"))
+            if path.parent == PurePosixPath("docs/agent"):
+                filename = path.with_suffix(".mdx").name
+                if filename not in PUBLIC_AGENT_PAGES:
+                    raise ValueError(f"public agent page links to excluded source: {url}")
+                return urlunsplit((*urlsplit(base_url)[:2],
+                                  urlsplit(base_url).path + f"/markdown/agent/{path.stem}.md",
+                                  resolved.query, resolved.fragment))
+            return f"{SOURCE_REPOSITORY}/blob/{source_sha}/{path}" + (
+                f"#{resolved.fragment}" if resolved.fragment else "")
         return urljoin(page_url, url)
 
     # Code fences are copied verbatim: removing tags/imports inside Python or
@@ -193,7 +218,26 @@ def clean_markdown(text: str, *, route: str, base_url: str, source_sha: str) -> 
                 output += f"\n### {label}\n"
             return output
 
-        prose = re.sub(r"<(LinkCard|Card|video|source|img|a)\b([^>]*)>", component, prose)
+        def anchor(match: re.Match) -> str:
+            attrs, label = match.groups()
+            href = re.search(r"(?<![\w-])href\s*=\s*([\"'])(.*?)\1", attrs,
+                             flags=re.S | re.I)
+
+            def image(img: re.Match) -> str:
+                found = dict(re.findall(r"([\w-]+)=[\"']([^\"']*)[\"']", img.group(1)))
+                src = found.get("src")
+                alt = found.get("alt") or found.get("title") or "image"
+                return f"![{alt}]({target(src)})" if src else alt
+
+            # Consume the entire anchor before removing presentation markup;
+            # an opening-tag replacement detaches the label from its URL. An
+            # image inside the link keeps its alt text and source.
+            label = re.sub(r"<img\b([^>]*?)/?>", image, label, flags=re.I)
+            label = re.sub(r"</?[^>]+>", "", label)
+            return f"[{label}]({target(href[2])})" if href else label
+
+        prose = re.sub(r"<a\b([^>]*)>(.*?)</a\s*>", anchor, prose, flags=re.S | re.I)
+        prose = re.sub(r"<(LinkCard|Card|video|source|img)\b([^>]*)>", component, prose)
         prose = re.sub(r"</?[A-Za-z][\w.:]*(?:\s[^<>]*?)?/?>", "", prose)
         prose = re.sub(r"(!?\[[^\]]*\]\()([^\s)]+)(\))",
                        lambda m: m[1] + target(m[2]) + m[3], prose)
@@ -312,6 +356,16 @@ def finish_generated_index(generated: Path, *, has_authored_index: bool, base_ur
     (generated / "index.html").write_text(landing)
 
 
+def agent_index(pages: list[dict]) -> list[str]:
+    agents = [p for p in pages if p["route"].startswith("agent/")]
+    if not agents:
+        return []
+    agents.sort(key=lambda p: (p["route"] != "agent/overview", p["route"]))
+    return ["## For coding agents", "", *[
+        f"- [{p['title']}]({p['markdown_url']}): {p['description']}" for p in agents
+    ], ""]
+
+
 def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str | None) -> dict:
     root = root.resolve()
     sha = check_source(root, source_sha)
@@ -328,17 +382,23 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
         full = []
         public = root / "docs/public"
         for source in inputs:
-            if not source.is_relative_to(public) or source.suffix not in {".md", ".mdx"}:
+            if source.suffix not in {".md", ".mdx"}:
                 continue
-            rel = source.relative_to(public)
-            safe_relative(rel.as_posix())
-            route = page_route(rel)
+            if source.is_relative_to(public):
+                rel = source.relative_to(public)
+                safe_relative(rel.as_posix())
+                route = page_route(rel)
+            elif source.parent == root / "docs/agent" and source.name in PUBLIC_AGENT_PAGES:
+                route = "agent/" + source.stem
+            else:
+                continue
             metadata, body = clean_markdown(source.read_text(), route=route, base_url=base_url, source_sha=sha)
             name = f"markdown/{route or 'index'}.md"
             title = metadata.get("title", route or "rfx")
             source_path = source.relative_to(root).as_posix()
             source_url = f"{SOURCE_REPOSITORY}/blob/{sha}/{source_path}"
-            url = base_url + "/" + (route + "/" if route else "")
+            url = (f"{base_url}/{name}" if route.startswith("agent/") else
+                   base_url + "/" + (route + "/" if route else ""))
             header = f"# {title}\n\nChannel: {channel}; package: {inventory['package_version']}; source: {sha}\n\nPage: {url}\nSource: {source_url}\n\n"
             target = files / name
             target.parent.mkdir(parents=True, exist_ok=True)
@@ -417,8 +477,8 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
                 f"- [Support boundaries]({base_url}/markdown/api/support-boundaries.md)",
                 *[f"- [{s['source_path']}]({s['url']})" for s in support],
                 f"- [Build manifest]({base_url}/docs-manifest.json): source SHA and file hashes.",
-                f"- [Combined manual]({base_url}/llms-full.txt)", "", *showcase, "## Manual and examples", ""]
-        llms += [f"- [{p['title']}]({p['markdown_url']}): {p['description']}" for p in pages]
+                f"- [Combined manual]({base_url}/llms-full.txt)", "", *agent_index(pages), *showcase, "## Manual and examples", ""]
+        llms += [f"- [{p['title']}]({p['markdown_url']}): {p['description']}" for p in pages if not p["route"].startswith("agent/")]
         (files / "llms.txt").write_text("\n".join(llms) + "\n")
         (files / "llms-full.txt").write_text("\n\n---\n\n".join(full))
         check_no_symlinks(files)
