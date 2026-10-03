@@ -89,9 +89,10 @@ _FREQS = np.linspace(3e9, 7e9, 9)
 _N_STEPS = 4000
 
 
-def _build_thru(reference_plane_cells: int | None = None) -> Simulation:
+def _build_thru(reference_plane_cells: int | None = None, *, snap="declared") -> Simulation:
     """The committed battery thru, optionally opted into the plane path."""
-    sim = Simulation(
+    # #1138: trace x/y solved +2.059%/+7% off; this locks reference-plane port waves.
+    sim = Simulation(snap=snap,
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -686,7 +687,8 @@ def test_preflight_near_field_advisory_below_n10():
 def test_preflight_partial_optin_advisory():
     """Opting in only ONE of two wire ports leaves the off-diagonals on
     the legacy path silently — preflight must say so."""
-    sim = Simulation(
+    # #1138: trace x/y solved +2.059%/+7% off; this checks partial reference-plane advice.
+    sim = Simulation(snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
@@ -734,7 +736,8 @@ def test_nonuniform_lane_end_to_end_raises():
     off-diagonals (end-to-end witness for the unit-level guard above)."""
     dz = np.concatenate([np.full(10, 0.4e-3), np.full(12, 0.5e-3)])
     assert abs(float(np.sum(dz)) - _DOMAIN[2]) < 1e-12
-    sim = Simulation(
+    # #1138: trace x/y solved +2.059%/+7% off; this checks NU reference-plane admission.
+    sim = Simulation(snap="declared",
         freq_max=10e9, domain=_DOMAIN, dx=_DX, dz_profile=dz,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),

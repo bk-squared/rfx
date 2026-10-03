@@ -10,6 +10,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx._grid_metric import nearest_uniform_index
+
 import math  # noqa: F401  (used by moved method bodies)
 from dataclasses import replace
 
@@ -192,6 +194,8 @@ class _CompileMixin:
         pec_sheets: list | None = None,
         pec_wires: list | None = None,
         pad_fill_findings: list | None = None,
+        geometry_masks: list | None = None,
+        assembly_entries: list | None = None,
     ) -> tuple[MaterialArrays, _DebyeSpec | None, _LorentzSpec | None, jnp.ndarray | None, list, list, jnp.ndarray | None]:
         """Build material arrays plus per-pole dispersion masks.
 
@@ -339,6 +343,8 @@ class _CompileMixin:
                 cells, sheet, wire = classify_pec_entry(
                     solved_shape, _coords, _centres, _cell_sizes,
                     name=entry.material_name, grid=grid)
+                if assembly_entries is not None:
+                    assembly_entries.append((id(entry), cells, sheet, wire, solved_shape))
                 if cells is not None:
                     pec_mask = pec_mask | cells
                     has_pec_cells = True
@@ -375,6 +381,9 @@ class _CompileMixin:
                 eps_r = jnp.where(mask, mat.eps_r, eps_r)
                 sigma = jnp.where(mask, mat.sigma, sigma)
                 mu_r = jnp.where(mask, mat.mu_r, mu_r)
+
+            if geometry_masks is not None and mat.sigma < self._PEC_SIGMA_THRESHOLD:
+                geometry_masks.append((id(entry), mask))
 
             if mat.chi3 != 0.0:
                 chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)
@@ -453,11 +462,16 @@ class _CompileMixin:
         # ``include_thin_conductors`` in this method's docstring (#642).
         if include_thin_conductors:
             for tc in self._thin_conductors:
+                geometry_key = id(tc)
                 tc = replace(tc, shape=continued_conductor_shape(
                     self, grid, tc.shape, entry=tc, unextendable=conductor_findings))
                 materials, pec_mask = apply_thin_conductor(
                     grid, tc, materials, pec_mask=pec_mask,
-                    sheet_specs=sheet_specs, sheets=_pec_sheets)
+                    sheet_specs=sheet_specs, sheets=_pec_sheets,
+                    geometry_masks=geometry_masks, geometry_key=geometry_key)
+                if assembly_entries is not None:
+                    assembly_entries.append((geometry_key, None,
+                                             _pec_sheets[-1] if tc.is_pec else None, None, tc.shape))
                 if tc.is_pec:
                     pec_shapes.append(tc.shape)
 
@@ -700,8 +714,8 @@ class _CompileMixin:
         This helper drops ``pec_mask`` by construction — its callers
         (the coaxial reflection / two-port lanes in
         ``rfx/sparams/coax.py``) drive ``_run`` with materials only, and
-        their conductors are the sigma-fill coax shell and pin that
-        design note §1.8 fences out of the ownership contract.  A
+        their coax shell and pin are realized separately as shorted PEC edges
+        by the coaxial lane. A
         declared PEC SHEET or WIRE has no material to fall back on: it
         would simply not exist in the run.  Refuse it here rather than
         let the lane report an S-matrix for geometry it did not solve.
@@ -712,8 +726,8 @@ class _CompileMixin:
         volume" as the remedy for a sheet, which on this path buys the
         user nothing: measured, a one-cell PEC Box through here returns
         eps_r == 1 and sigma == 0 everywhere, i.e. vacuum.  The remedies
-        that actually work are a sigma FILL (what the coax stamp does for
-        its own shell and pin) or a lane that realizes the declaration.
+        are an explicit finite-conductivity material fill or a lane that
+        realizes the declared PEC geometry. The coax stamp itself uses PEC edges.
         """
         _bm_sheets: list = []
         _bm_wires: list = []
@@ -735,17 +749,14 @@ class _CompileMixin:
                 "the coaxial S-parameter lanes (compute_coaxial_line_reflection, "
                 "compute_coaxial_two_port) "
                 "do not realize declared PEC geometry of ANY kind (#931): "
-                "they step from material arrays only, so the cell mask is "
-                "discarded and a sheet or a wire owns no cell to begin "
+                "this material-only builder discards the cell mask, and "
+                "a sheet or a wire owns no cell to begin "
                 f"with. Declared here: {', '.join(_declared)} — all of it "
                 "would be absent from the solve. Redrawing a sheet as a "
                 "volume does NOT help on this path (a one-cell PEC Box "
                 "comes back as eps_r = 1, sigma = 0). Either model the "
-                "conductor the way this lane models its own coax shell and "
-                "pin — a sigma fill, stamp_coaxial_line() or "
-                "rasterize(..., sigma=1e7), which §1.8 fences out of the "
-                "ownership contract precisely because it is a material and "
-                "not an edge rule — or solve the model with run() / "
+                "conductor as an explicit finite-conductivity material fill "
+                "(which is not a PEC edge rule), or solve the model with run() / "
                 "forward(), which realize the declaration.")
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
@@ -764,8 +775,8 @@ class _CompileMixin:
         if value_range is None:
             return (axis_pad, grid_size - axis_pad), domain_max
         lo, hi = value_range
-        lo_idx = int(round(lo / dx)) + axis_pad
-        hi_idx = int(round(hi / dx)) + axis_pad + 1
+        lo_idx = nearest_uniform_index(lo / dx) + axis_pad
+        hi_idx = nearest_uniform_index(hi / dx) + axis_pad + 1
         if lo_idx < axis_pad or hi_idx > grid_size - axis_pad or hi_idx - lo_idx < 2:
             raise ValueError(
                 f"range {value_range!r} does not resolve to a valid aperture on the current grid"
@@ -915,11 +926,14 @@ class _CompileMixin:
     def _assemble_materials_nu(
         self, grid: NonUniformGrid, sheet_specs: list | None = None,
         pec_sheets: list | None = None, pec_wires: list | None = None,
+        geometry_masks: list | None = None,
+        assembly_entries: list | None = None,
     ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
         """Build material arrays and dispersion specs for non-uniform grid."""
         from rfx.runners.nonuniform import assemble_materials_nu
         return assemble_materials_nu(self, grid, sheet_specs=sheet_specs,
-                                     pec_sheets=pec_sheets, pec_wires=pec_wires)
+                                     pec_sheets=pec_sheets, pec_wires=pec_wires,
+                                     geometry_masks=geometry_masks, assembly_entries=assembly_entries)
 
     def _pos_to_nu_index(self, grid: NonUniformGrid, pos):
         """Convert physical (x, y, z) to non-uniform grid indices."""

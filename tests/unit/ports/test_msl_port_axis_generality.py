@@ -568,7 +568,8 @@ def _thru(axis, n_freqs, num_periods):
         thi = (lat_c + W_TRACE / 2, L_PROP, H_SUB)
         p0, p1, d0, d1 = ((lat_c, PORT_MARGIN, 0.0),
                           (lat_c, PORT_MARGIN + L_LINE, 0.0), "+y", "-y")
-    sim = Simulation(freq_max=F_MAX, domain=domain, dx=DX, cpml_layers=8,
+    # #1138: trace transverse x/y solved +8.656% off; this tests rotation equivalence.
+    sim = Simulation(snap="declared", freq_max=F_MAX, domain=domain, dx=DX, cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
     sim.add_material("ro4350b", eps_r=EPS_R)

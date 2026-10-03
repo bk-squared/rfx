@@ -650,8 +650,12 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
         c = jnp.asarray(nodes)
         if t == a:
             mid = 0.5 * (float(lo[a]) + float(hi[a]))
+            from rfx._grid_metric import nearest_node_index
+            k = jnp.clip(jnp.searchsorted(c, mid, side="right") - 1,
+                         0, max(c.size - 2, 0))
+            d_local = c[k + 1] - c[k] if c.size > 1 else 1.0
             axes.append(jnp.zeros(c.shape, dtype=bool).at[
-                jnp.argmin(jnp.abs(c - mid))].set(True))
+                nearest_node_index(c, mid, d_local, xp=jnp)].set(True))
         else:
             axes.append((c >= float(lo[t])) & (c <= float(hi[t])))
     return axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
@@ -717,13 +721,10 @@ def interior_lattice_mask(mask, grid, *, cell_axes=(False, False, False)):
 def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
     """Node of each PolylineWire vertex, and the smallest cell at them.
 
-    Each coordinate goes to the nearest node, an exact tie to the FIRST
-    (lower) one (``argmin``, §1.4). Point features and sheets take the lower
-    node too, and also treat distances that agree to 1e-9 of the cell as a
-    tie (``nearest_node_index``); the two differ only inside that band. The
-    preflight's half-node check reads this function so it compares against
-    the node the wire really takes (#1342).
+    Each coordinate uses the shared lower-node tie band. The preflight
+    co-location check reads this same function (#1342).
     """
+    from rfx._grid_metric import nearest_node_index
     nodes = []
     d_min = None
     for p in points:
@@ -734,7 +735,7 @@ def wire_vertex_nodes(points, node_axes, cell_sizes, *, grid=None):
                 from rfx._periodic import interval_coordinates
                 interval_coordinates(grid, t, p[t], p[t])
                 x = np.append(x, float(grid.domain[t]))
-            k = int(np.argmin(np.abs(x - float(p[t]))))
+            k = nearest_node_index(x, p[t], _local_cell(x, cell_sizes[t], p[t]))
             idx.append(k)
             d_here = float(np.asarray(cell_sizes[t], dtype=np.float64)[min(k, len(cell_sizes[t]) - 1)])
             d_min = d_here if d_min is None else min(d_min, d_here)
@@ -780,6 +781,7 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
     ``wire_vertex_nodes`` does. Mesh-design profiles have no nominal host
     copy in ``make_nonuniform_grid``; never substitute a boundary spacing.
     """
+    from rfx._grid_metric import nearest_node_index
     widths = []
     for t, (axis, sizes) in enumerate(zip(node_axes, cell_sizes)):
         if is_tracer(sizes):
@@ -797,7 +799,7 @@ def _static_wire_min_cell(points, node_axes, cell_sizes):
                     f"the graded {'xyz'[t]} profile has no static node axis "
                     "to locate the wire vertices and decide 0 < a < 0.5*d_min.")
             x = np.asarray(axis, dtype=np.float64)
-            widths.extend(float(d[int(np.argmin(np.abs(x - float(p[t]))))])
+            widths.extend(float(d[nearest_node_index(x, p[t], _local_cell(x, d, p[t]))])
                           for p in points)
     return min(widths)
 
@@ -924,6 +926,8 @@ def rasterize_geometry(
     wires: list | None = None,
     periodic=(False, False, False),
     pole_geometry_entries=None,
+    geometry_masks: list | None = None,
+    assembly_entries: list | None = None,
 ):
     """Rasterize geometry entries onto material arrays.
 
@@ -1006,6 +1010,9 @@ def rasterize_geometry(
             cells, sheet, wire = classify_pec_entry(
                 entry.shape, coords, centres, cell_sizes,
                 name=entry.material_name, grid=grid)
+            if assembly_entries is not None:
+                declared_entry = entry if pole_geometry_entries is None else pole_geometry_entries[entry_index]
+                assembly_entries.append((id(declared_entry), cells, sheet, wire, entry.shape))
             if cells is not None:
                 has_pec_cells = True
                 pec_mask = pec_mask | cells
@@ -1029,6 +1036,11 @@ def rasterize_geometry(
             eps_r = jnp.where(mask, mat.eps_r, eps_r)
             sigma = jnp.where(mask, mat.sigma, sigma)
             mu_r = jnp.where(mask, mat.mu_r, mu_r)
+
+        if geometry_masks is not None and mat.sigma < pec_sigma_threshold:
+            declared_entry = (entry if pole_geometry_entries is None
+                              else pole_geometry_entries[entry_index])
+            geometry_masks.append((id(declared_entry), mask))
 
         if mat.chi3 != 0.0:
             chi3_arr = jnp.where(mask, mat.chi3, chi3_arr)

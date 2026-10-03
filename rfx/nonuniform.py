@@ -39,7 +39,7 @@ from rfx.boundaries.pec import (
     apply_pec_occupancy,
     realized_pec_edge_masks,
 )
-from rfx.core.jax_utils import is_tracer
+from rfx.core.jax_utils import is_tracer, recorded_scan
 from rfx._grid_metric import (
     DECLARED_SPAN_TOL_M,
     axis_name as _axis_name,
@@ -1195,8 +1195,7 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
     Each axis resolves through ``_axis_position_to_index``: the node
     ``index_of`` names, clamped into the interior. On a constant axis, for a
     coordinate inside the interior that is not a tie, that is the uniform
-    ``Grid``'s ``round(pos/cell) + pad_{axis}_lo``. At a tie this takes the
-    lower node and the uniform grid the even one, until #1342. Outside the
+    ``Grid`` lookup. Both lanes take the lower node within the tie band. Outside the
     interior this clamps to the end node, while the uniform grid returns a
     pad index or refuses.
     """
@@ -2117,7 +2116,7 @@ def current_source_volume(grid, position_ijk, component):
     return dx_local * dy_local * dz_local, grid_traced
 
 
-def _bwd_neighbor(h, idx, axis):
+def _bwd_neighbor(h, idx, axis, boundary=None):
     """``h`` one cell back along ``axis``, using the SAME out-of-domain
     convention the NU E-update uses.
 
@@ -2133,14 +2132,8 @@ def _bwd_neighbor(h, idx, axis):
     along it is 0 (return the cell itself, matching the uniform lane's
     2-D behaviour). NU grids are 3-D today, so that branch is defensive.
     """
-    i = int(idx[axis])
-    if h.shape[axis] == 1:
-        return h[idx]
-    if i == 0:
-        return jnp.zeros_like(h[idx])
-    back = list(idx)
-    back[axis] = i - 1
-    return h[tuple(back)]
+    from rfx.core.yee import h_neighbor
+    return h_neighbor(h, axis, index=idx, boundary=boundary)
 
 
 def _build_wp_meta(wire_ports, grid):
@@ -2223,7 +2216,7 @@ def _build_wp_meta(wire_ports, grid):
 
 
 def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
-                      dual_x, dual_y, dual_z):
+                      dual_x, dual_y, dual_z, boundary=None):
     """Enclosed current from the discrete Ampere loop at a wire-port cell.
 
     For component ``a`` with ``(a, b, c)`` cyclic,
@@ -2269,38 +2262,22 @@ def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
     """
     idx = (mi, mj, mk)
     if comp == "ez":
-        return ((hy[idx] - _bwd_neighbor(hy, idx, 0)) * dual_y
-                - (hx[idx] - _bwd_neighbor(hx, idx, 1)) * dual_x)
+        return ((hy[idx] - _bwd_neighbor(hy, idx, 0, boundary)) * dual_y
+                - (hx[idx] - _bwd_neighbor(hx, idx, 1, boundary)) * dual_x)
     if comp == "ex":
-        return ((hz[idx] - _bwd_neighbor(hz, idx, 1)) * dual_z
-                - (hy[idx] - _bwd_neighbor(hy, idx, 2)) * dual_y)
+        return ((hz[idx] - _bwd_neighbor(hz, idx, 1, boundary)) * dual_z
+                - (hy[idx] - _bwd_neighbor(hy, idx, 2, boundary)) * dual_y)
     if comp == "ey":
-        return ((hx[idx] - _bwd_neighbor(hx, idx, 2)) * dual_x
-                - (hz[idx] - _bwd_neighbor(hz, idx, 0)) * dual_z)
+        return ((hx[idx] - _bwd_neighbor(hx, idx, 2, boundary)) * dual_x
+                - (hz[idx] - _bwd_neighbor(hz, idx, 0, boundary)) * dual_z)
     raise ValueError(f"wire_port_current: unknown component {comp!r}")
 
 
-def _curl_h_nu(state, inv_dx, inv_dy, inv_dz):
-    """Compute curl(H) using non-uniform backward differences.
-
-    Shared by both plain and dispersive E updates on non-uniform grids.
-    """
-    from rfx.core.yee import _shift_bwd
-    hx, hy, hz = state.hx, state.hy, state.hz
-
-    curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
-    )
-    curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
-    )
-    curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
-    )
-    return curl_x, curl_y, curl_z
+def _curl_h_nu(state, inv_dx, inv_dy, inv_dz, *, boundary=None):
+    """ADE adapter to the shared graded E-update curl (no dtype change)."""
+    from rfx.core.yee import curl_h_nu
+    return curl_h_nu(state.hx, state.hy, state.hz, inv_dx, inv_dy, inv_dz,
+                     boundary=boundary)
 
 
 def _update_e_nu_dispersive(
@@ -2314,6 +2291,7 @@ def _update_e_nu_dispersive(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
+    boundary=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """E-field update with ADE dispersion on non-uniform grid.
 
@@ -2343,7 +2321,7 @@ def _update_e_nu_dispersive(
     from rfx.materials.debye import DebyeState
     from rfx.materials.lorentz import LorentzState
 
-    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz)
+    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary)
     if e_old is not None:
         ex_old, ey_old, ez_old = e_old
     else:
@@ -2610,8 +2588,11 @@ def _build_nu_scan(
     # this is the six faces ``apply_pec`` zeroed before, plane for plane.
     from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
     _pec_faces_frozen, _pmc_faces_frozen = _resolve_walls(
-        SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ())),
+        SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ()),
+                        shape=(grid.nx, grid.ny, grid.nz)),
         (False, False, False), None)
+    from rfx.core.yee import CurlBoundary
+    curl_boundary = CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen)
     use_pmc_faces = bool(_pmc_faces_frozen)
 
     # #931 §1.7: realize the PEC edges ONCE here.  The NU stepper installs
@@ -2907,7 +2888,7 @@ def _build_nu_scan(
             cpml_new = None
         if use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
-            st = apply_pmc_faces(st, _pmc_faces_frozen)
+            st = apply_pmc_faces(st, _pmc_faces_frozen, image=True)
         if use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)
@@ -2927,16 +2908,18 @@ def _build_nu_scan(
                 st, materials, dt, inv_dx, inv_dy, inv_dz,
                 debye=(debye_coeffs, carry["debye"]) if use_debye else None,
                 lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
+                boundary=curl_boundary,
             )
         elif aniso_eps is not None:
             from rfx.core.yee import update_e_nu_aniso
             _eex, _eey, _eez = aniso_eps
             st = update_e_nu_aniso(
                 st, materials, _eex, _eey, _eez, dt,
-                inv_dx, inv_dy, inv_dz,
+                inv_dx, inv_dy, inv_dz, boundary=curl_boundary,
             )
         else:
-            st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz)
+            st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz,
+                             boundary=curl_boundary)
 
         # #1183 design box: redo the E update at the design cells from the
         # traced permittivity, on the graded-mesh curl. Same slot as the
@@ -2947,7 +2930,7 @@ def _build_nu_scan(
             st = update_e_box(
                 st, st_prev_design, design_box_coeffs.bounds,
                 design_box_coeffs.ca, design_box_coeffs.cb, grid.dx,
-                inv_d=(inv_dx, inv_dy, inv_dz),
+                inv_d=(inv_dx, inv_dy, inv_dz), boundary=curl_boundary,
             )
 
         if use_tfsf:
@@ -2962,7 +2945,8 @@ def _build_nu_scan(
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
                                          cpml_grid, cpml_axes_eff,
                                          materials=materials,
-                                         inv_eps_r_update=_cpml_inv_eps_r)
+                                         inv_eps_r_update=_cpml_inv_eps_r,
+                                         boundary=curl_boundary)
 
         # PEC, per face (#1164)
         st = apply_pec_faces(st, _pec_faces_frozen)
@@ -2984,7 +2968,7 @@ def _build_nu_scan(
             _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
             _curls = _curl_h_nu(
                 st.hx.astype(_scd), st.hy.astype(_scd), st.hz.astype(_scd),
-                inv_dx, inv_dy, inv_dz)
+                inv_dx, inv_dy, inv_dz, boundary=curl_boundary)
             st = _apply_sheet_e(st, e_prev_sheet, _curls,
                                 sheet_impedance, sheet_coeffs)
 
@@ -3095,7 +3079,7 @@ def _build_nu_scan(
                     for (ci, cj, ck), dp in zip(live_cells, d_par_cells))
                 i_val = wire_port_current(
                     st.hx, st.hy, st.hz, comp, mi, mj, mk,
-                    dual_xi, dual_yj, dual_zk)
+                    dual_xi, dual_yj, dual_zk, boundary=curl_boundary)
                 t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
                 phase = jnp.exp(-1j * 2.0 * jnp.pi * sp_freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
                 # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
@@ -3428,7 +3412,7 @@ def run_nonuniform(
             )
         warmup_steps = jnp.arange(n_warmup, dtype=jnp.int32)
         warmup_xs = (warmup_steps, src_waveforms[:n_warmup])
-        warmup_final, warmup_ys = jax.lax.scan(step_fn, carry_init, warmup_xs)
+        warmup_final, warmup_ys = recorded_scan(step_fn, carry_init, warmup_xs)
         carry_init = jax.tree_util.tree_map(
             jax.lax.stop_gradient, warmup_final
         )
@@ -3476,14 +3460,14 @@ def run_nonuniform(
             return jax.lax.scan(step_fn, carry, segment_xs)
 
         seg_body = jax.checkpoint(segment_body)
-        final, segment_ys = jax.lax.scan(
+        final, segment_ys = recorded_scan(
             seg_body, carry_init, (seg_steps, seg_src)
         )
         flat = segment_ys.reshape((n_segments * chunk,) + segment_ys.shape[2:])
         opt_ys = flat[:n_steps_opt]
     else:
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
-        final, opt_ys = jax.lax.scan(body, carry_init, xs)
+        final, opt_ys = recorded_scan(body, carry_init, xs)
     # Merge warmup + optimize outputs back into one time_series so the
     # downstream result shape stays (n_steps, n_probes).
     if warmup_ys is not None:

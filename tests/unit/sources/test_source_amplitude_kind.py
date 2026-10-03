@@ -1,43 +1,4 @@
-"""Contract tests for ``add_source(amplitude_kind=)`` — issue #571, option 4.
-
-What this file pins, per the #571 decision dossier:
-
-(a) NON-PERTURBATION: ``amplitude_kind=None`` is bit-identical to the
-    pristine (pre-#571) behavior on all three legacy contracts. The
-    cross-checkout witness was run at the introduction commit (base
-    635433b): the closed-uniform, open-uniform and NU mini-fixture traces
-    below were byte-compared (``np.array_equal``) between pristine main
-    and the patched tree — all three identical. In-repo, this file keeps
-    the executable remnants of that witness: kwarg-omitted vs
-    ``amplitude_kind=None`` full-trace equality, and a helper-level
-    bitwise pin of the ``kind=None`` waveform against an inline spelling
-    of the pristine formula.
-
-(b) THREE-CONTRACT EQUIVALENCE: each legacy ``None`` call equals its
-    exact explicit-kind spelling (closed-uniform = 'field' bitwise;
-    NU = 'current' bitwise; open-uniform = 'current' with waveform
-    amplitude x dV, exact up to one float multiply/divide pair).
-
-(c) THE NEW INVARIANT: with ``amplitude_kind='current'`` the uniform and
-    non-uniform builders produce EQUAL traces (no factor table) on an
-    open boundary. Float tolerance, measured on this fixture: cross-path
-    amplitude scale 1 - 3e-8 (gate rel 1e-5), per-sample residual
-    3.2e-5 of peak (gate 3e-4, the tripwire file's measured cpml
-    envelope class), 1-corr 5e-10 (gate 1e-7).
-
-(d) The ``None`` DeprecationWarning fires exactly ONCE per Simulation,
-    names this simulation's concrete legacy meaning, and never fires for
-    an explicit kind.
-
-(e) AD: ``jax.grad`` flows through an ``amplitude_kind='current'`` (and
-    'field') source on the traced-materials ``forward(eps_override=...)``
-    path — the dossier's ConcretizationTypeError fix (dispatch on the
-    Python-level kind, never on a possibly-traced scale value).
-
-Subpixel smoothing is deliberately NOT used anywhere here (#582: the
-open-boundary + subpixel cross-path residual is a solver defect
-independent of amplitude semantics).
-"""
+"""Source declarations: None means current; native helper contracts remain (#1373)."""
 
 from __future__ import annotations
 
@@ -142,7 +103,7 @@ def test_add_source_rejects_unknown_kind():
 
 
 # ---------------------------------------------------------------------------
-# (a) Non-perturbation: amplitude_kind=None is the pristine behavior
+# (a) Omitted and explicit None declarations agree; native helpers stay legacy
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("boundary,nonuniform", [
@@ -191,16 +152,14 @@ def test_make_source_kind_none_bitwise_matches_pristine_formula():
 
 
 # ---------------------------------------------------------------------------
-# (b) Three-contract equivalence: legacy None == exact explicit spelling
+# (b) Declaration None == current on every path
 # ---------------------------------------------------------------------------
 
-def test_closed_uniform_none_equals_field_bitwise():
-    """uniform + pec: legacy raw add == amplitude_kind='field', bitwise
-    (both take the no-multiply path through make_source)."""
+def test_closed_uniform_none_equals_current_bitwise():
     t_none = _trace("pec", False, None)
-    t_field = _trace("pec", False, "field")
+    t_current = _trace("pec", False, "current")
     assert np.abs(t_none).max() > 0.0
-    assert np.array_equal(t_none, t_field)
+    assert np.array_equal(t_none, t_current)
 
 
 def test_nonuniform_none_equals_current_bitwise():
@@ -212,19 +171,11 @@ def test_nonuniform_none_equals_current_bitwise():
     assert np.array_equal(t_none, t_curr)
 
 
-def test_open_uniform_none_equals_current_times_dv():
-    """uniform + cpml: the legacy Cb-normalized contract is named by
-    NEITHER kind; its exact migration is waveform amplitude x dV with
-    kind='current' (algebra Cb*(w*dV)/dV == Cb*w — exact up to ONE float
-    multiply/divide pair, hence a tolerance, not array_equal; measured
-    3.0e-5 of peak on this fixture, gated 2e-4)."""
+def test_open_uniform_none_equals_current_bitwise():
     t_none = _trace("cpml", False, None)
-    t_migr = _trace("cpml", False, "current", amplitude=DV)
+    t_current = _trace("cpml", False, "current")
     assert np.abs(t_none).max() > 0.0
-    resid = np.abs(t_migr - t_none).max() / np.abs(t_none).max()
-    assert resid < 2e-4, (
-        f"documented open-uniform migration (amplitude x dV, kind='current') "
-        f"deviates by {resid:.3e} of peak from the legacy trace")
+    assert np.array_equal(t_none, t_current)
 
 
 # ---------------------------------------------------------------------------
@@ -269,13 +220,13 @@ def test_field_kind_makes_uniform_and_nonuniform_traces_equal_pec():
 # (d) DeprecationWarning contract
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("boundary,nonuniform,expected_phrase", [
-    pytest.param("pec", False, "raw field increment", id="closed-uniform"),
-    pytest.param("cpml", False, "Cb-normalized field add", id="open-uniform"),
-    pytest.param("cpml", True, "CURRENT in amperes", id="nonuniform"),
+@pytest.mark.parametrize("boundary,nonuniform", [
+    pytest.param("pec", False, id="closed-uniform"),
+    pytest.param("cpml", False, id="open-uniform"),
+    pytest.param("cpml", True, id="nonuniform"),
 ])
 def test_kind_none_warns_once_per_sim_naming_the_concrete_meaning(
-        boundary, nonuniform, expected_phrase):
+        boundary, nonuniform):
     sim = _sim(boundary, nonuniform)
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
@@ -286,8 +237,11 @@ def test_kind_none_warns_once_per_sim_naming_the_concrete_meaning(
     assert len(dep) == 1, (
         f"expected exactly one amplitude_kind DeprecationWarning per "
         f"Simulation, got {len(dep)}")
-    assert expected_phrase in str(dep[0].message)
-    assert "issue #571" in str(dep[0].message)
+    assert str(dep[0].message) == (
+        "add_source(..., amplitude_kind=None) now means 'current' "
+        "(E += Cb*I/dV, I is a current moment in A·m) on every path. "
+        "Pass amplitude_kind explicitly to silence this warning."
+    )
     # a NEW Simulation warns again (per-sim, not per-process)
     sim2 = _sim(boundary, nonuniform)
     with pytest.warns(DeprecationWarning, match="amplitude_kind"):

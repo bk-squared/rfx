@@ -227,7 +227,7 @@ def half_open_volume_mask(coords, lo, hi, d_local):
     return (coords >= lo - tol) & (coords < hi - tol)
 
 
-def nearest_node_index(nodes, x: float, d_local: float) -> int:
+def nearest_node_index(nodes, x: float, d_local: float, *, xp=None) -> int:
     """Index of the node nearest ``x`` -- the one tie rule (#1295, #1342).
 
     ``nodes`` is an ascending node line (any origin); the answer indexes it.
@@ -238,20 +238,35 @@ def nearest_node_index(nodes, x: float, d_local: float) -> int:
     is the sheet snap's rule (#931, ``_nearest_plane`` calls this function),
     so a port, source or probe and a sheet declared at the same coordinate
     land on the same node bit for bit, on a constant axis and a graded one.
-    A PolylineWire vertex (``wire_vertex_nodes``) takes ``argmin``, which is
-    the same node at an exact tie and differs only inside the 1e-9-cell band
-    around one. Always a valid index: a coordinate outside the line gets the
-    end node.
-
-    The uniform grid's point lookup rounds an exact tie to the EVEN node
-    (``round(x/dx)``) until #1342 moves it onto this rule.
+    Always a valid index: a coordinate outside the line gets the end node.
+    ``xp`` supplies the array backend for traced geometry; the default host
+    path uses float64 distances and returns a Python integer.
     """
+    if xp is not None:
+        line = xp.asarray(nodes)
+        dist = xp.abs(line - x)
+        k = xp.argmin(dist)
+        prev = xp.maximum(k - 1, 0)
+        return xp.where((k > 0) & (xp.abs(dist[prev] - dist[k])
+                                  <= NODE_TIE_REL * d_local), prev, k)
     line = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(line - float(x))
     k = int(np.argmin(dist))
     if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= NODE_TIE_REL * float(d_local):
         k -= 1
     return k
+
+
+def nearest_uniform_index(ratio) -> int:
+    """Snap an already-divided coordinate, preserving the caller's division.
+
+    Use the same distance comparison as a graded node line, without a
+    finite line's endpoint clamp. Padding and periodic wrapping belong to
+    the caller. Conversion happens only after the input-dtype division.
+    """
+    from math import floor
+    lower = floor(ratio)
+    return lower + nearest_node_index((0., 1.), float(ratio) - lower, 1.)
 
 
 def dual_spacings_from_cells(cells: np.ndarray) -> np.ndarray:

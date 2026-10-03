@@ -350,12 +350,13 @@ def test_the_jit_scan_lane_calls_the_shared_loop_with_the_runs_periodic_flags():
 
     import rfx.probes.probes as _probes
     from rfx import Simulation
+    from rfx.core.yee import CurlBoundary
     from rfx.sources.sources import GaussianPulse
 
     real = _probes._ampere_loop
     calls = []
 
-    def spy(state, idx, component, dx, periodic):
+    def spy(state, idx, component, dx, periodic, *, boundary=None):
         frame = inspect.currentframe().f_back
         calls.append({
             "file": pathlib.Path(frame.f_code.co_filename).as_posix(),
@@ -363,8 +364,9 @@ def test_the_jit_scan_lane_calls_the_shared_loop_with_the_runs_periodic_flags():
             "idx": tuple(int(v) for v in idx),
             "component": component,
             "periodic": tuple(bool(b) for b in periodic),
+            "boundary": boundary,
         })
-        return real(state, idx, component, dx, periodic)
+        return real(state, idx, component, dx, periodic, boundary=boundary)
 
     _probes._ampere_loop = spy
     try:
@@ -388,3 +390,5 @@ def test_the_jit_scan_lane_calls_the_shared_loop_with_the_runs_periodic_flags():
         assert call["component"] in ("ex", "ey", "ez")
         assert len(call["idx"]) == 3
         assert len(call["periodic"]) == 3
+        assert isinstance(call["boundary"], CurlBoundary)
+        assert call["boundary"].periodic == call["periodic"]

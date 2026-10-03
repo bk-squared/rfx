@@ -198,7 +198,7 @@ F_REF_HZ = 19.8525e9
 FIN_M = 4.75e-3
 
 
-def _fin_resonance(dy_profile):
+def _fin_resonance(dy_profile, *, snap="strict"):
     from rfx import Box
     from rfx.api import Simulation
     from rfx.harminv import harminv
@@ -209,8 +209,9 @@ def _fin_resonance(dy_profile):
     # uniform arm keeps the uniform lane's own 2-D update: the 3-D box there
     # resonates 22 MHz lower (1.90 % against 1.79 % below the reference).
     mode = "2d_tmz" if dy_profile is None else "3d"
+    # #1138: geometry[0] y solved -8.4211 % off; this test checks resonance after strict refusal.
     sim = Simulation(freq_max=30e9, domain=(a, b, dx), boundary="pec", dx=dx,
-                     mode=mode, **kw)
+                     mode=mode, snap=snap, **kw)
     sim.add(Box((a / 2, 0.0, 0.0), (a / 2, FIN_M, dx)), material="pec")
     sim.add_source((0.0063, 0.0031, 0.0), component="ez")
     sim.add_probe((0.0137, 0.0069, 0.0), component="ez")
@@ -232,7 +233,10 @@ def test_a_fin_that_does_not_fit_the_grid_is_solved_at_its_drawn_length():
     rule stops working AND if the uniform grid stops showing the defect
     (which would mean the rasterizer changed and the offset needs
     re-measuring)."""
-    f_uniform = _fin_resonance(None)
+    # #1138: first pin strict refusal, then retain the measured resonance control.
+    with pytest.raises(ValueError, match="conductor sheet dimension"):
+        _fin_resonance(None)
+    f_uniform = _fin_resonance(None, snap="declared")
     prof = edge_aware_profile(0.0, 0.010, 1e-3, boundary_cell=1e-3,
                               sheet_edges=[SheetEdge(FIN_M, -1)])
     f_edge = _fin_resonance(prof.cells)

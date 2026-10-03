@@ -383,7 +383,9 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_boundary", "cpml"): _boundary({"boundary": "cpml"}, adi_layers=4,
                                      boundary={lane: ("cpml", "adi") for lane in ADI}),
     ("_boundary", "upml"): _boundary({"boundary": "upml"}),
-    ("_pec_faces", "pec_face"): _boundary({"boundary": "cpml", "pec_faces": {"z_lo"}}, cpml_off=True),
+    ("_pec_faces", "pec_face"): _boundary(
+        {"boundary": BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))},
+        cpml_off=True),
     ("_boundary_spec", "pmc_face"): _boundary({"boundary": _PMC_X}, boundary={
         "run_uniform": ("pmc-pec", "run"), "run_nonuniform": ("pmc-pec", "nonuniform"),
         "fwd_uniform": ("pmc-pec", "forward"), "run_distributed": ("pmc-pec", "distributed"),
@@ -429,7 +431,10 @@ def _run(sim, lane, feature, *, entry=None):
         if entry.startswith("run_"):
             if entry == "run_distributed":
                 kwargs["devices"] = _devices()
-            return sim.run(**kwargs, **feature.run_kwargs(entry))
+            # These cells compare field records; S-request cells opt in below.
+            kwargs.update(compute_s_params=False)
+            kwargs.update(feature.run_kwargs(entry))
+            return sim.run(**kwargs)
         kwargs["checkpoint"] = False
         if entry == "fwd_distributed_nu":
             kwargs.update(distributed=True, devices=_devices())

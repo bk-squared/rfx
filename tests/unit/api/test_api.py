@@ -11,6 +11,7 @@ Validates that:
 8. Differentiable mode (checkpoint) works through the API
 9. Validation catches bad inputs
 """
+from rfx.boundaries.spec import Boundary, BoundarySpec
 
 import numpy as np
 import jax
@@ -915,30 +916,27 @@ def test_periodic_axes_reject_specialized_source_conflicts():
     sim_tfsf = Simulation(
         freq_max=8e9,
         domain=(0.08, 0.006, 0.006),
-        boundary="cpml",
+        boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"),
         cpml_layers=8,
         dx=0.001,
     )
-    sim_tfsf.set_periodic_axes("x")
     with pytest.raises(ValueError, match="periodic-axis overrides"):
         sim_tfsf.add_tfsf_source()
 
     sim_wg = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary=BoundarySpec(x="periodic", y="cpml", z="cpml"),
         cpml_layers=10,
         dx=0.002,
     )
-    sim_wg.set_periodic_axes("x")
     with pytest.raises(ValueError, match="periodic-axis overrides"):
         sim_wg.add_waveguide_port(0.01)
 
 
 def test_periodic_axes_through_api_matches_low_level():
     """High-level periodic-axis control should match low-level runner behavior."""
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
-    sim.set_periodic_axes("y")
+    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary=BoundarySpec(x="pec", y="periodic", z="pec"))
     sim.add_port((0.005, 0.001, 0.0075), "ez")
     sim.add_probe((0.005, 0.014, 0.0075), "ez")
 
@@ -1051,7 +1049,7 @@ def test_validation_errors():
         sim.add_dft_plane_probe(axis="q", coordinate=0.01)
     with pytest.raises(ValueError, match="outside"):
         sim.add_dft_plane_probe(axis="x", coordinate=1.0)
-    with pytest.raises(ValueError, match="periodic axes"):
+    with pytest.raises(AttributeError, match="BoundarySpec"):
         sim.set_periodic_axes("q")
 
 
@@ -1192,7 +1190,8 @@ def test_five_line_patch_workflow():
 
     Uses a coarse grid (dx=5mm) and few steps for fast CI execution.
     """
-    sim = rfx.Simulation(
+    # #1138: geometry[0] y solved -18.97 % off its domain-clipped drawing; this test checks five line patch workflow.
+    sim = rfx.Simulation(snap="declared",
         freq_max=4e9, domain=(0.08, 0.06, 0.02),
         boundary="cpml", cpml_layers=8, dx=5e-3,
     )

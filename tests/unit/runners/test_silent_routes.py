@@ -339,7 +339,8 @@ def _no_pec(kind):
     if kind == "uniform":
         sim.add_port((0.006, 0.006, 0.006), "ez", impedance=50.0, waveform=pulse)
     else:
-        sim.add_source((0.006, 0.006, 0.006), "ez", waveform=pulse)
+        sim.add_source((0.006, 0.006, 0.006), "ez", waveform=pulse,
+                       amplitude_kind="field" if kind == "adi" else None)
     sim.add_probe((0.008, 0.006, 0.006), "ez")
     return sim
 
@@ -439,4 +440,3 @@ def test_forward_scan_explicit_staircase_passes():
     assert np.max(np.abs(S)) > 0
     np.testing.assert_array_equal(S, ran.s_params)
     assert _scan_call("direct", sim, conformal_pec=False) is not None
-

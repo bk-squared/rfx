@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -82,14 +81,14 @@ def test_bundle_tamper_extra_file_and_symlink_are_rejected(tmp_path):
         bundle.validate_bundle(root)
 
 
-def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path):
+def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
     public.mkdir(parents=True)
     (public / "index.mdx").write_text("public")
     (public / "untracked-secret.md").write_text("private")
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "docs/public/index.mdx"], check=True)
+    monkeypatch.setattr('export_public_docs_to_gitops.get_tracked_files',
+                        lambda *args: frozenset({public / 'index.mdx'}))
     destination = tmp_path / "rfx"
     release = destination / "versions/v1.8.0"
     release.mkdir(parents=True)
@@ -318,20 +317,20 @@ def test_the_showcase_catalog_is_the_one_publishable_authored_json():
         assert not bundle.allowed_artifact(name)
 
 
-def _public_repo(tmp_path):
+def _public_repo(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
     (public / "showcase").mkdir(parents=True)
     (public / "index.mdx").write_text("public")
     (public / "site_map.json").write_text("{}")
     (public / "showcase/showcase.json").write_text('{"authored": true}\n')
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
-    subprocess.run(["git", "-C", str(repo), "add", "docs/public"], check=True)
+    tracked = frozenset(path for path in public.rglob('*') if path.is_file())
+    monkeypatch.setattr('export_public_docs_to_gitops.get_tracked_files', lambda *args: tracked)
     return repo
 
 
 def test_export_takes_the_showcase_catalog_from_the_bundle_when_one_is_given(tmp_path, monkeypatch):
-    repo = _public_repo(tmp_path)
+    repo = _public_repo(tmp_path, monkeypatch)
     root = fixture_bundle(tmp_path)
     files = root / "files"
     (files / "showcase").mkdir()
@@ -350,3 +349,122 @@ def test_export_takes_the_showcase_catalog_from_the_bundle_when_one_is_given(tmp
     source_only = tmp_path / "source-only/rfx"
     export_snapshot(repo, source_only)
     assert (source_only / "showcase/showcase.json").read_text() == '{"authored": true}\n'
+
+
+def test_raw_anchors_keep_their_own_text_and_urls():
+    source = ('<a href="/rfx/showcase/">See the showcase →</a>'
+              '<a href="https://github.com/bk-squared/rfx">Repository</a>'
+              '<a href="../guide/"><strong>Read</strong> the <em>guide</em></a>')
+    _, markdown = bundle.clean_markdown(
+        source, route="examples/demo", base_url="https://remilab.ai/rfx", source_sha="a" * 40,
+    )
+    assert markdown == (
+        '[See the showcase →](https://remilab.ai/rfx/showcase/)'
+        '[Repository](https://github.com/bk-squared/rfx)'
+        '[Read the guide](https://remilab.ai/rfx/examples/guide/)\n'
+    )
+
+
+def test_linked_images_and_attribute_order_keep_their_urls():
+    # Gallery cards wrap an <img> in an <a>: the link keeps the image's alt and
+    # source; href is matched case-insensitively and not inside data-href.
+    source = ('<a href="../gallery/boundary/"><img src="../assets/b.png" alt="Boundary reflection"/></a>'
+              '<a data-href="/wrong/" HREF="/rfx/right/">Right</a>')
+    _, markdown = bundle.clean_markdown(
+        source, route="examples/demo", base_url="https://remilab.ai/rfx", source_sha="a" * 40,
+    )
+    assert "[![Boundary reflection](" in markdown
+    assert "b.png)](https://remilab.ai/rfx/examples/gallery/boundary/)" in markdown
+    assert "[Right](https://remilab.ai/rfx/right/)" in markdown
+    assert "wrong" not in markdown
+
+
+def test_agent_publication_is_explicit_and_private_paths_stay_blocked(monkeypatch, tmp_path):
+    sources = {tmp_path / 'docs/agent' / name for name in bundle.PUBLIC_AGENT_PAGES}
+    private = {tmp_path / 'docs/agent' / name for name in (
+        'working-on-rfx.mdx', 'agent-runbook.mdx', 'repo-map.mdx',
+        'recipe-waveguide-sparams.mdx', 'gpu-throughput.mdx', 'new-private-page.mdx')}
+    nested = tmp_path / 'docs/agent/internal/overview.mdx'
+    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: sources | private | {nested})
+    assert set(bundle.source_inputs(tmp_path)) == sources
+    for source in sources:
+        assert bundle.allowed_artifact(f'markdown/agent/{source.stem}.md')
+    for source in private:
+        with pytest.raises(ValueError, match='excluded publication path'):
+            bundle.allowed_artifact(f'markdown/agent/{source.stem}.md')
+
+
+def test_agent_index_has_descriptions_and_omits_manual_pages():
+    pages = [dict(route=route, title=route, markdown_url=f'https://example/{route}.md',
+                  description=f'About {route}')
+             for route in ('guide/start', 'agent/auto-config', 'agent/overview')]
+    lines = bundle.agent_index(pages)
+    assert lines[0] == '## For coding agents'
+    assert 'agent/overview' in lines[2]
+    assert 'About agent/overview' in lines[2]
+    assert not any('guide/start' in line for line in lines)
+
+
+def test_agent_links_resolve_to_published_alternates_and_pinned_guides():
+    _, markdown = bundle.clean_markdown(
+        '[Ports](./port-selection) [Design](./design-workflows.mdx#sweep-template) '
+        '[Contract](../guides/support_matrix.md)', route='agent/overview',
+        base_url='https://remilab.ai/rfx/versions/v2.0.0', source_sha='a' * 40,
+    )
+    assert '(https://remilab.ai/rfx/versions/v2.0.0/markdown/agent/port-selection.md)' in markdown
+    assert '(https://remilab.ai/rfx/versions/v2.0.0/markdown/agent/design-workflows.md#sweep-template)' in markdown
+    assert f'(https://github.com/bk-squared/rfx/blob/{"a" * 40}/docs/guides/support_matrix.md)' in markdown
+    with pytest.raises(ValueError, match='excluded source'):
+        bundle.clean_markdown('[Private](./working-on-rfx.mdx)', route='agent/overview',
+                              base_url='https://remilab.ai/rfx', source_sha='a' * 40)
+
+
+def test_build_indexes_only_allowlisted_agents_and_combines_the_same_pages(tmp_path, monkeypatch):
+    import types
+    import check_api_reference
+
+    root = tmp_path / 'source'
+    public = root / 'docs/public'
+    agents = root / 'docs/agent'
+    public.mkdir(parents=True)
+    agents.mkdir(parents=True)
+    manual = public / 'index.mdx'
+    manual.write_text('---\ntitle: Manual\ndescription: Start here.\n---\nManual body.')
+    agent = agents / 'overview.mdx'
+    agent.write_text('---\ntitle: Agent overview\ndescription: Plan a simulation.\n---\nAgent body.')
+    private = agents / 'working-on-rfx.mdx'
+    private.write_text('Internal coordination must not publish.')
+    (public / 'site_map.json').write_text('{"groups": []}')
+    for name in bundle.SUPPORT_FILES:
+        path = root / 'docs/guides' / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_text('{}')
+    monkeypatch.setattr(bundle, 'check_source', lambda *args: 'a' * 40)
+    monkeypatch.setattr(bundle, 'get_tracked_files', lambda *args: {manual, agent, private})
+    monkeypatch.setattr(bundle, 'toolchain', lambda: {})
+    monkeypatch.setitem(sys.modules, 'pdoc', types.SimpleNamespace(__version__='fixture'))
+    monkeypatch.setattr(bundle, 'api_inventory', lambda *args: {'package_version': 'fixture', 'symbols': []})
+    monkeypatch.setattr(check_api_reference, 'check_html', lambda *args: [])
+    monkeypatch.setattr(check_api_reference, 'build_inventory', lambda: {})
+
+    def render(command, **kwargs):
+        target = Path(command[command.index('-o') + 1])
+        target.mkdir(parents=True)
+        (target / 'index.html').write_text('<html>Index</html>')
+        (target / 'rfx.html').write_text('<main class="pdoc">API</main>')
+
+    monkeypatch.setattr(bundle.subprocess, 'run', render)
+    output = tmp_path / 'bundle'
+    manifest = bundle.build(root, output, 'https://remilab.ai/rfx', 'development', None)
+    assert {p['route'] for p in manifest['pages']} == {'', 'agent/overview'}
+    files = output / 'files'
+    index = (files / 'llms.txt').read_text()
+    assert index.index('## For coding agents') < index.index('## Manual and examples')
+    assert index.count('[Agent overview]') == 1
+    assert 'Plan a simulation.' in index
+    full = (files / 'llms-full.txt').read_text()
+    for page in manifest['pages']:
+        path = page['markdown_url'].removeprefix('https://remilab.ai/rfx/')
+        assert (files / path).read_text() in full
+    assert 'Internal coordination' not in full
+    bundle.validate_bundle(output)

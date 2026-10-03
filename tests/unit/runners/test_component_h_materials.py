@@ -84,7 +84,8 @@ def test_unimplemented_carrier_refuses_non_none_record(path):
         elif path == "distributed_nu":
             run_nonuniform_distributed_pec(None, marked, None, 1, n_devices=2)
         elif path == "distributed_h_shard":
-            dc.update_h_nu_shmap(None, marked, None, 1., *([None]*6))
+            dc.update_h_nu_shmap(None, marked, None, 1., *([None]*6),
+                                 ranks=jnp.zeros(1, jnp.int32))
         elif path == "subgridded":
             sg.run_subgridded_jit(None, marked, marked, None, 1)
         elif path == "subgridded_reference":

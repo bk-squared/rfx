@@ -353,13 +353,35 @@ class _PreflightMixin:
         s_param_n_steps: int | None,
         devices: list | None = None,
     ) -> None:
-        """Reject explicit ``run`` S-parameter requests outside its contract."""
+        """Reject unsupported explicit S requests and contaminated default S solves."""
 
         requested = (
             compute_s_params is True
             or s_param_freqs is not None
             or s_param_n_steps is not None
         )
+        # Subgridded runs opt into S explicitly; uniform/graded runs resolve
+        # None from the presence of lumped/wire or wire ports respectively.
+        default_requested = (
+            compute_s_params is None
+            and self._refinement is None
+            and self._solver != "adi"
+            and any(
+                pe.impedance != 0.0
+                and (not self._uses_nonuniform_mesh or pe.extent is not None)
+                for pe in self._ports
+            )
+        )
+        if compute_s_params is not False and (requested or default_requested):
+            from rfx.runners._admission import refuse_plain_sources_s_matrix
+            from rfx.runners._admission import _s_matrix_ports
+            _one_device = devices is None or len(devices) <= 1
+            # S read from the main run's own record: the graded wire path and
+            # the uniform single-wire fast path (no scan, _s_matrix_ports False).
+            _main_record = (
+                _one_device and self._refinement is None and self._solver != "adi"
+                and (self._uses_nonuniform_mesh or not _s_matrix_ports(self)))
+            refuse_plain_sources_s_matrix(self, main_record=_main_record)
         if not requested:
             return
 
@@ -437,13 +459,6 @@ class _PreflightMixin:
                     "ports yet. Use single-device for ports on NU meshes."
                 )
         if self._refinement is not None:
-            if source_only_entries:
-                raise NotImplementedError(
-                    "subgrid compute_s_params ignores ordinary "
-                    "add_source(...) entries like the uniform S-matrix "
-                    "extractor; remove source-only entries and drive through "
-                    "add_port(...) waveforms."
-                )
             if any(pe.waveform is None for pe in port_entries):
                 raise ValueError(
                     "subgrid compute_s_params needs a waveform "
@@ -467,7 +482,7 @@ class _PreflightMixin:
 
         # The lumped/wire S-parameter extractor runs a SEPARATE eager FDTD
         # re-run that does NOT apply periodic boundaries, so it would silently
-        # ignore set_periodic_axes() and return an S-matrix for the wrong
+        # ignore BoundarySpec periodic faces and return an S-matrix for the wrong
         # (non-periodic) boundary-value problem (issue #206). Fail loudly
         # instead of returning silently-wrong S-parameters.
         if self._periodic_axes and port_entries:
@@ -475,7 +490,7 @@ class _PreflightMixin:
                 "run(compute_s_params=True) for lumped/wire add_port(...) does "
                 "not honor periodic axes: the S-parameter extraction re-run uses "
                 "non-periodic boundaries, so the returned S-matrix would silently "
-                f"ignore set_periodic_axes({self._periodic_axes!r}). Remove the "
+                f"ignore BoundarySpec periodic axes {self._periodic_axes!r}. Remove the "
                 "periodic axes for the S-parameter run, or use a port family that "
                 "supports periodicity (e.g. a Floquet port)."
             )
@@ -483,6 +498,10 @@ class _PreflightMixin:
     def _validate_forward_sparameter_request(self) -> None:
         """Reject ``forward(port_s11_freqs=...)`` outside its narrow path."""
 
+        # The port S11 is the port drive's own reflection only if nothing else
+        # excites the model (#1420), as on run()'s S request.
+        from rfx.runners._admission import refuse_plain_sources_s_matrix
+        refuse_plain_sources_s_matrix(self, main_record=True)
         port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:
@@ -561,7 +580,7 @@ class _PreflightMixin:
                     # What leaving the offset None gives on this port, counted
                     # the way the driver counts it (#810): the automatic
                     # lengths in this runway's cell where the ladder lies in
-                    # one zone, in the boundary cell where it would cross a
+                    # one zone, in the scalar dx cell where it would cross a
                     # ramp. An automatic port is judged on that same count,
                     # the offset the driver will use, not the stored one.
                     _auto = pe.name in getattr(self, "_msl_auto_offset_min", {})
@@ -593,7 +612,7 @@ class _PreflightMixin:
                             f"counts {_none_term} "
                             + (f"in this runway's {_fmt_len(_none_cell)} "
                                f"cells" if _none_on_runway else
-                               "in the boundary cell because counted in this "
+                               "in the scalar dx cell because counted in this "
                                "runway's own cells its probe ladder would "
                                "cross a grading ramp")
                             + (", at least " if _none_on_runway
@@ -604,21 +623,21 @@ class _PreflightMixin:
                         _remedy = (
                             f"set n_probe_offset >= {_nf_cells} explicitly; the "
                             f"automatic choice {_none_txt}, and leaving it None "
-                            f"chooses {_off} again."
+                            f"chooses {_off} again"
                             if _auto else
                             f"increase n_probe_offset or leave it None: the "
-                            f"automatic offset {_none_txt}."
+                            f"automatic offset {_none_txt}"
                             if _none_clears else
                             f"set n_probe_offset >= {_nf_cells}; leaving it "
-                            f"None {_none_txt}, and falls short on this runway."
+                            f"None {_none_txt}, and falls short on this runway"
                             if _none_txt else
-                            f"set n_probe_offset >= {_nf_cells}."
+                            f"set n_probe_offset >= {_nf_cells}"
                         )
                         messages.append(
                             f"MSL port {pe.name!r}: n_probe_offset="
                             f"{_off} sits within the source fringing "
                             f"transient ({_nf_cells} cells = max(3, round("
-                            f"5·h_sub/dx))); probe 0 may corrupt the V·I-split "
+                            f"5·h_sub/runway_cell))); probe 0 may corrupt the V·I-split "
                             f"S11 of a high-Q resonant load (issue #80) — "
                             + _remedy
                         )

@@ -232,8 +232,9 @@ def _completed_slabs(staged, materials, sg, dt, mesh):
 
     @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
     def complete(c, m):
-        means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx)
-        return common.slab_dispersion_coeffs(c, means, dt, sg.nx_per_rank, sg.nx)
+        rank = jax.lax.axis_index("x")
+        means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank)
+        return common.slab_dispersion_coeffs(c, means, dt, sg.nx_per_rank, sg.nx, rank)
 
     return jax.jit(complete)(coeffs, materials), state
 

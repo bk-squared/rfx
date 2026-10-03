@@ -54,11 +54,16 @@ sim = Simulation(**config.to_sim_kwargs())
 sim.add_material("fr4", eps_r=4.4, sigma=0.025)
 for shape, material in geometry:
     sim.add(shape, material=material)
-sim.add_source((0.029, 0.03, 0.0008), "ez", waveform=GaussianPulse(2.4e9, 0.8))
+sim.add_source((0.029, 0.03, 0.0008), "ez", waveform=GaussianPulse(2.4e9, 0.8),
+               amplitude_kind="current")
 sim.add_probe((0.029, 0.03, 0.0008), "ez")
 
 result = sim.run(n_steps=min(config.n_steps, 200))  # smoke first; increase only after inspection
 ```
+
+This smoke configuration emits preflight advisories about absorber thickness,
+mesh grading and the absorber runway. A successful smoke run does not establish
+that the proposed mesh is inside the validated envelope.
 
 ## What agents must report
 

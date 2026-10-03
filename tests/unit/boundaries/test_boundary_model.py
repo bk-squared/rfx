@@ -28,7 +28,7 @@ def compare_faces(expected, actual):
 def test_per_face_wall_sets(tokens):
     spec = BoundarySpec(**dict(zip("xyz", tokens)))
     model = resolve_kinds(spec, mode="3d", features=Features())
-    grid = SimpleNamespace(pec_faces=spec.pec_faces(), pmc_faces=spec.pmc_faces())
+    grid = SimpleNamespace(pec_faces=spec.pec_faces(), pmc_faces=spec.pmc_faces(), shape=(5, 5, 5))
     expected_e = frozenset(f"{a}_{s}" for a, t in zip("xyz", tokens)
                            for s in ("lo", "hi") if t in ("pec", "cpml"))
     expected_h = frozenset(f"{a}_{s}" for a, t in zip("xyz", tokens)
@@ -101,10 +101,9 @@ def test_default_and_declared_origins():
     args = dict(freq_max=20e9, domain=(.024, .020, .016), dx=.001)
     assert {f.origin for f in Simulation(**args).boundary_model().faces} == {"default"}
     assert {f.origin for f in Simulation(**args, boundary="cpml").boundary_model().faces} == {"declared"}
-    with pytest.warns(DeprecationWarning):
-        legacy = Simulation(**args, pec_faces={"x_lo"}).boundary_model()
-    assert legacy.face("x_lo").origin == "declared"
-    assert legacy.face("x_hi").origin == "default"
+    declared = Simulation(**args, boundary=BoundarySpec(
+        x=Boundary(lo="pec", hi="cpml"), y="cpml", z="cpml")).boundary_model()
+    assert {f.origin for f in declared.faces} == {"declared"}
 
 
 def test_requirements_collect_without_rewriting():
@@ -119,15 +118,11 @@ def test_requirements_collect_without_rewriting():
     assert next(r for r in model.requirements if r.feature == "TFSF" and r.faces[0] == "y_lo").admissible == (Kind.PERIODIC, Kind.PMC)
 
 
-def test_periodic_legacy_rebuild_and_bloch_descriptor():
-    sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001)
-    with pytest.warns(DeprecationWarning):
-        sim.set_periodic_axes("xy")
+def test_periodic_spec_and_bloch_descriptor():
+    sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001,
+                     boundary=BoundarySpec(x="periodic", y="periodic", z="cpml"))
     assert sim.boundary_model().axes[0].pairing == ("x_lo", "x_hi")
-    assert [f.origin for f in sim.boundary_model().faces] == ["declared"] * 4 + ["default"] * 2
-    with pytest.warns(DeprecationWarning):
-        sim.set_periodic_axes("x")
-    assert [f.origin for f in sim.boundary_model().faces] == ["declared"] * 4 + ["default"] * 2
+    assert {f.origin for f in sim.boundary_model().faces} == {"declared"}
     model = resolve_kinds(BoundarySpec(x="periodic", y="pec", z="pec"),
                           mode="3d", features=Features(bloch_axes=("x",)))
     assert model.axes[0].bloch

@@ -226,7 +226,8 @@ def build_singlepost(pulse: GaussianPulse,
     termination's own post sits
     inside the MEASURED Gamma_top load and never enters the model.
     Returns the Simulation (no solve call)."""
-    sim = Simulation(
+    # #1138: geometry[0] x/y solved +1.667/+7 % off the domain-clipped drawing; retain closed-investigation geometry.
+    sim = Simulation(snap="declared",
         freq_max=FREQ_MAX, domain=DOMAIN, dx=DX,
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),

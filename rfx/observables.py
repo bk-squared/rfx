@@ -773,9 +773,11 @@ def jacobian_fwd(
     else:
         # Guard 1 (trace-time, works eager or under an outer jax.jit):
         # abstractly trace the SAME out_axes=(None, 0) vmap the batched
-        # path actually runs, via jax.eval_shape -- shape-only, zero
-        # FLOPs, zero extra memory (that O(n_t) memory cost is exactly
-        # what this branch exists to avoid). If sim_fn's primal genuinely
+        # path actually runs, via jax.eval_shape -- shape-only: no time
+        # step runs and no O(n_t) memory is held (that cost is exactly
+        # what this branch exists to avoid); a forward() inside sim_fn
+        # evaluates its declaration-only set-up once while traced
+        # (#1367), as each row's jvp below does. If sim_fn's primal genuinely
         # depends on the tangent direction, this raises the identical
         # ValueError a real vmap(..., out_axes=(None, 0)) call would, so
         # the sequential path inherits the batched path's fail-loud

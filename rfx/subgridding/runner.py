@@ -14,6 +14,7 @@ from rfx.core.yee import (
     FDTDState, MaterialArrays, update_h, update_e,
 )
 from rfx.boundaries.pec import apply_pec, apply_pec_mask
+# Patching rfx.boundaries.cpml.init_cpml later does not replace this bound import.
 from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
 from rfx.grid import Grid
 from rfx.subgridding.sbp_sat_3d import (

@@ -380,7 +380,8 @@ def _build_thru(pulse: "GaussianPulse | None" = None) -> Simulation:
     run(compute_s_params=True) routes through the PR #258 production scan
     driver, the extraction path under test.
     """
-    sim = Simulation(
+    # #1138: trace x/y solved +2.059%/+7% off; this tests two-port V/I extraction.
+    sim = Simulation(snap="declared",
         freq_max=_THRU_FREQ_MAX_HZ,
         domain=_THRU_DOMAIN_M,
         dx=_THRU_DX_M,

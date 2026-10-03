@@ -1122,15 +1122,14 @@ def _sheet_solved_spans(ctx, boxes):
     """``(entry, axis, SolvedSheetSpan)`` for every in-plane axis of every
     sheet in ``boxes``, from :func:`rfx.mesh_edges.solved_sheet_span` -- the
     one solved-edge model the sheet-size and census advisories share with
-    ``fidelity_report``. The seam test reads the union of all sheets."""
-    from rfx.mesh_edges import solved_sheet_span
+    ``fidelity_report``. The seam test reads realized sheets and PEC volume edges."""
+    from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
     from rfx.geometry.rasterize_grid import interior_lattice_mask
     domain = tuple(float(v) for v in getattr(ctx.sim, "_domain", (0.0,) * 3))
     sheets = [e for e in boxes if e.kind == "sheet"]
     fps = [interior_lattice_mask(e.sheet.footprint, ctx.grid) for e in sheets]
-    union = None
-    for fp in fps:
-        union = fp.copy() if union is None else (union | fp)
+    union, volume_edges = sheet_continuation_masks(
+        ctx.interior_pec_entries(), ctx.periodic, ctx.grid.shape)
     out = []
     for e, fp in zip(sheets, fps):
         for a in range(3):
@@ -1140,7 +1139,7 @@ def _sheet_solved_spans(ctx, boxes):
                 continue
             span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
                                      float(e.hi[a]), float(domain[a]),
-                                     union=union,
+                                     union=union, volume_edges=volume_edges,
                                      periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
             if span is not None:
                 out.append((e, a, span))
@@ -1153,14 +1152,18 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
     ``scripts/diagnostics/pec_sheet_edge_offset.py``), so the size the solve
     sees is ``covered node span + EDGE_OFFSET * (cell beyond each end)``.
     Reported in input units against the drawn size; an end that lies on the
-    domain wall is a wall, not an edge, and adds nothing. This fires for a
+    domain wall is a wall, not an edge, and adds nothing. At non-free ends,
+    exclude their residual from the comparison (including seams and overlaps). This fires for a
     sheet drawn exactly ON the lattice too -- that sheet is 0.7 cell long."""
     from rfx.mesh_edges import EDGE_OFFSET
     rows = []
     for e, a, span in _sheet_solved_spans(ctx, boxes):
         if not (span.free_lo or span.free_hi):
             continue
-        ext = float(e.hi[a] - e.lo[a])
+        drawn_lo, drawn_hi = span.comparison_bounds(e.lo[a], e.hi[a], ctx.sim._domain[a])
+        ext = drawn_hi - drawn_lo
+        if ext <= 0.0:
+            continue
         nodes = np.asarray(ctx.nodes[a], dtype=float)
         if span.i1 == nodes.size:  # unwrapped periodic endpoint N is at L
             nodes = np.append(nodes, float(ctx.sim._domain[a]))
@@ -1186,11 +1189,14 @@ def _warn_sheet_effective_size(_w, ctx, boxes) -> None:
         "beyond its last node (measured on this solver, both "
         "polarizations; a flat wall has no such offset). REMEDY: build the "
         "in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, "
-        "dx, sheets=[...], solids=[...]) and pass them as "
-        "Simulation(dx_profile=..., dy_profile=...); a node ON the edge is "
-        "not the fix. STALE IF: the footprint's node span on the run's node "
+        "dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as "
+        "Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is "
+        'not the fix. Use Simulation(..., snap="declared") to accept the '
+        "declared geometry knowingly without changing the solved geometry. "
+        "STALE IF: the footprint's node span on the run's node "
         "coordinates does not reproduce the printed numbers.",
         code="sheet_effective_size",
+        severity="warning" if ctx.sim._snap == "declared" else "error",
         source="_validate_cfg_off_lattice_design_edges",
     ))
 

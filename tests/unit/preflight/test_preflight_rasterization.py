@@ -230,7 +230,8 @@ def _slot_sim(slot: bool, dz_profile=None):
     ``slot=False`` (silent): the upper dielectric is drawn from the sheet
     plane itself, so the plane's node carries eps_r 2.5.
     """
-    sim = Simulation(domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
+    # #1138: PEC sheet x/y solved +8.75% off; this tests dielectric-slot advice.
+    sim = Simulation(snap="declared", domain=(8 * MM, 8 * MM, 6 * MM), dx=0.5 * MM,
                      freq_max=10e9, boundary="cpml", dz_profile=dz_profile)
     sim.add_material("diel_lo", eps_r=3.5)
     sim.add_material("diel_hi", eps_r=2.5)
@@ -262,7 +263,8 @@ def _cavity_sim(faces: bool):
     4.0 mm; face-to-face 1.998 mm vs plane-to-plane 2.0 mm is +0.1% on
     both measures, inside the 1% advisory threshold.
     """
-    sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
+    # #1138: both foils x/y solved +11.67% off; this tests cavity-thickness advice.
+    sim = Simulation(snap="declared",domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                      freq_max=10e9, boundary="cpml")
     sim.add_material("core", eps_r=4.0)
     if faces:
@@ -760,7 +762,8 @@ class TestRealizationFindings:
         """Per sheet: declared mid-plane, realized node plane, offset; a
         NOTICE (info severity) so it never blocks and never counts as a
         warning. A sheet declared at 6.3 mm realizes on 6 mm: -0.300 cell."""
-        sim = Simulation(domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
+        # #1138: foils x/y solved +11.67% off; this tests informational plane notices.
+        sim = Simulation(snap="declared",domain=(10 * MM, 10 * MM, 8 * MM), dx=1 * MM,
                          freq_max=10e9, boundary="cpml")
         sim.add(Box((2 * MM, 2 * MM, 5.0 * MM), (8 * MM, 8 * MM, 5.0 * MM)),
                 material="pec")
@@ -775,7 +778,9 @@ class TestRealizationFindings:
         assert "declared mid-plane 6.3mm, realized node plane" in msg
         assert "(offset -0.300 cell = 300µm)" in msg
         assert "declared mid-plane 5mm" in msg and "(offset +0.000 cell" in msg
+        # The plane notice and opted-in sheet dimensions do not block.
         assert rep.ok
+        assert all(h.severity == "warning" for h in rep.by_code("sheet_effective_size"))
 
     def test_half_cell_tie_is_a_warning_naming_both_planes(self):
         """A face-registered foil (both faces on nodes) has its mid-plane
@@ -860,9 +865,9 @@ class TestWiring:
                      UNAVAILABLE_CODE):
             assert rep.by_code(code) == []
 
-    def test_advisory_tier_none_block(self):
+    def test_advisory_findings_do_not_block(self):
         """The campaign checks and the one-cell/slot findings are
-        warning-severity, the plane notice is info: report.ok stays True."""
+        warning-severity and do not block declared sheet models."""
         rep = _congruence_sim(True).preflight()
         hits = rep.by_code(CONGRUENCE_CODE)
         assert hits and all(h.severity == "warning" for h in hits)
@@ -872,9 +877,11 @@ class TestWiring:
                    for h in rep2.by_code(CAVITY_CODE))
         assert all(h.severity == "info" for h in rep2.by_code(PLANE_CODE))
         assert rep2.ok
+        assert all(h.severity == "warning" for h in rep2.by_code("sheet_effective_size"))
         rep3 = _slot_sim(True).preflight()
         assert all(h.severity == "warning" for h in rep3.by_code(SLOT_CODE))
         assert rep3.ok
+        assert all(h.severity == "warning" for h in rep3.by_code("sheet_effective_size"))
 
     def test_context_is_built_once_per_configuration(self):
         """The shared context is reused across the checks of one preflight

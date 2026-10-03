@@ -32,7 +32,7 @@ def test_auto_mesh_cannot_substitute_yee_for_declared_adi(entry, conductor, prev
 def test_supported_uniform_model_reaches_the_declared_adi_solver(entry, dx, monkeypatch):
     sim = Simulation(freq_max=10e9, domain=(.008, .008, .008),
                      dx=dx, boundary="pec", solver="adi")
-    sim.add_source((.004, .004, .004), "ez")
+    sim.add_source((.004, .004, .004), "ez", amplitude_kind="field")
     sim.add_probe((.004, .004, .004), "ez")
     import rfx.adi
 

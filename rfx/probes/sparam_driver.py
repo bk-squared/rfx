@@ -113,10 +113,9 @@ def compute_lumped_wire_s_matrix_via_scan(
     -----
     Mixed lumped + wire port sets are not supported.
     """
-    # For distributed run()'s one-wire S11, _main_wire_record launches a
-    # second full run with all sources on and the main run's soft-source
-    # convention. It does not read the main run's record. Other S requests
-    # retain the selected-drive rule.
+    # A plain source fires in every port drive, so it is refused here (#1420).
+    from rfx.runners._admission import refuse_plain_sources_s_matrix
+    refuse_plain_sources_s_matrix(sim)
     if devices is not None:
         if return_vi_dump and any(pe.impedance > 0 and pe.extent is not None
                                   for pe in sim._ports):

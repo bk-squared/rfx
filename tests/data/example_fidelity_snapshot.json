@@ -2431,39 +2431,39 @@
         "domain": {
           "axes": {
             "x": {
-              "declared_extent_um": 20000.0,
+              "declared_extent_um": 44000.0,
               "declared_um": [
                 0.0,
-                20000.0
+                44000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 20000.0,
-              "n_cells": 80,
-              "realized_extent_um": 20000.0,
+              "mesh_extent_um": 44000.0,
+              "n_cells": 178,
+              "realized_extent_um": 44000.0,
               "realized_um": [
                 0.0,
-                20000.0
+                44000.0
               ]
             },
             "y": {
-              "declared_extent_um": 10000.0,
+              "declared_extent_um": 34000.0,
               "declared_um": [
                 0.0,
-                10000.0
+                34000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 10000.0,
-              "n_cells": 40,
-              "realized_extent_um": 10000.0,
+              "mesh_extent_um": 34000.0,
+              "n_cells": 140,
+              "realized_extent_um": 34000.0,
               "realized_um": [
                 0.0,
-                10000.0
+                34000.0
               ]
             },
             "z": {
@@ -2490,41 +2490,41 @@
           "n_cells": null,
           "realization": null
         },
-        "geometry|substrate|750.000,750.000,1250.000um->19250.000,9250.000,2250.000um": {
+        "geometry|substrate|12750.000,12750.000,1250.000um->31250.000,21250.000,2250.000um": {
           "axes": {
             "x": {
-              "cell_um": 250.0,
+              "cell_um": 247.666666667,
               "declared_extent_um": 18500.0,
               "declared_um": [
-                750.0,
-                19250.0
+                12750.0,
+                31250.0
               ],
               "face_residual_um": [
-                0.0,
-                0.0
+                87.5,
+                162.5
               ],
-              "realized_extent_um": 18500.0,
+              "realized_extent_um": 18575.0,
               "realized_um": [
-                750.0,
-                19250.0
+                12837.5,
+                31412.5
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 250.0,
+              "cell_um": 231.452702703,
               "declared_extent_um": 8500.0,
               "declared_um": [
-                750.0,
-                9250.0
+                12750.0,
+                21250.0
               ],
               "face_residual_um": [
-                0.0,
-                0.0
+                74.375,
+                138.125
               ],
-              "realized_extent_um": 8500.0,
+              "realized_extent_um": 8563.75,
               "realized_um": [
-                750.0,
-                9250.0
+                12824.375,
+                21388.125
               ],
               "sub_cell": false
             },
@@ -2547,7 +2547,20 @@
               "sub_cell": false
             }
           },
-          "findings": [],
+          "findings": [
+            {
+              "axis": "x",
+              "detail": "PLACEMENT off by 162.5 um (0.88% of the declared 18500.0 um extent); SIZE 18575.0 um (+75.0 um, +0.41%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            },
+            {
+              "axis": "y",
+              "detail": "PLACEMENT off by 138.1 um (1.63% of the declared 8500.0 um extent); SIZE 8563.8 um (+63.8 um, +0.75%)",
+              "kind": "off-lattice-face",
+              "remedy": "place a mesh node on this face (non-uniform profile) or choose the cell size / origin commensurate with it"
+            }
+          ],
           "material": {
             "eps_r": 3.2,
             "kind": "dielectric",
@@ -2556,44 +2569,108 @@
             "name": "substrate",
             "sigma": 0.01
           },
-          "n_cells": 10064,
+          "n_cells": 11100,
           "realization": null
         },
-        "thin_conductor|pec|750.000,4500.000,2250.000um->19250.000,5500.000,2250.000um": {
+        "thin_conductor|pec|12750.000,12750.000,1250.000um->31250.000,21250.000,1250.000um": {
           "axes": {
             "x": {
-              "cell_um": 250.0,
+              "cell_um": 247.666666667,
               "declared_extent_um": 18500.0,
               "declared_um": [
-                750.0,
-                19250.0
+                12750.0,
+                31250.0
               ],
               "face_residual_um": [
-                87.5,
-                87.5
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 18675.0,
+              "realized_extent_um": 18500.0,
               "realized_um": [
-                662.5,
-                19337.5
+                12750.0,
+                31250.0
               ],
               "sub_cell": false
             },
             "y": {
-              "cell_um": 250.0,
-              "declared_extent_um": 1000.0,
+              "cell_um": 231.452702703,
+              "declared_extent_um": 8500.0,
               "declared_um": [
-                4500.0,
-                5500.0
+                12750.0,
+                21250.0
               ],
               "face_residual_um": [
-                87.5,
-                87.5
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 1175.0,
+              "realized_extent_um": 8500.0,
               "realized_um": [
-                4412.5,
-                5587.5
+                12750.0,
+                21250.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 250.0,
+              "declared_extent_um": 0.0,
+              "declared_um": [
+                1250.0,
+                1250.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                1250.0,
+                1250.0
+              ],
+              "sub_cell": true
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 0,
+          "realization": "PEC sheet on node plane z = 1250.00 um (2775 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
+        },
+        "thin_conductor|pec|12750.000,16500.000,2250.000um->31250.000,17500.000,2250.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 247.666666667,
+              "declared_extent_um": 18500.0,
+              "declared_um": [
+                12750.0,
+                31250.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 18500.0,
+              "realized_um": [
+                12750.0,
+                31250.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 212.75,
+              "declared_extent_um": 1000.0,
+              "declared_um": [
+                16500.0,
+                17500.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 1000.0,
+              "realized_um": [
+                16500.0,
+                17500.0
               ],
               "sub_cell": false
             },
@@ -2616,106 +2693,35 @@
               "sub_cell": true
             }
           },
-          "findings": [
-            {
-              "axis": "y",
-              "detail": "PLACEMENT off by 87.5 um (8.75% of the declared 1000.0 um extent); SIZE 1175.0 um (+175.0 um, +17.50%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
-            }
-          ],
+          "findings": [],
           "material": {
             "kind": "pec"
           },
           "n_cells": 0,
           "realization": "PEC sheet on node plane z = 2250.00 um (375 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
-        },
-        "thin_conductor|pec|750.000,750.000,1250.000um->19250.000,9250.000,1250.000um": {
-          "axes": {
-            "x": {
-              "cell_um": 250.0,
-              "declared_extent_um": 18500.0,
-              "declared_um": [
-                750.0,
-                19250.0
-              ],
-              "face_residual_um": [
-                87.5,
-                87.5
-              ],
-              "realized_extent_um": 18675.0,
-              "realized_um": [
-                662.5,
-                19337.5
-              ],
-              "sub_cell": false
-            },
-            "y": {
-              "cell_um": 250.0,
-              "declared_extent_um": 8500.0,
-              "declared_um": [
-                750.0,
-                9250.0
-              ],
-              "face_residual_um": [
-                87.5,
-                87.5
-              ],
-              "realized_extent_um": 8675.0,
-              "realized_um": [
-                662.5,
-                9337.5
-              ],
-              "sub_cell": false
-            },
-            "z": {
-              "cell_um": 250.0,
-              "declared_extent_um": 0.0,
-              "declared_um": [
-                1250.0,
-                1250.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "realized_extent_um": 0.0,
-              "realized_um": [
-                1250.0,
-                1250.0
-              ],
-              "sub_cell": true
-            }
-          },
-          "findings": [
-            {
-              "axis": "y",
-              "detail": "PLACEMENT off by 87.5 um (1.03% of the declared 8500.0 um extent); SIZE 8675.0 um (+175.0 um, +2.06%)",
-              "kind": "off-lattice-face",
-              "remedy": "a sheet's in-plane edge is solved about 0.35 cell beyond its last node, so a node ON the edge is not the fix: put a node 0.35 cell INSIDE the metal with rfx.mesh_edges.edge_aware_profile (non-uniform profile for this axis)"
-            }
-          ],
-          "material": {
-            "kind": "pec"
-          },
-          "n_cells": 0,
-          "realization": "PEC sheet on node plane z = 1250.00 um (2625 nodes, closed footprint, zero thickness, no cell; in-plane E zeroed on that plane, normal E live)"
         }
       },
       "preflight": [
         {
-          "code": "off_lattice_design_edges",
+          "code": "msl_port_geometry",
           "loc": null,
-          "message": "2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' (sheet) y: extent 1mm, worst face residual 87.5\u00b5m (8.75% of the extent); thin_conductor[0] 'thin_conductor[0]' (sheet) y: extent 8.5mm, worst face residual 87.5\u00b5m (1.03% of the extent). OBSERVED: distance from each declared face to its nearest E-node on this run's own node coordinates; a PEC volume's face realizes on the nearest node plane and a sheet footprint on the nodes it covers (lattice ownership contract #931 \u00a71.1/\u00a71.3). Reported residuals describe declared-face alignment only. A sheet's extent can change by more than this nearest-node residual, and an extent change involves both faces. Read the realized bounds from fidelity_report(); frequency sensitivity depends on the mode and the affected dimension. COST (measured, #703): a uniform-mesh sweep rounded ONE substrate thickness by 8-10% across three 'convergence' points \u2014 three different boards solved under one name; the same campaign's board survived at dx=50um only because every patterned dimension happened to be an exact multiple of 50um. REMEDY: for a PEC VOLUME choose dx commensurate with its dimensions, slide the lattice origin onto the worst face, or (non-uniform lane) place mesh nodes on its faces; for a SHEET see sheet_effective_size -- a node on a sheet's edge is not the fix. COVERAGE: examined 4 axis extent(s) on 2 conductor Box declaration(s) on the uniform lane; 2 sheet normal axis/axes reported by sheet_plane_realized instead; 0 non-Box conductor entr(y/ies) skipped (no analytic face coordinates). STALE IF: |face - nearest node| on the run's node coordinates does not reproduce the printed residuals.",
+          "message": "MSL auto probe-offset interval solve (issue #469) SKIPPED for 2 port(s), so the downstream reflector clearance is NOT enforced for them and no auto probe spacing is widened (#681; on a graded propagation axis both would count reflector and absorber distances in cells of more than one size). Per port: 'left' (direction='+x'): the propagation axis x is GRADED; the automatic probe ladder is counted in this port's own runway cell (offset 20 + 4 x spacing 3 cells of 250\u00b5m, probe 0 5mm from the source); 'right' (direction='-x'): the propagation axis x is GRADED; the automatic probe ladder is counted in this port's own runway cell (offset 20 + 4 x spacing 3 cells of 250\u00b5m, probe 0 5mm from the source). This used to be silent for every non-uniform mesh (issue #686). Set n_probe_offset explicitly on these ports, or make the propagation axis uniform, if the deepest probe's clearance matters.",
           "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "source": "_check_msl_port_geometry"
         },
         {
-          "code": "sheet_effective_size",
+          "code": "msl_port_geometry",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): thin_conductor[1] 'thin_conductor[1]' y: drawn 1mm, nodes cover 1000\u00b5m, solved as 1.175mm (+17.50%); thin_conductor[0] 'thin_conductor[0]' y: drawn 8.5mm, nodes cover 8.5mm, solved as 8.675mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "MSL port 'left' (direction='+x'): deepest probe at x=24.00mm sits -11250\u00b5m from a strong reflector candidate (thin_conductor[0] at x\u2208[12.75,31.25]mm y\u2208[12.75,21.25]mm; distance estimated from registered conductor bounds); recommended \u2265 5586\u00b5m (= \u03bb_g/4 at f_max with \u03b5_eff_proxy=5.0). Measured on ONE fixture (VESSL 369367260508, microstrip open-stub notch fixed-source, same source, load and DUT; only p1's observation offset varied; both arms settled below -118 dB): standing-wave content at the probes corrupts the FITTED Z0/beta - the near-reflector arm's beta scan railed on 51/51 bins over 3-5 GHz against 0/51 for the compliant arm - while raw S11 at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported here as physics - they are raw, unprojected values carrying the coherent power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that comparison's producer verdict was not_read. What it does show is that S11/S21 move far less than the fit does, because they normalize with the analytic Hammerstad-Jensen Z0 rather than with the fit. Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure is right. This layout warning does not certify accuracy when absent. Available layout: no compliant n_probe_offset exists on this feed length (interval empty). Choose an offset within a nonempty interval; if it is empty, extend the uniform feed region to fit the source standoff, full probe ladder and reflector clearance. Gate on probe_clearance for the geometric condition and beta_railed for the fitted-value symptom; reliable is a per-bin fit-quality mask and gates neither. When no compliant offset exists on the available feed length, keep the analytic Hammerstad-Jensen Z0 for normalization (already the production path) and treat the fitted Z0/beta as UNREADABLE rather than merely uncertain. S11/S21 are the better-behaved of the two, but nothing here BOUNDS their error. The fix is to lengthen the uniform feed region or move the reference plane; raising n_probe_offset alone moves the probes toward the reflector. Check settling and observation-plane sensitivity before interpreting S.",
           "severity": "warning",
-          "source": "_validate_cfg_off_lattice_design_edges"
+          "source": "_check_msl_port_geometry"
+        },
+        {
+          "code": "msl_port_geometry",
+          "loc": null,
+          "message": "MSL port 'right' (direction='-x'): deepest probe at x=20.00mm sits -11250\u00b5m from a strong reflector candidate (thin_conductor[0] at x\u2208[12.75,31.25]mm y\u2208[12.75,21.25]mm; distance estimated from registered conductor bounds); recommended \u2265 5586\u00b5m (= \u03bb_g/4 at f_max with \u03b5_eff_proxy=5.0). Measured on ONE fixture (VESSL 369367260508, microstrip open-stub notch fixed-source, same source, load and DUT; only p1's observation offset varied; both arms settled below -118 dB): standing-wave content at the probes corrupts the FITTED Z0/beta - the near-reflector arm's beta scan railed on 51/51 bins over 3-5 GHz against 0/51 for the compliant arm - while raw S11 at the 3.77125 GHz notch bin read +0.026895 dB on the near-reflector arm and +0.018065 dB on the compliant one, against the analytic 0 dB that quarter-wave open-stub notch has. Both are ABOVE unity on a passive structure, by 0.31 % and 0.21 %; that is never reported here as physics - they are raw, unprojected values carrying the coherent power excess recorded in #838 (closed as not planned). Their 0.009 dB difference is one fixture, one bin, an arm-to-arm difference, NOT a bound on S, and that comparison's producer verdict was not_read. What it does show is that S11/S21 move far less than the fit does, because they normalize with the analytic Hammerstad-Jensen Z0 rather than with the fit. Neither 'S11/S21 are unaffected' nor the retired '-5 to -10 dB' figure is right. This layout warning does not certify accuracy when absent. Available layout: no compliant n_probe_offset exists on this feed length (interval empty). Choose an offset within a nonempty interval; if it is empty, extend the uniform feed region to fit the source standoff, full probe ladder and reflector clearance. Gate on probe_clearance for the geometric condition and beta_railed for the fitted-value symptom; reliable is a per-bin fit-quality mask and gates neither. When no compliant offset exists on the available feed length, keep the analytic Hammerstad-Jensen Z0 for normalization (already the production path) and treat the fitted Z0/beta as UNREADABLE rather than merely uncertain. S11/S21 are the better-behaved of the two, but nothing here BOUNDS their error. The fix is to lengthen the uniform feed region or move the reference plane; raising n_probe_offset alone moves the probes toward the reflector. Check settling and observation-plane sensitivity before interpreting S.",
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
         },
         {
           "code": "thin_absorber",
@@ -5704,7 +5710,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         },
@@ -5897,7 +5903,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -7973,7 +7979,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -8152,7 +8158,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 17mm, nodes cover 17mm, solved as 17.35mm (+2.06%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -8338,7 +8344,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' y: drawn 5mm, nodes cover 5mm, solved as 5.35mm (+7.00%); geometry[0] 'pec' x: drawn 21mm, nodes cover 21mm, solved as 21.35mm (+1.67%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -8517,7 +8523,7 @@
         {
           "code": "sheet_effective_size",
           "loc": null,
-          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...]) and pass them as Simulation(dx_profile=..., dy_profile=...); a node ON the edge is not the fix. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
+          "message": "2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%). OBSERVED: the node span the sheet's realized footprint covers on this run's grid, plus 0.35 of the adjacent cell at each free in-plane edge -- a PEC sheet's edge is solved that far beyond its last node (measured on this solver, both polarizations; a flat wall has no such offset). REMEDY: build the in-plane profiles with rfx.mesh_edges.edge_aware_profiles(domain, dx, sheets=[...], solids=[...], axes=\"xyz\") and pass them as Simulation(dx_profile=..., dy_profile=..., dz_profile=...); a node ON the edge is not the fix. Use Simulation(..., snap=\"declared\") to accept the declared geometry knowingly without changing the solved geometry. STALE IF: the footprint's node span on the run's node coordinates does not reproduce the printed numbers.",
           "severity": "warning",
           "source": "_validate_cfg_off_lattice_design_edges"
         }
@@ -8752,12 +8758,6 @@
             }
           },
           "findings": [
-            {
-              "axis": "x",
-              "detail": "the realized body extends beyond the declared domain on x \u2014 those cells sit in the CPML pad, where the update equations are the absorber's",
-              "kind": "inside-absorber",
-              "remedy": "keep the body inside the domain, or enlarge the domain so the absorber stays empty"
-            },
             {
               "axis": "y",
               "detail": "PLACEMENT off by 47.5 um (7.92% of the declared 600.0 um extent); SIZE 596.9 um (-3.1 um, -0.52%)",

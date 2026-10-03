@@ -4,7 +4,9 @@ Models an SMA connector as:
   - PEC outer conductor (cylinder shell)
   - PTFE dielectric fill (eps_r=2.1) between outer and inner conductors
   - PEC center pin (solid cylinder)
-  - Lumped excitation gap at the base (cavity wall interface)
+
+The removed ``setup_coaxial_port`` API also built a lumped excitation gap.
+The remaining coaxial-line helpers use TEM excitation and PEC edge conductors.
 
 Standard SMA dimensions:
   - Center pin diameter: 1.27 mm (radius 0.635 mm)
@@ -34,6 +36,7 @@ from rfx.grid import Grid
 from rfx.core.yee import EPS_0, MU_0
 from rfx.geometry.csg import Cylinder
 from rfx.sources._laplace import _solve_laplace_2d
+from rfx.sources.sources import stamp_lumped_sigma
 
 
 # ---------------------------------------------------------------------------
@@ -740,6 +743,7 @@ def build_coaxial_tem_plane_source_specs(
     field_scale: float = 1.0e4,
     magnetic_ratio: float = 1.0,
     reference_plane_axial_index_offset: int = 0,
+    plane_axial_index: int | None = None,
     eps_r: float = PTFE_EPS_R,
     shell_inner_radius: float | None = None,
     pec_cell_mask=None,
@@ -812,6 +816,10 @@ def build_coaxial_tem_plane_source_specs(
         Shift of the source plane (and therefore the V/I reference plane)
         relative to ``port.pin_center`` along the port axis. ``0`` injects
         at the pin centre plane.
+    plane_axial_index:
+        Explicit E-plane node for a calculator's internally indexed source.
+        If supplied, bypasses the physical pin-centre lookup; the offset
+        above is still applied. Declared ports use the default lookup.
     eps_r:
         Coaxial dielectric permittivity for the analytic ``Z_TEM`` and the
         Yee-half-step delay (``v_phase = c / sqrt(εr)``). Default
@@ -846,7 +854,8 @@ def build_coaxial_tem_plane_source_specs(
     # Forward direction: +1 for face='bottom' (pin goes +z), -1 for face='top'.
     forward_sign = float(direction)
 
-    plane_index = int(grid.position_to_index(pin_center)[2]) + int(
+    plane_index = (int(grid.position_to_index(pin_center)[2])
+                   if plane_axial_index is None else int(plane_axial_index)) + int(
         reference_plane_axial_index_offset
     )
 
@@ -1617,7 +1626,10 @@ def stamp_coaxial_line(
     z_lo = (int(z_lo_index) - grid.pad_z_lo) * dz
     z_hi = (int(z_hi_index) - grid.pad_z_lo) * dz
     zc = 0.5 * (z_lo + z_hi)
-    height = (z_hi - z_lo) + 2.0 * dz
+    # Cylinder.mask samples node coordinates with a closed axial predicate.
+    # Put each end half a cell beyond the requested endpoint sample: exactly
+    # z_lo_index .. z_hi_index, without a floating-point tie on either end.
+    height = (z_hi - z_lo) + dz
     center = (float(center_xy[0]), float(center_xy[1]), zc)
 
     a = float(pin_radius)
@@ -1778,10 +1790,10 @@ def stamp_coaxial_annular_resistor(
 ):
     """Stamp a radial annular resistor (``Γ → 0`` match) at one z-plane.
 
-    The PTFE annulus between the pin and the shell is filled with conductivity
+    Each Ex and Ey edge in the annulus at this node plane receives
     ``σ = log(b'/a) / (2π·dz·Z)`` so the radial pin-to-shell resistance matches
-    ``target_impedance``. Used both for the matched feed termination and for a
-    matched DUT.
+    ``target_impedance``. The edge-owned load is not averaged into adjacent
+    planes or Ez. Used both for the matched feed termination and a matched DUT.
 
     ``pec_cell_mask`` is the conductor mask :func:`stamp_coaxial_line` returns;
     cells in it are skipped. It replaces the old test ``sigma >= PEC_SIGMA/2``,
@@ -1816,9 +1828,10 @@ def stamp_coaxial_annular_resistor(
             occupied = (bool(pec[i, j, z]) if pec is not None
                         else sig[i, j, z] >= 0.5 * PEC_SIGMA)
             if float(pin_radius) <= r <= shell_inner_radius and not occupied:
-                sig[i, j, z] = sigma_load
+                materials = stamp_lumped_sigma(materials, (i, j, z), sigma_load, "ex")
+                materials = stamp_lumped_sigma(materials, (i, j, z), sigma_load, "ey")
                 eps[i, j, z] = 1.0
                 stamped += 1
     if stamped == 0:
         raise ValueError("stamp_coaxial_annular_resistor stamped 0 cells; check geometry/resolution")
-    return materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
+    return materials._replace(eps_r=jnp.asarray(eps))

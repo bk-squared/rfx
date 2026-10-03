@@ -173,17 +173,17 @@ def test_single_wire_and_opt_out():
             sim.run(n_steps=8, s_param_n_steps=16, devices=devices, skip_preflight=True)
 
 
-def test_single_wire_uses_main_pec_soft_source_rule():
+def test_single_wire_with_plain_source_is_refused_on_both_lanes():
+    """A plain source fires in every port drive (#1420): one device and
+    devices= refuse it alike, before the first step."""
     sim = Simulation(freq_max=10e9, domain=(.016, .006, .006), dx=.001, boundary="pec")
     wave = GaussianPulse(f0=5e9, bandwidth=1.6)
     sim.add_port((.008, .003, .002), "ez", impedance=50, extent=.002, waveform=wave)
     sim.add_source((.004, .003, .003), "ez", waveform=wave)
     options = dict(n_steps=320, s_param_freqs=FREQS, skip_preflight=True)
-    expected = sim.run(**options)
-    actual = sim.run(devices=jax.devices("cpu")[:2], **options)
-    delta = float(np.max(np.abs(actual.s_params - expected.s_params)))
-    print(f"single wire main PEC soft-source max_delta_S={delta:.12g}")
-    assert delta <= S_ATOL
+    for devices in (None, jax.devices("cpu")[:2]):
+        with pytest.raises(NotImplementedError, match="plain sources"):
+            sim.run(devices=devices, **options)
 
 
 def test_single_wire_zero_wave():
@@ -198,7 +198,7 @@ def test_single_wire_zero_wave():
 
 @pytest.mark.parametrize("kind,message", [
     ("planes", "reference_plane_cells"), ("radius", "radius"),
-    ("passive", "passive port"), ("graded", "Phase B"), ("pmc", "zeroes tangential E.*compute_s_params=False")])
+    ("passive", "passive port"), ("graded", "Phase B"), ("pmc", "PMC")])
 @pytest.mark.parametrize("compute_s", [None, True, False])
 def test_refusals(kind, message, compute_s):
     from rfx.boundaries.spec import Boundary, BoundarySpec

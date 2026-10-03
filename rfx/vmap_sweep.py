@@ -37,9 +37,9 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import (MaterialArrays, cell_component_e_coeffs,
+from rfx.core.yee import (MaterialArrays,
                           component_e_materials, init_state,
-                          update_e, update_h, EPS_0)
+                          update_e, update_h)
 from rfx.geometry.rasterize_grid import (
     _material_cell_mask, centres_from_uniform_grid, coords_from_uniform_grid,
     extend_cpml_pad_materials,
@@ -465,12 +465,12 @@ def _build_batched_materials(
 # callers differ ONLY in:
 #   * ``use_cpml`` — carry the per-step CPML psi-state and apply the CPML
 #     H/E sub-steps (PEC/periodic carries just the field state);
-#   * the J-source Cb-scaling pre-pass — CPML J-sources need their waveforms
-#     scaled by the material-dependent Cb at the source cell, computed inside
-#     ``run_one`` from the actual (batch-element) material arrays.
+#   * the source helper selected before vmap — CPML uses make_j_source;
+#     PEC current uses make_source. Both receive each element's materials
+#     and preserve run()'s scalar float32 arithmetic (#1373).
 # Everything else — Yee H/E update, PEC walls, pec-mask, non-J soft sources,
 # probe sampling, dtypes, sub-step ordering — is identical and shared.  This is
-# pure code motion; numerics are unchanged (see W6.6 bit-identity gate).
+# the shared structure introduced by W6.6.
 
 
 def _build_vmap_scan_fn(
@@ -479,7 +479,7 @@ def _build_vmap_scan_fn(
     *,
     use_cpml: bool = False,
     sources: list[SourceSpec] | None = None,
-    j_source_raw_info: list[tuple] | None = None,
+    j_source_meta: list[tuple] | None = None,
     probes: list[ProbeSpec] | None = None,
     periodic: tuple[bool, bool, bool] = (False, False, False),
     cpml_axes: str = "xyz",
@@ -489,7 +489,7 @@ def _build_vmap_scan_fn(
     pec_wires=(),
     dft_probes: list[DFTPlaneProbe] | None = None,
 ):
-    """Build a pure function ``f(materials) -> (time_series, dft_accs)``
+    """Build a pure function ``f(materials, drives) -> (time_series, dft_accs)``
     suitable for vmap.
 
     Constructs a minimal FDTD loop (H update -> [CPML H] -> E update ->
@@ -502,13 +502,13 @@ def _build_vmap_scan_fn(
     ----------
     use_cpml : bool
         If True, the scan carry additionally holds the CPML psi-state and the
-        CPML H/E sub-steps are applied; J-source waveforms are Cb-normalized
-        per batch element from the actual material arrays.
-    j_source_raw_info : list of (i, j, k, component, raw_waveform)
+        CPML H/E sub-steps are applied. Source samples passed to the returned
+        function already include their material-dependent normalization.
+    j_source_meta : list of (i, j, k, component)
         Populated for legacy CPML J-sources AND for ``amplitude_kind='current'``
-        soft sources on any boundary.  Raw (un-Cb-normalized) J-source
-        waveforms + cell indices so Cb can be computed dynamically inside the
-        vmapped function from the actual material arrays.
+        soft sources on any boundary. Their waveforms are prepared with the
+        scalar run() helpers for each material batch element, then passed to
+        the returned function alongside materials.
     dft_probes : list of DFTPlaneProbe or None
         Zero-initialized DFT plane probes (from ``init_dft_plane_probe``,
         the SAME helper ``run()`` uses — rfx/runners/uniform.py:489-497).
@@ -526,7 +526,7 @@ def _build_vmap_scan_fn(
     dt = grid.dt
     dx = grid.dx
     sources = sources or []
-    j_source_raw_info = j_source_raw_info or []
+    j_source_meta = j_source_meta or []
     probes = probes or []
     dft_probes = dft_probes or []
 
@@ -559,22 +559,14 @@ def _build_vmap_scan_fn(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
 
-    # J-source metadata: cell indices + component + raw (un-Cb-normalized)
-    # waveforms.  Populated for legacy CPML J-sources and for
-    # amplitude_kind='current' soft sources on any boundary.
-    j_src_meta = [(i, j, k, comp) for i, j, k, comp, _ in j_source_raw_info]
-    if j_source_raw_info:
-        j_src_raw_waveforms = jnp.stack(
-            [raw_wf for _, _, _, _, raw_wf in j_source_raw_info], axis=-1
-        )  # (n_steps, n_j_sources)
-    else:
-        j_src_raw_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+    # Material-dependent source locations; samples are prepared before vmap.
+    j_src_meta = j_source_meta
 
     # Initialize CPML once (shared across batch)
     if use_cpml:
         cpml_params, cpml_state_init = init_cpml(grid)
 
-    def run_one(materials: MaterialArrays) -> tuple[jnp.ndarray, tuple]:
+    def run_one(materials: MaterialArrays, prepared_j_waveforms) -> tuple[jnp.ndarray, tuple]:
         """Run a single FDTD simulation with the given materials.
 
         Returns ``(time_series, dft_accs)``: time_series shaped
@@ -584,20 +576,7 @@ def _build_vmap_scan_fn(
         """
         fdtd = init_state(grid.shape)
 
-        # Compute Cb-normalized J-source waveforms from the actual materials.
-        # Cb = (dt / eps) / (1 + loss) where eps = eps_r * EPS_0,
-        # loss = sigma * dt / (2 * eps)
-        if j_source_raw_info:
-            j_cb_scales = []
-            for si, sj, sk, sc in j_src_meta:
-                # #1210: the E update's own per-component Cb at that node.
-                j_cb_scales.append(cell_component_e_coeffs(
-                    materials, (si, sj, sk), sc, dt)[1])
-            j_cb_arr = jnp.stack(j_cb_scales)  # (n_j_sources,)
-            # Scale raw waveforms: (n_steps, n_j_sources) * (n_j_sources,)
-            j_src_waveforms = j_src_raw_waveforms * j_cb_arr[None, :]
-        else:
-            j_src_waveforms = j_src_raw_waveforms
+        j_src_waveforms = prepared_j_waveforms
 
         def step_fn(carry, xs):
             _step_idx, src_vals, j_src_vals = xs
@@ -714,7 +693,7 @@ def _build_full_scan_fn(
     pec_sheets=(),
     pec_wires=(),
 ):
-    """Build ``(f, dft_names)`` where ``f(materials) -> (time_series,
+    """Build ``(f, dft_names)`` where ``f(materials, drives) -> (time_series,
     dft_accs)`` uses the full simulation runner (including CPML,
     dispersion, etc.), or ``(None, None)`` if this simulation must take the
     sequential fallback instead.
@@ -774,48 +753,26 @@ def _build_full_scan_fn(
     ):
         return None, None
 
-    # Build sources and probes from the simulation.
-    # For CPML J-sources the Cb coefficient depends on material properties
-    # at the source cell, so we store *raw* (un-normalized) waveforms and
-    # the source cell indices so Cb can be computed dynamically inside the
-    # vmapped function from the actual material arrays.
+    # Material-dependent source samples are prepared per sweep element by
+    # run()'s scalar helpers; the scan builder needs only their locations.
     sources = []
-    j_source_raw_info: list[tuple[int, int, int, str, jnp.ndarray]] = []
+    j_source_meta: list[tuple[int, int, int, str]] = []
     probes = []
 
     for pe in sim._ports:
         if pe.impedance == 0.0:
             # amplitude_kind (issue #571) routing:
-            #   None      -> legacy per-boundary routing, bit-identical
-            #               (cpml: dynamic-Cb J-source; else raw make_source)
             #   'field'   -> raw make_source on EVERY boundary (E += w has
             #               no material dependence, so no dynamic path)
             #   'current' -> dynamic-Cb J-source on EVERY boundary, with the
-            #               raw waveform prescaled by the static 1/dV part
-            #               (Cb is material-dependent and varies per sweep
-            #               element, so it stays dynamic; dV is geometry)
+            #               same arithmetic order as run(): Cb*w then 1/dV
+            #               on CPML, or (Cb/dV)*w on PEC.
             if pe.amplitude_kind == "field":
                 sources.append(make_source(grid, pe.position, pe.component,
                                            pe.waveform, n_steps))
-            elif pe.amplitude_kind == "current" or (
-                    pe.amplitude_kind is None and boundary == "cpml"):
-                # Store raw waveform + cell info for dynamic Cb computation
+            elif pe.amplitude_kind == "current":
                 idx = grid.position_to_index(pe.position)
-                times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-                raw_waveform = jax.vmap(pe.waveform)(times)
-                if pe.amplitude_kind == "current":
-                    from rfx.api._source_semantics import (
-                        source_amplitude_scale)
-                    from rfx.simulation import _uniform_cell_volume
-                    # 'current' <- 'cb': static 1/dV (cb unused on this
-                    # branch); the dynamic per-batch Cb multiply below in
-                    # _build_vmap_scan_fn completes Cb*w/dV.
-                    raw_waveform = source_amplitude_scale(
-                        "current", "cb", cb=None,
-                        dV=_uniform_cell_volume(grid)) * raw_waveform
-                j_source_raw_info.append(
-                    (idx[0], idx[1], idx[2], pe.component, raw_waveform)
-                )
+                j_source_meta.append((idx[0], idx[1], idx[2], pe.component))
             else:
                 sources.append(make_source(grid, pe.position, pe.component,
                                            pe.waveform, n_steps))
@@ -904,7 +861,7 @@ def _build_full_scan_fn(
                 grid, n_steps,
                 use_cpml=True,
                 sources=sources,
-                j_source_raw_info=j_source_raw_info,
+                j_source_meta=j_source_meta,
                 probes=probes,
                 periodic=periodic,
                 cpml_axes=cpml_axes,
@@ -921,9 +878,8 @@ def _build_full_scan_fn(
                 sources=sources,
                 # non-empty only for amplitude_kind='current' soft sources
                 # on a non-cpml boundary (issue #571): their Cb is material-
-                # dependent and must be computed dynamically per sweep
-                # element, exactly like the legacy cpml J-source path.
-                j_source_raw_info=j_source_raw_info,
+                # dependent and is prepared per sweep element, as on CPML.
+                j_source_meta=j_source_meta,
                 probes=probes,
                 periodic=periodic,
                 pec_axes=pec_axes,
@@ -1106,16 +1062,43 @@ def vmap_material_sweep(
             sim, grid, base_materials, param_name, jax_param_values,
         )
 
-        # vmap run_one over the batch dimension of materials
-        def run_one_from_materials(eps_r, sigma, mu_r):
+        # Prepare material-dependent drives with run()'s scalar helpers.
+        # Besides preserving product order, this avoids a float32 scalar/
+        # vector division difference in Cb/dV (8972096 vs 8972095 in the
+        # PEC eps_r=6 fixture). Only source preparation is serial; the
+        # field evolution below remains vmapped (#1373).
+        from rfx.simulation import make_j_source
+        dynamic_sources = [
+            pe for pe in sim._ports
+            if pe.impedance == 0.0 and pe.amplitude_kind == "current"
+        ]
+        prepared_drives = []
+        make_drive = make_j_source if sim._boundary == "cpml" else make_source
+        for batch_idx in range(len(param_values)):
+            mats = MaterialArrays(
+                eps_r=batched_materials.eps_r[batch_idx],
+                sigma=batched_materials.sigma[batch_idx],
+                mu_r=batched_materials.mu_r[batch_idx],
+            )
+            waveforms = [make_drive(
+                grid, pe.position, pe.component, pe.waveform, n_steps,
+                materials=mats, amplitude_kind=pe.amplitude_kind,
+            ).waveform for pe in dynamic_sources]
+            prepared_drives.append(
+                jnp.stack(waveforms, axis=-1) if waveforms else
+                jnp.zeros((n_steps, 0), dtype=jnp.float32))
+
+        # vmap run_one over the batch dimension of materials and source samples
+        def run_one_from_materials(eps_r, sigma, mu_r, drives):
             mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
-            return run_one_fn(mats)
+            return run_one_fn(mats, drives)
 
         batched_run = jax.vmap(run_one_from_materials)
         time_series, dft_accs = batched_run(
             batched_materials.eps_r,
             batched_materials.sigma,
             batched_materials.mu_r,
+            jnp.stack(prepared_drives),
         )
         time_series_np = np.asarray(time_series)
 

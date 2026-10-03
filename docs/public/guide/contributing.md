@@ -16,7 +16,8 @@ cd rfx
 pip install -e '.[dev]'
 ```
 
-rfx needs Python 3.10 or newer. The `dev` extra installs `pytest`,
+rfx needs Python 3.11 or newer and JAX and jaxlib 0.10.2 or newer.
+The `dev` extra installs `pytest`,
 `pytest-xdist`, `ruff` and the other development tools. Everything below runs
 on a CPU. To test on an NVIDIA GPU, install the JAX build that matches your
 CUDA stack first, then check that JAX sees the device:

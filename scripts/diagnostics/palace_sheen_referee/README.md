@@ -1,5 +1,7 @@
 # Palace FEM referee — the Sheen microstrip low-pass filter
 
+> Documentation update (2026-10-03): The generated meshes are not shipped here. Regenerate them with the mesh scripts in this directory or retrieve them from internal record 20260924-moved-from-rfx. Solver input decks remain in the tree.
+
 Run tooling that produces the **independent-method referee** for the committed
 the rfx-vs-openEMS first-null split on the classic Sheen 1990 low-pass filter.
 

@@ -150,8 +150,9 @@ def _measure(case, multi_process):
                 @partial(shard_map, mesh=Mesh(np.array(devices), ("x",)),
                          in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
                 def finish(c, m):
-                    means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0])
-                    return common.slab_dispersion_coeffs(c, means, grid.dt, nx_local - 2, grid.shape[0])
+                    rank = jax.lax.axis_index("x")
+                    means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0], rank)
+                    return common.slab_dispersion_coeffs(c, means, grid.dt, nx_local - 2, grid.shape[0], rank)
 
                 coeffs = jax.jit(finish)(partial_coeffs, bound["materials_arg"])
                 # #1302: rows outside the domain hold a vacuum cell's

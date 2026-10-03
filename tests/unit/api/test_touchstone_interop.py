@@ -252,7 +252,7 @@ def test_v2_writer_defaults_to_standard_row_wise_multiport_layout(tmp_path: Path
     np.testing.assert_allclose(data.s_params, s_params)
 
 
-def test_legacy_layout_remains_default_for_existing_v1_multiport(tmp_path: Path):
+def test_standard_layout_is_default_for_v1_multiport(tmp_path: Path):
     s_params = np.zeros((3, 3, 1), dtype=np.complex128)
     # Values chosen so row-wise and column-major layouts would differ.
     for i in range(3):

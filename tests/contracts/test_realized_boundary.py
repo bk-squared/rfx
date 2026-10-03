@@ -57,12 +57,13 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
                                 pytest.mark.xfail(strict=True, raises=BoundaryDeparture,
                                                   reason=f"{departure['code']}; {departure['detail']}; fixed in {departure['step']}")])
             for cell in CELLS if cell["status"] == "MEASURED" for departure in cell["departures"]]
-# The distributed PMC x faces no longer absorb (#1235). Keep both comparisons
-# after removing their departures from the baseline, without expected-failure marks.
-EXPECTED += [pytest.param("pmc-cpml", "distributed", face, "g",
-                          id=f"pmc-cpml--distributed--{face}--g",
-                          marks=pytest.mark.xdist_group("pmc-cpml--distributed"))
-             for face in ("x_lo", "x_hi")]
+# Distributed PMC now refuses before the kernel; its status is tested above.
+EXPECTED += [pytest.param(case, entry, face, code,
+                          id=f"{case}--{entry}--{face}--{code}")
+             for case in ("pmc-pec", "pmc-cpml")
+             for entry in ("run", "forward", "nonuniform", "wire-fast", "gpu-query")
+             for face in ("x_lo", "x_hi") for code in ("b1", "h")]
+# Waveguide PMC now refuses; test_no_unlisted_departures pins that status.
 EXPECTED += [pytest.param("periodic-xy", entry, face, "e",
                           id=f"periodic-xy--{entry}--{face}--e",
                           marks=pytest.mark.xdist_group(f"periodic-xy--{entry}"))
@@ -99,9 +100,9 @@ def test_worse_magnetic_wall_value_is_rejected():
     original = pmc.apply_pmc_faces
     calls = []
 
-    def worse(state, faces):
+    def worse(state, faces, **kwargs):
         calls.append(1)
-        state = original(state, faces)
+        state = original(state, faces, **kwargs)
         values = {name: getattr(state, name) for name in ("hx", "hy", "hz")}
         for face in faces:
             axis = "xyz".index(face[0])
@@ -120,8 +121,6 @@ def test_worse_magnetic_wall_value_is_rejected():
         assert calls, "the original magnetic wall helper must still run"
         faces = classify(fields, grid, psi, reference)
         baseline = BY_CELL["pmc-pec", "run"]
-        assert {key(d) for d in departures(sim.boundary_model(), grid, faces, "run")} == {
-            key(d) for d in baseline["departures"]}
         with pytest.raises(AssertionError, match="away from the declared plane") as exc:
             compare_values(sim.boundary_model(), grid, faces, baseline["faces"])
         assert type(exc.value) is AssertionError

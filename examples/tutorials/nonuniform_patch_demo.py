@@ -308,32 +308,18 @@ def report_realized_in_plane(sim, z_gnd, z_patch, feed) -> None:
     takes priority there: the substrate cell bounds are checked within dx.
     Build only, no solve; the separate z-plane check below is unchanged.
     """
-    from rfx.nonuniform import position_to_index
-
-    grid = sim._build_nonuniform_grid()
-    sheets: list = []
-    materials, _debye, _lorentz, pec_cells = sim._assemble_materials_nu(
-        grid, pec_sheets=sheets)
-    ex, ey, _ez = (np.asarray(m) for m in realized_pec_edge_masks(
-        pec_cells, sheets=sheets, periodic=sim._periodic_flags()))
-    coords = coords_from_nonuniform_grid(grid)
-    x, y, z = (np.asarray(n, dtype=float) for n in (coords.x, coords.y, coords.z))
-
-    def solved(nodes, a0, a1):
-        return (nodes[a0] - EDGE_OFFSET * (nodes[a0] - nodes[a0 - 1]),
-                nodes[a1] + EDGE_OFFSET * (nodes[a1 + 1] - nodes[a1]))
-
+    record = sim.realized_geometry()
+    x, y, z = record.nodes
     nodes_span, solved_span = {}, {}
     for name, height in (("ground", z_gnd), ("patch", z_patch)):
         k = int(np.argmin(np.abs(z - height)))
-        i = np.flatnonzero(ex[:, :, k].any(axis=1))
-        j = np.flatnonzero(ey[:, :, k].any(axis=0))
-        nodes_span[name] = (x[i[0]], x[i[-1] + 1], y[j[0]], y[j[-1] + 1])
-        solved_span[name] = solved(x, i[0], i[-1] + 1) + solved(y, j[0], j[-1] + 1)
-    cells = np.argwhere(np.asarray(materials.eps_r) > 1.0)
-    lo, hi = cells.min(axis=0), cells.max(axis=0)
-    sub_span = (x[lo[0]], x[hi[0] + 1], y[lo[1]], y[hi[1] + 1])
-    i_f, j_f, _k = position_to_index(grid, feed)
+        sheet = next(e for e in record.entities if e.plane is not None and e.plane[:2] == (2, k))
+        nodes_span[name] = tuple(float(record.nodes[a][i])
+                                 for a in (0, 1) for i in sheet.axes[a].node_range)
+        solved_span[name] = tuple(v for a in sheet.axes[:2] for v in a.bounds_m)
+    substrate = next(e for e in record.entities if e.kind == "material")
+    sub_span = tuple(v for a in substrate.axes[:2] for v in a.bounds_m)
+    i_f, j_f, _k = record.ports[0].edges[0]
     checks = {
         "patch solved": ((patch_x_lo, patch_x_hi, patch_y_lo, patch_y_hi),
                          solved_span["patch"], 1e-6 * dx),
@@ -360,23 +346,11 @@ def report_realized_in_plane(sim, z_gnd, z_patch, feed) -> None:
 
 
 def report_realized_planes(sim, dz_profile) -> list[int]:
-    """Print (and assert) the realized conductor planes — build-time, no solve.
-
-    Read from the contract's own realization (realized_pec_edge_masks then
-    realized_wall_planes, #931 §1.7) applied to the arrays the assembly hands
-    the stepper, so this cannot drift from what the solve applies.
-    ``_assemble_materials_nu`` is private only because the realized edge set
-    has no public accessor yet; the two functions it feeds are public.
-    """
+    """Read the public record's realized conductor planes; no time stepping."""
     z_gnd, z_patch = substrate_faces(dz_profile)
-    _grid = sim._build_nonuniform_grid()
-    _sheets: list = []
-    _mat, _deb, _lor, _pec_cells = sim._assemble_materials_nu(
-        _grid, pec_sheets=_sheets)
-    _z_nodes = np.asarray(coords_from_nonuniform_grid(_grid).z, dtype=float)
-    _walls = realized_wall_planes(
-        realized_pec_edge_masks(_pec_cells, sheets=_sheets,
-                                periodic=sim._periodic_flags()), 2)
+    record = sim.realized_geometry()
+    _z_nodes = record.nodes[2]
+    _walls = record.wall_planes(2)
     k_gnd = int(np.argmin(np.abs(_z_nodes - z_gnd)))
     k_patch = int(np.argmin(np.abs(_z_nodes - z_patch)))
     print(f"  realized conductor planes along z: {_walls} "

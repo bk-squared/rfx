@@ -1,16 +1,5 @@
-# Solver cross-validation suite
+# Cross-solver comparisons moved
 
-Numbered studies validating rfx against analytic references and
-independent solvers. Each numbered script is self-contained: the openEMS
-configurations (e.g. 07, 15, 20) are embedded in the scripts
-themselves; `comparators/` holds the shared comparison harness;
-`_*_results/`/`_*_logs/` directories carry committed reference outputs.
-
-- `palace/` — Palace (FEM) setups for the X-band patch four-solver study;
-  see [`palace/README.md`](palace/README.md).
-- The four-solver patch record (protocol, per-solver results, exclusions):
-  [`docs/crossval/patch_xband_4solver.md`](../../docs/crossval/patch_xband_4solver.md).
-- Raw patch-campaign data (CST Touchstone files, falsification ledger):
-  branch `research/calibration-inverse`,
-  `scripts/research/calibration/crossval/`.
-- `manifest.json` — machine-readable index of the numbered studies.
+Current cases live in `tests/crossval/`, with frozen reference records and
+per-case pytest instructions. The former scripts and `manifest.json` were
+removed. See `docs/public/guide/benchmarks.mdx` for the current public cases.

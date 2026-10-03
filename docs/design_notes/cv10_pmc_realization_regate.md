@@ -195,7 +195,9 @@ PYTHONPATH=<worktree> .venv/bin/python validation/crossval/10_pmc_cpml_half_symm
 
 G4 legs: uniform half 1.572448e−02 vs full-image 1.572498e−02; nonuniform half
 1.572944e+07 vs full-image 1.572996e+07. (The two paths' absolute scales differ
-by the documented legacy `amplitude_kind=None` per-path convention — a
+by the then-current legacy `amplitude_kind=None` per-path convention
+(now replaced by the current-moment default; see
+`tests/unit/sources/test_source_amplitude_kind.py`) — a
 `Cb`-normalized field add on uniform, a current in amperes on NU — which is why
 G4 is evaluated per path and never across paths.)
 

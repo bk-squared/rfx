@@ -235,7 +235,8 @@ def build(dx: float, arm_length_m: float = ARM_LENGTH_M) -> Simulation:
     but the default.
     """
     domain_x, stub_centre_x = _x_geometry(arm_length_m)
-    sim = Simulation(
+    # #1138: trace y/stub x solved -21.683% at dx=127 um; this checks external S-parameters.
+    sim = Simulation(snap="declared",
         freq_max=FREQ_MAX_HZ,
         domain=(domain_x, DOMAIN_Y_M, DOMAIN_Z_M),
         dx=dx,

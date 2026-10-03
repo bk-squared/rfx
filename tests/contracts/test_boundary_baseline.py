@@ -27,6 +27,8 @@ def test_recorded_value_change_fails_outside_departure_xfail(quantity, before, a
     case = "periodic-xy" if quantity == "period_m" else "pec" if quantity.startswith("e_") else "pmc-pec"
     baseline = deepcopy(next(c["faces"] for c in BASELINE["cells"] if c["case"] == case and c["entry"] == "run"))
     baseline["x_lo"][quantity] = before
+    if quantity == "h_plane_m":
+        baseline["x_lo"]["h_zero"] = True  # synthetic legacy wall for the comparison guard
     measured = deepcopy(baseline)
     measured["x_lo"][quantity] = after
     sim, _ = build(case, "run")
@@ -39,7 +41,9 @@ def test_recorded_value_change_fails_outside_departure_xfail(quantity, before, a
 @pytest.mark.parametrize("quantity,empty", [("e_zero_planes_m", []), ("h_zero_planes_m", []), ("period_m", None)])
 def test_removed_recorded_value_fails(quantity, empty):
     case = "periodic-xy" if quantity == "period_m" else "pec" if quantity.startswith("e_") else "pmc-pec"
-    baseline = next(c["faces"] for c in BASELINE["cells"] if c["case"] == case and c["entry"] == "run")
+    baseline = deepcopy(next(c["faces"] for c in BASELINE["cells"] if c["case"] == case and c["entry"] == "run"))
+    if quantity == "h_zero_planes_m":
+        baseline["x_lo"][quantity] = [.0005]  # synthetic recorded legacy plane
     measured = deepcopy(baseline)
     measured["x_lo"][quantity] = empty
     sim, _ = build(case, "run")

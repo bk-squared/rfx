@@ -9,6 +9,7 @@ from math import lcm
 
 from rfx._grid_metric import (
     NODE_TIE_REL,
+    nearest_uniform_index,
     axis_name as _axis_name,
     dual_spacings_from_cells as _dual_spacings_from_cells,
     normalize_axis as _normalize_axis,
@@ -380,7 +381,7 @@ class Grid:
 
     def _rounded_index(self, axis: int, ratio, *, wrap=True) -> int:
         """Round the caller's quotient without changing its scalar dtype."""
-        idx = int(round(ratio)) + self.axis_pads[axis]
+        idx = nearest_uniform_index(ratio) + self.axis_pads[axis]
         if wrap and _axis_name(axis) in self.periodic_axes:
             if ratio < -0.5 or ratio >= self.shape[axis] + 0.5:
                 # Let each public API issue its historical out-of-grid message.
@@ -460,8 +461,8 @@ class Grid:
     def index_of(self, axis, x: float) -> int:
         """Padded index of the node nearest physical coordinate ``x``.
 
-        Retains the historical ``round(float(x)/dx) + pad_lo`` arithmetic;
-        ``position_to_index`` instead divides in the input scalar's dtype.
+        Divides in float64 before applying the shared lower-node tie rule.
+        ``position_to_index`` retains its input scalar's division dtype.
         Declared periodic axes wrap modulo their node count. In 2-D
         mode the z axis holds one cell and the answer is always 0, which is
         what ``position_to_index`` returns there.

@@ -228,7 +228,8 @@ def _patch_box() -> Box:
 
 
 def _build_patch_sim() -> Simulation:
-    sim = Simulation(
+    # #1138: feed/patch y solved -4.783%/-1.393% off; this locks S11 and passivity.
+    sim = Simulation(snap="declared",
         freq_max=15e9, domain=(DOM_X, DOM_Y, DOM_Z),
         dx=DX, cpml_layers=8, boundary="cpml",
     )

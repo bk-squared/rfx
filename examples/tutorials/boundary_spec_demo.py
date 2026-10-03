@@ -129,9 +129,7 @@ def main() -> None:
     for label, spec in PATTERNS:
         _run_and_report(label, spec)
 
-    print("\nLegacy note: the old kwargs (boundary='cpml' + pec_faces={...} /")
-    print("set_periodic_axes) still work but emit DeprecationWarning; new code")
-    print("should construct a BoundarySpec as above.")
+    print("\nDeclare PEC and periodic faces with BoundarySpec as above.")
 
 
 if __name__ == "__main__":

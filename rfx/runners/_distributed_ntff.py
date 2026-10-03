@@ -10,7 +10,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 from jax import lax
-from jax.experimental.shard_map import shard_map
+from rfx.runners._rank import rank_shard_map
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.farfield import (NTFFData, accumulate_ntff, init_ntff_data,
@@ -52,7 +52,7 @@ class SlabNTFF:
             offset += size
         return NTFFData(*arrays)
 
-    def update(self, buffer, state, dt, step):
+    def update(self, buffer, state, dt, step, *, ranks):
         # The right ghost Hx equals the neighbour's first real Hx: the H
         # update computes ghost rows from exchanged E, including CPML
         # corrections. Face-centre y/z samples rely on this invariant.
@@ -72,17 +72,23 @@ class SlabNTFF:
         field_specs = state._replace(**{name: P("x") for name in
                                       ("ex", "ey", "ez", "hx", "hy", "hz")}, step=P())
 
-        @partial(shard_map, mesh=self.mesh, in_specs=(P("x"), field_specs, P()),
+        @partial(rank_shard_map, mesh=self.mesh, in_specs=(P("x"), field_specs, P()),
                  out_specs=P("x"), check_rep=False)
-        def update_local(local, fields, n):
-            return lax.switch(lax.axis_index("x"), branches,
+        def update_local(local, fields, n, *, rank):
+            return lax.switch(rank, branches,
                               (local[0], fields, n))[None]
-        return update_local(buffer, state, step)
+        return update_local(ranks, buffer, state, step)
 
     def assemble(self, buffer):
         """Place each cell once, preserving compensation; no spatial sum."""
         result = list(init_ntff_data(self.box, field_dtype=jnp.float64
                                     if self.dtype == jnp.complex128 else jnp.float32))
+        # Indexing the x-sharded buffer by rank compiles a gather with an
+        # XLA partition-id (#1441); replicate it first, which stays
+        # differentiable. The multi-process caller passes an already
+        # gathered host array, which needs neither.
+        if isinstance(buffer, jax.Array):
+            buffer = jax.device_put(buffer, NamedSharding(self.mesh, P()))
         for rank, (lo, hi, faces, _, shapes, sizes) in enumerate(self.parts):
             part = self.unpack(buffer[rank], shapes, sizes)
             for index, value in enumerate(part):

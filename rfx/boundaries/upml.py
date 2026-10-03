@@ -33,7 +33,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.boundaries.cpml import _get_axis_cell_sizes
-from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, _shift_bwd,
+from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, curl_h,
                           _shift_fwd, cell_owned_component_materials)
 
 
@@ -313,24 +313,17 @@ def apply_upml_e(
     state: FDTDState,
     coeffs: UPMLCoeffs,
     periodic: tuple = (False, False, False),
+    boundary=None,
 ) -> FDTDState:
     """E-field update using precomputed UPML coefficients."""
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     _fdtype = state.ex.dtype
     hx = state.hx.astype(jnp.float32)
     hy = state.hy.astype(jnp.float32)
     hz = state.hz.astype(jnp.float32)
 
-    curl_x = ((hz - bwd(hz, 1)) * coeffs.inv_dy
-              - (hy - bwd(hy, 2)) * coeffs.inv_dz)
-    curl_y = ((hx - bwd(hx, 2)) * coeffs.inv_dz
-              - (hz - bwd(hz, 0)) * coeffs.inv_dx)
-    curl_z = ((hy - bwd(hy, 0)) * coeffs.inv_dx
-              - (hx - bwd(hx, 1)) * coeffs.inv_dy)
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, None, periodic, boundary=boundary,
+        inv_spacing=(coeffs.inv_dx, coeffs.inv_dy, coeffs.inv_dz))
 
     ex = (coeffs.ca_ex * state.ex.astype(jnp.float32) + coeffs.cb_ex * curl_x).astype(_fdtype)
     ey = (coeffs.ca_ey * state.ey.astype(jnp.float32) + coeffs.cb_ey * curl_y).astype(_fdtype)

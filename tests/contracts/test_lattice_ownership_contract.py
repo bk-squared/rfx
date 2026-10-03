@@ -422,7 +422,8 @@ def test_a_binary_zero_occupancy_override_keeps_the_ports_edge_clearing():
     def _build():
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            sim = Simulation(freq_max=15e9, domain=(12e-3, 12e-3, 12e-3),
+            # #1138: geometry[0] x/y solved +17.5 % off; this test checks port edge clearing.
+            sim = Simulation(snap="declared", freq_max=15e9, domain=(12e-3, 12e-3, 12e-3),
                              dx=dx, boundary="pec")
             sim.add(Box((2e-3, 2e-3, 6e-3), (10e-3, 10e-3, 6e-3)),
                     material="pec")
@@ -1427,7 +1428,7 @@ def test_a_lane_that_drops_volume_pec_does_not_recommend_drawing_a_volume():
             sim._build_materials(grid)
     msg = str(excinfo.value)
     assert "PEC volume" in msg, msg
-    assert "sigma fill" in msg or "sigma=" in msg, msg
+    assert "finite-conductivity material fill" in msg, msg
     assert "does NOT help" in msg, (
         "the refusal must say that redrawing as a volume is not a remedy "
         "on this path")

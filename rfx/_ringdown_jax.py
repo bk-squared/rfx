@@ -102,7 +102,7 @@ def _callback_keywords():
 # ---------------------------------------------------------------------------
 
 def host_poles(identify_window, window, k_max, dt, freqs):
-    """``(s, mask, status, tail_arg)`` from the host, constants of the traced program.
+    """``(s, mask, status, tail_arg, count)`` from the host, traced constants.
 
     ``identify_window(w)`` gets the window as a numpy array of the traced
     window's own dtype and shape, bit for bit, and returns the kept poles
@@ -114,7 +114,8 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     :data:`STATUS_OVER_BUDGET` (more than ``k_max`` poles), on either failure
     with an all-zero mask; and ``tail_arg (nf, k_max)``, ``s dt + log z`` at
     ``freqs`` formed in float64 on the host and then cast (see the module
-    docstring, TAIL).
+    docstring, TAIL). ``count`` is the kept count before padding or budget
+    rejection, or -1 if identification raised; it survives an empty failure mask.
     """
     import jax
     import jax.numpy as jnp
@@ -145,20 +146,23 @@ def host_poles(identify_window, window, k_max, dt, freqs):
             s = np.asarray(identify_window(w), dtype=np.complex128).ravel()
         except Exception:  # noqa: BLE001  (reported by the host report, not here)
             s, status = np.zeros(0, dtype=np.complex128), STATUS_FAILED
+        count = -1 if status == STATUS_FAILED else s.size
         if s.size > K:
             s, status = np.zeros(0, dtype=np.complex128), STATUS_OVER_BUDGET
         s_out[:s.size] = s
         mask[:s.size] = 1
         arg = s_out[None, :] * dt + logz[:, None]                          # float64
-        return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg))
+        return (words(s_out), mask, np.asarray(status, dtype=np.int32), words(arg),
+                np.asarray(count, dtype=np.int32))
 
     w_in = jax.lax.bitcast_convert_type(jax.lax.stop_gradient(window), jnp.uint32)
     shapes = (jax.ShapeDtypeStruct((K, 2, n_words), jnp.uint32),
               jax.ShapeDtypeStruct((K,), jnp.int32),
               jax.ShapeDtypeStruct((), jnp.int32),
-              jax.ShapeDtypeStruct((nf, K, 2, n_words), jnp.uint32))
-    s_words, mask_i, status, arg_words = jax.pure_callback(host, shapes, w_in,
-                                                           **_callback_keywords())
+              jax.ShapeDtypeStruct((nf, K, 2, n_words), jnp.uint32),
+              jax.ShapeDtypeStruct((), jnp.int32))
+    s_words, mask_i, status, arg_words, count = jax.pure_callback(
+        host, shapes, w_in, **_callback_keywords())
 
     def from_words(x):
         parts = jax.lax.bitcast_convert_type(x[..., 0] if n_words == 1 else x, rdt)
@@ -166,7 +170,7 @@ def host_poles(identify_window, window, k_max, dt, freqs):
 
     # The pole is the unit that crossed from the host: a complex s (1/s) in
     # the working precision.
-    return from_words(s_words), mask_i.astype(rdt), status, from_words(arg_words)
+    return from_words(s_words), mask_i.astype(rdt), status, from_words(arg_words), count
 
 
 # ---------------------------------------------------------------------------

@@ -3,15 +3,9 @@
 A coordinate exactly midway between two nodes is equally near both. A
 PolylineWire filament vertex or a PEC sheet plane there goes to the LOWER node
 (#931), and on the non-uniform lane so does a port, source or probe (#1295):
-the model below lands its feed on its conductor there, as it did on main. The
-uniform lane still puts a point feature's tie on the EVEN node (``round(x/dx)``)
-until #1342, so where the lower node is odd the feed lands one cell off the
-conductor it was drawn on. On 1 mm cells, a gap-fed dipole whose arms and
-feed port are all declared at y = 9.5 mm has its arms on node 9 and its port
-on node 10: the port drives the Ez edge beside the gap, and the gap field
-drops 23 dB (review of PR #1341). Such a model is refused with the reason,
-by preflight (error ``half_node_split``) and at run time, where
-``skip_preflight=True`` does not bypass it. On either lane, a port end at
+the model below lands its feed on its conductor. The shared lower-node tie
+rule now holds on both uniform and non-uniform lanes (#1342).
+On either lane, a port end at
 float32(3.5 mm) against a sheet at 3.5 mm straddles the half node and is
 refused the same way.
 """
@@ -138,11 +132,12 @@ def test_on_the_nu_lane_a_feature_at_a_half_node_lands_on_its_conductor(case):
 
 
 @pytest.mark.parametrize("case", sorted(HALF))
-def test_on_the_uniform_lane_a_feature_one_cell_off_its_conductor_is_refused(case):
+def test_on_the_uniform_lane_a_feature_at_a_half_node_lands_on_its_conductor(case):
     sim = HALF[case]("uniform")
     point, conductor = _nodes(sim, "uniform")
-    assert conductor == {point - 1}          # even node against lower node
-    _refused(sim)
+    assert conductor == {point}
+    assert _split_findings(sim) == []
+    assert np.all(np.isfinite(np.asarray(_run(sim, skip_preflight=True).time_series)))
 
 
 @pytest.mark.parametrize("lane", ["uniform", "nu"])
@@ -172,9 +167,20 @@ def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_is_refused(
     _refused(sim)
 
 
-def test_the_message_names_both_features_and_both_nodes():
-    text = str(_split_findings(_dipole("uniform", 9.5e-3))[0])
+def test_the_same_declared_coordinate_has_no_split_message():
+    assert _split_findings(_dipole("uniform", 9.5e-3)) == []
+
+
+@pytest.mark.parametrize("lane", ["uniform", "nu"])
+def test_the_message_names_both_features_and_both_nodes(lane):
+    from dataclasses import replace
+    # Keep the original dipole/message witness, with the conductor's
+    # float32 coordinate just above the tie so the refusal still fires.
+    wire_y = float(np.nextafter(np.float32(9.5e-3), np.float32(np.inf)))
+    sim = _dipole(lane, wire_y)
+    sim._ports[0] = replace(sim._ports[0], position=(10e-3, 9.5e-3, 8e-3))
+    text = str(_split_findings(sim)[0])
     assert "add_port at (0.01, 0.0095, 0.008)" in text
     assert "PolylineWire 'pec'" in text
     assert "y = 9.5 mm" in text
-    assert "y node 10 (10 mm)" in text and "node 9 (9 mm)" in text
+    assert "y node 9 (9 mm)" in text and "node 10 (10 mm)" in text

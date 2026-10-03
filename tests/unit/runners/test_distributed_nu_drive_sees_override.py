@@ -308,9 +308,9 @@ def _frozen_drive():
     without the drive's own derivative (a witness of its size)."""
     real = nu.material_drive_scales
 
-    def frozen(eps_r, sigma, mesh, drives, dt):
+    def frozen(eps_r, sigma, mesh, drives, dt, *, ranks=None):
         return real(jax.lax.stop_gradient(eps_r), jax.lax.stop_gradient(sigma),
-                    mesh, drives, dt)
+                    mesh, drives, dt, ranks=ranks)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", frozen)
@@ -492,11 +492,11 @@ def _drive_from_drawn(sim):
     drawn = _drawn(sim)
     real = nu.material_drive_scales
 
-    def from_drawn(eps_r, sigma, mesh, drives, dt):
+    def from_drawn(eps_r, sigma, mesh, drives, dt, *, ranks=None):
         sg = nu.build_sharded_nu_grid(grid, mesh.devices.size)
         return real(nu.stage_concrete_forward_array(drawn.eps_r, sg, mesh, 1.0),
                     nu.stage_concrete_forward_array(drawn.sigma, sg, mesh, 0.0),
-                    mesh, drives, dt)
+                    mesh, drives, dt, ranks=ranks)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", from_drawn)
@@ -510,11 +510,11 @@ def _seam_reads_its_own_row():
     replicates its own row where its i-1 cells (the neighbour's) belong."""
     real = nu.material_drive_scales
 
-    def own_row(eps_r, sigma, mesh, drives, dt):
+    def own_row(eps_r, sigma, mesh, drives, dt, *, ranks=None):
         ghost = 1
         drives = tuple((dev, ghost, (cell[0] + row0 - ghost, cell[1], cell[2]), comp, dV)
                        for dev, row0, cell, comp, dV in drives)
-        return real(eps_r, sigma, mesh, drives, dt)
+        return real(eps_r, sigma, mesh, drives, dt, ranks=ranks)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", own_row)

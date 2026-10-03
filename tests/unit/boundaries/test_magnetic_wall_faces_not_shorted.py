@@ -1,18 +1,8 @@
-"""A magnetic-wall face keeps its tangential E; no entry point shorts it (#1164).
+"""A magnetic face preserves E and represents the full reflected object.
 
-A one-cell air parallel-plate line (PEC plates on z, magnetic walls on x and
-y, no absorber) driven by a one-cell wire port at node 1 and terminated in a
-resistor R at node 3 must read |S11| = |(R - Zc)/(R + Zc)| at every
-frequency: 1/3 for R = Zc/2 and for R = 2 Zc. The port's Ez lives on the
-y = 0 node plane of the y_lo magnetic wall. An axis-wide PEC wall applied
-over that face zeroes that Ez every step, the open end becomes a short and
-both loads read |S11| = 1.000 -- what run() did through its default
-``pec_axes`` (#1164) and what forward() did after #1194 gave it the same
-default. The scan setup now drops an axis with a magnetic face from the
-axis-PEC list on every entry point; the faces are applied per face.
-
-Bound: 0.05 from the closed form, the lock PR 1162 measured on this fixture
-(0.0004 at 1 GHz on both port lanes, rising with frequency).
+The old one-cell line judge treated a line centered on the face as width dx,
+half outside the domain. B3b compares that face port with its explicit full
+mirror of width 2dx. The #1162 files separately record the moved-wall S data.
 """
 from __future__ import annotations
 
@@ -32,10 +22,10 @@ FREQS_HZ = np.array([1.0, 2.5]) * 1e9
 CLOSED_FORM_ATOL = 0.05
 
 
-def _line(r_over_zc):
+def _line(r_over_zc, full=False):
     sim = Simulation(
         freq_max=10e9,
-        domain=((N_NODES - 1) * DX, DX, DX),
+        domain=((N_NODES - 1) * DX, (2 if full else 1) * DX, DX),
         dx=DX,
         boundary=BoundarySpec(
             x=Boundary(lo="pmc", hi="pmc"),
@@ -43,24 +33,27 @@ def _line(r_over_zc):
             z=Boundary(lo="pec", hi="pec"),
         ),
     )
-    sim.add_port(position=(1.0 * DX, 0.0, 0.0), component="ez", impedance=ETA0,
+    sim.add_port(position=(1.0 * DX, DX if full else 0.0, 0.0), component="ez", impedance=ETA0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=1.6), extent=DX)
-    sim.add_lumped_rlc(position=((N_NODES - 2) * DX, 0.0, 0.0), component="ez",
+    sim.add_lumped_rlc(position=((N_NODES - 2) * DX, DX if full else 0.0, 0.0), component="ez",
                        R=r_over_zc * ETA0, topology="parallel")
     return sim
 
 
 @pytest.mark.parametrize("r_over_zc", [0.5, 2.0])
 def test_wire_port_on_a_magnetic_wall_plane_reads_its_load(r_over_zc):
-    gamma = abs((r_over_zc - 1.0) / (r_over_zc + 1.0))
     s_fwd = np.abs(np.asarray(_line(r_over_zc).forward(
         port_s11_freqs=jnp.asarray(FREQS_HZ), num_periods=20.0,
         skip_preflight=True).s_params).reshape(-1))
     s_run = np.abs(np.asarray(_line(r_over_zc).run(
         compute_s_params=True, s_param_freqs=FREQS_HZ, num_periods=20.0,
         skip_preflight=True).s_params).reshape(-1))
-    assert np.all(np.abs(s_fwd - gamma) < CLOSED_FORM_ATOL), (s_fwd, gamma)
-    assert np.all(np.abs(s_run - gamma) < CLOSED_FORM_ATOL), (s_run, gamma)
+    full = np.abs(np.asarray(_line(r_over_zc, full=True).forward(
+        port_s11_freqs=jnp.asarray(FREQS_HZ), num_periods=20.0,
+        skip_preflight=True).s_params).reshape(-1))
+    # Reflection of the same Yee lattice; permit accumulated float32 sums.
+    np.testing.assert_allclose(s_fwd, full, rtol=128*np.finfo(np.float32).eps,
+                               atol=128*np.finfo(np.float32).eps)
     # the two entry points solve one declared boundary
     assert np.allclose(s_fwd, s_run, atol=1e-5), (s_fwd, s_run)
 

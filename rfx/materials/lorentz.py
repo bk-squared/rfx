@@ -36,7 +36,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 from rfx.core.yee import (
-    EPS_0, FDTDState, _shift_bwd, ade_state_dtype, component_e_materials,
+    EPS_0, FDTDState, curl_h, ade_state_dtype, component_e_materials,
 )
 from rfx.materials.debye import per_component, pole_edge_fractions, pole_reach
 
@@ -292,6 +292,7 @@ def update_e_lorentz(
     dt: float,
     dx: float,
     periodic: tuple = (False, False, False),
+    boundary=None,
 ) -> tuple[FDTDState, LorentzState]:
     """E-field update with Lorentz/Drude ADE dispersion.
 
@@ -316,20 +317,14 @@ def update_e_lorentz(
     the imaginary part away and close the scan on wrong physics — the
     dispersive branches ignore the Bloch phase entirely.
     """
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     _fdtype = state.ex.dtype
     _pdtype = jnp.promote_types(lor_state.px.dtype, _fdtype)
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
     # curl(H)
-    curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
-    curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
-    curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
 
     # P^{n+1} = a P^n + b P^{n-1} + c_comp E^n (per pole, per component)
     px_new = lorentz_p_component(coeffs, 0, state.ex, lor_state.px,

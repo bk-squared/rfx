@@ -238,9 +238,8 @@ def compute_waveguide_s_matrix(
 
         This enables junction measurements UNDER the documented
         discipline; it does NOT make arbitrary compact junctions
-        valid. See the skipped ``test_api.py`` T-junction reciprocity test
-        and the companion evidence gate test
-        ``tests/crossval/test_waveguide_tjunction_e4e5_gates.py``.
+        valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
+        the current waveguide evidence and scope.
     """
     if not normalize:
         import warnings
@@ -339,10 +338,13 @@ def compute_waveguide_s_matrix(
             (self._dx_profile, self._dy_profile, self._dz_profile))
             and self._interface_eps == "dual_average"):
         raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
+    from rfx.boundaries.pmc import refuse_waveguide_pmc
+    refuse_waveguide_pmc(self)
     from rfx.runners._admission import admit
     admit(self, "waveguide_s_matrix")
     if port_reference_sims is not None:
         for reference in port_reference_sims:
+            refuse_waveguide_pmc(reference)
             admit(reference, "waveguide_s_matrix")
 
     if (
@@ -721,6 +723,9 @@ def compute_waveguide_s_matrix(
     # device and reference (vacuum) runs see the same boundary-
     # face PEC walls, so the inverse-permittivity tensor is
     # computed twice (once per material context).
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(self, grid)
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
     aniso_eps = None
     aniso_inv_eps = None

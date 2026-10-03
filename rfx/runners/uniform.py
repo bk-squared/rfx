@@ -84,6 +84,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
     """
     axis_to_index = {"x": 0, "y": 1, "z": 2}
     from rfx.probes.flux_region import resolve_flux_region
+    from rfx.boundaries.pec import resolve_wall_faces
     flux_monitors = []
     if entries is None:
         entries = getattr(sim, '_flux_monitors', [])
@@ -122,6 +123,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
                 dft_window=getattr(pe, 'dft_window', 'rect'),
                 dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
                 lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
+                pmc_faces=resolve_wall_faces(grid, sim._periodic_flags())[1],
             )
         )
     return flux_monitors
@@ -244,6 +246,10 @@ def run_uniform(
                 "not supported (#677 v1): the sheet operator would "
                 "silently override the ADE dispersion update at its "
                 "edges. Remove the dispersive material or the f0 sheet.")
+
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(sim, grid)
 
     # A Debye/Lorentz E update reads neither the smoothed permittivity
     # tensor nor the Dey-Mittra eps correction
@@ -468,6 +474,9 @@ def run_uniform(
                                            pe.waveform, n_steps,
                                            materials=materials,
                                            amplitude_kind=pe.amplitude_kind))
+            from rfx.api._source_semantics import guard_float16_source_increment
+            sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
+                sources[-1].waveform, field_dtype, pe.amplitude_kind))
             continue
         if pe.extent is not None:
             # Multi-cell wire port

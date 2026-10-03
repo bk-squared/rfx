@@ -370,7 +370,7 @@ def _diff_fwd_o(arr, axis, periodic, order, bloch=None):
     return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
 
 
-def _diff_bwd_o(arr, axis, periodic, order, bloch=None):
+def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None):
     """Backward staggered first difference (f[i]-f[i-1] family), at i-1/2; the
     caller divides by dx. order=2 is byte-identical to ``arr-_shift_bwd(arr)``
     when ``bloch is None``.
@@ -378,19 +378,23 @@ def _diff_bwd_o(arr, axis, periodic, order, bloch=None):
     For the Bloch field-transformation (#404) the BACKWARD-rolled neighbour
     carries the CONJUGATE phase ``exp(+j·k_axis·dx)`` (``bloch[axis].conjugate()``),
     the exact discrete adjoint of the forward stagger.  See ``_diff_fwd_o``."""
+    if boundary is not None:
+        periodic = boundary.periodic
+    if order != 2 and boundary is not None and boundary.pmc_faces:
+        raise NotImplementedError("PMC magnetic image: yee._diff_bwd_o far neighbors "
+                                  "require stencil_order=2")
+    back = h_neighbor(arr, axis, periodic=periodic, boundary=boundary)
     if order == 2:
-        if periodic[axis]:
-            prv = jnp.roll(arr, 1, axis)
-            if bloch is not None:
-                prv = prv * bloch[axis].conjugate()
-            return arr - prv
-        return arr - _shift_bwd(arr, axis)
+        if periodic[axis] and bloch is not None:
+            back = back * bloch[axis].conjugate()
+        return arr - back
+
     # order == 4:  c1*(f[i]-f[i-1]) + c2*(f[i+1]-f[i-2])
     if periodic[axis]:
-        near = arr - jnp.roll(arr, 1, axis)
+        near = arr - back
         far = jnp.roll(arr, -1, axis) - jnp.roll(arr, 2, axis)
         return _C4_NEAR * near + _C4_FAR * far
-    near = arr - _shift_bwd(arr, axis)
+    near = arr - back
     far = _shift_fwd(arr, axis) - _shift_bwd(_shift_bwd(arr, axis), axis)
     return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
 
@@ -470,56 +474,99 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-def curl_h(hx, hy, hz, dx: float, periodic: tuple,
-           stencil_order: int = 2, bloch: tuple | None = None):
-    """curl(H) at the E edges on a uniform grid (backward staggered diffs).
+class CurlBoundary(NamedTuple):
+    """Realized terminal walls and periodic axes of an E-update stencil.
 
-    Factored out of :func:`update_e` (#677) so the surface-impedance sheet
-    operator and the E-update kernel share ONE stencil — any drift between
-    the two would silently violate the sheet operator's G3 free-space
-    identity gate. Callers pass H components already cast to the compute
-    dtype; the expressions are byte-identical to the pre-#677 inline code.
+    Built from ``resolve_wall_faces`` by each single-device step setup.
+    Tangential H is read with an odd image across each magnetic face.
     """
-    so = stencil_order
-    # dHz/dy - dHy/dz
-    curl_x = (
-        _diff_bwd_o(hz, 1, periodic, so, bloch) / dx
-        - _diff_bwd_o(hy, 2, periodic, so, bloch) / dx
-    )
-    # dHx/dz - dHz/dx
-    curl_y = (
-        _diff_bwd_o(hx, 2, periodic, so, bloch) / dx
-        - _diff_bwd_o(hz, 0, periodic, so, bloch) / dx
-    )
-    # dHy/dx - dHx/dy
-    curl_z = (
-        _diff_bwd_o(hy, 0, periodic, so, bloch) / dx
-        - _diff_bwd_o(hx, 1, periodic, so, bloch) / dx
-    )
-    return curl_x, curl_y, curl_z
+
+    pec_faces: frozenset = frozenset()
+    pmc_faces: frozenset = frozenset()
+    periodic: tuple = (False, False, False)
 
 
-def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz):
-    """curl(H) at the E edges on a non-uniform grid (backward diffs).
+def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
+               index=None):
+    """Backward operand for a tangential-H difference at an E node.
 
-    Factored out of :func:`update_e_nu` (#677) for the same shared-stencil
-    reason as :func:`curl_h`. ``inv_dx/inv_dy/inv_dz`` are the E-update
-    inverse spacings ``inv_d_e`` from
-    ``rfx.nonuniform._profile_to_inv_arrays``.
+    With N cells, physical H indices are 0..N-1 and the stored high ghost
+    is N. PMC requires D_H[0]=2H[0] and D_H[N]=-2H[N-1]. The high operand
+    includes H[N] to cancel the stored ghost at consumption, including any
+    source/absorber change since canonicalization. No physical H is zeroed.
+    Periodic and indexed invariant-axis conventions take precedence.
     """
-    curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
-    )
-    curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
-    )
-    curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
-    )
-    return curl_x, curl_y, curl_z
+    if boundary is not None:
+        periodic = boundary.periodic
+    n = h.shape[axis]
+    from rfx.boundaries.pmc import magnetic_image_faces
+    faces = magnetic_image_faces(boundary.pmc_faces, h.shape, periodic) if boundary is not None else frozenset()
+    lo = f"{'xyz'[axis]}_lo" in faces
+    hi = f"{'xyz'[axis]}_hi" in faces
+    if index is None:
+        back = jnp.roll(h, 1, axis) if periodic[axis] else _shift_bwd(h, axis)
+        edge = [slice(None)] * h.ndim
+        if lo:
+            edge[axis] = 0
+            back = back.at[tuple(edge)].set(-h[tuple(edge)])
+        if hi:
+            edge[axis] = -1
+            inner = list(edge)
+            inner[axis] = -2
+            back = back.at[tuple(edge)].set(h[tuple(edge)] + 2 * h[tuple(inner)])
+        return back
+    i = int(index[axis])
+    if n == 1 or periodic[axis]:
+        back = list(index)
+        back[axis] = (i - 1) % n
+        return h[tuple(back)]
+    if i == 0:
+        return -h[index] if lo else jnp.zeros_like(h[index])
+    back = list(index)
+    back[axis] = i - 1
+    if hi and i == n - 1:
+        return h[index] + 2 * h[tuple(back)]
+    return h[tuple(back)]
+
+
+def curl_h(hx, hy, hz, dx: float | None, periodic: tuple,
+           stencil_order: int = 2, bloch: tuple | None = None, *,
+           boundary=None, scale_after=False, inv_spacing=None):
+    """The uniform E-update curl, with the realized terminal boundary.
+
+    ``scale_after`` preserves ADE's subtraction-before-division arithmetic;
+    ``dx=None`` preserves baked coefficients (which already contain 1/dx).
+    UPML passes its broadcast inverse metrics via ``inv_spacing``. These
+    forms preserve the pre-B3a floating-point operation order, not different
+    boundary stencils. H is cast to the caller's compute dtype beforehand.
+    """
+    if boundary is not None:
+        periodic = boundary.periodic
+
+    def component(ha, a, hb, b):
+        da = _diff_bwd_o(ha, a, periodic, stencil_order, bloch, boundary=boundary)
+        db = _diff_bwd_o(hb, b, periodic, stencil_order, bloch, boundary=boundary)
+        if inv_spacing is not None:
+            return da * inv_spacing[a] - db * inv_spacing[b]
+        if dx is None:
+            return da - db
+        if scale_after:
+            return (da - db) / dx
+        return da / dx - db / dx
+
+    return (component(hz, 1, hy, 2), component(hx, 2, hz, 0),
+            component(hy, 0, hx, 1))
+
+
+def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None):
+    """Graded E-update curl using the same boundary neighbour convention.
+
+    Inverse spacings are the E-update dual metrics, unchanged by B3a.
+    """
+    return curl_h(
+        hx, hy, hz, None, (False, False, False), boundary=boundary,
+        inv_spacing=(inv_dx[:, None, None], inv_dy[None, :, None],
+                     inv_dz[None, None, :]))
 
 
 def _material_bwd_neighbour(arr, ax, periodic):
@@ -768,7 +815,7 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
                  periodic: tuple = (False, False, False),
                  stencil_order: int = 2,
                  bloch: tuple | None = None,
-                 inv_d: tuple | None = None) -> FDTDState:
+                 inv_d: tuple | None = None, *, boundary=None) -> FDTDState:
     """Redo the E update inside one index box with its own Ca/Cb (#1179).
 
     ``prev`` is the state BEFORE the grid-wide E update of this timestep. It
@@ -831,11 +878,12 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     if inv_d is None:
         curl_x, curl_y, curl_z = curl_h(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
-            prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch)
+            prev.hz.astype(_cdtype), dx, periodic, stencil_order, bloch,
+            boundary=boundary)
     else:
         curl_x, curl_y, curl_z = curl_h_nu(
             prev.hx.astype(_cdtype), prev.hy.astype(_cdtype),
-            prev.hz.astype(_cdtype), *inv_d)
+            prev.hz.astype(_cdtype), *inv_d, boundary=boundary)
 
     def _comp(v, c):
         """``v`` for every component, or the c-th entry of a 3-sequence."""
@@ -855,11 +903,11 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     )
 
 
-@partial(jax.jit, static_argnums=(4, 5, 6))
+@partial(jax.jit, static_argnames=("periodic", "stencil_order", "bloch", "boundary"))
 def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
              periodic: tuple = (False, False, False),
              stencil_order: int = 2,
-             bloch: tuple | None = None) -> FDTDState:
+             bloch: tuple | None = None, *, boundary=None) -> FDTDState:
     """Electric field full-step update (Ampere's law).
 
     For lossy media with conductivity σ:
@@ -907,7 +955,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, periodic)
 
-    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch)
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, so, bloch, boundary=boundary)
 
     ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
     ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)
@@ -974,7 +1022,7 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
 
 def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                ) -> FDTDState:
+                *, boundary=None) -> FDTDState:
     """E update for non-uniform Yee grid.
 
     The E-curl differences two H cell-centres, whose separation is the
@@ -999,13 +1047,13 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     # box on a graded mesh builds the SAME Ca/Cb from its own permittivity
     # (#1183). #1210: per component, from the mean over the four cells
     # incident to the edge. Non-periodic: the graded-mesh lane installs no
-    # periodic BC (``curl_h_nu`` has no wrap), the same assumption
+    # periodic BC (the NU boundary carries no periodic axes), the same assumption
     # ``update_e_box``'s ``inv_d`` branch documents.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
         materials, dt, (False, False, False))
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
-    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz)
+    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
 
     ex = (ca_x * state.ex.astype(_cdtype) + cb_x * curl_x).astype(_fdtype)
     ey = (ca_y * state.ey.astype(_cdtype) + cb_y * curl_y).astype(_fdtype)
@@ -1159,6 +1207,7 @@ def update_e_fast(
     state: FDTDState,
     ca_ex: jnp.ndarray, ca_ey: jnp.ndarray, ca_ez: jnp.ndarray,
     cb_ex: jnp.ndarray, cb_ey: jnp.ndarray, cb_ez: jnp.ndarray,
+    *, boundary=None,
 ) -> FDTDState:
     """E update using pre-computed per-component coefficients.
 
@@ -1175,13 +1224,15 @@ def update_e_fast(
     hx = state.hx.astype(_cdtype)
     hy = state.hy.astype(_cdtype)
     hz = state.hz.astype(_cdtype)
-    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2)))).astype(_fdtype)
-    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0)))).astype(_fdtype)
-    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1)))).astype(_fdtype)
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, None, (False, False, False), boundary=boundary)
+    ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
+    ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
+    ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * curl_z).astype(_fdtype)
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
-def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
+def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs, *, boundary=None) -> FDTDState:
     """Combined H + E update using pre-computed :class:`UpdateCoeffs`.
 
     Performs a full leapfrog step (H half-step then E full-step) with
@@ -1208,19 +1259,21 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs) -> FDTDState:
     hx_f = hx.astype(_cdtype)
     hy_f = hy.astype(_cdtype)
     hz_f = hz.astype(_cdtype)
-    ex = (coeffs.ca_ex * ex + coeffs.cb_ex * ((hz_f - _shift_bwd(hz_f, 1)) - (hy_f - _shift_bwd(hy_f, 2)))).astype(_fdtype)
-    ey = (coeffs.ca_ey * ey + coeffs.cb_ey * ((hx_f - _shift_bwd(hx_f, 2)) - (hz_f - _shift_bwd(hz_f, 0)))).astype(_fdtype)
-    ez = (coeffs.ca_ez * ez + coeffs.cb_ez * ((hy_f - _shift_bwd(hy_f, 0)) - (hx_f - _shift_bwd(hx_f, 1)))).astype(_fdtype)
+    curl_x, curl_y, curl_z = curl_h(
+        hx_f, hy_f, hz_f, None, (False, False, False), boundary=boundary)
+    ex = (coeffs.ca_ex * ex + coeffs.cb_ex * curl_x).astype(_fdtype)
+    ey = (coeffs.ca_ey * ey + coeffs.cb_ey * curl_y).astype(_fdtype)
+    ez = (coeffs.ca_ez * ez + coeffs.cb_ez * curl_z).astype(_fdtype)
     return FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz,
                      step=state.step + 1)
 
 
-@jax.jit
+@partial(jax.jit, static_argnames=("boundary",))
 def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
                       eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                       dt: float,
                       inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                      ) -> FDTDState:
+                      *, boundary=None) -> FDTDState:
     """Non-uniform E update with per-component anisotropic permittivity.
 
     Same backward-difference structure as :func:`update_e_nu` (E-update
@@ -1263,18 +1316,7 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
 
     # Backward differences with per-cell inv-spacing (mirrors update_e_nu)
-    curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz[None, None, :]
-    )
-    curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx[:, None, None]
-    )
-    curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy[None, :, None]
-    )
+    curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
@@ -1283,11 +1325,11 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     return state._replace(ex=ex, ey=ey, ez=ez, step=state.step + 1)
 
 
-@partial(jax.jit, static_argnums=(7,))
+@partial(jax.jit, static_argnames=("periodic", "boundary"))
 def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
                        inv_xx: jnp.ndarray, inv_yy: jnp.ndarray, inv_zz: jnp.ndarray,
                        dt: float, dx: float,
-                       periodic: tuple = (False, False, False)) -> FDTDState:
+                       periodic: tuple = (False, False, False), *, boundary=None) -> FDTDState:
     """Electric field update with per-component **inverse** permittivity.
 
     Stage 2 production form: takes the diagonal of the inverse-eps
@@ -1329,11 +1371,6 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     dt, dx : float
     periodic : tuple of 3 bools
     """
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     # Compute dtype: max(state dtype, float32) -- byte-identical for float32
     # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
@@ -1367,18 +1404,7 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     cb_ez = (dt * inv_zz * inv_eps0) / (1.0 + loss_ez)
 
     # curl H (identical to update_e and update_e_aniso).
-    curl_x = (
-        (hz - bwd(hz, 1)) / dx
-        - (hy - bwd(hy, 2)) / dx
-    )
-    curl_y = (
-        (hx - bwd(hx, 2)) / dx
-        - (hz - bwd(hz, 0)) / dx
-    )
-    curl_z = (
-        (hy - bwd(hy, 0)) / dx
-        - (hx - bwd(hx, 1)) / dx
-    )
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
@@ -1393,7 +1419,7 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
 def update_e_aniso(state: FDTDState, materials: MaterialArrays,
                    eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                    dt: float, dx: float,
-                   periodic: tuple = (False, False, False)) -> FDTDState:
+                   periodic: tuple = (False, False, False), *, boundary=None) -> FDTDState:
     """Electric field update with per-component anisotropic permittivity.
 
     Same as :func:`update_e` but uses separate permittivity arrays for
@@ -1411,11 +1437,6 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     dt, dx : float
     periodic : tuple of 3 bools
     """
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     # Compute dtype: max(state dtype, float32) -- byte-identical for float32
     # storage, upcast for float16, promoted for float64 (issue #630).
     _fdtype = state.ex.dtype
@@ -1456,18 +1477,7 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     cb_ez = (dt / abs_eps_ez) / (1.0 + loss_ez)
 
     # curl H (same as update_e)
-    curl_x = (
-        (hz - bwd(hz, 1)) / dx
-        - (hy - bwd(hy, 2)) / dx
-    )
-    curl_y = (
-        (hx - bwd(hx, 2)) / dx
-        - (hz - bwd(hz, 0)) / dx
-    )
-    curl_z = (
-        (hy - bwd(hy, 0)) / dx
-        - (hx - bwd(hx, 1)) / dx
-    )
+    curl_x, curl_y, curl_z = curl_h(hx, hy, hz, dx, periodic, boundary=boundary)
 
     ex = (ca_ex * state.ex.astype(_cdtype) + cb_ex * curl_x).astype(_fdtype)
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)

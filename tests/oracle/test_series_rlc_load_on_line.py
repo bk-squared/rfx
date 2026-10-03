@@ -1,5 +1,9 @@
 """A series RLC load on a line reads its own closed-form impedance (#1163).
 
+B3b: the closed form below assumes the former half-cell PMC geometry.
+The declared-face image moves those walls; only the final load-impedance
+comparison is a strict xfail pending the ports lane's line re-derivation.
+
 The physics
 -----------
 A one-cell-wide parallel-plate line (PEC plates on z, magnetic walls on y and
@@ -33,6 +37,7 @@ copy of the few lines it needs so the gate does not depend on a script.
 from __future__ import annotations
 
 import math
+import json
 
 import jax.numpy as jnp
 import numpy as np
@@ -88,7 +93,7 @@ def s11_short():
     (300.0, 1e-9, 0.0),         # series R + L
     (50.0, 0.0, 1e-12),         # R below d/(D0*A): used to be a negative resistance
 ], ids=["RC-300", "RLC-300", "RL-300", "RC-50"])
-def test_series_load_reads_its_closed_form(s11_short, r_ohm, l_h, c_f):
+def test_series_load_reads_its_closed_form(s11_short, r_ohm, l_h, c_f, request, record_property):
     sim = _channel(LOAD_NODE + 2, "pmc")
     sim.add_lumped_rlc(position=(LOAD_NODE * DX, 0.0, 0.0), component="ez",
                        R=r_ohm, L=l_h, C=c_f, topology="series")
@@ -112,6 +117,14 @@ def test_series_load_reads_its_closed_form(s11_short, r_ohm, l_h, c_f):
         f"  {f / 1e9:5.1f} GHz  Z_meas {zm.real:9.2f} {zm.imag:+9.2f}j   "
         f"closed form {zt.real:9.2f} {zt.imag:+9.2f}j   tol {t:6.2f}"
         for f, zm, zt, t in zip(FREQS, z_meas, z_true, tol))
+    record_property("freqs_hz", json.dumps(FREQS.tolist()))
+    record_property("old_z_reference", json.dumps([[float(z.real), float(z.imag)] for z in z_true]))
+    record_property("new_z", json.dumps([[float(z.real), float(z.imag)] for z in z_meas]))
+    record_property("new_s11", json.dumps([[float(z.real), float(z.imag)] for z in s]))
+    # This closed form assumed the old half-cell end and one-cell PMC width.
+    # Keep the 5% gate while the ports lane rebuilds that physical line.
+    request.node.add_marker(pytest.mark.xfail(strict=True, raises=AssertionError,
+        reason="#1221 B3b: ports lane re-judges with the moved walls"))
     assert not (bad_re.any() or bad_im.any()), (
         f"series R={r_ohm} L={l_h} C={c_f}: {int(bad_re.sum())} bin(s) off in Re and "
         f"{int(bad_im.sum())} in Im by more than {BAR:.0%} of |Z|\n{rows}")

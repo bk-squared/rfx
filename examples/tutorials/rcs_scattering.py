@@ -129,9 +129,8 @@ def main() -> None:
     # are compared against the analytic volume so a real divergence — a wrong
     # radius, a wrong centre, a sphere that vanished — fails here instead of
     # showing up as a quiet 3 dB in the RCS.
-    sim_grid = sim._build_grid()
-    _mat, _deb, _lor, pec_cells, _s, _w, _c = sim._assemble_materials(sim_grid)
-    n_pec = int(np.asarray(pec_cells).sum())
+    record = sim.realized_geometry()
+    n_pec = int(record.pec_mask.sum())
     n_sigma = int((np.asarray(materials.sigma) > 0.0).sum())
     n_analytic = (4.0 / 3.0) * np.pi * RADIUS**3 / DX**3
     print(

@@ -139,7 +139,8 @@ def test_ports_and_sparams_101_tutorial_runs():
         for face in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
         for depth in (3, 4)
     }
-    assert "solved more than 1% off their drawn size" in output
+    # #1138: edge-aware x/y registration removes the sheet-size refusal.
+    assert "solved more than 1% off their drawn size" not in output
     assert "Microstrip port setup ready: True" in output
     # The declared foils must BE the realized wall planes, and the gap between
     # them the height the MSL ports were told.  build_microstrip_ports() raises

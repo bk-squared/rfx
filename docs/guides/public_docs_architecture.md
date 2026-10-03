@@ -124,7 +124,7 @@ builds the public Markdown, LLM index, typed API inventory, unchanged support
 contracts, and pdoc reference from committed source inputs. The generator uses
 the existing API-surface checker and the private-mixin pdoc template. It does not
 create another hand-maintained symbol inventory or classify support by symbol.
-Use Python 3.10.12 and install the pinned runtime/renderer dependency closure with
+Use Python 3.11 or newer and install the pinned runtime/renderer dependency closure with
 `pip install -r scripts/requirements-public-docs.txt`. The generator imports the
 selected source tree directly; an editable installation is not needed.
 

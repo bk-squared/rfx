@@ -336,7 +336,8 @@ class Box:
             # plane placement error. A matching-thickness (sub-cell) box takes
             # this same thin branch and agrees; only a >=1-cell VOLUME box
             # (different object) selects a different layer on a graded axis.
-            nearest_idx = xp.argmin(xp.abs(coords - mid))
+            from rfx._grid_metric import nearest_node_index
+            nearest_idx = nearest_node_index(coords, mid, dc_local, xp=xp)
             if traced:
                 thin_mask = jnp.zeros(coords.shape, dtype=bool).at[
                     nearest_idx].set(True)

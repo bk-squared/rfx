@@ -12,7 +12,7 @@ bound-method behaviour, and every call site is unaffected.
 module-level ``def`` whose first parameter is ``self``, not a free function with
 a different contract. It writes ``self._ports`` / ``self._probes`` /
 ``self._dft_planes`` / ``self._flux_monitors`` / ``self._msl_ports`` /
-``self._internal_probe_indices`` and calls ``self.preflight()``,
+``self._internal_probe_indices`` and calls ``self._auto_preflight()``,
 ``self.add_flux_monitor()`` and ``self._resolve_msl_probe_entries()`` exactly as
 it did as a method. A thin class wrapper may follow in a later #980 step; this
 step adds none.
@@ -528,7 +528,7 @@ def compute_mixed_s_matrix(
     if not skip_preflight:
         # One preflight for the full registration (run() would fire it
         # per drive run — 2*n_ports repeats of the same advisories).
-        self.preflight()
+        self._auto_preflight(context="compute_mixed_s_matrix", check_ntff="advisory")
 
     if magnitude_channel not in ("flux", "wave"):
         raise ValueError(
@@ -589,12 +589,19 @@ def compute_mixed_s_matrix(
         _witness_base = len(self._probes)
         _witness_total = 0
         for pe_w, pxs_w in zip(entries, probe_xs):
+            # This calculator-created midpoint is not a declaration. Keep
+            # its historical half-to-even node when the substrate has an
+            # odd number of cells; user port/source coordinates still use
+            # the shared lower-node tie rule.
+            witness_z = float(pe_w.position[2]) + 0.5 * float(pe_w.height)
+            dz = float(grid.cells(2)[0])   # uniform mesh (refused graded above)
+            witness_z = int(round(witness_z / dz)) * dz
             for _x_w in pxs_w:
                 self.add_probe(
                     position=(
                         float(_x_w),
                         float(pe_w.position[1]),
-                        float(pe_w.position[2]) + 0.5 * float(pe_w.height),
+                        witness_z,
                     ),
                     component="ez",
                 )

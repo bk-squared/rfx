@@ -14,6 +14,8 @@ a committed test pins the fix, not when someone believes it is better.
 Nothing here is a substitute for the repo's standing rule: a warning's absence is
 not an accuracy guarantee, and a preflight pass is not a convergence study.
 
+Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not judged by `sheet_effective_size` (`rfx/materials/thin_conductor.py::ThinConductor.is_pec`, `rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`).
+
 ---
 
 ## Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
@@ -41,6 +43,8 @@ with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
 volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
 cell at its vertices. The existing volume-wire rule and legacy `radius=0`
 filament ownership remain; zero does not declare a physical wire radius.
+A positive-radius PEC `PolylineWire` also refuses when the mesh cell sizes
+are traced; its geometric radius check requires concrete cell metrics.
 The attempted filament correction failed its independent uncorrected-main
 reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
 8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
@@ -48,6 +52,8 @@ reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
 That one-edge feed has nonuniform longitudinal current, so the full-height
 wire-port Hankel oracle does not establish its accuracy. The port radius
 model and its full-height oracle remain separate.
+
+`compute_coax_msl_transition` runs no automatic preflight (`rfx/sparams/coax.py::compute_coax_msl_transition`).
 
 **The coax→microstrip transition over-reads power by about a factor of three.**
 Measured twice independently on the MSL port's power-wave normalization: the
@@ -81,8 +87,9 @@ cannot do that: read it as a record that ended before ring-down or a mesh too
 coarse for the geometry (`settling_db`, `reliable`), not as gain.
 `enforce_passivity=True` returns the projected matrix instead. On a reflecting fixture
 the raw S is gated: the microstrip chain battery holds its maximum column power at
-or below 1.02 on the open-stub notch at its 25 µm claims rung (1.0103 measured; the
-thru line 1.0030), in `tests/oracle/test_msl_chain_battery.py`. Coarser meshes are
+or below 1.02 on the open-stub notch at its 25 µm claims rung, in
+`tests/oracle/test_msl_chain_battery.py`. Read the current fixture for the
+measured notch and thru values. Coarser meshes are
 reported, not gated.
 
 **The fitted microstrip propagation constant sits 1.0 to 1.3 % above the
@@ -134,23 +141,31 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
+**A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port,
+and the end-of-run witness can miss it.** A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
+port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the port is its only loss.
+On a plain 12 ns record, |S11| reads 0.975–1.009 around the mode (largest deviation 0.025);
+24 / 60 / 120 ns records: deviation 0.042 / 0.032 / 0.026. The end-of-run witness read −64 dB
+and passed: its reference peak was the direct response, and the weakly coupled mode rings below it.
+On the same 12 ns record, one-cell wire-port completion restores |S11| to 1 within 1e-3 (measured about 1e-6) with passing witnesses
+(`tests/unit/sparams/test_sparam.py::test_wire_port_pec_cavity_s11_around_the_first_mode`).
+`run(ringdown=...)` currently refuses one-cell lumped ports.
+What to do: record well past the slowest mode's decay, or use a one-cell wire port
+(`add_port(..., extent=dx)`) with `run(ringdown=...)`.
+#1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
+
 ## Absorbing boundaries
 
-**A magnetic symmetry wall lies half a cell inside its declared face.**
-On the single-device Yee paths, the nearest tangential magnetic-field sample
-is zeroed half a cell inside the face. A source on the face's electric node
-does not reach the interior, and a symmetry half-model is half a cell narrower
-than declared. For a 24 mm separation between two magnetic faces, the realized
-separation is 23 mm at dx = 1 mm. The on-face image rule is pending in B3.
-→ [#1221](https://github.com/bk-squared/rfx/issues/1221)
-
-**On the distributed lanes and with `solver='adi'`, a magnetic face is not a magnetic wall.**
-A face declared `pmc` is solved as a magnetic wall only on a single-device Yee run. On `run(devices=...)` and
-`forward(distributed=True)` with no absorbing face the plane is shorted (tangential E held at zero); with absorbing
-faces the cells next to it absorb, and a source one cell off the plane reaches the volume 65–75 dB below the
-single-device run. `solver='adi'` solves the face as an electric wall. A half-model on these lanes is a different
-structure from the one declared. Use a single-device Yee run for a symmetry plane; there the wall sits half a cell
-inside the declared face, which #1221 also fixes.
+**Magnetic faces require the single-device second-order Yee image.**
+Uniform and graded run/forward place the wall on the declared E-node face.
+Distributed kernels, subgridded and ADI lanes refuse magnetic faces.
+Waveguide-port execution also refuses magnetic faces: its aperture mode solver
+implements PEC walls only. The fourth-order stencil refuses them because
+its far neighbors have no magnetic image. Subpixel smoothing refuses a material surface within half
+an adjacent cell of a magnetic face when the smoother would need the
+material's even extension; extending the material at least a cell beyond
+the face is supported. These refusals remain until the corresponding
+kernels and smoothing extension are implemented.
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 **With the mesh as a design variable, a ground plane still ends at the absorber.**
@@ -166,6 +181,28 @@ cell except the outermost row on the +x and +y faces.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
 ## Gradients and optimization
+
+**Port-only ring-down completion can miss the gradient of a weakly coupled
+high-Q resonance.** A pole and the completed S-parameter can be accurate while
+its material derivative is tens of percent wrong at the resonance bin. Add
+interior field channels with
+`RingdownSpec(identification_probes=(((x, y, z), "ez"),))` on `run()` or
+`forward()`. They inform pole identification; S still uses the port V/I
+residues. The report lists snapped identification channels and per-pole
+residue/RMS shares as information, without an observability threshold or a
+W0-style accumulator witness for these channels.
+
+Judge completed gradients with `gradient_witness(g, g_early, ringdown=result.ringdown,
+bin_axis=k)` when axis `k` carries frequency: it normalizes each bin of each
+parameter leaf independently and returns the worst bin, so pass only the bins
+your objective reads (a near-zero gradient at an unused band edge reads large). Exactly zero reference
+bins are skipped and counted. Without `bin_axis`, normalization is per leaf;
+a scalar objective's gradient is already per objective. A passing value witness
+does not establish a passing gradient witness. Where the early-start witness
+cannot be formed, compare against a record 1.5–2 times longer.
+The weak-port cavity contract is in
+`tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
+identification-probe option; port-only identification remains the default).
 
 **A gradient can be wrong by tens of percent on a record whose value is
 converged.** Every frequency-domain quantity rfx differentiates is a DFT of a

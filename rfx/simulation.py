@@ -19,11 +19,12 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.grid import Grid
+from rfx.core.jax_utils import recorded_scan
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, edge_averaged_materials, component_e_materials,
-    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, _shift_bwd,
+    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, curl_h, CurlBoundary,
     map_lumped, lumped_components, lumped_total,
     precompute_coeffs, update_he_fast,
 )
@@ -330,6 +331,7 @@ class SimResult(NamedTuple):
     dt: float | None = None
     current_moment_data: object = None
     current_moment_monitor: object = None
+    adjoint_settling: object = None
 
 
 # ---------------------------------------------------------------------------
@@ -528,6 +530,7 @@ def _update_e_with_optional_dispersion(
     aniso_inv_eps: tuple | None = None,
     stencil_order: int = 2,
     bloch: tuple | None = None,
+    boundary=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """Update E with standard, Debye, Lorentz, or mixed dispersion.
 
@@ -552,20 +555,20 @@ def _update_e_with_optional_dispersion(
         if aniso_inv_eps is not None:
             inv_xx, inv_yy, inv_zz = aniso_inv_eps
             return update_e_aniso_inv(state, materials, inv_xx, inv_yy, inv_zz,
-                                      dt, dx, periodic=periodic), None, None
+                                      dt, dx, periodic=periodic, boundary=boundary), None, None
         if aniso_eps is not None:
             eps_ex, eps_ey, eps_ez = aniso_eps
             return update_e_aniso(state, materials, eps_ex, eps_ey, eps_ez,
-                                  dt, dx, periodic=periodic), None, None
+                                  dt, dx, periodic=periodic, boundary=boundary), None, None
         return update_e(state, materials, dt, dx, periodic=periodic,
-                        stencil_order=stencil_order, bloch=bloch), None, None
+                        stencil_order=stencil_order, bloch=bloch, boundary=boundary), None, None
 
     if debye is not None and lorentz is None:
         from rfx.materials.debye import update_e_debye
 
         debye_coeffs, debye_state = debye
         new_state, new_debye = update_e_debye(
-            state, debye_coeffs, debye_state, dt, dx, periodic=periodic)
+            state, debye_coeffs, debye_state, dt, dx, periodic=periodic, boundary=boundary)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
@@ -573,7 +576,7 @@ def _update_e_with_optional_dispersion(
 
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = update_e_lorentz(
-            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic)
+            state, lorentz_coeffs, lorentz_state, dt, dx, periodic=periodic, boundary=boundary)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz update.
@@ -582,11 +585,6 @@ def _update_e_with_optional_dispersion(
 
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lorentz_state = lorentz
-
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
 
     # Narrow every output back to the dtype of the carry it came from
     # (issue #656) — same policy as the single-model bodies in
@@ -597,9 +595,8 @@ def _update_e_with_optional_dispersion(
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
-    curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
-    curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
-    curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
 
     ex_old, ey_old, ez_old = state.ex, state.ey, state.ez
 
@@ -1870,6 +1867,7 @@ def _build_step_setup(
         ntff=ntff,
         pec_faces_frozen=_pec_faces_frozen,
         pmc_faces_frozen=_pmc_faces_frozen,
+        curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
         src_meta=tuple(src_meta),
         mag_src_meta=tuple(mag_src_meta),
         prb_meta=tuple(prb_meta),
@@ -2017,6 +2015,7 @@ class _StepContext:
     # every existing caller's context is unchanged.
     use_current_moments: bool = False
     current_moments: Any = None
+    curl_boundary: Any = None
     pec_faces_frozen: Any = frozenset()
     pmc_faces_frozen: Any = frozenset()
 
@@ -2128,7 +2127,8 @@ def core_step_invariants(ctx: _StepContext) -> dict:
             "sheet_coeffs": _sheet_coeffs}
 
 
-def make_core_step(ctx: _StepContext, invariants: dict | None = None):
+def make_core_step(ctx: _StepContext, invariants: dict | None = None,
+                   *, design_hook=None):
     """Build the shared per-step Yee kernel from an explicit context.
 
     Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
@@ -2136,6 +2136,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
     optional per-step outputs each caller needs:
       * ``extras["snap_fields"]`` — snapshot field list (``use_snapshot``).
       * ``extras["monitor_val"]`` — monitored scalar (``use_monitor``).
+
+    ``design_hook``, when supplied by the design adjoint, observes the
+    pre-update fields and can inject a local E perturbation immediately after
+    the design update. It returns ``(state, record)``; the record is an extra.
+    With no hook the production operations are unchanged.
 
     ``invariants`` is :func:`core_step_invariants`'s dict (built from ``ctx``
     when omitted); a jitted caller passes one whose per-cell arrays are its
@@ -2186,7 +2191,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             # Fast path: combined H+E update with PEC baked into
             # pre-computed coefficients — eliminates separate apply_pec(),
             # coefficient recomputation, and reduces XLA scatter ops.
-            st = update_he_fast(st, ctx.fast_coeffs)
+            st = update_he_fast(st, ctx.fast_coeffs, boundary=ctx.curl_boundary)
         else:
             # H update
             if ctx.use_upml:
@@ -2239,7 +2244,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     )
             if ctx.use_pmc_faces:
                 from rfx.boundaries.pmc import apply_pmc_faces
-                st = apply_pmc_faces(st, ctx.pmc_faces_frozen)
+                st = apply_pmc_faces(st, ctx.pmc_faces_frozen, image=True)
             if ctx.use_tfsf:
                 if ctx.tfsf_is_2d:
                     tfsf_h_state = ctx.update_tfsf_2d_h(ctx.tfsf_cfg, carry["tfsf"], dx, dt)
@@ -2274,7 +2279,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
             if ctx.use_upml:
                 if ctx.use_debye or ctx.use_lorentz:
                     raise ValueError("boundary='upml' does not yet support dispersion")
-                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic)
+                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic,
+                                      boundary=ctx.curl_boundary)
                 debye_new = None
                 lorentz_new = None
             else:
@@ -2290,6 +2296,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     aniso_inv_eps=aniso_inv_eps,
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
+                    boundary=ctx.curl_boundary,
                 )
 
             # #1179 design box: redo the E update at the design cells with
@@ -2305,7 +2312,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                     periodic=periodic,
                     stencil_order=ctx.stencil_order,
                     bloch=ctx.bloch,
+                    boundary=ctx.curl_boundary,
                 )
+
+            if design_hook is not None:
+                st, design_record = design_hook(st_prev_design, st)
 
             # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff (#437).
             if ctx.use_kerr:
@@ -2321,7 +2332,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 st, cpml_new = ctx.apply_cpml_e(
                     st, ctx.cpml_params, cpml_new, grid, ctx.cpml_axes,
                     materials=materials,
-                    inv_eps_r_update=cpml_inv_eps_r)
+                    inv_eps_r_update=cpml_inv_eps_r,
+                    boundary=ctx.curl_boundary)
             # Re-enforce Kottke-frozen E cells after CPML-E correction.
             # CPML adds a psi-driven correction that can thaw cells
             # where inv_eps==0; re-zero them here so the frozen
@@ -2394,7 +2406,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 _curls = _curl_h(
                     st.hx.astype(_scd), st.hy.astype(_scd),
                     st.hz.astype(_scd), dx, periodic,
-                    ctx.stencil_order, ctx.bloch)
+                    ctx.stencil_order, ctx.bloch, boundary=ctx.curl_boundary)
                 st = _apply_sheet_e(
                     st, e_prev_sheet, _curls, ctx.sheet_impedance,
                     _sheet_coeffs)
@@ -2554,7 +2566,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 # increment at driven cells, which #683's gate G2 measured
                 # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
-                    st, (mi, mj, mk), wp_meta.component, dx, periodic)
+                    st, (mi, mj, mk), wp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
                 # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
                 # E-derived (E^{n+1}); advance the current sample by dt/2 so
                 # both DFT channels share a reference time
@@ -2594,7 +2606,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
                 v_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
                 # #692: shared loop — see the wire-port block above.
                 i_val_l = _ampere_loop(
-                    st, (li, lj, lk), lp_meta.component, dx, periodic)
+                    st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
                 # Yee half-step: I is H-derived (H^{n+1/2}), V is E-derived
                 # (E^{n+1}).  Withheld on this lane until the slot above
                 # was post-injection, because that is the correction's
@@ -2787,6 +2799,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None):
         if ctx.use_lumped_rlc:
             new_carry["rlc_states"] = tuple(new_rlc_states)
 
+        if design_hook is not None:
+            extras["design_record"] = design_record
         return new_carry, probe_out, extras
 
     return core_step
@@ -2813,6 +2827,7 @@ def run(
     current_moments: object | None = None,
     snapshot: SnapshotSpec | None = None,
     checkpoint: bool = False,
+    gradient: str = "autodiff",
     checkpoint_segments: int | None = None,
     aniso_eps: tuple | None = None,
     aniso_inv_eps: tuple | None = None,
@@ -2847,6 +2862,10 @@ def run(
     grid : Grid
     materials : MaterialArrays
     n_steps : int
+    gradient : {"autodiff", "adjoint"}
+        Adjoint requires a uniform real-valued design box. It stores local
+        DFTs instead of checkpoints; checkpoint options are unused.
+        See the module docstring of ``rfx.adjoint``.
     boundary : "pec", "cpml", or "upml"
     cpml_axes : axes string for CPML (default "xyz")
     pec_axes : axes string or None
@@ -2993,6 +3012,9 @@ def run(
     wire_refplane_sparams = wire_refplane_sparams or []
     lumped_rlc = lumped_rlc or []
     mag_sources = mag_sources or []
+
+    if gradient not in ("autodiff", "adjoint"):
+        raise ValueError("gradient must be 'autodiff' or 'adjoint'")
 
     # ---- shared setup (W6.2) ----
     _setup = _build_step_setup(
@@ -3219,7 +3241,7 @@ def run(
                 a, b = piece.start, piece.start + piece.length
                 rows = jax.tree_util.tree_map(lambda x: x[a:b], xs_seg)
                 if piece.kind == "plain":
-                    carry, (p,) = jax.lax.scan(body, carry, rows)
+                    carry, (p,) = recorded_scan(body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         frame_parts.append(
@@ -3228,11 +3250,11 @@ def run(
                     nb = piece.length // m
                     blocks = jax.tree_util.tree_map(
                         lambda x: x.reshape(nb, m, *x.shape[1:]), rows)
-                    carry, (p, f) = jax.lax.scan(block_body, carry, blocks)
+                    carry, (p, f) = recorded_scan(block_body, carry, blocks)
                     probe_parts.append(p.reshape(nb * m, *p.shape[2:]))
                     frame_parts.append(list(f))
                 else:  # "rec"
-                    carry, (p, f) = jax.lax.scan(rec_body, carry, rows)
+                    carry, (p, f) = recorded_scan(rec_body, carry, rows)
                     probe_parts.append(p)
                     if piece.frame_rows:
                         idx = jnp.asarray(piece.frame_rows, dtype=jnp.int32)
@@ -3240,7 +3262,7 @@ def run(
 
             if not probe_parts:
                 # n == 0: the zero-length scan the other paths return.
-                carry, (p,) = jax.lax.scan(body, carry, xs_seg)
+                carry, (p,) = recorded_scan(body, carry, xs_seg)
                 probe_parts.append(p)
             probes = (probe_parts[0] if len(probe_parts) == 1
                       else jnp.concatenate(probe_parts, axis=0))
@@ -3266,7 +3288,13 @@ def run(
             "a snapshot's frame axes and checkpoint_segments' segment lengths "
             "are fixed from n_steps before it (issue #1254).")
 
-    if checkpoint_segments is None:
+    if gradient == "adjoint":
+        if snapshot is not None or stop_fn is not None or report_every is not None:
+            raise NotImplementedError(
+                "gradient='adjoint' does not support snapshots, stopping or progress")
+        from rfx.adjoint import design_adjoint_scan
+        final_carry, outputs = design_adjoint_scan(_step_ctx, carry_init, xs)
+    elif checkpoint_segments is None:
         # Legacy path: optional per-step rematerialisation only. The scan
         # itself still keeps every step's carry, so peak memory grows
         # linearly with n_steps.
@@ -3303,7 +3331,7 @@ def run(
         elif report_every is None and snap_by_block:
             final_carry, outputs = _make_recorder(body)(carry_init, xs, 0)
         elif report_every is None:
-            final_carry, outputs = jax.lax.scan(body, carry_init, xs)
+            final_carry, outputs = recorded_scan(body, carry_init, xs)
         else:
             # Issue #667: same scan, driven from the host in chunks so a
             # multi-hour solve emits progress. The carry threads through
@@ -3394,7 +3422,7 @@ def run(
 
         seg_body_ckpt = jax.checkpoint(
             segment_body, prevent_cse=False) if checkpoint else segment_body
-        final_carry, seg_outputs = jax.lax.scan(
+        final_carry, seg_outputs = recorded_scan(
             seg_body_ckpt, carry_init, xs_segmented)
         # seg_outputs leaves: (K, per-segment rows, ...). Flatten back to
         # (K * rows, ...): n_steps for the probe rows (and for per-step
@@ -3498,6 +3526,7 @@ def run(
         dt=dt,
         current_moment_data=final_carry.get("current_moments"),
         current_moment_monitor=current_moments,
+        adjoint_settling=final_carry.get("adjoint_settling"),
     )
 
 

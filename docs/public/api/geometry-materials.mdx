@@ -82,7 +82,7 @@ sim.add(Sphere((0.020, 0.015, 0.012), radius=0.003), material="alumina")
 sim.add(Cylinder((0.010, 0.010, 0.0048), radius=0.0005, height=0.0016, axis="z"),
         material="pec")
 sim.add(PolylineWire(((0.028, 0.010, 0.008), (0.028, 0.020, 0.008)),
-                     radius=0.2e-3), material="pec")
+                     radius=0), material="pec")
 sim.add(Via(center=(0.015, 0.020), drill_radius=0.3e-3, pad_radius=0.6e-3,
             layers=[(0.004, 0.0056)]), material="pec")
 ```
@@ -92,7 +92,7 @@ sim.add(Via(center=(0.015, 0.020), drill_radius=0.3e-3, pad_radius=0.6e-3,
 | `Box` | `Box(corner_lo, corner_hi)` | axis-aligned block; a zero-thickness `Box` is a sheet |
 | `Sphere` | `Sphere(center, radius)` | |
 | `Cylinder` | `Cylinder(center, radius, height, axis="z")` | `center` is the middle of the cylinder, not its base |
-| `PolylineWire` | `PolylineWire(points, radius)` | a wire through the given vertices; thinner than half a cell, it is a wire conductor |
+| `PolylineWire` | `PolylineWire(points, radius)` | a wire through the given vertices; `radius=0` selects the legacy filament, while a positive PEC radius must resolve as a volume wire |
 | `Via` | `Via(*, center, drill_radius, pad_radius, layers, material="pec")` | a PCB via with pads; `center` is `(x, y)` and `layers` is a list of `(z_bottom, z_top)` |
 | `CurvedPatch` | `CurvedPatch(*, center, length, width, radius, axis="x")` | a patch bent along `axis`, built from flat segments |
 | `MeshShape` | `MeshShape.from_file(path, *, scale, translate=(0.0, 0.0, 0.0))` | CAD import, see below |

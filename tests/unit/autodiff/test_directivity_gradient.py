@@ -141,14 +141,11 @@ def test_directivity_logratio_sign_correct_vs_fd_power_changing_dof():
         return -(np.log(max(u, e)) - np.log(max(p, e)))
     g_log_fd = (_log_loss(up, pp) - _log_loss(um, pm)) / (2 * _H)
 
-    g_leg = float(jax.grad(
-        lambda s: maximize_directivity(np.pi / 2, 0.0, log_ratio=False)(_forward_lossy(s))
-    )(jnp.asarray(_S0)))
     g_log = float(jax.grad(
         lambda s: maximize_directivity(np.pi / 2, 0.0, log_ratio=True)(_forward_lossy(s))
     )(jnp.asarray(_S0)))
 
-    assert np.isfinite(g_leg) and np.isfinite(g_log)
+    assert np.isfinite(g_log)
     assert abs(g_log) > 1e-7, "log_ratio gradient collapsed to noise"
     # (1) FIX is sign-correct vs the true directivity ascent direction.
     assert np.sign(g_log) == np.sign(true_loss_grad), (
@@ -156,9 +153,6 @@ def test_directivity_logratio_sign_correct_vs_fd_power_changing_dof():
     # (2) FIX AD matches central-FD of its own objective (self-consistent).
     rel = abs(g_log - g_log_fd) / (abs(g_log_fd) + 1e-30)
     assert rel < 0.05, f"log_ratio AD {g_log:+.3e} vs FD {g_log_fd:+.3e} rel_err {rel:.3f}"
-    # (3) BUG repro: legacy stop_gradient opposes the correct direction here.
-    assert np.sign(g_leg) != np.sign(g_log), (
-        f"#129 not reproduced: legacy {g_leg:+.3e} should oppose log_ratio {g_log:+.3e}")
 
 
 def test_directivity_default_is_logratio_and_prad_full_sphere():
@@ -171,9 +165,7 @@ def test_directivity_default_is_logratio_and_prad_full_sphere():
     # (A) default == log_ratio=True (value), and differs from the legacy mode.
     v_def = float(maximize_directivity(np.pi / 2, 0.0)(r))
     v_log = float(maximize_directivity(np.pi / 2, 0.0, log_ratio=True)(r))
-    v_leg = float(maximize_directivity(np.pi / 2, 0.0, log_ratio=False)(r))
     assert v_def == v_log, "default objective is no longer the log-ratio"
-    assert v_def != v_leg, "default must differ from the legacy stop-gradient mode"
 
     # (B) exp(-loss) = U(target)/P_rad matches the FULL-sphere normalization.
     ff_t = compute_far_field(r.ntff_data, r.ntff_box, r.grid,

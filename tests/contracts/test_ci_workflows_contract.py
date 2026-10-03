@@ -49,7 +49,7 @@ HEAVY_JOBS = ("guards-and-preflight", "fast-suite")
 
 
 def workflow_files() -> list[Path]:
-    return sorted(WORKFLOW_DIR.glob("*.yml"))
+    return sorted([*WORKFLOW_DIR.glob("*.yml"), *WORKFLOW_DIR.glob("*.yaml")])
 
 
 def load(path: Path) -> dict:
@@ -158,24 +158,28 @@ def test_the_required_job_names_still_exist() -> None:
 def test_the_fast_suite_still_reports_six_groups_under_the_protected_names() -> None:
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
     assert fast["strategy"]["matrix"]["group"] == [1, 2, 3, 4, 5, 6]
-    # The protected names must belong to 3.11, not merely occur somewhere
-    # in the expression. The push-only 3.10 duplicate gets a distinct name.
-    assert " ".join(fast["name"].split()) == (
-        "${{ matrix.python-version == '3.11' "
-        "&& format('fast-suite ({0})', matrix.group) "
-        "|| format('fast-suite-py{0} ({1})', matrix.python-version, matrix.group) }}"
-    ), "Python 3.11 must report fast-suite (1)..(6), without a Python suffix"
+    assert fast["name"] == "fast-suite (${{ matrix.group }})"
 
 
-def test_the_python_floor_duplicate_runs_only_on_push() -> None:
+def test_the_fast_suite_uses_only_python_311_on_both_events() -> None:
     matrix = load(PR_TESTS)["jobs"]["fast-suite"]["strategy"]["matrix"]
-    assert matrix == {
-        "python-version": (
-            "${{ github.event_name == 'push' "
-            "&& fromJSON('[\"3.11\", \"3.10\"]') || fromJSON('[\"3.11\"]') }}"
-        ),
-        "group": [1, 2, 3, 4, 5, 6],
-    }
+    assert matrix == {"python-version": ["3.11"], "group": [1, 2, 3, 4, 5, 6]}
+
+
+@pytest.mark.parametrize("path", workflow_files(), ids=lambda p: p.name)
+def test_enabled_workflow_python_versions_exclude_310(path: Path) -> None:
+    def check(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "python-version":
+                    assert not re.search(r"(?<![0-9])3[.]10(?![0-9])", str(value)), (
+                        f"{path.name}: unsupported python-version {value!r} (#1429)"
+                    )
+                check(value)
+        elif isinstance(node, list):
+            for value in node:
+                check(value)
+    check(load(path))
 
 
 JAX_PINS = {"jax": "==0.10.2", "jaxlib": "==0.10.2"}
@@ -185,22 +189,20 @@ JAX_PINS = {"jax": "==0.10.2", "jaxlib": "==0.10.2"}
     ("workflow", "job_name", "python_version", "extras", "expected_pins"),
     [
         ("pr-tests.yml", "fast-suite", "3.11", "dev,cad", JAX_PINS),
-        ("pr-tests.yml", "fast-suite", "3.10", "dev,cad", {}),
         ("pr-tests.yml", "guards-and-preflight", "3.11", "dev", JAX_PINS),
         ("validation.yml", "slow-tests", "3.11", "dev", JAX_PINS),
         ("regen-durations.yml", "fast", "3.11", "dev,cad", JAX_PINS),
         ("regen-durations.yml", "slow", "3.11", "dev", JAX_PINS),
     ],
-    ids=["required-fast", "compat-fast", "guards", "weekly-slow", "durations-fast", "durations-slow"],
+    ids=["required-fast", "guards", "weekly-slow", "durations-fast", "durations-slow"],
 )
 def test_cpu_suite_python_and_jax_pins(
     workflow: str, job_name: str, python_version: str, extras: str, expected_pins: dict,
 ) -> None:
     """Pins must constrain the actual package install, including both JAX wheels.
 
-    Evaluate pip's requirement markers for each matrix interpreter: a pin only
-    in a comment, a version-print step, or the other lane cannot satisfy this.
-    The Python 3.10 duplicate intentionally exercises unpinned floor resolution.
+    Both pins must be unconditional arguments to the package install: a pin
+    only in a comment or a version-print step cannot satisfy this.
     """
     steps = load(WORKFLOW_DIR / workflow)["jobs"][job_name]["steps"]
     versions = [
@@ -215,17 +217,12 @@ def test_cpu_suite_python_and_jax_pins(
     args = shlex.split(installs[0], comments=True)
     assert args[:4] == ["pip", "install", "-e", f".[{extras}]"], installs[0]
     requirements = [Requirement(arg) for arg in args[4:]]
-    active = [
-        requirement for requirement in requirements
-        if requirement.marker is None or requirement.marker.evaluate(
-            {"python_version": python_version, "python_full_version": f"{python_version}.0"}
-        )
-    ]
-    assert len(active) == len(expected_pins), installs[0]
-    assert {r.name: str(r.specifier) for r in active} == expected_pins, installs[0]
+    assert all(requirement.marker is None for requirement in requirements), installs[0]
+    assert len(requirements) == len(expected_pins), installs[0]
+    assert {r.name: str(r.specifier) for r in requirements} == expected_pins, installs[0]
 
 
-def test_both_fast_suite_interpreters_record_the_resolved_versions() -> None:
+def test_fast_suite_records_the_resolved_versions() -> None:
     steps = load(PR_TESTS)["jobs"]["fast-suite"]["steps"]
     records = [s for s in steps if s.get("name", "").startswith("Record the resolved JAX/numpy versions")]
     assert len(records) == 1

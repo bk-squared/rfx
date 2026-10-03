@@ -44,7 +44,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 from rfx.core.yee import (
-    EPS_0, FDTDState, MaterialArrays, _shift_bwd, ade_state_dtype,
+    EPS_0, FDTDState, MaterialArrays, curl_h, ade_state_dtype,
     component_e_materials, edge_mean_components,
 )
 
@@ -296,6 +296,7 @@ def update_e_debye(
     dt: float,
     dx: float,
     periodic: tuple = (False, False, False),
+    boundary=None,
 ) -> tuple[FDTDState, DebyeState]:
     """E-field update with Debye ADE dispersion.
 
@@ -315,20 +316,14 @@ def update_e_debye(
     float64 scalar, STRONGLY typed in JAX), so allocation-site promotion
     alone does not close this scan.
     """
-    def bwd(arr, axis):
-        if periodic[axis]:
-            return jnp.roll(arr, 1, axis)
-        return _shift_bwd(arr, axis)
-
     _fdtype = state.ex.dtype
     _pdtype = jnp.promote_types(debye_state.px.dtype, _fdtype)
 
     hx, hy, hz = state.hx, state.hy, state.hz
 
     # curl(H) via backward differences
-    curl_x = ((hz - bwd(hz, 1)) - (hy - bwd(hy, 2))) / dx
-    curl_y = ((hx - bwd(hx, 2)) - (hz - bwd(hz, 0))) / dx
-    curl_z = ((hy - bwd(hy, 0)) - (hx - bwd(hx, 1))) / dx
+    curl_x, curl_y, curl_z = curl_h(
+        hx, hy, hz, dx, periodic, boundary=boundary, scale_after=True)
 
     # E^{n+1} = Ca_c·E^n + Cb_c·curl(H) + Σ_p Cc_{p,c}·P_p^n, then
     # P_p^{n+1} = α_p·P_p^n + β_{p,c}·(E^{n+1} + E^n), per component (#1260)

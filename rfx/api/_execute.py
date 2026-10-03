@@ -32,6 +32,21 @@ from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in mo
 from rfx.materials.debye import init_debye  # noqa: F401  (local import in moved bodies)
 from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in moved bodies)
 from rfx.adi import ADIState2D, run_adi_2d
+
+
+@jax.custom_jvp
+def _refuse_adi_2d_material_derivative(x):
+    """Identity on the 2-D ADI material arrays; differentiating it raises."""
+    return x
+
+
+@_refuse_adi_2d_material_derivative.defjvp
+def _refuse_adi_2d_material_derivative_jvp(primals, tangents):
+    raise NotImplementedError(
+        "solver='adi' in 2-D cannot differentiate with respect to the "
+        "permittivity or conductivity (eps_override / sigma_override): the "
+        "2-D ADI update's derivative is NaN in float32 (#1373). The value "
+        "runs; for a gradient use solver='yee', or mode='3d' with ADI.")
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
 from rfx.ringdown import RingdownSpec  # noqa: F401  (run() signature type-hint)
@@ -147,42 +162,59 @@ def _refuse_transformed_extended_tfsf(entry) -> None:
             "checkpoint and segmentation options remain available.")
 
 
-def _forward_needs_trace_time_setup(sim, *, distributed: bool) -> bool:
-    """Whether ``forward()`` must evaluate its set-up while being traced (#1225).
+def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
+    """Whether a forward entry evaluates its set-up while being traced (#1367).
 
-    A port with a load (``add_port(..., impedance=...)``, nonzero) reads the
-    model on the host while it is set up, and under an outer ``jax.jit``
-    those arrays are tracers, so the read fails:
+    The rule: set-up that reads only the declaration is always concrete, and
+    the time stepping is always recorded (``rfx.core.jax_utils``). Under an
+    outer ``jax.jit`` every operation is recorded, including the ones that
+    read only the model, and set-up reads the model on the host in many
+    places: a wire port's live edges and an MSL port's geometry check read
+    the realized PEC edge mask, a graded-lane port takes its cell sizes as
+    Python floats, the far-field transform reads an NTFF box's frequency
+    count. #1225 answered True for a whitelist of ports and missed the rest
+    (MSL ports, #1367; the NTFF box, #1364), so the answer no longer depends
+    on the model: staged by an outer trace, and not distributed.
 
-    * a wire port (``extent=...``) asks the realized PEC edge mask which of
-      its edges are live — on the uniform lane whenever the model has a
-      conductor (``rfx.sources.sources._wire_port_live_cells``), on the
-      graded lane always (``rfx.runners.nonuniform.run_nonuniform_path``);
-    * on the graded lane every loaded port, wire or lumped, takes its cell
-      sizes as Python floats (``rfx.nonuniform.port_metric_axes``).
-
-    For those models the set-up is evaluated at trace time instead. Every
-    other model — no loaded port, or only lumped ports on the uniform lane —
-    keeps exactly the code path it had before, so its jitted program is
-    unchanged; so does the distributed lane, whose ``shard_map`` step cannot
-    run its constant-operand collectives outside the mesh. The lane test is
-    the one ``forward()`` dispatches on (``_dispatch_plan``: not distributed
-    and ``_uses_nonuniform_mesh``).
-
-    The ports are checked first and the staging probe second, so a model
-    without a loaded port runs neither the probe nor the mesh resolution,
-    and a plain call never reaches the lane test.
+    Operations that read a traced input stay recorded, so a gradient is
+    unchanged. The distributed lane is excluded: its ``shard_map`` step
+    cannot run its constant-operand collectives outside the mesh.
     """
-    if distributed:
-        return False
-    loaded = [pe for pe in sim._ports if pe.impedance != 0.0]
-    if not loaded:
-        return False
-    if not _staged_by_an_outer_trace():
-        return False
-    if any(getattr(pe, "extent", None) is not None for pe in loaded):
-        return True
-    return bool(sim._uses_nonuniform_mesh)
+    return not distributed and _staged_by_an_outer_trace()
+
+
+def _declaration_setup_at_trace_time(entry):
+    """Give a shared forward entry the set-up / time-stepping boundary.
+
+    ``forward()`` and the entries its single-device lanes share with the
+    calculators (``_forward_from_materials``,
+    ``_forward_nonuniform_from_materials``) carry it, so the rule holds
+    wherever one of them is staged. The calculators that call
+    ``_forward_from_materials`` directly (``topology_optimize``,
+    ``compute_mixed_s_matrix``, the S-matrix driver) run it without an outer
+    trace, where the rule is inactive: ``topology_optimize`` differentiates
+    with an un-jitted ``jax.value_and_grad`` and still compiles the solve on
+    every iteration. When :func:`_setup_evaluated_at_trace_time` holds, the
+    entry runs inside
+    ``rfx.core.jax_utils.declaration_setup()``; a nested entry then sees no
+    staging and runs its body directly. The time-stepping scans inside leave
+    that region through ``rfx.core.jax_utils.recorded_scan``.
+
+    The body runs in the region only if the region really made constants
+    concrete: inside an eager ``jax.shard_map`` the probe still reads True
+    there, and the entry then runs its body outside the region, exactly as
+    before #1225, instead of re-entering without end.
+    """
+    @functools.wraps(entry)
+    def staged_entry(self, *args, **kwargs):
+        if _setup_evaluated_at_trace_time(
+                distributed=bool(kwargs.get("distributed", False))):
+            from rfx.core.jax_utils import declaration_setup
+            with declaration_setup():
+                if not _staged_by_an_outer_trace():
+                    return entry(self, *args, **kwargs)
+        return entry(self, *args, **kwargs)
+    return staged_entry
 
 
 def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
@@ -439,10 +471,27 @@ class _ExecuteMixin:
         a CRITICAL correctness failure. This single guard, called at the top
         of every run/forward entry BEFORE any dispatch, guarantees order=4
         can never reach an unsupported runner even if a per-path fence is
-        missed. order=2 (the default) is unaffected.
+        missed. Magnetic images also require a single-device second-order
+        kernel, so distributed PMC requests are rejected here for either order.
         """
+        from rfx.boundaries.pmc import refuse_waveguide_pmc
+        refuse_waveguide_pmc(self)
+        magnetic_faces = sorted(self._boundary_spec.pmc_faces())
+        if magnetic_faces and distributed:
+            graded = any(getattr(self, f"_{a}_profile", None) is not None
+                         for a in ("dx", "dy", "dz"))
+            kernel = "distributed_nu" if graded else "distributed_v2"
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)}: {kernel} "
+                "does not implement the declared-face magnetic image; use a "
+                "single-device Yee run/forward until B4.")
         if getattr(self, "_stencil_order", 2) != 4:
             return
+        if magnetic_faces:
+            raise NotImplementedError(
+                f"PMC magnetic face(s) {', '.join(magnetic_faces)} with stencil_order=4: "
+                "yee._diff_bwd_o far neighbors do not implement the magnetic image; "
+                "use stencil_order=2.")
         unsupported = []
         is_nonuniform = (
             self._dz_profile is not None
@@ -528,9 +577,8 @@ class _ExecuteMixin:
 
         ``until_decay`` (issue #383) is threaded through to
         ``run_nonuniform_path`` only when the caller has already gated on
-        absorbing boundaries — ``run()`` passes ``None`` (warn-and-drop)
-        for closed-boundary NU sims, where the interior energy does not
-        decay. ``decay_monitor_component`` / ``decay_monitor_position``
+        absorbing boundaries. ``run()`` refuses ``until_decay`` for
+        closed-boundary NU sims, where the interior energy does not decay. ``decay_monitor_component`` / ``decay_monitor_position``
         are NOT threaded: they parameterize the uniform lane's
         closed/PEC point-field fallback, which has no NU counterpart.
         """
@@ -1396,12 +1444,6 @@ class _ExecuteMixin:
         if self._mode == "3d":
             from rfx.adi import run_adi_3d, ADIState3D, make_adi_absorbing_sigma_3d
 
-            sources_3d = []
-            for pe in self._ports:
-                i, j, k = grid.position_to_index(pe.position)
-                waveform = jax.vmap(pe.waveform)(times)
-                sources_3d.append((i, j, k, pe.component, waveform))
-
             probes_3d = []
             for pe in self._probes:
                 i, j, k = grid.position_to_index(pe.position)
@@ -1415,6 +1457,12 @@ class _ExecuteMixin:
                 absorb_sigma = make_adi_absorbing_sigma_3d(
                     nx, ny, nz, self._cpml_layers, grid.dx, grid.dx, grid.dx)
                 sigma_3d = sigma_3d + absorb_sigma
+
+            sources_3d = []
+            for pe in self._ports:
+                i, j, k = grid.position_to_index(pe.position)
+                waveform = jax.vmap(pe.waveform)(times)
+                sources_3d.append((i, j, k, pe.component, waveform))
 
             shape = grid.shape
             if _realized.ACTIVE is not None:
@@ -1453,19 +1501,17 @@ class _ExecuteMixin:
             )
 
         # ---- 2D TMz path ----
-        sources = []
-        for pe in self._ports:
-            i, j, _ = grid.position_to_index(pe.position)
-            waveform = jax.vmap(pe.waveform)(times)
-            sources.append((i, j, waveform))
-
         probes = []
         for pe in self._probes:
             i, j, _ = grid.position_to_index(pe.position)
             probes.append((i, j, pe.component))
 
-        eps_r_2d = materials.eps_r[:, :, 0]
-        sigma_2d = materials.sigma[:, :, 0]
+        # A derivative with respect to eps or sigma through the 2-D ADI update
+        # is NaN in forward and reverse mode while central differences are
+        # finite (3-D is finite; cause not confirmed, #1373), so it is refused
+        # when one is requested; the value, also under jax.jit, is unaffected.
+        eps_r_2d = _refuse_adi_2d_material_derivative(materials.eps_r[:, :, 0])
+        sigma_2d = _refuse_adi_2d_material_derivative(materials.sigma[:, :, 0])
 
         # Add implicit absorbing sigma layer for CPML boundary
         if self._boundary == "cpml" and self._cpml_layers > 0:
@@ -1474,6 +1520,12 @@ class _ExecuteMixin:
             absorb_sigma = make_adi_absorbing_sigma(
                 nx_2d, ny_2d, self._cpml_layers, grid.dx)
             sigma_2d = sigma_2d + absorb_sigma
+
+        sources = []
+        for pe in self._ports:
+            i, j, _ = grid.position_to_index(pe.position)
+            waveform = jax.vmap(pe.waveform)(times)
+            sources.append((i, j, waveform))
 
         # The 2-D TMz lane carries only Ez, so its realized PEC mask is
         # the Mz plane (#931 §1.7).
@@ -1525,6 +1577,7 @@ class _ExecuteMixin:
             dt=dt,
         )
 
+    @_declaration_setup_at_trace_time
     def _forward_from_materials(
         self,
         grid: Grid,
@@ -1534,6 +1587,7 @@ class _ExecuteMixin:
         *,
         n_steps: int,
         checkpoint: bool = True,
+        gradient: str = "autodiff",
         checkpoint_segments: int | None = None,
         pec_mask: jnp.ndarray | None = None,
         pec_sheets: object = (),
@@ -1636,7 +1690,8 @@ class _ExecuteMixin:
         # callers never carry a refinement (run() sends one to the subgridded
         # lane, compute_mixed_s_matrix refuses it first).
         self._require_no_refinement_without_a_subgrid(
-            "forward()/optimize()/topology_optimize()")
+            "forward()/optimize()/topology_optimize()/"
+            "compute_lumped_wire_s_matrix_via_scan()")
 
         from rfx.simulation import (
             run as _run,
@@ -1795,6 +1850,9 @@ class _ExecuteMixin:
                                   pe.waveform, n_steps, materials,
                                   amplitude_kind=pe.amplitude_kind)
                 )
+                from rfx.api._source_semantics import guard_float16_source_increment
+                sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
+                    sources[-1].waveform, self._resolve_field_dtype(), pe.amplitude_kind))
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.
@@ -2465,6 +2523,7 @@ class _ExecuteMixin:
             stencil_order=self._stencil_order,
             sheet_impedance=sheet_impedance,
             design_box=design_box,
+            gradient=gradient,
             design_occupancy=design_occupancy,
             field_dtype=self._resolve_field_dtype(),
         )
@@ -2617,6 +2676,7 @@ class _ExecuteMixin:
             dt=result.dt,
             current_moment_data=result.current_moment_data,
             current_moment_monitor=current_moments_fwd,
+            adjoint_settling=result.adjoint_settling,
         )
 
     @staticmethod
@@ -2665,6 +2725,7 @@ class _ExecuteMixin:
             current_moment_monitor=current_moment_monitor,
         )
 
+    @_declaration_setup_at_trace_time
     def _forward_nonuniform_from_materials(
         self,
         *,
@@ -3264,10 +3325,13 @@ class _ExecuteMixin:
         """Select the execution lane and reject unsupported config combos.
 
         The single decision-and-rejection point consumed by both
-        :meth:`run` and :meth:`forward` (W6.3). All lane-rejection guards
-        (``NotImplementedError`` for unsupported combinations,
-        distributed-lane ``ValueError`` guardrails) live here so there is
-        exactly one place that decides a lane and refuses an impossible one.
+        :meth:`run` and :meth:`forward` (W6.3). Shared routing guards
+        (``NotImplementedError`` for unsupported combinations and
+        distributed-lane ``ValueError`` guardrails) run here. Individual
+        entry points and runners apply additional admission checks.
+        In particular, non-uniform meshes refuse refinement and unsupported
+        dimensional modes before dispatch. Uniform forward entry points also
+        refuse refinement when entering their material-based solve.
 
         ``mode`` is ``"forward"`` or ``"run"``. The two modes share the
         ``is_nonuniform`` boolean and the NU ``n_steps`` formula but have
@@ -3792,6 +3856,7 @@ class _ExecuteMixin:
                      and hi_idx[axis] == grid.shape[axis])))
         )
 
+    @_declaration_setup_at_trace_time
     def forward(
         self,
         *,
@@ -3808,6 +3873,7 @@ class _ExecuteMixin:
         n_steps: int | None = None,
         num_periods: float = 20.0,
         checkpoint: bool = True,
+        gradient: str = "autodiff",
         checkpoint_segments: int | None = None,
         emit_time_series: bool = True,
         checkpoint_every: int | None = None,
@@ -3829,6 +3895,16 @@ class _ExecuteMixin:
 
         Parameters
         ----------
+        gradient : {"autodiff", "adjoint"}
+            Opt-in settled-spectrum reciprocity design eps adjoint.
+            Design sigma overrides are refused (#1424): the conductivity
+            derivative is not validated. Fixed lossy materials are allowed.
+            Stores design-edge DFTs and runs a second ordinary forward.
+            The adjoint gradient is the settled-spectrum gradient, and
+            ``ForwardResult.adjoint_settling`` above about 1e-2 (-40 dB)
+            means the record has not settled.
+            Uniform Yee design_box only; unsupported paths raise. Checkpoint
+            options are unused by the adjoint (its storage does not depend on them).
         eps_override : jnp.ndarray or None
             Replacement permittivity array with shape ``grid.shape``.
             With ``distributed=True``, eps/sigma/occupancy overrides also accept
@@ -4152,6 +4228,10 @@ class _ExecuteMixin:
             ``None`` (default) leaves every output and the traced program as
             they were.
 
+        **_removed_kwargs
+            Rejection shim for removed keywords, providing migration errors;
+            it does not accept additional simulation options.
+
         Returns
         -------
         ForwardResult
@@ -4167,41 +4247,37 @@ class _ExecuteMixin:
 
         Notes
         -----
+        ``forward()`` refuses refinement: it has no subgridded solve.
         ``forward()`` can be called inside ``jax.jit``, so an optimisation
         step compiles once: ``step = jax.jit(jax.value_and_grad(loss))``
         compiles on its first call and reuses the program afterwards, while
         an un-jitted ``jax.value_and_grad(loss)`` compiles the whole solve
-        again on every call (#1225). Two kinds of model could not be traced
-        under ``jax.jit`` before #1225: one with a wire port
-        (``add_port(..., extent=...)``; on the uniform lane only when it also
-        had a conductor), and one on a graded mesh with any port that carries
-        an impedance. Their set-up is now evaluated while tracing. The jitted value and gradient agree with a plain call to
-        float32 rounding, not necessarily bit for bit: XLA compiles the whole
-        step as one program.
+        again on every call (#1225). Under an outer ``jax.jit`` (single
+        device), the set-up built from the model alone is evaluated while
+        tracing and the time stepping is compiled into the caller's program
+        (#1367, #1354), so a function with no traced input compiles too. The
+        set-up's arrays become constants of that program: the first call
+        costs a plain call's set-up on top of the compile, and the compiled
+        program holds those arrays for as long as JAX caches it. The loop
+        compiles over operands XLA cannot read, as in a plain call; what is
+        computed from a traced input before the loop (a port's drive from a
+        traced permittivity, #1320) is compiled with the caller's program,
+        so the jitted value and gradient agree with a plain call to float32
+        rounding, not necessarily bit for bit.
         """
+        if gradient not in ("autodiff", "adjoint"):
+            raise ValueError("gradient must be 'autodiff' or 'adjoint'")
+        if gradient == "adjoint":
+            from rfx.adjoint import admit_forward_adjoint
+            admit_forward_adjoint(
+                self, distributed=distributed, ringdown=ringdown,
+                design_box=design_box, design_eps=design_eps_override,
+                design_sigma=design_sigma_override,
+                other_overrides=(eps_override, sigma_override, mu_r_override,
+                                 pec_mask_override, pec_occupancy_override,
+                                 design_occupancy_override, rlc_values_override),
+                port_s11_freqs=port_s11_freqs)
         _refuse_transformed_extended_tfsf(self._tfsf)
-        if _forward_needs_trace_time_setup(self, distributed=distributed):
-            # #1225: evaluate the set-up now instead of recording it. Only
-            # the operations that read a traced argument are recorded;
-            # everything built from the model alone is computed at trace
-            # time, so the port's host reads (the realized PEC edge mask,
-            # the cell sizes) see concrete arrays. Forwarding ``locals()``
-            # — the parameters, and nothing else yet — keeps a parameter
-            # added later from being dropped here.
-            #
-            # The re-call happens only if the context really made constants
-            # concrete: inside an eager ``jax.shard_map`` the probe still
-            # reads True, and re-calling would recurse without end. Then
-            # the call falls through to the plain body below, outside the
-            # context, exactly as before #1225.
-            _call = dict(locals())
-            del _call["self"]
-            _unknown = _call.pop("_removed_kwargs")
-            with jax.ensure_compile_time_eval():
-                if not _staged_by_an_outer_trace():
-                    return self.forward(**_call, **_unknown)
-            del _call, _unknown
-
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)
@@ -4276,8 +4352,9 @@ class _ExecuteMixin:
              "fwd_nonuniform": "non-uniform forward",
              "fwd_distributed_nu": "distributed non-uniform forward",
              }.get(plan.lane, plan.lane),
-            entry="Simulation.forward()",
-            instead="use run() on a uniform mesh")
+            entry="the differentiable forward solve (forward/optimize or an S-matrix override)",
+            instead="use run() on a uniform mesh to keep conformal PEC "
+                    "for a forward-only result")
         if ringdown is not None:
             from rfx.ringdown import refuse_forward_lane
             refuse_forward_lane(plan.lane, sum(
@@ -4463,7 +4540,11 @@ class _ExecuteMixin:
             pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
         if n_steps is None:
-            n_steps = grid.num_timesteps(num_periods=num_periods)
+            if self._solver == "adi":
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+            else:
+                n_steps = grid.num_timesteps(num_periods=num_periods)
 
         # #677: node-thin sheet ctx against the realized PEC edges of this
         # forward run (PEC wins on overlapping edges).  #931: the PEC
@@ -4569,6 +4650,7 @@ class _ExecuteMixin:
             rlc_values_override=rlc_values_override,
             sheet_impedance=_fwd_sheet_ctx,
             design_box=_design_spec,
+            gradient=gradient,
             design_occupancy=_design_occ_spec,
             monitor_overrides={"eps_r": eps_override, "sigma": sigma_override,
                                "mu_r": mu_r_override,
@@ -4662,8 +4744,8 @@ class _ExecuteMixin:
             interior-energy stop runs on absorbing (``cpml``/``upml``)
             boundaries via a chunked host loop over the NU scan step
             (dV-weighted energy — per-cell ``dx*dy*dz`` — so graded cells
-            are weighted faithfully). Closed-boundary NU sims warn and run
-            the fixed ``n_steps`` (no point-field fallback on the NU lane).
+            are weighted faithfully). Closed-boundary NU sims refuse
+            ``until_decay`` (no point-field fallback on the NU lane).
             On the NU decay path all step-sized buffers are allocated at
             ``decay_max_steps`` and flux monitors must keep the default
             rectangular DFT window. (The non-uniform runner additionally
@@ -4690,6 +4772,21 @@ class _ExecuteMixin:
             interior-energy checks required before stopping (default ``2``;
             ``>= 2`` mandatory — the interior energy is not null-free and a
             single check can false-fire on a transient inter-packet dip).
+        radiated_flux_box : tuple or None
+            Physical lower/upper corners of a closed box enclosing the radiator,
+            clear of CPML. Selects outgoing-flux decay instead of interior-energy
+            decay on absorbing boundaries; None keeps the energy criterion.
+        flux_env_checks : int
+            Number of recent checks whose maximum absolute flux forms the
+            radiated-flux envelope (default 4).
+        snapshot : SnapshotSpec or None
+            Field snapshot schedule and selection; None disables snapshots.
+        subpixel_smoothing : bool or str
+            Material-interface smoothing rule; False disables smoothing.
+            True enables dielectric smoothing; "kottke_pec" selects the
+            unified PEC occupancy rule on supported lanes.
+        skip_preflight : bool
+            Skip advisory preflight checks. Runtime admission guards still apply.
         decay_monitor_component : str
             Field component to monitor (default ``"ez"``). Used only by the
             closed/PEC point-field fallback stop.
@@ -4704,8 +4801,8 @@ class _ExecuteMixin:
         devices : list of jax.Device or None
             When a list with len > 1 is provided, run the simulation
             distributed across those devices using 1D slab decomposition
-            along the x-axis (via ``jax.pmap``).  Phase 1 supports PEC
-            boundary, soft sources, and point probes.
+            along the x-axis via ``shard_map``. Supported combinations are
+            listed in ``docs/guides/support_matrix.md``.
         exchange_interval : int, optional
             Ghost exchange interval in timesteps; only integer 1 is supported.
         report_every : int or None
@@ -4753,7 +4850,7 @@ class _ExecuteMixin:
             of each spectrum is added in closed form. The result is
             ``Result.ringdown`` (``.s_params`` on the bins of
             ``Result.s_params``, ``.report`` with the window, the poles and
-            the witnesses: the two-window difference ``W2``, no growing
+            the witnesses: ``WE`` when available (otherwise ``W2``), no growing
             pole, passivity, source off). Every other output is the one the
             same run gives without ``ringdown=``. Wire ports
             (``add_port(..., extent=...)``) on the uniform (one port) and
@@ -4918,8 +5015,7 @@ class _ExecuteMixin:
                 raise NotImplementedError(
                     "add_dft_plane_probe() is not supported on the "
                     "distributed multi-device run() path (issue #579); "
-                    "neither rfx.runners.distributed_v2 nor "
-                    "rfx.runners.distributed accumulates DFT-plane fields, "
+                    "rfx.runners.distributed_v2 does not accumulate DFT-plane fields, "
                     "so a registered plane would be silently dropped. Drop "
                     "DFT plane probes or omit devices=... (use a "
                     "single-device run() instead)."
@@ -5111,9 +5207,16 @@ class _ExecuteMixin:
         _run_sheet_specs: list = []
         _run_pec_sheets: list = []
         _run_pec_wires: list = []
+        _geometry_masks, _assembly_entries = [], []
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(
             grid, sheet_specs=_run_sheet_specs,
-            pec_sheets=_run_pec_sheets, pec_wires=_run_pec_wires)
+            pec_sheets=_run_pec_sheets, pec_wires=_run_pec_wires,
+            geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
+        from rfx.realized_geometry import attach_record, record_from_assembly
+        geometry_record = record_from_assembly(
+            self, grid, base_materials, pec_mask, _run_pec_sheets, _run_pec_wires,
+            _geometry_masks, _assembly_entries, lane=plan.lane)
+        del _geometry_masks, _assembly_entries
 
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets
@@ -5129,7 +5232,8 @@ class _ExecuteMixin:
                 **({} if report_every is None else {"report_every": report_every}),
             }, instead="use the default solver='yee'")
             if n_steps is None:
-                n_steps = grid.num_timesteps(num_periods=num_periods)
+                dt_adi = float(grid.dt * self._adi_cfl_factor)
+                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
             _res = self._run_adi_from_materials(
                 grid,
                 base_materials,
@@ -5147,7 +5251,7 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res
+            return attach_record(_res, geometry_record)
 
         # ---- Subgridded lane ----
         if plan.lane == "run_subgridded":
@@ -5195,7 +5299,7 @@ class _ExecuteMixin:
             _warn_if_nonfinite_result(_res, context="run")
             from rfx.current_moments import require_accumulated_current_moments
             require_accumulated_current_moments(self, _res, "run")
-            return _res
+            return attach_record(_res, geometry_record)
 
         # ---- Uniform path ----
         if n_steps is None:
@@ -5266,4 +5370,4 @@ class _ExecuteMixin:
         _warn_if_nonfinite_result(_res, context="run")
         from rfx.current_moments import require_accumulated_current_moments
         require_accumulated_current_moments(self, _res, "run")
-        return _res
+        return attach_record(_res, geometry_record)

@@ -658,14 +658,15 @@ def profile_node_at(scalar_dx: float, profile, coord_m: float) -> float:
     A port, a source or a probe declared at ``coord_m`` is stamped on this
     node, so a check about the cells that object uses starts here, not at
     the declared coordinate. Without a profile the node is
-    ``round(coord / dx) * dx``, the uniform grid's own lookup.
+    the shared lower-node tie rule, as on the uniform grid.
     """
     a = (None if profile is None or is_tracer(profile)
          else np.asarray(profile, dtype=float))
     if a is None or a.size == 0:
         if not scalar_dx:
             return float(coord_m)
-        return float(round(float(coord_m) / float(scalar_dx)) * float(scalar_dx))
+        from rfx._grid_metric import nearest_uniform_index
+        return float(nearest_uniform_index(float(coord_m) / float(scalar_dx)) * float(scalar_dx))
     edges = np.concatenate([[0.0], np.cumsum(a)])
     return float(edges[_profile_node_index(a, edges, coord_m)])
 

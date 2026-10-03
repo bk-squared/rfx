@@ -51,6 +51,19 @@ from rfx.sparams._common import (
 )
 
 
+def _calculator_source_plane(grid, port):
+    """Keep the calculator's derived half-cell source on its original node.
+
+    This is an internal one-cell descriptor, not a declared coordinate.
+    Preserve its float64 half-to-even arithmetic independently of the
+    declared-coordinate tie rule.
+    """
+    direction = 1 if port.face == "bottom" else -1
+    centre = port.position[2] + direction * port.pin_length / 2.0
+    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
+    return int(round(centre / dz)) + grid.pad_z_lo
+
+
 def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
     """The conductor cells of a coax line, as PEC E-edge masks.
 
@@ -409,7 +422,8 @@ def compute_coaxial_line_reflection(
         impedance=port.impedance, excitation=port.excitation,
     )
     spec = build_coaxial_tem_plane_source_specs(
-        grid=grid, port=src_port, n_steps=int(n_steps), field_scale=float(field_scale),
+        grid=grid, port=src_port, n_steps=int(n_steps),
+        plane_axial_index=_calculator_source_plane(grid, src_port), field_scale=float(field_scale),
         magnetic_ratio=1.0, shell_inner_radius=shell_inner,
         pec_cell_mask=pec_cells,
     )
@@ -890,11 +904,13 @@ def compute_coaxial_two_port(
     )
     spec_top = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port_top, n_steps=int(n_steps),
+        plane_axial_index=_calculator_source_plane(grid, src_port_top),
         field_scale=float(field_scale), magnetic_ratio=1.0,
         shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
     )
     spec_bot = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port_bot, n_steps=int(n_steps),
+        plane_axial_index=_calculator_source_plane(grid, src_port_bot),
         field_scale=float(field_scale), magnetic_ratio=1.0,
         shell_inner_radius=shell_inner, pec_cell_mask=pec_cells,
     )
@@ -1614,10 +1630,9 @@ def compute_coax_msl_transition(
         pin_radius=a, outer_radius=b, target_impedance=r_feed,
         shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
     )
-    # The shared line stamper includes axial padding for standalone
-    # coax runs. Here the caller owns the junction, post and laminate:
-    # stop the generated stub BELOW the junction node. Restore the
-    # registered arrays, not air, so no DUT conductor/dielectric is cut.
+    # The declared stub ends below the junction node. The caller owns the
+    # junction, post and laminate: preserve the registered arrays at and above
+    # that node, so no DUT conductor/dielectric is cut.
     materials = materials._replace(
         eps_r=materials.eps_r.at[:, :, z_junction_idx:].set(
             junction_materials.eps_r[:, :, z_junction_idx:]),
@@ -1632,6 +1647,7 @@ def compute_coax_msl_transition(
     )
     spec_coax = build_coaxial_tem_plane_source_specs(
         grid=grid, port=src_port, n_steps=int(n_steps),
+        plane_axial_index=_calculator_source_plane(grid, src_port),
         field_scale=float(field_scale), magnetic_ratio=1.0,
         shell_inner_radius=shell_inner, pec_cell_mask=coax_pec_cells,
     )

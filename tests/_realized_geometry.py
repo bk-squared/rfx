@@ -110,32 +110,16 @@ def realized(sim, *, nonuniform: bool | None = None) -> Realization:
 
     ``nonuniform=None`` picks the lane the simulation itself would take.
     """
-    from rfx.boundaries.pec import realized_pec_edge_masks
-
-    if nonuniform is None:
-        # The lane the run takes, spelled the way rfx/api/_compile.py spells
-        # it (the fields are _dx_profile / _dy_profile / _dz_profile; a
-        # Simulation has no ``dz_profile`` attribute — found by group T3,
-        # which measured the helper reading the UNIFORM grid for a graded
-        # fixture and passing for the wrong reason).
-        nonuniform = any(getattr(sim, f"_{a}_profile", None) is not None
-                         for a in ("dx", "dy", "dz"))
-    sheets: list = []
-    wires: list = []
+    actual_nu = any(getattr(sim, f"_{a}_profile", None) is not None
+                    for a in ("dx", "dy", "dz"))
+    if nonuniform is not None and nonuniform != actual_nu:
+        raise ValueError("realized() must read the simulation's selected grid lane")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        if nonuniform:
-            grid = sim._build_nonuniform_grid()
-            _m, _d, _l, pec = sim._assemble_materials_nu(
-                grid, pec_sheets=sheets, pec_wires=wires)
-        else:
-            grid = sim._build_grid()
-            _m, _d, _l, pec, *_rest = sim._assemble_materials(
-                grid, pec_sheets=sheets, pec_wires=wires)
-        edges = realized_pec_edge_masks(
-            pec, sheets=tuple(sheets), wires=tuple(wires),
-            periodic=_periodic_of(sim, grid))
-    return Realization(grid, pec, sheets, wires, edges)
+        sim._campaign_ctx().realized(strict=True)
+        record = sim.realized_geometry()
+    return Realization(sim._campaign_ctx().grid, record.pec_mask,
+                       list(record.sheets), list(record.wires), record.edge_masks)
 
 
 def domain_wall_positions(grid, axis: int) -> tuple[float, float]:

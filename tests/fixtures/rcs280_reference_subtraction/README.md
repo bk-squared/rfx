@@ -29,7 +29,12 @@ exactly. `compute_rcs(subtract_incident_reference=True)` runs the vacuum referen
 and subtracts (doubles the solve cost). Default `False` keeps the validated
 monostatic path **byte-identical**.
 
-## Result (PEC sphere, ka≈1, exact Mie reference)
+## Historical result (PEC sphere, ka≈1, exact Mie reference)
+
+The table and depth studies below predate the normal-incidence normalization
+correction. Current metrics are stored in `fixture.json` and replayed by
+`tests/unit/farfield/test_rcs280_reference_subtraction.py`; do not cite this
+historical table as a current measurement.
 
 Regenerated 2026-09-13 on the converged 24-cell CPML and the derived TF/SF
 auxiliary absorber (#888). The previous row of this table — 10.49 / 1.18 /

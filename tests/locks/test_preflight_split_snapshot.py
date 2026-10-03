@@ -1066,7 +1066,11 @@ def _coax_msl_instrument_sim():
 def _rasterization(name, *args, **kwargs):
     import tests.unit.preflight.test_preflight_rasterization as mod
 
-    return getattr(mod, name)(*args, **kwargs)
+    sim = getattr(mod, name)(*args, **kwargs)
+    if name in {"_slot_sim", "_cavity_sim"}:
+        # #1138: this lock checks strict verdicts; the advisory tests opt in.
+        sim._snap = "strict"
+    return sim
 
 
 def _absorber(name, *args, **kwargs):
@@ -1690,6 +1694,7 @@ def _refplane_near_field_sim():
     """
     from tests.locks.test_refplane_port_waves import _build_thru
 
+    # #1138: trace x/y +2.06%/+7%; this snapshot pins reference-plane advice.
     return _build_thru(reference_plane_cells=3)
 
 
@@ -1987,6 +1992,8 @@ _FIXTURES = (
      {"check_ad_memory": True, "n_steps_for_memory": 1000,
       "available_memory_gb": 0.5}, None),
     # -- 25-28. ADI / non-uniform grading / flux windows / PEC-to-wall ------
+    # #1448 ADI default CFL 5 -> 2: measured adi_3d_accuracy count 1 -> 0.
+    # The retained conductor refusal now calls factor 5 the former default.
     ("adi_conductor_sheet", _adi_conductor_sim, {}, None),
     ("nu_grading_beyond_cap",
      lambda: _nu_grading_sim(np.array([1, 1, 1, 2, 2, 2, 1, 1, 1]) * _MM),
@@ -2168,6 +2175,21 @@ def _render(fixture_id, build, kwargs, calculator) -> str:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         sim = build()
+        # #1138: these fixtures pin other advisory text, not sheet-size refusal.
+        # Residuals below are the strict audit's free-end span differences.
+        declared_advisories = {
+            "coax_msl_instrument": "signal x +5.83%, arms y +2.69%, trace y +11.67%",
+            "stack_snapped_patch": "patch x/y +11.67%",
+            "tie_stack": "sheets x/y +5.83%",
+            "adi_conductor_sheet": "sheet x +5.83%",
+            "msl_conductor_plane_mismatch": "trace y +17.5%",
+            "coax_junction_short": "trace y +11.67%",
+            "refplane_near_field": "trace x/y +2.06%/+7%",
+            "refplane_partial_optin": "trace x/y +2.06%/+7%",
+            "wire_port_dead_cell_nu": "trace y -5.46%",
+        }
+        if fixture_id in declared_advisories:
+            sim._snap = "declared"
         payload = {"preflight": sim.preflight(**kwargs).to_dict()}
         if calculator is not None:
             payload["preflight_sparameters"] = sim.preflight_sparameters(
