@@ -230,6 +230,20 @@ def _validate_cfg_thin_conductor_surface_impedance(self, _w) -> None:
                 )
                 break
 
+def _warn_campaign_statics_unavailable(_w, error) -> None:
+    """Explain why conductor checks could not evaluate their context."""
+    _w.warn(PreflightWarning(
+        "the conductor-realization checks (#931 realization "
+        "findings; issue-#703 congruent-conductor parity, "
+        "sheet-cavity electrical thickness, off-lattice design-edge "
+        f"census) could NOT run: {error}. Their silence on this "
+        "run means 'not evaluated', not 'clean' (#685 class: a guard "
+        "that cannot see the model must say so).",
+        code="campaign_statics_unavailable",
+        source="_validate_cfg_campaign_statics",
+    ))
+
+
 def _validate_cfg_campaign_statics(self, _w) -> None:
     """Umbrella for the conductor-realization checks; builds the shared context.
 
@@ -264,16 +278,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     if ctx.error == "traced-mesh":
         return
     if ctx.error is not None:
-        _w.warn(PreflightWarning(
-            "the conductor-realization checks (#931 realization "
-            "findings; issue-#703 congruent-conductor parity, "
-            "sheet-cavity electrical thickness, off-lattice design-edge "
-            f"census) could NOT run: {ctx.error}. Their silence on this "
-            "run means 'not evaluated', not 'clean' (#685 class: a guard "
-            "that cannot see the model must say so).",
-            code="campaign_statics_unavailable",
-            source="_validate_cfg_campaign_statics",
-        ))
+        _warn_campaign_statics_unavailable(_w, ctx.error)
         return
     self._validate_cfg_pec_realization(_w, ctx)
     self._validate_cfg_congruent_rasterization_parity(_w, ctx)

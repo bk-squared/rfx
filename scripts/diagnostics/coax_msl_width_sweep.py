@@ -233,12 +233,26 @@ def run_case(width, steps, out):
     return row
 
 
+def common_reference(s, old_z0, new_z0=50.):
+    """Real positive power-wave references, directly from V and I continuity.
+
+    a_new = A a_old + B b_old; b_new = B a_old + A b_old.
+    Hence S_new = (B + A S_old) inv(A + B S_old).
+    """
+    ratio = np.sqrt(np.asarray(old_z0)/np.asarray(new_z0))
+    a = np.diag((ratio+1/ratio)/2)
+    b = np.diag((ratio-1/ratio)/2)
+    return np.stack([(b+a@s[:, :, k]) @ np.linalg.inv(a+b@s[:, :, k])
+                     for k in range(s.shape[-1])], axis=-1)
+
+
 def summarize(rows, out):
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     from scipy.signal import find_peaks
-    s = np.array([np.asarray(r["s_real"])+1j*np.asarray(r["s_imag"]) for r in rows])
+    native = [np.asarray(r["s_real"])+1j*np.asarray(r["s_imag"]) for r in rows]
+    s = np.array([common_reference(v, r["z0_ref"]) for v, r in zip(native, rows)])
     widths = np.array([r["geometry"]["solved_width_m"] for r in rows])*1e6
     alpha = (600-widths[0])/(widths[1]-widths[0])
     derived = s[0] + alpha*(s[1]-s[0])
@@ -284,13 +298,18 @@ def summarize(rows, out):
         ax.grid(alpha=.25)
         ax.legend(fontsize=7)
     axes[1, 1].set_title("derived, linear interpolation in solved width", fontsize=9)
-    fig.suptitle("Uniform 100 µm mesh; 51 bins; complex-S interpolation\n"+
+    fig.suptitle("Uniform 100 µm mesh; 51 bins; common 50 Ω reference at both ports\n"+
                  "; ".join(f"{r['width_um']} µm: settling {'pass' if r['settled'] else 'NOT PASS'}" for r in rows))
     fig.savefig(out/"width_curves.png", dpi=180)
     dump(out/"summary.json", dict(freqs_hz=FREQS, solved_widths_um=widths, curves=curves,
+        reference_impedance_ohm=50., s_50_real=s.real, s_50_imag=s.imag,
+        native_curves={str(r["width_um"]): dict(z0_ref=r["z0_ref"],
+            s11_db=db(v[0, 0]), s21_db=db(v[1, 0]),
+            s21_phase_slope_rad_per_ghz=np.gradient(np.unwrap(np.angle(v[1, 0])), band))
+            for r, v in zip(rows, native)},
         features=features, trends=trends, all_settled=all(r["settled"] for r in rows),
         derived=dict(label="derived, linear interpolation in solved width",
-                     interpolation_quantity="complex S", alpha=alpha,
+                     interpolation_quantity="complex S at common 50 ohm references", alpha=alpha,
                      s11_db=db(derived[0, 0]), s21_db=db(derived[1, 0]),
                      delta_670_minus_600_s11_db=delta11, delta_670_minus_600_s21_db=delta21),
         conclusion="리더가 채움"))
