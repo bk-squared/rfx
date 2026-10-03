@@ -2367,13 +2367,15 @@ class _ExecuteMixin:
             refuse_h_side_conductor(
                 self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
-            from rfx.core.yee import add_lumped_eps, permittivity_without_lumped
-            volume_eps = permittivity_without_lumped(materials)
-            inv_baseline = (
-                (1.0 / volume_eps).astype(jnp.float32),
-                (1.0 / volume_eps).astype(jnp.float32),
-                (1.0 / volume_eps).astype(jnp.float32),
+            from rfx.core.yee import (
+                add_lumped_eps, edge_mean_components, permittivity_without_lumped,
             )
+            # The plain path's four-cell edge mean (#1213), not the per-cell
+            # value: occupancy only scales it where a conductor sits (#1373).
+            volume_eps = permittivity_without_lumped(materials)
+            inv_baseline = tuple(
+                (1.0 / eps_c).astype(jnp.float32)
+                for eps_c in edge_mean_components(volume_eps, periodic_bool))
             aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
                 grid,
                 pec_occupancy_local,
