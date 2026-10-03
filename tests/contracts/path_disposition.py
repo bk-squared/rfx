@@ -208,6 +208,13 @@ RUN_COAX = refuses("run() refuses add_coaxial_port(); the coax calculators solve
                    raises="add_coaxial_port() is not wired into Simulation.run()")
 FWD_COAX = refuses("forward() refuses add_coaxial_port()",
                    raises="add_coaxial_port() is not wired into Simulation.forward()")
+# #1373: the ADI update gives each E component its own cell's eps_r and sigma,
+# where every Yee lane gives each E edge the mean of its four cells, so a
+# material face sits half a cell off (+2.2 % on a slab-loaded cavity's first
+# resonance at 12 cells per loaded wavelength). A homogeneous fill is carried:
+# the cell is a lane gate (LANE_GATES), and the cells file builds an interface.
+ADI_INTERFACE = refuses("ADI refuses a material interface (#1373); a homogeneous fill is "
+                        "carried (LANE_GATES)", raises="adi_material_interface_unsupported")
 GRADED_REFINEMENT = refuses("refinement on a graded mesh refused (#1282)",
                             raises="asks for subgridding on a non-uniform mesh")
 
@@ -254,6 +261,10 @@ GUARDED_LID = ("rfx/subgridding/validation.py _guarded_boundary_production_allow
 LANE_GATES = {("run_subgridded", row): GUARDED_LID for row in (
     ("_boundary", "cpml"), ("_pec_faces", "pec_face"), ("_cpml_layers", "layers"),
     ("_cpml_kappa_max", "kappa"))}
+ADI_HOMOGENEOUS = ("rfx/runners/_admission.py _adi_homogeneous: the declared materials "
+                   "realize one eps_r and one sigma over the grid (#1373)")
+LANE_GATES.update({(lane, ("_materials", feature)): ADI_HOMOGENEOUS
+                   for lane in ("run_adi", "fwd_adi") for feature in ("eps", "sigma")})
 
 LANE_GATES[("run_subgridded", ("_refinement", "slab"))] = "explicit research/off opt-in (#1465)"
 
@@ -417,23 +428,23 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries(),
             run_subgridded=carries("inside the production envelope: PEC walls, no CPML, a slab "
                                    "touching one z wall"),
-            run_adi=carries(),
+            run_adi=ADI_INTERFACE,
             run_distributed=carries("each E edge takes the mean ε of its four cells, as on one device (#1303)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries("each E edge takes the mean ε of its four cells, as on one device (#1303)"),
-            fwd_adi=carries(),
+            fwd_adi=ADI_INTERFACE,
         ),
         "sigma": lanes(
             run_uniform=carries(),
             run_nonuniform=carries(),
             run_subgridded=carries("inside the production envelope"),
-            run_adi=carries("implicit conductivity in the ADI solve"),
+            run_adi=ADI_INTERFACE,
             run_distributed=carries("each E edge takes the mean σ of its four cells, as on one device (#1303)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries("each E edge takes the mean σ of its four cells, as on one device (#1303)"),
-            fwd_adi=carries("implicit conductivity in the ADI solve"),
+            fwd_adi=ADI_INTERFACE,
         ),
         "mu": lanes(
             run_uniform=carries(),

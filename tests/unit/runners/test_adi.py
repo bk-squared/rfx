@@ -355,17 +355,24 @@ def test_simulation_adi_cpml_boundary():
 
 
 def test_simulation_adi_lossy_material():
-    """ADI with lossy material should work (implicit sigma in tridiagonal)."""
-    sim = Simulation(
-        freq_max=10e9, domain=(0.02, 0.02, 0.01),
-        boundary="pec", mode="2d_tmz", solver="adi",
-    )
-    sim.add_material("lossy", eps_r=2.2, sigma=0.1)
-    sim.add(Box((0.005, 0.005, 0.0), (0.015, 0.015, 0.01)), material="lossy")
-    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
-    sim.add_probe((0.01, 0.01, 0.0), "ez")
-    result = sim.run(n_steps=20)
+    """ADI with lossy material should work (implicit sigma in tridiagonal).
+
+    A whole-domain fill: ADI refuses a material interface (#1373), which a
+    block inside the box is; the block is refused."""
+    def sim_with(lo, hi):
+        sim = Simulation(
+            freq_max=10e9, domain=(0.02, 0.02, 0.01),
+            boundary="pec", mode="2d_tmz", solver="adi",
+        )
+        sim.add_material("lossy", eps_r=2.2, sigma=0.1)
+        sim.add(Box(lo, hi), material="lossy")
+        sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
+        sim.add_probe((0.01, 0.01, 0.0), "ez")
+        return sim
+    result = sim_with((0.0, 0.0, 0.0), (0.02, 0.02, 0.01)).run(n_steps=20)
     assert not jnp.any(jnp.isnan(result.time_series))
+    with pytest.raises(NotImplementedError, match="adi_material_interface_unsupported"):
+        sim_with((0.005, 0.005, 0.0), (0.015, 0.015, 0.01)).run(n_steps=20)
 
 
 def test_simulation_adi_rejects_port_loaded_excitation():

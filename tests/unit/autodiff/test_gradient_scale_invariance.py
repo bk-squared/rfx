@@ -89,8 +89,16 @@ def _model(lane, material):
                          mode="3d" if three_d else "2d_tmz")
         z = 6e-3 if three_d else 0.0
         if material == "sigma":
+            # origin/main's half-vacuum lossy slab: ADI refuses it in 2.0
+            # (#1373), so its rows are strict xfails that XPASS in 2.1.
             sim.add_material("m", eps_r=2.0, sigma=0.2)
             sim.add(Box((7e-3, 2e-3, 0.0), (10e-3, 10e-3, 12e-3 if three_d else DX)),
+                    material="m")
+        elif material == "fill":
+            # The same lossy material over the whole domain: the homogeneous
+            # fill ADI carries in 2.0.
+            sim.add_material("m", eps_r=2.0, sigma=0.2)
+            sim.add(Box((0.0, 0.0, 0.0), (12e-3, 12e-3, 12e-3 if three_d else DX)),
                     material="m")
         sim.add_source((5e-3, 6e-3, z), "ez", amplitude_kind="field")
         sim.add_probe((8e-3, 6e-3, z), "ez")
@@ -158,6 +166,25 @@ def _assert_finite_and_scale_invariant(grads, exps):
         assert err <= REL_TOL, f"cotangent 2**{k}: {err:.3e} of the peak"
 
 
+@pytest.mark.parametrize("lane", ["adi_2d", "adi_3d"])
+def test_adi_scalar_override_gradient_is_scale_invariant(lane):
+    """The ADI lane-level overflow check, always on in 2.0: the derivative with
+    respect to a scalar (homogeneous) eps override of a lossy fill inside
+    CPML, at cotangents 2**0 and 2**60. The SI spelling's
+    ``(MU_0*eps*dx**2)**-2`` overflowed here (#1357)."""
+    exps = (0, 60)
+    n_steps = {"adi_2d": 24, "adi_3d": 16}[lane]
+
+    def loss(e):
+        ts = _model(lane, "fill").forward(n_steps=n_steps, eps_override=e,
+                                          skip_preflight=True).time_series
+        return jnp.sum(ts ** 2)
+
+    _, vjp = jax.vjp(loss, jnp.float32(1.0))
+    grads = [np.asarray(vjp(jnp.float32(2.0 ** k))[0]) for k in exps]
+    _assert_finite_and_scale_invariant(grads, exps)
+
+
 def test_issue_1357_fixture_gradient_is_finite():
     """The issue's own objective (cotangent 1) and a 2**-40 copy of it."""
     grads = _gradients(_issue_1357_fixture, (0, -40), n_steps=120)
@@ -166,6 +193,13 @@ def test_issue_1357_fixture_gradient_is_finite():
 
 # Each model is half vacuum (sigma = 0, where 0*inf became NaN) and half a
 # lossy or dispersive slab, inside CPML (or UPML, or PEC/PMC and CPML faces).
+# ADI refuses that slab and a traced array override (#1373, 2.0): its rows keep
+# origin/main's slab as strict xfails, which XPASS once ADI's interface
+# permittivity is fixed (2.1). The always-on ADI check meanwhile is
+# test_adi_scalar_override_gradient_is_scale_invariant below.
+_ADI_REFUSED = pytest.mark.xfail(
+    strict=True, raises=NotImplementedError,
+    reason="#1373: ADI refuses a traced array override in 2.0")
 # The dispersive rows are split by pole kind to identify each builder: a Debye-only or Lorentz-only model uses that builder's
 # own ca/cb, a model with both uses the mixed update (dt/gamma_total).
 @pytest.mark.parametrize("lane, material", [
@@ -173,8 +207,8 @@ def test_issue_1357_fixture_gradient_is_finite():
     ("upml", "sigma"),
     ("walls", "sigma"),
     ("nu", "sigma"),
-    ("adi_2d", "sigma"),
-    ("adi_3d", "sigma"),
+    pytest.param("adi_2d", "sigma", marks=_ADI_REFUSED),
+    pytest.param("adi_3d", "sigma", marks=_ADI_REFUSED),
     ("distributed_nu", "sigma"),
     pytest.param("uniform", "debye", marks=pytest.mark.slow),
     pytest.param("uniform", "lorentz", marks=pytest.mark.slow),
@@ -387,7 +421,9 @@ def test_forward_bits_are_the_si_spelling(lane, monkeypatch, request):
         # No override: the materials are compile-time constants, which is
         # where the simplifier acts (a traced eps_override leaves it nothing
         # to fold).
-        return np.asarray(_model(lane, "sigma").forward(
+        # ADI carries only a homogeneous fill (#1373).
+        material = "fill" if lane.startswith("adi") else "sigma"
+        return np.asarray(_model(lane, material).forward(
             n_steps=40, skip_preflight=True, **kw).time_series)
 
     got = run()

@@ -334,7 +334,10 @@ def _no_pec(kind):
         kw["domain"] = (0.0123, 0.0131, float(np.sum(kw["dz_profile"])))
     sim = Simulation(**kw)
     sim.add_material("d", eps_r=2.0)
-    sim.add(Box((0.002, 0.002, 0.002), (0.004, 0.004, 0.004)), material="d")
+    # ADI refuses a material interface (#1373): its dielectric fills the box.
+    lo, hi = (((0.0, 0.0, 0.0), kw["domain"]) if kind == "adi"
+              else ((0.002, 0.002, 0.002), (0.004, 0.004, 0.004)))
+    sim.add(Box(lo, hi), material="d")
     pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     if kind == "uniform":
         sim.add_port((0.006, 0.006, 0.006), "ez", impedance=50.0, waveform=pulse)
