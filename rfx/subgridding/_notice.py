@@ -1,10 +1,14 @@
 """Shared admission and diagnostic wording for #1465."""
 
-SUBGRID_NOTICE = (
+SUBGRID_WARNING = (
     "The subgridded lane is unstable and unverified: an empty lossless PEC "
     "cavity's first resonance is 8 % high at a 1.5 mm coarse mesh and its "
     "field grows exponentially (#1465). Use a graded mesh (dx/dy/dz profiles) "
-    "for local resolution, or pass validation=\"research\" to run it anyway."
+    "for local resolution."
+)
+
+SUBGRID_NOTICE = (
+    SUBGRID_WARNING + ' Or pass validation="research" to run it anyway.'
 )
 
 
@@ -21,4 +25,18 @@ def require_experimental(sim):
 
 def warn_experimental():
     import warnings
-    warnings.warn(SUBGRID_NOTICE, ExperimentalSubgridWarning, stacklevel=3)
+    import sys
+    # Attribute both public and direct/internal entry calls to the first
+    # caller outside rfx, including run() wrappers and S-matrix replays.
+    stacklevel = 2
+    frame = sys._getframe(1)
+    try:
+        while frame is not None and (
+            frame.f_globals.get("__name__", "") == "rfx"
+            or frame.f_globals.get("__name__", "").startswith("rfx.")
+        ):
+            stacklevel += 1
+            frame = frame.f_back
+    finally:
+        del frame
+    warnings.warn(SUBGRID_WARNING, ExperimentalSubgridWarning, stacklevel=stacklevel)

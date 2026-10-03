@@ -166,7 +166,7 @@ def _run_subgridded_once(
     if topology != "overlap_z_slab":
         from rfx.runners.disjoint import run_disjoint_stage2_path
 
-        return run_disjoint_stage2_path(sim, grid_coarse, n_steps)
+        return run_disjoint_stage2_path(sim, grid_coarse, n_steps, _warn_experimental=False)
 
     is_full_xy_region = (
         config.fi_lo == grid_coarse.pad_x_lo
@@ -177,11 +177,10 @@ def _run_subgridded_once(
     # The boundary-terminated exterior z-interface path is implemented only
     # for full-x/y z slabs.  Local x/y windows use the endpoint-node 6-face box
     # SAT path plus fine physical PEC faces; auto-selecting the z-slab-only
-    # exterior path would let production validation pass but make execution
-    # fail before the first timestep.
+    # exterior path for those windows would fail before the first timestep.
+    # #1465: opt-in must reproduce the closure formerly selected by production.
     auto_boundary_terminated_exterior = (
-        validation_mode == "production"
-        and is_full_xy_region
+        is_full_xy_region
         and (
             (
                 config.fk_lo <= int(getattr(grid_coarse, "pad_z_lo", 0))

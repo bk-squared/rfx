@@ -911,9 +911,9 @@ class Simulation(
     def validate_subgrid(self, *, mode: str | None = None):
         """Return the production-envelope validation report for subgridding.
 
-        Production reports the subgridded lane as unsupported because it is
+        Every mode reports the subgridded lane as unsupported because it is
         unstable and unverified (#1465). Experimental envelope checks remain
-        available for research diagnostics.
+        available for research diagnostics; opting in does not confer support.
         """
         self._require_uniform_mesh("validate_subgrid")
         # #931 §1.9: sheets and wires own no cell, so a validator handed

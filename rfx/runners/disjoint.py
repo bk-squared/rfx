@@ -27,6 +27,8 @@ def run_disjoint_stage2_path(
     sim,
     grid_coarse,
     n_steps: int,
+    *,
+    _warn_experimental=True,
 ):
     """Run a minimal research-only Stage-2 disjoint z-slab smoke path.
 
@@ -35,6 +37,10 @@ def run_disjoint_stage2_path(
     production claims remain blocked by validation until waveform and external
     gates pass.
     """
+    from rfx.subgridding._notice import require_experimental, warn_experimental
+    require_experimental(sim)
+    if _warn_experimental:
+        warn_experimental()
     from rfx.api import Result
     from rfx.current_moments import refuse_current_moment_monitor
 
