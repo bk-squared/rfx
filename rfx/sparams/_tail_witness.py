@@ -105,10 +105,7 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
             if y.ndim == 0 or not y.size or not np.isfinite(y).all():
                 raise ValueError("empty or non-finite record")
             y = y.reshape(y.shape[0], -1).astype(np.complex128)
-            scale = np.max(np.maximum(np.abs(y.real), np.abs(y.imag)), axis=0)
-            if np.any(scale == 0):
-                raise ValueError("zero channel; no ringing to identify")
-            groups.setdefault(len(y), []).append((name, y / scale))
+            groups.setdefault(len(y), []).append((name, y))
         except (ValueError, FloatingPointError) as exc:
             reasons.append(f"{name}: {exc}")
 
@@ -116,9 +113,15 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
         label = ", ".join(name for name, _ in group)
         n_reasons = len(reasons)
         try:
-            y = np.concatenate([array for _, array in group], axis=1)
             if int(source_end) != source_end or not 0 <= source_end < n:
                 raise ValueError("source end outside record")
+            group = [(name, array[:, np.any(array[int(source_end):] != 0, axis=0)])
+                     for name, array in group]
+            y = np.concatenate([array for _, array in group], axis=1)
+            if y.shape[1] == 0:
+                raise ValueError("no ringing to identify")
+            scale = np.max(np.maximum(np.abs(y.real), np.abs(y.imag)), axis=0)
+            y = y / scale
             start = max(int(source_end), round(.5 * n))
             longer = max(int(source_end), start // 2)
             check_start = longer if longer < start else start
@@ -152,6 +155,9 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
             if _record_results is not None and len(reasons) == n_reasons:
                 offset = 0
                 for name, array in group:
+                    if array.shape[1] == 0:
+                        _record_results[name] = float('-inf')
+                        continue
                     columns = slice(offset, offset + array.shape[1])
                     peak = np.max(per_channel[:, columns])
                     if peak > 0 and not np.any(uncertain[:, columns]):

@@ -37,13 +37,61 @@ def test_tail_ratio_matches_geometric_sum():
     np.testing.assert_allclose(result.share_per_bin, expected, rtol=1e-6)
 
 
-@pytest.mark.parametrize('bad', [np.nan, np.inf, 0.])
-def test_invalid_or_zero_channel_is_not_hidden(bad):
+@pytest.mark.parametrize('bad', [np.nan, np.inf])
+def test_invalid_channel_is_not_hidden(bad):
     y = np.exp((-.05 + 2j*np.pi*.07)*np.arange(200))
     result = score(np.column_stack([y, np.full(200, bad)]))
     assert result.status == 'undetermined'
     assert result.reason
     assert np.isnan(result.db)
+
+
+@pytest.mark.parametrize('source_end', [0, 40])
+def test_zero_post_source_channels_have_zero_share(monkeypatch, source_end):
+    import rfx.ringdown as ringdown
+
+    original = ringdown.identify
+    shapes = []
+
+    def observed(series, *args, **kwargs):
+        shapes.append(series.shape)
+        return original(series, *args, **kwargs)
+
+    y = np.exp((-.02 + 2j*np.pi*.07)*np.arange(200))
+    zero_tail = np.zeros_like(y)
+    zero_tail[:source_end] = 1.
+    expected = tail_share_witness([('live', y)], 1., source_end,
+                                  [.07, .12], freq_max=.15)
+    monkeypatch.setattr(ringdown, 'identify', observed)
+    per_record = {}
+    result = tail_share_witness(
+        [('live', np.column_stack([zero_tail, y])), ('zero', zero_tail)],
+        1., source_end, [.07, .12], freq_max=.15, _record_results=per_record)
+    assert result.status == expected.status == 'fail'
+    assert result.reason == ''
+    assert shapes == [(200, 1), (200, 1)]
+    np.testing.assert_allclose(result.share_per_bin, expected.share_per_bin)
+    np.testing.assert_allclose(result.error_per_bin, expected.error_per_bin)
+    assert per_record['live'] == pytest.approx(expected.db)
+    assert 10**(per_record['zero']/20) == 0.
+
+
+@pytest.mark.parametrize('source_end', [0, 40])
+def test_all_zero_post_source_group_is_undetermined(monkeypatch, source_end):
+    import rfx.ringdown as ringdown
+
+    def unexpected(*args, **kwargs):
+        pytest.fail('an all-zero group reached identification')
+
+    monkeypatch.setattr(ringdown, 'identify', unexpected)
+    y = np.zeros((200, 2))
+    y[:source_end] = 1.
+    result = tail_share_witness([('zero', y)], 1., source_end,
+                                [.07, .12], freq_max=.15)
+    assert result.status == 'undetermined'
+    assert result.reason == 'zero: no ringing to identify'
+    assert np.isnan(result.db)
+    np.testing.assert_array_equal(result.share_per_bin, [0., 0.])
 
 
 def test_named_records_share_one_multichannel_identification(monkeypatch):

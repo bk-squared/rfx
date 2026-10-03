@@ -106,6 +106,9 @@ def test_boundary_touching_dielectric_in_pad_stays_finite(monkeypatch,
     """
     _install_pad_replication(monkeypatch)
     sim = _guide_sim(boundary)
+    freqs = np.linspace(0.10 * C0 / A, 0.20 * C0 / A, 40)
+    sim.add_dft_plane_probe(axis="y", coordinate=4.0 * A, component="ez",
+                            freqs=freqs, name="guide_axis_ez")
     result = sim.run(n_steps=5000, subpixel_smoothing=True,
                      skip_preflight=True)
     ts = np.asarray(result.time_series, dtype=float)

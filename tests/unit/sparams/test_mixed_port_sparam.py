@@ -575,6 +575,28 @@ def test_guard_rejects_cpml_adjacent_probe_ladder():
 # Layer 1c — end-to-end plumbing smoke (NOT a physics gate)
 # ---------------------------------------------------------------------------
 
+def _assert_drive_settling_witnesses(sim, result, periods, end_amplitudes):
+    from rfx.probes.settling import source_end_step
+
+    grid = sim._build_grid()
+    n_steps = grid.num_timesteps(periods)
+    ports = (*sim._ports, *sim._msl_ports)
+    assert len(result.settling_witness) == len(ports) == len(end_amplitudes)
+    for port, detail, expected in zip(ports, result.settling_witness, end_amplitudes):
+        assert detail['status'] in {'pass', 'fail', 'undetermined'}
+        if detail['status'] != 'pass':
+            assert detail['reason']
+        end, samples = source_end_step(
+            [(port.waveform, 0.)], n_steps, grid.dt, return_detail=True)
+        amplitudes, peak, _ = samples[0]
+        end_amplitude = amplitudes[-1] / peak
+        assert end_amplitude == pytest.approx(expected, rel=1e-4, abs=0.)
+        if end_amplitude > 1e-6:
+            assert end is None
+            assert detail['status'] == 'undetermined'
+            assert 'source end is unavailable' in detail['reason']
+
+
 def test_mixed_probe_fed_msl_plumbing_smoke():
     """Coarse probe-fed MSL line runs end to end and fills the result.
 
@@ -605,7 +627,7 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert np.all(np.isfinite(res.s21_power_witness))
     assert res.magnitude_channel == "flux"
     assert res.S_wave is not None and res.S_wave.shape == S.shape
-    assert res.settling_db is not None and np.all(np.isfinite(res.settling_db))
+    _assert_drive_settling_witnesses(sim, res, 4., (0.0780274, 0.322321))
     # Registration state restored after the drive loop.
     assert len(sim._dft_planes) == 0
     assert len(sim._probes) == 0
@@ -658,7 +680,7 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     assert S.shape == (2, 2, 5)
     assert np.all(np.isfinite(S))
     assert np.all(np.abs(S) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S)):.3f}"
-    assert res.settling_db is not None and np.all(np.isfinite(res.settling_db))
+    _assert_drive_settling_witnesses(sim, res, 8., (4.13651e-21, 1.59952e-4))
 
 
 # ---------------------------------------------------------------------------
