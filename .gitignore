@@ -80,5 +80,3 @@ scripts/_patch_field_cache.npz
 # cv22 lanes: source commit stamped into a staged (git-less) copy at staging time
 .staged_commit
 
-
-_scratch_1465/
