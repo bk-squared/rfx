@@ -46,7 +46,6 @@ def test_fast_growing_waveguide_pole_has_finite_end_amplitude():
     assert np.max(model.s_growing.real) * model.dt * 209 > 709
     assert np.isfinite(model.growing_amplitude).all()
     assert np.max(model.growing_amplitude) > 1e-2
-    print('waveguide growing_amplitude:', model.growing_amplitude.tolist())
 
 
 def test_kept_positive_pole_residue_remains_start_referenced():

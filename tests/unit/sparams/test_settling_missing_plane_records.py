@@ -48,3 +48,23 @@ def test_dedicated_witness_probes_survive_missing_plane_records(monkeypatch, fam
     assert all(records and all(name.startswith('probe') for name, _ in records)
                for records in captured)
     assert all(row['status'] == 'undetermined' for row in result.settling_witness)
+
+
+@pytest.mark.parametrize("readout", ["ntff", "dft"])
+def test_far_field_or_plane_read_without_a_probe_is_not_witnessed_by_port_records(readout):
+    from types import SimpleNamespace
+    from rfx import Simulation
+    from rfx.api._spec import Result
+
+    dt = 0.4
+    t = np.arange(1000) * dt
+    port = np.exp((-0.1 + 2j * np.pi * 0.5) * t)
+    fields = (dict(ntff_box=SimpleNamespace(freqs=np.array([0.5]))) if readout == "ntff"
+              else dict(dft_planes={"e": SimpleNamespace(freqs=np.array([0.5]))}))
+    sim = Simulation(freq_max=1.0, domain=(1.0,) * 3, dx=0.1)
+    sim._settling_source_end = lambda *a, **k: 0
+    result = Result(state=None, s_params=None, dt=dt, time_series=np.zeros((1000, 0)),
+                    sparam_time_records=(port,), freqs=None, **fields)
+    _, detail = sim._run_settling_witness(result)
+    assert detail["status"] != "pass"
+    assert "no probe records" in detail["reason"]

@@ -742,6 +742,12 @@ class _ExecuteMixin:
             dt=dt, freqs=bins, freq_max=self._freq_max)
         if selection:
             rows.append(probe_detail)
+        elif rows and _reads_unrecorded_fields(result):
+            rows.append({**probe_detail, 'status': 'absent', 'db': float('nan'),
+                         'share_per_bin': np.zeros(bins.size),
+                         'error_per_bin': np.zeros(bins.size),
+                         'reason': 'far-field or DFT-plane frequencies are read but no '
+                                   'probe records the fields they come from'})
         if not rows:
             return probe_db, {**probe_detail, 'run_records_scored': True}
         detail = combine_witness_details(*rows) if len(rows) > 1 else rows[0]
@@ -5432,3 +5438,12 @@ class _ExecuteMixin:
         from rfx.current_moments import require_accumulated_current_moments
         require_accumulated_current_moments(self, _res, "run")
         return attach_record(_res, geometry_record)
+
+
+def _reads_unrecorded_fields(result) -> bool:
+    """True when NTFF, DFT-plane, flux or current-moment outputs are read."""
+    if getattr(result, "ntff_box", None) is not None:
+        return True
+    if getattr(result, "current_moment_monitor", None) is not None:
+        return True
+    return any(getattr(result, f, None) for f in ("dft_planes", "flux_monitors"))
