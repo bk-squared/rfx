@@ -18,11 +18,11 @@ from rfx import GaussianPulse, Simulation
 from tests._x64_compat import enable_x64
 
 
-def _sim(solver="adi", mode="2d_tmz"):
+def _sim(solver="adi", mode="2d_tmz", boundary="pec"):
     dz = 0.01 if mode == "3d" else 1e-3
     extra = {"adi_cfl_factor": 1} if solver == "adi" else {}
     sim = Simulation(freq_max=1e10, domain=(0.01, 0.01, dz), dx=1e-3,
-                     boundary="pec", solver=solver, mode=mode, **extra)
+                     boundary=boundary, solver=solver, mode=mode, **extra)
     z = 0.005 if mode == "3d" else 0.0
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -37,9 +37,17 @@ def _energy(sim, **override):
                                **override).time_series ** 2)
 
 
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
 @pytest.mark.parametrize("which", ["eps", "sigma"])
-def test_adi_2d_material_gradient_matches_finite_difference(which):
-    sim, shape = _sim()
+def test_adi_2d_all_material_derivative_modes_match_main_fd(which, boundary):
+    """Replace #1450's finiteness refusal in forward and reverse modes.
+
+    Nu's exact 40-step model: eps at 1, sigma at 0. CPML uses the default
+    ten layers, whose absorbing sigma is added after material overrides.
+    The FD values below were measured on main 9b82b751 with h=1e-3; all
+    base/perturbed forward traces were byte-identical to this branch.
+    """
+    sim, shape = _sim(boundary=boundary)
     if which == "eps":
         def f(s):
             return _energy(sim, eps_override=jnp.ones(shape) * s)
@@ -47,14 +55,30 @@ def test_adi_2d_material_gradient_matches_finite_difference(which):
     else:
         def f(s):
             return _energy(sim, sigma_override=jnp.zeros(shape) + s)
-        # A 1e-4 step loses digits when subtracting the float32 energies.
-        x0, h = 0.01, 1e-3
-    grad = float(jax.grad(f)(x0))
-    tangent = float(jax.jvp(f, (x0,), (1.0,))[1])
+        x0, h = 0.0, 1e-3
+    main_fd = {
+        ("pec", "eps"): 1.2000781680399086e-5,
+        ("pec", "sigma"): -2.254637365695089e-6,
+        ("cpml", "eps"): 3.00915398838697e-5,
+        ("cpml", "sigma"): -2.3598657207912765e-5,
+    }[boundary, which]
+    x0 = jnp.float32(x0)
+    # Keep forward modes explicit: reverse-mode finiteness alone did not
+    # address the original jacfwd/jvp NaNs reported by #1450's reviewer.
+    derivatives = {
+        "jacfwd": jax.jacfwd(f)(x0),
+        "jvp": jax.jvp(f, (x0,), (jnp.ones_like(x0),))[1],
+        "grad": jax.grad(f)(x0),
+        "vjp": jax.vjp(f, x0)[1](jnp.ones_like(f(x0)))[0],
+        "vmap(grad)": jax.vmap(jax.grad(f))(jnp.stack([x0, x0])),
+        "jit(grad)": jax.jit(jax.grad(f))(x0),
+    }
     fd = float((f(x0 + h) - f(x0 - h)) / (2 * h))
-    assert np.isfinite(grad) and grad != 0.0
-    np.testing.assert_allclose(grad, tangent, rtol=1e-4)
-    np.testing.assert_allclose(grad, fd, rtol=3e-3)
+    np.testing.assert_allclose(fd, main_fd, rtol=3e-3, atol=0)
+    for name, derivative in derivatives.items():
+        assert np.all(np.isfinite(derivative)), name
+        np.testing.assert_allclose(derivative, main_fd, rtol=3e-3, atol=0,
+                                   err_msg=name)
 
 
 def test_adi_2d_value_runs_eager_and_under_jit():
@@ -73,8 +97,9 @@ def test_other_solvers_still_differentiate(solver, mode):
     assert np.isfinite(g) and g != 0.0
 
 
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
 @pytest.mark.parametrize("which", ["eps", "sigma"])
-def test_adi_2d_bin_gradients_match_fd_and_a_twice_longer_record(which):
+def test_adi_2d_bin_gradients_match_fd_and_a_twice_longer_record(which, boundary):
     """A settled lossy record: each material parameter, each physical bin.
 
     The 40-step tests above check a finite-record derivative; their source
@@ -84,7 +109,7 @@ def test_adi_2d_bin_gradients_match_fd_and_a_twice_longer_record(which):
     SI-primal differences avoid cancellation of the small sigma response.
     Both comparisons retain the existing 3e-3 relative FD tolerance.
     """
-    sim, shape = _sim()
+    sim, shape = _sim(boundary=boundary)
     dt = float(sim._build_grid().dt)
     index = 0 if which == "eps" else 1
     point = np.array([1.5, 0.2], dtype=np.float32)
