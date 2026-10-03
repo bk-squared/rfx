@@ -63,25 +63,34 @@ def test_graded_run_matches_single_device(case, n_devices, record_property):
     distributed = model(case).run(n_steps=40, devices=devices, skip_preflight=True)
     want, got = arrays(single), arrays(distributed)
     assert np.max(np.abs(want["time_series"])) > 1e-5
-    # Normalize each field by its family's peak (all E or all H components):
-    # a component that is physically ~0 here (Hz under a point Ez source)
-    # would otherwise turn rounding noise into millions of its own ULP.
-    family_peak = {fam: max(np.max(np.abs(want[f])) for f in FIELDS if f[0] == fam)
-                   for fam in "eh"}
-    relative = {}
+    # Compare H as eta0*H, on the scale of E: H decays while a static E stays,
+    # so a peak of H alone would make the bar depend on the record length.
+    # The remaining gap is the rounding of the distributed graded kernel
+    # against the one-device graded kernel (measured: the same on 2, 3 and 4
+    # devices, interior near the source, and present without CPML), so both
+    # are held to the per-step cross-trace bar of 9 float32 ULP of the peak.
+    eta0 = 376.730313668
+    scale = {f: (eta0 if f[0] == "h" else 1.0) for f in FIELDS}
+    probe_scale = np.array([scale[f] for _ in range(2) for f in FIELDS])
     for name in want:
         a, b = got[name], want[name]
         assert a.shape == b.shape and a.dtype == b.dtype == np.float32
         assert np.isfinite(a).all() and np.isfinite(b).all()
-        peak = np.max(np.abs(b)) if name == "time_series" else family_peak[name[0]]
-        relative[name] = float(np.max(np.abs(a - b)) / peak)
-        record_property(name + "_relative", relative[name])
-        print(f"{case}/{n_devices}/{name}: {relative[name]:g} of peak")
+    fields_peak = max(float(np.max(np.abs(want[f]))) * scale[f] for f in FIELDS)
+    field_error = max(float(np.max(np.abs(got[f] - want[f]))) * scale[f] for f in FIELDS)
+    trace_peak = float(np.max(np.abs(want["time_series"]) * probe_scale))
+    trace_error = float(np.max(np.abs(got["time_series"] - want["time_series"]) * probe_scale))
+    for label, error, peak in (("fields", field_error, fields_peak),
+                               ("time_series", trace_error, trace_peak)):
+        ulps = error / float(np.spacing(np.float32(peak)))
+        record_property(label + "_peak_ulps", float(ulps))
+        print(f"{case}/{n_devices}/{label}: {ulps:g} peak ULP")
+        assert ulps <= 9, (case, n_devices, label, ulps)
     # Summed observable gets the separate cross-trace accumulation bar.
     squared_sum = sum(np.sum(a.astype(np.float64)**2) for a in got.values())
     reference_sum = sum(np.sum(a.astype(np.float64)**2) for a in want.values())
     sum_error = abs(squared_sum-reference_sum) / reference_sum
-    record_property("summed_relative_error", sum_error)
+    record_property("summed_relative_error", float(sum_error))
     print(f"{case}/{n_devices}/summed: {sum_error:g} relative")
     assert sum_error <= 1e-4
     assert int(distributed.state.step) == 40
@@ -94,13 +103,6 @@ def test_graded_run_matches_single_device(case, n_devices, record_property):
                  "waveguide_ports", "waveguide_sparams", "waveguide_port_flux",
                  "ringdown", "current_moment_data", "current_moment_monitor"):
         assert getattr(distributed, name) is None, name
-    # Probe samples: the per-step cross-trace bar, 9 float32 ULP of the peak.
-    ts_peak = np.max(np.abs(want["time_series"]))
-    assert np.max(np.abs(got["time_series"] - want["time_series"])) <= 9 * np.spacing(np.float32(ts_peak))
-    # Final fields: the repo's two-vs-one-device CPML bar, 1e-4 of the peak
-    # (test_distributed_cpml_admission.py). Splitting the CPML across slabs
-    # reorders its arithmetic; measured ~5e-6 here, as on the uniform lane.
-    assert all(v <= 1e-4 for v in relative.values()), (case, n_devices, relative)
 
 
 def test_graded_run_empty_probes_and_resolved_steps(two_devices):
@@ -132,3 +134,13 @@ def test_graded_run_refuses_unimplemented_inputs(feature, message, two_devices):
         kwargs["compute_s_params"] = True
     with pytest.raises((NotImplementedError, ValueError), match=message):
         sim.run(n_steps=4, devices=two_devices, skip_preflight=True, **kwargs)
+
+
+def test_graded_run_refuses_devices_of_another_process(monkeypatch, two_devices):
+    """The graded runner does not gather final fields across processes, so a
+    graded run() over a mesh spanning processes is refused (#1461 review)."""
+    import rfx.runners.distributed_v2 as v2
+    monkeypatch.setattr(v2, "_spans_other_processes", lambda devices: True)
+    monkeypatch.setattr(jax.lax, "scan", lambda *a, **k: pytest.fail("stepped"))
+    with pytest.raises(NotImplementedError, match="more than one JAX process"):
+        model("cpml").run(n_steps=4, devices=two_devices, skip_preflight=True)

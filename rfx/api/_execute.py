@@ -5075,6 +5075,16 @@ class _ExecuteMixin:
             admit_run_s_matrix(self, compute_s_params=compute_s_params,
                                conformal_pec=conformal_pec, distributed=True)
             if self._uses_nonuniform_mesh:
+                from rfx.runners.distributed_v2 import _spans_other_processes
+                if devices is not None and _spans_other_processes(devices):
+                    # The graded runner does not gather the final fields
+                    # across processes (#1461 review), so run() could not
+                    # return them; forward(distributed=True) can.
+                    raise NotImplementedError(
+                        "run(devices=...) on a non-uniform mesh does not support "
+                        "devices from more than one JAX process: the final fields "
+                        "are not gathered across processes. Use devices from one "
+                        "process, or forward(distributed=True) for the probe traces.")
                 grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
                     n_steps=n_steps, devices=devices,
                     exchange_interval=exchange_interval,
