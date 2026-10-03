@@ -71,20 +71,16 @@ def test_portless_default_run_returns_matching_settling_witness():
     assert multi.s_params is None
     assert single.settling_db is not None and multi.settling_db is not None
     assert single.settling_witness is not None and multi.settling_witness is not None
-    assert multi.settling_witness["status"] == "measured"
-    assert multi.settling_db == pytest.approx(single.settling_db, rel=0,
-                                            abs=SETTLING_ATOL_DB)
-    single_records = single.settling_witness["per_record_db"]
-    multi_records = multi.settling_witness["per_record_db"]
-    assert len(single_records) == 2
-    assert multi_records == pytest.approx(single_records, rel=0,
-                                         abs=SETTLING_ATOL_DB)
-    assert {k: v for k, v in multi.settling_witness.items() if k != "per_record_db"} == {
-        k: v for k, v in single.settling_witness.items() if k != "per_record_db"}
-    differences = [abs(multi.settling_db - single.settling_db)] + [
-        abs(multi_records[k] - single_records[k]) for k in single_records]
-    print(f"settling max absolute difference: {max(differences):.12g} dB; "
-          f"tolerance: {SETTLING_ATOL_DB:g} dB (rtol=0)")
+    assert np.isnan(single.settling_db) and np.isnan(multi.settling_db)
+    for result in (single, multi):
+        detail = result.settling_witness
+        assert detail["status"] == "absent"
+        assert detail["reason"] == "no records or no read bins"
+        assert detail["per_record_db"] == {}
+        assert detail["share_per_bin"].size == 0
+        assert result.time_series.shape == (N_STEPS, 2)
+    np.testing.assert_equal(multi.settling_witness, single.settling_witness)
+    np.testing.assert_array_equal(multi.time_series, single.time_series)
 
 
 def test_probeless_run_reports_absent_witness():

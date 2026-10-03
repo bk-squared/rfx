@@ -110,6 +110,32 @@ def _abc():
     return off, on, both
 
 
+def _assert_witness_identical(a, b):
+    if isinstance(a, dict):
+        assert a.keys() == b.keys()
+        for key in a:
+            _assert_witness_identical(a[key], b[key])
+    elif isinstance(a, (tuple, list)):
+        assert type(a) is type(b) and len(a) == len(b)
+        for first, second in zip(a, b):
+            _assert_witness_identical(first, second)
+    elif isinstance(a, (np.ndarray, float, np.floating)):
+        first, second = np.asarray(a), np.asarray(b)
+        assert first.dtype == second.dtype
+        assert np.array_equal(first, second, equal_nan=True)
+    else:
+        assert a == b
+
+
+def test_ladder_dump_witness_detects_a_changed_tail_share():
+    first = ({"db": float("nan"), "share_per_bin": np.array([.01, .02])},)
+    second = ({"db": float("nan"), "share_per_bin": np.array([.01, .02])},)
+    _assert_witness_identical(first, second)
+    second[0]["share_per_bin"][1] = np.nextafter(.02, np.inf)
+    with pytest.raises(AssertionError):
+        _assert_witness_identical(first, second)
+
+
 def _assert_numerically_identical(r_a, r_b, label):
     for name in _NUMERIC_FIELDS:
         a = np.asarray(getattr(r_a, name))
@@ -121,6 +147,7 @@ def _assert_numerically_identical(r_a, r_b, label):
             f"instrument perturbed the measurement. Max |delta| = "
             f"{np.nanmax(np.abs(a - b)) if a.size else 0.0}."
         )
+    _assert_witness_identical(r_a.settling_witness, r_b.settling_witness)
     assert r_a.port_names == r_b.port_names
     assert r_a.status == r_b.status
 
@@ -270,7 +297,8 @@ def test_ladder_dump_witness_covers_every_numeric_field():
 
     names = {f.name for f in dataclasses.fields(CoaxMSLTransitionResult)}
     non_numeric = {"port_names", "status"}
+    nested_numeric = {"settling_witness"}
     opt_in_payloads = {"flux_monitors", "ladder_voltages", *_LADDER_WITNESS_FIELDS}
-    assert names == set(_NUMERIC_FIELDS) | non_numeric | opt_in_payloads, (
-        sorted(names ^ (set(_NUMERIC_FIELDS) | non_numeric | opt_in_payloads))
+    assert names == set(_NUMERIC_FIELDS) | nested_numeric | non_numeric | opt_in_payloads, (
+        sorted(names ^ (set(_NUMERIC_FIELDS) | nested_numeric | non_numeric | opt_in_payloads))
     )

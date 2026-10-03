@@ -62,3 +62,38 @@ def test_named_records_share_one_multichannel_identification(monkeypatch):
                                 1., 0, [.07], freq_max=.15)
     assert result.status == 'fail'
     assert calls == [((200, 3), 100, 200), ((200, 3), 50, 200)]
+
+
+def test_late_source_end_uses_remaining_window(monkeypatch):
+    import rfx.ringdown as ringdown
+
+    original = ringdown.identify
+    windows = []
+
+    def observed(series, dt, start, stop, **kwargs):
+        windows.append((start, stop))
+        return original(series, dt, start, stop, **kwargs)
+
+    monkeypatch.setattr(ringdown, 'identify', observed)
+    n = 700
+    y = np.exp((-.002 + 2j*np.pi*.07)*np.arange(n))
+    result = tail_share_witness([('record', y)], 1., round(.95*n),
+                                [.07], freq_max=.15)
+    assert result.status == 'fail', result.reason
+    assert windows == [(665, 700), (665, 697)]
+    np.testing.assert_allclose(result.share_per_bin, [np.exp(-.002*n)/(1-np.exp(-.002*n))],
+                               rtol=1e-6)
+
+
+@pytest.mark.parametrize('source_end', [190, 191, 199])
+def test_short_identification_check_is_undetermined(monkeypatch, source_end):
+    import rfx.ringdown as ringdown
+
+    def unexpected(*args, **kwargs):
+        pytest.fail('a short identification window reached the pencil')
+
+    monkeypatch.setattr(ringdown, 'identify', unexpected)
+    y = np.exp((-.002 + 2j*np.pi*.07)*np.arange(200))
+    result = tail_share_witness([('record', y)], 1., source_end, [.07], freq_max=.15)
+    assert result.status == 'undetermined'
+    assert result.reason == 'record: post-source window too short for the identification check'

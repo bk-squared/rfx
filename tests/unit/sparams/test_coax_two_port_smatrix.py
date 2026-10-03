@@ -495,9 +495,10 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
             self.accumulator = v
 
     class _FakeResult:
-        def __init__(self, dft_planes, time_series):
+        def __init__(self, dft_planes, time_series, dt):
             self.dft_planes = dft_planes
             self.time_series = time_series
+            self.dt = dt
 
     # Two-axis sentinel: real part keys the PHYSICAL DRIVE (1=port1/top,
     # 2=port2/bottom), imaginary part keys the ARRAY BLOCK POSITION within
@@ -515,7 +516,8 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
     # from the z-index of the source cells, not from anything here.
     def _fake_run(grid_, materials, n_steps, *, boundary, cpml_axes, sources,
                  mag_sources, probes, dft_planes, return_state,
-                 pec_edge_masks=None):
+                 pec_edge_masks=None, record_dft=False):
+        assert record_dft is True
         # Identify the PHYSICAL port purely from source z-location -- NOT
         # from any call-order assumption.
         k0 = float(sources[0].k)
@@ -531,7 +533,7 @@ def test_compute_coaxial_two_port_drive_index_matches_physical_port(monkeypatch)
             else:
                 fake_planes.append(_FakeAcc(np.array([0.0j])))
         ts = np.full((10, len(probes)), 1e-6)
-        return _FakeResult(fake_planes, ts)
+        return _FakeResult(fake_planes, ts, grid_.dt)
 
     def _fake_voltage(grid_, ex_dft, ey_dft, *, center_xy, pin_radius, outer_radius):
         return np.asarray(ex_dft, dtype=np.complex128)

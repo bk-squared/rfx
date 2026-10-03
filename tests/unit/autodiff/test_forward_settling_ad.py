@@ -31,8 +31,9 @@ def test_port_material_ad_matches_resolved_fd_with_forward_diagnostics(monkeypat
         def objective(alpha):
             result = forward(alpha)
             if isinstance(alpha, jax.core.Tracer):
-                assert result.settling_db is None
-                assert result.settling_witness["status"] == "absent"
+                assert np.isnan(result.settling_db)
+                assert result.settling_witness["status"] == "undetermined"
+                assert "traced" in result.settling_witness["reason"]
             return jnp.real(jnp.sum(jnp.abs(result.s_params)**2))
 
         with warnings.catch_warnings():
@@ -50,7 +51,9 @@ def test_port_material_ad_matches_resolved_fd_with_forward_diagnostics(monkeypat
                 patch.setattr(sim, "_attach_run_settling_witness", lambda result, **kwargs: result)
                 plain = forward(alpha)
         assert np.isfinite([value, grad]).all() and float(grad) != 0
-        assert np.isfinite(reported.settling_db)
+        assert np.isnan(reported.settling_db)
+        assert reported.settling_witness["status"] == "undetermined"
+        assert "post-source window" in reported.settling_witness["reason"]
         # (column, component code, #1090 source-dominated flag).
         assert reported.settling_probe_info == ((0, 2, 0),)
         np.testing.assert_array_equal(reported.time_series, plain.time_series)
@@ -87,9 +90,11 @@ def test_each_public_forward_dispatch_exposes_the_probe_witness(lane, recorded, 
         result = sim.forward(n_steps=100, skip_preflight=True,
                              distributed=lane == "fwd_distributed_nu")
     assert len(calls) == 1 and calls[0]["n_steps"] == 100
-    assert settling_verdict(result.settling_db) == ("fail" if recorded else "absent")
+    assert settling_verdict(result.settling_db) == "absent"
+    assert result.settling_witness["status"] == "absent"
+    assert result.settling_witness["reason"]
     assert result.settling_probe_info == (((0, 2, 0),) if recorded else ())
     scoped = [str(w.message) for w in caught
-              if "witness FAILED" in str(w.message) or "no ring-down settling witness" in str(w.message)]
+              if "settling witness" in str(w.message)]
     assert len(scoped) == 1 and "forward()" in scoped[0]
     np.testing.assert_array_equal(result.time_series, records)

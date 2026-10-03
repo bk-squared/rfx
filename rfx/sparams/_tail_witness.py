@@ -120,12 +120,13 @@ def tail_share_witness(records, dt, source_end, freqs, *, freq_max, _record_resu
             if int(source_end) != source_end or not 0 <= source_end < n:
                 raise ValueError("source end outside record")
             start = max(int(source_end), round(.5 * n))
-            if n - start < 10:
-                raise ValueError("post-source window is too short for a matrix pencil (10 samples)")
             longer = max(int(source_end), start // 2)
+            check_start = longer if longer < start else start
+            check_stop = n if longer < start else start + round(.9 * (n - start))
+            if min(n - start, check_stop - check_start) < 10:
+                raise ValueError("post-source window too short for the identification check")
             main = identify(y, dt, start, n, freq_max=freq_max)
-            other = identify(y, dt, longer if longer < start else start,
-                             n if longer < start else round(.9 * n), freq_max=freq_max)
+            other = identify(y, dt, check_start, check_stop, freq_max=freq_max)
             denom = np.abs(plain_dft(y, dt, bins))
             for model in (main, other):
                 if not len(model.s):
