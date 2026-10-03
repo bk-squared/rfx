@@ -1852,6 +1852,7 @@ def compute_coax_msl_transition(
     )
     import dataclasses as _dc
     msl_port_driven = _dc.replace(msl_port_base, excitation=msl_waveform)
+    msl_port_driven._drive_stamps.update(msl_port_base._drive_stamps)
 
     v_coax_by_drive = np.zeros((2, len(probes_coax), n_f), dtype=np.complex128)
     v_msl_by_drive = np.zeros((2, len(xs_sorted), n_f), dtype=np.complex128)

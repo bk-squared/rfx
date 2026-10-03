@@ -94,7 +94,9 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         mid = (old_values + new) / 2
         storage_rate = volume * np.sum(2.25 * EPS_0 * (new**2 - old_values**2)) / (2 * grid.dt)
         loss = volume * expected_sigma * np.sum(mid[2]**2)
-        source_work = u * volume * np.dot(profile_e, mid[2])
+        # New/old force is the stamped sigma: .02 (uniform),
+        # 1/(50*.55)=.0363636... (shaped), exactly the predicted factor.
+        source_work = expected_sigma * u * volume * np.dot(profile_e, mid[2])
         scale = max(abs(storage_rate), loss, abs(source_work))
         assert abs(storage_rate + loss - source_work) < 64 * np.finfo(dtype).eps * scale
         voltage = volume * np.dot(profile_e, mid[2]) / norm
@@ -103,7 +105,7 @@ def test_source_load_work_and_material_gradient(direction, shaped, x64):
         # Independent scalar midpoint equation; no JAX/source/update helpers.
         # Double precision FD avoids using an f32 loss as its own referee.
         force = np.zeros_like(old_values)
-        force[2] = profile_e * u
+        force[2] = expected_sigma * profile_e * u
         # Conductivity per component row (ex, ey, ez): the load's edges only.
         sigma_rows = np.array([0.0, 0.0, expected_sigma])[:, None]
 

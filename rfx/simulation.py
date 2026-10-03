@@ -467,7 +467,8 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
 
     waveform = port_drive_waveform(
         grid, idx, port.component, port.excitation, n_steps, materials,
-        impedance=port.impedance)
+        sigma_port=port._drive_stamps[tuple(idx)][0],
+        unit_field=port._drive_stamps[tuple(idx)][1])
     return SourceSpec(i=i, j=j, k=k,
                       component=port.component, waveform=waveform)
 
@@ -496,7 +497,8 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
         i, j, k = cell
         waveform = port_drive_waveform(
             grid, cell, port.component, port.excitation, n_steps, materials,
-            impedance=port.impedance, n_live=n_live)
+            sigma_port=port._drive_stamps[tuple(cell)][0],
+            unit_field=port._drive_stamps[tuple(cell)][1])
         specs.append(SourceSpec(i=i, j=j, k=k,
                                 component=port.component, waveform=waveform))
     return specs

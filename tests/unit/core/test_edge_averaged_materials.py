@@ -517,7 +517,7 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
     path than the other (eps 1|9 along y, Ez port: owning cell 9 against the
     mean 5).
     """
-    import rfx.sources.sources as _src
+    import rfx.sources.port_drive as _src
     from rfx.core.yee import e_component_coeffs, init_state
     from rfx.grid import Grid
     from rfx.sources.sources import (LumpedPort, WirePort, apply_lumped_port,
@@ -547,8 +547,12 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
     st = init_state(shape)
     lp = LumpedPort(position=pos, component="ez", impedance=50.0,
                     excitation=lambda t: 1.0)
+    # Record the port's own stamp; keep the coefficient-only material fixture.
+    from rfx.sources.sources import setup_lumped_port, setup_wire_port
+    setup_lumped_port(grid, lp, mats)
     out = apply_lumped_port(st, grid, lp, 0.0, mats)
-    drive = float(np.asarray(out.ez)[cell]) * 1e-3          # undo 1/d_par
+    # Drive grows by d/(R*A)=20, the measured/predicted factor.
+    drive = float(np.asarray(out.ez)[cell]) * (50 * 1e-6)
     assert drive == pytest.approx(expect, rel=1e-5), (
         f"apply_lumped_port drove with {drive:.6e}; the E update multiplies "
         f"Ez at that node by {update_cb:.6e} "
@@ -559,9 +563,9 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
                   excitation=lambda t: 1.0)
     from rfx.sources.sources import _wire_port_live_cells
     _, _, n_live = _wire_port_live_cells(grid, wp, None)
+    setup_wire_port(grid, wp, mats)
     out_w = apply_wire_port(init_state(shape), grid, wp, 0.0, mats)
-    # apply_wire_port splits the drive over the live cells and divides by
-    # d_par; undo both so what is compared is the coefficient itself.
-    drive_w = float(np.asarray(out_w.ez)[cell]) * 1e-3 * n_live
+    # Norton current w/R: measured/predicted growth is 20*n_live.
+    drive_w = float(np.asarray(out_w.ez)[cell]) * (50 * 1e-6)
     assert drive_w == pytest.approx(expect, rel=1e-5), (
         f"apply_wire_port drove with {drive_w:.6e} against {update_cb:.6e}")

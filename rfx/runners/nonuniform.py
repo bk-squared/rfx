@@ -1196,6 +1196,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             # ``port_metric_axes`` is the one place that decides which.
             (_dx_np, _x_host), (_dy_np, _y_host), (_dz_m, _z_host) = \
                 port_metric_axes(grid)
+            drive_stamps = {}
             for (ci, cj, ck), live in zip(_cells_ijk, live_flags):
                 dxi = port_metric(_dx_np[ci], _x_host)
                 dyj = port_metric(_dy_np[cj], _y_host)
@@ -1230,6 +1231,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         d_cell = dxi
                         dp1, dp2 = dual_yj, dual_zk
                     sigma_port = n_live * d_cell / (pe.impedance * dp1 * dp2)
+                    drive_stamps[(ci, cj, ck)] = (sigma_port, 1 / (n_live * d_cell))
                     # #1210: a port's load is a device across ONE edge, so
                     # it is recorded as an edge-owned stamp and kept out of
                     # the edge average. Stamped bare it was quartered, and a
@@ -1275,7 +1277,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         continue
                     waveform = port_drive_waveform(
                         grid, cell_ijk, pe.component, pe.waveform, sizing_n,
-                        materials_drive, impedance=pe.impedance, n_live=n_live)
+                        materials_drive, sigma_port=drive_stamps[tuple(cell_ijk)][0],
+                        unit_field=drive_stamps[tuple(cell_ijk)][1])
                     sources.append((*cell_ijk, pe.component, waveform))
 
             # Wire port S-param spec — include excite/direction so the
@@ -1342,7 +1345,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             if pe.excite:
                 waveform = port_drive_waveform(
                     grid, idx, pe.component, pe.waveform, sizing_n, materials_drive,
-                    impedance=pe.impedance)
+                    sigma_port=sigma_port, unit_field=1 / d_parallel)
                 sources.append((*idx, pe.component, waveform))
 
             # Explicit bins opt lumped ports into the same V/I accumulators

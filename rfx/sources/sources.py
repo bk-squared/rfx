@@ -1,11 +1,12 @@
 """FDTD source implementations.
 
-All source functions are pure: they take state + parameters, return new state.
+Field applicators return new states. Port setup also records its own load
+stamp on the build-local descriptor for subsequent source assembly.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import math
 
@@ -399,6 +400,9 @@ class LumpedPort:
     component: str
     impedance: float
     excitation: GaussianPulse
+    # Build-local record of the actual stamp and unit-voltage shape. Excluded
+    # from descriptor identity; setup populates it before source assembly.
+    _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
 
 def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
@@ -409,6 +413,8 @@ def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
     """
     idx = grid.position_to_index(port.position)
     sp = port_sigma(grid, idx, port.component, port.impedance)
+    port._drive_stamps.clear()
+    port._drive_stamps[tuple(idx)] = (sp, 1 / port_d_parallel(grid, idx, port.component))
     return stamp_lumped_sigma(materials, idx, sp, port.component)
 
 
@@ -423,7 +429,8 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     i, j, k = idx
     increment = port_drive_waveform(
         grid, idx, port.component, port.excitation, None, materials,
-        impedance=port.impedance, time=t)
+        sigma_port=port._drive_stamps[tuple(idx)][0],
+        unit_field=port._drive_stamps[tuple(idx)][1], time=t)
 
     field = getattr(state, port.component)
     field = field.at[i, j, k].add(increment)
@@ -454,6 +461,7 @@ class WirePort:
     impedance: float = 50.0
     excitation: object = None  # GaussianPulse or similar
     radius: float | None = None
+    _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
     def __post_init__(self):
         from rfx.sources.wire_radius import validate_radius
@@ -628,6 +636,7 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None):
     bit-identical to the historical all-cells formula.
     """
     cells, live_flags, n_live = _wire_port_live_cells(grid, port, pec_edge_masks)
+    port._drive_stamps.clear()
 
     if port.radius is not None:
         from rfx.sources.wire_radius import stamp_wire_radius
@@ -638,6 +647,8 @@ def setup_wire_port(grid, port, materials, pec_edge_masks=None):
         if not live:
             continue
         sp = port_sigma(grid, cell, port.component, port.impedance) * n_live
+        port._drive_stamps[tuple(cell)] = (
+            sp, 1 / (n_live * port_d_parallel(grid, cell, port.component)))
         materials = stamp_lumped_sigma(materials, cell, sp, port.component)
     return materials
 
@@ -661,7 +672,8 @@ def apply_wire_port(state, grid, port, t, materials, pec_edge_masks=None):
         i, j, k = cell
         increment = port_drive_waveform(
             grid, cell, port.component, port.excitation, None, materials,
-            impedance=port.impedance, n_live=n_live, time=t)
+            sigma_port=port._drive_stamps[tuple(cell)][0],
+            unit_field=port._drive_stamps[tuple(cell)][1], time=t)
         field = field.at[i, j, k].add(increment)
 
     return state._replace(**{port.component: field})

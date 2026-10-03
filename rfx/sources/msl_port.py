@@ -25,7 +25,7 @@ post-simulation, on small per-frequency arrays.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import jax
 import jax.numpy as jnp
@@ -216,6 +216,7 @@ class MSLPort:
     direction: str
     impedance: float
     excitation: object = None
+    _drive_stamps: dict = field(default_factory=dict, init=False, repr=False, compare=False)
 
 
 def msl_physical_point(
@@ -886,6 +887,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
 
     Returns the updated ``materials`` NamedTuple.
     """
+    port._drive_stamps.clear()
     if mode_profile is None:
         span = msl_cross_section_span(grid, port)
         cells = span["cells"]
@@ -922,6 +924,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
             sigma_cell = (
                 (n_z * d_norm) / (port.impedance * n_y * d_prop * d_width)
             )
+            port._drive_stamps[tuple(cell)] = (sigma_cell, 1 / (n_z * d_norm))
             # #1210: the port's termination is a lumped load across the
             # port edges, not a cell volume property, so it is recorded as
             # an edge-owned stamp and kept out of the edge average.
@@ -995,6 +998,7 @@ def setup_msl_port(grid, port: MSLPort, materials, *, mode_profile: dict | None 
         # an amplitude threshold or a propagating/evanescent-mode filter.
         if float(ez_profile[j_loc, k_loc]) == 0.0:
             continue
+        port._drive_stamps[tuple(cell)] = (sigma_uniform, float(ez_profile[j_loc, k_loc]))
         materials = _stamp_lumped_sigma(materials, (i, j, k), sigma_uniform,
                                         msl_normal_component(port))
     return materials
@@ -1018,86 +1022,26 @@ class _ScaledWaveform:
 
 def make_msl_port_sources(grid, port: MSLPort, materials, n_steps,
                           *, mode_profile: dict | None = None):
-    """Build the SourceSpec list for an MSL feed plane.
+    """Drive w volts through this port's own stamped load.
 
-    Two modes:
-
-    - **Uniform** (``mode_profile is None``, legacy): each cell gets the
-      electric-field increment ``Cb * u / (N_z * d_normal)``.
-
-    - **Laplace profile** (``mode_profile`` from
-      :func:`compute_msl_mode_profile`): each cell gets the increment
-      ``Cb * ez_profile * u``. The profile has unit centre-line integral
-      and extends laterally beyond the trace footprint.
-
-    Here ``u`` is the sampled excitation and
-    ``Cb = dt / (epsilon + sigma_total * dt / 2)``. Thus the imposed term
-    in the electric update equation is ``ez_profile * u``. The waveform
-    amplitude is not a prescribed terminal voltage. For the shaped load
-    with ``N = sum(volume * ez_profile**2)``, the source-conjugate current
-    is ``N * u`` and its equivalent Thevenin voltage is ``Z0 * N * u``.
-    These work variables do not define the downstream MSL probe voltage.
-
-    The port impedance must already be folded into ``materials`` via
-    :func:`setup_msl_port` (with the same ``mode_profile``).
+    setup_msl_port records each actual sigma and its unit-voltage field.
+    The legacy field is 1/(n_z*d_normal); the Laplace profile is normalized
+    at its centre-line integral in compute_msl_mode_profile. Cb is read
+    from the realized update materials, including all other loads.
     """
     if port.excitation is None:
         return []
-    from rfx.simulation import SourceSpec  # local import: avoid cycles
+    from rfx.simulation import SourceSpec
+    from rfx.sources.port_drive import port_drive_waveform
 
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    base_wave = jax.vmap(port.excitation)(times)
-
-    if mode_profile is None:
-        span = msl_cross_section_span(grid, port)
-        cells = span["cells"]
-        if not cells:
-            return []
-        n_z = span["n_hi"] - span["n_lo"]
-        ax_n = span["normal_axis"]
-        inr = span["normal_idx"]
-        specs = []
-        for cell in cells:
-            i, j, k = cell
-            # #1210: the update's own per-component Cb at this cell.
-            cb = _cell_component_e_coeffs(
-                materials, (i, j, k), "ez", grid.dt)[1]
-            # d_par is the cell size along the SUBSTRATE NORMAL (always z,
-            # the axis "ez" points along) -- not the propagation axis.
-            d_par = _axis_cell_size(grid, ax_n, cell[inr])
-            waveform = (cb / d_par) * base_wave / float(n_z)
-            specs.append(SourceSpec(i=i, j=j, k=k, component="ez", waveform=waveform))
-        return specs
-
-    # Laplace-shaped force in the electric update. The profile has unit
-    # centre-line integral; base_wave supplies u, not a terminal voltage.
-    ez_profile = np.asarray(mode_profile["ez_profile"], dtype=np.float64)
-    cell_indices = mode_profile["cell_indices"]
-    j_box_lo = int(mode_profile["j_grid_lo"])
-    k_box_lo = int(mode_profile["k_grid_lo"])
-    n_z_sub = int(mode_profile["n_z_sub"])
-    iw = int(mode_profile["width_idx"])
-    inr = int(mode_profile["normal_idx"])
-
+    if not port._drive_stamps:
+        raise ValueError("setup_msl_port must stamp this port before building its drive")
     specs = []
-    for cell in cell_indices:
-        i, j, k = cell
-        j_loc = cell[iw] - j_box_lo
-        k_loc = cell[inr] - k_box_lo
-        if not (0 <= k_loc < n_z_sub):
-            continue
-        if not (0 <= j_loc < ez_profile.shape[0]):
-            continue
-        ez_w = float(ez_profile[j_loc, k_loc])
-        if ez_w == 0.0:
-            continue
-        cb = _cell_component_e_coeffs(      # #1210
-            materials, (i, j, k), "ez", grid.dt)[1]
-        # Add Cb * ez_w * u after the electric update. There is no extra
-        # sigma_port factor or negative sign in this force. This equals
-        # the uniform branch when ez_w = 1/H_sub and dz is uniform.
-        waveform = cb * ez_w * base_wave
-        specs.append(SourceSpec(i=int(i), j=int(j), k=int(k),
+    for cell, (sigma_port, unit_field) in port._drive_stamps.items():
+        waveform = port_drive_waveform(
+            grid, cell, "ez", port.excitation, n_steps, materials,
+            sigma_port=sigma_port, unit_field=unit_field)
+        specs.append(SourceSpec(i=int(cell[0]), j=int(cell[1]), k=int(cell[2]),
                                 component="ez", waveform=waveform))
     return specs
 

@@ -166,7 +166,7 @@ def material_pairs(dump, row, axis):
 
 def drive_pairs(dump, row):
     from rfx.nonuniform import current_source_volume
-    from rfx.sources.sources import port_d_parallel
+    from rfx.sources.sources import port_sigma, port_d_parallel
     records = [r for r in dump.records if "drive_scale" in r]
     if not records:
         raise RuntimeError(f"no record at source site: {dump.lane} {row}")
@@ -191,13 +191,12 @@ def drive_pairs(dump, row):
             materials = materials._replace(eps_r=override_epsilon(dump.sim, dump.lane))
         eps, sig = component_e_materials(materials)
         expected = []
-        n = len(r["cells"])
         for i, j, k, component in r["cells"]:
             axis = "xyz".index(component[1])
             cb = float(e_update_coeffs(eps[axis][i,j,k], sig[axis][i,j,k], grid.dt)[1])
             if pe.impedance:
                 d = port_d_parallel(grid, (i,j,k), component)
-                scale = cb / d / n
+                scale = cb * port_sigma(grid, (i,j,k), component, pe.impedance) / d
             else:
                 if hasattr(grid, "dx_arr"):
                     dV = float(current_source_volume(grid, (i,j,k), component)[0])
