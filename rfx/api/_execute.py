@@ -743,7 +743,8 @@ class _ExecuteMixin:
         if selection:
             rows.append(probe_detail)
         elif rows and _reads_unrecorded_fields(result):
-            rows.append({**probe_detail, 'status': 'absent', 'db': float('nan'),
+            rows.append({**probe_detail, 'status': 'absent', 'db': None,
+                         'worst_freq_hz': None, 'floor_amplitude': None,
                          'share_per_bin': np.zeros(bins.size),
                          'error_per_bin': np.zeros(bins.size),
                          'reason': 'far-field or DFT-plane frequencies are read but no '

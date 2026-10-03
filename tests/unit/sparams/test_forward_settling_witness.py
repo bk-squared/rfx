@@ -25,8 +25,9 @@ def test_absent_probe_witness_has_canonical_per_bin_fields(missing):
         assert db is None
         assert detail["status"] == "absent"
         assert canonical.keys() <= detail.keys()
-        assert np.isnan(detail["db"])
-        assert np.isnan(detail["worst_freq_hz"])
+        # An absent witness carries no NaN (#885): no number rests on it.
+        assert detail["db"] is None
+        assert detail["worst_freq_hz"] is None
         for key in ("share_per_bin", "error_per_bin"):
             np.testing.assert_array_equal(detail[key], np.zeros(2))
         return series

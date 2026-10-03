@@ -325,7 +325,10 @@ def probe_record_settling_witness(time_series, probe_info=None, *, warn=True,
         # ``source_dominated``/``qualifier`` describe the record that
         # CARRIES the verdict; an absent witness has none, so they are
         # empty here rather than describing records nothing rests on.
-        return None, {**detail, "status": "absent", "route": None,
+        # No NaN in an absent witness (#885): no number rests on it.
+        return None, {**detail, "db": None, "worst_freq_hz": None,
+                      "floor_amplitude": None,
+                      "status": "absent", "route": None,
                       "worst_record": None, "per_record_db": {},
                       "skipped_records": list(skipped), "reason": reason,
                       "source_dominated": False,
