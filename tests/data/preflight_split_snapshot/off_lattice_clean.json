@@ -4,18 +4,33 @@
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          3.0,
+          3.0,
+          5.0,
+          1.0,
+          -2.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          3.0,
+          3.0,
+          5.0,
+          1.0,
+          -2.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "no_sources",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       }

@@ -501,7 +501,7 @@ def test_a_registered_extra_check_emits_after_every_core_advisory(monkeypatch):
 
     before = _sim().preflight()
     codes_before = [i.code for i in before]
-    locations_before = [i.loc for i in before]
+    text_before = [str(i) for i in before]
     assert codes_before, (
         "this fixture is supposed to produce at least one core advisory, so "
         "that 'the extra came last' is a real ordering claim"
@@ -529,8 +529,8 @@ def test_a_registered_extra_check_emits_after_every_core_advisory(monkeypatch):
         "a registered extra must append: the core advisories keep their "
         "positions and the extra lands after all of them"
     )
-    assert [i.loc for i in after][:len(locations_before)] == locations_before, (
-        "registering an extra changed the location of a core advisory"
+    assert [str(i) for i in after][:len(text_before)] == text_before, (
+        "registering an extra changed the TEXT of a core advisory"
     )
     assert after[-1].severity == "warning"
 

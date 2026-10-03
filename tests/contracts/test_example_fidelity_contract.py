@@ -662,20 +662,26 @@ def test_foreign_warnings_are_not_pinned_by_the_digest() -> None:
         f"  without: {clean}\n  with:    {polluted}")
 
 
-@pytest.mark.parametrize("mutation", ["wording", "remove_code", "count"])
+@pytest.mark.parametrize("mutation", ["wording", "remove_code", "count", "number", "number_count", "severity", "source"])
 def test_snapshot_contract_mutations(monkeypatch, mutation):
     """Exercise the actual contract entry point with controlled emissions."""
     from copy import deepcopy
     from rfx.preflight._common import PreflightIssue
 
     key, relpath, builder, variant = _FLAT_VARIANTS[0]
-    issues = [PreflightIssue("original wording", code="mesh_resolution", loc="x")]
+    issues = [PreflightIssue("original wording 2 cells", code="mesh_resolution", loc="x")]
     expected = {"preflight": lib.digest_preflight(issues), "fidelity": {}}
     changed = deepcopy(expected)
     if mutation == "wording":
-        issues = [PreflightIssue("entirely revised warning", code="mesh_resolution", loc="x")]
+        issues = [PreflightIssue("entirely revised warning 2 cells", code="mesh_resolution", loc="x")]
         changed["preflight"] = lib.digest_preflight(issues)
         assert "message" not in changed["preflight"][0]
+    elif mutation == "number":
+        changed["preflight"][0]["numbers"][0] /= 2
+    elif mutation == "number_count":
+        changed["preflight"][0]["numbers"].append(3.0)
+    elif mutation in {"severity", "source"}:
+        changed["preflight"][0][mutation] = "changed"
     elif mutation == "remove_code":
         changed["preflight"].clear()
     else:
@@ -703,3 +709,40 @@ def test_snapshot_numeric_tolerance(field):
     with pytest.raises(AssertionError):
         assert_structured_close({field: [0.0, 1000.01]},
                                 {field: [0.0, 1000.0]})
+
+
+def test_um_tolerance_uses_only_the_field_name():
+    # An ancestor entity/path mentioning um must not relax eps_r or numbers.
+    for field in ("eps_r", "numbers", "not_um_units"):
+        with pytest.raises(AssertionError):
+            assert_structured_close({"parent_um": {field: [5e-10]}},
+                                    {"parent_um": {field: [0.0]}})
+
+
+def test_message_numeric_tokens_and_tolerance():
+    from tests._structured_snapshot import message_numbers, without_prose
+
+    assert message_numbers("2 cells, -3.5 µm, +.25, 6., 1e-9, -2.5E+3") == [
+        2.0, -3.5, .25, 6.0, 1e-9, -2500.0]
+    assert without_prose({"message": "no quantities"}) == {"numbers": []}
+    assert_structured_close({"numbers": [2.0 + 1e-9, 5e-13]},
+                            {"numbers": [2.0, 0.0]})
+    for numbers in ([1.0, 0.0], [2.0], [0.0, 2.0], [2.0, 5e-11]):
+        with pytest.raises(AssertionError):
+            assert_structured_close({"numbers": numbers}, {"numbers": [2.0, 0.0]})
+
+
+@pytest.mark.parametrize("field,value", [("count", 1), ("class", "MSL port")])
+def test_out_of_scope_count_and_class_are_pinned(field, value):
+    from copy import deepcopy
+    report = [{"entity": "NOT AUDITED by this report", "findings": [{
+        "kind": "out-of-scope", "detail": "2 waveguide port(s)",
+        "entities": [{"count": 2, "class": "waveguide port"}],
+    }]}]
+    expected = lib.digest_fidelity(report)
+    changed = deepcopy(report)
+    changed[0]["findings"][0]["detail"] = "rewritten description"
+    assert_structured_close(lib.digest_fidelity(changed), expected)
+    changed[0]["findings"][0]["entities"][0][field] = value
+    with pytest.raises(AssertionError):
+        assert_structured_close(lib.digest_fidelity(changed), expected)

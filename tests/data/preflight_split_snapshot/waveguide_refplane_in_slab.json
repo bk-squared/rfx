@@ -4,30 +4,71 @@
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          5.1,
+          4.0,
+          11.6,
+          2.54,
+          20.0,
+          5.0,
+          21.0,
+          17.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          5.1,
+          4.0,
+          11.6,
+          2.54,
+          20.0,
+          5.0,
+          21.0,
+          17.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          5.1,
+          4.0,
+          11.6,
+          2.54,
+          20.0,
+          5.0,
+          21.0,
+          17.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "lossless_q",
         "loc": null,
+        "numbers": [
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
         "code": "waveguide_reference_plane",
         "loc": null,
+        "numbers": [
+          20.3,
+          15.2,
+          25.4
+        ],
         "severity": "warning",
         "source": "_validate_cfg_waveguide_reference_plane"
       }

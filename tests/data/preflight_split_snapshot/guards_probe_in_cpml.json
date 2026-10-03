@@ -4,12 +4,26 @@
       {
         "code": "absorber_overlap",
         "loc": null,
+        "numbers": [
+          0.01,
+          0.01,
+          0.022,
+          23.98,
+          23.98
+        ],
         "severity": "warning",
         "source": "_validate_cfg_absorber_placement"
       },
       {
         "code": "absorber_overlap",
         "loc": null,
+        "numbers": [
+          0.01,
+          0.01,
+          0.0225,
+          23.98,
+          23.98
+        ],
         "severity": "warning",
         "source": "_validate_cfg_absorber_placement"
       }

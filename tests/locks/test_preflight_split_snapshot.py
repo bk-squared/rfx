@@ -12,9 +12,10 @@ This module is that witness for preflight.
 
 Structured snapshot policy
 --------------------------
-Pin report codes, locations, counts, severity and emission order. Omit message
-wording so editorial warning changes do not rewrite committed snapshots.
-Numeric fields are compared with tests._structured_snapshot's tolerance.
+Pin report codes, locations, counts, severity, source and emission order.
+Keep each message's numeric tokens in order, but omit its wording so editorial
+changes do not rewrite committed snapshots. Numeric token counts are exact;
+values are compared with tests._structured_snapshot's numeric tolerance.
 The baseline data below retains the historical code-motion coverage.
 
 Update with RFX_PREFLIGHT_SNAPSHOT_UPDATE=1 only after an intentional change
@@ -2206,17 +2207,21 @@ def test_every_committed_snapshot_still_has_a_fixture():
     )
 
 
-@pytest.mark.parametrize("mutation", ["wording", "remove_code", "count", "order"])
+@pytest.mark.parametrize("mutation", ["wording", "remove_code", "count", "order", "number", "number_count"])
 def test_structured_split_snapshot_mutations(monkeypatch, tmp_path, mutation):
     from copy import deepcopy
 
     expected = {"preflight": {"n_issues": 2, "issues": [
-        {"code": "first", "loc": "x", "message": "old wording"},
+        {"code": "first", "loc": "x", "message": "old wording 2 cells"},
         {"code": "second", "loc": "y", "message": "another warning"},
     ]}}
     actual = deepcopy(expected)
     if mutation == "wording":
-        actual["preflight"]["issues"][0]["message"] = "new wording"
+        actual["preflight"]["issues"][0]["message"] = "new wording 2 cells"
+    elif mutation == "number":
+        actual["preflight"]["issues"][0]["message"] = "old wording 1 cells"
+    elif mutation == "number_count":
+        actual["preflight"]["issues"][0]["message"] = "old wording 2 cells 3"
     elif mutation == "remove_code":
         actual["preflight"]["issues"].pop()
     elif mutation == "count":
@@ -2234,3 +2239,31 @@ def test_structured_split_snapshot_mutations(monkeypatch, tmp_path, mutation):
     else:
         with pytest.raises(AssertionError):
             test_preflight_report_matches_the_committed_snapshot("mutation", None, None, None)
+
+
+@pytest.mark.parametrize("replacement,red", [
+    ("{gap/(2*cell):.1f}", True),
+    ("{gap/cell:.1f}", False),
+])
+def test_reported_cell_count_mutation_trips_split_lock(monkeypatch, replacement, red):
+    """Review mutation: halve only the reported count in mesh.py's PEC gap."""
+    import inspect
+    import rfx.preflight.mesh as mesh
+    from rfx.api._preflight import _PreflightMixin
+
+    fixture = next(row for row in _FIXTURES if row[0] == "congruence_off_lattice")
+    monkeypatch.delenv(_UPDATE_ENV, raising=False)
+    test_preflight_report_matches_the_committed_snapshot(*fixture)
+    source = inspect.getsource(mesh._validate_mesh_quality)
+    assert source.count("{gap/cell:.1f}") == 1
+    source = source.replace("{gap/cell:.1f}", replacement)
+    source = source.replace("Gap between PEC structures:", "PEC separation:")
+    namespace = dict(vars(mesh))
+    exec(compile(source, mesh.__file__, "exec"), namespace)
+    monkeypatch.setattr(_PreflightMixin, "_validate_mesh_quality",
+                        namespace["_validate_mesh_quality"])
+    if red:
+        with pytest.raises(AssertionError, match=r"issues\[.*numbers"):
+            test_preflight_report_matches_the_committed_snapshot(*fixture)
+    else:
+        test_preflight_report_matches_the_committed_snapshot(*fixture)

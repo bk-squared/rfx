@@ -4,24 +4,75 @@
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          2.0,
+          1.0,
+          1.0,
+          931.0,
+          1.2,
+          1.5
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "pec_box_one_cell",
         "loc": null,
+        "numbers": [
+          1.0,
+          931.0,
+          1.2,
+          0.0,
+          84.0,
+          86.0,
+          84.0,
+          86.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_realization"
       },
       {
         "code": "port_evanescent",
         "loc": null,
+        "numbers": [
+          9.0,
+          0.9,
+          6.745,
+          40.0,
+          20.0,
+          10.0,
+          3.747,
+          1.0,
+          7.495,
+          1.0,
+          1.0,
+          11.0,
+          1.0,
+          6.745
+        ],
         "severity": "warning",
         "source": "_check_waveguide_port_evanescent"
       },
       {
         "code": "port_evanescent",
         "loc": null,
+        "numbers": [
+          9.0,
+          0.9,
+          6.745,
+          40.0,
+          20.0,
+          10.0,
+          3.747,
+          1.0,
+          7.495,
+          1.0,
+          1.0,
+          11.0,
+          1.0,
+          6.745
+        ],
         "severity": "warning",
         "source": "_check_waveguide_port_evanescent"
       }

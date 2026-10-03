@@ -4,18 +4,56 @@
       {
         "code": "nonuniform_cpml_thin",
         "loc": null,
+        "numbers": [
+          0.6,
+          6.0,
+          3.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_nonuniform_limitations"
       },
       {
         "code": "nu_grading_ratio_beyond_validated_cap",
         "loc": null,
+        "numbers": [
+          5.0,
+          1.4,
+          1.4,
+          -54.0,
+          30.0,
+          2.0,
+          -44.0,
+          2.0,
+          1.4
+        ],
         "severity": "warning",
         "source": "_validate_cfg_multiband_grading"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "numbers": [
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1272.0,
+          1346.0,
+          6.0,
+          -38.0,
+          2.0,
+          -41.0,
+          10.0,
+          -32.0,
+          30.0,
+          -13.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

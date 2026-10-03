@@ -4,6 +4,12 @@
       {
         "code": "lossless_q",
         "loc": null,
+        "numbers": [
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       }

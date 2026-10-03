@@ -4,12 +4,36 @@
       {
         "code": "port_aperture_snap",
         "loc": null,
+        "numbers": [
+          22.86,
+          1.0,
+          23.0,
+          10.0,
+          23.0,
+          23.0,
+          6.512162,
+          6.517227,
+          6.55714,
+          22.86
+        ],
         "severity": "warning",
         "source": "_check_waveguide_port_aperture_snap"
       },
       {
         "code": "port_aperture_snap",
         "loc": null,
+        "numbers": [
+          10.16,
+          1.0,
+          10.0,
+          10.0,
+          10.0,
+          10.0,
+          6.512162,
+          6.517227,
+          6.55714,
+          10.16
+        ],
         "severity": "warning",
         "source": "_check_waveguide_port_aperture_snap"
       }

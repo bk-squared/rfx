@@ -4,18 +4,56 @@
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          1000.0,
+          1.0,
+          1.0,
+          931.0,
+          1.2,
+          1.5
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "wire_port_end_gap_to_conductor",
         "loc": null,
+        "numbers": [
+          0.006,
+          0.006,
+          0.005,
+          0.004,
+          6.0,
+          6.0,
+          5.0,
+          5.0,
+          3.0,
+          3.0,
+          2.0,
+          0.002
+        ],
         "severity": "warning",
         "source": "_validate_cfg_port_inside_pec"
       },
       {
         "code": "pec_box_one_cell",
         "loc": null,
+        "numbers": [
+          2.0,
+          931.0,
+          1.2,
+          0.0,
+          2.0,
+          3.0,
+          2.0,
+          3.0,
+          1.0,
+          9.0,
+          10.0,
+          9.0,
+          10.0,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_realization"
       }

@@ -4,12 +4,40 @@
       {
         "code": "nu_grading_reaches_absorber",
         "loc": null,
+        "numbers": [
+          4.0,
+          0.0909,
+          0.0,
+          4.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_multiband_grading"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "numbers": [
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          1.0,
+          1272.0,
+          1346.0,
+          4.0,
+          -20.0,
+          2.0,
+          -23.0,
+          10.0,
+          -17.0,
+          30.0,
+          -6.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

@@ -4,24 +4,57 @@
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          2.2,
+          12.0,
+          20.0,
+          2.0,
+          15.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          2.2,
+          12.0,
+          20.0,
+          2.0,
+          15.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          2.2,
+          12.0,
+          20.0,
+          2.0,
+          15.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "numerical_dispersion",
         "loc": null,
+        "numbers": [
+          20.0,
+          2.0,
+          2.1,
+          2.1,
+          2.1,
+          2.0,
+          4.0
+        ],
         "severity": "warning",
         "source": "_check_numerical_dispersion"
       }

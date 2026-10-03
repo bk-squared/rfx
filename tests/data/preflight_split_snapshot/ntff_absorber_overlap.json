@@ -4,12 +4,17 @@
       {
         "code": "absorber_overlap",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_ntff_absorber_overlap"
       },
       {
         "code": "settling_witness_will_be_absent",
         "loc": null,
+        "numbers": [
+          885.0,
+          1090.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_settling_witness_present"
       }

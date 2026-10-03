@@ -4,42 +4,118 @@
       {
         "code": "pec_faces_finite_pec",
         "loc": null,
+        "numbers": [
+          931.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_faces_with_finite_pec"
       },
       {
         "code": "uncoded",
         "loc": null,
+        "numbers": [
+          3.0,
+          3.66,
+          665.0,
+          931.0,
+          702.0,
+          17.0,
+          127.0
+        ],
         "severity": "warning",
         "source": null
       },
       {
         "code": "wire_port_dead_cell_classification_unavailable",
         "loc": null,
+        "numbers": [
+          0.002,
+          0.0015,
+          0.0,
+          0.000254,
+          544.0,
+          314.0,
+          319.0,
+          556.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_port_inside_pec"
       },
       {
         "code": "lossless_q",
         "loc": null,
+        "numbers": [
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
         "code": "sheet_plane_realized",
         "loc": null,
+        "numbers": [
+          1.0,
+          931.0,
+          1.3,
+          1.0,
+          1.0,
+          254.0,
+          3.0,
+          226.2,
+          -0.369,
+          27.8
+        ],
         "severity": "info",
         "source": "_validate_cfg_pec_realization"
       },
       {
         "code": "sheet_effective_size",
         "loc": null,
+        "numbers": [
+          1.0,
+          1.0,
+          1.0,
+          1.0,
+          600.0,
+          508.0,
+          567.3,
+          -5.46,
+          0.35
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "off_lattice_design_edges",
         "loc": null,
+        "numbers": [
+          2.0,
+          0.5,
+          2.0,
+          1.0,
+          600.0,
+          40.37,
+          6.73,
+          1.0,
+          8.0,
+          41.33,
+          0.52,
+          931.0,
+          1.1,
+          1.3,
+          703.0,
+          8.0,
+          -10.0,
+          50.0,
+          50.0,
+          2.0,
+          1.0,
+          1.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       }

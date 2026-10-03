@@ -68,6 +68,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "waveguide port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -210,6 +216,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -286,6 +298,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -296,7 +314,31 @@
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1272.0,
+            1346.0,
+            6.0,
+            -38.0,
+            2.0,
+            -41.0,
+            10.0,
+            -32.0,
+            30.0,
+            -13.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -367,6 +409,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -377,7 +425,31 @@
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1272.0,
+            1346.0,
+            6.0,
+            -38.0,
+            2.0,
+            -41.0,
+            10.0,
+            -32.0,
+            30.0,
+            -13.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -448,6 +520,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -524,6 +602,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -600,6 +684,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -610,7 +700,24 @@
       "preflight": [
         {
           "code": "adi_3d_accuracy",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            3.0,
+            5.0,
+            2.0,
+            15.0,
+            2.0,
+            2.0,
+            -1.4,
+            2.0,
+            -2.8,
+            3.0,
+            -6.7,
+            5.0,
+            2.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_adi_3d_accuracy"
         }
       ]
     },
@@ -681,6 +788,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -757,6 +870,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -767,7 +886,31 @@
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1272.0,
+            1346.0,
+            6.0,
+            -38.0,
+            2.0,
+            -41.0,
+            10.0,
+            -32.0,
+            30.0,
+            -13.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -911,6 +1054,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -921,7 +1070,16 @@
       "preflight": [
         {
           "code": "floating_port",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.002,
+            0.005,
+            0.001,
+            3.55,
+            71.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_floating_single_cell_port"
         }
       ]
     },
@@ -992,6 +1150,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -1068,6 +1232,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -1144,6 +1314,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -1220,6 +1396,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -1365,6 +1547,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -1375,7 +1563,15 @@
       "preflight": [
         {
           "code": "mesh_import_underresolved",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1.5,
+            2.0,
+            2.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         }
       ]
     },
@@ -1446,11 +1642,44 @@
       "preflight": [
         {
           "code": "no_sources",
-          "loc": null
+          "loc": null,
+          "numbers": [],
+          "severity": "warning",
+          "source": "_validate_cfg_no_sources"
         },
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            1.0,
+            1272.0,
+            1346.0,
+            4.0,
+            -20.0,
+            2.0,
+            -23.0,
+            10.0,
+            -17.0,
+            30.0,
+            -6.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -1598,6 +1827,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -1734,7 +1969,16 @@
       "preflight": [
         {
           "code": "lossless_q",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            4.0,
+            1.0,
+            5.0,
+            2.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_lossless_resonator_in_absorber"
         }
       ]
     },
@@ -1882,6 +2126,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2018,11 +2268,37 @@
       "preflight": [
         {
           "code": "ntff_near_field",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            6.0,
+            4.0,
+            26.77,
+            2.8,
+            2.0
+          ],
+          "severity": "warning",
+          "source": "_validate_ntff_inverse_design"
         },
         {
           "code": "ntff_small_ground_plane",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            85.0,
+            85.0,
+            35.3,
+            145.0,
+            145.0,
+            35.3,
+            60.0,
+            60.0,
+            0.56,
+            0.56,
+            2.8,
+            1.0,
+            1.4
+          ],
+          "severity": "warning",
+          "source": "_validate_ntff_small_ground_plane"
         }
       ]
     },
@@ -2093,6 +2369,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "coaxial port (pin/shield/caps)",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2103,7 +2385,10 @@
       "preflight": [
         {
           "code": "no_sources",
-          "loc": null
+          "loc": null,
+          "numbers": [],
+          "severity": "warning",
+          "source": "_validate_cfg_no_sources"
         }
       ]
     },
@@ -2174,6 +2459,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2184,7 +2475,31 @@
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            1.0,
+            1272.0,
+            1346.0,
+            4.0,
+            -20.0,
+            2.0,
+            -23.0,
+            10.0,
+            -17.0,
+            30.0,
+            -6.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -2255,6 +2570,16 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                },
+                {
+                  "class": "lumped RLC",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2265,7 +2590,31 @@
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            1.0,
+            1272.0,
+            1346.0,
+            4.0,
+            -20.0,
+            2.0,
+            -23.0,
+            10.0,
+            -17.0,
+            30.0,
+            -6.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -2413,6 +2762,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "MSL port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2549,19 +2904,157 @@
       "preflight": [
         {
           "code": "msl_port_geometry",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            469.0,
+            2.0,
+            681.0,
+            20.0,
+            4.0,
+            3.0,
+            250.0,
+            0.0,
+            5.0,
+            20.0,
+            4.0,
+            3.0,
+            250.0,
+            0.0,
+            5.0,
+            686.0
+          ],
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
         },
         {
           "code": "msl_port_geometry",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            24.0,
+            -11250.0,
+            0.0,
+            12.75,
+            31.25,
+            12.75,
+            21.25,
+            5586.0,
+            4.0,
+            5.0,
+            369367260508.0,
+            1.0,
+            -118.0,
+            0.0,
+            51.0,
+            51.0,
+            3.0,
+            -5.0,
+            0.0,
+            51.0,
+            11.0,
+            3.77125,
+            0.026895,
+            0.018065,
+            0.0,
+            0.31,
+            0.21,
+            838.0,
+            0.009,
+            11.0,
+            21.0,
+            0.0,
+            11.0,
+            21.0,
+            -5.0,
+            -10.0,
+            0.0,
+            0.0,
+            11.0,
+            21.0
+          ],
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
         },
         {
           "code": "msl_port_geometry",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            20.0,
+            -11250.0,
+            0.0,
+            12.75,
+            31.25,
+            12.75,
+            21.25,
+            5586.0,
+            4.0,
+            5.0,
+            369367260508.0,
+            1.0,
+            -118.0,
+            0.0,
+            51.0,
+            51.0,
+            3.0,
+            -5.0,
+            0.0,
+            51.0,
+            11.0,
+            3.77125,
+            0.026895,
+            0.018065,
+            0.0,
+            0.31,
+            0.21,
+            838.0,
+            0.009,
+            11.0,
+            21.0,
+            0.0,
+            11.0,
+            21.0,
+            -5.0,
+            -10.0,
+            0.0,
+            0.0,
+            11.0,
+            21.0
+          ],
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
         },
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            3.0,
+            4.0,
+            1.0,
+            1272.0,
+            1346.0,
+            4.0,
+            -20.0,
+            2.0,
+            -23.0,
+            10.0,
+            -17.0,
+            30.0,
+            -6.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -2632,6 +3125,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "waveguide port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2642,7 +3141,27 @@
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi"
+          "loc": "x_lo, x_hi",
+          "numbers": [
+            4.0,
+            4.0,
+            1.0,
+            1272.0,
+            1346.0,
+            4.0,
+            -20.0,
+            2.0,
+            -23.0,
+            10.0,
+            -17.0,
+            30.0,
+            -6.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -2871,6 +3390,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2947,6 +3472,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -2957,7 +3488,31 @@
       "preflight": [
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            4.0,
+            1.0,
+            1272.0,
+            1346.0,
+            4.0,
+            -20.0,
+            2.0,
+            -23.0,
+            10.0,
+            -17.0,
+            30.0,
+            -6.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -3175,23 +3730,76 @@
       "preflight": [
         {
           "code": "geometry_in_absorber",
-          "loc": "geometry[#0 lo 1m]"
+          "loc": "geometry[#0 lo 1m]",
+          "numbers": [
+            0.0,
+            -1.0,
+            1.0,
+            0.0,
+            61.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_geometry_in_cpml"
         },
         {
           "code": "lossless_q",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1.0,
+            5.0,
+            2.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_lossless_resonator_in_absorber"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            9.4,
+            4.0,
+            16.0,
+            1.0,
+            20.0,
+            5.0,
+            21.0,
+            17.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            9.4,
+            4.0,
+            16.0,
+            1.0,
+            20.0,
+            5.0,
+            21.0,
+            17.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            9.4,
+            4.0,
+            16.0,
+            1.0,
+            20.0,
+            5.0,
+            21.0,
+            17.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         }
       ]
     },
@@ -3262,6 +3870,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -3338,6 +3952,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -3499,6 +4119,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -3509,23 +4135,70 @@
       "preflight": [
         {
           "code": "geometry_in_absorber",
-          "loc": "geometry[#0 hi 920mm]"
+          "loc": "geometry[#0 hi 920mm]",
+          "numbers": [
+            0.0,
+            1.0,
+            920.0,
+            80.0,
+            61.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_geometry_in_cpml"
         },
         {
           "code": "lossless_q",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1.0,
+            5.0,
+            2.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_lossless_resonator_in_absorber"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            12.5,
+            4.0,
+            12.0,
+            1.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            12.5,
+            4.0,
+            12.0,
+            1.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            12.5,
+            4.0,
+            12.0,
+            1.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         }
       ]
     },
@@ -3596,6 +4269,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -3672,6 +4351,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -3947,6 +4632,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -4159,6 +4850,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -4434,6 +5131,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -4636,6 +5339,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -4646,15 +5355,45 @@
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            2.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.005,
+            0.006,
+            0.005,
+            0.001,
+            544.0,
+            314.0,
+            319.0,
+            556.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.011,
+            0.006,
+            0.005,
+            0.001,
+            544.0,
+            314.0,
+            319.0,
+            556.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
         }
       ]
     },
@@ -5103,6 +5842,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -5113,63 +5858,221 @@
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0,
+            1.0,
+            931.0,
+            1.2,
+            1.5
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0,
+            1.0,
+            931.0,
+            1.2,
+            1.5
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0,
+            1.0,
+            931.0,
+            1.2,
+            1.5
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0,
+            1.0,
+            931.0,
+            1.2,
+            1.5
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0,
+            1.0,
+            931.0,
+            1.2,
+            1.5
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0,
+            1.0,
+            931.0,
+            1.2,
+            1.5
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1000.0,
+            2.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            8.674e-10,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            8.674e-10,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            8.674e-10,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            8.674e-10,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            500.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "pec_box_one_cell",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            4.0,
+            931.0,
+            1.2,
+            2.0,
+            4.5,
+            5.0,
+            4.5,
+            5.0,
+            5.0,
+            5.5,
+            5.0,
+            5.5,
+            3.0,
+            5.5,
+            6.0,
+            5.5,
+            6.0,
+            5.0,
+            5.5,
+            5.0,
+            5.5,
+            4.0,
+            5.0,
+            5.5,
+            5.0,
+            5.5,
+            4.5,
+            5.0,
+            4.5,
+            5.0,
+            5.0,
+            5.0,
+            5.5,
+            5.0,
+            5.5,
+            5.5,
+            6.0,
+            5.5,
+            6.0,
+            6.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_realization"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.005,
+            0.005,
+            0.0035,
+            0.0005,
+            544.0,
+            314.0,
+            319.0,
+            556.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
         }
       ]
     },
@@ -5312,6 +6215,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -5322,23 +6231,97 @@
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            0.5,
+            2.0,
+            0.0,
+            5.0,
+            175.0,
+            3.5,
+            0.0,
+            17.0,
+            175.0,
+            1.03,
+            931.0,
+            1.1,
+            1.3,
+            703.0,
+            8.0,
+            -10.0,
+            50.0,
+            50.0,
+            2.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            931.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
         },
         {
           "code": "sheet_effective_size",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            1.0,
+            2.0,
+            0.0,
+            5.0,
+            5.0,
+            5.35,
+            7.0,
+            0.0,
+            17.0,
+            17.0,
+            17.35,
+            2.06,
+            0.35
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.008,
+            0.01,
+            0.0,
+            0.001,
+            544.0,
+            314.0,
+            319.0,
+            556.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.024,
+            0.01,
+            0.0,
+            0.001,
+            544.0,
+            314.0,
+            319.0,
+            556.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
         }
       ]
     },
@@ -5481,6 +6464,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -5491,15 +6480,65 @@
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            0.5,
+            2.0,
+            0.0,
+            5.0,
+            175.0,
+            3.5,
+            0.0,
+            17.0,
+            175.0,
+            1.03,
+            931.0,
+            1.1,
+            1.3,
+            703.0,
+            8.0,
+            -10.0,
+            50.0,
+            50.0,
+            2.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            931.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
         },
         {
           "code": "sheet_effective_size",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            1.0,
+            2.0,
+            0.0,
+            5.0,
+            5.0,
+            5.35,
+            7.0,
+            0.0,
+            17.0,
+            17.0,
+            17.35,
+            2.06,
+            0.35
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -5643,6 +6682,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -5711,27 +6756,101 @@
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            10.2,
+            3.38,
+            30.0,
+            531.2,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            10.9,
+            3.38,
+            30.0,
+            500.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            10.9,
+            3.38,
+            30.0,
+            500.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "nu_grading_reaches_absorber",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            6.0,
+            0.0667,
+            0.0,
+            6.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_multiband_grading"
         },
         {
           "code": "thin_absorber",
-          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi"
+          "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+          "numbers": [
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            6.0,
+            1.0,
+            1272.0,
+            1346.0,
+            6.0,
+            -38.0,
+            2.0,
+            -41.0,
+            10.0,
+            -32.0,
+            30.0,
+            -13.0,
+            1.0,
+            8.0,
+            16.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         },
         {
           "code": "wire_port_dead_cell_classification_unavailable",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.008,
+            0.009,
+            0.004,
+            0.0015,
+            544.0,
+            314.0,
+            319.0,
+            556.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_port_inside_pec"
         }
       ]
     },
@@ -5996,6 +7115,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "MSL port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -6006,11 +7131,24 @@
       "preflight": [
         {
           "code": "lossless_q",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1.0,
+            5.0,
+            2.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_lossless_resonator_in_absorber"
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            931.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
         }
       ]
     },
@@ -6280,6 +7418,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -6290,19 +7434,59 @@
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            10.7,
+            4.3,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            10.7,
+            4.3,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            15.0,
+            2.2,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            15.0,
+            2.2,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         }
       ]
     },
@@ -6572,6 +7756,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -6582,19 +7772,59 @@
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            10.7,
+            4.3,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            10.7,
+            4.3,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            15.0,
+            2.2,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            15.0,
+            2.2,
+            12.0,
+            1.125,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         }
       ]
     },
@@ -6665,6 +7895,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -6741,6 +7977,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -6817,6 +8059,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -6982,6 +8230,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -6992,15 +8246,45 @@
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            12.5,
+            2.25,
+            8.0,
+            2.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            12.5,
+            2.25,
+            8.0,
+            2.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            12.5,
+            2.25,
+            8.0,
+            2.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         }
       ]
     },
@@ -7160,6 +8444,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -7170,15 +8460,45 @@
       "preflight": [
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            14.1,
+            2.25,
+            7.066,
+            2.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            14.1,
+            2.25,
+            7.066,
+            2.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         },
         {
           "code": "mesh_resolution",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            14.1,
+            2.25,
+            7.066,
+            2.0,
+            15.0,
+            1.0
+          ],
+          "severity": "warning",
+          "source": "_validate_mesh_quality"
         }
       ]
     },
@@ -7249,6 +8569,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -7397,6 +8723,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -7407,15 +8739,65 @@
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            0.5,
+            2.0,
+            0.0,
+            5.0,
+            175.0,
+            3.5,
+            0.0,
+            17.0,
+            175.0,
+            1.03,
+            931.0,
+            1.1,
+            1.3,
+            703.0,
+            8.0,
+            -10.0,
+            50.0,
+            50.0,
+            2.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            931.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
         },
         {
           "code": "sheet_effective_size",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            1.0,
+            2.0,
+            0.0,
+            5.0,
+            5.0,
+            5.35,
+            7.0,
+            0.0,
+            17.0,
+            17.0,
+            17.35,
+            2.06,
+            0.35
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -7558,6 +8940,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -7568,15 +8956,65 @@
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            0.5,
+            2.0,
+            0.0,
+            5.0,
+            175.0,
+            3.5,
+            0.0,
+            17.0,
+            175.0,
+            1.03,
+            931.0,
+            1.1,
+            1.3,
+            703.0,
+            8.0,
+            -10.0,
+            50.0,
+            50.0,
+            2.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            931.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
         },
         {
           "code": "sheet_effective_size",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            1.0,
+            2.0,
+            0.0,
+            5.0,
+            5.0,
+            5.35,
+            7.0,
+            0.0,
+            17.0,
+            17.0,
+            17.35,
+            2.06,
+            0.35
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -7719,6 +9157,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -7729,19 +9173,75 @@
       "preflight": [
         {
           "code": "off_lattice_design_edges",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            0.5,
+            2.0,
+            0.0,
+            5.0,
+            175.0,
+            3.5,
+            0.0,
+            21.0,
+            175.0,
+            0.83,
+            931.0,
+            1.1,
+            1.3,
+            703.0,
+            8.0,
+            -10.0,
+            50.0,
+            50.0,
+            2.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            931.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
         },
         {
           "code": "refplane_partial_optin",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1.0,
+            2.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_refplane_placement"
         },
         {
           "code": "sheet_effective_size",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            1.0,
+            2.0,
+            0.0,
+            5.0,
+            5.0,
+            5.35,
+            7.0,
+            0.0,
+            21.0,
+            21.0,
+            21.35,
+            1.67,
+            0.35
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -7884,6 +9384,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -7894,15 +9400,77 @@
       "preflight": [
         {
           "code": "ntff_small_ground_plane",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            141.6,
+            141.6,
+            149.9,
+            224.8,
+            224.8,
+            149.9,
+            83.3,
+            83.3,
+            0.83,
+            0.83,
+            3.0,
+            1.0,
+            1.4
+          ],
+          "severity": "warning",
+          "source": "_validate_ntff_small_ground_plane"
         },
         {
           "code": "off_lattice_design_edges",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            0.5,
+            2.0,
+            0.0,
+            83.28,
+            2.915,
+            3.5,
+            0.0,
+            83.28,
+            2.915,
+            3.5,
+            931.0,
+            1.1,
+            1.3,
+            703.0,
+            8.0,
+            -10.0,
+            50.0,
+            50.0,
+            2.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "sheet_effective_size",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            2.0,
+            1.0,
+            2.0,
+            0.0,
+            83.28,
+            83.28,
+            89.1,
+            7.0,
+            0.0,
+            83.28,
+            83.28,
+            89.1,
+            7.0,
+            0.35
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         }
       ]
     },
@@ -7978,6 +9546,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "lumped/wire port",
+                  "count": 1
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -8200,6 +9774,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "MSL port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],
@@ -8210,23 +9790,98 @@
       "preflight": [
         {
           "code": "lossless_q",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            4350.0,
+            1.0,
+            5.0,
+            2.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_lossless_resonator_in_absorber"
         },
         {
           "code": "msl_port_geometry",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            0.0,
+            2.0,
+            254.0,
+            2.0,
+            0.0,
+            254.0,
+            254.0,
+            2.0,
+            254.0,
+            4.0,
+            63.5,
+            0.0,
+            254.0,
+            0.0,
+            802.0
+          ],
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
         },
         {
           "code": "msl_port_geometry",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1.0,
+            2.0,
+            254.0,
+            2.0,
+            0.0,
+            254.0,
+            254.0,
+            2.0,
+            254.0,
+            4.0,
+            63.5,
+            0.0,
+            254.0,
+            0.0,
+            802.0
+          ],
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
         },
         {
           "code": "off_lattice_design_edges",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            1.0,
+            0.5,
+            1.0,
+            1.0,
+            600.0,
+            47.55,
+            7.92,
+            931.0,
+            1.1,
+            1.3,
+            703.0,
+            8.0,
+            -10.0,
+            50.0,
+            50.0,
+            2.0,
+            1.0,
+            1.0,
+            0.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_off_lattice_design_edges"
         },
         {
           "code": "pec_faces_finite_pec",
-          "loc": null
+          "loc": null,
+          "numbers": [
+            931.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_pec_faces_with_finite_pec"
         }
       ]
     },
@@ -8297,6 +9952,12 @@
           "axes": {},
           "findings": [
             {
+              "entities": [
+                {
+                  "class": "waveguide port",
+                  "count": 2
+                }
+              ],
               "kind": "out-of-scope"
             }
           ],

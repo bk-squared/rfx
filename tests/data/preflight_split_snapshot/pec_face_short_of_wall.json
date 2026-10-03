@@ -4,30 +4,99 @@
       {
         "code": "pec_faces_finite_pec",
         "loc": null,
+        "numbers": [
+          931.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_faces_with_finite_pec"
       },
       {
         "code": "no_sources",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       },
       {
         "code": "off_lattice_design_edges",
         "loc": null,
+        "numbers": [
+          2.0,
+          0.5,
+          2.0,
+          0.0,
+          10.16,
+          160.0,
+          1.57,
+          0.0,
+          22.86,
+          140.0,
+          0.61,
+          931.0,
+          1.1,
+          1.3,
+          703.0,
+          8.0,
+          -10.0,
+          50.0,
+          50.0,
+          3.0,
+          1.0,
+          0.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "pec_face_short_of_domain_wall",
         "loc": null,
+        "numbers": [
+          1.0,
+          0.0,
+          10.0,
+          10.0,
+          11.0,
+          11.0,
+          1.0,
+          931.0,
+          1.1,
+          11.0,
+          2026.0,
+          -9.0,
+          -7.0,
+          21.0,
+          0.22,
+          -0.33,
+          11.0,
+          0.0146,
+          0.056,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_face_short_of_domain_wall"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi",
+        "numbers": [
+          6.0,
+          6.0,
+          1.0,
+          1272.0,
+          1346.0,
+          6.0,
+          -38.0,
+          2.0,
+          -41.0,
+          10.0,
+          -32.0,
+          30.0,
+          -13.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

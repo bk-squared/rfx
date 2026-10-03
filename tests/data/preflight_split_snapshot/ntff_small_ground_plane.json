@@ -4,72 +4,218 @@
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          2.5,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "settling_witness_will_be_absent",
         "loc": null,
+        "numbers": [
+          885.0,
+          1090.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_settling_witness_present"
       },
       {
         "code": "sheet_effective_size",
         "loc": null,
+        "numbers": [
+          4.0,
+          1.0,
+          4.0,
+          1.0,
+          29.5,
+          25.0,
+          26.75,
+          -9.32,
+          1.0,
+          38.0,
+          35.0,
+          36.75,
+          -3.29,
+          0.0,
+          55.0,
+          55.0,
+          56.75,
+          3.18,
+          0.0,
+          60.0,
+          60.0,
+          61.75,
+          2.92,
+          0.35
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "off_lattice_design_edges",
         "loc": null,
+        "numbers": [
+          4.0,
+          0.5,
+          4.0,
+          1.0,
+          29.5,
+          1.375,
+          4.66,
+          1.0,
+          38.0,
+          625.0,
+          1.64,
+          0.0,
+          55.0,
+          875.0,
+          1.59,
+          0.0,
+          60.0,
+          875.0,
+          1.46,
+          931.0,
+          1.1,
+          1.3,
+          703.0,
+          8.0,
+          -10.0,
+          50.0,
+          50.0,
+          4.0,
+          2.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "numbers": [
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          1.0,
+          1272.0,
+          1346.0,
+          4.0,
+          -20.0,
+          2.0,
+          -23.0,
+          10.0,
+          -17.0,
+          30.0,
+          -6.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       },
       {
         "code": "ntff_near_field",
         "loc": null,
+        "numbers": [
+          28.0,
+          4.0,
+          31.23,
+          2.4,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_ntff_inverse_design"
       },
       {
         "code": "ntff_near_field",
         "loc": null,
+        "numbers": [
+          28.0,
+          4.0,
+          31.23,
+          2.4,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_ntff_inverse_design"
       },
       {
         "code": "ntff_near_field",
         "loc": null,
+        "numbers": [
+          28.0,
+          4.0,
+          31.23,
+          2.4,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_ntff_inverse_design"
       },
       {
         "code": "ntff_near_field",
         "loc": null,
+        "numbers": [
+          28.0,
+          4.0,
+          31.23,
+          2.4,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_ntff_inverse_design"
       },
       {
         "code": "ntff_near_field",
         "loc": null,
+        "numbers": [
+          6.0,
+          4.0,
+          31.23,
+          2.4,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_ntff_inverse_design"
       },
       {
         "code": "ntff_near_field",
         "loc": null,
+        "numbers": [
+          25.5,
+          4.0,
+          31.23,
+          2.4,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_ntff_inverse_design"
       },
       {
         "code": "ntff_small_ground_plane",
         "loc": null,
+        "numbers": [
+          40.0,
+          40.0,
+          10.0,
+          100.0,
+          95.0,
+          10.0,
+          60.0,
+          55.0,
+          0.48,
+          0.44,
+          2.4,
+          1.0,
+          1.4
+        ],
         "severity": "warning",
         "source": "_validate_ntff_small_ground_plane"
       }

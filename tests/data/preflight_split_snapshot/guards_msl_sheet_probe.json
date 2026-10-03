@@ -4,36 +4,132 @@
       {
         "code": "absorber_proximity",
         "loc": null,
+        "numbers": [
+          0.0005,
+          0.0025,
+          0.000127,
+          2.0,
+          254.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_absorber_placement"
       },
       {
         "code": "lossless_q",
         "loc": null,
+        "numbers": [
+          4350.0,
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
         "code": "off_lattice_design_edges",
         "loc": null,
+        "numbers": [
+          1.0,
+          0.5,
+          1.0,
+          1.0,
+          600.0,
+          41.55,
+          6.92,
+          931.0,
+          1.1,
+          1.3,
+          703.0,
+          8.0,
+          -10.0,
+          50.0,
+          50.0,
+          2.0,
+          1.0,
+          1.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "conductor_in_thin_absorber",
         "loc": "geometry[#1] x-lo",
+        "numbers": [
+          1.0,
+          0.0,
+          0.0,
+          4.0,
+          801.0,
+          3.0,
+          6.0,
+          0.0,
+          0.00085,
+          8.0,
+          12.0,
+          -44.2,
+          -46.0,
+          6.0,
+          2.0,
+          -42.8,
+          4.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_conductor_in_thin_absorber"
       },
       {
         "code": "conductor_in_thin_absorber",
         "loc": "geometry[#1] x-hi",
+        "numbers": [
+          1.0,
+          0.0,
+          0.0,
+          4.0,
+          801.0,
+          3.0,
+          6.0,
+          0.0,
+          0.00085,
+          8.0,
+          12.0,
+          -44.2,
+          -46.0,
+          6.0,
+          2.0,
+          -42.8,
+          4.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_conductor_in_thin_absorber"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "numbers": [
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          4.0,
+          1.0,
+          1272.0,
+          1346.0,
+          4.0,
+          -20.0,
+          2.0,
+          -23.0,
+          10.0,
+          -17.0,
+          30.0,
+          -6.0,
+          1.0,
+          8.0,
+          16.0,
+          801.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

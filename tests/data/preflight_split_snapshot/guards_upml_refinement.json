@@ -4,6 +4,7 @@
       {
         "code": "upml_refinement",
         "loc": null,
+        "numbers": [],
         "severity": "error",
         "source": "_validate_cfg_upml_refinement"
       }

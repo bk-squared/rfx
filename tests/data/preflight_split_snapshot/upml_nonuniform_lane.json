@@ -4,30 +4,80 @@
       {
         "code": "upml_nonuniform_lane_unsupported",
         "loc": null,
+        "numbers": [
+          0.0,
+          4.0,
+          4.0,
+          3.0,
+          1.0,
+          0.0,
+          680.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_upml_nonuniform_lane"
       },
       {
         "code": "unresolved_pulse",
         "loc": "waveform GaussianPulse at (0.002, 0.002, 0.0015)",
+        "numbers": [
+          6.37e-21,
+          3.0,
+          9.53e-13,
+          6.68e-09,
+          386.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_unresolved_pulse"
       },
       {
         "code": "nu_grading_reaches_absorber",
         "loc": null,
+        "numbers": [
+          6.0,
+          0.07,
+          0.0,
+          6.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_multiband_grading"
       },
       {
         "code": "nu_grading_reaches_absorber",
         "loc": null,
+        "numbers": [
+          6.0,
+          0.07,
+          0.0,
+          6.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_multiband_grading"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "numbers": [
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1272.0,
+          1346.0,
+          6.0,
+          -38.0,
+          2.0,
+          -41.0,
+          10.0,
+          -32.0,
+          30.0,
+          -13.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

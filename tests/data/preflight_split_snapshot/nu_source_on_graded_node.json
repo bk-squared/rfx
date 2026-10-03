@@ -4,18 +4,64 @@
       {
         "code": "source_on_graded_node",
         "loc": null,
+        "numbers": [
+          0.006,
+          0.006,
+          0.004,
+          4.0,
+          200.0,
+          500.0,
+          1.5,
+          1.0,
+          1.5,
+          1.5,
+          672.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_source_on_graded_node"
       },
       {
         "code": "nu_grading_ratio_beyond_validated_cap",
         "loc": null,
+        "numbers": [
+          3.0,
+          1.4,
+          1.4,
+          -54.0,
+          30.0,
+          2.0,
+          -44.0,
+          2.0,
+          1.4
+        ],
         "severity": "warning",
         "source": "_validate_cfg_multiband_grading"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "numbers": [
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1272.0,
+          1346.0,
+          6.0,
+          -38.0,
+          2.0,
+          -41.0,
+          10.0,
+          -32.0,
+          30.0,
+          -13.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

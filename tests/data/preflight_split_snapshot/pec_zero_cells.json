@@ -4,12 +4,22 @@
       {
         "code": "no_sources",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       },
       {
         "code": "pec_zero_cells",
         "loc": null,
+        "numbers": [
+          0.0,
+          369.0,
+          0.0,
+          0.5,
+          0.87,
+          931.0,
+          1.5
+        ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"
       }

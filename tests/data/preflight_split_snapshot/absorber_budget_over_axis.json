@@ -4,12 +4,40 @@
       {
         "code": "absorber_budget_exceeds_axis",
         "loc": null,
+        "numbers": [
+          16.0,
+          10.0,
+          20.0,
+          2.998,
+          1.0,
+          0.0,
+          2.0,
+          647.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_absorber_budget_vs_grid"
       },
       {
         "code": "thin_absorber",
         "loc": "z_hi",
+        "numbers": [
+          2.0,
+          4.0,
+          1.0,
+          1272.0,
+          1346.0,
+          4.0,
+          -20.0,
+          2.0,
+          -23.0,
+          10.0,
+          -17.0,
+          30.0,
+          -6.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

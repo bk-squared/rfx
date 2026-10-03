@@ -4,6 +4,11 @@
       {
         "code": "ad_memory",
         "loc": null,
+        "numbers": [
+          0.72,
+          85.0,
+          0.5
+        ],
         "severity": "warning",
         "source": null
       }

@@ -4,6 +4,17 @@
       {
         "code": "nu_grading_ratio_beyond_validated_cap",
         "loc": null,
+        "numbers": [
+          2.0,
+          1.4,
+          1.4,
+          -54.0,
+          30.0,
+          2.0,
+          -44.0,
+          2.0,
+          1.4
+        ],
         "severity": "warning",
         "source": "_validate_cfg_multiband_grading"
       }

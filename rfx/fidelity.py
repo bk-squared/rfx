@@ -919,6 +919,7 @@ def fidelity_report(sim, print_report: bool = True):
     # because silence reads as coverage (crossval sweep: cv21 and the ports
     # tutorial were 100% port-materialized geometry and reported "0 findings").
     unaudited = []
+    unaudited_entities = []
     for attr, label in (("_ports", "lumped/wire port"),
                         ("_msl_ports", "MSL port"),
                         ("_waveguide_ports", "waveguide port"),
@@ -929,11 +930,13 @@ def fidelity_report(sim, print_report: bool = True):
         n = len(getattr(sim, attr, ()) or ())
         if n:
             unaudited.append(f"{n} {label}(s)")
+            unaudited_entities.append({"count": n, "class": label})
     if unaudited:
         report.append(dict(
             entity="NOT AUDITED by this report",
             findings=[dict(
                 kind="out-of-scope",
+                entities=unaudited_entities,
                 detail="; ".join(unaudited) + " — these declare geometry "
                        "and/or materials that this report does not walk "
                        "(port pins, shields, end caps, source cells)",

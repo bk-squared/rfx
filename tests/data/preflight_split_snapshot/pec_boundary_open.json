@@ -4,18 +4,30 @@
       {
         "code": "settling_witness_will_be_absent",
         "loc": null,
+        "numbers": [
+          885.0,
+          1090.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_settling_witness_present"
       },
       {
         "code": "pec_boundary_open",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_pec_boundary_open_structure"
       },
       {
         "code": "ntff_near_field",
         "loc": null,
+        "numbers": [
+          10.0,
+          2.0,
+          14.99,
+          10.0,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_ntff_inverse_design"
       }

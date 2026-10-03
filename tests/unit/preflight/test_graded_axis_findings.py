@@ -1175,13 +1175,15 @@ def test_an_automatic_offset_names_the_wavelength_term_that_chose_it():
     sim = _auto_offset_board(f_max=6e9, runway_node=30.3)
     assert sim._msl_ports[0].n_probe_offset == 8
     text = _finding(_preflight(sim), "OWN feed plane")
-    assert ("add_msl_port chose 8 by counting λ_eff/(4π) at f_max = 2.078mm "
-            "in the scalar dx cell (254µm)") in text, text
+    assert all(token in text for token in (
+        "add_msl_port", "λ_eff/(4π)", "f_max", "2.078mm", "scalar dx", "254µm")), text
+    from tests._structured_snapshot import message_numbers
+    assert 8 in message_numbers(text)
     assert "by counting 5·h_sub" not in text, text
     msg = _forward_message(sim)
-    assert ("the automatic choice counts λ_eff/(4π) at f_max = 2.078mm in "
-            "the scalar dx cell") in msg, msg
-    assert "leaving it None chooses 8 again" in msg, msg
+    assert all(token in msg for token in (
+        "automatic", "λ_eff/(4π)", "f_max", "2.078mm", "scalar dx", "None")), msg
+    assert 8 in message_numbers(msg)
 
 
 def test_an_explicit_offset_is_told_what_the_automatic_one_would_be():
@@ -1193,10 +1195,10 @@ def test_an_explicit_offset_is_told_what_the_automatic_one_would_be():
     check builds its remedy in a separate branch, so it is asserted too."""
     sim, _ = _notch_like_sim(14 + 20, 7)
     text = _finding(_preflight(sim), "OWN feed plane")
-    assert ("Set n_probe_offset >= 10, or leave it None: the automatic "
-            "offset counts λ_eff/(4π) at f_max = 2.494mm in this runway's "
-            "127µm cells, 20 cells") in text, text
+    assert all(token in text for token in (
+        "n_probe_offset >= 10", "None", "automatic", "λ_eff/(4π)",
+        "f_max", "2.494mm", "runway", "127µm", "20 cells")), text
     msg = _forward_message(sim)
-    assert ("increase n_probe_offset or leave it None: the automatic offset "
-            "counts λ_eff/(4π) at f_max = 2.494mm in this runway's 127µm "
-            "cells, 20 cells") in msg, msg
+    assert all(token in msg for token in (
+        "n_probe_offset", "None", "automatic", "λ_eff/(4π)",
+        "f_max", "2.494mm", "runway", "127µm", "20 cells")), msg

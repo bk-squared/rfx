@@ -4,6 +4,7 @@
       {
         "code": "no_sources",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       }

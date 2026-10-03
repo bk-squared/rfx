@@ -4,6 +4,9 @@
       {
         "code": "nonuniform_tfsf",
         "loc": null,
+        "numbers": [
+          0.0
+        ],
         "severity": "error",
         "source": "_validate_cfg_nonuniform_limitations"
       }

@@ -4,18 +4,49 @@
       {
         "code": "absorber_proximity",
         "loc": null,
+        "numbers": [
+          0.003,
+          0.003,
+          0.0015,
+          2.0,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_absorber_placement"
       },
       {
         "code": "thin_conductor_leontovich_thin_film",
         "loc": null,
+        "numbers": [
+          0.0,
+          0.0,
+          35.0,
+          3.0,
+          151.0,
+          0.0,
+          10000000000.0,
+          50.33,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_conductor_surface_impedance"
       },
       {
         "code": "thin_conductor_leontovich_band_offset",
         "loc": null,
+        "numbers": [
+          0.0,
+          0.0,
+          0.0,
+          10000000000.0,
+          20.0,
+          5000000000.0,
+          0.0,
+          0.0,
+          -1.0,
+          29.3,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_conductor_surface_impedance"
       }

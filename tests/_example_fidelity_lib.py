@@ -1101,7 +1101,8 @@ def digest_preflight(report) -> list[dict]:
     rows = [issue.to_dict() for issue in report]
     rows = [d for d in rows
             if not (d["code"] == "uncoded" and d["severity"] != "error")]
-    rows = [{"code": d["code"], "loc": d["loc"]} for d in rows]
+    from tests._structured_snapshot import without_prose
+    rows = [without_prose(d) for d in rows]
     rows.sort(key=lambda d: (d["code"], str(d["loc"])))
     return rows
 

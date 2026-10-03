@@ -4,12 +4,18 @@
       {
         "code": "no_sources",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       },
       {
         "code": "pec_realization_refused",
         "loc": null,
+        "numbers": [
+          0.0,
+          931.0,
+          1.5
+        ],
         "severity": "error",
         "source": "_validate_cfg_pec_realization"
       }

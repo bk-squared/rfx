@@ -4,84 +4,213 @@
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          300.0,
+          3.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          300.0,
+          3.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          200.0,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          100.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          300.0,
+          3.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          200.0,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          100.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          300.0,
+          3.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "mesh_resolution",
         "loc": null,
+        "numbers": [
+          200.0,
+          2.0
+        ],
         "severity": "warning",
         "source": "_validate_mesh_quality"
       },
       {
         "code": "lossless_q",
         "loc": null,
+        "numbers": [
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       },
       {
         "code": "sheet_effective_size",
         "loc": null,
+        "numbers": [
+          4.0,
+          1.0,
+          4.0,
+          5.0,
+          600.0,
+          600.0,
+          670.0,
+          11.67,
+          1.0,
+          600.0,
+          600.0,
+          635.0,
+          5.83,
+          4.0,
+          1.3,
+          1.3,
+          1.335,
+          2.69,
+          3.0,
+          1.3,
+          1.3,
+          1.335,
+          2.69,
+          0.35
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "off_lattice_design_edges",
         "loc": null,
+        "numbers": [
+          4.0,
+          0.5,
+          4.0,
+          5.0,
+          600.0,
+          35.0,
+          5.83,
+          1.0,
+          600.0,
+          35.0,
+          5.83,
+          4.0,
+          1.3,
+          35.0,
+          2.69,
+          3.0,
+          1.3,
+          35.0,
+          2.69,
+          931.0,
+          1.1,
+          1.3,
+          703.0,
+          8.0,
+          -10.0,
+          50.0,
+          50.0,
+          10.0,
+          5.0,
+          5.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
         "code": "msl_port_geometry",
         "loc": null,
+        "numbers": [
+          0.0,
+          600.0,
+          300.0,
+          600.0,
+          800.0,
+          600.0,
+          2.0,
+          0.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_check_msl_port_geometry"
       },
       {
         "code": "msl_port_geometry",
         "loc": null,
+        "numbers": [
+          0.0,
+          3.0,
+          300.0,
+          3.0,
+          2500.0,
+          2800.0,
+          300.0,
+          3.0,
+          300.0,
+          4.0,
+          75.0,
+          2500.0,
+          2800.0,
+          0.0,
+          802.0
+        ],
         "severity": "warning",
         "source": "_check_msl_port_geometry"
       }
@@ -95,6 +224,7 @@
       {
         "code": "sparam_routing_msl",
         "loc": null,
+        "numbers": [],
         "severity": "error",
         "source": "preflight_sparameters"
       }

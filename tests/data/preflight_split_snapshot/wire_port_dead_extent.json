@@ -4,24 +4,82 @@
       {
         "code": "absorber_proximity",
         "loc": null,
+        "numbers": [
+          0.008,
+          0.005,
+          0.0,
+          2.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_absorber_placement"
       },
       {
         "code": "wire_port_dead_extent_cells",
         "loc": null,
+        "numbers": [
+          0.008,
+          0.005,
+          0.0,
+          0.0015,
+          3.0,
+          1.0,
+          2.0,
+          3.0,
+          318.0,
+          50.0,
+          2.0,
+          318.0,
+          3.0,
+          0.0,
+          33.3,
+          313.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_port_inside_pec"
       },
       {
         "code": "pec_box_one_cell",
         "loc": null,
+        "numbers": [
+          1.0,
+          931.0,
+          1.2,
+          0.0,
+          1.0,
+          1.5,
+          1.0,
+          1.5,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_pec_realization"
       },
       {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
+        "numbers": [
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          6.0,
+          1.0,
+          1272.0,
+          1346.0,
+          6.0,
+          -38.0,
+          2.0,
+          -41.0,
+          10.0,
+          -32.0,
+          30.0,
+          -13.0,
+          1.0,
+          8.0,
+          16.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
       }

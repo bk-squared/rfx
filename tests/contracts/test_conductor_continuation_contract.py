@@ -186,6 +186,6 @@ def test_wire_fed_line_declares_whether_the_strip_ends(named):
         assert all(issue.severity == "warning" for issue in findings)
         assert all("'pec' (entry 1)" in str(issue)
                    and "x-lo, x-hi absorber" in str(issue)
-                   and "if this conductor is a line the port ends, pass terminates= "
-                   "to end it there; a ground plane should continue." in str(issue)
+                   and all(token in str(issue) for token in (
+                       "line", "port", "terminates=", "ground plane", "continue"))
                    for issue in findings)

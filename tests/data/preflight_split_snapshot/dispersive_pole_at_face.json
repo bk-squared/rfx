@@ -4,12 +4,26 @@
       {
         "code": "no_sources",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_no_sources"
       },
       {
         "code": "dispersive_pole_at_absorber_face",
         "loc": "geometry[#0 x-lo+x-hi+y-lo Q=60]",
+        "numbers": [
+          0.0,
+          60.0,
+          627.0,
+          627.0,
+          808.0,
+          636.0,
+          636.0,
+          0.0,
+          808.0,
+          808.0,
+          1.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_dispersive_pole_at_absorber_face"
       }

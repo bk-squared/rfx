@@ -4,6 +4,7 @@
       {
         "code": "subgrid_unsupported_feature",
         "loc": null,
+        "numbers": [],
         "severity": "warning",
         "source": "_validate_cfg_subgrid_limitations"
       }

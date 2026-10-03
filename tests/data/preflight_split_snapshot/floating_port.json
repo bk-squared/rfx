@@ -4,12 +4,25 @@
       {
         "code": "floating_port",
         "loc": null,
+        "numbers": [
+          0.01,
+          0.01,
+          0.0025,
+          4.4,
+          71.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_floating_single_cell_port"
       },
       {
         "code": "lossless_q",
         "loc": null,
+        "numbers": [
+          1.0,
+          5.0,
+          2.0,
+          0.0
+        ],
         "severity": "warning",
         "source": "_validate_cfg_lossless_resonator_in_absorber"
       }
