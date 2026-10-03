@@ -1654,6 +1654,22 @@ class _PreflightMixin:
         """Report the same refusal from the production conductor assembly."""
         if self._solver != "adi" or self._mode not in ("3d", "2d_tmz"):
             return
+        # #1373: the same realized-material test lane admission applies.
+        # Reported here, beside the other ADI geometry refusal, so the
+        # registry sequence is unchanged.
+        from rfx.runners._admission import _adi_homogeneous
+        if self._geometry and not self._uses_nonuniform_mesh:
+            try:
+                homogeneous = _adi_homogeneous(self, None)
+            except Exception:   # assembly errors are reported by their own checks
+                homogeneous = True
+            if not homogeneous:
+                from rfx.adi import ADI_INTERFACE_MESSAGE
+                _w.warn(PreflightErrorWarning(
+                    ADI_INTERFACE_MESSAGE,
+                    code="adi_material_interface_unsupported",
+                    source="_validate_cfg_adi_interior_pec",
+                ), stacklevel=2)
         if not self._geometry and not self._thin_conductors:
             return
         from rfx.adi import ADI_INTERIOR_PEC_MESSAGE
