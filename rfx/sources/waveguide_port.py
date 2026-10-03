@@ -1439,9 +1439,11 @@ def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
 
     # Write per-step modal V/I into the time-series carry. The carry
     # length is fixed at trace time (= dft_total_steps); ``state.step``
-    # is a JAX scalar — clip to avoid out-of-bounds writes if the
-    # simulation runs longer than the allocated record buffer (XLA
-    # dynamic-update-slice clamps anyway, but be explicit).
+    # is a JAX scalar and has already been advanced by the E update, so
+    # the last scan step writes one slot past the buffer. That write is
+    # DROPPED, not clamped: clamping overwrote the last slot with the next
+    # step's sample, so the record's last sample depended on how long the
+    # run was.
     #
     # Also stamp ``cfg.dt`` from the scan's authoritative ``dt`` so the
     # post-scan rect DFT (``_extract_global_waves_from_time_series``)
@@ -1449,20 +1451,21 @@ def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
     # via the low-level ``init_waveguide_port`` without passing ``dt=``
     # (legacy path used by ``tests/unit/ports/test_waveguide_port.py`` Python loops).
     n_t = cfg.v_probe_t.shape[0]
-    safe_step = jnp.clip(jnp.asarray(state.step, dtype=jnp.int32), 0, n_t - 1)
+    step = jnp.asarray(state.step, dtype=jnp.int32)
     return cfg._replace(
         dt=float(dt),
-        v_probe_t=cfg.v_probe_t.at[safe_step].set(
-            jnp.asarray(v_probe, cfg.v_probe_t.dtype)),
-        v_ref_t=cfg.v_ref_t.at[safe_step].set(
-            jnp.asarray(v_ref, cfg.v_ref_t.dtype)),
-        i_probe_t=cfg.i_probe_t.at[safe_step].set(
-            jnp.asarray(i_probe, cfg.i_probe_t.dtype)),
-        i_ref_t=cfg.i_ref_t.at[safe_step].set(
-            jnp.asarray(i_ref, cfg.i_ref_t.dtype)),
-        v_inc_t=cfg.v_inc_t.at[safe_step].set(
-            jnp.asarray(v_inc, cfg.v_inc_t.dtype)),
-        n_steps_recorded=jnp.maximum(cfg.n_steps_recorded, safe_step + 1),
+        v_probe_t=cfg.v_probe_t.at[step].set(
+            jnp.asarray(v_probe, cfg.v_probe_t.dtype), mode='drop'),
+        v_ref_t=cfg.v_ref_t.at[step].set(
+            jnp.asarray(v_ref, cfg.v_ref_t.dtype), mode='drop'),
+        i_probe_t=cfg.i_probe_t.at[step].set(
+            jnp.asarray(i_probe, cfg.i_probe_t.dtype), mode='drop'),
+        i_ref_t=cfg.i_ref_t.at[step].set(
+            jnp.asarray(i_ref, cfg.i_ref_t.dtype), mode='drop'),
+        v_inc_t=cfg.v_inc_t.at[step].set(
+            jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
+        n_steps_recorded=jnp.maximum(cfg.n_steps_recorded,
+                                     jnp.minimum(step + 1, n_t)),
     )
 
 
