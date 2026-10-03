@@ -1,7 +1,53 @@
-"""Gradient record-length witnesses for analytic records and a lossy PEC cavity.
+"""A gradient converges later in record length than the value it belongs to.
 
-The cavity retains a probe and DFT-plane read bins for its value witness.
-Sensitivities are judged by a separate record-length witness.
+The physics. A resonant structure hit with a pulse rings. Every observable this
+simulator differentiates is a DFT of the record, so if the structure is still
+ringing when the record ends, each bin keeps a leftover term whose phase is
+``(w - w_r) * T``. A parameter that moves the resonance spins that phase, and
+because the phase is proportional to ``T`` the spin lands in the DERIVATIVE
+magnified by the record length while staying small in the VALUE. Measured on
+the cavity below: at 1600 steps the record has decayed 46.7 dB -- a pass on the
+repo's -40 dB settling rule -- the POWER a user reads is converged to 0.399 %,
+and the gradient vector with respect to the fill permittivity is still 11.0 %
+away from its converged value, with its direction turned by cos 0.9989 (the
+worst single element is 16.8 % out). Doubling the record brings the gradient to
+0.12 % and leaves the power where it already was.
+
+Two existing checks do not see this. ``settling_verdict`` scores the end of the
+record against its peak, which is a statement about the value. AD against a
+finite difference agrees at every record length, because both sides
+differentiate the same truncated record.
+
+Mutation evidence for this gate (repo rule: a new gate ships with both arms).
+
+(a) Check disabled -- ``gradient_record_length_witness`` returns
+    ``passed=True`` unconditionally: the fixture test below fails on its RED
+    assertion, since a red arm is what the short record is for.
+
+(b) Helper call kept, defect reintroduced -- the witness still runs both
+    records and still reports, but the verdict is taken from
+    ``worst_value_rel_change`` (the VALUE's relative change) instead of the
+    gradient's. This is the tautology the issue names: the value converges
+    first, so the short 1600-step record reads 0.013 % on the log observable
+    (0.399 % on the power) and passes any sensible tolerance while its
+    gradient is 11.0 % out. Mutation (b) is the one that matters, because it
+    is the check a reader would believe: the helper is called, both records
+    are run, a number is compared to a tolerance, and the answer is wrong.
+    The fixture test's RED assertion is what refuses it.
+
+(c) Only the real part of a complex sensitivity compared -- the state before
+    this review. ``test_complex_observable_compares_the_whole_complex_sensitivity``
+    goes red: the on-pole bin's sensitivity is purely imaginary, so the real
+    part alone reports 0 % where the phasor's sensitivity moved 5.5 %.
+
+(d) The report table's floor taken from the SHORT record only, and (e) taken
+    globally instead of per bin. ``test_the_report_floor_is_per_bin_and_spans_both_records``
+    goes red on (d) at bin 2 (a floor eight decades too small turns a 1e-9
+    element into a 100 % change) and on (e) at bin 1 (a weak bin that really
+    doubled gets damped to 0.1 %).
+
+No mutation is applied by a test here. They are run by hand against the source
+and the literal pytest output is recorded in the pull request.
 """
 
 from __future__ import annotations

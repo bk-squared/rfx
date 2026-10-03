@@ -287,7 +287,16 @@ def compute_lumped_wire_s_matrix_via_scan(
             for rp, _ in raw.get("wire_refplane") or ():
                 pe = eligible[rp.port_index]
                 position = list(pe.position)
-                position[rp.line_axis] += rp.outboard_sign * rp.n_cells_outboard * grid.dx
+                if hasattr(grid, "position_to_index"):
+                    i0 = grid.position_to_index(pe.position)[rp.line_axis]
+                else:
+                    from rfx.nonuniform import position_to_index
+                    i0 = position_to_index(grid, pe.position)[rp.line_axis]
+                widths = np.asarray(grid.cells(rp.line_axis), dtype=np.float64)
+                n_out = int(rp.n_cells_outboard)
+                span = (widths[i0:i0 + n_out] if rp.outboard_sign > 0
+                        else widths[max(i0 - n_out, 0):i0])
+                position[rp.line_axis] += rp.outboard_sign * float(np.sum(span))
                 receivers.append(replace(pe, position=tuple(position)))
             end = simulation_source_end_step(driven_sim, n_steps, grid.dt, receivers, grid=grid)
             settling_runs.append(port_record_witness(
