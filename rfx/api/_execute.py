@@ -5058,6 +5058,17 @@ class _ExecuteMixin:
                     devices=devices,
                 )
             if compute_s_params:
+                _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
+                if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
+                    self._refuse_unsupported_run_kwargs(
+                        "uniform single-wire-port S-parameter", {
+                            "s_param_n_steps": self._s_param_n_steps_off_record(
+                                s_param_n_steps, n_steps, until_decay),
+                        }, instead=None,
+                        reason_overrides={"s_param_n_steps":
+                            "this lane computes S11 with a second full distributed "
+                            "run with all sources on, using the main run's "
+                            "n_steps and source convention"})
                 from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
                 refuse_distributed_lumped_s_pmc(self)
 
@@ -5111,6 +5122,8 @@ class _ExecuteMixin:
                     self, s_param_freqs,
                     n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
                     devices=devices,
+                    **({"_main_wire_record": True} if len(_dist_ports) == 1
+                       and _dist_ports[0].extent is not None else {}),
                 )
                 _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
             _res = self._attach_run_settling_witness(

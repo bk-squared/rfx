@@ -595,7 +595,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("the drive is read in other units, 1/dx² of run_uniform's", wrong="#1266"),
             run_subgridded=carries("inside the refined slab"),
             run_adi=ADI_SOFT_SOURCES,
-            run_distributed=refuses("extended ports refused (#1241)", raises="(extended lumped port)"),
+            run_distributed=carries("uniform live wire drive/load and whole-port S; planes/radius refused"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries("the drive is read in other units, 1/dx² of run_uniform's", wrong="#1266"),
             fwd_distributed_nu=DIST_FWD_PORTS,

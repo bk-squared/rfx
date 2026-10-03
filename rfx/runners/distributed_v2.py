@@ -492,7 +492,7 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
-    Periodic/Bloch boundaries, extended or passive ports, Kerr materials,
+    Periodic/Bloch boundaries, reference-plane or passive ports, Kerr materials,
     lumped RLC elements, MSL ports, subgridding, and surface monitors (flux,
     DFT planes; NTFF on graded meshes). ``tests/contracts/path_disposition.py``
     records the per-path disposition of every Simulation attribute;
@@ -509,16 +509,18 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
     refuse_distributed_periodic(sim, lane=lane, bloch=bloch)
 
     ports = getattr(sim, "_ports", ()) or ()
-    if any(pe.impedance > 0.0 and pe.extent is not None for pe in ports):
+    if any(pe.extent is not None and pe.reference_plane_cells is not None
+           for pe in ports):
         raise NotImplementedError(
-            "add_port(..., impedance>0, extent=...) (extended lumped port) "
-            f"is not supported on the {lane} path; the port would get "
-            "neither a source nor its resistive termination "
-            "(rfx.runners.distributed_v2.run_distributed / "
-            "rfx.runners.distributed.run_distributed port setup). "
-            "Remove extent=... to use a single-cell lumped port, or "
-            f"{single_device_hint}."
-        )
+            "Wire ports with reference_plane_cells are not supported with devices=...; "
+            "the V_ref path needs pre-injection recordings. Use one device.")
+    if any(pe.extent is not None and pe.radius is not None for pe in ports):
+        from rfx.sources.wire_radius import require_radius_support
+        require_radius_support(sim, "run_distributed")
+
+    if any(pe.impedance > 0.0 and pe.extent is not None for pe in ports):
+        from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
+        refuse_distributed_lumped_s_pmc(sim)
 
     if any(not pe.excite for pe in ports):
         raise NotImplementedError(
@@ -601,9 +603,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     CPML boundaries, soft sources, point probes, lumped ports, and
     Debye/Lorentz dispersive materials.
 
-    TFSF plane-wave sources and waveguide ports are not yet supported
-    in the distributed runner.  When detected, the runner issues a
-    warning and transparently falls back to the single-device path.
+    TFSF sources and waveguide ports warn and fall back to one device;
+    excited wire ports without radius or reference planes run.
 
     Parameters
     ----------
@@ -784,6 +785,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     from rfx.runners._admission import admit
     admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
     materials = base_materials
+    wire_edges = None
+    if any(pe.extent is not None for pe in sim._ports):
+        from rfx.boundaries.pec import realized_pec_edge_masks
+        if pec_mask is not None:
+            wire_edges = realized_pec_edge_masks(pec_mask, periodic=sim._periodic_flags())
 
     _distributed_boundary_layers(
         grid, n_devices,
@@ -856,6 +862,15 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             materials = setup_lumped_port(grid, lp, materials)
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.append(make_port_source(grid, lp, materials, n_steps))
+        elif pe.impedance > 0.0 and pe.extent is not None:
+            from rfx.sources.sources import wire_port_from_entry, setup_wire_port
+            from rfx.simulation import make_wire_port_sources
+            port_idx += 1
+            wp = wire_port_from_entry(pe)
+            materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
+            if _source_port_indices is None or port_idx in _source_port_indices:
+                sources.extend(make_wire_port_sources(
+                    grid, wp, materials, n_steps, pec_edge_masks=wire_edges))
         elif pe.impedance == 0.0:
             if sim._boundary == "cpml":
                 sources.append(make_j_source(grid, pe.position, pe.component,
@@ -872,6 +887,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     else:
         # Global cells enter the ordinary owner mapping below independently.
         probes.extend(_record_probes)
+
+    del wire_edges
 
     # Map source/probe global indices to (device_id, local_index)
     src_device_ids = []
