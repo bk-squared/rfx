@@ -311,3 +311,46 @@ def test_vertical_sheet_refusal_names_z_profile_remedy():
                          **edge_aware_profiles(domain, DX, sheets=[sheet], axes="xyz"))
     aligned.add(sheet, material="pec")
     assert not aligned.preflight().by_code(CODE)
+
+
+@pytest.mark.parametrize("snap,skip", [("strict", False), ("declared", False),
+                                       ("strict", True)])
+def test_coax_msl_sheet_verdict_before_runner(monkeypatch, snap, skip):
+    from tests._coax_msl_instrument_fixture import (
+        build_instrument_junction, instrument_kwargs,
+    )
+
+    sim = build_instrument_junction()
+    sim._snap = snap
+    expected, = sim.preflight().by_code(CODE)
+    calls = []
+
+    def runner(*args, **kwargs):
+        calls.append(True)
+        raise _ReachedRunner
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("coax-MSL must not run the full preflight")
+
+    monkeypatch.setattr("rfx.simulation.run", runner)
+    monkeypatch.setattr(sim, "preflight", forbidden)
+    if skip:
+        monkeypatch.setattr("rfx.preflight.pec_geometry._warn_sheet_effective_size",
+                            forbidden)
+    kwargs = instrument_kwargs(n_steps=1)
+    kwargs["skip_preflight"] = skip
+    with warnings.catch_warnings(record=True) as emitted:
+        warnings.simplefilter("always")
+        if snap == "strict" and not skip:
+            with pytest.raises(ValueError, match="conductor sheet dimension") as exc:
+                sim.compute_coax_msl_transition(**kwargs)
+            assert str(expected) in str(exc.value)
+            assert not calls
+        else:
+            with pytest.raises(_ReachedRunner):
+                sim.compute_coax_msl_transition(**kwargs)
+            assert calls == [True]
+    sheet_notes = [w for w in emitted if "conductor sheet dimension" in str(w.message)]
+    assert len(sheet_notes) == (snap == "declared" and not skip)
+    if sheet_notes:
+        assert str(expected) in str(sheet_notes[0].message)
