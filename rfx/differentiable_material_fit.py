@@ -524,6 +524,7 @@ def differentiable_material_fit(
         _require_ports_clear_of_pec(sim, grid, pec_mask, _fit_pec_sheets, _fit_pec_wires)
 
         # Setup ports (fold port impedance into materials)
+        loaded_ports = []
         for pe in sim._ports:
             lp = LumpedPort(
                 position=pe.position,
@@ -532,6 +533,7 @@ def differentiable_material_fit(
                 excitation=pe.waveform,
             )
             materials = setup_lumped_port(grid, lp, materials)
+            loaded_ports.append(lp)
 
         # Initialize dispersion with traced poles
         debye = None
@@ -546,13 +548,7 @@ def differentiable_material_fit(
 
         # Build sources and probes
         sources = []
-        for pe in sim._ports:
-            lp = LumpedPort(
-                position=pe.position,
-                component=pe.component,
-                impedance=pe.impedance,
-                excitation=pe.waveform,
-            )
+        for lp in loaded_ports:
             sources.append(make_port_source(grid, lp, materials, n_steps))
 
         probes = []
