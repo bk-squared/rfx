@@ -25,7 +25,7 @@ import jax.numpy as jnp
 from rfx.boundaries.cpml import CPMLParams, _cpml_profile
 from rfx.core.yee import (EPS_0, MU_0, MaterialArrays, component_h_materials,
                           si_value_eps_r_grad)
-from rfx.core.jax_utils import recorded_scan
+from rfx.core.jax_utils import is_tracer, recorded_scan
 
 
 ADI_INTERIOR_PEC_MESSAGE = (
@@ -49,6 +49,81 @@ def _validate_interior_pec(mask):
     """
     if mask is not None:
         raise ValueError(ADI_INTERIOR_PEC_MESSAGE)
+
+
+ADI_INTERFACE_MESSAGE = (
+    "adi_material_interface_unsupported: solver='adi' refuses a dielectric "
+    "or conductivity interface (#1373). The ADI update gives each E "
+    "component its own cell's eps_r and sigma, where every Yee lane gives "
+    "each E edge the mean of its four cells, so a material face sits half a "
+    "cell from where the Yee lanes put it. Measured on a slab-loaded PEC "
+    "cavity at 12 cells per loaded wavelength: the first resonance is 2.2 % "
+    "above the uniform Yee lane's (-0.2 % with no slab). A homogeneous fill "
+    "is carried. Use solver='yee'; see docs/guides/known_limitations.md."
+)
+
+
+def _concrete_varies(values) -> bool:
+    """Whether a concrete array takes more than one value over its cells; a
+    traced array cannot be read and is reported as not varying.
+
+    The last index on each axis is the node layer past the last cell: the
+    outer wall (both ADI boundary modes end in a PEC wall), where the E
+    components that read it are tangential and held at zero or lie outside
+    the grid. A domain-filling Box leaves it vacuum on a PEC box, so it is
+    not read here; an axis one cell thick (2-D) is read whole.
+    """
+    if values is None or is_tracer(values):
+        return False
+    import numpy as np
+    arr = np.asarray(values)
+    arr = arr[tuple(slice(0, n - 1) if n > 1 else slice(None) for n in arr.shape)]
+    return arr.size > 0 and bool(np.any(arr != arr.flat[0]))
+
+
+def adi_material_interface_refusal(eps_r, sigma=None):
+    """Why the ADI lane cannot solve these materials, or ``None`` (#1373).
+
+    ``eps_r`` and ``sigma`` are the material arrays the ADI coefficients read
+    per cell (:func:`_adi_coeffs_eps_r`). A value that varies over the grid is
+    a material interface, which the ADI lane puts half a cell from the Yee
+    lanes' edge mean (:func:`rfx.core.yee.edge_averaged_materials`). Only
+    concrete arrays are read: a traced array (``forward(eps_override=...)``
+    under ``jax.grad``) is not inspected. ``sigma`` must be the material
+    conductivity, before an absorber's grading is added to it.
+    """
+    if _concrete_varies(eps_r) or _concrete_varies(sigma):
+        return ADI_INTERFACE_MESSAGE
+    return None
+
+
+ADI_TRACED_OVERRIDE_MESSAGE = (
+    "adi_traced_material_array_unsupported: solver='adi' refuses a traced "
+    "eps_r/sigma array (from add_material with a traced value, or an "
+    "eps_override / sigma_override array) (#1373). A traced array cannot be "
+    "read before the solve, and the ADI lane puts any interface it holds "
+    "half a cell from where the Yee lanes put it (+2.2 % on a slab-loaded "
+    "PEC cavity's first resonance at 12 cells per loaded wavelength). The "
+    "supported homogeneous form is a scalar (0-d) eps_override / "
+    "sigma_override; otherwise use solver='yee'. See "
+    "docs/guides/known_limitations.md."
+)
+
+
+def adi_traced_override_refusal(values):
+    """Why a traced material array cannot reach the ADI lane, or ``None``.
+
+    A scalar (0-d) traced value is a homogeneous fill and is admitted; a
+    traced array may hold an interface that cannot be inspected (#1373)."""
+    if values is not None and is_tracer(values) and getattr(values, "ndim", 0) > 0:
+        return ADI_TRACED_OVERRIDE_MESSAGE
+    return None
+
+
+def _refuse_material_interface(eps_r, sigma=None):
+    reason = adi_material_interface_refusal(eps_r, sigma)
+    if reason is not None:
+        raise NotImplementedError(reason)
 
 
 # ---------------------------------------------------------------------------
@@ -642,6 +717,8 @@ def run_adi_2d(ez: jnp.ndarray, hx: jnp.ndarray, hy: jnp.ndarray,
     probe_data : (n_steps, n_probes) array or None
     """
     _validate_interior_pec(ez_pec_mask)
+    # eps_r only: ``sigma`` here carries the absorber's grading (#1373).
+    _refuse_material_interface(eps_r)
     use_cpml = cpml_params is not None
     if use_cpml and cpml_state is None:
         raise ValueError("cpml_state is required when cpml_params is provided")
@@ -1034,6 +1111,8 @@ def run_adi_3d(
     probe_data : (n_steps, n_probes) array or None
     """
     _validate_interior_pec(pec_edge_masks)
+    # eps_r only: ``sigma`` here carries the absorber's grading (#1373).
+    _refuse_material_interface(eps_r)
     if sources is None:
         sources = []
     if probes is None:

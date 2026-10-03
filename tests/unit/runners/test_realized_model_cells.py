@@ -31,7 +31,10 @@ def unit_waveform(t):
     return jnp.ones_like(t)
 
 
-def model(lane, row):
+def model(lane, row, fill=False):
+    """``fill`` puts the material over the whole domain instead of a block:
+    the only material the ADI lanes carry (#1373), used for their
+    consumption witness."""
     sg = lane == "run_subgridded"
     kw = dict(freq_max=10e9, domain=(12*MM, 11*MM, (20 if sg else 12)*MM),
               dx=MM, boundary="cpml" if row.startswith("open_") else "pec",
@@ -53,7 +56,10 @@ def model(lane, row):
             {"sigma": 0.2} if row == "sigma" else {"mu_r": 4.})
         sim.add_material("block", **mat)
         hi = (8*MM, 9*MM, (20 if row == "sat" else 10)*MM)
-        sim.add(Box((5*MM, 3*MM, 4*MM), hi), material="block")
+        lo = (5*MM, 3*MM, 4*MM)
+        if fill:
+            lo, hi = (0.0, 0.0, 0.0), tuple(kw["domain"])
+        sim.add(Box(lo, hi), material="block")
     if row == "conformal":
         sim.add(Box((9*MM, 2*MM, 2*MM), (10*MM, 4*MM, 4*MM)), material="pec")
     pos = (5*MM, 5*MM, 6*MM)
@@ -275,7 +281,8 @@ def test_dump_is_consumed(lane, row):
     quantity_name = {"eps": "eps_e", "sigma": "sigma_e", "mu": "mu_h"}[row]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        sim = model(lane, row)
+        # ADI refuses a material interface (#1373): its witness is a fill.
+        sim = model(lane, row, fill=lane in ("run_adi", "fwd_adi"))
         plain = np.asarray(run(sim, lane, row, steps=16).time_series)
         with _realized.capture() as saved:
             observed = np.asarray(run(sim, lane, row, steps=16).time_series)
