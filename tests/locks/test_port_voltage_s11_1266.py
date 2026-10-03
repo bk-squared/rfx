@@ -1,4 +1,4 @@
-"""S11 of a uniform/graded wire, frozen on main before voltage-unit changes."""
+"""Lumped/wire S11 on both lanes, frozen before voltage-unit changes."""
 import json
 from pathlib import Path
 
@@ -19,8 +19,9 @@ LOCK_PROVENANCE = {
 FREQS = np.array([4e9, 6e9, 8e9])
 
 
-def reference(lane):
-    record = json.loads(Path(__file__).with_name('port_voltage_s11_1266.json').read_text())[lane]
+def reference(lane, kind="wire"):
+    key = lane if kind == "wire" else f"lumped_{lane}"
+    record = json.loads(Path(__file__).with_name('port_voltage_s11_1266.json').read_text())[key]
     return np.asarray(record['real']) + 1j*np.asarray(record['imag'])
 
 
@@ -28,8 +29,7 @@ def assert_locked(got, expected):
     assert np.max(np.abs(got-expected)) <= 1e-4*np.max(np.abs(expected))
 
 
-@pytest.mark.parametrize('lane', ['uniform', 'graded'])
-def test_wire_s11_survives_source_voltage_units(lane):
+def measure(lane, kind):
     domain = (.0173, .0147, .0162)
     h = .001
     profiles = {}
@@ -41,21 +41,39 @@ def test_wire_s11_survives_source_voltage_units(lane):
                      boundary=BoundarySpec(x=Boundary('pec', 'cpml'),
                          y=Boundary('cpml', 'cpml'), z=Boundary('cpml', 'cpml')),
                      **profiles)
-    sim.add_port((.0063, .0052, .0044), 'ez', impedance=50., extent=.0023,
+    sim.add_port((.0063, .0052, .0044), 'ez', impedance=50., extent=.0023 if kind == 'wire' else None,
                  waveform=GaussianPulse(f0=8e9, bandwidth=.9))
     sim.add_probe((.0091, .0073, .0062), 'ez')
     sim.add_flux_monitor(axis='x', coordinate=.0101, freqs=FREQS, name='power')
     dt = float(sim._build_nonuniform_grid().dt) if profiles else .99*h/(299792458*np.sqrt(3))
-    result = sim.run(n_steps=round(8e-10/dt), compute_s_params=True,
-                     s_param_freqs=FREQS, skip_preflight=True)
-    got, expected = np.asarray(result.s_params), reference(lane)
+    if lane == 'graded' and kind == 'lumped':
+        result = sim.forward(n_steps=round(8e-10/dt), port_s11_freqs=FREQS,
+                             skip_preflight=True)
+    else:
+        result = sim.run(n_steps=round(8e-10/dt), compute_s_params=True,
+                         s_param_freqs=FREQS, skip_preflight=True)
+    return np.asarray(result.s_params)
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_wire_s11_survives_source_voltage_units(lane):
+    got, expected = measure(lane, "wire"), reference(lane)
     print(lane, 'S11=', got, 'peak-relative error=', np.max(abs(got-expected))/np.max(abs(expected)))
     assert_locked(got, expected)
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
-def test_lock_rejects_a_one_per_mille_change(lane):
-    expected = reference(lane)
+def test_lumped_s11_survives_source_voltage_units(lane):
+    got, expected = measure(lane, "lumped"), reference(lane, "lumped")
+    print(lane, 'lumped S11=', got, 'peak-relative error=',
+          np.max(abs(got-expected))/np.max(abs(expected)))
+    assert_locked(got, expected)
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+@pytest.mark.parametrize('kind', ['lumped', 'wire'])
+def test_lock_rejects_a_one_per_mille_change(lane, kind):
+    expected = reference(lane, kind)
     changed = expected.copy()
     changed.flat[0] += 1e-3*np.max(np.abs(expected))
     with pytest.raises(AssertionError):

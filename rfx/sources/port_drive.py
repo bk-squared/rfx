@@ -1,4 +1,4 @@
-"""Thevenin source-voltage drive for lumped and wire ports."""
+"""Stamped-load source-voltage drive for ports."""
 
 import jax
 import jax.numpy as jnp
@@ -17,7 +17,6 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     has n_live series edges, each stamped with resistance R/n_live and
     assigned source voltage w/n_live. Its Norton current is therefore
     w/R on every live edge: no additional 1/n_live belongs in this drive.
-    A_dual is that edge's transverse dual area, including graded metrics.
 
     Read Cb from the realized E-update materials, including overrides and
     port/RLC stamps; do not reconstruct permittivity. JAX operations retain
