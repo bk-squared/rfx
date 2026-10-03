@@ -243,10 +243,9 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     thickness, off-lattice design-edge census) say what that
     realization does to the design's symmetries and stack-ups.
 
-    Skips silently when the model has no conductor at all, and on a
-    traced mesh (no concrete node positions — the
-    ``_validate_cfg_graded_box_rasterization`` precedent). On a
-    context-build failure it says so instead of reading as clean: a
+    Skips silently when the model has no conductor at all. On a traced
+    mesh (no concrete node positions) or a context-build failure it
+    says so instead of reading as clean: a
     guard that cannot evaluate the model must not be indistinguishable
     from a guard that found nothing (#685 class).
     """
@@ -262,6 +261,15 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
         return
     ctx = self._campaign_ctx()
     if ctx.error == "traced-mesh":
+        _w.warn(PreflightWarning(
+            "The sheet-size verdict and the other conductor-realization "
+            "checks could NOT run on a traced mesh: concrete node positions "
+            "are unavailable. This means 'not evaluated', not 'clean'. "
+            "Run the same geometry once with concrete (non-traced) profiles, "
+            "or build them with rfx.mesh_edges.edge_aware_profiles.",
+            code="campaign_statics_traced_mesh",
+            source="_validate_cfg_campaign_statics",
+        ))
         return
     if ctx.error is not None:
         _w.warn(PreflightWarning(

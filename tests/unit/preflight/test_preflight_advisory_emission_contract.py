@@ -437,7 +437,8 @@ def _enumerate_emission_sites():
 # 123 -> 124 (#1342): one ``PreflightIssue`` error, ``trace_port_footprint`` -- a
 # lumped/wire port whose realized node falls outside the realized footprint
 # of the trace it is declared on (rfx/preflight/ports.py).
-_FROZEN_TOTAL_SITES = 124
+# #1138 rc2: one advisory site for conductor checks on a traced mesh.
+_FROZEN_TOTAL_SITES = 125
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -458,7 +459,7 @@ _FROZEN_TOTAL_SITES = 124
 # 78 -> 79 (#1272): thin_absorber, including vacuum and graded meshes.
 # 79 -> 80 (#1342): ``trace_port_footprint`` -- see the note on
 # _FROZEN_TOTAL_SITES above.
-_FROZEN_LITERAL_CODE_COUNT = 80
+_FROZEN_LITERAL_CODE_COUNT = 81
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
