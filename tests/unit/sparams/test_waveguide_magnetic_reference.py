@@ -1,56 +1,73 @@
-"""A graded waveguide's empty reference must remove the device's μ slab."""
+"""Empty-guide references start from vacuum, independent of device physics."""
 import numpy as np
 import pytest
-
-from rfx import Simulation, Box, GaussianPulse
+from rfx import Simulation, Box, DebyePole
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.runners import nonuniform
+from rfx.sparams.waveguide import _empty_waveguide_reference
 
 
-def test_stripping_reference_mu_matches_empty_guide_fields():
-    def model(magnetic):
-        sim = Simulation(freq_max=30e9, domain=(.006,) * 3, dx=.001,
-                         dz_profile=np.full(6, .001), boundary='pec', cpml_layers=0)
-        if magnetic:
-            sim.add_material('magnetic', eps_r=1., mu_r=4.)
-            sim.add(Box((.002,) * 3, (.004,) * 3), material='magnetic')
-        sim.add_source((.003,) * 3, 'ey', waveform=GaussianPulse(f0=15e9),
-                       amplitude_kind='field')
-        sim.add_probe((.003, .003, .004), 'ey')
-        return sim
-    empty = nonuniform.run_nonuniform_path(model(False), n_steps=30)
-    stripped = nonuniform.run_nonuniform_path(
-        model(True), n_steps=30, strip_magnetic_materials=True)
-    device = nonuniform.run_nonuniform_path(model(True), n_steps=30)
-    assert np.max(abs(np.asarray(empty.time_series))) > 0
-    assert np.asarray(empty.time_series).tobytes() == np.asarray(stripped.time_series).tobytes()
-    assert not np.array_equal(device.time_series, stripped.time_series)
+def _guide(kind, graded):
+    h = .002
+    sim = Simulation(freq_max=11e9, domain=(.024,.004,.096), dx=h,
+        dz_profile=np.full(48,h) if graded else None, cpml_layers=12,
+        boundary=BoundarySpec(x=Boundary('pec','pec'), y=Boundary('pec','pec'),
+                              z=Boundary('cpml','cpml')))
+    if kind in ('mu', 'debye'):
+        props = {'mu_r':4.} if kind == 'mu' else {
+            'debye_poles':[DebyePole(delta_eps=3., tau=1e-11)]}
+        sim.add_material('slab', eps_r=1., **props)
+        sim.add(Box((0.,0.,.036),(.024,.004,.046)), material='slab')
+    elif kind == 'rlc':
+        for y in (0., .002):
+            sim.add_lumped_rlc((.012,y,.040), 'ey', R=25., topology='parallel')
+    for z, direction in ((.016,'+z'),(.080,'-z')):
+        sim.add_waveguide_port(z, direction=direction, mode=(1,0),
+            freqs=np.linspace(8e9,10e9,5), f0=9e9, bandwidth=.4)
+    return sim
 
 
-def test_s_matrix_strips_mu_only_in_reference_call(monkeypatch):
-    sim = Simulation(
-        freq_max=11e9, domain=(.024, .004, .096), dx=.001,
-        dz_profile=np.full(96, .001), cpml_layers=4,
-        boundary=BoundarySpec(x=Boundary('pec', 'pec'), y=Boundary('pec', 'pec'),
-                              z=Boundary('cpml', 'cpml')))
-    sim.add_material('magnetic', eps_r=1., mu_r=4.)
-    sim.add(Box((0., 0., .036), (.024, .004, .046)), material='magnetic')
-    for position, direction in ((.016, '+z'), (.080, '-z')):
-        sim.add_waveguide_port(position, direction=direction, mode=(1, 0),
-                               freqs=np.linspace(8e9, 10e9, 21), f0=9e9)
-    calls = []
+@pytest.mark.parametrize('kind', ['mu', 'debye', 'rlc'])
+def test_empty_reference_scattering_contract(kind):
+    if kind == 'rlc':
+        # Both public calculators refuse RLC (#1263). Keep that boundary;
+        # exercise the internal NU reference without claiming public support.
+        for graded in (False, True):
+            with pytest.raises(NotImplementedError, match='lumped RLC'):
+                _guide(kind, graded).compute_waveguide_s_matrix(
+                    num_periods=40, normalize=True)
+        result = _guide(kind, True)._compute_waveguide_s_matrix_nu(
+            n_steps=None, num_periods=40, normalize=True)
+        assert np.max(np.abs(np.asarray(result.s_params)[0,0])) > .01
+        return
+    # Same equal-cell mesh. V/I normalization compares the summed modal
+    # quantities directly; no power-ratio square root at a reflection zero.
+    values = [np.asarray(_guide(kind, graded).compute_waveguide_s_matrix(
+        num_periods=40, normalize=True).s_params)[0,0] for graded in (False,True)]
+    peak = np.max(np.abs(values[0]))
+    assert peak > .01
+    assert np.max(np.abs(values[1])) > .01
+    assert np.max(np.abs(values[1]-values[0])) <= 1e-4 * peak
 
-    class ReferenceReached(Exception):
-        pass
 
-    def capture(_sim, **kwargs):
-        calls.append(kwargs)
-        if len(calls) == 2:
-            raise ReferenceReached
-        return None
-
-    monkeypatch.setattr(nonuniform, 'run_nonuniform_path', capture)
-    with pytest.raises(ReferenceReached):
-        sim.compute_waveguide_s_matrix(num_periods=20, normalize='flux')
-    assert not calls[0].get('strip_magnetic_materials', False)
-    assert calls[1]['strip_magnetic_materials'] is True
+@pytest.mark.parametrize('kind', ['mu', 'debye', 'rlc'])
+def test_reference_has_vacuum_physics_and_same_mesh(kind):
+    from rfx.runners.nonuniform import assemble_materials_nu
+    from rfx.core.yee import init_materials
+    device = _guide(kind, True)
+    ref = _empty_waveguide_reference(device)
+    assert ref._geometry == []
+    assert ref._lumped_rlc == []
+    assert ref._thin_conductors == []
+    assert ref._boundary_spec == device._boundary_spec
+    grid = device._build_nonuniform_grid()
+    ref_grid = ref._build_nonuniform_grid()
+    for name in ('dx_arr', 'dy_arr', 'dz'):
+        np.testing.assert_array_equal(getattr(grid,name), getattr(ref_grid,name))
+    assert grid.dt == ref_grid.dt
+    mats, debye, lorentz, pec = assemble_materials_nu(ref, ref_grid,
+        pec_sheets=[], pec_wires=[])
+    vacuum = init_materials(ref_grid.shape)
+    for name in ('eps_r','sigma','mu_r'):
+        np.testing.assert_array_equal(getattr(mats,name),getattr(vacuum,name))
+    assert debye is None and lorentz is None
+    assert pec is None or not np.any(pec)

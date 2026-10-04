@@ -21,8 +21,8 @@ boundary-only PEC (see ``rfx/api/_sparams.py``, which warns inline that
 applying the interior ``pec_mask`` to the reference makes it identical to the
 device and forces ``S11=0``).
 
-FIX: ``run_nonuniform_path(..., strip_interior_pec=True)`` drops the
-interior-geometry ``pec_mask`` from the NU vacuum reference while KEEPING the
+FIX: the calculator's independent empty-guide reference has no
+interior-geometry ``pec_mask`` while KEEPING the
 boundary y/z guide walls (those are enforced via ``pec_faces`` / ``apply_pec``,
 not ``pec_mask``). After the fix the NU iris recovers to ``|S11|`` ~ 1.4-1.6 (a
 full NU short to ``|S11|`` ~ 0.6-2.1), matching the uniform reflector class, and
@@ -166,8 +166,8 @@ def test_nonuniform_pec_iris_reflects():
     Root cause was the NU two-run S-matrix vacuum reference retaining the
     device's interior PEC mask (vacuum override replaced only eps/sigma, never
     pec_mask) → device and reference DFTs bit-identical → S11=0 for any
-    reflector. Fixed by ``run_nonuniform_path(..., strip_interior_pec=True)`` on
-    the reference (drops interior PEC, keeps the boundary guide walls). The
+    reflector. The calculator now constructs an independent empty guide
+    (no interior PEC, same boundary guide walls). The
     iris now recovers on the graded-dy path into the same strong-reflector
     class as the uniform witness (|S11|max 1.807 vs 2.170 re-measured under
     #931; ~1.4-1.6 vs ~0.78-2.1 when the fix landed)."""

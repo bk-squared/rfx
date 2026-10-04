@@ -1177,6 +1177,23 @@ def compute_waveguide_s_matrix(
     )
 
 
+def _empty_waveguide_reference(self):
+    """Build vacuum physics from mesh/boundary configuration only."""
+    # Construct an empty guide from configuration, never from device physics.
+    # Its empty geometry rasterizes vacuum exactly as init_materials does on
+    # the uniform calculator. Only the mesh, boundary walls and modal ports
+    # are shared; material poles, sheets and lumped elements cannot leak in.
+    return type(self)(
+        freq_max=self._freq_max, domain=self._domain,
+        boundary=self._boundary_spec, cpml_layers=self._cpml_layers,
+        cpml_kappa_max=self._cpml_kappa_max, dx=self._dx,
+        dx_profile=self._dx_profile, dy_profile=self._dy_profile,
+        dz_profile=self._dz_profile, dt=self._dt_pin,
+        dt_min_cell=self._dt_min_cell, precision=self._precision,
+        snap=self._snap,
+    )
+
+
 def _compute_waveguide_s_matrix_nu(
     self,
     *,
@@ -1225,10 +1242,7 @@ def _compute_waveguide_s_matrix_nu(
     if self._interface_eps == "dual_average":
         raise ValueError("interface_eps='dual_average' is not supported on the S-parameter NU lane")
     from dataclasses import replace as _dc_replace
-    from rfx.runners.nonuniform import (
-        run_nonuniform_path,
-        assemble_materials_nu,
-    )
+    from rfx.runners.nonuniform import run_nonuniform_path
     from rfx.sources.waveguide_port import (
         extract_waveguide_port_waves,
         settling_db_from_port_records,
@@ -1305,17 +1319,7 @@ def _compute_waveguide_s_matrix_nu(
         # asymmetry vs. ``Grid``); inline the same formula here.
         n_steps = int(np.ceil(num_periods / self._freq_max / float(grid.dt)))
 
-    # Assemble device materials once to learn the full array shape;
-    # vacuum reference is shape-matched onto that same array.
-    # Shape probe only: the vacuum reference is ones_like/zeros_like of
-    # these arrays. Every drive run below goes through
-    # run_nonuniform_path, which assembles with its own collectors and
-    # realizes the sheets — so the #931 collectors here are passed and
-    # dropped (an explicit "cells only", not an omission).
-    dev_materials_concrete, _, _, _ = assemble_materials_nu(
-        self, grid, pec_sheets=[], pec_wires=[])
-    vacuum_eps = jnp.ones_like(dev_materials_concrete.eps_r)
-    vacuum_sigma = jnp.zeros_like(dev_materials_concrete.sigma)
+    reference = _empty_waveguide_reference(self)
 
     # Frequency grid must match across ports.
     port_freqs = entries[0].freqs
@@ -1387,31 +1391,10 @@ def _compute_waveguide_s_matrix_nu(
                 attach_waveguide_flux=_flux_mode,
                 checkpoint_every=_ckpt_every,
             )
-            # Reference run stays vacuum (incident-power reference) and is
-            # independent of the design variable. ``strip_interior_pec``
-            # drops the rasterized interior PEC (iris / wall / post) from
-            # the reference so it is a clean empty guide: the boundary y/z
-            # guide walls survive (they are enforced via pec_faces, not
-            # pec_mask). Without this the vacuum override replaces only
-            # eps/sigma and the reference retains the device's interior
-            # PEC mask → device and reference DFTs are bit-identical →
-            # (device - reference) = 0 → S11 = 0 for any PEC reflector.
-            # This mirrors the uniform reference run, which builds the
-            # reference with dielectric_shapes=[] + boundary-only PEC.
+            # Same active modal port and guide walls, independent vacuum physics.
+            reference._waveguide_ports = list(self._waveguide_ports)
             ref_result = run_nonuniform_path(
-                self,
-                n_steps=n_steps,
-                eps_override=vacuum_eps,
-                sigma_override=vacuum_sigma,
-                attach_waveguide_flux=_flux_mode,
-                strip_interior_pec=True,
-                # #677: the surface-impedance sheet no longer rides
-                # materials.sigma, so sigma_override=vacuum does NOT
-                # strip it — the ctx must be stripped EXPLICITLY here,
-                # beside strip_interior_pec, or the "empty guide"
-                # reference would still carry the lossy sheet.
-                strip_sheet_impedance=True,
-                strip_magnetic_materials=True,
+                reference, n_steps=n_steps, attach_waveguide_flux=_flux_mode,
             )
 
             dev_wg = dev_result.waveguide_ports or {}

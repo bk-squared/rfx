@@ -410,12 +410,10 @@ def assemble_materials_nu(
                 # thickness-independent). eps_r stays at background (a sheet
                 # is a surface, not a dielectric fill).
                 #
-                # Invariant (NU two-run S reference): the sheet is NOT
-                # resident in materials.sigma, so the reference run's
-                # sigma_override does NOT strip it — the reference must
-                # strip the sheet ctx EXPLICITLY
-                # (run_nonuniform_path(strip_sheet_impedance=True); the
-                # rfx/api/_sparams.py NU vacuum-reference call site does).
+                # The sheet is not resident in materials.sigma. Operator
+                # isolation tests use strip_sheet_impedance to omit it;
+                # the waveguide calculator builds an independent empty
+                # guide with no device geometry or sheet declarations.
                 from rfx.materials.thin_conductor import (
                     SheetImpedanceSpec, leontovich_rs)
                 rs0 = leontovich_rs(_f0, tc.sigma_bulk)
@@ -719,9 +717,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         report_every=None, report_label="",
                         subpixel_smoothing: bool = False,
                         attach_waveguide_flux: bool = False,
-                        strip_interior_pec: bool = False,
                         strip_sheet_impedance: bool = False,
-                        strip_magnetic_materials: bool = False,
                         until_decay: float | None = None,
                         decay_check_interval: int = 50,
                         decay_min_steps: int = 100,
@@ -781,25 +777,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         path to inject optimisation variables.
     pec_mask_override : jnp.ndarray or None
         Extra hard-PEC mask ORed into the geometry-derived pec_mask.
-    strip_interior_pec : bool
-        When True, drop the interior-geometry PEC returned by
-        ``assemble_materials_nu`` — both the ``pec_mask`` VOLUME cells
-        (the rasterized iris / wall / post) and the declared SHEETS and
-        WIRES (#931 §1.9: a sheet iris owns no cell, so stripping only
-        ``pec_mask`` would leave it in the "empty guide" reference and the
-        two-run S11 would come out 0) — forcing a clean
-        vacuum-plus-boundary-walls reference run. The
-        boundary-wall PEC (the y/z guide walls from the BoundarySpec) is
-        NOT carried in ``pec_mask`` — it is enforced separately via
-        ``pec_faces`` (grid pad=0 + ``apply_pec`` / CPML face split), so
-        stripping ``pec_mask`` keeps the guide walls while removing the
-        scatterer. This is the NU analogue of the uniform two-run
-        S-matrix reference (``_sparams.py``: the reference run uses
-        ``dielectric_shapes=[]`` + boundary-only PEC, and a comment there
-        warns that applying the interior ``pec_mask`` to the reference
-        makes it bit-identical to the device → ``(device-reference)=0`` →
-        ``S11=0`` for any reflector). Used ONLY by the NU two-run S-matrix
-        vacuum reference; the device run leaves this False.
     design_box : DesignBoxSpec or None
         Issue #1183. One static box whose E update is redone from its own
         (usually traced) permittivity, so reverse-mode AD keeps box-shaped
@@ -942,35 +919,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             debye_spec is not None or lorentz_spec is not None):
         raise ValueError("interface_eps='dual_average' cannot combine with Debye/Lorentz materials")
     if strip_sheet_impedance:
-        # #677 EXPLICIT reference strip: the surface-impedance sheet no
-        # longer rides materials.sigma, so the two-run vacuum reference's
-        # sigma_override cannot strip it — dropping the ctx here is the
-        # reference-run analogue of strip_interior_pec below. Pinned by the
-        # G8 negative control (tests/unit/materials/test_sheet_impedance.py).
+        # #677 operator-isolation control, used by the sheet negative
+        # controls and resonance A/B lock. A sigma override cannot remove
+        # this separate surface operator.
         _sheet_specs = []
-
-    if strip_magnetic_materials:
-        # The internal empty-guide S reference must remove the magnetic
-        # slab too. Epsilon/sigma overrides alone leave its H coefficients.
-        materials = materials._replace(mu_r=jnp.ones_like(materials.mu_r), mu_r_wire=None)
-
-    # Two-run S-matrix vacuum reference: drop the interior-geometry PEC
-    # (the rasterized iris / wall / post) so the reference is a clean
-    # empty guide. The boundary-wall PEC (y/z guide walls) is NOT in
-    # ``pec_mask`` — it is enforced via ``pec_faces`` (grid pad=0 +
-    # ``apply_pec`` / CPML face split) — so the guide walls survive. This
-    # mirrors the uniform reference run (``_sparams.py``: dielectric/PEC
-    # interior shapes dropped, boundary PEC kept). Without this, the
-    # vacuum override replaces only eps_r/sigma and the reference keeps
-    # the same interior PEC mask as the device → both DFTs are
-    # bit-identical → ``(device-reference)=0`` → ``S11=0`` for any
-    # PEC reflector on the NU path.
-    if strip_interior_pec:
-        pec_mask = None
-        # #931: a sheet iris owns no cell, so stripping only ``pec_mask``
-        # would leave it in the vacuum reference and give S11 = 0.
-        _pec_sheets = []
-        _pec_wires = []
 
     # ``eps_override`` / ``sigma_override`` replace the assembled material
     # arrays for the scan, and every source and port DRIVE is built from
