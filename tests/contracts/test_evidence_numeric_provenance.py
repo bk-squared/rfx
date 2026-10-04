@@ -691,6 +691,7 @@ CLASSIFIED_DOC_DIRS = ("docs/public/**/*.mdx", "docs/design_notes/*.md")
 
 CLASSIFICATION: dict[str, str] = {
     "docs/design_notes/20260928_model_assembly_predeclaration.md": NO_ARTIFACT_REFERENCE,
+    "docs/design_notes/20261004_showcase_lens_filter_predeclaration.md": NO_ARTIFACT_REFERENCE,
     "docs/public/api/generated/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/api/machine-readable.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/gallery/waveguide-taper.mdx": NO_ARTIFACT_REFERENCE,
