@@ -192,13 +192,13 @@ def test_visual_dbi_is_power_logarithm():
 
 def test_final_hold_lens_uses_fine_mesh_at_10ghz():
     trend = {'reported': {'boresight_dbi': [[1, 2, 3], [4, 5, 6], [18.5, 19.00765, 18.8]]}}
-    assert visual.final_hold_text('lens', trend, [9.5e9, 1e10, 10.5e9]) == 'final: 19.0 dBi at 10 GHz, three-mesh converged'
+    assert visual.final_hold_text('lens', trend, [9.5e9, 1e10, 10.5e9], {'promotional_number_eligible': True}, 150, 150) == 'final: 19.0 dBi at 10 GHz, three-mesh converged'
 
 
 @pytest.mark.parametrize('passed,expected', [([True]*3, 'inside the mask on three meshes'),
                                             ([True, False, True], ''), ([], ''), ([True], '')])
 def test_final_hold_filter_requires_all_three_masks(passed, expected):
-    assert visual.final_hold_text('filter', {'mask_each_mesh': passed}, []) == expected
+    assert visual.final_hold_text('filter', {'mask_each_mesh': passed}, [], {'promotional_number_eligible': True}, 200, 200) == expected
 
 
 def test_fd_judge_fraction_reports_small_gradients_only():
@@ -217,3 +217,15 @@ def test_fd_judge_fraction_reports_small_gradients_only():
     ladder["small"] = {str(h): {"fd": 0.2} for h in steps}
     verdict = dc.judge_fd({"big": 1.01, "small": 0.8}, ladder, steps, 0.05, 0.05, 0.1)
     assert "small" in verdict["judged"] and verdict["all_judged_passed"] is False
+
+
+def test_final_hold_note_requires_gates_and_same_iterate():
+    trend = {'reported': {'boresight_dbi': [[0, 0, 0], [0, 0, 0], [18.5, 19.008, 18.8]]},
+             'mask_each_mesh': [True, True, True]}
+    freqs = [9.5e9, 10e9, 10.5e9]
+    ok = {'promotional_number_eligible': True}
+    assert visual.final_hold_text('lens', trend, freqs, ok, 150, 150).startswith('final: 19.0 dBi')
+    assert visual.final_hold_text('lens', trend, freqs, {'promotional_number_eligible': False}, 150, 150) == ''
+    assert visual.final_hold_text('lens', trend, freqs, ok, 149, 150) == ''
+    assert visual.final_hold_text('filter', trend, freqs, ok, 200, 200) == 'inside the mask on three meshes'
+    assert visual.lens_label('uniform_1.85') == 'uniform slab, εr = 1.85'

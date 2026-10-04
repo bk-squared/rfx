@@ -89,7 +89,13 @@ def main():
     text = p.add_text('', position=(75, 65), font_size=22, font='arial', color='#eef2f6')
     note = p.add_text('', position=(75, 30), font_size=14, font='arial', color='#9ca3aa')
     mesh_path = (args.mesh_record or args.record) / 'mesh_trend.json'
-    final_note = final_hold_text(kind, read_json(mesh_path), a['freqs_hz']) if mesh_path.exists() else ''
+    mesh_root = mesh_path.parent
+    final_note = ''
+    if mesh_path.exists() and (mesh_root / 'eligibility.json').exists() and (mesh_root / 'stage.json').exists():
+        final_note = final_hold_text(kind, read_json(mesh_path), a['freqs_hz'],
+                                     read_json(mesh_root / 'eligibility.json'),
+                                     read_json(mesh_root / 'stage.json').get('best_iteration'),
+                                     int(a['iteration'][int(np.argmin(a['objective']))]))
     hud_strings = {}
     voxel_actor = None
     lobe_actor = None

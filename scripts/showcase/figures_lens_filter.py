@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 import numpy as np
-from _visual_data import lens_mirror, filter_mirror, dbi, plane_cut, read_json, load_record, write_manifest, LENS_LABELS, FILTER_MESHES, amplitude_db
+from _visual_data import lens_mirror, filter_mirror, dbi, plane_cut, read_json, load_record, write_manifest, LENS_LABELS, lens_label, FILTER_MESHES, amplitude_db
 
 
 def mask(ax, channel=None):
@@ -62,7 +62,7 @@ def main():
         save(fig, 'slices')
         with np.load(args.record / 'baselines.npz') as b:
             manifest['baseline_keys'] = b.files
-            uniform = 'uniform_2.7'
+            uniform = read_json(args.record / 'baselines.json')['best_uniform']
             curves = [(k, b[k]) for k in ['no_lens', 'grin', uniform]] + [('designed lens', a['response'][best])]
         manifest['baselines_plotted'] = [x[0] for x in curves[:-1]]
         fi = int(np.argmin(abs(a['freqs_hz'] - 1e10)))
@@ -70,7 +70,7 @@ def main():
         for ax, plane in zip(axes[0], ['E', 'H']):
             for j, (label, d) in enumerate(curves):
                 theta, values = plane_cut(d[fi], plane)
-                ax.plot(theta, dbi(values), styles[j], label=LENS_LABELS.get(label, label))
+                ax.plot(theta, dbi(values), styles[j], label=lens_label(label))
             ax.axhline(dbi(4*np.pi*.09**2/(299792458/1e10)**2), color='k', ls=(0, (5, 2, 1, 2)), label='aperture bound 4πA/λ²')
             ax.set(xlabel=f'{plane}-plane θ (deg)', ylabel='Directivity (dBi)', xlim=(-180, 180), ylim=(-30, 25))
         axes[0, 0].legend(fontsize=6.5)
@@ -94,7 +94,7 @@ def main():
             fig, axes = sub(3, 3.3)
             for j, ax in enumerate(axes[0]):
                 for k, (label, row) in enumerate(read_json(mp).items()):
-                    ax.plot([1.5, 1, .75], np.asarray(row['boresight_dbi'])[:, j], styles[k], marker=markers[k], label=LENS_LABELS.get(label, label))
+                    ax.plot([1.5, 1, .75], np.asarray(row['boresight_dbi'])[:, j], styles[k], marker=markers[k], label=lens_label(label))
                 ax.set(xlabel='Mesh spacing (mm)', ylabel='Boresight directivity (dBi)')
                 ax.text(.95, .08, f'{a["freqs_hz"][j]/1e9:g} GHz', transform=ax.transAxes, ha='right', va='bottom')
             axes[0, 0].legend(fontsize=6)

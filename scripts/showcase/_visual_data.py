@@ -65,16 +65,33 @@ LENS_LABELS = {
     'no_lens': 'feed alone',
     'grin': 'textbook GRIN',
     'uniform_2.7': 'uniform slab, εr = 2.7',
-    'best_uniform': 'uniform slab, εr = 2.7',
+    'best_uniform': 'best uniform slab',
     'reported': 'designed lens',
 }
+
+
+def lens_label(key):
+    """Plain-language legend label for a stored lens design key."""
+    if key.startswith('uniform_'):
+        return f'uniform slab, εr = {key[len("uniform_"):]}'
+    return LENS_LABELS.get(key, key)
+
+
 FILTER_MESHES = [('0.000635', 'a/36 (0.635 mm)'),
                  ('0.000423333333', 'a/54 (0.423 mm)'),
                  ('0.0003175', 'a/72 (0.318 mm)')]
 
 
-def final_hold_text(kind, trend, freqs_hz):
-    """Separate fine-mesh annotation from the design-mesh iterate HUD."""
+def final_hold_text(kind, trend, freqs_hz, eligibility=None, resolved_iteration=None, best_iteration=None):
+    """Separate fine-mesh annotation from the design-mesh iterate HUD.
+
+    Empty unless the re-solve record declares every promotional gate passed
+    (eligibility.json) and re-solved the same iterate the film ends on.
+    """
+    if not (eligibility and eligibility.get('promotional_number_eligible') is True):
+        return ''
+    if resolved_iteration is None or best_iteration is None or int(resolved_iteration) != int(best_iteration):
+        return ''
     if kind == 'lens':
         fi = int(np.argmin(abs(np.asarray(freqs_hz) - 1e10)))
         value = trend['reported']['boresight_dbi'][2][fi]
