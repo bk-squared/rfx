@@ -1,0 +1,56 @@
+name: rfx-showcase-lens
+description: "20261004 pre-declaration and Amendment 1; one stage of the printable lens design."
+tags: [rfx, showcase, issue-1359, autodiff]
+resources:
+  cluster: remilab-c0
+  # preset: FILL_BEFORE_SUBMIT  # leader's Resource choice record
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  JAX_ENABLE_X64: "0"
+  OPENBLAS_NUM_THREADS: "1"
+  RFX_SHOWlens_REF: "FILL_BEFORE_SUBMIT"
+  RFX_SHOWlens_PRESET: "FILL_BEFORE_SUBMIT"
+  RFX_DESIGN_MODE: "timing"
+  RFX_DESIGN_RECORD: ""
+mount:
+  /root/workspace/: volume://remilab-fs/personal-workspaces/
+run: |-
+  set -eu
+  # Clone the public repository from GitHub; never fetch into the NFS reference
+  # clones (only the sync job updates them). Records go to an NFS path outside
+  # every git clone; the leader copies them into rfx-archive from the Mac.
+  runs=/root/workspace/byungkwan-workspace/rfx-showcase-runs
+  test "$RFX_SHOWlens_REF" != "FILL_BEFORE_SUBMIT"
+  src=$(mktemp -d /tmp/rfx-showcase-lens.XXXXXX)
+  git clone -q https://github.com/bk-squared/rfx.git "$src"
+  git -C "$src" fetch -q origin "$RFX_SHOWlens_REF" || true
+  sha=$(git -C "$src" rev-parse "$RFX_SHOWlens_REF^{commit}" 2>/dev/null || git -C "$src" rev-parse "FETCH_HEAD^{commit}")
+  short=$(echo "$sha" | cut -c1-8)
+  git -C "$src" checkout -q --detach "$sha"
+  test "$(git -C "$src" rev-parse HEAD)" = "$sha"
+  out="$runs/20261004-showcase-lens/$(date -u +%Y%m%dT%H%M%SZ)-$short-$RFX_DESIGN_MODE"
+  mkdir -p "$out"
+  echo "$sha" > "$out/commit.txt"
+  cd "$src"
+  # Match the repository's Python 3.11 / JAX 0.10.2 VESSL lane.
+  python -m pip install -q "uv==0.12.19"
+  uv venv -q --python 3.11.16 /tmp/venv-showcase
+  PY=/tmp/venv-showcase/bin/python
+  uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0"
+  uv pip install -q --python "$PY" --no-deps -e .
+  uv pip freeze --python "$PY" > "$out/pip_freeze.txt"
+  "$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11); assert jax.__version__ == '0.10.2'; assert jax.default_backend() == 'gpu'"
+  export PYTHONPATH="$src"
+  "$PY" -c "import jax, rfx; print(jax.__version__, jax.devices(), rfx.__file__)" > "$out/probe.txt"
+  nvidia-smi > "$out/nvidia_smi.txt" 2>&1 || true
+  set -- --stage "$RFX_DESIGN_MODE" --out "$out"
+  if [ -n "$RFX_DESIGN_RECORD" ]; then
+    set -- "$@" --record "$RFX_DESIGN_RECORD"
+  fi
+  set +e
+  { "$PY" scripts/showcase/design_lens.py "$@" 2>&1; echo "$?" > "$out/stage.rc"; } | tee "$out/stage.log"
+  rc=$(cat "$out/stage.rc")
+  echo "artifacts: $out"
+  exit "$rc"

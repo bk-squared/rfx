@@ -208,3 +208,25 @@ Two points the text left open, found by the implementer before any run:
    Start S2's slabs occupy pixels {6, 7}, {16, 17} and {26, 27} (mirror-symmetric about the
    insert centre), the full guide width. §2.5.1's FD pixels are pixels 6, 16 and 26 on the guide
    centre line (the centre pixel of the 9 across the width).
+
+## Amendment 2 (2026-10-04, leader; after the CPU smokes, before any VESSL run)
+1. **Record rounding (both cases).** The declared record `num_timesteps(...)` is rounded up to a
+   multiple of ⌊√n⌋, so that reverse-mode checkpointing keeps about √n segments. Without it the
+   lens records (2498 steps at 1.0 mm, 3331 at 0.75 mm) have no divisor near √n and would hold
+   1–2 segments. Resulting records: lens 1680 / 2499 / 3363 steps at 1.5 / 1.0 / 0.75 mm; filter
+   15 252 / 22 952 / 30 624 steps at a/36 / a/54 / a/72.
+2. **B's ports and reference planes** move to 48 and 64 cells at a/36 (30.48 mm and 40.64 mm from
+   each end), so that they lie on node lines at a/54 as well (47 and 63 cells fell on half nodes
+   there). Between the reference planes and the insert lie 19.05 mm of empty guide; TE30 at
+   12.4 GHz decays there by about e^−6.
+3. **S2's background** between its slabs is εr = 1.5 (S1's value).
+4. **Probes** of A are placed at the declared points and their realized positions are recorded;
+   they are not required to lie on the 3 mm lattice (they read fields, they are not geometry).
+5. **The feed reflector's solved size.** Preflight reports that the solver extends a PEC sheet's
+   edge 0.35 cell past its last node, so the drawn 30.0 mm sheet is solved as 31.05 / 30.7 /
+   30.52 mm on the 1.5 / 1.0 / 0.75 mm meshes (issue #1138's sheet-edge offset). The sheet is not
+   moved; §1.5.4's mesh trend therefore includes a reflector converging toward its drawn size, and
+   the record states this beside the trend.
+6. **Run outputs** are written on NFS under `byungkwan-workspace/rfx-showcase-runs/` (outside every
+   git clone) and copied into rfx-archive by the leader; the job clones the public repository from
+   GitHub at the given commit.
