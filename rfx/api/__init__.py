@@ -96,6 +96,17 @@ from rfx.api._spec import (  # noqa: E402
 )
 from rfx.mesh_planner import MeshPlan, plan_simulation_mesh  # noqa: E402,F401
 
+
+def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
+    """Amplitude at |f0 sin(theta)| relative to f0 for the Bloch drive."""
+    # init_tfsf dispatches BOTH Gaussian waveform names to init_tfsf_2d,
+    # whose drive is exp(-i*2*pi*f0*t) * exp(-(t/tau)**2),
+    # tau = 1/(pi*f0*bandwidth). Thus |S(fc)/S(f0)| = exp(-offset**2).
+    # Work directly in dB to avoid underflow for narrow pulses.
+    offset = (1.0 - abs(math.sin(math.radians(angle_deg)))) / bandwidth
+    return -(20.0 / math.log(10.0)) * offset * offset
+
+
 def _require_integral_param(name: str, value: object) -> int:
     """Return ``value`` as int after rejecting bools and non-integral values."""
     if isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral):
@@ -2272,6 +2283,24 @@ class Simulation(
                 raise NotImplementedError(
                     "method='methodB' currently supports polarization='ez' "
                     "(transverse=y) only; 'ey' is future work"
+                )
+
+        if method == "bloch" and angle_deg != 0.0:
+            cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
+            if cutoff_db > -60.0:
+                import warnings
+
+                source_f0 = f0 if f0 is not None else self._freq_max / 2
+                cutoff_ghz = source_f0 * abs(math.sin(math.radians(angle_deg))) / 1e9
+                warnings.warn(
+                    f"Bloch TF/SF angle={angle_deg:g} deg, bandwidth={bandwidth:g}: "
+                    f"{cutoff_db:.2f} dB relative to f0 at f_c={cutoff_ghz:.6g} GHz; "
+                    "a rectangular-window DFT of this path's probe time series picks up "
+                    "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
+                    "depends on the record length. Narrow the bandwidth, or taper "
+                    "the tail of the time series before the DFT.",
+                    UserWarning,
+                    stacklevel=2,
                 )
 
         self._tfsf = _TFSFEntry(
