@@ -18,6 +18,11 @@ Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not 
 
 ---
 
+- **Experimental ADI:** `solver="adi"` is outside the 2.0 supported scope.
+  `boundary="cpml"` is refused: it is an unmatched conductivity sponge
+  (−10.4 dB reflection at 10 GHz). Use Yee with CPML for open structures,
+  or ADI with `boundary="pec"` for closed cavities.
+
 ## Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
 
 exchange_interval > 1 is refused. With a one-cell ghost layer and the exchange skipped for K-1 steps, each slab updates its seam cells from the neighbour's stale values and injects energy every skipped step.

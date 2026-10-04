@@ -261,7 +261,9 @@ def test_realized_cell(lane, row, axis):
     if cell.kind == "refuses":
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            with pytest.raises((ValueError, NotImplementedError)):
+            reason = ("unmatched graded-conductivity sponge"
+                      if row.startswith("open_") and lane in ("run_adi", "fwd_adi") else None)
+            with pytest.raises((ValueError, NotImplementedError), match=reason):
                 sim = model(lane, row)
                 run(sim, lane, row)
         return

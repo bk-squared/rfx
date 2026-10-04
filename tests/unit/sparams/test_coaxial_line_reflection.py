@@ -189,10 +189,11 @@ def test_adi_is_rejected_before_coaxial_line_run():
         freq_max=40.0e9,
         boundary="cpml",
         dx=1.0e-3,
-        solver="adi",
     )
     sim.add_coaxial_port((0.004, 0.004, 0.020), face="top")
 
+    # Restored state: constructor refusal must not mask the calculator guard.
+    sim._solver = "adi"
     with pytest.raises(ValueError, match="supports solver='yee' only"):
         sim.compute_coaxial_line_reflection(n_steps=1, n_freqs=1)
 

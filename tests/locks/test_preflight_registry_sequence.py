@@ -235,6 +235,8 @@ _CALL_SEQUENCE_AT_LEG7_TIP = (
     ("_validate_cfg_half_node_split", ("warn",)),
     # #1272: appended absorption advisory, independent of conductor proximity.
     ("_validate_cfg_thin_absorber", ("warn", "dx")),
+    # ADI sponge refusal; appended without reordering existing diagnostics.
+    ("_validate_cfg_adi_boundary", ("warn",)),
 )
 
 #: Just the names, in order -- the runtime view of the tuple above.

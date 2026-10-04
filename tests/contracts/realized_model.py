@@ -58,6 +58,8 @@ for lane in LANES:
         for source in ("soft_none", "open_none", "soft_current", "open_current"):
             TABLE[source][lane] = Cell("refuses", note="ADI implements only field sources")
     for kind in ("field", "current", "none"):
+        if lane in ("run_adi", "fwd_adi"):
+            TABLE["open_" + kind][lane] = Cell("refuses", note="ADI refuses absorbing boundaries")
         TABLE["open_" + kind]["run_subgridded"] = Cell("refuses",
             note="all-face absorber outside subgrid production envelope")
     for port in ("lumped", "wire"):

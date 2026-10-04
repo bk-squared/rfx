@@ -1,0 +1,10 @@
+### BREAKING — ADI is experimental and refuses absorbing boundaries
+
+- ADI run and forward calls emit `ExperimentalADIWarning`; ADI is outside
+  the 2.0 supported scope.
+- `solver="adi"` with `boundary="cpml"` (including per-face absorbers) now
+  raises: the old boundary was an unmatched conductivity sponge
+  (−10.4 dB reflection at 10 GHz). The default boundary is `cpml`, so an
+  ADI simulation now has to pass `boundary="pec"` explicitly.
+- Use `solver="yee", boundary="cpml"` for open structures, or
+  `solver="adi", boundary="pec"` for experimental closed cavities.

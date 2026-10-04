@@ -97,7 +97,7 @@ def test_unimplemented_carrier_refuses_non_none_record(path):
         elif path == "upml":
             init_upml(grid, marked)
         elif path == "adi":
-            sim = Simulation(freq_max=10e9, domain=(.006,)*3, dx=.001, solver="adi")
+            sim = Simulation(freq_max=10e9, domain=(.006,)*3, dx=.001, boundary="pec", solver="adi")
             sim._run_adi_from_materials(grid, marked, None, None, n_steps=1, lane="run_adi")
 
 

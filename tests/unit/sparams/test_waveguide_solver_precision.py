@@ -27,7 +27,7 @@ def _guide(*, precision="float32", solver="yee", nonuniform=False, n_modes=1):
         boundary="cpml",
         cpml_layers=4,
         precision=precision,
-        solver=solver,
+        solver="yee",
         **({"dx_profile": np.full(18, 0.005)} if nonuniform else {}),
     )
     for position, direction, name in (
@@ -38,6 +38,9 @@ def _guide(*, precision="float32", solver="yee", nonuniform=False, n_modes=1):
             freqs=jnp.array([8e9, 9e9], dtype=jnp.float32),
             f0=8.5e9, bandwidth=0.5, name=name,
         )
+    # Restore an ADI setting after declaration to test calculator guards;
+    # new ADI + CPML models are refused by the constructor.
+    sim._solver = solver
     return sim
 
 

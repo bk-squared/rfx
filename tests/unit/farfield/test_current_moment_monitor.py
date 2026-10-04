@@ -2202,7 +2202,7 @@ def test_declaration_rejects_an_unknown_keyword():
 def _sim_with_monitor(**kw):
     from rfx import Simulation
     sim = Simulation(freq_max=1.2e10, domain=(2.4e-2, 2.4e-2, 2.4e-2), dx=DX,
-                     cpml_layers=6, boundary="cpml", **kw)
+                     cpml_layers=6, boundary="pec" if kw.get("solver") == "adi" else "cpml", **kw)
     sim.add_source(position=(1.2e-2, 1.2e-2, 1.2e-2), component="ez")
     sim.add_current_moment_monitor(
         corner_lo=(0.6e-2, 0.6e-2, 0.6e-2), corner_hi=(1.8e-2, 1.8e-2, 1.8e-2),

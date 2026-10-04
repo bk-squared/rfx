@@ -1446,6 +1446,8 @@ class _ExecuteMixin:
         """
         import copy
 
+        from rfx._adi_notice import warn_experimental
+        warn_experimental()
         from rfx.sources.wire_radius import require_radius_update
         require_radius_update(materials, lane="ADI", unsupported=True)
         self._validate_adi_configuration(materials, debye_spec, lorentz_spec)
@@ -1481,7 +1483,7 @@ class _ExecuteMixin:
 
         # ---- 3D path ----
         if self._mode == "3d":
-            from rfx.adi import run_adi_3d, ADIState3D, make_adi_absorbing_sigma_3d
+            from rfx.adi import run_adi_3d, ADIState3D
 
             probes_3d = []
             for pe in self._probes:
@@ -1490,12 +1492,6 @@ class _ExecuteMixin:
 
             eps_r_3d = materials.eps_r
             sigma_3d = materials.sigma
-
-            if self._boundary == "cpml" and self._cpml_layers > 0:
-                nx, ny, nz = grid.shape
-                absorb_sigma = make_adi_absorbing_sigma_3d(
-                    nx, ny, nz, self._cpml_layers, grid.dx, grid.dx, grid.dx)
-                sigma_3d = sigma_3d + absorb_sigma
 
             sources_3d = []
             for pe in self._ports:
@@ -1548,14 +1544,6 @@ class _ExecuteMixin:
         # Coefficient derivatives use eps_r units (#1357), including 2-D ADI.
         eps_r_2d = materials.eps_r[:, :, 0]
         sigma_2d = materials.sigma[:, :, 0]
-
-        # Add implicit absorbing sigma layer for CPML boundary
-        if self._boundary == "cpml" and self._cpml_layers > 0:
-            from rfx.adi import make_adi_absorbing_sigma
-            nx_2d, ny_2d = eps_r_2d.shape
-            absorb_sigma = make_adi_absorbing_sigma(
-                nx_2d, ny_2d, self._cpml_layers, grid.dx)
-            sigma_2d = sigma_2d + absorb_sigma
 
         sources = []
         for pe in self._ports:

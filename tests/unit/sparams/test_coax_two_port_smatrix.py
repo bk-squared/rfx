@@ -621,7 +621,9 @@ def test_refinement_rejected():
 
 
 def test_adi_solver_rejected():
-    sim = _sim(solver="adi")
+    sim = _sim()
+    # Restored state: constructor refusal must not mask the calculator guard.
+    sim._solver = "adi"
     with pytest.raises(ValueError, match="supports solver='yee' only"):
         sim.compute_coaxial_two_port(n_steps=1, n_freqs=1)
 

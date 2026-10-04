@@ -197,8 +197,9 @@ ADI_SOFT_SOURCES = _adi("every port but add_source() soft sources", "supports on
 ADI_DISPERSIVE = _adi("dispersive materials", "does not support dispersive materials")
 ADI_RLC = _adi("lumped RLC", "does not support lumped RLC")
 ADI_PORTS = _adi("waveguide and Floquet ports", "does not support waveguide or Floquet ports")
-ADI_PER_FACE = refuses("ADI stamps one absorber on all six faces; a per-face layout is refused",
-                       raises="supports only a uniform absorber", declared=True)
+ADI_ABSORBER = refuses("ADI refuses the unmatched conductivity sponge",
+                       raises="unmatched graded-conductivity sponge", declared=True)
+ADI_PER_FACE = ADI_ABSORBER
 ADI_GRADED = refuses("ADI requires a uniform mesh", raises="solver='adi' does not support nonuniform",
                      declared=True)
 F0 = "surface_impedance_f0) thin conductors are not supported"
@@ -628,14 +629,14 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=_subgrid("boundary_terminated_requires_pec_no_cpml",
                                 "a waveguide port needs a CPML face, which production validation refuses"),
-        run_adi=ADI_PORTS,
+        run_adi=ADI_ABSORBER,
         run_distributed=falls_back("run_uniform", "one device, with a warning and every "
                                    "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=refuses("waveguide ports refused",
                                    raises="Waveguide ports are not supported on the distributed forward path"),
-        fwd_adi=ADI_PORTS,
+        fwd_adi=ADI_ABSORBER,
     )},
     "_coaxial_ports": {"coax_port": lanes(
         run_uniform=RUN_COAX,
@@ -700,7 +701,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=_subgrid("subgrid_overlaps_absorber",
                                 "a plane wave needs CPML, which production validation refuses"),
-        run_adi=_adi("TFSF", "does not support TFSF sources"),
+        run_adi=ADI_ABSORBER,
         run_distributed=falls_back("run_uniform", "one device, with a warning and every "
                                    "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
@@ -708,7 +709,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                raises="Differentiable TFSF plane-wave forward is supported only"),
         fwd_distributed_nu=refuses("TFSF refused",
                                    raises="TFSF sources are not supported on the distributed forward path"),
-        fwd_adi=_adi("TFSF", "does not support TFSF sources"),
+        fwd_adi=ADI_ABSORBER,
     )},
     "_refinement": {
         "slab": lanes(
@@ -741,13 +742,12 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_uniform=carries(),
             run_nonuniform=carries(),
             run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
-            run_adi=carries("a graded conductivity layer, not a CPML (test_realized_boundary.py "
-                            "cpml--adi)", wrong="#1221"),
+            run_adi=ADI_ABSORBER,
             run_distributed=carries("uniform v2 and graded NU slab-aware CPML (#1461)"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
-            fwd_adi=carries("the same conductivity layer as run_adi", wrong="#1221"),
+            fwd_adi=ADI_ABSORBER,
         ),
         "upml": lanes(
             run_uniform=carries(),
@@ -844,25 +844,24 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_uniform=carries(),
         run_nonuniform=carries(),
         run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
-        run_adi=carries("the thickness of ADI's conductivity layer, checked in the σ handed to the kernel"),
+        run_adi=ADI_ABSORBER,
         run_distributed=carries(),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=carries(),
-        fwd_adi=carries("as run_adi"),
+        fwd_adi=ADI_ABSORBER,
     )},
     "_cpml_kappa_max": {"kappa": lanes(
         run_uniform=carries("CPML carries kappa; UPML refuses cpml_kappa_max != 1 before stepping"),
         run_nonuniform=admission("cpml_kappa_max != 1", RUN_NU, "the graded grid build was never given it "
                                  "(#1310)"),
         run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
-        run_adi=admission("cpml_kappa_max != 1", RUN_ADI, "it was dropped: ADI's absorber is not a CPML "
-                          "(cpml--adi, #1221)"),
+        run_adi=ADI_ABSORBER,
         run_distributed=carries("uniform only; graded shared staging refuses nondefault kappa (#1461)"),
         fwd_uniform=carries("CPML carries kappa; UPML refuses cpml_kappa_max != 1 before stepping"),
         fwd_nonuniform=admission("cpml_kappa_max != 1", FWD_NU, "it was dropped (#1310)"),
         fwd_distributed_nu=admission("cpml_kappa_max != 1", FWD_DNU, "it was dropped (#1310)"),
-        fwd_adi=admission("cpml_kappa_max != 1", FWD_ADI, "it was dropped, as on run_adi (#1221)"),
+        fwd_adi=ADI_ABSORBER,
     )},
     # An εr 4 block offset by half a cell, 'dual_average' against 'sampled'.
     "_interface_eps": {"dual_average": lanes(

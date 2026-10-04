@@ -127,3 +127,8 @@ def test_regeneration_rejects_a_moved_value(quantity, after):
     with pytest.raises(AssertionError, match=f"STOP.*{quantity}"):
         validate_class_changes(dict(cells=[old]), [current])
     validate_class_changes(dict(cells=[old]), [deepcopy(old)])
+
+
+def test_adi_sponge_refusal_has_stable_prefix():
+    from rfx._adi_notice import ADI_SPONGE_REFUSAL
+    assert refusal_prefix(ADI_SPONGE_REFUSAL) == 'solver="adi" refuses absorbing boundaries'

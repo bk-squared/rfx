@@ -1673,6 +1673,16 @@ class _PreflightMixin:
             source="_validate_cfg_adi_interior_pec",
         ), stacklevel=2)
 
+    def _validate_cfg_adi_boundary(self, _w) -> None:
+        from rfx._adi_notice import ADI_SPONGE_REFUSAL, has_absorber
+        if self._solver == "adi" and has_absorber(self):
+            _w.warn(PreflightWarning(
+                ADI_SPONGE_REFUSAL,
+                code="adi_absorber_unsupported",
+                severity="error",
+                source="_validate_cfg_adi_boundary",
+            ), stacklevel=2)
+
     def _validate_cfg_adi_3d_accuracy(self, _w) -> None:
         """Advise on the 3D ADI large-timestep accuracy envelope (OPT-C1 fixed).
 
@@ -2200,8 +2210,8 @@ class _PreflightMixin:
             raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
         if self._boundary == "upml":
             raise ValueError("solver='adi' does not support boundary='upml'")
-        if self._boundary not in ("pec", "cpml"):
-            raise ValueError("solver='adi' supports boundary='pec' or 'cpml'")
+        from rfx._adi_notice import require_closed_boundary
+        require_closed_boundary(self)
         if self._refinement is not None:
             raise ValueError("solver='adi' does not support subgridding yet")
         if self._tfsf is not None:

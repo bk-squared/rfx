@@ -329,6 +329,7 @@ def _no_pec(kind):
               cpml_layers=4, boundary="cpml")
     if kind == "adi":
         kw["solver"] = "adi"
+        kw["boundary"] = "pec"
     if kind == "graded":
         kw["dz_profile"] = np.array([0.001] * 6 + [0.0007] * 4 + [0.001] * 4)
         kw["domain"] = (0.0123, 0.0131, float(np.sum(kw["dz_profile"])))

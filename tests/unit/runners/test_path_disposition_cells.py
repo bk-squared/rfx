@@ -166,7 +166,10 @@ def _plus(add):
 
 
 def _observer(add, field, **base):
-    return Feature(_added(add, **base), observer=field)
+    def build(lane, on, ref=False):
+        options = base | ({"boundary": "pec"} if lane in ADI else {})
+        return _added(add, **options)(lane, on, ref)
+    return Feature(build, observer=field)
 
 
 def _pole(material):
@@ -220,8 +223,7 @@ def _board(lane, on, ref=False):
 
 def _guide(lane, on, ref=False):
     """A 12 × 6 mm PEC guide absorbing on x; the TE10 port the only drive.
-    ADI takes one absorber on all six faces, so its guide is a CPML box: the
-    port must reach ADI's own refusal, not the per-face one."""
+    ADI refuses the CPML box required by the port at construction."""
     spec = ("cpml" if lane in ADI else
             BoundarySpec(x="cpml", y=Boundary(lo="pec", hi="pec"), z=Boundary(lo="pec", hi="pec")))
     sim = _simulation(lane, (30, 12, 6), ref=ref, freq_max=20e9, boundary=spec)
@@ -249,9 +251,9 @@ def _plane_wave(lane, on, ref=False):
 
 def _floquet_cell(scan_theta):
     """A 6 mm periodic cell absorbing on z, the Floquet port the only drive.
-    On the ADI lanes a CPML box, for the reason _guide gives."""
+    On the ADI lanes a PEC box, to reach the port refusal."""
     def build(lane, on, ref=False):
-        spec = "cpml" if lane in ADI else BoundarySpec(x="periodic", y="periodic", z="cpml")
+        spec = "pec" if lane in ADI else BoundarySpec(x="periodic", y="periodic", z="cpml")
         sim = _simulation(lane, (6, 6, 20), ref=ref, boundary=spec)
         if on or scan_theta:
             sim.add_floquet_port(4e-3, axis="z", f0=5e9, scan_theta=scan_theta if on else 0.0)

@@ -668,8 +668,8 @@ class Simulation(
                 raise ValueError("solver='adi' supports mode='3d' or mode='2d_tmz'")
             if self._boundary == "upml":
                 raise ValueError("solver='adi' does not support boundary='upml'")
-            if self._boundary not in ("pec", "cpml"):
-                raise ValueError("solver='adi' supports boundary='pec' or 'cpml'")
+            from rfx._adi_notice import require_closed_boundary
+            require_closed_boundary(self)
             if self._dz_profile is not None:
                 raise ValueError("solver='adi' does not support nonuniform dz_profile")
             if self._dx_profile is not None or self._dy_profile is not None:

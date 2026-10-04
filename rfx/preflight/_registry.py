@@ -394,6 +394,9 @@ CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
     ConfigCheck("_validate_cfg_thin_absorber",
                 lambda sim, c: sim._validate_cfg_thin_absorber(c.warn, c.dx),
                 "absorber"),
+    ConfigCheck("_validate_cfg_adi_boundary",
+                lambda sim, c: sim._validate_cfg_adi_boundary(c.warn),
+                "execution"),
 )
 
 

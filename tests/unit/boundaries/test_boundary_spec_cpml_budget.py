@@ -797,13 +797,13 @@ def test_quick_convergence_clone_of_a_scalar_sim_is_unchanged():
 # --------------------------------------------------------------------------
 
 def test_adi_rejects_a_non_uniform_absorber_layout():
-    """``solver='adi'`` stamps its absorbing sigma on all six faces.
+    """The former ADI sponge stamped absorbing sigma on all six faces.
 
-    It reaches that path off ``self._boundary == 'cpml'``, which is true as
+    It reached that path off ``self._boundary == 'cpml'``, which is true as
     soon as ANY face absorbs, so a per-face spec used to get an absorber
     exactly where the caller asked for a reflector — with nothing said.
     """
-    with pytest.raises(ValueError, match="uniform absorber"):
+    with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
         Simulation(
             freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=8,
             boundary=BoundarySpec(x="cpml", y="cpml",
@@ -814,7 +814,7 @@ def test_adi_rejects_a_non_uniform_absorber_layout():
 
 def test_adi_rejects_a_per_face_thickness_override():
     """Same blindness through the thickness knob rather than the token."""
-    with pytest.raises(ValueError, match="uniform absorber"):
+    with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
         Simulation(
             freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=8,
             boundary=BoundarySpec(
@@ -825,13 +825,13 @@ def test_adi_rejects_a_per_face_thickness_override():
 
 
 @pytest.mark.parametrize("boundary", ["cpml", "pec", BoundarySpec.uniform("cpml")])
-def test_adi_accepts_a_uniform_absorber_and_runs(boundary):
-    """Sibling of both rejections: same solver, same domain, same budget.
-
-    A uniform layout — scalar or spelled out as a BoundarySpec — must still
-    construct AND produce a finite non-zero trace, so the rejection above
-    is about the layout and not about ADI plus BoundarySpec in general.
-    """
+def test_adi_uniform_boundary_runs_or_refuses_absorber(boundary):
+    """Only the uniform PEC case remains executable."""
+    if boundary != "pec":
+        with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
+            Simulation(freq_max=_FREQ, domain=(0.06, 0.06, 0.06),
+                       cpml_layers=8, boundary=boundary, solver="adi")
+        return
     sim = Simulation(
         freq_max=_FREQ, domain=(0.06, 0.06, 0.06), cpml_layers=8,
         boundary=boundary, solver="adi",

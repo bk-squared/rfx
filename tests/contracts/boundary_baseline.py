@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[2]
 TARGET = ROOT / "scripts/diagnostics/boundary_model/B1"
 # Stable leading phrases, without counts, face lists, or explanatory advice.
 REFUSAL_PREFIXES = (
+    'solver="adi" refuses absorbing boundaries',
     "PMC magnetic face(s)",
     "subgrid validation: supported=False",
     "[run] preflight found",

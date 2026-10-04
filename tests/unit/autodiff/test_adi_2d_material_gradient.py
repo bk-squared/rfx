@@ -42,11 +42,15 @@ def _energy(sim, **override):
 def test_adi_2d_all_material_derivative_modes_match_main_fd(which, boundary):
     """Replace #1450's finiteness refusal in forward and reverse modes.
 
-    Nu's exact 40-step model: eps at 1, sigma at 0. CPML uses the default
-    ten layers, whose absorbing sigma is added after material overrides.
+    Nu's exact 40-step PEC model: eps at 1, sigma at 0.
+    The former CPML cases now assert the public sponge refusal.
     The FD values below were measured on main 9b82b751 with h=1e-3; all
     base/perturbed forward traces were byte-identical to this branch.
     """
+    if boundary == "cpml":
+        with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
+            _sim(boundary=boundary)
+        return
     sim, shape = _sim(boundary=boundary)
     if which == "eps":
         def f(s):
@@ -59,8 +63,6 @@ def test_adi_2d_all_material_derivative_modes_match_main_fd(which, boundary):
     main_fd = {
         ("pec", "eps"): 1.2000781680399086e-5,
         ("pec", "sigma"): -2.254637365695089e-6,
-        ("cpml", "eps"): 3.00915398838697e-5,
-        ("cpml", "sigma"): -2.3598657207912765e-5,
     }[boundary, which]
     x0 = jnp.float32(x0)
     # Keep forward modes explicit: reverse-mode finiteness alone did not
@@ -109,6 +111,10 @@ def test_adi_2d_bin_gradients_match_fd_and_a_twice_longer_record(which, boundary
     SI-primal differences avoid cancellation of the small sigma response.
     Both comparisons retain the existing 3e-3 relative FD tolerance.
     """
+    if boundary == "cpml":
+        with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
+            _sim(boundary=boundary)
+        return
     sim, shape = _sim(boundary=boundary)
     dt = float(sim._build_grid().dt)
     index = 0 if which == "eps" else 1

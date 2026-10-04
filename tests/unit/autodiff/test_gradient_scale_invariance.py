@@ -85,7 +85,7 @@ def _model(lane, material):
     if lane.startswith("adi"):
         three_d = lane == "adi_3d"
         sim = Simulation(freq_max=10e9, domain=(12e-3, 12e-3, 12e-3 if three_d else DX),
-                         dx=DX, boundary="cpml", cpml_layers=4, solver="adi",
+                         dx=DX, boundary="pec", solver="adi",
                          mode="3d" if three_d else "2d_tmz")
         z = 6e-3 if three_d else 0.0
         if material == "sigma":

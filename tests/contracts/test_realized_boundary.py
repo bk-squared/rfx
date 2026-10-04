@@ -18,6 +18,10 @@ CELLS = BASELINE["cells"]
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
+def adi_absorber_cell(case, entry):
+    return entry == "adi" and case not in ("pec", "pmc-pec", "upml")
+
+
 @lru_cache(maxsize=None)
 def measured(case, entry):
     sim, grid, _, records = measure(case, entry)
@@ -40,6 +44,11 @@ def compare_departures(problems):
 @pytest.mark.parametrize("cell", [pytest.param(c, id=f"{c['case']}--{c['entry']}",
                                               marks=pytest.mark.xdist_group(f"{c['case']}--{c['entry']}")) for c in CELLS])
 def test_no_unlisted_departures(cell):
+    # The public sponge refusal supersedes B1; retain the historical record.
+    if adi_absorber_cell(cell["case"], cell["entry"]):
+        with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
+            measured(cell["case"], cell["entry"])
+        return
     # #1465 supersedes B1's subgrid refusal reason; the two construction /
     # preflight refusals still occur before lane admission. Keep B1 immutable.
     if cell["entry"] == "subgridded" and cell["case"] not in ("upml", "waveguide-pmc"):
@@ -62,7 +71,9 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
                          marks=[pytest.mark.xdist_group(f"{cell['case']}--{cell['entry']}"),
                                 pytest.mark.xfail(strict=True, raises=BoundaryDeparture,
                                                   reason=f"{departure['code']}; {departure['detail']}; fixed in {departure['step']}")])
-            for cell in CELLS if cell["status"] == "MEASURED" for departure in cell["departures"]]
+            for cell in CELLS if cell["status"] == "MEASURED"
+            and not adi_absorber_cell(cell["case"], cell["entry"])
+            for departure in cell["departures"]]
 # Distributed PMC now refuses before the kernel; its status is tested above.
 EXPECTED += [pytest.param(case, entry, face, code,
                           id=f"{case}--{entry}--{face}--{code}")

@@ -343,15 +343,11 @@ def test_simulation_adi_rejects_unsupported_configs():
 
 
 def test_simulation_adi_cpml_boundary():
-    """ADI with CPML boundary should work (implicit absorbing sigma)."""
-    sim = Simulation(
-        freq_max=10e9, domain=(0.02, 0.02, 0.01),
-        boundary="cpml", mode="2d_tmz", solver="adi",
-    )
-    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
-    sim.add_probe((0.012, 0.01, 0.0), "ez")
-    result = sim.run(n_steps=20)
-    assert not jnp.any(jnp.isnan(result.time_series))
+    """The public ADI absorber is refused before stepping."""
+    with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
+        Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
+                   boundary="cpml", mode="2d_tmz", solver="adi")
+
 
 
 def test_simulation_adi_lossy_material():
@@ -559,26 +555,10 @@ def test_simulation_adi_3d_run():
 
 
 def test_simulation_adi_3d_cpml():
-    """3D ADI with absorbing boundary (sigma-based) should stay bounded."""
-    sim = Simulation(
-        freq_max=5e9,
-        domain=(0.03, 0.03, 0.03),
-        boundary="cpml",
-        mode="3d",
-        solver="adi",
-        adi_cfl_factor=5.0,
-        dx=0.003,
-        cpml_layers=6,
-    )
-    sim.add_source((0.015, 0.015, 0.015), "ez",
-                    waveform=lambda t: -2 * t * 1e10 * jnp.exp(-(t * 1e10) ** 2),
-                    amplitude_kind="field")
-    sim.add_probe((0.02, 0.02, 0.015), "ez")
-    result = sim.run(n_steps=100)
-
-    assert not jnp.any(jnp.isnan(result.state.ez))
-    max_ez = float(jnp.max(jnp.abs(result.state.ez)))
-    assert max_ez < 100.0, f"3D ADI+CPML diverged: max|Ez| = {max_ez:.2e}"
+    """The public ADI absorber is refused before stepping."""
+    with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
+        Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02),
+                   boundary="cpml", mode="3d", solver="adi")
 
 
 @pytest.mark.parametrize("factor", [2.0, 5.0])
