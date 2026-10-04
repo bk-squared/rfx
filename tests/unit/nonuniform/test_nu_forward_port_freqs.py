@@ -81,44 +81,35 @@ def test_lumped_default_stays_without_sparams():
 
 
 def _known_load_line(load_ratio, *, profile):
-    """One-cell TEM gap: Zc = eta0, port at x=1 mm, load at x=3 mm.
+    """Internal lattice coax, asymmetric transverse cells: Zc=eta0/3.75.
 
-    See scripts/diagnostics/lumped_port_known_load_line.py. PEC plates on z
-    and PMC walls on x/y leave |Gamma| = |(R - Zc)/(R + Zc)| at low frequency.
+    dx=0.25 mm; PEC sheets y=2/5 and z=2/4, inner filament (3,3).
+    Unequal exterior margins and open longitudinal end stubs; the latter
+    enter the analytic transform. Grading changes x cells only and keeps
+    this realized cross-section. Declarations at x=1.23 and 6.31 cells
+    are deliberately off-node; the oracle uses the resulting nodes.
     """
-    from rfx.boundaries.spec import Boundary, BoundarySpec
+    from tests._interior_tem_line import build
 
-    dx = 1e-3
-    zc = 376.730313668
-    profiles = {}
+    widths = None
     if profile is not None:
-        widths = [1.0, 0.8, 1.2, 1.0] if profile == "graded" else [1.0] * 4
-        profiles = dict(dx_profile=np.array(widths) * dx,
-                        dz_profile=np.array([dx]))
-    sim = Simulation(
-        freq_max=10e9, domain=(4 * dx, dx, dx), dx=dx,
-        boundary=BoundarySpec(x=Boundary(lo="pmc", hi="pmc"),
-                              y=Boundary(lo="pmc", hi="pmc"),
-                              z=Boundary(lo="pec", hi="pec")), **profiles,
-    )
-    sim.add_port(position=(dx, 0., 0.), component="ez", impedance=zc,
-                 waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
-    sim.add_lumped_rlc(position=(3 * dx, 0., 0.), component="ez",
-                       R=load_ratio * zc, topology="parallel")
-    return sim
+        widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]
+                          if profile == "graded" else [1] * 9) * .25e-3
+    return build(ratio=load_ratio, profile=widths)[0]
 
 
-@pytest.mark.parametrize("load_ratio,expected", [(2.0, 1 / 3), (1.0, 0.0)])
-def test_lumped_known_load_graded(load_ratio, expected, request, record_property):
-    result = _known_load_line(load_ratio, profile="graded").forward(
-        port_s11_freqs=[1e9], num_periods=20, skip_preflight=True)
+@pytest.mark.parametrize("load_ratio", [2.0, 1.0])
+def test_lumped_known_load_graded(load_ratio, record_property):
+    from tests._interior_tem_line import build, input_reflection
+
+    widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]) * .25e-3
+    sim, line = build(ratio=load_ratio, profile=widths)
+    result = sim.forward(port_s11_freqs=[1e9], num_periods=20, skip_preflight=True)
     magnitude = float(np.abs(result.s_params[0, 0, 0]))
-    print(f"graded R/Zc={load_ratio:g}: |S11|(1 GHz)={magnitude:.9g}")
-    record_property("old_s11_magnitude_reference", expected)
+    expected = float(abs(input_reflection(line, [1e9], load_ratio * line.zc)[0]))
+    print(f"graded R/Zc={load_ratio:g}: |S11|={magnitude:.9g}, TEM={expected:.9g}")
+    record_property("closed_form_s11_magnitude", expected)
     record_property("new_s11_magnitude", magnitude)
-    # PMC walls form this one-cell line; the E-node image moved its walls.
-    request.node.add_marker(pytest.mark.xfail(strict=True, raises=AssertionError,
-        reason="#1221 B3b: ports lane re-judges with the moved walls"))
     assert abs(magnitude - expected) < 0.01
 
 

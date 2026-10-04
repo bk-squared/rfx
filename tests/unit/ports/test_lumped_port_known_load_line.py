@@ -1,62 +1,39 @@
-"""A one-cell lumped port on a line terminated in a known resistor.
+"""Known resistors on an internal PEC lattice coax after #1221 B3b.
 
-Root cause this pins (scripts/diagnostics/lumped_port_known_load_line.py):
-the lumped lane sampled its physical V/I BEFORE source injection, read its
-diagonal with the PASSIVE port-branch algebra ``(V + Z0·I)/(V - Z0·I)`` on a
-DRIVEN port, and withheld the Yee half-step current phase.  On the fixture
-below it returned |S11| 0.714 / 1.248 / 4.757 where the closed form is
-0.333 / 0 / 0.333 — two of the three grossly non-passive.  The wire family
-had already been corrected on all three counts (#683, #764, half-step
-phase); a one-cell WIRE port is the SAME cell (setup_wire_port with
-n_live=1 folds the same sigma, apply_wire_port with n_live=1 adds the same
-injection), so the two lanes must agree here, and both must land on the
-closed form.
-
-The pre-B3b half-cell-wall fixture is a 4-cell air-filled parallel-plate channel: PEC plates on z,
-magnetic walls on y and behind the port, one cell wide and one cell high so
-the TEM line impedance is Zc = eta0.  The port sits at node 1 with its
-reference impedance set to Zc; a resistor R sits at node 3 and the magnetic
-wall beyond it carries no current, so the line is terminated in R alone.
-Then |S11| = |(R - Zc)/(R + Zc)| at EVERY frequency, independent of line
-length, of beta, and of the mesh's numerical dispersion.
+The former one-cell PEC/PMC channel used magnetic side walls as its width.
+The rebuilt solve uses tests._interior_tem_line: internal PEC outer sheets,
+a filament inner conductor, asymmetric radial air edges, C'=3.75 epsilon0, Zc=eta0/3.75.
+At dx=0.25 mm the grid is (10,9,9), port/load nodes (1,3,3)/(6,3,3),
+with unequal 1/3-cell open end stubs. The declared separation is 5.08 cells;
+the oracle uses its realized 5 cells. Each stub contributes j*tan(beta*l)/Zc.
+The 0.05 magnitude bar, ordinary passivity and lane identity gates remain.
+The magnetic-plane advisory below intentionally retains its separate probe.
 """
+from functools import lru_cache
+
+import json
 
 import numpy as np
 import pytest
-
 import jax.numpy as jnp
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
+from tests._interior_tem_line import build, input_reflection
 
 ETA0 = 376.730313668
 DX = 1e-3
 N_NODES = 5
 FREQS_HZ = np.array([1.0, 2.5, 5.0, 7.5, 10.0]) * 1e9
-
-# An EMPIRICAL envelope on a fixture whose convergence is not shown, not a
-# discretization estimate.  Measured 2026-09-21: both lanes sit 0.00043 from
-# the closed form at 1 GHz, rising to 0.04206 at 10 GHz.
-#
-# What is known about that residual: it is antisymmetric in R (+0.0339 at
-# R = Zc/2, -0.0339 at R = 2 Zc, at 10 GHz) and fits ONE effective reference
-# impedance — Zc_eff/eta0 = 1.0805 from one load and 1.0782 from the other.
-# No cause is claimed.  The fixture cannot be mesh-refined: its cross-section
-# is one cell in each transverse direction BY CONSTRUCTION, which is how
-# Zc = eta0*h/w is arranged, so refining dx on the fixed structure leaves the
-# one-cell port no longer bridging the gap and |S11| goes to about 1.0 at
-# every load.  That the wire lane reads the same residual separates lane from
-# lane on a shared fixture; it is not a second witness for the fixture.
-#
-# So this bound is a lock on measured behaviour, not a derived error bar.
-# Widening it needs a written root cause, the same as any other gate; the
-# evidence these tests carry is the low-frequency agreement and the passivity
-# bound below, not the size of this number.
 CLOSED_FORM_ATOL = 0.05
 
 
 def _build(kind, r_over_zc):
+    return build(kind, ratio=r_over_zc)[0]
+
+
+def _magnetic_plane_advisory_fixture(kind, r_over_zc):
     sim = Simulation(
         freq_max=10e9,
         domain=((N_NODES - 1) * DX, DX, DX),
@@ -84,6 +61,8 @@ def _build(kind, r_over_zc):
     return sim
 
 
+
+@lru_cache(maxsize=None)
 def _s11(kind, r_over_zc):
     res = _build(kind, r_over_zc).forward(
         port_s11_freqs=jnp.asarray(FREQS_HZ),
@@ -96,7 +75,7 @@ def _s11(kind, r_over_zc):
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
 def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
     """The advisory must allow a TEM wave along the line on the y_lo plane."""
-    report = _build(kind, 0.5).preflight()
+    report = _magnetic_plane_advisory_fixture(kind, 0.5).preflight()
     messages = [str(issue) for issue in report.issues
                 if issue.code == "source_decoupled"]
     assert len(messages) == 1
@@ -109,17 +88,19 @@ def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
 
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="#1221 B3b: ports lane re-judges with the moved walls")
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
-def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc, kind):
-    """|S11| of a driven one-cell lumped port is |(R - Zc)/(R + Zc)|."""
-    gamma = abs((r_over_zc - 1.0) / (r_over_zc + 1.0))
+def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc, kind, record_property):
+    """The realized coax includes both open end stubs in its TEM answer."""
+    _, line = build(kind, ratio=r_over_zc)
+    gamma = np.abs(input_reflection(line, FREQS_HZ, r_over_zc * line.zc))
     s11 = np.abs(_s11(kind, r_over_zc))
     err = np.abs(s11 - gamma)
+    record_property("measured_magnitude", json.dumps(s11.tolist()))
+    record_property("closed_form_magnitude", json.dumps(gamma.tolist()))
+    print(f"{kind} R/Zc={r_over_zc}: magnitude error {max(err):.9g}")
     assert err.max() <= CLOSED_FORM_ATOL, (
-        f"R = {r_over_zc} Zc: closed form |S11| = {gamma:.5f} at every bin; "
+        f"R = {r_over_zc} Zc: closed form |S11| = {np.round(gamma, 5)}; "
         f"lumped read {np.round(s11, 5)} (per-bin error {np.round(err, 5)}) "
         f"at {FREQS_HZ / 1e9} GHz"
     )
@@ -154,3 +135,25 @@ def test_lumped_and_one_cell_wire_port_agree_on_the_same_cell(r_over_zc):
         f"R = {r_over_zc} Zc: lumped {np.round(np.abs(lumped), 6)} vs wire "
         f"{np.round(np.abs(wire), 6)} on the identical cell"
     )
+
+
+def test_internal_coax_axial_mesh_trend(record_property):
+    """Fixed transverse cells and declarations, three axial mesh resolutions.
+
+    The transverse lattice TEM impedance stays eta0/3.75. The end cells stay
+    0.25 mm as required by the NU grid; the seven interior cells subdivide
+    by 1/2/4. Report the snapped lengths separately. This measures axial
+    trend, not convergence of a continuum round coax or of the point feed.
+    """
+    errors = []
+    for refinement in (1, 2, 4):
+        profile = np.r_[.25e-3, np.full(7 * refinement, .25e-3 / refinement), .25e-3]
+        sim, line = build(ratio=2., profile=profile)
+        result = sim.forward(port_s11_freqs=FREQS_HZ, num_periods=40., skip_preflight=True)
+        s11 = np.asarray(result.s_params).reshape(-1)
+        expected = input_reflection(line, FREQS_HZ, 2 * line.zc)
+        error = float(np.max(np.abs(np.abs(s11) - np.abs(expected))))
+        errors.append(error)
+        record_property(f"mesh_{refinement}", str((line.shape, line.left, line.length, line.right, error)))
+        print(f"axial subdivision {refinement}: {line}, max magnitude error={error:.9g}")
+    assert errors[2] < errors[1] < errors[0] <= CLOSED_FORM_ATOL

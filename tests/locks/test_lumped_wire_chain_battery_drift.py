@@ -1,57 +1,34 @@
-"""The lumped / wire chain battery's coarsest mesh, solved again and held to its
-stored S11.
+"""Live drift locks on ten internally conducted, asymmetric TEM coax lines.
 
-B3b: the following stored reference describes the former half-cell PMC
-line. Only the live S11 drift assertion is a strict xfail until the ports
-lane rebuilds the line; stored records and numerical bars are unchanged.
+Re-pin history, 2026-10-05 (#1162 after #1221 B3b): the old 1 mm rung
+used PEC domain plates and one-cell PMC side walls; B3b moved its magnetic
+image to the E nodes and changed the realized line. The full OLD complex
+curves remain, unchanged, in tests/fixtures/lumped_wire_chain_battery/fixture.json,
+solves[{lumped,wire}_{short,open,res_half,res_double,matched}_1000um],
+producer c3936b3b, 2026-09-23, VESSL 369367263710/369367263711.
+OLD endpoint values (1 GHz -> 10 GHz) are recorded below, not overwritten.
 
-The battery (``tests/fixtures/lumped_wire_chain_battery/fixture.json``) is a
-30 mm parallel-plate line one cell wide between PEC plates and magnetic side
-walls, fed at one end by a one-cell lumped port or a four-cell wire port and
-terminated in a short, an open, R = Zc/2, R = 2 Zc and R = Zc. With the port
-referenced to the line's own Zc the closed form is S11 = Gamma_L exp(-2j beta L):
-|S11| is |Gamma_L| at every bin and the line length lives in the phase, which
-crosses the real axis every c / 4L = 2.5 GHz.
+The replacement uses internal PEC sheets y=2/5, z=2/(3+gap), a filament
+at (3,3), and unequal exterior margins 2/3 and 2/4 cells. The radial feed
+is off the cross-section symmetry planes. Only longitudinal PMC ends
+remain: their 1-cell/3-cell open stubs enter the TEM closed form.
+C' follows the realized transverse Dirichlet cell problem; Zc=eta0/(C'/eps0).
+Lumped: gap=1, dx=100 um, shape=(306,9,9), port/load x nodes=1/302,
+Zc=eta0/3.75, realized length=30.1 mm (declared 30.108 mm).
+Wire: gap=4, dx=25 um, shape=(1206,9,12), x nodes=1/1202,
+Zc=111.23520365290427 ohm from the 7-node Dirichlet solve,
+realized length=30.025 mm (declared 30.027 mm). The wire still has FOUR
+live cells; the load is a series chain of four R/4 resistors.
 
-Its replay test (``tests/oracle/test_lumped_wire_chain_battery.py``) reads the
-stored S11 only. This file builds the 1.0 mm mesh of the same ten lines with
-the battery's own driver, refuses to solve unless the grid, the port and the
-load land where the record says they did, solves them, and holds the live S11
-to the stored one with the bar the battery is judged by:
-
-* |S11| within 2 dB of the stored curve at every bin. The matched line is a
-  deep null (the PI's 2026-09-21 ruling): it is held to -20 dB and compared in
-  dB with nothing.
-* every phase crossing — a frequency where S11 is real — within 1 % of its
-  partner of the same sign on the other curve.
-* the line's electrical length within 1 % of the record's: the least-squares
-  slope of S11's unwrapped phase against frequency, live over stored, on every
-  reflecting line (the PI's phase item of 2026-09-24).
-* the record's own verdicts at this mesh — passivity at 1.02, |S11| within
-  2 dB of the closed form, the crossings against the closed form, the phase
-  turning the same way with frequency as the closed form's, the matched floor —
-  come out the same when the battery's assembler computes them from the live
-  S11. The phase direction is the one a conjugated S11 (the other time
-  convention) changes: its magnitude and its real-axis crossings are the same.
-
-A red here means the stored battery describes a different solver from the one
-under test. The remedy is to measure the battery again, not to move anything in
-this file.
-
-Lane: the default fast suite (no marker), so every pull request that touches
-code, every push to main and the weekly CPU lane run it. Wall time: 3.7 s for
-all ten lines on four VESSL CPU cores (run 369367264067), 0.2-0.8 s a line.
+Fresh CPU float32 records use 20 periods and 91 bins at 1..10 GHz.
+The original bars remain: 2 dB magnitude, -20 dB matched floor, 1% on
+phase crossings and electrical-length slope, passivity <=1.02, and the
+phase direction. Each reflecting solve is also judged directly against
+the TEM line plus both open stubs with those same bars. No fitted length
+or impedance enters that oracle. The old battery replay records are
+historical and remain separate from these new live locks.
 """
-LOCK_PROVENANCE = {
-    "fixture": "tests/fixtures/lumped_wire_chain_battery/fixture.json",
-    "generator": "scripts/diagnostics/lumped_wire_chain_battery_measure.py",
-    "commit": "c3936b3b",
-    "date": "2026-09-23",
-    "run_id": "369367263710 (wire), 369367263711 (lumped)",
-    "host": "VESSL cpu-32-mem-64, jax 0.6.2 cpu, float32",
-    "pinned_until": "2027-03-23",
-}
-
+from dataclasses import asdict
 import json
 
 import numpy as np
@@ -59,116 +36,94 @@ import pytest
 
 from tests import _chain_battery_drift as drift
 from tests import _electrical_length as EL
+from tests._interior_tem_line import chain, input_reflection
+from tests._interior_tem_pins import PINS
 
-FAMILY = "lumped / wire"
-DRIVER = LOCK_PROVENANCE["generator"]
-FIXTURE = drift.REPO / LOCK_PROVENANCE["fixture"]
-REMEASURE = (f"`PYTHONPATH=. python {DRIVER} --stage solve --kind <lumped|wire> "
-             "--all-duts --all-rungs --out <dir> --run-id <id>` for both port kinds, "
-             "then `--assemble`")
-
-RUNG_UM = 1000
+LOCK_PROVENANCE = {
+    "fixture": "tests/_interior_tem_pins.py",
+    "generator": "tests._interior_tem_line.chain + Simulation.forward",
+    # Unchanged product-code revision; the new fixture is committed with these pins.
+    "commit": "0993dc71963d9b274db387f95f9b8962874029d4",
+    "date": "2026-10-05",
+    "run_id": "local CPU #1162 rebuild",
+    "host": "JAX CPU float32",
+    "pinned_until": "2027-03-23",
+}
+FAMILY = "lumped / wire internal TEM coax"
+DRIVER = "scripts/diagnostics/lumped_wire_chain_battery_measure.py"
 KINDS = ("lumped", "wire")
 DUTS = ("short", "open", "res_half", "res_double", "matched")
-
-# The verdicts the record carries at this mesh, by DUT. The replay test gates
-# passivity and the closed-form magnitude at every mesh; the crossings against
-# the closed form are recorded at this one (1.7-2.8 % out, which is why the
-# battery recommends 0.5 mm) and must not flip either. `same_sign` says the
-# unwrapped angle falls with frequency as the closed form's does; a conjugated
-# S11 keeps every other number here and flips that one.
-VERDICTS = {
-    "reflecting": (("passivity", "within_bar"),
-                   ("magnitude_vs_analytic", "within_bar"),
-                   ("phase", "within_bar"),
-                   ("phase", "angle_slope_rad_per_hz", "same_sign")),
-    "matched": (("passivity", "within_bar"),
-                ("matched_floor", "within_bar")),
-}
-
-
-@pytest.fixture(scope="module")
-def fixture():
-    return json.loads(FIXTURE.read_text())
+FREQS = np.linspace(1e9, 10e9, 91)
+NUM_PERIODS = 20.
+REMEASURE = "re-measure chain(kind, dut).forward(port_s11_freqs=FREQS, num_periods=20) on CPU"
 
 
 @pytest.fixture(scope="module")
 def driver():
+    # Only the crossing arithmetic is reused; the old geometry and its
+    # assembler's half-cell assumptions do not construct these new records.
     return drift.load_driver(DRIVER)
 
 
-def _live_verdicts(driver, entry, live_grid, spec, live_s11) -> dict:
-    """The battery's assembler, run on the live S11 as if it were a stage
-    record, so the verdicts are computed by the code that computed the stored
-    ones."""
-    kind, dut = entry["kind"], entry["dut"]
-    rec = {
-        "kind": kind, "dut": dut, "rung_um": RUNG_UM,
-        "drive": entry["drive"], "num_periods": entry["num_periods"],
-        "n_steps": entry["n_steps"],
-        "declared": driver.declared(kind, dut, RUNG_UM * 1e-6),
-        "realized_grid": live_grid, "port_spec": spec,
-        "preflight": {"text": []}, "warnings": [], "wall_s": 0.0, "peak_memory": {},
-        "s11": driver._c(live_s11),
-    }
-    return driver._solve_entry(rec)
+def _reflecting_findings(driver, reference, live, *, report):
+    findings = drift.magnitude_findings("|S11|", FREQS, reference, live, report=report)
+    findings += drift.crossing_findings(
+        "S11", driver.phase_crossings(FREQS, reference)["crossings"],
+        driver.phase_crossings(FREQS, live)["crossings"], FREQS[0], FREQS[-1], report=report)
+    findings += drift.electrical_length_findings("S11", FREQS, reference, live, report=report)
+    findings += drift.phase_direction_findings("S11", FREQS, reference, live)
+    return findings
 
 
 @pytest.mark.parametrize("dut", DUTS)
 @pytest.mark.parametrize("kind", KINDS)
-def test_the_coarsest_mesh_still_solves_to_its_stored_s11(fixture, driver, kind, dut, request, record_property):
-    key = f"{kind}_{dut}_{RUNG_UM}um"
-    entry = fixture["solves"][key]
-    assert entry["provenance"]["commit"].startswith(LOCK_PROVENANCE["commit"]), (
-        f"{key} was measured at {entry['provenance']['commit']}, but this guard's "
-        f"LOCK_PROVENANCE names {LOCK_PROVENANCE['commit']}: the battery was measured "
-        "again and the guard was not moved to the new records")
-    dx = RUNG_UM * 1e-6
-
-    # Before any step: the line the driver builds today is the recorded line —
-    # the same node count, the port and the load on the same nodes, the same
-    # walls, the same time step.
-    sim = driver.build_sim(kind, dut, dx, drive=entry["drive"])
-    live_grid = driver.assert_realized_grid(sim, kind, dut, dx)
-    moved = drift.realized_differences(entry["realized_grid"], live_grid)
-    assert not moved, drift.stale_record(
-        FAMILY, key, ["the channel built today is not the recorded channel: "
-                      + "; ".join(moved)], REMEASURE)
-
-    result = driver.solve_s11(sim, num_periods=entry["num_periods"])
-    live = driver._s11_of(result)
-    spec = driver.port_spec_record(result, kind, dut, dx)
-
-    freqs = np.asarray(entry["freqs_hz"], dtype=float)
-    stored = drift.complex_array(entry["s11"])
-    findings = drift.realized_differences(entry["port_spec"], spec, "port_spec")
-    assert not findings, drift.stale_record(FAMILY, key, findings, REMEASURE)
-    record_property("freqs_hz", json.dumps(freqs.tolist()))
-    record_property("old_s11", json.dumps(driver._c(stored)))
-    record_property("new_s11", json.dumps(driver._c(live)))
-    report: list[str] = []
-    if dut == "matched":
-        findings += drift.bound_findings("the matched line's |S11|", freqs, live,
-                                         report=report)
+def test_the_coarsest_mesh_still_solves_to_its_stored_s11(driver, kind, dut, record_property):
+    key = f"{kind}_{dut}"
+    entry = PINS[key]
+    sim, line = chain(kind, dut)
+    moved = drift.realized_differences(entry["line"], asdict(line))
+    assert not moved, drift.stale_record(FAMILY, key, moved, REMEASURE)
+    result = sim.forward(port_s11_freqs=FREQS, num_periods=NUM_PERIODS, skip_preflight=True)
+    specs = result.lumped_port_sparams if kind == "lumped" else result.wire_port_sparams
+    assert len(specs) == 1
+    spec = specs[0][0]
+    assert spec.component == "ez" and spec.impedance == pytest.approx(line.zc, rel=1e-9)
+    if kind == "lumped":
+        assert (spec.i, spec.j, spec.k) == line.port
     else:
-        findings += drift.magnitude_findings("|S11|", freqs, stored, live,
-                                             report=report)
-        findings += drift.crossing_findings(
-            "the phase of S11",
-            driver.phase_crossings(freqs, stored)["crossings"],
-            driver.phase_crossings(freqs, live)["crossings"],
-            float(freqs[0]), float(freqs[-1]), report=report)
-        findings += drift.electrical_length_findings("S11", freqs, stored, live,
-                                                     report=report)
-    findings += drift.verdict_findings(
-        entry, _live_verdicts(driver, entry, live_grid, spec, live),
-        VERDICTS["matched" if dut == "matched" else "reflecting"])
+        assert tuple(spec.live_cells) == tuple((line.port[0], 3, 3 + k) for k in range(4))
+        assert spec.excite
+    live = np.asarray(result.s_params).reshape(-1)
+    stored = drift.complex_array(entry["s11"])
+    zload = {"short": 0., "open": np.inf, "res_half": .5 * line.zc,
+             "res_double": 2 * line.zc, "matched": line.zc}[dut]
+    analytic = input_reflection(line, FREQS, zload)
+    record_property("freqs_hz", json.dumps(FREQS.tolist()))
+    for name, values in (("stored_s11", stored), ("live_s11", live), ("closed_form", analytic)):
+        record_property(name, json.dumps([[float(v.real), float(v.imag)] for v in values]))
+    assert np.isfinite(live).all()
+    assert max(abs(live)) <= 1.02
+    report = []
+    if dut == "matched":
+        findings = drift.bound_findings("matched |S11|", FREQS, live, report=report)
+        findings += drift.bound_findings("matched TEM |S11|", FREQS, analytic)
+    else:
+        findings = _reflecting_findings(driver, stored, live, report=report)
+        findings += _reflecting_findings(driver, analytic, live, report=report)
     print(f"[battery drift] {key}: " + "; ".join(report))
-    # The magnetic side/end walls now lie on E nodes; stored half-cell lines
-    # need the ports lane to rebuild their reference, not a looser drift bar.
-    request.node.add_marker(pytest.mark.xfail(strict=True, raises=AssertionError,
-        reason="#1221 B3b: ports lane re-judges with the moved walls"))
     assert not findings, drift.stale_record(FAMILY, key, findings, REMEASURE)
+
+
+# OLD lumped_short: (-0.31498000025749207+0.9490987062454224j) -> (-0.9997029900550842+0.024372028186917305j)
+# OLD lumped_open: (0.3412729799747467-0.9399644136428833j) -> (0.9250831604003906+0.3797631561756134j)
+# OLD lumped_res_half: (-0.1078980565071106+0.32007065415382385j) -> (-0.3335723876953125+0.008125212043523788j)
+# OLD lumped_res_double: (0.09750854223966599-0.31413817405700684j) -> (0.33289608359336853-0.008143632672727108j)
+# OLD lumped_matched: (-0.004983312916010618+0.0036159285809844732j) -> (-0.0003804727748502046-5.96065319768968e-06j)
+# OLD wire_short: (-0.31498000025749207+0.9490987062454224j) -> (-0.9997029900550842+0.024372028186917305j)
+# OLD wire_open: (0.3412729799747467-0.9399644136428833j) -> (0.9250831604003906+0.3797631561756134j)
+# OLD wire_res_half: (-0.1078980565071106+0.32007065415382385j) -> (-0.3335723876953125+0.008125212043523788j)
+# OLD wire_res_double: (0.09750854223966599-0.31413817405700684j) -> (0.33289608359336853-0.008143632672727108j)
+# OLD wire_matched: (-0.004983312916010618+0.0036159285809844732j) -> (-0.0003804727748502046-5.96065319768968e-06j)
 
 
 def test_the_crossing_rule_excuses_only_a_crossing_that_can_have_left_the_sweep():
