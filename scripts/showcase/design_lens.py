@@ -107,6 +107,7 @@ class Model(common.ModelBase):
         self._functions = {}
 
     def response_fn(self, n_steps, normalize="flux"):
+        import jax
         import jax.numpy as jnp
         from rfx.farfield import compute_far_field_jax, make_ntff_box
         if n_steps in self._functions:
@@ -134,10 +135,17 @@ class Model(common.ModelBase):
             return self.sim.forward(design_box=(box_lo, box_hi), design_eps_override=cells,
                                     n_steps=n_steps, checkpoint=False, skip_preflight=True)
 
+        # One theta row at a time: the transform otherwise materializes every
+        # (direction x NTFF surface point x frequency) phase factor at once,
+        # about 11 GB at 1.0 mm. Rematerialized in the backward pass.
+        @jax.checkpoint
+        def row_power(ntff_data, t):
+            ff = compute_far_field_jax(ntff_data, box, self.grid, t[None], ph)
+            return ((jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2) * 1e27)[:, 0, :]
+
         def response(e):
             r = run(e)
-            ff = compute_far_field_jax(r.ntff_data, box, self.grid, th, ph)
-            p = (jnp.abs(ff.E_theta) ** 2 + jnp.abs(ff.E_phi) ** 2) * 1e27
+            p = jnp.moveaxis(jax.lax.map(lambda t: row_power(r.ntff_data, t), th), 0, 1)
             prad = jnp.sum(p * w[None, :, :], axis=(1, 2))
             bore = compute_far_field_jax(r.ntff_data, box, self.grid, jnp.zeros(1, dtype=dtype), ph)
             p0 = (jnp.abs(bore.E_theta) ** 2 + jnp.abs(bore.E_phi) ** 2) * 1e27
