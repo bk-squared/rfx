@@ -1,13 +1,14 @@
 # S0 mutation evidence
 
-Re-run after the comparator/builder corrections: CPU, JAX 0.10.2, float32, two host CPU devices. Each run used the real builder,
+Re-run after the whole-record comparator and per-cause PR selection corrections: CPU, JAX 0.10.2, float32, two host CPU devices. Each run used the real builder,
 execution/comparison code, and strict expected-failure classification. Mutations
-were isolated in bounded subprocess runs; edited files were restored byte for
+were isolated in subprocess runs with a 180-second timeout per run; none timed
+out. Edited files were restored byte for
 byte in `finally` blocks. No mutated production code is included in this change.
 
 | Mutation | Target | Result |
 |---|---|---|
-| m1 | Return without comparing in `comparison.compare` | Exit 1; the actual matrix's live canary failed: changed record accepted. |
+| m1 | Independently disable `compare`, `_tree`, and `_comparison` | All three runs exited 1; the actual matrix live canary rejected each disabled layer. |
 | m2 DFT | Add half a step to NU `t_plane`, retaining its DFT helper calls (`rfx/nonuniform.py:3103`) | Exit 1; the DFT finding's relative discrepancy changed from `0.0579118517` to `0.0289589227`; change `0.028952929` exceeded the unchanged `1e-4` bar. |
 | m2 wire | Drop the first column from uniform returned `sparam_time_records`, retaining the scan/helper calls (`rfx/simulation.py:3549`) | Exit 1; V/I/V_port comparisons failed. Maximum relative difference `1`; matching relative bar `7.54426282e-7`. |
 | m2 sigma | Pass zero sigma to only NU's `update_e_nu` call (`rfx/nonuniform.py:2921`) | Exit 1; probe relative difference `0.00847978886`; absolute difference `0.00160011649` versus bar `1.34110451e-7`. The corrected E-material capture also measured sigma difference `0.5` versus exact bar `0`. |
@@ -21,7 +22,8 @@ baseline is green. Its physics comparison remains a strict expected failure;
 no bar was widened. Wire samples are compared channel by channel, so NU's known
 missing V_ref cannot mask corruption of the shared V/I/V_port channels.
 
-The recorded pytest summaries were one failure for m1, each m2 variant, and m4;
+All nine mutation runs were killed. The pytest summaries were one failure
+for each of the three m1 variants, each m2 variant, and m4;
 one collection error for m3; one failure and one pass for m5.
 
-Conclusions: 리더가 채움.
+Conclusions: in the S0 PR body (leader)

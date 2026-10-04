@@ -147,6 +147,7 @@ jobs:
       - name: Run slow suite — shard ${{ matrix.group }} of 5
         env:
           RFX_WEEKLY_RSS: "1"
+          RFX_S0_FULL: "1"
         run: >
           pytest -v -ra -s
           -m "not gpu and not highmem and not docs_consistency"

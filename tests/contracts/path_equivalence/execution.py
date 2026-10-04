@@ -1,5 +1,4 @@
 """Run S0 declarations and retain every record-level failure and timing."""
-from dataclasses import fields, is_dataclass
 import functools
 import sys
 import time
@@ -13,7 +12,7 @@ from rfx import _realized
 from rfx.runners import _admission as admission
 
 from .builders import BASE_ROWS, build, point
-from .comparison import compare
+from .comparison import compare, container, excluded, metadata, record_peak, NAMED_RECORD_COLLECTIONS
 
 
 @functools.lru_cache(maxsize=None)
@@ -80,33 +79,31 @@ def solve(row, lane, graded, steps, dt):
                 objective=objective, gradient=gradient, elapsed=time.perf_counter()-started)
 
 
-def _comparison(a, b, name, kind, report):
+def _comparison(a, b, name, kind, report, peak=None):
     try:
         if isinstance(a, (str, bool)) or isinstance(b, (str, bool)):
             assert a == b, f'{name}: {a!r} vs {b!r}'
         else:
-            compare(a, b, record=name, kind=kind, measurements=report['measurements'])
+            compare(a, b, record=name, kind=kind, measurements=report['measurements'], peak=peak)
     except AssertionError as exc:
         report['failures'].append(str(exc))
 
 
-def _tree(a, b, name, kind, report):
+def _tree(a, b, name, kind, report, peak=None):
     if a is None and b is None:
         return  # Optional fields inside a present record.
     if a is None or b is None:
-        _comparison(a, b, name, kind, report)
+        _comparison(a, b, name, kind, report, peak)
         return
 
-    def container(value):
-        if is_dataclass(value):
-            return {f.name: getattr(value, f.name) for f in fields(value)}
-        if hasattr(value, '_asdict'):
-            return value._asdict()
-        return value
+    if peak is None and name not in NAMED_RECORD_COLLECTIONS:
+        peak = record_peak(a, b, name)
 
     a, b = container(a), container(b)
     if isinstance(a, dict) and isinstance(b, dict):
         for key in sorted(a.keys() | b.keys()):
+            if excluded(name, key):
+                continue
             if name.startswith('geometry') and (str(key).startswith('declared_') or key in (
                     'lane', 'face_residual_m', 'comparison_bounds_m', 'snap', 'limitations',
                     'refused', 'refused_thin_conductors', 'pad_fill_findings')):
@@ -114,17 +111,18 @@ def _tree(a, b, name, kind, report):
             if key not in a or key not in b:
                 report['failures'].append(f"{name}.{key}: record missing on {'A' if key not in a else 'B'}")
             else:
-                _tree(a[key], b[key], f'{name}.{key}', kind, report)
+                _tree(a[key], b[key], f'{name}.{key}',
+                      'exact' if metadata(name, key) else kind, report, peak)
     elif isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
         for i in range(max(len(a), len(b))):
             if i >= len(a) or i >= len(b):
                 report['failures'].append(f"{name}.{i}: record missing on {'A' if i >= len(a) else 'B'}")
             else:
-                _tree(a[i], b[i], f'{name}.{i}', kind, report)
+                _tree(a[i], b[i], f'{name}.{i}', kind, report, peak)
     elif isinstance(a, (dict, tuple, list)) or isinstance(b, (dict, tuple, list)):
         report['failures'].append(f'{name}: record structure differs: {type(a).__name__} vs {type(b).__name__}')
     else:
-        _comparison(a, b, name, kind, report)
+        _comparison(a, b, name, kind, report, peak)
 
 
 def _kernel_materials(capture):
@@ -184,14 +182,19 @@ def _port_dft(value, name):
 
 
 def _comparison_canary():
-    # m1: disabling comparison must redden the actual matrix, including cells
-    # which already have an expected geometry-record finding.
+    # Exercise every layer that the matrix relies on, even in expected failures.
+    a, b = np.array([1.], dtype=np.float32), np.array([2.], dtype=np.float32)
     try:
-        compare(np.array([1.], dtype=np.float32), np.array([2.], dtype=np.float32),
-                record='canary', kind='step', measurements=[])
+        compare(a, b, record='canary', kind='step', measurements=[])
     except AssertionError:
-        return
-    raise RuntimeError('S0 comparison disabled: changed record accepted')
+        pass
+    else:
+        raise RuntimeError('S0 comparison disabled: changed record accepted')
+    for helper in (_comparison, _tree):
+        report = dict(failures=[], measurements=[])
+        helper(a, b, 'canary', 'step', report)
+        if not report['failures']:
+            raise RuntimeError(f'S0 {helper.__name__} disabled: changed record accepted')
 
 
 def _entry_refusal(sim, cell):

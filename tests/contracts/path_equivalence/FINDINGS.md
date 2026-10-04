@@ -5,13 +5,13 @@
 Lengths are 12 steps unless `12/36` is shown. Numeric bars are relative to
 peak: `1e-4` accumulated; per-step uses 9 float32 ULP at peak. `N/A` denotes
 schema, missing-record, or execution findings, not a numeric discrepancy.
-Issue numbers and conclusions: 리더가 채움.
+Conclusions: in the S0 PR body (leader)
 
 | Cause | Cells / record | Witness vs bar | Implementation A / B |
 |---|---|---|---|
 | record-semantics-declared-length | Once, all U/N geometry declarations | `declared_length_m` = user domain on uniform, profile sum on NU; excluded from realized equality | [uniform :631](../../../rfx/api/__init__.py#L631) / [NU x :523](../../../rfx/api/__init__.py#L523), [NU y :535](../../../rfx/api/__init__.py#L535) |
 | nu-dft-plane-accumulator | `_dft_planes`, U/N and FU/FN, 12/36; accumulator | `0.0579118517` / `0.0536573255` vs `1e-4` | [U :2686](../../../rfx/simulation.py#L2686) / [N :3103](../../../rfx/nonuniform.py#L3103) |
-| nu-flux-accumulator | `_flux_monitors`, U/N, 12/36; e1/e2/h1/h2 DFT | max `0.0584336938` / `0.0546932149` vs `1e-4` | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
+| nu-flux-accumulator | `_flux_monitors`, U/N, 12/36; e1/e2 DFT | max `0.0579118289` / `0.0536572720` vs `1e-4` | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | flux-dA-shape | Same run cells; dA | `(1,1)` vs `(13,12)`; N/A | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | flux-dA2-missing | Same run cells; dA2 | Missing on U; N/A | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | forward-flux-record-missing | `_flux_monitors`, FU/FN, 12/36 | Missing on both forward result records; availability finding, not a measured path difference | [FU :2709](../../../rfx/api/_execute.py#L2709) / [FN :2732](../../../rfx/api/_execute.py#L2732) |
@@ -20,7 +20,6 @@ Issue numbers and conclusions: 리더가 채움.
 | uniform-wire-dft-record-missing | `_ports` wire U/N 12/36; lumped/passive FU/FN | Raw `wire_port_sparams` absent on U/FU; FU lumped data has a different container name; N/A | [U :1212](../../../rfx/runners/uniform.py#L1212), [FU :2719](../../../rfx/api/_execute.py#L2719) / [N :1934](../../../rfx/runners/nonuniform.py#L1934) |
 | nu-lumped-dft-record-missing | `_ports` lumped/passive FU/FN | Raw `lumped_port_sparams` absent on FN, which exposes one-cell wire data; container-schema finding; N/A | [FU :2715](../../../rfx/api/_execute.py#L2715) / [FN :2732](../../../rfx/api/_execute.py#L2732), [NU construction :1356](../../../rfx/runners/nonuniform.py#L1356) |
 | s-parameter-shape | `_ports` lumped/passive FU/FN; wire FU/FN 12/36 | `(2,)` vs `(1,1,2)`; N/A | [FU :2668](../../../rfx/api/_execute.py#L2668) / [FN :1356](../../../rfx/runners/nonuniform.py#L1356) |
-| ntff-distributed | `_ntff`, U/D; c_x_lo, c_y_hi/lo, c_z_hi/lo | max relative `1.78271770` vs `1e-4`; c_x_lo absolute `3.79470760e-19` vs `2.42434979e-23` | [U :2674](../../../rfx/simulation.py#L2674) / [D :65](../../../rfx/runners/_distributed_ntff.py#L65) |
 | distributed-mode2d-broadcast | `_mode`, U/D | Broadcasting `float32[10,13,2]` into `[10,13,1]`; N/A | [U :134](../../../rfx/runners/uniform.py#L134) / [D :2573](../../../rfx/runners/_distributed_common.py#L2573) |
 | graded-distributed-ports-refused | `_ports` lumped Ng/Dg; wire Ng/Dg 12/36 | Graded distributed port extraction refuses; N/A | [N :713](../../../rfx/runners/nonuniform.py#L713) / [Dg lumped :3175](../../../rfx/api/_execute.py#L3175), [Dg wire :458](../../../rfx/api/_preflight.py#L458) |
 | graded-distributed-ntff-refused | `_ntff`, Ng/Dg | Public distributed feature guard refuses NTFF; N/A | [N :3181](../../../rfx/nonuniform.py#L3181) / [Dg :5083](../../../rfx/api/_execute.py#L5083) |
@@ -47,20 +46,25 @@ The public API instead deliberately falls back to one device
 ([routing :5051](../../../rfx/api/_execute.py#L5051)); forced-dispatch recursion
 is a test artifact and is not retained as a finding.
 
-Record-check xfails before/after (execution failures also fail their dependent
-record groups):
+Record-check xfails before/after this review (all 25 previously finding cells
+were re-measured; execution failures also fail their dependent record groups):
 
-| Category | Before | After |
+| Category | bfa8686d | This review |
 |---|---:|---:|
-| realized | 87 | 5 |
-| probes | 11 | 5 |
-| port_samples | 15 | 14 |
-| port_dft | 13 | 9 |
-| observers | 10 | 10 |
-| objective | 2 | 0 |
-| gradient | 2 | 0 |
-| refusal | 12 | 0 |
+| realized | 5 | 5 |
+| probes | 5 | 5 |
+| port_samples | 14 | 14 |
+| port_dft | 9 | 9 |
+| observers | 10 | 9 |
+| objective | 0 | 0 |
+| gradient | 0 | 0 |
+| refusal | 0 | 0 |
 
-Total: **152 → 43 checks**, **100 → 25 cells**. The five remaining realized-group
-xfails are execution errors; no remaining finding is a geometry or kernel-material
-mismatch. All 20 prior builder-conflict cells and the H-container artifact cleared.
+Total: **43 → 42 checks**, **25 → 24 cells**, **14 → 13 causes** (excluding
+the separate declared-length semantic note). The five realized-group xfails
+are execution errors; none is a geometry or kernel-material mismatch.
+Uniform/distributed NTFF now passes: Kahan residuals are excluded, and its six
+physical faces use the whole-record peak (maximum relative difference
+`6.65695461e-8` versus `1e-4`). Flux H-channel discrepancies are
+below the whole-monitor bar; E-channel findings remain. The full matrix was
+not re-run in this review.

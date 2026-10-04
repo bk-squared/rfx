@@ -92,13 +92,38 @@ PR_CHOICES = {
 }
 
 
-def pr_subset(cells, findings):
-    """All admission refusals and one measured passing cell per family.
+# Cheapest measured 12-step witness per cause (cold solve cost, including failures).
+PR_FINDING_CHOICES = {
+    "distributed-mode2d-broadcast": "_mode::run_uniform:run_distributed:constant:12",
+    "flux-dA-shape": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
+    "flux-dA2-missing": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
+    "forward-flux-record-missing": "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:12",
+    "graded-distributed-ntff-refused": "_ntff:ntff_box:run_nonuniform:run_distributed:graded:12",
+    "graded-distributed-ports-refused": "_ports:wire_port:run_nonuniform:run_distributed:graded:12",
+    "nu-dft-plane-accumulator": "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:12",
+    "nu-flux-accumulator": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
+    "nu-lumped-dft-record-missing": "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12",
+    "nu-missing-vref": "_ports:wire_port:run_uniform:run_nonuniform:constant:12",
+    "port-time-record-missing": "_ports:lumped_port:run_uniform:run_distributed:constant:12",
+    "s-parameter-shape": "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12",
+    "uniform-wire-dft-record-missing": "_ports:wire_port:run_uniform:run_nonuniform:constant:12"
+}
 
-    A family with only findings is entirely weekly: the explicit xfail-only
-    placement rule takes precedence over the one-per-family PR target.
-    """
+
+def pr_subset(cells, findings):
+    """All refusals, one strict witness per cause, and passing family representatives."""
     chosen = {c.id for c in cells if not c.equivalence}
+    causes = {entry['cause'] for groups in findings.values()
+              for entries in groups.values() for entry in entries}
+    by_id = {c.id: c for c in cells}
+    for cause in sorted(causes):
+        assert cause in PR_FINDING_CHOICES, f'S0 needs PR finding cost selection: {cause}'
+        identity = PR_FINDING_CHOICES[cause]
+        assert identity in by_id and by_id[identity].equivalence and by_id[identity].steps == 12, (
+            f'S0 stale PR finding cell: {cause}')
+        assert any(entry['cause'] == cause for entries in findings.get(identity, {}).values()
+                   for entry in entries), f'S0 stale PR finding selection: {cause}'
+        chosen.add(identity)
     families = {c.row[0] for c in cells if c.equivalence}
     for family in sorted(families):
         candidates = [c for c in cells if c.equivalence and c.steps == 12

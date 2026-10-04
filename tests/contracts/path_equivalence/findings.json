@@ -68,25 +68,13 @@
    {
     "cause": "nu-flux-accumulator",
     "fingerprint": "flux_monitors.flux_x_0.e1_dft: numeric",
-    "relative": 0.0580509329853314,
+    "relative": 0.013926880293480097,
     "relative_bar": 0.0001
    },
    {
     "cause": "nu-flux-accumulator",
     "fingerprint": "flux_monitors.flux_x_0.e2_dft: numeric",
     "relative": 0.05791182885042686,
-    "relative_bar": 0.0001
-   },
-   {
-    "cause": "nu-flux-accumulator",
-    "fingerprint": "flux_monitors.flux_x_0.h1_dft: numeric",
-    "relative": 0.057888685595481264,
-    "relative_bar": 0.0001
-   },
-   {
-    "cause": "nu-flux-accumulator",
-    "fingerprint": "flux_monitors.flux_x_0.h2_dft: numeric",
-    "relative": 0.05843369377690264,
     "relative_bar": 0.0001
    }
   ]
@@ -104,7 +92,7 @@
    {
     "cause": "nu-flux-accumulator",
     "fingerprint": "flux_monitors.flux_x_0.e1_dft: numeric",
-    "relative": 0.05388543501010911,
+    "relative": 0.01443915256277397,
     "relative_bar": 0.0001
    },
    {
@@ -112,18 +100,6 @@
     "fingerprint": "flux_monitors.flux_x_0.e2_dft: numeric",
     "relative": 0.05365727200274906,
     "relative_bar": 0.0001
-   },
-   {
-    "cause": "nu-flux-accumulator",
-    "fingerprint": "flux_monitors.flux_x_0.h1_dft: numeric",
-    "relative": 0.05345737401285307,
-    "relative_bar": 0.0001
-   },
-   {
-    "cause": "nu-flux-accumulator",
-    "fingerprint": "flux_monitors.flux_x_0.h2_dft: numeric",
-    "relative": 0.05469321493803225,
-    "relative_bar": 9.999999999999999e-05
    }
   ]
  },
@@ -158,40 +134,6 @@
    {
     "cause": "graded-distributed-ntff-refused",
     "fingerprint": "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead)."
-   }
-  ]
- },
- "_ntff:ntff_box:run_uniform:run_distributed:constant:12": {
-  "observers": [
-   {
-    "cause": "ntff-distributed",
-    "fingerprint": "ntff_data.c_x_lo: numeric",
-    "relative": 1.5652475612685657,
-    "relative_bar": 0.0001
-   },
-   {
-    "cause": "ntff-distributed",
-    "fingerprint": "ntff_data.c_y_hi: numeric",
-    "relative": 0.9100137361600649,
-    "relative_bar": 0.0001
-   },
-   {
-    "cause": "ntff-distributed",
-    "fingerprint": "ntff_data.c_y_lo: numeric",
-    "relative": 0.5234239384377628,
-    "relative_bar": 0.0001
-   },
-   {
-    "cause": "ntff-distributed",
-    "fingerprint": "ntff_data.c_z_hi: numeric",
-    "relative": 1.7541160346052889,
-    "relative_bar": 0.0001
-   },
-   {
-    "cause": "ntff-distributed",
-    "fingerprint": "ntff_data.c_z_lo: numeric",
-    "relative": 1.7827176961663076,
-    "relative_bar": 0.0001
    }
   ]
  },

@@ -31,31 +31,46 @@ are excluded. The declared-length record semantics are documented once in
 FINDINGS.md. Kernel material views come from `_realized.capture`; E-side
 lumped terms are read at E, not from H's intentionally smaller container.
 
-`comparison.py` owns the bars: 9 float32 ULP at the larger peak per step;
+`comparison.py` owns the bars: 9 float32 ULP at the whole-record peak per step;
 `1e-4` of that peak for accumulated records, objective and gradient. Forward
 cells use JVP of a design-permittivity multiplier, with squared probe samples
 as the objective. Current moments use their supported bounded design box.
-Missing shared channels fail. A comparison canary detects a disabled helper.
+All numeric amplitude leaves use the maximum over both whole records, rather
+than each leaf: all of `ntff_data`, or each named DFT plane / flux monitor.
+Observer configuration and geometry (`OBSERVER_METADATA`, including frequencies,
+indices, windows and area weights) are exact prerequisites, excluded from that
+amplitude peak. The named `NTFF_KAHAN_RESIDUALS` list excludes `c_x_lo`, `c_x_hi`,
+`c_y_lo`, `c_y_hi`, `c_z_lo`, `c_z_hi`: these are internal Kahan carries, never
+read by the far-field transform (`rfx/farfield.py:127`).
+Missing shared channels fail. Live canaries detect a disabled `compare`,
+`_comparison`, or `_tree`.
 Known numeric discrepancies retain a same-bar fingerprint so a further change
 cannot hide under xfail. Unknown failures are never accepted by an xfail.
 
 The worker subprocess selects CPU and two host devices before importing JAX;
 it is bounded and reaped by the fixture. No test enables x64. Identical solves
 are cached within a run. DFT, flux and wire use 12 and 36 steps; others use 12.
-The PR selection uses the cheapest measured passing 12-step candidate per
-admission attribute family, plus all refusal cells. Cost is the sum of the two
-uncached solve times (retained when a solve is reused), not a cache-hit cell
-timer. Expected failures and remaining equivalence cells run weekly. The
-explicit weekly-only xfail rule excludes `_mode`, `_dft_planes`, and
-`_flux_monitors` from PR equivalence selection: these families have no fully
-passing cell. All their cells still run in the full weekly matrix.
-The no-code PR contract job sets `RFX_S0_PR_SUBSET=1` to retain this selection
-when overriding pytest's normal slow filter.
+The PR selection includes all refusal cells, the cheapest measured 12-step
+strict-xfail cell per finding cause, and the cheapest measured passing 12-step
+candidate per admission attribute family. A cell may witness several causes.
+`PR_FINDING_CHOICES` declares the cause witnesses; generation rejects an
+uncovered cause or a stale/non-12-step witness. Costs use uncached solve times
+(or elapsed execution time when execution fails before both solves finish).
+The PR wall-time budget is 240 seconds.
+The remaining equivalence cells run weekly. With no environment variable the
+matrix runs this PR subset, including when a gate overrides pytest's slow filter.
+Only `RFX_S0_FULL=1` enables the full matrix; the weekly slow job sets it.
+
+The six base families `_freq_max`, `_domain`, `_dx`, `_boundary`, `_cpml_layers`,
+and `_probes` share one cached base solve per lane/grid/dt/record length via
+`BASE_ROWS` (also shared with its material/source/profile aliases).
+`_adi_cfl_factor` is a no-op row on the Yee lanes: its self-comparison is
+expected and does not provide ADI coverage.
 
 Run PR tests: `python -m pytest tests/contracts/path_equivalence -q`.
-Run full tests: `python -m pytest tests/contracts/path_equivalence -q -o addopts="" -m "not gpu"`.
+Run full tests: `RFX_S0_FULL=1 python -m pytest tests/contracts/path_equivalence -q -o addopts="" -m "not gpu"`.
 The fixture writes raw measurements in its pytest temporary directory.
 `findings.json` is a reviewed test manifest with one cause key per finding.
 Measurement records, per-cell timings and DFT step dumps are in untracked
 `.s0-work/`, for the leader to move to rfx-archive. See FINDINGS.md and MUTATIONS.md
-for short review summaries. Issue numbers and conclusions: 리더가 채움.
+for short review summaries. Conclusions: in the S0 PR body (leader)
