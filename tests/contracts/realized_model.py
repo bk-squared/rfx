@@ -40,7 +40,9 @@ for row, feature in (("eps", "dielectric"), ("sigma", "lossy"), ("mu", "mu")):
         elif row == "mu":
             TABLE[row][lane] = Cell("call-site", note="no μ interface rule exists yet; P0's μ reference is component_h_materials of the lane's own cell array")
         elif row in ("eps", "sigma") and lane in ("run_adi", "fwd_adi"):
-            TABLE[row][lane] = Cell(issue="#1373", note="per-cell E material")
+            TABLE[row][lane] = Cell("refuses", note="#1373: ADI read per-cell E material, so it "
+                                    "refuses a material interface; its consumption witness "
+                                    "is a whole-domain fill")
         elif row in ("eps", "sigma") and lane in ("run_distributed", "fwd_distributed_nu"):
             TABLE[row][lane] = Cell(note="#1303, fixed by #1326")
 

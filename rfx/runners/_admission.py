@@ -432,8 +432,9 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_adi_cfl_factor", ""): _ALL,
     ("_stencil_order", ""): _UNIFORM_YEE,
     ("_mode", ""): _UNIFORM_YEE | _ADI | {"run_distributed"},
-    ("_materials", "eps"): _ALL,
-    ("_materials", "sigma"): _ALL,
+    # ADI carries a homogeneous fill only: LANE_GATES decides (#1373).
+    ("_materials", "eps"): _ALL - _ADI,
+    ("_materials", "sigma"): _ALL - _ADI,
     ("_materials", "mu"): _ALL - _ADI,
     ("_materials", "debye"): _ALL - _ADI - {"run_subgridded"},
     ("_materials", "lorentz"): _ALL - _ADI - {"run_subgridded"},
@@ -791,6 +792,19 @@ CALL_GATES: dict[Row, Callable] = {
 # kappa_max (#1355 review, measured). Every validation mode gets exactly that
 # envelope: 'research' and 'off' do not widen it. A UPML lid is not gated: the
 # lane runs CPML in its place, bit for bit (measured), so it stays refused.
+def _adi_homogeneous(sim, grid) -> bool:
+    """Whether the declared materials realize one eps_r and one sigma over the
+    whole grid, the only fill the ADI lane carries (#1373): its update reads
+    each cell's own value, so an interface sits half a cell from where the Yee
+    lanes put it. The realized arrays decide, assembled from the declaration."""
+    from rfx.adi import adi_material_interface_refusal
+    if sim._uses_nonuniform_mesh:
+        return False   # ADI refuses a graded mesh first; no uniform grid to read
+    grid = sim._build_grid() if grid is None else grid
+    materials = sim._assemble_materials(grid)[0]
+    return adi_material_interface_refusal(materials.eps_r, materials.sigma) is None
+
+
 # tests/contracts/path_disposition.py lists the same gates as LANE_GATES.
 _LID_ROWS = (("_boundary", "cpml"), ("_pec_faces", "pec_face"),
              ("_cpml_layers", "layers"), ("_cpml_kappa_max", "kappa"))
@@ -802,12 +816,23 @@ def _waveguide_profiled(sim, grid) -> bool:
                for attr in ("_dx_profile", "_dy_profile", "_dz_profile"))
 
 
+_ADI_MATERIAL_ROWS = (("_materials", "eps"), ("_materials", "sigma"))
+
+
+def _subgrid_opted_in(sim) -> bool:
+    """Whether the refinement opts in to the subgridded lane (#1465, #1468:
+    validation='research' or 'off')."""
+    ref = sim._refinement
+    return ref is not None and ref.get("validation", "production") in {"research", "off"}
+
 LANE_GATES: dict[str, dict[Row, Callable]] = {
     "run_subgridded": {
         **{row: _guarded_lid for row in _LID_ROWS},
         ("_refinement", "slab"): lambda sim, grid: (
             sim._refinement.get("validation", "production") in {"research", "off"}),
     },
+    "run_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
+    "fwd_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
         ("_dt_pin", ""), ("_dt_min_cell", ""))},
 }
@@ -898,14 +923,22 @@ def message(lane: str, rows, sim, run_args=None) -> str:
                 "and refuses them before the first time step:\n"
                 + "\n".join(lines)
                 + "\nUse run() / forward() on a model those paths support.")
+    # On ADI a dielectric or conductor is carried as a homogeneous fill; what
+    # is refused is the interface, so the interface text stands for both rows.
     lines = [f"  - {ROW_WORDS[row]} is not carried by the {LANE_WORDS[lane]} lane."
-             for row in rows]
+             for row in rows if not (lane in _ADI and row in _ADI_MATERIAL_ROWS)]
+    if lane in _ADI and any(row in rows for row in _ADI_MATERIAL_ROWS):
+        from rfx.adi import ADI_INTERFACE_MESSAGE
+        lines.append(f"  - {ADI_INTERFACE_MESSAGE}")
     if lane in _ADI and ("_ports", "amplitude_kind") in rows:
         lines.append(
             "ADI implements only amplitude_kind='field'; 'current' is the default "
             "when amplitude_kind is not given (2.0); declare amplitude_kind='field' "
             "to run on ADI (the earlier ADI behaviour).")
+    # The subgridded lane is unstable and unverified (#1465): it is not
+    # offered as a carrier unless the model already opts in to it.
     carriers = [LANE_WORDS[other] for other in LANES if other != lane
+                and (other != "run_subgridded" or _subgrid_opted_in(sim))
                 and not set(refused(sim, other, run_args)) - LANE_SELECTORS]
     where = ("Lanes that carry every input of this model apart from the ones that choose the "
              "lane (solver, mesh profiles, refinement): " + ", ".join(carriers) + "."
