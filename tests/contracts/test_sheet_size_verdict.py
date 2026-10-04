@@ -404,3 +404,18 @@ def test_coax_msl_preserves_nonpreflight_warning(monkeypatch):
     ordinary, = [w for w in emitted if w.message is note]
     assert ordinary.category is RuntimeWarning
     assert (ordinary.filename, ordinary.lineno) == ("ordinary_origin.py", 42)
+
+
+def test_run_preflight_warning_points_at_the_callers_line():
+    """The shared preflight gate must attribute run()'s advisory to the user's line, not to rfx."""
+    import warnings
+    sim = Simulation(domain=(0.02, 0.02, 0.02), dx=0.001, freq_max=10e9,
+                     boundary="pec", snap="declared")
+    sim.add_source((0.002, 0.002, 0.002), component="ez", amplitude_kind="current")
+    sim.add_thin_conductor(Box((0.004, 0.004, 0.006), (0.014, 0.014, 0.006)))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        sim.run(n_steps=1)
+    hits = [w for w in caught if "preflight found" in str(w.message)]
+    assert hits and all(w.filename == __file__ for w in hits), [
+        (w.filename, w.lineno) for w in hits]
