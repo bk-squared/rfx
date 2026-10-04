@@ -47,14 +47,16 @@ def test_adi_2d_all_material_derivative_modes_match_main_fd(which, boundary):
     The FD values below were measured on main 9b82b751 with h=1e-3; all
     base/perturbed forward traces were byte-identical to this branch.
     """
+    # A scalar override is the homogeneous fill: ADI refuses a traced array
+    # (#1373), and a uniform array carried the same derivative.
     sim, shape = _sim(boundary=boundary)
     if which == "eps":
         def f(s):
-            return _energy(sim, eps_override=jnp.ones(shape) * s)
+            return _energy(sim, eps_override=s)
         x0, h = 1.0, 1e-3
     else:
         def f(s):
-            return _energy(sim, sigma_override=jnp.zeros(shape) + s)
+            return _energy(sim, sigma_override=s)
         x0, h = 0.0, 1e-3
     main_fd = {
         ("pec", "eps"): 1.2000781680399086e-5,
@@ -83,7 +85,7 @@ def test_adi_2d_all_material_derivative_modes_match_main_fd(which, boundary):
 
 def test_adi_2d_value_runs_eager_and_under_jit():
     sim, shape = _sim()
-    eps = jnp.ones(shape) * 1.5
+    eps = jnp.float32(1.5)  # a scalar fill: ADI refuses a traced array (#1373)
     eager = float(_energy(sim, eps_override=eps))
     jitted = float(jax.jit(lambda e: _energy(sim, eps_override=e))(eps))
     assert np.isfinite(eager) and eager > 0
@@ -93,7 +95,9 @@ def test_adi_2d_value_runs_eager_and_under_jit():
 @pytest.mark.parametrize("solver,mode", [("adi", "3d"), ("yee", "2d_tmz")])
 def test_other_solvers_still_differentiate(solver, mode):
     sim, shape = _sim(solver, mode)
-    g = float(jax.grad(lambda s: _energy(sim, eps_override=jnp.ones(shape) * s))(1.0))
+    # ADI takes the homogeneous fill as a scalar; it refuses a traced array (#1373).
+    fill = (lambda s: s) if solver == "adi" else (lambda s: jnp.ones(shape) * s)
+    g = float(jax.grad(lambda s: _energy(sim, eps_override=fill(s)))(1.0))
     assert np.isfinite(g) and g != 0.0
 
 
@@ -124,8 +128,9 @@ def test_adi_2d_bin_gradients_match_fd_and_a_twice_longer_record(which, boundary
             params = jnp.asarray(point, dtype=parameter.dtype).at[index].set(parameter)
             ts = sim.forward(
                 n_steps=n_steps, skip_preflight=True,
-                eps_override=jnp.ones(shape, parameter.dtype) * params[0],
-                sigma_override=jnp.ones(shape, parameter.dtype) * params[1],
+                # Scalar fills: ADI refuses a traced array override (#1373).
+                eps_override=params[0],
+                sigma_override=params[1],
             ).time_series[:, 0]
             spectrum = (dt / 1e-9) * jnp.sum(ts[:, None] * phase, axis=0)
             return jnp.concatenate((jnp.sum(ts ** 2)[None],

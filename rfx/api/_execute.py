@@ -1470,8 +1470,26 @@ class _ExecuteMixin:
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
+        # A declared material interface is one (#1373, LANE_GATES).
         from rfx.runners._admission import admit
         admit(self, lane, run_args={"conformal_pec": conformal_pec})
+
+        # The arrays this lane steps can differ from the declaration: a
+        # concrete eps_override / sigma_override. Read them too, before the
+        # absorber's grading is added to sigma; a traced one is not inspected.
+        from rfx.adi import adi_material_interface_refusal, adi_traced_override_refusal
+        _interface = adi_material_interface_refusal(materials.eps_r, materials.sigma)
+        if _interface is not None:
+            raise NotImplementedError(_interface)
+        # A traced ARRAY cannot be read; a traced scalar is a homogeneous
+        # fill (forward(eps_override=<0-d>)) and is broadcast to the grid.
+        for _arr in (materials.eps_r, materials.sigma):
+            _traced = adi_traced_override_refusal(_arr)
+            if _traced is not None:
+                raise NotImplementedError(_traced)
+        materials = materials._replace(
+            eps_r=jnp.broadcast_to(materials.eps_r, grid.shape),
+            sigma=jnp.broadcast_to(materials.sigma, grid.shape))
 
         dt = float(grid.dt * self._adi_cfl_factor)
         times = jnp.arange(n_steps, dtype=jnp.float32) * dt

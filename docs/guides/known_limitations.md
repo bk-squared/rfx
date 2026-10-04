@@ -154,6 +154,11 @@ What to do: record well past the slowest mode's decay, or use a one-cell wire po
 (`add_port(..., extent=dx)`) with `run(ringdown=...)`.
 #1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
 
+## Solver lanes
+
+**ADI (`solver='adi'`) refuses a dielectric or conductivity interface until 2.1.** Its update reads each cell's own eps_r and sigma where the Yee lanes take the four-cell edge mean, so a material face sits half a cell off (+2.2 % on a slab-loaded PEC cavity's first resonance at 12 cells per loaded wavelength). A homogeneous fill runs (as a declared fill or a scalar override); a traced array override is refused because it cannot be inspected. Use `solver='yee'` otherwise.
+→ [#1373](https://github.com/bk-squared/rfx/issues/1373)
+
 ## Absorbing boundaries
 
 **Magnetic faces require the single-device second-order Yee image.**

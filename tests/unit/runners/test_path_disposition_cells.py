@@ -939,11 +939,12 @@ def test_every_executable_row_has_a_builder():
 def test_thresholds_clear_float32_noise():
     """Two lanes doing the same arithmetic in another order differ by float32
     rounding only. On the dielectric-block model that is below 3e-6 of the
-    peak; the parity tolerance and the effect floor must stand well clear."""
+    peak; the parity tolerance and the effect floor must stand well clear.
+    The ADI lanes refuse the block since #1373, so fwd_adi is not among them."""
     spec = FEATURES["_materials", "eps"]
     noise = max(relative(_with("_materials/eps", spec, lane),
                          _reference("_materials/eps", spec, lane))
-                for lane in ("run_nonuniform", "fwd_uniform", "fwd_nonuniform", "fwd_adi"))
+                for lane in ("run_nonuniform", "fwd_uniform", "fwd_nonuniform"))
     assert noise < 3e-6, noise
     assert PARITY_TOL >= 30 * noise and EFFECT_FLOOR >= 10 * PARITY_TOL
 
