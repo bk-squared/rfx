@@ -2870,7 +2870,8 @@ def _build_nu_scan(
             e_prev_slab = _slab_e_snapshot(st, current_moments)
 
         # H update (non-uniform)
-        st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h)
+        st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h,
+                         cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz))
         tfsf_h_state = None
         if use_tfsf:
             from rfx.sources.tfsf import apply_tfsf_h

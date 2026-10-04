@@ -81,22 +81,42 @@ class MaterialArrays(NamedTuple):
     mu_r_wire: object = None
 
 
-def component_h_materials(materials, periodic=(False, False, False)):
+def component_h_materials(materials, periodic=(False, False, False), *, cell_sizes=None):
     """Relative permeability at Hx, Hy, Hz, including local wire contours.
 
-    H has no volume averaging convention here. A contour stamp belongs to
-    one H component and must never change the other two at the same index.
-    ``periodic`` is accepted for parity with :func:`component_e_materials`;
-    it is unused until a separate volume-averaging rule is chosen.
-    Every H coefficient builder reads this owner.
+    Each component lies on the face between its own-axis backward cell and
+    the cell at its index. Average their inverse permeabilities with their
+    cell lengths. ``cell_sizes`` contains the three primal-cell width arrays;
+    omitted widths mean a uniform mesh. Equal cells retain their exact bits.
+    Wire contour increments are added after this volume-material mean.
     """
     parts = getattr(materials, "mu_r_wire", None)
+    mu = materials.mu_r
+    if jnp.ndim(mu) == 0:
+        volume = (mu,) * 3
+    else:
+        volume = []
+        for axis in range(3):
+            lo = _material_bwd_neighbour(mu, axis, periodic)
+            if cell_sizes is None:
+                mean = 2 / (1 / lo + 1 / mu)
+            else:
+                widths = jnp.asarray(cell_sizes[axis])
+                # Cell metrics omit the terminal node; material arrays include it.
+                if widths.shape[0] == mu.shape[axis] - 1:
+                    widths = jnp.concatenate((widths, widths[-1:]))
+                shape = [1, 1, 1]
+                shape[axis] = widths.shape[0]
+                hi_d = widths.reshape(shape)
+                lo_d = _material_bwd_neighbour(hi_d, axis, periodic)
+                mean = (lo_d + hi_d) / (lo_d / lo + hi_d / mu)
+            volume.append(jnp.where(lo == mu, mu, mean))
+        volume = tuple(volume)
     if parts is None:
-        return (materials.mu_r,) * 3
+        return volume
     if not isinstance(parts, (tuple, list)) or len(parts) != 3:
         raise TypeError("mu_r_wire must be None or a (Hx, Hy, Hz) tuple of arrays/None")
-    return tuple(materials.mu_r if p is None else materials.mu_r + p
-                 for p in parts)
+    return tuple(m if p is None else m + p for m, p in zip(volume, parts))
 
 
 _LUMPED_AXIS = {"ex": 0, "ey": 1, "ez": 2}
@@ -1068,6 +1088,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
 
 def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx_h: jnp.ndarray, inv_dy_h: jnp.ndarray, inv_dz_h: jnp.ndarray,
+                *, cell_sizes=None,
                 ) -> FDTDState:
     """H update for non-uniform Yee grid.
 
@@ -1088,9 +1109,14 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu = component_h_materials(materials)
+    if cell_sizes is None:
+        # Compatibility for direct kernel callers supplying inverse primal
+        # metrics. Production grids pass their original cell lengths.
+        cell_sizes = tuple(1 / jnp.where(v > 0, v, v[-2])
+                           for v in (inv_dx_h, inv_dy_h, inv_dz_h))
+    mu = component_h_materials(materials, cell_sizes=cell_sizes)
     if _realized.ACTIVE is not None:
-        mu = _realized.magnetic(materials, mu, "yee.H")
+        mu = _realized.magnetic(materials, mu, "yee.H", cell_sizes=cell_sizes)
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
     ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
@@ -1218,7 +1244,7 @@ def precompute_coeffs(
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "precompute.H", periodic=periodic)
     # Preserve the historical scalar-array bake, including its f32 numerator.
-    ch = jnp.float32(dt / (MU_0 * dx)) / mu[0]
+    ch = tuple(jnp.float32(dt / (MU_0 * dx)) / m for m in mu)
     if materials.mu_r_wire is not None:
         ch = tuple((dt / (MU_0 * dx)) / m for m in mu)
     elif _realized.ACTIVE is not None:

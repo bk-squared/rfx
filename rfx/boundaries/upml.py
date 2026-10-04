@@ -227,7 +227,9 @@ def init_upml(
     from rfx.core.yee import component_h_materials
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="UPML", unsupported=True)
-    mu_abs = tuple(m * jnp.float32(MU_0) for m in component_h_materials(materials))
+    mu_abs = tuple(m * jnp.float32(MU_0) for m in component_h_materials(
+        materials, cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
+        if hasattr(grid, "dx_arr") else None))
     # #1236: a lumped element (a port's load, an RLC R or C) loads its own E
     # edge only. This lane's E coefficients stay CELL-owned for the volume --
     # #1210's four-cell edge average was not carried into UPML, and doing it

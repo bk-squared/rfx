@@ -147,7 +147,8 @@ def material_pairs(dump, row, axis):
         distributed = r["site"].startswith("distributed")
         mats = dump.full_materials if distributed else r["materials"]
         if row == "mu":
-            ref = np.asarray(component_h_materials(r["materials"], r["periodic"])[axis])
+            ref = np.asarray(component_h_materials(
+                r["materials"], r["periodic"], cell_sizes=r.get("cell_sizes"))[axis])
         else:
             eps, sig = component_e_materials(mats, r["periodic"])
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])

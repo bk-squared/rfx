@@ -12,12 +12,34 @@ from rfx.runners import _distributed_common as dc
 
 
 @pytest.mark.parametrize("periodic", [(False,)*3, (True, False, True)])
-def test_no_record_keeps_the_exact_cell_objects(periodic):
+def test_face_harmonic_mean_and_equal_cell_bits(periodic):
     mats = yee.init_materials((4,)*3)
     mu = jnp.arange(64, dtype=jnp.float32).reshape((4,)*3)+1
     mats = mats._replace(mu_r=mu)
     parts = yee.component_h_materials(mats, periodic=periodic)
-    assert all(part is mu for part in parts)
+    for axis, part in enumerate(parts):
+        lo = np.roll(np.asarray(mu), 1, axis=axis)
+        if not periodic[axis]:
+            sl = [slice(None)] * 3
+            sl[axis] = 0
+            lo[tuple(sl)] = np.asarray(mu)[tuple(sl)]
+        expected = 2 / (1 / lo + 1 / np.asarray(mu))
+        np.testing.assert_allclose(part, expected, rtol=2e-7)
+    for value in (1., 2.2, 7.3):
+        homogeneous = jnp.full(mu.shape, value, dtype=jnp.float32)
+        for part in yee.component_h_materials(mats._replace(mu_r=homogeneous), periodic):
+            assert np.asarray(part).tobytes() == np.asarray(homogeneous).tobytes()
+
+
+def test_face_mean_uses_actual_cell_lengths_then_adds_contours():
+    mats = yee.init_materials((3, 2, 2))
+    mu = jnp.broadcast_to(jnp.array([1., 4., 4.])[:, None, None], mats.mu_r.shape)
+    widths = (jnp.array([.9, 1.1, 1.]), jnp.ones(2), jnp.ones(2))
+    mats = mats._replace(mu_r=mu, mu_r_wire=(jnp.full(mu.shape, .3), None, None))
+    hx, hy, hz = yee.component_h_materials(mats, cell_sizes=widths)
+    np.testing.assert_allclose(hx[1], (2 / (.9 / 1 + 1.1 / 4)) + .3, rtol=2e-7)
+    np.testing.assert_array_equal(hy, mu)
+    np.testing.assert_array_equal(hz, mu)
 
 
 def _fixture():
