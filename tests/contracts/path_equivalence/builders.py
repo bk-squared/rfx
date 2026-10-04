@@ -55,7 +55,7 @@ BUILDERS = {
     ('_dt_pin', ''): ({}, _nothing),
     ('_dt_min_cell', ''): ({'dt_min_cell': DX}, _nothing),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
-    ('_solver', ''): ({'solver': 'adi'}, _nothing),
+    ('_solver', ''): ({'solver': 'adi', 'boundary': 'cpml'}, _nothing),
     ('_adi_cfl_factor', ''): ({'adi_cfl_factor': 1.1}, _nothing),
     ('_stencil_order', ''): ({'stencil_order': 4}, _nothing),
     ('_mode', ''): ({'mode': '2d_tmz'}, _nothing),
@@ -77,7 +77,7 @@ BUILDERS = {
     ('_ports', 'amplitude_kind'): ({}, _nothing),
     ('_ports', 'lumped_port'): _add('add_port', point(5, 3, 3), 'ez', impedance=50., waveform=waveform),
     ('_ports', 'passive_port'): _add('add_port', point(5, 3, 3), 'ez', impedance=50., excite=False),
-    ('_ports', 'wire_port'): _add('add_port', point(5, 3, 2), 'ez', impedance=50., extent=2*DX, excite=False),
+    ('_ports', 'wire_port'): _add('add_port', point(5, 3, 2), 'ez', impedance=50., extent=2*DX, waveform=waveform),
     ('_msl_ports', 'msl_port'): ({}, _microstrip),
     ('_waveguide_ports', 'waveguide_port'): _add('add_waveguide_port', 3*DX, direction='+x', mode=(1, 0), mode_type='TE', freqs=FREQS, f0=5e9, bandwidth=0.5, probe_offset=2, ref_offset=1),
     ('_coaxial_ports', 'coax_port'): _add('add_coaxial_port', point(5, 3, 0), face='bottom', pin_length=3*DX),
@@ -85,7 +85,7 @@ BUILDERS = {
     ('_floquet_ports', 'scan_angle'): _add('add_floquet_port', 3*DX, axis='z', f0=5e9, scan_theta=30.),
     ('_lumped_rlc', 'R'): _add('add_lumped_rlc', point(5, 3, 3), 'ez', R=10.),
     ('_lumped_rlc', 'series_RL'): _add('add_lumped_rlc', point(5, 3, 3), 'ez', R=10., L=1e-9),
-    ('_tfsf', 'plane_wave'): _add('add_tfsf_source', f0=5e9, bandwidth=0.5, margin=3),
+    ('_tfsf', 'plane_wave'): _add('add_tfsf_source', f0=5e9, bandwidth=0.5, margin=1),
     ('_refinement', 'slab'): _add('add_refinement', z_range=(0., 4*DX), ratio=2),
     ('_refinement', 'relaxed_validation'): _add('add_refinement', z_range=(0., 4*DX), ratio=2, validation='research'),
     ('_boundary', 'cpml'): ({}, _nothing),
@@ -110,13 +110,18 @@ BUILDERS = {
 }
 
 BASE_ROWS = {('_freq_max', ''), ('_domain', ''), ('_dx', ''), ('_materials', 'eps'),
-             ('_ports', 'source'), ('_boundary', 'cpml'), ('_cpml_layers', 'layers'), ('_probes', 'probe')}
+             ('_ports', 'source'), ('_boundary', 'cpml'), ('_cpml_layers', 'layers'), ('_probes', 'probe'),
+             ('_dx_profile', 'graded'), ('_dy_profile', 'graded'), ('_dz_profile', 'graded')}
 
 
 def build(row, lane, *, graded=False, dt=None):
     ctor, add = BUILDERS[row]
     kwargs = dict(freq_max=15e9, domain=DOMAIN, dx=DX, boundary=boundary(), cpml_layers=2)
     kwargs.update(ctor)
+    if row[0] == '_waveguide_ports':
+        # Modal aperture dimensions are declarations, not inferred rounded
+        # box lengths. Put both transverse walls exactly on grid nodes.
+        kwargs['domain'] = point(10.3, 8, 7)
     nu = lane in ('run_nonuniform', 'fwd_nonuniform') or graded
     if nu or row[0] in ('_dx_profile', '_dy_profile', '_dz_profile'):
         for axis, length in zip('xyz', kwargs['domain']):
@@ -131,10 +136,23 @@ def build(row, lane, *, graded=False, dt=None):
     if row[0] == '_floquet_ports':
         kwargs['domain'] = point(11, 8, 6.4)
         kwargs['boundary'] = BoundarySpec(x='periodic', y='periodic', z=Boundary(lo='pec', hi='cpml'))
+    if row[0] == '_waveguide_ports':
+        # State the guide walls explicitly: uniform otherwise supplies its
+        # own transverse PEC layout, while NU keeps the declared absorbers.
+        kwargs['boundary'] = BoundarySpec(
+            x=Boundary(lo='cpml', hi='cpml', lo_thickness=1, hi_thickness=2),
+            y='pec', z='pec')
     sim = Simulation(**kwargs)
     sim.add_material('block', eps_r=2.5)
     sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
-    sim.add_source(point(2.1, 2.3, 2.2), 'ez', amplitude_kind='current' if row == ('_ports', 'amplitude_kind') else 'field', waveform=waveform)
+    # add_source is a zero-impedance _PortEntry internally. Driven port,
+    # waveguide and TFSF declarations provide their own excitation and must
+    # not also carry that entry (their public APIs reject the combination).
+    own_drive = row in (('_ports', 'lumped_port'), ('_ports', 'wire_port'),
+                       ('_boundary_spec', 'conformal_s_matrix')) or row[0] in (
+        '_tfsf', '_waveguide_ports', '_msl_ports', '_floquet_ports', '_coaxial_ports')
+    if not own_drive:
+        sim.add_source(point(2.1, 2.3, 2.2), 'ez', amplitude_kind='current' if row == ('_ports', 'amplitude_kind') else 'field', waveform=waveform)
     for p in ((4.1, 2.3, 2.2), (7.1, 3.2, 2.4)):
         sim.add_probe(point(*p), 'ez')
     add(sim)

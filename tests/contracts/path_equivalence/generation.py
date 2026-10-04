@@ -29,6 +29,8 @@ class Cell:
 
 
 def generate(builders):
+    from .builders import build
+    validated = set()
     cells = []
     for row, admitted in admission._ADMITTED_ON.items():
         for a, b, graded in PAIRS:
@@ -40,6 +42,13 @@ def generate(builders):
                 assert (lane in admitted) == (row in admission.ADMITS[lane]), (row, lane)
                 assert (lane in admitted) == (disposition.cell(*row, lane).kind in ('carries', 'ignorable')), (row, lane)
             equivalent = on_a and on_b
+            if equivalent:
+                for lane in (a, b):
+                    key = (row, lane, graded)
+                    if key not in validated:
+                        sim = build(row, lane, graded=graded)
+                        assert admission.DETECTORS[row](sim), f'S0 inactive builder: {row}, {lane}'
+                        validated.add(key)
             for steps in ((12, 36) if equivalent and row in LONG_ROWS else (12,)):
                 cells.append(Cell(row, a, b, graded, equivalent,
                                   None if equivalent else b if on_a else a, steps))
@@ -52,14 +61,55 @@ def generate(builders):
     return tuple(cells)
 
 
+# Filled from the measured cold-solve cost of passing 12-step candidates.
+PR_CHOICES = {
+    "_adi_cfl_factor": "_adi_cfl_factor::run_uniform:run_nonuniform:constant:12",
+    "_boundary": "_boundary:cpml:run_uniform:run_nonuniform:constant:12",
+    "_boundary_spec": "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12",
+    "_cpml_kappa_max": "_cpml_kappa_max:kappa:run_uniform:run_distributed:constant:12",
+    "_cpml_layers": "_cpml_layers:layers:run_uniform:run_nonuniform:constant:12",
+    "_current_moments": "_current_moments:block_moments:run_uniform:run_nonuniform:constant:12",
+    "_domain": "_domain::run_uniform:run_nonuniform:constant:12",
+    "_dt_min_cell": "_dt_min_cell::run_nonuniform:run_distributed:graded:12",
+    "_dt_pin": "_dt_pin::run_nonuniform:run_distributed:graded:12",
+    "_dx": "_dx::run_uniform:run_nonuniform:constant:12",
+    "_dx_profile": "_dx_profile:graded:run_nonuniform:run_distributed:graded:12",
+    "_dy_profile": "_dy_profile:graded:run_nonuniform:run_distributed:graded:12",
+    "_dz_profile": "_dz_profile:graded:run_nonuniform:run_distributed:graded:12",
+    "_freq_max": "_freq_max::run_uniform:run_nonuniform:constant:12",
+    "_geometry": "_geometry:pec_wire:run_uniform:run_nonuniform:constant:12",
+    "_lumped_rlc": "_lumped_rlc:series_RL:run_uniform:run_nonuniform:constant:12",
+    "_materials": "_materials:mu:run_uniform:run_distributed:constant:12",
+    "_msl_ports": "_msl_ports:msl_port:run_uniform:run_nonuniform:constant:12",
+    "_ntff": "_ntff:ntff_box:run_uniform:run_nonuniform:constant:12",
+    "_pec_faces": "_pec_faces:pec_face:run_nonuniform:run_distributed:graded:12",
+    "_pinned_sheets": "_pinned_sheets:pec_sheet:run_uniform:run_nonuniform:constant:12",
+    "_ports": "_ports:amplitude_kind:run_uniform:run_distributed:constant:12",
+    "_probes": "_probes:probe:run_uniform:run_nonuniform:constant:12",
+    "_tfsf": "_tfsf:plane_wave:run_uniform:run_nonuniform:constant:12",
+    "_thin_conductors": "_thin_conductors:lossy_sheet:run_uniform:run_distributed:constant:12",
+    "_waveguide_ports": "_waveguide_ports:waveguide_port:run_uniform:run_nonuniform:constant:12"
+}
+
+
 def pr_subset(cells, findings):
-    """One equivalence per attribute family in declaration order, every
-    refusal, and every cell with a strict expected-failure record."""
-    chosen, families = set(), set()
-    for cell in cells:
-        if not cell.equivalence or cell.id in findings:
-            chosen.add(cell.id)
-        if cell.equivalence and cell.row[0] not in families:
-            families.add(cell.row[0])
-            chosen.add(cell.id)
+    """All admission refusals and one measured passing cell per family.
+
+    A family with only findings is entirely weekly: the explicit xfail-only
+    placement rule takes precedence over the one-per-family PR target.
+    """
+    chosen = {c.id for c in cells if not c.equivalence}
+    families = {c.row[0] for c in cells if c.equivalence}
+    for family in sorted(families):
+        candidates = [c for c in cells if c.equivalence and c.steps == 12
+                      and c.row[0] == family and c.id not in findings]
+        if not candidates:
+            continue
+        if PR_CHOICES:
+            assert family in PR_CHOICES, f'S0 needs PR cost selection: {family}'
+            identity = PR_CHOICES[family]
+            assert identity in {c.id for c in candidates}, f'S0 stale PR selection: {family}'
+        else:
+            identity = candidates[0].id
+        chosen.add(identity)
     return chosen

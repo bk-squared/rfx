@@ -6,7 +6,7 @@ import pytest
 
 from .builders import BUILDERS
 from .generation import generate, pr_subset
-from .reporting import KnownFinding, assert_record, group
+from .reporting import KnownFinding, assert_record, expectations, group
 
 CELLS = generate(BUILDERS)
 _MANIFEST = Path(__file__).with_name('findings.json')
@@ -39,7 +39,7 @@ def parameters():
             if finding:
                 marks.append(pytest.mark.xfail(
                     strict=True, raises=KnownFinding,
-                    reason='S0 finding: ' + finding['cause']))
+                    reason='S0 finding: ' + expectations(finding)[2]))
             yield pytest.param(cell, record, marks=marks, id=f'{cell.id}/{record}')
 
 
@@ -48,5 +48,6 @@ def test_path_equivalence(cell, record, matrix_worker):
     report = matrix_worker(cell)
     unexamined = [f for f in report['failures'] if group(f) not in (*record_groups(cell), 'execution')]
     assert not unexamined, unexamined
-    finding = FINDINGS.get(cell.id, {}).get(record, {})
-    assert_record(report, record, finding.get('fingerprints', []), finding.get('witnesses', {}))
+    finding = FINDINGS.get(cell.id, {}).get(record, [])
+    known, witnesses, _ = expectations(finding)
+    assert_record(report, record, known, witnesses)

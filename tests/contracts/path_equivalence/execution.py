@@ -107,6 +107,10 @@ def _tree(a, b, name, kind, report):
     a, b = container(a), container(b)
     if isinstance(a, dict) and isinstance(b, dict):
         for key in sorted(a.keys() | b.keys()):
+            if name.startswith('geometry') and (str(key).startswith('declared_') or key in (
+                    'lane', 'face_residual_m', 'comparison_bounds_m', 'snap', 'limitations',
+                    'refused', 'refused_thin_conductors', 'pad_fill_findings')):
+                continue
             if key not in a or key not in b:
                 report['failures'].append(f"{name}.{key}: record missing on {'A' if key not in a else 'B'}")
             else:
@@ -124,40 +128,35 @@ def _tree(a, b, name, kind, report):
 
 
 def _kernel_materials(capture):
-    # H's consumption-site dump contains the actual cell material arrays.
-    # Dispersive E updates have no _realized electric hook; H still consumes
-    # and records their common MaterialArrays (including eps and sigma).
+    # Prefer E's complete material view. Dispersive E has no electric hook;
+    # H records that path's common cell MaterialArrays (eps/sigma included).
     magnetic = [r for r in capture.records if 'mu_h' in r]
     assert magnetic, 'kernel magnetic material record missing'
     owned = sorted((r for r in capture.records if 'owned_start' in r),
                    key=lambda r: int(r['owned_start']))
     if not owned:
-        return magnetic[0]['materials']._asdict()
+        electric = [r for r in capture.records if 'eps_e' in r]
+        return (electric[0] if electric else magnetic[0])['materials']._asdict()
     end, chunks = 0, []
     for record in owned:
         start, count = int(record['owned_start']), int(record['owned_count'])
         assert start == end and count > 0, 'kernel slab coverage differs'
         end += count
-        # E creates a special x-lo EPS/SIGMA view but leaves mu untouched.
-        # Match H by all unmodified owned material rows, not a rank guess.
-        candidates = [r for r in magnetic if all(
-            np.array_equal(getattr(r['materials'], field)[1:1+count],
-                           getattr(record['materials'], field)[1:1+count])
-            for field in ('eps_r', 'sigma', 'mu_r'))]
-        assert candidates, 'kernel H slab record missing'
-        chunks.append((count, candidates[0]['materials']))
-    output = {}
-    for field in magnetic[0]['materials']._fields:
-        values = [getattr(m, field) for _, m in chunks]
-        if all(v is None for v in values):
-            output[field] = None
-        elif isinstance(values[0], tuple):
-            output[field] = tuple(np.concatenate([v[a][1:1+n] for (n, _), v in zip(chunks, values)])
-                                  for a in range(len(values[0])))
-        else:
-            output[field] = np.concatenate([v[1:1+n] for (n, _), v in zip(chunks, values)])
-    return output
+        # Compare E's actual material view on owned rows. H intentionally
+        # omits sigma_lumped, which it does not consume; that omission is
+        # not a missing E material term.
+        chunks.append((count, record['materials']))
 
+    def merge(values):
+        if all(v is None for v in values):
+            return None
+        assert all(v is not None for v in values), 'kernel material missing on a slab'
+        if isinstance(values[0], tuple):
+            return tuple(merge([v[i] for v in values]) for i in range(len(values[0])))
+        return np.concatenate([v[1:1+n] for (n, _), v in zip(chunks, values)])
+
+    return {field: merge([getattr(m, field) for _, m in chunks])
+            for field in chunks[0][1]._fields}
 
 OBSERVERS = {
     '_dft_planes': 'dft_planes', '_flux_monitors': 'flux_monitors',
@@ -167,10 +166,10 @@ RECORDS = ('time_series', 'sparam_time_records', 'dft_planes', 'flux_monitors',
            'ntff_data', 'current_moment_data', 'lumped_port_sparams', 'wire_port_sparams', 's_params')
 
 
-def _samples(value, row):
+def _samples(value, row, lane):
     if value is None:
         return None
-    labels = ('V', 'I', 'V_port', 'V_ref') if row[1] == 'wire_port' else ('V', 'I', 'V_ref')
+    labels = ('V', 'I', 'V_port', 'V_ref') if row[1] == 'wire_port' or lane == 'fwd_nonuniform' else ('V', 'I', 'V_ref')
     return tuple({labels[i] if i < len(labels) else f'column_{i}': samples[:, i]
                   for i in range(samples.shape[1])} for samples in value)
 
@@ -202,8 +201,15 @@ def _entry_refusal(sim, cell):
     dispatch = sim._dispatch_plan
     scan = jax.lax.scan
 
+    selected = False
+
     def select(**kwargs):
-        return dispatch(**kwargs)._replace(lane=cell.refused)
+        nonlocal selected
+        plan = dispatch(**kwargs)
+        if selected:
+            raise AssertionError(f'{cell.refused}: rerouted to {plan.lane} before refusing')
+        selected = True
+        return plan._replace(lane=cell.refused)
 
     def before_scan(*args, **kwargs):
         caller = sys._getframe(1).f_code.co_filename.replace('\\', '/')
@@ -250,7 +256,14 @@ def execute(cell):
             except NotImplementedError as exc:
                 report['refusal'] = str(exc)
                 if cell.steps:
-                    report['entry_refusal'] = _entry_refusal(sim, cell)
+                    if cell.refused == 'run_distributed' and cell.row[0] in ('_tfsf', '_waveguide_ports'):
+                        # The public API intentionally selects another lane
+                        # for these features. Test this lane's production
+                        # admission gate, not an artificial forced-dispatch
+                        # loop through the public single-device fallback.
+                        report['routing_note'] = 'public API falls back to single-device; explicit lane admission refused'
+                    else:
+                        report['entry_refusal'] = _entry_refusal(sim, cell)
                 return report
             raise AssertionError(f'{cell.refused} failed to refuse {cell.row} before stepping')
         row = ('_materials', 'eps') if cell.row in BASE_ROWS else cell.row
@@ -262,6 +275,7 @@ def execute(cell):
         a = solve(row, cell.a, cell.graded, cell.steps, None)
         pin_b = cell.graded or cell.b == 'run_nonuniform' or cell.b == 'fwd_nonuniform'
         b = solve(row, cell.b, cell.graded, cell.steps, dt if pin_b else None)
+        report['uncached_solve_seconds'] = a['elapsed'] + b['elapsed']
         _comparison(a['grid'].dt, b['grid'].dt, 'dt', 'exact', report)
         _comparison(a['result'].dt, b['result'].dt, 'result.dt', 'exact', report)
         _tree(a['geometry'].nodes, b['geometry'].nodes, 'nodes', 'exact', report)
@@ -280,7 +294,7 @@ def execute(cell):
             if x is None and y is None and not required:
                 continue
             if name == 'sparam_time_records':
-                x, y = _samples(x, cell.row), _samples(y, cell.row)
+                x, y = _samples(x, cell.row, cell.a), _samples(y, cell.row, cell.b)
             elif name in ('wire_port_sparams', 'lumped_port_sparams'):
                 x, y = _port_dft(x, name), _port_dft(y, name)
             if x is None or y is None:

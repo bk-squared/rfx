@@ -5,6 +5,16 @@ class KnownFinding(AssertionError):
     pass
 
 
+def expectations(entries):
+    """Expand the compact per-finding manifest for one record group."""
+    known = [entry['fingerprint'] for entry in entries]
+    witnesses = {entry['fingerprint'].split(':', 1)[0]: {
+        'relative': entry['relative'], 'relative_bar': entry['relative_bar']}
+        for entry in entries if 'relative' in entry}
+    causes = ', '.join(sorted({entry['cause'] for entry in entries}))
+    return known, witnesses, causes
+
+
 def group(failure):
     if failure.startswith(('dt:', 'result.dt:', 'nodes.', 'geometry.', 'kernel.', 'kernel:')):
         return 'realized'
