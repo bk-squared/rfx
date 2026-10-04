@@ -206,10 +206,11 @@ def optimize(case, model, e, n, count, out, stage):
     vg = jax.jit(jax.value_and_grad(objective, has_aux=True))
     # AD is explicitly in free-pixel eps units; chain it to psi for Adam.
     fraction0 = (np.asarray(e, dtype=float) - 1) / (case.UPPER - 1)
-    p = np.clip(fraction0, 1e-9, 1 - 1e-9)
-    # +/-20 rounds the mapped endpoints to the exact bounds in float32,
-    # without introducing infinite latent values for clipped GRIN pixels.
-    latent = np.where(fraction0 <= 0, -20., np.where(fraction0 >= 1, 20., np.log(p / (1 - p))))
+    # A start value on a bound (the textbook GRIN clips to eps = 1) begins
+    # 1e-3 of the range inside it. At the old latent -20 the sigmoid slope is
+    # ~2e-9 and Adam never moved those pixels (PR 1477 review: 420 of 2250).
+    p = np.clip(fraction0, 1e-3, 1 - 1e-3)
+    latent = np.log(p / (1 - p))
     psi = jnp.asarray(latent, dtype=jnp.float32)
     schedule = lambda i: cosine_schedule(i, *case.LR, case.ITERATIONS, xp=jnp)
     opt = optax.adam(schedule)
