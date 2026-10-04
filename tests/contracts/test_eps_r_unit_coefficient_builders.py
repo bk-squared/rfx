@@ -161,13 +161,9 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
     ("rfx/sparams/msl.py", "compute_msl_s_matrix"): _C0,
     ("rfx/subgridding/disjoint_3d.py", "compute_disjoint_energy_3d"): _ENERGY,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_e_3d.face_coeffs_c"):
+    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_e_3d.face_coeffs"):
         _SUBGRID,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_e_3d.face_coeffs_f"):
-        _SUBGRID,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_h_3d.face_coeffs_c"):
-        _SUBGRID,
-    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_h_3d.face_coeffs_f"):
+    ("rfx/subgridding/jit_runner.py", "_z_slab_material_coupling_h_3d.face_coeffs"):
         _SUBGRID,
     ("rfx/subgridding/sbp_sat_1d.py", "_update_e_1d"): _VACUUM,
     ("rfx/subgridding/sbp_sat_1d.py", "compute_energy"): _ENERGY,
@@ -180,7 +176,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 49
+ALLOWLIST_CEILING = 47
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
