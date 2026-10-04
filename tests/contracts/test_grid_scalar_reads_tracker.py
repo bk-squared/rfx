@@ -115,7 +115,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/amr.py": 2,
     "rfx/api/__init__.py": 3,
     "rfx/api/_compile.py": 11,
-    "rfx/api/_execute.py": 10,
+    "rfx/api/_execute.py": 6,
     "rfx/api/_mesh.py": 1,
     "rfx/artifacts.py": 2,
     "rfx/boundaries/cpml.py": 4,
