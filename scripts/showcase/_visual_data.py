@@ -59,3 +59,25 @@ mirror_filter = filter_mirror
 def amplitude_db(s):
     """Amplitude dB with the declared 1e-6 amplitude floor."""
     return 20 * np.log10(np.maximum(np.abs(s), 1e-6))
+
+
+LENS_LABELS = {
+    'no_lens': 'feed alone',
+    'grin': 'textbook GRIN',
+    'uniform_2.7': 'uniform slab, εr = 2.7',
+    'best_uniform': 'uniform slab, εr = 2.7',
+    'reported': 'designed lens',
+}
+FILTER_MESHES = [('0.000635', 'a/36 (0.635 mm)'),
+                 ('0.000423333333', 'a/54 (0.423 mm)'),
+                 ('0.0003175', 'a/72 (0.318 mm)')]
+
+
+def final_hold_text(kind, trend, freqs_hz):
+    """Separate fine-mesh annotation from the design-mesh iterate HUD."""
+    if kind == 'lens':
+        fi = int(np.argmin(abs(np.asarray(freqs_hz) - 1e10)))
+        value = trend['reported']['boresight_dbi'][2][fi]
+        return f'final: {value:.1f} dBi at 10 GHz, three-mesh converged'
+    passed = trend.get('mask_each_mesh', [])
+    return 'inside the mask on three meshes' if len(passed) == 3 and all(passed) else ''

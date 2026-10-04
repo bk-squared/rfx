@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts" / "showca
 import _lens_filter_common as common
 import design_filter as filt
 import design_lens as lens
+import _visual_data as visual
 
 
 @pytest.mark.parametrize("case,pitch", [(lens, .003), (filt, .00254)], ids=["lens", "filter"])
@@ -100,7 +101,6 @@ def test_filter_amendment1_pixel_indices():
 
 
 # Visual helpers have no solver dependency; coordinate-coded arrays catch flips.
-import _visual_data as visual
 
 
 def test_visual_lens_quarter_coordinates():
@@ -187,3 +187,33 @@ def test_visual_dbi_is_power_logarithm():
     from _visual_data import dbi
     np.testing.assert_allclose(dbi([.1, 1, 10, 100]), [-10, 0, 10, 20])
     assert np.isneginf(dbi(0))
+
+
+
+def test_final_hold_lens_uses_fine_mesh_at_10ghz():
+    trend = {'reported': {'boresight_dbi': [[1, 2, 3], [4, 5, 6], [18.5, 19.00765, 18.8]]}}
+    assert visual.final_hold_text('lens', trend, [9.5e9, 1e10, 10.5e9]) == 'final: 19.0 dBi at 10 GHz, three-mesh converged'
+
+
+@pytest.mark.parametrize('passed,expected', [([True]*3, 'inside the mask on three meshes'),
+                                            ([True, False, True], ''), ([], ''), ([True], '')])
+def test_final_hold_filter_requires_all_three_masks(passed, expected):
+    assert visual.final_hold_text('filter', {'mask_each_mesh': passed}, []) == expected
+
+
+def test_fd_judge_fraction_reports_small_gradients_only():
+    # A pixel whose |FD| is below 0.1 x the largest is reported, not judged:
+    # its 300 % error must not fail the verdict, and the large pixel's 1 %
+    # error must pass at the 5e-2 bar (pre-declaration §1.5.1).
+    import _design_common as dc
+    steps = (0.1, 0.05, 0.025)
+    ladder = {"big": {str(h): {"fd": 1.0} for h in steps},
+              "small": {str(h): {"fd": 0.01} for h in steps}}
+    verdict = dc.judge_fd({"big": 1.01, "small": 0.04}, ladder, steps, 0.05, 0.05, 0.1)
+    assert verdict["judged"] == ["big"]
+    assert verdict["rows"]["small"]["passed"] is None
+    assert verdict["all_judged_passed"] is True
+    # The same small pixel above the fraction would be judged and fail.
+    ladder["small"] = {str(h): {"fd": 0.2} for h in steps}
+    verdict = dc.judge_fd({"big": 1.01, "small": 0.8}, ladder, steps, 0.05, 0.05, 0.1)
+    assert "small" in verdict["judged"] and verdict["all_judged_passed"] is False
