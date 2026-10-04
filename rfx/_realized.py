@@ -153,8 +153,8 @@ def sources(grid, materials, specs, site, *, dt=None):
 
 def face(materials, region, eps, mu, site):
     eps = ACTIVE.apply(site, "eps_e", (eps,))[0]
-    mu = ACTIVE.apply(site, "mu_h", (mu,))[0]
-    ACTIVE.observe(site, dict(eps_e=(eps, eps), mu_h=(mu, mu),
+    mu = ACTIVE.apply(site, "mu_h", mu)
+    ACTIVE.observe(site, dict(eps_e=(eps, eps), mu_h=mu,
                              materials=materials), region=region)
     return eps, mu
 

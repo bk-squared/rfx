@@ -854,21 +854,19 @@ def _z_slab_material_coupling_h_3d(
             f"{mode!r}"
         )
 
+    def face_coeffs(materials, sl, site):
+        eps = materials.eps_r[sl]
+        mu = tuple(component[sl] for component in component_h_materials(materials)[:2])
+        if _realized.ACTIVE is not None:
+            # Each SAT pair consumes its own tangential H face material.
+            eps, mu = _realized.face(materials, sl, eps, mu, site)
+        return eps * EPS_0, tuple(component * MU_0 for component in mu)
+
     def face_coeffs_c(k):
-        sl = (slice(fi, fi + ni), slice(fj, fj + nj), k)
-        if _realized.ACTIVE is None:
-            return mats_c.eps_r[sl] * EPS_0, component_h_materials(mats_c)[0][sl] * MU_0
-        eps_r, mu_r = mats_c.eps_r[sl], component_h_materials(mats_c)[0][sl]
-        eps_r, mu_r = _realized.face(mats_c, sl, eps_r, mu_r, "sat.c")
-        return eps_r * EPS_0, mu_r * MU_0
+        return face_coeffs(mats_c, (slice(fi, fi + ni), slice(fj, fj + nj), k), "sat.c")
 
     def face_coeffs_f(k):
-        sl = (slice(None), slice(None), k)
-        if _realized.ACTIVE is None:
-            return mats_f.eps_r[sl] * EPS_0, component_h_materials(mats_f)[0][sl] * MU_0
-        eps_r, mu_r = mats_f.eps_r[sl], component_h_materials(mats_f)[0][sl]
-        eps_r, mu_r = _realized.face(mats_f, sl, eps_r, mu_r, "sat.f")
-        return eps_r * EPS_0, mu_r * MU_0
+        return face_coeffs(mats_f, (slice(None), slice(None), k), "sat.f")
 
     def apply_zlo(hx_c_arr, hy_c_arr, hx_f_arr, hy_f_arr):
         c = (slice(fi, fi + ni), slice(fj, fj + nj), plan.k_lo_c)
@@ -883,9 +881,9 @@ def _z_slab_material_coupling_h_3d(
             down(ex_f[f]),
             down(hy_f_arr[f]),
             epsilon_lower=eps_c,
-            mu_lower=mu_c,
+            mu_lower=mu_c[1],
             epsilon_upper=down(eps_f),
-            mu_upper=down(mu_f),
+            mu_upper=down(mu_f[1]),
             h_lower=config.dx_c,
             h_upper=config.dx_f,
             dt=config.dt,
@@ -896,9 +894,9 @@ def _z_slab_material_coupling_h_3d(
             down(ey_f[f]),
             -down(hx_f_arr[f]),
             epsilon_lower=eps_c,
-            mu_lower=mu_c,
+            mu_lower=mu_c[0],
             epsilon_upper=down(eps_f),
-            mu_upper=down(mu_f),
+            mu_upper=down(mu_f[0]),
             h_lower=config.dx_c,
             h_upper=config.dx_f,
             dt=config.dt,
@@ -921,9 +919,9 @@ def _z_slab_material_coupling_h_3d(
                 ex_f[f],
                 hy_f_arr[f],
                 epsilon_lower=up(eps_c),
-                mu_lower=up(mu_c),
+                mu_lower=up(mu_c[1]),
                 epsilon_upper=eps_f,
-                mu_upper=mu_f,
+                mu_upper=mu_f[1],
                 h_lower=config.dx_c,
                 h_upper=config.dx_f,
                 dt=config.dt,
@@ -934,18 +932,18 @@ def _z_slab_material_coupling_h_3d(
                 ey_f[f],
                 -hx_f_arr[f],
                 epsilon_lower=up(eps_c),
-                mu_lower=up(mu_c),
+                mu_lower=up(mu_c[0]),
                 epsilon_upper=eps_f,
-                mu_upper=mu_f,
+                mu_upper=mu_f[0],
                 h_lower=config.dx_c,
                 h_upper=config.dx_f,
                 dt=config.dt,
             )
             if trace_projection == "fine":
-                pair_a_dv_lower = -(config.dt / (mu_c * config.dx_c)) * (
+                pair_a_dv_lower = -(config.dt / (mu_c[1] * config.dx_c)) * (
                     down(pair_a_f.trace.u_star) - ex_c[c]
                 )
-                pair_b_dv_lower = -(config.dt / (mu_c * config.dx_c)) * (
+                pair_b_dv_lower = -(config.dt / (mu_c[0] * config.dx_c)) * (
                     down(pair_b_f.trace.u_star) - ey_c[c]
                 )
                 pair_a_dv_upper = pair_a_f.dv_upper
@@ -963,16 +961,16 @@ def _z_slab_material_coupling_h_3d(
                 pair_b_u_star_f = 0.5 * (
                     up(pair_b_c.trace.u_star) + pair_b_f.trace.u_star
                 )
-                pair_a_dv_lower = -(config.dt / (mu_c * config.dx_c)) * (
+                pair_a_dv_lower = -(config.dt / (mu_c[1] * config.dx_c)) * (
                     pair_a_u_star_c - ex_c[c]
                 )
-                pair_b_dv_lower = -(config.dt / (mu_c * config.dx_c)) * (
+                pair_b_dv_lower = -(config.dt / (mu_c[0] * config.dx_c)) * (
                     pair_b_u_star_c - ey_c[c]
                 )
-                pair_a_dv_upper = +(config.dt / (mu_f * config.dx_f)) * (
+                pair_a_dv_upper = +(config.dt / (mu_f[1] * config.dx_f)) * (
                     pair_a_u_star_f - ex_f[f]
                 )
-                pair_b_dv_upper = +(config.dt / (mu_f * config.dx_f)) * (
+                pair_b_dv_upper = +(config.dt / (mu_f[0] * config.dx_f)) * (
                     pair_b_u_star_f - ey_f[f]
                 )
             hy_c_arr = hy_c_arr.at[c].add(zlo_pair_a_coarse_scale * pair_a_dv_lower)
@@ -983,10 +981,10 @@ def _z_slab_material_coupling_h_3d(
             hy_c_arr = hy_c_arr.at[c].add(zlo_pair_a_coarse_scale * pair_a_c.dv_lower)
             hx_c_arr = hx_c_arr.at[c].add(-zlo_pair_b_coarse_scale * pair_b_c.dv_lower)
             if trace_projection == "coarse":
-                pair_a_dv_upper = +(config.dt / (mu_f * config.dx_f)) * (
+                pair_a_dv_upper = +(config.dt / (mu_f[1] * config.dx_f)) * (
                     up(pair_a_c.trace.u_star) - ex_f[f]
                 )
-                pair_b_dv_upper = +(config.dt / (mu_f * config.dx_f)) * (
+                pair_b_dv_upper = +(config.dt / (mu_f[0] * config.dx_f)) * (
                     up(pair_b_c.trace.u_star) - ey_f[f]
                 )
                 hy_f_arr = hy_f_arr.at[f].add(
@@ -1003,9 +1001,9 @@ def _z_slab_material_coupling_h_3d(
                     ex_f[f],
                     hy_f_arr[f],
                     epsilon_lower=up(eps_c),
-                    mu_lower=up(mu_c),
+                    mu_lower=up(mu_c[1]),
                     epsilon_upper=eps_f,
-                    mu_upper=mu_f,
+                    mu_upper=mu_f[1],
                     h_lower=config.dx_c,
                     h_upper=config.dx_f,
                     dt=config.dt,
@@ -1016,9 +1014,9 @@ def _z_slab_material_coupling_h_3d(
                     ey_f[f],
                     -hx_f_arr[f],
                     epsilon_lower=up(eps_c),
-                    mu_lower=up(mu_c),
+                    mu_lower=up(mu_c[0]),
                     epsilon_upper=eps_f,
-                    mu_upper=mu_f,
+                    mu_upper=mu_f[0],
                     h_lower=config.dx_c,
                     h_upper=config.dx_f,
                     dt=config.dt,
@@ -1045,9 +1043,9 @@ def _z_slab_material_coupling_h_3d(
             ex_c[c],
             hy_c_arr[c],
             epsilon_lower=down(eps_f),
-            mu_lower=down(mu_f),
+            mu_lower=down(mu_f[1]),
             epsilon_upper=eps_c,
-            mu_upper=mu_c,
+            mu_upper=mu_c[1],
             h_lower=config.dx_f,
             h_upper=config.dx_c,
             dt=config.dt,
@@ -1058,9 +1056,9 @@ def _z_slab_material_coupling_h_3d(
             ey_c[c],
             -hx_c_arr[c],
             epsilon_lower=down(eps_f),
-            mu_lower=down(mu_f),
+            mu_lower=down(mu_f[0]),
             epsilon_upper=eps_c,
-            mu_upper=mu_c,
+            mu_upper=mu_c[0],
             h_lower=config.dx_f,
             h_upper=config.dx_c,
             dt=config.dt,
@@ -1079,9 +1077,9 @@ def _z_slab_material_coupling_h_3d(
                 up(ex_c[c]),
                 up(hy_c[c]),
                 epsilon_lower=eps_f,
-                mu_lower=mu_f,
+                mu_lower=mu_f[1],
                 epsilon_upper=up(eps_c),
-                mu_upper=up(mu_c),
+                mu_upper=up(mu_c[1]),
                 h_lower=config.dx_f,
                 h_upper=config.dx_c,
                 dt=config.dt,
@@ -1092,18 +1090,18 @@ def _z_slab_material_coupling_h_3d(
                 up(ey_c[c]),
                 -up(hx_c[c]),
                 epsilon_lower=eps_f,
-                mu_lower=mu_f,
+                mu_lower=mu_f[0],
                 epsilon_upper=up(eps_c),
-                mu_upper=up(mu_c),
+                mu_upper=up(mu_c[0]),
                 h_lower=config.dx_f,
                 h_upper=config.dx_c,
                 dt=config.dt,
             )
             if trace_projection == "fine":
-                pair_a_dv_upper = +(config.dt / (mu_c * config.dx_c)) * (
+                pair_a_dv_upper = +(config.dt / (mu_c[1] * config.dx_c)) * (
                     down(pair_a_f.trace.u_star) - ex_c[c]
                 )
-                pair_b_dv_upper = +(config.dt / (mu_c * config.dx_c)) * (
+                pair_b_dv_upper = +(config.dt / (mu_c[0] * config.dx_c)) * (
                     down(pair_b_f.trace.u_star) - ey_c[c]
                 )
                 pair_a_dv_lower = pair_a_f.dv_lower
@@ -1121,16 +1119,16 @@ def _z_slab_material_coupling_h_3d(
                 pair_b_u_star_f = 0.5 * (
                     up(pair_b_c.trace.u_star) + pair_b_f.trace.u_star
                 )
-                pair_a_dv_upper = +(config.dt / (mu_c * config.dx_c)) * (
+                pair_a_dv_upper = +(config.dt / (mu_c[1] * config.dx_c)) * (
                     pair_a_u_star_c - ex_c[c]
                 )
-                pair_b_dv_upper = +(config.dt / (mu_c * config.dx_c)) * (
+                pair_b_dv_upper = +(config.dt / (mu_c[0] * config.dx_c)) * (
                     pair_b_u_star_c - ey_c[c]
                 )
-                pair_a_dv_lower = -(config.dt / (mu_f * config.dx_f)) * (
+                pair_a_dv_lower = -(config.dt / (mu_f[1] * config.dx_f)) * (
                     pair_a_u_star_f - ex_f[f]
                 )
-                pair_b_dv_lower = -(config.dt / (mu_f * config.dx_f)) * (
+                pair_b_dv_lower = -(config.dt / (mu_f[0] * config.dx_f)) * (
                     pair_b_u_star_f - ey_f[f]
                 )
             hy_c_arr = hy_c_arr.at[c].add(zhi_coarse_scale * pair_a_dv_upper)
@@ -1141,10 +1139,10 @@ def _z_slab_material_coupling_h_3d(
             hy_c_arr = hy_c_arr.at[c].add(zhi_coarse_scale * pair_a_c.dv_upper)
             hx_c_arr = hx_c_arr.at[c].add(-zhi_coarse_scale * pair_b_c.dv_upper)
             if trace_projection == "coarse":
-                pair_a_dv_lower = -(config.dt / (mu_f * config.dx_f)) * (
+                pair_a_dv_lower = -(config.dt / (mu_f[1] * config.dx_f)) * (
                     up(pair_a_c.trace.u_star) - ex_f[f]
                 )
-                pair_b_dv_lower = -(config.dt / (mu_f * config.dx_f)) * (
+                pair_b_dv_lower = -(config.dt / (mu_f[0] * config.dx_f)) * (
                     up(pair_b_c.trace.u_star) - ey_f[f]
                 )
                 hy_f_arr = hy_f_arr.at[f].add(zhi_fine_scale * pair_a_dv_lower)
@@ -1157,9 +1155,9 @@ def _z_slab_material_coupling_h_3d(
                     up(ex_c[c]),
                     up(hy_c[c]),
                     epsilon_lower=eps_f,
-                    mu_lower=mu_f,
+                    mu_lower=mu_f[1],
                     epsilon_upper=up(eps_c),
-                    mu_upper=up(mu_c),
+                    mu_upper=up(mu_c[1]),
                     h_lower=config.dx_f,
                     h_upper=config.dx_c,
                     dt=config.dt,
@@ -1170,9 +1168,9 @@ def _z_slab_material_coupling_h_3d(
                     up(ey_c[c]),
                     -up(hx_c[c]),
                     epsilon_lower=eps_f,
-                    mu_lower=mu_f,
+                    mu_lower=mu_f[0],
                     epsilon_upper=up(eps_c),
-                    mu_upper=up(mu_c),
+                    mu_upper=up(mu_c[0]),
                     h_lower=config.dx_f,
                     h_upper=config.dx_c,
                     dt=config.dt,
@@ -1281,21 +1279,19 @@ def _z_slab_material_coupling_e_3d(
             f"{mode!r}"
         )
 
+    def face_coeffs(materials, sl, site):
+        eps = materials.eps_r[sl]
+        mu = tuple(component[sl] for component in component_h_materials(materials)[:2])
+        if _realized.ACTIVE is not None:
+            # Each SAT pair consumes its own tangential H face material.
+            eps, mu = _realized.face(materials, sl, eps, mu, site)
+        return eps * EPS_0, tuple(component * MU_0 for component in mu)
+
     def face_coeffs_c(k):
-        sl = (slice(fi, fi + ni), slice(fj, fj + nj), k)
-        if _realized.ACTIVE is None:
-            return mats_c.eps_r[sl] * EPS_0, component_h_materials(mats_c)[0][sl] * MU_0
-        eps_r, mu_r = mats_c.eps_r[sl], component_h_materials(mats_c)[0][sl]
-        eps_r, mu_r = _realized.face(mats_c, sl, eps_r, mu_r, "sat.c")
-        return eps_r * EPS_0, mu_r * MU_0
+        return face_coeffs(mats_c, (slice(fi, fi + ni), slice(fj, fj + nj), k), "sat.c")
 
     def face_coeffs_f(k):
-        sl = (slice(None), slice(None), k)
-        if _realized.ACTIVE is None:
-            return mats_f.eps_r[sl] * EPS_0, component_h_materials(mats_f)[0][sl] * MU_0
-        eps_r, mu_r = mats_f.eps_r[sl], component_h_materials(mats_f)[0][sl]
-        eps_r, mu_r = _realized.face(mats_f, sl, eps_r, mu_r, "sat.f")
-        return eps_r * EPS_0, mu_r * MU_0
+        return face_coeffs(mats_f, (slice(None), slice(None), k), "sat.f")
 
     alpha_f = config.tau * ratio / (ratio + 1.0)
     alpha_c = config.tau / (ratio + 1.0)
@@ -1326,9 +1322,9 @@ def _z_slab_material_coupling_e_3d(
             down(ex_f_arr[f]),
             down(hy_f[f]),
             epsilon_lower=eps_c,
-            mu_lower=mu_c,
+            mu_lower=mu_c[1],
             epsilon_upper=down(eps_f),
-            mu_upper=down(mu_f),
+            mu_upper=down(mu_f[1]),
             h_lower=config.dx_c,
             h_upper=config.dx_f,
             dt=config.dt,
@@ -1339,9 +1335,9 @@ def _z_slab_material_coupling_e_3d(
             down(ey_f_arr[f]),
             -down(hx_f[f]),
             epsilon_lower=eps_c,
-            mu_lower=mu_c,
+            mu_lower=mu_c[0],
             epsilon_upper=down(eps_f),
-            mu_upper=down(mu_f),
+            mu_upper=down(mu_f[0]),
             h_lower=config.dx_c,
             h_upper=config.dx_f,
             dt=config.dt,
@@ -1364,9 +1360,9 @@ def _z_slab_material_coupling_e_3d(
                 ex_f_arr[f],
                 hy_f[f],
                 epsilon_lower=up(eps_c),
-                mu_lower=up(mu_c),
+                mu_lower=up(mu_c[1]),
                 epsilon_upper=eps_f,
-                mu_upper=mu_f,
+                mu_upper=mu_f[1],
                 h_lower=config.dx_c,
                 h_upper=config.dx_f,
                 dt=config.dt,
@@ -1377,9 +1373,9 @@ def _z_slab_material_coupling_e_3d(
                 ey_f_arr[f],
                 -hx_f[f],
                 epsilon_lower=up(eps_c),
-                mu_lower=up(mu_c),
+                mu_lower=up(mu_c[0]),
                 epsilon_upper=eps_f,
-                mu_upper=mu_f,
+                mu_upper=mu_f[0],
                 h_lower=config.dx_c,
                 h_upper=config.dx_f,
                 dt=config.dt,
@@ -1445,9 +1441,9 @@ def _z_slab_material_coupling_e_3d(
                     ex_f_arr[f],
                     hy_f[f],
                     epsilon_lower=up(eps_c),
-                    mu_lower=up(mu_c),
+                    mu_lower=up(mu_c[1]),
                     epsilon_upper=eps_f,
-                    mu_upper=mu_f,
+                    mu_upper=mu_f[1],
                     h_lower=config.dx_c,
                     h_upper=config.dx_f,
                     dt=config.dt,
@@ -1458,9 +1454,9 @@ def _z_slab_material_coupling_e_3d(
                     ey_f_arr[f],
                     -hx_f[f],
                     epsilon_lower=up(eps_c),
-                    mu_lower=up(mu_c),
+                    mu_lower=up(mu_c[0]),
                     epsilon_upper=eps_f,
-                    mu_upper=mu_f,
+                    mu_upper=mu_f[0],
                     h_lower=config.dx_c,
                     h_upper=config.dx_f,
                     dt=config.dt,
@@ -1487,9 +1483,9 @@ def _z_slab_material_coupling_e_3d(
             ex_c_arr[c],
             hy_c[c],
             epsilon_lower=down(eps_f),
-            mu_lower=down(mu_f),
+            mu_lower=down(mu_f[1]),
             epsilon_upper=eps_c,
-            mu_upper=mu_c,
+            mu_upper=mu_c[1],
             h_lower=config.dx_f,
             h_upper=config.dx_c,
             dt=config.dt,
@@ -1500,9 +1496,9 @@ def _z_slab_material_coupling_e_3d(
             ey_c_arr[c],
             -hx_c[c],
             epsilon_lower=down(eps_f),
-            mu_lower=down(mu_f),
+            mu_lower=down(mu_f[0]),
             epsilon_upper=eps_c,
-            mu_upper=mu_c,
+            mu_upper=mu_c[0],
             h_lower=config.dx_f,
             h_upper=config.dx_c,
             dt=config.dt,
@@ -1521,9 +1517,9 @@ def _z_slab_material_coupling_e_3d(
                 up(ex_c[c]),
                 up(hy_c[c]),
                 epsilon_lower=eps_f,
-                mu_lower=mu_f,
+                mu_lower=mu_f[1],
                 epsilon_upper=up(eps_c),
-                mu_upper=up(mu_c),
+                mu_upper=up(mu_c[1]),
                 h_lower=config.dx_f,
                 h_upper=config.dx_c,
                 dt=config.dt,
@@ -1534,9 +1530,9 @@ def _z_slab_material_coupling_e_3d(
                 up(ey_c[c]),
                 -up(hx_c[c]),
                 epsilon_lower=eps_f,
-                mu_lower=mu_f,
+                mu_lower=mu_f[0],
                 epsilon_upper=up(eps_c),
-                mu_upper=up(mu_c),
+                mu_upper=up(mu_c[0]),
                 h_lower=config.dx_f,
                 h_upper=config.dx_c,
                 dt=config.dt,
@@ -1598,9 +1594,9 @@ def _z_slab_material_coupling_e_3d(
                     up(ex_c[c]),
                     up(hy_c[c]),
                     epsilon_lower=eps_f,
-                    mu_lower=mu_f,
+                    mu_lower=mu_f[1],
                     epsilon_upper=up(eps_c),
-                    mu_upper=up(mu_c),
+                    mu_upper=up(mu_c[1]),
                     h_lower=config.dx_f,
                     h_upper=config.dx_c,
                     dt=config.dt,
@@ -1611,9 +1607,9 @@ def _z_slab_material_coupling_e_3d(
                     up(ey_c[c]),
                     -up(hx_c[c]),
                     epsilon_lower=eps_f,
-                    mu_lower=mu_f,
+                    mu_lower=mu_f[0],
                     epsilon_upper=up(eps_c),
-                    mu_upper=up(mu_c),
+                    mu_upper=up(mu_c[0]),
                     h_lower=config.dx_f,
                     h_upper=config.dx_c,
                     dt=config.dt,
