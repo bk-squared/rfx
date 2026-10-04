@@ -197,3 +197,14 @@ repository.
 - **Document** (SciencePlots pubstyle, no titles, PDF + PNG; TikZ for the geometry drawing):
   geometry with dimensions; response with baselines and mask; objective history with the best
   iterate marked; gradient checks (FD and record length) in separate panels; mesh trend.
+
+## Amendment 1 (2026-10-04, leader; before any run)
+Two points the text left open, found by the implementer before any run:
+1. **B's starting record.** `num_timesteps(num_periods=240)` at f_max = 1.05 × 12.4 GHz =
+   13.02 GHz (about 18.4 ns, about 15 000 steps at a/36), rounded up to a multiple of the
+   checkpoint-segment count (the largest divisor of the step count not above its square root).
+   §2.5.3 governs any lengthening. The finer meshes use the same physical record length.
+2. **Pixel indexing for B.** Pixels are numbered 1…32 along +x from the port-1 end of the insert.
+   Start S2's slabs occupy pixels {6, 7}, {16, 17} and {26, 27} (mirror-symmetric about the
+   insert centre), the full guide width. §2.5.1's FD pixels are pixels 6, 16 and 26 on the guide
+   centre line (the centre pixel of the 9 across the width).
