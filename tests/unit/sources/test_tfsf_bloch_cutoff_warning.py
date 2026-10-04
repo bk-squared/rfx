@@ -11,6 +11,9 @@ from rfx import Simulation
 @pytest.mark.parametrize("angle,bandwidth,waveform,method,f0", [
     (43.6, 0.3, "modulated_gaussian", "bloch", 2.9e9),
     (43.6, 0.1, "modulated_gaussian", "bloch", 2.9e9),
+    (20.0, 0.3, "modulated_gaussian", "bloch", 2.9e9),   # -41.8 dB: warns
+    (43.6, 0.12, "modulated_gaussian", "bloch", 2.9e9),  # -57.9 dB: warns
+    (43.6, 0.11, "modulated_gaussian", "bloch", 2.9e9),  # -69 dB: silent
     (0.0, 0.3, "modulated_gaussian", "bloch", 2.9e9),
     (0.005, 0.5, "modulated_gaussian", "bloch", 2.9e9),
     (43.6, 0.3, "modulated_gaussian", "methodB", 2.9e9),
