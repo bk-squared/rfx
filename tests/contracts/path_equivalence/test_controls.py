@@ -55,18 +55,47 @@ def test_matrix_canary_rejects_disabled_layer(monkeypatch, helper):
         execution._comparison_canary()
 
 
-def test_record_peak_spans_leaves_and_excludes_ntff_residuals():
+def test_ntff_excludes_only_named_kahan_residuals():
     from .execution import _tree
     a = dict(x_lo=np.array([1.]), y_hi=np.array([1e-8]), c_x_lo=np.array([1e10]))
-    b = dict(x_lo=np.array([1.]), y_hi=np.array([2e-8]), c_x_lo=np.array([-1e10]))
+    b = dict(x_lo=np.array([1.]), y_hi=np.array([1e-8]), c_x_lo=np.array([-1e10]))
     report = dict(failures=[], measurements=[])
     _tree(a, b, 'ntff_data', 'accumulated', report)
     assert not report['failures']
-    assert {m['peak'] for m in report['measurements']} == {1.}
+    assert {m['peak'] for m in report['measurements']} == {1., 1e-8}
     assert {m['record'] for m in report['measurements']} == {'ntff_data.x_lo', 'ntff_data.y_hi'}
 
 
-def test_named_record_peak_does_not_include_metadata_or_other_planes():
+@pytest.mark.parametrize('kind', ('step', 'accumulated'))
+def test_small_leaf_five_percent_change_is_not_hidden_by_large_leaf(kind):
+    from .execution import _tree
+    a = dict(large=np.array([1.]), small=np.array([1e-8]))
+    b = dict(large=np.array([1.]), small=np.array([1.05e-8]))
+    report = dict(failures=[], measurements=[])
+    _tree(a, b, 'record', kind, report)
+    assert len(report['failures']) == 1
+    assert report['failures'][0].startswith('record.small:')
+    small = next(m for m in report['measurements'] if m['record'] == 'record.small')
+    assert small['peak'] == 1.05e-8
+    assert small['difference'] > small['bar']
+
+
+@pytest.mark.parametrize('skipped_type', (dict, list))
+def test_matrix_canary_rejects_disabled_container_traversal(monkeypatch, skipped_type):
+    from . import execution
+    original = execution._tree
+
+    def skip_container(a, b, *args):
+        if isinstance(a, skipped_type):
+            return
+        return original(a, b, *args)
+
+    monkeypatch.setattr(execution, '_tree', skip_container)
+    with pytest.raises(RuntimeError, match='disabled'):
+        execution._comparison_canary()
+
+
+def test_observer_amplitudes_use_own_peak_and_metadata_is_exact():
     from .execution import _tree
     a = dict(small=dict(accumulator=np.array([1.]), freqs=np.array([5e9])),
              large=dict(accumulator=np.array([1e10]), freqs=np.array([5e9])))

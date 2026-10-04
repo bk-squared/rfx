@@ -68,13 +68,25 @@
    {
     "cause": "nu-flux-accumulator",
     "fingerprint": "flux_monitors.flux_x_0.e1_dft: numeric",
-    "relative": 0.013926880293480097,
+    "relative": 0.0580509329853314,
     "relative_bar": 0.0001
    },
    {
     "cause": "nu-flux-accumulator",
     "fingerprint": "flux_monitors.flux_x_0.e2_dft: numeric",
     "relative": 0.05791182885042686,
+    "relative_bar": 0.0001
+   },
+   {
+    "cause": "nu-flux-accumulator",
+    "fingerprint": "flux_monitors.flux_x_0.h1_dft: numeric",
+    "relative": 0.057888685595481264,
+    "relative_bar": 0.0001
+   },
+   {
+    "cause": "nu-flux-accumulator",
+    "fingerprint": "flux_monitors.flux_x_0.h2_dft: numeric",
+    "relative": 0.05843369377690264,
     "relative_bar": 0.0001
    }
   ]
@@ -92,7 +104,7 @@
    {
     "cause": "nu-flux-accumulator",
     "fingerprint": "flux_monitors.flux_x_0.e1_dft: numeric",
-    "relative": 0.01443915256277397,
+    "relative": 0.05388543501010911,
     "relative_bar": 0.0001
    },
    {
@@ -100,6 +112,18 @@
     "fingerprint": "flux_monitors.flux_x_0.e2_dft: numeric",
     "relative": 0.05365727200274906,
     "relative_bar": 0.0001
+   },
+   {
+    "cause": "nu-flux-accumulator",
+    "fingerprint": "flux_monitors.flux_x_0.h1_dft: numeric",
+    "relative": 0.05345737401285307,
+    "relative_bar": 0.0001
+   },
+   {
+    "cause": "nu-flux-accumulator",
+    "fingerprint": "flux_monitors.flux_x_0.h2_dft: numeric",
+    "relative": 0.05469321493803225,
+    "relative_bar": 9.999999999999999e-05
    }
   ]
  },

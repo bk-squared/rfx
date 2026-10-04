@@ -31,19 +31,18 @@ are excluded. The declared-length record semantics are documented once in
 FINDINGS.md. Kernel material views come from `_realized.capture`; E-side
 lumped terms are read at E, not from H's intentionally smaller container.
 
-`comparison.py` owns the bars: 9 float32 ULP at the whole-record peak per step;
+`comparison.py` owns the bars: 9 float32 ULP at each numeric leaf's own peak per step;
 `1e-4` of that peak for accumulated records, objective and gradient. Forward
 cells use JVP of a design-permittivity multiplier, with squared probe samples
 as the objective. Current moments use their supported bounded design box.
-All numeric amplitude leaves use the maximum over both whole records, rather
-than each leaf: all of `ntff_data`, or each named DFT plane / flux monitor.
-Observer configuration and geometry (`OBSERVER_METADATA`, including frequencies,
-indices, windows and area weights) are exact prerequisites, excluded from that
-amplitude peak. The named `NTFF_KAHAN_RESIDUALS` list excludes `c_x_lo`, `c_x_hi`,
+Each numeric leaf uses the larger peak of that leaf on the two paths, never
+another leaf's scale. Observer configuration and geometry (`OBSERVER_METADATA`,
+including frequencies, indices, windows and area weights) remain exact.
+The named `NTFF_KAHAN_RESIDUALS` list excludes `c_x_lo`, `c_x_hi`,
 `c_y_lo`, `c_y_hi`, `c_z_lo`, `c_z_hi`: these are internal Kahan carries, never
 read by the far-field transform (`rfx/farfield.py:127`).
 Missing shared channels fail. Live canaries detect a disabled `compare`,
-`_comparison`, or `_tree`.
+`_comparison`, or `_tree`, including traversal through a dict containing a list.
 Known numeric discrepancies retain a same-bar fingerprint so a further change
 cannot hide under xfail. Unknown failures are never accepted by an xfail.
 

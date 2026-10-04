@@ -11,7 +11,7 @@ Conclusions: in the S0 PR body (leader)
 |---|---|---|---|
 | record-semantics-declared-length | Once, all U/N geometry declarations | `declared_length_m` = user domain on uniform, profile sum on NU; excluded from realized equality | [uniform :631](../../../rfx/api/__init__.py#L631) / [NU x :523](../../../rfx/api/__init__.py#L523), [NU y :535](../../../rfx/api/__init__.py#L535) |
 | nu-dft-plane-accumulator | `_dft_planes`, U/N and FU/FN, 12/36; accumulator | `0.0579118517` / `0.0536573255` vs `1e-4` | [U :2686](../../../rfx/simulation.py#L2686) / [N :3103](../../../rfx/nonuniform.py#L3103) |
-| nu-flux-accumulator | `_flux_monitors`, U/N, 12/36; e1/e2 DFT | max `0.0579118289` / `0.0536572720` vs `1e-4` | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
+| nu-flux-accumulator | `_flux_monitors`, U/N, 12/36; e1/e2/h1/h2 DFT | max `0.0584336938` / `0.0546932149` vs `1e-4` | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | flux-dA-shape | Same run cells; dA | `(1,1)` vs `(13,12)`; N/A | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | flux-dA2-missing | Same run cells; dA2 | Missing on U; N/A | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | forward-flux-record-missing | `_flux_monitors`, FU/FN, 12/36 | Missing on both forward result records; availability finding, not a measured path difference | [FU :2709](../../../rfx/api/_execute.py#L2709) / [FN :2732](../../../rfx/api/_execute.py#L2732) |
@@ -46,25 +46,29 @@ The public API instead deliberately falls back to one device
 ([routing :5051](../../../rfx/api/_execute.py#L5051)); forced-dispatch recursion
 is a test artifact and is not retained as a finding.
 
-Record-check xfails before/after this review (all 25 previously finding cells
-were re-measured; execution failures also fail their dependent record groups):
+Record-check xfails before/after restoring per-leaf peaks (execution failures
+also fail their dependent record groups):
 
-| Category | bfa8686d | This review |
+| Category | a97cc1e6 | This review |
 |---|---:|---:|
 | realized | 5 | 5 |
 | probes | 5 | 5 |
 | port_samples | 14 | 14 |
 | port_dft | 9 | 9 |
-| observers | 10 | 9 |
+| observers | 9 | 9 |
 | objective | 0 | 0 |
 | gradient | 0 | 0 |
 | refusal | 0 | 0 |
 
-Total: **43 → 42 checks**, **25 → 24 cells**, **14 → 13 causes** (excluding
-the separate declared-length semantic note). The five realized-group xfails
-are execution errors; none is a geometry or kernel-material mismatch.
-Uniform/distributed NTFF now passes: Kahan residuals are excluded, and its six
-physical faces use the whole-record peak (maximum relative difference
-`6.65695461e-8` versus `1e-4`). Flux H-channel discrepancies are
-below the whole-monitor bar; E-channel findings remain. The full matrix was
-not re-run in this review.
+Total remains **42 checks**, **24 cells**, **13 causes** (excluding the separate
+declared-length semantic note). The five realized-group xfails are execution
+errors; none is a geometry or kernel-material mismatch.
+
+All 14 generated flux/NTFF cells were re-measured. Restoring per-leaf peaks
+restores four H-channel fingerprints in the existing two run-flux findings:
+`h1_dft` / `h2_dft` relative differences are `0.0578886856` / `0.0584336938`
+at 12 steps and `0.0534573740` / `0.0546932149` at 36 steps, each versus `1e-4`.
+Implementation locations are in the flux row above. Uniform/distributed NTFF
+still passes with only its named Kahan residuals excluded: maximum physical-leaf
+relative difference `1.06943511e-7` versus `1e-4`. Metadata remain exact.
+The full matrix was not re-run in this review.

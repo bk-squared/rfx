@@ -36,22 +36,7 @@ def metadata(name, key):
     return name.split('.')[0] in NAMED_RECORD_COLLECTIONS and key in OBSERVER_METADATA
 
 
-def record_peak(a, b, name):
-    """One amplitude peak over both whole records, excluding exact metadata."""
-    def peak(value, path):
-        value = container(value)
-        if isinstance(value, dict):
-            return max((peak(v, f'{path}.{k}') for k, v in value.items()
-                        if not excluded(path, k) and not metadata(path, k)), default=0.)
-        if isinstance(value, (tuple, list)):
-            return max((peak(v, f'{path}.{i}') for i, v in enumerate(value)), default=0.)
-        if value is None or isinstance(value, (str, bool)):
-            return 0.
-        return float(np.max(np.abs(np.asarray(value)), initial=0))
-    return max(peak(a, name), peak(b, name))
-
-
-def compare(a, b, *, record, kind, measurements, peak=None):
+def compare(a, b, *, record, kind, measurements):
     """Record the evidence before asserting; absent records never pass."""
     if a is None or b is None:
         side = 'A and B' if a is None and b is None else 'A' if a is None else 'B'
@@ -59,8 +44,7 @@ def compare(a, b, *, record, kind, measurements, peak=None):
     a, b = np.asarray(a), np.asarray(b)
     assert a.shape == b.shape, f"{record}: shape differs: {a.shape} vs {b.shape}"
     assert np.all(np.isfinite(a)) and np.all(np.isfinite(b)), f"{record}: nonfinite"
-    if peak is None:
-        peak = record_peak(a, b, record)
+    peak = max(float(np.max(np.abs(a), initial=0)), float(np.max(np.abs(b), initial=0)))
     difference = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128)), initial=0))
     bar = (0.0 if kind == 'exact' else
            STEP_ULPS * float(np.spacing(np.float32(peak))) if kind == 'step' else

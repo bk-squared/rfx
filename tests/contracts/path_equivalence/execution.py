@@ -12,7 +12,7 @@ from rfx import _realized
 from rfx.runners import _admission as admission
 
 from .builders import BASE_ROWS, build, point
-from .comparison import compare, container, excluded, metadata, record_peak, NAMED_RECORD_COLLECTIONS
+from .comparison import compare, container, excluded, metadata
 
 
 @functools.lru_cache(maxsize=None)
@@ -79,25 +79,22 @@ def solve(row, lane, graded, steps, dt):
                 objective=objective, gradient=gradient, elapsed=time.perf_counter()-started)
 
 
-def _comparison(a, b, name, kind, report, peak=None):
+def _comparison(a, b, name, kind, report):
     try:
         if isinstance(a, (str, bool)) or isinstance(b, (str, bool)):
             assert a == b, f'{name}: {a!r} vs {b!r}'
         else:
-            compare(a, b, record=name, kind=kind, measurements=report['measurements'], peak=peak)
+            compare(a, b, record=name, kind=kind, measurements=report['measurements'])
     except AssertionError as exc:
         report['failures'].append(str(exc))
 
 
-def _tree(a, b, name, kind, report, peak=None):
+def _tree(a, b, name, kind, report):
     if a is None and b is None:
         return  # Optional fields inside a present record.
     if a is None or b is None:
-        _comparison(a, b, name, kind, report, peak)
+        _comparison(a, b, name, kind, report)
         return
-
-    if peak is None and name not in NAMED_RECORD_COLLECTIONS:
-        peak = record_peak(a, b, name)
 
     a, b = container(a), container(b)
     if isinstance(a, dict) and isinstance(b, dict):
@@ -112,17 +109,17 @@ def _tree(a, b, name, kind, report, peak=None):
                 report['failures'].append(f"{name}.{key}: record missing on {'A' if key not in a else 'B'}")
             else:
                 _tree(a[key], b[key], f'{name}.{key}',
-                      'exact' if metadata(name, key) else kind, report, peak)
+                      'exact' if metadata(name, key) else kind, report)
     elif isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
         for i in range(max(len(a), len(b))):
             if i >= len(a) or i >= len(b):
                 report['failures'].append(f"{name}.{i}: record missing on {'A' if i >= len(a) else 'B'}")
             else:
-                _tree(a[i], b[i], f'{name}.{i}', kind, report, peak)
+                _tree(a[i], b[i], f'{name}.{i}', kind, report)
     elif isinstance(a, (dict, tuple, list)) or isinstance(b, (dict, tuple, list)):
         report['failures'].append(f'{name}: record structure differs: {type(a).__name__} vs {type(b).__name__}')
     else:
-        _comparison(a, b, name, kind, report, peak)
+        _comparison(a, b, name, kind, report)
 
 
 def _kernel_materials(capture):
@@ -192,7 +189,8 @@ def _comparison_canary():
         raise RuntimeError('S0 comparison disabled: changed record accepted')
     for helper in (_comparison, _tree):
         report = dict(failures=[], measurements=[])
-        helper(a, b, 'canary', 'step', report)
+        x, y = ({'samples': [a]}, {'samples': [b]}) if helper is _tree else (a, b)
+        helper(x, y, 'canary', 'step', report)
         if not report['failures']:
             raise RuntimeError(f'S0 {helper.__name__} disabled: changed record accepted')
 
