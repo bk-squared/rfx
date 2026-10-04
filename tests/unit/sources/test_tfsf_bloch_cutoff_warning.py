@@ -12,6 +12,7 @@ from rfx import Simulation
     (43.6, 0.3, "modulated_gaussian", "bloch", 2.9e9),
     (43.6, 0.1, "modulated_gaussian", "bloch", 2.9e9),
     (0.0, 0.3, "modulated_gaussian", "bloch", 2.9e9),
+    (0.005, 0.5, "modulated_gaussian", "bloch", 2.9e9),
     (43.6, 0.3, "modulated_gaussian", "methodB", 2.9e9),
     (70.0, 0.5, None, "bloch", None),
     (-43.6, 0.3, "modulated_gaussian", "bloch", 2.9e9),
@@ -33,7 +34,7 @@ def test_bloch_cutoff_warning(angle, bandwidth, waveform, method, f0):
         warnings.simplefilter("always")
         sim.add_tfsf_source(f0=f0, angle_deg=angle, bandwidth=bandwidth,
                             method=method, **kwargs)
-    should_warn = method == "bloch" and angle != 0 and ratio > 1e-3
+    should_warn = method == "bloch" and abs(angle) > 0.01 and ratio > 1e-3
     assert len(caught) == int(should_warn)
     if should_warn:
         assert caught[0].category is UserWarning

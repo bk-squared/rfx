@@ -2285,7 +2285,7 @@ class Simulation(
                     "(transverse=y) only; 'ey' is future work"
                 )
 
-        if method == "bloch" and angle_deg != 0.0:
+        if method == "bloch" and abs(angle_deg) > 0.01:  # the 2D-aux dispatch test in tfsf.py
             cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
             if cutoff_db > -60.0:
                 import warnings
