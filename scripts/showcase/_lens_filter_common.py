@@ -349,7 +349,7 @@ def main(case, argv=None):
         raise SystemExit("float32 stages require JAX_ENABLE_X64=0")
     if not args.smoke and args.stage != "describe" and jax.default_backend() == "cpu":
         raise SystemExit("full solves are VESSL GPU only; use --smoke on the Mac")
-    if args.smoke and args.stage not in ("timing",):
+    if args.smoke and args.stage not in ("timing", "fd"):
         raise SystemExit("--smoke supports --stage timing only; it cannot create trial admission")
     if args.stage == "describe":
         for dx in case.MESHES:
@@ -447,7 +447,8 @@ def main(case, argv=None):
                 gc.collect()
                 env = {**os.environ, "JAX_ENABLE_X64": "1"}
                 subprocess.run([sys.executable, str(Path(case.__file__)), "--stage", "fd", "--out", str(directory),
-                                "--start", name, "--precision", "float64"], env=env, check=True)
+                                "--start", name, "--precision", "float64", "--record", str(directory)]
+                               + (["--smoke"] if args.smoke else []), env=env, check=True)
             store = optimize(case, model, e, n, 30 if args.stage == "trial" else case.ITERATIONS,
                              directory, args.stage)
             results[name] = trial_pass(case, store)
