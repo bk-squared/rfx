@@ -323,6 +323,11 @@
     },
     {
       "file": "rfx/core/yee.py",
+      "function": "component_h_materials",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/yee.py",
       "function": "curl_h.component",
       "kind": "neighbour",
       "count": 2
