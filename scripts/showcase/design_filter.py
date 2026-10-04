@@ -155,14 +155,14 @@ class Model(common.ModelBase):
                           "reference_planes_m": r.reference_planes, **metrics}
 
     def describe(self):
-        declared = np.array([.029845, .170815, .040005, .160655])
+        declared = np.array([.03048, .17018, .04064, .16002])  # Amendment 2
         realized = [(self.grid.position_to_index((float(x), 0., 0.))[0] - self.grid.pad_x_lo)
                     * self.dx for x in declared]
         return {**super().describe(), "realized_guide_m": self.walls,
                 "port_then_reference_declared_x_m": declared,
                 "port_then_reference_realized_x_m": realized, "S2_background_eps": 1.5,
                 "TE20_advisory_disposition": "Expected: even-y, z-uniform insert; TE20 is odd in y. "
-                "TE30 is cut off in the empty guide; nominal insert-to-reference gap is 19.685 mm."}
+                "TE30 is cut off in the empty guide; nominal insert-to-reference gap is 19.05 mm."}
 
 
 if __name__ == "__main__":
