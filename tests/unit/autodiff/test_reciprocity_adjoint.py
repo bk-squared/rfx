@@ -202,7 +202,7 @@ def test_g5_mutation(precision):
 @pytest.mark.parametrize("path", ["graded", "distributed", "ringdown", "ports",
     "debye", "lorentz", "kerr", "upml", "occupancy", "whole_grid", "missing_box",
     "tfsf", "precision", "solver", "invalid", "sheet", "current_moments", "stencil",
-    "ntff", "h_plane", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
+    "ntff_boundary", "ntff_different_bins", "no_bins", "boundary_plane", "duplicate", "dc", "nyquist",
     "different_bins", "time_domain"])
 def test_g5_refusals(path):
     sim, eps = fixture("float32")
@@ -254,10 +254,13 @@ def test_g5_refusals(path):
     elif path == "invalid":
         options["gradient"] = "unknown"
         match = "gradient must"
-    elif path == "ntff":
+    elif path == "ntff_boundary":
+        sim._dft_planes.clear()
         sim.add_ntff_box((2e-3, 2e-3, 2e-3), (22e-3, 18e-3, 14e-3), freqs=jnp.array([F0]))
-    elif path == "h_plane":
-        sim._dft_planes[0] = replace(sim._dft_planes[0], component="hz")
+        match = "interior NTFF"
+    elif path == "ntff_different_bins":
+        sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 16e-3, 12e-3), freqs=jnp.array([F0]))
+        match = "identical monitor frequency"
     elif path == "no_bins":
         sim._dft_planes.clear()
     elif path == "boundary_plane":
@@ -298,7 +301,7 @@ def test_wavelet_targets(precision):
 @pytest.mark.parametrize("flag", ["use_debye", "use_lorentz", "use_kerr", "use_upml",
     "use_design_occupancy", "use_current_moments", "use_sheet_impedance", "use_tfsf",
     "use_waveguide_ports", "use_lumped_rlc", "use_wire_sparams", "use_lumped_sparams",
-    "use_ntff", "use_flux_monitors", "use_aniso_inv", "use_conformal",
+    "use_flux_monitors", "use_aniso_inv", "use_conformal",
     "use_pec_occupancy", "use_pmc_faces"])
 def test_g5_kernel_refusals(flag):
     from types import SimpleNamespace
@@ -413,3 +416,150 @@ def test_adjoint_settling(precision, steps):
         assert witness.shape == ()
         assert np.all(np.isfinite(grad))
         assert witness < 1e-5 if steps == STEPS else witness > 1e-1
+
+
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("lossy", [False, True])
+def test_n1_h_plane(precision, lossy):
+    import rfx.adjoint as adjoint
+    with enable_x64() if precision == "float64" else nullcontext():
+        sim, eps = fixture(precision, point=False)
+        sim._dft_planes[0] = replace(sim._dft_planes[0], component="hy")
+        if lossy:
+            sim.add_material("fixed_loss", eps_r=1., sigma=0.2)
+            sim.add(Box((6e-3, 4e-3, 2e-3), (18e-3, 16e-3, 14e-3)), material="fixed_loss")
+        settling = decay(sim, eps, None)
+        reference = jax.jit(jax.grad(objective(sim)))(eps, None)
+        longer = jax.jit(jax.grad(objective(sim, steps=2*STEPS)))(eps, None)
+        stability = errors(reference, longer)[0]
+        actual = jax.jit(jax.grad(objective(sim, mode="adjoint")))(eps, None)
+        error = errors(actual, reference)[0]
+        original = adjoint._magnetic_target
+        with patch.object(adjoint, "_magnetic_target", lambda *args: -original(*args)):
+            mutated = jax.jit(jax.grad(objective(sim, mode="adjoint")))(eps, None)
+        mutation = errors(mutated, reference)[0]
+        print(f"N1 {precision=} {lossy=} {settling=} reference_2x_movement={stability} {error=} sign_flip_error={mutation}", flush=True)
+        assert settling["decay_db"] >= 100
+        bar = 1e-5 if precision == "float64" else 1e-4
+        assert stability <= bar
+        assert error <= bar
+        assert mutation > bar
+
+
+@contextmanager
+def ntff_collocation(face_centre):
+    """Exercise both supported accumulator layouts through the public forward."""
+    import rfx.farfield as farfield
+    original = farfield.make_ntff_box
+    with patch.object(farfield, "make_ntff_box", lambda *args, **kwargs:
+            original(*args, **{**kwargs, "collocation": "face_centre" if face_centre else "node"})):
+        yield
+
+
+def ntff_fixture(precision, lossy=False):
+    sim, eps = fixture(precision, point=False)
+    sim._dft_planes.clear()
+    sim._ports.clear()
+    sim.add_source((6e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
+                   waveform=GaussianPulse(f0=F0, bandwidth=0.8, cutoff=6))
+    sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 16e-3, 12e-3),
+                     freqs=jnp.asarray([0.8*F0, 1.05*F0], dtype=precision))
+    if lossy:
+        sim.add_material("fixed_loss", eps_r=1., sigma=0.2)
+        sim.add(Box((6e-3, 4e-3, 2e-3), (18e-3, 16e-3, 14e-3)), material="fixed_loss")
+    return sim, eps
+
+
+def ntff_objective(sim, steps=STEPS, mode="autodiff"):
+    from rfx.farfield import compute_far_field
+    # Three-node Gauss-Legendre solid-angle quadrature, one azimuthal cut
+    # (axisymmetric approximation). Both numerator and denominator differentiate.
+    nodes, weights = np.polynomial.legendre.leggauss(3)
+    theta, phi = np.arccos(nodes[::-1]), np.array([0.37])
+    def loss(eps):
+        result = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=eps,
+            n_steps=steps, checkpoint_segments=8, gradient=mode, skip_preflight=True)
+        ff = compute_far_field(result.ntff_data, result.ntff_box, result.grid, theta, phi)
+        power = jnp.abs(ff.E_theta / result.dt)**2 + jnp.abs(ff.E_phi / result.dt)**2
+        prad = 2*jnp.pi*jnp.sum(power[:, :, 0] * jnp.asarray(weights), axis=1)
+        directivity = 4*jnp.pi*power[:, 1, 0] / prad
+        return jnp.sum(jnp.asarray([1., 1.7]) * directivity)
+    return loss
+
+
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("lossy", [False, True])
+@pytest.mark.parametrize("face_centre", [True, False])
+def test_n2_ntff(precision, lossy, face_centre):
+    import rfx.adjoint as adjoint
+    with (enable_x64() if precision == "float64" else nullcontext()), ntff_collocation(face_centre):
+        sim, eps = ntff_fixture(precision, lossy)
+        settling = decay(sim, eps, None)
+        reference = jax.jit(jax.value_and_grad(ntff_objective(sim)))(eps)
+        longer = jax.jit(jax.grad(ntff_objective(sim, steps=2*STEPS)))(eps)
+        stability = errors(reference[1], longer)[0]
+        actual = jax.jit(jax.value_and_grad(ntff_objective(sim, mode="adjoint")))(eps)
+        error = errors(actual[1], reference[1])[0]
+        original = adjoint._magnetic_target
+        with patch.object(adjoint, "_magnetic_target", lambda *args: -original(*args)):
+            mutated = jax.jit(jax.grad(ntff_objective(sim, mode="adjoint")))(eps)
+        mutation = errors(mutated, reference[1])[0]
+        print(f"N2 {precision=} {lossy=} {face_centre=} {settling=} reference_2x_movement={stability} {error=} sign_flip_error={mutation}", flush=True)
+        assert settling["decay_db"] >= 100
+        bar = 1e-5 if precision == "float64" else 1e-4
+        np.testing.assert_array_equal(actual[0], reference[0])
+        assert stability <= bar
+        assert error <= bar
+        assert mutation > bar
+
+
+def test_ntff_compensation_objective_refused():
+    sim, eps = ntff_fixture("float32")
+    def loss(e):
+        result = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=e,
+            n_steps=48, gradient="adjoint", skip_preflight=True)
+        return jnp.real(jnp.sum(result.ntff_data.c_x_lo))
+    with pytest.raises(NotImplementedError, match="NTFF compensation"):
+        jax.grad(loss)(eps)
+
+
+def _full_grid_ntff_transpose(ctx, state):
+    """Pre-shell implementation: independent full-grid injection oracle."""
+    from rfx.farfield import accumulate_ntff, init_ntff_data
+    names = ("ex", "ey", "ez", "hx", "hy", "hz")
+    box = ctx.ntff._replace(freqs=jnp.zeros((1,), dtype=state.ex.dtype))
+    zero = init_ntff_data(box, field_dtype=state.ex.dtype)
+    fields = tuple(jnp.zeros_like(getattr(state, c)) for c in names)
+
+    def increment(fields):
+        value = accumulate_ntff(zero, state._replace(**dict(zip(names, fields))), box, 1., 0)
+        return tuple(jnp.real(a[0]) for a in value[:6])
+
+    return jax.linear_transpose(increment, fields)
+
+
+def _full_grid_ntff_inject(state, faces, transpose, coefficients, magnetic):
+    fields, = transpose(faces)
+    names = ("hx", "hy", "hz") if magnetic else ("ex", "ey", "ez")
+    selected = fields[3:] if magnetic else fields[:3]
+    return state._replace(**{c: getattr(state, c) + (a * v).astype(state.ex.dtype)
+                            for c, a, v in zip(names, coefficients, selected)})
+
+
+@pytest.mark.parametrize("lossy", [False, True])
+@pytest.mark.parametrize("face_centre", [True, False])
+def test_n2_shell_matches_full_grid(lossy, face_centre):
+    import rfx.adjoint as adjoint
+    with enable_x64(), ntff_collocation(face_centre):
+        sim, eps = ntff_fixture("float64", lossy)
+        actual = jax.jit(jax.grad(ntff_objective(sim, mode="adjoint")))(eps)
+        with (patch.object(adjoint, "_ntff_transpose", _full_grid_ntff_transpose),
+              patch.object(adjoint, "_inject_ntff", _full_grid_ntff_inject)):
+            reference = jax.jit(jax.grad(ntff_objective(sim, mode="adjoint")))(eps)
+        difference = float(jnp.max(jnp.abs(actual - reference)))
+        peak = float(jnp.max(jnp.abs(reference)))
+        relative = difference / peak
+        print(f"N2_SHELL {lossy=} {face_centre=} max_difference={difference:.17g} "
+              f"reference_peak={peak:.17g} relative={relative:.17g}", flush=True)
+        assert peak > 0
+        assert relative <= 1e-12

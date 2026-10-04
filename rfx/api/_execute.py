@@ -3971,6 +3971,9 @@ class _ExecuteMixin:
             Opt-in settled-spectrum reciprocity design eps adjoint.
             Design sigma overrides are refused (#1424): the conductivity
             derivative is not validated. Fixed lossy materials are allowed.
+            Supports E/H DFT planes and NTFF far-field objectives.
+            forward() has no flux-monitor output. NTFF face-centre and node sampling
+            use the accumulator's own transpose for adjoint sources.
             Stores design-edge DFTs and runs a second ordinary forward.
             The adjoint gradient is the settled-spectrum gradient, and
             ``ForwardResult.adjoint_settling`` above about 1e-2 (-40 dB)
