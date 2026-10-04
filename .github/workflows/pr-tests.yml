@@ -148,6 +148,10 @@ jobs:
       # the whole tree) when it is. Roughly 5 minutes.
       - name: Contract tests — the gates the shards are not running today
         if: needs.changes.outputs.code_changed == 'false'
+        env:
+          # S0's full matrix is weekly; retain its declared PR subset here
+          # even though this contract job intentionally includes slow tests.
+          RFX_S0_PR_SUBSET: "1"
         # Same flags as the guard suite below, for the same reason: this is the
         # ONLY test run on the not-code branch, so it is a required gate, and
         # `-o addopts=""` overrides the pyproject marker filter so a future

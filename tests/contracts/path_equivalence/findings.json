@@ -1,0 +1,2190 @@
+{
+  "_adi_cfl_factor::fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_adi_cfl_factor::run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_boundary:cpml:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_boundary:cpml:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_boundary_spec:absorbing_lid:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_boundary_spec:absorbing_lid:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_boundary_spec:pmc_face:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_boundary_spec:pmc_face:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_cpml_layers:layers:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_cpml_layers:layers:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_current_moments:block_moments:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_current_moments:block_moments:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_dft_planes:dft_plane:fwd_uniform:fwd_nonuniform:constant:12": {
+    "observers": {
+      "cause": "dft_planes.ez_x_0.accumulator: numeric",
+      "fingerprints": [
+        "dft_planes.ez_x_0.accumulator: numeric"
+      ],
+      "witnesses": {
+        "dft_planes.ez_x_0.accumulator": {
+          "relative": 0.057911851742116896,
+          "relative_bar": 0.0001
+        }
+      }
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_dft_planes:dft_plane:fwd_uniform:fwd_nonuniform:constant:36": {
+    "observers": {
+      "cause": "dft_planes.ez_x_0.accumulator: numeric",
+      "fingerprints": [
+        "dft_planes.ez_x_0.accumulator: numeric"
+      ],
+      "witnesses": {
+        "dft_planes.ez_x_0.accumulator": {
+          "relative": 0.053657325537183186,
+          "relative_bar": 0.0001
+        }
+      }
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:12": {
+    "observers": {
+      "cause": "dft_planes.ez_x_0.accumulator: numeric",
+      "fingerprints": [
+        "dft_planes.ez_x_0.accumulator: numeric"
+      ],
+      "witnesses": {
+        "dft_planes.ez_x_0.accumulator": {
+          "relative": 0.057911851742116896,
+          "relative_bar": 0.0001
+        }
+      }
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:36": {
+    "observers": {
+      "cause": "dft_planes.ez_x_0.accumulator: numeric",
+      "fingerprints": [
+        "dft_planes.ez_x_0.accumulator: numeric"
+      ],
+      "witnesses": {
+        "dft_planes.ez_x_0.accumulator": {
+          "relative": 0.053657325537183186,
+          "relative_bar": 0.0001
+        }
+      }
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_domain::fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_domain::run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_dx::fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_dx::run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:12": {
+    "observers": {
+      "cause": "flux_monitors: record missing on A and B",
+      "fingerprints": [
+        "flux_monitors: record missing on A and B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:36": {
+    "observers": {
+      "cause": "flux_monitors: record missing on A and B",
+      "fingerprints": [
+        "flux_monitors: record missing on A and B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12": {
+    "observers": {
+      "cause": "flux_monitors.flux_x_0.dA2: record missing on A; flux_monitors.flux_x_0.dA: shape differs: (1, 1) vs (13, 12); flux_monitors.flux_x_0.e1_dft: numeric; flux_monitors.flux_x_0.e2_dft: numeric; flux_monitors.flux_x_0.h1_dft: numeric; flux_monitors.flux_x_0.h2_dft: numeric",
+      "fingerprints": [
+        "flux_monitors.flux_x_0.dA2: record missing on A",
+        "flux_monitors.flux_x_0.dA: shape differs: (1, 1) vs (13, 12)",
+        "flux_monitors.flux_x_0.e1_dft: numeric",
+        "flux_monitors.flux_x_0.e2_dft: numeric",
+        "flux_monitors.flux_x_0.h1_dft: numeric",
+        "flux_monitors.flux_x_0.h2_dft: numeric"
+      ],
+      "witnesses": {
+        "flux_monitors.flux_x_0.e1_dft": {
+          "relative": 0.0580509329853314,
+          "relative_bar": 0.0001
+        },
+        "flux_monitors.flux_x_0.e2_dft": {
+          "relative": 0.05791182885042686,
+          "relative_bar": 0.0001
+        },
+        "flux_monitors.flux_x_0.h1_dft": {
+          "relative": 0.057888685595481264,
+          "relative_bar": 0.0001
+        },
+        "flux_monitors.flux_x_0.h2_dft": {
+          "relative": 0.05843369377690264,
+          "relative_bar": 0.0001
+        }
+      }
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_flux_monitors:flux:run_uniform:run_nonuniform:constant:36": {
+    "observers": {
+      "cause": "flux_monitors.flux_x_0.dA2: record missing on A; flux_monitors.flux_x_0.dA: shape differs: (1, 1) vs (13, 12); flux_monitors.flux_x_0.e1_dft: numeric; flux_monitors.flux_x_0.e2_dft: numeric; flux_monitors.flux_x_0.h1_dft: numeric; flux_monitors.flux_x_0.h2_dft: numeric",
+      "fingerprints": [
+        "flux_monitors.flux_x_0.dA2: record missing on A",
+        "flux_monitors.flux_x_0.dA: shape differs: (1, 1) vs (13, 12)",
+        "flux_monitors.flux_x_0.e1_dft: numeric",
+        "flux_monitors.flux_x_0.e2_dft: numeric",
+        "flux_monitors.flux_x_0.h1_dft: numeric",
+        "flux_monitors.flux_x_0.h2_dft: numeric"
+      ],
+      "witnesses": {
+        "flux_monitors.flux_x_0.e1_dft": {
+          "relative": 0.05388543501010911,
+          "relative_bar": 0.0001
+        },
+        "flux_monitors.flux_x_0.e2_dft": {
+          "relative": 0.05365727200274906,
+          "relative_bar": 0.0001
+        },
+        "flux_monitors.flux_x_0.h1_dft": {
+          "relative": 0.05345737401285307,
+          "relative_bar": 0.0001
+        },
+        "flux_monitors.flux_x_0.h2_dft": {
+          "relative": 0.05469321493803225,
+          "relative_bar": 9.999999999999999e-05
+        }
+      }
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_freq_max::fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_freq_max::run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_geometry:pec_sheet:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_geometry:pec_sheet:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_geometry:pec_volume:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_geometry:pec_volume:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_geometry:pec_wire:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_geometry:pec_wire:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_lumped_rlc:R:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_lumped_rlc:R:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_lumped_rlc:series_RL:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_lumped_rlc:series_RL:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:debye:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:debye:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:drude:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:drude:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:eps:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:eps:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:lorentz:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:lorentz:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:mu:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:mu:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:sigma:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_materials:sigma:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_mode::run_uniform:run_distributed:constant:12": {
+    "probes": {
+      "cause": "ValueError: Incompatible types for broadcasting: input type=float32[10,13,2] and requested type=float32[10,13,1]",
+      "fingerprints": [
+        "ValueError: Incompatible types for broadcasting: input type=float32[10,13,2] and requested type=float32[10,13,1]"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "ValueError: Incompatible types for broadcasting: input type=float32[10,13,2] and requested type=float32[10,13,1]",
+      "fingerprints": [
+        "ValueError: Incompatible types for broadcasting: input type=float32[10,13,2] and requested type=float32[10,13,1]"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_msl_ports:msl_port:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_msl_ports:msl_port:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ntff:ntff_box:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ntff:ntff_box:run_nonuniform:run_distributed:graded:12": {
+    "observers": {
+      "cause": "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead).",
+      "fingerprints": [
+        "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead)."
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead).",
+      "fingerprints": [
+        "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead)."
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead).",
+      "fingerprints": [
+        "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead)."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ntff:ntff_box:run_uniform:run_distributed:constant:12": {
+    "observers": {
+      "cause": "ntff_data.c_x_lo: numeric; ntff_data.c_y_hi: numeric; ntff_data.c_y_lo: numeric; ntff_data.c_z_hi: numeric; ntff_data.c_z_lo: numeric",
+      "fingerprints": [
+        "ntff_data.c_x_lo: numeric",
+        "ntff_data.c_y_hi: numeric",
+        "ntff_data.c_y_lo: numeric",
+        "ntff_data.c_z_hi: numeric",
+        "ntff_data.c_z_lo: numeric"
+      ],
+      "witnesses": {
+        "ntff_data.c_x_lo": {
+          "relative": 1.5652475612685657,
+          "relative_bar": 0.0001
+        },
+        "ntff_data.c_y_hi": {
+          "relative": 0.9100137361600649,
+          "relative_bar": 0.0001
+        },
+        "ntff_data.c_y_lo": {
+          "relative": 0.5234239384377628,
+          "relative_bar": 0.0001
+        },
+        "ntff_data.c_z_hi": {
+          "relative": 1.7541160346052889,
+          "relative_bar": 0.0001
+        },
+        "ntff_data.c_z_lo": {
+          "relative": 1.7827176961663076,
+          "relative_bar": 0.0001
+        }
+      }
+    }
+  },
+  "_ntff:ntff_box:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_pec_faces:pec_face:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_pec_faces:pec_face:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_pinned_sheets:pec_sheet:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_pinned_sheets:pec_sheet:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:amplitude_kind:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:amplitude_kind:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
+    "gradient": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "objective": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "port_dft": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ports:lumped_port:run_nonuniform:run_distributed:graded:12": {
+    "port_dft": {
+      "cause": "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0).",
+      "fingerprints": [
+        "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0)."
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0).",
+      "fingerprints": [
+        "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0)."
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0).",
+      "fingerprints": [
+        "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0)."
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0).",
+      "fingerprints": [
+        "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0)."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ports:lumped_port:run_uniform:run_distributed:constant:12": {
+    "port_samples": {
+      "cause": "sparam_time_records: record missing on A and B",
+      "fingerprints": [
+        "sparam_time_records: record missing on A and B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "kernel.sigma_lumped: record missing on B",
+      "fingerprints": [
+        "kernel.sigma_lumped: record missing on B"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ports:lumped_port:run_uniform:run_nonuniform:constant:12": {
+    "port_samples": {
+      "cause": "sparam_time_records: record missing on A and B",
+      "fingerprints": [
+        "sparam_time_records: record missing on A and B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12": {
+    "port_dft": {
+      "cause": "lumped_port_sparams: record missing on B; s_params: shape differs: (2,) vs (1, 1, 2); wire_port_sparams: record missing on A",
+      "fingerprints": [
+        "lumped_port_sparams: record missing on B",
+        "s_params: shape differs: (2,) vs (1, 1, 2)",
+        "wire_port_sparams: record missing on A"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:passive_port:run_uniform:run_nonuniform:constant:12": {
+    "port_samples": {
+      "cause": "sparam_time_records: record missing on A and B",
+      "fingerprints": [
+        "sparam_time_records: record missing on A and B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:source:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:source:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12": {
+    "port_dft": {
+      "cause": "s_params: shape differs: (2,) vs (1, 1, 2); wire_port_sparams.0.V_ref: record missing on B",
+      "fingerprints": [
+        "s_params: shape differs: (2,) vs (1, 1, 2)",
+        "wire_port_sparams.0.V_ref: record missing on B"
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "sparam_time_records.0.V_ref: record missing on B",
+      "fingerprints": [
+        "sparam_time_records.0.V_ref: record missing on B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36": {
+    "port_dft": {
+      "cause": "s_params: shape differs: (2,) vs (1, 1, 2); wire_port_sparams.0.V_ref: record missing on B",
+      "fingerprints": [
+        "s_params: shape differs: (2,) vs (1, 1, 2)",
+        "wire_port_sparams.0.V_ref: record missing on B"
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "sparam_time_records.0.V: numeric; sparam_time_records.0.V_ref: record missing on B",
+      "fingerprints": [
+        "sparam_time_records.0.V: numeric",
+        "sparam_time_records.0.V_ref: record missing on B"
+      ],
+      "witnesses": {
+        "sparam_time_records.0.V": {
+          "relative": 1.2330389270148275e-06,
+          "relative_bar": 5.783635357984858e-07
+        }
+      }
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:wire_port:run_nonuniform:run_distributed:graded:12": {
+    "port_dft": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ports:wire_port:run_nonuniform:run_distributed:graded:36": {
+    "port_dft": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ports:wire_port:run_uniform:run_distributed:constant:12": {
+    "port_dft": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ports:wire_port:run_uniform:run_distributed:constant:36": {
+    "port_dft": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included.",
+      "fingerprints": [
+        "NotImplementedError: Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports (add_source, add_polarized_source or add_port(impedance=0)): they fire in every port drive. Remove the plain source, or call run(compute_s_params=False) to get raw port waves with the source included."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_ports:wire_port:run_uniform:run_nonuniform:constant:12": {
+    "port_dft": {
+      "cause": "wire_port_sparams: record missing on A",
+      "fingerprints": [
+        "wire_port_sparams: record missing on A"
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "sparam_time_records.0.V_ref: record missing on B",
+      "fingerprints": [
+        "sparam_time_records.0.V_ref: record missing on B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_ports:wire_port:run_uniform:run_nonuniform:constant:36": {
+    "port_dft": {
+      "cause": "wire_port_sparams: record missing on A",
+      "fingerprints": [
+        "wire_port_sparams: record missing on A"
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "sparam_time_records.0.V_ref: record missing on B",
+      "fingerprints": [
+        "sparam_time_records.0.V_ref: record missing on B"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_probes:probe:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_probes:probe:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_solver::run_subgridded:refusal:constant:0": {
+    "refusal": {
+      "cause": "ValueError: solver='adi' supports only a uniform absorber: its absorbing layer is stamped on all six faces at the scalar cpml_layers, so a per-face boundary layout (x_hi='cpml', x_lo='cpml', y_hi='cpml', y_lo='cpml', z_hi='cpml', z_lo='cpml') would silently absorb on the faces you declared as reflectors. Use solver='yee' for per-face boundaries, or make every face 'cpml' with no per-face thickness override.",
+      "fingerprints": [
+        "ValueError: solver='adi' supports only a uniform absorber: its absorbing layer is stamped on all six faces at the scalar cpml_layers, so a per-face boundary layout (x_hi='cpml', x_lo='cpml', y_hi='cpml', y_lo='cpml', z_hi='cpml', z_lo='cpml') would silently absorb on the faces you declared as reflectors. Use solver='yee' for per-face boundaries, or make every face 'cpml' with no per-face thickness override."
+      ],
+      "witnesses": {}
+    }
+  },
+  "_tfsf:plane_wave:fwd_adi:refusal:constant:0": {
+    "refusal": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_tfsf:plane_wave:fwd_uniform:fwd_nonuniform:constant:12": {
+    "refusal": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_tfsf:plane_wave:run_adi:refusal:constant:0": {
+    "refusal": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_tfsf:plane_wave:run_nonuniform:run_distributed:graded:12": {
+    "refusal": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_tfsf:plane_wave:run_subgridded:refusal:constant:0": {
+    "refusal": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_tfsf:plane_wave:run_uniform:run_distributed:constant:12": {
+    "refusal": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_tfsf:plane_wave:run_uniform:run_nonuniform:constant:12": {
+    "probes": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "ValueError: TFSF plane-wave source is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: TFSF plane-wave source is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_thin_conductors:lossy_sheet:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_thin_conductors:lossy_sheet:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_thin_conductors:pec_sheet:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_thin_conductors:pec_sheet:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_thin_conductors:surface_impedance:fwd_uniform:fwd_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_thin_conductors:surface_impedance:run_uniform:run_nonuniform:constant:12": {
+    "realized": {
+      "cause": "geometry.domain.0.declared_length_m: numeric; geometry.domain.1.declared_length_m: numeric; geometry.lane: 'uniform' vs 'nonuniform'",
+      "fingerprints": [
+        "geometry.domain.0.declared_length_m: numeric",
+        "geometry.domain.1.declared_length_m: numeric",
+        "geometry.lane: 'uniform' vs 'nonuniform'"
+      ],
+      "witnesses": {
+        "geometry.domain.0.declared_length_m": {
+          "relative": 0.06363636363636357,
+          "relative_bar": 0.0
+        },
+        "geometry.domain.1.declared_length_m": {
+          "relative": 0.09999999999999998,
+          "relative_bar": 0.0
+        }
+      }
+    }
+  },
+  "_waveguide_ports:waveguide_port:fwd_adi:refusal:constant:0": {
+    "refusal": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_waveguide_ports:waveguide_port:fwd_uniform:fwd_nonuniform:constant:12": {
+    "gradient": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "objective": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "port_dft": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_waveguide_ports:waveguide_port:run_adi:refusal:constant:0": {
+    "refusal": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_waveguide_ports:waveguide_port:run_nonuniform:run_distributed:graded:12": {
+    "refusal": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_waveguide_ports:waveguide_port:run_subgridded:refusal:constant:0": {
+    "refusal": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_waveguide_ports:waveguide_port:run_uniform:run_distributed:constant:12": {
+    "refusal": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  },
+  "_waveguide_ports:waveguide_port:run_uniform:run_nonuniform:constant:12": {
+    "port_dft": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "port_samples": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "probes": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    },
+    "realized": {
+      "cause": "ValueError: Waveguide port is not supported together with lumped ports",
+      "fingerprints": [
+        "ValueError: Waveguide port is not supported together with lumped ports"
+      ],
+      "witnesses": {}
+    }
+  }
+}
