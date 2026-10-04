@@ -97,3 +97,93 @@ def test_filter_amendment1_pixel_indices():
                                   [6, 7, 16, 17, 26, 27])
     assert set(filt.FD_PIXELS.values()) == {(5, 4), (15, 4), (25, 4)}
     np.testing.assert_array_equal(s2, s2[::-1])
+
+
+# Visual helpers have no solver dependency; coordinate-coded arrays catch flips.
+import _visual_data as visual
+
+
+def test_visual_lens_quarter_coordinates():
+    q = np.arange(2250).reshape(15, 15, 10)
+    full = visual.mirror_lens(q)
+    assert full.shape == (30, 30, 10)
+    for i in range(30):
+        for j in range(30):
+            np.testing.assert_array_equal(full[i, j], q[abs(i - 14.5).astype(int) if isinstance(i, np.ndarray) else int(abs(i - 14.5)), int(abs(j - 14.5))])
+    np.testing.assert_array_equal(full[14, 14], q[0, 0])
+    np.testing.assert_array_equal(full[15, 15], q[0, 0])
+    with pytest.raises(ValueError):
+        visual.mirror_lens(np.zeros((15, 15, 9)))
+
+
+def test_visual_filter_centre_occurs_once():
+    half = np.tile(np.arange(5), (32, 1)) + 10 * np.arange(32)[:, None]
+    full = visual.mirror_filter(half)
+    assert full.shape == (32, 9)
+    for i in range(32):
+        np.testing.assert_array_equal(full[i], i * 10 + np.array([0, 1, 2, 3, 4, 3, 2, 1, 0]))
+    with pytest.raises(ValueError):
+        visual.mirror_filter(np.zeros((32, 4)))
+
+
+@pytest.mark.parametrize('plane,pos,negative', [('E', 0, 36), ('H', 18, 54)])
+def test_visual_signed_plane_cut(plane, pos, negative):
+    response = 1000 * np.arange(73)[:, None] + np.arange(73)[None, :]
+    theta, cut = visual.plane_cut(response, plane)
+    assert len(theta) == len(cut) == 145
+    assert np.count_nonzero(theta == 0) == 1
+    assert np.all(np.diff(theta) > 0)
+    assert theta[0] == pytest.approx(-180 + np.rad2deg(1e-4))
+    assert theta[73] == pytest.approx(np.rad2deg(np.linspace(1e-4, np.pi - 1e-4, 73)[1]))
+    np.testing.assert_array_equal(cut[:72], response[72:0:-1, negative])
+    np.testing.assert_array_equal(cut[72:], response[:, pos])
+    _, batched = visual.plane_cut(np.stack([response, response + 7]), plane)
+    np.testing.assert_array_equal(batched[1], cut + 7)
+
+
+def test_visual_dbi_power_not_amplitude():
+    np.testing.assert_allclose(visual.dbi([.01, 1, 10, 100]), [-20, 0, 10, 20])
+    assert np.isneginf(visual.dbi(0))
+    assert visual.dbi(4 * np.pi * .09**2 / (299792458 / 1e10)**2) == pytest.approx(20.54053477)
+    with pytest.raises(ValueError):
+        visual.dbi(-1)
+    np.testing.assert_allclose(visual.amplitude_db([0, .1j, 1]), [-120, -20, 0])
+
+
+def test_visual_lens_quarter_orientation():
+    from _visual_data import lens_mirror
+    q = np.arange(2250).reshape(15, 15, 10)
+    full = lens_mirror(q)
+    assert full.shape == (30, 30, 10)
+    np.testing.assert_array_equal(full[15:, 15:], q)
+    assert full[0, 0, 9] == q[14, 14, 9]
+    np.testing.assert_array_equal(full, full[::-1])
+    np.testing.assert_array_equal(full, full[:, ::-1])
+
+
+def test_visual_filter_centre_not_duplicated():
+    from _visual_data import filter_mirror
+    q = np.arange(160).reshape(32, 5)
+    full = filter_mirror(q)
+    assert full.shape == (32, 9)
+    np.testing.assert_array_equal(full[:, :5], q)
+    np.testing.assert_array_equal(full[0], [0, 1, 2, 3, 4, 3, 2, 1, 0])
+
+
+@pytest.mark.parametrize('plane,positive,negative', [('E', 0, 36), ('H', 18, 54)])
+def test_visual_cuts_opposite_phi_branch(plane, positive, negative):
+    from _visual_data import plane_cut
+    d = np.arange(73*73).reshape(73, 73)
+    theta, cut = plane_cut(d, plane)
+    assert theta.shape == cut.shape == (145,)
+    assert theta[72] == 0
+    assert np.all(np.diff(theta) > 0)
+    np.testing.assert_array_equal(cut[:72], d[:0:-1, negative])
+    np.testing.assert_array_equal(cut[72:], d[:, positive])
+    assert theta[-1] == pytest.approx(np.rad2deg(np.pi-1e-4))
+
+
+def test_visual_dbi_is_power_logarithm():
+    from _visual_data import dbi
+    np.testing.assert_allclose(dbi([.1, 1, 10, 100]), [-10, 0, 10, 20])
+    assert np.isneginf(dbi(0))
