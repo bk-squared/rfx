@@ -113,8 +113,6 @@ class Model(common.ModelBase):
         if n_steps in self._functions:
             return self._functions[n_steps]
         dtype = jnp.float64 if self.precision == "float64" else jnp.float32
-        base = jnp.asarray(self.sim._assemble_materials(self.grid, pec_sheets=[], pec_wires=[])[0].eps_r,
-                           dtype=dtype)
         box = make_ntff_box(self.grid, *self.sim._ntff)
         box = box._replace(freqs=np.asarray(box.freqs))
         # Beam module's 73 x 73 grid and rectangular quadrature. Evaluate
@@ -122,7 +120,6 @@ class Model(common.ModelBase):
         th = jnp.asarray(np.linspace(1e-4, np.pi - 1e-4, 73), dtype=dtype)
         ph = jnp.asarray(np.linspace(0., 2 * np.pi, 73), dtype=dtype)
         w = jnp.sin(th)[:, None] * jnp.gradient(th)[:, None] * jnp.gradient(ph)[None, :]
-        slices = tuple(slice(a, b) for a, b in zip(self.lo, self.hi))
 
         # Design-box formulation (#1179): reverse mode stores box-shaped
         # fields per step instead of grid-shaped ones; the same gradient

@@ -118,7 +118,8 @@ def setup(case, out, dx, precision, smoke):
 def fd(case, model, e, n, out, precision):
     import jax
     import jax.numpy as jnp
-    objective = jax.jit(lambda eps: case.loss(model.response_fn(n)(eps)))
+    response = model.response_fn(n)  # built eagerly, outside the trace
+    objective = jax.jit(lambda eps: case.loss(response(eps)))
     dtype = jnp.float64 if precision == "float64" else jnp.float32
     e = np.asarray(e, dtype=np.float64 if precision == "float64" else np.float32)
     g = np.asarray(jax.jit(jax.grad(objective))(jnp.asarray(e, dtype=dtype)))
@@ -141,7 +142,10 @@ def rlw(case, model, e, n, out, label):
     functions = {}
     def objective(eps, steps):
         if steps not in functions:
-            functions[steps] = jax.jit(lambda x: case.loss(model.response_fn(steps)(x)))
+            # Build the response (NTFF box, frequencies) eagerly, outside the
+            # trace; only the solve and the transform are jitted.
+            response = model.response_fn(steps)
+            functions[steps] = jax.jit(lambda x: case.loss(response(x)))
         return functions[steps](eps)
     w = gradient_record_length_witness(objective, jnp.asarray(e), n, factor=1.5, tol=.05)
     short, long = next(iter(w.grad.values()))[0], next(iter(w.grad_long.values()))[0]
