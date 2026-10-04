@@ -179,8 +179,11 @@ Full contract, fence reasoning, and gates:
   record whose value has settled can still give a gradient off by tens of
   percent, and agreement between AD and finite differences does not show
   this, because both differentiate the same truncated record. `tol` has no
-  default; its docstring lists measured cases to choose it from. Quote the
-  witness's own result fields when reporting. For a gradient through the
+  default; its docstring lists measured cases to choose it from. Report its
+  verdict fields by their own names: `passed`, `worst` (the largest
+  relative change of the gradient vector over the bins), `n_steps` and
+  `n_steps_long`. `grad_rel_change` is a per-element table for locating a
+  failure, not the verdict. For a gradient through the
   ring-down completion, use `rfx.ringdown.gradient_witness` instead
   ([resonance recipe](./recipe-resonance-extraction)).
 - Check the full |S11(f)| curve, not just the objective bin.
