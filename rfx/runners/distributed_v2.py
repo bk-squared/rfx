@@ -77,6 +77,7 @@ from rfx.runners._distributed_common import (
     _split_lorentz_coeffs,
     _split_lorentz_state,
     _update_h_local,
+    magnetic_low_ghost,
     _update_e_local_with_dispersion,
     _init_cpml_distributed,
     _distributed_boundary_layers,
@@ -1131,7 +1132,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         )
         def _h(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
-            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+            _mat = MaterialArrays(eps_r=eps_r, sigma=sigma,
+                                 mu_r=magnetic_low_ghost(mu_r, rank, ghost))
             new_st = _update_h_local(_st, _mat, dt, dx)
             return new_st.hx, new_st.hy, new_st.hz, new_st.step
 

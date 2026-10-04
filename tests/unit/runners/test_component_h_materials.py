@@ -42,6 +42,55 @@ def test_face_mean_uses_actual_cell_lengths_then_adds_contours():
     np.testing.assert_array_equal(hz, mu)
 
 
+def test_equal_cell_rounding_guard_keeps_both_material_derivatives():
+    mats = yee.init_materials((2, 1, 1))
+    widths = (jnp.array([.9, 1.1]), jnp.ones(1), jnp.ones(1))
+    def face(values):
+        material = mats._replace(mu_r=values[:, None, None])
+        return yee.component_h_materials(material, cell_sizes=widths)[0][1, 0, 0]
+    derivative = jax.grad(face)(jnp.array([2.2, 2.2]))
+    np.testing.assert_allclose(derivative, [.45, .55], rtol=3e-7)
+
+
+@pytest.mark.parametrize("value", [1., 2.2, 7.3])
+def test_homogeneous_fast_bake_keeps_legacy_field_bits(value):
+    grid, mats, _, state = _fixture()
+    mats = mats._replace(mu_r=jnp.full(grid.shape, value, dtype=jnp.float32))
+    old_ch = jnp.float32(grid.dt / (yee.MU_0 * grid.dx)) / mats.mu_r
+    new_ch = yee.precompute_coeffs(mats, grid.dt, grid.dx).ch
+    expected = yee.update_h_fast(state, old_ch)
+    got = yee.update_h_fast(state, new_ch)
+    for a, b in zip(got[:6], expected[:6]):
+        assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
+
+
+@pytest.mark.parametrize("homogeneous", [False, True])
+def test_normal_h_face_reads_neighbour_ghost_across_x_split(homogeneous):
+    shape = (8, 3, 3)
+    mats = yee.init_materials(shape)
+    mu = jnp.full(shape, 2.2) if homogeneous else mats.mu_r.at[4:].set(4.)
+    mats = mats._replace(mu_r=mu)
+    widths = (jnp.array([1., 1., 1., .9, 1.1, 1., 1., 1.]),
+              jnp.ones(3), jnp.ones(3))
+    state = yee.init_state(shape)._replace(ez=jnp.indices(shape)[1].astype(jnp.float32))
+    inv = tuple(1 / d for d in widths)
+    reference = yee.update_h_nu(state, mats, 1e-12, *inv, cell_sizes=widths)
+    split_m = dc._split_materials(mats, 2)
+    split_s = dc._split_state(state, 2)
+    got = []
+    for rank in range(2):
+        local_m = jax.tree.map(lambda a: a[rank], split_m)
+        local_m = local_m._replace(mu_r=dc.magnetic_low_ghost(local_m.mu_r, rank))
+        local_s = jax.tree.map(lambda a: a[rank], split_s)
+        local_x = jnp.take(widths[0], jnp.clip(jnp.arange(rank * 4 - 1, rank * 4 + 5), 0, 7))
+        local_widths = (local_x, *widths[1:])
+        local_inv = tuple(1 / d for d in local_widths)
+        result = dc._update_h_local_nu(local_s, local_m, 1e-12,
+                                      *local_inv, *local_inv, cell_sizes=local_widths)
+        got.append(np.asarray(result.hx)[1:5])
+    np.testing.assert_array_equal(np.concatenate(got), np.asarray(reference.hx))
+
+
 def _fixture():
     grid = Grid(freq_max=10e9, domain=(.006,)*3, dx=.001, cpml_layers=2)
     mats = yee.init_materials(grid.shape)

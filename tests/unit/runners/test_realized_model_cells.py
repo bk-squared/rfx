@@ -147,8 +147,30 @@ def material_pairs(dump, row, axis):
         distributed = r["site"].startswith("distributed")
         mats = dump.full_materials if distributed else r["materials"]
         if row == "mu":
-            ref = np.asarray(component_h_materials(
-                r["materials"], r["periodic"], cell_sizes=r.get("cell_sizes"))[axis])
+            hi = np.asarray(r["materials"].mu_r)
+            lo = np.roll(hi, 1, axis=axis)
+            edge = [slice(None)] * hi.ndim
+            edge[axis] = 0
+            if not r["periodic"][axis]:
+                lo[tuple(edge)] = hi[tuple(edge)]
+            widths = r.get("cell_sizes")
+            if widths is None:
+                ref = 2 / (1 / lo + 1 / hi)
+            else:
+                dh = np.asarray(widths[axis])
+                if len(dh) == hi.shape[axis] - 1:
+                    dh = np.r_[dh, dh[-1]]
+                dl = np.roll(dh, 1)
+                if not r["periodic"][axis]:
+                    dl[0] = dh[0]
+                shape = [1] * hi.ndim
+                shape[axis] = len(dh)
+                dl, dh = dl.reshape(shape), dh.reshape(shape)
+                ref = (dl + dh) / (dl / lo + dh / hi)
+            ref = np.where(lo == hi, hi, ref)
+            stamps = r["materials"].mu_r_wire
+            if stamps is not None and stamps[axis] is not None:
+                ref = ref + np.asarray(stamps[axis])
         else:
             eps, sig = component_e_materials(mats, r["periodic"])
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])

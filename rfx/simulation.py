@@ -2203,7 +2203,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
             if ctx.use_cpml:
                 st, cpml_new = ctx.apply_cpml_h(
                     st, ctx.cpml_params, carry["cpml"], grid, ctx.cpml_axes,
-                    materials=materials)
+                    materials=materials, periodic=periodic)
             # Stage 2 H damping — applied AFTER CPML-H so CPML cannot
             # un-zero H at Kottke-frozen PEC cells.  Threshold rather
             # than ``== 0.0`` so smooth-Kottke (eps_inside = 1e10)
@@ -3588,8 +3588,11 @@ def _warn_static_remnant_cap_hit(state, materials, grid) -> None:
     iz0, iz1 = (0, grid.nz) if is_2d else (grid.pad_z_lo, grid.nz - grid.pad_z_hi)
     sl = (slice(ix0, ix1), slice(iy0, iy1), slice(iz0, iz1))
     eps_r = materials.eps_r[sl]
-    mu_r = getattr(materials, "mu_r", None)
-    mu_r = mu_r[sl] if (mu_r is not None and jnp.ndim(mu_r) > 0) else 1.0
+    from rfx.core.yee import component_h_materials
+    mu_h = component_h_materials(
+        materials, cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
+        if hasattr(grid, "dx_arr") else None)
+    mu_h = tuple(m[sl] if jnp.ndim(m) else m for m in mu_h)
     if is_2d:
         e2 = state.ez[sl] ** 2
         h2 = state.hx[sl] ** 2 + state.hy[sl] ** 2
@@ -3597,7 +3600,14 @@ def _warn_static_remnant_cap_hit(state, materials, grid) -> None:
         e2 = state.ex[sl] ** 2 + state.ey[sl] ** 2 + state.ez[sl] ** 2
         h2 = state.hx[sl] ** 2 + state.hy[sl] ** 2 + state.hz[sl] ** 2
     u_e = 0.5 * EPS_0 * float(jnp.sum(eps_r * e2))
-    u_h = 0.5 * MU_0 * float(jnp.sum(mu_r * h2))
+    weighted_h2 = mu_h[0] * state.hx[sl] ** 2 + mu_h[1] * state.hy[sl] ** 2
+    same = mu_h[0] == mu_h[1]
+    if not is_2d:
+        weighted_h2 = weighted_h2 + mu_h[2] * state.hz[sl] ** 2
+        same = same & (mu_h[0] == mu_h[2])
+    # Retain the homogeneous diagnostic's operation order and bits.
+    weighted_h2 = jnp.where(same, mu_h[0] * h2, weighted_h2)
+    u_h = 0.5 * MU_0 * float(jnp.sum(weighted_h2))
     tot = u_e + u_h
     if tot <= 0.0:
         return

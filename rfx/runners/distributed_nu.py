@@ -67,6 +67,7 @@ from rfx.boundaries.pec import _volume_occupancy_masks
 from rfx.runners._distributed_common import (
     _update_e_local_nu,
     _update_h_local_nu,
+    magnetic_low_ghost,
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
     apply_pmc_face_shmap,
@@ -275,6 +276,8 @@ class ShardedNUGrid(_NamedTuple):
     x_starts: tuple
     x_stops: tuple
     face_layers: dict[str, int] | None = None
+    dy_cells: object = None
+    dz_cells: object = None
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
@@ -428,6 +431,8 @@ def build_sharded_nu_grid(
         x_starts=x_starts,
         x_stops=x_stops,
         face_layers=grid.face_layers,
+        dy_cells=np.asarray(grid.dy_arr),
+        dz_cells=np.asarray(grid.dz),
     )
 
 
@@ -1576,7 +1581,8 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
 
 def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
                            n_cpml: int, dt: float, ghost: int,
-                           n_devices: int, mu_r=None, pad_x: int = 0, *, rank=None):
+                           n_devices: int, mu_r=None, pad_x: int = 0, *, rank=None,
+                           cell_sizes=None):
     """Per-rank slab-aware CPML H-field correction with NU per-axis dx.
 
     Mirror of :func:`_apply_cpml_e_local_nu` for the H field.  Same
@@ -1644,16 +1650,18 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     # Same per-face slicing as the E kernel; vacuum scalar dt/mu_0 when
     # mu_r is None (bit-identical to pre-#205).
     if mu_r is not None:
-        _mu = component_h_materials(MaterialArrays(None, None, mu_r))
-        _ch = dt / (_mu[0] * MU_0)  # (nx_local + 2*ghost, ny, nz)
-        ch_xlo = _ch[xlo, :, :]
-        ch_xhi = _ch[xhi, :, :]
-        ch_ylo = _ch[:, :n_ylo, :]
-        ch_yhi = _ch[:, -n_yhi:, :]
-        ch_zlo = _ch[:, :, :n_zlo]
-        ch_zhi = _ch[:, :, -n_zhi:]
+        mu_r = magnetic_low_ghost(mu_r, rank, ghost)
+        _mu = component_h_materials(MaterialArrays(None, None, mu_r), cell_sizes=cell_sizes)
+        _ch = tuple(dt / (m * MU_0) for m in _mu)
+        ch_xlo = tuple(c[g:g + n_xlo, :, :] for c in _ch)
+        hi = slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_xhi, None)
+        ch_xhi = tuple(c[hi, :, :] for c in _ch)
+        ch_ylo = tuple(c[:, :n_ylo, :] for c in _ch)
+        ch_yhi = tuple(c[:, -n_yhi:, :] for c in _ch)
+        ch_zlo = tuple(c[:, :, :n_zlo] for c in _ch)
+        ch_zhi = tuple(c[:, :, -n_zhi:] for c in _ch)
     else:
-        ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = cpml_coeff_h_vacuum(dt)
+        ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = (cpml_coeff_h_vacuum(dt),) * 3
 
     device_idx = rank
     is_first = (device_idx == 0)
@@ -1670,8 +1678,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ez_dx_xlo = (ez_shifted_xlo - ez_xlo) / dx_x
     new_psi_hy_xlo = b_x * cpml_state.psi_hy_xlo + c_x * curl_ez_dx_xlo
     hy_corr_xlo = (
-        ch_xlo * new_psi_hy_xlo
-        + ch_xlo * (1.0 / k_x - 1.0) * curl_ez_dx_xlo
+        ch_xlo[1] * new_psi_hy_xlo
+        + ch_xlo[1] * (1.0 / k_x - 1.0) * curl_ez_dx_xlo
     )
     hy_corr_xlo = jnp.where(is_first, hy_corr_xlo, 0.0)
     hy = hy.at[xlo, :, :].add(hy_corr_xlo)
@@ -1683,8 +1691,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ez_dx_xhi = (ez_shifted_xhi - ez_xhi) / dx_x
     new_psi_hy_xhi = b_xr * cpml_state.psi_hy_xhi + c_xr * curl_ez_dx_xhi
     hy_corr_xhi = (
-        ch_xhi * new_psi_hy_xhi
-        + ch_xhi * (1.0 / k_xr - 1.0) * curl_ez_dx_xhi
+        ch_xhi[1] * new_psi_hy_xhi
+        + ch_xhi[1] * (1.0 / k_xr - 1.0) * curl_ez_dx_xhi
     )
     hy_corr_xhi = jnp.where(is_last, hy_corr_xhi, 0.0)
     hy = hy.at[xhi, :, :].add(hy_corr_xhi)
@@ -1698,8 +1706,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     new_psi_hz_xlo = b_x * cpml_state.psi_hz_xlo + c_x * curl_ey_dx_xlo_t
     correction_hz_xlo = jnp.transpose(new_psi_hz_xlo, (0, 2, 1))
     hz_corr_xlo = (
-        -ch_xlo * correction_hz_xlo
-        - ch_xlo * (1.0 / k_x - 1.0) * curl_ey_dx_xlo
+        -ch_xlo[2] * correction_hz_xlo
+        - ch_xlo[2] * (1.0 / k_x - 1.0) * curl_ey_dx_xlo
     )
     hz_corr_xlo = jnp.where(is_first, hz_corr_xlo, 0.0)
     hz = hz.at[xlo, :, :].add(hz_corr_xlo)
@@ -1713,8 +1721,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     new_psi_hz_xhi = b_xr * cpml_state.psi_hz_xhi + c_xr * curl_ey_dx_xhi_t
     correction_hz_xhi = jnp.transpose(new_psi_hz_xhi, (0, 2, 1))
     hz_corr_xhi = (
-        -ch_xhi * correction_hz_xhi
-        - ch_xhi * (1.0 / k_xr - 1.0) * curl_ey_dx_xhi
+        -ch_xhi[2] * correction_hz_xhi
+        - ch_xhi[2] * (1.0 / k_xr - 1.0) * curl_ey_dx_xhi
     )
     hz_corr_xhi = jnp.where(is_last, hz_corr_xhi, 0.0)
     hz = hz.at[xhi, :, :].add(hz_corr_xhi)
@@ -1728,9 +1736,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ez_dy_ylo_t = jnp.transpose(curl_ez_dy_ylo, (1, 0, 2))
     new_psi_hx_ylo = b_y * cpml_state.psi_hx_ylo + c_y * curl_ez_dy_ylo_t
     correction_hx_ylo = jnp.transpose(new_psi_hx_ylo, (1, 0, 2))
-    hx = hx.at[:, :n_ylo, :].add(-ch_ylo * correction_hx_ylo)
+    hx = hx.at[:, :n_ylo, :].add(-ch_ylo[0] * correction_hx_ylo)
     kappa_corr_hx_ylo = jnp.transpose((1.0 / k_y - 1.0) * curl_ez_dy_ylo_t, (1, 0, 2))
-    hx = hx.at[:, :n_ylo, :].add(-ch_ylo * kappa_corr_hx_ylo)
+    hx = hx.at[:, :n_ylo, :].add(-ch_ylo[0] * kappa_corr_hx_ylo)
 
     # --- Y-hi: Hx from dEz/dy ---
     ez_yhi = state.ez[:, -n_yhi:, :]
@@ -1739,9 +1747,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ez_dy_yhi_t = jnp.transpose(curl_ez_dy_yhi, (1, 0, 2))
     new_psi_hx_yhi = b_yr * cpml_state.psi_hx_yhi + c_yr * curl_ez_dy_yhi_t
     correction_hx_yhi = jnp.transpose(new_psi_hx_yhi, (1, 0, 2))
-    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi * correction_hx_yhi)
+    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi[0] * correction_hx_yhi)
     kappa_corr_hx_yhi = jnp.transpose((1.0 / k_yr - 1.0) * curl_ez_dy_yhi_t, (1, 0, 2))
-    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi * kappa_corr_hx_yhi)
+    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi[0] * kappa_corr_hx_yhi)
 
     # --- Y-lo: Hz from dEx/dy ---
     ex_ylo = state.ex[:, :n_ylo, :]
@@ -1750,9 +1758,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ex_dy_ylo_t = jnp.transpose(curl_ex_dy_ylo, (1, 2, 0))
     new_psi_hz_ylo = b_y * cpml_state.psi_hz_ylo + c_y * curl_ex_dy_ylo_t
     correction_hz_ylo = jnp.transpose(new_psi_hz_ylo, (2, 0, 1))
-    hz = hz.at[:, :n_ylo, :].add(ch_ylo * correction_hz_ylo)
+    hz = hz.at[:, :n_ylo, :].add(ch_ylo[2] * correction_hz_ylo)
     kappa_corr_hz_ylo = jnp.transpose((1.0 / k_y - 1.0) * curl_ex_dy_ylo_t, (2, 0, 1))
-    hz = hz.at[:, :n_ylo, :].add(ch_ylo * kappa_corr_hz_ylo)
+    hz = hz.at[:, :n_ylo, :].add(ch_ylo[2] * kappa_corr_hz_ylo)
 
     # --- Y-hi: Hz from dEx/dy ---
     ex_yhi = state.ex[:, -n_yhi:, :]
@@ -1761,9 +1769,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ex_dy_yhi_t = jnp.transpose(curl_ex_dy_yhi, (1, 2, 0))
     new_psi_hz_yhi = b_yr * cpml_state.psi_hz_yhi + c_yr * curl_ex_dy_yhi_t
     correction_hz_yhi = jnp.transpose(new_psi_hz_yhi, (2, 0, 1))
-    hz = hz.at[:, -n_yhi:, :].add(ch_yhi * correction_hz_yhi)
+    hz = hz.at[:, -n_yhi:, :].add(ch_yhi[2] * correction_hz_yhi)
     kappa_corr_hz_yhi = jnp.transpose((1.0 / k_yr - 1.0) * curl_ex_dy_yhi_t, (2, 0, 1))
-    hz = hz.at[:, -n_yhi:, :].add(ch_yhi * kappa_corr_hz_yhi)
+    hz = hz.at[:, -n_yhi:, :].add(ch_yhi[2] * kappa_corr_hz_yhi)
 
     # Z-axis (every rank)
     # --- Z-lo: Hx from dEy/dz ---
@@ -1773,9 +1781,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ey_dz_zlo_t = jnp.transpose(curl_ey_dz_zlo, (2, 0, 1))
     new_psi_hx_zlo = b_zl * cpml_state.psi_hx_zlo + c_zl * curl_ey_dz_zlo_t
     correction_hx_zlo = jnp.transpose(new_psi_hx_zlo, (1, 2, 0))
-    hx = hx.at[:, :, :n_zlo].add(ch_zlo * correction_hx_zlo)
+    hx = hx.at[:, :, :n_zlo].add(ch_zlo[0] * correction_hx_zlo)
     kappa_corr_hx_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_ey_dz_zlo_t, (1, 2, 0))
-    hx = hx.at[:, :, :n_zlo].add(ch_zlo * kappa_corr_hx_zlo)
+    hx = hx.at[:, :, :n_zlo].add(ch_zlo[0] * kappa_corr_hx_zlo)
 
     # --- Z-hi: Hx from dEy/dz ---
     ey_zhi = state.ey[:, :, -n_zhi:]
@@ -1784,9 +1792,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ey_dz_zhi_t = jnp.transpose(curl_ey_dz_zhi, (2, 0, 1))
     new_psi_hx_zhi = b_zh * cpml_state.psi_hx_zhi + c_zh * curl_ey_dz_zhi_t
     correction_hx_zhi = jnp.transpose(new_psi_hx_zhi, (1, 2, 0))
-    hx = hx.at[:, :, -n_zhi:].add(ch_zhi * correction_hx_zhi)
+    hx = hx.at[:, :, -n_zhi:].add(ch_zhi[0] * correction_hx_zhi)
     kappa_corr_hx_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_ey_dz_zhi_t, (1, 2, 0))
-    hx = hx.at[:, :, -n_zhi:].add(ch_zhi * kappa_corr_hx_zhi)
+    hx = hx.at[:, :, -n_zhi:].add(ch_zhi[0] * kappa_corr_hx_zhi)
 
     # --- Z-lo: Hy from dEx/dz ---
     ex_zlo = state.ex[:, :, :n_zlo]
@@ -1795,9 +1803,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ex_dz_zlo_t = jnp.transpose(curl_ex_dz_zlo, (2, 1, 0))
     new_psi_hy_zlo = b_zl * cpml_state.psi_hy_zlo + c_zl * curl_ex_dz_zlo_t
     correction_hy_zlo = jnp.transpose(new_psi_hy_zlo, (2, 1, 0))
-    hy = hy.at[:, :, :n_zlo].add(-ch_zlo * correction_hy_zlo)
+    hy = hy.at[:, :, :n_zlo].add(-ch_zlo[1] * correction_hy_zlo)
     kappa_corr_hy_zlo = jnp.transpose((1.0 / k_zl - 1.0) * curl_ex_dz_zlo_t, (2, 1, 0))
-    hy = hy.at[:, :, :n_zlo].add(-ch_zlo * kappa_corr_hy_zlo)
+    hy = hy.at[:, :, :n_zlo].add(-ch_zlo[1] * kappa_corr_hy_zlo)
 
     # --- Z-hi: Hy from dEx/dz ---
     ex_zhi = state.ex[:, :, -n_zhi:]
@@ -1806,9 +1814,9 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     curl_ex_dz_zhi_t = jnp.transpose(curl_ex_dz_zhi, (2, 1, 0))
     new_psi_hy_zhi = b_zh * cpml_state.psi_hy_zhi + c_zh * curl_ex_dz_zhi_t
     correction_hy_zhi = jnp.transpose(new_psi_hy_zhi, (2, 1, 0))
-    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi * correction_hy_zhi)
+    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi[1] * correction_hy_zhi)
     kappa_corr_hy_zhi = jnp.transpose((1.0 / k_zh - 1.0) * curl_ex_dz_zhi_t, (2, 1, 0))
-    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi * kappa_corr_hy_zhi)
+    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi[1] * kappa_corr_hy_zhi)
 
     new_state = state._replace(hx=hx, hy=hy, hz=hz)
     new_cpml = cpml_state._replace(
@@ -2232,6 +2240,20 @@ def run_nonuniform_distributed_pec(
     inv_dy_h_rep = _concrete_on_mesh(sharded_grid.inv_dy_h, rep)
     inv_dz_rep = _concrete_on_mesh(sharded_grid.inv_dz, rep)
     inv_dz_h_rep = _concrete_on_mesh(sharded_grid.inv_dz_h, rep)
+    # The face permeability uses original cell lengths, including the true
+    # neighbour across each x split, rather than inverse-metric round trips.
+    width_slabs = np.stack([
+        sharded_grid.dx_padded[np.clip(
+            np.arange(r * nx_per - ghost, (r + 1) * nx_per + ghost),
+            0, len(sharded_grid.dx_padded) - 1)] for r in range(n_devices)])
+    cell_sizes = (
+        _concrete_on_mesh(width_slabs.reshape(n_devices * nx_local), shd),
+        _concrete_on_mesh(sharded_grid.dy_cells if sharded_grid.dy_cells is not None
+                          else 1 / np.where(sharded_grid.inv_dy_h > 0,
+                                            sharded_grid.inv_dy_h, sharded_grid.inv_dy_h[-2]), rep),
+        _concrete_on_mesh(sharded_grid.dz_cells if sharded_grid.dz_cells is not None
+                          else 1 / np.where(sharded_grid.inv_dz_h > 0,
+                                            sharded_grid.inv_dz_h, sharded_grid.inv_dz_h[-2]), rep))
 
     # ------------------------------------------------------------------
     # Initial state — zeros created directly on the slab sharding
@@ -2304,7 +2326,7 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     def _update_h_shmap(st, mat, spacings, *, ranks):
         (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings
+         inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep) = spacings[:6]
         # #1038 leg 4: body moved VERBATIM to
         # _distributed_common.update_h_nu_shmap, which distributed_v2.py's
         # `if is_nu:` branch also calls now. The eight locals this closure read
@@ -2313,7 +2335,7 @@ def run_nonuniform_distributed_pec(
             st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep,
-            ranks=ranks)
+            ranks=ranks, cell_sizes=spacings[6:])
 
     def _update_e_shmap(st, mat, spacings, e_materials, *, ranks):
         inv_dx_sharded, inv_dy_rep, inv_dz_rep = spacings[:3]
@@ -2617,7 +2639,7 @@ def run_nonuniform_distributed_pec(
         cpml_params = jax.tree_util.tree_map(
             lambda arr: _concrete_on_mesh(arr, rep), cpml_params)
 
-    def _apply_cpml_h_shmap(st, cs, cpml_params, mu_r, *, ranks):
+    def _apply_cpml_h_shmap(st, cs, cpml_params, mu_r, widths, *, ranks):
         @partial(
             rank_shard_map,
             mesh=mesh,
@@ -2631,6 +2653,7 @@ def run_nonuniform_distributed_pec(
                 # z-face psi (sliced per rank)
                 P("x"), P("x"), P("x"), P("x"),
                 P("x"),  # mu_r slab (material-aware CPML coeff, #205)
+                (P("x"), P(None), P(None)),
             ),
             out_specs=(
                 P("x"), P("x"), P("x"),               # hx, hy, hz
@@ -2644,7 +2667,7 @@ def run_nonuniform_distributed_pec(
                psi_hy_xlo, psi_hy_xhi, psi_hz_xlo, psi_hz_xhi,
                psi_hx_ylo, psi_hx_yhi, psi_hz_ylo, psi_hz_yhi,
                psi_hx_zlo, psi_hx_zhi, psi_hy_zlo, psi_hy_zhi,
-               mu_r_slab, *, rank):
+               mu_r_slab, cell_sizes_slab, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez,
                             hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
             _cs = cs._replace(
@@ -2658,7 +2681,7 @@ def run_nonuniform_distributed_pec(
             new_st, new_cs = _apply_cpml_h_local_nu(
                 _st, cpml_params, _cs, n_cpml_local, dt, ghost, n_devices,
                 mu_r=mu_r_slab, pad_x=pad_x,
-                rank=rank)
+                rank=rank, cell_sizes=cell_sizes_slab)
             return (new_st.hx, new_st.hy, new_st.hz,
                     new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
                     new_cs.psi_hz_xlo, new_cs.psi_hz_xhi,
@@ -2675,7 +2698,7 @@ def run_nonuniform_distributed_pec(
             cs.psi_hy_xlo, cs.psi_hy_xhi, cs.psi_hz_xlo, cs.psi_hz_xhi,
             cs.psi_hx_ylo, cs.psi_hx_yhi, cs.psi_hz_ylo, cs.psi_hz_yhi,
             cs.psi_hx_zlo, cs.psi_hx_zhi, cs.psi_hy_zlo, cs.psi_hy_zhi,
-            mu_r,
+            mu_r, widths,
         )
         new_st = st._replace(hx=hx, hy=hy, hz=hz)
         new_cs = cs._replace(
@@ -2792,7 +2815,8 @@ def run_nonuniform_distributed_pec(
 
         # 2. Phase 2C: CPML H correction (after H, before E exchange).
         if use_cpml:
-            st, cs = _apply_cpml_h_shmap(st, cs, cpml_params, sharded_materials.mu_r, ranks=ranks)
+            st, cs = _apply_cpml_h_shmap(st, cs, cpml_params, sharded_materials.mu_r,
+                                        spacings[6:], ranks=ranks)
 
         # 2b. PMC face (H-tangential = 0) before H ghost exchange so the
         #     zero propagates to neighbours via the exchange. H-half hook
@@ -3034,7 +3058,7 @@ def run_nonuniform_distributed_pec(
         (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
          debye_coeffs, lorentz_coeffs, cpml_params,
          (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
-          inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep)),
+          inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *cell_sizes)),
         warmup_xs, opt_xs,
         ranks=mesh_ranks(mesh))
     final_state_sharded = final_carry["fdtd"]

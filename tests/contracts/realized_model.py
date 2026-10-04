@@ -27,10 +27,9 @@ ROWS = ("eps", "sigma", "mu", "conformal", "sat", "override_drive",
 TABLE = {row: {lane: Cell() for lane in LANES} for row in ROWS}
 
 # This note is source-reading evidence only, not another numerical cell.
-NOTES = (("#1373", "READ-ONLY: no dual mu averaging rule exists in rfx/; "
-          "the P0 reference is component_h_materials of the lane's own "
-          "cell array, including its per-component wire-contour record "
-          "(#1398, rfx/core/yee.py:component_h_materials)."),)
+NOTES = (("#1373", "H permeability is the own-axis face harmonic mean, weighted "
+          "by primal cell lengths on graded meshes; equal cells retain their "
+          "bits and wire-contour increments are added after the mean."),)
 
 for row, feature in (("eps", "dielectric"), ("sigma", "lossy"), ("mu", "mu")):
     # Filled explicitly below where admission refuses a declared material.
@@ -38,7 +37,7 @@ for row, feature in (("eps", "dielectric"), ("sigma", "lossy"), ("mu", "mu")):
         if lane in ("run_adi", "fwd_adi") and row == "mu":
             TABLE[row][lane] = Cell("refuses", note="ADI refuses magnetic materials")
         elif row == "mu":
-            TABLE[row][lane] = Cell("call-site", note="no μ interface rule exists yet; P0's μ reference is component_h_materials of the lane's own cell array")
+            TABLE[row][lane] = Cell("compares", note="length-weighted harmonic face permeability; independent NumPy reference")
         elif row in ("eps", "sigma") and lane in ("run_adi", "fwd_adi"):
             TABLE[row][lane] = Cell(issue="#1373", note="per-cell E material")
         elif row in ("eps", "sigma") and lane in ("run_distributed", "fwd_distributed_nu"):

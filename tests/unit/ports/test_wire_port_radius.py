@@ -146,7 +146,8 @@ def test_radius_none_full_field_history_is_bit_identical(lane, monkeypatch):
         return np.stack(captured)
 
     current = solve()
-    monkeypatch.setattr("rfx.core.yee.component_h_materials", lambda m, periodic=(False, False, False): (m.mu_r,)*3)
+    monkeypatch.setattr("rfx.core.yee.component_h_materials",
+                        lambda m, periodic=(False, False, False), **_: (m.mu_r,)*3)
     update_h.clear_cache()
     legacy = solve()
     assert np.max(np.abs(current)) > 0

@@ -77,7 +77,7 @@ class MaterialArrays(NamedTuple):
     sigma_lumped: object = None
     eps_r_lumped: object = None
     # H-component-owned permeability increments (port and PEC filament contours).
-    # None preserves the historical scalar/cell-owned H update exactly.
+    # None means no contour increment beyond the volume face mean.
     mu_r_wire: object = None
 
 
@@ -92,6 +92,16 @@ def component_h_materials(materials, periodic=(False, False, False), *, cell_siz
     """
     parts = getattr(materials, "mu_r_wire", None)
     mu = materials.mu_r
+    @jax.custom_jvp
+    def exact_equal(lo, hi, mean):
+        return jnp.where(lo == hi, hi, mean)
+
+    @exact_equal.defjvp
+    def exact_equal_jvp(primals, tangents):
+        # Equality changes only rounding, not the material law's derivative:
+        # independent equal-valued neighbours still both influence the face.
+        return exact_equal(*primals), tangents[2]
+
     if jnp.ndim(mu) == 0:
         volume = (mu,) * 3
     else:
@@ -110,7 +120,7 @@ def component_h_materials(materials, periodic=(False, False, False), *, cell_siz
                 hi_d = widths.reshape(shape)
                 lo_d = _material_bwd_neighbour(hi_d, axis, periodic)
                 mean = (lo_d + hi_d) / (lo_d / lo + hi_d / mu)
-            volume.append(jnp.where(lo == mu, mu, mean))
+            volume.append(exact_equal(lo, mu, mean))
         volume = tuple(volume)
     if parts is None:
         return volume

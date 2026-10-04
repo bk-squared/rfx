@@ -598,7 +598,7 @@ def _build_vmap_scan_fn(
                 # mechanism as #203/#204 uniform and #208 non-uniform).
                 st, cpml_st = apply_cpml_h(
                     st, cpml_params, cpml_st, grid, cpml_axes,
-                    materials=materials)
+                    materials=materials, periodic=periodic)
 
             # E update
             st = update_e(st, materials, dt, dx, periodic=periodic)

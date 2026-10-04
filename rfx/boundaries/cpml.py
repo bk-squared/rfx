@@ -1051,7 +1051,7 @@ def apply_cpml_e(
 
 def apply_cpml_h(
     state, cpml_params, cpml_state: CPMLState, grid,
-    axes: str = "xyz", materials=None,
+    axes: str = "xyz", materials=None, *, periodic=None,
 ) -> tuple:
     """Apply CPML correction to H-field update on all 6 faces.
 
@@ -1070,8 +1070,11 @@ def apply_cpml_h(
     dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
     from rfx.core.yee import MaterialArrays, component_h_materials
     magnetic_materials = materials if hasattr(materials, "mu_r") else None
+    if periodic is None:
+        periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
     mu = component_h_materials(
         magnetic_materials if magnetic_materials is not None else MaterialArrays(None, None, 1.0),
+        periodic=periodic,
         cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None)
     ch = tuple(dt / (m * MU_0) for m in mu)
 
