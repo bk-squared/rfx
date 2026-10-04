@@ -1411,6 +1411,7 @@ def _compute_waveguide_s_matrix_nu(
                 # beside strip_interior_pec, or the "empty guide"
                 # reference would still carry the lossy sheet.
                 strip_sheet_impedance=True,
+                strip_magnetic_materials=True,
             )
 
             dev_wg = dev_result.waveguide_ports or {}

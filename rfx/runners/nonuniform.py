@@ -721,6 +721,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                         attach_waveguide_flux: bool = False,
                         strip_interior_pec: bool = False,
                         strip_sheet_impedance: bool = False,
+                        strip_magnetic_materials: bool = False,
                         until_decay: float | None = None,
                         decay_check_interval: int = 50,
                         decay_min_steps: int = 100,
@@ -947,6 +948,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # reference-run analogue of strip_interior_pec below. Pinned by the
         # G8 negative control (tests/unit/materials/test_sheet_impedance.py).
         _sheet_specs = []
+
+    if strip_magnetic_materials:
+        # The internal empty-guide S reference must remove the magnetic
+        # slab too. Epsilon/sigma overrides alone leave its H coefficients.
+        materials = materials._replace(mu_r=jnp.ones_like(materials.mu_r), mu_r_wire=None)
 
     # Two-run S-matrix vacuum reference: drop the interior-geometry PEC
     # (the rasterized iris / wall / post) so the reference is a clean
