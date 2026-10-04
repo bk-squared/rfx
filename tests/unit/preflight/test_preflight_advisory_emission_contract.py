@@ -442,7 +442,11 @@ def _enumerate_emission_sites():
 # ``_validate_cfg_adi_interior_pec``, new code ``adi_material_interface_unsupported``
 # -- an ADI model whose eps_r or sigma varies over the grid; run() and forward()
 # refuse it at lane admission when preflight is skipped.
-_FROZEN_TOTAL_SITES = 126
+# 126 -> 127 (#1480): one ``PreflightWarning`` error in
+# ``_validate_cfg_adi_boundary``, code ``adi_absorber_unsupported`` -- ADI with an
+# absorbing boundary (an unmatched sponge, -10.4 dB at 10 GHz); construction refuses
+# it too.
+_FROZEN_TOTAL_SITES = 127
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -466,7 +470,8 @@ _FROZEN_TOTAL_SITES = 126
 # 80 -> 81 (#1138 rc2): ``campaign_statics_traced_mesh``.
 # 81 -> 82 (#1373): ``adi_material_interface_unsupported`` -- see the note on
 # _FROZEN_TOTAL_SITES above.
-_FROZEN_LITERAL_CODE_COUNT = 82
+# 82 -> 83 (#1480): ``adi_absorber_unsupported``.
+_FROZEN_LITERAL_CODE_COUNT = 83
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
