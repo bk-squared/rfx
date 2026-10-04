@@ -123,10 +123,16 @@ class Model(common.ModelBase):
         w = jnp.sin(th)[:, None] * jnp.gradient(th)[:, None] * jnp.gradient(ph)[None, :]
         slices = tuple(slice(a, b) for a, b in zip(self.lo, self.hi))
 
+        # Design-box formulation (#1179): reverse mode stores box-shaped
+        # fields per step instead of grid-shaped ones; the same gradient
+        # (docstring of Simulation.forward). Corners are inclusive cells.
+        box_lo = tuple(float(v) for v in (.018, .018, .072))
+        box_hi = tuple(float(v - self.dx) for v in (.108, .108, .102))
+
         def run(e):
-            eps = base.at[slices].set(expand_pixels(jnp.asarray(e, dtype=dtype), self.dx, jnp))
-            return self.sim.forward(eps_override=eps, n_steps=n_steps, checkpoint=True,
-                                    checkpoint_segments=common.sqrt_segments(n_steps), skip_preflight=True)
+            cells = expand_pixels(jnp.asarray(e, dtype=dtype), self.dx, jnp)
+            return self.sim.forward(design_box=(box_lo, box_hi), design_eps_override=cells,
+                                    n_steps=n_steps, checkpoint=False, skip_preflight=True)
 
         def response(e):
             r = run(e)
