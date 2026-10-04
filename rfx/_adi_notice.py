@@ -10,8 +10,8 @@ ADI_WARNING = (
 ADI_SPONGE_REFUSAL = (
     'solver="adi" refuses absorbing boundaries: this boundary is not a CPML '
     'but an unmatched graded-conductivity sponge (electric loss only, no '
-    'magnetic loss). Measured normal-incidence reflection is -10.4 dB at '
-    '10 GHz with the default 16 layers (-3 dB near 2 GHz), against -93 dB '
+    'magnetic loss). Measured normal-incidence reflection (2-D, the same '
+    'construction as 3-D) is -10.4 dB at 10 GHz with the default 16 layers (-3 dB near 2 GHz), against -93 dB '
     'for the uniform-path CPML in the same box. Use solver="yee" with '
     'boundary="cpml" for open structures, or solver="adi" with '
     'boundary="pec" for closed cavities.'
